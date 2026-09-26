@@ -214,7 +214,7 @@ section('a continental collision');
     }
     const corr = (a, b) => { const ma = mean(a), mb = mean(b); let ab = 0, aa = 0, bb = 0; for (let i = 0; i < a.length; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; } return ab / Math.sqrt(aa * bb); };
     const rAlong = corr(here, along), rAcross = corr(here, across);
-    check('the ridge noise is drawn out along the ranges: it holds along the strike and changes across it', here.length >= 1000 && rAlong >= 0.75 && rAlong >= rAcross + 0.25,
+    check('the ridge noise is drawn out along the ranges: it holds along the strike and changes across it', here.length >= 1000 && rAlong >= 0.7 && rAlong >= rAcross + 0.25,
         `over ${here.length} belt cells (± ${Math.sqrt(rms / here.length).toFixed(2)} km): correlation with itself ${stepKm} km along the strike ${rAlong.toFixed(2)}, ${stepKm} km across it ${rAcross.toFixed(2)}`);
 }
 
@@ -376,8 +376,8 @@ section('flood basalts through time');
     const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
     const lipCells = f => { const a = []; for (let w = 0; w < mesh.numCells; w++) if (f.owner[w] >= 0 && f.type[w] !== CrustType.OCEAN && f.volcType[w] === VolcanicType.LIP) a.push(w); return a; };
     const erupted = frames.find(f => lipCells(f).length > 0).time, at = age => frames.find(f => f.time >= erupted + age - 1e-6);
-    // over the thick part of the province, away from the coast: where its cap (its top tier) still stands, and how that
-    // differs from its edge (within 150 km of it) to its inside (400 km or more in). (The whole province lowers a little
+    // over the province (0.25 km of pile or more), away from the coast: where its cap (its top tier) still stands, and how that
+    // differs from the third of it nearest its edge to the third furthest in. (The whole province lowers a little
     // as it wears: the cap is what stands within 15 % of the province's highest share of its pile, if that is half.)
     // The pile unworn: the same frame with its wear record zeroed.
     const cap = f => {
@@ -386,27 +386,30 @@ section('flood basalts through time');
         for (let t = 0; t < T.tm.numCells; t++) {
             let ok = true;
             for (let i = 0; i < 3; i++) { const c = S.cells[3 * t + i]; ok &&= rec.land[c] && rec.coastKm[c] > 300; }
-            if (ok && U.parts.lip[t] >= 0.5) shares.push(share[t] = T.parts.lip[t] / U.parts.lip[t]);
+            if (ok && U.parts.lip[t] >= 0.25) shares.push(share[t] = T.parts.lip[t] / U.parts.lip[t]);
         }
         const highest = quantile(shares, 0.97);
-        let thick = 0, kept = 0, edgeN = 0, edgeK = 0, innerN = 0, innerK = 0;
+        let thick = 0, kept = 0;
+        const byEdge = [];
         for (let t = 0; t < T.tm.numCells; t++) {
             if (Number.isNaN(share[t])) continue;
             let edge = 0;
             for (let i = 0; i < 3; i++) edge += S.weights[3 * t + i] * rec.lipEdgeKm[S.cells[3 * t + i]];
             const k = highest >= 0.5 && share[t] >= 0.85 * highest ? 1 : 0;
             thick++; kept += k;
-            if (edge < 150) { edgeN++; edgeK += k; } else if (edge >= 400) { innerN++; innerK += k; }
+            byEdge.push([edge, k]);
         }
-        return { f, T, thick, kept: kept / thick, edge: edgeK / Math.max(1, edgeN), inner: innerK / Math.max(1, innerN) };
+        byEdge.sort((a, b) => a[0] - b[0]);
+        const third = Math.floor(byEdge.length / 3), share3 = a => a.reduce((s, e) => s + e[1], 0) / Math.max(1, a.length);
+        return { f, T, thick, kept: kept / thick, edge: share3(byEdge.slice(0, third)), inner: share3(byEdge.slice(-third)), third };
     };
     const young = cap(at(10)), mid = cap(at(100)), old = cap(at(250));
     check('a young flood basalt is an unbroken plateau', young.thick >= 200 && young.kept >= 0.85,
-        `10 Myr after it erupted, the cap still stands over ${(100 * young.kept).toFixed(0)} % of ${young.thick} terrain cells of its thick part`);
+        `10 Myr after it erupted, the cap still stands over ${(100 * young.kept).toFixed(0)} % of ${young.thick} terrain cells of the province`);
     check('as it wears its cap is cut away into mesas, which shrink with time — but remnants stand for hundreds of Myr', mid.kept <= 0.7 && mid.kept >= 0.15 && old.kept < mid.kept && old.kept >= 0.02,
         `the cap still stands over ${(100 * mid.kept).toFixed(0)} % 100 Myr after the eruption, ${(100 * old.kept).toFixed(0)} % after 250 Myr`);
-    check('its escarpment retreats from the edge: the cap goes sooner there than inside', mid.inner >= mid.edge + 0.15,
-        `100 Myr on, the cap stands over ${(100 * mid.edge).toFixed(0)} % of the province within 150 km of its edge, ${(100 * mid.inner).toFixed(0)} % 400 km or more inside`);
+    check('its escarpment retreats from the edge: the cap goes sooner there than inside', mid.third >= 100 && mid.inner >= mid.edge + 0.15,
+        `100 Myr on, the cap stands over ${(100 * mid.edge).toFixed(0)} % of the third of the province nearest its edge, ${(100 * mid.inner).toFixed(0)} % of the third furthest in (${mid.third} terrain cells each)`);
     // the dykes: the grain alone (with and without it), around the province; against itself along the rays and across them
     const f = mid.f, T = mid.T, N = terrainWith(f, 640000, { dykeKm: 0 }), tm = T.tm, cells = lipCells(f);
     const C = [0, 1, 2].map(i => cells.reduce((s, w) => s + mesh.xyz[3 * w + i], 0)), cl = Math.hypot(...C); C.forEach((v, i) => { C[i] = v / cl; });

@@ -73,7 +73,10 @@ export function spreadKm(mesh, dist, { canEnter = null, onReach = null, maxKm = 
             if (d >= dist[nb] || d > maxKm) continue;
             dist[nb] = d;
             if (onReach) onReach(c, nb);
-            heap.push(d, nb);
+            // (queued at the value STORED: in a Float32Array it is d rounded, and were it queued at d itself, a d rounded
+            // down would read as stale when popped — the cell would never pass its distance on, and whole patches were
+            // reached late, by detours, or not at all)
+            heap.push(dist[nb], nb);
         }
     }
     return dist;

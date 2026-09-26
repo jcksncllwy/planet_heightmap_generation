@@ -12,10 +12,11 @@ before changing the engine.
 **Status:** Phases 1–7 are built — rigid kinematics · ridges & trenches · the generated start world · plate
 driving forces · collisions (belts, suturing with redraw) · trench wings, island arcs, terrane docking · rifting,
 foundering margins, oceanic plate birth · hotspots & LIPs · margins, flat slabs, back-arc seas, fore-arc islands · the
-crust budget: erosive margins, continental underthrusting, arc recycling. Phase 8 (terrain) is under way: **8a**, the
-tectonic surface — heights from the records, with ridges laid out along each belt's front — is built, and **8b**,
-rivers carving it — with the history's own rivers, which persist and cut gorges as the land rises under them — too.
-Phase 9 (the render mesh, V1's polish and climate) is next. The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
+crust budget: erosive margins, continental underthrusting, arc recycling. Phase 8 (terrain) is done: **8a**, the
+tectonic surface — heights from the records, with ridges laid out along each belt's front — and **8b**, rivers
+carving it — with the history's own rivers, which persist and cut gorges as the land rises under them — plus flood
+basalts cut into mesas and stairs. Next: the parked items (the supercontinent cycle, heights feeding the history,
+steadier detail between frames, speed), then Phase 9 (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
 ## Running it

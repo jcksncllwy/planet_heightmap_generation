@@ -461,7 +461,7 @@ script `v2/tools/check-phaseN.mjs` with numeric pass/fail. Early phases use smal
 hand-built test scenes so one mechanism is visible at a time; the real generator only
 comes together in Phase 6.
 
-**Status (2026-09-24)**
+**Status (2026-09-26)**
 
 | Phase | Status | Check script (checks) | Lab scenes |
 |---|---|---|---|
@@ -477,13 +477,17 @@ comes together in Phase 6.
 | 7b margins, back-arcs, belts, fore-arc islands | built 2026-09-23 (two rounds) | check-phase7b (33) | margins, laramide, mariana, japan, history |
 | code review A–D | 2026-09-23 | check-invariants (11), check-scale (7) | — |
 | 7c crust budget | built 2026-09-24 | check-phase7c (19) | erosion, india, arcs, history (600 Myr) |
-| 8a tectonic surface (records + heights before carving) | built 2026-09-24, rounds 2–4 and evolving heights 2026-09-25 | check-phase8a (40) | andes, laramide, india, mariana, japan, hawaii, rift, history |
-| 8b-1 rivers carve the surface (analytic stream power) | built 2026-09-25 | check-phase8b | the same scenes, carved; every frame |
-| 8b-2 rivers through the history (gorges, persistence) | built 2026-09-26 | check-phase8b (22 with 8b-1) | history, india |
-| 8b carving (analytic stream power) | next | — | — |
+| 8a tectonic surface (records + heights before carving) | accepted 2026-09-26 (built 2026-09-24; rounds 2–4, evolving heights 2026-09-25) | check-phase8a (47) | andes, laramide, india, mariana, japan, hawaii, rift, traps, history |
+| 8b-1 rivers carve the surface (analytic stream power) | accepted 2026-09-26 (built 2026-09-25) | check-phase8b | the same scenes, carved; every frame |
+| 8b-2 rivers through the history (gorges, persistence) | accepted 2026-09-26 (built 2026-09-26) | check-phase8b (24 with 8b-1) | history, india |
+| 8b rounds 3–6: mountain shape, ridge noise, start swells, flood basalts, relative mantle swell, belt scraps | accepted 2026-09-26 | check-phase8a, check-phase8b | traps, history |
 
-Wanted later, each its own phase: a supercontinent CYCLE (bursts of rifting with quiet spells in which the pieces
-reassemble); heights built during the history and eroded as it runs. The build narrative of each phase is in §10.
+Phase 8 closed 2026-09-26. Before Phase 9 (developer: "the parked are the most important things … before moving
+forward"), the parked items get their own phases, each with a definition of done agreed with the developer first:
+the supercontinent CYCLE (bursts of rifting with quiet spells in which the pieces reassemble); heights feeding the
+history (a height ceiling that turns into width — plateaus — and belt shape by climate; wider Andean belts); the
+records read in each plate's own frame (steadier coastlines and small rivers between frames); stale belt positions
+fixed where the history stamps them; the history's speed. The build narrative of each phase is in §10.
 
 | # | Phase | What you see in the browser | Confirm before moving on |
 |---|---|---|---|
@@ -768,6 +772,16 @@ they found was fixed, and each fix has a check that would catch its return.
   ~2.3. Median land before carving 0.86 → 1.01 km (8a's ceiling recalibrated to 1.1: the developer's request), ~0.87
   after. Andean belt WIDTH is a history rule (baseKm 120 + 1 km per km of recorded shortening; the young, slow Andes
   scene reaches ~76 km): widening it changes every history — asked, not done.
+- A heap bug in the terrain's distances (found 2026-09-26, measuring landmass shapes for the next phases): spreadKm
+  (core/min-heap.js) queued a cell at its exact distance but stored it in a Float32Array, rounded; popped, a key that
+  had been rounded DOWN in the store read as stale, and the cell never passed its distance on. Whole patches were
+  reached late, by detours, or not at all — in one start world 1,299 land cells never reached from the sea, and the
+  deepest "inland" point 15,800 km. Every distance the terrain spreads was affected: the signed coast distance (coastal
+  plains, shelves, coast kinds), trench and outer-rise distances, belt fronts (the across-strike direction), failed rift
+  arms, the flood basalts' edges. Now queued at the stored value. The history never used it (its rift paths have their
+  own Float64 search): histories unchanged. Retuned on the true distances: the flood basalts' edge wear (lipEdgeKm
+  150 → 100, lipEdgeWear 1 → 1.5); 8a's escarpment check compares the third of a province nearest its edge with the
+  third furthest in (a province is ~120 km deep at median — no longer "400 km in").
 - "Mountain donuts" (developer, 2026-09-26: "in some of the very small Himalayan pockets it looks like little mountain
   donuts or crescents"). Two causes, both in how the terrain reads the belt records (records.js; the history is
   unchanged). (1) Stale distances: the distance across a belt (u × reach) changes by at most the distance between
