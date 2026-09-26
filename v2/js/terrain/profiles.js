@@ -1,0 +1,118 @@
+// Cross-sections of mountain belts, after WBP Part VIIa's range geometries. Each is a function of the distance d
+// (km) from the belt's front — the trench-side coast for an Andean belt, the suture for a collision — and of the
+// belt's reach W (km): where the crests, valleys and basins lie across the belt. Heights are relative (crest ≈ 1,
+// basins < 0); records.js scales them by the belt's relief. Ridges within the belt (stripes.js) are placed by
+// `stripeZone`: where across the belt the parallel fold-and-thrust ridges are.
+
+import { OrogenyType, BeltSide } from '../tectonics/model/crust.js';
+
+const bump = (x, c, s) => { const t = (x - c) / s; return Math.exp(-t * t); };
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+/** 1 across u ∈ [a, b], easing in and out over ±edge: a plateau. */
+const plateau = (u, a, b, edge) => smooth(a - edge, a + edge, u) * (1 - smooth(b - edge, b + edge, u));
+
+/**
+ * Relative height across a belt at distance d from its front. `jitter` (a share of the width, from noise) moves the
+ * belt's far edge in and out, so it does not end along a clean line.
+ */
+export function beltProfile(type, side, d, reach, jitter = 0) {
+    const W = Math.max(40, reach), u = d / W;
+    const fade = 1 - smooth(0.7 + jitter, 1.05 + jitter, u);   // every belt dies away toward its far edge
+    switch (type) {
+        case OrogenyType.ANDEAN: {
+            // coastal range · fore-arc valley · the main (volcanic) range · in a wide, mature belt a high plateau
+            // behind it (the Altiplano) and an eastern cordillera over the fold-and-thrust belt · then the fall line
+            const s = Math.max(18, 0.04 * W), mature = smooth(300, 650, W);
+            return fade * (0.35 * bump(d, clamp(0.07 * W, 20, 60), s) - 0.22 * bump(d, clamp(0.17 * W, 45, 130), s)
+                + bump(d, clamp(0.3 * W, 70, 260), Math.max(35, 0.07 * W)) + 0.55 * mature * plateau(u, 0.33, 0.72, 0.1)
+                + (W > 300 ? 0.6 * bump(d, 0.76 * W, 0.06 * W) : 0));
+        }
+        case OrogenyType.LARAMIDE:
+            // the old arc's batholith near the coast; a high interior (the Colorado Plateau, the Wyoming basins) with
+            // blocky basement ranges across it (stripes); a front range bracketing it inland
+            return fade * (0.6 * bump(d, clamp(0.1 * W, 40, 150), Math.max(30, 0.05 * W)) + 0.55 * plateau(u, 0.15, 0.86, 0.1)
+                + 0.9 * bump(d, 0.88 * W, Math.max(35, 0.05 * W)));
+        case OrogenyType.URAL:
+            // one main ridge along the suture; a foreland basin on the lower plate
+            return side === BeltSide.LOWER
+                ? fade * (0.8 * bump(d, 0, Math.max(35, 0.2 * W)) - 0.3 * bump(d, 0.85 * W, 0.15 * W))
+                : fade * bump(d, 0, Math.max(40, 0.25 * W));
+        case OrogenyType.HIMALAYAN:
+            // upper plate: a range along the suture, the plateau (isostasy) with low internal ridges, a back range
+            // bracketing it, a fall line; lower plate: the highest range just off the suture, fold hills, then the
+            // foreland basin
+            // (the plateau needs a mature collision: a belt that has reached far inland)
+            return side === BeltSide.LOWER
+                ? fade * (1.4 * bump(d, clamp(0.22 * W, 40, 130), Math.max(35, 0.08 * W)) - 0.35 * bump(d, 0.86 * W, 0.12 * W))
+                : fade * (1.0 * bump(d, clamp(0.05 * W, 20, 80), Math.max(40, 0.05 * W)) + 0.8 * smooth(300, 800, W) * plateau(u, 0.1, 0.84, 0.1)
+                    + bump(d, 0.88 * W, Math.max(40, 0.05 * W)));
+        case OrogenyType.ARC:
+            return fade * bump(d, 0, Math.max(55, 0.3 * W));                 // a broad ridge the volcanoes stand on
+        case OrogenyType.TRANSPRESSION:
+            return fade * bump(d, 0, Math.max(15, 0.35 * W));
+        case OrogenyType.RIFT: {
+            // a rifted margin's great escarpment: a steep face toward the rift, a long gentle slope inland
+            const c = clamp(0.12 * W, 25, 90);
+            return fade * (d < c ? bump(d, c, 0.6 * c) : Math.exp(-(d - c) / (0.45 * W)));
+        }
+        default: return 0;
+    }
+}
+
+/**
+ * The BROAD part of a belt's cross-section (same units as beltProfile): the plateaus and a wide envelope of the ranges,
+ * smooth enough to be carried by sim cells 121 km apart. It is what the evolving uplift is built toward
+ * (tectonics/step/heights.js); beltProfile − broadProfile (crestProfile) is the crest structure the terrain adds.
+ */
+export function broadProfile(type, side, d, reach, jitter = 0) {
+    const W = Math.max(40, reach), u = d / W;
+    const fade = 1 - smooth(0.7 + jitter, 1.05 + jitter, u);
+    switch (type) {
+        case OrogenyType.ANDEAN: {
+            const mature = smooth(300, 650, W);
+            return fade * (0.8 * bump(d, clamp(0.3 * W, 70, 260), Math.max(110, 0.2 * W)) + 0.55 * mature * plateau(u, 0.33, 0.72, 0.1)
+                + (W > 300 ? 0.4 * bump(d, 0.76 * W, Math.max(100, 0.12 * W)) : 0));
+        }
+        case OrogenyType.LARAMIDE:
+            return fade * (0.4 * bump(d, clamp(0.1 * W, 40, 150), Math.max(100, 0.1 * W)) + 0.55 * plateau(u, 0.15, 0.86, 0.1) + 0.6 * bump(d, 0.88 * W, Math.max(100, 0.08 * W)));
+        case OrogenyType.URAL:
+            return side === BeltSide.LOWER
+                ? fade * (0.65 * bump(d, 0, Math.max(100, 0.3 * W)) - 0.25 * bump(d, 0.85 * W, Math.max(80, 0.15 * W)))
+                : fade * 0.8 * bump(d, 0, Math.max(110, 0.35 * W));
+        case OrogenyType.HIMALAYAN:
+            return side === BeltSide.LOWER
+                ? fade * (0.9 * bump(d, clamp(0.22 * W, 40, 130), Math.max(110, 0.15 * W)) - 0.3 * bump(d, 0.86 * W, Math.max(90, 0.12 * W)))
+                : fade * (0.7 * bump(d, clamp(0.05 * W, 20, 80), Math.max(110, 0.08 * W)) + 0.8 * smooth(300, 800, W) * plateau(u, 0.1, 0.84, 0.1)
+                    + 0.7 * bump(d, 0.88 * W, Math.max(110, 0.08 * W)));
+        case OrogenyType.ARC:
+            return fade * 0.8 * bump(d, 0, Math.max(90, 0.35 * W));
+        case OrogenyType.TRANSPRESSION:
+            return fade * 0.7 * bump(d, 0, Math.max(70, 0.45 * W));
+        case OrogenyType.RIFT: {
+            const c = clamp(0.12 * W, 25, 90);
+            return fade * 0.9 * (d < c ? bump(d, c, Math.max(70, c)) : Math.exp(-(d - c) / (0.45 * W)));
+        }
+        default: return 0;
+    }
+}
+
+/** The crest structure of a belt: its full cross-section less the broad part the evolving uplift carries. */
+export function crestProfile(type, side, d, reach, jitter = 0) {
+    return beltProfile(type, side, d, reach, jitter) - broadProfile(type, side, d, reach, jitter);
+}
+
+/** How strongly the belt's parallel ridges show at distance d from its front (0…1). */
+export function stripeZone(type, side, d, reach, jitter = 0) {
+    const W = Math.max(40, reach), u = d / W, edge = 1 - smooth(0.7 + jitter, 1 + jitter, u);
+    switch (type) {
+        case OrogenyType.ANDEAN: return edge * (0.35 + 0.65 * smooth(0.45, 0.65, u));                 // the sub-Andean fold-and-thrust belt
+        case OrogenyType.LARAMIDE: return edge * smooth(0.12, 0.3, u);                                // the basement uplifts
+        case OrogenyType.URAL: return edge * 0.8;
+        case OrogenyType.HIMALAYAN: return side === BeltSide.LOWER ? edge * (0.4 + 0.6 * smooth(0.25, 0.4, u) * (1 - smooth(0.65, 0.8, u))) : edge * 0.5;
+        case OrogenyType.ARC: return 0.1 * edge;
+        case OrogenyType.TRANSPRESSION: return edge;
+        case OrogenyType.RIFT: return 0.25 * edge;                                                    // fault blocks
+        default: return 0;
+    }
+}

@@ -265,6 +265,10 @@ js/
   planet-mesh.js        Voronoi mesh, map projection, hover highlight
   edit-mode.js          Ctrl-click plate multi-select + hover info
   detail-scale.js       Non-linear (power-curve) detail slider mapping
+v2/                     World Orogen V2 (in development, not linked from the live site) —
+                        tectonic *history* engine built in confirmed phases; see v2/README.md and
+                        plans/V2_TECTONIC_HISTORY_DESIGN.md. Open /v2/ for the Tectonics Lab;
+                        `node v2/tools/check-phase<N>.mjs` runs each phase's headless checks
 tuning/
   climate/              Automated climate tuning suite — scores the simulated Köppen
                         map of an imported Earth heightmap against the observed
