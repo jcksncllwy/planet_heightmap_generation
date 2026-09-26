@@ -30,6 +30,36 @@ export const TERRAIN = {
     // ── Continental platform ──
     continentKm: 0.12,          // unthickened continental crust: lowland platforms and plains
     cratonKm: 0.28,             // shields: low, flat, stable
+    // ── Cratons against the ranges, and their look (Phase 10; terrain/cratons.js — the research is in the roadmap) ──
+    cratonBlendKm: 60,          // a shield's platform blends into its neighbours over ± this across its edge line…
+    cratonEdgeNoiseKm: 70,      // …the line moved in and out by up to about this (the shield's own bays and promontories)
+    cratonScrapKm: 110,         // a craton patch whose deepest point is less than about this from its edge is a scrap: it reads
+                                // as what surrounds it (no flat, stair-edged hole in a range)
+    cratonRimInKm: 10,          // a range pressed against a shield fades across its rim, from this far in…
+    cratonRimOutKm: 120,        // …to nothing here (the history's thin-skinned belt: tectonics config cratonRimKm; the
+                                // sub-Andean zone is 50–100 km wide)
+    foredeepPerKm: 0.12,        // the foreland a range bends into a shield: a lowland this much below the shield per km of the
+                                // range's height (flexure is linear in the load; the Ganges plain lies ~0.3 km below the Indian
+                                // shield, the Chaco ~0.5 km below the Brazilian — filled with sediment: a plain, not a trough)…
+    foredeepMaxKm: 0.3,         // …at most this…
+    forelandFromKm: 100,        // …deepest this far in from the edge line (in front of the rim's thrusts)…
+    forelandAlphaKm: 110,       // …over a stiff plate's flexural length: the foredeep ~πα/2 wide beyond that, the forebulge's
+                                // crest ~3πα/4 (a craton's elastic thickness, 80–90 km, gives wide, shallow forelands)
+    forebulgeGain: 3,           // the forebulge, this many times the thin elastic plate's (tens of metres)
+    forelandByKind: {           // how much a front of each kind loads the shield beside it (0: none)
+        [OrogenyType.ANDEAN]: 1, [OrogenyType.HIMALAYAN]: 1, [OrogenyType.URAL]: 1, [OrogenyType.LARAMIDE]: 0.6,
+        [OrogenyType.TRANSPRESSION]: 0.5, [OrogenyType.ARC]: 0.3, [OrogenyType.RIFT]: 0,
+    },
+    forelandUpperPlate: 0.15,   // …× this where a collision's UPPER plate — its plateau's back — meets the block: a steep front
+                                // with little foreland (the Longmen Shan against the Sichuan Basin)
+    cratonCharacter: 1,         // how strongly the shields show their characters (developer: "in between"; a lab slider)
+    cratonSwellKm: 0.45,        // a swell rises up to this above the shield's edge (× 0.7–1.3 per craton; the Kalahari's
+                                // ~1 km would be bold)…
+    cratonSagKm: 0.2,           // …a sag basin's floor lies this much below it (the Congo, Hudson Bay)…
+    cratonFlatKm: 0.08,         // …a flat shield only undulates by this
+    cratonShapeKm: 900,         // (the scale of the noise that makes a swell or a sag irregular)
+    cratonGrainKm: 0.06,        // a grain of domes and keels (granite domes between greenstone belts), this high…
+    cratonGrainScaleKm: 90,     // …its domes about this far apart (faded where the mesh cannot show them)
     platformNoiseKm: 0.16,      // broad basins and arches (the Michigan basin, the Ozark dome), 400–2000 km across
     // The first continents are not flat (developer, 8b round 5: "start the baseline with some large noise … that can erode
     // over time and direct rivers more consistently"): broad swells and the lowlands between them, a record of the crust

@@ -13,7 +13,7 @@ const CHUNKS_PER_WORKER = 8;          // more chunks than workers, dealt round-r
 // the Frame fields terrain synthesis reads (a worker is sent only these)
 // (every frame field the terrain reads — records.js, volcanoes.js — including the evolved heights; plus each plate's
 // rotation, below)
-const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'formedAt', 'boundary', 'margin', 'mantleHeat', 'oroType', 'oroLast', 'thickKm',
+const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'terrane', 'formedAt', 'boundary', 'margin', 'mantleHeat', 'oroType', 'oroLast', 'thickKm',
     'beltU', 'beltReach', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide', 'prevShear', 'volcType', 'volcAt', 'volcKm', 'volcSource',
     'crustCells', 'crustType', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'riverKm2'];
 

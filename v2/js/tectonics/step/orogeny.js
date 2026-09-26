@@ -1,8 +1,9 @@
 // Mountain-building records. Convergence absorbed at a plate's edge is recorded as a BELT that
 // reaches inland, not just at the cells in contact: the belt's width depends on the kind of
 // orogeny (WBP's table: Andean a few hundred km, a continental collision a plateau of 1000+ km on
-// the upper plate and a narrow foreland on the lower one), it cannot enter a craton (cratons are
-// rigid — deformation piles up against them and goes around), and it travels further along old
+// the upper plate and a narrow foreland on the lower one), it enters only a craton's rim — as a low,
+// thin-skinned fold-thrust belt over the shield's edge (cratons are rigid: deformation piles up
+// against them and goes around; Phase 10) — and it travels further along old
 // sutures and rift margins (the Tian Shan and Altai were rejuvenated 1000+ km behind the
 // Himalayan front, along old weak lines). Records only — terrain synthesis interprets them.
 
@@ -42,7 +43,8 @@ export function beltShape(headOn, slabAgeMyr, config) {
 /**
  * Spread `workKm` of convergence from the given source cells of one plate's raster into a belt.
  * Every land cell within the belt's reach of the front (measured along the raster; weak cells at
- * `weakCellCost`; cratons impassable) gets the record, with the work tapering from the front to the
+ * `weakCellCost`; a craton only its rim, cratonRimKm deep, at cratonRimCost — there the belt is thin-skinned:
+ * cratonRimShare of its uplift and crests, no thickening) gets the record, with the work tapering from the front to the
  * belt's far edge. Each source may carry its own reach and work (`widths`, `works`, parallel to
  * `sources`): a head-on stretch of a front then reaches further inland than an oblique one beside it, and
  * each cell takes the reach of the front cell it was reached from. Thickening spreads with the same reach
@@ -72,8 +74,9 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
     const widthOf = i => belt.widths?.[i] ?? belt.widthKm, workOf = i => belt.works?.[i] ?? belt.workKm;
     // u: the share of its reach a cell lies from the front (0 at the front, 1 at the belt's edge); src: which front cell reached it
     // (scratch arrays shared across calls, reset below for exactly the cells this call touched)
-    if (!scratch.u || scratch.u.length !== mask.length) scratch.u = new Float32Array(mask.length).fill(Infinity), scratch.src = new Int32Array(mask.length).fill(-1), scratch.seaKm = new Float32Array(mask.length);
-    const { u, src, seaKm } = scratch;
+    if (!scratch.u || scratch.u.length !== mask.length) scratch.u = new Float32Array(mask.length).fill(Infinity), scratch.src = new Int32Array(mask.length).fill(-1), scratch.seaKm = new Float32Array(mask.length), scratch.rimKm = new Float32Array(mask.length);
+    const { u, src, seaKm, rimKm } = scratch;
+    const rimMax = config.cratonRimKm ?? 0;
     const seaLimit = config.apronKm * 1.5 + edgeKm;
     const queue = [];                                   // Dijkstra would be exact; costs are ≥ 0 and few-valued, so a
     sources.forEach((c, i) => {                         // relaxing breadth-first pass is close enough for a record
@@ -86,7 +89,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         const c = queue[head], here = u[c], atSea = type[c] === CrustType.OCEAN, reach = widthOf(src[c]);
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
-            if (!mask[nb] || type[nb] === CrustType.CRATON || (allow && !allow(nb))) continue;
+            if (!mask[nb] || (allow && !allow(nb))) continue;
             if (type[nb] === CrustType.OCEAN) {                                  // sea: only outward from a front at sea, and not far
                 if (!atSea) continue;
                 const sea = seaKm[c] + cellDistanceKm(xyz, c, nb);
@@ -94,18 +97,30 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
                 u[nb] = 0; src[nb] = src[c]; seaKm[nb] = sea; queue.push(nb);
                 continue;
             }
-            const hop = cellDistanceKm(xyz, c, nb) * ((flags[nb] & (CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN)) ? config.weakCellCost : 1);
+            let hop = cellDistanceKm(xyz, c, nb) * ((flags[nb] & (CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN)) ? config.weakCellCost : 1);
+            // a craton: only its rim — how far into it, from where the path met its edge (halfway to the first cell)
+            let rim = 0;
+            if (type[nb] === CrustType.CRATON) {
+                const d = cellDistanceKm(xyz, c, nb);
+                rim = type[c] === CrustType.CRATON ? rimKm[c] + d : 0.5 * d;
+                if (rim > rimMax) continue;
+                hop *= config.cratonRimCost;
+            }
             const next = atSea ? 0 : here + hop / reach;                         // the coast is the front for a trench at sea
             if (next >= u[nb] || next > 1) continue;
-            u[nb] = next; src[nb] = src[c];
+            u[nb] = next; src[nb] = src[c]; rimKm[nb] = rim;
             queue.push(nb);
         }
     }
     // the cells reached, in index order (every one was queued at least once)
     const reached = Int32Array.from(new Set(queue)).sort();
     for (const c of reached) {
-        if (u[c] === Infinity || type[c] === CrustType.OCEAN || type[c] === CrustType.CRATON) continue;     // (a front cell can be a craton: it takes no record)
-        const workKm = workOf(src[c]);
+        if (u[c] === Infinity || type[c] === CrustType.OCEAN) continue;
+        // (a craton's rim, a front cell on a craton included: thin-skinned — the cover folds and thrusts, the shield does
+        // not thicken; with no rim, a craton takes no record)
+        const rimCell = type[c] === CrustType.CRATON;
+        if (rimCell && !(rimMax > 0)) continue;
+        const workKm = workOf(src[c]) * (rimCell ? config.cratonRimShare : 1);
         // the record: the full amount at the front itself; across the belt a share of it, tapering to nothing at the far edge
         const work = u[c] === 0 ? workKm : workKm * config.beltWorkShare * (1 - u[c]);
         const wasType = crust.oroType[c], wasStart = crust.oroStart[c], wasLast = crust.oroLast[c];
@@ -122,17 +137,17 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
             if (!belt.keepShear) crust.beltShear[c] = Math.max(-90, Math.min(90, Math.round(belt.shears?.[src[c]] ?? belt.shear ?? 0)));
         }
         // the thickening: the same share everywhere, with a smooth plateau profile
-        const thickened = workKm * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm;
+        const thickened = rimCell ? 0 : workKm * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm;
         crust.thickKm[c] += thickened;
         // heights (records only): the root thickens with the crust; uplift and crests rise toward the belt's shape — the
         // whole belt at the pace of its front's convergence
-        buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config);
+        buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? config.cratonRimShare : 1);
     }
-    for (const c of reached) { u[c] = Infinity; src[c] = -1; seaKm[c] = 0; }
+    for (const c of reached) { u[c] = Infinity; src[c] = -1; seaKm[c] = 0; rimKm[c] = 0; }
 }
 
 export { OrogenyType, BeltSide };
-const scratch = { u: null, src: null, seaKm: null };
+const scratch = { u: null, src: null, seaKm: null, rimKm: null };
 
 /**
  * The obliquity (degrees) of a convergence: the angle between the relative velocity `v` of one side against the other

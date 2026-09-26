@@ -16,8 +16,10 @@ crust budget: erosive margins, continental underthrusting, arc recycling. Phase 
 tectonic surface — heights from the records, with ridges laid out along each belt's front — and **8b**, rivers
 carving it — with the history's own rivers, which persist and cut gorges as the land rises under them — plus flood
 basalts cut into mesas and stairs. Phase 9 (steady detail) is done: the terrain is read on each plate's own crust, so a
-drifting continent keeps its coasts, ridges and rivers, and its fine detail renews only slowly. Next, per
-plans/V2_ROADMAP_PHASES_9_13.md: 10 start-world defaults, 11 natural collisions, 12 the sim's resolution, 13 the
+drifting continent keeps its coasts, ridges and rivers, and its fine detail renews only slowly. Phase 10 (cratons) is
+done: ranges meet shields as real ones do — foothills on the rim, a foreland lowland, steep where a plateau's back meets
+one — and each shield has a character. Next, per
+plans/V2_ROADMAP_PHASES_9_13.md: 10 cratons against the ranges (done), 11 natural collisions, 12 the sim's resolution, 13 the
 supercontinent cycle — then the full planet (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
@@ -34,7 +36,7 @@ on-screen checklist of what to look for, live numbers, and a time scrubber. Spac
 mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points.
 
 ```
-node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9 — headless acceptance checks, PASS/FAIL, exit code
+node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10 — headless acceptance checks, PASS/FAIL, exit code
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
@@ -85,6 +87,8 @@ js/tectonics/
 js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of any resolution —
   terrain-config   every terrain tunable, in km / Myr (TERRAIN; terrainConfig(overrides))
   anchor           the fine detail belongs to the crust: plate-frame positions for noise, per-crust-cell random streams
+  cratons          Phase 10: a craton's edge as a line on each plate's raster, the foreland a range bends into it,
+                   each craton's character (sag basin, swell, flat shield)
   carve            Phase 8b: rivers carve the surface — the stream power law solved analytically in time along a
                    routed river network (Tzathas et al. 2024), coarse to fine over the sim and terrain meshes;
                    carve-worker carves whole frames off the page's thread
@@ -147,7 +151,8 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    the convergence its front absorbs, never lowered by a newer belt; foreland basins sink below 0), the size of its
    belts' crests (`rugged`, `prevRugged`) and a hotspot volcano's wear (`volcWornKm`). Every step erodes them at the
    latitude the cell is at then (faster where it rains more, and poleward under ice) and smooths the uplift sideways a
-   little, never into the sea nor onto a craton. So orogenies accumulate, and an old belt that drifted through the
+   little, never into the sea nor onto a craton's core (a belt reaches only a craton's rim, `cratonRimKm`: a low,
+   thin-skinned fold-thrust belt over the shield's edge, with no thickening). So orogenies accumulate, and an old belt that drifted through the
    tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`, `reliefTauMyr`,
    `thickTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`); a world may carry its own in `world.config.heights`.
 
@@ -233,7 +238,13 @@ plate's own raster, and the terrain reads a moving plate's records over that ras
 belt edges and ridges ride with their continent instead of re-forming at the scale of the sim cells as it moves. The fine
 detail is not frozen for good, though (`detailRenewMyr`, 150 Myr): the ridges' phases drift, each at a rate of its own,
 and the bays and headlands, the ridges' segments and crests and the ridge noise fade from one noise over to the next —
-from one frame to the next nothing moves, while over a few hundred Myr the landscape is re-sculpted. Trapped pockets of
+from one frame to the next nothing moves, while over a few hundred Myr the landscape is re-sculpted. Cratons meet the
+ranges pressed against them as real shields do (Phase 10, `terrain/cratons.js`): the craton's edge is a line — the
+signed distance to it on each plate's raster, moved by noise — not the sim cells' staircase; a range's foothills fade
+across its rim; in front of them a foreland bends the shield down under the range's weight (a lowland ~0.1–0.3 km below
+the shield beyond, then a low forebulge), except where a plateau's back meets the block and the front stays steep;
+scraps of craton inside a range read as the range; and each craton has a character — a shallow sag basin, a broad swell
+or a flat shield (`cratonCharacter`) — with a faint grain of domes and keels. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
 `coastKindKm` of its coast. In the lab, the erosion clocks marked "re-runs the history" rebuild the history (in its
 worker) with the new constants; the history itself comes out the same. The lab builds the frame shown, then every other

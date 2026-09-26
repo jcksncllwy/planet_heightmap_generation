@@ -8,8 +8,9 @@ import { BoundaryKind } from '../tectonics/model/world.js';
 import { Margin, seaDepthKm } from '../tectonics/measure.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
-import { FastNoise as SimplexNoise } from '../core/fast-noise.js';
-import { buildAnchor } from './anchor.js';     // (bit-identical to V1's SimplexNoise, faster)
+import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
+import { buildAnchor } from './anchor.js';
+import { plateCratons } from './cratons.js';
 
 const R = 6371;
 
@@ -386,8 +387,46 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const overprinted = beltLayer(frame, simMesh, cfg, land, coastKm, A, { type: frame.prevType, u: frame.prevU, reach: frame.prevReach, side: frame.prevSide, shear: frame.prevShear, last: frame.prevLast, rugged: frame.prevRugged, layer: 1 });
     const { kind, dKm, reach, reliefKm, shear, across } = current;
 
+    // ── cratons (terrain/cratons.js): what a range beside a shield weighs on it — its height above the lowland, by the
+    // kind of front (a foreland bends into the shield before an Andean range or a collision's lower plate; where a
+    // plateau's back meets the block, the front stays steep) ──
+    const loadW = new Float32Array(n);
+    for (let w = 0; w < n; w++) {
+        if (!land[w] || craton[w] || !kind[w]) continue;
+        const type = kindType(kind[w]), side = kindSide(kind[w]);
+        const weight = (cfg.forelandByKind?.[type] ?? 0) * (type === OrogenyType.HIMALAYAN && side === BeltSide.UPPER ? cfg.forelandUpperPlate : 1);
+        if (!(weight > 0)) continue;
+        loadW[w] = weight * Math.min(cfg.foredeepMaxKm, cfg.foredeepPerKm * Math.max(0, platformKm[w] - cfg.continentKm + frame.upliftKm[w] + 0.5 * reliefKm[w]));
+    }
+    const cratons = plateCratons(simMesh, A, frame, loadW);
+    // a scrap of craton (a patch whose deepest point is under ~cratonScrapKm from its edge) reads as its surroundings: it
+    // takes the ground around it — the range's thickened crust, its uplift and crests (a shield never thickens, so a
+    // scrap inside a plateau would stand as a hole in it) — by the share the terrain reads it as them (terrain/cratons.js)
+    let upliftKm = frame.upliftKm;
+    const seenScrap = new Uint8Array(n), members = [];
+    for (let w0 = 0; w0 < n; w0++) {
+        if (!craton[w0] || seenScrap[w0] || cratons.patchW[w0] >= 1.5 * cfg.cratonScrapKm) continue;
+        members.length = 0; members.push(w0); seenScrap[w0] = 1;
+        let m = 0, pl = 0, up = 0, r0 = 0, r1 = 0;
+        for (let i = 0; i < members.length; i++) for (let k = simMesh.adjOffset[members[i]]; k < simMesh.adjOffset[members[i] + 1]; k++) {
+            const q = simMesh.adjList[k];
+            if (craton[q]) { if (!seenScrap[q]) { seenScrap[q] = 1; members.push(q); } continue; }
+            if (!land[q]) continue;
+            m++; pl += platformKm[q]; up += frame.upliftKm[q]; r0 += reliefKm[q]; r1 += overprinted.reliefKm[q];
+        }
+        if (!m) continue;
+        if (upliftKm === frame.upliftKm) upliftKm = Float32Array.from(frame.upliftKm);
+        for (const w of members) {
+            const s = Math.min(1, Math.max(0, (cratons.patchW[w] - 0.5 * cfg.cratonScrapKm) / cfg.cratonScrapKm)), f = 1 - s * s * (3 - 2 * s);
+            // (the platform keeps the shield's own offset: the terrain takes it off by the same share)
+            platformKm[w] += f * (pl / m + cfg.cratonKm - cfg.continentKm - platformKm[w]);
+            upliftKm[w] += f * (up / m - upliftKm[w]);
+            reliefKm[w] = Math.max(reliefKm[w], f * r0 / m); overprinted.reliefKm[w] = Math.max(overprinted.reliefKm[w], f * r1 / m);
+        }
+    }
+
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm,
-        platformKm, upliftKm: frame.upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
+        platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
 }
 
 /**

@@ -81,8 +81,13 @@ india: {
     const widest = kind => cfg.belts[kind].maxKm * cfg.beltSpeedFactorMax;
     check('the plateau belt is wide on the upper plate, the foreland belt narrow on the lower', reachUpper > 500 && reachUpper <= widest('himalayan') + 2 * mesh.edgeKm && reachLower <= widest('foreland') + 3 * mesh.edgeKm && reachLower > 100 && midLower < 0.75 * midUpper,   // the belts’ caps differ 1300 vs 350 km, but how far each actually reaches also depends on how much land is there to spread over
         `collision belt reaches ${reachUpper.toFixed(0)} km from the seam on the upper side (${upperSide.length} cells, median ${midUpper.toFixed(0)} km), ${reachLower.toFixed(0)} km on the lower (${lowerSide.length} cells, median ${midLower.toFixed(0)} km)`);
-    const cratonWithRecord = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] === CrustType.CRATON && last.oroType[w] !== 0).length;
-    check('cratons carry no orogeny record — belts wrap them', cratonWithRecord === 0, `${cratonWithRecord} craton cells with a record`);
+    // (Phase 10, re-baselined: a belt reaches onto a craton's rim — a thin-skinned fold-thrust belt over the shield's edge,
+    // as the sub-Andean zone — but never into its core, and the shield itself never thickens)
+    const notCraton = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] !== CrustType.CRATON);
+    const rimCells = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] === CrustType.CRATON && last.oroType[w] !== 0);
+    const deepest = rimCells.length ? Math.max(...rimCells.map(w => nearestKm(mesh, w, notCraton))) : 0, thickRim = rimCells.filter(w => last.thickKm[w] > 0).length;
+    check('belts reach only a craton\'s rim, never its core, and the shield does not thicken', deepest <= cfg.cratonRimKm + mesh.edgeKm && thickRim === 0,
+        `${rimCells.length} craton cells with a record, the deepest ${deepest.toFixed(0)} km in (the rim is ${cfg.cratonRimKm} km); ${thickRim} of them thickened`);
     let maxThick = 0, thickCells = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.thickKm[w] > 0) { thickCells++; maxThick = Math.max(maxThick, last.thickKm[w]); }
     check('crust is thickened in the belts, within reason', maxThick > 5 && maxThick < 45, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km`);

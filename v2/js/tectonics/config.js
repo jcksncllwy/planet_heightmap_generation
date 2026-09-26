@@ -102,6 +102,11 @@ export const TECTONICS = {
     beltOldSlabMin: 0.75,       // …and to this over a very old, steep slab
     andeanWorkShare: 0.12,      // share of the slab length going down that counts as shortening of the margin above it
     weakCellCost: 0.4,          // an old suture / rift margin carries deformation this far again (reactivation)
+    cratonRimKm: 150,           // a belt reaches this far onto a craton's edge (developer, Phase 10: a thin-skinned fold-thrust
+                                // belt riding over the shield's edge, as the sub-Andean zone and the Canadian Rockies' foothills
+                                // do) — the shield's core stays impassable…
+    cratonRimCost: 2,           // …each km of it counting as this many against the belt's reach…
+    cratonRimShare: 0.35,       // …its uplift and crests this share of the belt's; the shield itself does not thicken
     beltWorkShare: 0.35,        // share of the convergence at the front that is recorded across the belt (the front cell keeps the full amount)
     thickeningPerWorkKm: 0.05,  // crust thickens by this many km per km of shortening spread over a belt (Tibet: ~2500 km of shortening → ~35 km thicker)
     sutureShorteningKm: 600,    // convergence absorbed across a collision before the plates weld…

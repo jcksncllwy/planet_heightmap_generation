@@ -18,6 +18,7 @@ const CHECKLISTS = {
         'Rivers cut canyons into the basalt with cliffed, stepped walls (hard caprock: flat treads and cliffs, flow on flow — "trap" is a stair); the escarpment and the flanks of mesas are stepped too, while the unbroken plateau top stays smooth.',
         'Scrub through time: an intact plateau, then canyons and a retreating escarpment with mesas before it, then buttes and a low stepped remnant.',
     ],
+    cratons: ['A trunk river gathers in the lowland along the front of India’s range (Drainage layer), fed from the range and from the shield; the shields themselves are cut slowly (hard rock), their rivers shallow.'],
     rift: ['The escarpment facing the young ocean is cut by short steep rivers; behind its crest the rivers flow inland, away from the new coast — the great escarpment is a divide.'],
     history: [
         'Valleys branch like trees; ranges stand as the divides between river basins; big rivers are graded to broad lowlands near the sea, and uplands are dissected from their edges inward.',

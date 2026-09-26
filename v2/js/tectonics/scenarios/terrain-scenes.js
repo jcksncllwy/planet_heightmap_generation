@@ -9,6 +9,12 @@ import { RIFT_SCENES } from './rift-scenes.js';
 import { updatePlateMotion } from '../step/torque-balance.js';
 import { CrustFlag } from '../model/crust.js';
 import { xyzToLatLon, latLonToXyz } from '../step/kinematics.js';
+import { SimplexNoise } from '../../../../js/simplex-noise.js';
+import { TectonicWorld } from '../model/world.js';
+import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
+import { dot, cross, normalize } from '../../core/sphere-geom.js';
+import { sceneCanvas, addContinent, addApronAndTrench, addOcean, fillBackground } from './scene-kit.js';
+import { onlyMechanisms, mechanismsOn } from '../config.js';
 
 /** A scene's `focus`: where to look in a frame — here, the centre of the land cells carrying a flag. */
 function flagged(flag) {
@@ -20,6 +26,31 @@ function flagged(flag) {
         const ll = xyzToLatLon(x / l, y / l, z / l);
         return [ll.lat, ll.lon];
     };
+}
+
+/**
+ * Phase 10: the India collision with big shields on both sides — India's close behind its leading coast, so the
+ * range's foothills ride onto its rim and its foreland bends into it; Asia's ~900 km behind its south coast, so the
+ * plateau the collision raises reaches it and its back meets the block (a steep front, the Longmen Shan against the
+ * Sichuan Basin). The India scene's geometry and forces otherwise (force-scenes.js).
+ */
+function buildCratons(simMesh, seed) {
+    const world = new TectonicWorld(simMesh, seed), canvas = sceneCanvas(simMesh, world.config), noise = new SimplexNoise(seed);
+    const asia = world.addPlate('Asia'), india = world.addPlate('India');
+    const asiaLand = addContinent(canvas, noise, { plate: asia, centre: [40, 72], radiusKm: 2800, cratonKm: 1900 });
+    addApronAndTrench(canvas, asia, asiaLand, [[215, 325]], world.config);
+    const indiaLand = addContinent(canvas, noise, { plate: india, centre: [-28, 72], radiusKm: 1300, cratonKm: 950 });
+    const a = indiaLand.centre, b = asiaLand.centre, axis = normalize(cross(a, b)), span = Math.acos(dot(a, b));
+    addOcean(canvas, india, (x, y, z) => {
+        const p = [x, y, z];
+        if (Math.acos(Math.max(-1, Math.min(1, dot(p, a)))) * PLANET_RADIUS_KM < 1900) return true;
+        const off = Math.abs(Math.asin(Math.max(-1, Math.min(1, dot(p, axis))))) * PLANET_RADIUS_KM;
+        const along = Math.atan2(dot(cross(a, p), axis), dot(a, p));
+        return off < 1900 && along > 0 && along < span;
+    }, -90);
+    fillBackground(canvas, world, world.config);
+    Object.assign(world.config, onlyMechanisms('underthrust'), mechanismsOn('underthrust'));
+    return world;
 }
 
 // (the rift scenes carry no drive of their own — their lab phase supplies the force model — so it is given here)
@@ -43,5 +74,9 @@ export const TERRAIN_SCENES = [
         about: 'A plume head floods a continent with basalt at 12 Myr; the continent drifts slowly north for 300 Myr. Young, the province is a plateau with a lobed edge; as it wears, canyons with stepped walls cut into it and its escarpment retreats from the edge, leaving flat-topped mesas before it (Ethiopia’s ambas, the Western Ghats); old, it is mesas and buttes on a low, stepped remnant. Around it a faint grain of dykes radiates from the plume’s centre. (The Deccan, Siberian and Karoo traps.)',
     }),
     from(RIFT_SCENES, 'plume', { id: 'rift', label: 'A continent splits', maxMyr: 40, focus: flagged(CrustFlag.RIFT_MARGIN), about: 'A plume splits a continent: the new coasts are lifted into shoulders — a great escarpment facing the young ocean, sloping gently inland — and the arm that failed is a low corridor.' }),
+    {
+        id: 'cratons', label: 'Ranges against cratons', maxMyr: 90, view: [8, 72], build: buildCratons, drive: updatePlateMotion,
+        about: 'India, with a big shield close behind its leading coast, collides with Asia, whose shield lies ~900 km behind its south coast. On India’s side (the lower plate) the range’s foothills ride onto the shield’s rim, and in front of them a lowland bends the shield down; on Asia’s side the plateau reaches the shield and its back meets it in a steep front. Neither shield’s outline shows as the sim’s cells.',
+    },
     from(BUDGET_SCENES, 'history', { id: 'history', label: 'A whole planet (600 Myr)', about: 'The start world run for 600 Myr with every rule on (building takes about a minute). Young belts stand high and sharp, old ones low but still grained; cratons flat and low; wide shelves on passive margins, narrow ones on active margins; mid-ocean ridges and trenches in the sea.' }),
 ];

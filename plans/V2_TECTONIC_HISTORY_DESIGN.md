@@ -482,6 +482,7 @@ comes together in Phase 6.
 | 8b-2 rivers through the history (gorges, persistence) | accepted 2026-09-26 (built 2026-09-26) | check-phase8b (24 with 8b-1) | history, india |
 | 8b rounds 3–6: mountain shape, ridge noise, start swells, flood basalts, relative mantle swell, belt scraps | accepted 2026-09-26 | check-phase8a, check-phase8b | traps, history |
 | 9 steady detail: records read on each plate's crust; fine detail renews slowly (9B, stale belts at the source, moved to 11) | accepted 2026-09-26 | check-phase9 (8) | history, india |
+| 10 cratons against the ranges: rim belts, the edge as a line, forelands, craton characters (the craton count: tried, dropped) | accepted 2026-09-26 | check-phase10 (8), check-phase5 re-baselined | cratons, india, history |
 
 The roadmap from here — 9 steady detail, 10 start-world defaults, 11 natural collisions, 12 sim resolution, 13 the
 supercontinent cycle, each with its definition of done — is plans/V2_ROADMAP_PHASES_9_13.md.
@@ -800,6 +801,27 @@ they found was fixed, and each fix has a check that would catch its return.
   stamp the current one no longer reaches, 104 stamped in the same step as their neighbours but far from them (most
   likely a weld's repainting of the seam); the terrain's repair (records.js) already removes the donuts they made, and
   fixing them in the history changes every history for ~2 % of cells — proposed to fold into Phase 11 (collisions).
+- Phase 10, cratons against the ranges (2026-09-26; developer: "better ways to treat cratons so they blend with stronger
+  mountain ranges that border up very close to them"; research and decisions in plans/V2_ROADMAP_PHASES_9_13.md).
+  First, more and smaller cratons were tried for the untouched-land goal and dropped: 14, 18, 22 and 26 cratons gave
+  30–51 % untouched continental crust at 600 Myr with no trend (the seeds differ more than the settings) — land is
+  worked by breakups and collisions, which Phase 13 takes on. Then: a belt reaches onto a craton's rim in the history
+  (cratonRimKm 150, at twice the cost per km, a third of the relief, no thickening — a thin-skinned fold-thrust belt; no
+  event of any history changes, only records and heights; check-phase5's "cratons carry no record" became "only the
+  rim, never the core"). In the terrain (terrain/cratons.js): the craton's edge a line — the signed distance to it on
+  each plate's raster, moved by noise — for the shield's platform, its hardness and the rim over which a range fades;
+  craton scraps under ~110 km deep read as their surroundings; a flexural foreland in front of the rim, loaded by the
+  range within ~250 km outside (0.12 × its height, ≤ 0.3 km; a plateau's back 0.15 of that), deepest 100 km in, the
+  forebulge at ~360 km; each craton (by terrane) a sag basin, a swell or a flat shield, plus a grain of domes and
+  keels. A first try read the load at the belt cell touching the craton — the range's foot — and bent the shield by
+  ~0.04 km: nothing to see; the range within 250 km is the load. Measured at terrain resolution (a profile binned by sim
+  cell cannot show a foreland 100–300 km wide), in the new craton scene (the India collision with big shields on both
+  sides): India's shield bent 0.15 km down in front of the range, Asia's 0.04 behind the plateau. A craton scrap takes
+  the ground around it in the records (a shield never thickens: a scrap inside a plateau stood as a hole); the worst
+  "scrap" left (0.77 km, 1.27 before) is the tip of a shield hidden in a collision's overlap, and the weld's redraw moves
+  crust under rim records (a record ~280 km in after the weld, 184 before it) — both the weld's geometry, for Phase 11.
+  The terrain's craton reads skip, exactly, points more than 200 km outside a craton with no craton corner (the edge
+  noise moves the line ≤ 105 km): 640K terrain 2.10 → 1.96–2.08 s, heights byte-identical.
 - Fine detail renews slowly (2026-09-26; developer, after Phase 9: "something about 9A made things look worse, in that
   they were all a little bit too consistent. Some of the variation added to the charm and variety … a naturalistic way to
   add a little bit of that back in controllably? just a bit"). Compared with the code before Phase 9 at the same frame,

@@ -12,7 +12,9 @@ before it is built; none starts until the one before it is confirmed (design doc
 - **Collisions need rethinking** before the supercontinent cycle: "way way too many captured seas in between
   continents, and a lot of dangly and long snake-like continents and islands … collisions need to be more natural,
   more fluid, more rotating and kinematic." A few small remnant seas are right — "it just shouldn't be a crazy amount".
-- **More cratons at the start** — "so fewer fully undisturbed pieces of land over history".
+- **More cratons at the start** — "so fewer fully undisturbed pieces of land over history". (Tried in Phase 10: the
+  count makes no measurable difference; the developer: craton BEHAVIOUR will do more. Phase 10 became the cratons' edges
+  and look; the untouched-land targets moved to Phase 13.)
 - **Try a finer sim mesh** — "it is a bit too blocky right now" (the heights already give much of the detail).
 - **Not in V2:** plate editing (V1 and V2 live side by side). **Parked:** heights feeding the history (a height ceiling
   that turns into width) — not critical. **Speed** becomes part of the full-planet phase.
@@ -102,28 +104,119 @@ construction)
 - ~~Belt positions: 0 stale cells~~ — moved to Phase 11 with B.
 - Anchored detail (8a check) stays ≥ 0.95; 640K terrain still ≤ 2 s; every suite passes (reached: history bit-identical).
 
-## Phase 10 — Start-world defaults
+## Phase 10 — Start-world defaults and cratons
 
 *Goal:* more, smaller cratons, so more of the land is worked by rifts and belts over the history — fewer big,
-untouched interiors.
+untouched interiors (A); and cratons that look like shields and meet the ranges pressed against them the way real ones
+do (B — developer, 2026-09-26: "better ways to treat cratons so they blend with stronger mountain ranges that border up
+very close to them … research more about cratons and how they work and look").
 
-- cratonCount 14 → ~22 (tried across 18–26), the largest cratons smaller (cratonMaxDiameterKm 4000 → ~3000) —
-  continental fraction unchanged (0.29). The spacing minimums (500 km between cratons, 450 km to the sea) are hard
-  limits: with more cratons they may have to come down a little for everything to fit; the search already shrinks
-  cratons before it gives up on the land fraction.
-- More cratons → more seams of accreted crust between them → more places for rifts (which prefer seams) and more,
-  smaller continents at breakup.
-- Keep the start world irregular, not honeycombed (the size skew, the lobed outlines, packing by outlines — the lessons
-  in memory "start-world irregularity").
+### A. More, smaller cratons — tried, dropped (2026-09-26)
+
+The plan was cratonCount 14 → ~22 and smaller cores, on the idea that more seams between cratons mean more rifts and
+less untouched land. Measured over three seeds (12345, 777, 4242), 600 Myr, undisturbed continental crust / largest
+untouched patch:
+
+| Start world | 600 Myr |
+|---|---|
+| 14 cratons (now) | 30 / 42 / 46 % — 10–18 Mkm² |
+| 18 cratons, largest ≤ 3,000 km | 40 / 33 / 49 % — 8–20 Mkm² |
+| 22 cratons, largest ≤ 3,000 km | 36 / 30 / 46 % — 12–17 Mkm² |
+| 26 cratons, largest ≤ 3,000 km | 38 / 51 / 39 % — 7–27 Mkm² |
+
+No trend: the seeds differ more than the settings. What works the land is how often it breaks up and collides — 13–16
+rifts in 600 Myr, only 3–8 plates alive at a time, continents few and huge (the largest 75–140 Mkm²), and a continent
+under 18 Mkm² never rifts without a plume. Letting 10 Mkm² continents rift on their own (riftMinContinentKm2 1e7) helped
+two seeds of three (22 % / 29 % / 40 %); doubling the rift rate did not help. The developer: "the changes we are making
+to craton behavior will do more to affect the desired outcome than the changes to number of cratons". So Phase 10 is B;
+the untouched-land targets (≤ 25 %, largest patch ≤ 8 Mkm²) move to Phase 13, where breakups come in bursts — with the
+rift threshold as a lever to try there.
+
+### B. Cratons: their edges against the ranges, and their look
+
+**What goes wrong now** (history scene at 300 and 600 Myr, India scene; 51 of 775 craton-edge cells at 600 Myr have
+ground > 1.5 km higher within 250 km). A belt cannot enter a craton (orogeny.js) and the uplift's hillslope smoothing
+stops at it (heights.js), so:
+1. a range pressed against a craton ends in a **wall along the craton's outline — the sim mesh's 121 km staircase**,
+   drawn into the terrain;
+2. **no foreland**: the flat shield (cratonKm 0.28) runs right up to the foot of the range;
+3. **small craton scraps** (a few cells) read as flat, stair-edged holes inside mountain belts;
+4. **interiors are blank and all alike**: one flat platform, a start swell at half strength that has worn away by
+   ~400 Myr.
+
+**How real cratons meet ranges and what they look like** (read for this plan):
+- Cratons are rigid: deformation piles up against them and goes around them, and it concentrates at their margins,
+  where the lithosphere steps from thick to thin. Around the Tarim block 94–100 % of the Cenozoic shortening sits in
+  the ranges along its margins, with a few basement-cored uplifts inside; the block itself is a low basin ringed by
+  ranges. A craton hemmed in by ranges is right; the problem is how the edge is drawn.
+- The thrust front follows the craton's margin at the scale of its **promontories and embayments**, not finer: the belt
+  reaches farther onto the craton, and wider, in embayments (salients — with the deepest foreland) and is narrow at
+  promontories (recesses — basement massifs in the belt). Transform offsets of the old margin become transverse zones
+  (Thomas 1977, 2006).
+- A stiff craton (effective elastic thickness 80–90 km) bends under a range's weight into a **wide, shallow foreland**
+  (Watts 1992): a **foredeep 100–300 km wide**, filled to a lowland of megafans with an **axial trunk river parallel to
+  the range**, fed from both sides (the Ganges, between the Himalaya and the Bundelkhand craton: megafans over 150 km
+  long), then a **forebulge 60–470 km wide and only tens to a few hundred metres high** — often buried, or broken into
+  arches (DeCelles & Giles 1996). So the range's foot is a lowland, lower than the shield beyond it.
+- Where a plateau's edge meets a rigid block, the front is abrupt: the Longmen Shan drops ~4 km over 30–50 km to the
+  Sichuan Basin (Yangtze craton), with little shortening. **A steep front is right for an upper plate's plateau edge; a
+  foreland is right where the craton is the lower plate.**
+- Shield interiors are calm but not blank: **basins and swells 1,000–2,000 km apart** (Africa's heights have two modes,
+  300–400 m and 900–1,100 m); **saucer-shaped sag basins** from 400 km (Williston) to 1.4 Mkm² (Congo), separated by
+  basement arches; a **dome-and-keel grain** — granite domes 50–100 km across between curvilinear greenstone belts; most
+  of the Canadian Shield a rolling upland under 600 m. Knob-and-lake terrain and inselberg fields lie below our grid.
+
+**Build** (the rim belts change the history — see the decisions below; the rest is terrain only):
+1. **The craton's edge is a line, not cells.** A signed distance to the craton's edge, measured on each plate's own
+   raster (as the coast is since Phase 9), moved in and out by noise (as the coastline's bays and headlands are): the
+   range front and the shield's platform follow that line, and craton scraps smaller than ~50,000 km² blend into what
+   surrounds them. Salients and recesses come from the history's own belt shapes; nothing traces the cells.
+2. **The range tapers at the line, and a foreland bends into the craton.** A flexural profile on the craton side: a
+   foredeep lowland 100–300 km wide (its width from a stiff plate's flexural parameter, its depth from the load of the
+   range beside it, filled to a low plain), rising to a low forebulge (≤ ~0.2 km), then the shield. It goes on the lower
+   side of a collision and behind an Andean range; where a plateau's edge meets the block, the front stays steep. The
+   carving should then find the trunk river along the front by itself.
+3. **Cratons with characters.** Each craton (keyed by its terrane id, a stream of its own) takes a long-wavelength
+   shape: a sag basin (a low interior plain), a swell (a high shield plateau, up to ~1 km), or a flat shield; plus a
+   faint grain of domes and keels (~70–100 km, tens of metres to ~150 m). Still the calmest ground on the planet.
+
+**Decided with the developer (2026-09-26)**
+- **Belts reach a little onto the craton's rim in the history** ("yes that is great"): a thin-skinned fold-thrust belt
+  over the craton's edge, as in the sub-Andean zone and the Canadian Rockies' foothills — low relief, no thickening of
+  the shield itself; the craton's core stays impassable. This changes histories (re-baselined with reasons, as A does).
+- **Craton characters in between** ("in between, we can tweak that later"): swells up to ~0.5 km above the shield,
+  sag basins down to ~0.1 km — not the subtle ±0.2 km nor a Kalahari-like 1 km plateau; a lab slider for their strength.
+
+**Status: accepted 2026-09-26 (developer: "ok that is good"; "close and commit 10") — check-phase10 (8), lab scene
+"Ranges against cratons".** Built: the rim belts (tectonics/step/orogeny.js; the events of
+every history unchanged, only its records and heights), the edge line, the foreland and the characters
+(terrain/cratons.js). Measured at pressed edges (history, 600 Myr, median across every kind of front): the drop from the
+range to the shield spread over ~160 km instead of ~120; the ground 80–200 km in ~0.1 km below the shield beyond (none
+before); craton medians spread 0.21–0.24 km apart (0.07–0.13 before); relief within cratons ×1.6. In the craton scene:
+India's shield bent 0.15 km down before the range (Asia's, behind the plateau, 0.04 — a steep front). Craton scraps: median
+gap to their surroundings 0.01 km; the worst (0.77 km, 1.27 before) is the tip of a shield hidden in a collision's overlap —
+the weld's geometry, for Phase 11 (as is the weld's redraw moving crust under rim records, up to ~280 km in). Terrain at
+640K 1.96–2.08 s across runs (an exact early exit, heights byte-identical).
 
 **Definition of done**
-- Lab (Phase 3 scene): the start world shows ~22 cratons of mixed sizes, still reading as an assembly of old pieces,
-  not a honeycomb; checklist item.
-- Start world: continental fraction within tolerance of 0.29 for five seeds; Phase 3's checks pass with the new count
-  (their craton-count check follows the setting).
-- History (3 seeds, 600 Myr): undisturbed continental crust **≤ 25 %** (now 30–42 %); largest undisturbed patch
-  **≤ 8 Mkm²** (now 10–18).
-- Every suite passes; histories re-baselined with reasons.
+- Lab: a craton terrain scene (a collision with a craton on the lower plate, and a plateau's edge against a craton)
+  plus the history scene; checklist items: the range front follows the craton's large shape but never its cells; a
+  lowland foreland with a river along the front; a plateau edge against a craton stays steep; cratons differ from one
+  another; small craton scraps don't show as holes.
+- Checks (history scene, 3 seeds, 300 and 600 Myr, 640K; baselines measured first and written into the check):
+  - wherever a range ≥ 1.5 km abuts a craton on its lower side, the ground 50–200 km inside the craton is lower than
+    the shield 400–600 km in (a foredeep), and the steepest slope lies in the range, not at the craton's edge;
+  - craton scraps under 50,000 km² sit within the height range of the ground around them;
+  - relief within cratons at least 1.5× now, but still below the relief of ordinary lowland;
+  - craton median heights differ from craton to craton (spread ≥ 0.15 km);
+  - the rim belts: every suite passes, histories re-baselined with reasons; the terrain parts leave the history unchanged
+    (hash); 640K terrain ≤ 2.1 s; the same look at 160K, 640K and 2.5M.
+- Order: the rim belts first (they change every history), then the edge line, the foreland and the characters (terrain).
+
+Sources: DeCelles & Giles 1996, *Foreland basin systems*, Basin Research 8; Thomas 2006, *Tectonic inheritance at a
+continental margin*, GSA Today 16(2) (and Thomas 1977, AJS); Watts 1992, Basin Research 4; Godard et al. 2009 and
+others on the Longmen Shan; the Tarim regional overview (Earth-Science Reviews 2019); Burke's African basin-and-swell;
+the Pilbara dome-and-keel (Sandiford et al. 2004); Crosby et al. 2010 (Congo Basin).
 
 ## Phase 11 — Natural collisions
 
@@ -202,6 +295,9 @@ reassemble into a new supercontinent, which in time breaks up again.
   300–700 Myr.
 - ≥ 60 % of rift length follows old sutures or belts; the reassembled supercontinent has thinness ≥ 0.5 and no enclosed
   sea over 3 Mkm².
+- Untouched land (from Phase 10): undisturbed continental crust **≤ 25 %** at 600 Myr (30–46 % now) and the largest
+  untouched patch **≤ 8 Mkm²** (10–18 now), three seeds — breakups in bursts should get there; the rift threshold
+  (riftMinContinentKm2 → 1e7 helped two seeds of three) is a lever to try.
 - Every suite passes, histories re-baselined with reasons.
 
 ## After phase 13: the full planet

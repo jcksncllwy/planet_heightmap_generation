@@ -17,6 +17,7 @@ import { beltProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
 import { buildStripeKernels, stripeAt, crossAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
 import { buildVolcanoes, coneAt } from './volcanoes.js';
+import { cratonCharacter } from './cratons.js';
 import { sampleOnto, warpNoise, warpPoint } from './terrain-mesh.js';
 import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
 import { locate } from '../core/mesh-locate.js';
@@ -127,11 +128,13 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return fadeB > 0 ? fadeA * a + fadeB * noise.fbm(fx + offB, fy + offB, fz + offB, octaves, 0.5) : a;
     };
     const fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / edgeKm);
+    const cratF = R / 600, shapeF = R / cfg.cratonShapeKm, grainF = R / cfg.cratonGrainScaleKm, grainShow = fade(cfg.cratonGrainScaleKm);
     const coastF = R / 700, platF = R / 2000, strikeF = R / 900, segF = R / cfg.stripeSegmentKm, meanderF = R / cfg.stripeMeanderAlongKm, meander = cfg.stripeMeanderKm / R;
     const blendF = R / cfg.blendNoiseKm, crestF = R / 150, slopeF = R / 300, microF = R / cfg.carveMicroScaleKm, mesaF = R / cfg.lipMesaKm;
     // a corner's share, scaled by a noise field of its own (decorrelated per crust cell, continuous across triangles)
     const noisy = (c, w) => { const r = cell[c]; return w * Math.exp(cfg.blendNoise * noise.fbm(x0 * blendF + (r % 101) * 1.37, y0 * blendF + (r % 89) * 2.11, z0 * blendF + (r % 83) * 0.73, 3, 0.5) * 1.6); };
     let x0 = 0, y0 = 0, z0 = 0;
+    const { cratons: CR, terrane } = rec;
     const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
 
@@ -179,7 +182,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         let coast = coastR ?? w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
         if (parts) parts.dcoastRaw[t] = coast;
         if (Math.abs(coast) < 600) coast += cfg.coastNoiseKm * renewed(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4) * 1.5;
-        let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, ramp = 0;
+        let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, ramp = 0, shieldS = 0, rimFade = 1;
 
         if (coast >= 0) {
             // ── land side: the platform over the land corners (interfingering), dropping to the shelf toward the coast ──
@@ -203,6 +206,46 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 for (let j = 0; j < cfg.lipTiers; j++) keep += smooth(level - j * cfg.lipTierStep - cfg.lipTierBand, level - j * cfg.lipTierStep + cfg.lipTierBand, mesa);
                 lipKeep = lipTop * (1 - cfg.lipWearFloor * Math.min(1, p)) * keep / cfg.lipTiers;
                 platform += lipKeep;
+            }
+            // ── a craton (terrain/cratons.js): its edge a line — the signed distance to it, on the plate's own raster where
+            // the point was read there, moved in and out by noise — not the sim cells' staircase; a range pressed against it
+            // fading across its rim; a foreland bent into it by the range's weight; its character and grain ──
+            const CRo = anchored ? CR.rasters.get(o) : null;
+            const cDepth = anchored ? (CRo ? rw3[0] * CRo.depth[r3[0]] + rw3[1] * CRo.depth[r3[1]] + rw3[2] * CRo.depth[r3[2]] : -2000)
+                : w0 * CR.depthW[c0] + w1 * CR.depthW[c1] + w2 * CR.depthW[c2];
+            // (the corners' own share of craton; and whether the craton can matter here at all: more than 200 km outside
+            // its edge, with no craton corner, the edge noise (|fbm| < 1: ≤ 105 km) cannot bring the line within the blend —
+            // every term below is exactly 0)
+            const cells = lw > 0 ? (n0 * craton[c0] + n1 * craton[c1] + n2 * craton[c2]) / lw : 0;
+            if (cDepth > -200 || cells > 0) {
+                const cLoad = CRo ? rw3[0] * CRo.load[r3[0]] + rw3[1] * CRo.load[r3[1]] + rw3[2] * CRo.load[r3[2]] : w0 * CR.loadW[c0] + w1 * CR.loadW[c1] + w2 * CR.loadW[c2];
+                const cPatch = CRo ? Math.max(CRo.patch[r3[0]], CRo.patch[r3[1]], CRo.patch[r3[2]]) : Math.max(CR.patchW[c0], CR.patchW[c1], CR.patchW[c2]);
+                const crN = cDepth + cfg.cratonEdgeNoiseKm * noise.fbm(x * cratF + 9.1, y * cratF + 3.7, z * cratF + 5.3, 3, 0.5) * 1.5;
+                const whole = smooth(0.5 * cfg.cratonScrapKm, 1.5 * cfg.cratonScrapKm, cPatch);      // (a scrap reads as its surroundings)
+                const before = platform;
+                shieldS = smooth(-cfg.cratonBlendKm, cfg.cratonBlendKm, crN) * whole;
+                // the shield's platform over the line: the corners' own share of it replaced by the line's
+                platform += (cfg.cratonKm - cfg.continentKm) * (shieldS - cells);
+                rimFade = 1 - whole * smooth(cfg.cratonRimInKm, cfg.cratonRimOutKm, crN);
+                // the foreland: deepest just in front of the rim's thrusts, rising to a low forebulge (a stiff plate's flexure)
+                if (cLoad > 0.002) {
+                    const xf = (crN - cfg.forelandFromKm) / cfg.forelandAlphaKm;
+                    const f = xf <= 0 ? smooth(-cfg.cratonBlendKm, cfg.forelandFromKm, crN) : Math.exp(-xf) * Math.cos(xf);
+                    platform -= whole * cLoad * (f > 0 ? f : cfg.forebulgeGain * f);
+                }
+                // the shield's character (per craton: a sag basin, a swell, a flat shield) and its grain of domes and keels
+                if (shieldS > 0.01) {
+                    let cT = c0, cW = -1;
+                    for (let j = 0; j < 3; j++) { const c = j === 0 ? c0 : j === 1 ? c1 : c2, wj = j === 0 ? w0 : j === 1 ? w1 : w2; if (craton[c] && wj > cW) { cW = wj; cT = c; } }
+                    const ch = cratonCharacter(CR, seed, terrane[cT]), k = cfg.cratonCharacter * shieldS;
+                    const rho = Math.min(1, Math.max(0, crN / Math.max(1, cPatch)));
+                    if (ch.kind !== 0) {
+                        const form = smooth(0.1, 0.8, rho + 0.3 * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 2.3 * ch.salt, z * shapeF + 5.5, 3, 0.5));
+                        platform += k * ch.amp * (ch.kind > 0 ? cfg.cratonSwellKm : -cfg.cratonSagKm) * form;
+                    } else platform += k * ch.amp * cfg.cratonFlatKm * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 4.1, z * shapeF + 2.3 * ch.salt, 3, 0.5);
+                    if (grainShow > 0) platform += k * cfg.cratonGrainKm * grainShow * smooth(0, 150, crN) * (0.7 - 2 * Math.abs(noise.noise3D(x * grainF + 3.3, y * grainF + 8.8, z * grainF + 1.1)));
+                }
+                if (platform < 0.04 && before >= 0.04) platform = 0.04;            // (a sag or a foredeep is lowland, not sea)
             }
             // (the shelf and the coastal plain: with the coast, on its plate's raster where it was read there)
             const shelf = coastR !== null ? shelfR : w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2];
@@ -283,9 +326,11 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 }
             }
             }
+            // (a range pressed against a craton fades across its rim, along the line — not the cells' staircase)
+            if (rimFade < 1) { relief *= rimFade; stripes *= rimFade; }
             // the evolved uplift (over the land corners, interfingering like the platform) — on top of the shelf and plain, so
             // a range or escarpment near the coast still rises from the sea
-            const uplift = lw > 0 ? (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw : 0;
+            const uplift = (lw > 0 ? (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw : 0) * rimFade;
             const along = relief !== 0 || uplift !== 0 ? atEdge * (1 + cfg.alongStrikeVar * noise.fbm(x * strikeF + 8.8, y * strikeF + 2.2, z * strikeF + 6.6, 3, 0.5) * 1.5) : 0;
             const crests = relief * along, lifted = h + uplift * along + stripes;     // (the ground without the crests)
             relief = uplift * along + crests;
@@ -327,6 +372,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const i = t - from;
             let quiet = 0, shield = 0;
             for (let j = 0; j < 3; j++) { const c = j === 0 ? c0 : j === 1 ? c1 : c2, w = j === 0 ? w0 : j === 1 ? w1 : w2; quiet += w * (beltKind[c] ? quietMyr[c] : 1e4); shield += w * craton[c]; }
+            if (coast >= 0) shield = shieldS;              // (the shield's share by its edge line: terrain/cratons.js)
             const belt = coast >= 0 ? Math.max(0, relief) : 0;
             const active = Math.exp(-quiet / cfg.carveActiveMyr);
             carve.u[i] = cfg.carveBgUplift + cfg.carveUpliftPerKm * belt * active;
