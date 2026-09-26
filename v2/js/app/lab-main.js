@@ -26,8 +26,9 @@ const PHASES = {
     '7b': { name: '7b · Margins & back-arcs', load: () => import('./phases/phase7b-margins.js') },
     '7c': { name: '7c · Crust budget', load: () => import('./phases/phase7c-budget.js') },
     '8a': { name: '8a · Tectonic surface', load: () => import('./phases/phase8a-terrain.js') },
+    '8b': { name: '8b · Rivers', load: () => import('./phases/phase8b-rivers.js') },
 };
-const LATEST_PHASE = '8a';
+const LATEST_PHASE = '8b';
 const MESH_SEED = 12345;            // the sim mesh is the same for every planet; the seed only shapes the world on it
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
 const MAP_WIDTH = IS_TOUCH ? 1024 : 2048;
@@ -67,7 +68,7 @@ async function loadPhase({ resetCamera = true, resetTime = true } = {}) {
     if (request !== buildRequest) return;                                        // a newer build is on its way
     try {
         const { createPhase } = await PHASES[phaseId].load();
-        const phase = await createPhase(simMesh, Number(ui.seed.value) || 0, state.params, { progress: text => { $('busy').textContent = text; } });
+        const phase = await createPhase(simMesh, Number(ui.seed.value) || 0, state.params, { progress: text => { $('busy').textContent = text; }, repaint: () => { state.dirty = true; } });
         if (request !== buildRequest) return;                                    // overtaken while it was building
         assertPhaseContract(phase);
         useDisplayMesh(phase.displayMesh ?? simMesh);

@@ -86,9 +86,9 @@ export function pickPlumeSite(world, rng) {
 
 /** First step: the start is old — the mantle under every continent is already insulated — and some plumes are already rising. */
 function begin(world) {
-    const { mesh, config, mantleHeat } = world;
+    const { mesh, config } = world;
     world.hotspotsReady = true;
-    for (let w = 0; w < mesh.numCells; w++) mantleHeat[w] = isContinental(world, w) ? 1 : 0;
+    insulateAtStart(world);
     for (let i = 0; i < config.hotspotInitialCount; i++) {
         const w = pickPlumeSite(world, world.rngHotspot);
         if (w < 0) break;
@@ -96,6 +96,17 @@ function begin(world) {
         const age = world.rngHotspot() * config.plumeLifeMinMyr * 0.6;
         birth(world, cellXyz(mesh, w), { head: false, rift: false, bornAt: world.time - age });
     }
+}
+
+/**
+ * The start is old: the mantle under every continent is already insulated. The first step sets it (begin); this also
+ * sets it before the history's first frame is recorded, so that frame shows the start as it is (it read no heat, and
+ * every continent rose by its mantle swell at the first step — developer, 8b round 6: "on step 1 all the land raises
+ * up a bit"). The first step sets it again, the same way: the history is unchanged.
+ */
+export function insulateAtStart(world) {
+    const { mesh, mantleHeat } = world;
+    for (let w = 0; w < mesh.numCells; w++) mantleHeat[w] = isContinental(world, w) ? 1 : 0;
 }
 
 /** Warm the mantle under continents, cool it elsewhere — toward 1 and 0 respectively, over mantleInsulateMyr and mantleCoolMyr. */

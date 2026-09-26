@@ -24,7 +24,7 @@ function run(id, heights = null) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these; the history is the same)
     const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 });
-    return { world, frame: frames.at(-1) };
+    return { world, frame: frames.at(-1), first: frames[0] };
 }
 function terrainWith(frame, cells, overrides) {
     const tm = terrainMesh(cells);
@@ -197,6 +197,25 @@ section('a continental collision');
     const nearSuture = new Uint8Array(mesh.numCells); for (let w = 0; w < mesh.numCells; w++) if (rec.kind[w] && withinKm(w, 800)) nearSuture[w] = 1;
     const angles = ridgeAngles(T, away, t => { const c = corner(T, t); return kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && nearSuture[c] && heightKm[t] > 0; });
     check('ridges run parallel to the suture', angles.length >= 10 && median(angles) <= 30, `median ${median(angles).toFixed(0)}° between the ridges’ cross-direction and the direction away from the suture, over ${angles.length} sim cells (random: 45°)`);
+    // the ridge noise (8b round 5): the same place with and without it; its value against itself a little way along the
+    // strike and the same way across it — drawn out along the belt, it should hold along and change across
+    const N = terrainWith(frame, 640000, { ridgeNoiseShare: 0, ridgeNoiseBaseKm: 0 }), tm = T.tm, noiseAt = t => T.parts.stripes[t] - N.parts.stripes[t];
+    const c3 = [0, 0, 0], w3 = [0, 0, 0], R = 6371, stepKm = 45;
+    const at = (x, y, z) => { const l = Math.hypot(x, y, z); locate(tm, x / l, y / l, z / l, c3, w3); return w3[0] * noiseAt(c3[0]) + w3[1] * noiseAt(c3[1]) + w3[2] * noiseAt(c3[2]); };
+    const here = [], along = [], across = [];
+    let rms = 0;
+    for (let t = 0; t < tm.numCells; t += 3) {
+        const c = corner(T, t);
+        if (!rec.kind[c] || T.parts.relief[t] < 0.5 || heightKm[t] <= 0) continue;
+        const x = tm.xyz[3 * t], y = tm.xyz[3 * t + 1], z = tm.xyz[3 * t + 2], ax = rec.across[3 * c], ay = rec.across[3 * c + 1], az = rec.across[3 * c + 2];
+        const bx = y * az - z * ay, by = z * ax - x * az, bz = x * ay - y * ax, s = stepKm / R;
+        here.push(noiseAt(t)); along.push(at(x + s * bx, y + s * by, z + s * bz)); across.push(at(x + s * ax, y + s * ay, z + s * az));
+        rms += noiseAt(t) ** 2;
+    }
+    const corr = (a, b) => { const ma = mean(a), mb = mean(b); let ab = 0, aa = 0, bb = 0; for (let i = 0; i < a.length; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; } return ab / Math.sqrt(aa * bb); };
+    const rAlong = corr(here, along), rAcross = corr(here, across);
+    check('the ridge noise is drawn out along the ranges: it holds along the strike and changes across it', here.length >= 1000 && rAlong >= 0.75 && rAlong >= rAcross + 0.25,
+        `over ${here.length} belt cells (± ${Math.sqrt(rms / here.length).toFixed(2)} km): correlation with itself ${stepKm} km along the strike ${rAlong.toFixed(2)}, ${stepKm} km across it ${rAcross.toFixed(2)}`);
 }
 
 // ── oceans, arcs and hotspots ──
@@ -304,12 +323,12 @@ section('fine detail moves with the crust');
         return [MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz];
     };
     // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
-    // interiors (no coast, no belt) where the records barely change in 10 Myr
+    // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
     const detail = f => {
         const T = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true }), r = new Float32Array(tm.numCells).fill(NaN);
         for (let t = 0; t < tm.numCells; t++) {
             let ok = true, smoothPart = 0;
-            for (let i = 0; i < 3; i++) { const c = T.sampler.cells[3 * t + i]; ok &&= T.rec.land[c] && T.rec.coastKm[c] > 400 && !T.rec.kind[c] && !T.rec.belts[1].kind[c]; smoothPart += T.sampler.weights[3 * t + i] * T.rec.platformKm[c]; }
+            for (let i = 0; i < 3; i++) { const c = T.sampler.cells[3 * t + i]; ok &&= T.rec.land[c] && T.rec.coastKm[c] > 400 && !T.rec.kind[c] && !T.rec.belts[1].kind[c] && !T.rec.lipKm[c]; smoothPart += T.sampler.weights[3 * t + i] * T.rec.platformKm[c]; }
             if (ok) r[t] = T.parts.platform[t] - smoothPart;
         }
         return { T, r };
@@ -350,9 +369,84 @@ section('fine detail moves with the crust');
         `${both} volcanoes in both frames: ${sameShape} with the same shape, ${carried} where their plate carried them (within 0.1 km)`);
 }
 
+// ── flood basalts (8b round 6): an intact plateau, then mesas, then remnants; dykes radiating ──
+section('flood basalts through time');
+{
+    const scene = TERRAIN_SCENES.find(s => s.id === 'traps'), world = scene.build(mesh, SEED);
+    const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
+    const lipCells = f => { const a = []; for (let w = 0; w < mesh.numCells; w++) if (f.owner[w] >= 0 && f.type[w] !== CrustType.OCEAN && f.volcType[w] === VolcanicType.LIP) a.push(w); return a; };
+    const erupted = frames.find(f => lipCells(f).length > 0).time, at = age => frames.find(f => f.time >= erupted + age - 1e-6);
+    // over the thick part of the province, away from the coast: where its cap (its top tier) still stands, and how that
+    // differs from its edge (within 150 km of it) to its inside (400 km or more in). (The whole province lowers a little
+    // as it wears: the cap is what stands within 15 % of the province's highest share of its pile, if that is half.)
+    // The pile unworn: the same frame with its wear record zeroed.
+    const cap = f => {
+        const T = terrain(f), U = terrain({ ...f, volcWornKm: new Float32Array(f.volcWornKm.length) }), { rec } = T, S = T.sampler;
+        const share = new Float32Array(T.tm.numCells).fill(NaN), shares = [];
+        for (let t = 0; t < T.tm.numCells; t++) {
+            let ok = true;
+            for (let i = 0; i < 3; i++) { const c = S.cells[3 * t + i]; ok &&= rec.land[c] && rec.coastKm[c] > 300; }
+            if (ok && U.parts.lip[t] >= 0.5) shares.push(share[t] = T.parts.lip[t] / U.parts.lip[t]);
+        }
+        const highest = quantile(shares, 0.97);
+        let thick = 0, kept = 0, edgeN = 0, edgeK = 0, innerN = 0, innerK = 0;
+        for (let t = 0; t < T.tm.numCells; t++) {
+            if (Number.isNaN(share[t])) continue;
+            let edge = 0;
+            for (let i = 0; i < 3; i++) edge += S.weights[3 * t + i] * rec.lipEdgeKm[S.cells[3 * t + i]];
+            const k = highest >= 0.5 && share[t] >= 0.85 * highest ? 1 : 0;
+            thick++; kept += k;
+            if (edge < 150) { edgeN++; edgeK += k; } else if (edge >= 400) { innerN++; innerK += k; }
+        }
+        return { f, T, thick, kept: kept / thick, edge: edgeK / Math.max(1, edgeN), inner: innerK / Math.max(1, innerN) };
+    };
+    const young = cap(at(10)), mid = cap(at(100)), old = cap(at(250));
+    check('a young flood basalt is an unbroken plateau', young.thick >= 200 && young.kept >= 0.85,
+        `10 Myr after it erupted, the cap still stands over ${(100 * young.kept).toFixed(0)} % of ${young.thick} terrain cells of its thick part`);
+    check('as it wears its cap is cut away into mesas, which shrink with time — but remnants stand for hundreds of Myr', mid.kept <= 0.7 && mid.kept >= 0.15 && old.kept < mid.kept && old.kept >= 0.02,
+        `the cap still stands over ${(100 * mid.kept).toFixed(0)} % 100 Myr after the eruption, ${(100 * old.kept).toFixed(0)} % after 250 Myr`);
+    check('its escarpment retreats from the edge: the cap goes sooner there than inside', mid.inner >= mid.edge + 0.15,
+        `100 Myr on, the cap stands over ${(100 * mid.edge).toFixed(0)} % of the province within 150 km of its edge, ${(100 * mid.inner).toFixed(0)} % 400 km or more inside`);
+    // the dykes: the grain alone (with and without it), around the province; against itself along the rays and across them
+    const f = mid.f, T = mid.T, N = terrainWith(f, 640000, { dykeKm: 0 }), tm = T.tm, cells = lipCells(f);
+    const C = [0, 1, 2].map(i => cells.reduce((s, w) => s + mesh.xyz[3 * w + i], 0)), cl = Math.hypot(...C); C.forEach((v, i) => { C[i] = v / cl; });
+    const Rp = Math.sqrt(cells.length * mesh.cellAreaKm2 / Math.PI), grain = t => T.heightKm[t] - N.heightKm[t];
+    const c3 = [0, 0, 0], w3 = [0, 0, 0], s = 45 / 6371;
+    const sample = (x, y, z) => { const l = Math.hypot(x, y, z); locate(tm, x / l, y / l, z / l, c3, w3); return w3[0] * grain(c3[0]) + w3[1] * grain(c3[1]) + w3[2] * grain(c3[2]); };
+    const here = [], along = [], across = [];
+    for (let t = 0; t < tm.numCells; t += 2) {
+        const x = tm.xyz[3 * t], y = tm.xyz[3 * t + 1], z = tm.xyz[3 * t + 2], d = x * C[0] + y * C[1] + z * C[2], r = Math.acos(Math.min(1, d)) * 6371;
+        const c = corner(T, t);
+        if (r < 1.1 * Rp || r > 2.1 * Rp || !T.rec.land[c] || T.rec.lipKm[c] || T.rec.coastKm[c] < 100 || T.rec.kind[c]) continue;
+        let ax = d * x - C[0], ay = d * y - C[1], az = d * z - C[2]; const al = Math.hypot(ax, ay, az); ax /= al; ay /= al; az /= al;   // (away from the centre)
+        const bx = y * az - z * ay, by = z * ax - x * az, bz = x * ay - y * ax;                                                        // (around it)
+        here.push(grain(t)); along.push(sample(x + s * ax, y + s * ay, z + s * az)); across.push(sample(x + s * bx, y + s * by, z + s * bz));
+    }
+    const corr = (a, b) => { const ma = mean(a), mb = mean(b); let ab = 0, aa = 0, bb = 0; for (let i = 0; i < a.length; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; } return ab / Math.sqrt(aa * bb); };
+    const rAlong = corr(here, along), rAcross = corr(here, across);
+    check('dykes radiate from the plume’s centre: their grain runs out along the rays', here.length >= 1000 && rAlong >= 0.6 && rAlong >= rAcross + 0.25,
+        `${here.length} land cells 1.1–2.1 radii from the centre: the grain against itself 45 km along the ray ${rAlong.toFixed(2)}, 45 km around ${rAcross.toFixed(2)}`);
+}
+
 // ── continents through a whole history ──
 section('continents through a whole history');
 const T640 = terrain(history.frame);
+{
+    // the first continents' swells (8b round 5): seeded when the history starts, worn down as it runs; crust made since is flat
+    const start = [], now = [], lastBase = history.frame.baseKm;
+    let seaCarries = 0;
+    for (let w = 0; w < mesh.numCells; w++) {
+        const a = history.first, b = history.frame;
+        if (a.owner[w] >= 0 && a.type[w] !== CrustType.OCEAN && a.type[w] !== CrustType.ARC) start.push(a.baseKm[w]);
+        if (b.owner[w] >= 0 && b.type[w] !== CrustType.OCEAN) now.push(lastBase[w]);
+        if ((a.owner[w] >= 0 && a.type[w] === CrustType.OCEAN && a.baseKm[w] !== 0) || (b.owner[w] >= 0 && b.type[w] === CrustType.OCEAN && lastBase[w] !== 0)) seaCarries++;
+    }
+    const top = TERRAIN.baseReliefKm;
+    check('the first continents start with broad swells, and lowlands between them', quantile(start, 0.9) >= 0.5 * top && median(start) <= 0.3 * top && seaCarries === 0,
+        `at the start: median ${median(start).toFixed(2)} km, 90th percentile ${quantile(start, 0.9).toFixed(2)} km (swells up to ${top} km); ${seaCarries} ocean cells carry any`);
+    check('the swells wear down as the history runs', mean(now) <= 0.5 * mean(start),
+        `mean over the land ${mean(start).toFixed(2)} km at the start, ${mean(now).toFixed(2)} km after ${history.frame.time} Myr`);
+}
 {
     const { rec, heightKm } = T640, f = history.frame, active = [], old = [], craton = [];
     for (let t = 0; t < T640.tm.numCells; t++) {

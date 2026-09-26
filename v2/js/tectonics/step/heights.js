@@ -7,7 +7,9 @@
 //     only erosion lowers it — so orogenies accumulate; foreland basins sink below 0 and fill back in; it spreads a
 //     little sideways over time (hillslope smoothing);
 //   · rugged / prevRugged — how big the crests and ridges of the current belt and of the one it overprinted stand;
-//   · volcWornKm — how far a hotspot volcano has been worn down since it last erupted.
+//   · volcWornKm — how far a hotspot volcano, or a flood basalt on land, has been worn down since it erupted;
+//   · baseKm — the start world's own swells (seedBaseRelief): broad uplands and the lowlands between them, worn down
+//     like the uplift — so the first continents are not flat, and their rivers have somewhere to run from.
 // Erosion runs every step at the latitude the cell is at THEN (plates move: a range that drifted out of the tropics
 // keeps the wear it took there), faster where it rains more (terrain-config.js erosionAtLatitude), and faster the
 // higher the belt stands — slowly on low ground (erosionAtHeight), so old ranges linger as low hills.
@@ -18,6 +20,10 @@ import { CrustType, OrogenyType, VolcanicType } from '../model/crust.js';
 import { ISLAND_EROSION_KM_PER_MYR } from '../measure.js';
 import { TERRAIN, erosionAtLatitude, erosionAtHeight } from '../../terrain/terrain-config.js';
 import { broadProfile } from '../../terrain/profiles.js';
+import { FastNoise } from '../../core/fast-noise.js';
+
+const R = 6371;
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** The height constants a world runs with. */
 export const heightsOf = config => config.heights ?? TERRAIN;
@@ -34,7 +40,7 @@ export function beltReliefKm(type, reachKm, H) {
  */
 export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickenedKm, config) {
     const H = heightsOf(config);
-    crust.rootKm[c] += thickenedKm;
+    crust.rootKm[c] += thickenedKm * (H.rootGain?.[type] ?? 1);
     const A = beltReliefKm(type, reachKm, H), share = 1 - Math.exp(-workKm / H.upliftBuildKm[type]);
     // (on island-arc crust a subduction belt's broad uplift is mostly the arc's own growth, which its maturity already
     // gives it — records.js platformKm, as for its root: only arcUpliftShare of it, or a Mariana would stand at sea level)
@@ -44,6 +50,29 @@ export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickened
     // negative one: a foreland basin subsides under the load in front of a range, whatever stood there before
     if (target >= 0 ? target > crust.upliftKm[c] : target < crust.upliftKm[c]) crust.upliftKm[c] += (target - crust.upliftKm[c]) * share;
     if (A > crust.rugged[c]) crust.rugged[c] += (A - crust.rugged[c]) * share;
+}
+
+/**
+ * The start world's swells (developer, 8b round 5: "start the baseline with some large noise … that can erode over time
+ * and direct rivers more consistently"): on every continent, broad uplands up to baseReliefKm high and the lowlands
+ * between them, from a noise field of their own (their own seed: no other stream is touched) read where the crust is at
+ * the start — so it runs on across plate boundaries. Once, when the history starts; crust made later starts flat.
+ */
+export function seedBaseRelief(world) {
+    const H = heightsOf(world.config), { xyz } = world.mesh;
+    if (!(H.baseReliefKm > 0)) return;
+    const noise = new FastNoise((world.seed ^ 0xba5e) >>> 0), F = R / H.baseReliefScaleKm;
+    for (const plate of world.plates) {
+        if (!plate.alive) continue;
+        const { mask, type, baseKm } = plate.crust, m = plate.mat;
+        for (let c = 0; c < mask.length; c++) {
+            if (!mask[c] || type[c] === CrustType.OCEAN || type[c] === CrustType.ARC) continue;
+            const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
+            const wx = m[0] * x + m[1] * y + m[2] * z, wy = m[3] * x + m[4] * y + m[5] * z, wz = m[6] * x + m[7] * y + m[8] * z;
+            // (fbm ≈ ±0.65: a quarter of the land stays low, half rises past ~0.4 of the full height, a tenth near all of it)
+            baseKm[c] = H.baseReliefKm * (type[c] === CrustType.CRATON ? H.baseReliefCraton : 1) * smooth(-0.1, 0.8, 1.6 * noise.fbm(wx * F + 2.1, wy * F + 7.7, wz * F + 4.9, 3, 0.5));
+        }
+    }
 }
 
 /** Erosion and hillslope smoothing, once per step over every plate. @returns {number} 0 (it never changes crust) */
@@ -57,7 +86,7 @@ export function evolveHeights(world, dt) {
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const { mask, type, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, rugged, prevRugged, volcWornKm } = plate.crust;
+        const { mask, type, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm } = plate.crust;
         const m = plate.mat, n = mask.length;
         // hillslope smoothing of the uplift, within the plate's land — never into the sea, nor onto a craton (a shield is
         // rigid and cold: a neighbouring range does not spread onto it)
@@ -76,16 +105,20 @@ export function evolveHeights(world, dt) {
             const bin = Math.min(TABLE - 1, Math.max(0, Math.floor((z + 1) * 0.5 * TABLE)));
             if (volcType[c] === VolcanicType.TRACK && volcKm[c] > 0) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + ISLAND_EROSION_KM_PER_MYR * dt * rate[bin];
             if (type[c] === CrustType.OCEAN) continue;
+            // a flood basalt on land wears too — slowly (a hard cap), from its eruption on (terrain/lips.js cuts it up by it)
+            if (volcType[c] === VolcanicType.LIP) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + H.lipWearKmPerMyr * dt * rate[bin];
             const rift = oroType[c] === OrogenyType.RIFT, up = upliftKm[c] + flux[c];
             // how fast here: the latitude's rain (or ice), × how high the belt stands above its plain — the evolved uplift
             // plus its root's isostatic lift. A basin (below 0) fills back at the reference rate; a rift's shoulders are
             // an escarpment that retreats at its own pace, whatever its height.
-            const height = Math.max(0, up) + lift[Math.min(LIFT_TABLE - 1, Math.round(rootKm[c] * (type[c] === CrustType.ARC ? 0.25 : 1) * LIFT_PER_KM))];
+            const height = Math.max(0, up) + baseKm[c] + lift[Math.min(LIFT_TABLE - 1, Math.round(rootKm[c] * (type[c] === CrustType.ARC ? 0.25 : 1) * LIFT_PER_KM))];
             const e = rate[bin] * dt * (rift || up < 0 ? 1 : erosionAtHeight(height, H));
             upliftKm[c] = up * wear(e / (rift ? H.riftReliefTauMyr : H.reliefTauMyr));     // (a basin fills back toward 0 as a range wears down to it)
             rootKm[c] *= wear(e / H.thickTauMyr);
             rugged[c] *= wear(e / (rift ? H.riftReliefTauMyr : H.ruggedTauMyr));
             prevRugged[c] *= wear(e / H.ruggedTauMyr);
+            riverIncKm[c] *= wear(e / H.ruggedTauMyr);              // (a gorge's walls wear back like the belt's crests)
+            if (baseKm[c] > 0) baseKm[c] *= wear(e / H.baseReliefTauMyr);
         }
     }
     return 0;

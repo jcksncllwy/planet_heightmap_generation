@@ -23,10 +23,10 @@ export function beltProfile(type, side, d, reach, jitter = 0) {
         case OrogenyType.ANDEAN: {
             // coastal range · fore-arc valley · the main (volcanic) range · in a wide, mature belt a high plateau
             // behind it (the Altiplano) and an eastern cordillera over the fold-and-thrust belt · then the fall line
-            const s = Math.max(18, 0.04 * W), mature = smooth(300, 650, W);
+            const s = Math.max(18, 0.04 * W), mature = smooth(180, 450, W);
             return fade * (0.35 * bump(d, clamp(0.07 * W, 20, 60), s) - 0.22 * bump(d, clamp(0.17 * W, 45, 130), s)
-                + bump(d, clamp(0.3 * W, 70, 260), Math.max(35, 0.07 * W)) + 0.55 * mature * plateau(u, 0.33, 0.72, 0.1)
-                + (W > 300 ? 0.6 * bump(d, 0.76 * W, 0.06 * W) : 0));
+                + bump(d, clamp(0.3 * W, 70, 260), Math.max(45, 0.09 * W)) + 0.55 * mature * plateau(u, 0.33, 0.72, 0.1)
+                + 0.6 * smooth(200, 350, W) * bump(d, 0.76 * W, Math.max(30, 0.06 * W)));
         }
         case OrogenyType.LARAMIDE:
             // the old arc's batholith near the coast; a high interior (the Colorado Plateau, the Wyoming basins) with
@@ -61,8 +61,11 @@ export function beltProfile(type, side, d, reach, jitter = 0) {
 }
 
 /**
- * The BROAD part of a belt's cross-section (same units as beltProfile): the plateaus and a wide envelope of the ranges,
- * smooth enough to be carried by sim cells 121 km apart. It is what the evolving uplift is built toward
+ * The BROAD part of a belt's cross-section (same units as beltProfile): the plateaus and a low, wide envelope of the
+ * ranges, smooth enough to be carried by sim cells 121 km apart — most of the ranges themselves (fronts, main ranges,
+ * back ranges) are crests (developer, 8b round 3: with most of a range in this smooth part, belts read as mounds; then
+ * "too high, let's land in the middle": the envelope halfway back — the crests wear more slowly than it, so the bigger
+ * their share, the higher an old belt stands). It is what the evolving uplift is built toward
  * (tectonics/step/heights.js); beltProfile − broadProfile (crestProfile) is the crest structure the terrain adds.
  */
 export function broadProfile(type, side, d, reach, jitter = 0) {
@@ -70,25 +73,25 @@ export function broadProfile(type, side, d, reach, jitter = 0) {
     const fade = 1 - smooth(0.7 + jitter, 1.05 + jitter, u);
     switch (type) {
         case OrogenyType.ANDEAN: {
-            const mature = smooth(300, 650, W);
-            return fade * (0.8 * bump(d, clamp(0.3 * W, 70, 260), Math.max(110, 0.2 * W)) + 0.55 * mature * plateau(u, 0.33, 0.72, 0.1)
-                + (W > 300 ? 0.4 * bump(d, 0.76 * W, Math.max(100, 0.12 * W)) : 0));
+            const mature = smooth(180, 450, W);
+            return fade * (0.575 * bump(d, clamp(0.3 * W, 70, 260), Math.max(110, 0.2 * W)) + 0.55 * mature * plateau(u, 0.33, 0.72, 0.1)
+                + 0.3 * smooth(200, 350, W) * bump(d, 0.76 * W, Math.max(100, 0.12 * W)));
         }
         case OrogenyType.LARAMIDE:
-            return fade * (0.4 * bump(d, clamp(0.1 * W, 40, 150), Math.max(100, 0.1 * W)) + 0.55 * plateau(u, 0.15, 0.86, 0.1) + 0.6 * bump(d, 0.88 * W, Math.max(100, 0.08 * W)));
+            return fade * (0.3 * bump(d, clamp(0.1 * W, 40, 150), Math.max(100, 0.1 * W)) + 0.55 * plateau(u, 0.15, 0.86, 0.1) + 0.45 * bump(d, 0.88 * W, Math.max(100, 0.08 * W)));
         case OrogenyType.URAL:
             return side === BeltSide.LOWER
-                ? fade * (0.65 * bump(d, 0, Math.max(100, 0.3 * W)) - 0.25 * bump(d, 0.85 * W, Math.max(80, 0.15 * W)))
-                : fade * 0.8 * bump(d, 0, Math.max(110, 0.35 * W));
+                ? fade * (0.5 * bump(d, 0, Math.max(100, 0.3 * W)) - 0.25 * bump(d, 0.85 * W, Math.max(80, 0.15 * W)))
+                : fade * 0.6 * bump(d, 0, Math.max(110, 0.35 * W));
         case OrogenyType.HIMALAYAN:
             return side === BeltSide.LOWER
-                ? fade * (0.9 * bump(d, clamp(0.22 * W, 40, 130), Math.max(110, 0.15 * W)) - 0.3 * bump(d, 0.86 * W, Math.max(90, 0.12 * W)))
-                : fade * (0.7 * bump(d, clamp(0.05 * W, 20, 80), Math.max(110, 0.08 * W)) + 0.8 * smooth(300, 800, W) * plateau(u, 0.1, 0.84, 0.1)
-                    + 0.7 * bump(d, 0.88 * W, Math.max(110, 0.08 * W)));
+                ? fade * (0.675 * bump(d, clamp(0.22 * W, 40, 130), Math.max(110, 0.15 * W)) - 0.3 * bump(d, 0.86 * W, Math.max(90, 0.12 * W)))
+                : fade * (0.525 * bump(d, clamp(0.05 * W, 20, 80), Math.max(110, 0.08 * W)) + 0.8 * smooth(300, 800, W) * plateau(u, 0.1, 0.84, 0.1)
+                    + 0.525 * bump(d, 0.88 * W, Math.max(110, 0.08 * W)));
         case OrogenyType.ARC:
-            return fade * 0.8 * bump(d, 0, Math.max(90, 0.35 * W));
+            return fade * 0.675 * bump(d, 0, Math.max(90, 0.35 * W));
         case OrogenyType.TRANSPRESSION:
-            return fade * 0.7 * bump(d, 0, Math.max(70, 0.45 * W));
+            return fade * 0.525 * bump(d, 0, Math.max(70, 0.45 * W));
         case OrogenyType.RIFT: {
             const c = clamp(0.12 * W, 25, 90);
             return fade * 0.9 * (d < c ? bump(d, c, Math.max(70, c)) : Math.exp(-(d - c) / (0.45 * W)));
@@ -100,6 +103,11 @@ export function broadProfile(type, side, d, reach, jitter = 0) {
 /** The crest structure of a belt: its full cross-section less the broad part the evolving uplift carries. */
 export function crestProfile(type, side, d, reach, jitter = 0) {
     return beltProfile(type, side, d, reach, jitter) - broadProfile(type, side, d, reach, jitter);
+}
+
+/** 1 across a belt, fading to 0 over the last part of its width (its far edge wanders by `jitter`). */
+export function beltEdge(d, reach, jitter = 0) {
+    return 1 - smooth(0.7 + jitter, 1 + jitter, d / Math.max(40, reach));
 }
 
 /** How strongly the belt's parallel ridges show at distance d from its front (0…1). */

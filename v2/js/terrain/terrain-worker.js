@@ -3,7 +3,7 @@
 // only on its position and the plan, so the pooled result is exactly the single-threaded one.
 // Runs as a browser module worker or a Node worker thread.
 
-import { preparePlan, surfaceRange } from './synthesize.js';
+import { preparePlan, surfaceRange, carveInputs, surfaceParts } from './synthesize.js';
 import { sampleRange } from './terrain-mesh.js';
 import { meshFromArrays } from '../core/sim-mesh.js';
 
@@ -28,7 +28,7 @@ function handle(msg) {
     }
 }
 
-function runJob({ jobId, frame, cfg, seed, edgeKm, parts: wantParts, samplerKey, chunkIds }) {
+function runJob({ jobId, frame, cfg, seed, edgeKm, parts: wantParts, carve: wantCarve, samplerKey, chunkIds }) {
     const plan = preparePlan(frame, state.sim, cfg, seed, edgeKm);
     for (const id of chunkIds) {
         const chunk = state.chunks.get(id), k = chunk.xyz.length / 3;
@@ -40,10 +40,11 @@ function runJob({ jobId, frame, cfg, seed, edgeKm, parts: wantParts, samplerKey,
             chunk.samplerKey = samplerKey; fresh = true;
         }
         const heightKm = new Float32Array(k);
-        const parts = wantParts ? { platform: new Float32Array(k), relief: new Float32Array(k), stripes: new Float32Array(k), cones: new Float32Array(k) } : null;
-        surfaceRange(plan, cfg, seed, edgeKm, chunk.xyz, chunk.cells, chunk.weights, 0, k, heightKm, parts);
-        const out = { type: 'chunk', jobId, id, heightKm, parts, cells: fresh ? chunk.cells.slice() : null, weights: fresh ? chunk.weights.slice() : null };
-        const transfer = [heightKm.buffer, ...(parts ? Object.values(parts).map(a => a.buffer) : []), ...(fresh ? [out.cells.buffer, out.weights.buffer] : [])];
+        const parts = wantParts ? surfaceParts(k) : null;
+        const carve = wantCarve ? carveInputs(k) : null;
+        surfaceRange(plan, cfg, seed, edgeKm, chunk.xyz, chunk.cells, chunk.weights, 0, k, heightKm, parts, carve);
+        const out = { type: 'chunk', jobId, id, heightKm, parts, carve, cells: fresh ? chunk.cells.slice() : null, weights: fresh ? chunk.weights.slice() : null };
+        const transfer = [heightKm.buffer, ...(parts ? Object.values(parts).map(a => a.buffer) : []), ...(carve ? Object.values(carve).map(a => a.buffer) : []), ...(fresh ? [out.cells.buffer, out.weights.buffer] : [])];
         post(out, transfer);
     }
     post({ type: 'done', jobId, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count });

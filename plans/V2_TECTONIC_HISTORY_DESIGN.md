@@ -322,13 +322,27 @@ too coarse for ridges), in km, the same planet at every resolution.
    away from the nearest front cell); volcanoes (hotspot islands and seamounts, arc chains, Andean stratovolcanoes).
    The fine detail belongs to the crust (`anchor.js`): noise is read in the frame of the plate under each point, and
    ridge kernels and volcanoes are keyed to crust cells, so a drifting continent carries its detail with it.
-3. **Carving** (8b) — Tzathas-style analytic stream power on the terrain mesh: priority-flood drainage from the sea
-   (slope-weighted random receivers; small pits breached, big basins filled flat), drainage area in km², river beds
-   rising at the steady-state stream-power slope upstream from each outlet, threshold hillslopes above channel heads
-   (critical angle varied by noise), height = min(tectonic surface, carved); steepness by belt activity, erodibility
-   stripes along strike in fold belts (Valley and Ridge, trellis drainage); belt age limits how far erosion has eaten in
-   (plateau interiors survive, edges gorge-cut); 2–3 rounds so big rivers capture small ones; a sub-cell channel-head
-   term so peaks do not grow with resolution.
+3. **Carving** (8b-1, built 2026-09-25: `terrain/carve.js`) — the stream power law (n = 1) solved ANALYTICALLY in time
+   along the river network (Tzathas, Gailleton, Steer & Cordonnier, Eurographics 2024): after a time t a point stands
+   where the ground downstream stood, the wave having travelled up at k A^m, plus the uplift gathered on the way
+   (their eqns 6–9). Network: a priority flood from the sea (depressions crossed at their spill), receivers drawn at
+   random among lower neighbours by slope (random numbers of the crust's own); drainage area in km², rain-weighted.
+   Every river carves its bed; a cell drops by the share of it its valley takes — valley width ∝ √(discharge)
+   (hydraulic geometry, Leopold & Maddock 1953), carveValleyKm at 10⁴ km² — so great rivers cut whole cells and streams
+   barely mark theirs, with no threshold; valley sides held to a critical gradient along the flow paths (steeper with
+   belt relief, varied by noise). Starting surface = tectonic − u·t, so ground the wave has not reached keeps the tectonic height; carved
+   never above tectonic; channels kept monotone downstream (pits of the tectonic surface stay as basins). Rock uplift u
+   from the records (active belts, by relief, fading once quiet; a small background everywhere); erodibility lower on
+   cratons and on fold-belt crests (trellis). Coarse to fine over the sim mesh and the terrain meshes (the paper's
+   multigrid idea): the big rivers are settled at the coarse levels, so they are the same at every resolution.
+   8b-2 (built 2026-09-26, `tectonics/step/rivers.js`): rivers DURING the history — every 4 Myr the land is drained on
+   the sim mesh over its evolved height less what rivers already cut (so a cut course stays the lowest way and its river
+   keeps it), and each river cuts by stream power, never below the reach below, toward a share A / (A + 250,000 km²) of
+   the relief it crosses (plus a floodplain valley on flat land); the cut is a record of the crust (riverIncKm), worn
+   back with the crests. A river that keeps up with land rising under it holds its course and cuts a gorge (antecedent
+   rivers). The terrain routes over the surface less that record — rivers follow the old courses — and a bed is at least
+   as deep as the history cut it. Small rivers are routed over a crust-anchored micro-relief (steepest descent), so they
+   ride with their continent between frames.
 4. **Sea level and hypsometry**: sea level as a control; concave river profiles should give ≈ half the land under 400 m;
    a partial rank-remap to Earth's curve (Tectonics.js) only as a fallback control.
 5. **Phase 9**: project to the render mesh; V1's detail, erosion and climate as the final polish.
@@ -463,7 +477,9 @@ comes together in Phase 6.
 | 7b margins, back-arcs, belts, fore-arc islands | built 2026-09-23 (two rounds) | check-phase7b (33) | margins, laramide, mariana, japan, history |
 | code review A–D | 2026-09-23 | check-invariants (11), check-scale (7) | — |
 | 7c crust budget | built 2026-09-24 | check-phase7c (19) | erosion, india, arcs, history (600 Myr) |
-| 8a tectonic surface (records + heights before carving) | built 2026-09-24, rounds 2–4 and evolving heights 2026-09-25 | check-phase8a (38) | andes, laramide, india, mariana, japan, hawaii, rift, history |
+| 8a tectonic surface (records + heights before carving) | built 2026-09-24, rounds 2–4 and evolving heights 2026-09-25 | check-phase8a (40) | andes, laramide, india, mariana, japan, hawaii, rift, history |
+| 8b-1 rivers carve the surface (analytic stream power) | built 2026-09-25 | check-phase8b | the same scenes, carved; every frame |
+| 8b-2 rivers through the history (gorges, persistence) | built 2026-09-26 | check-phase8b (22 with 8b-1) | history, india |
 | 8b carving (analytic stream power) | next | — | — |
 
 Wanted later, each its own phase: a supercontinent CYCLE (bursts of rifting with quiet spells in which the pieces
@@ -733,6 +749,161 @@ they found was fixed, and each fix has a check that would catch its return.
   erosion since its last eruption. So volcanoes stand as islands near the plume and drown downstream into
   seamounts — Hawaii, then the Emperor chain — and on young floor (Indica's wake) more of them stand. Both use a
   stream of their own (`world.rngVolcano`), so the rest of the history did not re-roll.
+- Phase 8b round 3 (developer, 2026-09-26): "we are losing some of the original and interesting shape of the mountains …
+  slightly decrease erosion in each step … active boundaries should do less cutting and more shaping"; "Andean belts are
+  not growing tall or thick enough … the leading and trailing ridges get lost quickly: mounds and mountain noise instead
+  of eroded geological activity" (for all mountains). Measured first (history world, 640K): active belts kept their
+  shape at r 0.928 against the uncarved surface, cut 0.39 km on average. (1) Active belts rise as fast as their rivers
+  cut: river beds stand higher there by carveActiveHold (0.6) × activity — then kept monotone, so rivers stay whole — and
+  the history's rivers cut toward a smaller share (riverActiveHold 0.6): shape r 0.989, mean cut 0.13–0.16 km. (2) A
+  little less erosion at every stage: carving 0.6 → 0.5 Myr, riverHalfKm2 2 → 3 × 10⁵ km², the history's clocks ~10 %
+  slower (uplift 185, crests 385, root 140 Myr). (3) The cause of the mounds: when heights began to evolve, most of each
+  range went into the SMOOTH broad part (carried on 121 km sim cells, diffused) and only 0.2–0.3 of it stayed a sharp
+  crest; the broad part now keeps plateaus and a low envelope (e.g. the Andean main range 0.8 → 0.35, collision fronts
+  0.7 → 0.35) and the ranges are crests — which also wear on the slower crest clock, so old belts keep their structure.
+  Less noise across ranges: alongStrikeVar 0.3 → 0.18, blendNoise 1.4 → 1.1. (4) Andes: crests 2.7 → 3.4 km, a wider
+  main range, the plateau and eastern cordillera coming in smoothly in narrower belts, and the root ×2 (rootGain: magma
+  added from below thickens an Andean margin beyond its recorded shortening; ×3 lifted old Andean margins — India's
+  foreland — too much). Active Andean belts in the history world: 3–4 km across the belt (90th percentile 4–6.5 km), from
+  ~2.3. Median land before carving 0.86 → 1.01 km (8a's ceiling recalibrated to 1.1: the developer's request), ~0.87
+  after. Andean belt WIDTH is a history rule (baseKm 120 + 1 km per km of recorded shortening; the young, slow Andes
+  scene reaches ~76 km): widening it changes every history — asked, not done.
+- "Mountain donuts" (developer, 2026-09-26: "in some of the very small Himalayan pockets it looks like little mountain
+  donuts or crescents"). Two causes, both in how the terrain reads the belt records (records.js; the history is
+  unchanged). (1) Stale distances: the distance across a belt (u × reach) changes by at most the distance between
+  cells, but the history leaves the odd cell with a stale one — at 600 Myr, 380 of 16,655 belt cells, e.g. a collision
+  cell at u 0.95 amid its suture (u 0) — and interpolating across it swept the profile through its main range (71 km
+  off the suture) all round the cell: a ring. A cell more than 1.3 cell spacings from its same-kind neighbours' median
+  takes that median. (2) Scraps: a patch of belt a sim cell or two across (25 single-cell collision patches at 600
+  Myr) sits on the suture, where the crests are negative by design (the suture valley between the ranges) — in a
+  scrap that valley is the whole patch, sunk into the uplift around it: a pit ringed by ranges. A belt's crest
+  structure now scales smoothly with the area of its patch (beltPatchMinKm2 20,000 → beltPatchFullKm2 200,000 km²,
+  both sides of a collision together): a scrap is a mound of its uplift.
+- Mantle heat at the start (developer, 2026-09-26: "on step 1, sort of all the land raises up a bit"): a bug. The start is
+  old — the mantle under every continent already insulated (heat 1) — but that was set by the hotspots' first step, after
+  the first frame was recorded: frame 0 read no heat, and at step 1 every continent rose by its whole mantle swell
+  (swellKm 0.35 × heat²): the history world's median land 0.30 → 0.64 km, land below 400 m 61 % → 7 %, before carving.
+  Now step/hotspots.js insulateAtStart sets it before the first frame too; the first step sets it again the same way:
+  the event log and every later frame are bit-identical (only frame 0's mantleHeat changed). It also showed how much
+  the swell weighs: under any continent that sits still the heat tends to 1, so the swell lifts most land by most of
+  0.35 km — carved, 600 Myr: 24 % below 400 m and median 0.65 km with it, 38 % / 0.55 at 0.15 km, 45 % / 0.48 without
+  (Earth ≈ half below 400 m). And the flood-basalt round moved it: 600 Myr median 0.81 → 0.65 km, since the history
+  world's many old provinces were permanent 1.2 km pads and are now worn and stripped. The developer chose "relative but
+  also a bit smaller": dynamic topography is relative — the land rises by swellKm (0.35 → 0.28) × the excess of heat²
+  over its mean under the land that frame (records.js), never below it (no interior drowns): a supercontinent, all
+  equally hot, gets none; a continent that sat still while the others drifted stands out. History world: median land
+  (before carving) 0.30 km at the start, 0.39 at 20 Myr, 0.42 at 100, 0.53 at 300, 0.66 at 600; carved at 600 Myr, 40 %
+  below 400 m and median 0.53 km (were 24 % and 0.65). Cratons — the old supercontinent's core, hottest mantle — fell
+  most: 90th percentile 1.52 → 0.64 km (8a's craton ceiling back to 1.5).
+- Phase 8b round 6, flood basalts (developer, 2026-09-26): LIPs were "just really flat boring ground … research what they
+  look like and what noise shapes could be interesting … not just plateaus that ground down"; the developer chose all
+  four proposed pieces. Research (primary descriptions): "trap" is Old Norse for a stair step — horizontal lava stacks,
+  hard and soft in turn, so slopes and riverbeds are stepped; flood-basalt landscapes are plateaus and escarpments,
+  canyons, mesas and buttes (Ethiopia's ambas); Putorana is "dissected almost to the entire height" by 800–1000 m
+  canyons with stepped slopes; the Blue Nile gorge ~1.6 km; they last — the Drakensberg basalt ~1.4 km after 180 Myr
+  with 0.5–1 km gone; caprock escarpments retreat parallel, leaving mesas, then buttes; giant radiating dyke swarms run
+  out from the plume centre (Mackenzie: 2300 km). Before: a pad of up to 1.2 km that never wore. Now (terrain/lips.js):
+  (1) the history records the wear (volcWornKm on LIP cells, lipWearKmPerMyr × the latitude's erosion; records only);
+  the terrain strips the cap where a mesa noise (180 km, crust-anchored) stands below 0.7 × the share of the pile worn
+  through (sooner near the edge, lipEdgeWear), in three tiers each dropping over about one cell: a plateau with a lobed,
+  tiered edge; then an escarpment retreating with mesas before it; then buttes — a first version stripped by a smooth
+  depth ramp and read as soft mottling, and a pad of 1.2 km barely shades: 0.6 → 0.75 km of height per km of basalt.
+  In the traps scene: the cap stands over 95 % of the province 10 Myr after it erupted, 68 % after 100 Myr (67 % near
+  the edge, all of it inside), 8 % after 250 Myr (the continent drifts through the wet tropics). (2) After carving, the
+  basalt is stepped where cut into (carve.js terraceBasalt): an irregular stair (lipStepKm ± 40 %, a cliff over the
+  last lipRiser of each step, steepening to the rim) applied by how far below the intact top the ground is — the
+  unbroken top keeps its shape (terracing a dome would ring it like a wedding cake); never raises; a cell a tread left
+  below the cell it drains into stands at that cell's height again (a first pass lifted every such cell and raised
+  10,000 cells above the tectonic surface: now never above where it was). (3) Basalt canyons: hillslope limit × 3,
+  rivers' k × 0.7. (4) Dykes: simplex noise around each province piece's centre in its plate's frame, fast with the
+  angle and slow with the distance; the developer's first look: "very cool but too straight and perfect … a little
+  wavy, not perfectly going out in every direction … slightly too large … no transition between LIP and the radial
+  zone" — so each ray wavers sideways (dykeWanderKm), a slow noise around the centre leaves some sectors bare (fans),
+  reach 2.5 → 1.9 radii, and it fades in from 150 km inside the lava's edge to 250 km outside (a signed distance from
+  the real, lobed edge). The history's rivers see the pile (rivers.js) and cut into it. Lab: a new terrain scene,
+  "Flood basalts through time" (the Deccan scene's head under a continent drifting slowly for 300 Myr).
+- Phase 8b round 5 (developer, 2026-09-26): "1) strengthen ridge strength (increasing the highs and lows); 2) add
+  ADDITIONAL ridge noise along each mountain range — SIMPLEX noise aggressively STRETCHED along the direction of the
+  ridges (can increase or decrease things); 3) start the baseline with some large noise … that can erode over time and
+  direct rivers more consistently". (1) stripeShare 0.22 → 0.3, stripeBaseKm 0.13 → 0.17. (2) Ridge noise over every
+  belt: ± ridgeNoiseShare (0.25) of the belt's relief plus a little base, features 0.8 × the kind's ridge wavelength
+  across and 8× that along, octaves faded by the mesh. Read first at the recorded distance from the front — that is
+  interpolated only over the corners of the same belt kind, so it steps at triangle edges where kinds change, and in a
+  narrow belt most triangles are such (the Andean ridges' angle to the coast went 23° → 33°). Now at a distance carried
+  by the ridge kernels (stripes.js crossAt: each kernel's own distance continued along its across direction, blended by
+  its smooth window; negative on a collision's lower side, so it runs through the suture): 23° again. In the India
+  collision at 640K: ± 0.13 km (the stripes ± 0.04 — faded and textured), correlation with itself 45 km along the strike
+  0.76, across 0.24. (3) Start swells, a crust record (baseKm): fbm ~2500 km across mapped so a quarter of the land stays
+  low and a tenth stands near the full 0.8 km (median 0.09, 90th percentile 0.73 km); half on shields (cratons are the
+  flattest ground — 8a's craton 90th percentile went 1.47 → 1.52 with them; the relative mantle swell later took it to
+  0.64); worn by
+  the relief clock's erosion (baseReliefTauMyr 200: mean 0.22 km → 0.03 km after 600 Myr); in the platform
+  (records.js), so they taper to the coast with it and never lift a shelf, and in the history rivers' land height. At
+  50 Myr big rivers run over 0.09 km of swell on average, divides over 0.22. Big rivers were already 90 % persistent and
+  stay so. A 600 Myr planet: carved median 0.78 → 0.81 km, 21 % below 400 m.
+- Phase 8b round 4 (developer, 2026-09-26): "the erosion changes went a bit too far and now things are too high, let's
+  land in the middle". Measured on the history world at 600 Myr, 640K, carved: median land 0.69 km before round 3, 0.89
+  at its peak. Halving each erosion change moved it little (0.84): the history's clocks, the Andean root and the rivers'
+  half-depth drainage each move the median by 0.01–0.03 km. Most of the rise came from (3): crests wear on the slower
+  crest clock, so the bigger their share of a range, the higher an old belt stands. So the broad envelope's range terms
+  are halfway back (e.g. the Andean main range 0.35 → 0.575 of 0.8, collision fronts 0.35 → 0.525 of 0.7; plateaus
+  unchanged), the history's clocks halfway (uplift 178, crests 368, root 135 Myr), carveActiveHold and riverActiveHold
+  0.45, riverHalfKm2 2.5 × 10⁵ km², rootGain ×1.25, carving back to 0.6 Myr. Result: median 0.78 km, 23 % below 400 m,
+  mountains (> 1 km) on 107K cells between 98K and 115K; the carving keeps the shape of active belts at r 0.976 (0.928
+  before round 3) and of all mountains at 0.961. Median land before carving 0.94 km — 8a's ceiling back to 1.0.
+- Phase 8b-2, rivers through the history (2026-09-26; developer: "the important part is to indicate a history of rivers
+  in the terrain"; and "can we add more stability of small rivers between frames? (over time they can and should shift)").
+  Engine: step/rivers.js (records only; the event log and every older frame field unchanged — verified; history 27.8 s,
+  no measurable cost). First version cut toward full grading — at 121 km cells every cell is a river, and over hundreds
+  of Myr they cut away all belt relief (median land incision 0.9 km): now toward a smooth share of the relief,
+  A / (A + riverHalfKm2) — a stream notches, a great river cuts through (collision belt 90th percentile 1.1 km, plains
+  0.08, deepest ~2.4 km in the India scene) — plus a floodplain valley on flat land. Big rivers keep their courses: 92 %
+  of big-river crust cells still carry one 10 Myr on. Terrain: routing over the surface less the record, beds at least as
+  deep as the history cut them — 1800 terrain cells in the India scene cut > 100 m deeper, up to 2.8 km: gorges through the
+  belt. Small rivers: the paper's random receivers were white noise keyed to the crust position — a terrain cell sees a new
+  crust point every frame, so small rivers reshuffled everywhere (log-drainage correlation between frames at the same
+  crust 0.12); now steepest descent over a crust-anchored micro-relief (±0.1 km, 150 km): 0.2–0.3 depending on the window.
+  Frames only 2 Myr apart score the same, so the rest is NOT the land changing: the tectonic surface's medium-scale shape
+  is interpolated from records on the fixed world grid and re-forms as a plate moves (the limit noted for coastlines in
+  8a round 4) — sampling the records in each plate's own frame is the fix, proposed to the developer. Lab: Rivers
+  through time layer; sliders for the history's rivers (cutting speed, half-depth drainage; they re-run the history).
+- Phase 8b-1 round 2 (developer, 2026-09-25): "much better, though I don't LOVE that we limit the rivers arbitrarily —
+  more elegantly and smoothly". The on/off channel threshold is gone: every river carves its bed (the analytical
+  solution for all cells), and a cell drops by the share of it its valley takes, valley width ∝ √(discharge) (hydraulic
+  geometry; 20 km at 10⁴ km²) divided by the cell's size — a great river's valley fills its cell, a stream's is a sliver.
+  The hierarchy of valleys is continuous, and the resolutions agree better than with the threshold (land below 400 m
+  24 / 23 / 23 % at 160K / 640K / 2.5M; per sim cell r ≥ 0.998): a coarse cell holds more than its valley, so it drops
+  less — its mean, as at any resolution. Valley sides: a critical gradient along the flow paths (the paper's thermal
+  erosion as a limit) instead of hillslopes grown from channels. Checks: "rivers run downhill" on rivers whose valley
+  fills the cell (elsewhere a cell is a blend of its ground and the bed); the plateau-gorge check at 0.5 km of cell-mean
+  cut (0.75 measured; gorge cells now average shallower than their floor).
+- Phase 8b-1 round 1 (developer, 2026-09-25): "too aggressive … too uniform and cutting too deep everywhere, seemingly
+  cutting all the way down instead of descending against the existing topography … cutting through all the ridges".
+  Three causes: at 2 Myr a big river's wave reached hundreds of km, so a valley floor took the height of ground far
+  downstream (near the sea); channels from ~2000 km² made every upland the same dense network; hillslopes at 0.03 km/km
+  planed off everything a few hundred metres above a channel within ~10 km — the fold ridges. Now 0.6 Myr (a valley
+  floor drops to the ground a little way downstream: it follows the land's own slope and cuts deep only where the land
+  falls steeply — mountain fronts, plateau edges), channels from 5000 km², valley sides 0.1 km/km (steeper with relief):
+  ridges, grain and plateau tops survive, valleys cut back from coasts and edges. Land below 400 m 18 → 23 % (was 31 %;
+  Earth ≈ half — the balance now rests on 8b-2 and the evolving erosion); the hypsometry check re-specified (moderate
+  lowering, median kept ≥ 75 %). Slider range 0.1–5 Myr. The developer's next priority, before 8b-2: this look.
+- Phase 8b-1, rivers carve the surface (2026-09-25; developer: no river lines by default; carve every frame of the
+  history — "it will be interesting"; rivers may change from frame to frame, "somewhat realistic", and the history of
+  rivers matters most — 8b-2). Method in §5 step 3 (Tzathas et al. 2024, read in full). Lessons: (1) carving EVERY cell
+  as a channel (the paper's grids are metres; ours are 12–60 km) made a patchwork of valley floors with no hillslopes —
+  choppy, faceted, and far more lowering at coarse meshes (all cells channels at 160K); channels only above a drainage
+  area in km² (and ≥ 4 cells), hillslopes rising from them, fixed both: carved heights now agree sim cell by sim cell at
+  160K / 640K / 2.5M (r ≥ 0.995, ≤ 0.14 km) with the same hypsometry. (2) Over a surface that is not monotone along a
+  river the travelling wave leaves dips (7 % of channel cells stood below their receiver): channels are kept monotone
+  downstream. (3) River beds can never go below the sea (the starting surface z − u·t is clamped at 0) and land stays
+  land (a 2 m floor), or coasts drowned in strips. (4) Reach is wave speed × time: at 3 Myr India's plateau was cut
+  everywhere (and the plains uniformly dissected); 2 Myr leaves a front of dissection moving inland — plateau cores kept
+  (median 75 % of their height, gorges to ~1.9 km), plains partly whole — and 31 % of the land below 400 m (18 % before;
+  Earth ≈ half: the remaining gap is the tectonic surface's upland, the balance to tune with the developer). Lab: phase
+  8b (the 8a machinery as terrainPhase), the frame on screen shown at once and carved ~1–2 s later on a carving worker
+  (carve-worker.js), every other frame surfaced and carved ahead in the background (carving pipelined with the next
+  surface); layers Before carving, Carving depth, Drainage (the river network, off the terrain by default). Carving:
+  0.2 s at 160K, 0.65–0.9 s at 640K, ~2.6 s at 2.5M (four levels), bit-identical on the worker.
 - Phase 8a round 4 (developer, 2026-09-25). (1) "Shouldn't we have it precalculated and replay it?" — the history and
   its evolved heights already are; the terrain drawn from them was rebuilt per frame, and its fine detail did NOT persist:
   every noise was read at world positions (a drifting continent slid through a fixed pattern) and ridge phases / volcano

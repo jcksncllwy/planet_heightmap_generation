@@ -9,7 +9,8 @@
 // Kernels belong to the crust (anchor.js): each sits where its crust cell is now and draws its jitter and phases from
 // that cell's own stream, so a range keeps its ridges as its plate moves.
 
-import { kindType } from './records.js';
+import { kindType, kindSide } from './records.js';
+import { BeltSide } from '../tectonics/model/crust.js';
 import { nearLists } from './near-lists.js';
 import { cellRng } from './anchor.js';
 
@@ -19,7 +20,7 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 /** One kernel per belt cell of a belt layer (records.js beltLayer) that has relief and a direction. */
 export function buildStripeKernels(rec, simMesh, cfg, seed, anchor) {
     const { xyz, numCells } = simMesh, { cell, home } = anchor;
-    const homes = [], pos = [], dir = [], wave = [], phase = [], phase2 = [];
+    const homes = [], pos = [], dir = [], wave = [], phase = [], phase2 = [], d0 = [], acr = [];
     for (let w = 0; w < numCells; w++) {
         const ax = rec.across[3 * w], ay = rec.across[3 * w + 1], az = rec.across[3 * w + 2];
         if (!rec.kind[w] || rec.reliefKm[w] < 0.02 || !(ax || ay || az)) continue;
@@ -32,11 +33,36 @@ export function buildStripeKernels(rec, simMesh, cfg, seed, anchor) {
         dir.push(ax * c + cx * s, ay * c + cy * s, az * c + cz * s);
         wave.push(cfg.stripeKm[type] * (1 + cfg.stripeWaveJitter * (rng() * 2 - 1)));
         phase.push(rng() * TAU); phase2.push(rng() * TAU);
+        // (for crossAt: the cell's distance from the front and its plain across direction — both negative on the lower
+        // side of a collision, so the distance runs on through the suture)
+        const sign = kindSide(rec.kind[w]) === BeltSide.LOWER ? -1 : 1;
+        d0.push(sign * rec.dKm[w]); acr.push(sign * ax, sign * ay, sign * az);
     }
     const reachKm = cfg.stripeBandKm * 2.5;
     const near = nearLists(simMesh, homes, pos, () => reachKm);
     return { count: homes.length, pos: Float32Array.from(pos), dir: Float32Array.from(dir), wave: Float32Array.from(wave),
-        phase: Float32Array.from(phase), phase2: Float32Array.from(phase2), near, cut2: (reachKm / R) ** 2 };
+        phase: Float32Array.from(phase), phase2: Float32Array.from(phase2), d0: Float32Array.from(d0), acr: Float32Array.from(acr),
+        near, cut2: (reachKm / R) ** 2 };
+}
+
+/**
+ * The distance across the belt (km from its front; negative on the lower side of a collision, so it runs on through the
+ * suture) at the point w: each kernel's own distance, carried on along its own across direction, blended by the kernels'
+ * smooth windows — a coordinate that follows the belt's curves without the steps an interpolation over the sim mesh's
+ * triangles has where a belt's kind changes. out[0] = the distance, out[1] = the kernels' total weight (0: no belt).
+ */
+export function crossAt(K, c0, wx, wy, wz, out) {
+    const { offset, items } = K.near, { pos, acr, d0, cut2 } = K;
+    let s = 0, sum = 0;
+    for (let j = offset[c0]; j < offset[c0 + 1]; j++) {
+        const k = items[j], dx = wx - pos[3 * k], dy = wy - pos[3 * k + 1], dz = wz - pos[3 * k + 2], d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= cut2) continue;
+        const q = 1 - d2 / cut2, g = q * q * q;
+        s += g * (d0[k] + (dx * acr[3 * k] + dy * acr[3 * k + 1] + dz * acr[3 * k + 2]) * R);
+        sum += g;
+    }
+    out[0] = sum > 1e-9 ? s / sum : 0;
+    out[1] = sum;
 }
 
 /** An asymmetric ridge profile of a phase angle: −1 in the valley, +1 on the crest, the steep face after the crest. */

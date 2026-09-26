@@ -39,7 +39,8 @@ const COAST_KEYS = ['passive', 'active', 'transform', 'collision', 'arc'];
 
 /**
  * @returns {Object} per-sim-cell fields (typed arrays of length numCells unless noted):
- *   land (1 = non-ocean crust) · arc (1 = island-arc crust) · coastKm (signed distance to the edge of the continental crust, + inland) ·
+ *   land (1 = non-ocean crust) · arc (1 = island-arc crust) · craton · riverIncKm / riverKm2 (the history's rivers:
+ *   how deep they cut, what they drain; tectonics/step/rivers.js) · coastKm (signed distance to the edge of the continental crust, + inland) ·
  *   shelfKm / plainKm / slopeKm (from the nearest coast's kind) · depthKm (sea floor, ocean cells) · ageMyr and
  *   fabricKm (abyssal-hill wavelength) for ocean cells · trenchKm / trenchDepthKm (distance to, and depth of, the
  *   live trench nearby) · riseKm (distance to it on the subducting plate) · platformKm (what a land cell stands at
@@ -52,10 +53,11 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0) {
     const n = simMesh.numCells, { xyz, adjOffset, adjList } = simMesh, time = frame.time;
     const noise = new SimplexNoise(seed * 13 + 5);
     const land = new Uint8Array(n);
-    const arc = new Uint8Array(n);
+    const arc = new Uint8Array(n), craton = new Uint8Array(n);
     for (let w = 0; w < n; w++) {
         land[w] = frame.owner[w] >= 0 && frame.type[w] !== CrustType.OCEAN ? 1 : 0;
         arc[w] = land[w] && frame.type[w] === CrustType.ARC ? 1 : 0;
+        craton[w] = land[w] && frame.type[w] === CrustType.CRATON ? 1 : 0;
     }
     fillPockets(simMesh, land, cfg.pocketSeaKm2);
 
@@ -128,8 +130,14 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0) {
     const erosion = new Float32Array(n);
     for (let w = 0; w < n; w++) erosion[w] = erosionAtLatitude(Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI, cfg);
 
-    // ── the continental platform: crust kind, isostasy of the thickened crust, mantle swell, flood basalts ──
+    // ── the continental platform: crust kind, isostasy of the thickened crust, mantle swell (relative), flood basalts apart ──
     const platformKm = new Float32Array(n), quietMyr = new Float32Array(n);
+    const lipKm = new Float32Array(n), lipWornKm = new Float32Array(n), lipSrc = new Uint16Array(n);
+    // dynamic topography is relative: the land rises where the mantle under it is hotter than under the land on average
+    // (a continent that sat still while the others drifted), and none rises where all of it is as hot (a supercontinent)
+    let heatSum = 0, landCount = 0;
+    for (let w = 0; w < n; w++) if (land[w]) { heatSum += (frame.mantleHeat[w] / 255) ** 2; landCount++; }
+    const heatMean = landCount ? heatSum / landCount : 0;
     for (let w = 0; w < n; w++) {
         if (!land[w]) continue;
         const type = frame.type[w], flags = frame.flags[w];
@@ -144,10 +152,23 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0) {
         // the evolved root, by Airy isostasy, and the evolved uplift above it (tectonics/step/heights.js)
         const root = frame.rootKm[w] * (type === CrustType.ARC ? 0.25 : 1);     // (an arc's recorded thickening is mostly its own growth, already in its maturity)
         h += cfg.isoMaxKm * (1 - Math.exp(-root / cfg.isoScaleKm));        // (the evolved uplift is carried separately: upliftKm)
-        h += cfg.swellKm * (frame.mantleHeat[w] / 255) ** 2;
-        if (frame.volcType[w] === VolcanicType.LIP) h += cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]);
+        h += cfg.swellKm * Math.max(0, (frame.mantleHeat[w] / 255) ** 2 - heatMean);
+        h += frame.baseKm[w];                                               // (the start world's swells, as worn so far)
+        if (frame.volcType[w] === VolcanicType.LIP) {                   // (the pile, and how far it has worn: lips.js)
+            lipKm[w] = cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]); lipWornKm[w] = frame.volcWornKm[w]; lipSrc[w] = frame.volcSource[w];
+        }
         platformKm[w] = h;
     }
+    // how far in from a province's edge (its escarpment retreats from there)
+    const lipEdge = new Float32Array(n);
+    for (let w = 0; w < n; w++) lipEdge[w] = lipKm[w] > 0 ? Infinity : 0;
+    spreadKm(simMesh, lipEdge, { canEnter: (a, b) => lipKm[b] > 0, maxKm: 2000 });
+    const lipEdgeKm = Float32Array.from(lipEdge, d => Math.min(2000, d));
+    // …and how far out from one, over the land (its dykes come out from under the lava across the edge)
+    const lipOut = new Float32Array(n);
+    for (let w = 0; w < n; w++) lipOut[w] = lipKm[w] > 0 ? 0 : Infinity;
+    spreadKm(simMesh, lipOut, { canEnter: (a, b) => land[b] === 1, maxKm: 3000 });
+    const lipOutKm = Float32Array.from(lipOut, d => Math.min(3000, d));
 
     // ── failed rift arms: distance from the arm (a line one cell wide — the terrain gives it a width in km) ──
     const armDist = new Float32Array(n).fill(Infinity);
@@ -160,8 +181,8 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0) {
     const overprinted = beltLayer(frame, simMesh, cfg, land, coastKm, { type: frame.prevType, u: frame.prevU, reach: frame.prevReach, side: frame.prevSide, shear: frame.prevShear, last: frame.prevLast, rugged: frame.prevRugged });
     const { kind, dKm, reach, reliefKm, shear, across } = current;
 
-    return { land, arc, coastKm, coastKind, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm,
-        platformKm, upliftKm: frame.upliftKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
+    return { land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm,
+        platformKm, upliftKm: frame.upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
 }
 
 /**
@@ -181,6 +202,34 @@ function beltLayer(frame, simMesh, cfg, land, coastKm, rec) {
         shear[w] = rec.shear[w];
         quietMyr[w] = Math.max(0, time - rec.last[w]);
         reliefKm[w] = rec.rugged[w];                  // the crests' height, as the history built and wore it (tectonics/step/heights.js)
+    }
+    // the distance across a belt is a coordinate: from one cell to the next it changes by no more than the distance between
+    // them. The history leaves the odd cell with a stale one — at the belt's far edge amid its front — and the terrain,
+    // interpolating across, drew the belt's ranges around it in a ring (developer: "mountain donuts or crescents"). Such a
+    // cell takes the median of its same-kind neighbours'; the rest are left as recorded.
+    const raw = dKm.slice(), vals = [], jumpKm = 1.3 * simMesh.edgeKm;
+    for (let w = 0; w < n; w++) {
+        if (!kind[w]) continue;
+        vals.length = 0;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (kind[nb] === kind[w]) vals.push(raw[nb]); }
+        if (vals.length < 2) continue;
+        vals.sort((a, b) => a - b);
+        const mid = vals.length % 2 ? vals[vals.length >> 1] : 0.5 * (vals[(vals.length >> 1) - 1] + vals[vals.length >> 1]);
+        if (Math.abs(raw[w] - mid) > jumpKm) dKm[w] = mid;
+    }
+    // a scrap of a belt cannot hold its cross-section: its crests scale with the area of its patch (terrain-config.js
+    // beltPatchMinKm2) — the patch of the same kind of belt, both sides of a collision together
+    const patch = new Int32Array(n).fill(-1), cellKm2 = 4 * Math.PI * 6371 * 6371 / n, queue = [];
+    for (let w0 = 0; w0 < n; w0++) {
+        if (!kind[w0] || patch[w0] >= 0) continue;
+        const type = kindType(kind[w0]);
+        queue.length = 0; queue.push(w0); patch[w0] = w0;
+        for (let i = 0; i < queue.length; i++) for (let k = adjOffset[queue[i]]; k < adjOffset[queue[i] + 1]; k++) {
+            const nb = adjList[k];
+            if (kind[nb] && patch[nb] < 0 && kindType(kind[nb]) === type) { patch[nb] = w0; queue.push(nb); }
+        }
+        const s = Math.min(1, Math.max(0, (queue.length * cellKm2 - cfg.beltPatchMinKm2) / (cfg.beltPatchFullKm2 - cfg.beltPatchMinKm2))), scale = s * s * (3 - 2 * s);
+        if (scale < 1) for (const w of queue) reliefKm[w] *= scale;
     }
 
     // which way across the strike: straight away from the nearest point of the belt's front

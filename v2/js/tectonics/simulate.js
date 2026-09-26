@@ -12,11 +12,12 @@ import { collapseArcs } from './ops/collapse-arc.js';
 import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
 import { riftContinents } from './step/rifting.js';
 import { initiateSubduction } from './step/subduction-init.js';
-import { updateHotspots } from './step/hotspots.js';
+import { updateHotspots, insulateAtStart } from './step/hotspots.js';
 import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
 import { growMarginIsles } from './step/margin-isles.js';
 import { captureFrame } from './snapshot.js';
-import { evolveHeights } from './step/heights.js';
+import { evolveHeights, seedBaseRelief } from './step/heights.js';
+import { evolveRivers } from './step/rivers.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
 
 /**
@@ -40,6 +41,8 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
     resolve(world);
     if (events && tidyPlates(world)) resolve(world);         // a scene may hand a plate cells that are not joined to it: settle that before anything moves
     classifyBoundaries(world, 0);
+    if (world.time === 0 && !world.baseSeeded) { seedBaseRelief(world); world.baseSeeded = true; }   // (records only)
+    if (events && !world.hotspotsReady) insulateAtStart(world);   // (the first frame shows the start's mantle heat; step 1 sets it again)
     drive(world);
     steerBackArcStrips(world);
     record(captureFrame(world));
@@ -79,6 +82,7 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
             }
         }
         evolveHeights(world, dt);                           // heights wear down and spread (records only: nothing below reads them)
+        evolveRivers(world, dt);                            // rivers drain the land and cut into it (records only too)
         drive(world);
         steerBackArcStrips(world);                          // a back-arc strip follows its retreating trench, whatever drives the rest
         stepLog.push({ time: world.time, dt, cellsMoved, ...tally });

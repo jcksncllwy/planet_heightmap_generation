@@ -13,8 +13,9 @@ before changing the engine.
 driving forces · collisions (belts, suturing with redraw) · trench wings, island arcs, terrane docking · rifting,
 foundering margins, oceanic plate birth · hotspots & LIPs · margins, flat slabs, back-arc seas, fore-arc islands · the
 crust budget: erosive margins, continental underthrusting, arc recycling. Phase 8 (terrain) is under way: **8a**, the
-tectonic surface — heights from the records, with ridges laid out along each belt's front — is built; 8b (rivers
-carve it) is next. The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
+tectonic surface — heights from the records, with ridges laid out along each belt's front — is built, and **8b**,
+rivers carving it — with the history's own rivers, which persist and cut gorges as the land rises under them — too.
+Phase 9 (the render mesh, V1's polish and climate) is next. The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
 ## Running it
@@ -30,7 +31,7 @@ on-screen checklist of what to look for, live numbers, and a time scrubber. Spac
 mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points.
 
 ```
-node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a — headless acceptance checks, PASS/FAIL, exit code
+node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b — headless acceptance checks, PASS/FAIL, exit code
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
@@ -69,6 +70,8 @@ js/tectonics/
                                     subduction-init (when a passive margin founders)
                      heights:       the evolving height records (root, uplift, crest size, volcano wear) and
                                     their erosion by latitude — records only, the history never reads them
+                     rivers:        the history's rivers: drained every few Myr, cutting as they go (gorges
+                                    where land rose under them) — records only too
   ops/             plate surgery, called by the event stages: rift (path + split), merge-plates (suture with the
                    outline redraw), accrete-terrane (docking), scrape-arc, collapse-arc (fore-arc closure),
                    birth-ocean-plate (a plate carved out of the passive ocean), tidy-plates (integrity: fragments,
@@ -79,6 +82,9 @@ js/tectonics/
 js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of any resolution —
   terrain-config   every terrain tunable, in km / Myr (TERRAIN; terrainConfig(overrides))
   anchor           the fine detail belongs to the crust: plate-frame positions for noise, per-crust-cell random streams
+  carve            Phase 8b: rivers carve the surface — the stream power law solved analytically in time along a
+                   routed river network (Tzathas et al. 2024), coarse to fine over the sim and terrain meshes;
+                   carve-worker carves whole frames off the page's thread
   terrain-mesh     the terrain mesh (cached per size) and sampleOnto: each terrain cell's 3 sim cells + weights,
                    looked up through a smooth noise warp so the sim's cells never show
   records          step 1: the Frame read into per-sim-cell fields — signed coast distance, shelf / plain / slope by
@@ -86,8 +92,10 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    side of a collision), distance from its front, reach, relief, obliquity, the across-strike direction
   profiles         cross-sections of each kind of belt (WBP VIIa): crests, valleys, plateaus, basins vs distance from the front
   stripes          the parallel ridges inside a belt: phasor noise on kernels aligned across the strike (en-echelon
-                   along transforms), faded where the mesh is too coarse to show them
+                   along transforms), faded where the mesh is too coarse to show them; crossAt, the distance across a
+                   belt as its kernels carry it (smooth, bending with the front) that the ridge noise is read at
   volcanoes        cones: hotspot islands / seamounts, island-arc chains, Andean stratovolcanoes
+  lips             flood basalts on land: each province's pieces (centre, radius, age) and its radiating dyke swarm
   near-lists       which point features can reach a sim cell's terrain points
   synthesize       synthesizeTerrain(frame, simMesh, terrainMesh) → heightKm (+ components) = preparePlan (per frame)
                    + surfaceRange (any range of cells); hypsometry()
@@ -198,13 +206,22 @@ sea floor over ocean corners, the land/sea transition from the interpolated sign
 shape in km, not in cells), each belt kind by its share of the weights. The broad relief is the uplift the history evolved
 (engine rule 8), interpolated over land corners; on it, each belt's crests (`profiles.js` crestProfile × the evolved
 crest size), plus strike-parallel ridges (`stripes.js`: guidance, a share
-of the belt's own uplift) and cones. Belts come in two layers — the current one and the one it overprinted, at half
+of the belt's own uplift), ridge noise — simplex noise drawn out ~8× along the strike (read at the distance across the
+belt, fast, and the position along it, slow), so its highs and lows run with the range — and cones. The first
+continents are not flat: when the history starts they get broad swells (`baseKm`, up to `baseReliefKm`, half on
+shields) that wear down like the rest of the relief and steer the history's rivers into the lowlands between them. Belts come in two layers — the current one and the one it overprinted, at half
 strength with its own grain — and each corner's share is scaled by noise of its own, so kinds of ground interfinger.
 Every erosion clock runs faster where it rains more — a hard-coded zonal-mean rainfall by latitude, with ice keeping
 the high latitudes eroding (terrain-config.js rainByLatitude, glacialErosion; erosionAtLatitude), and faster on high
 ground than on low (erosionAtHeight): old ranges linger as low hills. Volcanoes are irregular massifs, not cones: an
 edifice with a noise-warped outline, broad ridges (rift zones, arc ridges) running out from the summit, gullies in the
-lower flanks, sometimes a flank collapse. The fine detail belongs to the crust (`anchor.js`): noise is read in the frame
+lower flanks, sometimes a flank collapse. Flood basalts (`lips.js`) are cut up as they wear, not ground flat: the
+history records how far each province has worn (`volcWornKm`, by the rain of its latitude), and the terrain strips its
+cap where a mesa noise of its own stands below that — in tiers, sooner near the province's edge — so a young province
+is a plateau with a lobed edge, then an escarpment retreats with mesas left before it, then buttes and remnants; after
+the rivers carve, wherever the basalt is cut into it is stepped (`carve.js` terraceBasalt: flat treads, cliffs), its
+canyons steep-walled; and its dykes radiate from the plume's centre as a wavy, fanned grain that comes out from under
+the lava across its edge. The fine detail belongs to the crust (`anchor.js`): noise is read in the frame
 of the plate under each point, and ridge kernels and volcanoes are keyed to crust cells — scrub the history and a
 drifting continent carries its ridges and volcanoes with it. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
@@ -212,6 +229,24 @@ ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its
 worker) with the new constants; the history itself comes out the same. The lab builds the frame shown, then every other
 frame in the background (heights only, within a memory budget), so scrubbing and playing need no building; sea level
 and hillshade only re-shade.
+
+**Rivers (Phase 8b, `carve.js`).** The tectonic surface is carved by the stream power law, solved analytically in time
+along the river network (Tzathas, Gailleton, Steer & Cordonnier 2024): after `carveTimeMyr` a point stands where the
+ground downstream stood, the erosion wave having travelled up at k·A^m, plus the rock uplift gathered on the way —
+with a short time (0.6 Myr) a valley floor drops only to the ground a little way downstream, so rivers descend with the
+existing topography and cut deep where the land falls steeply; ridges and plateau tops survive. The network
+is a priority flood from the sea with slope-weighted random receivers; drainage areas are in km² (rain-weighted). Every
+river carves: a cell drops by the share of it its valley takes, the valley widening with √(discharge) (`carveValleyKm`
+wide at 10⁴ km²), so great rivers cut whole cells and streams barely mark theirs; valley sides are held to
+`carveHillSlope`. Solved coarse to fine (sim mesh, then the terrain meshes up to the one shown), so the big
+rivers are the same at every resolution. The lab's 8b phase shows every frame carved (the surface first, then its
+carving from a worker); the Drainage layer shows the network, which is not drawn on the terrain by default.
+**Rivers through the history (8b-2, `step/rivers.js`).** Every 4 Myr the history drains its land on the sim mesh, over the
+evolved height less what rivers already cut there — so a river keeps a course it has cut — and each river cuts by stream
+power toward a share A / (A + `riverHalfKm2`) of the relief it crosses. The cut is a crust record (`riverIncKm`); where
+land rose under a river that kept up, it is a gorge. The carving routes over the surface less that record and makes
+every river bed at least as deep, so rivers follow their historical courses and canyons show where they held them. Small
+rivers are routed over a micro-relief of the crust's own, so they ride with their continent between frames.
 **Scale invariance:** all lengths are km; noise is a function of position; waves shorter than ~2 terrain cells are
 faded out, not aliased. `check-phase8a.mjs` compares 160K, 640K and 2.5M cells sim cell by sim cell.
 A phase that draws terrain sets `displayMesh` (its layers paint terrain cells) and may offer `profileAlong` (the
@@ -227,7 +262,8 @@ resolves of a step, contacts cached per resolve, scratch arrays reused. In the l
 never freezes. Terrain is spread over workers (every cell depends only on its position and the per-frame plan):
 2.5M cells 5.2 s → ~0.6 s a frame; the terrain mesh is built in a worker while the history runs. Then the lab builds
 every other frame ahead, in the background (heights as 16-bit metres, 320 MB at most — 64 MB on small devices): once
-built, a frame shows in ~0.15–0.35 s at 640K and ~0.4 s at 2.5M in Chrome (re-shading only).
+built, a frame shows in ~0.15–0.35 s at 640K and ~0.4 s at 2.5M in Chrome (re-shading only). Carving (8b) takes
+0.2 s at 160K, ~0.9 s at 640K and ~2.6 s at 2.5M on its worker, pipelined with the next frame's surface.
 
 ## Conventions
 

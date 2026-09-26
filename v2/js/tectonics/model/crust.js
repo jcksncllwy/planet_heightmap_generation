@@ -50,7 +50,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'rugged', 'prevRugged', 'volcWornKm', 'volcType', 'volcAt', 'volcKm', 'volcSource']);
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'volcType', 'volcAt', 'volcKm', 'volcSource']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -90,9 +90,11 @@ export class CrustRaster {
         // Heights as evolving state (step/heights.js; Phase 8): records only, the history never reads them
         this.rootKm = new Float32Array(numCells);      // thickened crust that can still wear away (km); heights by Airy isostasy
         this.upliftKm = new Float32Array(numCells);    // broad relief built by belts and worn by erosion (km)
+        this.baseKm = new Float32Array(numCells);      // the start world's own swells, worn by erosion (km)
         this.rugged = new Float32Array(numCells);      // how high the current belt's crests stand (km)
         this.prevRugged = new Float32Array(numCells);  // …and the overprinted belt's
         this.volcWornKm = new Float32Array(numCells);  // how far a hotspot volcano has worn down since it last erupted (km)
+        this.riverIncKm = new Float32Array(numCells);  // how deep the history's rivers have cut into this crust (km; step/rivers.js)
         // Volcanic record (step/hotspots.js): what a plume built here, when it last erupted here, and which plume it was.
         this.volcType = new Uint8Array(numCells);      // VolcanicType
         this.volcAt = new Float32Array(numCells);      // sim time of the last eruption here (a track's age progression lives in this)
