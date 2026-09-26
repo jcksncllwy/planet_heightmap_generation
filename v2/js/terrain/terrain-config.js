@@ -97,6 +97,9 @@ export const TERRAIN = {
     riseKm: 0.35,               // the outer rise on the subducting plate, this high…
     riseAtKm: 160,              // …this far from the trench axis
 
+    anchorRecords: true,        // read the records over each plate's own raster (Phase 9: steady detail); false = the fixed
+                                // world grid, as before (kept for comparisons)
+
     // ── Mountain belts: relief on top of the isostatic platform (profiles.js lays out the cross-sections) ──
     reliefKm: {                 // crest height of each kind of belt when mature and active
         [OrogenyType.ANDEAN]: 3.4, [OrogenyType.LARAMIDE]: 1.5, [OrogenyType.URAL]: 1.7, [OrogenyType.HIMALAYAN]: 3.2,
@@ -163,6 +166,11 @@ export const TERRAIN = {
     stripeFineShare: 0.4,       // a second, finer set (wavelength ÷ stripeFineRatio) this strong, for fine meshes
     stripeFineRatio: 2.6,
     stripeBandKm: 150,          // kernel envelope (σ) of the phasor sum: must overlap from one sim cell to the next
+    // Fine detail renews slowly (developer, after Phase 9 made the detail ride with the crust: the frames were "a little bit
+    // too consistent — some of the variation added to the charm"): the ridges' phases drift, and the bays and headlands,
+    // the ridges' segments and crests and the ridge noise fade over to new ones — steady from one frame to the next, a
+    // landscape re-sculpted over geological time. Only the fine detail: the history's own shapes are the history's.
+    detailRenewMyr: 150,        // …over about this long (0: never — the detail stays frozen on the crust)
     stripeMeanderKm: 16,        // stripes wander by about this much…
     stripeMeanderAlongKm: 350,  // …over this distance (so they bend by ~15° at most, and stay parallel to the front)
     // En-echelon ridges: where plates met obliquely, fold axes turn by half the obliquity. Along a transform that is

@@ -36,7 +36,56 @@ export function buildAnchor(frame, simMesh) {
         home[3 * w + 1] = mats[b + 3] * rx + mats[b + 4] * ry + mats[b + 5] * rz;
         home[3 * w + 2] = mats[b + 6] * rx + mats[b + 7] * ry + mats[b + 8] * rz;
     }
-    return { owner, mats, cell, home };
+    return { owner, mats, cell, home, moved, rasterWorld: new Map() };
+}
+
+/**
+ * Every crust cell of a moving plate around the world cells where `wanted(w)` holds — each ONCE, however the world grid
+ * happens to land on the plate this frame (a rotated raster leaves some of its cells nobody's nearest and others two
+ * world cells' nearest: things placed per world cell came and went, or doubled, as the plate moved) — as
+ * visit(recordCell, crustCell, x, y, z): the world cell whose records describe it (the one nearest it, which must be on
+ * its plate and pass `wanted` too), and where that crust is now. A plate that has not moved: its world cells themselves.
+ * In world-cell order, then raster-neighbour order: the same sites in the same order in every worker.
+ */
+export function crustSites(A, simMesh, wanted, visit) {
+    const { xyz, numCells, adjOffset, adjList } = simMesh, m = A.mats, seen = new Set();
+    for (let w = 0; w < numCells; w++) {
+        const o = A.owner[w];
+        if (o < 0 || !wanted(w)) continue;
+        if (!A.moved[o]) { visit(w, w, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2], o); continue; }
+        const r0 = A.cell[w], b = 9 * o;
+        for (let k = adjOffset[r0] - 1; k < adjOffset[r0 + 1]; k++) {
+            const r = k < adjOffset[r0] ? r0 : adjList[k], key = o * numCells + r;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const w2 = rasterToWorld(A, simMesh, o, r);
+            if (w2 < 0 || !wanted(w2)) continue;
+            const x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
+            visit(w2, r, m[b] * x + m[b + 1] * y + m[b + 2] * z, m[b + 3] * x + m[b + 4] * y + m[b + 5] * z, m[b + 6] * x + m[b + 7] * y + m[b + 8] * z, o);
+        }
+    }
+}
+
+/**
+ * The world cell whose records describe raster cell `r` of plate `o` this frame: the one that shows it (its nearest crust
+ * cell), or, for a crust cell no world cell shows, the one nearest where that crust now is — or −1 if that belongs to
+ * another plate (the crust is hidden, or at the plate's edge). Cached per plate.
+ */
+export function rasterToWorld(A, simMesh, o, r) {
+    let map = A.rasterWorld.get(o);
+    if (!map) {
+        map = new Int32Array(simMesh.numCells).fill(-2);
+        for (let w = 0; w < simMesh.numCells; w++) if (A.owner[w] === o && map[A.cell[w]] === -2) map[A.cell[w]] = w;
+        A.rasterWorld.set(o, map);
+    }
+    let w = map[r];
+    if (w === -2) {
+        const m = A.mats, b = 9 * o, { xyz } = simMesh, x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
+        w = simMesh.index.nearest(m[b] * x + m[b + 1] * y + m[b + 2] * z, m[b + 3] * x + m[b + 4] * y + m[b + 5] * z, m[b + 6] * x + m[b + 7] * y + m[b + 8] * z);
+        if (A.owner[w] !== o) w = -1;
+        map[r] = w;
+    }
+    return w;
 }
 
 /**

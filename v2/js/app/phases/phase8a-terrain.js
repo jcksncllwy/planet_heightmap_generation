@@ -35,6 +35,7 @@ const TERRAIN_TUNABLES = [
     { id: 'stripeShare', label: 'Parallel ridges: share of the belt’s own uplift', min: 0, max: 0.5, step: 0.02 },
     { id: 'ridgeNoiseShare', label: 'Ridge noise along the ranges: share of the belt’s uplift', min: 0, max: 0.5, step: 0.02 },
     { id: 'ridgeNoiseStretch', label: 'Ridge noise: times longer along the range than across', min: 1, max: 16, step: 1 },
+    { id: 'detailRenewMyr', label: 'Fine detail slowly renews over (0 = frozen on the crust)', min: 0, max: 500, step: 10, unit: ' Myr' },
     { id: 'baseReliefKm', label: 'Swells of the first continents (re-runs the history)', min: 0, max: 2, step: 0.1, unit: ' km', evolves: true },
     { id: 'lipWearKmPerMyr', label: 'Flood basalts wear down (re-runs the history)', min: 0, max: 0.02, step: 0.001, unit: ' km/Myr', evolves: true },
     { id: 'dykeKm', label: 'Radiating dykes around flood basalts: height of their grain', min: 0, max: 0.3, step: 0.01, unit: ' km' },
@@ -70,7 +71,7 @@ const CHECKLISTS = {
         'Heights accumulate: where a new belt overprints an old one the old relief is not erased, and a belt that drifted through the wet tropics is lower than one of the same age at the dry subtropics (Erosion rate layer).',
         'Passive margins have wide shelves, active margins narrow ones; mid-ocean ridges stand ~2.5 km deep, old floor 5–6 km, trenches deeper still.',
         'Switch the terrain resolution: the same planet at every resolution — only finer detail (the parallel ridges appear from 640K up).',
-        'Scrub through the history: a drifting continent carries its fine detail with it — its ridges, its volcanoes, the grain of its plains — and detail changes only where the history changes it.',
+        'Scrub through the history: a drifting continent carries its fine detail with it — its coastline, its shelves, the edges of its belts, its ridges, its volcanoes, the grain of its plains — changing only where the history changes it (Phase 9: the terrain is read on each plate’s own crust), and, slowly, as its fine detail renews: over a few hundred Myr its bays and headlands and the grain of its ridges re-form (the “Fine detail slowly renews” slider; 0 freezes it).',
     ],
 };
 

@@ -19,7 +19,7 @@ import { CrustType, CrustFlag, VolcanicType, OrogenyType } from '../tectonics/mo
 import { ISLAND_EROSION_KM_PER_MYR, SEAMOUNT_KM, seaDepthKm } from '../tectonics/measure.js';
 import { kindType } from './records.js';
 import { nearLists } from './near-lists.js';
-import { cellRng } from './anchor.js';
+import { cellRng, crustSites } from './anchor.js';
 import { FastNoise } from '../core/fast-noise.js';
 
 const R = 6371, TAU = 2 * Math.PI, MAX_ARMS = 3;
@@ -38,7 +38,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
     const between = (rng, [lo, hi]) => lo + (hi - lo) * rng();
 
     // one volcano at world position (x, y, z), long axis `e` (a unit tangent there), shape drawn from `rng`
-    const place = (w, rng, x, y, z, e, h, r, f, kind, floorKm, armsFrom) => {
+    const place = (w, rc, rng, x, y, z, e, h, r, f, kind, floorKm, armsFrom) => {
         const a = 1 + cfg.coneElongation[kind] * rng(), sa = Math.sqrt(a), s = new Float32Array(STRIDE);
         for (let i = 0; i < 3; i++) { s[LOBES + i] = cfg.coneLobes * rng(); s[LOBES + 3 + i] = rng() * TAU; }
         s[LOBES + 6] = cfg.coneLobesFine * rng(); s[LOBES + 7] = rng() * TAU;
@@ -60,7 +60,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
         s[WOBBLE] = rng() * TAU; s[NOISE] = rng() * 200; s[NOISE + 1] = rng() * 200;
         let far = 1 + s[LOBES] + s[LOBES + 1] + s[LOBES + 2] + s[LOBES + 6] + cfg.coneWarp;
         for (let i = 0; i < count; i++) far = Math.max(far, s[ARMS + 4 * i + 1] + 2.5 * s[ARMS + 4 * i + 2] + cfg.coneWarp);
-        homes.push(w); crust.push(cell[w]); plate.push(anchor.owner[w]); base.push(floorKm); pos.push(x, y, z); height.push(h); radius.push(r); rounded.push(f); axis.push(e[0], e[1], e[2]); aspect.push(a);
+        homes.push(w); crust.push(rc); plate.push(anchor.owner[w]); base.push(floorKm); pos.push(x, y, z); height.push(h); radius.push(r); rounded.push(f); axis.push(e[0], e[1], e[2]); aspect.push(a);
         for (let i = 0; i < STRIDE; i++) shape.push(s[i]);
         reach.push(r * sa * far);
         ribFade.push(smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, TAU * 0.6 * r / N / edgeKm));
@@ -70,12 +70,12 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
     // a volcano on the crust of world cell w: where that crust is now (anchor.home, plus jitter drawn in the plate's
     // frame), its long axis along `along` (a world tangent: the strike) turned a little, or any way (in the plate's frame)
     // (floorKm: the height of the sea floor a hotspot edifice stands on, or NaN — it stands on whatever is under it)
-    const add = (w, rng, jitterKm, h, r, ageMyr, along, kind, worn = false, floorKm = NaN) => {
+    const add = (w, rc, rng, jitterKm, h, r, ageMyr, along, kind, worn = false, floorKm = NaN) => {
         const f = 1 - Math.exp(-Math.max(0, ageMyr) * (worn ? 1 : rec.erosion[w]) / cfg.coneSpreadMyr);
         h *= 1 - cfg.coneSettle * f; r *= 1 + cfg.coneSpread * f;
         const o = anchor.owner[w], b = 9 * Math.max(0, o), M = o >= 0 ? mats : IDENTITY, mb = o >= 0 ? b : 0;
         const toWorld = (v) => [M[mb] * v[0] + M[mb + 1] * v[1] + M[mb + 2] * v[2], M[mb + 3] * v[0] + M[mb + 4] * v[1] + M[mb + 5] * v[2], M[mb + 6] * v[0] + M[mb + 7] * v[1] + M[mb + 8] * v[2]];
-        const rc = cell[w], j = jitterKm / R;
+        const j = jitterKm / R;
         const local = unit([xyz[3 * rc] + (rng() * 2 - 1) * j, xyz[3 * rc + 1] + (rng() * 2 - 1) * j, xyz[3 * rc + 2] + (rng() * 2 - 1) * j]);
         const c = unit(toWorld(local));
         let e;
@@ -87,7 +87,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
             const e1 = tangent(local, Math.abs(local[2]) < 0.9 ? [-local[1], local[0], 0] : [1, 0, 0]), e2 = cross(local, e1), phi = rng() * TAU;
             e = unit(toWorld([Math.cos(phi) * e1[0] + Math.sin(phi) * e2[0], Math.cos(phi) * e1[1] + Math.sin(phi) * e2[1], Math.cos(phi) * e1[2] + Math.sin(phi) * e2[2]]));
         }
-        const { s, sa } = place(w, rng, c[0], c[1], c[2], e, h, r, f, kind, floorKm);
+        const { s, sa } = place(w, rc, rng, c[0], c[1], c[2], e, h, r, f, kind, floorKm);
         // flank vents, smaller: out along an arm (a rift zone's cones), or on the long axis
         if (rng() < cfg.coneSatellites[kind]) {
             const count = rng() < 0.4 ? 2 : 1, q = cross(c, e);
@@ -99,7 +99,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
                 const da = Math.cos(ang) * along2 * r * sa / R, db = Math.sin(ang) * along2 * r / sa / R;
                 const sc = unit([c[0] + da * e[0] + db * q[0], c[1] + da * e[1] + db * q[1], c[2] + da * e[2] + db * q[2]]);
                 const outward = tangent(sc, [da * e[0] + db * q[0], da * e[1] + db * q[1], da * e[2] + db * q[2]]);
-                place(w, rng, sc[0], sc[1], sc[2], outward, h * (0.4 + 0.3 * rng()), r * (0.45 + 0.2 * rng()), f, kind, floorKm, [0, 1]);
+                place(w, rc, rng, sc[0], sc[1], sc[2], outward, h * (0.4 + 0.3 * rng()), r * (0.45 + 0.2 * rng()), f, kind, floorKm, [0, 1]);
             }
         }
     };
@@ -110,34 +110,35 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
         const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
         return [y * az - z * ay, z * ax - x * az, x * ay - y * ax];
     };
-    for (let w = 0; w < numCells; w++) {
-        if (frame.owner[w] < 0) continue;
+    // per CRUST cell (anchor.js crustSites): a moving plate keeps the same volcanoes frame after frame — none lost where
+    // the world grid skips a crust cell, none doubled where it lands on one twice
+    crustSites(anchor, simMesh, w => frame.owner[w] >= 0, (w, rc) => {
         const type = frame.type[w];
         // a hotspot track at sea: the edifice, worn down since it last erupted (the floor under it deepens by itself)
         if (frame.volcType[w] === VolcanicType.TRACK && type === CrustType.OCEAN && frame.volcKm[w] >= SEAMOUNT_KM) {
             // (worn down step by step through the history, at the latitudes it passed: tectonics/step/heights.js)
             const h = frame.volcKm[w] - frame.volcWornKm[w], floor = -seaDepthKm(Math.max(0, time - frame.formedAt[w]));
-            if (h >= 0.4) add(w, cellRng(seed, cell[w], SALT.hotspot), 25, h, 25 + 25 * Math.sqrt(h), frame.volcWornKm[w] / ISLAND_EROSION_KM_PER_MYR, null, 'hotspot', true, floor);
+            if (h >= 0.4) add(w, rc, cellRng(seed, rc, SALT.hotspot), 25, h, 25 + 25 * Math.sqrt(h), frame.volcWornKm[w] / ISLAND_EROSION_KM_PER_MYR, null, 'hotspot', true, floor);
         }
         // an island arc: a chain of cones on the arc ridge — small, close islands when young, bigger ones when mature
         // (its belt reads ARC, or ANDEAN where the arc itself overrides the trench: either way an arc's volcanic front)
         const onArc = type === CrustType.ARC && !(frame.flags[w] & CrustFlag.MARGIN_ISLE);
         if (onArc && (frame.oroType[w] === OrogenyType.ARC || frame.oroType[w] === OrogenyType.ANDEAN) && rec.quietMyr[w] < cfg.arcActiveMyr && rec.dKm[w] <= cfg.arcFrontKm) {
-            const rng = cellRng(seed, cell[w], SALT.arc), m = Math.min(1, Math.max(0, (time - frame.formedAt[w]) / cfg.arcMatureMyr));
+            const rng = cellRng(seed, rc, SALT.arc), m = Math.min(1, Math.max(0, (time - frame.formedAt[w]) / cfg.arcMatureMyr));
             if (rng() < cfg.arcConeShare) {
                 const h = (cfg.coneKm.young + (cfg.coneKm.mature - cfg.coneKm.young) * m) * (0.75 + 0.5 * rng());
                 const r = (cfg.coneRadiusKm.young + (cfg.coneRadiusKm.mature - cfg.coneRadiusKm.young) * m) * (0.85 + 0.3 * rng());
-                add(w, rng, 45, h, r, 10 + 40 * m * rng(), strikeAt(w), 'arc');      // (a mature arc's older volcanoes have spread)
+                add(w, rc, rng, 45, h, r, 10 + 40 * m * rng(), strikeAt(w), 'arc');      // (a mature arc's older volcanoes have spread)
             }
         }
         // stratovolcanoes along the main range of an active Andean belt (none over a flat slab: Laramide belts are
         // their own kind, and silent)
         if (!onArc && rec.kind[w] && kindType(rec.kind[w]) === OrogenyType.ANDEAN && rec.quietMyr[w] < cfg.coneActiveMyr) {
-            const W = Math.max(40, rec.reach[w]), centre = Math.max(70, Math.min(260, 0.3 * W)), rng = cellRng(seed, cell[w], SALT.andean);
+            const W = Math.max(40, rec.reach[w]), centre = Math.max(70, Math.min(260, 0.3 * W)), rng = cellRng(seed, rc, SALT.andean);
             if (Math.abs(rec.dKm[w] - centre) < Math.max(35, 0.07 * W) + 40 && rng() < cfg.andeanConeShare)
-                add(w, rng, 35, cfg.coneKm.andean * (0.75 + 0.5 * rng()), cfg.coneRadiusKm.andean * (0.85 + 0.3 * rng()), 20 * rng(), strikeAt(w), 'andean');
+                add(w, rc, rng, 35, cfg.coneKm.andean * (0.75 + 0.5 * rng()), cfg.coneRadiusKm.andean * (0.85 + 0.3 * rng()), 20 * rng(), strikeAt(w), 'andean');
         }
-    }
+    });
     const near = nearLists(simMesh, homes, pos, i => reach[i]);
     return { count: homes.length, pos: Float32Array.from(pos), height: Float32Array.from(height), radius: Float32Array.from(radius), rounded: Float32Array.from(rounded),
         axis: Float32Array.from(axis), aspect: Float32Array.from(aspect), shape: Float32Array.from(shape), reach: Float32Array.from(reach),

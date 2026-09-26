@@ -38,6 +38,12 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {Float32Array} volcWornKm    the evolving heights (step/heights.js): root, uplift, crest heights, volcano wear
  * @property {Float32Array} riverIncKm    how deep the history's rivers have cut (step/rivers.js)
  * @property {Float32Array} riverKm2      the drainage (km², rain-weighted) the history last routed through each cell
+ * @property {Int32Array} crustCells      every plate's crust cells (plate id × numCells + raster cell), plate by plate…
+ * @property {Uint8Array} crustType       …and what each is (CrustType): the plates' own outlines, which the world view shows
+ *                                        only in part (a world cell shows the crust cell nearest it)
+ * @property {Uint8Array} crustBelt       …and its belts, 6 per cell: oroType, beltSide, beltU, prevType, prevSide, prevU (as the
+ *                                        world view carries them)…
+ * @property {Uint16Array} crustReach     …with 2 per cell: beltReach, prevReach
  * @property {{time:number, kind:string, text:string}[]} events   the world's event log up to this frame
  * @property {FramePlate[]} plates        per-plate summary, indexed by plate id
  * @property {{created:number, consumed:number, erodedCells:number, underthrustCells:number, recycledCells:number}} budget   cumulative, in cells (world.budget)
@@ -137,6 +143,29 @@ export function captureFrame(world, reuse = null) {
             dynamics: p.dynamics ? JSON.parse(JSON.stringify(p.dynamics)) : null,
         };
     });
+    // each plate's crust itself (Phase 9, developer: steady detail): which raster cells it has and what they are. A world
+    // cell shows only the crust cell nearest it, and at any moment ~15 % of a moving plate's cells are nobody's nearest;
+    // the terrain measures coasts on the plates' own rasters (terrain/records.js plateCoasts). Records only.
+    let crustCount = 0;
+    for (const p of plates) if (p.alive) crustCount += p.crust.count;
+    f.crustCells = new Int32Array(crustCount); f.crustType = new Uint8Array(crustCount);
+    f.crustBelt = new Uint8Array(6 * crustCount); f.crustReach = new Uint16Array(2 * crustCount);
+    let ci = 0;
+    for (const p of plates) {
+        if (!p.alive) continue;
+        const k = p.crust;
+        for (let c = 0; c < n; c++) {
+            if (!k.mask[c] || ci >= crustCount) continue;
+            f.crustCells[ci] = p.id * n + c; f.crustType[ci] = k.type[c];
+            // (belts as the world view carries them: the position across 0…255, the reach in whole km)
+            const B = 6 * ci;
+            f.crustBelt[B] = k.oroType[c]; f.crustBelt[B + 1] = k.beltSide[c]; f.crustBelt[B + 2] = Math.round(255 * Math.min(1, k.beltU[c]));
+            f.crustBelt[B + 3] = k.prevType[c]; f.crustBelt[B + 4] = k.prevSide[c]; f.crustBelt[B + 5] = Math.round(255 * Math.min(1, k.prevU[c]));
+            f.crustReach[2 * ci] = Math.min(65535, Math.round(k.beltReach[c])); f.crustReach[2 * ci + 1] = Math.min(65535, Math.round(k.prevReach[c]));
+            ci++;
+        }
+    }
+    if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
     f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
     f.budget = { ...world.budget };
     f.events = world.events.slice();

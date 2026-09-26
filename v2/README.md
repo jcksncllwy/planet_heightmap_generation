@@ -15,15 +15,17 @@ foundering margins, oceanic plate birth · hotspots & LIPs · margins, flat slab
 crust budget: erosive margins, continental underthrusting, arc recycling. Phase 8 (terrain) is done: **8a**, the
 tectonic surface — heights from the records, with ridges laid out along each belt's front — and **8b**, rivers
 carving it — with the history's own rivers, which persist and cut gorges as the land rises under them — plus flood
-basalts cut into mesas and stairs. Next: the parked items (the supercontinent cycle, heights feeding the history,
-steadier detail between frames, speed), then Phase 9 (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
+basalts cut into mesas and stairs. Phase 9 (steady detail) is done: the terrain is read on each plate's own crust, so a
+drifting continent keeps its coasts, ridges and rivers, and its fine detail renews only slowly. Next, per
+plans/V2_ROADMAP_PHASES_9_13.md: 10 start-world defaults, 11 natural collisions, 12 the sim's resolution, 13 the
+supercontinent cycle — then the full planet (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
 ## Running it
 
 ```
 node tuning/dev-server.mjs 8123        # any static server works; there is no build step
-open http://localhost:8123/v2/         # the lab; ?phase=1, 2, 3, 4, 5, 5b, 6a, 7a, 7b, 7c, 8a; &seed=…, &scene=india, &mobility=3.5 …
+open http://localhost:8123/v2/         # the lab; ?phase=1, 2, 3, 4, 5, 5b, 6a, 7a, 7b, 7c, 8a, 8b; &seed=…, &scene=india, &mobility=3.5 …
 ```
 
 The lab is a test bench, not the product: each phase has a scene that isolates one mechanism, an
@@ -32,7 +34,7 @@ on-screen checklist of what to look for, live numbers, and a time scrubber. Spac
 mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points.
 
 ```
-node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b — headless acceptance checks, PASS/FAIL, exit code
+node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9 — headless acceptance checks, PASS/FAIL, exit code
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
@@ -224,7 +226,14 @@ the rivers carve, wherever the basalt is cut into it is stepped (`carve.js` terr
 canyons steep-walled; and its dykes radiate from the plume's centre as a wavy, fanned grain that comes out from under
 the lava across its edge. The fine detail belongs to the crust (`anchor.js`): noise is read in the frame
 of the plate under each point, and ridge kernels and volcanoes are keyed to crust cells — scrub the history and a
-drifting continent carries its ridges and volcanoes with it. Trapped pockets of
+drifting continent carries its ridges and volcanoes with it. So does what they ride on (Phase 9): a frame carries every
+plate's crust (its cells, their types and belts — the world view shows only the crust cell nearest each world cell, and
+~15 % of a moving plate's cells are nobody's nearest), the coast distance, shelves and belt directions are measured on each
+plate's own raster, and the terrain reads a moving plate's records over that raster (`anchorRecords`), so coastlines,
+belt edges and ridges ride with their continent instead of re-forming at the scale of the sim cells as it moves. The fine
+detail is not frozen for good, though (`detailRenewMyr`, 150 Myr): the ridges' phases drift, each at a rate of its own,
+and the bays and headlands, the ridges' segments and crests and the ridge noise fade from one noise over to the next —
+from one frame to the next nothing moves, while over a few hundred Myr the landscape is re-sculpted. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
 `coastKindKm` of its coast. In the lab, the erosion clocks marked "re-runs the history" rebuild the history (in its
 worker) with the new constants; the history itself comes out the same. The lab builds the frame shown, then every other

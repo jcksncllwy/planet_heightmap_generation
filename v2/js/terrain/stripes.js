@@ -7,37 +7,51 @@
 // Stripes are asymmetric — a gentle back, a steep face toward the belt's far edge (thrusts verge to the foreland).
 // Each kernel's wavelength and direction are jittered a little, so spacing and strike wander and ridges fork and end.
 // Kernels belong to the crust (anchor.js): each sits where its crust cell is now and draws its jitter and phases from
-// that cell's own stream, so a range keeps its ridges as its plate moves.
+// that cell's own stream, so a range keeps its ridges as its plate moves — their phases drifting slowly with time
+// (detailRenewMyr), each at a rate of its own, so the ridges' forks and ends move on over geological time.
 
 import { kindType, kindSide } from './records.js';
 import { BeltSide } from '../tectonics/model/crust.js';
 import { nearLists } from './near-lists.js';
-import { cellRng } from './anchor.js';
+import { cellRng, crustSites } from './anchor.js';
 
 const R = 6371, TAU = 2 * Math.PI;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-/** One kernel per belt cell of a belt layer (records.js beltLayer) that has relief and a direction. */
-export function buildStripeKernels(rec, simMesh, cfg, seed, anchor) {
-    const { xyz, numCells } = simMesh, { cell, home } = anchor;
+/**
+ * One kernel per belt crust cell of a belt layer (records.js beltLayer) that has relief and a direction — per CRUST cell
+ * (anchor.js crustSites), so a moving belt keeps the same kernels frame after frame, and with them its ridges.
+ */
+export function buildStripeKernels(rec, simMesh, cfg, seed, anchor, timeMyr = 0) {
     const homes = [], pos = [], dir = [], wave = [], phase = [], phase2 = [], d0 = [], acr = [];
-    for (let w = 0; w < numCells; w++) {
-        const ax = rec.across[3 * w], ay = rec.across[3 * w + 1], az = rec.across[3 * w + 2];
-        if (!rec.kind[w] || rec.reliefKm[w] < 0.02 || !(ax || ay || az)) continue;
-        const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
-        const type = kindType(rec.kind[w]), share = cfg.enEchelonShare[type] ?? cfg.enEchelonShare.other, rng = cellRng(seed, cell[w], 3);
+    const wanted = w => rec.kind[w] && rec.reliefKm[w] >= 0.02 && (rec.across[3 * w] || rec.across[3 * w + 1] || rec.across[3 * w + 2]);
+    const renew = cfg.detailRenewMyr > 0 ? timeMyr / cfg.detailRenewMyr : 0;
+    crustSites(anchor, simMesh, wanted, (w, crustCell, x, y, z, o) => {
+        // which way across: measured on the plate's own raster at this crust cell (records.js rasterAcross), turned into the
+        // world with the plate — or, where the raster has none, the world grid's
+        let ax = rec.across[3 * w], ay = rec.across[3 * w + 1], az = rec.across[3 * w + 2];
+        const R3 = rec.acrossRaster?.get(o);
+        if (R3) {
+            const lx = R3[3 * crustCell], ly = R3[3 * crustCell + 1], lz = R3[3 * crustCell + 2];
+            if (lx || ly || lz) { const m = anchor.mats, b = 9 * o; ax = m[b] * lx + m[b + 1] * ly + m[b + 2] * lz; ay = m[b + 3] * lx + m[b + 4] * ly + m[b + 5] * lz; az = m[b + 6] * lx + m[b + 7] * ly + m[b + 8] * lz; }
+        }
+        const type = kindType(rec.kind[w]), share = cfg.enEchelonShare[type] ?? cfg.enEchelonShare.other, rng = cellRng(seed, crustCell, 3);
         const jitter = (rng() * 2 - 1) * cfg.stripeAngleJitterDeg;                                  // (no two kernels quite agree)
         const tilt = (share * (rec.shear[w] / 2) + jitter) * Math.PI / 180, c = Math.cos(tilt), s = Math.sin(tilt);      // + dextral → turned counter-clockwise
         const cx = y * az - z * ay, cy = z * ax - x * az, cz = x * ay - y * ax;
-        homes.push(w); pos.push(home[3 * w], home[3 * w + 1], home[3 * w + 2]);
+        homes.push(w); pos.push(x, y, z);
         dir.push(ax * c + cx * s, ay * c + cy * s, az * c + cz * s);
         wave.push(cfg.stripeKm[type] * (1 + cfg.stripeWaveJitter * (rng() * 2 - 1)));
-        phase.push(rng() * TAU); phase2.push(rng() * TAU);
+        // (the drift: up to a whole wave per detailRenewMyr, either way — from a stream of its own, so the draws above
+        // and below stay as they were)
+        let drift1 = 0, drift2 = 0;
+        if (renew > 0) { const r2 = cellRng(seed, crustCell, 9); drift1 = TAU * renew * (2 * r2() - 1); drift2 = TAU * renew * (2 * r2() - 1); }
+        phase.push(rng() * TAU + drift1); phase2.push(rng() * TAU + drift2);
         // (for crossAt: the cell's distance from the front and its plain across direction — both negative on the lower
         // side of a collision, so the distance runs on through the suture)
         const sign = kindSide(rec.kind[w]) === BeltSide.LOWER ? -1 : 1;
         d0.push(sign * rec.dKm[w]); acr.push(sign * ax, sign * ay, sign * az);
-    }
+    });
     const reachKm = cfg.stripeBandKm * 2.5;
     const near = nearLists(simMesh, homes, pos, () => reachKm);
     return { count: homes.length, pos: Float32Array.from(pos), dir: Float32Array.from(dir), wave: Float32Array.from(wave),

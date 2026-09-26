@@ -13,6 +13,7 @@ import { quatToMat3 } from '../js/core/rotation.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { TERRAIN, terrainConfig, erosionAtLatitude } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide, gradient, CoastKind } from '../js/terrain/records.js';
+import { crossAt } from '../js/terrain/stripes.js';
 
 const SEED = 12345;
 const mesh = labMesh();
@@ -198,16 +199,25 @@ section('a continental collision');
     const angles = ridgeAngles(T, away, t => { const c = corner(T, t); return kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && nearSuture[c] && heightKm[t] > 0; });
     check('ridges run parallel to the suture', angles.length >= 10 && median(angles) <= 30, `median ${median(angles).toFixed(0)}° between the ridges’ cross-direction and the direction away from the suture, over ${angles.length} sim cells (random: 45°)`);
     // the ridge noise (8b round 5): the same place with and without it; its value against itself a little way along the
-    // strike and the same way across it — drawn out along the belt, it should hold along and change across
+    // strike and the same way across it — drawn out along the belt, it should hold along and change across. The strike
+    // it follows: the level lines of the distance across the belt as the ridge kernels carry it (stripes.js crossAt) —
+    // since Phase 9 measured on the crust, a few degrees off the world grid's rec.across
     const N = terrainWith(frame, 640000, { ridgeNoiseShare: 0, ridgeNoiseBaseKm: 0 }), tm = T.tm, noiseAt = t => T.parts.stripes[t] - N.parts.stripes[t];
     const c3 = [0, 0, 0], w3 = [0, 0, 0], R = 6371, stepKm = 45;
+    const K = preparePlan(frame, mesh, TERRAIN, SEED, tm.edgeKm).Ks[0], cr = [0, 0];
+    const dAt = (x, y, z) => { const l = Math.hypot(x, y, z); x /= l; y /= l; z /= l; crossAt(K, mesh.index.nearest(x, y, z), x, y, z, cr); return cr[1] > 0 ? cr[0] : NaN; };
     const at = (x, y, z) => { const l = Math.hypot(x, y, z); locate(tm, x / l, y / l, z / l, c3, w3); return w3[0] * noiseAt(c3[0]) + w3[1] * noiseAt(c3[1]) + w3[2] * noiseAt(c3[2]); };
     const here = [], along = [], across = [];
     let rms = 0;
     for (let t = 0; t < tm.numCells; t += 3) {
         const c = corner(T, t);
         if (!rec.kind[c] || T.parts.relief[t] < 0.5 || heightKm[t] <= 0) continue;
-        const x = tm.xyz[3 * t], y = tm.xyz[3 * t + 1], z = tm.xyz[3 * t + 2], ax = rec.across[3 * c], ay = rec.across[3 * c + 1], az = rec.across[3 * c + 2];
+        const x = tm.xyz[3 * t], y = tm.xyz[3 * t + 1], z = tm.xyz[3 * t + 2], el = Math.hypot(x, y) || 1, ex = -y / el, ey = x / el;
+        const nx = -z * ey, ny = z * ex, nz = x * ey - y * ex, e = 20 / R;             // (east and north here; ±20 km)
+        const gE = dAt(x + e * ex, y + e * ey, z) - dAt(x - e * ex, y - e * ey, z), gN = dAt(x + e * nx, y + e * ny, z + e * nz) - dAt(x - e * nx, y - e * ny, z - e * nz);
+        const gl = Math.hypot(gE, gN);
+        if (!(gl > 0)) continue;
+        const ax = (gE * ex + gN * nx) / gl, ay = (gE * ey + gN * ny) / gl, az = (gN * nz) / gl;
         const bx = y * az - z * ay, by = z * ax - x * az, bz = x * ay - y * ax, s = stepKm / R;
         here.push(noiseAt(t)); along.push(at(x + s * bx, y + s * by, z + s * bz)); across.push(at(x + s * ax, y + s * ay, z + s * az));
         rms += noiseAt(t) ** 2;
@@ -324,11 +334,13 @@ section('fine detail moves with the crust');
     };
     // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
     // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
+    // (the smooth part: the same platform with its noise off — the terrain samples a moving plate on its own raster)
     const detail = f => {
         const T = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true }), r = new Float32Array(tm.numCells).fill(NaN);
+        const U = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true, cfg: terrainConfig({ platformNoiseKm: 0, blendNoise: 0 }) });
         for (let t = 0; t < tm.numCells; t++) {
-            let ok = true, smoothPart = 0;
-            for (let i = 0; i < 3; i++) { const c = T.sampler.cells[3 * t + i]; ok &&= T.rec.land[c] && T.rec.coastKm[c] > 400 && !T.rec.kind[c] && !T.rec.belts[1].kind[c] && !T.rec.lipKm[c]; smoothPart += T.sampler.weights[3 * t + i] * T.rec.platformKm[c]; }
+            let ok = true, smoothPart = U.parts.platform[t];
+            for (let i = 0; i < 3; i++) { const c = T.sampler.cells[3 * t + i]; ok &&= T.rec.land[c] && T.rec.coastKm[c] > 400 && !T.rec.kind[c] && !T.rec.belts[1].kind[c] && !T.rec.lipKm[c]; }
             if (ok) r[t] = T.parts.platform[t] - smoothPart;
         }
         return { T, r };
@@ -365,7 +377,9 @@ section('fine detail moves with the crust');
         const bx = MB2[0] * lx + MB2[1] * ly + MB2[2] * lz, by = MB2[3] * lx + MB2[4] * ly + MB2[5] * lz, bz = MB2[6] * lx + MB2[7] * ly + MB2[8] * lz;
         if (Math.hypot(bx - VB.pos[3 * kb], by - VB.pos[3 * kb + 1], bz - VB.pos[3 * kb + 2]) * 6371 < 0.1) carried++;
     }
-    check('a volcano keeps its shape and rides with its plate', both >= 20 && sameShape === both && carried === both,
+    // (a crust cell no world cell shows this frame — ~15 % of a moving plate's — borrows the records of the world cell nearest
+    // it: now and then a neighbour's belt, and a volcano of another kind; so 97 %, not all)
+    check('a volcano keeps its shape and rides with its plate', both >= 20 && sameShape >= 0.97 * both && carried >= 0.97 * both,
         `${both} volcanoes in both frames: ${sameShape} with the same shape, ${carried} where their plate carried them (within 0.1 km)`);
 }
 

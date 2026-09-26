@@ -481,7 +481,10 @@ comes together in Phase 6.
 | 8b-1 rivers carve the surface (analytic stream power) | accepted 2026-09-26 (built 2026-09-25) | check-phase8b | the same scenes, carved; every frame |
 | 8b-2 rivers through the history (gorges, persistence) | accepted 2026-09-26 (built 2026-09-26) | check-phase8b (24 with 8b-1) | history, india |
 | 8b rounds 3–6: mountain shape, ridge noise, start swells, flood basalts, relative mantle swell, belt scraps | accepted 2026-09-26 | check-phase8a, check-phase8b | traps, history |
+| 9 steady detail: records read on each plate's crust; fine detail renews slowly (9B, stale belts at the source, moved to 11) | accepted 2026-09-26 | check-phase9 (8) | history, india |
 
+The roadmap from here — 9 steady detail, 10 start-world defaults, 11 natural collisions, 12 sim resolution, 13 the
+supercontinent cycle, each with its definition of done — is plans/V2_ROADMAP_PHASES_9_13.md.
 Phase 8 closed 2026-09-26. Before Phase 9 (developer: "the parked are the most important things … before moving
 forward"), the parked items get their own phases, each with a definition of done agreed with the developer first:
 the supercontinent CYCLE (bursts of rifting with quiet spells in which the pieces reassemble); heights feeding the
@@ -772,6 +775,49 @@ they found was fixed, and each fix has a check that would catch its return.
   ~2.3. Median land before carving 0.86 → 1.01 km (8a's ceiling recalibrated to 1.1: the developer's request), ~0.87
   after. Andean belt WIDTH is a history rule (baseKm 120 + 1 km per km of recorded shortening; the young, slow Andes
   scene reaches ~76 km): widening it changes every history — asked, not done.
+- Phase 9, steady detail (2026-09-26; developer: "steady detail is critical"; "the goal is improvement and overall feel of
+  stability, not perfection"). Measured with a test that turns the planet half a cell under the world grid and
+  re-samples it as the history re-samples a moving plate (nothing geological changes, so whatever moves is sampling):
+  interpolating over the plate's raster alone barely helped — the jitter was in the records themselves. Causes: (1) a
+  frame carried only the world view, and ~15 % of a moving plate's crust cells are no world cell's nearest at any
+  moment — near a coast a guessed hidden cell moved the shoreline by a cell (121 km): 404 of 427 coastline flips were
+  at hidden cells; (2) the coast distance, shelves and belt directions were measured on the world grid, and the shelf
+  noise read at world positions; (3) ridge kernels and volcanoes were placed per world cell (came, went or doubled as a
+  plate moved); (4) a ridge lookup could miss kernels (corners two cells off). Now: a frame carries every plate's crust
+  (crustCells, crustType, crustBelt, crustReach — records only, ~0.6 MB a frame; the history is bit-identical); the coast
+  distance, shelves, coastal plains and belt directions are measured on each plate's own raster (a coastline on the
+  raster of the plate whose land it is, the sea beyond included); the terrain reads a moving plate's records over its
+  raster (anchorRecords); kernels and volcanoes are placed once per crust cell (anchor.js crustSites); a crust cell's
+  records come from the world cell that shows it. Turned half a cell (640K, against the code before Phase 9): coastline
+  agreement 92.4 → 97.4 %, land shape 0.65 → 0.89, ridges 0.44–0.47 → 0.65 (a ridge kernel's direction off by 15.5° →
+  8.1° on average; the first figures, at 160K, gave the ridges as 0.32 → 0.57 — one draw of a handful of features: at 160K
+  the resolution fade leaves only the broadest belts' ridges, and the measure swung by ±0.2 from seed to seed). Real frames 10 Myr apart,
+  the continent that moved most: coastline agreement 87–95 → 94–97 %, land heights at the same crust 0.45–0.64 →
+  0.52–0.78, rivers over 10,000 km² keeping their course 95–96 %. The small-river correlation of the plan (catchments
+  from 300 km², under one 640K terrain cell of ~800 km²) was dropped for course persistence: a stream below the terrain
+  mesh's grain re-forms whatever the records do (the terrain mesh is fixed to the world). Terrain at 640K 1.4 → 1.86 s.
+  Stale belt positions at the source (9B): ~1.8 % of belt crust cells (174 of 9,632 at 600 Myr) — 68 left from an older
+  stamp the current one no longer reaches, 104 stamped in the same step as their neighbours but far from them (most
+  likely a weld's repainting of the seam); the terrain's repair (records.js) already removes the donuts they made, and
+  fixing them in the history changes every history for ~2 % of cells — proposed to fold into Phase 11 (collisions).
+- Fine detail renews slowly (2026-09-26; developer, after Phase 9: "something about 9A made things look worse, in that
+  they were all a little bit too consistent. Some of the variation added to the charm and variety … a naturalistic way to
+  add a little bit of that back in controllably? just a bit"). Compared with the code before Phase 9 at the same frame,
+  nothing in a single frame had lost variety — coast length (132.5 vs 132.2 edges per 1,000 land cells), fine roughness
+  (equal or higher in belts, near coasts and on plains), the spread of heights within a belt, and how much neighbouring
+  ridge kernels disagree (14.7° vs 13.9°) all held; a regional bend of the ridges' strike was tried and dropped (barely
+  visible, nothing to restore). What Phase 9 removed is change: the detail stood still on the crust for hundreds of Myr,
+  where before every frame re-formed it. Now it renews (terrain-config detailRenewMyr, 150 Myr; a lab slider, 0 freezes
+  it): each ridge kernel's phases drift at a rate of its own (up to a wave per period, either way — stripes.js, its own
+  stream), so ridges fork and end in new places; and the coast's bays and headlands, the ridges' segments and crests and
+  the ridge noise fade from one noise to the next over each period (cos/sin weights of two independent fields, so the
+  spread never dips). Nothing else: the history's own shapes, the plains' grain and the lookup warp stay. From one frame
+  to the next it holds (10 Myr: ridges 0.99, bays and headlands 0.995; the drifting continent's coastline agreement 96.9
+  → 96.6 %, big rivers keeping their course 95 → 94 %); one period on, it is new (0.00, −0.04). With the period 0 the
+  terrain is bit-identical to before; mid-period it costs ~4 % (1.86 → 1.93 s at 640K).
+  Also found: the 8a check of the ridge noise's stretch measured along the world grid's strike (rec.across), which
+  since Phase 9 is a few degrees off the strike the noise follows (the kernels', measured on the crust) — 0.68 along it;
+  along the noise's own strike (the level lines of crossAt) 0.84.
 - A heap bug in the terrain's distances (found 2026-09-26, measuring landmass shapes for the next phases): spreadKm
   (core/min-heap.js) queued a cell at its exact distance but stored it in a Float32Array, rounded; popped, a key that
   had been rounded DOWN in the store read as stale, and the cell never passed its distance on. Whole patches were

@@ -24,7 +24,7 @@ const CHECKLISTS = {
         'Active ranges keep steep, high rivers (they are still rising); old ranges are cut down further.',
         'Drainage layer: the river network (not drawn on the terrain by default). Carving depth: how deep the rivers cut.',
         'Rivers through time: the history’s own rivers — drained every few Myr as the land evolved, cutting as they go. Scrub: big rivers hold their courses, and where land rose under one it cut a gorge through (red); the terrain’s rivers follow these courses and cut at least as deep.',
-        'Scrub through the history: every frame is carved; rivers move as the land beneath them changes.',
+        'Scrub through the history: every frame is carved; big rivers hold their courses as their continent drifts (small streams may shift), and move where the land beneath them changes.',
         'Switch the terrain resolution: the same big valleys at every resolution; finer meshes add smaller ones.',
     ],
 };

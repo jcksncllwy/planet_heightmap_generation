@@ -17,8 +17,9 @@ import { beltProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
 import { buildStripeKernels, stripeAt, crossAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
 import { buildVolcanoes, coneAt } from './volcanoes.js';
-import { sampleOnto } from './terrain-mesh.js';
-import { buildAnchor, plateFramePoint, plateToWorld } from './anchor.js';
+import { sampleOnto, warpNoise, warpPoint } from './terrain-mesh.js';
+import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
+import { locate } from '../core/mesh-locate.js';
 import { rainAtLatitude } from './terrain-config.js';
 import { carveTerrain } from './carve.js';
 import { terrainMesh } from './terrain-mesh.js';
@@ -60,7 +61,7 @@ export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
 
 /** Per-terrain-cell arrays of the surface's components (platform — flood basalt included —, belt relief, ridges, cones, the flood basalt alone). */
 export function surfaceParts(n) {
-    return { platform: new Float32Array(n), relief: new Float32Array(n), stripes: new Float32Array(n), cones: new Float32Array(n), lip: new Float32Array(n) };
+    return { platform: new Float32Array(n), relief: new Float32Array(n), stripes: new Float32Array(n), cones: new Float32Array(n), lip: new Float32Array(n), dcoast: new Float32Array(n), dshelf: new Float32Array(n), dplain: new Float32Array(n), dcoastRaw: new Float32Array(n) };
 }
 
 /** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, slope, inc; carve.js). */
@@ -88,14 +89,14 @@ export function carveSettings(cfg) {
  * own from the frame.
  */
 export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
-    const rec = deriveRecords(frame, simMesh, cfg, seed), A = buildAnchor(frame, simMesh);
-    const Ks = rec.belts.map((layer, i) => buildStripeKernels(layer, simMesh, cfg, seed + 7919 * i, A));
+    const A = buildAnchor(frame, simMesh), rec = deriveRecords(frame, simMesh, cfg, seed, A);
+    const timeMyr = frame.time ?? 0, Ks = rec.belts.map((layer, i) => buildStripeKernels(layer, simMesh, cfg, seed + 7919 * i, A, timeMyr));
     // each kernel's resolution fade (main and fine set) depends only on its wavelength and this mesh: computed once
     for (const K of Ks) {
         K.fade1 = Float64Array.from(K.wave, lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / edgeKm));
         K.fade2 = Float64Array.from(K.wave, lam => (cfg.stripeFineShare > 0 ? smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / cfg.stripeFineRatio / edgeKm) : 0));
     }
-    return { rec, Ks, A, V: buildVolcanoes(frame, rec, simMesh, cfg, seed, A, edgeKm), L: lipPieces(frame, simMesh, A) };
+    return { rec, Ks, A, V: buildVolcanoes(frame, rec, simMesh, cfg, seed, A, edgeKm), L: lipPieces(frame, simMesh, A), mesh: simMesh, timeMyr };
 }
 
 /**
@@ -105,8 +106,26 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
  * gives the same heights.
  */
 export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, from, to, heightKm, parts = null, carve = null) {
-    const { rec, Ks, V, A, L } = plan, { cell } = A, p = [0, 0, 0], d = [0, 0, 0], cross = [0, 0];
+    const { rec, Ks, V, A, L, mesh: simMesh } = plan, { cell } = A, p = [0, 0, 0], d = [0, 0, 0], cross = [0, 0];
+    const warpN = warpNoise(seed), local = [0, 0, 0], warped = [0, 0, 0], r3 = [0, 0, 0], rw3 = [0, 0, 0], q3 = [0, 0, 0], qw3 = [0, 0, 0];
+    const anchorOn = cfg.anchorRecords !== false;
+    // the point located on plate o's raster (the point in o's frame, warped there): raster cells into cells, weights into weights
+    const onRaster = (o, px, py, pz, cells, weights) => {
+        const m = A.mats, b = 9 * o;
+        local[0] = m[b] * px + m[b + 3] * py + m[b + 6] * pz; local[1] = m[b + 1] * px + m[b + 4] * py + m[b + 7] * pz; local[2] = m[b + 2] * px + m[b + 5] * py + m[b + 8] * pz;
+        warpPoint(warpN, cfg, local[0], local[1], local[2], warped);
+        locate(simMesh, warped[0], warped[1], warped[2], cells, weights);
+    };
     const noise = new SimplexNoise(seed * 31 + 9);
+    // Fine detail renews (detailRenewMyr): time runs in epochs of that length, and over each a renewing field fades from
+    // one noise to the next — cos/sin weights, the two independent, so its spread never dips — steady from frame to
+    // frame, new after an epoch or two. At time 0 (and with no renewal), exactly the field it replaced.
+    const renewT = cfg.detailRenewMyr > 0 ? (plan.timeMyr ?? 0) / cfg.detailRenewMyr : 0, epoch = Math.floor(renewT);
+    const fadeA = Math.cos((renewT - epoch) * Math.PI / 2), fadeB = Math.sin((renewT - epoch) * Math.PI / 2), offA = 57.31 * epoch, offB = 57.31 * (epoch + 1);
+    const renewed = (fx, fy, fz, octaves) => {
+        const a = noise.fbm(fx + offA, fy + offA, fz + offA, octaves, 0.5);
+        return fadeB > 0 ? fadeA * a + fadeB * noise.fbm(fx + offB, fy + offB, fz + offB, octaves, 0.5) : a;
+    };
     const fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / edgeKm);
     const coastF = R / 700, platF = R / 2000, strikeF = R / 900, segF = R / cfg.stripeSegmentKm, meanderF = R / cfg.stripeMeanderAlongKm, meander = cfg.stripeMeanderKm / R;
     const blendF = R / cfg.blendNoiseKm, crestF = R / 150, slopeF = R / 300, microF = R / cfg.carveMicroScaleKm, mesaF = R / cfg.lipMesaKm;
@@ -117,15 +136,49 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
 
     for (let t = from; t < to; t++) {
-        const c0 = sCells[3 * t], c1 = sCells[3 * t + 1], c2 = sCells[3 * t + 2];
-        const w0 = sWeights[3 * t], w1 = sWeights[3 * t + 1], w2 = sWeights[3 * t + 2];
+        let c0 = sCells[3 * t], c1 = sCells[3 * t + 1], c2 = sCells[3 * t + 2];
+        let w0 = sWeights[3 * t], w1 = sWeights[3 * t + 1], w2 = sWeights[3 * t + 2];
         const px = xyz[3 * t], py = xyz[3 * t + 1], pz = xyz[3 * t + 2];
+        // (the world cell nearest the point itself: what can reach it — ridge kernels, volcanoes — is listed by it, near-lists.js;
+        // a sampling corner can lie two cells off once the lookup is warped and anchored)
+        const cn = simMesh.index.nearest(px, py, pz);
+        // ── the records are read over the plate's own raster, which rides with the crust (Phase 9, developer: steady
+        // detail): the point, in the frame of the plate under it, warped there and located on the raster — its corners
+        // are that plate's crust cells, shown this frame by the world cells nearest them. Interpolated over the fixed world
+        // grid instead, a moving plate's coasts, belt edges and plains re-formed at the scale of its cells every frame.
+        // (Where the point's corners belong to more than one plate, or a corner's crust is hidden, the world grid still.) ──
+        const o = A.owner[c0];
+        // the plate whose land is here — the coast is read on its raster, the sea beyond it included (a coastline belongs
+        // to its continent) — or, with no land at the corners, the plate here
+        let oc = o, best = -1;
+        for (let j = 0; j < 3; j++) { const c = j === 0 ? c0 : j === 1 ? c1 : c2, wj = j === 0 ? w0 : j === 1 ? w1 : w2; if (land[c] && A.owner[c] >= 0 && wj > best) { best = wj; oc = A.owner[c]; } }
+        let anchored = false;
+        if (anchorOn && o >= 0 && A.moved[o] && A.owner[c1] === o && A.owner[c2] === o) {
+            onRaster(o, px, py, pz, r3, rw3);
+            const a0 = rasterToWorld(A, simMesh, o, r3[0]), a1 = rasterToWorld(A, simMesh, o, r3[1]), a2 = rasterToWorld(A, simMesh, o, r3[2]);
+            if (a0 >= 0 && a1 >= 0 && a2 >= 0) { c0 = a0; c1 = a1; c2 = a2; w0 = rw3[0]; w1 = rw3[1]; w2 = rw3[2]; anchored = true; }
+        }
+        let coastR = null, shelfR = 0, plainR = 0;
+        if (anchorOn && oc >= 0 && A.moved[oc]) {
+            const S = rec.coastRaster.get(oc);
+            if (S) {
+                if (!(anchored && oc === o)) { onRaster(oc, px, py, pz, q3, qw3); } else { q3[0] = r3[0]; q3[1] = r3[1]; q3[2] = r3[2]; qw3[0] = rw3[0]; qw3[1] = rw3[1]; qw3[2] = rw3[2]; }
+                const s0 = S.coast[q3[0]], s1 = S.coast[q3[1]], s2 = S.coast[q3[2]];
+                if (s0 === s0 && s1 === s1 && s2 === s2) {
+                    coastR = qw3[0] * s0 + qw3[1] * s1 + qw3[2] * s2;
+                    shelfR = qw3[0] * S.shelf[q3[0]] + qw3[1] * S.shelf[q3[1]] + qw3[2] * S.shelf[q3[2]];
+                    plainR = qw3[0] * S.plain[q3[0]] + qw3[1] * S.plain[q3[1]] + qw3[2] * S.plain[q3[2]];
+                }
+            }
+        }
         // (x, y, z): where the point lies in the frame of the crust under it — every noise below is read there
         plateFramePoint(A, c0, c1, c2, w0, w1, w2, px, py, pz, p);
         const x = p[0], y = p[1], z = p[2];
         x0 = x; y0 = y; z0 = z;
-        let coast = w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
-        if (Math.abs(coast) < 600) coast += cfg.coastNoiseKm * noise.fbm(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4, 0.5) * 1.5;
+        // (the coast distance: on the raster of the plate whose land is here, where it can be — records.js plateCoasts)
+        let coast = coastR ?? w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
+        if (parts) parts.dcoastRaw[t] = coast;
+        if (Math.abs(coast) < 600) coast += cfg.coastNoiseKm * renewed(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4) * 1.5;
         let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, ramp = 0;
 
         if (coast >= 0) {
@@ -151,8 +204,11 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 lipKeep = lipTop * (1 - cfg.lipWearFloor * Math.min(1, p)) * keep / cfg.lipTiers;
                 platform += lipKeep;
             }
-            const shelf = w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2], plain = w0 * plainKm[c0] + w1 * plainKm[c1] + w2 * plainKm[c2];
+            // (the shelf and the coastal plain: with the coast, on its plate's raster where it was read there)
+            const shelf = coastR !== null ? shelfR : w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2];
+            const plain = coastR !== null ? plainR : w0 * plainKm[c0] + w1 * plainKm[c1] + w2 * plainKm[c2];
             ramp = coast < shelf ? 0 : smooth(0, 1, (coast - shelf) / Math.max(1, plain));
+            if (parts) { parts.dcoast[t] = coast; parts.dshelf[t] = shelf; parts.dplain[t] = plain; }
             h = coast < shelf ? cfg.shelfEdgeKm * (1 - coast / shelf) : platform * ramp;
             // the radiating dykes: coming out from under the lava across its edge (a signed distance — negative inside the
             // province — over the land corners), and within it only where erosion has bared them; never drowning land
@@ -212,14 +268,18 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     plateToWorld(A, A.owner[c0], d);
                     wx = px + d[0]; wy = py + d[1]; wz = pz + d[2];
                     // segments that fade in and out along the strike, crests that rise and fall along their length
-                    const seg = smooth(-0.35, 0.3, noise.fbm(x * segF + 2.7, y * segF + 5.7, z * segF + 8.7, 2, 0.5));
-                    texture = (0.2 + 0.8 * seg) * (0.55 + 0.45 * noise.fbm(x * crestF + 3.9, y * crestF + 7.3, z * crestF + 1.2, 2, 0.5) * 1.8);
+                    const seg = smooth(-0.35, 0.3, renewed(x * segF + 2.7, y * segF + 5.7, z * segF + 8.7, 2));
+                    texture = (0.2 + 0.8 * seg) * (0.55 + 0.45 * renewed(x * crestF + 3.9, y * crestF + 7.3, z * crestF + 1.2, 2) * 1.8);
                 }
-                if (stripeAmp > 0.005) stripes += stripeAmp * texture * stripeAt(Ks[li], c0, px, py, pz, wx, wy, wz, cfg.stripeFineShare, cfg.stripeFineRatio);
+                if (stripeAmp > 0.005) stripes += stripeAmp * texture * stripeAt(Ks[li], cn, px, py, pz, wx, wy, wz, cfg.stripeFineShare, cfg.stripeFineRatio);
                 // the ridge noise, read at the distance across the belt as the kernels carry it (smooth, bending with the front)
                 if (noiseAmp > 0.002) {
-                    crossAt(Ks[li], c0, wx, wy, wz, cross);
-                    if (cross[1] > 0) stripes += noiseAmp * ridgeNoise(noise, cfg, fade, x, y, z, cross[0], acrossKm, 7 + 5 * li);
+                    crossAt(Ks[li], cn, wx, wy, wz, cross);
+                    if (cross[1] > 0) {
+                        let v = ridgeNoise(noise, cfg, fade, x, y, z, cross[0], acrossKm, 7 + 5 * li + offA);
+                        if (fadeB > 0) v = fadeA * v + fadeB * ridgeNoise(noise, cfg, fade, x, y, z, cross[0], acrossKm, 7 + 5 * li + offB);
+                        stripes += noiseAmp * v;
+                    }
                 }
             }
             }
@@ -258,7 +318,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (rk < 450) h += cfg.riseKm * Math.exp(-(((rk - cfg.riseAtKm) / 70) ** 2));
             platform = h;
         }
-        const cone = coneAt(V, c0, px, py, pz, h);
+        const cone = coneAt(V, cn, px, py, pz, h);
         heightKm[t] = h + cone;
         if (carve) {
             // the carving's inputs here: rock uplift (active belts rise, by their relief, fading once quiet), how easily
