@@ -23,6 +23,8 @@ import { cellRng, crustSites } from './anchor.js';
 import { FastNoise } from '../core/fast-noise.js';
 
 const R = 6371, TAU = 2 * Math.PI, MAX_ARMS = 3;
+/** The noise that shapes the cones' outlines (a plan sent to another worker leaves it out, and it is made again there). */
+export const volcanoNoise = seed => new FastNoise(seed * 41 + 7);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // per-volcano shape record (Float32, STRIDE per volcano)
 const LOBES = 0, ARM_COUNT = 8, ARMS = 9, RIBS = 21, RIB_DEPTH = 29, COLLAPSE = 30, WOBBLE = 33, NOISE = 34, STRIDE = 36;
@@ -142,7 +144,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
     const near = nearLists(simMesh, homes, pos, i => reach[i]);
     return { count: homes.length, pos: Float32Array.from(pos), height: Float32Array.from(height), radius: Float32Array.from(radius), rounded: Float32Array.from(rounded),
         axis: Float32Array.from(axis), aspect: Float32Array.from(aspect), shape: Float32Array.from(shape), reach: Float32Array.from(reach),
-        ribFade: Float32Array.from(ribFade), base: Float32Array.from(base), crust: Int32Array.from(crust), plate: Int16Array.from(plate), warp: cfg.coneWarp, noise: new FastNoise(seed * 41 + 7), near };
+        ribFade: Float32Array.from(ribFade), base: Float32Array.from(base), crust: Int32Array.from(crust), plate: Int16Array.from(plate), warp: cfg.coneWarp, noise: volcanoNoise(seed), near };
 }
 
 const IDENTITY = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);

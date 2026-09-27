@@ -8,7 +8,7 @@ function ramp(stops, v, out, o) {
     if (v <= stops[0][0]) { const c = stops[0][1]; out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; return; }
     for (let i = 1; i < stops.length; i++) {
         if (v > stops[i][0] && i < stops.length - 1) continue;
-        const [a, ca] = stops[i - 1], [b, cb] = stops[i], t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+        const a = stops[i - 1][0], ca = stops[i - 1][1], b = stops[i][0], cb = stops[i][1], t = Math.min(1, Math.max(0, (v - a) / (b - a)));
         out[o] = ca[0] + (cb[0] - ca[0]) * t; out[o + 1] = ca[1] + (cb[1] - ca[1]) * t; out[o + 2] = ca[2] + (cb[2] - ca[2]) * t;
         return;
     }

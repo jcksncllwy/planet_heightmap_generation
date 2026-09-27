@@ -118,14 +118,24 @@ for (const [frames, label] of [[frames150, '140→150 Myr'], [history(300), '290
     for (let i = 0; i < B.plates.length; i++) { const a = A.plates[i], b = B.plates[i]; if (!a?.alive || !b?.alive || b.landCells < 200) continue; const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3]))); if (ang > turned) { turned = ang; p = i; } }
     const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9)), c3 = [0, 0, 0], w3 = [0, 0, 0];
     const TA = synthesizeTerrain(A, mesh, tm, { seed: SEED, carve: true }), TB = synthesizeTerrain(B, mesh, tm, { seed: SEED, carve: true });
-    let coastN = 0, coastSame = 0, rivers = 0, kept = 0; const hx = [], hy = [];
+    let coastN = 0, coastSame = 0, moved = 0, rivers = 0, kept = 0; const hx = [], hy = [], s3 = [0, 0, 0], sw3 = [0, 0, 0];
     for (let t = 0; t < tm.numCells; t++) {
         const c = TB.sampler.cells[3 * t];
         if (B.owner[c] !== p) continue;
         const x = tm.xyz[3 * t], y = tm.xyz[3 * t + 1], z = tm.xyz[3 * t + 2], lx = MB[0] * x + MB[3] * y + MB[6] * z, ly = MB[1] * x + MB[4] * y + MB[7] * z, lz = MB[2] * x + MB[5] * y + MB[8] * z;
-        locate(tm, MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz, c3, w3);
+        const ax = MA[0] * lx + MA[1] * ly + MA[2] * lz, ay = MA[3] * lx + MA[4] * ly + MA[5] * lz, az = MA[6] * lx + MA[7] * ly + MA[8] * lz;
+        locate(tm, ax, ay, az, c3, w3);
         const hA = w3[0] * TA.tectonicKm[c3[0]] + w3[1] * TA.tectonicKm[c3[1]] + w3[2] * TA.tectonicKm[c3[2]];
-        if (Math.abs(TB.rec.coastKm[c]) <= 300) { coastN++; if ((TB.tectonicKm[t] > 0) === (hA > 0)) coastSame++; }
+        // (only where the history itself kept the coast: the plate's own coast records — on its raster, the crust itself —
+        // put the point on the same side of the coast in both frames. Phase 11 closes remnant seas from their shores and
+        // welds redraw coasts: that is the history's change, not the terrain's)
+        if (Math.abs(TB.rec.coastKm[c]) <= 300) {
+            locate(mesh, lx, ly, lz, s3, sw3);
+            const on = R => R ? sw3[0] * R.coast[s3[0]] + sw3[1] * R.coast[s3[1]] + sw3[2] * R.coast[s3[2]] : NaN;
+            const cA = on(TA.rec.coastRaster.get(p)), cB = on(TB.rec.coastRaster.get(p));
+            if (cA === cA && cB === cB && (cA > 0) !== (cB > 0)) moved++;
+            else { coastN++; if ((TB.tectonicKm[t] > 0) === (hA > 0)) coastSame++; }
+        }
         if (TB.tectonicKm[t] > 0) { hx.push(TB.tectonicKm[t]); hy.push(hA); }
         if (TB.drainage[t] >= 1e4 && TB.tectonicKm[t] > 0) {
             rivers++;
@@ -136,7 +146,7 @@ for (const [frames, label] of [[frames150, '140→150 Myr'], [history(300), '290
     }
     const h = corr(hx, hy);
     check(`${label}: the continent that moved most keeps its coasts, its shape and its rivers`, coastN > 5000 && coastSame / coastN >= 0.95 && h >= 0.5 && kept / rivers >= 0.9,
-        `plate ${p} turned ${(turned * 180 / Math.PI).toFixed(1)}°: land and sea agree at the same crust on ${(100 * coastSame / coastN).toFixed(1)} % of cells near its coasts (before Phase 9: 92–95 %); land heights correlate ${h.toFixed(2)} (0.45–0.49 before; the rest is the history's own change); ${(100 * kept / rivers).toFixed(0)} % of its rivers over 10,000 km² run within a cell of one 10 Myr before`);
+        `plate ${p} turned ${(turned * 180 / Math.PI).toFixed(1)}°: land and sea agree at the same crust on ${(100 * coastSame / coastN).toFixed(1)} % of cells near its coasts (before Phase 9: 92–95 %; ${(100 * moved / (moved + coastN)).toFixed(1)} % more, where the history moved the coast, left out); land heights correlate ${h.toFixed(2)} (0.45–0.49 before; the rest is the history's own change); ${(100 * kept / rivers).toFixed(0)} % of its rivers over 10,000 km² run within a cell of one 10 Myr before`);
 }
 
 finish('Phase 9');

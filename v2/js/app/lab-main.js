@@ -152,10 +152,11 @@ function redraw() {
     const shownLayer = phase.layers[state.layer];
     if (phase.prepare && !phase.isReady(frame, shownLayer)) {
         if (!preparing) {
-            $('busy').hidden = false; $('busy').textContent = 'Building terrain…';
+            // (said only if it takes a while: a frame built ahead is only shaded, in a tenth of a second)
+            const say = setTimeout(() => { $('busy').hidden = false; $('busy').textContent = 'Building terrain…'; }, 250);
             preparing = phase.prepare(frame, shownLayer)
                 .catch(err => { $('buildError').textContent = err.message; $('buildError').hidden = false; })
-                .finally(() => { preparing = null; $('busy').hidden = true; $('busy').textContent = 'Building…'; state.dirty = true; });
+                .finally(() => { clearTimeout(say); preparing = null; $('busy').hidden = true; $('busy').textContent = 'Building…'; state.dirty = true; });
         }
         return false;
     }
@@ -210,9 +211,10 @@ function drawChart(series, now, maxTime, unit) {
 }
 
 function tick(now) {
-    if (state.playing && state.phase) {
+    if (state.playing && state.phase && !preparing) {
         // Wall-clock playback (Myr per second): arbitrarily slow, independent of the display's refresh rate.
-        // The slider snaps to real frames, so slow speeds simply hold each frame longer.
+        // The slider snaps to real frames, so slow speeds simply hold each frame longer. A frame still being built
+        // holds the clock: playback waits for it, rather than running on to frames that are not built either.
         state.playTime += Math.min(0.1, (now - state.lastTick) / 1000) * Number(ui.rate.value);
         if (state.playTime > state.phase.maxTime) state.playTime = 0;
         const shown = ui.time.value;

@@ -234,14 +234,47 @@ chains.
 3. **Remnant seas close.** Ocean crust sealed inside one plate (after a weld, a docking, a captured wing) shrinks from its
    margins at a closing rate (inward thrusting, ophiolite obduction) — so a remnant sea lives some tens of Myr, and only
    a few, small, young ones exist at a time (the Mediterranean, the Black Sea).
-4. **Island arcs.** Fewer, shorter, more segmented chains: arc crust only along a trench's mature parts, and small
-   pieces recycled or accreted sooner. The arcs on trenches stay (the Aleutians, Indonesia).
+4. **Island arcs** — not a target (developer, 2026-09-26: "im less concerned there, im more concerned if there is like a
+   snake of continent through the whole world"): arcs stay as they are; counted, not capped.
 5. **The weld's redraw** (indentation and escape) is checked for long tongues of land: none should come out snake-like.
 6. **Stale belt positions fixed at the source** (from Phase 9B): ~1.8 % of belt crust cells carry a distance across
    their belt far from their neighbours' (174 of 9,632 at 600 Myr) — 104 stamped in the same step as their neighbours
    (most likely the weld's repainting of the seam: trace one through the weld first to confirm), 68 left from an older
    stamp a belt front that moved on no longer reaches (orogeny.js spreadBelt — Andean belts too, not only collisions).
    Fixed in the rewritten weld and in spreadBelt; the terrain's repair (records.js, the "donut" fix) stays as a guard.
+7. **The weld's geometry and the cratons** (found in Phase 10): the weld's redraw moves crust under records laid before
+   it — a rim belt ends up ~280 km inside a craton (at most 184 km before the weld, the rim being 150 km) — and in a
+   collision's overlap the tip of the lower plate's shield shows in the world view as a one-cell "scrap" while the rest
+   is hidden under the upper plate, standing as a 0.77 km hole in the plateau. The rewritten weld keeps records with
+   the crust they belong to, and a shield under the overlap goes under whole or not at all.
+
+**Decided with the developer (2026-09-26):** built all at once, not in sub-steps ("really the pivot and welding is the
+most important piece … it should help with everything"); the snakes that matter are continents, one thin landmass winding
+through much of the world — not island arcs.
+
+**Status: accepted 2026-09-26 (developer: "commit this phase").** The pivot (a contact resists closing, only 0.05 of parting
+and half along the front), the weld once the seam has closed (or stalled, or 120 Myr locked), no weld round a sea over
+1.5 Mkm² unless stacked 500 km deep, land stacked deeper than 250 km goes under, seas sealed inside a plate close from
+their shores at 12 km/Myr, holes the redraw leaves filled; the zipper scene in lab 5. check-phase11 (8). Against the
+definition of done — developer, while finishing: "dont worry too much about getting the goals perfect, we can just try to
+minimize it … the supercontinent cycle will be where we put it to the test":
+- enclosed seas (ocean floor; before: 62–73 Mkm²): seed 12345 at most 0.8 Mkm², 4242 one of 8.3 Mkm² for the one frame
+  before its zipper shuts, 777 an ocean ringed by three continents that stay apart to close it (25 → 16.5 Mkm² over
+  470–530 Myr) — re-baselined to "≤ 3 over 0.5 Mkm², none over 25"; the ringed ocean is Phase 13's;
+- rings and snakes: no landmass wrapped thin round a sea it encloses (0.38 at worst); the longest 2.4–2.9× its disc; the
+  thinnest of all 0.32 and 0.28 are 143–160 Mkm² supercontinents with open embayments — their shape is Phase 13's;
+- item 6, stale belts: measured anew, most "stale" cells were not stale — a craton's rim and old weak seams (their path
+  costs, by design; ~110 cells at 600 Myr) and two belts of one kind meeting (~170: a real edge, blended by the terrain,
+  records.js beltLayer). Left off by their own belt: 0.07–0.56 % of belt cells (check ≤ 1 %). A reach that never narrows
+  within an event was tried and dropped: belts grew wider, the count did not fall;
+- item 7, weld and cratons: the "scraps" standing as holes were a shield's narrow neck whose joining cell the world view
+  skipped (7 of 10) — found on the plate's own raster, the scraps stand 0.04–0.42 km above their surroundings, no holes;
+  the weld's belt reaches 1–2 cells past the 150 km rim (344 km at most on the raster) but the terrain fades a belt across
+  the rim by the edge line's distance, so it does not show;
+- suites: all pass; re-baselined with reasons — invariants (an overlap with no record measured by its own outline),
+  5 (connectivity on the plate's raster), 8a (India range ≥ 0.7 km over its foreland; active belts pooled over 400, 500
+  and 600 Myr), 8b (pooled; a log10(0) fixed), 9 (coasts the history itself moved left out, from the plate's own coast
+  records), 10 (scraps on the raster).
 
 **Definition of done**
 - Lab — a new "zipper" scene: two continents meeting at an angle close the ocean between them after first contact,
@@ -250,7 +283,9 @@ chains.
   - enclosed seas over 0.5 Mkm²: **≤ 3 at a time, none over 3 Mkm²**, all enclosed seas together ≤ 5 Mkm² (now up to
     73 Mkm²);
   - no continental landmass over 5 Mkm² with thinness below 0.35; the largest landmasses' median thinness ≥ 0.5;
-  - island-arc pieces **≤ 30** at a time (now 34–85), fore-arc isles ≤ 10 — arcs still stand along trenches.
+  - no continental snake: no landmass whose length (its longest path across itself) exceeds ~4× the diameter of a disc
+    of its area — measured first, the baseline written into the check;
+  - island arcs counted and reported (still standing along trenches), not capped.
 - Belt positions: **0** stale cells in every frame of three seeds; the terrain-side repair becomes a guard that never
   fires (kept, with a check that it does not).
 - The India scene still collides and builds its plateau; plate speeds stay in WBP's bands (Phase 4); every suite

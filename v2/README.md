@@ -18,8 +18,9 @@ carving it — with the history's own rivers, which persist and cut gorges as th
 basalts cut into mesas and stairs. Phase 9 (steady detail) is done: the terrain is read on each plate's own crust, so a
 drifting continent keeps its coasts, ridges and rivers, and its fine detail renews only slowly. Phase 10 (cratons) is
 done: ranges meet shields as real ones do — foothills on the rim, a foreland lowland, steep where a plateau's back meets
-one — and each shield has a character. Next, per
-plans/V2_ROADMAP_PHASES_9_13.md: 10 cratons against the ranges (done), 11 natural collisions, 12 the sim's resolution, 13 the
+one — and each shield has a character. Phase 11 (natural collisions) is done: continents pivot about their first
+contact and weld once the seam has closed, so few seas are sealed in. Next, per
+plans/V2_ROADMAP_PHASES_9_13.md: 10 cratons against the ranges (done), 11 natural collisions (done), 12 the sim's resolution, 13 the
 supercontinent cycle — then the full planet (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
@@ -36,13 +37,15 @@ on-screen checklist of what to look for, live numbers, and a time scrubber. Spac
 mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points.
 
 ```
-node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10 — headless acceptance checks, PASS/FAIL, exit code
+node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10, 11 — headless acceptance checks, PASS/FAIL, exit code
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
+node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)
+node v2/tools/bench-lab.mjs 2500000           # the lab's terrain pipeline piece by piece: timings + output hashes (is a speed-up exact?)
 ```
 
 After an engine change run `check-invariants.mjs`, `check-scale.mjs` and the check scripts of the phases the change
@@ -93,21 +96,26 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    routed river network (Tzathas et al. 2024), coarse to fine over the sim and terrain meshes;
                    carve-worker carves whole frames off the page's thread
   terrain-mesh     the terrain mesh (cached per size) and sampleOnto: each terrain cell's 3 sim cells + weights,
-                   looked up through a smooth noise warp so the sim's cells never show
+                   looked up through a smooth noise warp so the sim's cells never show (the warp read from a table
+                   precomputed on a cube map — within ~0.3 km of the noise, a fifth of the cost)
   records          step 1: the Frame read into per-sim-cell fields — signed coast distance, shelf / plain / slope by
                    kind of coast, sea-floor depth and age, trenches, the isostatic platform, and per belt: kind (type +
                    side of a collision), distance from its front, reach, relief, obliquity, the across-strike direction
   profiles         cross-sections of each kind of belt (WBP VIIa): crests, valleys, plateaus, basins vs distance from the front
   stripes          the parallel ridges inside a belt: phasor noise on kernels aligned across the strike (en-echelon
-                   along transforms), faded where the mesh is too coarse to show them; crossAt, the distance across a
+                   along transforms), faded where the mesh is too coarse to show them — summed at the corners of each
+                   plate's raster and carried to the points between (stripeCarry; ~3 waves a point instead of ~28, the
+                   same ridges to the eye); crossAt, the distance across a
                    belt as its kernels carry it (smooth, bending with the front) that the ridge noise is read at
   volcanoes        cones: hotspot islands / seamounts, island-arc chains, Andean stratovolcanoes
   lips             flood basalts on land: each province's pieces (centre, radius, age) and its radiating dyke swarm
   near-lists       which point features can reach a sim cell's terrain points
   synthesize       synthesizeTerrain(frame, simMesh, terrainMesh) → heightKm (+ components) = preparePlan (per frame)
                    + surfaceRange (any range of cells); hypsometry()
-  terrain-pool     the same synthesis on worker threads (terrain-worker.js), bit for bit; mesh-worker builds a
-                   terrain mesh off the page's thread
+  terrain-pool     the same synthesis on worker threads (terrain-worker.js), bit for bit — each frame's plan built
+                   once, by the first worker, and handed to the others over message ports; mesh-worker builds a
+                   terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread
+                   only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
                    palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
@@ -214,7 +222,9 @@ sea floor over ocean corners, the land/sea transition from the interpolated sign
 shape in km, not in cells), each belt kind by its share of the weights. The broad relief is the uplift the history evolved
 (engine rule 8), interpolated over land corners; on it, each belt's crests (`profiles.js` crestProfile × the evolved
 crest size), plus strike-parallel ridges (`stripes.js`: guidance, a share
-of the belt's own uplift), ridge noise — simplex noise drawn out ~8× along the strike (read at the distance across the
+of the belt's own uplift; the phasor sum taken at the corners of the plate's raster, where it rides with the crust, and
+carried to each point from its three corners by continuing each corner's wave — `stripeCarry` 0 sums every kernel at
+every point, the same look and ~30 % slower at 2.5M), ridge noise — simplex noise drawn out ~8× along the strike (read at the distance across the
 belt, fast, and the position along it, slow), so its highs and lows run with the range — and cones. The first
 continents are not flat: when the history starts they get broad swells (`baseKm`, up to `baseReliefKm`, half on
 shields) that wear down like the rest of the relief and steer the history's rivers into the lowlands between them. Belts come in two layers — the current one and the one it overprinted, at half
@@ -247,9 +257,10 @@ scraps of craton inside a range read as the range; and each craton has a charact
 or a flat shield (`cratonCharacter`) — with a faint grain of domes and keels. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
 `coastKindKm` of its coast. In the lab, the erosion clocks marked "re-runs the history" rebuild the history (in its
-worker) with the new constants; the history itself comes out the same. The lab builds the frame shown, then every other
-frame in the background (heights only, within a memory budget), so scrubbing and playing need no building; sea level
-and hillshade only re-shade.
+worker) with the new constants; the history itself comes out the same. The lab builds the frame shown, then the ten frames
+next to it the way you are moving (five behind) in the background (heights only, within a memory budget), so scrubbing
+and playing near it need no building, and playing waits for a frame still being built; sea level and hillshade only
+re-shade.
 
 **Rivers (Phase 8b, `carve.js`).** The tectonic surface is carved by the stream power law, solved analytically in time
 along the river network (Tzathas, Gailleton, Steer & Cordonnier 2024): after `carveTimeMyr` a point stands where the
@@ -280,11 +291,15 @@ a 600 Myr history's event log and of every frame, and of the terrain's heights, 
 (single-threaded; steps depend on each other) ran 39 s → 26 s for 600 Myr in Node: precomputed search rings, lookups
 skipped for the unrotated background and far from a plate's crust, each plate's lookups reused between the two
 resolves of a step, contacts cached per resolve, scratch arrays reused. In the lab it runs in a worker, so the page
-never freezes. Terrain is spread over workers (every cell depends only on its position and the per-frame plan):
-2.5M cells 5.2 s → ~0.6 s a frame; the terrain mesh is built in a worker while the history runs. Then the lab builds
-every other frame ahead, in the background (heights as 16-bit metres, 320 MB at most — 64 MB on small devices): once
-built, a frame shows in ~0.15–0.35 s at 640K and ~0.4 s at 2.5M in Chrome (re-shading only). Carving (8b) takes
-0.2 s at 160K, ~0.9 s at 640K and ~2.6 s at 2.5M on its worker, pipelined with the next frame's surface.
+never freezes. Terrain is spread over workers (every cell depends only on its position and the per-frame plan, which
+one worker builds and hands to the others): a whole-planet frame at 2.5M takes ~5.4 s on one thread, ~1–1.3 s on 8
+workers (~0.4–0.5 s at 160K–640K); the terrain mesh is built in a worker while the history runs. Then the lab builds
+the frames next to the one shown ahead, in the background (the ten nearest the way it is moving, five behind; heights as
+16-bit metres, 320 MB at most — 64 MB on small devices) — not the whole history, which kept every core busy for
+minutes; the page itself only paints (records, hillshade and carving all run on workers). Once
+built, a frame shows in ~0.15–0.35 s at 640K and ~0.3–0.75 s at 2.5M in Chrome (re-shading only, on the shading
+worker). Carving (8b) takes ~0.1 s at 160K, ~0.3 s at 640K and ~0.9 s at 2.5M on its worker, pipelined with the next
+frame's surface.
 
 ## Conventions
 

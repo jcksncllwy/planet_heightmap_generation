@@ -3,8 +3,8 @@
 // Drawn on a terrain mesh finer than the sim mesh (160K / 640K / 2.5M cells), shaded so ridges read at planet scale.
 // The history runs in a worker (the page stays responsive, and shows how far it has got); terrain is built on a pool
 // of workers (terrain/terrain-pool.js) for whichever frame is shown — prepare(frame), awaited by the shell — and then,
-// while the page is idle, for every other frame ahead of time (heights only, within a memory budget), so playing and
-// scrubbing need no building. Built terrain outlives a rebuild of the phase: a display-only setting re-shades it.
+// while the page is idle, for the frames next to it ahead of time (heights only, within a memory budget), so playing and
+// scrubbing near it need no building. Built terrain outlives a rebuild of the phase: a display-only setting re-shades it.
 // Without workers (Node: the check scripts) everything runs right here, with the same results.
 
 import { TERRAIN_SCENES } from '../../tectonics/scenarios/terrain-scenes.js';
@@ -33,6 +33,7 @@ const VIEW_TUNABLES = [
 ];
 const TERRAIN_TUNABLES = [
     { id: 'stripeShare', label: 'Parallel ridges: share of the belt’s own uplift', min: 0, max: 0.5, step: 0.02 },
+    { id: 'stripeCarry', label: 'Parallel ridges: 1 = carried from the raster corners (quicker, the default), 0 = every kernel', min: 0, max: 1, step: 1 },
     { id: 'ridgeNoiseShare', label: 'Ridge noise along the ranges: share of the belt’s uplift', min: 0, max: 0.5, step: 0.02 },
     { id: 'ridgeNoiseStretch', label: 'Ridge noise: times longer along the range than across', min: 1, max: 16, step: 1 },
     { id: 'cratonCharacter', label: 'Cratons: how strongly their basins and swells show', min: 0, max: 2, step: 0.1 },
@@ -101,6 +102,9 @@ let store = null;
 let prefetchToken = 0;             // (a rebuilt phase takes over the building ahead)
 const smallDevice = typeof navigator !== 'undefined' && ((navigator.deviceMemory ?? 8) <= 4 || !!globalThis.matchMedia?.('(pointer: coarse)').matches);
 const BUDGET = smallDevice ? 64e6 : 320e6;
+// how many frames are built ahead: those this near the frame on screen, the way it is moving (half as many behind it) —
+// not the whole history: building every frame kept every core busy for minutes after each change (developer: the fans)
+const AHEAD = 10;
 
 /** Phase 8a: the tectonic surface. */
 export const createPhase = terrainPhase({
@@ -141,21 +145,28 @@ export function terrainPhase(spec) {
     const tMesh = await meshReady;
 
     // ── terrain per frame ── The frame the shell asks for is built on the pool (prepare); then, while the page is idle,
-    // the others, nearest first — heights only — as far as the budget allows. The store outlives this phase object: a
+    // the frames near it (AHEAD), nearest first — heights only — as far as the budget allows. The store outlives this phase object: a
     // display-only setting (sea level, hillshade) makes a new phase that finds everything built and only re-shades.
     // (a carving phase shows a frame's surface at once and its carved terrain when that is ready; it keeps only
     // carved heights for the frames built ahead)
     const storeKey = `${spec.id}|${key}|${cells}|${JSON.stringify(cfgOverrides)}`;
     if (store?.key !== storeKey) store = { key: storeKey, sampler: null, full: new Map(), heights: new Map(), bytes: 0, carving: new Map() };
     const S = store, shown = new Map(), token = ++prefetchToken, index = new Map(frames.map((f, i) => [f, i]));
-    let current = frames.length - 1, poolReady = null, prefetching = false;
-    // a frame ready to paint: its heights, shaded for this view; its records only when a layer asks for them
-    const keep = (frame, r) => {
-        const shade = hillshade(tMesh, r.heightKm, { exaggeration: view.exaggeration, seaLevelKm: view.seaLevelKm });
-        let rec = r.rec ?? null;
-        const out = { heightKm: r.heightKm, parts: r.parts, sampler: r.sampler ?? S.sampler, ms: r.ms, kernels: r.kernels, volcanoes: r.volcanoes,
-            tectonicKm: r.tectonicKm ?? null, drainage: r.drainage ?? null, carved: !carve || r.carved !== false,
-            shade, hyps: hypsometry(r.heightKm, view.seaLevelKm), get rec() { return rec ??= deriveRecords(frame, simMesh, cfg, seed); } };
+    let current = frames.length - 1, heading = 0, poolReady = null, prefetching = false;
+    // the frame on screen, and which way the shown frames have been moving (playing: forward)
+    const showing = frame => { const i = index.get(frame); if (i === undefined || i === current) return; heading = Math.sign(i - current); current = i; };
+    // how far a frame is from the one on screen, for building ahead and for keeping within the budget: frames the way
+    // the shown frames are moving count as nearer (twice as near as those behind)
+    const distance = i => Math.abs(i - current) * (heading && Math.sign(i - current) === -heading ? 2 : 1);
+    // a frame ready to paint: its heights, shaded for this view (on the pool's shading worker, where there is one); its
+    // components (Ridges only) as its build has them; its hypsometry, land-height tally and records only when something
+    // asks for them
+    const shading = { exaggeration: view.exaggeration, seaLevelKm: view.seaLevelKm };
+    const keep = (frame, r, shade = hillshade(tMesh, r.heightKm, shading)) => {
+        let rec = r.rec ?? null, hyps = null;
+        const out = { src: r, heightKm: r.heightKm, get parts() { return r.parts ?? null; }, sampler: r.sampler ?? S.sampler, ms: r.ms, kernels: r.kernels, volcanoes: r.volcanoes,
+            tectonicKm: r.tectonicKm ?? null, drainage: r.drainage ?? null, carved: !carve || r.carved !== false, tally: null,
+            shade, get hyps() { return hyps ??= hypsometry(r.heightKm, view.seaLevelKm); }, get rec() { return rec ??= deriveRecords(frame, simMesh, cfg, seed); } };
         shown.set(frame, out);
         if (shown.size > 4) shown.delete(shown.keys().next().value);
         return out;
@@ -169,7 +180,7 @@ export function terrainPhase(spec) {
         // over budget: drop the frames farthest from the one on screen
         while (S.bytes > BUDGET && S.heights.size > 1) {
             let far = null, d = -1;
-            for (const g of S.heights.keys()) { const dd = Math.abs((index.get(g) ?? 0) - current); if (dd > d) { d = dd; far = g; } }
+            for (const g of S.heights.keys()) { const dd = distance(index.get(g) ?? 0); if (dd > d) { d = dd; far = g; } }
             S.bytes -= S.heights.get(far).q.byteLength; S.heights.delete(far);
         }
     };
@@ -186,10 +197,11 @@ export function terrainPhase(spec) {
         for (let i = 0; i < heightKm.length; i++) heightKm[i] = s.q[i] / 1000;
         return { heightKm, parts: null, rec: null, sampler: S.sampler, ms: s.ms, kernels: s.kernels, volcanoes: s.volcanoes };
     };
+    // shown already, from its full build — or from its stored heights, if it has no full build (yet, or any more)
+    const fresh = frame => { const s = shown.get(frame), full = S.full.get(frame); return !!s && (!full || s.src === full); };
     function terrainOf(frame) {
-        current = index.get(frame) ?? current;
-        const s = shown.get(frame), full = S.full.get(frame);
-        if (s && (s.parts || !full) && (s.carved || !full?.carved)) return s;
+        showing(frame);
+        if (fresh(frame)) return shown.get(frame);
         const r = S.full.get(frame) ?? fromHeights(frame);
         if (r) { if (poolReady) prefetch(poolReady); return keep(frame, r); }
         S.sampler ??= sampleOnto(simMesh, tMesh, cfg, seed);                // (in place: Node, or a layer that asked before prepare)
@@ -197,27 +209,33 @@ export function terrainPhase(spec) {
         remember(frame, T);
         return keep(frame, T);
     }
-    // ready to paint: heights for most layers; the components too for a layer that needs them (Ridges only); the
-    // carving too for one that shows it (Carving depth, Drainage, the surface before carving)
-    const isReady = (frame, layer) => !usePool || (layer?.needsCarving ? !!S.full.get(frame)?.drainage
-        : layer?.needsParts ? S.full.has(frame) : S.full.has(frame) || S.heights.has(frame));
+    // built: heights for most layers; the components too for a layer that needs them (Ridges only); the carving too for
+    // one that shows it (Carving depth, Drainage, the surface before carving). Ready to paint: built, and shaded.
+    const built = (frame, layer) => layer?.needsCarving ? !!S.full.get(frame)?.drainage
+        : layer?.needsParts ? !!S.full.get(frame)?.parts : S.full.has(frame) || S.heights.has(frame);
+    const isReady = (frame, layer) => !usePool || (built(frame, layer) && fresh(frame));
     async function prepare(frame, layer) {
-        current = index.get(frame) ?? current;
+        showing(frame);
         if (!usePool) return;
         const pool = poolReady ??= await (poolPromise ??= TerrainPool.create(simMesh));
-        if (!isReady(frame, layer)) {
-            const full = S.full.get(frame);
-            if (!full || !(layer?.needsParts || layer?.needsCarving) || full.parts) {
-                // the surface; a carving phase shows it until its carving is ready (on the carving worker)
-                const surf = full ?? await pool.synthesize(frame, tMesh, { cfg, seed, parts: true, carveInputs: carve });
-                if (!carve) remember(frame, surf);
-                else {
-                    if (!full) remember(frame, { ...surf, tectonicKm: surf.heightKm, carved: false });
-                    const carving = carveShown(pool, frame, surf);
-                    if (layer?.needsCarving) await carving;
-                }
+        if (!built(frame, layer)) {
+            // the surface — all on the pool: the page's thread only gathers the heights (and the components, for a layer
+            // that shows them; the records are derived when a layer asks for them)
+            const full = S.full.get(frame), wantParts = !!layer?.needsParts;
+            const surf = full && !(wantParts && !full.parts) ? full
+                : await pool.synthesize(frame, tMesh, { cfg, seed, parts: wantParts, records: false, carveInputs: carve && !full });
+            if (full && surf !== full) full.parts = surf.parts;           // (the components, for a frame built without them)
+            else if (!carve) remember(frame, surf);
+            else {
+                // a carving phase shows the surface until its carving is ready (on the carving worker)
+                if (!full) remember(frame, { ...surf, tectonicKm: surf.heightKm, carved: false });
+                const carving = carveShown(pool, frame, surf);
+                if (layer?.needsCarving) await carving;
             }
         }
+        // shaded on the pool, not here (a frame built meanwhile — carved, say — is shaded on the next call)
+        const r = fresh(frame) ? null : S.full.get(frame) ?? fromHeights(frame);
+        if (r) keep(frame, r, await pool.shade(tMesh, r.heightKm, shading));
         prefetch(pool);
     }
     // carve the frame on screen, and paint it again when done
@@ -226,7 +244,7 @@ export function terrainPhase(spec) {
         if (S.carving.has(frame)) return S.carving.get(frame);
         const job = pool.carve(tMesh, surf, cfg).then(C => {
             if (store !== S) return;
-            remember(frame, { ...surf, heightKm: C.z, tectonicKm: surf.heightKm, drainage: C.area, carved: true, ms: { ...surf.ms, carve: C.ms } });
+            remember(frame, { ...surf, parts: S.full.get(frame)?.parts ?? surf.parts, heightKm: C.z, tectonicKm: surf.heightKm, drainage: C.area, carved: true, ms: { ...surf.ms, carve: C.ms } });
             shown.delete(frame);
             hooks.repaint?.();
         }).finally(() => S.carving.delete(frame));
@@ -234,7 +252,7 @@ export function terrainPhase(spec) {
         return job;
     }
     // building ahead, one frame at a time (a frame the shell asks for waits at most for the one in hand): the nearest to
-    // the frame on screen that is not built yet, among as many as the budget holds
+    // the frame on screen that is not built yet, within AHEAD of it and among as many as the budget holds
     async function prefetch(pool) {
         if (prefetching) return;
         prefetching = true;
@@ -243,7 +261,7 @@ export function terrainPhase(spec) {
             for (;;) {
                 if (token !== prefetchToken || store !== S) return;                  // (the phase was rebuilt: its successor carries on)
                 const room = Math.max(4, Math.floor(BUDGET / (2 * tMesh.numCells)));
-                const next = frames.map((_, i) => i).sort((a, b) => Math.abs(a - current) - Math.abs(b - current) || a - b)
+                const next = frames.map((_, i) => i).filter(i => distance(i) <= AHEAD).sort((a, b) => distance(a) - distance(b) || a - b)
                     .slice(0, room).find(i => !S.heights.has(frames[i]) && !S.carving.has(frames[i]));
                 if (next === undefined) break;
                 const frame = frames[next];
@@ -319,7 +337,7 @@ export function terrainPhase(spec) {
     return {
         title: spec.title,
         summary: spec.summary + scene.about,
-        checklist: [...spec.checklists[scene.id], 'Terrain is built for the frame shown, then for every other frame in the background: once they are built, scrubbing and playing need no waiting, and sea level or hillshade changes only re-shade.'],
+        checklist: [...spec.checklists[scene.id], 'Terrain is built for the frame shown, then in the background for the next ten frames the way you are playing or scrubbing (five behind): once built, those play and scrub with no waiting, and sea level or hillshade changes only re-shade. Frames further off are built when you get near them — playing waits for a frame still being built rather than skipping past it — and the page stays responsive throughout; the computer quietens once the frames around the one shown are built.'],
         checkCommand: spec.checkCommand,
         maxTime: scene.maxMyr,
         timeStep: snapshotMyr,
@@ -349,10 +367,22 @@ export function terrainPhase(spec) {
 
         stats(frame) {
             const T = terrainOf(frame), hy = T.hyps, [, , q50, , q90, q99] = hy.landKm;
-            let max = -Infinity; for (const v of T.heightKm) max = Math.max(max, v);
             const bins = [[-Infinity, 0.2, 'below 200 m'], [0.2, 0.4, '200–400 m'], [0.4, 1, '400 m – 1 km'], [1, 2, '1–2 km'], [2, 3, '2–3 km'], [3, 5, '3–5 km'], [5, Infinity, 'above 5 km']];
-            const land = []; for (const v of T.heightKm) if (v > view.seaLevelKm) land.push(v - view.seaLevelKm);
-            const rows = bins.map(([lo, hi, name]) => { const n = land.filter(v => v >= lo && v < hi).length; return { name, color: css(tintOf(Math.max(0.05, Number.isFinite(hi) ? (Math.max(0, lo) + hi) / 2 : 6))), cells: [`${(100 * n / Math.max(1, land.length)).toFixed(1)} %`] }; });
+            // (one pass over the frame's heights, once: stats are asked for a few times a second while playing)
+            T.tally ??= (() => {
+                const h = T.heightKm, sea = view.seaLevelKm, count = bins.map(() => 0);
+                let max = -Infinity, land = 0;
+                for (let i = 0; i < h.length; i++) {
+                    const v = h[i];
+                    max = Math.max(max, v);
+                    if (!(v > sea)) continue;
+                    const u = v - sea; land++;
+                    for (let b = 0; b < bins.length; b++) if (u >= bins[b][0] && u < bins[b][1]) { count[b]++; break; }
+                }
+                return { max, land, count };
+            })();
+            const { max, land, count } = T.tally;
+            const rows = bins.map(([lo, hi, name], b) => ({ name, color: css(tintOf(Math.max(0.05, Number.isFinite(hi) ? (Math.max(0, lo) + hi) / 2 : 6))), cells: [`${(100 * count[b] / Math.max(1, land)).toFixed(1)} %`] }));
             return {
                 cards: [
                     { big: `${(100 * hy.landShare).toFixed(1)} %`, small: `of the planet is land (sea level ${view.seaLevelKm >= 0 ? '+' : ''}${view.seaLevelKm} km)` },

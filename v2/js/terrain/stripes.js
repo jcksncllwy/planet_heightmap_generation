@@ -9,11 +9,13 @@
 // Kernels belong to the crust (anchor.js): each sits where its crust cell is now and draws its jitter and phases from
 // that cell's own stream, so a range keeps its ridges as its plate moves — their phases drifting slowly with time
 // (detailRenewMyr), each at a rate of its own, so the ridges' forks and ends move on over geological time.
+// By default (cfg.stripeCarry) the sum is taken only at the corners of the plate's raster and carried to the points
+// between (carriedStripeAt, below): the same ridges to the eye, for about a seventh of the waves.
 
 import { kindType, kindSide } from './records.js';
 import { BeltSide } from '../tectonics/model/crust.js';
 import { nearLists } from './near-lists.js';
-import { cellRng, crustSites } from './anchor.js';
+import { cellRng, crustSites, plateToWorld } from './anchor.js';
 
 const R = 6371, TAU = 2 * Math.PI;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -118,6 +120,87 @@ export function stripeAt(K, c0, px, py, pz, wx, wy, wz, fineShare, fineRatio) {
     if (sum <= 1e-9) return 0;
     // where the kernels cancel, or point every which way, the phase means nothing: no stripes there (they would be blobs)
     const agree = Math.hypot(c2, s2) / sum, coherent = Math.min(1, Math.hypot(re, im) / (0.15 * sum)) * smooth(0.35, 0.75, agree);
+    let v = (fadeSum / sum) * coherent * ridge(Math.atan2(im, re));
+    if (fineSum > 0) v += fineShare * (fineSum / sum) * Math.min(1, Math.hypot(re2, im2) / (0.15 * fineSum)) * smooth(0.35, 0.75, agree) * ridge(Math.atan2(im2, re2));
+    return v;
+}
+
+// ── Carried ridges (cfg.stripeCarry, the default; developer 2026-09-26: "they look almost identical") ── The same phasor sum, taken only at the corners of the sim mesh as the plate under
+// a point carries it (its raster, turned into the world — so the ridges ride with the crust as the kernels do): at each
+// corner its sum, its strength, how well its kernels agree, and the wave it follows (its kernels' mean wave, per km). A
+// point between corners continues each corner's wave to itself and blends the three: ~3 waves a point instead of ~28.
+// Where neighbouring corners disagree their waves cancel in part, and ridges fork and end there, as they did where the
+// kernels disagreed.
+const FIELD = 11;                                          // re, im, re2, im2, sum, fadeSum, fineSum, agree, wave (3)
+
+/** stripeAt's sum at a point (window and phase both at x, y, z; nearest sim cell c0), and its mean wave, into out[o…o+10]. */
+function stripeField(K, c0, x, y, z, fineShare, fineRatio, out, o) {
+    const { offset, items } = K.near, { pos, dir, wave, phase, phase2, cut2, fade1, fade2 } = K;
+    let re = 0, im = 0, re2 = 0, im2 = 0, sum = 0, fadeSum = 0, fineSum = 0, kx0 = 0, ky0 = 0, kz0 = 0;
+    let rx = 0, ry = 0, rz = 0, qx = 0, qy = 0, qz = 0, c2 = 0, s2 = 0;
+    for (let j = offset[c0]; j < offset[c0 + 1]; j++) {
+        const k = items[j], kx = pos[3 * k], ky = pos[3 * k + 1], kz = pos[3 * k + 2];
+        const dx = x - kx, dy = y - ky, dz = z - kz, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= cut2) continue;
+        const q = 1 - d2 / cut2, g = q * q * q;
+        const lam = wave[k], f1 = fade1[k];
+        if (f1 <= 0 && fineShare <= 0) continue;
+        const dxk = dir[3 * k], dyk = dir[3 * k + 1], dzk = dir[3 * k + 2];
+        if (!(rx || ry || rz)) { rx = dxk; ry = dyk; rz = dzk; qx = y * rz - z * ry; qy = z * rx - x * rz; qz = x * ry - y * rx; }
+        const ca = dxk * rx + dyk * ry + dzk * rz, sa = dxk * qx + dyk * qy + dzk * qz, n2 = ca * ca + sa * sa || 1;
+        c2 += g * (ca * ca - sa * sa) / n2; s2 += g * 2 * ca * sa / n2;
+        const s = ((x - kx) * dxk + (y - ky) * dyk + (z - kz) * dzk) * R;
+        const a = TAU * s / lam + phase[k];
+        re += g * Math.cos(a); im += g * Math.sin(a);
+        sum += g; fadeSum += g * f1;
+        // (the wave, per unit of the sphere: the kernel's direction × 2πR/λ — turned to agree with the first kernel's)
+        const kw = g * (ca >= 0 ? 1 : -1) * TAU * R / lam;
+        kx0 += kw * dxk; ky0 += kw * dyk; kz0 += kw * dzk;
+        const f2 = fade2[k];
+        if (f2 > 0) { const b = TAU * s * fineRatio / lam + phase2[k]; re2 += g * f2 * Math.cos(b); im2 += g * f2 * Math.sin(b); fineSum += g * f2; }
+    }
+    out[o] = re; out[o + 1] = im; out[o + 2] = re2; out[o + 3] = im2; out[o + 4] = sum; out[o + 5] = fadeSum; out[o + 6] = fineSum;
+    out[o + 7] = sum > 1e-9 ? Math.hypot(c2, s2) / sum : 0;
+    out[o + 8] = sum > 1e-9 ? kx0 / sum : 0; out[o + 9] = sum > 1e-9 ? ky0 / sum : 0; out[o + 10] = sum > 1e-9 ? kz0 / sum : 0;
+}
+
+/** The corners of one belt layer's kernels K on plate o's raster (o < 0: the world grid), filled as points ask for them. */
+export function carriedField(K, simMesh, A, o, fineShare, fineRatio) {
+    const n = simMesh.numCells;
+    return { K, simMesh, A, o, fineShare, fineRatio, done: new Uint8Array(n), f: new Float32Array(FIELD * n), p: new Float64Array(3 * n) };
+}
+
+function corner(C, r) {
+    C.done[r] = 1;
+    const { xyz, index } = C.simMesh, v = [xyz[3 * r], xyz[3 * r + 1], xyz[3 * r + 2]];
+    if (C.o >= 0) plateToWorld(C.A, C.o, v);
+    C.p[3 * r] = v[0]; C.p[3 * r + 1] = v[1]; C.p[3 * r + 2] = v[2];
+    stripeField(C.K, index.nearest(v[0], v[1], v[2]), v[0], v[1], v[2], C.fineShare, C.fineRatio, C.f, FIELD * r);
+}
+
+/**
+ * The carried stripe value at the point whose raster corners are r3 (weights w3) on C's plate; wx, wy, wz: the point in
+ * the world, displaced by the meander warp. The same scale as stripeAt.
+ */
+export function carriedStripeAt(C, r3, w3, wx, wy, wz) {
+    const { f, p, fineShare, fineRatio } = C;
+    let re = 0, im = 0, re2 = 0, im2 = 0, sum = 0, fadeSum = 0, fineSum = 0, agree = 0;
+    for (let i = 0; i < 3; i++) {
+        const r = r3[i], wt = w3[i];
+        if (wt <= 0) continue;
+        if (!C.done[r]) corner(C, r);
+        const o = FIELD * r, cs = f[o + 4];
+        if (cs <= 1e-9) continue;
+        // the corner's wave, continued from the corner to the point
+        const th = f[o + 8] * (wx - p[3 * r]) + f[o + 9] * (wy - p[3 * r + 1]) + f[o + 10] * (wz - p[3 * r + 2]);
+        const c = Math.cos(th), s = Math.sin(th);
+        re += wt * (f[o] * c - f[o + 1] * s); im += wt * (f[o] * s + f[o + 1] * c);
+        if (f[o + 6] > 0) { const c2 = Math.cos(fineRatio * th), s2 = Math.sin(fineRatio * th); re2 += wt * (f[o + 2] * c2 - f[o + 3] * s2); im2 += wt * (f[o + 2] * s2 + f[o + 3] * c2); }
+        sum += wt * cs; fadeSum += wt * f[o + 5]; fineSum += wt * f[o + 6]; agree += wt * cs * f[o + 7];
+    }
+    if (sum <= 1e-9) return 0;
+    agree /= sum;
+    const coherent = Math.min(1, Math.hypot(re, im) / (0.15 * sum)) * smooth(0.35, 0.75, agree);
     let v = (fadeSum / sum) * coherent * ridge(Math.atan2(im, re));
     if (fineSum > 0) v += fineShare * (fineSum / sum) * Math.min(1, Math.hypot(re2, im2) / (0.15 * fineSum)) * smooth(0.35, 0.75, agree) * ridge(Math.atan2(im2, re2));
     return v;

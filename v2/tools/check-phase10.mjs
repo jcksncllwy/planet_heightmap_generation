@@ -14,6 +14,7 @@ import { synthesizeTerrain } from '../js/terrain/synthesize.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide } from '../js/terrain/records.js';
 import { spreadKm } from '../js/core/min-heap.js';
+import { buildAnchor } from '../js/terrain/anchor.js';
 
 const SEED = 12345;
 const mesh = labMesh(), n = mesh.numCells;
@@ -48,8 +49,10 @@ function crossSection(F, T, tm, pressed, mine) {
 section('a belt rides onto a craton\'s rim');
 const cr = run('cratons'), cfg = cr.world.config;
 {
-    // (every frame while the collision builds, up to the weld: the weld's redraw then moves crust under the records —
-    // indenting the outlines by up to ~200 km — which Phase 11 takes on with the weld itself)
+    // (every frame while the collision builds, up to the weld. After it the records reach a cell or two further in —
+    // 344 km at most on the plate's own raster, 165 km in the India scene (Phase 11): the weld's belt is spread from the
+    // seam as the redraw left it, and a path enters a craton half a cell before it counts. It does not show: the terrain
+    // fades a belt's relief across the rim by the distance from the shield's edge line (terrain/cratons.js), not by records)
     const weldAt = cr.world.events.find(e => e.kind === 'suture')?.time ?? Infinity;
     let most = 0, deepest = 0, thick = 0;
     for (const F of cr.frames) {
@@ -142,35 +145,42 @@ section('cratons across a whole planet (600 Myr)');
 // ── scraps of craton (1–3 sim cells, as a collision leaves them: the India scene, and the whole planet) ──
 section('scraps of craton');
 {
-    // the ground on each scrap against the ring of ground around it
-    const gapsOf = (F, T, tm) => {
-        const cellOf = t => T.sampler.cells[3 * t], seen = new Uint8Array(n), gaps = [];
-        const meanH = cells => { const set = new Set(cells); let s = 0, m = 0; for (let t = 0; t < tm.numCells; t++) if (set.has(cellOf(t))) { s += T.heightKm[t]; m++; } return m ? s / m : NaN; };
+    // A scrap is found on its plate's own raster — the crust itself — not in the world view: the world samples a moved
+    // plate's raster, and where it skips the cell that joins a shield's narrow neck to the rest, the neck's tip shows as a
+    // one-cell "scrap" in the world view though the terrain (which reads the raster) draws it as the shield it is (Phase
+    // 11: 7 of the 10 world-view scraps over these frames were such tips, the lowland of a shield reaching into foothills).
+    const gapsOf = (F, tm) => {
+        const A = buildAnchor(F, mesh), craton = new Map(), gaps = [];
+        for (let i = 0; i < F.crustCells.length; i++) { if (F.crustType[i] !== CrustType.CRATON) continue; const o = Math.floor(F.crustCells[i] / n); (craton.get(o) ?? craton.set(o, new Uint8Array(n)).get(o))[F.crustCells[i] - o * n] = 1; }
+        const rasterPatch = (o, r0) => { const m = craton.get(o); if (!m?.[r0]) return 0; const q = [r0], seen = new Set(q); for (let i = 0; i < q.length && q.length <= 3; i++) for (let k = mesh.adjOffset[q[i]]; k < mesh.adjOffset[q[i] + 1]; k++) { const x = mesh.adjList[k]; if (m[x] && !seen.has(x)) { seen.add(x); q.push(x); } } return q.length; };
+        let T = null; const seen = new Uint8Array(n);
         for (let w0 = 0; w0 < n; w0++) {
             if (!isC(F, w0) || seen[w0]) continue;
             const patch = [w0]; seen[w0] = 1;
             for (let i = 0; i < patch.length; i++) for (let k = mesh.adjOffset[patch[i]]; k < mesh.adjOffset[patch[i] + 1]; k++) { const q = mesh.adjList[k]; if (isC(F, q) && !seen[q]) { seen[q] = 1; patch.push(q); } }
             if (patch.length > 3) continue;
+            const o = F.owner[w0], onRaster = A.moved[o] ? rasterPatch(o, A.cell[w0]) : patch.length;
+            if (onRaster < 1 || onRaster > 3) continue;                          // (a bigger shield's tip, seen through the world view)
             const ring = new Set();
             for (const w of patch) for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) { const q = mesh.adjList[k]; if (!isC(F, q) && isLand(F, q)) ring.add(q); }
             if (ring.size < 3) continue;
+            T ??= synthesizeTerrain(F, mesh, tm, { seed: SEED });
+            const meanH = cells => { const set = new Set(cells); let s = 0, m = 0; for (let t = 0; t < tm.numCells; t++) if (set.has(T.sampler.cells[3 * t])) { s += T.heightKm[t]; m++; } return m ? s / m : NaN; };
             const inside = meanH(patch), around = meanH([...ring]);
             if (inside === inside && around === around) gaps.push(around - inside);
         }
         return gaps;
     };
-    // (scraps are rare and sim-cell sized: several frames, at 160K. Measured before Phase 10: median 0.02 km, the worst
-    // 1.27 km. The worst now, ~0.8 km, is not a scrap: the visible tip of a shield hidden under the upper plate in a
-    // collision's overlap — the weld's geometry, which Phase 11 takes on)
+    // (scraps are rare and sim-cell sized: many frames, at 160K. Measured before Phase 10: median 0.02 km, the worst 1.27 km)
     const gaps = [], found = [], tm160 = terrainMesh(160000);
-    for (const [id, times] of [['india', [60, 70, 80, 90]], ['history', [100, 200, 300, 400, 500, 600]]]) {
+    for (const [id, times] of [['india', [50, 60, 70, 80, 90]], ['history', Array.from({ length: 30 }, (_, i) => 20 * (i + 1))]]) {
         const { frames } = run(id, Math.max(...times));
         let k = 0;
-        for (const F of frames.filter(f => times.includes(f.time))) { const g = gapsOf(F, synthesizeTerrain(F, mesh, tm160, { seed: SEED }), tm160); gaps.push(...g); k += g.length; }
+        for (const F of frames.filter(f => times.includes(f.time))) { const g = gapsOf(F, tm160); gaps.push(...g); k += g.length; }
         found.push(`${k} in the ${id} scene`);
     }
-    check('scraps of craton read as the ground around them — no flat holes in a range', gaps.length >= 5 && median(gaps) <= 0.1,
-        `craton scraps of 1–3 sim cells over ${found.join(' and ')}: the ground around them stands ${median(gaps).toFixed(2)} km above them (median; before Phase 10 0.02 km, the worst 1.27 km — now ${Math.max(...gaps).toFixed(2)} km)`);
+    check('scraps of craton read as the ground around them — no flat holes in a range', gaps.length >= 3 && median(gaps) <= 0.1 && Math.max(...gaps) <= 0.5,
+        `craton scraps of 1–3 cells on their own plate's raster, over ${found.join(' and ')}: the ground around them stands ${median(gaps).toFixed(2)} km above them — below, where negative (median; the most ${Math.max(...gaps).toFixed(2)} km; before Phase 10 0.02 km, the worst 1.27 km)`);
 }
 
 finish('Phase 10');

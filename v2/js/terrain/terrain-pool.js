@@ -1,9 +1,10 @@
 // Terrain synthesis spread over worker threads (terrain-worker.js): the terrain cells are cut into chunks, each worker
-// always gets the same chunks (so it keeps their positions and sampler between frames), builds the per-frame plan itself
-// and computes the surface of its chunks. The result is exactly synthesizeTerrain's — every cell depends only on its
+// always gets the same chunks (so it keeps their positions and sampler between frames) and computes the surface of its
+// chunks from the per-frame plan — built once, by the first worker, and handed to the others over message ports. The result is exactly synthesizeTerrain's — every cell depends only on its
 // position and the plan — only faster. Works in the browser (module workers) and in Node (worker threads).
 // Carving (Phase 8b) needs a whole frame at once: one more worker (carve-worker.js) carves each frame the chunk workers
-// have built, on a queue of its own, so the next frame's surface is built while this one is carved.
+// have built, on a queue of its own, so the next frame's surface is built while this one is carved. Hillshading a frame
+// for the page needs its whole mesh too: one more worker (shade-worker.js) does that, so the page's thread never does.
 
 import { preparePlan, carveLadder, carveSettings, carveInputs, surfaceParts } from './synthesize.js';
 import { terrainMeshAsync } from './terrain-mesh.js';
@@ -42,6 +43,13 @@ export class TerrainPool {
         const workers = await Promise.all(Array.from({ length: n }, spawn));
         const arrays = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
         for (const w of workers) w.post({ type: 'sim', mesh: arrays });
+        // the first worker plans each frame and hands the plan to each other worker over a port of their own
+        const Channel = IS_NODE ? (await import('node:worker_threads')).MessageChannel : MessageChannel;
+        for (let i = 1; i < n; i++) {
+            const { port1, port2 } = new Channel();
+            workers[0].post({ type: 'peer', port: port1 }, [port1]);
+            workers[i].post({ type: 'planner', port: port2 }, [port2]);
+        }
         return new TerrainPool(workers, simMesh);
     }
 
@@ -57,7 +65,12 @@ export class TerrainPool {
 
     get size() { return this.workers.length; }
 
-    terminate() { for (const w of this.workers) w.terminate(); this.workers = []; this.carver?.worker.terminate(); this.carver = null; }
+    terminate() {
+        for (const w of this.workers) w.terminate();
+        this.workers = [];
+        this.carver?.worker.terminate(); this.carver = null;
+        this.shader?.worker.terminate(); this.shader = null;
+    }
 
     /**
      * synthesizeTerrain(frame, simMesh, tMesh, { cfg, seed, parts }) on the pool: same result (heightKm, parts, rec,
@@ -78,7 +91,8 @@ export class TerrainPool {
 
     /**
      * Carve a frame's surface (synthesize's result, built with carveInputs: true) on the carving worker — carve.js's
-     * carveTerrain over the sim mesh and the terrain meshes up to tMesh. Queued apart from the surfaces.
+     * carveTerrain over the sim mesh and the terrain meshes up to tMesh. Queued apart from the surfaces. The surface's
+     * carving inputs (built.carveIn) go to the worker: here they are left empty.
      * @returns {Promise<{z: Float32Array, area: Float32Array, ms: number}>}
      */
     carve(tMesh, built, cfg) {
@@ -108,7 +122,43 @@ export class TerrainPool {
                     pending.delete(jobId);
                     if (msg.type === 'error') reject(new Error(`carve worker: ${msg.message}`)); else resolve({ z: msg.z, area: msg.area, ms: msg.ms });
                 });
-                worker.post({ type: 'carve', jobId, ladder: ladder.map(m => m.numCells), fields, settings: carveSettings(cfg) });
+                // (the carving's inputs are handed over, not copied — only the carving reads them; the heights are copied)
+                worker.post({ type: 'carve', jobId, ladder: ladder.map(m => m.numCells), fields, settings: carveSettings(cfg) }, Object.values(built.carveIn).map(a => a.buffer));
+            });
+        } finally { worker.hold(false); }
+    }
+
+    /**
+     * view/terrain-shade.js's hillshade(tMesh, heightKm, opts) on the shading worker: the same shading, bit for bit, off
+     * the caller's thread (heightKm is copied). Queued apart from the surfaces and the carving.
+     * @returns {Promise<Float32Array>}
+     */
+    shade(tMesh, heightKm, opts) {
+        const run = (this.shadeQueue ?? Promise.resolve()).then(() => this.runShade(tMesh, heightKm, opts));
+        this.shadeQueue = run.catch(() => {});
+        return run;
+    }
+
+    async runShade(tMesh, heightKm, opts) {
+        if (!this.shader) {
+            const worker = await spawn('./shade-worker.js'), pending = new Map();
+            worker.listen(msg => pending.get(msg.jobId)?.(msg));
+            this.shader = { worker, pending, sent: new Set() };
+        }
+        const { worker, pending, sent } = this.shader;
+        if (!sent.has(tMesh.numCells)) {                                           // (each mesh sent once, copied)
+            worker.post({ type: 'mesh', mesh: { numCells: tMesh.numCells, xyz: tMesh.xyz, adjOffset: tMesh.adjOffset, adjList: tMesh.adjList } });
+            sent.add(tMesh.numCells);
+        }
+        const jobId = this.nextJob++;
+        worker.hold(true);
+        try {
+            return await new Promise((resolve, reject) => {
+                pending.set(jobId, msg => {
+                    pending.delete(jobId);
+                    if (msg.type === 'error') reject(new Error(`shade worker: ${msg.message}`)); else resolve(msg.shade);
+                });
+                worker.post({ type: 'shade', jobId, numCells: tMesh.numCells, heightKm, opts });
             });
         } finally { worker.hold(false); }
     }
@@ -131,7 +181,7 @@ export class TerrainPool {
         const parts = wantParts ? surfaceParts(n) : null;
         const carveIn = wantCarve ? carveInputs(n) : null;
         const byId = new Map(mesh.chunks.map(c => [c.id, c]));
-        const jobId = this.nextJob++, slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
+        const jobId = this.nextJob++, slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));      // (to the planner only)
         slim.plates = frame.plates.map(p => p && { quat: p.quat });           // (the plates' rotations: detail is anchored to the crust)
 
         let counts = null;
@@ -147,7 +197,7 @@ export class TerrainPool {
                 if (msg.cells) { sampler.cells.set(msg.cells, 3 * c.from); sampler.weights.set(msg.weights, 3 * c.from); }
             });
         });
-        this.workers.forEach((w, wi) => w.post({ type: 'job', jobId, frame: slim, cfg, seed, edgeKm: tMesh.edgeKm, parts: wantParts, carve: wantCarve, samplerKey,
+        this.workers.forEach((w, wi) => w.post({ type: 'job', jobId, frame: wi === 0 ? slim : null, cfg, seed, edgeKm: tMesh.edgeKm, parts: wantParts, carve: wantCarve, samplerKey,
             chunkIds: mesh.chunks.filter((_, i) => i % W === wi).map(c => c.id) }));
         // meanwhile, the plan here too: the caller reads the records (ridge directions, belt kinds) as well as the heights
         // (unless it asked for heights only — a frame built ahead, in the background, keeps the page's thread free)

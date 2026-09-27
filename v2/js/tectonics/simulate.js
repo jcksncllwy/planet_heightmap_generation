@@ -10,6 +10,7 @@ import { trackCollisions } from './step/collision.js';
 import { growWings, buildArcs } from './step/wings.js';
 import { collapseArcs } from './ops/collapse-arc.js';
 import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
+import { closeRemnantSeas } from './step/remnant-seas.js';
 import { riftContinents } from './step/rifting.js';
 import { initiateSubduction } from './step/subduction-init.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
@@ -73,6 +74,7 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
             changed += riftContinents(world, dt);      // plume and tension rifts (splits plates)
             changed += openBackArcs(world, dt);        // rolling-back trenches split off strips; finished strips rejoin
             changed += initiateSubduction(world, dt);  // passive margins founder (may carve an ocean plate)
+            changed += closeRemnantSeas(world, dt);    // seas sealed inside a plate close from their shores
             changed += tidyPlates(world);              // fragments join a neighbour; ocean scraps go to the passive ocean
             if (changed) {                              // crust changed: the world view must be rebuilt before anything reads it
                 for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz);

@@ -7,8 +7,11 @@
 //   slab resistance  at each trench cell where this plate's ocean goes down: the mantle resists the
 //                    slab's sinking in proportion to the convergence rate. This — not basal drag — is
 //                    what limits a subducting plate's speed (terminal speed ≈ slabPull ÷ slabResistance)
-//   collision lock   where land overlaps land, a viscous tie to the other plate; as the overlap grows it
-//                    swamps everything else and the two plates lock — "slow, stop, and move as one"
+//   collision lock   where land overlaps land, a viscous tie to the other plate ACROSS the front, against their
+//                    closing: as the overlap grows it swamps everything else and the seam stops closing — but along
+//                    the front it resists only weakly, and hardly at all where the two part, so a contact is a pivot
+//                    (Phase 11): the pull of the ocean still going down beside it turns the plate about it and the
+//                    rest of the gap closes like a zipper
 // The two couplings involve the other plate's velocity; every plate is solved against the velocities
 // all plates had at the START of the step, so the result does not depend on plate order.
 // The solved rotation is approached over `relaxMyr` (WBP: plates change speed over a few Myr).
@@ -51,12 +54,18 @@ function balancedRotation(world, plate, load, omegaOf) {
         const o = omegaOf[other], otherNormalSpeed = o[0] * a[0] + o[1] * a[1] + o[2] * a[2];
         for (let i = 0; i < 3; i++) T[i] += c * otherNormalSpeed * a[i];
     }
-    // collision lock acts on the whole relative velocity:  F = −c (v_self − v_other)
-    for (const { r, other, weight } of load.contacts) {
-        const c = config.collisionResistance * areaUnit * weight;
-        addProjector(D, r, c);
-        const o = omegaOf[other], d = r[0] * o[0] + r[1] * o[1] + r[2] * o[2];
-        for (let i = 0; i < 3; i++) T[i] += c * (o[i] - r[i] * d);                                        // c · r × (ω_other × r)
+    // collision lock, across the front and along it:  F = −c_n (n · v_rel) n − c_t (t · v_rel) t, v_rel = v_self − v_other;
+    // across, full strength where the two close and a small share where they part (judged at the start of the step)
+    const self = omegaOf[plate.id];
+    for (const { r, n, other, weight } of load.contacts) {
+        const c = config.collisionResistance * areaUnit * weight, o = omegaOf[other];
+        const an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];      // r × n: n·(ω × r) = ω·(r × n)
+        const closing = (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2] > 0;
+        const t = an, at = [r[1] * t[2] - r[2] * t[1], r[2] * t[0] - r[0] * t[2], r[0] * t[1] - r[1] * t[0]];   // t = r × n along the front; r × t
+        for (const [a, k] of [[an, closing ? 1 : config.collisionSeparateShare], [at, config.collisionShearShare]]) {
+            const ck = c * k, oa = o[0] * a[0] + o[1] * a[1] + o[2] * a[2];
+            for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) D[3 * i + j] += ck * a[i] * a[j]; T[i] += ck * oa * a[i]; }
+        }
     }
     return solve3(D, T);
 }

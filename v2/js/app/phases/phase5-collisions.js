@@ -4,6 +4,7 @@
 
 import { onlyMechanisms } from '../../tectonics/config.js';
 import { FORCE_SCENES } from '../../tectonics/scenarios/force-scenes.js';
+import { COLLISION_SCENES } from '../../tectonics/scenarios/collision-scenes.js';
 import { simulate } from '../../tectonics/simulate.js';
 import { updatePlateMotion } from '../../tectonics/step/torque-balance.js';
 import { frameTallies } from '../../tectonics/measure.js';
@@ -29,9 +30,23 @@ const TUNABLES = [
     { id: 'thickeningPerWorkKm', label: 'Thickening per km of shortening', min: 0, max: 0.06, step: 0.005, unit: ' km/km' },
     { id: 'weakCellCost', label: 'Old sutures carry a belt further (1 = no effect)', min: 0.1, max: 1, step: 0.05 },
     { id: 'collisionResistance', label: 'Collision resistance', min: 0, max: 1000, step: 25 },
+    { id: 'collisionSeparateShare', label: 'A contact resists parting at this share (low: it pivots)', min: 0, max: 1, step: 0.05 },
+    { id: 'collisionShearShare', label: '…and sliding along the front at this share', min: 0, max: 1, step: 0.05 },
+    { id: 'sutureGapWidthKm', label: 'Weld once the sea between is a strip this wide along the front', min: 0, max: 600, step: 20, unit: ' km' },
+    { id: 'ringSeaKm2', label: 'Plates ringing a sea larger than this stay apart', min: 2e5, max: 1e7, step: 1e5, unit: ' km²' },
 ];
 
 const SCENES = [
+    {
+        id: 'zipper', base: 'zipper', label: 'Continents meet at an angle (zipper)', maxMyr: 160,
+        about: COLLISION_SCENES.find(s => s.id === 'zipper').about,
+        checklist: [
+            'Austra (purple) strikes Borea near Borea\u2019s east end first; the magenta overlap starts there, at an angle to the rest of the coast.',
+            'After contact Austra turns about that first contact (Plates layer, scrub 20 → 60 Myr): its west end swings north and the ocean between the two closes like a zipper — the contact does not freeze the two where they first touched.',
+            'Only once the seam has closed (or stopped closing) do they weld — the event log says how much sea was left between them; a small gulf may stay open at the far end, as the Bay of Bengal beside India.',
+            'Try the weld slider: set “weld once the sea between is a strip this wide” to 600 km and they weld within ~10 Myr of first contact, before Austra has turned (3° instead of ~12°) — the contact itself allows the turn; what froze it was welding too soon.',
+        ],
+    },
     {
         id: 'india', base: 'india', label: 'India meets Asia', maxMyr: 100,
         about: '“India” arrives at subducting-ocean speed and hits “Asia”. Watch the Orogeny layer: an Andean belt first grows along Asia’s active coast; on contact a collision belt spreads inland, then the two weld and the map is redrawn.',
@@ -64,7 +79,7 @@ const SCENES = [
 ];
 
 export function createPhase(simMesh, seed, overrides = {}) {
-    const scene = SCENES.find(s => s.id === overrides.scene) ?? SCENES[0], base = FORCE_SCENES.find(s => s.id === scene.base);
+    const scene = SCENES.find(s => s.id === overrides.scene) ?? SCENES[0], base = FORCE_SCENES.find(s => s.id === scene.base) ?? COLLISION_SCENES.find(s => s.id === scene.base);
     const world = base.build(simMesh, seed);
     Object.assign(world.config, NO_WINGS);
     for (const t of TUNABLES) if (overrides[t.id] !== undefined) world.config[t.id] = overrides[t.id];
@@ -80,8 +95,8 @@ export function createPhase(simMesh, seed, overrides = {}) {
     return {
         title: 'Phase 5a — Collision events',
         summary: 'The force scenes again, with the event rules on. Convergence at every trench and collision front is recorded as a mountain belt that reaches inland ' +
-            '(width by type, blocked by cratons, carried further along old sutures). Colliding plates lock and shorten; once enough shortening has been absorbed — ' +
-            'or the seam has stalled — they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
+            '(width by type, onto a craton only its rim, carried further along old sutures). Colliding plates lock across the front and shorten — but a contact is a pivot, not a clamp: ' +
+            'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Once the seam has closed, or stopped closing, they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
             'squeezed back and sideways, cratons moved as rigid blocks. ' + scene.about,
         checklist: [...scene.checklist,
             'The crust rules still hold: no gaps, and land is only ever lost where a collision absorbed it (the event log gives the count).'],

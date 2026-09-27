@@ -152,7 +152,7 @@ export function trackCollisions(world, dt) {
 
         // the lower plate's continent slides under the upper one: its land deep in the overlap is consumed, and the
         // upper plate's crust above it thickens (area → thickness: Tibet)
-        underthrust(world, U, L, cells, rec, km);
+        const underNow = underthrust(world, U, L, cells, rec, km);
 
         // weld?
         // enough convergence absorbed, or the seam has stalled, or they have simply been locked together long enough
@@ -160,17 +160,97 @@ export function trackCollisions(world, dt) {
             || (rec.stalledMyr >= config.sutureStallMyr && rec.shorteningKm >= config.sutureStallMinKm)
             || rec.contactMyr >= config.sutureContactMyr
             || cells.length * cellAreaKm2 >= config.sutureOverlapKm2;     // so much land stacked on land: they are one already
-        if (ready && rec.frontKm >= config.sutureMinContactKm) {
+        // …and the seam has closed (Phase 11): welded with ocean still open between the two, that ocean would be sealed
+        // inside one plate for good — or they have been locked together so long that it never will
+        // (both measures flood the sea: taken at most every sutureCheckMyr while a pair waits — a seam closes over Myr)
+        rec.frontMaxKm = Math.max(rec.frontMaxKm ?? 0, rec.frontKm);          // (a collision's front wanders; once long, it is a collision)
+        const due = ready && rec.frontMaxKm >= config.sutureMinContactKm && !(time - (rec.checkedAt ?? -Infinity) < config.sutureCheckMyr);
+        if (due) {
+            rec.gapKm2 = openSeaBetweenKm2(world, U, L);
+            // (is the gap still closing? — the zipper's progress: the smallest gap so far, and when it last shrank by a tenth)
+            if (!(rec.gapKm2 >= 0.9 * (rec.gapBestKm2 ?? Infinity))) { rec.gapBestKm2 = rec.gapKm2; rec.gapShrankAt = time; }
+        }
+        rec.gapKm2 ??= Infinity;
+        // (a seam that has stalled long has closed all it will: the pivot has done its work — what is left is a remnant sea)
+        const closed = rec.gapKm2 <= rec.frontMaxKm * config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
+            || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr, overdue = rec.contactMyr >= config.sutureLockMaxMyr;
+        // …and never into a ring: welded round a big sea, one rigid plate would hold it for good — apart, the two can still
+        // close it
+        // (so much land stacked on land that the two are one already: they weld now, whatever sea is left — a remnant — or
+        // whatever they ring; waiting would only stack them deeper)
+        // (stacked: how deep, on average, the one lies on the other — the overlap left after this step's underthrusting over the
+        // front's length; an area alone would call a long front's single contact row "stacked")
+        const stacked = (cells.length - underNow) * cellAreaKm2 / Math.max(rec.frontKm, edgeKm) >= config.sutureStackKm;
+        const wouldWeld = ((ready && (closed || stacked)) || overdue) && rec.frontMaxKm >= config.sutureMinContactKm;
+        if (wouldWeld && (due || rec.ringKm2 === undefined)) rec.ringKm2 = enclosedSeaBetweenKm2(world, U, L);
+        if (due) rec.checkedAt = time;
+        if (wouldWeld && rec.ringKm2 > config.ringSeaKm2 && !rec.ringLogged) { rec.ringLogged = true; world.log(EventKind.COLLISION, `${L.name} and ${U.name} stay apart: their land rings a ${(rec.ringKm2 / 1e6).toFixed(1)} Mkm² sea`, { upper: U.id, lower: L.id, ringKm2: rec.ringKm2 }); }
+        if (wouldWeld && (rec.ringKm2 <= config.ringSeaKm2 || stacked)) {
             const result = mergePlates(world, U, L, cells, rec);
             rec.sutured = true;
             merged = true;
-            const why = rec.stalledMyr >= config.sutureStallMyr ? 'stalled' : rec.shorteningKm < config.sutureShorteningKm ? 'contact' : 'shortening';
+            const why = stacked && !closed ? 'stacked' : !closed ? 'overdue' : rec.stalledMyr >= config.sutureStallMyr ? 'stalled' : rec.shorteningKm < config.sutureShorteningKm ? 'contact' : 'shortening';
             world.log(EventKind.SUTURE, `${L.name} sutured to ${U.name} after ${(time - rec.startedAt).toFixed(0)} Myr: ${rec.frontKm.toFixed(0)} km front, ${rec.shorteningKm.toFixed(0)} km of shortening, ` +
-                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${rec.stalledMyr >= config.sutureStallMyr ? ' — the seam had stalled' : rec.shorteningKm < config.sutureShorteningKm ? ` — they had been locked together ${rec.contactMyr.toFixed(0)} Myr` : ''}`,
-                { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, why });
+                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${!closed ? ` — locked together ${rec.contactMyr.toFixed(0)} Myr with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : rec.stalledMyr >= config.sutureStallMyr ? ' — the seam had stalled' : rec.shorteningKm < config.sutureShorteningKm ? ` — they had been locked together ${rec.contactMyr.toFixed(0)} Myr` : ''}`,
+                { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, why });
         }
     }
     return merged;
+}
+
+/**
+ * The largest sea cut off from the world ocean that both plates' land borders (km²): what a weld would lock inside
+ * one rigid plate.
+ */
+function enclosedSeaBetweenKm2(world, U, L) {
+    const { mesh, owner, ownerCell, plates, landClaims } = world, { numCells, adjOffset, adjList, cellAreaKm2 } = mesh;
+    const isSea = w => owner[w] < 0 || (landClaims[w] <= 1 && plates[owner[w]].crust.type[ownerCell[w]] === CrustType.OCEAN);
+    const comp = new Int32Array(numCells).fill(-1), sizes = [];
+    for (let w0 = 0; w0 < numCells; w0++) {
+        if (!isSea(w0) || comp[w0] >= 0) continue;
+        const id = sizes.length, q = [w0]; comp[w0] = id;
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (comp[nb] < 0 && isSea(nb)) { comp[nb] = id; q.push(nb); } }
+        sizes.push(q.length);
+    }
+    let world_ = 0;
+    for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[world_]) world_ = i;
+    const bordersU = new Uint8Array(sizes.length), bordersL = new Uint8Array(sizes.length);
+    for (let w = 0; w < numCells; w++) {
+        const o = owner[w];
+        if ((o !== U.id && o !== L.id) || isSea(w)) continue;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const c = comp[adjList[k]]; if (c >= 0) (o === U.id ? bordersU : bordersL)[c] = 1; }
+    }
+    let biggest = 0;
+    for (let i = 0; i < sizes.length; i++) if (i !== world_ && bordersU[i] && bordersL[i]) biggest = Math.max(biggest, sizes[i]);
+    return biggest * cellAreaKm2;
+}
+
+/**
+ * The sea still open between the two plates' land (km²): sea cells within sutureGapKm of both — measured through the sea
+ * from each plate's coast — with the two distances together no more than sutureGapKm, and the two nearest coasts on
+ * opposite sides of it (more than 120° apart): between them, not beside them (the seas either side of India's nose
+ * never close, and need not).
+ */
+function openSeaBetweenKm2(world, U, L) {
+    const { mesh, owner, ownerCell, plates, landClaims, config } = world, { numCells, adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
+    const isSea = w => owner[w] < 0 || (landClaims[w] <= 1 && plates[owner[w]].crust.type[ownerCell[w]] === CrustType.OCEAN);
+    const coastU = [], coastL = [];
+    for (let w = 0; w < numCells; w++) {
+        const o = owner[w];
+        if ((o !== U.id && o !== L.id) || isSea(w)) continue;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) if (isSea(adjList[k])) { (o === U.id ? coastU : coastL).push(w); break; }
+    }
+    const hops = Math.max(1, Math.round(config.sutureGapKm / edgeKm)), fU = hopsFrom(mesh, coastU, isSea, hops), fL = hopsFrom(mesh, coastL, isSea, hops);
+    const { xyz } = mesh, dir = (w, s, out) => { const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2]; let ax = xyz[3 * s] - x, ay = xyz[3 * s + 1] - y, az = xyz[3 * s + 2] - z; const d = ax * x + ay * y + az * z; ax -= d * x; ay -= d * y; az -= d * z; const l = Math.hypot(ax, ay, az) || 1; out[0] = ax / l; out[1] = ay / l; out[2] = az / l; };
+    const a = [0, 0, 0], b = [0, 0, 0];
+    let cells = 0;
+    for (let w = 0; w < numCells; w++) {
+        const du = fU.dist[w], dl = fL.dist[w];
+        if (!(du > 0 && dl > 0 && du + dl <= hops + 1)) continue;
+        dir(w, fU.source[w], a); dir(w, fL.source[w], b);
+        if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < -0.5) cells++;
+    }
+    return cells * cellAreaKm2;
 }
 
 /**
@@ -297,9 +377,13 @@ function underthrust(world, U, L, cells, rec, km) {
     if (!lowerSide.length) return 0;
     const depth = hopsFrom(mesh, lowerSide, w => inOverlap.has(w)).dist;
     const candidates = cells.filter(w => depth[w] > 0).sort((p, q) => depth[q] - depth[p] || p - q);     // most advanced first
+    // (and the overlap never piles up: land stacked deeper than overlapCapKm over the front goes under too — a collision
+    // that waits for its seam to close, turning as it waits, keeps converging, and its lower plate's edge keeps going under:
+    // India lost ~2,000 km of its front beneath Tibet)
+    const excess = Math.max(0, cells.length - Math.max(1, Math.floor(rec.frontKm * config.overlapCapKm / cellAreaKm2)));
     let consumed = 0;
     for (const w of candidates) {
-        if (consumed >= Math.floor(rec.underthrustDue)) break;
+        if (consumed >= Math.max(Math.floor(rec.underthrustDue), excess)) break;
         const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2], cl = L.cellAt(index, x, y, z);
         if (!L.crust.mask[cl] || L.crust.type[cl] === CrustType.OCEAN || L.crust.type[cl] === CrustType.CRATON) continue;
         L.crust.remove(cl);
@@ -310,7 +394,7 @@ function underthrust(world, U, L, cells, rec, km) {
             U.crust.rootKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.rootKm[cu] + config.underthrustThickenKm);    // (heights: the plateau's root)
         }
     }
-    rec.underthrustDue = Math.min(rec.underthrustDue - consumed, 1);      // (what could not be consumed this step is not carried)
+    rec.underthrustDue = Math.min(Math.max(0, rec.underthrustDue - consumed), 1);      // (what could not be consumed this step is not carried)
     rec.underthrustCells = (rec.underthrustCells ?? 0) + consumed;
     world.budget.underthrustCells += consumed;
     if (consumed) { L.markReshaped(); U.dirty = true; }

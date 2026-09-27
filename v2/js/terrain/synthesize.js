@@ -14,11 +14,11 @@
 import { TERRAIN } from './terrain-config.js';
 import { deriveRecords, kindType, kindSide } from './records.js';
 import { beltProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
-import { buildStripeKernels, stripeAt, crossAt } from './stripes.js';
+import { buildStripeKernels, stripeAt, crossAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
-import { buildVolcanoes, coneAt } from './volcanoes.js';
+import { buildVolcanoes, coneAt, volcanoNoise } from './volcanoes.js';
 import { cratonCharacter } from './cratons.js';
-import { sampleOnto, warpNoise, warpPoint } from './terrain-mesh.js';
+import { sampleOnto, warpField, warpPoint } from './terrain-mesh.js';
 import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
 import { locate } from '../core/mesh-locate.js';
 import { rainAtLatitude } from './terrain-config.js';
@@ -86,8 +86,8 @@ export function carveSettings(cfg) {
 
 /**
  * Everything per frame that the surface pass reads — the records, each belt layer's ridge kernels (with their
- * resolution fade for a terrain mesh of `edgeKm` spacing) and the volcanoes. Small (sim-mesh sized): a worker builds its
- * own from the frame.
+ * resolution fade for a terrain mesh of `edgeKm` spacing) and the volcanoes. Small (sim-mesh sized): on the pool, one
+ * worker builds it from the frame and hands it to the others (planToData).
  */
 export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
     const A = buildAnchor(frame, simMesh), rec = deriveRecords(frame, simMesh, cfg, seed, A);
@@ -101,6 +101,18 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
 }
 
 /**
+ * A plan as plain data — no mesh, no noise objects — to send to another worker (terrain-pool.js: one worker builds each
+ * frame's plan, the others receive it); planFromData(data, simMesh, seed) there gives back the same plan, bit for bit.
+ */
+export function planToData(plan) {
+    const { mesh, carry, V: { noise, ...V }, ...rest } = plan;
+    return { ...rest, V };
+}
+export function planFromData(data, simMesh, seed) {
+    return { ...data, V: { ...data.V, noise: volcanoNoise(seed) }, mesh: simMesh };
+}
+
+/**
  * The tectonic surface for terrain cells from…to−1: positions from `xyz`, sim-mesh corners and weights from sCells /
  * sWeights (sampleOnto), heights into heightKm (and the components into `parts`, the carving's inputs into `carve`,
  * if given) — all indexed alike. Every cell depends only on its own position and the plan, so any split of the cells
@@ -108,7 +120,7 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
  */
 export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, from, to, heightKm, parts = null, carve = null) {
     const { rec, Ks, V, A, L, mesh: simMesh } = plan, { cell } = A, p = [0, 0, 0], d = [0, 0, 0], cross = [0, 0];
-    const warpN = warpNoise(seed), local = [0, 0, 0], warped = [0, 0, 0], r3 = [0, 0, 0], rw3 = [0, 0, 0], q3 = [0, 0, 0], qw3 = [0, 0, 0];
+    const warpN = warpField(seed, cfg), local = [0, 0, 0], warped = [0, 0, 0], r3 = [0, 0, 0], rw3 = [0, 0, 0], q3 = [0, 0, 0], qw3 = [0, 0, 0];
     const anchorOn = cfg.anchorRecords !== false;
     // the point located on plate o's raster (the point in o's frame, warped there): raster cells into cells, weights into weights
     const onRaster = (o, px, py, pz, cells, weights) => {
@@ -137,6 +149,10 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const { cratons: CR, terrane } = rec;
     const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
+    // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
+    // (a worker's chunks share them); a point's corners on the raster of the plate under it
+    const carry = cfg.stripeCarry ? (plan.carry ??= new Map()) : null, cr3 = [0, 0, 0], cw3 = [0, 0, 0];
+    let carryO = -1;
 
     for (let t = from; t < to; t++) {
         let c0 = sCells[3 * t], c1 = sCells[3 * t + 1], c2 = sCells[3 * t + 2];
@@ -155,7 +171,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         // to its continent) — or, with no land at the corners, the plate here
         let oc = o, best = -1;
         for (let j = 0; j < 3; j++) { const c = j === 0 ? c0 : j === 1 ? c1 : c2, wj = j === 0 ? w0 : j === 1 ? w1 : w2; if (land[c] && A.owner[c] >= 0 && wj > best) { best = wj; oc = A.owner[c]; } }
-        let anchored = false;
+        let anchored = false, carried = false;
         if (anchorOn && o >= 0 && A.moved[o] && A.owner[c1] === o && A.owner[c2] === o) {
             onRaster(o, px, py, pz, r3, rw3);
             const a0 = rasterToWorld(A, simMesh, o, r3[0]), a1 = rasterToWorld(A, simMesh, o, r3[1]), a2 = rasterToWorld(A, simMesh, o, r3[2]);
@@ -210,9 +226,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // ── a craton (terrain/cratons.js): its edge a line — the signed distance to it, on the plate's own raster where
             // the point was read there, moved in and out by noise — not the sim cells' staircase; a range pressed against it
             // fading across its rim; a foreland bent into it by the range's weight; its character and grain ──
-            const CRo = anchored ? CR.rasters.get(o) : null;
-            const cDepth = anchored ? (CRo ? rw3[0] * CRo.depth[r3[0]] + rw3[1] * CRo.depth[r3[1]] + rw3[2] * CRo.depth[r3[2]] : -2000)
-                : w0 * CR.depthW[c0] + w1 * CR.depthW[c1] + w2 * CR.depthW[c2];
+            // (on the raster where all three corners carry the plate's crust there — a corner it does not cover is NaN,
+            // and the point then reads the world cells, as the coast does)
+            const CRr = anchored ? CR.rasters.get(o) : null, dr = CRr?.depth;
+            const CRo = dr && dr[r3[0]] === dr[r3[0]] && dr[r3[1]] === dr[r3[1]] && dr[r3[2]] === dr[r3[2]] ? CRr : null;
+            const cDepth = CRo ? rw3[0] * CRo.depth[r3[0]] + rw3[1] * CRo.depth[r3[1]] + rw3[2] * CRo.depth[r3[2]]
+                : anchored && !CRr ? -2000 : w0 * CR.depthW[c0] + w1 * CR.depthW[c1] + w2 * CR.depthW[c2];
             // (the corners' own share of craton; and whether the craton can matter here at all: more than 200 km outside
             // its edge, with no craton corner, the edge noise (|fbm| < 1: ≤ 105 km) cannot bring the line within the blend —
             // every term below is exactly 0)
@@ -314,7 +333,20 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     const seg = smooth(-0.35, 0.3, renewed(x * segF + 2.7, y * segF + 5.7, z * segF + 8.7, 2));
                     texture = (0.2 + 0.8 * seg) * (0.55 + 0.45 * renewed(x * crestF + 3.9, y * crestF + 7.3, z * crestF + 1.2, 2) * 1.8);
                 }
-                if (stripeAmp > 0.005) stripes += stripeAmp * texture * stripeAt(Ks[li], cn, px, py, pz, wx, wy, wz, cfg.stripeFineShare, cfg.stripeFineRatio);
+                if (stripeAmp > 0.005 && carry) {
+                    if (!carried) {                     // (the point on the raster of the plate under it, unwarped)
+                        carried = true;
+                        carryO = A.owner[cn];
+                        if (carryO >= 0 && A.moved[carryO]) {
+                            const m = A.mats, b = 9 * carryO;
+                            locate(simMesh, m[b] * px + m[b + 3] * py + m[b + 6] * pz, m[b + 1] * px + m[b + 4] * py + m[b + 7] * pz, m[b + 2] * px + m[b + 5] * py + m[b + 8] * pz, cr3, cw3);
+                        } else { carryO = -1; locate(simMesh, px, py, pz, cr3, cw3); }
+                    }
+                    const key = 4096 * li + carryO + 1;
+                    let C = carry.get(key);
+                    if (!C) carry.set(key, C = carriedField(Ks[li], simMesh, A, carryO, cfg.stripeFineShare, cfg.stripeFineRatio));
+                    stripes += stripeAmp * texture * carriedStripeAt(C, cr3, cw3, wx, wy, wz);
+                } else if (stripeAmp > 0.005) stripes += stripeAmp * texture * stripeAt(Ks[li], cn, px, py, pz, wx, wy, wz, cfg.stripeFineShare, cfg.stripeFineRatio);
                 // the ridge noise, read at the distance across the belt as the kernels carry it (smooth, bending with the front)
                 if (noiseAmp > 0.002) {
                     crossAt(Ks[li], cn, wx, wy, wz, cross);
@@ -418,11 +450,30 @@ function ridgeNoise(noise, cfg, fade, x, y, z, d, across, salt) {
 
 /** Share of the planet above `seaLevelKm`, and land heights at the given quantiles (km). */
 export function hypsometry(heightKm, seaLevelKm = 0, quantiles = [0.1, 0.25, 0.5, 0.75, 0.9, 0.99]) {
-    const landH = [];
-    for (let i = 0; i < heightKm.length; i++) if (heightKm[i] > seaLevelKm) landH.push(heightKm[i] - seaLevelKm);
-    landH.sort((a, b) => a - b);
-    const q = quantiles.map(p => landH.length ? landH[Math.min(landH.length - 1, Math.floor(p * landH.length))] : 0);
-    let below400 = 0;
-    for (const v of landH) if (v < 0.4) below400++;
-    return { landShare: landH.length / heightKm.length, quantiles, landKm: q, below400: landH.length ? below400 / landH.length : 0 };
+    let n = 0, below400 = 0;
+    for (let i = 0; i < heightKm.length; i++) if (heightKm[i] > seaLevelKm) n++;
+    const landH = new Float64Array(n);
+    for (let i = 0, j = 0; i < heightKm.length; i++) if (heightKm[i] > seaLevelKm) { const v = heightKm[i] - seaLevelKm; landH[j++] = v; if (v < 0.4) below400++; }
+    // each quantile is one order statistic of the land heights: selected in place, lowest rank first (each selection
+    // leaves everything below its rank to its left), rather than sorting all the land — the same values, in linear time
+    const rank = p => Math.min(n - 1, Math.floor(p * n)), byRank = quantiles.map((p, i) => i).sort((a, b) => rank(quantiles[a]) - rank(quantiles[b]));
+    const q = new Array(quantiles.length).fill(0);
+    for (let s = 0, lo = 0; n && s < byRank.length; s++) { const k = rank(quantiles[byRank[s]]); selectKth(landH, lo, n - 1, k); q[byRank[s]] = landH[k]; lo = k; }
+    return { landShare: n / heightKm.length, quantiles, landKm: q, below400: n ? below400 / n : 0 };
+}
+
+/** Reorder a[lo..hi] so that a[k] holds the value it would hold sorted, none greater before it, none smaller after (Wirth's selection, median-of-three pivot). */
+function selectKth(a, lo, hi, k) {
+    while (lo < hi) {
+        const l = a[lo], m = a[(lo + hi) >> 1], h = a[hi];
+        const x = l < m ? (m < h ? m : l < h ? h : l) : (l < h ? l : m < h ? h : m);
+        let i = lo, j = hi;
+        do {
+            while (a[i] < x) i++;
+            while (x < a[j]) j--;
+            if (i <= j) { const t = a[i]; a[i] = a[j]; a[j] = t; i++; j--; }
+        } while (i <= j);
+        if (j < k) lo = i;
+        if (k < i) hi = j;
+    }
 }

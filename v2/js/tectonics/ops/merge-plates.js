@@ -133,6 +133,27 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
         origin[q] = 2;
     }
 
+    // ── holes the warp left inside the merged crust (a destination whose source fell outside both plates): each takes a
+    // neighbour's crust — land where most of its neighbours are land. Left empty, the next step would grow new ocean in
+    // them: slivers of sea along the seam (Phase 11) ──
+    for (let pass = 0; pass < 2; pass++) {
+        const fills = [];
+        for (let q = 0; q < numCells; q++) {
+            if (out.mask[q]) continue;
+            let crust = 0, land = 0, landFrom = -1, seaFrom = -1;
+            for (let k = adjOffset[q]; k < adjOffset[q + 1]; k++) {
+                const nb = adjList[k];
+                if (!out.mask[nb]) continue;
+                crust++;
+                if (out.type[nb] !== CrustType.OCEAN) { land++; if (landFrom < 0) landFrom = nb; } else if (seaFrom < 0) seaFrom = nb;
+            }
+            if (crust < 4) continue;                                                // (the plate's own edge, not a hole)
+            fills.push([q, 2 * land >= crust ? landFrom : seaFrom]);
+        }
+        for (const [q, from] of fills) { out.copyFrom(q, out, from); if (out.type[q] === CrustType.CRATON) out.type[q] = CrustType.CONTINENT; origin[q] = origin[from]; }
+        if (!fills.length) break;
+    }
+
     // ── sea caught between the two plates closes: narrow straits, and small enclosed seas ──
     const sealed = closeSeasBetween(out, origin, mesh, upper, config, time);
 

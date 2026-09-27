@@ -23,7 +23,7 @@ const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 function run(id) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 });
-    return { world, frame: frames.at(-1) };
+    return { world, frame: frames.at(-1), frames };
 }
 function carved(frame, cells = 640000) {
     const tm = terrainMesh(cells), started = performance.now();
@@ -93,7 +93,14 @@ section('carving');
     // active ranges keep their peaks: they are still rising, and the rivers are steep there
     const active = [];
     for (let t = 0; t < n; t++) { const c = T.sampler.cells[3 * t]; if (land(t) && T.rec.kind[c] && kindType(T.rec.kind[c]) !== OrogenyType.ARC && T.rec.quietMyr[c] < 10) active.push(T.heightKm[t]); }
-    check('active ranges keep their peaks', quantile(active, 0.95) >= 3, `95th percentile ${quantile(active, 0.95).toFixed(2)} km over ${active.length} cells of active belts`);
+    // (pooled over three frames: one frame alone can be a quiet one — the Phase 11 history's 600 Myr holds only 289
+    // cells of active belt)
+    const pooled = active.slice();
+    for (const F of history.frames.filter(g => g.time === 400 || g.time === 500)) {
+        const TT = carved(F), m = TT.heightKm.length;
+        for (let t = 0; t < m; t++) { const c = TT.sampler.cells[3 * t]; if (TT.tectonicKm[t] > 0 && TT.rec.kind[c] && kindType(TT.rec.kind[c]) !== OrogenyType.ARC && TT.rec.quietMyr[c] < 10) pooled.push(TT.heightKm[t]); }
+    }
+    check('active ranges keep their peaks', quantile(pooled, 0.95) >= 3, `95th percentile ${quantile(pooled, 0.95).toFixed(2)} km over ${pooled.length} cells of active belts at 400, 500 and 600 Myr (${active.length} at 600)`);
     check('carving at 640K cells within 2 s', T.ms.carve / 1000 < 2, `${(T.ms.carve / 1000).toFixed(2)} s (the surface took ${((T.ms.records + T.ms.sample + T.ms.surface) / 1000).toFixed(2)} s)`);
 }
 
@@ -146,8 +153,9 @@ section('rivers through the history');
         const x = tm.xyz[3 * q], y = tm.xyz[3 * q + 1], z = tm.xyz[3 * q + 2];
         const lx = MB[0] * x + MB[3] * y + MB[6] * z, ly = MB[1] * x + MB[4] * y + MB[7] * z, lz = MB[2] * x + MB[5] * y + MB[8] * z;
         locate(tm, MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz, c3, w3);
-        if (TA.tectonicKm[c3[0]] <= 0) continue;
-        xs.push(Math.log10(TB.drainage[q])); ys.push(Math.log10(w3[0] * TA.drainage[c3[0]] + w3[1] * TA.drainage[c3[1]] + w3[2] * TA.drainage[c3[2]]));
+        const before = w3[0] * TA.drainage[c3[0]] + w3[1] * TA.drainage[c3[1]] + w3[2] * TA.drainage[c3[2]];
+        if (TA.tectonicKm[c3[0]] <= 0 || !(before > 0)) continue;            // (a point that was at sea then drained nothing)
+        xs.push(Math.log10(TB.drainage[q])); ys.push(Math.log10(before));
     }
     const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0, syy = 0;
     for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }

@@ -236,15 +236,16 @@ function mapBetween(coarse, fine) {
 const FIELDS = ['z', 'u', 'k', 'rain', 'micro', 'slope', 'inc', 'hold', 'lip', 'lipBase', 'lipTop'];
 /** Fine fields averaged onto a coarse mesh (each fine cell counts for its nearest coarse cell). */
 function downsample(coarse, fine, f) {
-    const M = mapBetween(coarse, fine), n = coarse.numCells, sums = Object.fromEntries(FIELDS.map(key => [key, new Float64Array(n)]));
-    const count = new Uint32Array(n);
-    for (let i = 0; i < fine.numCells; i++) {
-        const c = M.nearest[i];
-        count[c]++;
-        for (const key of FIELDS) sums[key][c] += f[key][i];
-    }
+    const M = mapBetween(coarse, fine), n = coarse.numCells, near = M.nearest, count = new Uint32Array(n), sum = new Float64Array(n);
+    for (let i = 0; i < fine.numCells; i++) count[near[i]]++;
     const out = {};
-    for (const key of FIELDS) out[key] = Float32Array.from(sums[key], (s, c) => (count[c] ? s / count[c] : 0));
+    // (field by field — each coarse cell sums its fine cells in the same order, so to the same bits)
+    for (const key of FIELDS) {
+        const a = f[key], o = out[key] = new Float32Array(n);
+        sum.fill(0);
+        for (let i = 0; i < fine.numCells; i++) sum[near[i]] += a[i];
+        for (let c = 0; c < n; c++) o[c] = count[c] ? sum[c] / count[c] : 0;
+    }
     // (a coarse cell no fine cell fell in — rare at a factor 4 — takes the values of the fine cell nearest it)
     for (let c = 0; c < n; c++) if (!count[c]) {
         const i = fine.index.nearest(coarse.xyz[3 * c], coarse.xyz[3 * c + 1], coarse.xyz[3 * c + 2]);
@@ -273,15 +274,22 @@ export function carveTerrain(meshes, fields, cfg) {
     for (let l = 0; l < L; l++) {
         const mesh = meshes[l], f = F[l];
         // route over this level's surface plus the carving the coarser level found, and the crust's micro-relief
-        let route = Float32Array.from(f.z, (v, i) => v + f.micro[i] - f.inc[i]);
-        if (delta) { const up = upsample(meshes[l - 1], mesh, delta); for (let i = 0; i < route.length; i++) route[i] += up[i]; }
+        const n = mesh.numCells, { z, micro, inc } = f;
+        let route = new Float32Array(n);
+        for (let i = 0; i < n; i++) route[i] = z[i] + micro[i] - inc[i];
+        if (delta) { const up = upsample(meshes[l - 1], mesh, delta); for (let i = 0; i < n; i++) route[i] += up[i]; }
         const rounds = cfg.rounds[Math.min(l, cfg.rounds.length - 1)];
         for (let r = 0; r < rounds; r++) {
             result = carveLevel(mesh, f, route, cfg);
             // (the next round routes over an average of the old estimate and the new heights: no oscillation)
-            if (r < rounds - 1) route = Float32Array.from(route, (v, i) => 0.5 * v + 0.5 * (result.z[i] + f.micro[i] - f.inc[i]));
+            if (r < rounds - 1) {
+                const next = new Float32Array(n), rz = result.z;
+                for (let i = 0; i < n; i++) next[i] = 0.5 * route[i] + 0.5 * (rz[i] + micro[i] - inc[i]);
+                route = next;
+            }
         }
-        delta = Float32Array.from(result.z, (v, i) => v - f.z[i]);
+        delta = new Float32Array(n);
+        for (let i = 0; i < n; i++) delta[i] = result.z[i] - z[i];
     }
     if (cfg.lipStepKm > 0) terraceBasalt(F[L - 1], result, cfg);     // (on the mesh shown only)
     return result;

@@ -822,6 +822,58 @@ they found was fixed, and each fix has a check that would catch its return.
   crust under rim records (a record ~280 km in after the weld, 184 before it) — both the weld's geometry, for Phase 11.
   The terrain's craton reads skip, exactly, points more than 200 km outside a craton with no craton corner (the edge
   noise moves the line ≤ 105 km): 640K terrain 2.10 → 1.96–2.08 s, heights byte-identical.
+- Phase 11, natural collisions (2026-09-26; plan and definition of done in plans/V2_ROADMAP_PHASES_9_13.md). A land
+  contact was a lock: the whole relative velocity resisted, so plates froze where they first touched and welded with the
+  ocean beyond still open — 62–73 Mkm² seas sealed inside one plate, rings of continent round them. Now (torque-balance.js,
+  forces.js) a contact resists the closing part of the motion along the front's normal (from the land on either side
+  within two rings), half as hard along the front and 0.05 against parting: the lower plate pivots about the contact
+  and the rest of the margin closes. The weld waits for the seam (collision.js): the sea within 500 km of both coasts
+  a strip ≤ 100 km wide along the front — or stalled 24 Myr, or not shrunk by a tenth in 40 Myr, or 120 Myr locked;
+  measured every 4 Myr. Two plates whose land rings a sea over 1.5 Mkm² stay apart (welded, one rigid plate would hold it
+  for good) unless stacked 500 km deep on average; land stacked deeper than 250 km goes under the upper plate. A sea
+  sealed inside a plate closes from its shores at 12 km/Myr (remnant-seas.js, its own mechanism switch); holes the
+  redraw leaves are filled from their neighbours. Enclosed ocean now at most 0.8 / 18 / 8.3 Mkm² on the three seeds (a
+  ringed ocean the three continents around it are closing, and a zipper's last frame). Lessons: the world view resamples
+  a moving plate's raster, so a narrow neck's joining cell can be skipped — three checks (Phase 5's one body, Phase 10's
+  scraps, and Phase 9's coasts through the world grid's records) were measuring that aliasing and now measure on the
+  plate's own raster; most "stale" belt positions were a craton rim's and old seams' path costs or two belts meeting.
+- Lab speed (2026-09-26, during Phase 11; developer: at 2.5M, pressing Play in lab 8b "freezes up … my computer starts
+  whirring aggressively"; "first without changing the output, and then … cut corners"). The freeze: the play clock ran
+  on while a 2.5M frame took 2–5 s to build, so the frame asked for had always moved on and nothing was painted; and the
+  page's own thread rebuilt each shown frame's records (~0.3–2.7 s), copied nine component arrays nobody showed, sorted
+  ~1M land heights for the stats (206 ms) and passed over the planet eight times every 300 ms. Now, pixel-identical
+  (every layer of 8a and 8b hashed against the tree before): Play waits for a frame being built; records and components
+  only when a layer shows them; the hypsometry by selection (16 ms); one cached stats pass; hillshade on a shading
+  worker; the carving's inputs handed over, not copied — the page's thread ~91 % idle while playing, ~85 ms per new
+  frame. The fans: every change rebuilt all 61 frames ahead on every core for 1.5–2.5 min — now only the ten frames
+  next to the one shown, the way it is moving (developer's choice among four corner cuts; fewer workers, a coarser
+  preview while playing and no carving while playing were declined). Exact, on the workers: carving's coarse-to-fine
+  averaging field by field (2.2 → 0.9 s a frame at 2.5M, the same bits); each frame's plan built once, by one worker, and
+  handed to the others (8 × 0.14 s → 0.14 s). "Similar but cheaper" (developer asked what is fundamentally heavy): a
+  2.5M frame's surface is 27 % ridge kernels (28 phasors a point — the look; a narrower window is a tuning choice, not a
+  look-alike), 19 % the plate-frame lookup (its warp: 12 noise evaluations), 14 % assorted noise, 13 % the profiles.
+  The warp now reads a cube-map table (256 a face edge, bilinear, continuous across faces): 344 → 65 ns, within 0.3 km
+  (1.8 km at worst) of the noise; heights at 640K move by 0 m median, 27 m at the 99th percentile, 36 of 640K cells by
+  > 0.5 km, all on steep coasts — surface −14.5 %. A fast sine/cosine for the kernels was tried and dropped: V8's are as
+  fast as a polynomial or a table (~17 ns the pair). Found on the way: a craton raster corner off the plate's crust
+  read NaN, making NaN heights (2 cells at 300 Myr) that the carving spread over a whole basin (≤ 1.25 km) — now read
+  on the world cells as the coast does; and check-phase8b's river-course correlation took log10(0) at points that were
+  sea the frame before (0.27 now). The history (26 s for 600 Myr, 826 steps): 40 % the per-step reprojection of the
+  plates' crust (resolve), 13 % boundary classification, the rest ≤ 7 % each — no look-alike; its speed goes with
+  Phase 12's finer sim mesh.
+- Carried ridges (2026-09-26; developer: "lets get creative on the parallel ridges … similar results?", then chose one of
+  eight ideas to prototype, then "they look almost identical" → the default). The phasor sum (27 % of a 2.5M surface:
+  ~28 kernels a point, 46 visited) is taken only at the corners of the plate's raster — turned into the world, so the
+  field rides with the crust — and each point continues its three corners' waves (each corner's kernels' mean wave
+  vector, signs turned to agree) to itself and blends them; where corners disagree their waves cancel in part and ridges
+  fork and end, as they did where kernels disagreed. Corner sums are made lazily, per worker, per frame. Against the
+  kernel sum: correlation 0.975 at 640K, 0.961 at 2.5M, the same rms; frame-to-frame agreement on the same crust
+  identical (0.58 / 0.62 / 0.80 at 150 / 300 / 600 Myr — ~0 at the same world point); surface −19 % at 640K, −30 % at
+  2.5M on one thread (a 2.5M frame on 8 workers 1.27 → 1.00 s). The kernel sum stays behind stripeCarry 0. Ideas not
+  taken: contours of the distance from the front (nearly free, strictly parallel, but smooth contours never fork);
+  fine ridges as the main ridges' overtones; a narrower kernel window (a tuning choice); ridge spacing from how the
+  belt grew in the history (the sim's cells are coarser than the ridges); texture bombing (shears on curves); WebGPU for
+  all per-point terrain (later, with the full planet).
 - Fine detail renews slowly (2026-09-26; developer, after Phase 9: "something about 9A made things look worse, in that
   they were all a little bit too consistent. Some of the variation added to the charm and variety … a naturalistic way to
   add a little bit of that back in controllably? just a bit"). Compared with the code before Phase 9 at the same frame,

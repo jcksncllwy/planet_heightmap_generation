@@ -65,7 +65,13 @@ export const TECTONICS = {
     slabSuction: 0.25,          // on the overriding plate, toward its own trench — what moves an active-margin continent
     ridgePush: 0.05,            // on both plates at a young ridge, away from it [WBP: secondary]
     ridgeMaxAgeMyr: 40,         // crust younger than this on both sides of a contact = an active ridge
-    collisionResistance: 300,   // viscous coupling per 10⁴ km² of land-on-land overlap: colliding plates lock together
+    collisionResistance: 300,   // viscous coupling per 10⁴ km² of land-on-land overlap: colliding plates lock together —
+                                // across the front, against their closing (Phase 11; developer: collisions "more fluid, more
+                                // rotating and kinematic")…
+    collisionShearShare: 0.5,   // …along the front half as hard (oblique plates slide some; much looser and they slide past
+                                // each other instead of colliding)…
+    collisionSeparateShare: 0.05, // …and against parting this share: a contact is a pivot, not a lock — the pull of the ocean
+                                // still going down beside it turns the plate about it, closing the rest like a zipper
     dragOcean: 1.0,             // basal drag under ocean crust
     dragContinent: 5.0,         // [WBP] continents have deep lithospheric roots
     dragCraton: 8.0,
@@ -118,7 +124,19 @@ export const TECTONICS = {
                                 // cannot subduct, the indenter ploughs on into the other plate for ever (developer)
     sutureOverlapKm2: 4e5,      // …or so much land already overlaps land that the two are locked into one (a big overlap can build
                                 // fast when a third plate drives two plates together)
+    overlapCapKm: 250,          // (Phase 11) land stacked deeper than this on average (overlap ÷ front) goes under the upper plate
+                                // while the pair waits for its seam to close…
+    sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, whatever sea is left (the old
+                                // sutureOverlapKm2 over a sutureMinContactKm front)
     sutureMinContactKm: 800,    // a collision front shorter than this is a terrane docking (Phase 5b), not a suture
+    sutureGapKm: 500,           // …and a weld waits for the seam to close (Phase 11): the sea within this of both continents'
+                                // coasts…
+    sutureGapWidthKm: 100,      // …must be no more than a strip this wide along the front (the weld closes that much) —
+                                // welded with the ocean between them still open, it would be sealed inside one plate for good
+    sutureLockMaxMyr: 120,      // …unless the two have been locked together this long (a seam that will not close)
+    sutureCheckMyr: 4,          // (how often a waiting pair measures its seam and what its land rings)
+    sutureStallGiveUpMyr: 24,   // …and a seam that has stalled this long has closed all it will: it welds with what sea is left…
+    sutureGapStallMyr: 40,      // …as does one whose gap has not shrunk by a tenth in this long (a zipper closes in fits and starts)
     underthrustShare: 0.8,      // (Phase 7c) this share of the area a collision's convergence sweeps (shortening × front) is
                                 // consumed from the lower continent as it slides under the upper plate…
     underthrustThickenKm: 25,   // …thickening the upper plate's crust above it by this much…
@@ -131,6 +149,9 @@ export const TECTONICS = {
     indentFalloffKm: 1500,      // the redraw's displacement decays over this distance behind the front
     sealStraitKm: 260,          // at suture, sea between the two plates narrower than twice this closes (the plates deform together)
     inlandSeaMaxKm2: 5e5,       // …and an enclosed sea smaller than this closes too; bigger ones survive as inland seas
+    ringSeaKm2: 1.5e6,          // two plates whose land encloses a sea bigger than this between them do not weld (Phase 11):
+                                // one rigid plate round it, nothing could ever close it (the rings of the old histories)
+    remnantSeaCloseKmPerMyr: 12, // a sea sealed inside one plate closes from its shores at this rate (step/remnant-seas.js)
     cratonLockFactor: 4,        // a craton at the collision front resists (locks) this much harder than ordinary crust
 
     // ── Wings, arcs, terranes (Phase 5b): plates are larger than their land ──
@@ -294,6 +315,7 @@ export const MECHANISMS = Object.freeze({
     marginIsles:    { marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 },  // fore-arc islands (step/margin-isles.js)
     marginErosion:  { marginErosiveShare: 0, marginErosionKmPerMyr: 0 },     // erosive margins (step/margin-isles.js)
     underthrust:    { underthrustShare: 0 },
+    remnantSeas:    { remnantSeaCloseKmPerMyr: 0 },                          // seas sealed inside a plate close (step/remnant-seas.js)
     arcRecycling:   { arcAccreteMinKm2: 0 },                                  // small arcs go down instead of accreting (step/collision.js)                                  // continental underthrusting at collisions (step/collision.js)
 });
 

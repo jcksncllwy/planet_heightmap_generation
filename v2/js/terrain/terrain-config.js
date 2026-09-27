@@ -196,6 +196,10 @@ export const TERRAIN = {
     stripeFineShare: 0.4,       // a second, finer set (wavelength ÷ stripeFineRatio) this strong, for fine meshes
     stripeFineRatio: 2.6,
     stripeBandKm: 150,          // kernel envelope (σ) of the phasor sum: must overlap from one sim cell to the next
+    stripeCarry: 1,             // 1: the ridges' sum taken at the corners of the plate's raster and carried to the points
+                                // between (stripes.js carriedStripeAt) — ~3 waves a point instead of ~28, a 2.5M surface ~30 %
+                                // quicker, the same ridges to the eye (developer, 2026-09-26: "they look almost identical");
+                                // 0: every kernel at every point (stripeAt), as before
     // Fine detail renews slowly (developer, after Phase 9 made the detail ride with the crust: the frames were "a little bit
     // too consistent — some of the variation added to the charm"): the ridges' phases drift, and the bays and headlands,
     // the ridges' segments and crests and the ridge noise fade over to new ones — steady from one frame to the next, a

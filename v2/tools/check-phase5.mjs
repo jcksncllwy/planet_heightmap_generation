@@ -62,12 +62,15 @@ india: {
         `${cratonCells(atContact)} craton cells at contact, ${cratonCells(after)} after the suture`);
     const lowerId = rec.lower, indent = suture.data.maxIndentKm;
     check('the upper plate is indented by the lower one', Number(indent) > 300 && Number(indent) < 1500, `indented up to ${indent} km; front ${rec.frontKm.toFixed(0)} km`);
-    // the merged land is one body with no holes that are not sea
-    const landMask = Uint8Array.from({ length: numCells }, (_, w) => (isLand(last, w) && last.type[w] !== CrustType.ARC ? 1 : 0));
-    const seedCell = landMask.findIndex(v => v), body = floodFrom(mesh, seedCell, w => landMask[w] === 1);
+    // the merged land is one body with no holes that are not sea — on the merged plate's own raster, the crust itself (the
+    // world view samples a moving plate's raster, and where it skips the cell that joins a narrow neck of coast to the
+    // rest, the neck's tip shows as a one-cell island that comes and goes: Phase 11, at 56, 60, 68 and 100 Myr)
+    const merged = india.world.plates.find(p => p.alive && !p.isBackground), K = merged.crust;
+    const landMask = Uint8Array.from({ length: numCells }, (_, c) => (K.mask[c] && K.type[c] !== CrustType.OCEAN && K.type[c] !== CrustType.ARC ? 1 : 0));
+    const seedCell = landMask.findIndex(v => v), body = floodFrom(mesh, seedCell, c => landMask[c] === 1);
     let stray = 0;
-    for (let w = 0; w < numCells; w++) if (landMask[w] && !body[w]) stray++;
-    check('the merged continent is one connected body (island arcs excepted)', stray === 0, `${stray} non-arc land cells not connected to the main body`);
+    for (let c = 0; c < numCells; c++) if (landMask[c] && !body[c]) stray++;
+    check('the merged continent is one connected body (island arcs excepted)', stray === 0, `${stray} non-arc land cells of ${merged.name}'s crust not connected to the main body`);
 
     // belts
     const seam = cellsWhere(numCells, w => isLand(last, w) && (last.flags[w] & CrustFlag.SUTURE));

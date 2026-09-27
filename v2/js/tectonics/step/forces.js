@@ -25,6 +25,8 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { contactAt } from './contact.js';
 import { areYoungRiftPartners } from './collision.js';
+import { ringsOf } from '../../core/mesh-rings.js';
+import { tangentToward } from '../../core/sphere-geom.js';
 
 /** Force names, in the order of PlateLoad.byKind / forceByKind. Display code keys colours by these names. */
 export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push'];
@@ -38,7 +40,8 @@ const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3;
  * @property {number} torqueMagnitudeSum  Σ |r × F| — compare with |Σ r × F| to see how much cancels
  * @property {number[]} cells             boundary cells contributing, per kind
  * @property {{r:number[], n:number[], other:number, length:number}[]} slabs     where this plate's ocean goes down a trench
- * @property {{r:number[], other:number, weight:number}[]} contacts              land-on-land overlap cells (weight > 1 where a craton is involved)
+ * @property {{r:number[], n:number[], other:number, weight:number}[]} contacts  land-on-land overlap cells (weight > 1 where a craton is
+ *                                                                             involved; n: the front's normal there, toward the other plate)
  */
 
 /** @returns {Map<number, PlateLoad>} loads for every living, non-background plate */
@@ -65,8 +68,9 @@ export function gatherLoads(world) {
             if (plates[a].crust.type[ownerCell[w]] === CrustType.ARC || other.crust.type[otherCell] === CrustType.ARC) continue;   // arc crust is scraped off, it does not lock plates (step/collision.js)
             const craton = plates[a].crust.type[ownerCell[w]] === CrustType.CRATON || other.crust.type[otherCell] === CrustType.CRATON;
             const weight = craton ? config.cratonLockFactor : 1;         // cratons never underthrust: the lock hardens
-            loads.get(a)?.contacts.push({ r, other: collider[w], weight });
-            loads.get(collider[w])?.contacts.push({ r, other: a, weight });
+            const nAB = frontNormal(world, w, a, collider[w], r);
+            loads.get(a)?.contacts.push({ r, n: nAB, other: collider[w], weight });
+            loads.get(collider[w])?.contacts.push({ r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
             continue;
         }
         const load = loads.get(a);
@@ -100,6 +104,29 @@ export function gatherLoads(world) {
         load.cells[kind]++;
     }
     return loads;
+}
+
+/**
+ * The collision front's normal at overlap cell w, pointing from plate a's side toward plate b's: from a's own land
+ * within three rings of it to b's own land (the overlap itself excluded) — or, with neither in reach, from a's centre
+ * toward b's.
+ */
+function frontNormal(world, w, a, b, r) {
+    const { mesh, owner, ownerCell, plates, landClaims } = world, { xyz } = mesh, { start, cells, stride } = ringsOf(mesh);
+    let vx = 0, vy = 0, vz = 0;
+    for (let i = start[w * stride + 1]; i < start[w * stride + stride - 1]; i++) {
+        const q = cells[i], o = owner[q];
+        if (o !== a && o !== b) continue;
+        if (landClaims[q] > 1 || plates[o].crust.type[ownerCell[q]] === CrustType.OCEAN) continue;
+        const s = o === b ? 1 : -1;
+        vx += s * xyz[3 * q]; vy += s * xyz[3 * q + 1]; vz += s * xyz[3 * q + 2];
+    }
+    const d = vx * r[0] + vy * r[1] + vz * r[2];
+    vx -= d * r[0]; vy -= d * r[1]; vz -= d * r[2];
+    const l = Math.hypot(vx, vy, vz);
+    if (l > 1e-9) return [vx / l, vy / l, vz / l];
+    const A = plates[a], B = plates[b];
+    return tangentToward(r, A.toWorld(A.capCenter[0], A.capCenter[1], A.capCenter[2], [0, 0, 0]), B.toWorld(B.capCenter[0], B.capCenter[1], B.capCenter[2], [0, 0, 0]));
 }
 
 /**
