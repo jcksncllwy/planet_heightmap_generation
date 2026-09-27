@@ -309,6 +309,34 @@ minimize it … the supercontinent cycle will be where we put it to the test":
 - If the default changes: every suite passes at it, check-scale holds, and 600 Myr stays within a time budget agreed
   here (e.g. ≤ 60 s — speed work proper is in the full-planet phase).
 
+**Status: accepted 2026-09-27 (developer: "i think this phase is done"; "lets have 40k be default for now (I do like the
+look of 160 a lot more, but for the remaining testing lets keep it at 40k)").** Built, in the developer's order ("speed
+and memory work first, then the others"):
+- **Memory, lossless:** the lab's history frames come back packed (tectonics/frame-pack.js — each mostly-empty record
+  field as a bitmap of the cells that differ from its background plus their values; sorted cell lists as one-byte
+  steps) and are unpacked field by field when read, within a 96 MB budget: 600 Myr in 63 MB at 40K (273 before), 242 MB
+  at 160K (1.1 GB); every field of every frame checked bit for bit.
+- **Speed:** a step may take two closing plates 1.5 cells (was 1.0; the most crust growth's reach allows) — a third
+  fewer steps; 600 Myr ≈ 27 s at 40K, 63 s at 80K, ~2.5 min at 160K. Exact code optimisation was tried (the world
+  gather's cap scan, its edge marks) and gave nothing measurable: the history's time is spread over ~15 mechanisms at
+  2–8 % each, the gather's lookups already tuned; what is left exact is ~10 % (margin isles, arc collapse, plate
+  pieces, rift attempts) — not done. Bigger levers (2 cells a step; WebAssembly/GPU) are for the full-planet phase.
+- **The lab's Sim resolution setting** (8a/8b: 40K / 80K / 160K, `&sim=`): the shell builds the sim mesh, the terrain
+  pool is rebuilt for it, the carving ladder skips terrain meshes no finer than it. Default 40K.
+- **The zipper** (developer, looking at it for the first time: "it didn't work at all … the western lobe never meets the
+  coast"): three causes. The scene's Borea was round — a straight chain against a convex coast touches at one point, and
+  no turn can close the rest — now a long continent with a fairly straight south coast. The weld judged the gap by its
+  width on average along the front, so a wedge at one end passed as closed — now it waits until the sea between is
+  nowhere wider than 250 km, measured where the two coasts face each other (the open sea beyond the end of the seam is
+  not a gap). And the lock stopped all convergence at the contact, so the plate see-sawed about the contact's middle,
+  opening one end as it closed the other — collisionResistance 300 → 100, so a collided part keeps converging a little
+  (as India into Asia) and stays pressed while the rest closes. The zipper now turns ~21° and welds at ~40 Myr along the
+  whole margin (check-phase11 re-baselined: the turn and the widest sea left).
+- **Known, left:** at collisionResistance 100 Phase 5a fails 3 checks — India's foreland belt reaches wider than the
+  plateau (949 vs 692 km), the redraw absorbs 91 of 111 overlap cells, and the Wilson scene welds for another reason than
+  its check expects — a foreland re-tune to do. The other suites were not re-run after the step and lock changes (the
+  developer tested in the lab); check-phase11 passes.
+
 ## Phase 13 — Supercontinent cycle
 
 *Goal:* the WBP cycle — a supercontinent breaks up in a burst of rifts, the pieces drift through a quiet spell, and they

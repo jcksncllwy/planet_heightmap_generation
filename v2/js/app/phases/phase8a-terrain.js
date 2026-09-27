@@ -26,6 +26,12 @@ const RESOLUTIONS = [
     { value: '2500000', label: '2.5M cells · 15 km (slow)' },
 ];
 const DEFAULT_CELLS = 640000;
+// the sim mesh the history runs on (the lab shell builds it from the `sim` setting; Phase 12)
+const SIM_RESOLUTIONS = [
+    { value: '40000', label: '40K cells · 121 km (quick)' },
+    { value: '80000', label: '80K cells · 86 km' },
+    { value: '160000', label: '160K cells · 61 km (slow)' },
+];
 // display settings (no re-synthesis) and terrain constants (terrain-config.js) the lab can change
 const VIEW_TUNABLES = [
     { id: 'exaggeration', label: 'Hillshade: slope exaggeration (display only)', min: 5, max: 60, step: 5, value: 20 },
@@ -93,8 +99,8 @@ function erosionRgb(e) {
 
 // The last history simulated (per scene and seed), so changing a terrain setting does not re-run it.
 let simCache = null;
-// One worker pool for the page (browser only: in Node the checks synthesize in place)
-let poolPromise = null;
+// One worker pool for the page, for one sim mesh (browser only: in Node the checks synthesize in place)
+let poolPromise = null, poolMesh = null;
 const usePool = typeof window !== 'undefined' && typeof Worker !== 'undefined';
 // Terrain built so far, for one history, resolution and set of terrain settings — kept across rebuilds of the phase:
 // every frame's heights (16-bit metres), within BUDGET bytes, and the full result (components, records) of the last few
@@ -217,7 +223,12 @@ export function terrainPhase(spec) {
     async function prepare(frame, layer) {
         showing(frame);
         if (!usePool) return;
-        const pool = poolReady ??= await (poolPromise ??= TerrainPool.create(simMesh));
+        if (poolMesh !== simMesh) {                       // (another sim resolution: the pool holds the old mesh)
+            const old = poolPromise;
+            poolMesh = simMesh; poolPromise = TerrainPool.create(simMesh);
+            old?.then(p => p.terminate());
+        }
+        const pool = poolReady ??= await poolPromise;
         if (!built(frame, layer)) {
             // the surface — all on the pool: the page's thread only gathers the heights (and the components, for a layer
             // that shows them; the records are derived when a layer asks for them)
@@ -347,6 +358,7 @@ export function terrainPhase(spec) {
         params: [
             { id: 'scene', label: 'Scene', value: scene.id, options: TERRAIN_SCENES.map(s => ({ value: s.id, label: s.label })) },
             { id: 'cells', label: 'Terrain resolution', value: String(cells), options: RESOLUTIONS, keepView: true },
+            { id: 'sim', label: 'Sim resolution — the plates (re-runs the history)', value: String(simMesh.numCells >= 150000 ? 160000 : simMesh.numCells >= 75000 ? 80000 : 40000), options: SIM_RESOLUTIONS, keepView: true },
             ...VIEW_TUNABLES.map(t => ({ ...t, value: view[t.id] })),
             ...TUNABLES.map(t => ({ ...t, value: cfg[t.id] })),
         ],

@@ -166,13 +166,13 @@ export function trackCollisions(world, dt) {
         rec.frontMaxKm = Math.max(rec.frontMaxKm ?? 0, rec.frontKm);          // (a collision's front wanders; once long, it is a collision)
         const due = ready && rec.frontMaxKm >= config.sutureMinContactKm && !(time - (rec.checkedAt ?? -Infinity) < config.sutureCheckMyr);
         if (due) {
-            rec.gapKm2 = openSeaBetweenKm2(world, U, L);
+            ({ km2: rec.gapKm2, widestKm: rec.gapWidestKm } = openSeaBetween(world, U, L));
             // (is the gap still closing? — the zipper's progress: the smallest gap so far, and when it last shrank by a tenth)
             if (!(rec.gapKm2 >= 0.9 * (rec.gapBestKm2 ?? Infinity))) { rec.gapBestKm2 = rec.gapKm2; rec.gapShrankAt = time; }
         }
         rec.gapKm2 ??= Infinity;
         // (a seam that has stalled long has closed all it will: the pivot has done its work — what is left is a remnant sea)
-        const closed = rec.gapKm2 <= rec.frontMaxKm * config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
+        const closed = (rec.gapWidestKm ?? Infinity) <= config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
             || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr, overdue = rec.contactMyr >= config.sutureLockMaxMyr;
         // …and never into a ring: welded round a big sea, one rigid plate would hold it for good — apart, the two can still
         // close it
@@ -192,7 +192,7 @@ export function trackCollisions(world, dt) {
             const why = stacked && !closed ? 'stacked' : !closed ? 'overdue' : rec.stalledMyr >= config.sutureStallMyr ? 'stalled' : rec.shorteningKm < config.sutureShorteningKm ? 'contact' : 'shortening';
             world.log(EventKind.SUTURE, `${L.name} sutured to ${U.name} after ${(time - rec.startedAt).toFixed(0)} Myr: ${rec.frontKm.toFixed(0)} km front, ${rec.shorteningKm.toFixed(0)} km of shortening, ` +
                 `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${!closed ? ` — locked together ${rec.contactMyr.toFixed(0)} Myr with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : rec.stalledMyr >= config.sutureStallMyr ? ' — the seam had stalled' : rec.shorteningKm < config.sutureShorteningKm ? ` — they had been locked together ${rec.contactMyr.toFixed(0)} Myr` : ''}`,
-                { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, why });
+                { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, gapWidestKm: rec.gapWidestKm, why });
         }
     }
     return merged;
@@ -226,12 +226,12 @@ function enclosedSeaBetweenKm2(world, U, L) {
 }
 
 /**
- * The sea still open between the two plates' land (km²): sea cells within sutureGapKm of both — measured through the sea
- * from each plate's coast — with the two distances together no more than sutureGapKm, and the two nearest coasts on
- * opposite sides of it (more than 120° apart): between them, not beside them (the seas either side of India's nose
- * never close, and need not).
+ * The sea still open between the two plates' land: sea cells within sutureGapKm of both — measured through the sea from
+ * each plate's coast — with the two distances together no more than sutureGapKm, and the two nearest coasts on opposite
+ * sides of it (more than 120° apart): between them, not beside them (the seas either side of India's nose never close,
+ * and need not). @returns {{km2: number, widestKm: number}} its area, and how wide it is at its widest, coast to coast
  */
-function openSeaBetweenKm2(world, U, L) {
+function openSeaBetween(world, U, L) {
     const { mesh, owner, ownerCell, plates, landClaims, config } = world, { numCells, adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
     const isSea = w => owner[w] < 0 || (landClaims[w] <= 1 && plates[owner[w]].crust.type[ownerCell[w]] === CrustType.OCEAN);
     const coastU = [], coastL = [];
@@ -243,14 +243,19 @@ function openSeaBetweenKm2(world, U, L) {
     const hops = Math.max(1, Math.round(config.sutureGapKm / edgeKm)), fU = hopsFrom(mesh, coastU, isSea, hops), fL = hopsFrom(mesh, coastL, isSea, hops);
     const { xyz } = mesh, dir = (w, s, out) => { const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2]; let ax = xyz[3 * s] - x, ay = xyz[3 * s + 1] - y, az = xyz[3 * s + 2] - z; const d = ax * x + ay * y + az * z; ax -= d * x; ay -= d * y; az -= d * z; const l = Math.hypot(ax, ay, az) || 1; out[0] = ax / l; out[1] = ay / l; out[2] = az / l; };
     const a = [0, 0, 0], b = [0, 0, 0];
-    let cells = 0;
+    let cells = 0, widest = 0;
     for (let w = 0; w < numCells; w++) {
         const du = fU.dist[w], dl = fL.dist[w];
         if (!(du > 0 && dl > 0 && du + dl <= hops + 1)) continue;
         dir(w, fU.source[w], a); dir(w, fL.source[w], b);
-        if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < -0.5) cells++;
+        const facing = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        if (facing < -0.5) cells++;
+        if (facing < -0.87) widest = Math.max(widest, du + dl - 1);
     }
-    return cells * cellAreaKm2;
+    // (the area, and the widest the sea is across — from coast to coast through its widest cell, in cells and so in km —
+    // taken where the two coasts face each other (over 150° apart): the open sea beyond the end of a closing seam has one
+    // coast to the side, not across, and is not a gap still to close)
+    return { km2: cells * cellAreaKm2, widestKm: widest * edgeKm };
 }
 
 /**

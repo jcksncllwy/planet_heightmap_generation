@@ -12,8 +12,9 @@ export const TECTONICS = {
     maxStepMyr: 4,
     stepGridMyr: 2,             // no step crosses a multiple of this: histories do not depend on how often they are recorded
                                 // (snapshotEveryMyr should be a multiple of it)
-    maxCellsPerStep: 1.0,       // adaptive dt: the two fastest plates together cover at most this many cells
-                                // (crust growth in step/resolve.js looks ~2 cells around a gap — keep this ≤ 1.5)
+    maxCellsPerStep: 1.5,       // adaptive dt: the two fastest plates together cover at most this many cells (Phase 12:
+                                // 1.0 → 1.5 for a third fewer steps — the most crust growth in step/resolve.js allows: it
+                                // looks ~2 cells around a gap)
     snapshotEveryMyr: 10,
 
     // ── Initial supercontinent [WBP] (init/) ──
@@ -65,9 +66,12 @@ export const TECTONICS = {
     slabSuction: 0.25,          // on the overriding plate, toward its own trench — what moves an active-margin continent
     ridgePush: 0.05,            // on both plates at a young ridge, away from it [WBP: secondary]
     ridgeMaxAgeMyr: 40,         // crust younger than this on both sides of a contact = an active ridge
-    collisionResistance: 300,   // viscous coupling per 10⁴ km² of land-on-land overlap: colliding plates lock together —
+    collisionResistance: 100,   // viscous coupling per 10⁴ km² of land-on-land overlap: colliding plates lock together —
                                 // across the front, against their closing (Phase 11; developer: collisions "more fluid, more
-                                // rotating and kinematic")…
+                                // rotating and kinematic")… — but not dead: the pair keeps converging a little where it
+                                // touches (India into Asia, ~5 cm/yr), taken up by shortening and underthrusting, which keeps
+                                // the collided part pressed while the rest closes (Phase 12, 300 → 100: held rigid, the plate
+                                // see-sawed about the middle of the contact, opening one end as it closed the other)
     collisionShearShare: 0.5,   // …along the front half as hard (oblique plates slide some; much looser and they slide past
                                 // each other instead of colliding)…
     collisionSeparateShare: 0.05, // …and against parting this share: a contact is a pivot, not a lock — the pull of the ocean
@@ -129,10 +133,12 @@ export const TECTONICS = {
     sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, whatever sea is left (the old
                                 // sutureOverlapKm2 over a sutureMinContactKm front)
     sutureMinContactKm: 800,    // a collision front shorter than this is a terrane docking (Phase 5b), not a suture
-    sutureGapKm: 500,           // …and a weld waits for the seam to close (Phase 11): the sea within this of both continents'
-                                // coasts…
-    sutureGapWidthKm: 100,      // …must be no more than a strip this wide along the front (the weld closes that much) —
-                                // welded with the ocean between them still open, it would be sealed inside one plate for good
+    sutureGapKm: 1000,          // …and a weld waits for the seam to close (Phase 11): the sea between the two continents'
+                                // coasts, up to this wide…
+    sutureGapWidthKm: 250,      // …must be nowhere wider than this (the weld closes that much) — welded with the ocean between
+                                // them still open, it would be sealed inside one plate for good. (Phase 12, developer on the
+                                // zipper: "the western lobe never meets the coast" — judged by its width on average along the
+                                // front, a wedge of sea at one end let the pair weld before it had closed)
     sutureLockMaxMyr: 120,      // …unless the two have been locked together this long (a seam that will not close)
     sutureCheckMyr: 4,          // (how often a waiting pair measures its seam and what its land rings)
     sutureStallGiveUpMyr: 24,   // …and a seam that has stalled this long has closed all it will: it welds with what sea is left…

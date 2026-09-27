@@ -1,5 +1,5 @@
-// Tectonics Lab shell. Generic across phases: it builds the sim mesh once, loads a phase module
-// (?phase=N&seed=S), and wires the timeline, layers, overlays, readout, chart and stats.
+// Tectonics Lab shell. Generic across phases: it builds the sim mesh (at the resolution the `sim` setting asks for), loads
+// a phase module (?phase=N&seed=S), and wires the timeline, layers, overlays, readout, chart and stats.
 // It only ever sees Frames (tectonics/snapshot.js) and the Phase contract (phases/phase-kit.js).
 
 import Delaunator from 'delaunator';
@@ -40,7 +40,11 @@ const url = new URLSearchParams(location.search);
 const phaseId = PHASES[url.get('phase')] ? url.get('phase') : LATEST_PHASE;
 if (url.get('seed')) ui.seed.value = url.get('seed');
 
-const simMesh = buildSimMesh(TECTONICS.simCells, MESH_SEED);
+// The sim mesh: TECTONICS.simCells cells, or finer where a phase offers it (the `sim` setting, Phase 12: 80K, 160K) — the
+// same planet in km and Myr, drawn on finer plates. Each size is built once.
+const SIM_SIZES = [40000, 80000, 160000], simMeshes = new Map();
+const simMeshOf = cells => { const n = SIM_SIZES.includes(Number(cells)) ? Number(cells) : TECTONICS.simCells; if (!simMeshes.has(n)) simMeshes.set(n, buildSimMesh(n, MESH_SEED)); return simMeshes.get(n); };
+let simMesh = simMeshOf(Number(url.get('sim')) || TECTONICS.simCells);
 // Pixel → cell tables, one per mesh a phase draws on: the sim mesh (crisp cells), or a phase's finer display mesh
 // (terrain, blended smoothly). Every raster has the same size, so the map canvas and the globe texture never change.
 const rasters = new Map([[simMesh, new MapRaster(simMesh, MAP_WIDTH)]]);
@@ -68,6 +72,7 @@ async function loadPhase({ resetCamera = true, resetTime = true } = {}) {
     if (request !== buildRequest) return;                                        // a newer build is on its way
     try {
         const { createPhase } = await PHASES[phaseId].load();
+        useSimMesh(simMeshOf(state.params.sim ?? TECTONICS.simCells));
         const phase = await createPhase(simMesh, Number(ui.seed.value) || 0, state.params, { progress: text => { $('busy').textContent = text; }, repaint: () => { state.dirty = true; } });
         if (request !== buildRequest) return;                                    // overtaken while it was building
         assertPhaseContract(phase);
@@ -90,6 +95,16 @@ async function loadPhase({ resetCamera = true, resetTime = true } = {}) {
     state.dirty = true;
 }
 
+/** Switch to another sim mesh (the `sim` setting): its pixel table replaces the old one's. */
+function useSimMesh(mesh) {
+    if (mesh === simMesh) return;
+    rasters.delete(simMesh);
+    simMesh = mesh;
+    rasters.set(simMesh, new MapRaster(simMesh, MAP_WIDTH));
+    state.raster = rasters.get(simMesh);
+    state.cellRgb = new Uint8Array(simMesh.numCells * 3);
+}
+
 /** Point the drawing at the mesh the phase paints on (building its pixel table the first time; one fine mesh is kept). */
 function useDisplayMesh(mesh) {
     if (!rasters.has(mesh)) {
@@ -105,7 +120,7 @@ function useDisplayMesh(mesh) {
 function renderChrome(phase) {
     const seed = Number(ui.seed.value) || 0;
     $('phaseNav').innerHTML = Object.entries(PHASES).map(([id, p]) =>
-        `<a href="?phase=${id}&seed=${seed}" class="${id === phaseId ? 'on' : ''}"${id === phaseId ? ' aria-current="page"' : ''}>${p.name}</a>`).join('');
+        `<a href="?phase=${id}&seed=${seed}${state.params.sim ? `&sim=${state.params.sim}` : ''}" class="${id === phaseId ? 'on' : ''}"${id === phaseId ? ' aria-current="page"' : ''}>${p.name}</a>`).join('');
     $('phaseTitle').textContent = phase.title;
     $('phaseSummary').textContent = phase.summary;
     $('checklist').innerHTML = phase.checklist.map(c => `<li>${c}</li>`).join('');

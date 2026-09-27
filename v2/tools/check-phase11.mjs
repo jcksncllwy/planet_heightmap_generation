@@ -32,13 +32,15 @@ const zipper = overrides => {
     const at = t => frames.reduce((b, f) => Math.abs(f.time - t) < Math.abs(b.time - t) ? f : b);
     const contact = world.events.find(e => e.kind === EventKind.COLLISION)?.time, weld = world.events.find(e => e.kind === EventKind.SUTURE);
     if (contact === undefined || !weld) return { contact, weld };
-    return { contact, weld, turned: turn(at(weld.time - 2)) - turn(at(contact)), gapMkm2: weld.data.gapKm2 / 1e6 };
+    return { contact, weld, turned: turn(at(weld.time - 2)) - turn(at(contact)), gapMkm2: weld.data.gapKm2 / 1e6, widestKm: weld.data.gapWidestKm, limitKm: world.config.sutureGapWidthKm + mesh.edgeKm };
 };
 {
     const now = zipper({}), old = zipper({ sutureGapWidthKm: 1e9, sutureGapStallMyr: 0 });
-    check('after first contact the lower continent turns about it, closing the gap, before the two weld',
-        now.weld && now.turned >= 8 && now.weld.time - now.contact >= 20 && now.gapMkm2 <= 0.5,
-        now.weld ? `first contact at ${now.contact.toFixed(0)} Myr; Austra turns ${now.turned.toFixed(1)}° against Borea before they weld at ${now.weld.time.toFixed(0)} Myr, with ${now.gapMkm2.toFixed(2)} Mkm² of sea left between them` : 'no weld');
+    // (Phase 12: a long Borea, so the turn can close the whole margin; the weld waits until the sea between is narrow at
+    // its widest — before, a wedge of it at one end passed as "narrow on average")
+    check('after first contact the lower continent turns about it, closing the gap along the whole margin, before the two weld',
+        now.weld && now.turned >= 20 && now.weld.time - now.contact >= 20 && now.widestKm <= now.limitKm,
+        now.weld ? `first contact at ${now.contact.toFixed(0)} Myr; Austra turns ${now.turned.toFixed(1)}° against Borea before they weld at ${now.weld.time.toFixed(0)} Myr, the sea left between them ${now.widestKm?.toFixed(0)} km across at its widest (${now.gapMkm2.toFixed(2)} Mkm² along the whole margin)` : 'no weld');
     check('…where welding at first readiness (the old rule) froze them where they touched',
         old.weld && now.weld && old.turned < now.turned / 2 && old.weld.time < now.weld.time - 15,
         old.weld ? `welded at ${old.weld.time.toFixed(0)} Myr, ${(old.weld.time - old.contact).toFixed(0)} Myr after contact, having turned ${old.turned.toFixed(1)}°` : 'no weld');

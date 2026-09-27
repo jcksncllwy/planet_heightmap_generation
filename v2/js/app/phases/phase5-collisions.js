@@ -32,7 +32,7 @@ const TUNABLES = [
     { id: 'collisionResistance', label: 'Collision resistance', min: 0, max: 1000, step: 25 },
     { id: 'collisionSeparateShare', label: 'A contact resists parting at this share (low: it pivots)', min: 0, max: 1, step: 0.05 },
     { id: 'collisionShearShare', label: '…and sliding along the front at this share', min: 0, max: 1, step: 0.05 },
-    { id: 'sutureGapWidthKm', label: 'Weld once the sea between is a strip this wide along the front', min: 0, max: 600, step: 20, unit: ' km' },
+    { id: 'sutureGapWidthKm', label: 'Weld once the sea between is nowhere wider than', min: 0, max: 1000, step: 25, unit: ' km' },
     { id: 'ringSeaKm2', label: 'Plates ringing a sea larger than this stay apart', min: 2e5, max: 1e7, step: 1e5, unit: ' km²' },
 ];
 
@@ -41,10 +41,10 @@ const SCENES = [
         id: 'zipper', base: 'zipper', label: 'Continents meet at an angle (zipper)', maxMyr: 160,
         about: COLLISION_SCENES.find(s => s.id === 'zipper').about,
         checklist: [
-            'Austra (purple) strikes Borea near Borea\u2019s east end first; the magenta overlap starts there, at an angle to the rest of the coast.',
-            'After contact Austra turns about that first contact (Plates layer, scrub 20 → 60 Myr): its west end swings north and the ocean between the two closes like a zipper — the contact does not freeze the two where they first touched.',
-            'Only once the seam has closed (or stopped closing) do they weld — the event log says how much sea was left between them; a small gulf may stay open at the far end, as the Bay of Bengal beside India.',
-            'Try the weld slider: set “weld once the sea between is a strip this wide” to 600 km and they weld within ~10 Myr of first contact, before Austra has turned (3° instead of ~12°) — the contact itself allows the turn; what froze it was welding too soon.',
+            'Austra’s long chain of land strikes Borea’s long south coast at an angle, its north-east end first (about 12 Myr); the magenta overlap starts there.',
+            'After contact Austra turns about that first contact (Plates layer, scrub 10 → 40 Myr): its west end swings north and the ocean between the two closes like a zipper, westward along the whole margin — the contact neither freezes the two where they first touched nor see-saws (the far end does not swing back out).',
+            'Only once the sea between them is narrow everywhere along the margin (under ~250 km at its widest) — or has stopped closing — do they weld (about 40 Myr); the event log says how much sea was left.',
+            'Try the weld slider: set “weld once the sea between is nowhere wider than” to 1000 km and they weld within ~10 Myr of first contact, before Austra has turned (5° instead of ~20°) — the contact itself allows the turn; what froze it was welding too soon.',
         ],
     },
     {

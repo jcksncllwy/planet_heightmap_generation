@@ -19,8 +19,10 @@ basalts cut into mesas and stairs. Phase 9 (steady detail) is done: the terrain 
 drifting continent keeps its coasts, ridges and rivers, and its fine detail renews only slowly. Phase 10 (cratons) is
 done: ranges meet shields as real ones do — foothills on the rim, a foreland lowland, steep where a plateau's back meets
 one — and each shield has a character. Phase 11 (natural collisions) is done: continents pivot about their first
-contact and weld once the seam has closed, so few seas are sealed in. Next, per
-plans/V2_ROADMAP_PHASES_9_13.md: 10 cratons against the ranges (done), 11 natural collisions (done), 12 the sim's resolution, 13 the
+contact and weld once the seam has closed, so few seas are sealed in. Phase 12 (the sim's resolution) is done: 80K and
+160K sim cells can be chosen in the lab (40K stays the default), and histories are faster and held in a quarter of the
+memory. Next, per
+plans/V2_ROADMAP_PHASES_9_13.md: 10 cratons against the ranges (done), 11 natural collisions (done), 12 the sim's resolution (done), 13 the
 supercontinent cycle — then the full planet (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
@@ -34,7 +36,9 @@ open http://localhost:8123/v2/         # the lab; ?phase=1, 2, 3, 4, 5, 5b, 6a, 
 The lab is a test bench, not the product: each phase has a scene that isolates one mechanism, an
 on-screen checklist of what to look for, live numbers, and a time scrubber. Space = play/pause,
 ← → = step a frame. It works on a phone (bottom sheet, tap to inspect). From 8a on the lab draws terrain on a finer
-mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points.
+mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points. The
+terrain labs also offer the **Sim resolution** — the plates the history runs on: 40K cells (121 km, the default), 80K
+(86 km) or 160K (61 km); `&sim=80000` in the URL — the same planet in km and Myr, on finer plates, and slower to build.
 
 ```
 node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10, 11 — headless acceptance checks, PASS/FAIL, exit code
@@ -290,8 +294,11 @@ Every optimisation so far is EXACT — the output does not change by a single bi
 a 600 Myr history's event log and of every frame, and of the terrain's heights, before and after. The history
 (single-threaded; steps depend on each other) ran 39 s → 26 s for 600 Myr in Node: precomputed search rings, lookups
 skipped for the unrotated background and far from a plate's crust, each plate's lookups reused between the two
-resolves of a step, contacts cached per resolve, scratch arrays reused. In the lab it runs in a worker, so the page
-never freezes. Terrain is spread over workers (every cell depends only on its position and the per-frame plan, which
+resolves of a step, contacts cached per resolve, scratch arrays reused. One change that is not exact (Phase 12): a
+step may take two closing plates 1.5 cells, not 1 — a third fewer steps (600 Myr ≈ 27 s at 40K, ≈ 63 s at 80K,
+~2.5 min at 160K). In the lab the history runs in a worker, so the page never freezes, and its frames come back packed
+(tectonics/frame-pack.js: each mostly-empty record field as the cells that differ from its background, lossless) — a
+600 Myr history in ~65 MB at 40K instead of 273, ~240 MB at 160K instead of 1.1 GB. Terrain is spread over workers (every cell depends only on its position and the per-frame plan, which
 one worker builds and hands to the others): a whole-planet frame at 2.5M takes ~5.4 s on one thread, ~1–1.3 s on 8
 workers (~0.4–0.5 s at 160K–640K); the terrain mesh is built in a worker while the history runs. Then the lab builds
 the frames next to the one shown ahead, in the background (the ten nearest the way it is moving, five behind; heights as

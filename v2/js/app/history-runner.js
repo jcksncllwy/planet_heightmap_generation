@@ -3,6 +3,7 @@
 
 import { simulate } from '../tectonics/simulate.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
+import { PackedFrame } from '../tectonics/frame-pack.js';
 
 /**
  * @param {{list: string, scene: Object, heights?: Object}} which   the scene, the name of its list in history-worker.js,
@@ -18,7 +19,7 @@ export function runHistory({ list, scene, heights = {} }, simMesh, seed, snapsho
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL('./history-worker.js', import.meta.url), { type: 'module' }), frames = [];
         worker.onmessage = ({ data }) => {
-            if (data.type === 'frame') { frames.push(data.frame); onProgress(data.frame.time); }
+            if (data.type === 'frame') { const frame = new PackedFrame(data.frame); frames.push(frame); onProgress(frame.time); }
             else if (data.type === 'done') { worker.terminate(); resolve({ frames, steps: data.steps }); }
             else { worker.terminate(); reject(new Error(`history worker: ${data.message}`)); }
         };

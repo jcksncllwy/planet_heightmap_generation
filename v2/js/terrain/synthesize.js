@@ -72,11 +72,11 @@ export function carveInputs(n) {
 }
 
 /**
- * The meshes the carving climbs, coarse to fine, a factor 4 apart: the sim mesh, then the terrain meshes below the one
- * carved (made by `meshOf(numCells)`), then that one.
+ * The meshes the carving climbs, coarse to fine, a factor 4 apart: the sim mesh, then the terrain meshes between it and
+ * the one carved (made by `meshOf(numCells)`), then that one.
  */
 export function carveLadder(simMesh, tMesh, meshOf) {
-    return [simMesh, ...[160000, 640000].filter(c => c < tMesh.numCells * 0.9).map(meshOf), tMesh];
+    return [simMesh, ...[160000, 640000].filter(c => c < tMesh.numCells * 0.9 && c > simMesh.numCells * 1.5).map(meshOf), tMesh];
 }
 
 /** The carving's settings (the same on every mesh: carve.js scales the valleys to each mesh's cells). */

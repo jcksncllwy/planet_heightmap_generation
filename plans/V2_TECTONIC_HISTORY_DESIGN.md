@@ -837,6 +837,15 @@ they found was fixed, and each fix has a check that would catch its return.
   a moving plate's raster, so a narrow neck's joining cell can be skipped — three checks (Phase 5's one body, Phase 10's
   scraps, and Phase 9's coasts through the world grid's records) were measuring that aliasing and now measure on the
   plate's own raster; most "stale" belt positions were a craton rim's and old seams' path costs or two belts meeting.
+- Phase 12, the sim's resolution (2026-09-27; accepted, default kept at 40K "for the remaining testing" though the
+  developer likes the look of 160K "a lot more"). Frames packed losslessly for the lab (tectonics/frame-pack.js: 4.3–4.5×
+  smaller); maxCellsPerStep 1.0 → 1.5 (a third fewer steps); the Sim resolution setting (40K/80K/160K) in the terrain
+  labs. Exact history optimisation found little room (a flat profile; the gather already tuned). The zipper scene fixed:
+  a round Borea could never be zipped by a straight Austra (now a long Borea); the weld now waits for the sea between to
+  be narrow at its widest where the coasts face each other (an average let a wedge through); and collisionResistance
+  300 → 100 so a collided part keeps converging and the plate turns about the end of the seam instead of see-sawing about
+  its middle. Lesson: look at a test scene in the lab before trusting a check that passes on numbers — the zipper's check
+  passed with a 12° turn and a weld by the stall fallback. Left: India's foreland at the weaker lock (Phase 5a, 3 checks).
 - Lab speed (2026-09-26, during Phase 11; developer: at 2.5M, pressing Play in lab 8b "freezes up … my computer starts
   whirring aggressively"; "first without changing the output, and then … cut corners"). The freeze: the play clock ran
   on while a 2.5M frame took 2–5 s to build, so the frame asked for had always moved on and nothing was painted; and the
