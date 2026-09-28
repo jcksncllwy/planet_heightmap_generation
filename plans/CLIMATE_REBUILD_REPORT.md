@@ -8,8 +8,9 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 
 All eight phases are built and committed. The new climate is a chain of stages you can read and check one at a time:
 temperature, pressure and wind, ocean, rain, then Köppen.
-- **Earth, every stage new: Köppen matches Beck on 50.5 % of land vs V1's 38 %.** Every stage beats or ties V1 on its
-  own score.
+- **Earth, every stage new: Köppen matches Beck on 50.5 % of land vs V1's 38 %.** Every stage beats V1 on its own
+  main scores. The one exception is rain's "wet season the right way round", 2–3 points behind V1 with real winds and
+  ahead of it (88 %) with every stage new.
 - **The same result at 160K, 640K and 2.5M terrain cells.** V1 drifts with resolution.
 - **Speed:** 0.8–1.0 s in Chrome on the desktop at any terrain size. V1 takes 0.51 s at 40K but 2.07 s at 160K and
   10.9 s at 640K.
@@ -85,7 +86,7 @@ and a range (`v2/js/climate/config.js`). Earth is a check, not the target.
 - Each stage is scored on its own against real observations.
 - Scoring uses the whole Earth, but each continent (and each ocean basin, for fields at sea) counts equally.
 - A setting may move from its literature value only if no region gets worse.
-- Three synthetic test planets must behave as physics expects.
+- Four synthetic test planets must behave as physics expects.
 
 The stages are temperature ↔ pressure and wind ↔ ocean, then rain, then clouds back into the temperature, then 12
 months and Köppen. The grid-scale stages run on a fixed 3° grid and the finishing on 1°, so the result is the same at
@@ -264,7 +265,7 @@ the wet-season measure (78 % vs 81 %; it is 88 % with every stage new), and 9 of
 - Rainforests are too dry (Congo, the Maritime Continent).
 - Patagonia's rain shadow is too weak.
 - With the model's own winds, Africa's rain belt runs into the Sahara: the circulation puts the tropical trough at the
-  hottest latitude. Phase 6 places it by where the air is moist and warm.
+  hottest latitude. Placing it by where the air is moist and warm was tried in Phase 6 and made Köppen worse.
 - It is slow: the whole climate takes 2.2 s at 160K in Chrome (V1: 0.5 s at 40K). The speed pass is Phase 6.
 
 **Check in the lab.** New climate → Earth (Rain "New (Phase 5)") → Run → Rain → New, side by side with Observed; "New −
@@ -368,8 +369,8 @@ minute the first time) → Köppen, Temperature, Rain … → New.
 
 - **Cost:** the circulation's pressure error rose from 2.9 to 3.3 hPa (still better than V1's 4.0); every stage's gate
   still passes.
-- **Evolution worlds** (A / B / C / D / E): 16 / 34 / 15 / 18 / 18 % at 600 Myr, 11 / 37 / 19 / 25 / 7 % for the supercontinent — less arid than
-  before.
+- **Evolution worlds** (A / B / C / D / E): 16 / 34 / 15 / 18 / 18 % at 600 Myr, and 11 / 37 / 19 / 25 / 7 % for the
+  supercontinent (less arid than before: B 42 → 37 %).
 - **Tradeoff:** the supercontinent's stronger summer monsoon now reaches inland, so its interior is about as arid as
   its coasts (41 vs 44 %) instead of drier. Its seasons are still much bigger (34 vs 20 °C). Keep this, or keep the
   drier interior? (Decision 2.)
