@@ -393,3 +393,72 @@ Everything else stayed at its literature value.
   These need rain and clouds feeding back on temperature: Phase 6 coupling.
 - **Tibet's winter is too cold** (−23 vs −16 °C). Real Tibet is dry, so it has little snow. This also needs rain: Phase 6.
 - **Antarctica is ~8 °C too warm, but stays ice cap.** It is not tuned on; ice-sheet physics is minimal.
+
+## Phase 3 — pressure and wind, built 2026-09-28 (the developer asked for all phases to continue)
+
+**What was built.** `v2/js/climate/circulation.js`: sea-level pressure and near-surface winds derived from the
+temperature, with nothing placed at Earth's latitudes.
+- **Zonal belts.**
+  - The tropical trough sits at each longitude's own warmest latitude: over the sea the warmest water, over a summer
+    continent its heat low, i.e. the monsoon trough.
+  - The subtropical highs sit at the Hadley-cell edges (Held & Hou, from this planet's equator-to-pole contrast).
+  - The subpolar lows sit one Ferrel cell further out.
+  - The midlatitude pressure drop grows with the temperature contrast across the storm belt, and more where the belt
+    is open sea.
+- **Thermal lows and highs.** Air warmer than its latitude's average leaves low pressure, colder air high pressure,
+  smoothed at the Rossby radius. Warmth is measured at the free air's lapse rate, so sunlit plateaus count as the
+  elevated heat sources they are (the Tibetan and South Asian summer low).
+- **Winds from pressure with friction:** one linear balance gives winds along the isobars at midlatitudes, turned
+  toward the lows (more over land), and straight down-gradient at the equator.
+- **Coupling.** In the core, temperature and winds need each other; two rounds settle them, the second temperature
+  starting warm.
+- **Scoring.** `tuning/climate/circulation-check.mjs` scores per continent and ocean basin, each weighted equally. It
+  also checks named features and the test planets.
+- **Lab:** Pressure & wind → "New" and "New − observed" for any month, with the new rain-belt line in cyan. On Earth,
+  the new climate can run with derived or real winds.
+
+**Open-loop input.** It should have been NCEP's near-surface air temperature, but NOAA's server was down (503) all
+morning. The run used "real where observed" instead: Beck on land, OISST at sea, and the Phase 2 model for the 14 % of
+cells under sea ice or in gaps. The script switches to NCEP air automatically once it is downloaded.
+
+**Tuned (region-aware, priors).** Hadley scale 1.43, Ferrel width 35°, tropical drop 9.6 hPa, midlatitude
+0.49 hPa/K, open-sea boost 0.69, polar high 4.75 hPa, thermal 0.78 hPa/K, Rossby radius 812 km, friction turning
+10° at sea and 32.5° on land. Three of these sit at or near the edge of their range (Ferrel width, sea turning, Hadley
+scale), a hint of the simple structure's limits.
+
+**Numbers, against V1 on the same cells** (June–August and December–February means; regions weighted equally):
+
+| Measure | New | V1 |
+|---|---|---|
+| Wind direction within 45° | **73 %** | 52 % |
+| Pressure pattern error | **2.9 hPa** | 4.0 hPa |
+| East–west pressure correlation | **0.57** | 0.30 |
+| Rain belt, distance from the real rain maximum | **7.0°** | 11.6° |
+
+**Named features on Earth, all passing:**
+- the South Asian monsoon: south-westerly in July, north-easterly in January;
+- the West African monsoon;
+- the East Asian winter monsoon;
+- summer highs over the eastern Pacific and Atlantic, at about half their real strength;
+- the Siberian High and the Aleutian Low, at about half their real strength.
+
+**Coupled, on Earth:** temperature error is 4.39 °C with its own winds vs 4.48 °C with the real winds (no worse), and
+Köppen with real rain is 68.1 %.
+
+**Test planets, all passing:**
+- trade winds and westerlies appear on their own;
+- a thermal low over the summer continent and a high over the winter one;
+- westerlies onto the west coast;
+- on the tropical continent the rain belt swings ±11° over land against ±1° at sea;
+- southerly summer monsoon winds on the tropical continent and onshore ones on the supercontinent.
+
+**Gate: passed.**
+
+**Known limits.**
+- **Weak circulation features.** The Siberian High, Aleutian Low and eastern-ocean summer highs are about half their
+  real strength. That matters for Mediterranean climates; Phase 8 revisits it.
+- **Southern Ocean winds** are right in direction (≈ 87 % within 45°) but too weak (≈ 0.4 of the real speed).
+- **Rain-belt measure.** Over the Sahara the rain belt follows the heat low (≈ 20°N, the real surface front) rather than
+  the rain maximum (≈ 10°N). The rain stage (Phase 5) decides where rain actually falls.
+- **Speed.** Circulation is ~80 ms. The coupled temperature ↔ winds step is ~0.5 s in Node and ~0.9 s cold in Chrome;
+  a speed pass is due before Phase 7.

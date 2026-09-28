@@ -83,6 +83,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     put('u10', u.data, 'm/s', 'NCEP/NCAR R1, 1991–2020', 'Near-surface eastward wind (σ 0.995, 2.5°)');
     const v = await regridVar('vwnd.sig995.mon.ltm.1991-2020.nc', 'vwnd', grid);
     put('v10', v.data, 'm/s', 'NCEP/NCAR R1, 1991–2020', 'Near-surface northward wind (σ 0.995, 2.5°)');
+    if (fs.existsSync(rawPath('air.sig995.mon.ltm.1991-2020.nc'))) {
+        const air = await regridVar('air.sig995.mon.ltm.1991-2020.nc', 'air', grid, x => (x > 150 ? x - 273.15 : x));
+        put('airNear', air.data, '°C', 'NCEP/NCAR R1, 1991–2020', 'Near-surface air temperature, land and sea (σ 0.995, 2.5°)');
+    } else console.log('  airNear   (skipped: air.sig995 not downloaded — circulation-check.mjs falls back to Beck land + OISST sea)');
     // The OISST long-term mean fills land with interpolated values; the sea-ice file is masked to the ocean,
     // so its valid cells are the ocean mask for both.
     const ice = await regridVar('icec.ltm.1991-2020.nc', 'icec', grid, x => Math.max(0, Math.min(1, x / 100)));

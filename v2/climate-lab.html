@@ -57,7 +57,7 @@
                 <span>Month (observed and new)</span><output id="monthLabel">—</output>
                 <input id="month" type="range" min="0" max="12" step="1" value="0" aria-label="Month">
             </div>
-            <label class="toggle"><input type="checkbox" id="optItcz" checked> Show the rain belt (ITCZ): observed <span class="swatch obs"></span> V1 <span class="swatch v1"></span></label>
+            <label class="toggle"><input type="checkbox" id="optItcz" checked> Rain belt (ITCZ): observed <span class="swatch obs"></span> V1 <span class="swatch v1"></span> new <span class="swatch new"></span></label>
             <label class="toggle"><input type="checkbox" id="optCoast" checked> Coastlines</label>
             <div id="legend"></div>
             <p class="hint" id="fieldNote"></p>
@@ -73,6 +73,8 @@
             <p class="hint" id="ncPlanetNote"></p>
             <h2 class="sub" id="ncTempHead">Temperature</h2>
             <div id="ncTemp" class="segmented"></div>
+            <h2 class="sub" id="ncWindsHead">Winds</h2>
+            <div id="ncWinds" class="segmented"></div>
             <h2 class="sub">Terrain cells</h2>
             <div id="skRes" class="segmented"></div>
             <h2 class="sub">Points in the year</h2>
@@ -94,6 +96,19 @@
             <p class="hint">Test planets — what physics expects, with no reference to Earth:</p>
             <div class="tablewrap"><table id="tempPlanetTable"></table></div>
             <p class="hint" id="tempNote"></p>
+        </section>
+
+        <section>
+            <h2>Phase 3 · pressure and wind</h2>
+            <p class="hint">Derived from the temperature — open loop: given the real near-surface temperature, scored
+                against the real pressure and winds per continent and ocean basin (each weighted equally), with V1 on the
+                same cells (June–August and December–February means).</p>
+            <div class="tablewrap"><table id="circTable"></table></div>
+            <p class="hint">Named features on Earth:</p>
+            <div class="tablewrap"><table id="circNamedTable"></table></div>
+            <p class="hint">Test planets and the coupled run:</p>
+            <div class="tablewrap"><table id="circPlanetTable"></table></div>
+            <p class="hint" id="circNote"></p>
         </section>
 
         <section>

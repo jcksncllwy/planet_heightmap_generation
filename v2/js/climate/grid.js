@@ -78,6 +78,54 @@ export class LatLonGrid {
 }
 
 /**
+ * Block average of a fine-grid field onto a coarser grid of the same family (ratio × ratio cells, area-weighted;
+ * NaN skipped, all-NaN → 0). ratio 1 copies.
+ */
+export function coarsenField(fine, coarse, ratio, src) {
+    if (ratio === 1) return Float64Array.from(src, v => (v === v ? v : 0));
+    const out = new Float64Array(coarse.size);
+    for (let J = 0; J < coarse.h; J++) for (let I = 0; I < coarse.w; I++) {
+        let s = 0, ws = 0;
+        for (let dj = 0; dj < ratio; dj++) {
+            const j = J * ratio + dj, wt = fine.rowArea[j];
+            for (let di = 0; di < ratio; di++) { const v = src[j * fine.w + I * ratio + di]; if (v === v) { s += v * wt; ws += wt; } }
+        }
+        out[J * coarse.w + I] = ws > 0 ? s / ws : 0;
+    }
+    return out;
+}
+
+/** Bilinear interpolation of a coarse-grid field onto the fine grid, written at out[offset …]. ratio 1 copies. */
+export function refineField(coarse, fine, ratio, src, out, offset = 0) {
+    if (ratio === 1) { for (let c = 0; c < fine.size; c++) out[offset + c] = src[c]; return; }
+    const map = refineMap(coarse, fine);
+    for (let c = 0, k = 0; c < fine.size; c++, k += 4) {
+        out[offset + c] = map.w[k] * src[map.i[k]] + map.w[k + 1] * src[map.i[k + 1]] + map.w[k + 2] * src[map.i[k + 2]] + map.w[k + 3] * src[map.i[k + 3]];
+    }
+}
+
+/** The four coarse cells and weights behind every fine cell (built once per grid pair). */
+const refineMaps = new Map();
+function refineMap(g, core) {
+    const key = `${g.step}|${core.step}`;
+    let m = refineMaps.get(key);
+    if (m) return m;
+    m = { i: new Int32Array(4 * core.size), w: new Float64Array(4 * core.size) };
+    for (let j = 0; j < core.h; j++) for (let ii = 0; ii < core.w; ii++) {
+        const c = j * core.w + ii, k = 4 * c;
+        const x = g.colOf(core.lon[ii]), y = Math.max(0, Math.min(g.h - 1, g.rowOf(core.lat[j])));
+        const x0 = Math.floor(x), y0 = Math.min(g.h - 1, Math.floor(y)), fx = x - x0, fy = y - y0;
+        const i0 = ((x0 % g.w) + g.w) % g.w, i1 = (i0 + 1) % g.w, j1 = Math.min(g.h - 1, y0 + 1);
+        m.i[k] = y0 * g.w + i0; m.w[k] = (1 - fx) * (1 - fy);
+        m.i[k + 1] = y0 * g.w + i1; m.w[k + 1] = fx * (1 - fy);
+        m.i[k + 2] = j1 * g.w + i0; m.w[k + 2] = (1 - fx) * fy;
+        m.i[k + 3] = j1 * g.w + i1; m.w[k + 3] = fx * fy;
+    }
+    refineMaps.set(key, m);
+    return m;
+}
+
+/**
  * Regrid a field given on any regular source lat/lon grid (1-D coordinate arrays in degrees, either orientation,
  * longitudes 0…360 or −180…180) onto `grid` by bilinear interpolation. `src` holds `layers` stacked layers of
  * srcLat.length × srcLon.length values. Returns Float32Array(layers × grid.size), NaN where no source data.

@@ -8,10 +8,11 @@
 // for each cell's own height (lapse rate), and classifying Köppen per cell (koppen.js) — so the result does not
 // depend on the terrain resolution.
 //
-// The fields at the K points come from `options.stages` — { winds, temperature, rain }, each a function of the
-// context and the stages before it (temperature.js is the energy-balance stage; inputs.js has observations and
-// placeholders for stages not built yet) — or from a single `options.anchorSource` (the Phase 1 oracle run:
-// observedAnchors() below feeds real data, measuring the best the rest of the pipeline can do).
+// The fields at the K points come from `options.stages` — { winds, temperature, circulation, rain }, each a function
+// of the context and the stages before it (temperature.js is the energy-balance stage, circulation.js derives
+// pressure and winds from it; inputs.js has observations and placeholders for stages not built yet) — or from a
+// single `options.anchorSource` (the Phase 1 oracle run: observedAnchors() below feeds real data, measuring the best
+// the rest of the pipeline can do).
 
 import { LatLonGrid } from './grid.js';
 import { interpolationMatrix, PRECIP_TRANSFORMS } from './seasons.js';
@@ -26,6 +27,7 @@ export const CORE_DEFAULTS = Object.freeze({
     lapseRateCPerKm: 6.5,       // standard environmental lapse rate
     tempOffsetC: 0,
     precipScale: 1,
+    couplings: 2,               // rounds of temperature ↔ winds when the winds are derived
 });
 
 /**
@@ -63,14 +65,26 @@ export function computeClimate(input, options = {}) {
     const sctx = { grid, surface, anchorMonths, options: o };
     let anchors, stages = null;
     if (o.stages) {
-        const winds = o.stages.winds ? o.stages.winds(sctx) : null;
+        let winds = o.stages.winds ? o.stages.winds(sctx) : null;
         lap('winds');
-        const temperature = o.stages.temperature(sctx, winds);
-        lap('temperature');
+        let temperature, circulation = null;
+        if (o.stages.circulation) {
+            // Temperature and winds need each other (winds carry heat; pressure comes from temperature): a couple of
+            // rounds settle them. The first temperature has the given winds (or none), the next ones the derived.
+            for (let it = 0; it < o.couplings; it++) {
+                temperature = o.stages.temperature(sctx, winds, temperature?.state);
+                circulation = o.stages.circulation(sctx, temperature);
+                winds = circulation;
+            }
+            lap('temperature ↔ winds');
+        } else {
+            temperature = o.stages.temperature(sctx, winds);
+            lap('temperature');
+        }
         const rain = o.stages.rain(sctx, winds, temperature);
         lap('rain');
         anchors = { T: Float32Array.from(temperature.T), P: rain.P };
-        stages = { winds, temperature, rain };
+        stages = { winds, temperature, circulation, rain };
     } else {
         anchors = o.anchorSource(sctx);
         lap('anchors');

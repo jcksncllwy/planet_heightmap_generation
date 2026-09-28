@@ -12,7 +12,7 @@
  *     and the 1991–2020 Köppen-Geiger maps (1° and 0.1°).
  *   NOAA PSL THREDDS (public domain):
  *     NCEP/NCAR Reanalysis 1 monthly long-term means 1991–2020, 2.5° — sea-level pressure,
- *       near-surface (sigma 0.995) winds.                                   Kalnay et al. 1996
+ *       near-surface (sigma 0.995) winds and air temperature.               Kalnay et al. 1996
  *     NOAA OISST v2 monthly long-term means 1991–2020, 1° — sea-surface temperature, sea ice.  Reynolds et al. 2002
  *     GPCP v2.3 monthly long-term means 1991–2020, 2.5° — precipitation over land and sea.    Adler et al. 2018
  */
@@ -31,6 +31,7 @@ export const SOURCES = {
     slp:  { url: `${PSL}/ncep.reanalysis/Monthlies/surface/slp.mon.ltm.1991-2020.nc`, file: 'slp.mon.ltm.1991-2020.nc' },
     uwnd: { url: `${PSL}/ncep.reanalysis/Monthlies/surface/uwnd.sig995.mon.ltm.1991-2020.nc`, file: 'uwnd.sig995.mon.ltm.1991-2020.nc' },
     vwnd: { url: `${PSL}/ncep.reanalysis/Monthlies/surface/vwnd.sig995.mon.ltm.1991-2020.nc`, file: 'vwnd.sig995.mon.ltm.1991-2020.nc' },
+    air:  { url: `${PSL}/ncep.reanalysis/Monthlies/surface/air.sig995.mon.ltm.1991-2020.nc`, file: 'air.sig995.mon.ltm.1991-2020.nc' },
     sst:  { url: `${PSL}/noaa.oisst.v2/sst.ltm.1991-2020.nc`, file: 'sst.ltm.1991-2020.nc' },
     icec: { url: `${PSL}/noaa.oisst.v2/icec.ltm.1991-2020.nc`, file: 'icec.ltm.1991-2020.nc' },
     gpcp: { url: `${PSL}/gpcp/precip.mon.ltm.1991-2020.nc`, file: 'precip.mon.ltm.1991-2020.nc' },

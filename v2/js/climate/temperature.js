@@ -15,7 +15,7 @@
 // swing of the winds) is updated over a few outer iterations. T is the sea-level temperature; the stage reports it
 // at each grid cell's reference height (its mean land height), and the core lifts it to each terrain cell.
 
-import { LatLonGrid } from './grid.js';
+import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
 import { HelmholtzSolver } from './solver.js';
 import { PARAMS } from './config.js';
@@ -27,15 +27,18 @@ const SEAWATER_HEAT_CAP = 1025 * 3990;      // J/m³/K
 const R_PLANET = 6.371e6;
 const NT = 12;                              // samples per year for what is evaluated in time (≥ 5 for 2 harmonics)
 const OUTER = 4;                            // outer iterations (snow / ice, seasonal winds)
+const OUTER_WARM = 2;                       // … when starting from a previous run (temperature ↔ winds rounds)
 const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean sunlight: below it, inversions form
 
 /**
  * The temperature stage. Options: { tiltDeg = 23.44 }.
- * Returns stage(ctx, winds) → { T (K anchors × G, °C at reference height), monthly (12 × G, same), monthlySL
- * (12 × G, sea level), iceFrac (G, share of the year a cell is snow- or ice-covered), timing }.
+ * Returns stage(ctx, winds, init?) → { T (K anchors × G, °C at reference height), monthly (12 × G, same), monthlySL
+ * (12 × G, sea level), iceFrac (G, share of the year a cell is snow- or ice-covered), state, timing }.
+ * init: a previous run's `state` (same settings) to start from — used when temperature and winds are iterated
+ * together; it then needs fewer outer iterations.
  */
 export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
-    return (ctx, winds) => {
+    return (ctx, winds, init = null) => {
         const t0 = performance.now();
         const P = { ...PARAMS };
         const core = ctx.grid;
@@ -87,18 +90,23 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             const t = Math.max(-40, Math.min(35, (q * (1 - albBase[j]) - P.TEMP_OLR_A) / P.TEMP_OLR_B));
             for (let i = 0; i < w; i++) c0[j * w + i] = t;
         }
+        const snowYear = new Float64Array(G), snowYearPrev = new Float64Array(G);   // share of the year the land is snowy
+        const warm = !!(init && init.step === g.step && init.c0.length === G);
+        if (warm) {
+            c0.set(init.c0); c1r.set(init.c1r); c1i.set(init.c1i); c2r.set(init.c2r); c2i.set(init.c2i); snowYear.set(init.snowYear);
+        }
+        const outer = warm ? OUTER_WARM : OUTER;
 
         const solver = new HelmholtzSolver(g, P.TEMP_DIFFUSIVITY, P.TEMP_DIFFUSIVITY_EW);
         const dRad = g.step * Math.PI / 180;
         const Tk = new Float64Array(G), iceYear = new Float64Array(G), seaIceYear = new Float64Array(G);
-        const snowYear = new Float64Array(G), snowYearPrev = new Float64Array(G);   // share of the year the land is snowy
         const F0 = new Float64Array(G), F1r = new Float64Array(G), F1i = new Float64Array(G), F2r = new Float64Array(G), F2i = new Float64Array(G);
         const sr = new Float64Array(G).fill(P.TEMP_OLR_B), si = new Float64Array(G), zero = new Float64Array(G);
         const C = new Float64Array(G);
         const stats = [];
         const prof = { setup: performance.now() - t0, forcing: 0, operator: 0, solve: 0, output: 0 };
         let tp;
-        for (let it = 0; it < OUTER; it++) {
+        for (let it = 0; it < outer; it++) {
             tp = performance.now();
             F0.fill(0); F1r.fill(0); F1i.fill(0); F2r.fill(0); F2i.fill(0); iceYear.fill(0); seaIceYear.fill(0);
             snowYearPrev.set(snowYear); snowYear.fill(0);
@@ -138,8 +146,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 const Cs = Co * (1 - seaIceYear[c]) + Cl * seaIceYear[c];            // frozen sea stores little heat
                 C[c] = landFrac[c] * Cl + (1 - landFrac[c]) * Cs;
             }
-            const relax = it === 0 ? 1 : 0.8;
-            const tol = it === OUTER - 1 ? 1e-4 : 1e-3;
+            const relax = it === 0 && !warm ? 1 : 0.8;
+            const tol = it === outer - 1 ? 1e-4 : 1e-3;
             prof.forcing += performance.now() - tp;
             const solveWith = (sigmaI, fr, fi, xr, xi) => {
                 let ta = performance.now();
@@ -208,7 +216,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const iceCore = new Float32Array(core.size);
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;
-        return { T, monthly, monthlySL, iceFrac: iceCore, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear };
+        return { T, monthly, monthlySL, iceFrac: iceCore, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
     };
 }
 
@@ -223,47 +232,6 @@ function solveRelaxed(solver, fr, fi, xr, xi, relax, tol) {
     return res;
 }
 
-/** Block average of a core-grid field onto a coarser grid (ratio × ratio cells, area-weighted). */
-function coarsen(core, g, ratio, src) {
-    if (ratio === 1) return Float64Array.from(src);
-    const out = new Float64Array(g.size);
-    for (let J = 0; J < g.h; J++) for (let I = 0; I < g.w; I++) {
-        let s = 0, ws = 0;
-        for (let dj = 0; dj < ratio; dj++) {
-            const j = J * ratio + dj, wt = core.rowArea[j];
-            for (let di = 0; di < ratio; di++) { const v = src[j * core.w + I * ratio + di]; if (v === v) { s += v * wt; ws += wt; } }
-        }
-        out[J * g.w + I] = ws > 0 ? s / ws : 0;
-    }
-    return out;
-}
-
-/** Bilinear interpolation of a coarse-grid field onto the core grid, written at out[offset …]. */
-function refine(g, core, ratio, src, out, offset) {
-    if (ratio === 1) { for (let c = 0; c < core.size; c++) out[offset + c] = src[c]; return; }
-    const map = refineMap(g, core);
-    for (let c = 0, k = 0; c < core.size; c++, k += 4) {
-        out[offset + c] = map.w[k] * src[map.i[k]] + map.w[k + 1] * src[map.i[k + 1]] + map.w[k + 2] * src[map.i[k + 2]] + map.w[k + 3] * src[map.i[k + 3]];
-    }
-}
-
-/** The four coarse cells and weights behind every core cell (built once per grid pair). */
-const refineMaps = new Map();
-function refineMap(g, core) {
-    const key = `${g.step}|${core.step}`;
-    let m = refineMaps.get(key);
-    if (m) return m;
-    m = { i: new Int32Array(4 * core.size), w: new Float64Array(4 * core.size) };
-    for (let j = 0; j < core.h; j++) for (let ii = 0; ii < core.w; ii++) {
-        const c = j * core.w + ii, k = 4 * c;
-        const x = g.colOf(core.lon[ii]), y = Math.max(0, Math.min(g.h - 1, g.rowOf(core.lat[j])));
-        const x0 = Math.floor(x), y0 = Math.min(g.h - 1, Math.floor(y)), fx = x - x0, fy = y - y0;
-        const i0 = ((x0 % g.w) + g.w) % g.w, i1 = (i0 + 1) % g.w, j1 = Math.min(g.h - 1, y0 + 1);
-        m.i[k] = y0 * g.w + i0; m.w[k] = (1 - fx) * (1 - fy);
-        m.i[k + 1] = y0 * g.w + i1; m.w[k + 1] = fx * (1 - fy);
-        m.i[k + 2] = j1 * g.w + i0; m.w[k + 2] = (1 - fx) * fy;
-        m.i[k + 3] = j1 * g.w + i1; m.w[k + 3] = fx * fy;
-    }
-    refineMaps.set(key, m);
-    return m;
-}
+// Grid transfers (shared with the circulation stage)
+const coarsen = (core, g, ratio, src) => coarsenField(core, g, ratio, src);
+const refine = (g, core, ratio, src, out, offset) => refineField(g, core, ratio, src, out, offset);

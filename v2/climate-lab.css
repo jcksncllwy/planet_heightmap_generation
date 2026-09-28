@@ -10,6 +10,7 @@ h2.sub { margin-top: 14px; }
 .swatch { display: inline-block; width: 16px; height: 3px; vertical-align: middle; margin: 0 4px; }
 .swatch.obs { background: #ffffff; }
 .swatch.v1 { background: #ff4fd8; }
+.swatch.new { background: #3ce6ff; }
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .buttons .tool { margin-top: 0; }
 #timingTable, #stageTable, #swapTable, #seasonTable { margin-top: 8px; }

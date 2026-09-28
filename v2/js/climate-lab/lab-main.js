@@ -84,7 +84,7 @@ const SCALAR_SOURCES = { obs: 'Observed', v1: 'V1', new: 'New', diff: 'V1 − ob
 const SEASONS = { JJA: 'Jun–Aug', DJF: 'Dec–Feb', YEAR: 'Year' };
 const PLANETS = { earth: 'Earth', midlat: 'Mid-latitude continent', tropical: 'Tropical continent', supercontinent: 'Supercontinent' };
 // which new-climate stage produces each field, for the "not built yet" note
-const STAGE_OF = { precip: 'rain (Phase 5)', slp: 'pressure and wind (Phase 3)', ocean: 'ocean (Phase 4)', seaIce: 'ocean (Phase 4)' };
+const STAGE_OF = { precip: 'rain (Phase 5)', ocean: 'ocean (Phase 4)', seaIce: 'ocean (Phase 4)' };
 
 const state = { field: 'koppen', source: 'v1', season: 'JJA', month: null, view: 'globe', itcz: true, coast: true, planet: 'earth' };
 
@@ -138,6 +138,17 @@ async function resolve(field, source) {
         return { kind: 'none', caption: 'Not built yet', note: `The new climate's ${STAGE_OF[field]} stage is not built yet.` };
     }
     if ((source === 'new' || source === 'diffNew') && !newMonthlyT()) return needRun;
+    if (field === 'slp' && (source === 'new' || source === 'diffNew')) {
+        if (!newRun.circ) return { kind: 'none', caption: 'This run used the real winds', note: 'Run again with Winds: "Derived (Phase 3)".' };
+        const season = state.month ?? state.season;
+        const seasonText = typeof season === 'number' ? MONTHS[season] : SEASONS[season];
+        const slp = obsSeason(newRun.circ.slp, season);
+        const wind = { u: obsSeason(newRun.circ.u, season), v: obsSeason(newRun.circ.v, season) };
+        if (source === 'new') return { kind: 'scalar', values: slp, ramp: RAMPS.pressure, wind, caption: `New pressure & wind · ${seasonText} · ${newRun.label}` };
+        const o = obsSeason(await obsField('slp'), season);
+        for (let c = 0; c < G; c++) slp[c] -= o[c];
+        return { kind: 'scalar', values: slp, ramp: RAMPS.pressureDiff, caption: `New − observed pressure · ${seasonText}` };
+    }
     if (field === 'swing') {
         const o = source === 'v1' || source === 'new' ? null : swingOf(await obsField('t2m'));
         if (source === 'obs') return { kind: 'scalar', values: o, ramp: RAMPS.swing, landOnly: true, caption: 'Observed seasonal swing (warmest − coldest month)' };
@@ -253,7 +264,25 @@ function paint(canvas, d, itczKey) {
     g.drawImage(small, 0, 0, MAP_W, MAP_H);
     if (state.coast && coastLayerNow()) { g.globalAlpha = 0.55; g.drawImage(coastLayerNow(), 0, 0); g.globalAlpha = 1; }
     if (d.wind) drawArrows(g, d.wind);
-    if (itczKey && state.itcz && audit?.itcz?.[itczKey]) drawItcz(g, audit.itcz[itczKey]);
+    if (state.itcz && FIELDS[state.field]?.itcz) {
+        if (itczKey && state.planet === 'earth' && audit?.itcz?.[itczKey]) drawItcz(g, audit.itcz[itczKey]);
+        const nl = newItczLine();
+        if (nl) drawLine(g, nl, 'rgba(60,230,255,.95)', [4, 3]);
+    }
+}
+
+/** The new climate's rain belt for the season or month shown (mean of the months). */
+function newItczLine() {
+    if (!newRun?.circ || newRun.planet !== state.planet) return null;
+    const season = state.month ?? state.season, months = typeof season === 'number' ? [season] : SEASON_MONTHS[season];
+    const w = grid.w, out = new Float64Array(w);
+    for (const m of months) for (let i = 0; i < w; i++) out[i] += newRun.circ.itczLat[m * w + i] / months.length;
+    return out;
+}
+function drawLine(g, lats, color, dash) {
+    g.strokeStyle = color; g.lineWidth = 3; g.setLineDash(dash); g.beginPath();
+    lats.forEach((lat, i) => { const x = (i + 0.5) * PX, y = (90 - lat) * PX; i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke(); g.setLineDash([]);
 }
 
 function drawArrows(g, { u, v }) {
@@ -365,7 +394,7 @@ const FIELD_NOTES = {
     t2m: 'Observed: Beck et al. 1991–2020 monthly means (land only). V1 has two seasons (June–August, December–February). New: the energy balance from your last run, every month, land and sea, at each 1° cell\'s mean height.',
     swing: 'Warmest month minus coldest month: large deep inside continents, small near and over the sea. V1 has only two seasons, so its swing is summer minus winter.',
     precip: 'Land only, mm per month. The lines are the tropical rain belt (ITCZ): white dashed = observed (rain maximum), pink = V1.',
-    slp: 'Sea-level pressure with near-surface wind arrows (arrow length is relative within each source; V1\'s wind has no units). Observed: NCEP reanalysis 1991–2020.',
+    slp: 'Sea-level pressure with near-surface wind arrows (arrow length is relative within each source; V1\'s wind has no units). Observed: NCEP reanalysis 1991–2020. New (Phase 3): derived from the new temperature — belts placed by the planet\'s own warmth, thermal lows and highs, friction. Rain-belt lines: white dashed = observed (June–August / December–February), pink = V1, cyan = new (any month).',
     ocean: 'Observed: sea-surface temperature minus the average at that latitude — warm currents (Gulf Stream, Kuroshio) red, cold upwelling coasts blue. V1: its "ocean warmth" field.',
     seaIce: 'Observed sea-ice concentration (NOAA OISST 1991–2020). V1 has no sea ice.',
 };
@@ -374,7 +403,7 @@ async function refresh() {
     buildControls();
     $('busy').hidden = false;
     try {
-        const itczKey = (state.planet === 'earth' && FIELDS[state.field].itcz && state.month === null && (state.season === 'JJA' || state.season === 'DJF')) ? state.season : null;
+        const itczKey = (state.month === null && (state.season === 'JJA' || state.season === 'DJF')) ? state.season : null;
         current = await resolve(state.field, state.source);
         paint(ui.map, current, itczKey);
         globe.setSmooth(false);
@@ -565,7 +594,7 @@ $('timeKernels').addEventListener('click', (e) => timed(e.currentTarget, async (
     for (const k of r) timingRows.push([`&nbsp;&nbsp;${k.name}`, `${ms(k.ms)} ${k.unit === 'total' ? '' : k.unit}`]);
 }));
 // ── The new climate (Phases 1–2) ──────────────────────────────────────────────
-const sk = { N: '160000', K: '6', planet: 'earth', temp: 'ebm' };
+const sk = { N: '160000', K: '6', planet: 'earth', temp: 'ebm', winds: 'derived' };
 let skData = null, tempData = null;
 const skRows = [];
 const PLANET_NOTES = {
@@ -585,8 +614,38 @@ function buildSkeletonControls() {
     const earth = sk.planet === 'earth';
     $('ncTemp').hidden = !earth; $('ncTempHead').hidden = !earth;
     segmented($('ncTemp'), { ebm: 'New (Phase 2)', observed: 'Real data (Phase 1 oracle)' }, sk.temp, (k) => { sk.temp = k; buildSkeletonControls(); });
+    $('ncWinds').hidden = !earth || sk.temp !== 'ebm'; $('ncWindsHead').hidden = $('ncWinds').hidden;
+    segmented($('ncWinds'), { derived: 'Derived (Phase 3)', observed: 'Real winds' }, sk.winds, (k) => { sk.winds = k; buildSkeletonControls(); });
     segmented($('skRes'), { 40000: '40K', 160000: '160K', 640000: '640K', 2500000: '2.5M' }, sk.N, (k) => { sk.N = k; buildSkeletonControls(); });
     segmented($('skK'), { 4: '4', 6: '6 (default)', 12: '12' }, sk.K, (k) => { sk.K = k; buildSkeletonControls(); });
+}
+/** A pass/fail list with a detail line under each check. */
+function checkTable(el, rows) {
+    const out = [];
+    for (const r of rows) out.push([r.text, { text: r.ok ? 'pass' : 'fail', cls: r.ok ? 'good' : 'bad' }], { note: r.detail });
+    table(el, ['Check', ''], out);
+}
+let circData = null;
+function renderCirculationTables() {
+    if (!circData) { table($('circTable'), ['—'], [{ note: 'Run node tuning/climate/circulation-check.mjs to fill these tables.' }]); return; }
+    const per = circData.vsV1.perRegion, rows = [];
+    for (const [k, r] of Object.entries(per)) {
+        const better = r.newSeason.within45 > r.v1Season.within45;
+        rows.push([k, { text: pct(r.newSeason.within45), cls: better ? 'good' : 'bad' }, pct(r.v1Season.within45),
+            { text: num(r.newSeason.slpAnomRmse, 1), cls: r.newSeason.slpAnomRmse < r.v1Season.slpAnomRmse ? 'good' : 'bad' }, num(r.v1Season.slpAnomRmse, 1), num(r.new12.speedRatio, 2)]);
+    }
+    const v = circData.vsV1;
+    rows.push({ note: `Weighted equally: wind within 45° new ${pct(v.newWithin45)} vs V1 ${pct(v.v1Within45)}; pressure error new ${num(v.newPressureErr, 1)} vs V1 ${num(v.v1PressureErr, 1)} hPa; east–west pressure correlation new ${num(v.newCorr)} vs V1 ${num(v.v1Corr)}; rain belt new ${num(v.newItcz, 1)}° vs V1 ${num(v.v1Itcz, 1)}° off the real rain maximum. Speed = new ÷ real wind speed.` });
+    table($('circTable'), ['Region', 'Wind ±45° new', 'V1', 'Pressure err. new hPa', 'V1', 'Speed'], rows);
+    checkTable($('circNamedTable'), circData.named);
+    const pl = [];
+    for (const [kind, p] of Object.entries(circData.planets)) for (const c of p.checks) pl.push({ ...c, text: `${PLANETS[kind]}: ${c.text}` });
+    const cl = circData.closed, mean = (o) => Object.values(o).reduce((a, b) => a + b, 0) / Object.values(o).length;
+    pl.push({ text: 'Coupled on Earth: temperature no worse with its own winds', ok: circData.gate.temperatureHolds,
+        detail: `monthly temperature error ${num(mean(cl.tClosed), 2)} °C with derived winds vs ${num(mean(cl.tempOpen), 2)} °C with real winds; Köppen with real rain ${pct(cl.koppen)}; winds ${pct(cl.within45)} within 45°` });
+    checkTable($('circPlanetTable'), pl);
+    $('circNote').textContent = `Input: ${circData.input}. Settings: ${Object.entries(circData.params).map(([k, x]) => `${k.replace('CIRC_', '').toLowerCase()} ${+(+x).toPrecision(3)}`).join(', ')}. `
+        + `Circulation ${num(circData.open.ms, 0)} ms; coupled temperature ↔ winds ${num(circData.closed.timing.find(t => t.stage.startsWith('temperature'))?.ms ?? NaN, 0)} ms (Node).`;
 }
 function renderTemperatureTables() {
     if (!tempData) { table($('tempTable'), ['—'], [{ note: 'Run node tuning/climate/temperature-check.mjs to fill these tables.' }]); return; }
@@ -626,9 +685,11 @@ $('skRun').addEventListener('click', async (e) => {
     const lapse = $('skLapse').checked;
     const planet = sk.planet, temperature = planet === 'earth' ? sk.temp : 'ebm';
     try {
-        const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature });
-        const label = `${PLANETS[planet]} · ${r.N.toLocaleString()} cells · ${sk.K} points · ${temperature === 'ebm' ? 'energy balance' : 'real temperature'}${lapse ? '' : ' · no height correction'}`;
-        newRun = { planet, label, raster: r.raster, landPx: r.landPx, monthlyT: r.monthlyT };
+        const winds = planet === 'earth' ? sk.winds : 'derived';
+        const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature, winds });
+        const what = temperature === 'ebm' ? `energy balance${r.circ ? ' + derived winds' : ' + real winds'}` : 'real temperature';
+        const label = `${PLANETS[planet]} · ${r.N.toLocaleString()} cells · ${sk.K} points · ${what}${lapse ? '' : ' · no height correction'}`;
+        newRun = { planet, label, raster: r.raster, landPx: r.landPx, monthlyT: r.monthlyT, circ: r.circ };
         if (planet !== 'earth') planetCoast = coastFromLand(r.landPx);
         const regs = ['Cs (Mediterranean)', 'Cw (dry-winter temperate)', 'Am (tropical monsoon)', 'Dw (dry-winter continental)'];
         skRows.push(r.score ? [label, pct(r.score.exact), pct(r.score.major), ...regs.map(k => pct(r.score.regimes[k]))] : [label, '—', '—', '—', '—', '—', '—']);
@@ -657,12 +718,14 @@ try {
     [audit, seasonTest] = await Promise.all([fetchJson(`${LAB}stage-audit.json`), fetchJson(`${RESULTS}season-test.json`)]);
     skData = await fetchJson(`${LAB}skeleton-check.json`).catch(() => null);
     tempData = await fetchJson(`${LAB}temperature-check.json`).catch(() => null);
+    circData = await fetchJson(`${LAB}circulation-check.json`).catch(() => null);
     renderStageTable();
     renderSeasonTable();
     renderTiming();
     buildSkeletonControls();
     renderSkeletonTables();
     renderTemperatureTables();
+    renderCirculationTables();
     await buildCoast();
     await refresh();
 } catch (err) {

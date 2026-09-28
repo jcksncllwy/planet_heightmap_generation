@@ -33,6 +33,23 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
     TEMP_GRID_DEG: 2,           // °          grid the energy balance is solved on (its fields are smooth: 2° scores
                                 //            the same as 1° at a third of the cost; results are interpolated to 1°)
+
+    // ── Pressure and wind (circulation.js) ──
+    // Tuned 2026-09-28 (tuning/climate/circulation-check.mjs --tune: open loop, continents and ocean basins weighted
+    // equally, none worse than with the literature values). Ferrel width, sea friction angle and Hadley scale ended
+    // at or near the edge of their ranges — a hint of the simple structure's limits.
+    CIRC_HADLEY_SCALE: 1.425,   // –          Hadley-cell width relative to Held & Hou's estimate
+    CIRC_FERREL_DEG: 35,        // °          from the subtropical high to the subpolar low (the Ferrel cell)
+    CIRC_TROPICAL_HPA: 9.56,    // hPa        how much lower the tropical rain belt is than the subtropical highs
+    CIRC_MIDLAT_HPA_PER_K: 0.49,// hPa/K      subtropical high to subpolar low, per degree of temperature drop between …
+    CIRC_OPEN_SEA_BOOST: 0.69,  // –          … × (1 + this × the belt's sea share): open sea lets the westerlies run free
+    CIRC_POLAR_HPA: 4.75,       // hPa        how much higher the polar high is than the subpolar low
+    CIRC_THERMAL_HPA_PER_K: 0.775,// hPa/K    thermal lows and highs: lower pressure per degree warmer than the latitude
+    CIRC_ROSSBY_KM: 812,        // km         scale the pressure responds to heating on (the Rossby radius)
+    CIRC_TURN_OCEAN_DEG: 10,    // °          surface wind turned toward low pressure by friction, over the sea …
+    CIRC_TURN_LAND_DEG: 32.5,   // °          … and over land (rougher)
+    CIRC_SURFACE_WIND: 0.7,     // –          near-surface wind as a share of the wind above the friction layer
+    CIRC_GRID_DEG: 2,           // °          grid the circulation is computed on (interpolated to 1°)
 });
 
 export const PARAMS = { ...PARAMS_DEFAULTS };
@@ -56,6 +73,18 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_INVERSION_WIND: { value: 5, min: 3, max: 8, source: 'stable boundary layers break down above ≈ 5–7 m/s near-surface wind' },
     TEMP_PLATEAU_LAPSE: { value: 5.0, min: 4.0, max: 6.5, source: 'near-surface lapse rates over large elevated terrain ≈ 4.5–5.5 °C/km (elevated heating)' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
+
+    CIRC_HADLEY_SCALE:  { value: 1.2, min: 0.9, max: 1.5, source: 'Held & Hou 1980 underestimates the observed Hadley edge by ~20 % (e.g. Frierson et al. 2007)' },
+    CIRC_FERREL_DEG:    { value: 30, min: 20, max: 35, source: 'subtropical highs ≈ 30°, subpolar lows ≈ 60° (three-cell circulation)' },
+    CIRC_TROPICAL_HPA:  { value: 9, min: 5, max: 14, source: 'zonal-mean sea-level pressure ≈ 1009 hPa in the rain belt vs ≈ 1018 in the subtropical highs' },
+    CIRC_MIDLAT_HPA_PER_K: { value: 0.6, min: 0.3, max: 1.2, source: 'the midlatitude drop (≈ 10–30 hPa) grows with the ≈ 20–30 K contrast across the storm belt' },
+    CIRC_OPEN_SEA_BOOST: { value: 1.0, min: 0, max: 2.5, source: 'the Southern Ocean\'s westerlies and trough are far stronger than the land-broken northern ones; no direct literature value' },
+    CIRC_POLAR_HPA:     { value: 6, min: 2, max: 12, source: 'polar highs a few hPa above the subpolar troughs' },
+    CIRC_THERMAL_HPA_PER_K: { value: 1.0, min: 0.4, max: 1.6, source: 'hydrostatic: warming the lowest 2–3 km by 1 K lowers surface pressure ≈ 0.9–1.3 hPa' },
+    CIRC_ROSSBY_KM:     { value: 1000, min: 500, max: 2000, source: 'Rossby radius of deformation ≈ 1000 km in midlatitudes' },
+    CIRC_TURN_OCEAN_DEG: { value: 20, min: 10, max: 30, source: 'surface wind crosses isobars at ≈ 10–20° over the sea' },
+    CIRC_TURN_LAND_DEG: { value: 35, min: 25, max: 45, source: '… and ≈ 30–45° over land' },
+    CIRC_SURFACE_WIND:  { value: 0.7, min: 0.5, max: 0.9, source: 'near-surface wind ≈ 0.6–0.8 of the geostrophic wind' },
 });
 
 export function setParams(p) { Object.assign(PARAMS, p); }
