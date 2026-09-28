@@ -127,6 +127,7 @@ node tuning/climate/coupled-check.mjs [--tune] [--quick]  # Phase 6: every stage
                                                 #   --tune: the final Köppen-level tune (TUNE_KEYS=… to choose)
 node tuning/climate/profile-climate.mjs         # every stage call timed
 node tuning/climate/hash-climate.mjs            # fingerprint of every stage's output (exact speed-ups keep it)
+node tuning/climate/evolution-check.mjs         # Phase 7: the climate on Evolution worlds (V2 history → terrain, z north)
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
 node tuning/dev-server.mjs 8147                 # then open http://localhost:8147/v2/climate-lab.html
 ```

@@ -663,3 +663,40 @@ left them.
   a real ~28 %). The derived westerlies are weak, so moisture reaches continental interiors poorly.
 - **Speed at 40K:** the next levers are passing coarse fields between stages instead of refining to 1° and coarsening
   back, and computing the circulation only at the points in the year.
+
+
+## Phase 7 — Evolution, built 2026-09-28 (engine level; the page wiring waits for the Evolution page)
+
+**What was built.**
+- **`v2/js/climate/climate.js` — `planetClimate(input, options)`: the one call a generator makes.** Input: cell positions
+  and heights in km (sea at 0), with `axes: 'z-up'` for Evolution (V1: `'y-up'`). Output:
+  - per terrain cell: Köppen id (V1's class table and colours), annual temperature and rain;
+  - on the 1° grid: 12 monthly temperature and rain layers, pressure and winds, currents, sea ice.
+- **`v2/js/climate-lab/evolution-world.js`.** An Evolution world built headless: the V2 lab's whole-planet history
+  (600 Myr, or run on to an ending such as a supercontinent), its last frame's terrain on a terrain mesh of any size.
+  This is exactly what the Evolution page would hand the climate.
+- **Lab:** two planets, "Evolution world" and "Evolution supercontinent" (the history takes about a minute the first
+  time, then is kept), with every field on source "New".
+- **`tuning/climate/evolution-check.mjs`:** both worlds at 160K, what physics expects, drift at 640K.
+
+**Numbers (Phase 6 settings).**
+
+| World | Land | A / B / C / D / E | Subtropics arid | Interior vs coast (arid; seasons) | 640K drift | Climate |
+|---|---|---|---|---|---|---|
+| 600 Myr | 31 % | 16 / 35 / 14 / 18 / 17 % | 87 % (equator 11 %) | 5 vs 41 %; 37.6 vs 12.9 °C (only 1 % of land is interior) | 1.05 % | 0.75 s |
+| Supercontinent (680 Myr) | 31 % | 12 / 42 / 15 / 24 / 8 % | 91 % (equator 12 %) | 54 vs 50 %; 34.4 vs 20.0 °C | 0.77 % | 0.61 s |
+
+All checks pass: subtropics drier than the equator, a drier interior with bigger seasons, the same climate at 160K
+and 640K.
+
+**Not done: the Evolution page itself.** The "Calculate climate" button, its layers, exports, phone layout, README,
+tutorial and SEO all wait until the page is committed and merged into this branch. The steps when it is:
+1. On "Calculate climate" for the moment shown, post the frame's terrain `xyz` and `heightKm` to a worker that calls
+   `planetClimate({ xyz, elevKm: heightKm, axes: 'z-up' })`.
+2. Paint `cell.koppen` with `KOPPEN_CLASSES[k].color`. The grid layers (`months.T`, `months.P`,
+   `stages.circulation.{u, v, slp}`, `stages.ocean.{u, v}`, `stages.temperature.seaIce`) paint straight onto the
+   texture globe (a 360 × 180 lat-lon grid).
+3. Keep the result per moment while the history is open.
+
+**Known.** Evolution's subtropics are very arid (87–91 % of land at 15–35°; Earth ≈ 60 %). This is the same dryness as
+the test planets: weak model westerlies and interiors starved of moisture.

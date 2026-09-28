@@ -82,7 +82,8 @@ const KOPPEN_SOURCES = {
 };
 const SCALAR_SOURCES = { obs: 'Observed', v1: 'V1', new: 'New', diff: 'V1 − observed', diffNew: 'New − observed' };
 const SEASONS = { JJA: 'Jun–Aug', DJF: 'Dec–Feb', YEAR: 'Year' };
-const PLANETS = { earth: 'Earth', midlat: 'Mid-latitude continent', mountains: 'Coastal range', tropical: 'Tropical continent', supercontinent: 'Supercontinent' };
+const PLANETS = { earth: 'Earth', midlat: 'Mid-latitude continent', mountains: 'Coastal range', tropical: 'Tropical continent', supercontinent: 'Supercontinent',
+    evolution: 'Evolution world', evolutionSuper: 'Evolution supercontinent' };
 
 const state = { field: 'koppen', source: 'v1', season: 'JJA', month: null, view: 'globe', itcz: true, coast: true, planet: 'earth' };
 
@@ -638,6 +639,8 @@ const PLANET_NOTES = {
     midlat: 'One continent from 20° to 60°N, 80° wide. Expect big seasons inland, a mild west coast and a harsh east coast, hot summers and cold winters compared with the sea.',
     tropical: 'A flat continent across the equator (30°S–30°N, 45° wide). Expect small seasons near the equator, growing toward 30°.',
     supercontinent: 'One huge continent, 60°S–60°N and 110° wide. Expect extreme seasons deep inside at mid-latitudes, a wet equator and subtropical deserts in the interior.',
+    evolution: 'A planet from the Evolution engine: the V2 lab\'s whole-planet history (600 Myr, seed 12345), its last frame\'s terrain at the chosen size — z north, heights in km, exactly what Evolution hands the climate. The history takes about a minute the first time.',
+    evolutionSuper: 'The same history run on until it ends as a supercontinent (the V2 lab\'s "End as: supercontinent"). Expect a dry, continental interior. The history takes a minute or two the first time.',
 };
 function buildSkeletonControls() {
     segmented($('ncPlanet'), PLANETS, sk.planet, (k) => {
@@ -780,7 +783,8 @@ $('skRun').addEventListener('click', async (e) => {
         const winds = planet === 'earth' ? sk.winds : 'derived', rain = planet === 'earth' ? sk.rain : 'model';
         const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature, winds, rain });
         const what = temperature === 'ebm' ? `energy balance${r.circ ? ' + derived winds' : ' + real winds'}${r.monthlyP ? ' + new rain' : ' + real rain'}` : 'real temperature';
-        const label = `${PLANETS[planet]} · ${r.N.toLocaleString()} cells · ${sk.K} points · ${what}${lapse ? '' : ' · no height correction'}`;
+        const evoText = r.evolution ? ` · ${r.evolution.timeMyr} Myr, land ${Math.round(100 * r.evolution.landShare)} %` : '';
+        const label = `${PLANETS[planet]}${evoText} · ${r.N.toLocaleString()} cells · ${sk.K} points · ${what}${lapse ? '' : ' · no height correction'}`;
         newRun = { planet, label, raster: r.raster, landPx: r.landPx, monthlyT: r.monthlyT, monthlySL: r.monthlySL, seaIce: r.seaIce, circ: r.circ, ocean: r.ocean, monthlyP: r.monthlyP };
         if (planet !== 'earth') planetCoast = coastFromLand(r.landPx);
         const regs = ['Cs (Mediterranean)', 'Cw (dry-winter temperate)', 'Am (tropical monsoon)', 'Dw (dry-winter continental)'];

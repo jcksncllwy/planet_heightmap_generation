@@ -31,7 +31,7 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 | 4 | Ocean (gyres, circumpolar currents, upwelling → temperature) | passed | Warm-west / cold-east sea pattern 0.36 vs V1 0.24; Europe milder; all named currents right; effects ≈ ⅓ of real |
 | 5 | Rain (a column-water budget) | partly | Every stage new: Köppen 46 % vs V1's 38 %; rain patterns and continents beat V1; deserts beside monsoons too wet, rainforests too dry |
 | 6 | The coupled climate, tuned on Köppen; speed | mostly | **Köppen 49.5 % vs V1's 38 %**; no drift to 2.5M; 0.8 s in Chrome (V1: 0.5 s at 40K, 2.1 s at 160K) |
-| 7 | Evolution | … | … |
+| 7 | Evolution (engine level) | passed | The climate runs on real Evolution frames (z north, km): 0.6–0.75 s; the page wiring waits for the Evolution page |
 | 8 | Mediterranean climates | … | … |
 
 ## Decisions waiting for you
@@ -279,7 +279,29 @@ test planets' climates.
 
 ## Phase 7 — Evolution
 
-*(to come)*
+**Built.**
+- **`planetClimate()`:** one call for any planet — cell positions and heights in km; Evolution's frames have z north.
+- **The lab can build a real Evolution world.** It runs the V2 engine's whole-planet history (600 Myr, or run on until
+  a supercontinent forms), takes its last frame's terrain, and runs the climate on it: "Evolution world" and
+  "Evolution supercontinent" in the planet list.
+
+**Numbers.**
+
+| World | Climate groups A / B / C / D / E | Checks |
+|---|---|---|
+| 600 Myr | 16 / 35 / 14 / 18 / 17 % | all pass |
+| Supercontinent | 12 / 42 / 15 / 24 / 8 % | all pass: interior drier (54 vs 50 %) and more continental (34 vs 20 °C seasons) than the coasts |
+
+- The same climate at 160K and 640K (class shares within about 1 %).
+- 0.6–0.75 s for the climate.
+
+**Not done: the Evolution page's "Calculate climate" button.** That page is being built in the other checkout; once
+it's committed and merged here, the wiring is three steps (listed in the plan's Phase 7 section).
+
+**Known.** Evolution worlds come out very arid in the subtropics (about 90 % of land at 15–35°), like the test planets.
+
+**Check in the lab.** New climate → Planet "Evolution world" (or "Evolution supercontinent") → 160K → Run (wait about a
+minute the first time) → Köppen, Temperature, Rain … → New.
 
 ## Phase 8 — Mediterranean climates
 

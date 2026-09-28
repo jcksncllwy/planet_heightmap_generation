@@ -25,6 +25,8 @@ import { windDrivenOcean } from '../climate/ocean.js';
 import { observedWinds, zonalWinds, observedTemperature, observedRain, zonalRain } from '../climate/inputs.js';
 import { columnWaterRain } from '../climate/rain.js';
 import { buildTestPlanet } from '../climate/test-planets.js';
+import { planetClimate } from '../climate/climate.js';
+import { evolutionWorld } from './evolution-world.js';
 import { buildSphere } from '../../../js/sphere-mesh.js';
 import { makeRng } from '../../../js/rng.js';
 import { elevToHeightKm } from '../../../js/color-map.js';
@@ -38,6 +40,7 @@ const quiet = () => {};
 console.log = quiet; console.info = quiet;
 
 let earthGray = null;
+const evoWorlds = new Map();          // Evolution worlds built so far, by ending and terrain size
 async function loadEarth() {
     if (earthGray) return earthGray;
     const res = await fetch(new URL('../../../assets/earth.png', import.meta.url));
@@ -157,8 +160,15 @@ async function ref(file, Type) {
  */
 async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, temperature = 'ebm', winds = 'derived', rain = 'model', mapW = 1440, mapH = 720 }) {
     let t = performance.now();
-    let xyz, elevKm, mesh;
-    if (planet === 'earth') {
+    let xyz, elevKm, mesh, axes = 'y-up', index = null, evo = null;
+    if (planet === 'evolution' || planet === 'evolutionSuper') {
+        // an Evolution world: the V2 engine's whole-planet history (≈ a minute, kept for the next run), its last
+        // frame's terrain at N cells — z north, heights in km — exactly what Evolution would hand the climate
+        const ending = planet === 'evolutionSuper' ? 'supercontinent' : 'none', key = `${ending}|${N}`;
+        evo = evoWorlds.get(key) ?? evolutionWorld({ ending, cells: N });
+        evoWorlds.set(key, evo);
+        xyz = evo.xyz; elevKm = evo.heightKm; mesh = evo.terrain; axes = 'z-up'; index = evo.terrain.index;
+    } else if (planet === 'earth') {
         const { gray, width, height } = await loadEarth();
         const e = buildEarthMesh(gray, width, height, { N, seed: 1234, jitter: 0.75 });
         xyz = e.r_xyz; mesh = e.mesh;
@@ -168,7 +178,7 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
         const p = buildTestPlanet(planet, N, buildSphere, makeRng(7));
         xyz = p.xyz; mesh = p.mesh; elevKm = p.elevKm;
     }
-    const n = mesh.numRegions;
+    const n = elevKm.length;                         // (V1 meshes count numRegions, V2 terrain meshes numCells)
     const meshMs = performance.now() - t;
 
     let stages;
@@ -185,7 +195,8 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
     } else {
         stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() };
     }
-    const res = computeClimate({ xyz, elevKm, axes: 'y-up' }, { anchors, lapseRateCPerKm: lapse, stages });
+    const res = evo ? planetClimate({ xyz, elevKm, axes }, { anchors, lapseRateCPerKm: lapse })
+        : computeClimate({ xyz, elevKm, axes }, { anchors, lapseRateCPerKm: lapse, stages });
     const climateMs = res.timing.reduce((s, x) => s + x.ms, 0);
 
     let score = null;
@@ -202,15 +213,16 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
         score = { exact: cmp.exact, major: cmp.major, graded: cmp.graded, regimes };
     }
 
-    // rasterise: every map pixel shows its nearest terrain cell's class (V1 frame: y north, lon = atan2(x, z))
+    // rasterise: every map pixel shows its nearest terrain cell's class (V1's frame: y north, lon = atan2(x, z);
+    // Evolution's: z north, lon = atan2(y, x))
     t = performance.now();
-    const index = new SphereIndex(xyz, mesh, n > 1e6 ? 1 : 2);
+    index ??= new SphereIndex(xyz, mesh, n > 1e6 ? 1 : 2);
     const raster = new Uint8Array(mapW * mapH), landPx = new Uint8Array(mapW * mapH);
     for (let py = 0; py < mapH; py++) {
         const lat = (90 - (py + 0.5) * 180 / mapH) * Math.PI / 180, cl = Math.cos(lat), sl = Math.sin(lat);
         for (let px = 0; px < mapW; px++) {
             const lon = ((px + 0.5) * 360 / mapW - 180) * Math.PI / 180;
-            const r = index.nearest(cl * Math.sin(lon), sl, cl * Math.cos(lon));
+            const r = axes === 'z-up' ? index.nearest(cl * Math.cos(lon), cl * Math.sin(lon), sl) : index.nearest(cl * Math.sin(lon), sl, cl * Math.cos(lon));
             raster[py * mapW + px] = res.cell.koppen[r];
             landPx[py * mapW + px] = elevKm[r] > 0 ? 1 : 0;
         }
@@ -219,6 +231,7 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
     const temp = res.stages.temperature, circ = res.stages.circulation, oc = res.stages.ocean;
     return {
         planet, N: n, meshMs, climateMs, rasterMs, timing: res.timing, raster, landPx,
+        evolution: evo ? { timeMyr: evo.timeMyr, reachedEnding: evo.reachedEnding, landShare: evo.landShare, historyMs: evo.ms.history, terrainMs: evo.ms.terrain } : null,
         monthlyT: temp.monthly ? Float32Array.from(temp.monthly) : null, tempProfile: temp.profile ?? null,
         monthlySL: temp.monthlySL ? Float32Array.from(temp.monthlySL) : null, seaIce: temp.seaIce ? Float32Array.from(temp.seaIce) : null,
         circ: circ ? { u: circ.u, v: circ.v, slp: circ.slp, itczLat: circ.itczLat } : null,
