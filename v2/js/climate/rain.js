@@ -36,7 +36,8 @@ const SECONDS_PER_MONTH = 30.44 * 86400;
 const DEG = Math.PI / 180;
 const R_MAX = 1.5;                            // column relative humidity beyond which rain-out grows linearly (keeps Newton bounded)
 const S_MAX = 0.2;                            // largest spread of the column's relative humidity by storms
-const STABLE_MAX_K = 10;                      // stability (surface below its latitude's temperature) counted up to this
+const STABLE_MAX_K = 10;                      // stability (surface below its latitude's temperature) counted up to this …
+const UNSTABLE_MAX_K = 8;                     // … and instability (above it) up to this
 const MELT_MM_PER_C_MONTH = 120;              // degree-day snowmelt, ≈ 4 mm per °C per day
 const LATENT = 2.5e6;                         // J/kg, latent heat of vaporisation
 const PT_ALPHA = 1.26;                        // Priestley–Taylor coefficient
@@ -59,6 +60,41 @@ const turcPike = (avail, ep) => avail / Math.sqrt(1 + (avail / Math.max(1e-12, e
 /** The saturated column (mm) above air at T (°C): ≈ ρ q_s H with the water-vapour scale height H. */
 export function saturatedColumn(T, vapourHeightKm) {
     return RHO_AIR * qSat(T) * vapourHeightKm * 1000;
+}
+
+/**
+ * Rain below the rain grid's scale, on the 1° grid: the wind blowing up a slope (u·∇h, the 1° mean heights) lifts the
+ * air and wrings out more rain; blowing down it, less — windward slopes wet, rain shadows dry, at the scale of single
+ * ranges. Each rain-grid cell keeps its total: the factor is normalised to average 1 over the fine cells it covers.
+ * factor = e^{β·clamp(w / 0.1 m/s, −2, 2)}, w the upslope speed of the wind above the friction layer.
+ */
+function windwardRain(ctx, core, g, ratio, uA, vA, shareCoarse, Pout, K, beta) {
+    const h = core.h, w = core.w, G = core.size, dRad = core.step * DEG;
+    const hk = ctx.surface.meanKm, cosL = Float64Array.from(core.lat, l => Math.max(0.02, Math.cos(l * DEG)));
+    const land = ctx.surface.landFrac;
+    const f = new Float64Array(G), blockSum = new Float64Array(g.size), blockW = new Float64Array(g.size);
+    for (let k = 0; k < K; k++) {
+        const off = k * G;
+        blockSum.fill(0); blockW.fill(0);
+        for (let j = 0; j < h; j++) {
+            const dx = 2 * dRad * R_PLANET * cosL[j], dy = 2 * dRad * R_PLANET, jb = Math.floor(j / ratio);
+            for (let i = 0; i < w; i++) {
+                const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
+                const hc = (x) => Math.max(0, hk[x]);
+                const share = shareCoarse[jb * g.w + Math.floor(i / ratio)] || 0.7;
+                const u = uA[off + c] / share, v = vA[off + c] / share;
+                const wUp = u * (hc(ce) - hc(cw)) * 1000 / dx + v * (hc(cn) - hc(cs)) * 1000 / (cn === c || cs === c ? dy / 2 : dy);
+                f[c] = land[c] > 0 ? Math.exp(beta * Math.max(-2, Math.min(2, wUp / 0.1))) : 1;
+                const b = jb * g.w + Math.floor(i / ratio), a = cosL[j];
+                blockSum[b] += f[c] * a; blockW[b] += a;
+            }
+        }
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+            const c = j * w + i, b = Math.floor(j / ratio) * g.w + Math.floor(i / ratio);
+            Pout[off + c] *= f[c] * blockW[b] / blockSum[b];
+        }
+    }
 }
 
 /**
@@ -91,15 +127,19 @@ export function columnWaterRain() {
         const tA = atAnchors(temperature.monthly, core.size, ctx.anchorMonths);
         const sA = atAnchors(temperature.monthlySL, core.size, ctx.anchorMonths);
         const iA = temperature.seaIce ? atAnchors(temperature.seaIce, core.size, ctx.anchorMonths) : null;
+        const pA = winds.slp ? atAnchors(winds.slp, core.size, ctx.anchorMonths) : null;      // (the circulation stage's pressure)
         const share = new Float64Array(G);
         for (let c = 0; c < G; c++) share[c] = winds.surfaceShare ?? 0.75 - 0.3 * land[c];
 
         const solver = new HelmholtzSolver(g, 0, 0, { conservative: true });
         // Rising ground blocks the water. The solve is for the sea-level-equivalent column W* (the column over ground
-        // at height h holds W = β·W*, β = e^{−h/H}); what crosses a face between two cells — carried or mixed — is the
-        // part of the column above the higher of the two, β_face = e^{−max(h)/H}. So water piles up (and rains)
+        // at height h holds W = β·W*, β = e^{−h/H_t}); what crosses a face between two cells — carried or mixed — is the
+        // part of the column above the higher of the two, β_face = e^{−max(h)/H_t}. So water piles up (and rains)
         // windward of mountains, and only a share gets over them.
-        const beta = Float64Array.from(hgt, x => Math.exp(-x * 1000 / Hv));
+        // (the column's share over high ground falls off more slowly than free air's water: the moist boundary layer
+        // rides up with the ground — RAIN_TERRAIN_HEIGHT_KM, from the water observed over the Tibetan Plateau)
+        const Ht = P_.RAIN_TERRAIN_HEIGHT_KM * 1000;
+        const beta = Float64Array.from(hgt, x => Math.exp(-x * 1000 / Ht));
         const faces = { e: new Float64Array(G), n: new Float64Array(G) };
         for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
             const c = j * w + i, ce = j * w + (i + 1) % w, cn = j > 0 ? c - w : c;
@@ -187,7 +227,20 @@ export function columnWaterRain() {
             // to the air mass — air off a cold sea stays stable over the coast — so it is carried by the surface wind and
             // relaxes to the local value within about a day: σ·S + u·∇S = σ·S_local.
             const Sloc = new Float64Array(G), Sair = new Float64Array(G), SairI = new Float64Array(G);
-            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; Sloc[c] = Math.min(STABLE_MAX_K, Math.max(0, Tzs[j] - Tsl[c])) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S; }
+            // Air sinking under a high (pressure above its latitude's mean: the eastern-ocean highs in summer) is dry and
+            // capped by an inversion — counted as RAIN_HIGH_K_PER_HPA more stability per hPa, and carried onshore
+            // with the rest, so the coasts downwind of a summer high get dry summers (Mediterranean climates)
+            const slp = pA ? co(sl(pA)) : null, slpRow = new Float64Array(h);
+            if (slp) for (let j = 0; j < h; j++) { let s2 = 0; for (let i = 0; i < w; i++) s2 += slp[j * w + i]; slpRow[j] = s2 / w; }
+            // (the subtropical highs only: the descent fades from 5° to 15° poleward of each hemisphere's high — beyond it,
+            // summer highs over cool seas are shallow and storms bring the rain)
+            const mIdx = ((Math.round(ctx.anchorMonths[k]) % 12) + 12) % 12, belt = winds.belts?.[mIdx];
+            const hiN = belt ? belt.hiN : 32, hiS = belt ? belt.hiS : -32;
+            const descent = (lat) => Math.min(1, Math.max(0, lat >= 0 ? (hiN + 15 - lat) / 10 : (lat - hiS + 15) / 10));
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i, high = slp ? P_.RAIN_HIGH_K_PER_HPA * descent(g.lat[j]) * Math.max(0, slp[c] - slpRow[j]) : 0;
+                Sloc[c] = Math.min(STABLE_MAX_K, Math.max(-UNSTABLE_MAX_K, Tzs[j] - Tsl[c] + high)) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S;
+            }
             carrier.setOperator(new Float64Array(G).fill(1 / STABLE_RELAX_S), zero, u, v, 1);
             carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: P_.RAIN_CARRIER_CYCLES, tol: 1e-3 });
 
@@ -201,7 +254,10 @@ export function columnWaterRain() {
                     const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
                     const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
                     // stable air (surface colder than its latitude): humidity effectively lowered by κ per K
-                    const stable = Math.exp(-a * P_.RAIN_STABILITY * Math.max(0, Sair[c]));
+                    // … and unstable air (a surface warmer than its latitude: a heated plateau or desert margin in
+                    // summer, a warm current or a warm sea under colder air, carried onshore by the wind) convects and
+                    // rains more — humidity effectively raised by RAIN_INSTABILITY per K
+                    const stable = Sair[c] >= 0 ? Math.exp(-a * P_.RAIN_STABILITY * Sair[c]) : Math.exp(-a * P_.RAIN_INSTABILITY * Sair[c]);
                     p.rate[c] = storm * stable;
                     // Lift where the wind blows up rising ground (1/s per unit of column water: upslope speed over the
                     // vapour scale height, times the share that rains out). Only the air above the blocked layer goes
@@ -373,6 +429,7 @@ export function columnWaterRain() {
             for (let c = 0; c < G; c++) tmp[c] = Wk[k][c] / prep[k].Ws[c];
             refineField(g, core, ratio, tmp, Rout, off);
         }
+        if (P_.RAIN_SLOPE_FACTOR > 0) windwardRain(ctx, core, g, ratio, uA, vA, share, Pout, K, P_.RAIN_SLOPE_FACTOR);
         for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
         const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };

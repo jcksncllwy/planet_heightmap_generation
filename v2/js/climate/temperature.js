@@ -247,6 +247,24 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         }
         const K = ctx.anchorMonths.length, T = new Float32Array(K * core.size);
         ctx.anchorMonths.forEach((a, k) => { refine(g, core, ratio, surfaceAt(a + 0.5, true), T, k * core.size); heightCorrect(T, k * core.size); });
+        // Continentality below the energy-balance grid: the sea's seasons are a fraction of the land's, so a 1° cell's
+        // swing about its yearly mean scales with the land around it (within ~1.5°) against the land share the coarse
+        // grid saw — coasts milder, interiors harsher, at the scale of single coastlines.
+        if (P.TEMP_SEA_SWING < 1 && ratio > 1) {
+            const lfCoarse = new Float32Array(core.size), lf = ctx.surface.landFrac, cw = core.w, ch = core.h;
+            refine(g, core, ratio, landFrac, lfCoarse, 0);
+            const a = P.TEMP_SEA_SWING, Kn = ctx.anchorMonths.length;
+            for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+                const c = j * cw + i;
+                if (!(lf[c] > 0)) continue;
+                let s = 0, n = 0;
+                for (let dj = -1; dj <= 1; dj++) { const jj = j + dj; if (jj < 0 || jj >= ch) continue; for (let di = -1; di <= 1; di++) { s += lf[jj * cw + (i + di + cw) % cw]; n++; } }
+                const k = Math.max(0.6, Math.min(1.6, (a + (1 - a) * s / n) / (a + (1 - a) * lfCoarse[c])));
+                let mean = 0; for (let m = 0; m < 12; m++) mean += monthly[m * core.size + c] / 12;
+                for (let m = 0; m < 12; m++) { const q = m * core.size + c; monthly[q] = mean + (monthly[q] - mean) * k; }
+                for (let q = 0; q < Kn; q++) { const x = q * core.size + c; T[x] = mean + (T[x] - mean) * k; }
+            }
+        }
         const iceCore = new Float32Array(core.size);
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;

@@ -25,6 +25,7 @@ import { windDrivenOcean } from '../climate/ocean.js';
 import { observedWinds, zonalWinds, observedTemperature, observedRain, zonalRain } from '../climate/inputs.js';
 import { columnWaterRain } from '../climate/rain.js';
 import { buildTestPlanet } from '../climate/test-planets.js';
+import { PARAMS, setParams } from '../climate/config.js';
 import { planetClimate } from '../climate/climate.js';
 import { evolutionWorld } from './evolution-world.js';
 import { buildSphere } from '../../../js/sphere-mesh.js';
@@ -158,7 +159,16 @@ async function ref(file, Type) {
  * (real Earth data — the Phase 1 oracle). winds: 'derived' (Phase 3) or 'observed' (Earth). rain: 'model' (the
  * Phase 5 rain stage) or 'observed' (Earth's real rain, to judge the other stages on their own).
  */
-async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, temperature = 'ebm', winds = 'derived', rain = 'model', mapW = 1440, mapH = 720 }) {
+async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, temperature = 'ebm', winds = 'derived', rain = 'model', detail = 'full', mapW = 1440, mapH = 720 }) {
+    // detail below the climate grid (Phase 9): 'full' — terrain-scale rain and a gentle texture; 'terrain' — no texture;
+    // 'smooth' — neither (as in Phase 8)
+    const detailOpts = detail === 'smooth' ? { rainPerKm: 0, texture: null } : detail === 'terrain' ? { texture: null } : {};
+    const slope0 = PARAMS.RAIN_SLOPE_FACTOR;
+    if (detail === 'smooth') setParams({ RAIN_SLOPE_FACTOR: 0 });
+    try { return await runNewClimateWith({ planet, N, anchors, lapse, temperature, winds, rain, mapW, mapH, detailOpts }); }
+    finally { setParams({ RAIN_SLOPE_FACTOR: slope0 }); }
+}
+async function runNewClimateWith({ planet, N, anchors, lapse, temperature, winds, rain, mapW, mapH, detailOpts }) {
     let t = performance.now();
     let xyz, elevKm, mesh, axes = 'y-up', index = null, evo = null;
     if (planet === 'evolution' || planet === 'evolutionSuper') {
@@ -195,8 +205,8 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
     } else {
         stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() };
     }
-    const res = evo ? planetClimate({ xyz, elevKm, axes }, { anchors, lapseRateCPerKm: lapse })
-        : computeClimate({ xyz, elevKm, axes }, { anchors, lapseRateCPerKm: lapse, stages });
+    const res = evo ? planetClimate({ xyz, elevKm, axes }, { anchors, lapseRateCPerKm: lapse, ...detailOpts })
+        : computeClimate({ xyz, elevKm, axes }, { anchors, lapseRateCPerKm: lapse, stages, ...detailOpts });
     const climateMs = res.timing.reduce((s, x) => s + x.ms, 0);
 
     let score = null;

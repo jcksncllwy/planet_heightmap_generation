@@ -630,7 +630,7 @@ $('timeKernels').addEventListener('click', (e) => timed(e.currentTarget, async (
     for (const k of r) timingRows.push([`&nbsp;&nbsp;${k.name}`, `${ms(k.ms)} ${k.unit === 'total' ? '' : k.unit}`]);
 }));
 // ── The new climate (Phases 1–2) ──────────────────────────────────────────────
-const sk = { N: '160000', K: '6', planet: 'earth', temp: 'ebm', winds: 'derived', rain: 'model' };
+const sk = { N: '160000', K: '6', planet: 'earth', temp: 'ebm', winds: 'derived', rain: 'model', detail: 'full' };
 let skData = null, tempData = null;
 const skRows = [];
 const PLANET_NOTES = {
@@ -657,6 +657,7 @@ function buildSkeletonControls() {
     segmented($('ncWinds'), { derived: 'Derived (Phase 3)', observed: 'Real winds' }, sk.winds, (k) => { sk.winds = k; buildSkeletonControls(); });
     $('ncRain').hidden = !earth || sk.temp !== 'ebm'; $('ncRainHead').hidden = $('ncRain').hidden;
     segmented($('ncRain'), { model: 'New (Phase 5)', observed: 'Real rain' }, sk.rain, (k) => { sk.rain = k; buildSkeletonControls(); });
+    segmented($('ncDetail'), { full: 'Terrain + texture', terrain: 'Terrain only', smooth: 'Smooth' }, sk.detail, (k) => { sk.detail = k; buildSkeletonControls(); });
     segmented($('skRes'), { 40000: '40K', 160000: '160K', 640000: '640K', 2500000: '2.5M' }, sk.N, (k) => { sk.N = k; buildSkeletonControls(); });
     segmented($('skK'), { 4: '4', 6: '6 (default)', 12: '12' }, sk.K, (k) => { sk.K = k; buildSkeletonControls(); });
 }
@@ -781,8 +782,9 @@ $('skRun').addEventListener('click', async (e) => {
     const planet = sk.planet, temperature = planet === 'earth' ? sk.temp : 'ebm';
     try {
         const winds = planet === 'earth' ? sk.winds : 'derived', rain = planet === 'earth' ? sk.rain : 'model';
-        const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature, winds, rain });
-        const what = temperature === 'ebm' ? `energy balance${r.circ ? ' + derived winds' : ' + real winds'}${r.monthlyP ? ' + new rain' : ' + real rain'}` : 'real temperature';
+        const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature, winds, rain, detail: sk.detail });
+        const what = (temperature === 'ebm' ? `energy balance${r.circ ? ' + derived winds' : ' + real winds'}${r.monthlyP ? ' + new rain' : ' + real rain'}` : 'real temperature')
+            + (sk.detail === 'full' ? '' : sk.detail === 'terrain' ? ' · terrain detail, no texture' : ' · smooth (no terrain rain or texture)');
         const evoText = r.evolution ? ` · ${r.evolution.timeMyr} Myr, land ${Math.round(100 * r.evolution.landShare)} %` : '';
         const label = `${PLANETS[planet]}${evoText} · ${r.N.toLocaleString()} cells · ${sk.K} points · ${what}${lapse ? '' : ' · no height correction'}`;
         newRun = { planet, label, raster: r.raster, landPx: r.landPx, monthlyT: r.monthlyT, monthlySL: r.monthlySL, seaIce: r.seaIce, circ: r.circ, ocean: r.ocean, monthlyP: r.monthlyP };

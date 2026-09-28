@@ -5,8 +5,9 @@
 // The climate is computed on a fixed lat-lon grid (grid.js), the same at every terrain resolution and on every
 // device, at K points in the year ("anchors"). Twelve months are rebuilt from the anchors (seasons.js). Only local
 // work with a fixed physical footprint touches the terrain cells: sampling the grid fields, correcting temperature
-// for each cell's own height (lapse rate), and classifying Köppen per cell (koppen.js) — so the result does not
-// depend on the terrain resolution.
+// for each cell's own height (lapse rate) and rain for its height above its surroundings, a gentle texture at a size
+// fixed in km, and classifying Köppen per cell (koppen.js) — so the large-scale result does not depend on the terrain
+// resolution, while the detail follows the terrain.
 //
 // The fields at the K points come from `options.stages` — { winds, temperature, circulation, ocean, rain }, each a
 // function of the context and the stages before it (temperature.js: the energy balance; circulation.js: pressure and
@@ -18,6 +19,7 @@
 import { LatLonGrid } from './grid.js';
 import { interpolationMatrix, PRECIP_TRANSFORMS } from './seasons.js';
 import { classifyCell } from './koppen.js';
+import { FastNoise } from '../core/fast-noise.js';
 
 /** Default settings. Units in the names. */
 export const CORE_DEFAULTS = Object.freeze({
@@ -28,6 +30,10 @@ export const CORE_DEFAULTS = Object.freeze({
     lapseRateCPerKm: 6.5,       // standard environmental lapse rate
     tempOffsetC: 0,
     precipScale: 1,
+    rainPerKm: 1.0,             // rain × e^{this × (cell height − its surroundings’ mean, km)}, bounded 0.4–2.5
+    texture: { tempC: 1.2, rain: 0.35, km: 200 },   // local variety the grid can't resolve (lakes, soils, mesoscale weather):
+                                //   smooth noise at a fixed size in km — °C, and rain × e^{±rain}; null = none
+    seed: 1,
     couplings: 2,               // rounds of temperature ↔ winds when the winds are derived …
     couplingsWithOcean: 2,      // … and with the ocean too (a third round changed nothing once clouds came in, Phase 6)
     cloudsFromRain: true,       // then rain → clouds → temperature once more …
@@ -110,7 +116,7 @@ export function computeClimate(input, options = {}) {
     lap('12 months (grid)');
 
     // 5. Per terrain cell: sample, correct for height, classify
-    const cell = finishCells(grid, surface, months, lat, lon, input.elevKm, land, o);
+    const cell = finishCells(grid, surface, months, lat, lon, input.elevKm, land, o, input.xyz);
     lap('terrain cells + Köppen');
 
     return { grid, surface, anchorMonths, anchors, months, cell, stages, timing };
@@ -210,11 +216,13 @@ function synthesizeGrid(grid, anchors, K, o) {
 // ── 5 ─────────────────────────────────────────────────────────────────────────
 /**
  * Terrain-cell finishing. Temperature is reduced to sea level on the grid (T + Γ·h_ref), interpolated, then lifted to
- * the cell's own height (− Γ·h): mountains colder than their grid cell, valleys warmer. Rain is interpolated as is
- * (upslope rain comes with the rain stage). Grid cells without data (e.g. land-only observations over the sea) are
- * filled from the nearest grid cell that has data. Only land cells are classified; the sea gets class 0.
+ * the cell's own height (− Γ·h): mountains colder than their grid cell, valleys warmer. Rain is interpolated and
+ * scaled by the cell's height above its surroundings (o.rainPerKm: ridges wetter, valleys drier; windward and lee
+ * slopes come with the rain stage). o.texture adds smooth noise of a fixed size in km to both — the local variety the
+ * grid can't resolve. Grid cells without data (e.g. land-only observations over the sea) are filled from the nearest
+ * grid cell that has data. Only land cells are classified; the sea gets class 0.
  */
-function finishCells(grid, surface, months, lat, lon, elevKm, land, o) {
+function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz) {
     const G = grid.size, n = lat.length, w = grid.w, h = grid.h, gamma = o.lapseRateCPerKm;
     // sea-level-reduced temperature and rain, with gaps filled
     const valid = new Uint8Array(G);
@@ -228,6 +236,12 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o) {
         for (let m = 0; m < 12; m++) { Tsl[m * G + c] = months.T[m * G + s] + gamma * href; P[m * G + c] = months.P[m * G + s]; }
     }
 
+    const hLand = new Float32Array(G);
+    for (let c = 0; c < G; c++) { const s = redirect[c]; const v = s >= 0 ? surface.meanLandKm[s] : NaN; hLand[c] = v === v ? Math.max(0, v) : 0; }
+    // texture: two smooth noise fields on the unit sphere, a fixed size in km (so the same at every terrain resolution)
+    const tex = o.texture && (o.texture.tempC || o.texture.rain) ? o.texture : null;
+    const noiseT = tex ? new FastNoise(o.seed * 7919 + 17) : null, noiseP = tex ? new FastNoise(o.seed * 7919 + 29) : null;
+    const texScale = tex ? 6371 / tex.km : 0;
     const koppen = new Uint8Array(n);
     const tAnnual = new Float32Array(n).fill(NaN), pAnnual = new Float32Array(n).fill(NaN);
     const T12 = new Float64Array(12), P12 = new Float64Array(12);
@@ -241,10 +255,19 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o) {
         const c00 = y0 * w + i0, c10 = y0 * w + i1, c01 = j1 * w + i0, c11 = j1 * w + i1;
         const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
         const hc = Math.max(0, elevKm[r]);
+        // rain grows with the cell's height above its surroundings (orographic enhancement: ridges wetter, valleys
+        // drier), bounded — so rain, like temperature, follows the terrain below the grid's scale
+        const hAround = w00 * hLand[c00] + w10 * hLand[c10] + w01 * hLand[c01] + w11 * hLand[c11];
+        let pf = o.rainPerKm ? Math.max(0.4, Math.min(2.5, Math.exp(o.rainPerKm * (hc - hAround)))) : 1, dt = 0;
+        if (tex) {
+            const x = xyz[3 * r] * texScale, y = xyz[3 * r + 1] * texScale, z = xyz[3 * r + 2] * texScale;
+            dt = tex.tempC * noiseT.fbm(x, y, z, 3, 0.5);
+            pf *= Math.exp(tex.rain * noiseP.fbm(x + 31.7, y - 12.3, z + 5.1, 3, 0.5));
+        }
         let ts = 0, ps = 0;
         for (let m = 0, off = 0; m < 12; m++, off += G) {
-            const t = w00 * Tsl[off + c00] + w10 * Tsl[off + c10] + w01 * Tsl[off + c01] + w11 * Tsl[off + c11] - gamma * hc;
-            const p = w00 * P[off + c00] + w10 * P[off + c10] + w01 * P[off + c01] + w11 * P[off + c11];
+            const t = w00 * Tsl[off + c00] + w10 * Tsl[off + c10] + w01 * Tsl[off + c01] + w11 * Tsl[off + c11] - gamma * hc + dt;
+            const p = pf * (w00 * P[off + c00] + w10 * P[off + c10] + w01 * P[off + c01] + w11 * P[off + c11]);
             T12[m] = t; P12[m] = p; ts += t; ps += p;
         }
         if (!(ts === ts)) continue;                       // no data anywhere near (cannot happen with global fields)

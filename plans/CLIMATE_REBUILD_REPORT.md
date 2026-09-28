@@ -6,21 +6,21 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 
 ## In short
 
-All eight phases are built and committed. The new climate is a chain of stages you can read and check one at a time:
-temperature, pressure and wind, ocean, rain, then Köppen.
-- **Earth, every stage new: Köppen matches Beck on 50.5 % of land vs V1's 38 %.** Every stage beats V1 on its own
-  main scores. The one exception is rain's "wet season the right way round", 2–3 points behind V1 with real winds and
-  ahead of it (88 %) with every stage new.
+All eight planned phases are built and committed, plus Phase 9 from your first feedback. The new climate is a chain of
+stages you can read and check one at a time: temperature, pressure and wind, ocean, rain, then Köppen.
+- **Earth, every stage new: Köppen matches Beck on 49.5 % of land vs V1's 38 %.**
+- **Detail:** since Phase 9, rain and seasons follow the terrain and coasts below the climate grid, with a gentle
+  texture. 15.9 % of neighbouring land cells differ in class (real map 17.8 %, V1 15.1 %, Phase 8 9.7 %).
+- **Tibet is tundra** (ET 75 %, real 77 %).
 - **The same result at 160K, 640K and 2.5M terrain cells.** V1 drifts with resolution.
 - **Speed:** 0.8–1.0 s in Chrome on the desktop at any terrain size. V1 takes 0.51 s at 40K but 2.07 s at 160K and
   10.9 s at 640K.
 - **It runs on real Evolution frames:** the lab builds an Evolution world and gives it a climate.
-- **Three things are not where you wanted them:**
-  1. **Mediterranean climates.** They exist at about the right total area but mostly in the wrong places (8 % found).
-  2. **Worlds come out too arid.** This shows most on Evolution worlds and the test planets.
+- **Not yet where you want them:**
+  1. **Mediterranean climates.** 13 % found, about the right area, but the Mediterranean basin itself is still mostly
+     steppe: its winters are too dry.
+  2. **Western Europe's winters are too cold.**
   3. **Speed at V1's 40K default.** The new climate is 1.6× slower there.
-
-  Each has a diagnosis and next steps below.
 
 ## How to review
 
@@ -51,14 +51,17 @@ temperature, pressure and wind, ocean, rain, then Köppen.
 | 6 | The coupled climate, tuned on Köppen; speed | mostly | **Köppen 49.5 % vs V1's 38 %**; no drift to 2.5M; 0.8 s in Chrome (V1: 0.5 s at 40K, 2.1 s at 160K) |
 | 7 | Evolution (engine level) | passed | The climate runs on real Evolution frames (z north, km): 0.6–0.75 s; the page wiring waits for the Evolution page |
 | 8 | Mediterranean climates | not met | Subtropical highs now migrate with the seasons; dry-winter climates appear (Cw 32 %, Dw 15 %); Köppen 50.5 %; Mediterranean area ≈ right but mostly misplaced (8 % recall) |
+| 9 | Your feedback: detail, Tibet, Mediterranean, warm and cold currents | mostly | Detail 15.9 % class edges (real 17.8 %, V1 15.1 %, before 9.7 %); Tibet tundra (ET 75 %); Mediterranean 13 % found; Köppen 49.5 % |
 
 ## Decisions waiting for you
 
-1. **What next.** Three open weaknesses; which matters most to you?
+1. **The texture** (Phase 9): keep it, soften it or drop it? The lab's "Detail below the climate grid" switch shows
+   it on and off. It costs about a point of Köppen.
+2. **What next.** Three open weaknesses; which matters most to you?
    - **Mediterranean placement.** It needs stronger winter westerlies at 30–45° in the circulation stage.
    - **The arid bias.** It shows on invented worlds: moisture reaches continental interiors too weakly.
    - **Speed at 40K.** Pass coarse fields between stages; compute the circulation only at the points in the year.
-2. **Two settings moved from their earlier tunes in the final Köppen tune:**
+3. **Two settings moved from their earlier tunes in the final Köppen tune:**
    - the circulation's thermal lows and highs, 0.78 → 1.23 hPa/K;
    - the Hadley cells' seasonal share, 0.63.
 
@@ -70,13 +73,13 @@ temperature, pressure and wind, ocean, rain, then Köppen.
      longer drier than its coasts (a stronger summer monsoon reaches inland).
 
    Keep, or hold the circulation at its Phase 3 tune?
-3. **Points in the year: 4 or 6.** This matters for rain. The default is 6, the only setting that passed the Phase 0
+4. **Points in the year: 4 or 6.** This matters for rain. The default is 6, the only setting that passed the Phase 0
    gate.
-4. **Commit and merge.**
+5. **Commit and merge.**
    - **Commits:** the phases are committed on `climate-rebuild`; nothing is pushed.
    - **Merging:** merge into `v2-tectonics` once your Evolution work is committed there. Phase 7's page wiring (three
      steps, in the plan) needs that page in this branch.
-5. **The CLAUDE.md smoothing rule** (from the research). The new climate doesn't depend on it; fixing it for terrain
+6. **The CLAUDE.md smoothing rule** (from the research). The new climate doesn't depend on it; fixing it for terrain
    code is separate.
 
 ## The approach, in one paragraph
@@ -383,3 +386,53 @@ minute the first time) → Köppen, Temperature, Rain … → New.
 **Check in the lab.** New climate → Earth → Run → Köppen → New, side by side with the Beck map. Look at the
 Mediterranean, California, central Chile, SW Australia, the Cape; and at East Asia and Siberia for the new dry-winter
 climates. The Phase 6 table lists the regimes.
+
+## Phase 9 — your feedback: detail, Tibet, the Mediterranean, warm and cold currents
+
+**What I found.**
+- **"Too smooth"** is measurable. In the real map, 17.8 % of neighbouring land cells differ in class; in V1,
+  15.1 %; in the new climate before today, 9.7 %.
+- **Finer climate grids barely help** (a 1° rain grid only reached 10.4 %, at four times the cost). The real map's
+  detail is terrain: ridges, valleys, rain shadows, coasts. Temperature already followed the terrain cell by cell;
+  rain didn't.
+
+**Built.**
+- **Rain now follows the terrain below the grid:** ridges wetter, valleys drier, windward slopes wetter and lee slopes
+  drier.
+- **Coasts are sharper than the grid:** a coastal cell's seasons are milder, an inland cell's harsher.
+- **A gentle texture:** smooth variation of a fixed size in km (≈ ±1 °C, rain ±35 %). It stands in for what the grid
+  can't resolve, and looks the same at every terrain resolution.
+- **Tibet:** the water held over high ground now falls off more slowly with height, calibrated on the water actually
+  observed over the plateau. Tibet is now tundra (ET 75 %, real 77 %), with 516 mm/yr of rain (real
+  487).
+- **Mediterranean:** air sinking under the subtropical highs dries the coasts downwind of them in summer, carried onshore
+  with the air, and only near the subtropical highs, so western Europe stays wet.
+- **Your warm and cold currents.**
+  - Air off cold water already rained less (cold currents, upwelling).
+  - Air off warm water (or over a heated plateau) can now rain more.
+  - Measured on Earth, the warm half helps Tibet but lowers Köppen elsewhere and doesn't move the Mediterranean, so
+    it's off by default (`RAIN_INSTABILITY`), ready to try.
+- **Five other ideas were tried, measured and dropped** (listed in the plan).
+
+**Numbers:**
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Class edges (detail) | 9.7 % | **15.9 %** | 17.8 % (V1 15.1 %) |
+| Tibet | cold desert | **tundra (ET 75 %)** | ET 77 % |
+| Mediterranean found | 8 % | 13 % | — |
+| Dry-winter climates found (Cw / Dw) | 32 / 15 % | 36 / 22 % | — |
+| Köppen, all land | 50.5 % | 49.5 % | (V1 38 %) |
+
+**The trade.** About a point of Köppen accuracy for the texture and the terrain detail. No drift across terrain
+resolutions; every stage's gate still holds except rain's (as before).
+
+**Still not right.**
+- **The Mediterranean basin** is still mostly steppe: its winters are too dry because the winter storm track doesn't
+  reach it. That's circulation work.
+- **California summers** are still too wet.
+- **Western Europe** is still too cold in winter (continental Dfb instead of oceanic Cfb).
+
+**Check in the lab.** New climate → Earth → 160K → "Detail below the climate grid" → Run → Köppen → New, side by side
+with the Beck map. Run it again with "Smooth" or "Terrain only" to compare. Tibet, the Andes and the Rockies show the
+terrain detail best.

@@ -130,6 +130,9 @@ node tuning/climate/hash-climate.mjs            # fingerprint of every stage's o
 node tuning/climate/evolution-check.mjs         # Phase 7: the climate on Evolution worlds (V2 history → terrain, z north)
 node tuning/climate/diag-med.mjs                # Phase 8: inside the rain stage in the five Mediterranean-climate regions
 node tuning/climate/diag-belts.mjs              # the circulation's belts through the year vs the real subtropical highs
+node tuning/climate/diag-detail.mjs             # Phase 9: how much detail the Köppen map has (class edges vs Beck), Tibet,
+                                                #   named regions; CORE='{"texture":null}' to try core options
+node tuning/climate/diag-v1-detail.mjs          # the same detail measure for V1's climate
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
 node tuning/dev-server.mjs 8147                 # then open http://localhost:8147/v2/climate-lab.html
 ```

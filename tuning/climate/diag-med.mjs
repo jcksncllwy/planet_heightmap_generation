@@ -21,7 +21,7 @@ for (let r = 0; r < elevKm.length; r++) elevKm[r] = elevToHeightKm(e.r_elevation
 const res = planetClimate({ xyz: e.r_xyz, elevKm, axes: 'y-up' });
 const { g, prep, Wk, results, land } = res.stages.rain.debug;
 const SEC = 30.44 * 86400;
-const REGIONS = [['Mediterranean', [35, 42, -8, 30], 0], ['California', [33, 40, -123, -117], 0], ['central Chile', [-38, -31, -73, -70], 1], ['SW Australia', [-35, -30, 114, 120], 1], ['Cape', [-35, -32, 17, 21], 1]];
+const REGIONS = process.argv.includes('--tibet') ? [['Tibet', [30, 36, 80, 100], 0], ['Tibet S rim', [27, 30, 85, 100], 0], ['Bangladesh', [22, 26, 88, 92], 0], ['Gangetic plain', [24, 28, 78, 88], 0], ['Yunnan', [22, 28, 97, 104], 0]] : [['Mediterranean', [35, 42, -8, 30], 0], ['California', [33, 40, -123, -117], 0], ['central Chile', [-38, -31, -73, -70], 1], ['SW Australia', [-35, -30, 114, 120], 1], ['Cape', [-35, -32, 17, 21], 1]];
 const ocean = (la0, la1, lo0, lo1) => [la0, la1, lo0 - 12, lo0 - 2];      // the sea just west of the region
 for (const [name, [la0, la1, lo0, lo1], south] of REGIONS) {
     for (const [what, k] of [['winter', south ? 3 : 0], ['summer', south ? 0 : 3]]) {

@@ -31,6 +31,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the terrain cells below the grid still use the standard rate) …
     TEMP_ICE_LAPSE: 8.0,        // °C/km      … and the same for ground under snow most of the year: ice sheets reflect
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
+    TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
     TEMP_CLOUD_ALBEDO: 0.263,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
     TEMP_GRID_DEG: 3,           // °          grid the energy balance is solved on (its fields are smooth: 2° scored the
                                 //            same as 1°, and the whole climate at 3° the same as at 2° at half the cost —
@@ -41,7 +42,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     // equally, none worse than with the literature values). Ferrel width, sea friction angle and Hadley scale ended
     // at or near the edge of their ranges — a hint of the simple structure's limits.
     CIRC_HADLEY_SCALE: 1.425,   // –          Hadley-cell width relative to Held & Hou's estimate
-    CIRC_HADLEY_SEASONAL: 0.625, // –          share of each month's own equator-to-pole contrast in the Hadley cells' width
+    CIRC_HADLEY_SEASONAL: 0.5, // –          share of each month's own equator-to-pole contrast in the Hadley cells' width
     CIRC_FERREL_DEG: 35,        // °          from the subtropical high to the subpolar low (the Ferrel cell)
     CIRC_TROPICAL_HPA: 9.56,    // hPa        how much lower the tropical rain belt is than the subtropical highs
     CIRC_MIDLAT_HPA_PER_K: 0.49,// hPa/K      subtropical high to subpolar low, per degree of temperature drop between …
@@ -70,6 +71,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_EVAP_COEFF: 1.3e-3,    // –          bulk transfer coefficient for evaporation
     RAIN_SURFACE_RH: 0.8,       // –          relative humidity of the air just above the sea (sets evaporation)
     RAIN_VAPOUR_HEIGHT_KM: 2.5, // km         scale height of water vapour (saturated column = ρ·q_sat·H)
+    RAIN_TERRAIN_HEIGHT_KM: 3.5, // km        … and of the column's water over high ground (the moist layer rides up with it)
     RAIN_TIMESCALE_H: 1.86,     // h          rain-out time of a saturated column …
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
@@ -81,8 +83,11 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
     RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
     RAIN_STABILITY: 0.03,       // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
+    RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
+    RAIN_INSTABILITY: 0,        // 1/K        … and gained per K it is warmer (unstable air: heated plateaus, warm currents)
     RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
     RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
+    RAIN_SLOPE_FACTOR: 0.4,     // –          windward / lee rain on the 1° grid: × e^{β·(upslope speed / 0.1 m/s)}
     RAIN_OROGRAPHIC: 0.3,       // –          share of the water lifted by winds blowing up rising ground that rains out
     RAIN_NEWTON: 30,            //            at most this many Newton steps per point in the year …
     RAIN_TOL: 2e-3,             //            … stopping when the column water changes less than this (relative)
@@ -112,6 +117,8 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_INVERSION_C:   { value: 10, min: 5, max: 15, source: 'Arctic winter surface inversions ≈ 10–15 K (Serreze et al. 1992); strongest in the dark over snow' },
     TEMP_INVERSION_WIND: { value: 5, min: 3, max: 8, source: 'stable boundary layers break down above ≈ 5–7 m/s near-surface wind' },
     TEMP_PLATEAU_LAPSE: { value: 5.0, min: 4.0, max: 6.5, source: 'near-surface lapse rates over large elevated terrain ≈ 4.5–5.5 °C/km (elevated heating)' },
+    TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
+    TEMP_SEA_SWING:     { value: 0.3, min: 0.15, max: 0.5, source: 'mid-latitude sea-surface seasonal range ≈ 5–10 °C vs ≈ 20–40 °C over continents' },
     TEMP_CLOUD_ALBEDO:  { value: 0.15, min: 0.0, max: 0.3, source: 'shortwave cloud forcing over land ≈ −50 to −100 W/m² under persistent rain clouds, ≈ 0 over deserts (CERES): an albedo contrast ≈ 0.1–0.25' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
 
@@ -136,6 +143,7 @@ export const PARAM_PRIORS = Object.freeze({
 
     RAIN_EVAP_COEFF:    { value: 1.3e-3, min: 1.0e-3, max: 1.8e-3, source: 'bulk transfer coefficient C_E ≈ 1.1–1.5 × 10⁻³ (Large & Pond 1982; COARE)' },
     RAIN_SURFACE_RH:    { value: 0.8, min: 0.7, max: 0.85, source: 'near-surface relative humidity over the oceans ≈ 75–80 %' },
+    RAIN_TERRAIN_HEIGHT_KM: { value: 3.5, min: 2.5, max: 5, source: 'precipitable water over the Tibetan Plateau (h ≈ 4.5–5 km) ≈ 20–25 % of the Indian lowlands’ in summer: e-folding ≈ 3–3.5 km (the elevated heated surface keeps a deep moist boundary layer)' },
     RAIN_TIMESCALE_H:   { value: 3, min: 1, max: 12, source: 'Bretherton et al. 2004: P = exp(15.6 (r − 0.603)) mm/day ⇒ a saturated tropical column rains out in ≈ 3 h' },
     RAIN_RH_STEEPNESS:  { value: 15.6, min: 8, max: 20, source: 'Bretherton et al. 2004 (15.6), from satellite column water and rain over the tropical oceans' },
     RAIN_EDDY_DIFF:     { value: 5e5, min: 1e5, max: 1.5e6, source: 'tropical transients (easterly waves, convection) mix far less than mid-latitude storms; no direct literature value' },
@@ -145,8 +153,11 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_WIND_DIV_DRY:  { value: 0.3, min: 0.15, max: 0.5, source: 'shallow (≈ 1 km) convergence of heat lows and trade-wind divergence: ≈ 30–40 % of the column’s water (scale height ≈ 2.5 km)' },
     RAIN_WIND_DIV_MOIST: { value: 0.6, min: 0.4, max: 0.9, source: 'rain-belt inflow ≈ 1.5–3 km deep: moisture convergence ≈ 0.5–0.7 × W × surface convergence (P − E ≈ 5–10 mm/day)' },
     RAIN_STABILITY:     { value: 0.015, min: 0.0, max: 0.03, source: 'rain is suppressed under strong low inversions (cold upwelling, stratocumulus decks; Klein & Hartmann 1993: low cloud +6 %/K of stability); no direct literature value' },
+    RAIN_HIGH_K_PER_HPA: { value: 0.5, min: 0, max: 1.5, source: 'subsidence under the subtropical highs warms the air above the marine layer by several K (a trade-wind / stratocumulus inversion of 5–10 K under +5–10 hPa highs)' },
+    RAIN_INSTABILITY:   { value: 0.015, min: 0, max: 0.03, source: 'convection over surfaces warmer than their surroundings (heated plateaus, warm currents such as the Gulf Stream and Kuroshio) raises rain for the same humidity; no direct literature value — kept to the scale of the stable-air term' },
     RAIN_SOIL_MM:       { value: 150, min: 50, max: 300, source: 'plant-available soil water capacity ≈ 100–200 mm (e.g. Manabe 1969 bucket: 150 mm)' },
     RAIN_COLUMN_LOCAL:  { value: 0.5, min: 0.2, max: 0.9, source: 'lower-tropospheric temperature anomalies over continents are ≈ 40–60 % of the surface anomaly' },
+    RAIN_SLOPE_FACTOR:  { value: 0.5, min: 0, max: 1.2, source: 'orographic enhancement ≈ ×2–3 on windward slopes, ×0.3–0.6 in the lee at ≈ 0.1–0.2 m/s of forced ascent (Roe 2005; Smith & Barstad 2004)' },
     RAIN_OROGRAPHIC:    { value: 0.3, min: 0.1, max: 1.0, source: 'precipitation efficiency of orographic clouds ≈ 20–50 % (Jiang & Smith 2003)' },
 });
 

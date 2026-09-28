@@ -775,3 +775,82 @@ the test planets: weak model westerlies and interiors starved of moisture.
 1. Stronger winter westerlies at 30–45° in the circulation stage: the midlatitude pressure drop and where it sits
    relative to the highs.
 2. Less summer recycling over dry-summer land (the soil bucket feeds June evaporation too generously).
+
+
+## Phase 9 — detail, Tibet, Mediterranean (the developer's feedback, 2026-09-28 evening)
+
+**Asked:** "things look a little too smooth … we are losing some of the interest and charm", no tundra on Tibet, "also fix
+med placement", and "areas around hot currents with onshore winds give more precipitation, and cold the opposite".
+
+**Measured first (`diag-detail.mjs`, `diag-v1-detail.mjs`).** The share of neighbouring land cells (160K) in different
+Köppen classes:
+
+| | Beck (real) | V1 | New, Phase 8 |
+|---|---|---|---|
+| Classes | 17.8 % | 15.1 % | 9.7 % |
+| Major groups | 8.4 % | 5.6 % | 3.7 % |
+
+- **Finer grids barely helped.** Rain on a 1° grid gave 10.4 % at four times the cost. The detail in the real map is
+  terrain below any climate grid.
+- **Tibet** came out cold desert (BWk 86 %): 60 mm/yr of rain against a real 487, and a warmest month of 11.2 vs 8.1 °C.
+
+**What was built.**
+- **Rain that follows the terrain below the grid.**
+  - Per terrain cell, rain × e^{1.0·(h − h_surroundings)/km}, bounded 0.4–2.5 (`core.js` `rainPerKm`): ridges wetter,
+    valleys drier.
+  - On the 1° grid, a windward / lee factor from the upslope wind (`RAIN_SLOPE_FACTOR` 0.4), with each rain-grid cell
+    keeping its total.
+- **Coasts sharper than the grid** (`temperature.js`). A 1° cell's seasonal swing scales with the land around it
+  (within ~1.5°) against the land share the 3° energy balance saw; the sea's swing is `TEMP_SEA_SWING` 0.3 of land's.
+- **Texture** (`core.js` `texture`: ±1.2 °C, rain × e^{±0.35}, 200 km, 3 octaves, seeded). Smooth noise at a size
+  fixed in km, standing in for the local variety the grid can't resolve (lakes, soils, mesoscale weather). It's
+  switchable, and the same planet results at every terrain resolution.
+- **Tibet: the column over high ground.** Water over high ground now falls off with its own scale height,
+  `RAIN_TERRAIN_HEIGHT_KM` 3.5, rather than free air's 2.5. The moist boundary layer rides up with the ground, and
+  observed water over the Tibetan Plateau is ≈ 20–25 % of the Indian lowlands', an e-folding of ≈ 3–3.5 km. Saturation
+  keeps 2.5 km.
+- **Mediterranean: sinking air under the subtropical highs, carried onshore.** Pressure above the latitude's mean counts
+  as extra stability (`RAIN_HIGH_K_PER_HPA` 0.6 K/hPa) and travels onshore with the air, like the cold-water stability
+  does. It fades out 5–15° poleward of each hemisphere's subtropical high (from the circulation's own belts), so the
+  cool summer seas at 50° do not dry western Europe.
+- **The developer's warm / cold currents.** The carried stability is now signed.
+  - Cold water (cold currents, upwelling) already damped rain onshore.
+  - Air off warm water (warm currents, a warm sea under colder air) or over a heated plateau can now rain more
+    (`RAIN_INSTABILITY`).
+  - It helps Tibet but cost Köppen worldwide (−0.9 points at 0.015) and did not move the Mediterranean, so it is off
+    by default and left to the tune.
+- **Lab:** a "Detail below the climate grid" switch in New climate (terrain + texture / terrain only / smooth).
+- **Tried and dropped** (measured, none kept):
+  - finer rain grids (2°, 1°);
+  - partial blocking of flow over mountains;
+  - an unblocked "heat pump" inflow up heated slopes (a second, unblocked wind in the solver);
+  - land's own coldness not counting as stable air;
+  - a drying soil bucket for Mediterranean summers.
+
+**Numbers (Earth, every stage new, 160K).**
+
+| | Phase 8 | Phase 9 | Real |
+|---|---|---|---|
+| Detail: neighbouring land cells in different classes | 9.7 % | **15.9 %** | 17.8 % (V1 15.1 %) |
+| … in different major groups | 3.7 % | 7.0 % | 8.4 % |
+| Tibet | BWk 86 %; 60 mm/yr; warmest month 11.2 °C | **ET 75 %**; 516 mm/yr; 9.5 °C | ET 77 %; 487 mm/yr; 8.1 °C |
+| Mediterranean (Cs) found; area | 8.4 %; ×0.79 | 13.1 %; ×0.88 | — |
+| Dry-winter temperate (Cw) / continental (Dw) found | 32 % / 15 % | 36 % / 22 % | — |
+| Köppen, all land (continents equal) | 50.5 % (49.9 %) | 49.5 % (48.5 %) | V1 38 % |
+
+- No drift: 640K 49.7 %, 2.5M 49.8 %, class shares within 0.6 % of 160K.
+- Every stage's own gate still passes (temperature, circulation, ocean); rain's is as before.
+  - Rain's own error rose from 0.63 to 0.66, because mountains are wetter.
+  - Its truth swap is now 54.4 vs V1's 54.8 %. The terrain and texture finishing applies to any rain, including V1's
+    and real rain (real rain: 87.6 → 85.4 %).
+- The whole climate takes ≈ 0.65 s in Node at 160K and ≈ 1.0 s in Chrome, as before.
+- Evolution worlds (A / B / C / D / E): 16 / 30 / 17 / 19 / 18 % at 600 Myr, 11 / 28 / 23 / 30 / 7 % for the
+  supercontinent. Checks: all pass.
+
+**Known.**
+- **The Mediterranean basin is still mostly steppe** (40 % BSk where the real map is 54 % Csa). Its winters are too dry
+  (≈ 50 vs 76 mm/month): the winter storm track doesn't come into the Mediterranean. That's circulation work, as in
+  Phase 8. California summers are still too wet (35–40 vs 6 mm/month).
+- **Western Europe is too cold in winter** (Dfb 56 %, where the real map is Cfb 77 %). The ocean has no deep overturning
+  (Phase 4).
+- **The texture is a choice.** It buys the look at about a point of Köppen. The lab's Detail switch shows it on and off.
