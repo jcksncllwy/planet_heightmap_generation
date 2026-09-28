@@ -34,7 +34,9 @@ export function closeRemnantSeas(world, dt) {
             }
             // (islands of arc crust in it or round it do not keep it open: a back-arc basin sealed in one plate closes too —
             // the Sea of Japan is closing now)
-            if (open) continue;
+            // (nor is an ocean too big to be a remnant: a plate that has grown round most of the globe holds the world
+            // ocean itself, which touches no other plate — closing it turned the whole planet into land)
+            if (open || comp.length * mesh.cellAreaKm2 > config.remnantSeaMaxKm2) continue;
             any = true;
             for (const c of comp) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (type[adjList[k]] !== CrustType.OCEAN) { shore.push(c); break; }
         }

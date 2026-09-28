@@ -26,11 +26,14 @@ export class TectonicWorld {
         this.rngVolcano = makeRng((seed ^ 0x7a1c) >>> 0);   // the details of eruptions: LIP outlines, a tail's pulses
         this.rngBackArc = makeRng((seed ^ 0xbac4) >>> 0);   // when a rolling-back trench opens a basin behind it (step/backarc.js)
         this.rngMarginIsle = makeRng((seed ^ 0x15e1) >>> 0); // where fore-arc islands rise off an active coast (step/margin-isles.js)
+        this.rngCycle = makeRng((seed ^ 0xc1c1) >>> 0);      // the supercontinent cycle: where the mantle's next downwelling lies (step/supercontinent.js)
         /** Mantle plumes, fixed in the MANTLE (world) frame — plates slide over them (step/hotspots.js). */
         this.hotspots = [];
         /** Per world cell, 0…1: how insulated the mantle here has been by continent sitting over it (step/hotspots.js). */
         this.mantleHeat = new Float32Array(simMesh.numCells);
         this.hotspotsReady = false;
+        /** The supercontinent cycle (step/supercontinent.js): the mantle's upwelling and downwelling, the landmasses' state; null until first watched. */
+        this.cycle = null;
         /** Plume heads that arrived this step under a continent and may split it; step/rifting.js acts on them. */
         this.pendingPlumeRifts = [];
         /** @type {Object[]} plumes a scene SCHEDULES: {time, xyz, head?, rift?, …} in the mantle frame, or {time, plate, cell} (6a form); step/hotspots.js brings them up */
@@ -128,7 +131,8 @@ export const EventKind = Object.freeze({
     ISLE_MERGE: 'isle-merge',           // { plate, areaKm2 }                                     a fore-arc island grows into the mainland
     ARC_RECYCLED: 'arc-recycled',       // { donor, areaKm2 }                                     a small arc goes down with its slab instead of accreting
     FRAGMENT: 'fragment',               // { from, to, areaMkm2, cells }                          a cut-off piece of land joins another plate
-    RIFT: 'rift',                       // { plate, fresh, cause: 'plume' | 'tension', hotspot, lengthKm, failedArmKm }
+    RIFT: 'rift',                       // { plate, fresh, cause: 'plume' | 'tension', hotspot, lengthKm, weakKm (of it along old sutures,
+                                        //   failed arms and rifted margins), failedArmKm }
     SUBDUCTION_INIT: 'subduction-init', // { upper, lower, lengthKm, ageMyr }                     a passive margin founders
     SLAB_FLAT: 'slab-flat',             // { plate }                                              the slab under it flattens (Laramide)
     SLAB_STEEP: 'slab-steep',           // { plate }                                              …and steepens again
@@ -137,6 +141,8 @@ export const EventKind = Object.freeze({
     PLUME_RISE: 'plume-rise',           // { hotspot, name, plate (−1 = open ocean), head }       a mantle plume arrives
     PLUME_DEATH: 'plume-death',         // { hotspot, name, lifeMyr }                             …and dies out
     LIP: 'lip',                         // { hotspot, name, onLand, areaMkm2, plate (−1 = open ocean) }   a plume head's flood basalt
+    SUPERCONTINENT: 'supercontinent',   // { share, areaMkm2, up, down }                          most continental crust is one landmass: the mantle's upwelling moves under it
+    DISPERSED: 'dispersed',             // { share, landmasses }                                  …and after its breakup, its pieces have drifted apart
 });
 const EVENT_KINDS = new Set(Object.values(EventKind));
 

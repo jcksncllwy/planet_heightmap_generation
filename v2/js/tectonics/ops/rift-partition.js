@@ -84,6 +84,20 @@ export function exteriorSea(mesh, crust) {
     const sea = c => !crust.mask[c] || crust.type[c] === CrustType.OCEAN;
     let frontier = [];
     for (let c = 0; c < numCells; c++) if (!crust.mask[c]) { out[c] = 1; frontier.push(c); }
+    // (a plate that has come to cover the whole globe — every other plate welded to it — has no outside: its outer sea is
+    // then its largest ocean, the world ocean; with none, it could never rift again)
+    if (!frontier.length) {
+        const seen = new Uint8Array(numCells);
+        let best = [];
+        for (let s = 0; s < numCells; s++) {
+            if (seen[s] || crust.type[s] !== CrustType.OCEAN) continue;
+            const q = [s]; seen[s] = 1;
+            for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (!seen[nb] && crust.type[nb] === CrustType.OCEAN) { seen[nb] = 1; q.push(nb); } }
+            if (q.length > best.length) best = q;
+        }
+        for (const c of best) out[c] = 1;
+        frontier = best;
+    }
     while (frontier.length) {
         const next = [];
         for (const c of frontier) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!out[nb] && sea(nb)) { out[nb] = 1; next.push(nb); } }

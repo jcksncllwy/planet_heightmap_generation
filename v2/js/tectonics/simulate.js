@@ -11,9 +11,11 @@ import { growWings, buildArcs } from './step/wings.js';
 import { collapseArcs } from './ops/collapse-arc.js';
 import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
 import { closeRemnantSeas } from './step/remnant-seas.js';
+import { matureArcs } from './step/arc-maturation.js';
 import { riftContinents } from './step/rifting.js';
 import { initiateSubduction } from './step/subduction-init.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
+import { trackCycle } from './step/supercontinent.js';
 import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
 import { growMarginIsles } from './step/margin-isles.js';
 import { captureFrame } from './snapshot.js';
@@ -31,11 +33,14 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
  * @param {boolean} [opts.events]               run the event rules (collisions, belts, sutures, terranes, wings, arcs); false = kinematics and crust only
  * @param {(frame) => void} [opts.onFrame]      called with each frame as it is recorded (a worker streams them out; the
  *                                              history itself does not depend on it)
- * @returns {{frames: import('./snapshot.js').Frame[], steps: number, stepLog: Object[]}}
+ * @param {(world) => boolean} [opts.stopAt]    asked after each snapshot: true ends the history there (a chosen ending,
+ *                                              tectonics/ending.js) — it never changes the history up to that point
+ * @returns {{frames: import('./snapshot.js').Frame[], steps: number, stepLog: Object[], stopped: boolean}}
  *          frames[0] is the world as handed in (time 0 for a new world — a world can also be run on from
- *          where an earlier call stopped); then one frame per snapshot interval; the last is exactly untilMyr
+ *          where an earlier call stopped); then one frame per snapshot interval; the last is exactly untilMyr,
+ *          or the snapshot where stopAt said stop (stopped: true)
  */
-export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null }) {
+export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null }) {
     const frames = [], stepLog = [];
     const record = frame => { frames.push(frame); onFrame?.(frame); };
     for (const p of world.plates) p.refreshExtent(world.mesh.xyz);
@@ -44,6 +49,7 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
     classifyBoundaries(world, 0);
     if (world.time === 0 && !world.baseSeeded) { seedBaseRelief(world); world.baseSeeded = true; }   // (records only)
     if (events && !world.hotspotsReady) insulateAtStart(world);   // (the first frame shows the start's mantle heat; step 1 sets it again)
+    if (events) trackCycle(world);                            // (is the start a supercontinent? — then the mantle already flows out from under it)
     drive(world);
     steerBackArcStrips(world);
     record(captureFrame(world));
@@ -66,6 +72,7 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
             // the plate's own raster (README: "Rules for event stages and ops"). Each returns how much it changed.
             let changed = 0;
             updateHotspots(world, dt);                 // plumes, LIPs, tracks — first, on the fresh view: stamps records only, queues plume rifts
+            trackCycle(world);                         // the supercontinent cycle: count the landmasses, move the mantle's up- and downwelling
             changed += trackCollisions(world, dt) ? 1 : 0;   // collision records, belts, sutures, docking, arc scraping (merges plates)
             changed += growWings(world, dt);           // trench wings capture passive ocean
             changed += buildArcs(world);               // island arcs behind mature ocean trenches (cell types only)
@@ -75,6 +82,7 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
             changed += openBackArcs(world, dt);        // rolling-back trenches split off strips; finished strips rejoin
             changed += initiateSubduction(world, dt);  // passive margins founder (may carve an ocean plate)
             changed += closeRemnantSeas(world, dt);    // seas sealed inside a plate close from their shores
+            changed += matureArcs(world, dt);          // arcs welded onto a continent become continent (cell types only)
             changed += tidyPlates(world);              // fragments join a neighbour; ocean scraps go to the passive ocean
             if (changed) {                              // crust changed: the world view must be rebuilt before anything reads it
                 for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz);
@@ -91,9 +99,10 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
         if (world.time >= nextSnapshot - 1e-9) {
             record(captureFrame(world));
             nextSnapshot = Math.min(nextSnapshot + snapshotEveryMyr, untilMyr);
+            if (stopAt?.(world)) return { frames, steps: world.step, stepLog, stopped: true };
         }
     }
-    return { frames, steps: world.step, stepLog };
+    return { frames, steps: world.step, stepLog, stopped: false };
 }
 
 /** The fastest rate (rad/Myr) at which any two plates could be closing: the two largest |ω| added. */

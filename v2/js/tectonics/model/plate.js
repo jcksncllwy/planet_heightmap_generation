@@ -16,6 +16,7 @@ export class Plate {
         this.name = String(id);
         this.alive = true;
         this.born = born;
+        this.bornOfRift = false;                  // born as a piece of a rift (its tenure shrinks over hot mantle: step/rifting.js)
         this.isBackground = false;                // passive pre-history ocean: never drives, never grows
         this.quat = quatIdentity();               // plate frame → world frame
         this.mat = quatToMat3(this.quat, new Float64Array(9));   // same rotation, row-major 3×3

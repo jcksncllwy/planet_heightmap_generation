@@ -28,6 +28,10 @@ const CHECKLISTS = {
         'Scrub through the history: every frame is carved; big rivers hold their courses as their continent drifts (small streams may shift), and move where the land beneath them changes.',
         'Switch the terrain resolution: the same big valleys at every resolution; finer meshes add smaller ones.',
     ],
+    cycle: [
+        'Across the supercontinent cycle (chart): rivers of an assembled supercontinent run long, across its interior; after the breakup the new coasts are lifted into escarpments with short rivers facing the young oceans, and big rivers flow inland away from them.',
+        'Old sutures inside a reassembled supercontinent are worn-down ranges cut by rivers; the ranges of its newest collisions stand high, with steep rivers.',
+    ],
 };
 
 /** Colour of a carving depth (km): pale where untouched, through ochre, to deep red where cut 1.5 km or more. */

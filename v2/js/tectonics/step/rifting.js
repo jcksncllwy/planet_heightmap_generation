@@ -1,13 +1,16 @@
 // When a continent rifts (WBP Part Va). Probabilistic, from the world's seeded rng: a continent
 // that is big enough and has been stable for riftTenureMyr rifts with a chance per Myr that grows
 // with the TENSION it is under (the share of its trench pull that cancels itself, Phase 4) and with
-// its size; a mantle plume head (step/hotspots.js) may force one where it rises. The rift itself —
-// where it runs, how it splits the plate — is ops/rift.js.
+// its size, and with the HEAT of the mantle under it (Phase 13: a continent that has sat long on the same mantle has
+// insulated it — step/hotspots.js — and rifts readily; one that has drifted onto cool mantle hardly rifts at all, so a
+// supercontinent's breakup comes in a burst and then quiets — step/supercontinent.js); a mantle plume head
+// (step/hotspots.js) may force one where it rises. The rift itself — where it runs, how it splits the plate — is ops/rift.js.
 
 import { CrustFlag, CrustType } from '../model/crust.js';
 import { tangentToward } from '../../core/sphere-geom.js';
 import { findRift, splitPlate, chooseJunction } from '../ops/rift.js';
 import { EventKind } from '../model/world.js';
+import { isContinental } from './hotspots.js';
 
 const JUNCTION_TRIES = 12;     // junctions tried per rift chance: the best crossing among them is taken (many admit none)
 
@@ -18,6 +21,10 @@ const JUNCTION_TRIES = 12;     // junctions tried per rift chance: the best cros
 export function riftContinents(world, dt) {
     const { plates, config, time, mesh } = world;
     let splits = 0;
+    // (Phase 13, steered: a supercontinent just counted holds for superTenureMyr — no rift, a plume's head included: a
+    // plume under it still erupts its flood basalt — step/supercontinent.js)
+    const cycle = world.cycle;
+    if (cycle?.phase === 'assembled' && cycle.formedAt > 0 && time - cycle.formedAt < config.superTenureMyr) { world.pendingPlumeRifts.length = 0; return 0; }
     // plume heads that arrived under a continent this step (step/hotspots.js decided which may split it): the rift
     // starts under the plume — or, if that is a craton, from the ordinary ground nearest it
     for (const pr of world.pendingPlumeRifts) {
@@ -28,16 +35,36 @@ export function riftContinents(world, dt) {
     }
     world.pendingPlumeRifts.length = 0;
     // spontaneous rifting under tension
+    const heat = config.riftHeatGain > 0 ? heatUnderContinents(world) : null;
+    // (Phase 13, steered — step/supercontinent.js: while a supercontinent's pieces disperse, the plates of a landmass that has
+    // gathered much of the continental crust again too soon come apart readily)
     for (const plate of plates.slice()) {
         if (!plate.alive || plate.isBackground || !plate.dynamics) continue;
-        const areaKm2 = plate.stats.continentalCells * mesh.cellAreaKm2;
-        if (areaKm2 < config.riftMinContinentKm2 || time - plate.born < config.riftTenureMyr) continue;
-        const chance = config.riftRatePerMyr * dt * plate.dynamics.tension * Math.min(config.riftSizeCap, areaKm2 / config.riftMinContinentKm2 - 1);   // a supercontinent rifts readily, a continent barely big enough hardly ever
+        const areaKm2 = plate.stats.continentalCells * mesh.cellAreaKm2, tooSoon = !!cycle?.clump?.includes(plate.id);
+        const h = heat?.get(plate.id) ?? 0;
+        // (a piece of a rift still over hot mantle may rift again soon: a burst — a continent just assembled waits its full tenure)
+        const tenure = tooSoon ? config.riftTenureHotMyr : heat && plate.bornOfRift ? config.riftTenureMyr + (config.riftTenureHotMyr - config.riftTenureMyr) * h : config.riftTenureMyr;
+        if (areaKm2 < config.riftMinContinentKm2 || time - plate.born < tenure) continue;
+        let heatFactor = heat ? config.riftHeatFloor + config.riftHeatGain * h ** config.riftHeatPower : 1;   // warm mantle below: rifts readily; cool: hardly
+        if (tooSoon) heatFactor = Math.max(heatFactor, 1) * config.dispersalRiftBoost;
+        // (while the pieces gather over the downwelling they are pressed together: rifts are rarer then — step/supercontinent.js)
+        if (heat && world.cycle?.gather > 0) heatFactor *= 1 - (1 - config.gatherRiftFactor) * world.cycle.gather;
+        // (a continent over hot mantle is stretched by the swell beneath it whatever its boundaries do: its tension is at least
+        // riftHeatTension × heat — without it, a supercontinent with no boundaries left pulling at it could never rift)
+        const tension = heat ? Math.max(plate.dynamics.tension, config.riftHeatTension * h) : plate.dynamics.tension;
+        const chance = config.riftRatePerMyr * dt * tension * heatFactor * Math.min(config.riftSizeCap, areaKm2 / config.riftMinContinentKm2 - 1);   // a supercontinent rifts readily, a continent barely big enough hardly ever
         if (world.rng() >= chance) continue;
         const junctions = Array.from({ length: JUNCTION_TRIES }, () => chooseJunction(world, plate, world.rng));
-        if (tryRift(world, plate, junctions, { text: `tension ${plate.dynamics.tension.toFixed(2)}`, kind: 'tension', hotspot: -1 })) splits++;
+        if (tryRift(world, plate, junctions, { text: `tension ${tension.toFixed(2)}${heat ? `, mantle heat ${h.toFixed(2)}` : ''}`, kind: 'tension', hotspot: -1 })) splits++;
     }
     return splits;
+}
+
+/** Per plate: the mean mantle heat under its continental crust (0 = cool, 1 = fully insulated). */
+function heatUnderContinents(world) {
+    const { owner, mantleHeat, plates } = world, sum = new Float64Array(plates.length), count = new Float64Array(plates.length);
+    for (let w = 0; w < owner.length; w++) if (isContinental(world, w)) { sum[owner[w]] += mantleHeat[w]; count[owner[w]]++; }
+    return { get: id => count[id] ? sum[id] / count[id] : 0 };
 }
 
 /**
@@ -54,10 +81,11 @@ export function tryRift(world, plate, junctions, cause, needCratonsBothSides = t
         if (found && (!rift || found.value < rift.value)) rift = found;
     }
     if (!rift) return false;
+    const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN, weakKm = rift.path.filter(c => plate.crust.flags[c] & weak).length * mesh.edgeKm;   // (before the split flags the new margins)
     const before = plate.name, fresh = splitPlate(world, plate, rift.path, rift.failedArm, (a, b) => namesAfterSplit(world, a, b, before), rift.across);
     const km = rift.path.length * mesh.edgeKm;
     world.log(EventKind.RIFT, `${before} rifts (${cause.text}): ${plate.name} and ${fresh.name} part along ${km.toFixed(0)} km of rift${rift.failedArm.length ? `, a failed arm of ${(rift.failedArm.length * mesh.edgeKm).toFixed(0)} km left behind` : ''}`,
-        { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, failedArmKm: rift.failedArm.length * mesh.edgeKm });
+        { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm });
     return true;
 }
 

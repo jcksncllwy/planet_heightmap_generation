@@ -348,20 +348,171 @@ reassemble into a new supercontinent, which in time breaks up again.
   closes) — through subduction starting at old passive margins (6b) and the zipper collisions of Phase 11 (so the new
   supercontinent is compact, not a ring).
 - Breakups follow old sutures and belts (the Wilson cycle: the Atlantic reopened along the Appalachian suture).
-- A history can be asked to end in a stage: breakup, dispersal or assembly.
+- (A history asked to end in a stage — breakup, dispersal or assembly — was parked, "Not now"; then, 2026-09-27, the
+  developer: "when you finalize this you can go on and build out the 'choose your ending' version" — built, see below.)
+
+**Where it stands (baseline, 2026-09-27; the lab history run to 1200 Myr, largest landmass's share of continental
+crust):** every seed breaks up (100 % → ~30 % within 120–300 Myr), but after that nothing draws the pieces together — seed
+777 happens to reassemble (100 % at ~400 Myr, and 94 % briefly at ~680), 4242 reaches 84 % once (~820 Myr), 12345 never
+passes 72 %. Rifts come at a steady 1–5 per 100 Myr all the way through: no bursts, no quiet spells.
+
+**Plan — three mechanisms, each grounded in how the real cycle is thought to work:**
+1. **Breakup in bursts, from the heat under a supercontinent** (thermal insulation — Anderson 1982, Gurnis 1988, Coltice
+   et al. 2007; plumes under Pangaea — Li & Zhong 2009). The engine already carries mantle heat that builds up under
+   continents (it lifts the land and feeds hotspots). A plate's rift chance is scaled by the heat under it: a
+   supercontinent that has sat long over its own warm mantle rifts readily, and the first rifts are followed quickly by
+   more while the pieces are still over the hot spot — a burst; once they have drifted off it onto cooler mantle the
+   chance falls away — a quiet spell. The steady rate today becomes a low floor.
+2. **Reassembly, drawn by the mantle's downwelling** (orthoversion — Mitchell et al. 2012: a new supercontinent forms
+   ~90° from the old one, over the ring of subduction that surrounded it; introversion / extroversion — Murphy & Nance).
+   A slow, large-scale mantle flow: up under the last supercontinent (where the heat built up), down along a great
+   circle 90° from its centre. It drags on continents' roots (a gentle basal traction, a force in the torque balance
+   like the others), so after the burst the pieces drift apart and then, over a few hundred Myr, gather toward the
+   downwelling and collide there — the zipper collisions of Phase 11 keeping the new supercontinent compact. When a new
+   supercontinent has formed (≥ 70 %), its centre becomes the next upwelling and the ring moves: the cycle repeats.
+   The traction stays small next to slab pull, so plates still move as their trenches pull them; it only biases where
+   they end up.
+3. **Rifts along old weak lines, about half the time** — the rift path already prefers sutures, failed rifts and rift
+   margins (a lower cost); measure the share and set it near 50 %, not more (developer).
+- Lab: the new 1200 Myr scene ("supercontinent cycle") beside the 600 Myr one, with a chart through time (landmass count,
+  largest share, rifts) and the upwelling/downwelling shown as a layer; check-phase13 (three seeds, 1200 Myr).
+- Each mechanism has its own switch (MECHANISMS) and its own seeded stream, so it can be turned off to compare.
 
 **Definition of done**
-- Lab: a chart of the landmass count and the largest landmass's share of continental crust through time; a 1000 Myr
-  history scene; the end stage as a scene option; checklist items.
-- Three seeds, 1000 Myr: at least one full cycle — supercontinent (largest landmass ≥ 70 % of continental crust) →
-  breakup in a burst (≥ 3 rifts within 60 Myr) → dispersal (largest ≤ 40 %) → reassembly (≥ 70 % again), a cycle of
-  300–700 Myr.
-- ≥ 60 % of rift length follows old sutures or belts; the reassembled supercontinent has thinness ≥ 0.5 and no enclosed
-  sea over 3 Mkm².
+- Lab: a chart of the landmass count and the largest landmass's share of continental crust through time; a NEW history
+  scene of **at least 1200 Myr** beside the 600 Myr one, which stays for quick testing (developer, 2026-09-27: "Lets do
+  at least 1200 myrs", "Add a separate long scene"; ~55 s to build at 40K with the Phase 12 steps, ~130 MB of packed
+  frames); checklist items.
+- Three seeds, 1200 Myr (developer: "it should start as one, then form at least 1 and then break up. if it happens twice
+  that is ok"): the start world's supercontinent breaks up in a burst (≥ 3 rifts within 60 Myr) → the pieces disperse
+  (largest landmass ≤ 40 % of continental crust) → they reassemble into a new supercontinent (≥ 70 %) → which breaks up
+  in its turn — two breakups and one reassembly at least, a cycle of 300–700 Myr; a second full cycle is welcome.
+- About half of rift length follows old sutures or belts (≥ 50 %; developer, 2026-09-27: "not having it follow it
+  perfectly will help make more interesting worlds" — so not much more either).
+- The reassembled supercontinent has thinness ≥ 0.5 and no enclosed sea over 3 Mkm².
 - Untouched land (from Phase 10): undisturbed continental crust **≤ 25 %** at 600 Myr (30–46 % now) and the largest
   untouched patch **≤ 8 Mkm²** (10–18 now), three seeds — breakups in bursts should get there; the rift threshold
   (riftMinContinentKm2 → 1e7 helped two seeds of three) is a lever to try.
 - Every suite passes, histories re-baselined with reasons.
+
+**Status: accepted 2026-09-27 (developer: "with this pass things are looking pretty great … we are fine with phase
+13")** (scene "The supercontinent cycle (1200 Myr)" in 8a / 8b). Left open, accepted as they are: the misses of
+check-phase13 listed under round 3, and the full sweep of the older suites (not run — every whole-planet history changed). What was built — the three mechanisms as planned, each with its switch (MECHANISMS `mantleHeatRifts`,
+`mantleFlow`) and the cycle its own stream (`rngCycle`):
+1. **Heat-scaled rifting.** A continent's rift chance × (0.05 + 5 × heat⁵), heat = the mean mantle heat under its land
+   (×5 on fully insulated mantle, ×1.7 at 0.8, ×0.44 at 0.6); a plume head splits one likewise. The pieces of a rift
+   still over hot mantle may rift again after 5 Myr instead of 60 (`riftTenureHotMyr`; at 15 the outflow had pushed them
+   off the hot mantle before they could, and one seed in three had no burst); a continent just assembled waits its full
+   tenure. So the start's breakup comes in a burst (3–4 rifts within 60 Myr on five seeds of five), and rifting quiets
+   once the pieces drift onto cool mantle.
+2. **The mantle's flow** (step/supercontinent.js; a force in forces.js, 10–50 % of the boundary forces on a continental
+   plate; out of its tension). Outward from the upwelling under the last supercontinent (its centre) × the heat still
+   there × sin 2θ (0.025 per 10⁴ km² of continent) — it spreads a jammed pile of pieces, which the boundary forces alone
+   did not (tried at 0.01: pieces boxed in by their neighbours re-collided within ~10 Myr, and a 3–4-plate
+   "supercontinent" held 250 Myr); toward a downwelling set ~90° away × sin θ (0.005), not while the supercontinent holds
+   (pulling it would slide it off its own mantle, which then never heats — rifts at heat 0.6–0.8 and a supercontinent
+   held ~300 Myr) and, once it has broken up, × (1 − the heat left at the upwelling): the outflow spreads the pieces
+   while that mantle is hot, the inflow gathers them as it cools (without the inflow seed 777 reached 75 % only at 1130
+   Myr; at 0.006 the pieces gathered in ~200–260 Myr, at 0.004 one seed of three never did). A new supercontinent (the largest landmass ≥ 70 % of the
+   continental crust for 30 Myr) moves the upwelling under itself and the downwelling to a new point 90° away; it
+   counts as broken up once the largest has been under 60 % for 30 Myr (a split in two — a Laurasia and a Gondwana —
+   is enough: at 50 %, a 61/39 split that gathered again to 100 % was never counted, and the mantle never moved).
+3. **Rifts along weak lines about half the time:** riftWeaknessCost 0.75 → 0.9 — over 1200 Myr 45–56 % of rift length
+   (0.75 gave ~70 %, late rifts 90 %+ as sutures pile up in a reassembled supercontinent). check-phase6's start-world
+   check re-baselined from "> 50 % on sutures" to "≥ 30 %" (34–53 % at 0.9, by the 8 sampled paths).
+- The lab: the 1200 Myr scene; the chart (largest landmass's share, landmasses ×10, the heat under the last
+  supercontinent, rift ticks); a Mantle layer (heat, flow arrows) and upwelling / downwelling markers; also on the
+  600 Myr scene.
+- **check-phase13 (after round 2, below): 12 of 17 pass** (seeds 12345 / 777 / 4242): the start is a supercontinent;
+  bursts of 4 / 4 / 5 rifts; the pieces disperse (to 22–26 %) and keep apart (no landmass holds 70 % for 30 Myr while
+  they disperse); a new supercontinent at 640 / 740 / 750 Myr, one mass (88–99 % with necks under 800 km cut), held
+  130–170 Myr before breaking up; rift length on old weak lines 45–54 %; switched off, the old engine; the endings.
+  **Short of the targets:** the new supercontinent is one mass but embayed — thinness 0.30–0.34 (≥ 0.5) and on two seeds
+  an inlet or sea of 3.3 / 9.5 Mkm² (≤ 3); untouched land at 600 Myr 21–27 % (≤ 25; 30–46 before); arc crust (as crust
+  type) over 1500 km from continents 7–13 Mkm² (≤ 5) — what the terrain shows of arcs beyond 500 km from a continent fell
+  from 8–12 Mkm² of land to 2–4 (seed 12345), the rest a submerged ridge; land below 400 m at 600 Myr 36.5 / 39.7 / 42.9 %
+  (≥ 38 on all). Other suites run: check-phase6 21/21; check-phase8a 46/47 (the rain contrast in old belts: tropics lower
+  than with erosion alike, subtropics equal — India's plateau re-baselined, above); check-phase5 23/25 and check-phase5b
+  22/25 — the same failures as at the last commit (5b's two arc-collision checks; 5a's India foreland and Wilson weld),
+  one different in 5b (the accreted arc joins the coast 55 % of the way; at the last commit that arc never accreted). Not
+  run: 1–4, 7, 7b, 7c, 8b, 9, 10, 11, invariants, scale (developer: no full sweeps unless asked) — every whole-planet
+  history changes with this phase.
+
+**Choose your ending (built 2026-09-27, with Phase 13).** Both whole-planet scenes have an "End as" drop-down: wherever
+the history has got to · a supercontinent (a Pangaea: ≥ 70 %, no rift for 30 Myr) · a supercontinent breaking up (the
+first rift since it formed 15–60 Myr old: young seas, the pieces still close) · continents dispersed (broken up, the
+largest ≤ 45 % — Earth today ~45 %). The history runs its length, then on (at most 1000 Myr further) until it is in that
+stage, and stops at that frame (tectonics/ending.js; simulate's `stopAt`). Nothing is steered — the history is the same
+one, only cut at a moment of that kind — so the lab cuts a longer run it already has instead of running again, and
+check-phase13 verifies a run with an ending stops where the long run says and matches it frame for frame.
+
+**Round 2 (2026-09-27, after the developer's first look).** Four things, all built before reporting (developer: "get
+through all of them before letting me know"):
+1. *"The supercontinent really shouldnt happen until like 600 [Myr] in … its ok for us to put our hand on the scale."*
+   The cycle has a clock: each supercontinent draws a period of 600–720 Myr (the cycle's stream). Its pieces DISPERSE until
+   150 Myr before that (and at least 150 Myr after the breakup began), then GATHER. While they disperse: each continent is
+   pushed away from the others near it (`dispersalRepulsion` 0.2 per 10⁴ km², within 2000 km of the other's edge — at
+   first measured from the other's centre, which put two touching big continents out of reach; not between two already in
+   contact — pushed apart there, a collision ground on unwelded, check-phase6); the young oceans that
+   opened between them rarely founder (`disperseFounderFactor` 0.15 — closing them is how the pieces meet); and the
+   plates of a landmass that has gathered more than 45 % of the continental crust again rift ×10 after a 5 Myr tenure
+   (the clump found in seed 1 was three mid-size plates pressed together, not one welded plate). While they gather: the
+   downwelling's pull (0.015) holds full strength until 1500 km from it (`mantleInflowPackKm`), and rifts are ×0.2 (the
+   lithosphere over a downwelling is pressed together — and a gathering that kept rifting never finished). A new
+   supercontinent can only be counted in the gathering; then it is held together about its own centre, over its own
+   footprint, until it first rifts, and nothing rifts on its own for 100 Myr (`superTenureMyr`): counted at first touch,
+   not yet welded, it came apart within 40–80 Myr.
+2. *"The supercontinents are only TECHNICALLY supercontinents, with thin strips connecting them."* Measured: several
+   "100 %" supercontinents were 26–33 % once necks under 1000 km no longer joined land. The cycle now counts landmasses
+   so (`cycleNeckKm` 800: land deeper than 400 km from the coast is a core; each core grows back through the land), and
+   the pull keeps gathering until such a cohesive landmass holds 70 %.
+3. *Land too high ("a ton of the land it above 400m").* Measured: 18–26 % of land below 400 m over 600–1200 Myr (Earth
+   ~45–50 %), and not mainly old belts — 30–44 % of the continental land was in a belt active within 50 Myr (Earth's
+   active orogens cover ~10–15 %): Andean belts at their 700 km cap on long-lived margins (11–16 % of the land), plateau
+   belts in a reassembly (up to 23 %). Now: Andean cap 400 km, plateau cap 1000 km; uplift wears over 110 Myr (178),
+   roots over 80 (135), and low ground wears at 0.75 of the reference rate (0.5; still slower than high ground — the
+   developer's "really slower on lower places"). 39–45 % below 400 m at 300–900 Myr on seed 12345 (30 % right after a
+   reassembly), the highest ground still 8–9 km. Quicker still (90 / 60 Myr) gave 42–46 % but wore India's young plateau
+   to 0.6 km above its foreland (check-phase8a re-baselined 0.75 → 0.65 km for 110 / 80: it stands 0.70 above).
+4. *Ocean–ocean arcs "forming too many islands … far from actual continental plates … getting huge unaturally."* An arc
+   gained a 121 km row per 500 km of slab with no cap: ~1200 km per 100 Myr behind a fast trench; the largest arc
+   landmass reached 15–16 Mkm², 8–15 Mkm² of arc crust stood 1500+ km from any continent. Now its width is capped by its
+   distance from continental crust: 360 km near one (a Japan), a 240 km chain from 1200 km out (a Mariana; one 121 km
+   row left arc pieces too small to dock — check-phase5b), a smooth blend between; and in the terrain an arc 1000+ km from any continent matures only to a submerged ridge (−0.7 km)
+   its volcanoes break through, near one to land (+0.3 km). Largest arc landmasses 2–4 Mkm² (those near continents), far
+   arc crust 1–4 Mkm².
+Found and fixed on the way: one plate welded from every continent had no boundaries left, so no tension, and could never
+rift — the world froze (a continent over hot mantle now has tension ≥ 0.3 × its heat: the swell stretches it); a plate
+covering the whole globe had no "outside" for a rift to reach (its outer sea is then its largest ocean); and such a plate's
+world ocean was taken for a sea sealed inside it and closed into land (a remnant sea is now at most 30 Mkm²).
+
+**Round 3 (2026-09-27).** Developer: "I would like some more mountains … it makes the world seem a bit too flat. Plus we
+are going to erode still … like 40% usually is a sweeter spot" — with the crust budget balanced (below) the continents
+carry more belts, and erosion at 100 / 70 Myr (the floor 0.75) gives 32–41 % below 400 m before the rivers carve (a
+reassembly's frames the most mountainous; 130 / 100 gave 28–37 %); and "the overall landmass is faily low overall. Seems like we are decreasing over time … keep it at
+least closer to flat". Measured: continental crust 148 → 110–125 Mkm² over 1200 Myr (three seeds), land above sea level
+27.9 → 25.0 % (seed 12345) — and not Phase 13's doing (with its mechanisms off: 148 → 120). The sink was continental
+underthrusting at collisions (55–73 Mkm²); gains were only seas closing (+13–22) and arcs, which stayed arcs for ever.
+Now: accreted arcs become continent (step/arc-maturation.js: arc crust touching its plate's continental crust and 100+ Myr
+old turns continental, its front advancing 3 km/Myr — how continents grow), smaller arc pieces dock (arcAccreteMinKm2
+6e4 → 3e4: arcs capped in width came in smaller pieces and sank), and underthrustShare 0.8 → 0.25 (a collision's
+consumption mostly goes by the overlap cap regardless; 0.4 hardly changed the total): continental crust 133 / 153 / 165
+Mkm² at 1200 Myr (−10 to +11 %), land above sea level 27.9 → 27.8 → 27.5 % (seed 12345). India's plateau stands 1.08 km
+above its foreland (was 0.70 with the quicker erosion; the check's 0.75 margin restored).
+And (developer) "rifts are forming on way too straight lines. Then should curve a bit and be jagged … it looks like a bunch
+of rectangle continents": a rift took the cheapest path over ground that cost the same everywhere — a straight cut. Now
+the crust has a grain (ops/rift-path.js): a smooth field fixed in each plate's own frame scales the cost of breaking
+ground, ±0.9 over ~1500 km (a rift bends) and ±0.4 over ~350 km (it is jagged) — at ±0.5 a detour hardly paid for its
+length and the cuts stayed straight. The pieces keep their parent's grain, so later rifts on the same crust follow the
+same fabric. With the grain competing, old sutures are preferred a little more (riftWeaknessCost 0.9 → 0.8) to keep
+about half the rift length on them. And two plates whose land rings a big sea — kept apart since Phase 11 so the sea can
+close — now weld round it once locked together sutureLockMaxMyr (120): held apart for good they ground on without end, and
+gathering pieces left a sea inside the new supercontinent (7.8 Mkm²); welded, the sea is sealed inside one plate and
+closes from its shores. check-phase13 after round 3: 14 of 18 — short: seed 777's supercontinent at 820 Myr (≤ 800),
+thinness 0.45 / 0.47 on two seeds (0.86 on the third), one 8.6 Mkm² untouched patch, and one seed's open-ocean arcs
+(13.7 Mkm² of arc crust far out, a submerged ridge in the terrain). check-phase6 21/21 (the start world's rifts follow
+sutures ≥ 15 % now that the grain competes; a pair may wait up to sutureLockMaxMyr for its seam); check-phase8a 46/47
+(the rain contrast in old belts, marginal); check-phase7c 18/19 (land grows 4.5 % over 1000 Myr, 5 % asked).
 
 ## After phase 13: the full planet
 

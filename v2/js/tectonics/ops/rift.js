@@ -57,6 +57,7 @@ export function splitPlate(world, plate, path, failedArm, nameFor, across = null
     if (lifted[0].length) spreadBelt(plate, mesh, lifted[0], shoulder, config, notFailed(crust));
     if (lifted[1].length) spreadBelt(fresh, mesh, lifted[1], shoulder, config, notFailed(fresh.crust));
     plate.born = time; fresh.born = time;
+    plate.bornOfRift = fresh.bornOfRift = true;
     plate.riftPartner = fresh.id; fresh.riftPartner = plate.id;
     // the rift push drives each half straight ACROSS the rift's line (the normal to its great circle), each toward its own side
     const centroidOf = cr => { let x = 0, y = 0, z = 0; for (let c = 0; c < numCells; c++) if (cr.mask[c] && cr.type[c] !== CrustType.OCEAN) { x += xyz[3 * c]; y += xyz[3 * c + 1]; z += xyz[3 * c + 2]; } const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };

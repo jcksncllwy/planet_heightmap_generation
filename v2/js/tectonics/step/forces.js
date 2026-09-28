@@ -12,6 +12,13 @@
 //                  — the uplifted shoulders of a new rift drive its sides apart along the whole line. It acts in ONE
 //                  direction per plate, straight away from its partner (fixed at the split), not along the local
 //                  normal: along a winding rift the local normals point every way and would only spin the halves
+// And one force that is not at a boundary:
+//   mantle flow    per 10⁴ km² of continental crust: the mantle's flow drags on continents' deep roots — out from the
+//                  upwelling under the last supercontinent, toward the downwelling where the next will gather
+//                  (Phase 13, step/supercontinent.js) — and, while the pieces of a supercontinent disperse, away from
+//                  the other continents near it (steered: they keep apart until it is time to gather). A bias, not a
+//                  driver; it is left out of a plate's tension (the tug of war between its boundaries, which decides
+//                  whether it rifts).
 // A trench that has only just formed has no slab hanging from it yet, so it pulls weakly and
 // strengthens as crust goes down (slabMatureKm). Forces are per 100 km of boundary, measured along the
 // cell edges actually shared with the other plate — not per boundary cell — so totals do not depend on
@@ -27,17 +34,19 @@ import { contactAt } from './contact.js';
 import { areYoungRiftPartners } from './collision.js';
 import { ringsOf } from '../../core/mesh-rings.js';
 import { tangentToward } from '../../core/sphere-geom.js';
+import { mantleFlowAt, dispersalField, repelAt } from './supercontinent.js';
 
 /** Force names, in the order of PlateLoad.byKind / forceByKind. Display code keys colours by these names. */
-export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push'];
-const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3;
+export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push', 'mantle flow'];
+const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4;
 
 /**
  * @typedef {Object} PlateLoad
  * @property {number[]} torque            net driving torque (world frame)
  * @property {number[][]} byKind          torque per force kind
  * @property {number[][]} forceByKind     vector sum of the forces per kind (for display arrows)
- * @property {number} torqueMagnitudeSum  Σ |r × F| — compare with |Σ r × F| to see how much cancels
+ * @property {number} torqueMagnitudeSum  Σ |r × F| over the boundary forces — compare with |Σ r × F| to see how much cancels
+ * @property {number[]} flowTorque        the mantle flow's share of `torque` (not a boundary force: left out of the tension)
  * @property {number[]} cells             boundary cells contributing, per kind
  * @property {{r:number[], n:number[], other:number, length:number}[]} slabs     where this plate's ocean goes down a trench
  * @property {{r:number[], n:number[], other:number, weight:number}[]} contacts  land-on-land overlap cells (weight > 1 where a craton is
@@ -55,11 +64,28 @@ export function gatherLoads(world) {
     const ageFactor = formedAt => Math.sqrt(Math.min(1, Math.max(0, time - formedAt) / config.slabPullAgeRefMyr));
     const maturity = (crust, cell) => Math.min(1, crust.slabKm[cell] / config.slabMatureKm);
     const isYoung = (crust, cell) => crust.formedAt[cell] >= 0 && time - crust.formedAt[cell] < config.ridgeMaxAgeMyr;
+    const flowing = world.cycle?.up && (config.mantleOutflow > 0 || config.mantleInflow > 0 || config.dispersalRepulsion > 0), flow = [0, 0, 0];
+    const apart = flowing ? dispersalField(world) : null;
+    const flowArea = mesh.cellAreaKm2 / 1e4;
 
     for (let w = 0; w < numCells; w++) {
         const a = owner[w];
         if (a < 0) continue;
         const r = [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]];
+        if (flowing) {                                      // the mantle's flow drags on a continent's root
+            const load = loads.get(a), t = plates[a].crust.type[ownerCell[w]];
+            if (load && (t === CrustType.CONTINENT || t === CrustType.CRATON)) {
+                mantleFlowAt(world, r[0], r[1], r[2], flow);
+                if (apart) repelAt(apart, a, r[0], r[1], r[2], flow);
+                const fx = flow[0] * flowArea, fy = flow[1] * flowArea, fz = flow[2] * flowArea;
+                const tx = r[1] * fz - r[2] * fy, ty = r[2] * fx - r[0] * fz, tz = r[0] * fy - r[1] * fx;
+                load.torque[0] += tx; load.torque[1] += ty; load.torque[2] += tz;
+                load.flowTorque[0] += tx; load.flowTorque[1] += ty; load.flowTorque[2] += tz;
+                const k = load.byKind[FLOW]; k[0] += tx; k[1] += ty; k[2] += tz;
+                const v = load.forceByKind[FLOW]; v[0] += fx; v[1] += fy; v[2] += fz;
+                load.cells[FLOW]++;
+            }
+        }
         if (landClaims[w] > 1 && collider[w] >= 0) {        // land on land: tie the two plates together here
             const other = plates[collider[w]], otherCell = other.cellAt(mesh.index, r[0], r[1], r[2]);
             // (not along a fresh rift itself, where the two margins jitter against each other — elsewhere the halves of a rift
@@ -143,5 +169,5 @@ function riftAge(plateA, A, cellA, plateB, B, cellB, time) {
 
 function newLoad() {
     const zero = () => [0, 0, 0];
-    return { torque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [] };
+    return { torque: zero(), flowTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [] };
 }

@@ -72,7 +72,7 @@ export const TERRAIN = {
     // Airy isostasy: thickened crust floats higher, with diminishing returns (a 35 km thicker crust stands ~5 km: Tibet)
     isoMaxKm: 6,
     isoScaleKm: 30,             // (≈ 0.17 km of height per km of extra crust at first; 35 km → 4.2 km, before the belt's relief)
-    thickTauMyr: 135,           // once a belt falls quiet, its root is eroded and rebounds away over this e-folding time
+    thickTauMyr: 70,            // once a belt falls quiet, its root is eroded and rebounds away over this e-folding time
     swellKm: 0.28,              // broad uplift over mantle hotter than the land's average (the African superswell): × the
                                 // excess of mantleHeat² over its mean under the land (records.js). (Developer, 8b round 6:
                                 // relative and a bit smaller — heat tends to 1 under any continent that sits still, so an
@@ -112,7 +112,10 @@ export const TERRAIN = {
 
     // ── Island arcs ──
     arcYoungKm: -2.0,           // the ridge an arc stands on, when young: under water, only its volcanoes break the surface
-    arcMatureKm: 0.3,           // …and when mature: continuous land (Japan)
+    arcMatureKm: 0.3,           // …and when mature: continuous land (Japan) — near a continent (within arcCoastKm);
+    arcOceanMatureKm: -0.7,     // out in the open ocean (arcOceanKm or more from any continent) it stays a submerged ridge its
+    arcCoastKm: 300,            // volcanoes break through (the Marianas, Tonga); between, a smooth blend
+    arcOceanKm: 1000,
     arcMatureMyr: 150,          // (a Mariana, ~50 Myr old, is still mostly under water: islands on a submarine ridge)
     arcUpliftShare: 0.25,       // a subduction belt's broad uplift counts this much on arc crust (its maturity gives the rest)
     foreArcIsleKm: 0.2,         // a fore-arc island (step/margin-isles.js): low
@@ -148,8 +151,13 @@ export const TERRAIN = {
         [OrogenyType.ANDEAN]: 20, [OrogenyType.LARAMIDE]: 20, [OrogenyType.URAL]: 30, [OrogenyType.HIMALAYAN]: 50,
         [OrogenyType.ARC]: 20, [OrogenyType.RIFT]: 1, [OrogenyType.TRANSPRESSION]: 30,
     },
-    // (developer, round 4: erosion here a little slower overall — 8b's rivers cut down more, and the two should balance)
-    reliefTauMyr: 178,          // uplift wears away over this e-folding time (at erosionHeight.refKm)…
+    // (developer, round 4: erosion here a little slower overall — 8b's rivers cut down more, and the two should balance;
+    // then, after Phase 13, "a ton of the land is above 400m": over 600–1200 Myr only 18–26 % of land was below 400 m
+    // (Earth ~45–50 %) — 178 → 100 and thickTauMyr 135 → 70 with the floor below, and narrower Andean and plateau belts
+    // (tectonics/config.js belts): 32–41 % below 400 m before rivers carve — the rivers take it toward the developer's
+    // "like 40% usually is a sweeter spot" (130 / 100 with round 3's balanced crust budget: 28–37 %; with the old budget 90 / 60
+    // wore India's young plateau to 0.6 km above its foreland — now, with less underthrusting, 100 / 70 leaves it 0.9 km)
+    reliefTauMyr: 100,          // uplift wears away over this e-folding time (at erosionHeight.refKm)…
     riftReliefTauMyr: 450,      // …except a rifted margin's shoulders: the great escarpment retreats rather than wears down
                                 // (the Drakensberg ~180 Myr, the Brazilian highlands ~130 Myr, the Western Ghats ~90 Myr)
     ruggedTauMyr: 368,          // the crests and ridges of a belt wear away more slowly: an old belt keeps its grain (the Appalachians)
@@ -161,8 +169,9 @@ export const TERRAIN = {
     // persist as low hills for hundreds of Myr (Baldwin et al. 2003). Every clock above runs × (H / refKm) below refKm
     // (never under floor) and × (H / refKm)^0.5 above it (at most max) — H: the belt's height above its plain
     // (evolved uplift + the root's isostatic lift).
-    // (a 600 Myr planet: median land 0.71 → 0.87 km, belts quiet 300+ Myr keep ~0.4 km of uplift instead of 0.2)
-    erosionHeight: { refKm: 2, floor: 0.5, max: 1.8 },
+    // (a 600 Myr planet: median land 0.71 → 0.87 km, belts quiet 300+ Myr keep ~0.4 km of uplift instead of 0.2; the floor
+    // 0.5 → 0.75 after Phase 13, low ground still wearing slower than high: old ranges lingered at 0.4–0.8 km everywhere)
+    erosionHeight: { refKm: 2, floor: 0.75, max: 1.8 },
     diffusionKm2PerMyr: 80,     // hillslope smoothing of the uplift: range edges spread and blend over time (not onto cratons)
     // A belt's crests need room: a scrap of a belt — a few sim cells left of a collision — cannot hold its cross-section
     // (the suture valley, ranges 40–130 km off it), and drawn anyway its valley sank into the uplift around it as a pit

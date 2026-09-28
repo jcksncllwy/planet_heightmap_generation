@@ -227,6 +227,6 @@ section('the same planet at every resolution');
 }
 
 section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase8b-rivers.js', mesh, LAB_MESH_SEED, TERRAIN_SCENES.filter(s => s.id !== 'history').map(s => ({ scene: s.id, cells: 160000 })));
+await checkLabPhaseLoads('../../js/app/phases/phase8b-rivers.js', mesh, LAB_MESH_SEED, TERRAIN_SCENES.filter(s => s.id !== 'history' && s.id !== 'cycle').map(s => ({ scene: s.id, cells: 160000 })));
 
 finish('Phase 8b');

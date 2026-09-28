@@ -17,7 +17,11 @@ import { terrainConfig } from '../../terrain/terrain-config.js';
 import { kindType, deriveRecords } from '../../terrain/records.js';
 import { locate } from '../../core/mesh-locate.js';
 import { hillshade, paintRelief, tintOf } from '../../view/terrain-shade.js';
-import { colorByCrustType, colorByOrogeny, OROGENY_RGB, css } from '../../view/palettes.js';
+import { colorByCrustType, colorByOrogeny, colorByMantleHeat, OROGENY_RGB, css } from '../../view/palettes.js';
+import { EventKind } from '../../tectonics/model/world.js';
+import { TECTONICS } from '../../tectonics/config.js';
+import { flowOfCycle } from '../../tectonics/step/supercontinent.js';
+import { ENDINGS, framesEnding } from '../../tectonics/ending.js';
 import { describeCell, recordedFrameAt, latLonOf, orogenyLegend } from './phase-kit.js';
 
 const RESOLUTIONS = [
@@ -88,8 +92,85 @@ const CHECKLISTS = {
         'Passive margins have wide shelves, active margins narrow ones; mid-ocean ridges stand ~2.5 km deep, old floor 5–6 km, trenches deeper still.',
         'Switch the terrain resolution: the same planet at every resolution — only finer detail (the parallel ridges appear from 640K up).',
         'Scrub through the history: a drifting continent carries its fine detail with it — its coastline, its shelves, the edges of its belts, its ridges, its volcanoes, the grain of its plains — changing only where the history changes it (Phase 9: the terrain is read on each plate’s own crust), and, slowly, as its fine detail renews: over a few hundred Myr its bays and headlands and the grain of its ridges re-form (the “Fine detail slowly renews” slider; 0 freezes it).',
+        'End as (settings): the planet can end as a supercontinent, one breaking up, or continents dispersed — the history runs on past 600 Myr until it is (the chart and the Mantle layer show the supercontinent cycle; see the 1200 Myr scene).',
+    ],
+    cycle: [
+        'The chart (Phase 13): the largest landmass starts at 100 % of the continental crust (the supercontinent); it breaks up in a BURST — several rift ticks close together at the foot of the chart — and falls to ~30–45 % as the pieces drift apart; rifting then quiets.',
+        'The pieces stay apart for a long while (no landmass over ~60 % for more than a moment), then, from ~450–600 Myr, gather (markers: “gathering here”) into a new supercontinent around 600–750 Myr — ONE mass, not continents strung together by strips (the chart counts land joined only by a neck under 800 km as apart). It holds ~100–200 Myr, then breaks up in its turn.',
+        'Mantle layer: warm colours where continents have sat (the heat they kept in); arrows show the mantle’s flow dragging on continents — outward from the upwelling (under the last supercontinent) while the heat there lasts, and toward the downwelling ~90° away, where the next one gathers (markers). The chart’s red line is that heat: it rises under an assembled supercontinent, and the burst comes as it peaks.',
+        'The new supercontinent forms around the downwelling marker, not on top of the old one; when it has formed the markers move — its centre is the next upwelling.',
+        'The reassembled supercontinent is compact (not a ring or a snake) and holds no big sea sealed inside it.',
+        'Rifts follow old sutures and belts about half the time (Belts layer): the next breakup reopens some old seams and cuts new ones.',
+        'End as (settings): pick “A supercontinent”, “A supercontinent breaking up” or “Continents dispersed” — the history runs on past 1200 Myr until the world is in that stage, stops there and shows the end (the hint under the table says when; the chart shows the stage). The history is the same one, only cut elsewhere: an ending it has already run past comes at once.',
     ],
 };
+
+// ── the supercontinent cycle (Phase 13) ──
+const UP_CSS = '#ff7b54', DOWN_CSS = '#4cc9f0', FLOW_CSS = '#c77dff';
+
+/**
+ * For a history whose frames carry the supercontinent cycle (frame.cycle): the chart — the largest landmass's share of
+ * the continental crust, how many landmasses, the heat still under the last supercontinent, a tick per rift — the
+ * upwelling and downwelling as markers, and their legend. null for a history without one (a scene with the rules off).
+ */
+function cycleView(frames) {
+    if (!frames.some(f => f.cycle?.up)) return null;
+    const rifts = frames.at(-1).events.filter(e => e.kind === EventKind.RIFT).map(e => e.time);
+    return {
+        series: [
+            { name: 'largest landmass (% of continental crust; land joined only by a neck under 800 km counts apart)', color: '#e9c46a', points: frames.map(f => [f.time, 100 * (f.cycle?.share ?? 0)]) },
+            { name: 'landmasses over 1 Mkm² (× 10)', color: '#8ecae6', points: frames.map(f => [f.time, 10 * (f.cycle?.landmasses ?? 0)]) },
+            { name: 'mantle heat under the last supercontinent (%)', color: UP_CSS, points: frames.map(f => [f.time, 100 * (f.cycle?.upHeat ?? 0)]) },
+            { name: 'a rift', color: '#ff9f43', ticks: rifts },
+        ],
+        markers(frame) {
+            const c = frame.cycle;
+            const phase = { assembled: 'a supercontinent', dispersing: 'dispersing', gathering: 'gathering' }[c?.phase] ?? '';
+            return c?.up ? [{ xyz: c.up, label: `upwelling${phase ? ` · ${phase}` : ''}`, color: UP_CSS }, { xyz: c.down, label: c.phase === 'gathering' ? 'downwelling · gathering here' : 'downwelling', color: DOWN_CSS }] : [];
+        },
+        legend: [
+            { color: FLOW_CSS, label: 'mantle flow: out from the upwelling under the last supercontinent (as strong as the heat left there); while the pieces gather, toward the downwelling where the next forms; then holding it together until it rifts (Mantle layer: arrows; colours: the mantle’s heat, warm where continents have sat). While they disperse the continents are also kept apart (not drawn)' },
+            { color: UP_CSS, label: 'upwelling — the last supercontinent’s centre (markers)' },
+            { color: DOWN_CSS, label: 'downwelling, ~90° from it (markers)' },
+        ],
+    };
+}
+
+/**
+ * The mantle flow as arrows on a 12° grid (the Mantle layer's overlay): where it drags on continents' roots. Scaled to
+ * the frame's strongest, so the pattern reads even while the flow is weak (how strong it is: the chart's heat line).
+ */
+function drawMantleFlow(g, raster, frame) {
+    const c = frame.cycle;
+    if (!c?.up) return;
+    const cfg = TECTONICS, STEP = 12, PX = 30, arrows = [];
+    let most = 0;
+    for (let lat = -84; lat <= 84; lat += STEP) {
+        const cl = Math.cos(lat * Math.PI / 180), sl = Math.sin(lat * Math.PI / 180), lonStep = STEP / Math.max(0.25, cl);
+        for (let lon = -180; lon < 180; lon += lonStep) {
+            const lam = lon * Math.PI / 180, x = cl * Math.cos(lam), y = cl * Math.sin(lam), z = sl, f = flowOfCycle(c, cfg, x, y, z, [0, 0, 0]);
+            const east = -Math.sin(lam) * f[0] + Math.cos(lam) * f[1], north = -sl * Math.cos(lam) * f[0] - sl * Math.sin(lam) * f[1] + cl * f[2];
+            const size = Math.hypot(east, north);
+            most = Math.max(most, size);
+            arrows.push({ x, y, z, cl, east, north, size });
+        }
+    }
+    if (!(most > 0)) return;
+    g.save(); g.lineCap = 'round';
+    for (const { x, y, z, cl, east, north, size } of arrows) {
+        if (size < 0.08 * most) continue;
+        const [px, py] = raster.project(x, y, z), k = PX / most, x1 = px + east * k / Math.max(0.2, cl), y1 = py - north * k;
+        if (Math.abs(x1 - px) > raster.width / 2) continue;
+        const a = Math.atan2(y1 - py, x1 - px), h = 7;
+        for (const [style, width] of [['rgba(0,0,0,0.75)', 5], [FLOW_CSS, 2.5]]) {
+            g.strokeStyle = style; g.lineWidth = width; g.beginPath();
+            g.moveTo(px, py); g.lineTo(x1, y1);
+            g.lineTo(x1 - h * Math.cos(a - 0.5), y1 - h * Math.sin(a - 0.5)); g.moveTo(x1, y1); g.lineTo(x1 - h * Math.cos(a + 0.5), y1 - h * Math.sin(a + 0.5));
+            g.stroke();
+        }
+    }
+    g.restore();
+}
 
 /** Colour of an erosion factor: brown where things erode slowly, through pale, to blue where fast. */
 function erosionRgb(e) {
@@ -137,14 +218,22 @@ export function terrainPhase(spec) {
     const heights = Object.fromEntries(TUNABLES.filter(t => t.evolves && overrides[t.id] !== undefined).map(t => [t.id, overrides[t.id]]));
     const key = `${scene.id}|${seed}|${simMesh.numCells}|${JSON.stringify(heights)}`;
     const meshReady = terrainMeshAsync(cells);                 // (built in a worker, alongside the history)
-    if (simCache?.key !== key) {
-        const started = performance.now();
-        const { frames, steps } = await runHistory({ list: 'terrain', scene, heights }, simMesh, seed, snapshotMyr,
-            t => hooks.progress?.(`Simulating the history… ${t.toFixed(0)} of ${scene.maxMyr} Myr`));
-        simCache = { key, frames, steps, simMs: performance.now() - started };
+    // a whole planet's history may be asked to end in a stage of the supercontinent cycle (tectonics/ending.js): it runs
+    // on past its length until it is. The history is the same whatever its ending — an ending only says where it stops —
+    // so the frames of a run that went further already hold it: they are cut, not run again
+    const ending = scene.endings && ENDINGS.some(e => e.id === overrides.ending) ? overrides.ending : 'none';
+    let frames = simCache?.key === key ? framesEnding(simCache.frames, scene.maxMyr, ending, TECTONICS, simCache.complete) : null;
+    if (!frames) {
+        const started = performance.now(), label = ENDINGS.find(e => e.id === ending).phrase;
+        const run = await runHistory({ list: 'terrain', scene, heights, ending }, simMesh, seed, snapshotMyr,
+            t => hooks.progress?.(t <= scene.maxMyr ? `Simulating the history… ${t.toFixed(0)} of ${scene.maxMyr} Myr` : `Running on until it ends as ${label}… ${t.toFixed(0)} Myr`));
+        // (keep the longer of the two runs: it holds the other's endings too)
+        if (simCache?.key !== key || run.frames.at(-1).time >= simCache.frames.at(-1).time) simCache = { key, frames: run.frames, steps: run.steps, complete: run.complete, simMs: performance.now() - started };
+        frames = framesEnding(run.frames, scene.maxMyr, ending, TECTONICS, true);
     }
     hooks.progress?.('Building terrain…');
-    const { frames, steps, simMs } = simCache;
+    const { steps, simMs } = simCache, endMyr = frames.at(-1).time;
+    const reached = ending === 'none' || framesEnding(frames, scene.maxMyr, ending, TECTONICS) !== null;
     const view = Object.fromEntries(VIEW_TUNABLES.map(t => [t.id, overrides[t.id] ?? t.value]));
     const cfgOverrides = Object.fromEntries(TUNABLES.filter(t => overrides[t.id] !== undefined).map(t => [t.id, overrides[t.id]]));
     const cfg = terrainConfig(cfgOverrides);
@@ -301,6 +390,9 @@ export function terrainPhase(spec) {
         }
     };
 
+    // the supercontinent cycle (Phase 13), in a history that has one: a chart through time, and the mantle as a layer
+    const cycle = cycleView(frames);
+
     const layers = [
         { label: 'Terrain', paint(frame, out) { const T = terrainOf(frame); paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm }); } },
         { label: 'Hillshade', paint(frame, out) { const T = terrainOf(frame); paintRelief(T.heightKm, T.shade, out, { mode: 'shade' }); } },
@@ -334,6 +426,7 @@ export function terrainPhase(spec) {
         },
         ...(spec.extraLayers?.({ terrainOf, tMesh, view }) ?? []),
         { label: 'Crust type', paint: simLayer(colorByCrustType) },
+        ...(cycle ? [{ label: 'Mantle', paint: simLayer(colorByMantleHeat), overlay: drawMantleFlow }] : []),
         {
             // how fast things erode, by the latitude's estimated rainfall (and ice, poleward): brown slow, blue fast
             label: 'Erosion rate', paint: simLayer((frame, out) => {
@@ -350,15 +443,16 @@ export function terrainPhase(spec) {
         summary: spec.summary + scene.about,
         checklist: [...spec.checklists[scene.id], 'Terrain is built for the frame shown, then in the background for the next ten frames the way you are playing or scrubbing (five behind): once built, those play and scrub with no waiting, and sea level or hillshade changes only re-shade. Frames further off are built when you get near them — playing waits for a frame still being built rather than skipping past it — and the page stays responsive throughout; the computer quietens once the frames around the one shown are built.'],
         checkCommand: spec.checkCommand,
-        maxTime: scene.maxMyr,
+        maxTime: endMyr,
         timeStep: snapshotMyr,
-        initialTime: scene.maxMyr,
+        initialTime: endMyr,
         initialView: scene.focus?.(frames.at(-1), simMesh) ?? scene.view ?? latLonOf(centre),
         displayMesh: tMesh,
         params: [
             { id: 'scene', label: 'Scene', value: scene.id, options: TERRAIN_SCENES.map(s => ({ value: s.id, label: s.label })) },
             { id: 'cells', label: 'Terrain resolution', value: String(cells), options: RESOLUTIONS, keepView: true },
             { id: 'sim', label: 'Sim resolution — the plates (re-runs the history)', value: String(simMesh.numCells >= 150000 ? 160000 : simMesh.numCells >= 75000 ? 80000 : 40000), options: SIM_RESOLUTIONS, keepView: true },
+            ...(scene.endings ? [{ id: 'ending', label: `End as (runs on past ${scene.maxMyr} Myr until it does)`, value: ending, options: ENDINGS.map(e => ({ value: e.id, label: e.label })), keepView: true, toEnd: true }] : []),
             ...VIEW_TUNABLES.map(t => ({ ...t, value: view[t.id] })),
             ...TUNABLES.map(t => ({ ...t, value: cfg[t.id] })),
         ],
@@ -371,7 +465,10 @@ export function terrainPhase(spec) {
             ...[[0.9, 'erosion ×0.9 — dry subtropics (Erosion rate layer)'], [1.05, 'erosion ×1.05 — storm tracks, and ice toward the poles'], [1.28, 'erosion ×1.3 — the wet equator']]
                 .map(([e, label]) => ({ color: css(erosionRgb(e)), label })),
             ...(spec.extraLegend ?? []),
+            ...(cycle ? cycle.legend : []),
         ],
+        series: cycle?.series,
+        seriesUnit: cycle ? '%' : undefined,
 
         frameAt(t) { return recordedFrameAt(frames, t); },
         prepare,
@@ -404,11 +501,13 @@ export function terrainPhase(spec) {
                 ],
                 head: ['Land height', 'share of land'],
                 rows,
-                hint: `History: ${steps} steps in ${(simMs / 1000).toFixed(1)} s (kept while you change terrain settings).`,
+                hint: `History: ${steps} steps in ${(simMs / 1000).toFixed(1)} s (kept while you change terrain settings).` + (ending === 'none' ? '' : reached
+                    ? ` It ends as asked — ${ENDINGS.find(e => e.id === ending).phrase} — at ${endMyr.toFixed(0)} Myr.`
+                    : ` It did not reach ${ENDINGS.find(e => e.id === ending).phrase} by ${endMyr.toFixed(0)} Myr; shown as it is there.`),
             };
         },
 
-        markers() { return []; },
+        markers(frame) { return cycle ? cycle.markers(frame) : []; },
 
         describeCell(frame, t) {
             const T = terrainOf(frame), h = T.heightKm[t] - view.seaLevelKm, w = T.sampler.cells[3 * t];

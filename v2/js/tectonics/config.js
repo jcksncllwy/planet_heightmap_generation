@@ -92,8 +92,11 @@ export const TECTONICS = {
     // with the current rate: base + perKm × work, capped; × a speed factor (see beltSpeed…). Caps are [WBP]'s
     // belt widths: Andean a few hundred km, a continental plateau 1000+ km, its foreland narrow.
     belts: {
-        andean:    { baseKm: 120, perKm: 1.0, maxKm: 700 },     // work = andeanWorkShare × slab gone down: a young margin starts narrow
-        himalayan: { baseKm: 220, perKm: 0.6, maxKm: 1300 },    // plateau side of a continent–continent collision (Tibet ≈ 1000+ km after ~2500 km)
+        andean:    { baseKm: 120, perKm: 1.0, maxKm: 400 },     // work = andeanWorkShare × slab gone down: a young margin starts narrow
+                                                                // (700 → 400 after Phase 13: the Andes are mostly 200–500 km wide, and long-lived
+                                                                // margins at the cap made 11–16 % of all land an active Andean belt)
+        himalayan: { baseKm: 220, perKm: 0.6, maxKm: 1000 },    // plateau side of a continent–continent collision (Tibet ≈ 1000 km after ~2500 km;
+                                                                // 1300 → 1000 after Phase 13: a reassembly's many plateaus covered a fifth of the land)
         foreland:  { baseKm: 120, perKm: 0.2, maxKm: 350 },     // the lower plate's side: fold-and-thrust belt, then a basin
         ural:      { baseKm: 150, perKm: 0.3, maxKm: 400 },     // a short front: simple collision or terrane accretion, both sides
         laramide:  { baseKm: 200, perKm: 0.6, maxKm: 1800 },    // over a FLAT slab: work = slab gone down FLAT, so the belt migrates inland
@@ -143,8 +146,10 @@ export const TECTONICS = {
     sutureCheckMyr: 4,          // (how often a waiting pair measures its seam and what its land rings)
     sutureStallGiveUpMyr: 24,   // …and a seam that has stalled this long has closed all it will: it welds with what sea is left…
     sutureGapStallMyr: 40,      // …as does one whose gap has not shrunk by a tenth in this long (a zipper closes in fits and starts)
-    underthrustShare: 0.8,      // (Phase 7c) this share of the area a collision's convergence sweeps (shortening × front) is
-                                // consumed from the lower continent as it slides under the upper plate…
+    underthrustShare: 0.25,     // (Phase 7c) this share of the area a collision's convergence sweeps (shortening × front) is
+                                // consumed from the lower continent as it slides under the upper plate… (0.8 → 0.25 after Phase 13:
+                                // over 1200 Myr of collisions the continents lost a fifth of their area — 148 → 115–125 Mkm² —
+                                // developer: "keep it at least closer to flat over time"; now 133–165, with arcs maturing)
     underthrustThickenKm: 25,   // …thickening the upper plate's crust above it by this much…
     underthrustMaxThickKm: 40,  // …up to this (Tibet: crust ~70 km, about 35 km thicker than normal)
     collisionForgetMyr: 8,      // a collision record whose plates have not touched for this long is forgotten: the next meeting starts afresh
@@ -158,6 +163,8 @@ export const TECTONICS = {
     ringSeaKm2: 1.5e6,          // two plates whose land encloses a sea bigger than this between them do not weld (Phase 11):
                                 // one rigid plate round it, nothing could ever close it (the rings of the old histories)
     remnantSeaCloseKmPerMyr: 12, // a sea sealed inside one plate closes from its shores at this rate (step/remnant-seas.js)
+    remnantSeaMaxKm2: 3e7,      // …a sea up to this big (Phase 11's largest sealed sea was 25 Mkm²; beyond it, a plate's ocean is
+                                // the world ocean — Phase 13: a plate grown round most of the globe had its ocean closed into land)
     cratonLockFactor: 4,        // a craton at the collision front resists (locks) this much harder than ordinary crust
 
     // ── Wings, arcs, terranes (Phase 5b): plates are larger than their land ──
@@ -171,8 +178,16 @@ export const TECTONICS = {
     arcWidenSlabKm: 500,        // every further this much slab, the arc behind a trench gains a row: a chain of islets → a Philippines → an Indonesia
     arcNoLandWithinKm: 400,     // a trench with land closer than this is a continental margin: no island arc, an Andean belt instead
     arcRowWidthKm: 121,         // an island arc is this wide when it forms, and this much wider with every arcWidenSlabKm more slab
+    arcNearMaxKm: 360,          // an arc near a continent grows at most this wide (Japan ~250 km, the Philippines ~500)…
+    arcFarMaxKm: 240,           // …one out in the open ocean at most this (a chain of islands on a ridge: the Marianas ~150–250 km)…
+    arcFarKm: 1200,             // …beyond this from any continent (between: a smooth blend from arcNoLandWithinKm on). Uncapped,
+                                // a trench consuming 5 cm/yr widened its arc ~1200 km per 100 Myr (developer: "huge unnaturally")
     arcBeltMaxKm: 243,          // the orogeny belt of an island arc reaches at most this far: an arc is a narrow line
-    arcAccreteMinKm2: 6e4,      // (Phase 7c) an arc piece smaller than this arriving at a continent goes down with its slab
+    arcContinentKmPerMyr: 3,    // arc crust welded onto a continent turns continental, its front advancing this fast (a 300 km arc
+    arcContinentAgeMyr: 100,    // in ~100 Myr), once it is this old (step/arc-maturation.js) — how continents grow, and what made
+                                // up for the land collisions and erosive margins take (without it: −26 % over 1200 Myr)
+    arcAccreteMinKm2: 3e4,      // (Phase 7c) an arc piece smaller than this arriving at a continent goes down with its slab
+                                // (6e4 → 3e4 after Phase 13: arcs capped in width come in smaller pieces, and sank instead)
                                 // instead of accreting: continents gain from arcs in fewer, bigger pieces (developer)
     arcCollapseKm: 1000,        // an arc chain within this distance of its own plate's continent…
     arcCollapseMinKm2: 1.0e5,   // …and at least this big…
@@ -274,9 +289,17 @@ export const TECTONICS = {
     riftRatePerMyr: 0.04,       // chance per Myr = this × tension × (size ÷ riftMinContinentKm2 − 1, capped at riftSizeCap)
     riftSizeCap: 4,             // a supercontinent (8× the minimum) at tension 0.35 rifts within ~20 Myr on average (developer: ~30 Myr);
                                 // a continent of twice the minimum at tension 0.5 waits ~50 Myr beyond its tenure
-    riftWeaknessCost: 0.75,     // a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real
+    riftWeaknessCost: 0.8,      // a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real
                                 // preference, but a mild one — at 0.45 a continent reopened the very same suture almost
-                                // every time it broke (developer)
+                                // every time it broke (developer); over a long history about half the length of the rifts
+                                // follows old weak lines (Phase 13, developer: "maybe 50%… not having it follow it perfectly
+                                // will help make more interesting worlds"; 0.75 made it ~70 %; 0.9 → 0.8 with the
+                                // crust's grain below, which the paths now also follow: ~50 %)
+    riftCurveAmp: 0.9,          // the grain of the crust a rift follows (ops/rift-path.js): the cost of breaking ground × 1 ± this
+    riftCurveKm: 1500,          // …swinging over about this distance (a rift bends)…
+    riftJagAmp: 0.4,            // …plus ± this
+    riftJagKm: 350,             // …over this (it is jagged). Uniform ground made every rift a straight cut: rectangular continents
+                                // (developer); at ±0.5 over 1200 km a detour hardly paid for its length — the cuts stayed straight
     riftAcrossPullBias: 0.6,    // arms that run along the pull (instead of across it) cost up to this much more
     riftMinArmKm: 400,          // an arm must reach the coast at least this far from the junction
     riftMinChordKm: 1500,       // the two ends of a rift must be at least this far apart: a rift crosses a landmass, it does not nick it
@@ -296,6 +319,57 @@ export const TECTONICS = {
     riftFailedArms: 2,          // how many arms fail at a junction (they strike out across ordinary ground, seeding NEW weak lines)
     riftPush: 0.6,              // a fresh rift pushes its two sides apart (uplifted rift shoulders), per 100 km of rift…
     riftPushMyr: 60,            // …fading to nothing over this long, by which time the ridge push of the young ocean has taken over
+
+    // ── The supercontinent cycle (Phase 13, step/supercontinent.js) ──
+    riftHeatFloor: 0.05,        // a continent's rift chance × (floor + gain × heat^power), heat = the mean mantle heat under its
+    riftHeatGain: 5,            // land (step/hotspots.js): on mantle it has only just drifted onto it hardly rifts, over the mantle
+    riftHeatPower: 5,           // a supercontinent has insulated for 100+ Myr readily — so a breakup comes in a burst, then quiets
+                                // (heat 1 → ×5, 0.9 → ×3, 0.8 → ×1.7, 0.6 → ×0.44); a plume head splits a continent likewise
+    riftHeatTension: 0.3,       // …and its tension is at least this × the heat (the swell beneath stretches it; a supercontinent with
+                                // no boundaries left pulling at it — every plate welded into one — otherwise never rifted: the world froze)
+    riftTenureHotMyr: 5,        // …and over fully insulated mantle the tenure (riftTenureMyr) of a rift's pieces shrinks to this: those of
+                                // a breakup still on its hot mantle may rift again soon (Pangaea: the Central Atlantic ~200 Ma, East
+                                // from West Gondwana ~180 Ma)
+    mantleOutflow: 0.025,       // the mantle's flow drags on continents' roots, per 10⁴ km² of continental crust: outward from the
+                                // upwelling under the last supercontinent, × the heat still under it, × sin 2θ (none at the centre
+                                // or 90° off it) — it spreads the pieces of a breakup, and fades as that mantle cools…
+    mantleInflow: 0.015,        // …and toward the downwelling set 90° from it (orthoversion): where the next one gathers — only
+                                // while the pieces gather (the cycle's clock, below; not while a supercontinent holds: it sits
+                                // still over its own mantle and heats it)…
+    mantleInflowPackKm: 1500,   // …at full strength until this near it, so the pieces press together there (a pull that faded
+                                // toward the downwelling left them touching through thin strips: a chain, not one mass)
+    superShare: 0.7,            // the largest landmass holding this share of the continental crust is a supercontinent…
+    dispersedShare: 0.6,        // …and once, after its breakup, the largest holds less than this, it has broken up (a split in
+                                // two — a Laurasia and a Gondwana — is a breakup: the pieces may gather again from there)
+    cycleHoldMyr: 30,           // either must hold this long to count (two continents that touch and part again are not one)
+    cycleNeckKm: 800,           // land joined only by a neck narrower than this counts as two landmasses (developer: a
+                                // supercontinent is one cohesive mass, not continents strung together by strips)
+    // The cycle's pace, steered (developer: the supercontinent "really shouldnt happen until like 600 [Myr] in … its ok for us
+    // to put our hand on the scale here"):
+    cyclePeriodMinMyr: 600,     // from one supercontinent to the next: drawn per supercontinent between these (its own stream)
+    cyclePeriodMaxMyr: 720,
+    cycleGatherMyr: 150,        // the pieces gather (the downwelling's pull on) over this long before the period is up…
+    cycleDisperseMinMyr: 150,   // …but not before they have dispersed this long since the breakup began
+    cycleRampMyr: 30,           // (the pull comes on over this long)
+    dispersalRepulsion: 0.2,   // until then each continent is pushed away from the others near it, per 10⁴ km² of continent,
+    dispersalRepulsionKm: 2000, // × (1 − distance to the other's edge ÷ this)², × its share of the land (twice, at most 1)
+    dispersalMaxShare: 0.45,    // while they disperse, the plates of a landmass that holds more than this share of the continental
+    dispersalRiftBoost: 10,     // crust (each 15 %+ of it) rift this many times more readily, after riftTenureHotMyr (gathered too soon)
+    superHoldMarginKm: 500,     // until it first rifts, a supercontinent is held together over its own footprint: its disc and this
+    superTenureMyr: 100,        // a supercontinent just counted holds this long before any continent rifts on its own (Pangaea
+                                // held ~100–150 Myr; as soon as it was counted — often not yet welded — it came apart in 40–80)
+    disperseFounderFactor: 0.15, // while they disperse, the chance that a margin of an ocean opened since the breakup founders × this
+                                // (closing those oceans is how the pieces gather: at the usual rate they closed by ~300 Myr)
+    gatherRiftFactor: 0.2,      // while they gather, a continent's rift chance × this: over the downwelling the lithosphere is
+                                // pressed together, not stretched (and a gathering that rifted apart again never finished)
+    cycleCheckMyr: 10,          // how often the landmasses are counted
+    cycleUpwellingKm: 2500,     // the upwelling's heat is the mean mantle heat within this of it
+
+    // ── Choose your ending (tectonics/ending.js): a history may be asked to end in a stage of the cycle ──
+    endingExtraMyr: 1000,       // it runs on at most this far past its length to reach it (a cycle is 300–700 Myr)
+    endingQuietMyr: 30,         // "a supercontinent": …with no rift for this long (whole, not yet coming apart)
+    endingBreakupMyr: [15, 60], // "breaking up": the first rift since it formed is this old (young seas, the pieces still close)
+    endingDispersedShare: 0.45, // "dispersed": broken up, the largest landmass holding no more than this of the continental crust
 
     // ── Reserved for later phases: not read by the engine; kept so the numbers from the research survive (the checks use maxPlates) ──
     reserved: {
@@ -320,9 +394,12 @@ export const MECHANISMS = Object.freeze({
     backArcs:       { backArcRatePerMyr: 0 },                                // slab rollback → back-arc seas (step/backarc.js)
     marginIsles:    { marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 },  // fore-arc islands (step/margin-isles.js)
     marginErosion:  { marginErosiveShare: 0, marginErosionKmPerMyr: 0 },     // erosive margins (step/margin-isles.js)
-    underthrust:    { underthrustShare: 0 },
+    underthrust:    { underthrustShare: 0 },                                 // continental underthrusting at collisions (step/collision.js)
     remnantSeas:    { remnantSeaCloseKmPerMyr: 0 },                          // seas sealed inside a plate close (step/remnant-seas.js)
-    arcRecycling:   { arcAccreteMinKm2: 0 },                                  // small arcs go down instead of accreting (step/collision.js)                                  // continental underthrusting at collisions (step/collision.js)
+    arcRecycling:   { arcAccreteMinKm2: 0 },                                 // small arcs go down instead of accreting (step/collision.js)
+    arcMaturation:  { arcContinentKmPerMyr: 0 },                             // arcs welded onto a continent become continent (step/arc-maturation.js)
+    mantleHeatRifts: { riftHeatGain: 0, riftHeatFloor: 1, dispersalRiftBoost: 1, riftHeatTension: 0 },                  // continents rift readily over mantle they have insulated (step/rifting.js)
+    mantleFlow:     { mantleOutflow: 0, mantleInflow: 0, dispersalRepulsion: 0, disperseFounderFactor: 1 }, // the mantle's flow drags continents apart and together again (step/supercontinent.js)
 });
 
 /** Config overrides that switch off the named mechanisms (keys of MECHANISMS). */

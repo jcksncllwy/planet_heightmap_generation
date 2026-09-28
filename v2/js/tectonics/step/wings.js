@@ -10,7 +10,9 @@
 //                  polarity rule (trench flag wins) resolves. A wing grows wingGrowthCmYr.
 //   island arcs    where a wing has swallowed enough slab and is overriding right now, arc crust — buoyant, counts
 //                  as land — forms behind the trench, and keeps forming along it so the arc is a chain, not a dot; it
-//                  widens by arcRowWidthKm with every arcWidenSlabKm more slab. Only over ocean: a trench with
+//                  widens by arcRowWidthKm with every arcWidenSlabKm more slab — up to a width set by how far it is from
+//                  any continent: out in the open ocean a chain of islands (a Mariana), near a continent up to a Japan
+//                  or a Philippines (developer: far-ocean arcs grew huge). Only over ocean: a trench with
 //                  CONTINENTAL crust close behind it is a continental margin, whose volcanism is the Andean belt
 //                  (step/boundaries.js). Slab maturity is judged over a cell and its trench neighbours, because the
 //                  jitter of a rotated raster's edge spreads one trench's consumption over 2–3 cells.
@@ -21,7 +23,8 @@ import { CrustType, CrustFlag, OrogenyType } from '../model/crust.js';
 import { BoundaryKind } from '../model/world.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { normalize, tangentToward } from '../../core/sphere-geom.js';
-import { reachesWithin } from '../../core/mesh-bfs.js';
+import { reachesWithin, hopDistance } from '../../core/mesh-bfs.js';
+import { isContinental } from './hotspots.js';
 
 
 /** Extend every trench's ends along strike by the wing growth rate. @returns cells captured or flagged */
@@ -122,8 +125,16 @@ export function buildArcs(world) {
     const { mesh, plates, config, time, boundaryKind } = world, { xyz, adjOffset, adjList, edgeKm, index } = mesh;
     const P = [0, 0, 0];
     const noLandHops = Math.ceil(config.arcNoLandWithinKm / edgeKm);
-    let built = 0;
-    for (const plate of plates) {
+    // how far every world cell is from continental crust (any plate's), out to arcFarKm: how wide an arc there may grow
+    const farHops = Math.ceil(config.arcFarKm / edgeKm), landHops = hopDistance(mesh, w => isContinental(world, w), farHops);
+    const widthCapKm = c => {
+        plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
+        const hops = landHops[index.nearest(P[0], P[1], P[2])], km = hops < 0 ? Infinity : hops * edgeKm;
+        const t = Math.min(1, Math.max(0, (config.arcFarKm - km) / (config.arcFarKm - config.arcNoLandWithinKm)));
+        return config.arcFarMaxKm + (config.arcNearMaxKm - config.arcFarMaxKm) * t * t * (3 - 2 * t);      // (smoothstep)
+    };
+    let built = 0, plate = null;
+    for (plate of plates) {
         if (!plate.alive || plate.isBackground || plate.crust.count === 0) continue;
         const { mask, type, flags, slabKm } = plate.crust;
         const born = [];
@@ -140,7 +151,7 @@ export function buildArcs(world) {
                 edge = true; nx += xyz[3 * nb] - xyz[3 * c]; ny += xyz[3 * nb + 1] - xyz[3 * c + 1]; nz += xyz[3 * nb + 2] - xyz[3 * c + 2];
             }
             if (!edge || continentWithin(plate, mesh, c, noLandHops)) continue;
-            if (arcBeside(plate, mesh, c)) { const w = widenArc(plate, mesh, c, slab, nx, ny, nz, config); if (w >= 0) born.push(w); continue; }   // an arc already: widen it with age
+            if (arcBeside(plate, mesh, c)) { const w = widenArc(plate, mesh, c, slab, nx, ny, nz, config, widthCapKm(c)); if (w >= 0) born.push(w); continue; }   // an arc already: widen it with age
             plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
             if (boundaryKind[index.nearest(P[0], P[1], P[2])] !== BoundaryKind.OVERRIDING) continue;      // an active trench, not a dormant flag
             // the arc cell: the ocean neighbour most directly behind the trench
@@ -210,10 +221,10 @@ function captureBehind(world, plate, background, w, T, velocity) {
  * Behind trench cell `t` (outward normal n) an arc already stands. With every further arcWidenSlabKm of slab it
  * may be one row deeper: returns the ocean cell to turn into arc next, or −1 if the arc is as wide as its slab allows.
  */
-function widenArc(plate, mesh, t, slab, nx, ny, nz, config) {
+function widenArc(plate, mesh, t, slab, nx, ny, nz, config, capKm) {
     const { xyz, adjOffset, adjList } = mesh, { mask, type, flags } = plate.crust;
-    // the arc may be arcRowWidthKm wider for every further arcWidenSlabKm of slab — counted in this mesh's cells
-    const allowedKm = config.arcRowWidthKm * (1 + Math.floor((slab - config.arcMatureConsumedKm) / config.arcWidenSlabKm));
+    // the arc may be arcRowWidthKm wider for every further arcWidenSlabKm of slab, up to capKm — counted in this mesh's cells
+    const allowedKm = Math.min(capKm, config.arcRowWidthKm * (1 + Math.floor((slab - config.arcMatureConsumedKm) / config.arcWidenSlabKm)));
     const allowedRows = Math.max(1, Math.round(allowedKm / mesh.edgeKm));
     // walk inboard from the trench, row by row, along −n
     let cur = t, rows = 0;

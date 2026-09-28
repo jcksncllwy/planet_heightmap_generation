@@ -21,9 +21,11 @@ done: ranges meet shields as real ones do — foothills on the rim, a foreland l
 one — and each shield has a character. Phase 11 (natural collisions) is done: continents pivot about their first
 contact and weld once the seam has closed, so few seas are sealed in. Phase 12 (the sim's resolution) is done: 80K and
 160K sim cells can be chosen in the lab (40K stays the default), and histories are faster and held in a quarter of the
-memory. Next, per
-plans/V2_ROADMAP_PHASES_9_13.md: 10 cratons against the ranges (done), 11 natural collisions (done), 12 the sim's resolution (done), 13 the
-supercontinent cycle — then the full planet (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
+memory. Phase 13 (the supercontinent cycle) is done: a supercontinent breaks up
+in a burst of rifts over the mantle it has insulated, the mantle's flow spreads the pieces and gathers them again ~90°
+away, and the new supercontinent breaks up in its turn (a 1200 Myr lab scene with a chart of it); and a whole planet's
+history can be asked to **end in a stage of the cycle** — a supercontinent, one breaking up, or continents dispersed.
+Next, per plans/V2_ROADMAP_PHASES_9_13.md: the full planet (the render mesh, V1's polish and climate). The phase table is in the design doc (§9). V2 is built **one phase at a time, each confirmed by
 the developer before the next begins.**
 
 ## Running it
@@ -39,9 +41,15 @@ on-screen checklist of what to look for, live numbers, and a time scrubber. Spac
 mesh than the sim's (a drop-down: 160K / 640K / 2.5M cells) and has a **Cross-section** tool: click two points. The
 terrain labs also offer the **Sim resolution** — the plates the history runs on: 40K cells (121 km, the default), 80K
 (86 km) or 160K (61 km); `&sim=80000` in the URL — the same planet in km and Myr, on finer plates, and slower to build.
+The whole-planet scenes (600 Myr, and the 1200 Myr supercontinent cycle) have an **End as** drop-down (`&ending=`
+supercontinent / breakup / dispersed): the history runs on past its length until the world is in that stage of the
+cycle (at most 1000 Myr further) and stops there — the same history, only ending at a moment of that kind; a longer
+run already made is cut rather than run again. They also chart the cycle (the largest landmass's share of the
+continental crust, how many landmasses, the heat left under the last supercontinent, a tick per rift) and have a
+**Mantle** layer: the mantle's heat, its flow as arrows, the upwelling and downwelling as markers.
 
 ```
-node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10, 11 — headless acceptance checks, PASS/FAIL, exit code
+node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10, 11, 13 — headless acceptance checks, PASS/FAIL, exit code
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
@@ -74,9 +82,13 @@ js/tectonics/
                                     growth step skip far plates), reconstruct (read-only playback)
                      boundaries:    contact, polarity (which side goes down), boundaries (classification, trench
                                     records, Andean / Laramide / transpression belts, flat slabs)
-                     forces:        forces, torque-balance (updatePlateMotion)
-                     events:        hotspots (plumes, LIPs, tracks), collision (records, suture / docking), orogeny
-                                    (belt spreading, underthrusting), wings (trench wings, island arcs), margin-isles
+                     forces:        forces (at boundaries; and the mantle flow's drag on continents), torque-balance
+                                    (updatePlateMotion)
+                     events:        hotspots (plumes, LIPs, tracks, the mantle's heat), supercontinent (the cycle:
+                                    landmasses counted, the mantle's upwelling and downwelling, its flow), collision
+                                    (records, suture / docking), orogeny
+                                    (belt spreading, underthrusting), wings (trench wings, island arcs — as wide as their distance from
+                                    continents allows: a Mariana at sea, a Japan near land), margin-isles
                                     (fore-arc islands on accretionary margins, coast retreat on erosive ones),
                                     rifting (when a continent rifts), backarc (slab rollback, back-arc seas),
                                     subduction-init (when a passive margin founders)
@@ -90,6 +102,7 @@ js/tectonics/
                    pinholes, transferCells / freeCellBeside / bridgePieces)
   scenarios/       hand-built test worlds for the lab and the checks (scene-kit: continents, aprons, oceans)
   simulate.js      the loop        snapshot.js   Frame (what everything downstream reads)
+  ending.js        choose your ending: a history run on until it is in a stage of the supercontinent cycle
   measure.js       measurements on Frames (margins, tallies, force situations), shared by the lab and the checks
 js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of any resolution —
   terrain-config   every terrain tunable, in km / Myr (TERRAIN; terrainConfig(overrides))
@@ -139,25 +152,43 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
 3. **A step** (`simulate.js`):
    `advance` (move by ω·dt) → `resolve` (subduct overlaps by the polarity rule, grow crust into gaps: the world view
    is now fresh) → `classifyBoundaries` (ridge / trench / transform / collision; trench slab records; Andean belts)
-   → **events**, in this order — `updateHotspots` (first: it only stamps records) · `trackCollisions` · `growWings`
+   → **events**, in this order — `updateHotspots` (first: it only stamps records) · `trackCycle` (the supercontinent
+   cycle: counts the landmasses, moves the mantle's upwelling and downwelling; reads only) · `trackCollisions` · `growWings`
    · `buildArcs` · `collapseArcs` · `growMarginIsles` · `riftContinents` · `openBackArcs` · `initiateSubduction` ·
+   `closeRemnantSeas` · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
    `tidyPlates` → if any changed crust: refresh, `resolve` and classify again → `drive` (next velocities: a scene's
    prescribed motion, or `updatePlateMotion`) → `steerBackArcStrips`. `evolveHeights` (erosion of the height records,
    below) runs before `drive`. Steps are adaptive (a plate moves at most a
    cell per step) and never cross a multiple of `stepGridMyr`, so how often a history is recorded never changes it.
 4. **Forces come from boundary state**, not velocities: trench flags, crust type and age, slab length. `D·ω = T` per
-   plate, with basal drag, slab resistance and a viscous collision lock in `D`. Speeds are never scripted.
-5. **Rasters are rigid — except at a suture.** The one time crust is deformed is when two plates weld
+   plate, with basal drag, slab resistance and a viscous collision lock in `D`. Speeds are never scripted. One force
+   is not at a boundary (Phase 13): the **mantle flow** drags on continents' roots — out from the upwelling under the
+   last supercontinent (as strong as the heat the supercontinent left there), toward a downwelling ~90° from it (once
+   the supercontinent has begun to break up). It is small next to slab pull, and left out of a plate's tension.
+5. **The supercontinent cycle** (`step/supercontinent.js`, Phase 13): a continent's rift chance grows steeply with the
+   mantle heat under it (`riftHeat*`; a rift's pieces still over hot mantle may rift again soon, `riftTenureHotMyr`), so
+   a supercontinent that has sat long on its own mantle breaks up in a burst, and pieces that have drifted onto cool
+   mantle hardly rift; the mantle flow spreads the pieces and gathers them again, and a new supercontinent (the largest
+   landmass holding `superShare` of the continental crust for `cycleHoldMyr`) moves the upwelling under itself and the
+   downwelling to a new point 90° away (its own seeded stream). Rifts follow old sutures, failed rifts and rifted
+   margins about half the time (`riftWeaknessCost`), and otherwise the crust's grain — a smooth field in each plate's
+   own frame (`riftCurve*`, `riftJag*`) that bends a rift and makes it jagged, instead of a straight cut. The cycle's pace is steered (developer: the next supercontinent
+   "shouldnt happen until like 600 [Myr] in"): each supercontinent draws a period (`cyclePeriodMin/MaxMyr`); its pieces
+   disperse — kept apart (`dispersalRepulsion`), the young oceans between them rarely foundering, a landmass that
+   gathers too soon rifting readily — then gather (the pull toward the downwelling, full strength until
+   `mantleInflowPackKm` from it), and the new supercontinent is held together until it first rifts. Landmasses are
+   counted with land joined only by a neck under `cycleNeckKm` apart, so a supercontinent is one mass, not a chain.
+6. **Rasters are rigid — except at a suture.** The one time crust is deformed is when two plates weld
    (`ops/merge-plates.js`: the lower is resampled into the upper's frame and the outlines are redrawn).
-6. **Frames are the only interface downstream.** Views, stat panels and checks read `Frame`s (`snapshot.js`), the
+7. **Frames are the only interface downstream.** Views, stat panels and checks read `Frame`s (`snapshot.js`), the
    helpers in `measure.js`, and the event log; nothing downstream reaches into plate rasters.
-7. **Belts record their geometry** for the terrain: every cell a belt shapes keeps where across the belt it lies
+8. **Belts record their geometry** for the terrain: every cell a belt shapes keeps where across the belt it lies
    (`beltU`, 0 at the front), how far the belt reached, which side of a collision it is on and the obliquity of the
    convergence (`crust.belt*`, written by `spreadBelt`). Scalars in the plate frame, so they never need rotating; the
    ridge direction is recovered at terrain time (straight away from the nearest front cell). When a newer orogeny
    takes a cell over, the old belt's record moves to `crust.prev*` (one layer deep), and the terrain shows it under
    the new one.
-8. **Heights evolve with the history** (`step/heights.js`; records only — the history never reads them, and its event
+9. **Heights evolve with the history** (`step/heights.js`; records only — the history never reads them, and its event
    log is the same with or without them). Each crust cell carries an erodible root (`rootKm`, grown exactly as belts
    thicken the crust; Airy isostasy), a broad uplift (`upliftKm`, raised toward the belt's cross-section at the pace of
    the convergence its front absorbs, never lowered by a newer belt; foreland basins sink below 0), the size of its

@@ -96,7 +96,7 @@ export function drawMarkers(ctx, raster, markers) {
 }
 
 /** Arrow colour per force, keyed by the force's name (tectonics/step/forces.js FORCE_KINDS). */
-export const FORCE_COLORS = { 'slab pull': '#ffd166', 'slab suction': '#4cc9f0', 'ridge push': '#ff6b6b', 'rift push': '#ff9f43' };
+export const FORCE_COLORS = { 'slab pull': '#ffd166', 'slab suction': '#4cc9f0', 'ridge push': '#ff6b6b', 'rift push': '#ff9f43', 'mantle flow': '#c77dff' };
 
 /**
  * One arrow per force kind at each plate's centre: the vector sum of that force over the plate's

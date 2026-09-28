@@ -59,7 +59,11 @@ export function initiateSubduction(world, dt) {
         if (lengthKm < config.subductionInitMinLengthKm || ageMyr < config.subductionInitAgeMyr) continue;
         // chance rises with how far past the threshold the crust is, and with the margin's length
         const overAge = ageMyr / config.subductionInitAgeMyr - 1;
-        const chance = config.subductionInitRatePerMyr * dt * Math.min(config.subductionInitAgeCap, overAge) * (lengthKm / config.subductionInitMinLengthKm);
+        let chance = config.subductionInitRatePerMyr * dt * Math.min(config.subductionInitAgeCap, overAge) * (lengthKm / config.subductionInitMinLengthKm);
+        // (Phase 13, steered: while a supercontinent's pieces disperse, the young oceans that opened between them rarely
+        // founder — closing them is how the pieces gather again, and that waits for the cycle's gathering: step/supercontinent.js)
+        const cycle = world.cycle;
+        if (cycle?.phase === 'dispersing' && ageMyr <= world.time - cycle.breakupAt + 1e-9) chance *= config.disperseFounderFactor;
         if (world.rngSubduction() >= chance) continue;
         const segment = largestPieceOf(mesh, entry.cells);
         if (segment.length * edgeKm < config.subductionInitMinLengthKm) continue;

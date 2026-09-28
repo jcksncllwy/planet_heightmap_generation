@@ -47,6 +47,10 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {{time:number, kind:string, text:string}[]} events   the world's event log up to this frame
  * @property {FramePlate[]} plates        per-plate summary, indexed by plate id
  * @property {{created:number, consumed:number, erodedCells:number, underthrustCells:number, recycledCells:number}} budget   cumulative, in cells (world.budget)
+ * @property {{up:number[]|null, down:number[]|null, upHeat:number, share:number, landmasses:number, state:string, since:number}|null} cycle
+ *                                        the supercontinent cycle (step/supercontinent.js): the mantle's upwelling and downwelling, the
+ *                                        heat left at the upwelling, the largest landmass's share of the continental crust, how many
+ *                                        landmasses of 1 Mkm² or more, 'assembled' | 'dispersed' and since when
  *
  * @typedef {Object} FramePlate
  * @property {number} id  @property {string} name  @property {boolean} alive  @property {boolean} isBackground
@@ -133,6 +137,10 @@ export function captureFrame(world, reuse = null) {
     markTrenchState(f, mesh);
     // the live plumes, where they are in the mantle (they never move)
     f.hotspots = (world.hotspots ?? []).filter(h => h.alive).map(h => ({ id: h.id, name: h.name, xyz: h.xyz.slice(), strength: h.strength, bornAt: h.bornAt }));
+    // the supercontinent cycle (step/supercontinent.js): where the mantle wells up and goes down, how gathered the land is
+    const cy = world.cycle;
+    f.cycle = cy ? { up: cy.up?.slice() ?? null, down: cy.down?.slice() ?? null, upHeat: cy.upHeat, gather: cy.gather, hold: cy.hold, holdKm: cy.holdKm, share: cy.share, landmasses: cy.landmasses, state: cy.state, since: cy.since,
+        phase: cy.phase, formedAt: cy.formedAt, periodMyr: cy.period, breakupAt: cy.breakupAt, gatherAt: cy.gatherAt } : null;
     f.plates = plates.map(p => {
         const centre = p.toWorld(p.capCenter[0], p.capCenter[1], p.capCenter[2], [0, 0, 0]);
         return {

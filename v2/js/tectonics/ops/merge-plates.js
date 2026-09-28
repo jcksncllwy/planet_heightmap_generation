@@ -180,6 +180,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     upper.refreshExtent(xyz);
     upper.name = world.nameByCratons(upper, `${upper.name}+${lower.name}`);
     upper.born = time;                    // a continent just assembled is NEW: its tenure (riftTenureMyr) starts again here,
+    upper.bornOfRift = false;
                                           // or it would come apart the moment it welded (developer)
     lower.alive = false;
     lower.crust = new CrustRaster(numCells);

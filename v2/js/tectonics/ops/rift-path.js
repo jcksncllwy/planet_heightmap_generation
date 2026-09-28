@@ -5,6 +5,26 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { tangentToward, normalize, cross, dot, cellDistanceKm } from '../../core/sphere-geom.js';
 import { sidesOf, exteriorSea } from './rift-partition.js';
+import { FastNoise } from '../../core/fast-noise.js';
+
+/**
+ * The grain of the crust a rift follows (developer: rifts "on way too straight lines … should curve a bit and be jagged";
+ * straight cuts left rectangular continents). A continent is not uniform: old fabric, fault zones and weak terranes
+ * make some ground cheaper to break than other ground (the Atlantic opened along the Appalachian–Caledonian grain, and its
+ * margins bend and step). Here a smooth field fixed in the plate's own frame — so a continent's pieces keep the grain it
+ * had, and later rifts on the same crust follow the same fabric — scales the cost of breaking each cell: a broad swing
+ * (riftCurveKm) that bends a rift, and a finer one (riftJagKm) that makes it jagged. × 1 ± the amplitudes.
+ */
+function grainOf(world) {
+    const { config } = world;
+    if (!(config.riftCurveAmp > 0 || config.riftJagAmp > 0)) return () => 1;
+    const noise = world.riftGrain ??= new FastNoise((world.seed ^ 0x6a41) >>> 0);
+    const f1 = PLANET_RADIUS_KM / config.riftCurveKm, f2 = PLANET_RADIUS_KM / config.riftJagKm, { xyz } = world.mesh;
+    return c => {
+        const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
+        return Math.max(0.2, 1 + config.riftCurveAmp * noise.noise3D(x * f1, y * f1, z * f1) + config.riftJagAmp * noise.noise3D(x * f2 + 31.7, y * f2 + 17.3, z * f2 + 5.1));
+    };
+}
 
 /**
  * Find a rift across `plate`'s landmass through raster cell `junction`.
@@ -18,7 +38,8 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
 
     // cheapest paths from the junction across the land: weak lines cost riftWeaknessCost, cratons cannot be entered at all
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
-    const { cost, from } = cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1));
+    const grain = grainOf(world);
+    const { cost, from } = cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * grain(c));
     // coastal land cells reached — on the OUTER coast (an inland sea is not a way out), with the direction they lie in
     const exterior = exteriorSea(mesh, crust);
     const fromCoast = coastDistance(mesh, crust, exterior);
@@ -77,7 +98,7 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     // The arms that FAIL are traced on a second, plain tree — one that gives old sutures no discount — so an
     // aulacogen strikes out across ordinary ground and leaves a NEW weak line behind it, instead of merely
     // re-tracing a line that was weak already (developer). Each one dies after riftFailedArmKm.
-    const plain = cheapestPaths(mesh, crust, junction, () => 1);
+    const plain = cheapestPaths(mesh, crust, junction, grain);
     const plainTrace = end => { const out = []; for (let c = end; c >= 0; c = plain.from[c]) out.push(c); return out.reverse(); };
     const failedArm = [], taken = [arm1, arm2];
     const plainCoast = coast.filter(e => plain.cost[e.c] < Infinity).sort((p, q) => plain.cost[p.c] - plain.cost[q.c]);

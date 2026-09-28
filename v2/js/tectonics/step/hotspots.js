@@ -116,7 +116,20 @@ function warmMantle(world, dt) {
     for (let w = 0; w < n; w++) mantleHeat[w] += isContinental(world, w) ? (1 - mantleHeat[w]) * warm : -mantleHeat[w] * cool;
 }
 
-function isContinental(world, w) {
+/**
+ * Phase 13: a plume head splits a continent the more readily the hotter the mantle under it (as tension rifts do,
+ * step/rifting.js) — relative to fully insulated mantle, where it splits one at plumeRiftChance. 1 with the mechanism off.
+ */
+function plumeHeatFactor(world, plate) {
+    const { config, owner, mantleHeat } = world;
+    if (!(config.riftHeatGain > 0)) return 1;
+    let s = 0, n = 0;
+    for (let w = 0; w < owner.length; w++) if (owner[w] === plate.id && isContinental(world, w)) { s += mantleHeat[w]; n++; }
+    const h = n ? s / n : 0;
+    return (config.riftHeatFloor + config.riftHeatGain * h ** config.riftHeatPower) / (config.riftHeatFloor + config.riftHeatGain);
+}
+
+export function isContinental(world, w) {
     const o = world.owner[w];
     if (o < 0) return false;
     const t = world.plates[o].crust.type[world.ownerCell[w]];
@@ -147,7 +160,7 @@ function birth(world, xyz, { head = true, rift = 'chance', riftPlate = -1, riftC
     if (rift !== false && plate && !plate.isBackground) {
         const target = riftPlate >= 0 ? plates[riftPlate] : plate;
         const bigEnough = target.stats.continentalCells * mesh.cellAreaKm2 >= config.riftMinContinentKm2;
-        if (rift === true || (bigEnough && rng() < config.plumeRiftChance)) world.pendingPlumeRifts.push({ plate: target.id, xyz: h.xyz, cell: riftCell, cause: { text: `the ${h.name} plume`, kind: 'plume', hotspot: h.id } });
+        if (rift === true || (bigEnough && rng() < config.plumeRiftChance * plumeHeatFactor(world, target))) world.pendingPlumeRifts.push({ plate: target.id, xyz: h.xyz, cell: riftCell, cause: { text: `the ${h.name} plume`, kind: 'plume', hotspot: h.id } });
     }
     return h;
 }

@@ -49,12 +49,13 @@ export const SNAPSHOT_MYR = 2;
  *          overlay: drawn on the map canvas over the painted layer (e.g. ridge directions)
  * @typedef {{color?: string, gradient?: boolean, label: string}} LegendItem
  * @typedef {{id: string, label: string, value: number|string, min?: number, max?: number, step?: number, unit?: string,
- *            options?: {value: string, label: string}[], keepView?: boolean}} Param     a slider, or a drop-down when `options` is given
- *          (changing a drop-down starts the scene over — camera and time — unless keepView)
+ *            options?: {value: string, label: string}[], keepView?: boolean, toEnd?: boolean}} Param     a slider, or a drop-down when
+ *          `options` is given (changing a drop-down starts the scene over — camera and time — unless keepView; toEnd: it keeps
+ *          the camera but shows the phase's initial time, e.g. a history's new end)
  * @typedef {{cards: {big: string, small: string}[], head: string[], rows: StatsRow[], hint: string}} Stats
  * @typedef {{name: string, cells: string[], note?: string, plateId?: number, color?: string}} StatsRow
- * @typedef {{xyz: number[], label: string, plateId?: number, kind?: 'label'}} Marker
- * @typedef {{name: string, color: string, points: [number, number][]}} Series
+ * @typedef {{xyz: number[], label: string, plateId?: number, color?: string, kind?: 'label'}} Marker
+ * @typedef {{name: string, color: string, points?: [number, number][], ticks?: number[]}} Series   a line, or ticks at the foot of the chart (event times)
  */
 
 const REQUIRED = { title: 'string', summary: 'string', checklist: 'object', checkCommand: 'string', maxTime: 'number', timeStep: 'number',
@@ -141,6 +142,8 @@ export const EVENT_STYLE = Object.freeze({
     [EventKind.PLUME_RISE]: { label: 'plume', color: '#ffd166' },
     [EventKind.PLUME_DEATH]: { label: 'plume dies', color: '#b09a60' },
     [EventKind.LIP]: { label: 'LIP', color: css(LIP_RGB) },
+    [EventKind.SUPERCONTINENT]: { label: 'supercontinent', color: '#e9c46a' },
+    [EventKind.DISPERSED]: { label: 'broken up', color: '#8ecae6' },
 });
 
 /**

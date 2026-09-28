@@ -42,7 +42,9 @@ section('the rift path');
         tortuosity = Math.max(tortuosity, rift.path.length * mesh.edgeKm / chord);
     }
     check('rifts never cut a craton', paths >= 6 && cratonCells === 0, `${paths} rifts found from random junctions, ${cratonCells} craton cells on them`);
-    check('rifts run along the old sutures', weakCells / cells > 0.5, `${(100 * weakCells / cells).toFixed(0)} % of rift cells lie on a suture`);
+    // (a preference, not a rule: over a long history about half of the rift length follows old weak lines — Phase 13, developer;
+    // since the crust's grain bends rifts — "way too straight … rectangle continents" — it competes with the sutures: ≥ 15 %)
+    check('rifts follow the old sutures a good part of the way', weakCells / cells >= 0.15, `${(100 * weakCells / cells).toFixed(0)} % of rift cells lie on a suture`);
     check('rifts zig-zag but do not meander', tortuosity <= world.config.riftTortuosityMax + 0.05, `longest path ÷ end-to-end distance: ${tortuosity.toFixed(2)} (cap ${world.config.riftTortuosityMax})`);
 }
 
@@ -101,10 +103,12 @@ section('the start world breaks up');
     // Land cannot subduct, so a collision that never welds is a piece ploughing on into another plate for
     // ever (developer: "pieces are colliding all the way through another plate when it should definitely be
     // merging"). Every pair held in contact welds — by shortening, by stalling, or simply by time.
-    const grinding = [...r.world.collisions.values()].filter(rec => !rec.sutured && rec.contactMyr > cfg.sutureContactMyr + 3 * cfg.maxStepMyr);
+    // (since Phase 11 a pair waits for the sea between it to close — or, ringing a big sea, stays apart — at most
+    // sutureLockMaxMyr; then it welds whatever is left)
+    const grinding = [...r.world.collisions.values()].filter(rec => !rec.sutured && rec.contactMyr > Math.max(cfg.sutureContactMyr, cfg.sutureLockMaxMyr) + 3 * cfg.maxStepMyr);
     check('no collision grinds on for ever: contact always ends in a weld', grinding.length === 0,
         grinding.length ? grinding.map(rec => `${r.world.plates[rec.lower].name} into ${r.world.plates[rec.upper].name}: ${rec.contactMyr.toFixed(0)} Myr in contact, ${rec.shorteningKm.toFixed(0)} km of shortening, front ${rec.frontKm.toFixed(0)} km`).join(' | `')
-            : `nothing in contact longer than ${cfg.sutureContactMyr} Myr is still unwelded`);
+            : `nothing in contact longer than ${cfg.sutureLockMaxMyr} Myr is still unwelded`);
     const plates = Math.max(...r.frames.map(f => continental(f).length));
     check('the plate count stays sane; no gaps; it runs fast', plates <= cfg.reserved.maxPlates && r.frames.every(f => frameTallies(f).gaps === 0) && r.steps < 600, `at most ${plates} continental plates at once; ${r.steps} steps`);
 }

@@ -210,13 +210,19 @@ function drawChart(series, now, maxTime, unit) {
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext('2d'), padL = 28, padB = 16, padT = 6;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const top = Math.max(5, ...series.flatMap(s => s.points.map(p => p[1]))) * 1.08;
+    const top = Math.max(5, ...series.flatMap(s => (s.points ?? []).map(p => p[1]))) * 1.08;
     const X = t => padL + (W - padL - 6) * t / maxTime, Y = v => H - padB - (H - padB - padT) * v / top;
     g.clearRect(0, 0, W, H);
     g.font = '11px system-ui, sans-serif'; g.fillStyle = '#8b93a7'; g.strokeStyle = '#232838'; g.lineWidth = 1;
-    for (let v = 0; v <= top; v += top > 12 ? 5 : 1) { g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(W - 6, Y(v)); g.stroke(); g.fillText(String(v), 6, Y(v) + 4); }
+    for (let v = 0; v <= top; v += top > 60 ? 20 : top > 12 ? 5 : 1) { g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(W - 6, Y(v)); g.stroke(); g.fillText(String(v), 6, Y(v) + 4); }
     g.fillText(`${maxTime} Myr`, W - 50, H - 3);
     for (const s of series) {
+        if (s.ticks) {                                   // events: a short tick at the foot of the chart at each one's time
+            g.strokeStyle = s.color; g.lineWidth = 2; g.beginPath();
+            for (const t of s.ticks) { g.moveTo(X(t), H - padB); g.lineTo(X(t), H - padB - 12); }
+            g.stroke();
+            continue;
+        }
         g.strokeStyle = s.color; g.lineWidth = 2; g.beginPath();
         s.points.forEach(([t, v], i) => (i ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v))));
         g.stroke();
@@ -300,18 +306,19 @@ $('params').addEventListener('change', e => {
     const def = state.phase.params.find(p => p.id === e.target.dataset.param); if (!def) return;
     state.params = { ...state.params, [def.id]: def.options ? e.target.value : Number(e.target.value) };
     syncUrl();
-    loadPhase(def.options && !def.keepView ? {} : { resetCamera: false, resetTime: false });      // a new scene starts over; a slider (or a keepView choice) keeps your place
+    // a new scene starts over; a slider (or a keepView choice) keeps your place — a toEnd choice (an ending) keeps the camera and shows the end
+    loadPhase(def.options && !def.keepView ? {} : { resetCamera: false, resetTime: !!def.toEnd });
 });
 ui.seed.addEventListener('change', () => { syncUrl(); loadPhase(); });
 
 // The URL carries the phase, the seed and every generator / scene setting, so a view can be shared or reloaded:
 //   ?phase=4&seed=12345&scene=india&mobility=3.5
-// Only numbers are taken from it — and a scene id, which must look like one; a phase ignores any key it does not declare.
+// Only numbers are taken from it — and a scene id or an ending, which must look like one; a phase ignores any key it does not declare.
 function paramsFromUrl() {
     const out = {};
     for (const [key, value] of url) {
         if (key === 'phase' || key === 'seed') continue;
-        if (key === 'scene') { if (/^[a-z0-9-]+$/.test(value)) out.scene = value; continue; }
+        if (key === 'scene' || key === 'ending') { if (/^[a-z0-9-]+$/.test(value)) out[key] = value; continue; }
         if (value !== '' && Number.isFinite(Number(value))) out[key] = Number(value);
     }
     return out;

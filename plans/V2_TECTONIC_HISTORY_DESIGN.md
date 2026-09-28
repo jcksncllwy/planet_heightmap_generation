@@ -846,6 +846,48 @@ they found was fixed, and each fix has a check that would catch its return.
   300 → 100 so a collided part keeps converging and the plate turns about the end of the seam instead of see-sawing about
   its middle. Lesson: look at a test scene in the lab before trusting a check that passes on numbers — the zipper's check
   passed with a 12° turn and a weld by the stall fallback. Left: India's foreland at the weaker lock (Phase 5a, 3 checks).
+- Phase 13, the supercontinent cycle (2026-09-27; built, awaiting the developer's test). Baseline: every seed broke up,
+  but nothing drew the pieces together (one seed of three reassembled, by chance) and rifts came at a steady 1–5 per
+  100 Myr. Built: (1) a continent's rift chance × (0.05 + 5·heat⁵) of the mantle heat under it, and a rift's pieces over
+  hot mantle may rift again after 5 Myr — breakup in a burst, quiet on cool mantle; (2) the mantle's flow, a basal drag
+  on continental crust in the torque balance (step/supercontinent.js): out from the upwelling under the last
+  supercontinent × the heat left there, and — once it has broken up, as that mantle cools — toward a downwelling set 90°
+  away (orthoversion); a new supercontinent moves both; (3) riftWeaknessCost 0.75 → 0.9 for about half the rift length on
+  old weak lines. Lessons: (a) pulling an assembled supercontinent toward the next gathering point slides it off its own
+  mantle, which then never heats — the inflow must wait for the breakup; (b) a supercontinent that is a pile of 3–4
+  unwelded plates cannot break up by rifting alone: each piece is boxed in by its neighbours and re-collides within
+  ~10 Myr — the radial outflow has to be strong enough (0.025, ~10–50 % of a continental plate's boundary forces) to
+  spread the pile; (c) landmass counting is fragile (two continents touching at a corner are one), so the cycle's states
+  must hold 30 Myr, and "broken up" must be a split, not full dispersal (a 61/39 split that gathered again to 100 % went
+  uncounted at a 50 % line); (d) the first rift of a new supercontinent is otherwise vetoed 60 Myr by the tenure every
+  rift piece gets — the hot-mantle tenure is for rift pieces only, a just-welded continent keeps its full tenure.
+  Choose your ending, built with it (developer: "go on and build out the 'choose your ending' version"): a history may
+  end as a supercontinent, one breaking up, or continents dispersed — run on until it is in that stage and cut there
+  (tectonics/ending.js, simulate's stopAt); nothing is steered, so the lab cuts an ending out of a longer run.
+  check-phase13: 11 of 14; short of the targets: the first reassembly of one seed (220 Myr of 300–700), the reassembled
+  supercontinent's thinness (0.41–0.47 of 0.5), untouched land at 600 Myr (25–31 % of 25 %). Found on the way: the cycle
+  read the heat at an upwelling before any supercontinent had set one — every scene not starting as one crashed.
+  Round 2 (developer's first look: the supercontinent "shouldnt happen until like 600 [Myr] in … its ok for us to put our
+  hand on the scale"; "only TECHNICHALLY supercontinents, with thin strips"; too much land above 400 m; far-ocean arcs
+  "huge"): the cycle is clocked (a period of 600–720 Myr per supercontinent: disperse, then gather), with the continents
+  kept apart while dispersing (a repulsion, rare foundering of the young oceans, and a clump over 45 % rifting readily),
+  a packing pull while gathering, landmasses counted with necks under 800 km apart, and the new one held together until
+  it first rifts; Andean and plateau belts narrower and erosion quicker (land below 400 m 18–26 % → 42–46 %); arcs capped
+  in width by their distance from continents, and open-ocean arcs submerged ridges in the terrain. Lessons: (a) forces
+  that only bias motion could not keep continents apart — collisions weld them and a welded clump feels no force
+  between its parts; the lever that worked was rifting the clump; (b) measure repulsion from a continent's edge, not its
+  centre — big continents' centres are 6000+ km apart while their coasts touch; (c) "a ton of the land above 400 m" was
+  mostly ACTIVE belts (30–44 % of the land), not slow erosion; (d) degenerate worlds exist: every plate welded into one
+  has no boundaries (no tension, no outside for a rift, its world ocean taken for a sealed sea) — each needed a guard.
+  Round 3 ("a bit too flat … like 40%"; "the overall landmass … decreasing over time"): erosion eased (130 / 100 Myr); the
+  continental crust budget balanced — accreted arcs mature into continent (step/arc-maturation.js), smaller arc pieces
+  dock, underthrustShare 0.8 → 0.25: 148 → 133–165 Mkm² over 1200 Myr (was 110–125), land above sea level flat (27.9 →
+  27.5 %). Lesson: the land loss was old (Phase 7c's budget, visible only over long histories) — the arcs that balance it
+  had simply never been allowed to become continent. Rifts ("way too straight … a bunch of rectangle continents") now
+  follow the crust's grain — a smooth cost field in each plate's frame, ±0.9 over ~1500 km and ±0.4 over ~350 km; at
+  ±0.5 the detours did not pay for their length and the cuts stayed straight. Plates ringing a big sea (Phase 11: kept
+  apart so it can close) weld round it after sutureLockMaxMyr — held apart for good, they ground on without end and left
+  seas inside supercontinents.
 - Lab speed (2026-09-26, during Phase 11; developer: at 2.5M, pressing Play in lab 8b "freezes up … my computer starts
   whirring aggressively"; "first without changing the output, and then … cut corners"). The freeze: the play clock ran
   on while a 2.5M frame took 2–5 s to build, so the frame asked for had always moved on and nothing was painted; and the

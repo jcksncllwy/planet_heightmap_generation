@@ -185,7 +185,9 @@ export function trackCollisions(world, dt) {
         if (wouldWeld && (due || rec.ringKm2 === undefined)) rec.ringKm2 = enclosedSeaBetweenKm2(world, U, L);
         if (due) rec.checkedAt = time;
         if (wouldWeld && rec.ringKm2 > config.ringSeaKm2 && !rec.ringLogged) { rec.ringLogged = true; world.log(EventKind.COLLISION, `${L.name} and ${U.name} stay apart: their land rings a ${(rec.ringKm2 / 1e6).toFixed(1)} Mkm² sea`, { upper: U.id, lower: L.id, ringKm2: rec.ringKm2 }); }
-        if (wouldWeld && (rec.ringKm2 <= config.ringSeaKm2 || stacked)) {
+        // (…but not for ever: locked together sutureLockMaxMyr, they weld round it — the sea is then sealed inside one plate,
+        // and closes from its shores, step/remnant-seas.js; held apart for good, the pair ground on as a collision without end)
+        if (wouldWeld && (rec.ringKm2 <= config.ringSeaKm2 || stacked || overdue)) {
             const result = mergePlates(world, U, L, cells, rec);
             rec.sutured = true;
             merged = true;
