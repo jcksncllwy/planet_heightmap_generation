@@ -128,6 +128,8 @@ node tuning/climate/coupled-check.mjs [--tune] [--quick]  # Phase 6: every stage
 node tuning/climate/profile-climate.mjs         # every stage call timed
 node tuning/climate/hash-climate.mjs            # fingerprint of every stage's output (exact speed-ups keep it)
 node tuning/climate/evolution-check.mjs         # Phase 7: the climate on Evolution worlds (V2 history → terrain, z north)
+node tuning/climate/diag-med.mjs                # Phase 8: inside the rain stage in the five Mediterranean-climate regions
+node tuning/climate/diag-belts.mjs              # the circulation's belts through the year vs the real subtropical highs
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
 node tuning/dev-server.mjs 8147                 # then open http://localhost:8147/v2/climate-lab.html
 ```

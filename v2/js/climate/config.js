@@ -31,7 +31,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the terrain cells below the grid still use the standard rate) …
     TEMP_ICE_LAPSE: 8.0,        // °C/km      … and the same for ground under snow most of the year: ice sheets reflect
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
-    TEMP_CLOUD_ALBEDO: 0.262,    // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_CLOUD_ALBEDO: 0.263,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
     TEMP_GRID_DEG: 3,           // °          grid the energy balance is solved on (its fields are smooth: 2° scored the
                                 //            same as 1°, and the whole climate at 3° the same as at 2° at half the cost —
                                 //            Phase 6; results are interpolated to 1°)
@@ -41,12 +41,13 @@ export const PARAMS_DEFAULTS = Object.freeze({
     // equally, none worse than with the literature values). Ferrel width, sea friction angle and Hadley scale ended
     // at or near the edge of their ranges — a hint of the simple structure's limits.
     CIRC_HADLEY_SCALE: 1.425,   // –          Hadley-cell width relative to Held & Hou's estimate
+    CIRC_HADLEY_SEASONAL: 0.625, // –          share of each month's own equator-to-pole contrast in the Hadley cells' width
     CIRC_FERREL_DEG: 35,        // °          from the subtropical high to the subpolar low (the Ferrel cell)
     CIRC_TROPICAL_HPA: 9.56,    // hPa        how much lower the tropical rain belt is than the subtropical highs
     CIRC_MIDLAT_HPA_PER_K: 0.49,// hPa/K      subtropical high to subpolar low, per degree of temperature drop between …
     CIRC_OPEN_SEA_BOOST: 0.69,  // –          … × (1 + this × the belt's sea share): open sea lets the westerlies run free
     CIRC_POLAR_HPA: 4.75,       // hPa        how much higher the polar high is than the subpolar low
-    CIRC_THERMAL_HPA_PER_K: 0.775,// hPa/K    thermal lows and highs: lower pressure per degree warmer than the latitude
+    CIRC_THERMAL_HPA_PER_K: 1.23, // hPa/K    thermal lows and highs: lower pressure per degree warmer than the latitude
     CIRC_ROSSBY_KM: 812,        // km         scale the pressure responds to heating on (the Rossby radius)
     CIRC_TURN_OCEAN_DEG: 10,    // °          surface wind turned toward low pressure by friction, over the sea …
     CIRC_TURN_LAND_DEG: 32.5,   // °          … and over land (rougher)
@@ -69,19 +70,19 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_EVAP_COEFF: 1.3e-3,    // –          bulk transfer coefficient for evaporation
     RAIN_SURFACE_RH: 0.8,       // –          relative humidity of the air just above the sea (sets evaporation)
     RAIN_VAPOUR_HEIGHT_KM: 2.5, // km         scale height of water vapour (saturated column = ρ·q_sat·H)
-    RAIN_TIMESCALE_H: 1.86,        // h          rain-out time of a saturated column …
+    RAIN_TIMESCALE_H: 1.86,     // h          rain-out time of a saturated column …
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
-    RAIN_EDDY_LENGTH_KM: 1100,   // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
-    RAIN_STORM_RH: 0.2,         // day        spread of the column's relative humidity by storms, per unit Eady growth rate
-    RAIN_WIND_ROT: 0.757,         // –          rotational wind carrying the column's water, as a share of the wind above the friction layer …
+    RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
+    RAIN_STORM_RH: 0.169,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
+    RAIN_WIND_ROT: 0.757,       // –          rotational wind carrying the column's water, as a share of the wind above the friction layer …
     RAIN_WIND_DIV_DRY: 0.3,     // –          … and the divergent (converging / spreading) part, as a share of the near-surface
     RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
     RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
     RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
-    RAIN_STABILITY: 0.03,      // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
+    RAIN_STABILITY: 0.03,       // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
     RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
-    RAIN_COLUMN_LOCAL: 0.414,     // –          share of the surface's departure from its latitude's temperature felt through the air column
+    RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
     RAIN_OROGRAPHIC: 0.3,       // –          share of the water lifted by winds blowing up rising ground that rains out
     RAIN_NEWTON: 30,            //            at most this many Newton steps per point in the year …
     RAIN_TOL: 2e-3,             //            … stopping when the column water changes less than this (relative)
@@ -115,6 +116,7 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
 
     CIRC_HADLEY_SCALE:  { value: 1.2, min: 0.9, max: 1.5, source: 'Held & Hou 1980 underestimates the observed Hadley edge by ~20 % (e.g. Frierson et al. 2007)' },
+    CIRC_HADLEY_SEASONAL: { value: 0.5, min: 0, max: 1, source: 'observed subtropical highs migrate ≈ 10° with the rain belt (NCEP); Held & Hou per month would cancel it; seasonal Hadley cells are not in equilibrium with each month (Lindzen & Hou 1988)' },
     CIRC_FERREL_DEG:    { value: 30, min: 20, max: 35, source: 'subtropical highs ≈ 30°, subpolar lows ≈ 60° (three-cell circulation)' },
     CIRC_TROPICAL_HPA:  { value: 9, min: 5, max: 14, source: 'zonal-mean sea-level pressure ≈ 1009 hPa in the rain belt vs ≈ 1018 in the subtropical highs' },
     CIRC_MIDLAT_HPA_PER_K: { value: 0.6, min: 0.3, max: 1.2, source: 'the midlatitude drop (≈ 10–30 hPa) grows with the ≈ 20–30 K contrast across the storm belt' },

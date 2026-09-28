@@ -4,6 +4,23 @@ For the developer, written on 2026-09-28 while you were at work. Each phase has 
 and its own panel section in the climate lab, so you can review them one at a time. The detailed engineering notes
 per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 
+## In short
+
+All eight phases are built and committed. The new climate is a chain of stages you can read and check one at a time:
+temperature, pressure and wind, ocean, rain, then Köppen.
+- **Earth, every stage new: Köppen matches Beck on 50.5 % of land vs V1's 38 %.** Every stage beats or ties V1 on its
+  own score.
+- **The same result at 160K, 640K and 2.5M terrain cells.** V1 drifts with resolution.
+- **Speed:** 0.8–1.0 s in Chrome on the desktop at any terrain size. V1 takes 0.51 s at 40K but 2.07 s at 160K and
+  10.9 s at 640K.
+- **It runs on real Evolution frames:** the lab builds an Evolution world and gives it a climate.
+- **Three things are not where you wanted them:**
+  1. **Mediterranean climates.** They exist at about the right total area but mostly in the wrong places (8 % found).
+  2. **Worlds come out too arid.** This shows most on Evolution worlds and the test planets.
+  3. **Speed at V1's 40K default.** The new climate is 1.6× slower there.
+
+  Each has a diagnosis and next steps below.
+
 ## How to review
 
 - **Code.** Everything is in the worktree `.claude/worktrees/climate-rebuild`, on branch `climate-rebuild`, with one
@@ -12,7 +29,7 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 - **The lab.** From the worktree, run `node tuning/dev-server.mjs 8147`, then open
   `http://localhost:8147/v2/climate-lab.html` (phone on the same Wi-Fi: `http://192.168.1.230:8147/v2/climate-lab.html`).
   - The panel has one section per phase, with its numbers.
-  - "New climate" runs the whole new climate on this device, on Earth or on one of three test planets.
+  - "New climate" runs the whole new climate on this device, on Earth, a test planet or an Evolution world.
   - Every field (Köppen, Temperature, Seasonal swing, Rain, Pressure & wind, Ocean) has an "Observed", a "V1" and a
     "New" source; use Side by side to compare.
 - **The checks.** One script per phase in `tuning/climate/`, listed in its README. They need the downloaded Earth data;
@@ -32,17 +49,33 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 | 5 | Rain (a column-water budget) | partly | Every stage new: Köppen 46 % vs V1's 38 %; rain patterns and continents beat V1; deserts beside monsoons too wet, rainforests too dry |
 | 6 | The coupled climate, tuned on Köppen; speed | mostly | **Köppen 49.5 % vs V1's 38 %**; no drift to 2.5M; 0.8 s in Chrome (V1: 0.5 s at 40K, 2.1 s at 160K) |
 | 7 | Evolution (engine level) | passed | The climate runs on real Evolution frames (z north, km): 0.6–0.75 s; the page wiring waits for the Evolution page |
-| 8 | Mediterranean climates | … | … |
+| 8 | Mediterranean climates | not met | Subtropical highs now migrate with the seasons; dry-winter climates appear (Cw 32 %, Dw 15 %); Köppen 50.5 %; Mediterranean area ≈ right but mostly misplaced (8 % recall) |
 
 ## Decisions waiting for you
 
-1. **Points in the year: 4 or 6.** This matters for rain. The default is 6, the only setting that passed the Phase 0
+1. **What next.** Three open weaknesses; which matters most to you?
+   - **Mediterranean placement.** It needs stronger winter westerlies at 30–45° in the circulation stage.
+   - **The arid bias.** It shows on invented worlds: moisture reaches continental interiors too weakly.
+   - **Speed at 40K.** Pass coarse fields between stages; compute the circulation only at the points in the year.
+2. **Two settings moved from their earlier tunes in the final Köppen tune:**
+   - the circulation's thermal lows and highs, 0.78 → 1.23 hPa/K;
+   - the Hadley cells' seasonal share, 0.63.
+
+   Both are within their literature ranges. What they bought and what they cost:
+   - Köppen 49.5 → 50.5 %;
+   - the dry-winter climates appear (Cw 19 → 32 %, Dw 0 → 15 %);
+   - Evolution worlds are less arid;
+   - but the circulation's own pressure error rose from 2.9 to 3.3 hPa (V1: 4.0), and a supercontinent's interior is no
+     longer drier than its coasts (a stronger summer monsoon reaches inland).
+
+   Keep, or hold the circulation at its Phase 3 tune?
+3. **Points in the year: 4 or 6.** This matters for rain. The default is 6, the only setting that passed the Phase 0
    gate.
-2. **Commit and merge.**
+4. **Commit and merge.**
    - **Commits:** the phases are committed on `climate-rebuild`; nothing is pushed.
-   - **Merging:** merge into `v2-tectonics` once your Evolution work is committed there. Phase 7's page wiring needs
-     that page in this branch.
-3. **The CLAUDE.md smoothing rule** (from the research). The new climate doesn't depend on it; fixing it for terrain
+   - **Merging:** merge into `v2-tectonics` once your Evolution work is committed there. Phase 7's page wiring (three
+     steps, in the plan) needs that page in this branch.
+5. **The CLAUDE.md smoothing rule** (from the research). The new climate doesn't depend on it; fixing it for terrain
    code is separate.
 
 ## The approach, in one paragraph
@@ -54,8 +87,9 @@ and a range (`v2/js/climate/config.js`). Earth is a check, not the target.
 - A setting may move from its literature value only if no region gets worse.
 - Three synthetic test planets must behave as physics expects.
 
-The stages are temperature → pressure and wind → ocean → rain → 12 months → Köppen. They run on a fixed 1–2° grid, so
-the result is the same at every terrain resolution.
+The stages are temperature ↔ pressure and wind ↔ ocean, then rain, then clouds back into the temperature, then 12
+months and Köppen. The grid-scale stages run on a fixed 3° grid and the finishing on 1°, so the result is the same at
+every terrain resolution.
 
 ---
 
@@ -305,4 +339,46 @@ minute the first time) → Köppen, Temperature, Rain … → New.
 
 ## Phase 8 — Mediterranean climates
 
-*(to come)*
+**What was wrong.**
+- Real Mediterranean coasts came out as steppe: winter rain was a half to a sixth of the real amount, and summers too
+  wet.
+- **The deeper cause:** the model's subtropical highs didn't move through the year. The northern one sat at 24–34°, out
+  of phase, where the real one moves from 28° in winter to 38° in late summer; that seasonal swing is what makes
+  Mediterranean summers dry and winters wet.
+
+**Built.**
+- **The Hadley cells' width now follows the year-round contrast between equator and pole** (Lindzen & Hou), so the highs
+  move with the seasons: 22–24° in winter and spring, 36–38° in late summer.
+- **The final tune now also rewards the rarer climates** (Mediterranean, dry-winter, monsoon) and holds the circulation's
+  own scores as guardrails. A first try without those guardrails bought Köppen by breaking the circulation; it was
+  discarded.
+- **Four other ideas were tried, measured and dropped:** frontal rain, storms breaking through stable air, drying under
+  high pressure, and regional storm tracks. None helped.
+
+**Numbers:**
+
+| | Before (Phase 6) | Now |
+|---|---|---|
+| Köppen, all land | 49.5 % | **50.5 %** |
+| Dry-winter temperate (Cw) found | 19 % | 32 % |
+| Dry-winter continental (Dw) found | 0 % | 15 % |
+| Tropical monsoon (Am) found | 21 % | 23 % |
+| Mediterranean (Cs) found | 7 % | 8 % |
+| Mediterranean area, new ÷ real | 0.67 | 0.79 |
+
+- **Cost:** the circulation's pressure error rose from 2.9 to 3.3 hPa (still better than V1's 4.0); every stage's gate
+  still passes.
+- **Evolution worlds** (A / B / C / D / E): 16 / 34 / 15 / 18 / 18 % at 600 Myr, 11 / 37 / 19 / 25 / 7 % for the supercontinent — less arid than
+  before.
+- **Tradeoff:** the supercontinent's stronger summer monsoon now reaches inland, so its interior is about as arid as
+  its coasts (41 vs 44 %) instead of drier. Its seasons are still much bigger (34 vs 20 °C). Keep this, or keep the
+  drier interior? (Decision 2.)
+
+**Gate: not met.**
+- Mediterranean climates now cover about the right area, but mostly in the wrong places. Winter rain on the 30–40° west
+  coasts is still about half of real, because the model's westerlies there are weak (Phase 3's known limit).
+- Next steps are in the plan's Phase 8 section: stronger winter westerlies at 30–45°, and less summer recycling.
+
+**Check in the lab.** New climate → Earth → Run → Köppen → New, side by side with the Beck map. Look at the
+Mediterranean, California, central Chile, SW Australia, the Cape; and at East Asia and Siberia for the new dry-winter
+climates. The Phase 6 table lists the regimes.

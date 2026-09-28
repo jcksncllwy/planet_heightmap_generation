@@ -61,12 +61,14 @@ export function derivedCirculation() {
         const sea = new Float64Array(G);
         for (let c = 0; c < G; c++) sea[c] = 1 - land[c];
 
-        for (let m = 0; m < 12; m++) {
+        // A month's zonal picture: the air's warmth on the grid (T), its zonal means — all cells, and weighted toward the
+        // sea (for the ITCZ) — the ITCZ, and each hemisphere's equator-to-pole contrast
+        const zAt = (lat) => { const y = Math.max(0, Math.min(h - 1, (90 - lat) / g.step - 0.5)); const j0 = Math.floor(y), f = y - j0; return Tz[j0] * (1 - f) + Tz[Math.min(h - 1, j0 + 1)] * f; };
+        const polar = (sgn) => { let s = 0, n = 0; for (let lat = 60; lat <= 80; lat += 2) { s += zAt(sgn * lat); n++; } return s / n; };
+        const zonalMonth = (m) => {
             const src = temperature.monthly.subarray(m * core.size, (m + 1) * core.size);
             for (let c = 0; c < core.size; c++) Tfree[c] = src[c] + freeLapse * href[c];
             T.set(coarsen(core, g, ratio, Tfree));
-
-            // ── Zonal means: all cells, and weighted toward the sea (for the ITCZ) ──
             let gSum = 0, gW = 0;
             for (let j = 0; j < h; j++) {
                 let s = 0, ss = 0, ws = 0;
@@ -74,7 +76,6 @@ export function derivedCirculation() {
                 Tz[j] = s / w; Tzs[j] = ss / ws;
                 gSum += Tz[j] * cosLat[j]; gW += cosLat[j];
             }
-            const Tglobal = gSum / gW;
             // ITCZ: warmest latitude of the sea's zonal mean, smoothed over ~5°
             const sm = smoothProfile(g, Tzs, 5);
             let jBest = -1;
@@ -84,16 +85,26 @@ export function derivedCirculation() {
                 const a = sm[jBest - 1], b = sm[jBest], c = sm[jBest + 1], den = a - 2 * b + c;
                 if (den < 0) itcz = g.lat[jBest] - g.step * 0.5 * (a - c) / den;
             }
+            const Titcz = zAt(itcz);
+            return { Tglobal: gSum / gW, itcz, dN: Titcz - polar(1), dS: Titcz - polar(-1) };
+        };
+        // The Hadley cells' width follows the planet's year-round equator-to-pole contrast more than each month's (Lindzen
+        // & Hou 1988: the seasonal cells are not in balance with each month's heating), so the subtropical highs move with
+        // the rain belt — poleward in summer, over the west coasts at 30–40°, equatorward in winter, letting the storms
+        // in (Mediterranean climates). CIRC_HADLEY_SEASONAL: the share of each month's own contrast.
+        let dNyear = 0, dSyear = 0;
+        if (P.CIRC_HADLEY_SEASONAL < 1) for (let m = 0; m < 12; m++) { const z = zonalMonth(m); dNyear += z.dN / 12; dSyear += z.dS / 12; }
+        const sea1 = P.CIRC_HADLEY_SEASONAL, year1 = 1 - sea1;
+
+        for (let m = 0; m < 12; m++) {
+            const { Tglobal, itcz, dN, dS } = zonalMonth(m);
             // Hadley-cell half-widths (Held & Hou) from each hemisphere's equator-to-pole contrast
-            const zAt = (lat) => { const y = Math.max(0, Math.min(h - 1, (90 - lat) / g.step - 0.5)); const j0 = Math.floor(y), f = y - j0; return Tz[j0] * (1 - f) + Tz[Math.min(h - 1, j0 + 1)] * f; };
-            const polar = (sgn) => { let s = 0, n = 0; for (let lat = 60; lat <= 80; lat += 2) { s += zAt(sgn * lat); n++; } return s / n; };
             const Tref = Tglobal + 273.15;
             const hadley = (dT) => {
                 const delta = Math.max(0.02, dT / Tref);
                 return P.CIRC_HADLEY_SCALE * Math.sqrt(5 / 3 * G_ACC * TROPOPAUSE_M * delta / (OMEGA_ROT * OMEGA_ROT * R_PLANET * R_PLANET)) / DEG;
             };
-            const Titcz = zAt(itcz);
-            const hwN = hadley(Titcz - polar(1)), hwS = hadley(Titcz - polar(-1));
+            const hwN = hadley(sea1 * dN + year1 * dNyear), hwS = hadley(sea1 * dS + year1 * dSyear);
             const hiN = Math.min(itcz + hwN, 60), hiS = Math.max(itcz - hwS, -60);
             const loN = Math.min(hiN + P.CIRC_FERREL_DEG, 82), loS = Math.max(hiS - P.CIRC_FERREL_DEG, -82);
             // pressure drops: tropical (ITCZ to the highs); midlatitude — ∝ the temperature contrast across the storm

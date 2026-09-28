@@ -8,9 +8,12 @@
  *   node tuning/climate/coupled-check.mjs --quick      Earth at 160K only (no drift, no test planets)
  *   node tuning/climate/coupled-check.mjs --set KEY=value,…
  *
- * Köppen is scored per terrain cell against Beck's 0.1° map, per continent (each weighted equally). Guardrails, on
- * the 1° grid: land temperature per continent (Beck), rain per continent (Beck) and ocean basin (GPCP), sea
- * temperature (OISST). Earth is a check, not the target: the tune may move a setting only within its literature range.
+ * Köppen is scored per terrain cell against Beck's 0.1° map, per continent (each weighted equally); the tune also
+ * counts the recall of the rarer regimes (Cs, Cw, Am, Dw; REGIME_WEIGHT). Guardrails, on the 1° grid: land temperature
+ * per continent (Beck), rain per continent (Beck) and ocean basin (GPCP), sea temperature (OISST), and the
+ * circulation's pressure pattern and wind direction (NCEP). Earth is a check, not the target: the tune may move a
+ * setting only within its literature range. Also printed: the costliest confusions, and the Mediterranean-climate
+ * regions (what real Cs becomes, rain by season).
  */
 
 import fs from 'node:fs';
@@ -104,22 +107,50 @@ function evaluate(E = E160, opts = {}) {
         rainLand: Object.fromEntries(TUNED_CONTINENTS.map(k => [k, logErr(P, obs.precip, landMask[k])])),
         rainSea: Object.fromEntries(TUNED_BASINS.map(k => [k, logErr(P, obs.precipAll, seaMask[k])])),
         sst: rmse(T.monthlySL, obs.sst, sstMask),
+        ...circulationScore(res.stages.circulation),
     };
     return { res, ms, exact: cmp.exact, major: cmp.major, macroF1: cmp.macroF1, perCont, meanCont: mean(perCont), regimes, guard, cmp };
 }
-const guardSummary = (g) => ({ temperature: mean(g.temperature), rain: (mean(g.rainLand) + mean(g.rainSea)) / 2, sst: g.sst });
+const guardSummary = (g) => ({ temperature: mean(g.temperature), rain: (mean(g.rainLand) + mean(g.rainSea)) / 2, sst: g.sst, pressure: g.pressure, wind45: g.wind45 });
+
+/** The circulation against NCEP: sea-level pressure departures from each latitude's mean over low ground (hPa), and the
+ *  share of the wind (speed-weighted) blowing within 45° of the real direction. */
+const lowland = new Uint8Array(G);
+for (let c = 0; c < G; c++) lowland[c] = surface.meanKm[c] < 1 && Math.abs(cellLat(c)) < 80 ? 1 : 0;
+function circulationScore(C) {
+    let pe = 0, pw = 0, c45 = 0, cw = 0;
+    for (let m = 0; m < 12; m++) {
+        for (let j = 0; j < grid.h; j++) {
+            let a = 0, b = 0, n = 0;
+            for (let i = 0; i < grid.w; i++) { const c = j * grid.w + i; if (lowland[c]) { a += C.slp[m * G + c]; b += obs.slp[m * G + c]; n++; } }
+            if (!n) continue;
+            a /= n; b /= n;
+            for (let i = 0; i < grid.w; i++) {
+                const c = j * grid.w + i, k = m * G + c;
+                if (lowland[c]) { const d = (C.slp[k] - a) - (obs.slp[k] - b); pe += W[c] * d * d; pw += W[c]; }
+                const uo = obs.u10[k], vo = obs.v10[k], so = Math.hypot(uo, vo), sm = Math.hypot(C.u[k], C.v[k]);
+                if (so > 0.5 && sm > 1e-6) { const cos = (C.u[k] * uo + C.v[k] * vo) / (so * sm); cw += W[c] * so; if (cos > Math.SQRT1_2) c45 += W[c] * so; }
+            }
+        }
+    }
+    return { pressure: Math.sqrt(pe / pw), wind45: c45 / cw };
+}
 
 // ── The final Köppen-level tune: a few coupling knobs, within their literature ranges ──
 const TUNED = (process.env.TUNE_KEYS ?? 'RAIN_COLUMN_LOCAL,RAIN_STABILITY,RAIN_STORM_RH,RAIN_WIND_DIV_MOIST,RAIN_SOIL_MM,TEMP_INVERSION_C').split(',');
-const PRIOR_WEIGHT = 0.02, WORSEN = 0.02, GUARD = { temperature: 0.15, rain: 0.04, sst: 0.15 };
+const REGIME_WEIGHT = +(process.env.REGIME_WEIGHT ?? 0.25);
+const PRIOR_WEIGHT = 0.02, WORSEN = 0.02, GUARD = { temperature: 0.15, rain: 0.04, sst: 0.15, pressure: 0.3, wind45: 0.02 };
 let tuneLog = null;
 if (TUNE) {
     let best = { ...PARAMS_DEFAULTS, ...OVERRIDES };
     const prior = (p) => { let s = 0; for (const k of TUNED) { const pr = PARAM_PRIORS[k]; if (pr) s += ((p[k] - pr.value) / (pr.max - pr.min)) ** 2; } return PRIOR_WEIGHT * s; };
-    const ev = (p) => { setParams(p); const e = evaluate(); return { e, total: -e.meanCont - 0.5 * e.exact + prior(p) }; };
+    // the rarer regimes count too (Cs, Cw, Am, Dw — as V1's tuner counted macro-F1): big classes must not drown them
+    const regimeMean = (e) => ['Cs (Mediterranean)', 'Cw (dry-winter temperate)', 'Am (tropical monsoon)', 'Dw (dry-winter continental)'].reduce((s, k) => s + (e.regimes[k].recall || 0), 0) / 4;
+    const ev = (p) => { setParams(p); const e = evaluate(); return { e, total: -e.meanCont - 0.5 * e.exact - REGIME_WEIGHT * regimeMean(e) + prior(p) }; };
     let bestE = ev(best);
     const start = { ...bestE.e.perCont }, g0 = guardSummary(bestE.e.guard);
-    const okGuard = (e) => { const g = guardSummary(e.guard); return g.temperature <= g0.temperature + GUARD.temperature && g.rain <= g0.rain + GUARD.rain && g.sst <= g0.sst + GUARD.sst; };
+    const okGuard = (e) => { const g = guardSummary(e.guard); return g.temperature <= g0.temperature + GUARD.temperature && g.rain <= g0.rain + GUARD.rain && g.sst <= g0.sst + GUARD.sst
+        && g.pressure <= g0.pressure + GUARD.pressure && g.wind45 >= g0.wind45 - GUARD.wind45; };
     console.log(`Köppen-level tune of ${TUNED.join(', ')} (continents equal; none > ${100 * WORSEN} pts worse; stage guardrails).`);
     console.log(`  start: Köppen ${pc(bestE.e.exact)}, continents ${pc(bestE.e.meanCont)}`);
     let step = 0.25;
@@ -152,7 +183,7 @@ console.log(`\nCoupled climate on Earth, 160K (${main.res.timing.map(t => `${t.s
 console.log(`  Köppen vs Beck: ${pc(main.exact)} of land (major group ${pc(main.major)}; continents equal ${pc(main.meanCont)}) — without clouds from the rain ${pc(noClouds.exact)} (${pc(noClouds.meanCont)}); V1 38 %`);
 console.log('  per continent: ' + TUNED_CONTINENTS.map(k => `${k} ${pc(main.perCont[k])}`).join(', '));
 console.log('  regimes (recall, area new ÷ real): ' + Object.entries(main.regimes).map(([k, r]) => `${k.split(' ')[0]} ${pc(r.recall)} ×${f2(r.areaRatio)}`).join(', '));
-console.log(`  guardrails: land temperature ${f2(g.temperature)} °C (${f2(gn.temperature)} without clouds), rain ${f2(g.rain)} (${f2(gn.rain)}), sea temperature ${f2(g.sst)} °C (${f2(gn.sst)})`);
+console.log(`  guardrails: land temperature ${f2(g.temperature)} °C (${f2(gn.temperature)} without clouds), rain ${f2(g.rain)} (${f2(gn.rain)}), sea temperature ${f2(g.sst)} °C (${f2(gn.sst)}), pressure ${f2(g.pressure)} hPa, wind within 45° ${pc(g.wind45)}`);
 const big = Object.entries(main.cmp.perClass).filter(([, p]) => p.truthArea > 0.02).sort((a, b) => b[1].truthArea - a[1].truthArea);
 console.log('  largest classes (real share → new share, recall): ' + big.map(([k, p]) => `${k} ${(100 * p.truthArea).toFixed(0)}→${(100 * p.simArea).toFixed(0)} % (${(100 * p.recall).toFixed(0)})`).join(', '));
 {
@@ -166,6 +197,17 @@ console.log('  largest classes (real share → new share, recall): ' + big.map((
     }
     let land = 0; for (let r = 0; r < E160.n; r++) if (E160.truth[r]) land++;
     console.log('  costliest confusions (% of land): ' + [...conf].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([k, v]) => `${k} ${(100 * v / land).toFixed(1)}`).join(' · '));
+    // Mediterranean climates: what real Cs becomes, and rain by season in the five Cs regions
+    const csTo = new Map(); let csN = 0;
+    for (let r = 0; r < E160.n; r++) { const t = E160.truth[r]; if (!t || KOPPEN_CLASSES[t].code.slice(0, 2) !== 'Cs') continue; csN++; const s = koppen[r] ? KOPPEN_CLASSES[koppen[r]].code : 'sea'; csTo.set(s, (csTo.get(s) ?? 0) + 1); }
+    console.log('  real Cs becomes: ' + [...csTo].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${(100 * v / csN).toFixed(0)} %`).join(', '));
+    const P = main.res.months.P;
+    const cbox = (la0, la1, lo0, lo1, months, f) => { let s = 0, n = 0; for (const m of months) for (let j = 0; j < grid.h; j++) { const la = grid.lat[j]; if (la < la0 || la > la1) continue; for (let i = 0; i < grid.w; i++) { const lo = grid.lon[i]; if (lo < lo0 || lo > lo1) continue; const c = j * grid.w + i; if (!obsLand[c]) continue; const v = f[m * G + c]; if (v === v) { s += v; n++; } } } return n ? s / n : NaN; };
+    const SUMMER_N = [5, 6, 7], WINTER_N = [11, 0, 1];
+    for (const [name, b, south] of [['Mediterranean', [35, 42, -8, 30]], ['California', [33, 40, -123, -117]], ['central Chile', [-38, -31, -73, -70], 1], ['SW Australia', [-35, -30, 114, 120], 1], ['Cape', [-35, -32, 17, 21], 1]]) {
+        const su = south ? WINTER_N : SUMMER_N, wi = south ? SUMMER_N : WINTER_N;
+        console.log(`    ${name.padEnd(14)} rain summer ${f1(cbox(...b, su, P))} (real ${f1(cbox(...b, su, obs.precip))}) · winter ${f1(cbox(...b, wi, P))} (real ${f1(cbox(...b, wi, obs.precip))}) mm/month`);
+    }
 }
 
 let drift = null, planets = {};

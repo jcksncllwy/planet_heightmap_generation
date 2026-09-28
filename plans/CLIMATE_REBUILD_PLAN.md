@@ -700,3 +700,78 @@ tutorial and SEO all wait until the page is committed and merged into this branc
 
 **Known.** Evolution's subtropics are very arid (87–91 % of land at 15–35°; Earth ≈ 60 %). This is the same dryness as
 the test planets: weak model westerlies and interiors starved of moisture.
+
+
+## Phase 8 — Mediterranean climates, built 2026-09-28
+
+**Where they failed (`tuning/climate/diag-med.mjs`).** Real Mediterranean land mostly came out as steppe or desert.
+- **Winter rain was a half to a sixth of the real amount**: Mediterranean 38 vs 76, SW Australia 34 vs 79, the Cape 30
+  vs 56, central Chile 22 vs 141 mm/month.
+- **Summer rain was too high**: California 35 vs 6 mm/month.
+- **Why the circulation mattered (`diag-belts.mjs`).** The model's subtropical highs barely moved through the year, and
+  out of phase: the northern one sat at 24° in spring and 34° in November, while the real one moves from 27.5° in
+  January to 37.5° in August. Held & Hou applied to each month widens the winter Hadley cell and narrows the summer one,
+  which cancels the rain belt's migration.
+
+**What was built.**
+- **The Hadley cells' width follows the year-round equator-to-pole contrast** as well as each month's
+  (`CIRC_HADLEY_SEASONAL`, the share of each month's own contrast). The seasonal cells are not in balance with each
+  month's heating (Lindzen & Hou 1988), so the highs now move with the rain belt: the northern one from 22–24° in
+  winter and spring to 36–38° in late summer.
+  - The literature prior is 0.5; the tune chose 0.63.
+  - It's in the circulation, as the plan asked first. It changes nothing where the setting is 1: the hash is
+    bit-identical.
+- **A regime-aware final tune.**
+  - The Köppen-level tune now also counts the recall of the rarer regimes (Cs, Cw, Am, Dw), as V1's tuner counted
+    macro-F1, so the big classes cannot drown them.
+  - The circulation's own scores (pressure pattern, wind direction) became guardrails beside temperature, rain and
+    sea temperature. A first tune without them pushed the thermal term to the top of its range and let the pressure
+    error grow from 2.9 to 3.9 hPa, buying Köppen by breaking a stage. That run was discarded.
+  - Tuned: Hadley seasonal share 0.63, thermal lows and highs 1.23 hPa/K (Phase 3: 0.78), storm spread 0.17, cloud
+    albedo 0.26. All are within their literature ranges.
+- **Tried and dropped** (each measured with `coupled-check.mjs`, none kept):
+  - frontal rain, a term raining out a share of the column per storm growth: Köppen −2 points; winter rain no better;
+  - storms escaping the low-level stability: −1.9 points;
+  - rain damped under above-average pressure: no change, because over land in summer the pressure is a heat low;
+  - storm strength from the local rather than the zonal-mean temperature gradient: no change.
+
+**Numbers (Earth, every stage new, 160K).**
+
+| Regime (recall; area new ÷ real) | Phase 6 | Phase 8 |
+|---|---|---|
+| Cs Mediterranean | 6.6 %; ×0.67 | 8.4 %; ×0.79 |
+| Cw dry-winter temperate | 19.4 %; ×0.63 | 31.9 %; ×0.93 |
+| Am tropical monsoon | 20.8 %; ×0.93 | 22.6 %; ×0.96 |
+| Dw dry-winter continental | 0 %; ×0.10 | 14.7 %; ×0.56 |
+| Ds dry-summer continental | 0.6 %; ×0.07 | 2.3 %; ×0.22 |
+| **Köppen, all land** | 49.5 % | **50.5 %** (continents equal 49.9 %) |
+
+- Guardrails:
+  - land temperature 3.85 °C;
+  - rain 0.72;
+  - sea temperature 2.82 °C;
+  - pressure 3.14 hPa (closed loop; was 2.90);
+  - wind within 45° 77 %.
+- Circulation, open loop: pressure error 3.3 hPa (Phase 3: 2.9; V1: 4.0), wind within 45° 71 % (72 %); its gate still
+  passes.
+- No drift at 640K and 2.5M (class shares within 0.6 %).
+- Mediterranean summers: the Mediterranean 26 vs 20 mm/month (right), California 25 vs 6 (still too wet).
+- **Evolution worlds at the final settings** (A / B / C / D / E):
+  - 600 Myr: 16 / 34 / 15 / 18 / 18 %, subtropics 86 % arid; all checks pass.
+  - Supercontinent: 11 / 37 / 19 / 25 / 7 %, less arid than with Phase 6's settings (B 42 → 37 %).
+- **Tradeoff:** with stronger thermal lows the supercontinent's summer monsoon reaches further inland. Its interior is
+  now about as arid as its coasts (41 vs 44 %) rather than drier; its seasons are still far bigger (34 vs 20 °C). The
+  "interior drier than the coasts" check fails. Paleoclimate runs of Pangaea show both a megamonsoon and an arid
+  interior, so this is a judgement call for the developer.
+
+**Gate: not met.**
+- **Mediterranean climates now exist at nearly the right total area (×0.79), but mostly in the wrong places.** Only 8 %
+  of real Cs land is classed Cs; much of the rest is steppe.
+- **Winter rain on the 30–40° west coasts is still half of real** (central Chile a sixth). Their winter moisture
+  arrives on westerlies that the derived circulation keeps weak there. This is Phase 3's known limit: highs and lows at
+  about half strength, weak Southern Hemisphere westerlies.
+
+**Next steps if Mediterranean climates stay a priority.**
+1. Stronger winter westerlies at 30–45° in the circulation stage: the midlatitude pressure drop and where it sits
+   relative to the highs.
+2. Less summer recycling over dry-summer land (the soil bucket feeds June evaporation too generously).
