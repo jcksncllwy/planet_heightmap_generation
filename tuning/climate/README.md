@@ -122,6 +122,11 @@ node tuning/climate/rain-check.mjs [--tune] [--quick]  # Phase 5: rain per conti
                                                 #   real and with derived winds; vs V1; named features; truth swap;
                                                 #   every stage new; test planets (--quick: open loop only)
 node tuning/climate/diag-rain.mjs [--derived]   # where the rain is wrong: zonal means, named boxes, wet-season map
+node tuning/climate/coupled-check.mjs [--tune] [--quick]  # Phase 6: every stage new — Köppen per continent with each
+                                                #   stage's score as a guardrail; drift at 640K/2.5M; test planets;
+                                                #   --tune: the final Köppen-level tune (TUNE_KEYS=… to choose)
+node tuning/climate/profile-climate.mjs         # every stage call timed
+node tuning/climate/hash-climate.mjs            # fingerprint of every stage's output (exact speed-ups keep it)
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
 node tuning/dev-server.mjs 8147                 # then open http://localhost:8147/v2/climate-lab.html
 ```
@@ -146,7 +151,8 @@ expects on synthetic test planets (`v2/js/climate/test-planets.js`).
 
 Files: `fetch-references.mjs`, `regrid-references.mjs`, `inspect-references.mjs` (list variables),
 `season-test.mjs`, `stage-audit.mjs`, `hash-earth.mjs`, `skeleton-check.mjs`, `temperature-check.mjs`,
-`diag-temperature.mjs`, `test-solver.mjs`, `circulation-check.mjs`, `ocean-check.mjs`, `rain-check.mjs`, `diag-rain.mjs`; `lib/continents.mjs` (continent-aware scoring),
+`diag-temperature.mjs`, `test-solver.mjs`, `circulation-check.mjs`, `ocean-check.mjs`, `rain-check.mjs`, `diag-rain.mjs`, `diag-planet-rain.mjs`, `coupled-check.mjs`,
+`profile-climate.mjs`, `hash-climate.mjs`; `lib/continents.mjs` (continent-aware scoring),
 `lib/regions.mjs` (continents + ocean basins), `lib/nc-read.mjs` (netCDF reader), `lib/unzip.mjs`
 (dependency-free zip entry extraction), `lib/ref.mjs` (reference loader), `lib/compare.mjs` (area-weighted class
 comparison), `lib/earth-mesh.mjs` (the Earth mesh, environment-free — shared by `earth-context.mjs` and the browser

@@ -28,6 +28,7 @@ const R_PLANET = 6.371e6;
 const NT = 12;                              // samples per year for what is evaluated in time (≥ 5 for 2 harmonics)
 const OUTER = 4;                            // outer iterations (snow / ice, seasonal winds)
 const OUTER_WARM = 2;                       // … when starting from a previous run (temperature ↔ winds rounds)
+const CLOUD_RAIN_MM = 100;                  // mm/month of rain at which land is ~63 % cloud-covered
 const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean sunlight: below it, inversions form
 
 /**
@@ -36,9 +37,11 @@ const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean 
  * (12 × G, sea level), iceFrac (G, share of the year a cell is snow- or ice-covered), state, timing }.
  * init: a previous run's `state` (same settings) to start from — used when temperature and winds are iterated
  * together; it then needs fewer outer iterations. qflux: the ocean's heating of the sea surface (W/m², core grid).
+ * rain: monthly rain (12 × G, mm/month, core grid) from the rain stage, or null — then clouds shade rainy land and
+ * leave dry land in full sun.
  */
 export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
-    return (ctx, winds, init = null, qflux = null) => {
+    return (ctx, winds, init = null, qflux = null, rain = null) => {
         const t0 = performance.now();
         const P = { ...PARAMS };
         const core = ctx.grid;
@@ -63,6 +66,30 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             for (let c = 0; c < G; c++) {
                 uT[k * G + c] = (1 - f) * uM[a * G + c] + f * uM[b * G + c] - uBar[c];
                 vT[k * G + c] = (1 - f) * vM[a * G + c] + f * vM[b * G + c] - vBar[c];
+            }
+        }
+
+        // Clouds over land (with the rain stage's rain): cloudiness 1 − e^{−P/P₀} makes rainy land brighter and dry land
+        // darker than the land's average — the average stays in the base albedo — so deserts get the full summer sun
+        // and monsoon, rainforest and boreal summers are shaded. Per sample time, relative to the land's mean.
+        let cloudT = null;
+        if (rain && P.TEMP_CLOUD_ALBEDO > 0) {
+            cloudT = new Float64Array(NT * G);
+            const Pm = new Float64Array(12 * G);
+            for (let m = 0; m < 12; m++) Pm.set(coarsen(core, g, ratio, rain.subarray(m * core.size, (m + 1) * core.size)), m * G);
+            for (let k = 0; k < NT; k++) {
+                const pos = 12 * k / NT - 0.5, m0 = Math.floor(pos), f = pos - m0, a = ((m0 % 12) + 12) % 12, b = (a + 1) % 12;
+                let sum = 0, wsum = 0;
+                for (let j = 0; j < h; j++) {
+                    const cw = Math.cos(g.lat[j] * Math.PI / 180);
+                    for (let i = 0; i < w; i++) {
+                        const c = j * w + i, p = (1 - f) * Pm[a * G + c] + f * Pm[b * G + c];
+                        const cf = 1 - Math.exp(-Math.max(0, p) / CLOUD_RAIN_MM);
+                        cloudT[k * G + c] = cf; sum += cf * landFrac[c] * cw; wsum += landFrac[c] * cw;
+                    }
+                }
+                const meanCf = wsum > 0 ? sum / wsum : 0;
+                for (let c = 0; c < G; c++) cloudT[k * G + c] = P.TEMP_CLOUD_ALBEDO * (cloudT[k * G + c] - meanCf);
             }
         }
 
@@ -125,7 +152,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                         // snow on land: patchy seasonal snow reflects little; snow that survives the summer — an ice
                         // sheet — like sea ice
                         const albSnow = P.TEMP_ALBEDO_SNOW + (P.TEMP_ALBEDO_ICE - P.TEMP_ALBEDO_SNOW) * perennial[c];
-                        const alb = ab + f * sL * (albSnow - ab) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - ab);
+                        let alb = ab + f * sL * (albSnow - ab) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - ab);
+                        if (cloudT) alb += f * (1 - sL) * cloudT[k * G + c];          // clouds over snow-free land
                         snowYear[c] += sL / NT;
                         let gF = q * (1 - alb);
                         if (winds && gamma) {                   // the seasonal part of the winds' heat carrying

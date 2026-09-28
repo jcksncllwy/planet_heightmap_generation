@@ -8,11 +8,12 @@
 // for each cell's own height (lapse rate), and classifying Köppen per cell (koppen.js) — so the result does not
 // depend on the terrain resolution.
 //
-// The fields at the K points come from `options.stages` — { winds, temperature, circulation, rain }, each a function
-// of the context and the stages before it (temperature.js is the energy-balance stage, circulation.js derives
-// pressure and winds from it; inputs.js has observations and placeholders for stages not built yet) — or from a
-// single `options.anchorSource` (the Phase 1 oracle run: observedAnchors() below feeds real data, measuring the best
-// the rest of the pipeline can do).
+// The fields at the K points come from `options.stages` — { winds, temperature, circulation, ocean, rain }, each a
+// function of the context and the stages before it (temperature.js: the energy balance; circulation.js: pressure and
+// winds from it; ocean.js: currents and their heat; rain.js: the column-water budget; inputs.js: observations, to
+// judge one stage at a time) — or from a single `options.anchorSource` (the Phase 1 oracle run: observedAnchors()
+// below feeds real data, measuring the best the rest of the pipeline can do). The coupled order: temperature ↔ winds
+// ↔ ocean for a couple of rounds, then rain, then the temperature once more with the clouds the rain brings.
 
 import { LatLonGrid } from './grid.js';
 import { interpolationMatrix, PRECIP_TRANSFORMS } from './seasons.js';
@@ -28,7 +29,9 @@ export const CORE_DEFAULTS = Object.freeze({
     tempOffsetC: 0,
     precipScale: 1,
     couplings: 2,               // rounds of temperature ↔ winds when the winds are derived …
-    couplingsWithOcean: 3,      // … and with the ocean too (its heat needs one more round to reach the temperature)
+    couplingsWithOcean: 2,      // … and with the ocean too (a third round changed nothing once clouds came in, Phase 6)
+    cloudsFromRain: true,       // then rain → clouds → temperature once more …
+    rainAfterClouds: false,     // … and the rain again from that temperature (no better, Phase 6)
 });
 
 /**
@@ -85,8 +88,15 @@ export function computeClimate(input, options = {}) {
             temperature = o.stages.temperature(sctx, winds);
             lap('temperature');
         }
-        const rain = o.stages.rain(sctx, winds, temperature);
+        let rain = o.stages.rain(sctx, winds, temperature);
         lap('rain');
+        if (o.cloudsFromRain && o.stages.circulation) {
+            // clouds from the rain shade rainy land (the temperature stage reads monthly rain); the rain then follows
+            // the new temperature from where it was
+            temperature = o.stages.temperature(sctx, winds, temperature.state, ocean?.qflux ?? null, monthsFromAnchors(rain.P, grid.size, K, o.anchorPhase, o.precipTransform));
+            lap('temperature with clouds');
+            if (o.rainAfterClouds) { rain = o.stages.rain(sctx, winds, temperature, rain.state ?? null); lap('rain again'); }
+        }
         anchors = { T: Float32Array.from(temperature.T), P: rain.P };
         stages = { winds, temperature, circulation, ocean, rain };
     } else {
@@ -163,6 +173,17 @@ function rowFill(grid, count) {
         }
     }
     return from;
+}
+
+/** K anchor layers of rain → 12 monthly layers (the same interpolation as the months themselves). */
+function monthsFromAnchors(fieldK, G, K, phase, transform) {
+    const M = interpolationMatrix(K, phase, 0), tf = PRECIP_TRANSFORMS[transform], out = new Float32Array(12 * G);
+    const pt = new Float64Array(K);
+    for (let c = 0; c < G; c++) {
+        for (let k = 0; k < K; k++) pt[k] = tf.fwd(Math.max(0, fieldK[k * G + c]), 5);
+        for (let m = 0; m < 12; m++) { let p = 0; for (let k = 0; k < K; k++) p += M[m * K + k] * pt[k]; out[m * G + c] = tf.inv(p, 5); }
+    }
+    return out;
 }
 
 // ── 4 ─────────────────────────────────────────────────────────────────────────

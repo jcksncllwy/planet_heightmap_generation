@@ -17,6 +17,8 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
     "New" source; use Side by side to compare.
 - **The checks.** One script per phase in `tuning/climate/`, listed in its README. They need the downloaded Earth data;
   the steps are in the README.
+- **The lab's tables show the final settings.** The checks were re-run at the end, so a phase's table can differ a
+  little from the numbers in its section below, which are from when the phase was built.
 
 ## Where it stands
 
@@ -28,7 +30,7 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 | 3 | Pressure and wind (derived from temperature) | passed | Wind direction 73 % vs V1 52 %; monsoons reverse; rain belt 7° vs 11.6° |
 | 4 | Ocean (gyres, circumpolar currents, upwelling → temperature) | passed | Warm-west / cold-east sea pattern 0.36 vs V1 0.24; Europe milder; all named currents right; effects ≈ ⅓ of real |
 | 5 | Rain (a column-water budget) | partly | Every stage new: Köppen 46 % vs V1's 38 %; rain patterns and continents beat V1; deserts beside monsoons too wet, rainforests too dry |
-| 6 | The coupled climate, tuned on Köppen | … | … |
+| 6 | The coupled climate, tuned on Köppen; speed | mostly | **Köppen 49.5 % vs V1's 38 %**; no drift to 2.5M; 0.8 s in Chrome (V1: 0.5 s at 40K, 2.1 s at 160K) |
 | 7 | Evolution | … | … |
 | 8 | Mediterranean climates | … | … |
 
@@ -236,7 +238,44 @@ observed" for the ratio; Köppen → New against the Beck map. The test planets,
 
 ## Phase 6 — the coupled climate
 
-*(to come)*
+**Built.**
+- **Rain feeds back into temperature through clouds.** Rainy land is shaded and dry land gets the full sun; the planet's
+  average brightness is unchanged. This fixed part of Phase 2's known error (desert summers too mild, wet summers too
+  warm): land temperature error 4.4 → 3.9 °C, Köppen +2.3 points.
+- **A final Köppen-level tune** of a few coupling settings. Each stage's own score was a guardrail and no continent could
+  get worse; only the cloud strength moved, within its literature range.
+- **A speed pass.**
+  - The grid-scale stages now run on a 3° grid (scores the same or better).
+  - Two coupling rounds instead of three.
+  - Solver and smoothing speed-ups.
+- **Tried and dropped:** placing the tropical rain belt by where the air is moist (the textbook monsoon fix) made
+  Köppen worse (45–46 % vs 46.3 %), so it isn't in.
+
+**Numbers** (Earth, every stage new):
+
+| | New | V1 |
+|---|---|---|
+| Köppen, same class as Beck | **49.5 %** | 38 % |
+| Same major group (A/B/C/D/E) | 74.9 % | — |
+| Per continent | N. America 50, S. America 41, Europe 50, Africa 61, Asia 30, Australia 62 % | — |
+| Same at 640K / 2.5M cells | 49.4 % / 49.4 % (class shares within 0.6 %) | V1 drifts: its temperate share falls 18 → 11 % from 40K to 640K |
+| Time, Chrome desktop, 40K / 160K | 0.8 s / 0.8 s | 0.51 s / 2.07 s |
+
+Every stage's own gate still passes at the final settings.
+
+**Gate: mostly passed.** Köppen beats V1, no drift, stages hold. **Speed:** 1.6× slower than V1 at V1's 40K default,
+faster than V1 from 160K up (the new climate barely depends on the terrain resolution).
+
+**Known.**
+- Asia is the weakest continent (30 %): boreal summers still a little warm; Tibet comes out as cold desert.
+- Dry-winter climates (Cw, Dw) are nearly missing.
+- Mediterranean recall is 7 %: Phase 8.
+- The test planets come out arid (a flat mid-latitude continent is about ⅔ desert or steppe). The model's own
+  westerlies are weak, so moisture reaches inland poorly. On Evolution's planets this will read as too much desert.
+
+**Check in the lab.** New climate → Earth → Run (40K or 160K; the time is in the table) → Köppen → New, side by side with
+the Beck map; Temperature → "New − observed". The Phase 6 table has the per-continent scores, regimes, drift and the
+test planets' climates.
 
 ## Phase 7 — Evolution
 

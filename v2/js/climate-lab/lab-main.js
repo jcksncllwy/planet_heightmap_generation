@@ -701,6 +701,21 @@ function renderOceanTables() {
         + `land ${Object.entries(cl.perCont).map(([k, v]) => `${k} ${num(v, 1)} (${num(cl.perContWithout[k], 1)})`).join(', ')}; Köppen with real rain ${pct(cl.koppen)} (${pct(cl.koppenWithout)}); named features ${cl.named.filter(c => c.ok).length}/${cl.named.length}. `
         + `Settings: ${Object.entries(oceanData.params).map(([k, x]) => `${k.replace('OCEAN_', '').toLowerCase()} ${+(+x).toPrecision(3)}`).join(', ')}. Ocean ${num(o.ms, 0)} ms.`;
 }
+let coupledData = null;
+function renderCoupledTables() {
+    if (!coupledData) { table($('coupledTable'), ['—'], [{ note: 'Run node tuning/climate/coupled-check.mjs to fill these tables.' }]); return; }
+    const e = coupledData.earth, nc = e.withoutClouds, rows = [];
+    for (const k of Object.keys(e.perCont)) rows.push([k, pct(e.perCont[k]), num(e.guard.temperature[k], 1), num(e.guard.rainLand[k], 2)]);
+    rows.push({ note: `Köppen ${pct(e.exact)} of land (major group ${pct(e.major)}; continents weighted equally ${pct(e.meanCont)}); without the clouds from the rain ${pct(nc.exact)}. V1 38 %. Temperature: monthly error °C; rain: typical monthly error (log ratio). Sea temperature ${num(e.guard.sst, 2)} °C.` });
+    table($('coupledTable'), ['Continent', 'Köppen', 'Temperature err.', 'Rain err.'], rows);
+    const more = [];
+    for (const [k, r] of Object.entries(e.regimes)) more.push([k, `${pct(r.recall)} found`, `area × ${num(r.areaRatio, 2)}`]);
+    if (coupledData.drift) for (const [N, d] of Object.entries(coupledData.drift)) more.push([`${(+N).toLocaleString()} terrain cells`, `Köppen ${pct(d.exact)}`, `class shares differ by ${(100 * d.classShareTV).toFixed(2)} %`]);
+    for (const [kind, p] of Object.entries(coupledData.planets ?? {})) more.push([PLANETS[kind] ?? kind, Object.entries(p.classes).slice(0, 5).map(([k, v]) => `${k} ${(100 * v).toFixed(0)} %`).join(', '), `${num(p.ms, 0)} ms`]);
+    table($('coupledMoreTable'), ['', '', ''], more);
+    const t = coupledData.tuned ? ` Tuned on Köppen: ${Object.entries(coupledData.tuned.params).map(([k, v]) => `${k.toLowerCase()} ${+(+v).toPrecision(3)}`).join(', ')}.` : '';
+    $('coupledNote').textContent = `The whole climate, 160K cells, Node on the developer's desktop: ${num(e.ms, 0)} ms (${e.timing.map(x => `${x.stage} ${num(x.ms, 0)}`).join(' · ')}).${t}`;
+}
 let rainData = null;
 function renderRainTables() {
     if (!rainData) { table($('rainTable'), ['—'], [{ note: 'Run node tuning/climate/rain-check.mjs to fill these tables.' }]); return; }
@@ -798,6 +813,7 @@ try {
     circData = await fetchJson(`${LAB}circulation-check.json`).catch(() => null);
     oceanData = await fetchJson(`${LAB}ocean-check.json`).catch(() => null);
     rainData = await fetchJson(`${LAB}rain-check.json`).catch(() => null);
+    coupledData = await fetchJson(`${LAB}coupled-check.json`).catch(() => null);
     renderStageTable();
     renderSeasonTable();
     renderTiming();
@@ -807,6 +823,7 @@ try {
     renderCirculationTables();
     renderOceanTables();
     renderRainTables();
+    renderCoupledTables();
     await buildCoast();
     await refresh();
 } catch (err) {

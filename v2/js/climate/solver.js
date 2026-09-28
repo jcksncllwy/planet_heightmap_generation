@@ -11,6 +11,7 @@
 // multigrid V-cycle removes the slow large-scale error. DOM-free.
 
 const R_PLANET = 6.371e6;       // m — converts winds to angular speeds
+const MIN_COARSE_ROWS = 12;     // coarsen while the next level keeps at least this many rows (a 3° grid: 60 → 30 → 15)
 
 class Level {
     constructor(w, h) {
@@ -67,7 +68,7 @@ class Level {
 
 export class HelmholtzSolver {
     /**
-     * @param {{w:number, h:number}} grid  the climate grid (coarsened while the row count stays even and ≥ 20)
+     * @param {{w:number, h:number}} grid  the climate grid (coarsened while the row count stays even and ≥ MIN_COARSE_ROWS)
      * @param {number} D   diffusivity on the unit sphere, W m⁻² K⁻¹ (north–south)
      * @param {number} [Dx] east–west diffusivity (default: D, isotropic)
      * @param {{conservative?: boolean}} [opts] conservative: transport in flux form (see above)
@@ -75,7 +76,7 @@ export class HelmholtzSolver {
     constructor(grid, D, Dx = D, { conservative = false } = {}) {
         this.levels = [new Level(grid.w, grid.h)];
         let w = grid.w, h = grid.h;
-        while (h % 2 === 0 && h / 2 >= 20 && w % 2 === 0) { w /= 2; h /= 2; this.levels.push(new Level(w, h)); }
+        while (h % 2 === 0 && h / 2 >= MIN_COARSE_ROWS && w % 2 === 0) { w /= 2; h /= 2; this.levels.push(new Level(w, h)); }
         for (const L of this.levels) { L.setDiffusion(Dx, D); L.conservative = conservative; }
     }
 

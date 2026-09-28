@@ -592,3 +592,74 @@ and storm mixing length 1,100 km.
 - **Speed:** 0.54 s for rain at 6 points in Node, 0.75 s in Chrome; the whole climate is 2.2 s at 160K in Chrome. The
   speed pass is Phase 6.
 - **No upslope rain at the terrain-cell scale yet** (the rain is 2°, interpolated).
+
+
+## Phase 6 — the coupled climate, built 2026-09-28
+
+**What was built.**
+- **Clouds from the rain → temperature.** The temperature stage takes the rain stage's monthly rain. Land's cloudiness
+  (1 − e^{−P/100 mm}) makes rainy land brighter and dry land darker than the land's average, so the planet's albedo is
+  unchanged. Deserts get the full summer sun; monsoon, rainforest and boreal summers are shaded. The order is
+  temperature ↔ winds ↔ ocean (2 rounds), rain, then temperature once more with the clouds.
+- **Tried and dropped:**
+  - *The circulation placing the tropical trough by moist static energy* (T + L·q/c_p, with q from the rain stage).
+    It made Köppen worse (44.8–45.8 % vs 46.3 %): the moisture term swamps the temperature contrasts and the trough
+    follows the previous round's water.
+  - *A third coupling round and a second rain after the clouds*: no better (a little worse) and slower.
+- **Speed pass.**
+  - All grid-scale stages on a 3° grid. The whole climate scored the same or better at half the cost: Köppen 48.9 vs
+    48.3 %; ocean, temperature and circulation gates all still pass.
+  - Two coupling rounds instead of three.
+  - One more multigrid level on the 3° grid (same scores).
+  - The circulation's smoothing weights precomputed (a bit-identical speed-up).
+  - The rain's divergent-wind solve starts from the previous point in the year.
+- **Checks:**
+  - `tuning/climate/coupled-check.mjs`: the whole climate on Earth scored on Köppen per continent, with every stage's
+    score as a guardrail; regimes; the costliest confusions; drift at 640K and 2.5M; test planets; `--tune` for the
+    final Köppen-level tune.
+  - `profile-climate.mjs`: every stage call timed.
+  - `hash-climate.mjs`: a fingerprint of every stage's output, for exact speed-ups.
+- **Lab:** a Phase 6 section. The earlier phases' tables were re-run at the final settings, so they show the current
+  climate.
+
+**Tuned on Köppen** (continents weighted equally, no continent more than 2 points worse, stage guardrails): only the
+cloud albedo moved, 0.15 → 0.26 (literature range 0–0.3). The rain settings the tune could touch stayed where Phase 5
+left them.
+
+**Numbers (Earth, every stage new, 160K terrain cells).**
+- **Köppen 49.5 % of land vs Beck** (major group 74.9 %); V1 38 %. Without the clouds: 47.2 %.
+- Per continent:
+
+  | North America | South America | Europe | Africa | Asia | Australia |
+  |---|---|---|---|---|---|
+  | 50 % | 41 % | 50 % | 61 % | 30 % | 62 % |
+
+- **Guardrails:**
+  - Land temperature error 3.9 °C (4.4 without the clouds; Phase 2's open loop 4.2).
+  - Rain 0.72 (log ratio).
+  - Sea temperature 2.8 °C.
+- **Every stage's own gate still holds at the final settings:**
+  - temperature 4.2 vs V1 5.0 °C;
+  - wind within 45° 72 % vs 52 %;
+  - ocean currents and coasts;
+  - rain as in Phase 5 (truth swap 56.6 vs 55.2 %).
+- **No drift:** 640K and 2.5M give Köppen 49.4 %, with class shares within 0.6 % of 160K.
+- **Speed (Chrome, desktop):** 0.8 s for the whole climate at 40K and at 160K (Phase 5: 2.2 s). V1: 0.51 s at 40K,
+  2.07 s at 160K, 10.9 s at 640K. Node: 0.52–0.6 s.
+
+**Gate: mostly passed.**
+- Passed: Köppen beats V1 on Earth; every stage near its open-loop score; no drift; the test planets behave (Phase 5's
+  checks).
+- Not met: the speed budget at V1's 40K default, 1.6× slower on the desktop. From 160K up it is faster than V1.
+
+**Known limits.**
+- **Asia is the weakest continent (30 %).** The costliest confusions:
+  - Dfc → Dfb and Dfb → Dfa: boreal summers still a little warm;
+  - Tibet as cold desert instead of tundra;
+  - hot deserts as cold ones.
+- **Dry-winter regimes are nearly missing** (Dw 0 %, Cw 19 %).
+- **Mediterranean recall is 7 %** (Phase 8).
+- **Test planets come out arid** (a flat mid-latitude continent ~64 % desert or steppe; Earth's arid share is ~37 % vs
+  a real ~28 %). The derived westerlies are weak, so moisture reaches continental interiors poorly.
+- **Speed at 40K:** the next levers are passing coarse fields between stages instead of refining to 1° and coarsening
+  back, and computing the circulation only at the points in the year.

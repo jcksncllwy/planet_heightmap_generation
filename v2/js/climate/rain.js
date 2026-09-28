@@ -70,7 +70,7 @@ export function saturatedColumn(T, vapourHeightKm) {
  * { monthly (surface air at the reference height), monthlySL (sea level: the sea surface), seaIce } (12 × G).
  */
 export function columnWaterRain() {
-    return (ctx, winds, temperature) => {
+    return (ctx, winds, temperature, init = null) => {
         const t0 = performance.now();
         const P_ = PARAMS;
         const core = ctx.grid;
@@ -111,9 +111,10 @@ export function columnWaterRain() {
         const zero = new Float64Array(G);
         poisson.setOperator(new Float64Array(G).fill(1e-4), zero, null, null, 0);
 
+        const chi = new Float64Array(G);
         /** The divergent part ∇χ of a wind field, from ∇²χ = ∇·u (a slightly damped Poisson solve on the sphere). */
         function divergentPart(u, v) {
-            const dv = new Float64Array(G), chi = new Float64Array(G), chiI = new Float64Array(G);
+            const dv = new Float64Array(G), chiI = new Float64Array(G);
             let mean = 0, aw = 0;
             for (let j = 0; j < h; j++) {
                 const cj = cosLat[j], cn = j > 0 ? cosLat[j - 1] : 0, cs = j < h - 1 ? cosLat[j + 1] : 0;
@@ -126,7 +127,7 @@ export function columnWaterRain() {
             }
             mean /= aw;
             for (let c = 0; c < G; c++) dv[c] = -(dv[c] - mean) * R_PLANET;                      // −R²∇·u
-            poisson.solve(dv, zero, chi, chiI, { maxCycles: 6, tol: 1e-4 });
+            poisson.solve(dv, zero, chi, chiI, { maxCycles: P_.RAIN_POISSON_CYCLES, tol: 1e-4 });     // χ starts from the last point's
             const ud = new Float64Array(G), vd = new Float64Array(G);
             for (let j = 0; j < h; j++) {
                 const cj = Math.max(0.02, cosLat[j]);
@@ -188,7 +189,7 @@ export function columnWaterRain() {
             const Sloc = new Float64Array(G), Sair = new Float64Array(G), SairI = new Float64Array(G);
             for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; Sloc[c] = Math.min(STABLE_MAX_K, Math.max(0, Tzs[j] - Tsl[c])) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S; }
             carrier.setOperator(new Float64Array(G).fill(1 / STABLE_RELAX_S), zero, u, v, 1);
-            carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: 4, tol: 1e-3 });
+            carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: P_.RAIN_CARRIER_CYCLES, tol: 1e-3 });
 
             const delta = declination(ctx.anchorMonths[k] + 0.5, ctx.options.tiltDeg ?? 23.44);
             const sun = Float64Array.from(g.lat, l => dailyInsolation(l * DEG, delta));
@@ -247,6 +248,8 @@ export function columnWaterRain() {
             }
         }
 
+        const prof = { prep: performance.now() - t0, pass1: 0, ground: 0, pass2: 0, output: 0, newton1: 0, newton2: 0 };
+        let tq = performance.now();
         // ── The budget at one point in the year ──
         const sigma = new Float64Array(G), src = new Float64Array(G), srcI = new Float64Array(G), Wi = new Float64Array(G);
         const Wold = new Float64Array(G);
@@ -320,17 +323,21 @@ export function columnWaterRain() {
         }
 
         // ── Pass 1 through the year (each point starting from the one before), then pass 2 with the soil's store ──
+        // (a previous result — an earlier round of the coupled climate — gives every point a warm start)
+        const warm = init && init.step === g.step && init.Wk?.length === K ? init.Wk : null;
         const Wk = [];
         let Wv = new Float64Array(G);
         for (let c = 0; c < G; c++) Wv[c] = 0.7 * prep[0].Ws[c];
         let results = [];
         for (let k = 0; k < K; k++) {
-            if (k > 0) for (let c = 0; c < G; c++) Wv[c] = Math.min(Wv[c], 1.2 * prep[k].Ws[c]);
+            if (warm) Wv = Float64Array.from(warm[k]);
+            if (k > 0 || warm) for (let c = 0; c < G; c++) Wv[c] = Math.min(Wv[c], 1.2 * prep[k].Ws[c]);
             results.push(solveAnchor(k, Wv, null));
             Wk.push(Float64Array.from(Wv));
         }
         // The ground through the year (from pass 1's rain, two turns for a steady cycle): snow piles up below freezing
         // and melts above it (degree-day melt); the soil holds up to RAIN_SOIL_MM and gives water to evaporation.
+        prof.pass1 = performance.now() - tq; prof.newton1 = newton; tq = performance.now();
         if (P_.RAIN_SOIL_MM > 0) {
             const dtM = 12 / K, SEC = SECONDS_PER_MONTH, Smax = P_.RAIN_SOIL_MM;
             const ground = Array.from({ length: K }, () => ({ melt: new Float64Array(G), soil: new Float64Array(G) }));
@@ -348,7 +355,9 @@ export function columnWaterRain() {
                     S = Math.min(Smax, Math.max(0, S + (input - et) * dtM));
                 }
             }
+            prof.ground = performance.now() - tq; tq = performance.now();
             results = Wk.map((Wa, k) => solveAnchor(k, Wa, ground[k]));
+            prof.pass2 = performance.now() - tq; prof.newton2 = newton - prof.newton1; tq = performance.now();
         }
 
         const Pout = new Float32Array(K * core.size), Wout = new Float32Array(K * core.size);
@@ -365,7 +374,8 @@ export function columnWaterRain() {
             refineField(g, core, ratio, tmp, Rout, off);
         }
         for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
-        const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton, ms: performance.now() - t0, source: 'column water' };
+        const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
+            state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };
         if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt };
         return out;
     };

@@ -232,12 +232,14 @@ function gaussianSmooth(g, f, tmp, sigmaKm) {
         }
     }
     const sLat = sigDeg / g.step, r = Math.ceil(2.5 * sLat);
+    const wLat = new Float64Array(2 * r + 1);
+    for (let d = -r; d <= r; d++) wLat[d + r] = Math.exp(-0.5 * (d / sLat) ** 2);
     for (let j = 0; j < h; j++) {
         let norm = 0;
-        for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < h) norm += Math.exp(-0.5 * (d / sLat) ** 2); }
+        for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < h) norm += wLat[d + r]; }
         for (let i = 0; i < w; i++) {
             let s = 0;
-            for (let d = -r; d <= r; d++) { const jj = j + d; if (jj < 0 || jj >= h) continue; s += tmp[jj * w + i] * Math.exp(-0.5 * (d / sLat) ** 2); }
+            for (let d = -r; d <= r; d++) { const jj = j + d; if (jj < 0 || jj >= h) continue; s += tmp[jj * w + i] * wLat[d + r]; }
             f[j * w + i] = s / norm;
         }
     }

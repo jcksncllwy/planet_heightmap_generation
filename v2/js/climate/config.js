@@ -31,8 +31,10 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the terrain cells below the grid still use the standard rate) …
     TEMP_ICE_LAPSE: 8.0,        // °C/km      … and the same for ground under snow most of the year: ice sheets reflect
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
-    TEMP_GRID_DEG: 2,           // °          grid the energy balance is solved on (its fields are smooth: 2° scores
-                                //            the same as 1° at a third of the cost; results are interpolated to 1°)
+    TEMP_CLOUD_ALBEDO: 0.262,    // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_GRID_DEG: 3,           // °          grid the energy balance is solved on (its fields are smooth: 2° scored the
+                                //            same as 1°, and the whole climate at 3° the same as at 2° at half the cost —
+                                //            Phase 6; results are interpolated to 1°)
 
     // ── Pressure and wind (circulation.js) ──
     // Tuned 2026-09-28 (tuning/climate/circulation-check.mjs --tune: open loop, continents and ocean basins weighted
@@ -49,7 +51,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     CIRC_TURN_OCEAN_DEG: 10,    // °          surface wind turned toward low pressure by friction, over the sea …
     CIRC_TURN_LAND_DEG: 32.5,   // °          … and over land (rougher)
     CIRC_SURFACE_WIND: 0.7,     // –          near-surface wind as a share of the wind above the friction layer
-    CIRC_GRID_DEG: 2,           // °          grid the circulation is computed on (interpolated to 1°)
+    CIRC_GRID_DEG: 3,           // °          grid the circulation is computed on (interpolated to 1°)
 
     // ── Ocean (ocean.js) ──
     OCEAN_FRICTION: 6e-6,       // 1/s        east–west friction of the gyres: sets the western boundary currents' width
@@ -61,7 +63,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_UPWELL_DT: 4,         // °C         how much colder upwelled water is than the surface (warm seas; less in cold)
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
-    OCEAN_GRID_DEG: 2,          // °          grid the ocean is computed on (interpolated to 1°)
+    OCEAN_GRID_DEG: 3,          // °          grid the ocean is computed on (interpolated to 1°)
 
     // ── Rain (rain.js) ──
     RAIN_EVAP_COEFF: 1.3e-3,    // –          bulk transfer coefficient for evaporation
@@ -84,7 +86,9 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_NEWTON: 30,            //            at most this many Newton steps per point in the year …
     RAIN_TOL: 2e-3,             //            … stopping when the column water changes less than this (relative)
     RAIN_CYCLES: 4,             //            multigrid cycles per Newton step
-    RAIN_GRID_DEG: 2,           // °          grid the rain is computed on (interpolated to 1°)
+    RAIN_POISSON_CYCLES: 6,     //            … for the wind's divergent part (each point starting from the last) …
+    RAIN_CARRIER_CYCLES: 4,     //            … and for the stability the air carries
+    RAIN_GRID_DEG: 3,           // °          grid the rain is computed on (interpolated to 1°)
 });
 
 export const PARAMS = { ...PARAMS_DEFAULTS };
@@ -107,6 +111,7 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_INVERSION_C:   { value: 10, min: 5, max: 15, source: 'Arctic winter surface inversions ≈ 10–15 K (Serreze et al. 1992); strongest in the dark over snow' },
     TEMP_INVERSION_WIND: { value: 5, min: 3, max: 8, source: 'stable boundary layers break down above ≈ 5–7 m/s near-surface wind' },
     TEMP_PLATEAU_LAPSE: { value: 5.0, min: 4.0, max: 6.5, source: 'near-surface lapse rates over large elevated terrain ≈ 4.5–5.5 °C/km (elevated heating)' },
+    TEMP_CLOUD_ALBEDO:  { value: 0.15, min: 0.0, max: 0.3, source: 'shortwave cloud forcing over land ≈ −50 to −100 W/m² under persistent rain clouds, ≈ 0 over deserts (CERES): an albedo contrast ≈ 0.1–0.25' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
 
     CIRC_HADLEY_SCALE:  { value: 1.2, min: 0.9, max: 1.5, source: 'Held & Hou 1980 underestimates the observed Hadley edge by ~20 % (e.g. Frierson et al. 2007)' },
