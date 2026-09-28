@@ -48,7 +48,7 @@ export function runClimate(ctx, paramOverrides = {}) {
         const precipResult = computePrecipitation(ctx.mesh, ctx.r_xyz, ctx.r_elevation, windResult, oceanResult, 0, 0.3);
         const tempResult = computeTemperature(ctx.mesh, ctx.r_xyz, ctx.r_elevation, windResult, oceanResult, precipResult, 0);
         const r_koppen = classifyKoppen(ctx.mesh, ctx.r_elevation, tempResult, precipResult);
-        return { r_koppen, windResult, precipResult, tempResult };
+        return { r_koppen, windResult, oceanResult, precipResult, tempResult };
     } finally {
         resetClimateParams();
     }
