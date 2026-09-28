@@ -15,6 +15,12 @@ export const TEST_PLANETS = {
         blurb: 'A flat continent across the equator, 30°S–30°N and 45° wide (the TRACMIP idealised continent). Expect: small seasons near the equator, growing toward 30°; the land warmer than the sea in its summer.',
         blobs: [{ lat: 0, lon: 22.5, a: 30, b: 22.5 }],
     },
+    mountains: {
+        label: 'Continent with a coastal range',
+        blurb: 'The mid-latitude continent with a 3 km mountain range running north–south 8° inland from its west coast (like the Cascades or the Andes). Expect: a wet windward (west) slope under the westerlies and a rain shadow east of the range.',
+        blobs: [{ lat: 40, lon: 0, a: 20, b: 40 }],
+        ridges: [{ lat0: 24, lat1: 56, lon: -30, halfWidthDeg: 2.5, heightKm: 3 }],
+    },
     supercontinent: {
         label: 'Supercontinent',
         blurb: 'One huge continent, 60°S–60°N and 110° wide (Pangaea-like). Expect: extreme seasons deep inside at mid-latitudes, far larger than on the coasts or over the sea.',
@@ -30,7 +36,14 @@ export function testPlanetHeightKm(kind, latDeg, lonDeg) {
         const d = (Math.abs(latDeg - b.lat) / b.a) ** 6 + (Math.abs(dl) / b.b) ** 6;       // superellipse
         best = Math.min(best, d);
     }
-    return best < 1 ? 0.15 + 0.25 * Math.min(1, (1 - best) * 3) : -4;
+    if (best >= 1) return -4;
+    let hKm = 0.15 + 0.25 * Math.min(1, (1 - best) * 3);
+    for (const r of TEST_PLANETS[kind].ridges ?? []) {                  // Gaussian ridges, tapered at their ends
+        let dl = lonDeg - r.lon; dl = ((dl + 540) % 360) - 180;
+        const along = Math.min(1, Math.max(0, Math.min(latDeg - r.lat0, r.lat1 - latDeg) / 4));
+        hKm += r.heightKm * along * Math.exp(-((dl / r.halfWidthDeg) ** 2));
+    }
+    return hKm;
 }
 
 /** Build a test planet: { mesh, xyz, elevKm, axes }. */

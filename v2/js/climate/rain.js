@@ -1,0 +1,372 @@
+// Rain stage: a column-water budget on the climate grid, at each point in the year. DOM-free.
+//
+// The water vapour in the air column, W (mm = kg/m²), is in balance at each point in the year:
+//
+//   evaporation − rain − ∇·(u W) + ∇·(K ∇W) = 0
+//
+//  • Evaporation: from the sea by the bulk formula — faster where the water is warm (Clausius–Clapeyron) and the wind
+//    strong (plus the gusts and storms the monthly means leave out), none under sea ice. From land at the same
+//    potential rate, limited by the water the ground holds (Turc–Pike: water-limited where it is dry, energy-limited
+//    where it is wet) — the month's rain, the snow melting and the soil's store (a small bucket through the year) — so
+//    rain that falls on land is partly returned to the air (recycling), even in a dry summer after a snowy winter.
+//  • Transport: the column moves with the wind above the surface friction layer (the rotational part of the wind);
+//    only a layer near the ground converges into the rain belt and the lows and spreads out of the highs (the divergent
+//    part) — shallow under dry air, deep where the column is moist and convecting. Weather systems mix the water
+//    (eddy diffusion K), most in the storm belts.
+//  • Rain: the column rains out steeply as it nears saturation — rain grows exponentially with the column's relative
+//    humidity (Bretherton et al. 2004) — with a saturated column set by the air temperature (Clausius–Clapeyron).
+//    Storms, growing where the poleward temperature gradient is strong, spread the humidity within the month and so
+//    raise the month's rain (the mid-latitude storm belts, winter rain). Air over a surface colder than its latitude
+//    (cold currents, upwelling, winter continents) is stable and rains less (the coastal deserts, dry winter highs).
+//    Air forced up rising ground rains out too, which dries the air beyond the mountains (rain shadows).
+//
+// Solved as a steady problem per point in the year (the multigrid solver of solver.js, transport in flux form so water
+// is conserved), with Newton steps for the steep rain-out; a second pass over the year lets snow and soil carry
+// water from the wet months into the dry ones.
+
+import { LatLonGrid, coarsenField, refineField } from './grid.js';
+import { HelmholtzSolver } from './solver.js';
+import { atAnchors } from './inputs.js';
+import { PARAMS } from './config.js';
+import { dailyInsolation, declination } from './insolation.js';
+
+const R_PLANET = 6.371e6;
+const RHO_AIR = 1.2;                          // kg/m³ near the surface
+const SECONDS_PER_MONTH = 30.44 * 86400;
+const DEG = Math.PI / 180;
+const R_MAX = 1.5;                            // column relative humidity beyond which rain-out grows linearly (keeps Newton bounded)
+const S_MAX = 0.2;                            // largest spread of the column's relative humidity by storms
+const STABLE_MAX_K = 10;                      // stability (surface below its latitude's temperature) counted up to this
+const MELT_MM_PER_C_MONTH = 120;              // degree-day snowmelt, ≈ 4 mm per °C per day
+const LATENT = 2.5e6;                         // J/kg, latent heat of vaporisation
+const PT_ALPHA = 1.26;                        // Priestley–Taylor coefficient
+const SURFACE_SW = 0.55;                      // share of the top-of-atmosphere sunlight reaching the ground (clouds, air)
+const NET_LW = 50;                            // W/m², net longwave the ground loses
+const ALBEDO_LAND = 0.15, ALBEDO_SNOW = 0.6;
+const BRUNT = 0.01;                           // 1/s, buoyancy frequency of the troposphere (Eady growth rate, flow blocking)
+const MAX_SHEAR = 4e-3;                       // 1/s, strongest vertical wind shear of a jet (≈ 40 m/s over 10 km)
+const STABLE_RELAX_S = 86400;                 // s, time for air to take on the stability of the surface beneath it
+
+/** Saturation specific humidity (kg/kg) at T (°C), 1013 hPa — Magnus formula. */
+export function qSat(T) {
+    const t = Math.max(-60, Math.min(50, T));
+    return 0.622 * 6.112 * Math.exp(17.67 * t / (t + 243.5)) / 1013;
+}
+
+/** Evaporation from land with water `avail` and potential rate `ep` (same units) — Turc–Pike: the smaller, smoothly. */
+const turcPike = (avail, ep) => avail / Math.sqrt(1 + (avail / Math.max(1e-12, ep)) ** 2);
+
+/** The saturated column (mm) above air at T (°C): ≈ ρ q_s H with the water-vapour scale height H. */
+export function saturatedColumn(T, vapourHeightKm) {
+    return RHO_AIR * qSat(T) * vapourHeightKm * 1000;
+}
+
+/**
+ * stage(ctx, winds, temperature) → { P (K × G, mm/month, at the anchor months), W (K × G, mm of column water),
+ * E (K × G, mm/month evaporation), r (K × G, column relative humidity), eady (K arrays of per-row storm growth, 1/day),
+ * balance (global rain / evaporation per anchor), cycles, newton, ms }.
+ * winds: { u, v } (12 × G, m/s, near the surface) and optionally surfaceShare (near-surface wind as a share of the
+ * wind above the friction layer; default: observed-like, 0.75 over the sea and 0.45 over land). temperature:
+ * { monthly (surface air at the reference height), monthlySL (sea level: the sea surface), seaIce } (12 × G).
+ */
+export function columnWaterRain() {
+    return (ctx, winds, temperature) => {
+        const t0 = performance.now();
+        const P_ = PARAMS;
+        const core = ctx.grid;
+        const ratio = Math.max(1, Math.round(P_.RAIN_GRID_DEG / core.step));
+        const g = ratio > 1 ? new LatLonGrid(core.step * ratio) : core;
+        const G = g.size, w = g.w, h = g.h;
+        const co = (f) => coarsenField(core, g, ratio, f);
+        const land = co(ctx.surface.landFrac);
+        const hgt = co(ctx.surface.meanKm.map(x => Math.max(0, x)));
+        const cosLat = Float64Array.from(g.lat, l => Math.cos(l * DEG));
+        const dRad = g.step * DEG;
+        const K = ctx.anchorMonths.length;
+        const tau = P_.RAIN_TIMESCALE_H * 3600, a = P_.RAIN_RH_STEEPNESS, b = a / 2, Hv = P_.RAIN_VAPOUR_HEIGHT_KM * 1000;
+        const Lmix = P_.RAIN_EDDY_LENGTH_KM * 1000;
+
+        // the inputs at the anchor months
+        const uA = atAnchors(winds.u, core.size, ctx.anchorMonths), vA = atAnchors(winds.v, core.size, ctx.anchorMonths);
+        const tA = atAnchors(temperature.monthly, core.size, ctx.anchorMonths);
+        const sA = atAnchors(temperature.monthlySL, core.size, ctx.anchorMonths);
+        const iA = temperature.seaIce ? atAnchors(temperature.seaIce, core.size, ctx.anchorMonths) : null;
+        const share = new Float64Array(G);
+        for (let c = 0; c < G; c++) share[c] = winds.surfaceShare ?? 0.75 - 0.3 * land[c];
+
+        const solver = new HelmholtzSolver(g, 0, 0, { conservative: true });
+        // Rising ground blocks the water. The solve is for the sea-level-equivalent column W* (the column over ground
+        // at height h holds W = β·W*, β = e^{−h/H}); what crosses a face between two cells — carried or mixed — is the
+        // part of the column above the higher of the two, β_face = e^{−max(h)/H}. So water piles up (and rains)
+        // windward of mountains, and only a share gets over them.
+        const beta = Float64Array.from(hgt, x => Math.exp(-x * 1000 / Hv));
+        const faces = { e: new Float64Array(G), n: new Float64Array(G) };
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+            const c = j * w + i, ce = j * w + (i + 1) % w, cn = j > 0 ? c - w : c;
+            faces.e[c] = Math.min(beta[c], beta[ce]);
+            faces.n[c] = Math.min(beta[c], beta[cn]);
+        }
+        const poisson = new HelmholtzSolver(g, 1, 1);
+        const carrier = new HelmholtzSolver(g, 0, 0);                 // air-mass properties carried by the surface wind
+        const zero = new Float64Array(G);
+        poisson.setOperator(new Float64Array(G).fill(1e-4), zero, null, null, 0);
+
+        /** The divergent part ∇χ of a wind field, from ∇²χ = ∇·u (a slightly damped Poisson solve on the sphere). */
+        function divergentPart(u, v) {
+            const dv = new Float64Array(G), chi = new Float64Array(G), chiI = new Float64Array(G);
+            let mean = 0, aw = 0;
+            for (let j = 0; j < h; j++) {
+                const cj = cosLat[j], cn = j > 0 ? cosLat[j - 1] : 0, cs = j < h - 1 ? cosLat[j + 1] : 0;
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                    const vN = j > 0 ? 0.5 * (v[c] + v[c - w]) * 0.5 * (cj + cn) : 0, vS = j < h - 1 ? 0.5 * (v[c] + v[c + w]) * 0.5 * (cj + cs) : 0;
+                    const d = 0.5 * (u[ce] - u[cw]) / (cj * dRad) + (vN - vS) / (cj * dRad);          // R·∇·u
+                    dv[c] = d; mean += d * cj; aw += cj;
+                }
+            }
+            mean /= aw;
+            for (let c = 0; c < G; c++) dv[c] = -(dv[c] - mean) * R_PLANET;                      // −R²∇·u
+            poisson.solve(dv, zero, chi, chiI, { maxCycles: 6, tol: 1e-4 });
+            const ud = new Float64Array(G), vd = new Float64Array(G);
+            for (let j = 0; j < h; j++) {
+                const cj = Math.max(0.02, cosLat[j]);
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                    const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
+                    ud[c] = (chi[ce] - chi[cw]) / (2 * dRad * cj * R_PLANET);
+                    vd[c] = (chi[cn] - chi[cs]) / ((cn === c || cs === c ? 1 : 2) * dRad * R_PLANET);
+                }
+            }
+            return { ud, vd };
+        }
+
+        // ── Per point in the year: the moisture wind, mixing, storm and stability factors, lift, evaporation ──
+        const prep = [], eadyOut = [];
+        for (let k = 0; k < K; k++) {
+            const sl = (arr) => arr.subarray(k * core.size, (k + 1) * core.size);
+            const u = co(sl(uA)), v = co(sl(vA)), Tair = co(sl(tA)), Tsl = co(sl(sA));
+            const ice = iA ? co(sl(iA)) : null;
+            const p = { gu: new Float64Array(G), gv: new Float64Array(G), ur: new Float64Array(G), vr: new Float64Array(G), ud: null, vd: null,
+                Krow: new Float64Array(h), rate: new Float64Array(G),
+                lift: new Float64Array(G), Ws: new Float64Array(G), eSea: new Float64Array(G), eLand: new Float64Array(G),
+                snow: new Float64Array(G), Tair: new Float64Array(G) };
+
+            // The wind that carries the water: the rotational part of the wind above the friction layer moves the whole
+            // column; the divergent part moves only the water of the layer that converges or spreads (setWind below).
+            const { ud, vd } = divergentPart(u, v);
+            p.ud = ud; p.vd = vd;
+            for (let c = 0; c < G; c++) {
+                p.ur[c] = P_.RAIN_WIND_ROT * (u[c] - ud[c]) / share[c];
+                p.vr[c] = P_.RAIN_WIND_ROT * (v[c] - vd[c]) / share[c];
+                p.gu[c] = p.ur[c] + P_.RAIN_WIND_DIV_DRY * ud[c];
+                p.gv[c] = p.vr[c] + P_.RAIN_WIND_DIV_DRY * vd[c];
+            }
+
+            // Storms grow at the Eady rate of the zonal-mean temperature gradient (below). Within a month they spread the column's relative humidity about its mean — by
+            // s = RAIN_STORM_RH × σ (per day), saturating at S_MAX — and rain grows exponentially with humidity, so the
+            // month's rain is boosted by e^{(a·s)²/2} (the mean of e^{a·r} over a normal spread). The same storms mix
+            // the moisture (K = K_min + σ·L²) and gust over the sea (speed σ·L).
+            const Tz = new Float64Array(h), Tzs = new Float64Array(h), eady = new Float64Array(h);
+            for (let j = 0; j < h; j++) { let t = 0; for (let i = 0; i < w; i++) t += Tsl[j * w + i]; Tz[j] = t / w; }
+            const sm = Math.max(1, Math.round(8 / g.step));                          // baroclinic zones are broad (≈ ±8°)
+            for (let j = 0; j < h; j++) { let t = 0, n = 0; for (let d = -sm; d <= sm; d++) { const jj = j + d; if (jj >= 0 && jj < h) { t += Tz[jj]; n++; } } Tzs[j] = t / n; }
+            for (let j = 0; j < h; j++) {
+                const jn = Math.max(0, j - 1), js = Math.min(h - 1, j + 1);
+                const grad = Math.abs(Tzs[jn] - Tzs[js]) / ((js - jn) * dRad * R_PLANET);
+                // σ = 0.31·(f/N)·Λ with the thermal-wind shear Λ = g·|∂T/∂y|/(f·T), capped at a realistic jet shear —
+                // so storms fade toward the equator, where the thermal wind no longer holds
+                const f = 2 * 7.292e-5 * Math.abs(Math.sin(g.lat[j] * DEG));
+                const shear = Math.min(MAX_SHEAR, 9.81 * grad / (Math.max(1e-9, f) * (Tzs[j] + 273.15)));
+                eady[j] = 0.31 * f / BRUNT * shear;                                                         // 1/s
+                p.Krow[j] = (P_.RAIN_EDDY_DIFF + eady[j] * Lmix * Lmix) / (R_PLANET * R_PLANET);
+            }
+            eadyOut.push(Float32Array.from(eady, x => x * 86400));
+
+            // Stability: how much colder the surface is than its latitude (the air above set by the zonal mean). It belongs
+            // to the air mass — air off a cold sea stays stable over the coast — so it is carried by the surface wind and
+            // relaxes to the local value within about a day: σ·S + u·∇S = σ·S_local.
+            const Sloc = new Float64Array(G), Sair = new Float64Array(G), SairI = new Float64Array(G);
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; Sloc[c] = Math.min(STABLE_MAX_K, Math.max(0, Tzs[j] - Tsl[c])) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S; }
+            carrier.setOperator(new Float64Array(G).fill(1 / STABLE_RELAX_S), zero, u, v, 1);
+            carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: 4, tol: 1e-3 });
+
+            const delta = declination(ctx.anchorMonths[k] + 0.5, ctx.options.tiltDeg ?? 23.44);
+            const sun = Float64Array.from(g.lat, l => dailyInsolation(l * DEG, delta));
+            for (let j = 0; j < h; j++) {
+                const x = P_.RAIN_STORM_RH * eady[j] * 86400, sd = S_MAX * (1 - Math.exp(-x / S_MAX));
+                const storm = Math.exp(0.5 * (a * sd) ** 2), gust2 = P_.OCEAN_GUST_MS ** 2 + (eady[j] * Lmix) ** 2;
+                const cj = Math.max(0.02, cosLat[j]), dx = 2 * dRad * R_PLANET * cj, dy = 2 * dRad * R_PLANET;
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                    const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
+                    // stable air (surface colder than its latitude): humidity effectively lowered by κ per K
+                    const stable = Math.exp(-a * P_.RAIN_STABILITY * Math.max(0, Sair[c]));
+                    p.rate[c] = storm * stable;
+                    // Lift where the wind blows up rising ground (1/s per unit of column water: upslope speed over the
+                    // vapour scale height, times the share that rains out). Only the air above the blocked layer goes
+                    // over the mountain — a share Fr = U/(N·H) of it when the Froude number is below 1; the rest flows
+                    // around.
+                    const dhdx = (hgt[ce] - hgt[cw]) * 1000 / dx, dhdy = (hgt[cn] - hgt[cs]) * 1000 / dy;
+                    const speed = Math.hypot(p.gu[c], p.gv[c]), H = Math.max(hgt[ce], hgt[cw], hgt[cn], hgt[cs], hgt[c]) * 1000;
+                    const over = H > 0 ? Math.min(1, speed / (BRUNT * H)) : 1;
+                    p.lift[c] = stable * over * P_.RAIN_OROGRAPHIC * Math.max(0, p.gu[c] * dhdx + p.gv[c] * dhdy) / Hv;
+                    // saturated column (mm) and evaporation (kg m⁻² s⁻¹): the sea's, and the land's potential rate
+                    // the column's temperature follows the surface only in part — the troposphere above a hot or frozen
+                    // surface stays nearer its latitude's temperature — and that sets how much water it holds
+                    p.Ws[c] = saturatedColumn(Tair[c] + (1 - P_.RAIN_COLUMN_LOCAL) * (Tzs[j] - Tsl[c]), P_.RAIN_VAPOUR_HEIGHT_KM);
+                    p.snow[c] = Math.min(1, Math.max(0, (2 - Tair[c]) / 4));            // share of the rain falling as snow
+                    p.Tair[c] = Tair[c];
+                    const bulk = RHO_AIR * P_.RAIN_EVAP_COEFF * Math.sqrt(u[c] * u[c] + v[c] * v[c] + gust2) * (1 - P_.RAIN_SURFACE_RH);
+                    p.eSea[c] = (1 - land[c]) * bulk * qSat(Tsl[c]) * (ice ? 1 - Math.min(1, ice[c]) : 1);
+                    // Land's potential evaporation is limited by the energy it gets (Priestley–Taylor): the sunlight
+                    // reaching the ground minus its net longwave loss, times Δ/(Δ + γ) (Clausius–Clapeyron slope Δ,
+                    // psychrometric constant γ) — little in cold or dark months, most in the sunny tropics.
+                    const alb = ALBEDO_LAND + (ALBEDO_SNOW - ALBEDO_LAND) * p.snow[c];
+                    const rn = Math.max(0, SURFACE_SW * (1 - alb) * sun[j] - NET_LW);
+                    const tc = Math.max(-40, Math.min(45, Tair[c])), es = 6.112 * Math.exp(17.67 * tc / (tc + 243.5));
+                    const slope = es * 17.67 * 243.5 / ((tc + 243.5) ** 2);
+                    p.eLand[c] = PT_ALPHA * slope / (slope + 0.66) * rn / LATENT;          // kg m⁻² s⁻¹ per unit land area
+                }
+            }
+            prep.push(p);
+        }
+
+        /**
+         * The divergent part of the moisture wind by how deep the converging layer is: shallow where the air is dry
+         * (heat lows under dry air aloft, the trade-wind layer), deep where the column is moist and convecting (the rain
+         * belt, monsoons, rainforests) — from RAIN_WIND_DIV_DRY to RAIN_WIND_DIV_MOIST of the near-surface wind as the
+         * column's relative humidity rises from 0.45 to 0.75.
+         */
+        function setWind(p, Wv) {
+            const d0 = P_.RAIN_WIND_DIV_DRY, d1 = P_.RAIN_WIND_DIV_MOIST;
+            for (let c = 0; c < G; c++) {
+                const x = Math.min(1, Math.max(0, (Wv[c] / p.Ws[c] - P_.RAIN_DEEP_R0) / (P_.RAIN_DEEP_R1 - P_.RAIN_DEEP_R0))), s = x * x * (3 - 2 * x);
+                const d = d0 + (d1 - d0) * s;
+                p.gu[c] = p.ur[c] + d * p.ud[c];
+                p.gv[c] = p.vr[c] + d * p.vd[c];
+            }
+        }
+
+        // ── The budget at one point in the year ──
+        const sigma = new Float64Array(G), src = new Float64Array(G), srcI = new Float64Array(G), Wi = new Float64Array(G);
+        const Wold = new Float64Array(G);
+        let cycles = 0, newton = 0;
+        /**
+         * Newton steps on the budget at anchor k, from the column water in Wv (updated in place). ground: the snow melting
+         * and the soil water stored at this point in the year (kg m⁻² s⁻¹, per unit land area), or null (pass 1: the
+         * land evaporates only the month's rain). Returns { P, E, balance }.
+         */
+        function solveAnchor(k, Wv, ground) {
+            const p = prep[k], Ws = p.Ws, rate = p.rate, lift = p.lift;
+            // Rain-out rate and its slope in W. In the air: (Ws/τ)·rate·e^{a(r−1)}, continued linearly beyond R_MAX. Over
+            // rising ground: the lifted water λ·W, of which less condenses the drier the air (it must first be lifted
+            // to its condensation level): × e^{(a/2)(r−1)}.
+            const rainOf = (c, Wc) => {
+                const r = Wc / Ws[c];
+                const e = r < R_MAX ? Math.exp(a * (r - 1)) : Math.exp(a * (R_MAX - 1)) * (1 + a * (r - R_MAX));
+                const eo = r < R_MAX ? Math.exp(b * (r - 1)) : Math.exp(b * (R_MAX - 1)) * (1 + b * (r - R_MAX));
+                return Ws[c] / tau * rate[c] * e + lift[c] * Wc * eo;
+            };
+            const slopeOf = (c, Wc) => {
+                const r = Math.min(R_MAX, Wc / Ws[c]);
+                return a / tau * rate[c] * Math.exp(a * (r - 1)) + lift[c] * Math.exp(b * (r - 1)) * (1 + b * r);
+            };
+            solver.setRowDiffusion(p.Krow, p.Krow);
+            const P = new Float64Array(G), E = new Float64Array(G);
+            for (let c = 0; c < G; c++) P[c] = rainOf(c, Wv[c]);
+            // Newton steps. Where the air starts too dry the tangent is nearly flat and a full step would overshoot
+            // enormously, so a step may raise the relative humidity by at most 2/a (rain × e² at most); steps down need
+            // no limit (from above, Newton on a convex law never undershoots).
+            const up = 2 / a;
+            let sp = 0, se = 0;
+            const Wstar = new Float64Array(G);
+            for (let it = 0; it < P_.RAIN_NEWTON; it++) {
+                for (let c = 0; c < G; c++) {
+                    // land evaporation (Turc–Pike) from the water the ground holds: the month's rain (not its snow), the
+                    // snow melting and the soil's store
+                    const f = land[c];
+                    let el = 0;
+                    if (f > 0) {
+                        const avail = ground ? P[c] * (1 - p.snow[c]) + ground.melt[c] + ground.soil[c] : P[c], ep = p.eLand[c];
+                        el = f * turcPike(avail, ep);
+                    }
+                    E[c] = p.eSea[c] + el;
+                    const W0 = Wv[c], s = slopeOf(c, W0);
+                    sigma[c] = s * beta[c];                             // rain in terms of W* (W = β·W*)
+                    src[c] = E[c] + s * W0 - rainOf(c, W0);
+                    Wold[c] = W0;
+                    Wstar[c] = W0 / beta[c];
+                }
+                setWind(p, Wv);
+                solver.setOperator(sigma, zero, p.gu, p.gv, 1, faces);
+                const res = solver.solve(src, srcI, Wstar, Wi, { maxCycles: P_.RAIN_CYCLES, tol: 1e-4 });
+                cycles += res.cycles; newton++;
+                let change = 0, wsum = 0; sp = 0; se = 0;
+                for (let j = 0; j < h; j++) {
+                    const cl = cosLat[j];
+                    for (let i = 0; i < w; i++) {
+                        const c = j * w + i;
+                        let wn = Wstar[c] * beta[c];
+                        if (!(wn > 0)) wn = 0;
+                        if (wn > Wold[c] + up * Ws[c]) wn = Wold[c] + up * Ws[c];
+                        Wv[c] = wn;
+                        P[c] = rainOf(c, wn);
+                        change += Math.abs(wn - Wold[c]) * cl; wsum += wn * cl; sp += P[c] * cl; se += E[c] * cl;
+                    }
+                }
+                if (change < P_.RAIN_TOL * wsum && Math.abs(sp / se - 1) < 10 * P_.RAIN_TOL) break;
+            }
+            return { P, E, balance: sp / se };
+        }
+
+        // ── Pass 1 through the year (each point starting from the one before), then pass 2 with the soil's store ──
+        const Wk = [];
+        let Wv = new Float64Array(G);
+        for (let c = 0; c < G; c++) Wv[c] = 0.7 * prep[0].Ws[c];
+        let results = [];
+        for (let k = 0; k < K; k++) {
+            if (k > 0) for (let c = 0; c < G; c++) Wv[c] = Math.min(Wv[c], 1.2 * prep[k].Ws[c]);
+            results.push(solveAnchor(k, Wv, null));
+            Wk.push(Float64Array.from(Wv));
+        }
+        // The ground through the year (from pass 1's rain, two turns for a steady cycle): snow piles up below freezing
+        // and melts above it (degree-day melt); the soil holds up to RAIN_SOIL_MM and gives water to evaporation.
+        if (P_.RAIN_SOIL_MM > 0) {
+            const dtM = 12 / K, SEC = SECONDS_PER_MONTH, Smax = P_.RAIN_SOIL_MM;
+            const ground = Array.from({ length: K }, () => ({ melt: new Float64Array(G), soil: new Float64Array(G) }));
+            for (let c = 0; c < G; c++) {
+                if (!(land[c] > 0)) continue;
+                let snow = 0, S = 0.5 * Smax;
+                for (let turn = 0; turn < 2; turn++) for (let k = 0; k < K; k++) {
+                    const p = prep[k], Pm = results[k].P[c] * SEC, Ep = p.eLand[c] * SEC, T = p.Tair[c];
+                    snow += Pm * p.snow[c] * dtM;
+                    const melt = T > 0 ? Math.min(snow, MELT_MM_PER_C_MONTH * T * dtM) : 0;
+                    snow -= melt;
+                    const input = Pm * (1 - p.snow[c]) + melt / dtM;                       // mm/month
+                    if (turn === 1) { ground[k].melt[c] = melt / dtM / SEC; ground[k].soil[c] = S / dtM / SEC; }
+                    const et = turcPike(input + S / dtM, Ep);
+                    S = Math.min(Smax, Math.max(0, S + (input - et) * dtM));
+                }
+            }
+            results = Wk.map((Wa, k) => solveAnchor(k, Wa, ground[k]));
+        }
+
+        const Pout = new Float32Array(K * core.size), Wout = new Float32Array(K * core.size);
+        const Eout = new Float32Array(K * core.size), Rout = new Float32Array(K * core.size);
+        const tmp = new Float64Array(G);
+        for (let k = 0; k < K; k++) {
+            const off = k * core.size, { P, E } = results[k];
+            for (let c = 0; c < G; c++) tmp[c] = P[c] * SECONDS_PER_MONTH;
+            refineField(g, core, ratio, tmp, Pout, off);
+            for (let c = 0; c < G; c++) tmp[c] = E[c] * SECONDS_PER_MONTH;
+            refineField(g, core, ratio, tmp, Eout, off);
+            refineField(g, core, ratio, Wk[k], Wout, off);
+            for (let c = 0; c < G; c++) tmp[c] = Wk[k][c] / prep[k].Ws[c];
+            refineField(g, core, ratio, tmp, Rout, off);
+        }
+        for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
+        const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton, ms: performance.now() - t0, source: 'column water' };
+        if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt };
+        return out;
+    };
+}

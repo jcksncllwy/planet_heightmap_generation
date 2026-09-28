@@ -23,6 +23,7 @@ import { energyBalanceTemperature } from '../climate/temperature.js';
 import { derivedCirculation } from '../climate/circulation.js';
 import { windDrivenOcean } from '../climate/ocean.js';
 import { observedWinds, zonalWinds, observedTemperature, observedRain, zonalRain } from '../climate/inputs.js';
+import { columnWaterRain } from '../climate/rain.js';
 import { buildTestPlanet } from '../climate/test-planets.js';
 import { buildSphere } from '../../../js/sphere-mesh.js';
 import { makeRng } from '../../../js/rng.js';
@@ -151,10 +152,10 @@ async function ref(file, Type) {
 
 /**
  * Run the new climate on Earth or a test planet. temperature: 'ebm' (the Phase 2 energy balance) or 'observed'
- * (real Earth data — the Phase 1 oracle). On Earth the stages not built yet get observations (winds, rain); on a
- * test planet, placeholders (textbook wind belts, a zonal rain curve).
+ * (real Earth data — the Phase 1 oracle). winds: 'derived' (Phase 3) or 'observed' (Earth). rain: 'model' (the
+ * Phase 5 rain stage) or 'observed' (Earth's real rain, to judge the other stages on their own).
  */
-async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, temperature = 'ebm', winds = 'derived', mapW = 1440, mapH = 720 }) {
+async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, temperature = 'ebm', winds = 'derived', rain = 'model', mapW = 1440, mapH = 720 }) {
     let t = performance.now();
     let xyz, elevKm, mesh;
     if (planet === 'earth') {
@@ -173,15 +174,16 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
     let stages;
     if (planet === 'earth') {
         const [t2m, precip, u10, v10] = await Promise.all(['t2m', 'precip', 'u10', 'v10'].map(f => ref(`${f}.f32`, Float32Array)));
-        if (temperature === 'observed') {                      // the Phase 1 oracle: real temperature, real winds
+        const rainStage = rain === 'observed' ? observedRain(precip) : columnWaterRain();
+        if (temperature === 'observed') {                      // the Phase 1 oracle: real temperature, real winds and rain
             stages = { winds: observedWinds(u10, v10), temperature: observedTemperature(t2m), rain: observedRain(precip) };
         } else if (winds === 'observed') {                     // Phase 2 as scored: the energy balance with real winds
-            stages = { winds: observedWinds(u10, v10), temperature: energyBalanceTemperature(), rain: observedRain(precip) };
-        } else {                                               // Phase 3–4: temperature ↔ derived winds ↔ ocean
-            stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: observedRain(precip) };
+            stages = { winds: observedWinds(u10, v10), temperature: energyBalanceTemperature(), rain: rainStage };
+        } else {                                               // Phases 3–5: temperature ↔ derived winds ↔ ocean, then rain
+            stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: rainStage };
         }
     } else {
-        stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: zonalRain() };
+        stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() };
     }
     const res = computeClimate({ xyz, elevKm, axes: 'y-up' }, { anchors, lapseRateCPerKm: lapse, stages });
     const climateMs = res.timing.reduce((s, x) => s + x.ms, 0);
@@ -220,6 +222,7 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
         monthlyT: temp.monthly ? Float32Array.from(temp.monthly) : null, tempProfile: temp.profile ?? null,
         monthlySL: temp.monthlySL ? Float32Array.from(temp.monthlySL) : null, seaIce: temp.seaIce ? Float32Array.from(temp.seaIce) : null,
         circ: circ ? { u: circ.u, v: circ.v, slp: circ.slp, itczLat: circ.itczLat } : null,
+        monthlyP: res.stages.rain.source === 'column water' ? Float32Array.from(res.months.P) : null,
         ocean: oc ? { u: oc.u, v: oc.v, psi: oc.psi, qflux: oc.qflux, upwelling: oc.upwelling } : null,
         score,
     };
@@ -231,7 +234,7 @@ self.onmessage = async (e) => {
         const result = cmd === 'v1' ? await timeV1(N) : cmd === 'newClimate' ? await runNewClimate(e.data) : timeKernels();
         const transfer = [];
         if (result?.raster) {
-            for (const a of [result.raster, result.landPx, result.monthlyT, result.monthlySL, result.seaIce]) if (a) transfer.push(a.buffer);
+            for (const a of [result.raster, result.landPx, result.monthlyT, result.monthlySL, result.seaIce, result.monthlyP]) if (a) transfer.push(a.buffer);
             if (result.circ) for (const a of Object.values(result.circ)) transfer.push(a.buffer);
             if (result.ocean) for (const a of Object.values(result.ocean)) transfer.push(a.buffer);
         }

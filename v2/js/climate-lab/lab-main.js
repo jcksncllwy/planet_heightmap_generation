@@ -82,9 +82,7 @@ const KOPPEN_SOURCES = {
 };
 const SCALAR_SOURCES = { obs: 'Observed', v1: 'V1', new: 'New', diff: 'V1 − observed', diffNew: 'New − observed' };
 const SEASONS = { JJA: 'Jun–Aug', DJF: 'Dec–Feb', YEAR: 'Year' };
-const PLANETS = { earth: 'Earth', midlat: 'Mid-latitude continent', tropical: 'Tropical continent', supercontinent: 'Supercontinent' };
-// which new-climate stage produces each field, for the "not built yet" note
-const STAGE_OF = { precip: 'rain (Phase 5)' };
+const PLANETS = { earth: 'Earth', midlat: 'Mid-latitude continent', mountains: 'Coastal range', tropical: 'Tropical continent', supercontinent: 'Supercontinent' };
 
 const state = { field: 'koppen', source: 'v1', season: 'JJA', month: null, view: 'globe', itcz: true, coast: true, planet: 'earth' };
 
@@ -145,10 +143,17 @@ async function resolve(field, source) {
         return { kind: 'koppen', values: await koppenMap(src.file), caption: src.caption };
     }
     const f = FIELDS[field];
-    if ((source === 'new' || source === 'diffNew') && STAGE_OF[field]) {
-        return { kind: 'none', caption: 'Not built yet', note: `The new climate's ${STAGE_OF[field]} stage is not built yet.` };
-    }
     if ((source === 'new' || source === 'diffNew') && !newMonthlyT()) return needRun;
+    if (field === 'precip' && (source === 'new' || source === 'diffNew')) {
+        if (!newRun.monthlyP) return { kind: 'none', caption: 'This run used the real rain', note: 'Run again with Rain: "New (Phase 5)".' };
+        const season = state.month ?? state.season;
+        const seasonText = typeof season === 'number' ? MONTHS[season] : SEASONS[season];
+        const n = obsSeason(newRun.monthlyP, season);
+        if (source === 'new') return { kind: 'scalar', values: n, ramp: RAMPS.rain, caption: `New rain (land and sea) · ${seasonText} · ${newRun.label}` };
+        const o = obsSeason(await obsField('precip'), season);
+        for (let c = 0; c < G; c++) n[c] = Math.log2((n[c] + 5) / (o[c] + 5));
+        return { kind: 'scalar', values: n, ramp: RAMPS.rainRatio, landOnly: true, caption: `New ÷ observed rain · ${seasonText}` };
+    }
     if ((field === 'ocean' || field === 'seaIce') && (source === 'new' || source === 'diffNew')) {
         if (!newRun.monthlySL) return needRun;
         const season = state.month ?? state.season;
@@ -423,7 +428,7 @@ const FIELD_NOTES = {
     koppen: 'Beck map = the published 1991–2020 Köppen map. New = the new climate from your last run (per terrain cell). "12 months / 6 / 4 points / 2 seasons" = real Earth data classified by the new classifier after cutting the year down. V1 = the current app on the imported Earth.',
     t2m: 'Observed: Beck et al. 1991–2020 monthly means (land only). V1 has two seasons (June–August, December–February). New: the energy balance from your last run, every month, land and sea, at each 1° cell\'s mean height.',
     swing: 'Warmest month minus coldest month: large deep inside continents, small near and over the sea. V1 has only two seasons, so its swing is summer minus winter.',
-    precip: 'Land only, mm per month. The lines are the tropical rain belt (ITCZ): white dashed = observed (rain maximum), pink = V1.',
+    precip: 'Mm per month. Observed and V1: land only (Beck 2023; V1\'s two seasons). New (Phase 5): land and sea, from the column-water budget — at sea compare with GPCP in the Phase 5 table. The lines are the tropical rain belt (ITCZ): white dashed = observed (rain maximum), pink = V1, cyan = the new winds\' belt.',
     slp: 'Sea-level pressure with near-surface wind arrows (arrow length is relative within each source; V1\'s wind has no units). Observed: NCEP reanalysis 1991–2020. New (Phase 3): derived from the new temperature — belts placed by the planet\'s own warmth, thermal lows and highs, friction. Rain-belt lines: white dashed = observed (June–August / December–February), pink = V1, cyan = new (any month).',
     ocean: 'Observed: sea-surface temperature minus the average at that latitude — warm currents (Gulf Stream, Kuroshio) red, cold upwelling coasts blue. V1: its "ocean warmth" field. New (Phase 4): the same for the new climate\'s sea temperature, with its wind-driven currents as arrows (gyres, western boundary currents, the circumpolar current).',
     seaIce: 'Observed sea-ice concentration (NOAA OISST 1991–2020). V1 has no sea ice. New: sea ice from the energy balance, by month.',
@@ -624,14 +629,15 @@ $('timeKernels').addEventListener('click', (e) => timed(e.currentTarget, async (
     for (const k of r) timingRows.push([`&nbsp;&nbsp;${k.name}`, `${ms(k.ms)} ${k.unit === 'total' ? '' : k.unit}`]);
 }));
 // ── The new climate (Phases 1–2) ──────────────────────────────────────────────
-const sk = { N: '160000', K: '6', planet: 'earth', temp: 'ebm', winds: 'derived' };
+const sk = { N: '160000', K: '6', planet: 'earth', temp: 'ebm', winds: 'derived', rain: 'model' };
 let skData = null, tempData = null;
 const skRows = [];
 const PLANET_NOTES = {
-    earth: 'The imported Earth heightmap. Winds and rain are real observations until their stages are built.',
+    earth: 'The imported Earth heightmap. Every stage can run new; winds and rain can also be swapped for real observations to judge the other stages on their own.',
+    mountains: 'The mid-latitude continent with a 3 km range 8° inland from its west coast. Expect a wet windward slope and a rain shadow east of the range.',
     midlat: 'One continent from 20° to 60°N, 80° wide. Expect big seasons inland, a mild west coast and a harsh east coast, hot summers and cold winters compared with the sea.',
     tropical: 'A flat continent across the equator (30°S–30°N, 45° wide). Expect small seasons near the equator, growing toward 30°.',
-    supercontinent: 'One huge continent, 60°S–60°N and 110° wide. Expect extreme seasons deep inside at mid-latitudes. Winds are textbook belts and rain is a placeholder — judge the temperature.',
+    supercontinent: 'One huge continent, 60°S–60°N and 110° wide. Expect extreme seasons deep inside at mid-latitudes, a wet equator and subtropical deserts in the interior.',
 };
 function buildSkeletonControls() {
     segmented($('ncPlanet'), PLANETS, sk.planet, (k) => {
@@ -646,6 +652,8 @@ function buildSkeletonControls() {
     segmented($('ncTemp'), { ebm: 'New (Phase 2)', observed: 'Real data (Phase 1 oracle)' }, sk.temp, (k) => { sk.temp = k; buildSkeletonControls(); });
     $('ncWinds').hidden = !earth || sk.temp !== 'ebm'; $('ncWindsHead').hidden = $('ncWinds').hidden;
     segmented($('ncWinds'), { derived: 'Derived (Phase 3)', observed: 'Real winds' }, sk.winds, (k) => { sk.winds = k; buildSkeletonControls(); });
+    $('ncRain').hidden = !earth || sk.temp !== 'ebm'; $('ncRainHead').hidden = $('ncRain').hidden;
+    segmented($('ncRain'), { model: 'New (Phase 5)', observed: 'Real rain' }, sk.rain, (k) => { sk.rain = k; buildSkeletonControls(); });
     segmented($('skRes'), { 40000: '40K', 160000: '160K', 640000: '640K', 2500000: '2.5M' }, sk.N, (k) => { sk.N = k; buildSkeletonControls(); });
     segmented($('skK'), { 4: '4', 6: '6 (default)', 12: '12' }, sk.K, (k) => { sk.K = k; buildSkeletonControls(); });
 }
@@ -693,6 +701,29 @@ function renderOceanTables() {
         + `land ${Object.entries(cl.perCont).map(([k, v]) => `${k} ${num(v, 1)} (${num(cl.perContWithout[k], 1)})`).join(', ')}; Köppen with real rain ${pct(cl.koppen)} (${pct(cl.koppenWithout)}); named features ${cl.named.filter(c => c.ok).length}/${cl.named.length}. `
         + `Settings: ${Object.entries(oceanData.params).map(([k, x]) => `${k.replace('OCEAN_', '').toLowerCase()} ${+(+x).toPrecision(3)}`).join(', ')}. Ocean ${num(o.ms, 0)} ms.`;
 }
+let rainData = null;
+function renderRainTables() {
+    if (!rainData) { table($('rainTable'), ['—'], [{ note: 'Run node tuning/climate/rain-check.mjs to fill these tables.' }]); return; }
+    const o = rainData.open, d = rainData.openDerivedWinds, v1 = rainData.v1, rows = [];
+    for (const k of Object.keys(o.per)) rows.push([k, num(o.per[k], 2), num(d.per[k], 2), v1.perCont[k] !== undefined ? `${num(o.seas.perCont[k], 2)} / ${num(v1.perCont[k], 2)}` : '—']);
+    rows.push({ note: `Typical monthly error as a log ratio (0.69 = off by a factor of 2), regions weighted equally: ${num(o.mean, 2)} with real winds, ${num(d.mean, 2)} with the circulation stage's winds (both with real temperature). Last column: two seasons, new vs V1 on the same land.` });
+    table($('rainTable'), ['Region', 'Real winds', 'Own winds', 'New / V1 (2 seasons)'], rows);
+    const cmp = [
+        ['Rain pattern, Jun–Aug (log corr.)', num(o.seas.logCorrJJA), num(d.seas.logCorrJJA), num(v1.logCorrJJA)],
+        ['Rain pattern, Dec–Feb', num(o.seas.logCorrDJF), num(d.seas.logCorrDJF), num(v1.logCorrDJF)],
+        ['Wet season right way round', pct(o.seas.wetSeason), pct(d.seas.wetSeason), pct(v1.wetSeason)],
+        ['Continents, typical error (2 seasons)', num(o.seas.meanCont, 2), num(d.seas.meanCont, 2), num(v1.meanCont, 2)],
+        ['Rain belt, degrees off', num(o.belt, 1), num(d.belt, 1), '—'],
+        ['Köppen: real temperature + this rain', pct(rainData.truthSwap.new), '—', pct(rainData.truthSwap.v1)],
+    ];
+    table($('rainCmpTable'), ['Measure', 'New, real winds', 'New, own winds', 'V1'], cmp);
+    const list = [...o.named];
+    for (const [kind, p] of Object.entries(rainData.planets)) for (const c of p.checks) list.push({ ...c, text: `${PLANETS[kind] ?? kind}: ${c.text}` });
+    checkTable($('rainNamedTable'), list);
+    const cl = rainData.closed;
+    $('rainNote').textContent = `Every stage new on Earth: Köppen ${pct(cl.koppen)} of land vs Beck (V1 38 %); rain error ${num(cl.mean, 2)}; wet season right way round ${pct(cl.seas.wetSeason)}; named ${cl.named.filter(c => c.ok).length}/${cl.named.length}. `
+        + `Rain stage ${num(o.ms, 0)} ms for 12 months (Node); settings: ${Object.entries(rainData.params).map(([k, x]) => `${k.replace('RAIN_', '').toLowerCase()} ${+(+x).toPrecision(3)}`).join(', ')}.`;
+}
 function renderTemperatureTables() {
     if (!tempData) { table($('tempTable'), ['—'], [{ note: 'Run node tuning/climate/temperature-check.mjs to fill these tables.' }]); return; }
     const pc = tempData.perContinent, rows = [];
@@ -731,11 +762,11 @@ $('skRun').addEventListener('click', async (e) => {
     const lapse = $('skLapse').checked;
     const planet = sk.planet, temperature = planet === 'earth' ? sk.temp : 'ebm';
     try {
-        const winds = planet === 'earth' ? sk.winds : 'derived';
-        const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature, winds });
-        const what = temperature === 'ebm' ? `energy balance${r.circ ? ' + derived winds' : ' + real winds'}` : 'real temperature';
+        const winds = planet === 'earth' ? sk.winds : 'derived', rain = planet === 'earth' ? sk.rain : 'model';
+        const r = await runJob({ cmd: 'newClimate', planet, N: +sk.N, anchors: +sk.K, lapse: lapse ? 6.5 : 0, temperature, winds, rain });
+        const what = temperature === 'ebm' ? `energy balance${r.circ ? ' + derived winds' : ' + real winds'}${r.monthlyP ? ' + new rain' : ' + real rain'}` : 'real temperature';
         const label = `${PLANETS[planet]} · ${r.N.toLocaleString()} cells · ${sk.K} points · ${what}${lapse ? '' : ' · no height correction'}`;
-        newRun = { planet, label, raster: r.raster, landPx: r.landPx, monthlyT: r.monthlyT, monthlySL: r.monthlySL, seaIce: r.seaIce, circ: r.circ, ocean: r.ocean };
+        newRun = { planet, label, raster: r.raster, landPx: r.landPx, monthlyT: r.monthlyT, monthlySL: r.monthlySL, seaIce: r.seaIce, circ: r.circ, ocean: r.ocean, monthlyP: r.monthlyP };
         if (planet !== 'earth') planetCoast = coastFromLand(r.landPx);
         const regs = ['Cs (Mediterranean)', 'Cw (dry-winter temperate)', 'Am (tropical monsoon)', 'Dw (dry-winter continental)'];
         skRows.push(r.score ? [label, pct(r.score.exact), pct(r.score.major), ...regs.map(k => pct(r.score.regimes[k]))] : [label, '—', '—', '—', '—', '—', '—']);
@@ -743,7 +774,7 @@ $('skRun').addEventListener('click', async (e) => {
         skRows.push({ note: `new climate ${ms(r.climateMs)} (${r.timing.map(t => `${t.stage} ${ms(t.ms)}`).join(' · ')})${tp}; building the planet ${ms(r.meshMs)}; drawing the map ${ms(r.rasterMs)}` });
         state.planet = planet;
         state.source = 'new';
-        if (state.field !== 'koppen' && state.field !== 't2m' && state.field !== 'swing') state.field = temperature === 'ebm' ? 't2m' : 'koppen';
+        if (!['koppen', 't2m', 'swing', 'precip', 'slp', 'ocean', 'seaIce'].includes(state.field)) state.field = temperature === 'ebm' ? 't2m' : 'koppen';
         await refresh();
     } catch (err) {
         skRows.push({ note: `Failed: ${err.message}` }); console.error(err);
@@ -766,6 +797,7 @@ try {
     tempData = await fetchJson(`${LAB}temperature-check.json`).catch(() => null);
     circData = await fetchJson(`${LAB}circulation-check.json`).catch(() => null);
     oceanData = await fetchJson(`${LAB}ocean-check.json`).catch(() => null);
+    rainData = await fetchJson(`${LAB}rain-check.json`).catch(() => null);
     renderStageTable();
     renderSeasonTable();
     renderTiming();
@@ -774,6 +806,7 @@ try {
     renderTemperatureTables();
     renderCirculationTables();
     renderOceanTables();
+    renderRainTables();
     await buildCoast();
     await refresh();
 } catch (err) {

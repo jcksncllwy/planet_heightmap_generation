@@ -65,9 +65,9 @@
 
         <section>
             <h2>New climate</h2>
-            <p class="hint">Runs the new climate on this device. Its temperature is the Phase 2 energy balance (or, on Earth,
-                real data — the Phase 1 oracle). Stages not built yet use observations on Earth (winds, rain) and simple
-                placeholders on the test planets. Then Temperature / Seasonal swing / Köppen → source "New".</p>
+            <p class="hint">Runs the new climate on this device: temperature (Phase 2), pressure and wind (3), ocean (4) and
+                rain (5). On Earth the winds and the rain can be swapped for real observations, and the temperature for real
+                data (the Phase 1 oracle), to judge one stage at a time. Then any field → source "New".</p>
             <h2 class="sub">Planet</h2>
             <div id="ncPlanet" class="segmented"></div>
             <p class="hint" id="ncPlanetNote"></p>
@@ -75,6 +75,8 @@
             <div id="ncTemp" class="segmented"></div>
             <h2 class="sub" id="ncWindsHead">Winds</h2>
             <div id="ncWinds" class="segmented"></div>
+            <h2 class="sub" id="ncRainHead">Rain</h2>
+            <div id="ncRain" class="segmented"></div>
             <h2 class="sub">Terrain cells</h2>
             <div id="skRes" class="segmented"></div>
             <h2 class="sub">Points in the year</h2>
@@ -119,6 +121,19 @@
             <p class="hint">Named currents and coasts on Earth, and the test planets:</p>
             <div class="tablewrap"><table id="oceanNamedTable"></table></div>
             <p class="hint" id="oceanNote"></p>
+        </section>
+
+        <section>
+            <h2>Phase 5 · rain</h2>
+            <p class="hint">A column-water budget: evaporation, transport by the winds, rain-out as the air nears saturation,
+                storms, mountains. Open loop (real temperature), with the real winds and with the circulation stage's own
+                winds; scored against Beck on land and GPCP at sea, per continent and ocean basin (each weighted equally).</p>
+            <div class="tablewrap"><table id="rainTable"></table></div>
+            <p class="hint">Against V1 on the same land:</p>
+            <div class="tablewrap"><table id="rainCmpTable"></table></div>
+            <p class="hint">Named features on Earth (real winds) and the test planets:</p>
+            <div class="tablewrap"><table id="rainNamedTable"></table></div>
+            <p class="hint" id="rainNote"></p>
         </section>
 
         <section>

@@ -512,3 +512,83 @@ stayed at their literature values.
 - **The coupled sea pattern is weaker than with real winds** (east–west correlation ≈ 0.05 vs 0.43). The derived winds
   are weaker and smoother than the real ones.
 - **Sea anomalies are about a third of the real ones**, and currents slow (a 2° grid and climatological winds).
+
+
+## Phase 5 — rain, built 2026-09-28
+
+**What was built.** `v2/js/climate/rain.js`, a column-water budget on the 2° grid at each point in the year:
+evaporation − rain − ∇·(uW) + ∇·(K∇W) = 0 for the air column's water W (mm).
+- **Evaporation.** From the sea by the bulk formula (warmer water and stronger wind evaporate more; gusts and storms
+  add to the monthly-mean wind; none under sea ice). From land at a Priestley–Taylor potential rate (the sunshine
+  reaching the ground less its net longwave loss), limited by the water the ground holds (Turc–Pike).
+- **Snow and soil.** A small bucket through the year: snow piles up below freezing and melts above it; the soil holds up
+  to 150 mm. A second pass over the year lets snowmelt and soil water feed summer evaporation (continental interiors).
+- **Transport.** Flux form, so water is conserved (rain = evaporation to ≈ 1 % every month).
+  - The rotational part of the wind above the friction layer moves the whole column.
+  - The divergent part (Helmholtz decomposition) moves only the converging layer's water: shallow under dry air,
+    deep where the column is moist and convecting.
+  - Eddy mixing K = K_min + σ_Eady·L²: strongest in the storm belts.
+- **Rain-out** grows exponentially with the column's relative humidity (Bretherton et al. 2004). The saturated column
+  follows a blend of the surface and its latitude's temperature: the troposphere over a hot desert or a frozen
+  continent stays nearer the zonal mean.
+- **Storms** spread the month's humidity (by the Eady growth rate of the zonal-mean temperature gradient, the thermal
+  wind capped at a realistic jet shear). Rain grows exponentially, so this boosts the winter storm belts' rain: winter-wet
+  west coasts come out by themselves.
+- **Stable air** (a surface colder than its latitude, carried with the air for about a day) rains less: the Atacama,
+  cold coasts, dry winter continents.
+- **Mountains.** The solve is for the sea-level-equivalent column. Only the part of the column above the higher of two
+  cells crosses between them (carried or mixed), so water piles up and rains windward, and a share gets over. Upslope
+  lift rains out too, reduced by flow blocking (Froude number).
+- **Solver.** `solver.js` gained a flux form with per-face open shares and per-row diffusion. The existing stages' results
+  are bit-identical. Newton steps with an upward step limit (the exponential overshoots otherwise).
+- **Check and lab.**
+  - `tuning/climate/rain-check.mjs`: real winds and the circulation stage's own winds, per continent (Beck) and ocean
+    basin (GPCP); V1 on the same land; named features; a like-for-like truth swap; every stage new; test planets.
+  - `diag-rain.mjs`, `diag-planet-rain.mjs`.
+  - A new test planet with a coastal range.
+  - In the lab: Rain → New, a Rain switch in "New climate", and a Phase 5 table.
+
+**Tuned** on both wind sources (continents and basins weighted equally, priors, none worse than with literature values):
+rain-out 1.9 h / steepness 12.4, rotational wind 0.76, stability 0.03, column follows the surface 0.41. Two settings
+were then set by hand, trading nothing in the error for drier deserts and sharper monsoons: tropical mixing 6×10⁵ m²/s
+and storm mixing length 1,100 km.
+
+**Numbers (open loop: real temperature).**
+
+| Measure | New, real winds | New, own winds | V1 |
+|---|---|---|---|
+| Typical monthly error, regions equal (log ratio; 0.69 = ×2) | 0.63 (land 0.80, sea 0.53) | 0.76 | — |
+| Rain pattern Jun–Aug / Dec–Feb (log corr., land) | 0.66 / 0.65 | 0.61 / 0.57 | 0.46 / 0.62 |
+| Wet season right way round | 78 % | 79 % | 81 % |
+| Continents, typical error (2 seasons) | 0.75 | 0.79 | 0.82 |
+| Rain belt | 4.6° off | 6.3° off | — |
+| Köppen, real temperature + this rain (same pipeline) | 56.4 % | — | 55.2 % |
+
+- **Every stage new on Earth:** Köppen **46.3 %** of land vs Beck (V1 38 %); wet season right way round 88 %.
+- **Named features that pass (real winds):**
+  - the Atacama and Australian interior are dry;
+  - the South Asian, West African and East Asian monsoons (northern Australia's runs the right way, but its dry season
+    is too wet);
+  - California is winter-wet;
+  - the Pacific Northwest has a rain shadow;
+  - the eastern Pacific rain belt sits north of the equator.
+- **Test planets:** all pass.
+  - Wet west coast vs dry interior; a dry subtropical west coast.
+  - The tropical rain belt follows the sun.
+  - The supercontinent has wet equatorial coasts and an arid interior (as paleoclimate runs of Pangaea have).
+  - The coastal range: 77 vs 28 mm/month, windward vs lee.
+
+**Gate: partly met.**
+- Passed: the truth swap beats V1; the season patterns and continents beat V1; the test planets.
+- Not met: the wet-season measure (78 % vs 81 % open loop; 88 % with every stage new), and 9 of the 16 named
+  features fail (7 pass; the two Mediterranean ones are Phase 8's).
+
+**Known limits.**
+- **Deserts beside monsoons are too wet** (Sahara 18, Arabia/Thar 41 mm/month vs 2 and 12).
+- **Rainforests are too dry** (Congo 81 vs 143, the Maritime Continent 134 vs 243).
+- **Patagonia's rain shadow and Kazakhstan's dryness are too weak.**
+- **With the circulation stage's winds, Africa's rain belt runs into the Sahara.** The circulation places the tropical
+  trough at the hottest latitude (the heat low). Phase 6 should place it by moist static energy from the rain stage.
+- **Speed:** 0.54 s for rain at 6 points in Node, 0.75 s in Chrome; the whole climate is 2.2 s at 160K in Chrome. The
+  speed pass is Phase 6.
+- **No upslope rain at the terrain-cell scale yet** (the rain is 2°, interpolated).

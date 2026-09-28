@@ -4,7 +4,9 @@
 //
 // σ complex per cell (a damping plus i·n·ω·C for the n-th harmonic of the year), D a diffusivity on the unit sphere
 // (W m⁻² K⁻¹), γ·u an advection by the winds (upwind, so the system stays diagonally dominant). Finite volumes on the
-// grid; no flux through the poles. Relaxation is zonal-line Gauss–Seidel — each latitude row solved exactly as a
+// grid; no flux through the poles. With `conservative`, the transport is in flux form instead, γ·∇·(u T) (upwind
+// face fluxes): what leaves one cell enters its neighbour, so a tracer such as water is neither made nor lost where
+// the winds converge or diverge. Relaxation is zonal-line Gauss–Seidel — each latitude row solved exactly as a
 // periodic tridiagonal system — which removes the stiffness of the rows that crowd together near the poles; the
 // multigrid V-cycle removes the slow large-scale error. DOM-free.
 
@@ -26,7 +28,7 @@ class Level {
         const n = this.n;
         this.sr = new Float64Array(n); this.si = new Float64Array(n);          // σ
         this.gu = new Float64Array(n); this.gv = new Float64Array(n);          // γ·u, γ·v
-        this.ay = new Float64Array(n);                                         // meridional upwind coefficient (signed)
+        this.an = new Float64Array(n); this.as = new Float64Array(n);          // advective coefficients on T north / south (≥ 0)
         this.sub = new Float64Array(n); this.sup = new Float64Array(n);        // row system: T_{i−1}, T_{i+1} coefficients
         this.bdr = new Float64Array(n); this.bdi = new Float64Array(n);        // row system diagonal
         this.Tr = new Float64Array(n); this.Ti = new Float64Array(n);          // solution (coarse levels: correction)
@@ -50,6 +52,17 @@ class Level {
             this.ksRow[j] = Dy * cosS / (this.cos[j] * this.dphi * this.dphi);
         }
     }
+    /** Diffusivities that vary with latitude (one value per row; interfaces take the mean of their two rows). */
+    setRowDiffusion(DxRow, DyRow) {
+        for (let j = 0; j < this.h; j++) {
+            const phi = Math.PI / 2 - (j + 0.5) * this.dphi;
+            const cosN = j === 0 ? 0 : Math.cos(phi + this.dphi / 2), cosS = j === this.h - 1 ? 0 : Math.cos(phi - this.dphi / 2);
+            const dN = j === 0 ? 0 : 0.5 * (DyRow[j] + DyRow[j - 1]), dS = j === this.h - 1 ? 0 : 0.5 * (DyRow[j] + DyRow[j + 1]);
+            this.kxRow[j] = DxRow[j] / (this.cos[j] * this.cos[j] * this.dlam * this.dlam);
+            this.knRow[j] = dN * cosN / (this.cos[j] * this.dphi * this.dphi);
+            this.ksRow[j] = dS * cosS / (this.cos[j] * this.dphi * this.dphi);
+        }
+    }
 }
 
 export class HelmholtzSolver {
@@ -57,19 +70,37 @@ export class HelmholtzSolver {
      * @param {{w:number, h:number}} grid  the climate grid (coarsened while the row count stays even and ≥ 20)
      * @param {number} D   diffusivity on the unit sphere, W m⁻² K⁻¹ (north–south)
      * @param {number} [Dx] east–west diffusivity (default: D, isotropic)
+     * @param {{conservative?: boolean}} [opts] conservative: transport in flux form (see above)
      */
-    constructor(grid, D, Dx = D) {
+    constructor(grid, D, Dx = D, { conservative = false } = {}) {
         this.levels = [new Level(grid.w, grid.h)];
         let w = grid.w, h = grid.h;
         while (h % 2 === 0 && h / 2 >= 20 && w % 2 === 0) { w /= 2; h /= 2; this.levels.push(new Level(w, h)); }
-        for (const L of this.levels) L.setDiffusion(Dx, D);
+        for (const L of this.levels) { L.setDiffusion(Dx, D); L.conservative = conservative; }
+    }
+
+    /**
+     * Diffusivities per latitude row of the grid (unit sphere; east–west, north–south), replacing the constructor's.
+     * Coarser levels take the mean of their two rows. Takes effect at the next setOperator.
+     */
+    setRowDiffusion(DxRow, DyRow) {
+        let dx = Float64Array.from(DxRow), dy = Float64Array.from(DyRow);
+        for (let l = 0; l < this.levels.length; l++) {
+            const L = this.levels[l];
+            if (l > 0) {
+                const nx = new Float64Array(L.h), ny = new Float64Array(L.h);
+                for (let j = 0; j < L.h; j++) { nx[j] = 0.5 * (dx[2 * j] + dx[2 * j + 1]); ny[j] = 0.5 * (dy[2 * j] + dy[2 * j + 1]); }
+                dx = nx; dy = ny;
+            }
+            L.setRowDiffusion(dx, dy);
+        }
     }
 
     /**
      * Set the operator. sr, si: σ per cell. u, v: winds (m/s, east / north) per cell, or null. gamma: the heat
      * capacity the wind carries along (J m⁻² K⁻¹).
      */
-    setOperator(sr, si, u, v, gamma) {
+    setOperator(sr, si, u, v, gamma, faces = null) {
         const L0 = this.levels[0];
         L0.sr.set(sr); L0.si.set(si);
         if (u && gamma) for (let c = 0; c < L0.n; c++) { L0.gu[c] = gamma * u[c]; L0.gv[c] = gamma * v[c]; }
@@ -79,7 +110,32 @@ export class HelmholtzSolver {
             restrict(F, C, F.sr, C.sr); restrict(F, C, F.si, C.si);
             restrict(F, C, F.gu, C.gu); restrict(F, C, F.gv, C.gv);
         }
+        this.setFaces(faces);
         for (const L of this.levels) { buildRows(L); factorRows(L); }
+    }
+
+    /**
+     * Flux form only: the share of each face's flux — carried and mixed — that crosses it: faces.e[c] for the face
+     * between cell c and its east neighbour, faces.n[c] for the face with its north neighbour (e.g. the part of the
+     * air column above a mountain barrier). Coarser levels average the fine faces. null: everything crosses.
+     */
+    setFaces(faces) {
+        for (let l = 0; l < this.levels.length; l++) {
+            const L = this.levels[l];
+            if (!faces) { L.faces = null; continue; }
+            if (!L.faceBuf) L.faceBuf = { e: new Float64Array(L.n), n: new Float64Array(L.n) };
+            const T = L.faceBuf;
+            if (l === 0) { T.e.set(faces.e); T.n.set(faces.n); }
+            else {
+                const F = this.levels[l - 1].faceBuf, wf = this.levels[l - 1].w;
+                for (let J = 0; J < L.h; J++) for (let I = 0; I < L.w; I++) {
+                    const c = J * L.w + I, e0 = 2 * J * wf + 2 * I + 1, n0 = 2 * J * wf + 2 * I;
+                    T.e[c] = 0.5 * (F.e[e0] + F.e[e0 + wf]);
+                    T.n[c] = 0.5 * (F.n[n0] + F.n[n0 + 1]);
+                }
+            }
+            L.faces = T;
+        }
     }
 
     /**
@@ -128,8 +184,9 @@ export class HelmholtzSolver {
 }
 
 // Row system at cell (j, i):
-//   bd·T_i + sub·T_{i−1} + sup·T_{i+1} = f + kn·T_north + ks·T_south + (meridional upwind)·T_upwind
+//   bd·T_i + sub·T_{i−1} + sup·T_{i+1} = f + (kn + an)·T_north + (ks + as)·T_south
 function buildRows(L) {
+    if (L.conservative) { buildRowsFlux(L); return; }
     const { w, h } = L;
     for (let j = 0; j < h; j++) {
         const kx = L.kxRow[j], kn = L.knRow[j], ks = L.ksRow[j];
@@ -139,10 +196,45 @@ function buildRows(L) {
             const ax = L.gu[c] * sx;
             let ay = L.gv[c] * sy;
             if ((j === 0 && ay < 0) || (j === h - 1 && ay > 0)) ay = 0;       // no upwind cell beyond the pole
-            L.ay[c] = ay;
+            L.an[c] = ay < 0 ? -ay : 0;                                       // southward wind: upwind is north
+            L.as[c] = ay > 0 ? ay : 0;
             L.sub[c] = -kx - (ax > 0 ? ax : 0);
             L.sup[c] = -kx - (ax < 0 ? -ax : 0);
             L.bdr[c] = L.sr[c] + 2 * kx + kn + ks + Math.abs(ax) + Math.abs(ay);
+            L.bdi[c] = L.si[c];
+        }
+    }
+}
+
+// Flux form: face winds are the means of the two cells; each face's flux carries the upwind cell's value. Outflow
+// goes on the diagonal, inflow on the neighbour's coefficient; nothing crosses the poles.
+function buildRowsFlux(L) {
+    const { w, h } = L;
+    L.foldNS = true;                                       // north / south diffusion folded into an, as (per face)
+    const T = L.faces;
+    for (let j = 0; j < h; j++) {
+        const kx = L.kxRow[j], kn = L.knRow[j], ks = L.ksRow[j];
+        const phi = Math.PI / 2 - (j + 0.5) * L.dphi;
+        const cosN = j === 0 ? 0 : Math.cos(phi + L.dphi / 2), cosS = j === h - 1 ? 0 : Math.cos(phi - L.dphi / 2);
+        const sx = 1 / (R_PLANET * L.cos[j] * L.dlam);
+        const syN = cosN / (R_PLANET * L.cos[j] * L.dphi), syS = cosS / (R_PLANET * L.cos[j] * L.dphi);
+        for (let i = 0; i < w; i++) {
+            const c = j * w + i, ce = j * w + (i === w - 1 ? 0 : i + 1), cw = j * w + (i === 0 ? w - 1 : i - 1);
+            // the share of each face that is open (1 without faces)
+            const fe = T ? T.e[c] : 1, fw = T ? T.e[cw] : 1, fn = T && j > 0 ? T.n[c] : 1, fs = T && j < h - 1 ? T.n[c + w] : 1;
+            const ue = 0.5 * (L.gu[c] + L.gu[ce]) * sx * fe, uw = 0.5 * (L.gu[c] + L.gu[cw]) * sx * fw;
+            const vn = j > 0 ? 0.5 * (L.gv[c] + L.gv[c - w]) * syN * fn : 0, vs = j < h - 1 ? 0.5 * (L.gv[c] + L.gv[c + w]) * syS * fs : 0;
+            const kxe = kx * fe, kxw = kx * fw, knf = kn * fn, ksf = ks * fs;
+            let diag = 0;
+            if (ue > 0) diag += ue;
+            if (uw < 0) diag -= uw;
+            if (vn > 0) diag += vn;
+            if (vs < 0) diag -= vs;
+            L.an[c] = knf + (vn < 0 ? -vn : 0);
+            L.as[c] = ksf + (vs > 0 ? vs : 0);
+            L.sub[c] = -kxw - (uw > 0 ? uw : 0);
+            L.sup[c] = -kxe - (ue < 0 ? -ue : 0);
+            L.bdr[c] = L.sr[c] + kxe + kxw + knf + ksf + diag;
             L.bdi[c] = L.si[c];
         }
     }
@@ -214,15 +306,15 @@ function relax(L, dir) {
     const { w, h, Tr, Ti, fr, fi } = L;
     for (let jj = 0; jj < h; jj++) {
         const j = dir ? h - 1 - jj : jj, o = j * w;
-        const kn = L.knRow[j], ks = L.ksRow[j];
+        const kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j];
         for (let i = 0; i < w; i++) {
             const c = o + i;
             let rr = fr[c], ri = fi[c];
             if (j > 0) { rr += kn * Tr[c - w]; ri += kn * Ti[c - w]; }
             if (j < h - 1) { rr += ks * Tr[c + w]; ri += ks * Ti[c + w]; }
-            const ay = L.ay[c];
-            if (ay > 0) { rr += ay * Tr[c + w]; ri += ay * Ti[c + w]; }            // northward wind: upwind is south
-            else if (ay < 0) { rr -= ay * Tr[c - w]; ri -= ay * Ti[c - w]; }
+            const as = L.as[c], an = L.an[c];
+            if (as > 0) { rr += as * Tr[c + w]; ri += as * Ti[c + w]; }
+            if (an > 0) { rr += an * Tr[c - w]; ri += an * Ti[c - w]; }
             L.br[i] = rr; L.bi[i] = ri;
         }
         substitute(L, o);
@@ -243,16 +335,16 @@ function residual(L) {
     const { w, h, Tr, Ti, fr, fi } = L;
     let s = 0;
     for (let j = 0; j < h; j++) {
-        const kn = L.knRow[j], ks = L.ksRow[j], rw = L.rowWeight[j];
+        const kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j], rw = L.rowWeight[j];
         for (let i = 0; i < w; i++) {
             const c = j * w + i, cw = j * w + (i === 0 ? w - 1 : i - 1), ce = j * w + (i === w - 1 ? 0 : i + 1);
             let ar = L.bdr[c] * Tr[c] - L.bdi[c] * Ti[c] + L.sub[c] * Tr[cw] + L.sup[c] * Tr[ce];
             let ai = L.bdr[c] * Ti[c] + L.bdi[c] * Tr[c] + L.sub[c] * Ti[cw] + L.sup[c] * Ti[ce];
             if (j > 0) { ar -= kn * Tr[c - w]; ai -= kn * Ti[c - w]; }
             if (j < h - 1) { ar -= ks * Tr[c + w]; ai -= ks * Ti[c + w]; }
-            const ay = L.ay[c];
-            if (ay > 0) { ar -= ay * Tr[c + w]; ai -= ay * Ti[c + w]; }
-            else if (ay < 0) { ar += ay * Tr[c - w]; ai += ay * Ti[c - w]; }
+            const as = L.as[c], an = L.an[c];
+            if (as > 0) { ar -= as * Tr[c + w]; ai -= as * Ti[c + w]; }
+            if (an > 0) { ar -= an * Tr[c - w]; ai -= an * Ti[c - w]; }
             const r1 = fr[c] - ar, r2 = fi[c] - ai;
             L.rr[c] = r1; L.ri[c] = r2;
             s += rw * (r1 * r1 + r2 * r2);

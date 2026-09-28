@@ -27,7 +27,7 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 | 2 | Temperature (energy balance) | passed | 4.2 vs V1's 5.0 °C error (continents weighted equally); test planets physical |
 | 3 | Pressure and wind (derived from temperature) | passed | Wind direction 73 % vs V1 52 %; monsoons reverse; rain belt 7° vs 11.6° |
 | 4 | Ocean (gyres, circumpolar currents, upwelling → temperature) | passed | Warm-west / cold-east sea pattern 0.36 vs V1 0.24; Europe milder; all named currents right; effects ≈ ⅓ of real |
-| 5 | Rain | … | … |
+| 5 | Rain (a column-water budget) | partly | Every stage new: Köppen 46 % vs V1's 38 %; rain patterns and continents beat V1; deserts beside monsoons too wet, rainforests too dry |
 | 6 | The coupled climate, tuned on Köppen | … | … |
 | 7 | Evolution | … | … |
 | 8 | Mediterranean climates | … | … |
@@ -191,7 +191,48 @@ currents); Sea ice → New by month.
 
 ## Phase 5 — rain
 
-*(to come)*
+**Built.** `rain.js`: the water in each air column, in balance at each point in the year.
+- **In:** evaporation from the sea (warm water, wind, storms); from land as much as the sunshine can evaporate and the
+  ground holds, with snow and soil carrying water from wet months into dry ones.
+- **Moved:** by the winds (only a shallow layer converges under dry air, a deep one where it rains) and mixed by storms.
+- **Out:** rain, which grows steeply as the air nears saturation.
+  - Winter storms make the storm belts rain more, so winter-wet west coasts appear by themselves.
+  - Air off a cold sea is stable and rains less.
+  - Mountains hold water back: wet windward, dry lee.
+
+Water is conserved exactly (rain = evaporation worldwide). Everything is physics with literature ranges; Earth only
+nudged the settings.
+
+**Numbers** (real temperature, so the error is the rain stage's own):
+
+| Measure | New (real winds) | New (own winds) | V1 |
+|---|---|---|---|
+| Rain pattern, Jun–Aug / Dec–Feb | 0.66 / 0.65 | 0.61 / 0.57 | 0.46 / 0.62 |
+| Wet season the right way round | 78 % | 79 % | 81 % |
+| Typical error per continent (lower is better) | 0.75 | 0.79 | 0.82 |
+| Köppen: real temperature + this rain | 56.4 % | — | 55.2 % |
+
+- **The whole new climate on Earth** (every stage new): **Köppen 46 % of land vs V1's 38 %**, wet season right way round
+  88 %.
+- **Named features that work:** the Atacama and inland Australia are dry; the South Asian, West African and East Asian
+  monsoons; winter-wet California; the Pacific Northwest's rain shadow; the eastern Pacific rain belt north of the
+  equator.
+- **Test planets:** all pass. The coastal range is 77 vs 28 mm/month windward vs lee. The supercontinent has wet
+  equatorial coasts and an arid interior, as paleoclimate runs of Pangaea do.
+
+**Gate: partly met.** The truth swap, season patterns, continents and test planets beat V1 or pass. Two things don't:
+the wet-season measure (78 % vs 81 %; it is 88 % with every stage new), and 9 of 16 named features.
+
+**Known.**
+- Deserts next to monsoons are too wet (Sahara, Arabia, Thar).
+- Rainforests are too dry (Congo, the Maritime Continent).
+- Patagonia's rain shadow is too weak.
+- With the model's own winds, Africa's rain belt runs into the Sahara: the circulation puts the tropical trough at the
+  hottest latitude. Phase 6 places it by where the air is moist and warm.
+- It is slow: the whole climate takes 2.2 s at 160K in Chrome (V1: 0.5 s at 40K). The speed pass is Phase 6.
+
+**Check in the lab.** New climate → Earth (Rain "New (Phase 5)") → Run → Rain → New, side by side with Observed; "New −
+observed" for the ratio; Köppen → New against the Beck map. The test planets, including the new coastal range.
 
 ## Phase 6 — the coupled climate
 

@@ -62,6 +62,29 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
     OCEAN_GRID_DEG: 2,          // °          grid the ocean is computed on (interpolated to 1°)
+
+    // ── Rain (rain.js) ──
+    RAIN_EVAP_COEFF: 1.3e-3,    // –          bulk transfer coefficient for evaporation
+    RAIN_SURFACE_RH: 0.8,       // –          relative humidity of the air just above the sea (sets evaporation)
+    RAIN_VAPOUR_HEIGHT_KM: 2.5, // km         scale height of water vapour (saturated column = ρ·q_sat·H)
+    RAIN_TIMESCALE_H: 1.86,        // h          rain-out time of a saturated column …
+    RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
+    RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
+    RAIN_EDDY_LENGTH_KM: 1100,   // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
+    RAIN_STORM_RH: 0.2,         // day        spread of the column's relative humidity by storms, per unit Eady growth rate
+    RAIN_WIND_ROT: 0.757,         // –          rotational wind carrying the column's water, as a share of the wind above the friction layer …
+    RAIN_WIND_DIV_DRY: 0.3,     // –          … and the divergent (converging / spreading) part, as a share of the near-surface
+    RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
+    RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
+    RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
+    RAIN_STABILITY: 0.03,      // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
+    RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
+    RAIN_COLUMN_LOCAL: 0.414,     // –          share of the surface's departure from its latitude's temperature felt through the air column
+    RAIN_OROGRAPHIC: 0.3,       // –          share of the water lifted by winds blowing up rising ground that rains out
+    RAIN_NEWTON: 30,            //            at most this many Newton steps per point in the year …
+    RAIN_TOL: 2e-3,             //            … stopping when the column water changes less than this (relative)
+    RAIN_CYCLES: 4,             //            multigrid cycles per Newton step
+    RAIN_GRID_DEG: 2,           // °          grid the rain is computed on (interpolated to 1°)
 });
 
 export const PARAMS = { ...PARAMS_DEFAULTS };
@@ -103,6 +126,21 @@ export const PARAM_PRIORS = Object.freeze({
     OCEAN_CHANNEL_DRAG: { value: 5e-7, min: 1e-7, max: 2e-6, source: 'sets a circumpolar current of ≈ 100–150 Sv on Earth (the ACC)' },
     OCEAN_HEAT_SHARE:   { value: 0.05, min: 0.01, max: 0.2, source: 'scaled to the ocean\'s ≈ 1–2 PW poleward heat transport; no direct literature value' },
     OCEAN_UPWELL_DT:    { value: 4, min: 2, max: 8, source: 'coastal upwelling cools the surface a few °C (thermocline water)' },
+
+    RAIN_EVAP_COEFF:    { value: 1.3e-3, min: 1.0e-3, max: 1.8e-3, source: 'bulk transfer coefficient C_E ≈ 1.1–1.5 × 10⁻³ (Large & Pond 1982; COARE)' },
+    RAIN_SURFACE_RH:    { value: 0.8, min: 0.7, max: 0.85, source: 'near-surface relative humidity over the oceans ≈ 75–80 %' },
+    RAIN_TIMESCALE_H:   { value: 3, min: 1, max: 12, source: 'Bretherton et al. 2004: P = exp(15.6 (r − 0.603)) mm/day ⇒ a saturated tropical column rains out in ≈ 3 h' },
+    RAIN_RH_STEEPNESS:  { value: 15.6, min: 8, max: 20, source: 'Bretherton et al. 2004 (15.6), from satellite column water and rain over the tropical oceans' },
+    RAIN_EDDY_DIFF:     { value: 5e5, min: 1e5, max: 1.5e6, source: 'tropical transients (easterly waves, convection) mix far less than mid-latitude storms; no direct literature value' },
+    RAIN_EDDY_LENGTH_KM: { value: 700, min: 400, max: 1200, source: 'mixing length ≈ the size of the storms (Rossby radius ≈ 1000 km); gives K ≈ 1–3 × 10⁶ m²/s in the storm belts (Frierson et al. 2007: 1.06 × 10⁶ m²/s for moist static energy)' },
+    RAIN_STORM_RH:      { value: 0.2, min: 0.1, max: 0.35, source: 'sub-monthly spread of column relative humidity ≈ 0.1–0.2 in the storm belts, where the Eady growth rate is ≈ 0.6–0.8 per day; no direct literature value' },
+    RAIN_WIND_ROT:      { value: 0.9, min: 0.6, max: 1.2, source: 'the moisture-weighted wind (≈ 900 hPa) is close to the wind above the friction layer' },
+    RAIN_WIND_DIV_DRY:  { value: 0.3, min: 0.15, max: 0.5, source: 'shallow (≈ 1 km) convergence of heat lows and trade-wind divergence: ≈ 30–40 % of the column’s water (scale height ≈ 2.5 km)' },
+    RAIN_WIND_DIV_MOIST: { value: 0.6, min: 0.4, max: 0.9, source: 'rain-belt inflow ≈ 1.5–3 km deep: moisture convergence ≈ 0.5–0.7 × W × surface convergence (P − E ≈ 5–10 mm/day)' },
+    RAIN_STABILITY:     { value: 0.015, min: 0.0, max: 0.03, source: 'rain is suppressed under strong low inversions (cold upwelling, stratocumulus decks; Klein & Hartmann 1993: low cloud +6 %/K of stability); no direct literature value' },
+    RAIN_SOIL_MM:       { value: 150, min: 50, max: 300, source: 'plant-available soil water capacity ≈ 100–200 mm (e.g. Manabe 1969 bucket: 150 mm)' },
+    RAIN_COLUMN_LOCAL:  { value: 0.5, min: 0.2, max: 0.9, source: 'lower-tropospheric temperature anomalies over continents are ≈ 40–60 % of the surface anomaly' },
+    RAIN_OROGRAPHIC:    { value: 0.3, min: 0.1, max: 1.0, source: 'precipitation efficiency of orographic clouds ≈ 20–50 % (Jiang & Smith 2003)' },
 });
 
 export function setParams(p) { Object.assign(PARAMS, p); }

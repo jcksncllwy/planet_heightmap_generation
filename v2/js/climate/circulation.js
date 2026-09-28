@@ -163,7 +163,7 @@ export function derivedCirculation() {
             // the rain belt per longitude: strongest convergence within 30° of the equator (smoothed)
             itczPerLongitude(g, cv, h, w, itczLat, m, core);
         }
-        return { u: U, v: V, slp: SLP, conv: CONV, itczLat, belts, ms: performance.now() - t0, source: 'derived circulation' };
+        return { u: U, v: V, slp: SLP, conv: CONV, itczLat, belts, surfaceShare: P.CIRC_SURFACE_WIND, ms: performance.now() - t0, source: 'derived circulation' };
     };
 }
 
