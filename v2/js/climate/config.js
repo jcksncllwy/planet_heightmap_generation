@@ -50,6 +50,18 @@ export const PARAMS_DEFAULTS = Object.freeze({
     CIRC_TURN_LAND_DEG: 32.5,   // °          … and over land (rougher)
     CIRC_SURFACE_WIND: 0.7,     // –          near-surface wind as a share of the wind above the friction layer
     CIRC_GRID_DEG: 2,           // °          grid the circulation is computed on (interpolated to 1°)
+
+    // ── Ocean (ocean.js) ──
+    OCEAN_FRICTION: 6e-6,       // 1/s        east–west friction of the gyres: sets the western boundary currents' width
+                                //            (r/β ≈ 300 km, two cells of the 2° grid)
+    OCEAN_FRICTION_NS: 3e-7,    // 1/s        north–south friction: small, so the open ocean keeps its Sverdrup balance
+    OCEAN_CHANNEL_DRAG: 7.3e-7, // 1/s        friction balancing the wind in a circumpolar channel (its current's strength)
+    OCEAN_GUST_MS: 4.26,        // m/s        wind variability (storms) that monthly-mean winds leave out, for the wind stress
+    OCEAN_HEAT_SHARE: 0.073,    // –          share of the gyres' transport whose temperature reaches the sea surface
+    OCEAN_UPWELL_DT: 4,         // °C         how much colder upwelled water is than the surface (warm seas; less in cold)
+    OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
+    OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
+    OCEAN_GRID_DEG: 2,          // °          grid the ocean is computed on (interpolated to 1°)
 });
 
 export const PARAMS = { ...PARAMS_DEFAULTS };
@@ -85,6 +97,12 @@ export const PARAM_PRIORS = Object.freeze({
     CIRC_TURN_OCEAN_DEG: { value: 20, min: 10, max: 30, source: 'surface wind crosses isobars at ≈ 10–20° over the sea' },
     CIRC_TURN_LAND_DEG: { value: 35, min: 25, max: 45, source: '… and ≈ 30–45° over land' },
     CIRC_SURFACE_WIND:  { value: 0.7, min: 0.5, max: 0.9, source: 'near-surface wind ≈ 0.6–0.8 of the geostrophic wind' },
+
+    OCEAN_FRICTION:     { value: 6e-6, min: 3e-6, max: 1.5e-5, source: 'Stommel layer width r/β should span ≈ 2 grid cells (MITgcm guidance); ≈ 300 km at 2°' },
+    OCEAN_GUST_MS:      { value: 6, min: 3, max: 9, source: 'bulk formulas on climatological winds add a gustiness / synoptic speed of a few m/s' },
+    OCEAN_CHANNEL_DRAG: { value: 5e-7, min: 1e-7, max: 2e-6, source: 'sets a circumpolar current of ≈ 100–150 Sv on Earth (the ACC)' },
+    OCEAN_HEAT_SHARE:   { value: 0.05, min: 0.01, max: 0.2, source: 'scaled to the ocean\'s ≈ 1–2 PW poleward heat transport; no direct literature value' },
+    OCEAN_UPWELL_DT:    { value: 4, min: 2, max: 8, source: 'coastal upwelling cools the surface a few °C (thermocline water)' },
 });
 
 export function setParams(p) { Object.assign(PARAMS, p); }

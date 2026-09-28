@@ -27,7 +27,8 @@ export const CORE_DEFAULTS = Object.freeze({
     lapseRateCPerKm: 6.5,       // standard environmental lapse rate
     tempOffsetC: 0,
     precipScale: 1,
-    couplings: 2,               // rounds of temperature ↔ winds when the winds are derived
+    couplings: 2,               // rounds of temperature ↔ winds when the winds are derived …
+    couplingsWithOcean: 3,      // … and with the ocean too (its heat needs one more round to reach the temperature)
 });
 
 /**
@@ -67,16 +68,19 @@ export function computeClimate(input, options = {}) {
     if (o.stages) {
         let winds = o.stages.winds ? o.stages.winds(sctx) : null;
         lap('winds');
-        let temperature, circulation = null;
+        let temperature, circulation = null, ocean = null;
         if (o.stages.circulation) {
-            // Temperature and winds need each other (winds carry heat; pressure comes from temperature): a couple of
-            // rounds settle them. The first temperature has the given winds (or none), the next ones the derived.
-            for (let it = 0; it < o.couplings; it++) {
-                temperature = o.stages.temperature(sctx, winds, temperature?.state);
+            // Temperature, winds and ocean need each other (winds carry heat and drive the currents; pressure comes
+            // from temperature; the currents move heat): a few rounds settle them. The first temperature has the
+            // given winds (or none) and no ocean heat; later ones the derived winds and the ocean's heat.
+            const rounds = o.stages.ocean ? o.couplingsWithOcean : o.couplings;
+            for (let it = 0; it < rounds; it++) {
+                temperature = o.stages.temperature(sctx, winds, temperature?.state, ocean?.qflux ?? null);
                 circulation = o.stages.circulation(sctx, temperature);
                 winds = circulation;
+                if (o.stages.ocean) ocean = o.stages.ocean(sctx, circulation, temperature);
             }
-            lap('temperature ↔ winds');
+            lap(o.stages.ocean ? 'temperature ↔ winds ↔ ocean' : 'temperature ↔ winds');
         } else {
             temperature = o.stages.temperature(sctx, winds);
             lap('temperature');
@@ -84,7 +88,7 @@ export function computeClimate(input, options = {}) {
         const rain = o.stages.rain(sctx, winds, temperature);
         lap('rain');
         anchors = { T: Float32Array.from(temperature.T), P: rain.P };
-        stages = { winds, temperature, circulation, rain };
+        stages = { winds, temperature, circulation, ocean, rain };
     } else {
         anchors = o.anchorSource(sctx);
         lap('anchors');

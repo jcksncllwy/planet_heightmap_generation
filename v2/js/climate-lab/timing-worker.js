@@ -21,6 +21,7 @@ import { classifyCell } from '../climate/koppen.js';
 import { computeClimate } from '../climate/core.js';
 import { energyBalanceTemperature } from '../climate/temperature.js';
 import { derivedCirculation } from '../climate/circulation.js';
+import { windDrivenOcean } from '../climate/ocean.js';
 import { observedWinds, zonalWinds, observedTemperature, observedRain, zonalRain } from '../climate/inputs.js';
 import { buildTestPlanet } from '../climate/test-planets.js';
 import { buildSphere } from '../../../js/sphere-mesh.js';
@@ -176,11 +177,11 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
             stages = { winds: observedWinds(u10, v10), temperature: observedTemperature(t2m), rain: observedRain(precip) };
         } else if (winds === 'observed') {                     // Phase 2 as scored: the energy balance with real winds
             stages = { winds: observedWinds(u10, v10), temperature: energyBalanceTemperature(), rain: observedRain(precip) };
-        } else {                                               // Phase 3: temperature ↔ derived winds
-            stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), rain: observedRain(precip) };
+        } else {                                               // Phase 3–4: temperature ↔ derived winds ↔ ocean
+            stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: observedRain(precip) };
         }
     } else {
-        stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), rain: zonalRain() };
+        stages = { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: zonalRain() };
     }
     const res = computeClimate({ xyz, elevKm, axes: 'y-up' }, { anchors, lapseRateCPerKm: lapse, stages });
     const climateMs = res.timing.reduce((s, x) => s + x.ms, 0);
@@ -213,11 +214,13 @@ async function runNewClimate({ planet = 'earth', N, anchors = 6, lapse = 6.5, te
         }
     }
     const rasterMs = performance.now() - t;
-    const temp = res.stages.temperature, circ = res.stages.circulation;
+    const temp = res.stages.temperature, circ = res.stages.circulation, oc = res.stages.ocean;
     return {
         planet, N: n, meshMs, climateMs, rasterMs, timing: res.timing, raster, landPx,
         monthlyT: temp.monthly ? Float32Array.from(temp.monthly) : null, tempProfile: temp.profile ?? null,
+        monthlySL: temp.monthlySL ? Float32Array.from(temp.monthlySL) : null, seaIce: temp.seaIce ? Float32Array.from(temp.seaIce) : null,
         circ: circ ? { u: circ.u, v: circ.v, slp: circ.slp, itczLat: circ.itczLat } : null,
+        ocean: oc ? { u: oc.u, v: oc.v, psi: oc.psi, qflux: oc.qflux, upwelling: oc.upwelling } : null,
         score,
     };
 }
@@ -226,8 +229,12 @@ self.onmessage = async (e) => {
     const { id, cmd, N } = e.data;
     try {
         const result = cmd === 'v1' ? await timeV1(N) : cmd === 'newClimate' ? await runNewClimate(e.data) : timeKernels();
-        const transfer = result?.raster ? [result.raster.buffer, result.landPx.buffer, ...(result.monthlyT ? [result.monthlyT.buffer] : []),
-            ...(result.circ ? [result.circ.u.buffer, result.circ.v.buffer, result.circ.slp.buffer, result.circ.itczLat.buffer] : [])] : [];
+        const transfer = [];
+        if (result?.raster) {
+            for (const a of [result.raster, result.landPx, result.monthlyT, result.monthlySL, result.seaIce]) if (a) transfer.push(a.buffer);
+            if (result.circ) for (const a of Object.values(result.circ)) transfer.push(a.buffer);
+            if (result.ocean) for (const a of Object.values(result.ocean)) transfer.push(a.buffer);
+        }
         self.postMessage({ id, ok: true, result }, transfer);
     } catch (err) {
         self.postMessage({ id, ok: false, error: String(err && err.stack || err) });

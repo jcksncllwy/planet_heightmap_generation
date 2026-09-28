@@ -35,10 +35,10 @@ const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean 
  * Returns stage(ctx, winds, init?) → { T (K anchors × G, °C at reference height), monthly (12 × G, same), monthlySL
  * (12 × G, sea level), iceFrac (G, share of the year a cell is snow- or ice-covered), state, timing }.
  * init: a previous run's `state` (same settings) to start from — used when temperature and winds are iterated
- * together; it then needs fewer outer iterations.
+ * together; it then needs fewer outer iterations. qflux: the ocean's heating of the sea surface (W/m², core grid).
  */
 export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
-    return (ctx, winds, init = null) => {
+    return (ctx, winds, init = null, qflux = null) => {
         const t0 = performance.now();
         const P = { ...PARAMS };
         const core = ctx.grid;
@@ -96,6 +96,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             c0.set(init.c0); c1r.set(init.c1r); c1i.set(init.c1i); c2r.set(init.c2r); c2i.set(init.c2i); snowYear.set(init.snowYear);
         }
         const outer = warm ? OUTER_WARM : OUTER;
+        // heat the ocean's currents bring to (or take from) the sea's surface layer, W/m² (ocean.js)
+        const qEbm = qflux ? coarsen(core, g, ratio, qflux) : null;
 
         const solver = new HelmholtzSolver(g, P.TEMP_DIFFUSIVITY, P.TEMP_DIFFUSIVITY_EW);
         const dRad = g.step * Math.PI / 180;
@@ -142,7 +144,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 }
             }
             for (let c = 0; c < G; c++) {
-                F0[c] = F0[c] / NT - P.TEMP_OLR_A; F1r[c] /= NT; F1i[c] /= NT; F2r[c] /= NT; F2i[c] /= NT;
+                F0[c] = F0[c] / NT - P.TEMP_OLR_A + (qEbm ? qEbm[c] * (1 - landFrac[c]) : 0); F1r[c] /= NT; F1i[c] /= NT; F2r[c] /= NT; F2i[c] /= NT;
                 const Cs = Co * (1 - seaIceYear[c]) + Cl * seaIceYear[c];            // frozen sea stores little heat
                 C[c] = landFrac[c] * Cl + (1 - landFrac[c]) * Cs;
             }
@@ -205,9 +207,13 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const heightCorrect = (out, offset) => {
             for (let c = 0; c < core.size; c++) { const hr = href[c] === href[c] ? Math.max(0, href[c]) : 0; out[offset + c] -= lapseCore[c] * hr; }
         };
-        const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size);
+        const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size), seaIce = new Float32Array(12 * core.size);
+        const iceTmp = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
-            refine(g, core, ratio, surfaceAt(m + 0.5, false), monthlySL, m * core.size);
+            const sl = surfaceAt(m + 0.5, false);
+            for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? iceRamp(sl[c]) : 0;       // sea ice, by month
+            refine(g, core, ratio, iceTmp, seaIce, m * core.size);
+            refine(g, core, ratio, sl, monthlySL, m * core.size);
             refine(g, core, ratio, surfaceAt(m + 0.5, true), monthly, m * core.size);
             heightCorrect(monthly, m * core.size);
         }
@@ -217,7 +223,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;
         const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear };
-        return { T, monthly, monthlySL, iceFrac: iceCore, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        return { T, monthly, monthlySL, seaIce, iceFrac: iceCore, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
     };
 }
 

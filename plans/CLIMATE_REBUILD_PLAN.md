@@ -462,3 +462,53 @@ Köppen with real rain is 68.1 %.
   the rain maximum (≈ 10°N). The rain stage (Phase 5) decides where rain actually falls.
 - **Speed.** Circulation is ~80 ms. The coupled temperature ↔ winds step is ~0.5 s in Node and ~0.9 s cold in Chrome;
   a speed pass is due before Phase 7.
+
+## Phase 4 — ocean, built 2026-09-28
+
+**What was built.** `v2/js/climate/ocean.js`:
+- **Wind-driven gyres.** A Stommel solve for the ocean's transport on the 2° grid, forced by the curl of the wind
+  stress. Coasts are held fixed by a large pinning term. East–west friction sets the western boundary current's width
+  (about two cells); north–south friction is kept small so the open ocean keeps its Sverdrup balance.
+  - This was found with a Stommel box test. Isotropic friction wide enough for the grid smeared the gyres to ~30 % of
+    Sverdrup.
+- **Circumpolar channels.** Latitude rows that are open sea all round carry a friction-balanced eastward current. The
+  landmasses on either side are held at different transport values, which lets the current through.
+- **Wind stress** includes a gustiness speed. Monthly-mean winds lack the storms, and stress grows with the square of
+  the speed.
+- **Heat for the temperature stage** (a yearly source or sink for the sea's surface layer, with the net removed):
+  - currents carrying the sea temperature, warm water poleward on western edges;
+  - Ekman upwelling of cold water where winds push surface water away (the California, Peru, Benguela and Canary
+    coasts; the equatorial Pacific).
+- **Coupling:** temperature ↔ winds ↔ ocean, three rounds. Monthly sea ice is now also an output of the temperature
+  stage.
+- **Check and lab:** `tuning/climate/ocean-check.mjs`; in the lab, Ocean warmth → New (with current arrows), Sea ice →
+  New.
+
+**Tuned (basin- and continent-aware).** Heat share 0.073, gustiness 4.3 m/s, channel drag 7.3e-7; friction and upwelling
+stayed at their literature values.
+
+**Numbers (open loop, real winds).**
+- The sea's east–west pattern (warm western, cold eastern boundaries): correlation 0.43 with the ocean vs 0.30 without.
+  For June–August / December–February: 0.36 vs V1's ocean warmth at 0.24.
+- Monthly error, with the ocean vs without:
+  - North Atlantic sea temperature 3.4 vs 4.1 °C;
+  - Europe's land temperature 5.4 vs 6.0 °C.
+- Named features that pass:
+  - the Gulf Stream and Kuroshio flow poleward;
+  - the California and Humboldt currents flow equatorward;
+  - the circumpolar current flows east (≈ 70 Sv);
+  - the four upwelling coasts are colder than their latitude, by 1–2 °C where reality has 3–6 °C;
+  - the equatorial Pacific has a cold east.
+- **Coupled:** Europe's temperature error is 5.1 vs 5.4 °C without the ocean. Mean land error is unchanged or slightly
+  better, and Köppen with real rain is unchanged (68 %).
+- **Test planets:** warm poleward currents along the east coasts, cold equatorward ones along the west coasts, and the
+  sea colder off west coasts.
+
+**Gate: passed.**
+
+**Known limits.**
+- **The North Atlantic is not warmer than its latitude** (−0.6 °C vs a real +3). The gyre's heat settles off North
+  America. The extra real warmth comes from the deep overturning circulation, which this model does not have.
+- **The coupled sea pattern is weaker than with real winds** (east–west correlation ≈ 0.05 vs 0.43). The derived winds
+  are weaker and smoother than the real ones.
+- **Sea anomalies are about a third of the real ones**, and currents slow (a 2° grid and climatological winds).

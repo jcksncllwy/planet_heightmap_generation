@@ -116,6 +116,8 @@ node tuning/climate/temperature-check.mjs --set TEMP_GRID_DEG=1   # … try sett
 node tuning/climate/diag-temperature.mjs        # where the temperature is wrong (latitude bands, named regions)
 node tuning/climate/circulation-check.mjs [--tune]  # Phase 3: pressure & wind per continent and ocean basin, vs V1,
                                                 #   named features (monsoons, highs), coupled temperature, test planets
+node tuning/climate/ocean-check.mjs [--tune]    # Phase 4: sea temperature per basin, currents and upwelling coasts,
+                                                #   land temperature with/without the ocean's heat, test planets
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
 node tuning/dev-server.mjs 8147                 # then open http://localhost:8147/v2/climate-lab.html
 ```

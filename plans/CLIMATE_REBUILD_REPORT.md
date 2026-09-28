@@ -26,7 +26,7 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 | 1 | The core skeleton (grid, 12 months, height correction, Köppen) | passed | With real data, ≈ 88 % Köppen per terrain cell; no drift 160K–2.5M |
 | 2 | Temperature (energy balance) | passed | 4.2 vs V1's 5.0 °C error (continents weighted equally); test planets physical |
 | 3 | Pressure and wind (derived from temperature) | passed | Wind direction 73 % vs V1 52 %; monsoons reverse; rain belt 7° vs 11.6° |
-| 4 | Ocean | … | … |
+| 4 | Ocean (gyres, circumpolar currents, upwelling → temperature) | passed | Warm-west / cold-east sea pattern 0.36 vs V1 0.24; Europe milder; all named currents right; effects ≈ ⅓ of real |
 | 5 | Rain | … | … |
 | 6 | The coupled climate, tuned on Köppen | … | … |
 | 7 | Evolution | … | … |
@@ -166,7 +166,28 @@ the cyan line is the new rain belt.
 
 ## Phase 4 — ocean
 
-*(in progress)*
+**Built.** `ocean.js`:
+- Wind-driven gyres (a Stommel model). The Gulf Stream and Kuroshio come out of the physics on any map.
+- Circumpolar currents where a latitude belt is open sea.
+- The heat both carry into the temperature: warm water poleward along western edges, and cold upwelling where winds
+  push surface water offshore (California, Peru, Namib, the Canaries, the equatorial Pacific).
+
+Temperature, winds and ocean run together.
+
+**Numbers.**
+- The sea's warm-west / cold-east pattern: 0.36 vs V1's 0.24.
+- Europe's temperature error: 5.4 vs 6.0 °C (real winds), 5.1 vs 5.4 °C (coupled).
+- All named currents flow the right way, and all four upwelling coasts come out colder than their latitude.
+- Test planets: warm currents poleward along east coasts, cold ones along west coasts.
+
+**Known.**
+- The effects are about a third of reality's.
+- The North Atlantic isn't warmer than its latitude (that needs the deep overturning circulation, which this simple
+  ocean doesn't have).
+- With the model's own, gentler winds, the pattern weakens.
+
+**Check in the lab.** New climate → Earth → Run → Ocean warmth → New, side by side with Observed (the arrows are the
+currents); Sea ice → New by month.
 
 ## Phase 5 — rain
 
