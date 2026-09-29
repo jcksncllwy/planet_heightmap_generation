@@ -8,9 +8,55 @@ export const TERRAIN = {
     // ── Carrying the sim's records onto a finer mesh ──
     warpKm: 70,                 // lookup positions are displaced by up to this (smooth noise), so the sim's 121 km cells never show
     warpScale: 4,               // noise frequency of that warp on the unit sphere (≈ 1500 km features, plus finer octaves)
+    // a second warp at the sim's own scale (developer: "its also very common on the grids where mountains form and sort of
+    // 'take up' the whole grid cell … more flexibility and noise at that scale"): waves of cellWarpCells sim cells (and
+    // half that), moving every lookup by up to cellWarp of a sim cell's edge — belts, plateaus, coasts and craton edges
+    // bent at the scale of the cells they came from, not only in the large. In sim cells, so 20K plates get as much as 80K.
+    // Read in the frame of the plate under the point (it rides with the crust: the same bends at the same place on a
+    // continent, frame after frame) and fixed there (it does not renew).
+    cellWarp: 0.35,
+    cellWarpCells: 3,
 
     // ── Coasts ──
     coastNoiseKm: 45,           // the coast is moved in and out by up to this, at 200–1500 km scales: bays and headlands
+    // curved coasts (developer: "at high terrain detail the coast can look a bit polygonal, especially on island arcs"):
+    // the coast distance is read with each sim cell's slope, so its lines curve between the sim cells as the coast they
+    // measure does instead of running straight across every sim triangle (1: fully; 0: straight, as before)
+    coastCurve: 1,
+    // the coast's fine detail: octaves below the coast noise, from coastDetailFromKm down to what the terrain mesh can show
+    // (none at 160K; coves, headlands and islets at 640K and 2.5M), each coastDetailRoughness of the one before
+    coastDetailKm: 7,           // amplitude of the first (km of coast distance: how far it moves the coast in and out) (14 went a little too far — developer)
+    coastDetailFromKm: 88,      // its wavelength
+    coastDetailRoughness: 0.6,  // (a coast's fractal roughness: finer wiggles relatively larger than a smooth curve's)
+    // mountain shape (developer: "i want to see what we cook up"): the evolved uplift and the platform read with each sim
+    // cell's slope, as the coast distance is — curved slopes instead of a flat facet per sim triangle — each corner's
+    // reading kept within the range of its cell and its neighbours (no overshoot at a steep front); 1: fully, 0: as before
+    mountainCurve: 1,
+    // the belts' crests read at the distance across the belt that the ridge kernels carry (stripes.js crossAt — it bends
+    // with the front) rather than one interpolated straight across the sim triangles (its crest lines zig-zagged from cell
+    // to cell); 1: fully where the kernels cover the point, 0: as before
+    crestFollow: 1,
+    // hills down to what the terrain can show (developer): relief below the platform's noise (whose finest is ~250 km),
+    // from hillsFromKm down to what the mesh can draw (none at 160K; 120 km at 640K; 120 and 60 km at 2.5M), each octave
+    // hillsRoughness of the one before — hillsKm on the plains, up to hillsUplandGain times that on high ground (≥ 1.5 km);
+    // none at the shore (the coast is not speckled). Read in the crust's frame, renewing as the other fine detail does.
+    hillsKm: 0.05,
+    hillsFromKm: 120,
+    hillsRoughness: 0.6,
+    hillsUplandGain: 4,
+    // island arcs as chains of islands (developer): arc crust's land is cut into islands and straits by a noise of islands
+    // arcIslandKm apart — the coast distance lowered by up to arcStraitKm where it is low — so a young, narrow arc is a
+    // chain of islands with straits between (the Aleutians, the Lesser Antilles) and a mature, broad one stays long
+    // islands (Japan, Java). In the crust's frame, renewing as the coast noise does.
+    arcStraitKm: 35,            // (70 cut the arcs' texture away — their small islets and ragged edges; halfway keeps the chains and the texture: developer)
+    arcIslandKm: 140,
+    // submarine canyons (developer: a shelf edge with character; carve.js): from the mouth of each big river (drainage
+    // canyonAreaKm2: none below the first, full from the second), down the shelf and the slope by the steepest way, up to
+    // canyonKm: a trough canyonDepthKm deep at most — deepest across the shelf break and the upper slope — its sides half as
+    // deep. Faded out where the terrain cannot draw a canyon's width (as the drowned valleys).
+    canyonAreaKm2: [5000, 60000],
+    canyonKm: 260,
+    canyonDepthKm: 0.7,
     shelfEdgeKm: -0.15,         // depth of the shelf break, at the edge of the continental crust
     // per kind of margin (measure.js Margin): width of the continental shelf, of the low coastal plain behind the
     // shoreline, and of the slope down to the deep sea
@@ -284,6 +330,19 @@ export const TERRAIN = {
     // things are too high, let's land in the middle": the active hold and the history's clocks are halfway between the
     // two, the carving time back where it was — a 600 Myr planet's median land 0.69 km before, 0.89 at the peak, 0.78 now)
     carveTimeMyr: 0.6,          // how long the rivers have worked on the present surface (longer: deeper, more graded)
+    // drowned valleys (developer: "where the mountains or hills hit the sea" — the coast there ran smooth past the valleys):
+    // where hills and mountains meet the sea, the sea runs up the big river valleys — rias and fjords — and the ridges
+    // between stand out as headlands. Along each river, within drownKm of its mouth (measured along the river), its
+    // valley floor is lowered by up to drownDepthKm — most at the mouth, fading upstream — by how much it drains
+    // (drownAreaKm2: none below the first, full from the second) and how high the land around is (drownReliefKm, the
+    // land's mean height over ~4 terrain cells: none on a lowland coast, full in the mountains). Whatever that leaves
+    // below the sea but cut off from it is given back. Shown where the terrain can draw a valley's width (fading out
+    // toward 160K's 61 km cells).
+    drownKm: 180,
+    drownDepthKm: 1.4,
+    drownAreaKm2: [800, 15000],
+    drownReliefKm: [0.15, 0.9],
+    drownWiden: 0.55,           // a drowned valley's neighbours lowered by this share of it too (an inlet a few cells wide)
     carveM: 0.4,                // the drainage-area exponent m (the paper's; concavity m / n)
     carveK: 5,                  // k (km^(1−2m)/Myr): the wave's speed where 1 km² drains — 200 km/Myr at 10⁴ km² (the paper's k)
     carveBgUplift: 0.02,        // background rock uplift (km/Myr) everywhere: rivers keep a gentle graded slope

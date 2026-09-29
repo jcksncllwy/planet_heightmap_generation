@@ -62,26 +62,40 @@ export const warpNoise = seed => new SimplexNoise(seed * 7 + 101);
 // every frame is warped as it is read on its plate's raster. Continuous across the faces (their edges share samples).
 const WARP_N = 256, WARP_AXES = [[0, 1, 2], [1, 2, 0], [2, 0, 1]];
 const warpTables = new Map();
-/** The warp table for a seed and warp frequency (built once, ~0.2 s; 4.8 MB). */
-export function warpField(seed, cfg) {
-    const key = `${seed}|${cfg.warpScale}`;
+/**
+ * The warp table for a seed and warp frequency (built once, ~0.2 s; 4.8 MB) — and, given the sim mesh's edge, the
+ * cell-scale warp's (cfg.cellWarp: waves of a few sim cells; its own finer table, 256–512 a face edge).
+ */
+export function warpField(seed, cfg, simEdgeKm = 0) {
+    const amp2 = (cfg.cellWarp ?? 0) * simEdgeKm, lam = (cfg.cellWarpCells ?? 3) * simEdgeKm;
+    const key = `${seed}|${cfg.warpScale}|${amp2 > 0 ? `${amp2.toFixed(4)}|${lam.toFixed(4)}` : '-'}`;
     let W = warpTables.get(key);
     if (W) return W;
-    const noise = warpNoise(seed), f = cfg.warpScale, N = WARP_N, S = N + 1, T = new Float32Array(6 * S * S * 3), p = [0, 0, 0];
+    W = { ...cubeTable(warpNoise(seed), cfg.warpScale, 4, WARP_N) };
+    if (amp2 > 0) {
+        // (the cell warp's finest waves, half its wavelength, sampled six times over at the least; at most 512 a face edge)
+        const N2 = Math.min(512, Math.max(WARP_N, Math.ceil(6 * (Math.PI / 2) * 6371 / (lam / 2))));
+        W.cell = cubeTable(new SimplexNoise(seed * 7 + 211), 6371 / lam, 2, N2);
+        W.cellAmp = amp2 / 6371;
+    }
+    warpTables.set(key, W);
+    if (warpTables.size > 4) warpTables.delete(warpTables.keys().next().value);
+    return W;
+}
+/** A 3-component noise (fbm, `octaves`, frequency f on the unit sphere) tabulated over a cube map, N cells a face edge. */
+function cubeTable(noise, f, octaves, N) {
+    const S = N + 1, T = new Float32Array(6 * S * S * 3), p = [0, 0, 0];
     for (let face = 0; face < 6; face++) {
         const [a, b, c] = WARP_AXES[face >> 1];
         for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
             p[a] = face & 1 ? -1 : 1; p[b] = -1 + 2 * i / N; p[c] = -1 + 2 * j / N;
             const l = Math.hypot(p[0], p[1], p[2]), x = p[0] / l, y = p[1] / l, z = p[2] / l, o = 3 * ((face * S + j) * S + i);
-            T[o] = noise.fbm(x * f + 11.3, y * f + 3.1, z * f + 7.7, 4, 0.5);
-            T[o + 1] = noise.fbm(x * f + 2.9, y * f + 17.2, z * f + 5.5, 4, 0.5);
-            T[o + 2] = noise.fbm(x * f + 23.4, y * f + 8.8, z * f + 13.6, 4, 0.5);
+            T[o] = noise.fbm(x * f + 11.3, y * f + 3.1, z * f + 7.7, octaves, 0.5);
+            T[o + 1] = noise.fbm(x * f + 2.9, y * f + 17.2, z * f + 5.5, octaves, 0.5);
+            T[o + 2] = noise.fbm(x * f + 23.4, y * f + 8.8, z * f + 13.6, octaves, 0.5);
         }
     }
-    W = { N, S, T };
-    warpTables.set(key, W);
-    if (warpTables.size > 4) warpTables.delete(warpTables.keys().next().value);
-    return W;
+    return { N, S, T };
 }
 
 /**
@@ -101,6 +115,17 @@ export function warpPoint(W, cfg, x, y, z, out) {
     let dx = w00 * T[o00] + w10 * T[o10] + w01 * T[o01] + w11 * T[o11];
     let dy = w00 * T[o00 + 1] + w10 * T[o10 + 1] + w01 * T[o01 + 1] + w11 * T[o11 + 1];
     let dz = w00 * T[o00 + 2] + w10 * T[o10 + 2] + w01 * T[o01 + 2] + w11 * T[o11 + 2];
+    const C = W.cell;
+    if (C) {
+        // the cell-scale warp, read at the same point on its own table, added (both in km on the unit sphere)
+        const fu2 = (pb / m + 1) * 0.5 * C.N, fv2 = (pc / m + 1) * 0.5 * C.N;
+        const i2 = Math.min(C.N - 1, Math.floor(fu2)), j2 = Math.min(C.N - 1, Math.floor(fv2)), su = fu2 - i2, sv = fv2 - j2, U = C.T, S2 = C.S;
+        const q00 = 3 * ((face * S2 + j2) * S2 + i2), q10 = q00 + 3, q01 = q00 + 3 * S2, q11 = q01 + 3;
+        const v00 = (1 - su) * (1 - sv), v10 = su * (1 - sv), v01 = (1 - su) * sv, v11 = su * sv, k = W.cellAmp / amp;
+        dx += k * (v00 * U[q00] + v10 * U[q10] + v01 * U[q01] + v11 * U[q11]);
+        dy += k * (v00 * U[q00 + 1] + v10 * U[q10 + 1] + v01 * U[q01 + 1] + v11 * U[q11 + 1]);
+        dz += k * (v00 * U[q00 + 2] + v10 * U[q10 + 2] + v01 * U[q01 + 2] + v11 * U[q11 + 2]);
+    }
     const radial = dx * x + dy * y + dz * z;
     dx = x + (dx - radial * x) * amp; dy = y + (dy - radial * y) * amp; dz = z + (dz - radial * z) * amp;
     const l = Math.hypot(dx, dy, dz);

@@ -147,6 +147,28 @@ function lutOf(id) {
 /** How each palette is toned (for tuning): {id: {sea: {exposure, saturation}, land: {…}}}. */
 export const paletteTones = () => Object.fromEntries(Object.entries(PALETTES).map(([id, P]) => [id, { sea: toneFor(P.sea, TONE_SEA), land: toneFor(P.land, TONE_LAND) }]));
 
+/**
+ * A palette as a height table for SmoothMapRaster.paintHeights (colours every 10 m, −12 … +10 km): 'relief' (the lab's,
+ * terrain-shade.js's tintOf), one of PALETTES, or 'heightmap' (V1's: the sea black, the land grey from 0 to 6 km, unshaded).
+ */
+const heightLuts = new Map();
+export function heightLutOf(id) {
+    if (!heightLuts.has(id)) {
+        let rgb;
+        if (id === 'relief' || id === 'heightmap') {
+            rgb = new Float32Array(3 * LUT_N);
+            const c = [0, 0, 0];
+            for (let i = 0; i < LUT_N; i++) {
+                const km = (LUT_MIN_M + i * LUT_STEP_M) / 1000;
+                if (id === 'relief') tintOf(km, c); else { const g = km <= 0 ? 0 : Math.round(255 * Math.min(1, km / 6)); c[0] = c[1] = c[2] = g; }
+                rgb[3 * i] = c[0]; rgb[3 * i + 1] = c[1]; rgb[3 * i + 2] = c[2];
+            }
+        } else rgb = lutOf(id);
+        heightLuts.set(id, { rgb, minM: LUT_MIN_M, stepM: LUT_STEP_M, n: LUT_N, zero: ZERO, shaded: id !== 'heightmap' });
+    }
+    return heightLuts.get(id);
+}
+
 /** A palette's colours by height, shaded by the relief as the lab's relief is (terrain-shade.js's paintRelief). */
 export function paintPalette(id, heightKm, shade, out, seaLevelKm = 0) {
     const L = lutOf(id);

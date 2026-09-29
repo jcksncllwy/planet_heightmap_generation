@@ -112,6 +112,35 @@ export class SmoothMapRaster {
         }
     }
 
+    /**
+     * Per pixel: the height (and hillshade) blended from the pixel's three cells, THEN coloured — so a coast is drawn as
+     * the heights' zero line, crisp at the pixel, instead of land and sea colours blended across a mesh triangle (a
+     * zig-zag of the mesh's triangles along every shore). `lut`: {rgb: 3 per step (0–255), minM, stepM, n, zero (the
+     * first step at or above sea level), shaded}; shaded colours are × (0.35 + 0.65 · shade), as paintRelief's.
+     */
+    paintHeights(heightKm, shade, lut, outRgba, seaLevelKm = 0) {
+        const pc = this.pixelCells, pw = this.pixelWeights, n = this.width * this.height;
+        const L = lut.rgb, { minM, stepM, zero } = lut, top = lut.n - 1, S = lut.shaded ? shade : null;
+        for (let i = 0, o = 0; i < n; i++, o += 4) {
+            const a = pc[3 * i], b = pc[3 * i + 1], c = pc[3 * i + 2], w1 = pw[2 * i], w2 = pw[2 * i + 1], w0 = 255 - w1 - w2;
+            const m = ((w0 * heightKm[a] + w1 * heightKm[b] + w2 * heightKm[c]) / 255 - seaLevelKm) * 1000;
+            const j = Math.round((m - minM) / stepM), k3 = 3 * (m < 0 ? Math.max(0, Math.min(zero - 1, j)) : Math.min(top, Math.max(zero, j)));
+            const k = S ? 0.35 + 0.65 * (w0 * S[a] + w1 * S[b] + w2 * S[c]) / 255 : 1;
+            outRgba[o] = Math.min(255, L[k3] * k); outRgba[o + 1] = Math.min(255, L[k3 + 1] * k); outRgba[o + 2] = Math.min(255, L[k3 + 2] * k);
+            outRgba[o + 3] = 255;
+        }
+    }
+
+    /** Per pixel: 255 where the blended height is below sea level, else 0 — the sea, as crisp as paintHeights' coast. */
+    paintSea(heightKm, outRgba, seaLevelKm = 0) {
+        const pc = this.pixelCells, pw = this.pixelWeights, n = this.width * this.height;
+        for (let i = 0, o = 0; i < n; i++, o += 4) {
+            const w1 = pw[2 * i], w2 = pw[2 * i + 1], w0 = 255 - w1 - w2;
+            const v = (w0 * heightKm[pc[3 * i]] + w1 * heightKm[pc[3 * i + 1]] + w2 * heightKm[pc[3 * i + 2]]) / 255 < seaLevelKm ? 255 : 0;
+            outRgba[o] = outRgba[o + 1] = outRgba[o + 2] = v; outRgba[o + 3] = 255;
+        }
+    }
+
     project(x, y, z) { return MapRaster.prototype.project.call(this, x, y, z); }
 }
 const ROW_C3 = [0, 0, 0], ROW_W3 = [0, 0, 0];

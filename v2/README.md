@@ -326,6 +326,22 @@ power toward a share A / (A + `riverHalfKm2`) of the relief it crosses. The cut 
 land rose under a river that kept up, it is a gorge. The carving routes over the surface less that record and makes
 every river bed at least as deep, so rivers follow their historical courses and canyons show where they held them. Small
 rivers are routed over a micro-relief of the crust's own, so they ride with their continent between frames.
+**At high terrain detail (Evolution, 2026-09-29; plans/V2_FULL_PLANET_PLAN.md).** The coast distance is read with each
+sim cell's slope (`coastCurve`: Σ wᵢ (dᵢ + ∇dᵢ·(q − pᵢ)) — exact at the cells, seamless along edges), so coastlines
+curve between the sim cells instead of running straight across each triangle; below the coast noise, octaves of coast
+detail down to what the mesh can show (`coastDetailKm`, none at 160K). A second lookup warp works at the sim's own
+scale (`cellWarp`: waves of a few sim cells, in sim cells so 20K gets as much as 80K) — read in the frame of the plate
+under the point everywhere, off the rasters too, so it rides with the crust. The uplift and the platform are read
+with each cell's slope as well, kept within each cell's neighbourhood range (`mountainCurve`), and a belt's crests at
+the distance across it that the ridge kernels carry (`crestFollow`: a main crest is one curved line, not a zig-zag).
+Hills go down to what the mesh can show, more on high ground, none at the shore (`hillsKm`); island arcs are cut
+into chains of islands by a noise of islands (`arcStraitKm`: straits are shallow sea; a broad arc keeps its interior).
+In `carve.js`: drowned valleys where hills and mountains meet the sea — each big valley lowered near its mouth along
+the river, the sea then flooding in only where it connects (rias, fjords; `drownKm`) — and submarine canyons from big
+rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
+Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights
+(`SmoothMapRaster.paintHeights`), so a shore is the heights' zero line — crisp — not land and sea colours blended across
+a mesh triangle.
 **Scale invariance:** all lengths are km; noise is a function of position; waves shorter than ~2 terrain cells are
 faded out, not aliased. `check-phase8a.mjs` compares 160K, 640K and 2.5M cells sim cell by sim cell.
 A phase that draws terrain sets `displayMesh` (its layers paint terrain cells) and may offer `profileAlong` (the
@@ -350,6 +366,16 @@ minutes; the page itself only paints (records, hillshade and carving all run on 
 built, a frame shows in ~0.15–0.35 s at 640K and ~0.3–0.75 s at 2.5M in Chrome (re-shading only, on the shading
 worker). Carving (8b) takes ~0.1 s at 160K, ~0.3 s at 640K and ~0.9 s at 2.5M on its worker, pipelined with the next
 frame's surface.
+
+A later exact pass (2026-09-28; plans/V2_PERFORMANCE_PLAN.md — hashes of four histories at 20K–80K and of every output of
+the terrain pool): the supercontinent's push without a string per pair, nearest-crust searches not repeated for a plate
+and point, per-cell arrays and per-step allocations gone, a fixed noise field computed once per cell, each mesh edge's
+length computed once (the distance searches) — the Evolution history (the supercontinent cycle, 40K, 600 Myr)
+39.7 → 36.1 s (−9 %; −8 % at 80K) on the 8-core, 16-thread development desktop. A second carving worker carves two
+frames side by side at 2.5M only (−12 % a frame playing ahead; slower at 640K). Tried and reverted: every synthesis
+worker planning the frame itself, and more synthesis workers than cores (both slower: the heights are noise arithmetic,
+which a core's second thread barely helps). A multi-threaded history was assessed (~1.3× at best on 8 cores) and not
+built; the plan lists approximations that would take a large share off, for the developer to choose.
 
 ## Conventions
 

@@ -19,7 +19,7 @@ import { runHistory } from '../app/history-runner.js';
 import { TERRAIN_SCENES } from '../tectonics/scenarios/terrain-scenes.js';
 import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
-import { paintLandHeightmap, paintPalette, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
+import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, paintClimate, paintUnavailable, drawArrows, drawLegend, readoutLines } from './climate-view.js';
 
 setDelaunator(Delaunator);
@@ -78,7 +78,7 @@ const globe = new GlobeView(ui.canvas, tex.lo.canvas, { space: true });
 globe.setSmooth(true);
 globe.controls.autoRotateSpeed = 0.6;
 const seaMask = texture(MAP_WIDTH);     // where the sea is, for the glint (the lighter resolution is enough for a glint)
-let seaCells = null, glinting = false;
+let glinting = false;
 const PALETTE_KEY = 'orogen.evolution.palette';
 const storedPalette = (() => { try { return localStorage.getItem(PALETTE_KEY); } catch { return null; } })();
 const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalette : 'relief', mode: 'globe', grid: true, gridStep: 15, centerLon: 0, season: 'year' };
@@ -170,7 +170,6 @@ function useTerrain(b, tMesh, cells) {
     for (const f of b.frames) b.player.addFrame(f);
     old?.dispose();
     cellRgb = new Uint8Array(tMesh.numCells * 3);
-    seaCells = new Uint8Array(tMesh.numCells * 3);
     preparing = null; dirty = true;
 }
 
@@ -268,6 +267,8 @@ function frameAt(t) {
 
 function paint(frame, sharpTable = null) {
     const T = B.player.terrainOf(frame), out = cellRgb;
+    // (the terrain and the heightmap are coloured per pixel from the heights — their coasts crisp; the other layers per cell)
+    let byHeight = null;
     if (view.layer === 'plates') {
         // the plates, carried from the sim cells onto the terrain and shaded by it
         colorByPlate(frame, simRgb);
@@ -276,23 +277,23 @@ function paint(frame, sharpTable = null) {
             const k = 0.45 + 0.55 * T.shade[t];
             for (let ch = 0; ch < 3; ch++) out[3 * t + ch] = Math.min(255, k * (sw[3 * t] * simRgb[3 * sc[3 * t] + ch] + sw[3 * t + 1] * simRgb[3 * sc[3 * t + 1] + ch] + sw[3 * t + 2] * simRgb[3 * sc[3 * t + 2] + ch]));
         }
-    } else if (view.layer === 'heightmap') paintLandHeightmap(T.heightKm, out, SHADING.seaLevelKm);
+    } else if (view.layer === 'heightmap') byHeight = heightLutOf('heightmap');
     else if (CLIMATE_LAYERS.has(view.layer)) {
         // the climate of this moment, if it has been calculated; else the terrain greyed (and the chip offers it)
         const C = climateOf(frame);
         if (C) paintClimate(view.layer, view.season, C, T, B.tMesh, out, o => tint(T.heightKm, T.shade, o));
         else { tint(T.heightKm, T.shade, out); paintUnavailable(out, B.tMesh.numCells); }
-    } else tint(T.heightKm, T.shade, out);
+    } else byHeight = heightLutOf(view.palette);
     // the sun glints off the sea on the Terrain view (V1's water shows there only)
     glint(view.layer === 'terrain');
     if (glinting) {
-        for (let c = 0; c < T.heightKm.length; c++) seaCells[3 * c] = seaCells[3 * c + 1] = seaCells[3 * c + 2] = T.heightKm[c] < SHADING.seaLevelKm ? 255 : 0;
-        B.raster.paint(seaCells, seaMask.image.data);
+        B.raster.paintSea(T.heightKm, seaMask.image.data, SHADING.seaLevelKm);
         seaMask.ctx.putImageData(seaMask.image, 0, 0);
         globe.seaMaskChanged();
     }
     const table = sharpTable ?? B.raster, t = sharpTable ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
-    table.paint(out, t.image.data);
+    if (byHeight) table.paintHeights(T.heightKm, T.shade, byHeight, t.image.data, SHADING.seaLevelKm);
+    else table.paint(out, t.image.data);
     t.ctx.putImageData(t.image, 0, 0);
     const C = CLIMATE_LAYERS.has(view.layer) ? climateOf(frame) : null;
     if (C && (view.layer === 'wind' || view.layer === 'currents')) {

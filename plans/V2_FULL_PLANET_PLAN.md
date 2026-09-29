@@ -108,6 +108,65 @@ Draft, 2026-09-27, for the developer to agree before anything is built (plan fir
   - Sharper when paused (desktop): a 4096-pixel texture (its pixel table built a few rows at a time the first time
     the view is paused, ~1 s, 117 MB), 2048 while playing or scrubbing. Phones 1024 always.
 
+**Coasts at high terrain detail (2026-09-29, awaiting the developer's test).** Developer: "is there any way we can make
+the 40k or 80k or even 20k feel a bit more detailed? particularly at high terrain detail the coast can look a bit
+polygonal, especially on island arcs." Found: the coast is the zero line of a coast distance kept per sim cell and read
+straight across the sim's triangles (121 km at 40K), moved by noise no finer than ~90 km; the page then blended land and
+sea COLOURS across each terrain triangle (a zig-zag along every shore). Built (options 1 and 2 of 5 proposed):
+- **Curved coasts** (terrain-config `coastCurve`): the coast distance read with each sim cell's slope (least squares
+  over its neighbours) — Σ wᵢ (dᵢ + ∇dᵢ·(q − pᵢ)): exact at the cells, seamless along edges, linear fields unchanged;
+  its lines curve between the cells. Faded out beyond 1000 km from any coast.
+- **Fractal coast detail** (`coastDetailKm` 14, `coastDetailFromKm` 88, `coastDetailRoughness` 0.6): octaves below the
+  coast noise down to what the terrain mesh can show (the existing 2–3.2 cells a wave): none at 160K, 88 km at 640K, 88
+  and 44 km at 2.5M — within 400 km of the coast, renewing as the coast noise does.
+- **Crisp shores in the page** (display only): the Terrain and Heightmap layers are coloured per pixel from the blended
+  heights (SmoothMapRaster.paintHeights), the coast the heights' zero line; the glint's sea mask too (paintSea).
+- Then (developer: "we dont just need smaller scale but also a bit larger scale movement and noise … mountains form and
+  sort of 'take up' the whole grid cell … the type of noise we added here might have went a little too far"; "all this
+  noise stays relatively consistent across history at the same location"):
+  - **a cell-scale warp** (`cellWarp` 0.35, `cellWarpCells` 3): a second lookup warp with waves of 3 and 1.5 sim cells,
+    up to 0.35 of a sim cell's edge — belts, plateaus, coasts and craton edges bent at the scale of the sim's cells; in
+    sim cells, so 20K gets as much as 80K; its own table (256–512 a face edge);
+  - it rides with the crust everywhere: on a plate's raster (as the main warp does there), and — new — off the rasters
+    too (points whose corners are two plates'): warped in the frame of the plate of the heaviest corner, then located on
+    the world grid (the cached world sampler keeps the fixed large-scale warp only). Checked on crust-following views
+    at 280 / 290 / 300 Myr: the same bends at the same places;
+  - the fine coast detail halved (`coastDetailKm` 14 → 7); it renews as the coast noise does (detailRenewMyr epochs).
+- Cost (all three, single-threaded A/B): the surface +7 % at 2.5M, +3–6 % at 160K; the carve and the land share
+  unchanged; a 4096 texture painted in ~160 ms (when paused).
+- Then (developer: "i broadly love these changes as it makes lowlying coastlines very interesting. However I dont know
+  if it does enough in the mountainous regions … i mean the mountain coasts. like where the mountains or hills hit the
+  sea"): **drowned valleys** (carve.js drownValleys; `drownKm` 180, `drownDepthKm` 1.4, `drownAreaKm2` [800, 15000],
+  `drownReliefKm` [0.15, 0.9], `drownWiden` 0.55) — where hills and mountains meet the sea, the sea runs up the big river
+  valleys (rias, fjords) and the ridges between stand out as headlands: each valley floor lowered near its mouth
+  (measured along the river), by its drainage and by how high the land around is (the next coarser mesh's mean
+  height — so a mouth graded to the sea still counts as mountainous); its sides by half as much; then the sea floods in
+  from the ocean and any hollow it cannot reach is given back (no pools of sea inland). Lowland coasts barely change
+  (a few estuary slits). Faded out toward 160K (a valley's width cannot be drawn on 61 km cells). Follows the rivers,
+  which hold their courses: the same inlets frame after frame (checked at 290 / 300 Myr, crust-following).
+- Then ("lets do them all", 2026-09-29) — the rest of the list, each checked on close-ups before/after and on
+  crust-following views (280 / 290 / 300 Myr):
+  - **island arcs as chains** (`arcStraitKm` 35 — halfway from 70, which cut the arcs' texture away, developer — `arcIslandKm` 140): on arc crust, the coast lowered where an island
+    noise (140 km apart, crust frame, renewing) is low — within 45–120 km of the coast only, and never below the shelf's
+    edge (straits are shallow sea): a young narrow arc becomes a chain of islands, a broad mature one keeps its interior
+    (a strait or two, like Japan's);
+  - **submarine canyons** (carve.js cutCanyons; `canyonAreaKm2` [5000, 60000], `canyonKm` 260, `canyonDepthKm` 0.7): from
+    each big river's mouth down the shelf and slope by the steepest way, a trough deepest across the shelf break; faded
+    out toward 160K; ~0.65 % of sea cells at 2.5M;
+  - **hills** (`hillsKm` 0.05, `hillsFromKm` 120, `hillsRoughness` 0.6, `hillsUplandGain` 4): relief below the
+    platform's noise down to what the mesh can show (none at 160K), more on high ground, none at the shore;
+  - **crest lines along the belt** (`crestFollow`): crests read at the distance across the belt the ridge kernels carry
+    (crossAt), so a main crest runs as one curved line instead of zig-zagging from cell to cell;
+  - **smooth mountain mass** (`mountainCurve`): the uplift and the platform read with each cell's slope, each corner kept
+    within its neighbourhood's range (no overshoot) — a slight softening (a step between cells stays a step).
+  - Cost (all five, A/B): the surface +5–10 % at 2.5M, ~0–3 % at 160K; the carve unchanged; land −0.2 points (straits).
+- **Diagnosed, left as is for now (developer: "lets leave it as is for now")**: at 40K / 80K the coasts read
+  "detailed but fake — samey, fractally": the drowned valleys reach nearly every river mouth (the relief test 0.15 km
+  is met by most continental land near coasts) at regular spacing — ~85 % of the added coastline (40K: +26 % of +31 %);
+  the rest is stationary texture. Proposed: drowned valleys only on real hills and mountains, fewer and bigger, and
+  regional; coast roughness by the kind of coast (rugged active margins and shields, smooth passive margins); the fine
+  detail matched to the sim resolution (full at 20K, less at 80K).
+
 **C. Export any moment, sea included; the planet code.**
 - V1's export dialog on the moment shown: 16-bit heightmap with the sea (its range widened to V2's depths and peaks),
   land heightmap, land mask, colour; Export All. File names carry the code and the time (e.g. `…-760Myr`).
@@ -140,6 +199,9 @@ Draft, 2026-09-27, for the developer to agree before anything is built (plan fir
     seen by the page. Seed 12345 at 600 Myr: 17 / 41 / 13 / 11 / 16 % A / B / C / D / E of the land; at 0 Myr (the
     supercontinent) **79 % B** — its interior dry. Scrubbing away and back keeps it. Phone layout (400 × 820, touch):
     chip and button 44 px, tap readout with the climate. `v2/js/climate/*` unchanged.
+  - **The climate's later updates taken in** (2026-09-29, fast-forward to 606711e: `terrainRelief` — calmer detail on
+    simulated planets — and windward rain growing with height): no change to the page needed (defaults). Re-checked:
+    0.8 s a moment; seed 12345 at 600 Myr 17 / 40 / 12 / 11 / 15 % A / B / C / D / E; the supercontinent at 0 Myr 80 % B.
 
 **E. V1's erosion on the final state — an experiment.**
 - V1's post-processing (warp, smoothing, hydraulic / thermal / glacial erosion, ridges) run on the chosen moment behind a

@@ -292,5 +292,88 @@ export function carveTerrain(meshes, fields, cfg) {
         for (let i = 0; i < n; i++) delta[i] = result.z[i] - z[i];
     }
     if (cfg.lipStepKm > 0) terraceBasalt(F[L - 1], result, cfg);     // (on the mesh shown only)
+    if (cfg.drownKm > 0 && cfg.drownDepthKm > 0) drownValleys(meshes, F, result, cfg);
+    if (cfg.canyonKm > 0 && cfg.canyonDepthKm > 0) cutCanyons(meshes[L - 1], F[L - 1], result, cfg);
     return result;
+}
+
+/**
+ * Drowned valleys (terrain-config drownKm …): where hills and mountains meet the sea, the sea runs up the big river valleys
+ * — rias and fjords — and the ridges between them stand out as headlands. Each land cell's distance to the sea along its
+ * river (the flood's order: every cell after the one it drains into); its valley floor lowered by
+ *     drownDepthKm · (1 − s / drownKm)² · (how much it drains) · (how high the land around is)
+ * — the land around read on the next coarser mesh (its mean tectonic height, over ~4 of these cells), so a valley's mouth,
+ * graded to the sea, still counts as mountainous where its sides are. Then the sea floods in from the open ocean over
+ * whatever is now below it; a hollow it cannot reach is given back its height (no pools of sea inland). Fades out where
+ * the terrain cannot draw a valley's width (cells over ~25 km).
+ */
+function drownValleys(meshes, F, C, cfg) {
+    const L = meshes.length, mesh = meshes[L - 1], f = F[L - 1], { z, recv, area, order } = C, n = mesh.numCells;
+    const show = smooth(55, 25, mesh.edgeKm);
+    if (show <= 0) return;
+    const { adjOffset, adjList } = mesh, { dist } = infoOf(mesh);
+    const around = L > 1 ? upsample(meshes[L - 2], mesh, F[L - 2].z) : f.z;
+    const [a1, a2] = cfg.drownAreaKm2 ?? [2000, 30000], [r1, r2] = cfg.drownReliefKm ?? [0.15, 0.9], la1 = Math.log(a1), la2 = Math.log(a2);
+    // (along the river to the sea: each cell after its receiver, in the flood's order)
+    const along = new Float32Array(n), before = z.slice(), sink = new Float32Array(n);
+    let drowned = false;
+    for (let i = 0; i < order.length; i++) {
+        const c = order[i], r = recv[c], to = r >= 0 ? r : -1 - r;
+        let step = 0;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (adjList[k] === to) { step = dist[k]; break; }
+        along[c] = (r >= 0 ? along[r] : 0) + step;
+        if (along[c] >= cfg.drownKm) continue;
+        const g = (1 - along[c] / cfg.drownKm) ** 2, drain = smooth(la1, la2, Math.log(Math.max(1, area[c]))), relief = smooth(r1, r2, around[c]);
+        const d = show * cfg.drownDepthKm * g * drain * relief;
+        if (d > 0) { sink[c] = d; drowned = true; }
+    }
+    if (!drowned) return;
+    // (the valley's sides go down with it, by drownWiden of it: an inlet a few cells wide, not a slit)
+    const widen = cfg.drownWiden ?? 0, side = new Float32Array(n);
+    if (widen > 0) for (let c = 0; c < n; c++) {
+        if (!(sink[c] > 0)) continue;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (f.z[q] > 0 && widen * sink[c] > side[q]) side[q] = widen * sink[c]; }
+    }
+    for (let c = 0; c < n; c++) { const d = Math.max(sink[c], side[c]); if (d > 0) z[c] -= d; }
+    // the sea floods in from the ocean over what is now below it; a hollow it does not reach is given back its height
+    const reached = new Uint8Array(n), queue = new Int32Array(n);
+    let tail = 0;
+    for (let c = 0; c < n; c++) if (f.z[c] <= 0) { reached[c] = 1; queue[tail++] = c; }
+    for (let head = 0; head < tail; head++) {
+        const c = queue[head];
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!reached[q] && z[q] < 0) { reached[q] = 1; queue[tail++] = q; } }
+    }
+    for (let c = 0; c < n; c++) if (z[c] < before[c] && !reached[c] && z[c] < LAND_FLOOR) z[c] = Math.min(before[c], LAND_FLOOR);
+}
+
+/**
+ * Submarine canyons (terrain-config canyonKm …): from the mouth of each big river, down the shelf and the slope by the
+ * steepest way (from sea cell to lower sea cell) for up to canyonKm, a trough cut into the sea floor — deepest across the
+ * shelf break and the upper slope, shallowing at its head and toward its foot, deeper for bigger rivers — its sides half as
+ * deep. Where two meet, the deeper cut counts. A canyon follows its river's mouth: frame after frame, the same canyons.
+ */
+function cutCanyons(mesh, f, C, cfg) {
+    const show = smooth(55, 25, mesh.edgeKm);
+    if (show <= 0) return;
+    const { z, recv, area, order } = C, n = mesh.numCells, { adjOffset, adjList } = mesh, { dist } = infoOf(mesh);
+    const [a1, a2] = cfg.canyonAreaKm2 ?? [5000, 60000], la1 = Math.log(a1), la2 = Math.log(a2), L = cfg.canyonKm;
+    const cut = new Float32Array(n);
+    for (let i = 0; i < order.length; i++) {
+        const c = order[i], r = recv[c];
+        if (r >= 0 || !(area[c] > a1)) continue;                      // (a river reaching the sea, and big enough)
+        const size = smooth(la1, la2, Math.log(area[c])), depth = show * cfg.canyonDepthKm * size;
+        let at = -1 - r, along = 0;
+        for (let steps = 0; steps < 4096 && along < L; steps++) {
+            const shape = smooth(0, 0.2 * L, along) * (1 - smooth(0.55 * L, L, along));
+            const d = depth * (0.25 + 0.75 * shape);
+            if (d > cut[at]) cut[at] = d;
+            for (let k = adjOffset[at]; k < adjOffset[at + 1]; k++) { const q = adjList[k]; if (z[q] <= 0 && 0.5 * d > cut[q]) cut[q] = 0.5 * d; }
+            let next = -1, low = z[at];
+            for (let k = adjOffset[at]; k < adjOffset[at + 1]; k++) { const q = adjList[k]; if (z[q] < low) { low = z[q]; next = q; } }
+            if (next < 0) break;
+            for (let k = adjOffset[at]; k < adjOffset[at + 1]; k++) if (adjList[k] === next) { along += dist[k]; break; }
+            at = next;
+        }
+    }
+    for (let c = 0; c < n; c++) if (cut[c] > 0 && z[c] <= 0) z[c] -= cut[c];
 }

@@ -18,6 +18,7 @@ import { buildStripeKernels, stripeAt, crossAt, carriedField, carriedStripeAt } 
 import { lipPieces, dykeAt } from './lips.js';
 import { buildVolcanoes, coneAt, volcanoNoise } from './volcanoes.js';
 import { cratonCharacter } from './cratons.js';
+import { BeltSide } from '../tectonics/model/crust.js';
 import { sampleOnto, warpField, warpPoint } from './terrain-mesh.js';
 import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
 import { locate } from '../core/mesh-locate.js';
@@ -81,7 +82,9 @@ export function carveLadder(simMesh, tMesh, meshOf) {
 
 /** The carving's settings (the same on every mesh: carve.js scales the valleys to each mesh's cells). */
 export function carveSettings(cfg) {
-    return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, activeHold: cfg.carveActiveHold, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser };
+    return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, activeHold: cfg.carveActiveHold, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
+        drownKm: cfg.drownKm ?? 0, drownDepthKm: cfg.drownDepthKm ?? 0, drownAreaKm2: cfg.drownAreaKm2, drownReliefKm: cfg.drownReliefKm, drownWiden: cfg.drownWiden ?? 0,
+        canyonKm: cfg.canyonKm ?? 0, canyonDepthKm: cfg.canyonDepthKm ?? 0, canyonAreaKm2: cfg.canyonAreaKm2 };
 }
 
 /**
@@ -112,6 +115,97 @@ export function planFromData(data, simMesh, seed) {
     return { ...data, V: { ...data.V, noise: volcanoNoise(seed) }, mesh: simMesh };
 }
 
+// ── curved coasts: a coast-distance field read with each corner's slope ──
+// Linear interpolation over a sim triangle draws a distance's lines straight across it: a coastline of the sim's cells,
+// polygonal at high terrain detail (developer: "the coast can look a bit polygonal, especially on island arcs"). Read
+// with each corner's slope instead — Σ wᵢ (dᵢ + ∇dᵢ · (q − pᵢ)), q the point on the triangle — the lines curve between
+// the cells as the coast they measure does; at a cell it is still exactly the cell's distance, along a triangle's edge
+// it depends on that edge's two cells only (no seams), and a field that is linear stays exactly linear. Far from any
+// coast (every corner over 1000 km) the slope term fades out: nothing there needs it.
+
+/** Each sim cell's slope of a coast-distance field (km per unit length on the unit sphere, 3 per cell): found once per
+ *  plan and field, as it is asked for; the arrays kept between frames (one per plate raster, one for the world). */
+const slopePool = new Map();
+let slopeStamp = 0;
+function slopeMemo(plan, mesh) {
+    if (!plan._slopeStamp) {
+        plan._slopeStamp = ++slopeStamp;
+        // (a plate unseen for two plans lets its arrays go: new plates keep coming over a long history)
+        for (const [key, m] of slopePool) if (m.stamp < slopeStamp - 2) slopePool.delete(key);
+    }
+    const stamp = plan._slopeStamp, n = mesh.numCells;
+    return {
+        of(key, field, range = false) {
+            let m = slopePool.get(key);
+            if (!m || m.mark.length !== n) slopePool.set(key, m = { grad: new Float32Array(3 * n), mark: new Uint32Array(n), stamp: 0, field: null, round: 0, lo: range ? new Float32Array(n) : null, hi: range ? new Float32Array(n) : null });
+            if (m.stamp !== stamp || m.field !== field) { m.stamp = stamp; m.field = field; if (++m.round === 0xFFFFFFFF) { m.mark.fill(0); m.round = 1; } }
+            return m;
+        },
+    };
+}
+/** The slope of `field` at cell c: a least-squares plane through its neighbours (those the field has), in the tangent
+ *  plane — capped at 1.25 km per km for a distance (it rises about 1 km per km: a steeper fit is the field's crease along
+ *  a coast's middle line, not a slope; m.cap), and, for m.range, the least and most of the cell and its neighbours. */
+function slopeAt(mesh, m, field, c) {
+    if (m.mark[c] === m.round) return;
+    m.mark[c] = m.round;
+    if (m.lo) {
+        let lo = field[c], hi = lo;
+        for (let k = mesh.adjOffset[c]; k < mesh.adjOffset[c + 1]; k++) { const v = field[mesh.adjList[k]]; if (v < lo) lo = v; if (v > hi) hi = v; }
+        m.lo[c] = lo; m.hi[c] = hi;
+    }
+    const { xyz, adjOffset, adjList } = mesh, x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2], v = field[c];
+    // a tangent basis: e ⟂ p (from whichever axis is further from p), n = p × e
+    let ex, ey, ez;
+    if (Math.abs(z) < 0.9) { ex = -y; ey = x; ez = 0; } else { ex = 0; ey = -z; ez = y; }
+    const el = Math.hypot(ex, ey, ez); ex /= el; ey /= el; ez /= el;
+    const nx = y * ez - z * ey, ny = z * ex - x * ez, nz = x * ey - y * ex;
+    let a11 = 0, a12 = 0, a22 = 0, b1 = 0, b2 = 0, count = 0;
+    for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+        const q = adjList[k], fq = field[q];
+        if (fq !== fq) continue;
+        const dx = xyz[3 * q] - x, dy = xyz[3 * q + 1] - y, dz = xyz[3 * q + 2] - z;
+        const u = dx * ex + dy * ey + dz * ez, w = dx * nx + dy * ny + dz * nz, dv = fq - v;
+        a11 += u * u; a12 += u * w; a22 += w * w; b1 += u * dv; b2 += w * dv; count++;
+    }
+    const det = a11 * a22 - a12 * a12, g = m.grad;
+    if (count < 2 || !(Math.abs(det) > 1e-18) || v !== v) { g[3 * c] = g[3 * c + 1] = g[3 * c + 2] = 0; return; }
+    let ge = (a22 * b1 - a12 * b2) / det, gn = (a11 * b2 - a12 * b1) / det;
+    const len = Math.hypot(ge, gn), cap = m.lo ? Infinity : 1.25 * R;
+    if (len > cap) { ge *= cap / len; gn *= cap / len; }
+    g[3 * c] = ge * ex + gn * nx; g[3 * c + 1] = ge * ey + gn * ny; g[3 * c + 2] = ge * ez + gn * nz;
+}
+/**
+ * A world field read over three cells with weights na, nb, nc (any: the platform's noisy shares), each corner's value
+ * carried to the point along its slope and kept within its cell's neighbourhood range (m.lo … m.hi) — curved between the
+ * cells, no overshoot at a steep front, seamless along an edge (a corner's reading does not depend on the triangle);
+ * `k` blends it with the plain weighted mean (0: that mean). The point: the cells' positions, by the weights wa, wb, wc.
+ */
+function curvedRead(mesh, m, field, a, b, c, na, nb, nc, wa, wb, wc, k) {
+    const sum = na + nb + nc;
+    if (!(sum > 0)) return 0;
+    const flat = (na * field[a] + nb * field[b] + nc * field[c]) / sum;
+    if (!(k > 0)) return flat;
+    slopeAt(mesh, m, field, a); slopeAt(mesh, m, field, b); slopeAt(mesh, m, field, c);
+    const X = mesh.xyz, g = m.grad;
+    const qx = wa * X[3 * a] + wb * X[3 * b] + wc * X[3 * c], qy = wa * X[3 * a + 1] + wb * X[3 * b + 1] + wc * X[3 * c + 1], qz = wa * X[3 * a + 2] + wb * X[3 * b + 2] + wc * X[3 * c + 2];
+    const at = i => Math.min(m.hi[i], Math.max(m.lo[i], field[i] + g[3 * i] * (qx - X[3 * i]) + g[3 * i + 1] * (qy - X[3 * i + 1]) + g[3 * i + 2] * (qz - X[3 * i + 2])));
+    return flat + k * ((na * at(a) + nb * at(b) + nc * at(c)) / sum - flat);
+}
+
+/** The slope term of reading `field` at the point with barycentric weights wa, wb, wc on cells a, b, c. */
+function curveOf(mesh, m, field, a, b, c, wa, wb, wc) {
+    const near = Math.min(Math.abs(field[a]), Math.abs(field[b]), Math.abs(field[c]));
+    if (!(near < 1000)) return 0;
+    slopeAt(mesh, m, field, a); slopeAt(mesh, m, field, b); slopeAt(mesh, m, field, c);
+    const X = mesh.xyz, g = m.grad;
+    const qx = wa * X[3 * a] + wb * X[3 * b] + wc * X[3 * c], qy = wa * X[3 * a + 1] + wb * X[3 * b + 1] + wc * X[3 * c + 1], qz = wa * X[3 * a + 2] + wb * X[3 * b + 2] + wc * X[3 * c + 2];
+    const ta = g[3 * a] * (qx - X[3 * a]) + g[3 * a + 1] * (qy - X[3 * a + 1]) + g[3 * a + 2] * (qz - X[3 * a + 2]);
+    const tb = g[3 * b] * (qx - X[3 * b]) + g[3 * b + 1] * (qy - X[3 * b + 1]) + g[3 * b + 2] * (qz - X[3 * b + 2]);
+    const tc = g[3 * c] * (qx - X[3 * c]) + g[3 * c + 1] * (qy - X[3 * c + 1]) + g[3 * c + 2] * (qz - X[3 * c + 2]);
+    return (wa * ta + wb * tb + wc * tc) * smooth(1000, 700, near);
+}
+
 /**
  * The tectonic surface for terrain cells from…to−1: positions from `xyz`, sim-mesh corners and weights from sCells /
  * sWeights (sampleOnto), heights into heightKm (and the components into `parts`, the carving's inputs into `carve`,
@@ -120,7 +214,7 @@ export function planFromData(data, simMesh, seed) {
  */
 export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, from, to, heightKm, parts = null, carve = null) {
     const { rec, Ks, V, A, L, mesh: simMesh } = plan, { cell } = A, p = [0, 0, 0], d = [0, 0, 0], cross = [0, 0];
-    const warpN = warpField(seed, cfg), local = [0, 0, 0], warped = [0, 0, 0], r3 = [0, 0, 0], rw3 = [0, 0, 0], q3 = [0, 0, 0], qw3 = [0, 0, 0];
+    const warpN = warpField(seed, cfg, simMesh.edgeKm), loc3 = [0, 0, 0], locw3 = [0, 0, 0], local = [0, 0, 0], warped = [0, 0, 0], r3 = [0, 0, 0], rw3 = [0, 0, 0], q3 = [0, 0, 0], qw3 = [0, 0, 0];
     const anchorOn = cfg.anchorRecords !== false;
     // the point located on plate o's raster (the point in o's frame, warped there): raster cells into cells, weights into weights
     const onRaster = (o, px, py, pz, cells, weights) => {
@@ -140,6 +234,24 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return fadeB > 0 ? fadeA * a + fadeB * noise.fbm(fx + offB, fy + offB, fz + offB, octaves, 0.5) : a;
     };
     const fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / edgeKm);
+    // the coast's fine detail: its octaves (frequency, amplitude) down to what this terrain mesh can show
+    const detailF = [], detailAmp = [];
+    for (let o = 0, lam = cfg.coastDetailFromKm ?? 0; lam > 0 && o < 8; o++, lam /= 2) {
+        const amp = (cfg.coastDetailKm ?? 0) * (cfg.coastDetailRoughness ?? 0.6) ** o * fade(lam);
+        if (!(amp > 0.05)) break;
+        detailF.push(R / lam); detailAmp.push(amp);
+    }
+    // the hills' octaves (frequency, amplitude) down to what this terrain mesh can show; the arcs' island noise
+    const hillsF = [], hillsAmp = [];
+    for (let o = 0, lam = cfg.hillsFromKm ?? 0; lam > 0 && o < 8; o++, lam /= 2) {
+        const amp = (cfg.hillsKm ?? 0) * (cfg.hillsRoughness ?? 0.6) ** o * fade(lam);
+        if (!(amp > 0.001)) break;
+        hillsF.push(R / lam); hillsAmp.push(amp);
+    }
+    const islandF = R / Math.max(1, cfg.arcIslandKm ?? 140), strait = cfg.arcStraitKm ?? 0;
+    const renewedNoise = (u, v, w) => fadeB > 0 ? fadeA * noise.noise3D(u + offA, v + offA, w + offA) + fadeB * noise.noise3D(u + offB, v + offB, w + offB) : noise.noise3D(u + offA, v + offA, w + offA);
+    const coastCurve = cfg.coastCurve ?? 0, mountainCurve = cfg.mountainCurve ?? 0, crestFollow = cfg.crestFollow ?? 0;
+    const slopes = coastCurve > 0 || mountainCurve > 0 ? slopeMemo(plan, simMesh) : null, crossC = [0, 0];
     const cratF = R / 600, shapeF = R / cfg.cratonShapeKm, grainF = R / cfg.cratonGrainScaleKm, grainShow = fade(cfg.cratonGrainScaleKm);
     const coastF = R / 700, platF = R / 2000, strikeF = R / 900, segF = R / cfg.stripeSegmentKm, meanderF = R / cfg.stripeMeanderAlongKm, meander = cfg.stripeMeanderKm / R;
     const blendF = R / cfg.blendNoiseKm, crestF = R / 150, slopeF = R / 300, microF = R / cfg.carveMicroScaleKm, mesaF = R / cfg.lipMesaKm;
@@ -177,6 +289,21 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const a0 = rasterToWorld(A, simMesh, o, r3[0]), a1 = rasterToWorld(A, simMesh, o, r3[1]), a2 = rasterToWorld(A, simMesh, o, r3[2]);
             if (a0 >= 0 && a1 >= 0 && a2 >= 0) { c0 = a0; c1 = a1; c2 = a2; w0 = rw3[0]; w1 = rw3[1]; w2 = rw3[2]; anchored = true; }
         }
+        // (off the rasters — where the point's corners are two plates' — the warps ride with the crust too, as on a raster:
+        // developer, "all this noise stays relatively consistent across history at the same location". The point is
+        // warped in the frame of the plate of its heaviest corner, then located on the world grid; the cached world
+        // sampler above only had the fixed, large-scale warp)
+        if (anchorOn && !anchored && warpN.cell) {
+            const od = A.owner[w0 >= w1 && w0 >= w2 ? c0 : w1 >= w2 ? c1 : c2];
+            if (od >= 0) {
+                const m = A.mats, b = 9 * od;
+                local[0] = m[b] * px + m[b + 3] * py + m[b + 6] * pz; local[1] = m[b + 1] * px + m[b + 4] * py + m[b + 7] * pz; local[2] = m[b + 2] * px + m[b + 5] * py + m[b + 8] * pz;
+                warpPoint(warpN, cfg, local[0], local[1], local[2], warped);
+                locate(simMesh, m[b] * warped[0] + m[b + 1] * warped[1] + m[b + 2] * warped[2], m[b + 3] * warped[0] + m[b + 4] * warped[1] + m[b + 5] * warped[2],
+                    m[b + 6] * warped[0] + m[b + 7] * warped[1] + m[b + 8] * warped[2], loc3, locw3);
+                c0 = loc3[0]; c1 = loc3[1]; c2 = loc3[2]; w0 = locw3[0]; w1 = locw3[1]; w2 = locw3[2];
+            }
+        }
         let coastR = null, shelfR = 0, plainR = 0;
         if (anchorOn && oc >= 0 && A.moved[oc]) {
             const S = rec.coastRaster.get(oc);
@@ -185,6 +312,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 const s0 = S.coast[q3[0]], s1 = S.coast[q3[1]], s2 = S.coast[q3[2]];
                 if (s0 === s0 && s1 === s1 && s2 === s2) {
                     coastR = qw3[0] * s0 + qw3[1] * s1 + qw3[2] * s2;
+                    if (coastCurve > 0) coastR += coastCurve * curveOf(simMesh, slopes.of(oc, S.coast), S.coast, q3[0], q3[1], q3[2], qw3[0], qw3[1], qw3[2]);
                     shelfR = qw3[0] * S.shelf[q3[0]] + qw3[1] * S.shelf[q3[1]] + qw3[2] * S.shelf[q3[2]];
                     plainR = qw3[0] * S.plain[q3[0]] + qw3[1] * S.plain[q3[1]] + qw3[2] * S.plain[q3[2]];
                 }
@@ -195,16 +323,42 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         const x = p[0], y = p[1], z = p[2];
         x0 = x; y0 = y; z0 = z;
         // (the coast distance: on the raster of the plate whose land is here, where it can be — records.js plateCoasts)
-        let coast = coastR ?? w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
+        let coast = coastR;
+        if (coast === null) {
+            coast = w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
+            if (coastCurve > 0) coast += coastCurve * curveOf(simMesh, slopes.of(-1, coastKm), coastKm, c0, c1, c2, w0, w1, w2);
+        }
         if (parts) parts.dcoastRaw[t] = coast;
         if (Math.abs(coast) < 600) coast += cfg.coastNoiseKm * renewed(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4) * 1.5;
+        // (the fine detail — renewing as the coast noise does — within 400 km of the coast, fading out from 250)
+        if (detailF.length && Math.abs(coast) < 400) {
+            let sum = 0;
+            for (let o = 0; o < detailF.length; o++) {
+                const f = detailF[o], u = x * f + 11.3 + 1.7 * o, v = y * f + 4.9 + 2.3 * o, w = z * f + 8.1 + 0.9 * o;
+                sum += detailAmp[o] * (fadeB > 0 ? fadeA * noise.noise3D(u + offA, v + offA, w + offA) + fadeB * noise.noise3D(u + offB, v + offB, w + offB) : noise.noise3D(u + offA, v + offA, w + offA));
+            }
+            coast += sum * smooth(400, 250, Math.abs(coast));
+        }
+        // ── island arcs as chains: on arc crust, the coast lowered where the island noise is low — straits between islands ──
+        if (strait > 0 && coast > -300 && coast < 400) {
+            const arcS = w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2];
+            if (arcS > 0.02) {
+                const isl = 0.7 * renewedNoise(x * islandF + 21.7, y * islandF + 5.3, z * islandF + 13.1) + 0.3 * renewedNoise(x * islandF * 2 + 3.9, y * islandF * 2 + 17.7, z * islandF * 2 + 9.4);
+                // (the cut acts near the arc's coasts: a narrow young arc is cut right through into islands, a broad mature
+                // one only has its coast indented — the interior of a Japan or a Java stays whole)
+                // (a strait is shallow sea: the coast is lowered to the shelf's edge at most, never into the slope below it)
+                const cut = Math.min(1, arcS) * strait * smooth(0.05, -0.45, isl) * smooth(120, 45, coast);
+                coast = Math.max(coast - cut, Math.min(coast, -10));
+            }
+        }
         let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, ramp = 0, shieldS = 0, rimFade = 1;
 
         if (coast >= 0) {
             // ── land side: the platform over the land corners (interfingering), dropping to the shelf toward the coast ──
             const e0 = noisy(c0, w0), e1 = noisy(c1, w1), e2 = noisy(c2, w2);          // (each corner's noisy share, computed once)
             const n0 = land[c0] ? e0 : 0, n1 = land[c1] ? e1 : 0, n2 = land[c2] ? e2 : 0, lw = n0 + n1 + n2;
-            platform = lw > 0 ? (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw : cfg.continentKm;
+            platform = lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-2, platformKm, true), platformKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
+                : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : cfg.continentKm;
             platform += cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
             // ── a flood basalt (lips.js): the pile as it has worn — its cap gone first where the mesa noise is low and
             // from the province's edge in: an intact plateau when young, then an escarpment with mesas before it, then
@@ -295,6 +449,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             kinds[0] = kind[c0]; kinds[1] = kind[c1]; kinds[2] = kind[c2];
             if (!kinds[0] && !kinds[1] && !kinds[2]) continue;
             let layerRelief = 0, stripeAmp = 0, noiseAmp = 0, noiseAcross = 0;
+            // (the distance across the belt as the kernels carry it — bending with the front — and how well they cover here)
+            let follow = 0;
+            if (crestFollow > 0 && Ks[li].count) { crossAt(Ks[li], cn, px, py, pz, crossC); follow = crestFollow * smooth(0.05, 0.4, crossC[1]); }
             for (let a = 0; a < 3; a++) {
                 const k = kinds[a];
                 if (!k || (a > 0 && kinds[0] === k) || (a > 1 && kinds[1] === k)) continue;
@@ -306,6 +463,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 }
                 if (m <= 0 || ws <= 0) continue;
                 d /= ws; W /= ws; A /= m;
+                if (follow > 0) d += follow * (Math.max(0, kindSide(k) === BeltSide.LOWER ? -crossC[0] : crossC[0]) - d);
                 // the crests (the broad part of the belt is in the evolved uplift, carried by the platform above)
                 const type = kindType(k), side = kindSide(k);
                 layerRelief += m * A * crestProfile(type, side, d, W, jitter);
@@ -362,7 +520,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (rimFade < 1) { relief *= rimFade; stripes *= rimFade; }
             // the evolved uplift (over the land corners, interfingering like the platform) — on top of the shelf and plain, so
             // a range or escarpment near the coast still rises from the sea
-            const uplift = (lw > 0 ? (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw : 0) * rimFade;
+            const uplift = (lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-3, upliftKm, true), upliftKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
+                : (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw) : 0) * rimFade;
             const along = relief !== 0 || uplift !== 0 ? atEdge * (1 + cfg.alongStrikeVar * noise.fbm(x * strikeF + 8.8, y * strikeF + 2.2, z * strikeF + 6.6, 3, 0.5) * 1.5) : 0;
             const crests = relief * along, lifted = h + uplift * along + stripes;     // (the ground without the crests)
             relief = uplift * along + crests;
@@ -374,6 +533,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // a failed rift arm: a sagged corridor, low but still land (unless it reaches the sea as an embayment)
             const arm = w0 * armKm[c0] + w1 * armKm[c1] + w2 * armKm[c2];
             if (arm < 3 * cfg.failedArmHalfKm) h = Math.max(Math.min(h, 0.03), h - cfg.failedArmKm * Math.exp(-((arm / cfg.failedArmHalfKm) ** 2)));
+            // ── hills down to what the mesh can show: more on high ground, none at the shore ──
+            if (hillsF.length && h > 0) {
+                let sum = 0;
+                for (let o = 0; o < hillsF.length; o++) { const f = hillsF[o]; sum += hillsAmp[o] * renewedNoise(x * f + 31.3 + 2.1 * o, y * f + 7.7 + 1.3 * o, z * f + 19.9 + 0.7 * o); }
+                h += sum * (1 + ((cfg.hillsUplandGain ?? 4) - 1) * smooth(0.1, 1.5, h)) * smooth(0, 0.08, h);
+            }
         } else {
             // ── sea side: the slope from the shelf break down to the floor the ocean corners give ──
             const ow = (land[c0] ? 0 : w0) + (land[c1] ? 0 : w1) + (land[c2] ? 0 : w2);
