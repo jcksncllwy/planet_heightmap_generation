@@ -103,6 +103,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
     RAIN_LEE_PER_KM: 1,         // 1/km       rain shadows on the 1° grid: rain × e^{−this × km the air has come down from higher ground}
     RAIN_LEE_RECOVER_KM: 400,   // km         … a drop counted less with distance (the air takes up moisture again)
+    RAIN_RISE_PER_KM: 0.5,      // 1/km       windward slopes wetter with height: rain × e^{this × km the air has been lifted on its way}
     RAIN_ISLAND_BOOST: 2,       // –          islands wetter than the sea around them: × (1 + this × sea share around × warmth)
     RAIN_OROG_SPREAD_KM: 600,   // km         windward / lee rain is moved within this distance, not made
     RAIN_SLOPE_FACTOR: 1.2,     // –          windward / lee rain on the 1° grid: × e^{β·(upslope speed / 0.1 m/s)}
@@ -190,6 +191,7 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_OROG_STORM:    { value: 1, min: 0.5, max: 1, source: 'orographic precipitation is concentrated in storms with strong cross-barrier flow (≈ 10–20 m/s), not the weak monthly-mean wind (Roe 2005)' },
     RAIN_LEE_PER_KM:    { value: 1, min: 0.3, max: 2, source: 'lee-side rain falls ≈ ×0.2–0.5 of windward within a few hundred km behind 1–2 km of relief (Cascades, Andes, Southern Alps; Roe 2005)' },
     RAIN_LEE_RECOVER_KM: { value: 400, min: 200, max: 800, source: 'rain shadows extend a few hundred km downwind of major ranges (Great Basin, Patagonia, Tarim; Roe 2005)' },
+    RAIN_RISE_PER_KM:   { value: 0.5, min: 0, max: 1, source: 'windward precipitation grows ≈ 5–10 % per 100 m of elevation up to near the crest of mid-latitude ranges (Alps, Cascades, Sierra Nevada; Roe 2005)' },
     RAIN_ISLAND_BOOST:  { value: 1, min: 0, max: 2, source: 'tropical islands receive ≈ 1.5–3× the rain of the surrounding ocean (sea-breeze convergence and orography; e.g. the Maritime Continent, Hawaii, the Caribbean)' },
     RAIN_OROG_SPREAD_KM: { value: 600, min: 300, max: 1000, source: 'water wrung out on the windward side is missing downwind — the rain-shadow budget closes over a few hundred km' },
     RAIN_SLOPE_FACTOR:  { value: 1.0, min: 0.3, max: 1.5, source: 'orographic enhancement ≈ ×2–3 on windward slopes, ×0.3–0.6 in the lee at ≈ 0.1–0.2 m/s of forced ascent in storms (Roe 2005; Smith & Barstad 2004); moved within the spread distance, not made' },

@@ -1055,3 +1055,25 @@ texture was tried too: it took Earth below Beck's detail and barely calmed Evolu
 | Earth 160K, before → after (Beck 17.8 / 12.3 / 479) | 18.8 → 16.8 % | 12.6 → 10.4 % | 491 → 393 | 48.5 → 48.2 % |
 
 No drift (640K / 2.5M class shares within 0.9 % of 160K); guardrails unchanged; the Evolution checks as before.
+
+
+## Phase 11c — windward rain grows with height
+
+The developer: "when we come across something steep it does look to be generating rain properly. However when we
+encounter higher mountains …, are we releasing more rain? that would be realistic".
+
+**Diagnosis** (`diag-ridges.mjs`: a flat continent in the westerlies with north–south ridges). A 3 km ridge did get
+≈ 45 % more windward rain than a 1.5 km one, and a range behind another behaved sensibly; but the rain peaked on the
+steepest mid-slope and every crest was drier than the flat plain (the 3 km crest 224 mm/yr vs 450 on the plain upwind
+and 253 on a flat continent). The 3° rain grid piles a range's water up 6–8° upwind of it, and the 1° step keyed only
+on the local slope. Real windward precipitation grows with elevation up to near the crest.
+
+**Built.** `orographicRain`: the upwind march that finds the rain shadow's drop now also finds the rise (the height the
+air has been lifted from lower ground on its way, weighted e^{−d/400 km}); rain × e^{κ·D(1 − e^{−rise/D})},
+`RAIN_RISE_PER_KM` 0.5. A drift of the rain toward the crest (the ascent from one step upwind) was tried and dropped:
+it mostly spilled rain into the lee (the Sierra's lee 444 → 543 vs real 209).
+
+**Numbers.** 3 km ridge (terrain cells, mm/yr): upper windward slope 572 → 667, crest 224 → 288 (plain 250). Earth,
+windward sides: NZ 1634 → 1901 (real 3154), Western Ghats 1767 → 1890 (3282), Norway 921 → 1027 (2105); windward ÷ lee
+×2.00 → ×2.11 (real ×3.42). Köppen 48.2 → 48.3 %; Evolution patches 717 → 736 per 10k land cells. No drift; the checks
+as before.

@@ -68,13 +68,16 @@ export function saturatedColumn(T, vapourHeightKm) {
 }
 
 /**
- * Mountains below the rain grid's scale, on the 1° grid (its mean heights), at each point in the year. The wind
+ * Mountains below the rain grid's scale, on the 1° grid (its land's mean heights), at each point in the year. The wind
  * blowing up a slope lifts the air and wrings out more rain, blowing down it less; and air that has come down from
  * higher ground on its way is dry — the rain shadow: looking upwind along the wind, the largest drop from the ground
  * there to here, each counted less with distance (e^{−d / RAIN_LEE_RECOVER_KM}) as the air takes up moisture again.
+ * Air lifted from lower ground on its way has condensed more of its water: windward slopes get wetter with height, up to
+ * the crest (the largest rise, weighted the same way; RAIN_RISE_PER_KM).
  * The wind is the storms' as much as the month's mean (orographic rain falls in storms): the mean wind's direction at
- * speed √(U² + (s·σL)²), σ the Eady rate, L the storms' size. factor = e^{β·clamp(w / 0.1 m/s, −2, 2) − λ·drop(km)}.
- * Rain is moved, not made: the factor is normalised over the land within RAIN_OROG_SPREAD_KM, weighted by the rain —
+ * speed √(U² + (s·σL)²), σ the Eady rate, L the storms' size. factor = e^{β·clamp(w / 0.1 m/s, −2, 2) + κ·rise − λ·drop}
+ * (rise and drop in km, each saturating at the vapour scale height).
+ * Rain is moved, not made: the factor is normalised over all within RAIN_OROG_SPREAD_KM (sea too), weighted by the rain —
  * windward slopes take it from the lee, so whole regions behind a range are dry.
  */
 function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K, tA) {
@@ -92,6 +95,7 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
         seaAround[j * w + i] = s / n;
     }
     const recoverKm = P_.RAIN_LEE_RECOVER_KM, beta = P_.RAIN_SLOPE_FACTOR, lambda = P_.RAIN_LEE_PER_KM, Dv = P_.RAIN_VAPOUR_HEIGHT_KM;
+    const kappa = P_.RAIN_RISE_PER_KM;
     const nSteps = Math.max(1, Math.min(16, Math.ceil(2.5 * recoverKm / stepKm)));
     const decay = Float64Array.from({ length: nSteps + 1 }, (_, s) => Math.exp(-s * stepKm / recoverKm));
     const Lmix = P_.RAIN_EDDY_LENGTH_KM * 1000;
@@ -114,9 +118,11 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
                 if (!(sp > 0.1)) { const tw = tA[off + c]; let warm = (tw - 12) / 12; warm = warm <= 0 ? 0 : warm >= 1 ? 1 : warm * warm * (3 - 2 * warm); f[c] = 1 + P_.RAIN_ISLAND_BOOST * seaAround[c] * warm; continue; }
                 const boost = Math.hypot(sp, sU) / sp;
                 const wUp = boost * (u * (hc(ce) - hc(cw)) * 1000 / dx + v * (hc(cn) - hc(cs)) * 1000 / (cn === c || cs === c ? dy / 2 : dy));
-                // the rain shadow: march upwind in 1° steps (east–west stretched by 1/cos latitude)
-                let drop = 0;
-                if (lambda > 0) {
+                // the rain shadow and the lift: march upwind in 1° steps (east–west stretched by 1/cos latitude) for the
+                // largest drop from higher ground and the largest rise from lower ground on the way, each counted less
+                // with distance
+                let drop = 0, rise = 0;
+                if (lambda > 0 || kappa > 0) {
                     const h0 = hc(c), du = -u / sp, dv = -v / sp;
                     let y = j + 0.5, x = i + 0.5;
                     for (let s = 1; s <= nSteps; s++) {
@@ -125,10 +131,13 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
                         if (y < 0 || y >= h) break;
                         const d = (hc(Math.floor(y) * w + ((Math.floor(x) % w) + w) % w) - h0) * decay[s];
                         if (d > drop) drop = d;
+                        if (-d > rise) rise = -d;
                     }
                 }
-                // (a drop counts less once it exceeds the moist layer: the air has little left to lose — D·(1 − e^{−drop/D}), D the vapour scale height)
-                f[c] = Math.exp(beta * Math.max(-2, Math.min(2, wUp / 0.1)) - lambda * Dv * (1 - Math.exp(-drop / Dv)));
+                // Air lifted higher on its way has condensed more of its water, so windward slopes get wetter with
+                // height, up to the crest: × e^{κ·D(1 − e^{−rise/D})}. A drop and a rise count less once they exceed the
+                // moist layer (the air has little left to lose or to give) — D, the vapour scale height.
+                f[c] = Math.exp(beta * Math.max(-2, Math.min(2, wUp / 0.1)) + kappa * Dv * (1 - Math.exp(-rise / Dv)) - lambda * Dv * (1 - Math.exp(-drop / Dv)));
                 // islands draw in the sea's moist air (sea breezes converging over the land heated by day): wetter than
                 // the ocean around them, most in warm air
                 const tw = tA[off + c]; let warm = (tw - 12) / 12; warm = warm <= 0 ? 0 : warm >= 1 ? 1 : warm * warm * (3 - 2 * warm);

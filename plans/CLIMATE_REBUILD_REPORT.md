@@ -64,6 +64,7 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 10 | Your feedback: the equator, too wet, mountains | mostly | Tropics steady through the year; land rain 832 vs 839 mm/yr (was 898); windward ÷ lee ×2.0 (was ×1.4, real ×3.4); Köppen 50.6 % |
 | 11 | Your feedback: pressure, monsoons, Europe, the US West, islands | partly | Belts and centres of action near real; Southern Ocean westerlies 5.2 vs 6.8 m/s (was 2.3); stronger Asian monsoons; an overturning ocean; islands twice as wet; every physical measure better; Köppen 48.5 % |
 | 11b | Your feedback: simulated planets too blotchy | done | The climate follows half of each terrain cell's own bumps: Evolution worlds ≈ 30–40 % fewer speckles and patches; Earth still near the real map's detail; Köppen 48.2 % |
+| 11c | Your question: do higher mountains release more rain? | done | Windward slopes now get wetter with height up to the crest; crests no longer drier than the plains; mountain contrast ×2.11 (real ×3.42) |
 
 ## Decisions waiting for you
 
@@ -590,3 +591,21 @@ show; single cells no longer flip on their own.
 
 Köppen on Earth 48.5 → 48.2 %; nothing else changed. For more or less of it: `terrainRelief` in `v2/js/climate/core.js`
 (1 = every cell's own height, as before; 0.35 is calmer still).
+
+## Phase 11c — windward rain grows with height
+
+**What I found.** Mostly yes: a higher range wrung out more rain and cast a deeper shadow, and a high range behind a
+low one still got its own rain. But the rain peaked on the steepest part of each slope, and every crest came out drier
+than the flat plain in front of the range, while real windward slopes get wetter with height, up to near the crest.
+
+**Built.** Air lifted from lower ground on its way now rains more the higher it has been lifted, using the same
+upwind look as the rain shadow.
+
+| 3 km ridge, annual rain | Plain upwind | Upper slope | Crest | Lee |
+|---|---|---|---|---|
+| Before | 450 | 572 | 224 | 42 |
+| Now | 450 | **667** | **288** | 42 |
+
+On Earth the windward sides are wetter (New Zealand's Southern Alps 1634 → 1901 mm/yr, real 3154; the Western Ghats
+1767 → 1890, real 3282), and the mountain contrast is ×2.11 (was ×2.0; real ×3.4). Köppen 48.3 %. The Rockies barely
+change. `node tuning/climate/diag-ridges.mjs --cells` shows the ridge tests.
