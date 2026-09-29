@@ -65,6 +65,7 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 11 | Your feedback: pressure, monsoons, Europe, the US West, islands | partly | Belts and centres of action near real; Southern Ocean westerlies 5.2 vs 6.8 m/s (was 2.3); stronger Asian monsoons; an overturning ocean; islands twice as wet; every physical measure better; Köppen 48.5 % |
 | 11b | Your feedback: simulated planets too blotchy | done | The climate follows half of each terrain cell's own bumps: Evolution worlds ≈ 30–40 % fewer speckles and patches; Earth still near the real map's detail; Köppen 48.2 % |
 | 11c | Your question: do higher mountains release more rain? | done | Windward slopes now get wetter with height up to the crest; crests no longer drier than the plains; mountain contrast ×2.11 (real ×3.42) |
+| 11d | Your feedback: warm and cold currents, relative to their latitude, and their rain | mostly | Warm-current seas now clearly warmer than cold-current seas (+1.2 °C, was +0.1; real +2.8); their coasts warmer and wetter or cooler and drier; Köppen 47.2 % (decision 8) |
 
 ## Decisions waiting for you
 
@@ -99,6 +100,9 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
    chose a weak "land's own seasons" layer (`TEMP_LOCAL_K` 14): Australia's seasons are still half of real and the Great
    Basin's summer 7 °C too cool. `TEMP_LOCAL_K` 8 gives them most of their real seasons for about a point of Köppen.
    Which way do you want it?
+8. **Currents vs the Köppen score** (Phase 11d). The currents' warmth and cold cost about a point of Köppen, mostly
+   Australia, where the interior gets wetter (closer to its real rain) but hot desert turns into hot steppe. The dial is
+   `TEMP_CURRENT_MEMORY` in `v2/js/climate/config.js` (0.6; 0 = off, 0.8 = stronger). Keep it?
 
 ## The approach, in one paragraph
 
@@ -609,3 +613,30 @@ upwind look as the rain shadow.
 On Earth the windward sides are wetter (New Zealand's Southern Alps 1634 → 1901 mm/yr, real 3154; the Western Ghats
 1767 → 1890, real 3282), and the mountain contrast is ×2.11 (was ×2.0; real ×3.4). Köppen 48.3 %. The Rockies barely
 change. `node tuning/climate/diag-ridges.mjs --cells` shows the ridge tests.
+
+## Phase 11d — warm and cold currents, relative to their latitude
+
+**What I found.** Currents barely changed anything: the model's warm-current seas were no warmer than its cold-current
+seas, and several had the wrong sign (the Gulf Stream and Kuroshio cold, the Canary and California currents warm). The
+heat rule carried the model's own sea temperature, already evened out, so there was almost nothing to carry; and the
+energy balance spread even that over thousands of km.
+
+**Built — your "it's all relative".** Each patch of sea is traced back along its current (≈ 1500 km) to the latitudes
+its water comes from, and keeps part of their temperature: currents flowing poleward are warm, those flowing toward the
+equator cold, whatever their speed. Onshore winds carry that warmth or cold onto the coast. The rain follows: a warmer
+sea evaporates more and its air rises and rains more; a colder sea's air is stable and dry, and the wind carries both
+onshore.
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Warm-current seas minus cold-current seas | +0.1 °C | **+1.2 °C** | +2.8 °C |
+| Their coasts | +1.0 °C | +1.2 °C | +1.8 °C |
+| Their coasts' rain | ×1.28 | ×1.35 | ×1.80 |
+| A test continent: sea off its west vs east coast at 30° | 20.5 vs 21.3 °C | **17.0 vs 23.0 °C** | (California 17, Georgia 24) |
+
+Pressure and winds are unchanged or slightly better. Australia's rain moves toward real (337 → 439 mm, real 537).
+Köppen 48.3 → 47.2 % — decision 8.
+
+**Still not right.** The Gulf Stream's sea stays cold (the continent's winter air wins), and the coldest coasts (Peru,
+Namibia, California) are cold mostly from upwelling, which I tried to strengthen here but it bent the trade winds and
+broke South America's rain, so it stays as it was.

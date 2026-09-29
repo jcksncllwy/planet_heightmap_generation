@@ -1077,3 +1077,57 @@ it mostly spilled rain into the lee (the Sierra's lee 444 → 543 vs real 209).
 windward sides: NZ 1634 → 1901 (real 3154), Western Ghats 1767 → 1890 (3282), Norway 921 → 1027 (2105); windward ÷ lee
 ×2.00 → ×2.11 (real ×3.42). Köppen 48.2 → 48.3 %; Evolution patches 717 → 736 per 10k land cells. No drift; the checks
 as before.
+
+
+## Phase 11d — warm and cold currents, relative to their latitude
+
+The developer: "currents going TOWARDS the poles should bring heat up, while anything going TOWARDS the equator should
+bring heat down … it's all relative … this should interplay with land and sea temps", and "make sure these warm / cold
+coast currents impact precipitation (up and down respectively)".
+
+**Diagnosis** (`diag-currents.mjs`: fourteen named currents; sea and coast against their latitude's average, and coast
+rain). Warm-current seas were no warmer than cold-current seas (+0.1 vs real +2.8 °C); the Gulf Stream and Kuroshio came
+out cold, the Canary, California and Benguela currents warm. The heat rule advected the model's own sea temperature,
+already evened out by the energy balance, so currents carried ≈ 5–10 W/m² (real ≈ 100 in the Gulf Stream), and the
+energy balance then spread even that over thousands of km. The model's gyres are also slow (≈ 1 cm/s): any "speed ×
+gradient" rule made the narrow western currents overshoot and the broad eastern ones vanish.
+
+**Built.**
+- `ocean.js`:
+  - `carried`: each current traced back along its flow for 1500 km (`CARRY_TRACE_KM`); the latitude-average sea
+    temperature there minus here, faded below ≈ 0.5 cm/s. A slow broad current counts as much as a fast narrow one.
+  - The ocean heat's north–south part now uses the latitudes' average temperature gradient (`OCEAN_MERID_SHARE`;
+    east–west still the local sea temperature).
+  - Coastal upwelling is one-sided at a coast (the offshore Ekman transport wells up in the coastal cell).
+- `temperature.js`: the sea keeps `TEMP_CURRENT_MEMORY` (0.6) of `carried` (the planet-wide sea mean kept), and onshore
+  winds carry `TEMP_COAST_CARRY` (0.6) of the upwind sea's anomaly onto land (the land-seasons layer's upwind look,
+  shared). The rain stage then sees it: more evaporation and unstable air off warm seas, stable air off cold ones.
+- `rain.js`: instability (air warmer than its latitude rains more, `RAIN_INSTABILITY`) only off the sea — land's own
+  heat does not count (with it, desert interiors rained: Köppen 43.8 %); on at 0.0187.
+- Tried and dropped: the local response to the full ocean heat (weak), subtracting the anomaly's regional mean (it
+  cancelled the eastern half of each gyre), a local layer for upwelling (the equatorial cold tongue bent the trade winds:
+  wind 80.5 → 73.7 %; the coastal part alone broke South American rain: 38 → 26 %), a stronger instability (no wetter
+  coasts, North America −9 points).
+- Tune of the neighbours around the trace (7 keys): `RAIN_STABILITY` 0.0262, `RAIN_INSTABILITY` 0.0187,
+  `OCEAN_MERID_SHARE` 0.03, `RAIN_STORM_RH` 0.138, `TEMP_CLOUD_ALBEDO` 0.262, `RAIN_COLUMN_LOCAL` 0.414.
+
+**Numbers (Earth, 160K).**
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Warm minus cold current: sea | +0.1 °C | **+1.2 °C** | +2.8 °C |
+| … coast temperature | +1.0 °C | +1.2 °C | +1.8 °C |
+| … coast rain | ×1.28 | ×1.35 | ×1.80 |
+| e.g. N Atlantic Drift / Humboldt / Labrador sea | +1.3 / −2.1 / −0.7 °C | +2.7 / −3.0 / −2.3 | +4.6 / −4.1 / −2.6 |
+| Test planets: sea off the west vs east coast at 30°N | 20.5 vs 21.3 °C | **17.0 vs 23.0** | (California 17, Georgia 24) |
+| Australia: rain, arid share | 337 mm, 87 % | 439 mm, 80 % | 537 mm, 74 % |
+| Guardrails: land T / sea T / pressure / wind 45° | 3.75 / 2.64 °C / 2.89 hPa / 80.5 % | 3.85 / 2.62 / 2.79 / 80.7 | — |
+| Köppen (continents equal) | 48.3 % (47.4) | 47.2 % (45.5) | V1 38 % |
+
+- Gates: coupled PASSED, no drift (640K 47.2 %, 2.5M 47.2 %, shares within 1.1 %); ocean PASSED (SST error 2.59 °C);
+  rain's truth swap now beats V1's (54.9 vs 54.6 %; its first pass); Evolution as before.
+- The Köppen loss is mostly Australia (54 → 46 %): its interior gets wetter toward the real rain, and hot desert
+  crosses into hot steppe (BWh 14 → 9 % of land worldwide, real 14 %).
+- **Known:** the Gulf Stream's sea stays cold (the continent's winter air), California's cold current and Peru / Namib
+  coast deserts are too weak (their cold is upwelling, left to the energy balance), and the Nordic seas are still ≈ 3 °C
+  short of real.

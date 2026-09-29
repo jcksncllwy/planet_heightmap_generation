@@ -56,7 +56,7 @@ const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean 
  * leave dry land in full sun.
  */
 export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
-    return (ctx, winds, init = null, qflux = null, rain = null) => {
+    return (ctx, winds, init = null, qflux = null, rain = null, ocean = null) => {
         const t0 = performance.now();
         const P = { ...PARAMS };
         const core = ctx.grid;
@@ -253,27 +253,69 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // among seas gains the seasons of its size. Land the wind brings sea air to keeps the sea's mildness: the gain
         // is × (1 − the sea share upwind, along the year's mean wind, weighted e^{−d/EXPOSURE_KM}) — the UK and the
         // west coasts stay maritime, Australia's interior (the trades cross Queensland first) does not.
-        if (P.TEMP_LOCAL_K > 0) {
-            const ar = new Float64Array(G), ai = new Float64Array(G), sr2 = new Float64Array(G), si2 = new Float64Array(G), tmpS = new Float64Array(G);
-            const inland = new Float64Array(G).fill(1);
-            if (winds) {
-                const stepKm = g.step * 111.2;
-                for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-                    const c = j * w + i; if (!(landFrac[c] > 0)) continue;
-                    const sp = Math.hypot(uBar[c], vBar[c]); if (!(sp > 0.3)) continue;
-                    const du = -uBar[c] / sp, dv = -vBar[c] / sp;
-                    let y = j + 0.5, x = i + 0.5, s = 0, ws = 0;
-                    for (let k = 1; k <= EXPOSURE_STEPS; k++) {
-                        const cls = Math.max(0.1, Math.cos((90 - y * g.step) * Math.PI / 180));
-                        y -= dv; x += du / cls;
-                        if (y < 0 || y >= h) break;
-                        const wk = Math.exp(-k * stepKm / EXPOSURE_KM);
-                        s += wk * (1 - landFrac[Math.floor(y) * w + ((Math.floor(x) % w) + w) % w]); ws += wk;
-                    }
-                    const calm = Math.min(1, sp / 1);                  // (only a near-still mean wind brings the sea less surely)
-                    if (ws > 0) inland[c] = 1 - calm * s / ws;
+        // The air upwind of each land cell, along the year's mean wind (EXPOSURE_STEPS grid steps, each weighted
+        // e^{−d/EXPOSURE_KM}): upwind(j, i, visit) calls visit(cell, weight) and returns how surely the wind brings it
+        // (only a near-still mean wind brings it less surely); `inland` is 1 − that × the sea share upwind.
+        const stepKmE = g.step * 111.2;
+        const upwind = (j, i, visit) => {
+            const c = j * w + i, sp = Math.hypot(uBar[c], vBar[c]);
+            if (!winds || !(sp > 0.3)) return 0;
+            const du = -uBar[c] / sp, dv = -vBar[c] / sp;
+            let y = j + 0.5, x = i + 0.5;
+            for (let k = 1; k <= EXPOSURE_STEPS; k++) {
+                const cls = Math.max(0.1, Math.cos((90 - y * g.step) * Math.PI / 180));
+                y -= dv; x += du / cls;
+                if (y < 0 || y >= h) break;
+                visit(Math.floor(y) * w + ((Math.floor(x) % w) + w) % w, Math.exp(-k * stepKmE / EXPOSURE_KM));
+            }
+            return Math.min(1, sp / 1);
+        };
+        const inland = new Float64Array(G).fill(1);
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+            const c = j * w + i; if (!(landFrac[c] > 0)) continue;
+            let s = 0, ws = 0;
+            const calm = upwind(j, i, (q, wk) => { s += wk * (1 - landFrac[q]); ws += wk; });
+            if (ws > 0) inland[c] = 1 - calm * s / ws;
+        }
+
+        // The sea's own warmth below the energy balance's scale (which would spread it over thousands of km): a current
+        // keeps TEMP_CURRENT_MEMORY of the temperature of the latitudes its water comes from (the ocean stage's
+        // `carried`: poleward currents warm, equatorward ones cold). (Upwelling stays in the energy balance's ocean heat:
+        // added here too, the equatorial cold tongue bent the trade winds and the Peru coast's the South American rain.)
+        // The winds carry it onto the land downwind: TEMP_COAST_CARRY × the sea's anomaly along the land's upwind path
+        // (mild Norway and north-west Europe; cool California, Peru and Namibia coasts). With it the rain stage sees
+        // warm and cold seas: more evaporation and unstable air off warm ones, stable air off cold ones.
+        if (ocean?.carried && P.TEMP_CURRENT_MEMORY > 0) {
+            // (the whole anomaly, not only where it departs from its region: the eastern half of a gyre is cold as a
+            // whole; the sea's planet-wide mean is kept)
+            const seaAnom = new Float64Array(G);
+            const carriedE = coarsen(core, g, ratio, ocean.carried);
+            let sum = 0, area = 0;
+            for (let j = 0; j < h; j++) {
+                const cw = Math.cos(g.lat[j] * Math.PI / 180);
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i, s = (1 - landFrac[c]) * (1 - seaIceYear[c]);
+                    if (!(s > 0)) continue;
+                    seaAnom[c] = P.TEMP_CURRENT_MEMORY * carriedE[c];
+                    sum += s * cw * seaAnom[c]; area += s * cw;
                 }
             }
+            const seaMean = area > 0 ? sum / area : 0;
+            for (let c = 0; c < G; c++) if (seaAnom[c]) seaAnom[c] -= seaMean;
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i, f = landFrac[c];
+                let carried = 0;
+                if (f > 0 && P.TEMP_COAST_CARRY > 0) {
+                    let s = 0, ws2 = 0;
+                    const calm = upwind(j, i, (q, wk) => { s += wk * (1 - landFrac[q]) * seaAnom[q]; ws2 += wk; });
+                    if (ws2 > 0) carried = P.TEMP_COAST_CARRY * calm * s / ws2;
+                }
+                c0[c] += (1 - f) * (1 - seaIceYear[c]) * seaAnom[c] + f * carried;
+            }
+        }
+
+        if (P.TEMP_LOCAL_K > 0) {
+            const ar = new Float64Array(G), ai = new Float64Array(G), sr2 = new Float64Array(G), si2 = new Float64Array(G), tmpS = new Float64Array(G);
             // (not over ice sheets: the ice holds their summers near freezing)
             const addLocal = (n, fr, fi, xr, xi) => {
                 for (let c = 0; c < G; c++) {

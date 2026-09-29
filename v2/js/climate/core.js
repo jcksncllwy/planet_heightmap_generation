@@ -87,7 +87,7 @@ export function computeClimate(input, options = {}) {
             // given winds (or none) and no ocean heat; later ones the derived winds and the ocean's heat.
             const rounds = o.stages.ocean ? o.couplingsWithOcean : o.couplings;
             for (let it = 0; it < rounds; it++) {
-                temperature = o.stages.temperature(sctx, winds, temperature?.state, ocean?.qflux ?? null);
+                temperature = o.stages.temperature(sctx, winds, temperature?.state, ocean?.qflux ?? null, null, ocean);
                 circulation = o.stages.circulation(sctx, temperature);
                 winds = circulation;
                 if (o.stages.ocean) ocean = o.stages.ocean(sctx, circulation, temperature);
@@ -102,7 +102,7 @@ export function computeClimate(input, options = {}) {
         if (o.cloudsFromRain && o.stages.circulation) {
             // clouds from the rain shade rainy land (the temperature stage reads monthly rain); the rain then follows
             // the new temperature from where it was
-            temperature = o.stages.temperature(sctx, winds, temperature.state, ocean?.qflux ?? null, monthsFromAnchors(rain.P, grid.size, K, o.anchorPhase, o.precipTransform));
+            temperature = o.stages.temperature(sctx, winds, temperature.state, ocean?.qflux ?? null, monthsFromAnchors(rain.P, grid.size, K, o.anchorPhase, o.precipTransform), ocean);
             lap('temperature with clouds');
             if (o.rainAfterClouds) { rain = o.stages.rain(sctx, winds, temperature, rain.state ?? null); lap('rain again'); }
         }

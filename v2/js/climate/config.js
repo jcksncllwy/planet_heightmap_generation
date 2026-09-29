@@ -33,11 +33,13 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
     TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
     TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
-    TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
+    TEMP_LOCAL_KM: 1500,
+    TEMP_CURRENT_MEMORY: 0.6,     // –          share of the temperature of where its water comes from that a current keeps
+    TEMP_COAST_CARRY: 0.6,      // –          … the share of the upwind sea's anomaly onshore winds carry onto land        // km         … its departure from the region within this (Gaussian σ) is added over land
     TEMP_EVAP_DAMPING: 15,      // W/m²/K     evaporation's damping of the seasons over a wet surface at 25 °C
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
-    TEMP_CLOUD_ALBEDO: 0.3,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_CLOUD_ALBEDO: 0.262,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
     TEMP_GRID_DEG: 3,           // °          grid the energy balance is solved on (its fields are smooth: 2° scored the
                                 //            same as 1°, and the whole climate at 3° the same as at 2° at half the cost —
                                 //            Phase 6; results are interpolated to 1°)
@@ -74,6 +76,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_GUST_MS: 4.26,        // m/s        wind variability (storms) that monthly-mean winds leave out, for the wind stress
     OCEAN_HEAT_SHARE: 0.073,    // –          share of the gyres' transport whose temperature reaches the sea surface
     OCEAN_OVERTURN_PW: 0.925,       // PW         the overturning's poleward heat, per hemisphere open to the polar sea
+    OCEAN_MERID_SHARE: 0.03,   // –          … and of their north–south transport across the latitudes' temperature gradient
     OCEAN_UPWELL_DT: 4,         // °C         how much colder upwelled water is than the surface (warm seas; less in cold)
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
@@ -88,16 +91,16 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
     RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
-    RAIN_STORM_RH: 0.2,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
+    RAIN_STORM_RH: 0.138,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
     RAIN_WIND_ROT: 0.757,       // –          rotational wind carrying the column's water, as a share of the wind above the friction layer …
     RAIN_WIND_DIV_DRY: 0.3,     // –          … and the divergent (converging / spreading) part, as a share of the near-surface
     RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
     RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
     RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
-    RAIN_STABILITY: 0.03,       // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
+    RAIN_STABILITY: 0.0262,       // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
     RAIN_TERRAIN_HEAT_K: 6,     // K          … over ground this much warmer than its latitude (at sea level); none if 0
     RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
-    RAIN_INSTABILITY: 0,        // 1/K        … and gained per K it is warmer (unstable air: heated plateaus, warm currents)
+    RAIN_INSTABILITY: 0.0187,        // 1/K        … and gained per K a sea is warmer (unstable air off warm currents, warm currents)
     RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
     RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
@@ -138,6 +141,8 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_PLATEAU_LAPSE: { value: 5.0, min: 4.0, max: 6.5, source: 'near-surface lapse rates over large elevated terrain ≈ 4.5–5.5 °C/km (elevated heating)' },
     TEMP_BLOCK_KM:      { value: 1.5, min: 0.8, max: 3, source: 'the marine / boundary layer a range must lift the air out of is ≈ 1–2 km deep; cold-air damming and blocked flow below ridge height (Froude < 1)' },
     TEMP_LOCAL_K:       { value: 6, min: 3, max: 15, source: 'advective exchange of a ~1.5 km boundary layer at ~5 m/s over ~1000 km: ρ c_p H U / L ≈ 9 W/m²/K' },
+    TEMP_CURRENT_MEMORY: { value: 0.6, min: 0.2, max: 1, source: 'western boundary currents run ≈ 2–5 °C warmer and eastern boundary currents ≈ 2–4 °C colder than their latitude (OISST) — against ≈ 6–10 °C of latitude temperature change along ≈ 1500 km of their path' },
+    TEMP_COAST_CARRY:   { value: 0.6, min: 0.2, max: 1, source: 'onshore winds carry the sea\'s warmth or cold a few hundred km inland (the maritime west coasts; the cool coastal deserts beside cold currents)' },
     TEMP_LOCAL_KM:      { value: 1500, min: 800, max: 2500, source: 'the scale of the weather systems whose heat transport the diffusion stands for (≈ 1000–2000 km)' },
     TEMP_EVAP_DAMPING:  { value: 15, min: 5, max: 30, source: 'sensitivity of the surface latent heat flux to temperature ≈ 10–20 W/m²/K over tropical oceans and wet land (e.g. Hartmann 2016; Zhang & McPhaden 1995)' },
     TEMP_WET_COOL_C:    { value: 3, min: 1, max: 8, source: 'soil-moisture–temperature coupling: dry soils raise monthly mean temperature by several K (Seneviratne et al. 2010); Sahel pre-monsoon vs monsoon months ≈ 5–6 K; tropical deforestation +1–3 K' },
@@ -169,6 +174,7 @@ export const PARAM_PRIORS = Object.freeze({
     OCEAN_CHANNEL_DRAG: { value: 5e-7, min: 1e-7, max: 2e-6, source: 'sets a circumpolar current of ≈ 100–150 Sv on Earth (the ACC)' },
     OCEAN_HEAT_SHARE:   { value: 0.05, min: 0.01, max: 0.2, source: 'scaled to the ocean\'s ≈ 1–2 PW poleward heat transport; no direct literature value' },
     OCEAN_OVERTURN_PW:  { value: 1.0, min: 0.4, max: 1.5, source: 'Atlantic meridional overturning heat transport ≈ 1.2 PW at 26°N (RAPID array), released in the subpolar and Nordic seas' },
+    OCEAN_MERID_SHARE:  { value: 0.15, min: 0.03, max: 0.4, source: 'western boundary currents release ≈ 100–200 W/m² (Gulf Stream, Kuroshio), eastern boundary currents take up ≈ 20–50 W/m² plus upwelling (Yu & Weller 2007 OAFlux); the gyres carry ≈ 1 PW poleward' },
     OCEAN_UPWELL_DT:    { value: 4, min: 2, max: 8, source: 'coastal upwelling cools the surface a few °C (thermocline water)' },
 
     RAIN_EVAP_COEFF:    { value: 1.3e-3, min: 1.0e-3, max: 1.8e-3, source: 'bulk transfer coefficient C_E ≈ 1.1–1.5 × 10⁻³ (Large & Pond 1982; COARE)' },
