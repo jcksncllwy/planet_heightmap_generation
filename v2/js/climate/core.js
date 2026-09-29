@@ -31,6 +31,9 @@ export const CORE_DEFAULTS = Object.freeze({
     tempOffsetC: 0,
     precipScale: 1,
     rainPerKm: 1.0,             // rain × e^{this × (cell height − its surroundings’ mean, km)}, bounded 0.4–2.5
+    terrainRelief: 0.5,         // share of a cell's own relief (its height beyond its surroundings' 1° mean) the climate
+                                //   follows — for the lapse rate and rain by height: the air near the ground mixes over
+                                //   small hills; 1 = every cell's own height (speckled on rough terrain)
     texture: { tempC: 1.2, rain: 0.35, km: 200 },   // local variety the grid can't resolve (lakes, soils, mesoscale weather):
                                 //   smooth noise at a fixed size in km — °C, and rain × e^{±rain}; null = none
     seed: 1,
@@ -254,10 +257,11 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz) {
         const j1 = y0 + 1 < h ? y0 + 1 : y0;
         const c00 = y0 * w + i0, c10 = y0 * w + i1, c01 = j1 * w + i0, c11 = j1 * w + i1;
         const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
-        const hc = Math.max(0, elevKm[r]);
+        // the height the climate sees: the surroundings' (the 1° mean land height) and a share of the cell's own relief
+        const hAround = w00 * hLand[c00] + w10 * hLand[c10] + w01 * hLand[c01] + w11 * hLand[c11];
+        const hc = hAround + o.terrainRelief * (Math.max(0, elevKm[r]) - hAround);
         // rain grows with the cell's height above its surroundings (orographic enhancement: ridges wetter, valleys
         // drier), bounded — so rain, like temperature, follows the terrain below the grid's scale
-        const hAround = w00 * hLand[c00] + w10 * hLand[c10] + w01 * hLand[c01] + w11 * hLand[c11];
         let pf = o.rainPerKm ? Math.max(0.4, Math.min(2.5, Math.exp(o.rainPerKm * (hc - hAround)))) : 1, dt = 0;
         if (tex) {
             const x = xyz[3 * r] * texScale, y = xyz[3 * r + 1] * texScale, z = xyz[3 * r + 2] * texScale;

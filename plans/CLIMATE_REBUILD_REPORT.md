@@ -63,6 +63,7 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 9 | Your feedback: detail, Tibet, Mediterranean, warm and cold currents | mostly | Detail 15.9 % class edges (real 17.8 %, V1 15.1 %, before 9.7 %); Tibet tundra (ET 75 %); Mediterranean 13 % found; Köppen 49.5 % |
 | 10 | Your feedback: the equator, too wet, mountains | mostly | Tropics steady through the year; land rain 832 vs 839 mm/yr (was 898); windward ÷ lee ×2.0 (was ×1.4, real ×3.4); Köppen 50.6 % |
 | 11 | Your feedback: pressure, monsoons, Europe, the US West, islands | partly | Belts and centres of action near real; Southern Ocean westerlies 5.2 vs 6.8 m/s (was 2.3); stronger Asian monsoons; an overturning ocean; islands twice as wet; every physical measure better; Köppen 48.5 % |
+| 11b | Your feedback: simulated planets too blotchy | done | The climate follows half of each terrain cell's own bumps: Evolution worlds ≈ 30–40 % fewer speckles and patches; Earth still near the real map's detail; Köppen 48.2 % |
 
 ## Decisions waiting for you
 
@@ -571,3 +572,21 @@ the same speed.
 
 **Check in the lab.** New climate → Earth → Run. Pressure & wind → New in January and July, side by side with
 Observed: the Southern Ocean's trough, the Siberian high, the oceanic highs. Köppen → New over France, Hawaii and Fiji.
+
+## Phase 11b — calmer detail on simulated planets
+
+**What I found.** On Evolution worlds the Köppen map had about twice Earth's speckle. The cause is the terrain, not the
+texture: Evolution's terrain is three times bumpier from one cell to the next than Earth's, and each cell's climate
+followed its own height, so neighbouring cells kept flipping between desert and steppe, or boreal and tundra.
+
+**Built.** The climate now sees each cell's surroundings plus half of its own bumps. Mountain ranges and valleys still
+show; single cells no longer flip on their own.
+
+| | Speckles (cells unlike their neighbours) | Patches per 10,000 land cells |
+|---|---|---|
+| Evolution world, 160K: before → now | 27 → **20 %** | 1032 → **717** |
+| Evolution world, 640K: before → now | 19 → **12 %** | 606 → **357** |
+| Earth (real map: 12 %, 479) | 13 → 10 % | 491 → 393 |
+
+Köppen on Earth 48.5 → 48.2 %; nothing else changed. For more or less of it: `terrainRelief` in `v2/js/climate/core.js`
+(1 = every cell's own height, as before; 0.35 is calmer still).

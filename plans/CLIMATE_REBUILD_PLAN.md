@@ -1028,3 +1028,30 @@ should be wetter broadly". Then: "do all of that".
   warmest latitude of the cloud-free temperature. Northern Australia's and West Africa's monsoon winds stay weak.
 - **The North Atlantic** is still ≈ 3.5 °C too cold; Germany is Dfb (real Cfb 76 %); the UK a mix.
 - **Köppen −2.1 points** for the physics: the tune preferred a weak land-seasons layer and nearly symmetric heat lows.
+
+
+## Phase 11b — calmer detail on simulated planets
+
+The developer, after the climate went onto the Evolution page: "it looked good on earth but ended up making the
+simulated planets look way too blotchy. Can we tone it down a bit (but not fully get rid of it)".
+
+**Diagnosis** (`diag-blotch.mjs`, `render-evolution-koppen.mjs`). On an Evolution world (seed 12345, 160K) the Köppen map
+had about twice Earth's class edges (32.6 vs 18.8 %; Beck 17.8), specks (land cells unlike most of their neighbours,
+26.8 vs 12.6 %) and patches (1032 vs 491 per 10k land cells). Switching off every source of sub-grid detail (texture,
+rain by height, windward / lee / islands, coastal seasons) still left 24 % edges: the cause is the terrain. Evolution's
+synthesized terrain is three times rougher cell to cell than Earth's heightmap (a land cell is 222 m from its neighbours'
+mean vs 77 m), and each cell's climate followed its own height (the lapse rate, ≈ ±1.4 °C; rain by height, ≈ ±25 %),
+so neighbours flipped across thresholds (BSk/BWk, BSh/BWh, Dfb/Dfc, EF/ET).
+
+**Built.** `core.js` option `terrainRelief` (0.5): the height the per-cell finishing uses is the surroundings' 1° mean
+land height plus that share of the cell's own relief — for the lapse rate and rain by height. The air near the ground
+mixes over small hills; mountain ranges keep their height. A share, so the same at every terrain resolution. A gentler
+texture was tried too: it took Earth below Beck's detail and barely calmed Evolution, so it stays.
+
+| | Class edges | Specks | Patches / 10k land cells | Earth Köppen |
+|---|---|---|---|---|
+| Evolution 160K, before → after | 32.6 → **27.2 %** | 26.8 → **20.3 %** | 1032 → **717** | — |
+| Evolution 640K, before → after | 25.3 → **18.9 %** | 18.7 → **12.0 %** | 606 → **357** | — |
+| Earth 160K, before → after (Beck 17.8 / 12.3 / 479) | 18.8 → 16.8 % | 12.6 → 10.4 % | 491 → 393 | 48.5 → 48.2 % |
+
+No drift (640K / 2.5M class shares within 0.9 % of 160K); guardrails unchanged; the Evolution checks as before.
