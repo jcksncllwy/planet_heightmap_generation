@@ -930,3 +930,101 @@ rainfall, or enough rain shadows".
   blows toward the Himalaya (+1.9 to +2.7).
 - **Small islands are about a third as wet as real** (Hawaii 40–58 vs 126–164 mm/month; Fiji 43 vs 288): on the 3°
   rain grid an island is ocean, and the 1° mean heights dilute its mountains with sea.
+
+## Phase 11 — feedback 3: pressure, monsoons, Europe, the US West, islands
+
+The developer's feedback on Phase 10: "hone in the pressure … see WHERE we are getting things wrong"; "make the monsoon
+winds a bit stronger"; "Europe feels too Mediterranean and continental and not oceanic enough (France, UK, Germany)";
+"the Rockies a bit east of California are too wet" (California itself is fine); "Hawaii is too dry … smaller islands
+should be wetter broadly". Then: "do all of that".
+
+**Diagnosis** (`diag-pressure.mjs`, `diag-seasons.mjs`, `diag-regions.mjs`; SST and gyre probes).
+- **Zonal belts.** The real subpolar trough depends on open ocean, not the season: ≈ 31 hPa below the subtropical highs
+  over the ≈ 93 %-sea south, ≈ 6 hPa over the ≈ 45 %-sea north, both seasons. The model had 14–18 hPa south (Southern
+  Ocean westerlies ×0.38) and 10–20 north (Arctic zonal mean 13 hPa too low in January; Siberian high 1024 vs 1036).
+- **The circulation check could not see it:** its pressure score removed each latitude's mean, and wind was scored on
+  direction only. An RMS pattern score also rewarded a damped field (the "double penalty"): the Phase 8 tune had cut
+  the thermal response, and the July pressure around India was nearly zonal.
+- **Subtropical highs:** in winter the model's Azores high sat over the Sahara (cold land, thermal high); trades a third
+  of real.
+- **Continental seasons:** the energy balance's diffusion (D·l(l+1) ≈ 36–65 W/m²/K for a 2000–4000 km continent, vs
+  B + ωC ≈ 4) tied mid-size continents to the sea: Australia swing 6.7 vs 16.3 °C, Kalahari 5.0 vs 12.9, Argentina
+  8.1 vs 15.2. Halving D, the land's heat capacity or the wind carry barely changed it. Without hot summer interiors
+  there are no heat lows, so the monsoons stay weak.
+- **Europe:** the North Atlantic 5 °C too cold (Norwegian Sea −6 °C, ice, in January vs +6.5): the wind-driven gyres are
+  weak (≈ 13 Sv, currents 1–3 cm/s) and there is no overturning; tripling the gyres' heat share did nothing.
+- **India** 5.5 °C too cold all year: Tibet's cold diffused through the Himalaya.
+- **Islands** a third as wet as real: on the 3° rain grid they are ocean, and 1° mean heights dilute their mountains.
+
+**Built.**
+- `circulation.js`:
+  - Trough depth `CIRC_MIDLAT_HPA × (belt sea share)^CIRC_OPEN_SEA_POWER × √(contrast / 25 K)` (replaces
+    `CIRC_MIDLAT_HPA_PER_K`, `CIRC_OPEN_SEA_BOOST`).
+  - Thermal term asymmetric over land: heat lows `CIRC_HEAT_LOW_MILD` on mild ground (≤ 15 °C) and in the rainy
+    tropics (a Gaussian of `CONVECTIVE_DEG` = 10° about the ITCZ), × (1 + `CIRC_HEAT_LOW_HOT`) on hot dry ground
+    (≥ 35 °C); cold highs × (1 + `CIRC_COLD_HIGH_BOOST`) below −25 °C.
+  - Oceanic subtropical highs: `CIRC_OCEAN_HIGH_HPA` × (sea share around, Rossby scale, minus its row mean) on a cos²
+    ridge ±15° about each high (the zonal mean kept).
+  - Land roughness: near-surface wind share `CIRC_SURFACE_WIND_LAND` (the rain stage reads `surfaceShareLand`).
+  - `tropicsWeight` and `gaussianSmooth` exported (shared with the temperature stage).
+- `temperature.js`:
+  - Land's own seasons below the grid (`TEMP_LOCAL_K`, `TEMP_LOCAL_KM`): for n = 1, 2 the isolated column's response
+    F/(B_season + K + i·nωC) minus its Gaussian regional mean (1500 km) is added over land, × (1 − the sea share upwind
+    along the year's mean wind, e^{−d/700 km} over 4 steps), not over ice sheets. Subtracting the energy balance's own
+    contrast at that scale was tried and removed (it cut Canada's and Siberia's seasons).
+  - Ridge blocking (`TEMP_BLOCK_KM`): each face of the energy-balance grid open by `BLOCK_FLOOR` (0.5, the weather
+    aloft) + 0.5·e^{−(1° crest above the lower side)/H}, strip by strip (`ridgeFaces`). Without the floor, Central
+    Asia's winters went ≈ 10 °C too cold.
+- `solver.js`: faces in the advective form (`buildRowsFaces`): per-face diffusion and upwind coupling, north / south
+  folded; without faces the old path runs unchanged.
+- `ocean.js`: the overturning (`OCEAN_OVERTURN_PW`): per hemisphere without a circumpolar channel equatorward of 75°,
+  the sea poleward of 40° connected to the polar sea gets the heat, weighted e^{−distance by sea from the polar sea /
+  2500 km} × a ramp 40–55°; balanced by the ocean's global net removal. Taking it from the hemisphere's tropics instead
+  cost 4.6 points of Köppen (moved the rain belts).
+- `rain.js` (`orographicRain`): slopes from the land's own mean height (`meanLandKm`) on land cells; islands ×
+  (1 + `RAIN_ISLAND_BOOST` × the sea share around (3 × 3) × warmth (12–24 °C)), moved within the 600 km normalisation.
+- `circulation-check.mjs`: per-region score = direction + 3·(1 − pressure correlation) + 2·|ln amplitude| +
+  2·|ln speed|, plus 0.25 × the zonal-mean profile error. Its open-loop tune put the thermal response back to 1.0 hPa/K.
+- Tried and dropped: rain inside the coupling loop with latent heating in the circulation (Köppen 41 %: the cloud-cooled
+  rainforest reads as a thermal high and as stable air in the rain stage, and dries itself).
+- Final Köppen-level tune (12 keys, no continent > 2 pts worse, stage guardrails): `TEMP_WIND_CARRY` 0.143,
+  `TEMP_LOCAL_K` 14, `TEMP_BLOCK_KM` 1.5, `OCEAN_OVERTURN_PW` 0.925, `CIRC_COLD_HIGH_BOOST` 0.685,
+  `CIRC_OCEAN_HIGH_HPA` 2, `CIRC_HEAT_LOW_MILD` 0.963, `TEMP_CLOUD_ALBEDO` 0.3; then by hand `CIRC_HEAT_LOW_HOT` 1
+  (monsoons; −0.4 pts) and `RAIN_ISLAND_BOOST` 2 (islands; Köppen unchanged).
+
+**Numbers (Earth, every stage new, 160K; closed loop).**
+
+| | Phase 10 | Phase 11 | Real |
+|---|---|---|---|
+| Zonal mean 65°S, Jan / Jul (hPa) | 1004.7 / 999.1 | **993.2 / 987.6** | 986.8 / 986.8 |
+| Zonal mean 65°N, January | 998.0 | 1006.6 | 1012.3 |
+| Siberian high | 1024.1 at 38°N 71°E | **1032.4 at 47°N 83°E** | 1035.6 at 47°N 90°E |
+| Icelandic / Aleutian low | 987.2 / 988.6 | **993.2 / 995.7** | 994.0 / 997.6 |
+| Southern Ocean westerlies, July (u) | 2.3 m/s | **5.2** | 6.8 |
+| Indian monsoon, July (u, v) | 4.6, 3.2 | 4.7, 3.5 | 5.2, 2.9 |
+| Bay of Bengal, July | 5.9, 3.2 | 6.1, 3.9 | 5.1, 5.7 |
+| East Asian monsoon, July (v) | 2.0 | 2.5 | 1.6 |
+| Somali jet, July | 4.6, 5.0 | 4.3, 5.6 | 8.7, 7.5 |
+| NE Atlantic / Norwegian Sea, January SST | 5.1 / −6.1 °C | 7.0 / −2.6 | 10.5 / 6.5 |
+| Swing: Australia / Kalahari / Argentina | 6.7 / 5.0 / 8.1 °C | 8.8 / 6.7 / 10.9 | 16.3 / 12.9 / 15.2 |
+| France Cfb / Csb; UK Cfb | 42 / 51 %; 0 % | **62 / 20 %; 15 %** | 87 / 0 %; 100 % |
+| Islands (Hawaii, Fiji, Caribbean): rain | ≈ ⅓ of real | ≈ ½ | — |
+| Guardrails: land T / sea T / pressure / wind 45° | 3.85 / 2.79 °C / 3.02 hPa / 79.0 % | **3.75 / 2.64 / 2.89 / 80.5** | — |
+| Köppen: major group; all land (continents equal) | 76.8 %; 50.6 % (48.9) | **78.6 %**; 48.5 % (47.6) | V1 38 % |
+
+- Stage gates: circulation PASSED (wind within 45° 73 % open loop; zonal profile error 3.3 hPa); temperature PASSED
+  (3.9 vs V1 5.0 °C); ocean PASSED ("North Atlantic warmer than its latitude" fails: −0.1 vs 3.0 °C); rain as before
+  (named 10 / 18 open loop), and now the supercontinent's equatorial coasts are 55 mm/month (threshold 60; 60 without
+  the hot heat lows: its monsoon reaches inland). Coupled gate PASSED; no drift (640K / 2.5M 48.7 %, shares within 1 %).
+- Evolution: 600 Myr A / B / C / D / E 15 / 31 / 15 / 23 / 16 %; the supercontinent's "interior drier than the coasts"
+  fails as before (35 vs 37 %).
+- ≈ 0.6–0.75 s in Node at 160K, as before.
+
+**Known.**
+- **The US interior West** is still ≈ 7 °C too cool in summer and ≈ 1.7× too wet (Great Basin Dfb / Dsb, not BSk /
+  BWk): the land-seasons layer at the tuned strength (K 14) is weak, and heated high ground gets the monsoon moisture
+  rule.
+- **Heat lows sit at ≈ 11°S** (real 20–25°S) in January and at 17–20°N over Africa: the tropical trough follows the
+  warmest latitude of the cloud-free temperature. Northern Australia's and West Africa's monsoon winds stay weak.
+- **The North Atlantic** is still ≈ 3.5 °C too cold; Germany is Dfb (real Cfb 76 %); the UK a mix.
+- **Köppen −2.1 points** for the physics: the tune preferred a weak land-seasons layer and nearly symmetric heat lows.

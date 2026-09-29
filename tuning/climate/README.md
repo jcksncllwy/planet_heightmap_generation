@@ -139,6 +139,7 @@ node tuning/climate/diag-wet-map.mjs --region na  # Phase 10: text map of rain n
 node tuning/climate/diag-orography.mjs          # Phase 10: windward vs lee rain for twelve ranges, new vs Beck
 node tuning/climate/diag-regions.mjs [--set europe|west|islands]  # named regions: Köppen mix, coldest / warmest month,
                                                 #   summer / winter rain, new vs Beck (--params KEY=value,… to try settings)
+node tuning/climate/diag-seasons.mjs            # Phase 11: warmest / coldest month and swing for interiors and coasts, new vs Beck
 node tuning/climate/diag-pressure.mjs [--maps]  # where the circulation goes wrong vs NCEP: pressure error per region and
                                                 #   season, Jan / Jul error maps, zonal profile, centres of action, winds
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)

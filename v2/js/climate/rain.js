@@ -77,11 +77,20 @@ export function saturatedColumn(T, vapourHeightKm) {
  * Rain is moved, not made: the factor is normalised over the land within RAIN_OROG_SPREAD_KM, weighted by the rain —
  * windward slopes take it from the lee, so whole regions behind a range are dry.
  */
-function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K) {
+function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K, tA) {
     const P_ = PARAMS;
     const h = core.h, w = core.w, G = core.size, dRad = core.step * DEG, stepKm = core.step * 111.2;
-    const hk = ctx.surface.meanKm, land = ctx.surface.landFrac;
-    const hc = (x) => Math.max(0, hk[x]);
+    const hLand = ctx.surface.meanLandKm, land = ctx.surface.landFrac;
+    // the ground the air meets: over land its own height (an island's mountains are not diluted by the sea around them
+    // in its 1° cell), over the sea 0
+    const hc = (x) => { const v = hLand[x]; return land[x] >= 0.25 && v === v ? Math.max(0, v) : 0; };
+    // islands: the sea share around each 1° cell (3 × 3)
+    const seaAround = new Float64Array(G);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        let s = 0, n = 0;
+        for (let dj = -1; dj <= 1; dj++) { const jj = j + dj; if (jj < 0 || jj >= h) continue; for (let di = -1; di <= 1; di++) { s += 1 - land[jj * w + (i + di + w) % w]; n++; } }
+        seaAround[j * w + i] = s / n;
+    }
     const recoverKm = P_.RAIN_LEE_RECOVER_KM, beta = P_.RAIN_SLOPE_FACTOR, lambda = P_.RAIN_LEE_PER_KM, Dv = P_.RAIN_VAPOUR_HEIGHT_KM;
     const nSteps = Math.max(1, Math.min(16, Math.ceil(2.5 * recoverKm / stepKm)));
     const decay = Float64Array.from({ length: nSteps + 1 }, (_, s) => Math.exp(-s * stepKm / recoverKm));
@@ -102,7 +111,7 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
                 const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
                 const share = shareCoarse[jb * g.w + Math.floor(i / ratio)] || 0.7;
                 const u = uA[off + c] / share, v = vA[off + c] / share, sp = Math.hypot(u, v);
-                if (!(sp > 0.1)) continue;
+                if (!(sp > 0.1)) { const tw = tA[off + c]; let warm = (tw - 12) / 12; warm = warm <= 0 ? 0 : warm >= 1 ? 1 : warm * warm * (3 - 2 * warm); f[c] = 1 + P_.RAIN_ISLAND_BOOST * seaAround[c] * warm; continue; }
                 const boost = Math.hypot(sp, sU) / sp;
                 const wUp = boost * (u * (hc(ce) - hc(cw)) * 1000 / dx + v * (hc(cn) - hc(cs)) * 1000 / (cn === c || cs === c ? dy / 2 : dy));
                 // the rain shadow: march upwind in 1° steps (east–west stretched by 1/cos latitude)
@@ -120,6 +129,10 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
                 }
                 // (a drop counts less once it exceeds the moist layer: the air has little left to lose — D·(1 − e^{−drop/D}), D the vapour scale height)
                 f[c] = Math.exp(beta * Math.max(-2, Math.min(2, wUp / 0.1)) - lambda * Dv * (1 - Math.exp(-drop / Dv)));
+                // islands draw in the sea's moist air (sea breezes converging over the land heated by day): wetter than
+                // the ocean around them, most in warm air
+                const tw = tA[off + c]; let warm = (tw - 12) / 12; warm = warm <= 0 ? 0 : warm >= 1 ? 1 : warm * warm * (3 - 2 * warm);
+                f[c] *= 1 + P_.RAIN_ISLAND_BOOST * seaAround[c] * warm;
             }
         }
         // normalise over the land around, weighted by its rain: box sums by prefix sums — along each row (its width in
@@ -153,7 +166,7 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
  * stage(ctx, winds, temperature) → { P (K × G, mm/month, at the anchor months), W (K × G, mm of column water),
  * E (K × G, mm/month evaporation), r (K × G, column relative humidity), eady (K arrays of per-row storm growth, 1/day),
  * balance (global rain / evaporation per anchor), cycles, newton, ms }.
- * winds: { u, v } (12 × G, m/s, near the surface) and optionally surfaceShare (near-surface wind as a share of the
+ * winds: { u, v } (12 × G, m/s, near the surface) and optionally surfaceShare, surfaceShareLand (near-surface wind as a share of the
  * wind above the friction layer; default: observed-like, 0.75 over the sea and 0.45 over land). temperature:
  * { monthly (surface air at the reference height), monthlySL (sea level: the sea surface), seaIce } (12 × G).
  */
@@ -181,7 +194,8 @@ export function columnWaterRain() {
         const iA = temperature.seaIce ? atAnchors(temperature.seaIce, core.size, ctx.anchorMonths) : null;
         const pA = winds.slp ? atAnchors(winds.slp, core.size, ctx.anchorMonths) : null;      // (the circulation stage's pressure)
         const share = new Float64Array(G);
-        for (let c = 0; c < G; c++) share[c] = winds.surfaceShare ?? 0.75 - 0.3 * land[c];
+        for (let c = 0; c < G; c++) share[c] = winds.surfaceShareLand != null ? winds.surfaceShare + (winds.surfaceShareLand - winds.surfaceShare) * land[c]
+            : winds.surfaceShare ?? 0.75 - 0.3 * land[c];
 
         const solver = new HelmholtzSolver(g, 0, 0, { conservative: true });
         // Rising ground blocks the water. The solve is for the sea-level-equivalent column W* (the column over ground
@@ -493,7 +507,7 @@ export function columnWaterRain() {
             for (let c = 0; c < G; c++) tmp[c] = Wk[k][c] / prep[k].Ws[c];
             refineField(g, core, ratio, tmp, Rout, off);
         }
-        if (P_.RAIN_SLOPE_FACTOR > 0 || P_.RAIN_LEE_PER_KM > 0) orographicRain(ctx, core, g, ratio, uA, vA, share, eadyOut, Pout, K);
+        if (P_.RAIN_SLOPE_FACTOR > 0 || P_.RAIN_LEE_PER_KM > 0 || P_.RAIN_ISLAND_BOOST > 0) orographicRain(ctx, core, g, ratio, uA, vA, share, eadyOut, Pout, K, tA);
         for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
         const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };

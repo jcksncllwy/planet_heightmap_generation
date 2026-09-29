@@ -13,6 +13,11 @@
 //    cold water wells up from below. Both become a heat source / sink for the sea's mixed layer, which the
 //    temperature stage adds to its energy balance; the winds carry the result inland (a mild Europe, cool
 //    California and Namib coasts).
+//  • The overturning. Warm surface water also flows poleward to the seas that open onto the polar ocean, sinks there
+//    and gives up its heat (the North Atlantic Drift: a mild north-west Europe, an ice-free Norwegian Sea). It forms in
+//    a hemisphere's seas that reach the polar ocean through open water from the midlatitudes (the Atlantic through the
+//    Nordic seas; not the Pacific, closed at the Bering Strait) and not beyond a circumpolar channel (its current
+//    blocks the way, as the Antarctic Circumpolar Current does).
 
 import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { HelmholtzSolver } from './solver.js';
@@ -23,11 +28,63 @@ const R_PLANET = 6.371e6;
 const RHO_AIR = 1.2, RHO_SEA = 1025, CP_SEA = 3990;
 const DRAG_COEFF = 1.3e-3;           // air–sea drag coefficient
 const DEG = Math.PI / 180;
+const MOC_FROM_DEG = 40;             // the overturning's heat is released poleward of this latitude …
+const MOC_FULL_DEG = 55;             // … fully from here …
+const MOC_POLAR_DEG = 75;            // … in seas connected to the polar sea (poleward of this) …
+const MOC_REACH_KM = 2500;           // … most near the polar opening (e-folding distance by sea)
 
 /**
  * stage(ctx, circulation, temperature) → { psi (G, Sv), u, v (G, surface current m/s, annual), qflux (G, W/m², annual:
  * advection + upwelling), upwelling (G, m/day), channels, ms }. Fields on the core grid.
  */
+/**
+ * Heat of the overturning (W/m², G): per hemisphere without a circumpolar channel, the sea poleward of MOC_FROM_DEG
+ * connected to the polar sea (≥ MOC_POLAR_DEG) gets the heat, weighted by e^{−(distance by sea from the polar sea)/
+ * MOC_REACH_KM} and a ramp from MOC_FROM_DEG to MOC_FULL_DEG — most in the seas nearest the polar opening. (The same
+ * heat is taken from all the sea evenly, with the rest of the ocean's net, below: taking it from the hemisphere's
+ * tropics alone cooled them enough to move the rain belts.)
+ */
+function overturningHeat(g, isSea, channels, pw) {
+    const G = g.size, w = g.w, h = g.h, dRad = g.step * DEG;
+    const q = new Float64Array(G);
+    if (!(pw > 0)) return q;
+    const area = (j) => R_PLANET * R_PLANET * dRad * dRad * Math.cos(g.lat[j] * DEG);
+    const stepKm = g.step * 111.2;
+    for (const s of [1, -1]) {
+        // a channel between the midlatitudes and the polar sea blocks it (an open polar cap is not one)
+        if (channels.some(ch => [ch.jStart, ch.jEnd].some(jj => s * g.lat[jj] > 0 && s * g.lat[jj] < MOC_POLAR_DEG))) continue;
+        // distance by sea from the polar sea, over the sea poleward of MOC_FROM_DEG (breadth-first, ≈ km)
+        const dist = new Float64Array(G).fill(Infinity), queue = [];
+        for (let j = 0; j < h; j++) if (s * g.lat[j] >= MOC_POLAR_DEG) for (let i = 0; i < w; i++) { const c = j * w + i; if (isSea[c]) { dist[c] = 0; queue.push(c); } }
+        for (let k = 0; k < queue.length; k++) {
+            const c = queue[k], j = Math.floor(c / w), i = c % w;
+            const nb = [j * w + (i + 1) % w, j * w + (i - 1 + w) % w, j > 0 ? c - w : -1, j < h - 1 ? c + w : -1];
+            for (const n of nb) {
+                if (n < 0 || !isSea[n] || s * g.lat[Math.floor(n / w)] < MOC_FROM_DEG) continue;
+                const d = dist[c] + (n === c - w || n === c + w ? stepKm : stepKm * Math.cos(g.lat[j] * DEG));
+                if (d < dist[n]) { dist[n] = d; queue.push(n); }
+            }
+        }
+        let wsum = 0;
+        const wt = new Float64Array(G);
+        for (let j = 0; j < h; j++) {
+            const la = s * g.lat[j];
+            const ramp = Math.max(0, Math.min(1, (la - MOC_FROM_DEG) / (MOC_FULL_DEG - MOC_FROM_DEG)));
+            for (let i = 0; i < w; i++) {
+                const c = j * w + i; if (!isSea[c]) continue;
+                if (la >= MOC_FROM_DEG && dist[c] < Infinity) { wt[c] = ramp * ramp * (3 - 2 * ramp) * Math.exp(-dist[c] / MOC_REACH_KM); wsum += wt[c] * area(j); }
+            }
+        }
+        if (!(wsum > 0)) continue;
+        const P = pw * 1e15;
+        for (let j = 0; j < h; j++) { const la = s * g.lat[j]; for (let i = 0; i < w; i++) {
+            const c = j * w + i; if (!isSea[c]) continue;
+            if (wt[c] > 0) q[c] += P * wt[c] / wsum;
+        } }
+    }
+    return q;
+}
+
 export function windDrivenOcean() {
     return (ctx, circ, temperature) => {
         const t0 = performance.now();
@@ -164,6 +221,9 @@ export function windDrivenOcean() {
                 qUp[c] = -RHO_SEA * CP_SEA * wv * P.OCEAN_UPWELL_DT * thermo;
             }
         }
+        // the overturning: OCEAN_OVERTURN_PW per hemisphere, released over the seas the polar ocean opens onto
+        const qMoc = overturningHeat(g, isSea, channels, P.OCEAN_OVERTURN_PW);
+        for (let c = 0; c < G; c++) qAdv[c] += qMoc[c];
         // the ocean moves heat, it does not make it: remove the net (area-weighted over the sea)
         let net = 0, area = 0;
         for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; if (!isSea[c]) continue; net += (qAdv[c] + qUp[c]) * cosLat[j]; area += cosLat[j]; }
@@ -175,7 +235,7 @@ export function windDrivenOcean() {
         const out = (src) => { const o = new Float32Array(core.size); refineField(g, core, ratio, src, o, 0); return o; };
         const surfU = U.map((x, c) => (isSea[c] ? x / P.OCEAN_CURRENT_DEPTH_M : 0)), surfV = V.map((x, c) => (isSea[c] ? x / P.OCEAN_CURRENT_DEPTH_M : 0));
         return {
-            psi: out(psi.map(x => x / 1e6)), u: out(surfU), v: out(surfV), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp),
+            psi: out(psi.map(x => x / 1e6)), u: out(surfU), v: out(surfV), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc),
             upwelling: out(wUp.map(x => x * 86400)), seaMask: out(Float64Array.from(isSea)), curl: out(curl),
             stress: { x: out(tx), y: out(ty) },
             channels: channels.map(ch => ({ fromLat: g.lat[ch.jStart], toLat: g.lat[ch.jEnd], transportSv: ch.transport / 1e6 })),

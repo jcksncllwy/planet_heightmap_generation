@@ -22,7 +22,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_ICE_COLD_C: -10,       // °C         … and covers everything below this (smooth in between)
     TEMP_LAND_HEAT_CAP: 8.93e6, // J/m²/K     how much heat land stores per degree (air column + top soil)
     TEMP_OCEAN_MIX_M: 50,       // m          depth of the sea's mixed layer (its heat store)
-    TEMP_WIND_CARRY: 0.106,     // –          share of the air column's heat the wind carries along (mild west coasts)
+    TEMP_WIND_CARRY: 0.143,     // –          share of the air column's heat the wind carries along (mild west coasts)
     TEMP_INVERSION_C: 10,       // °C         how much colder the air near snowy ground gets than the air above it
                                 //            when the sun is weak and the air calm (winter inversions over snow and ice)
     TEMP_INVERSION_WIND: 4.69,  // m/s        wind speed at which that inversion is half mixed away
@@ -31,10 +31,13 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the terrain cells below the grid still use the standard rate) …
     TEMP_ICE_LAPSE: 8.0,        // °C/km      … and the same for ground under snow most of the year: ice sheets reflect
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
+    TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
+    TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
+    TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
     TEMP_EVAP_DAMPING: 15,      // W/m²/K     evaporation's damping of the seasons over a wet surface at 25 °C
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
-    TEMP_CLOUD_ALBEDO: 0.263,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_CLOUD_ALBEDO: 0.3,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
     TEMP_GRID_DEG: 3,           // °          grid the energy balance is solved on (its fields are smooth: 2° scored the
                                 //            same as 1°, and the whole climate at 3° the same as at 2° at half the cost —
                                 //            Phase 6; results are interpolated to 1°)
@@ -43,18 +46,24 @@ export const PARAMS_DEFAULTS = Object.freeze({
     // Tuned 2026-09-28 (tuning/climate/circulation-check.mjs --tune: open loop, continents and ocean basins weighted
     // equally, none worse than with the literature values). Ferrel width, sea friction angle and Hadley scale ended
     // at or near the edge of their ranges — a hint of the simple structure's limits.
-    CIRC_HADLEY_SCALE: 1.425,   // –          Hadley-cell width relative to Held & Hou's estimate
+    CIRC_HADLEY_SCALE: 1.5,   // –          Hadley-cell width relative to Held & Hou's estimate
     CIRC_HADLEY_SEASONAL: 0.5, // –          share of each month's own equator-to-pole contrast in the Hadley cells' width
     CIRC_FERREL_DEG: 35,        // °          from the subtropical high to the subpolar low (the Ferrel cell)
-    CIRC_TROPICAL_HPA: 9.56,    // hPa        how much lower the tropical rain belt is than the subtropical highs
-    CIRC_MIDLAT_HPA_PER_K: 0.49,// hPa/K      subtropical high to subpolar low, per degree of temperature drop between …
-    CIRC_OPEN_SEA_BOOST: 0.69,  // –          … × (1 + this × the belt's sea share): open sea lets the westerlies run free
+    CIRC_TROPICAL_HPA: 10.13,    // hPa        how much lower the tropical rain belt is than the subtropical highs
+    CIRC_MIDLAT_HPA: 35,        // hPa        subtropical high to subpolar low over an all-sea belt at 25 K of contrast …
+    CIRC_OPEN_SEA_POWER: 1.36,   // –          … × (the belt's sea share)^this: open sea lets the westerlies run free
     CIRC_POLAR_HPA: 4.75,       // hPa        how much higher the polar high is than the subpolar low
-    CIRC_THERMAL_HPA_PER_K: 1.23, // hPa/K    thermal lows and highs: lower pressure per degree warmer than the latitude
+    CIRC_THERMAL_HPA_PER_K: 1, // hPa/K    thermal lows and highs: lower pressure per degree warmer than the latitude
+    CIRC_HEAT_LOW_MILD: 0.963,    // –          … a heat low over mild land (≤ 15 °C) at this share of its depth over hot land (≥ 35 °C)
+    CIRC_HEAT_LOW_TROPICS: 1,   // –          … and in the deep tropics (convective: the heat goes into rain) as over mild land
+    CIRC_OCEAN_HIGH_HPA: 2,     // hPa        subtropical highs over the oceans: per unit of sea share above the latitude's
+    CIRC_HEAT_LOW_HOT: 1,       // –          … and over hot, dry land (≥ 35 °C, outside the rainy tropics) × (1 + this): a deep boundary layer
+    CIRC_COLD_HIGH_BOOST: 0.685,  // –          … a cold high over very cold land (≤ −25 °C) × (1 + this)
     CIRC_ROSSBY_KM: 812,        // km         scale the pressure responds to heating on (the Rossby radius)
-    CIRC_TURN_OCEAN_DEG: 10,    // °          surface wind turned toward low pressure by friction, over the sea …
-    CIRC_TURN_LAND_DEG: 32.5,   // °          … and over land (rougher)
-    CIRC_SURFACE_WIND: 0.7,     // –          near-surface wind as a share of the wind above the friction layer
+    CIRC_TURN_OCEAN_DEG: 12.5,    // °          surface wind turned toward low pressure by friction, over the sea …
+    CIRC_TURN_LAND_DEG: 30,   // °          … and over land (rougher)
+    CIRC_SURFACE_WIND: 0.75,     // –          near-surface wind as a share of the wind above the friction layer, over the sea …
+    CIRC_SURFACE_WIND_LAND: 0.55, // –         … and over land (rougher)
     CIRC_GRID_DEG: 3,           // °          grid the circulation is computed on (interpolated to 1°)
 
     // ── Ocean (ocean.js) ──
@@ -64,6 +73,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_CHANNEL_DRAG: 7.3e-7, // 1/s        friction balancing the wind in a circumpolar channel (its current's strength)
     OCEAN_GUST_MS: 4.26,        // m/s        wind variability (storms) that monthly-mean winds leave out, for the wind stress
     OCEAN_HEAT_SHARE: 0.073,    // –          share of the gyres' transport whose temperature reaches the sea surface
+    OCEAN_OVERTURN_PW: 0.925,       // PW         the overturning's poleward heat, per hemisphere open to the polar sea
     OCEAN_UPWELL_DT: 4,         // °C         how much colder upwelled water is than the surface (warm seas; less in cold)
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
@@ -78,7 +88,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
     RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
-    RAIN_STORM_RH: 0.169,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
+    RAIN_STORM_RH: 0.2,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
     RAIN_WIND_ROT: 0.757,       // –          rotational wind carrying the column's water, as a share of the wind above the friction layer …
     RAIN_WIND_DIV_DRY: 0.3,     // –          … and the divergent (converging / spreading) part, as a share of the near-surface
     RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
@@ -93,6 +103,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
     RAIN_LEE_PER_KM: 1,         // 1/km       rain shadows on the 1° grid: rain × e^{−this × km the air has come down from higher ground}
     RAIN_LEE_RECOVER_KM: 400,   // km         … a drop counted less with distance (the air takes up moisture again)
+    RAIN_ISLAND_BOOST: 2,       // –          islands wetter than the sea around them: × (1 + this × sea share around × warmth)
     RAIN_OROG_SPREAD_KM: 600,   // km         windward / lee rain is moved within this distance, not made
     RAIN_SLOPE_FACTOR: 1.2,     // –          windward / lee rain on the 1° grid: × e^{β·(upslope speed / 0.1 m/s)}
     RAIN_OROGRAPHIC: 0.6,       // –          share of the water lifted by winds blowing up rising ground that rains out
@@ -124,6 +135,9 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_INVERSION_C:   { value: 10, min: 5, max: 15, source: 'Arctic winter surface inversions ≈ 10–15 K (Serreze et al. 1992); strongest in the dark over snow' },
     TEMP_INVERSION_WIND: { value: 5, min: 3, max: 8, source: 'stable boundary layers break down above ≈ 5–7 m/s near-surface wind' },
     TEMP_PLATEAU_LAPSE: { value: 5.0, min: 4.0, max: 6.5, source: 'near-surface lapse rates over large elevated terrain ≈ 4.5–5.5 °C/km (elevated heating)' },
+    TEMP_BLOCK_KM:      { value: 1.5, min: 0.8, max: 3, source: 'the marine / boundary layer a range must lift the air out of is ≈ 1–2 km deep; cold-air damming and blocked flow below ridge height (Froude < 1)' },
+    TEMP_LOCAL_K:       { value: 6, min: 3, max: 15, source: 'advective exchange of a ~1.5 km boundary layer at ~5 m/s over ~1000 km: ρ c_p H U / L ≈ 9 W/m²/K' },
+    TEMP_LOCAL_KM:      { value: 1500, min: 800, max: 2500, source: 'the scale of the weather systems whose heat transport the diffusion stands for (≈ 1000–2000 km)' },
     TEMP_EVAP_DAMPING:  { value: 15, min: 5, max: 30, source: 'sensitivity of the surface latent heat flux to temperature ≈ 10–20 W/m²/K over tropical oceans and wet land (e.g. Hartmann 2016; Zhang & McPhaden 1995)' },
     TEMP_WET_COOL_C:    { value: 3, min: 1, max: 8, source: 'soil-moisture–temperature coupling: dry soils raise monthly mean temperature by several K (Seneviratne et al. 2010); Sahel pre-monsoon vs monsoon months ≈ 5–6 K; tropical deforestation +1–3 K' },
     TEMP_SEA_SWING:     { value: 0.3, min: 0.15, max: 0.5, source: 'mid-latitude sea-surface seasonal range ≈ 5–10 °C vs ≈ 20–40 °C over continents' },
@@ -134,19 +148,26 @@ export const PARAM_PRIORS = Object.freeze({
     CIRC_HADLEY_SEASONAL: { value: 0.5, min: 0, max: 1, source: 'observed subtropical highs migrate ≈ 10° with the rain belt (NCEP); Held & Hou per month would cancel it; seasonal Hadley cells are not in equilibrium with each month (Lindzen & Hou 1988)' },
     CIRC_FERREL_DEG:    { value: 30, min: 20, max: 35, source: 'subtropical highs ≈ 30°, subpolar lows ≈ 60° (three-cell circulation)' },
     CIRC_TROPICAL_HPA:  { value: 9, min: 5, max: 14, source: 'zonal-mean sea-level pressure ≈ 1009 hPa in the rain belt vs ≈ 1018 in the subtropical highs' },
-    CIRC_MIDLAT_HPA_PER_K: { value: 0.6, min: 0.3, max: 1.2, source: 'the midlatitude drop (≈ 10–30 hPa) grows with the ≈ 20–30 K contrast across the storm belt' },
-    CIRC_OPEN_SEA_BOOST: { value: 1.0, min: 0, max: 2.5, source: 'the Southern Ocean\'s westerlies and trough are far stronger than the land-broken northern ones; no direct literature value' },
+    CIRC_MIDLAT_HPA:    { value: 35, min: 25, max: 45, source: 'zonal-mean sea-level pressure over the Southern Ocean: ≈ 1018 hPa at 35°S to ≈ 987 at 65°S, both seasons (NCEP)' },
+    CIRC_OPEN_SEA_POWER: { value: 2.3, min: 1, max: 3.5, source: 'the land-broken northern belt (≈ 45 % sea) has a zonal-mean trough of only ≈ 6 hPa in both seasons vs ≈ 30 over the ≈ 93 % sea south (NCEP): (0.45/0.93)^p ≈ 1/5' },
     CIRC_POLAR_HPA:     { value: 6, min: 2, max: 12, source: 'polar highs a few hPa above the subpolar troughs' },
+    CIRC_HEAT_LOW_MILD: { value: 0.4, min: 0.1, max: 1, source: 'heat lows are deep (≈ 10 hPa) over hot, dry interiors with a 3–5 km boundary layer and weak over mild, moist land (summer Europe: the Azores ridge, not a low; NCEP)' },
+    CIRC_HEAT_LOW_TROPICS: { value: 1, min: 0, max: 1, source: 'the deep heat lows sit in the dry subtropics (Sahara ≈ 25°N, Pakistan ≈ 30°N, Pilbara ≈ 21°S, Kalahari ≈ 20°S), not over the convective wet tropics (NCEP)' },
+    CIRC_OCEAN_HIGH_HPA: { value: 8, min: 0, max: 16, source: 'winter subtropical highs over the oceans (Azores ≈ 1024 hPa at 35°N) vs the land beside them (Sahara ≈ 1018): ≈ 6–8 hPa across ≈ ±0.5 of sea share (NCEP)' },
+    CIRC_HEAT_LOW_HOT:  { value: 0.5, min: 0, max: 1.5, source: 'heat lows over hot deserts reach 10–20 hPa below the latitude mean (Pakistan ≈ 996 hPa in July): the heated boundary layer is 3–5 km deep, several times that over mild land or sea (NCEP)' },
+    CIRC_COLD_HIGH_BOOST: { value: 0.5, min: 0, max: 1.5, source: 'cold anticyclones strengthen as the surface inversion deepens over very cold snow (Siberian high ≈ 1035 hPa at −30 °C)' },
     CIRC_THERMAL_HPA_PER_K: { value: 1.0, min: 0.4, max: 1.6, source: 'hydrostatic: warming the lowest 2–3 km by 1 K lowers surface pressure ≈ 0.9–1.3 hPa' },
     CIRC_ROSSBY_KM:     { value: 1000, min: 500, max: 2000, source: 'Rossby radius of deformation ≈ 1000 km in midlatitudes' },
     CIRC_TURN_OCEAN_DEG: { value: 20, min: 10, max: 30, source: 'surface wind crosses isobars at ≈ 10–20° over the sea' },
     CIRC_TURN_LAND_DEG: { value: 35, min: 25, max: 45, source: '… and ≈ 30–45° over land' },
-    CIRC_SURFACE_WIND:  { value: 0.7, min: 0.5, max: 0.9, source: 'near-surface wind ≈ 0.6–0.8 of the geostrophic wind' },
+    CIRC_SURFACE_WIND:  { value: 0.7, min: 0.5, max: 0.9, source: 'near-surface wind ≈ 0.6–0.8 of the geostrophic wind over the sea' },
+    CIRC_SURFACE_WIND_LAND: { value: 0.5, min: 0.3, max: 0.7, source: '10 m wind over land ≈ 0.4–0.6 of the geostrophic wind (roughness)' },
 
     OCEAN_FRICTION:     { value: 6e-6, min: 3e-6, max: 1.5e-5, source: 'Stommel layer width r/β should span ≈ 2 grid cells (MITgcm guidance); ≈ 300 km at 2°' },
     OCEAN_GUST_MS:      { value: 6, min: 3, max: 9, source: 'bulk formulas on climatological winds add a gustiness / synoptic speed of a few m/s' },
     OCEAN_CHANNEL_DRAG: { value: 5e-7, min: 1e-7, max: 2e-6, source: 'sets a circumpolar current of ≈ 100–150 Sv on Earth (the ACC)' },
     OCEAN_HEAT_SHARE:   { value: 0.05, min: 0.01, max: 0.2, source: 'scaled to the ocean\'s ≈ 1–2 PW poleward heat transport; no direct literature value' },
+    OCEAN_OVERTURN_PW:  { value: 1.0, min: 0.4, max: 1.5, source: 'Atlantic meridional overturning heat transport ≈ 1.2 PW at 26°N (RAPID array), released in the subpolar and Nordic seas' },
     OCEAN_UPWELL_DT:    { value: 4, min: 2, max: 8, source: 'coastal upwelling cools the surface a few °C (thermocline water)' },
 
     RAIN_EVAP_COEFF:    { value: 1.3e-3, min: 1.0e-3, max: 1.8e-3, source: 'bulk transfer coefficient C_E ≈ 1.1–1.5 × 10⁻³ (Large & Pond 1982; COARE)' },
@@ -169,6 +190,7 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_OROG_STORM:    { value: 1, min: 0.5, max: 1, source: 'orographic precipitation is concentrated in storms with strong cross-barrier flow (≈ 10–20 m/s), not the weak monthly-mean wind (Roe 2005)' },
     RAIN_LEE_PER_KM:    { value: 1, min: 0.3, max: 2, source: 'lee-side rain falls ≈ ×0.2–0.5 of windward within a few hundred km behind 1–2 km of relief (Cascades, Andes, Southern Alps; Roe 2005)' },
     RAIN_LEE_RECOVER_KM: { value: 400, min: 200, max: 800, source: 'rain shadows extend a few hundred km downwind of major ranges (Great Basin, Patagonia, Tarim; Roe 2005)' },
+    RAIN_ISLAND_BOOST:  { value: 1, min: 0, max: 2, source: 'tropical islands receive ≈ 1.5–3× the rain of the surrounding ocean (sea-breeze convergence and orography; e.g. the Maritime Continent, Hawaii, the Caribbean)' },
     RAIN_OROG_SPREAD_KM: { value: 600, min: 300, max: 1000, source: 'water wrung out on the windward side is missing downwind — the rain-shadow budget closes over a few hundred km' },
     RAIN_SLOPE_FACTOR:  { value: 1.0, min: 0.3, max: 1.5, source: 'orographic enhancement ≈ ×2–3 on windward slopes, ×0.3–0.6 in the lee at ≈ 0.1–0.2 m/s of forced ascent in storms (Roe 2005; Smith & Barstad 2004); moved within the spread distance, not made' },
     RAIN_OROGRAPHIC:    { value: 0.5, min: 0.1, max: 1.0, source: 'precipitation efficiency of orographic clouds ≈ 20–50 % (Jiang & Smith 2003)' },

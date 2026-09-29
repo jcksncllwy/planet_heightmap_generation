@@ -22,6 +22,7 @@ import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
 import { HelmholtzSolver } from './solver.js';
 import { PARAMS } from './config.js';
+import { tropicsWeight, gaussianSmooth } from './circulation.js';
 
 const SECONDS_PER_YEAR = 3.156e7;
 const OMEGA = 2 * Math.PI / SECONDS_PER_YEAR;
@@ -33,6 +34,9 @@ const OUTER = 4;                            // outer iterations (snow / ice, sea
 const OUTER_WARM = 2;                       // … when starting from a previous run (temperature ↔ winds rounds)
 const CC_SLOPE_25 = Math.exp(17.67 * 25 / 268.5) * 17.67 * 243.5 / (268.5 * 268.5);   // de_s/dT at 25 °C (relative units)
 const WET_RAIN_MM = 800;                    // yearly rain at which land is ~63 % wet (evaporation not limited by water)
+const BLOCK_FLOOR = 0.5;        // the share of a face that stays open over any ridge: the weather aloft
+const EXPOSURE_KM = 700;                    // km: how far upwind the sea still makes land maritime (e-folding) …
+const EXPOSURE_STEPS = 4;                   // … looked at over this many grid steps
 const WET_MONTH_MM = 100;                   // mm/month of rain at which the ground is ~63 % wet
 const WET_SUN_REF = 400;                    // W/m² of daily sunlight (top of the air) at which TEMP_WET_COOL_C applies
 /** Δ/(Δ+γ): the share of the available energy a wet surface evaporates (equilibrium evaporation), relative to 25 °C. */
@@ -40,13 +44,6 @@ const evapShareRaw = (T) => { const t = Math.max(-40, Math.min(45, T)), d = 4098
 const EVAP_SHARE_25 = evapShareRaw(25);
 const evapShare = (T) => evapShareRaw(T) / EVAP_SHARE_25;
 const CLOUD_RAIN_MM = 100;                  // mm/month of rain at which land is ~63 % cloud-covered
-/** Weight of the tropics' even-temperature regime at a latitude: 1 from the ITCZ to halfway to each subtropical
- *  high, fading smoothly to 0 at the high. */
-function tropicsWeight(lat, itcz, hiN, hiS) {
-    const x = lat >= itcz ? (lat - itcz) / Math.max(5, hiN - itcz) : (itcz - lat) / Math.max(5, itcz - hiS);
-    const y = 2 * x - 1;
-    return y <= 0 ? 1 : y >= 1 ? 0 : 1 - y * y * (3 - 2 * y);
-}
 const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean sunlight: below it, inversions form
 
 /**
@@ -145,6 +142,12 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const qEbm = qflux ? coarsen(core, g, ratio, qflux) : null;
 
         const solver = new HelmholtzSolver(g, P.TEMP_DIFFUSIVITY, P.TEMP_DIFFUSIVITY_EW);
+        // Mountains block the air near the ground, and the heat it carries and mixes, between the lowlands on either
+        // side (the Himalaya keeps Tibet's cold out of India; the Sierra and Cascades keep the Pacific's air out of the
+        // Great Basin; the Andes part Chile from Argentina). Each face between two cells is open by
+        // e^{−(ridge above the lower side)/TEMP_BLOCK_KM}, the ridge taken strip by strip on the terrain's 1° grid (its
+        // crest from one cell's centre to the next), so a range narrower than the grid still counts.
+        const faces = P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, landKm, P.TEMP_BLOCK_KM) : null;
         const dRad = g.step * Math.PI / 180;
         const Tk = new Float64Array(G), iceYear = new Float64Array(G), seaIceYear = new Float64Array(G);
         const F0 = new Float64Array(G), F1r = new Float64Array(G), F1i = new Float64Array(G), F2r = new Float64Array(G), F2i = new Float64Array(G);
@@ -225,7 +228,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             prof.forcing += performance.now() - tp;
             const solveWith = (srArr, sigmaI, fr, fi, xr, xi) => {
                 let ta = performance.now();
-                solver.setOperator(srArr, sigmaI, winds ? uBar : null, winds ? vBar : null, gamma);
+                solver.setOperator(srArr, sigmaI, winds ? uBar : null, winds ? vBar : null, gamma, faces);
                 prof.operator += performance.now() - ta; ta = performance.now();
                 const r = solveRelaxed(solver, fr, fi, xr, xi, relax, tol);
                 prof.solve += performance.now() - ta;
@@ -240,6 +243,53 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             stats.push({ it, cycles: [n0.cycles, n1.cycles, n2.cycles] });
         }
         tp = performance.now();
+
+        // Land's own seasons, below the energy balance's scale. Its diffusion stands for the weather systems' poleward
+        // heat transport — right for the planet, but over a continent of a few thousand km it ties the land to the sea
+        // beside it (D·k² ≫ B), and Australia, southern Africa or the Great Basin lose most of their seasons while
+        // Siberia keeps its own. Each column's own response to the season's forcing, with only a local exchange with its
+        // surroundings (TEMP_LOCAL_K: the winds over ~1000 km) — F/(B + K + iωC) — is added back over land where it
+        // departs from its region's (a Gaussian of TEMP_LOCAL_KM): an interior surrounded by land gains nothing, one
+        // among seas gains the seasons of its size. Land the wind brings sea air to keeps the sea's mildness: the gain
+        // is × (1 − the sea share upwind, along the year's mean wind, weighted e^{−d/EXPOSURE_KM}) — the UK and the
+        // west coasts stay maritime, Australia's interior (the trades cross Queensland first) does not.
+        if (P.TEMP_LOCAL_K > 0) {
+            const ar = new Float64Array(G), ai = new Float64Array(G), sr2 = new Float64Array(G), si2 = new Float64Array(G), tmpS = new Float64Array(G);
+            const inland = new Float64Array(G).fill(1);
+            if (winds) {
+                const stepKm = g.step * 111.2;
+                for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                    const c = j * w + i; if (!(landFrac[c] > 0)) continue;
+                    const sp = Math.hypot(uBar[c], vBar[c]); if (!(sp > 0.3)) continue;
+                    const du = -uBar[c] / sp, dv = -vBar[c] / sp;
+                    let y = j + 0.5, x = i + 0.5, s = 0, ws = 0;
+                    for (let k = 1; k <= EXPOSURE_STEPS; k++) {
+                        const cls = Math.max(0.1, Math.cos((90 - y * g.step) * Math.PI / 180));
+                        y -= dv; x += du / cls;
+                        if (y < 0 || y >= h) break;
+                        const wk = Math.exp(-k * stepKm / EXPOSURE_KM);
+                        s += wk * (1 - landFrac[Math.floor(y) * w + ((Math.floor(x) % w) + w) % w]); ws += wk;
+                    }
+                    const calm = Math.min(1, sp / 1);                  // (only a near-still mean wind brings the sea less surely)
+                    if (ws > 0) inland[c] = 1 - calm * s / ws;
+                }
+            }
+            // (not over ice sheets: the ice holds their summers near freezing)
+            const addLocal = (n, fr, fi, xr, xi) => {
+                for (let c = 0; c < G; c++) {
+                    const re = srSeason[c] + P.TEMP_LOCAL_K, im = n * OMEGA * C[c], d = re * re + im * im;
+                    ar[c] = (fr[c] * re + fi[c] * im) / d; ai[c] = (fi[c] * re - fr[c] * im) / d;       // F / (re + i·im)
+                }
+                sr2.set(ar); si2.set(ai);
+                gaussianSmooth(g, sr2, tmpS, P.TEMP_LOCAL_KM); gaussianSmooth(g, si2, tmpS, P.TEMP_LOCAL_KM);
+                for (let c = 0; c < G; c++) {
+                    const f = landFrac[c] * inland[c] * (1 - perennial[c]);
+                    if (f > 0) { xr[c] += f * (ar[c] - sr2[c]); xi[c] += f * (ai[c] - si2[c]); }
+                }
+            };
+            addLocal(1, F1r, F1i, c1r, c1i);
+            addLocal(2, F2r, F2i, c2r, c2i);
+        }
 
         // Surface air temperature at time t (months), on the energy-balance grid: the harmonics, and — near snowy or
         // icy ground under a weak sun — the winter inversion, the air by the ground colder than the air above it.
@@ -342,6 +392,34 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear };
         return { T, monthly, monthlySL, seaIce, iceFrac: iceCore, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
     };
+}
+
+/**
+ * Open share of each face of the energy-balance grid (faces.e: with the east neighbour, faces.n: with the north one):
+ * e^{−(ridge − lower side)/H}, averaged over the 1° strips across the face; the ridge of a strip is the highest 1° mean
+ * height from one cell's centre to the next, the sides the two cells' mean land heights.
+ */
+function ridgeFaces(ctx, core, g, ratio, landKm, hKm) {
+    const w = g.w, h = g.h, G = g.size, cw1 = core.w, r2 = ratio >> 1, h1 = ctx.surface.meanKm;
+    const hAt = (jj, ii) => { const v = h1[jj * cw1 + ((ii % cw1) + cw1) % cw1]; return v > 0 ? v : 0; };
+    const faces = { e: new Float64Array(G).fill(1), n: new Float64Array(G).fill(1) };
+    if (ratio < 2) return faces;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const c = j * w + i, ce = j * w + (i + 1) % w;
+        let se = 0, sn = 0;
+        const lowE = Math.min(landKm[c], landKm[ce]);
+        for (let s = 0; s < ratio; s++) {
+            let me = 0; for (let ii = i * ratio + r2; ii <= (i + 1) * ratio + r2; ii++) me = Math.max(me, hAt(j * ratio + s, ii));
+            se += BLOCK_FLOOR + (1 - BLOCK_FLOOR) * Math.exp(-Math.max(0, me - lowE) / hKm);
+            if (j > 0) {
+                let mn = 0; for (let jj = (j - 1) * ratio + r2; jj <= j * ratio + r2; jj++) mn = Math.max(mn, hAt(jj, i * ratio + s));
+                sn += BLOCK_FLOOR + (1 - BLOCK_FLOOR) * Math.exp(-Math.max(0, mn - Math.min(landKm[c], landKm[c - w])) / hKm);
+            }
+        }
+        faces.e[c] = se / ratio;
+        if (j > 0) faces.n[c] = sn / ratio;
+    }
+    return faces;
 }
 
 function solveRelaxed(solver, fr, fi, xr, xi, relax, tol) {

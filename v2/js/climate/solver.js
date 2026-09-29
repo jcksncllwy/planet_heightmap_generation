@@ -116,9 +116,10 @@ export class HelmholtzSolver {
     }
 
     /**
-     * Flux form only: the share of each face's flux — carried and mixed — that crosses it: faces.e[c] for the face
-     * between cell c and its east neighbour, faces.n[c] for the face with its north neighbour (e.g. the part of the
-     * air column above a mountain barrier). Coarser levels average the fine faces. null: everything crosses.
+     * The share of each face's exchange — carried and mixed — that crosses it: faces.e[c] for the face between cell c
+     * and its east neighbour, faces.n[c] for the face with its north neighbour (e.g. the part of the air column above
+     * a mountain barrier). In flux form it scales each face's flux; in the advective form the diffusion across the
+     * face and the upwind coupling through it. Coarser levels average the fine faces. null: everything crosses.
      */
     setFaces(faces) {
         for (let l = 0; l < this.levels.length; l++) {
@@ -188,6 +189,8 @@ export class HelmholtzSolver {
 //   bd·T_i + sub·T_{i−1} + sup·T_{i+1} = f + (kn + an)·T_north + (ks + as)·T_south
 function buildRows(L) {
     if (L.conservative) { buildRowsFlux(L); return; }
+    if (L.faces) { buildRowsFaces(L); return; }
+    L.foldNS = false;
     const { w, h } = L;
     for (let j = 0; j < h; j++) {
         const kx = L.kxRow[j], kn = L.knRow[j], ks = L.ksRow[j];
@@ -202,6 +205,31 @@ function buildRows(L) {
             L.sub[c] = -kx - (ax > 0 ? ax : 0);
             L.sup[c] = -kx - (ax < 0 ? -ax : 0);
             L.bdr[c] = L.sr[c] + 2 * kx + kn + ks + Math.abs(ax) + Math.abs(ay);
+            L.bdi[c] = L.si[c];
+        }
+    }
+}
+
+// Advective form with faces: each face's diffusion and the upwind coupling through it scaled by its open share; north /
+// south diffusion folded into an, as (per face).
+function buildRowsFaces(L) {
+    const { w, h } = L, T = L.faces;
+    L.foldNS = true;
+    for (let j = 0; j < h; j++) {
+        const kx = L.kxRow[j], kn = L.knRow[j], ks = L.ksRow[j];
+        const sx = 1 / (R_PLANET * L.cos[j] * L.dlam), sy = 1 / (R_PLANET * L.dphi);
+        for (let i = 0; i < w; i++) {
+            const c = j * w + i, cw = j * w + (i === 0 ? w - 1 : i - 1);
+            const fe = T.e[c], fw = T.e[cw], fn = j > 0 ? T.n[c] : 0, fs = j < h - 1 ? T.n[c + w] : 0;
+            const ax = L.gu[c] * sx;
+            let ay = L.gv[c] * sy;
+            if ((j === 0 && ay < 0) || (j === h - 1 && ay > 0)) ay = 0;
+            const axw = ax > 0 ? ax * fw : 0, axe = ax < 0 ? -ax * fe : 0, ayn = ay < 0 ? -ay * fn : 0, ays = ay > 0 ? ay * fs : 0;
+            L.an[c] = kn * fn + ayn;
+            L.as[c] = ks * fs + ays;
+            L.sub[c] = -kx * fw - axw;
+            L.sup[c] = -kx * fe - axe;
+            L.bdr[c] = L.sr[c] + kx * (fe + fw) + kn * fn + ks * fs + axw + axe + ayn + ays;
             L.bdi[c] = L.si[c];
         }
     }

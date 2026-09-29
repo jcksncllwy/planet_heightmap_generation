@@ -7,7 +7,8 @@
  *
  * Open loop: the stage gets the observed near-surface temperature (NCEP air if downloaded; otherwise "real where
  * observed" — Beck land, OISST sea — with the Phase 2 model filling sea ice and gaps), so its error is its own.
- * Scored against NCEP pressure and winds per region — the continents and the ocean basins, each weighted equally —
+ * Scored against NCEP pressure and winds per region — the continents and the ocean basins, each weighted equally: wind
+ * direction and speed, the pressure pattern — plus the zonal-mean pressure profile (the belts' depth and place)
  * and the rain belt against GPCP's rain maximum. Earth is a check, not the target: settings are physical with
  * literature priors (config.js), tuning keeps a change only if no region ends up worse than with the literature values.
  *
@@ -119,9 +120,9 @@ const OBS_ITCZ = MONTHS12.map(obsItczMonth);
 // ── Metrics ──
 /** Per-region wind direction agreement, speed ratio and pressure-anomaly error over a set of months. */
 function circMetrics(get, months) {
-    const acc = Object.fromEntries(ALL_REGIONS.map(k => [k, { cs: 0, c45: 0, cw: 0, sM: 0, sO: 0, sw: 0, pe: 0, pw: 0 }]));
+    const acc = Object.fromEntries(ALL_REGIONS.map(k => [k, { cs: 0, c45: 0, cw: 0, sM: 0, sO: 0, sw: 0, pe: 0, pw: 0, pmm: 0, poo: 0, pmo: 0 }]));
     const zm = new Float64Array(grid.h), zo = new Float64Array(grid.h);
-    let corrNum = 0, vS = 0, vO = 0;
+    let corrNum = 0, vS = 0, vO = 0, zE = 0, zW = 0;
     for (const m of months) {
         const { u, v, slp } = get(m);
         const ou = obs.u10.subarray(m * G, (m + 1) * G), ov = obs.v10.subarray(m * G, (m + 1) * G), op = obs.slp.subarray(m * G, (m + 1) * G);
@@ -129,6 +130,7 @@ function circMetrics(get, months) {
             let a = 0, b = 0, n = 0;
             for (let i = 0; i < grid.w; i++) { const c = j * grid.w + i; if (!lowland[c]) continue; a += slp[c]; b += op[c]; n++; }
             zm[j] = n ? a / n : NaN; zo[j] = n ? b / n : NaN;
+            if (n) { const cl = Math.cos(grid.lat[j] * Math.PI / 180); zE += cl * (zm[j] - zo[j]) ** 2; zW += cl; }
         }
         for (let c = 0; c < G; c++) {
             const R = acc[region[c]]; if (!R) continue;
@@ -138,18 +140,22 @@ function circMetrics(get, months) {
             if (so > 0.5 && sm > 1e-6) { const cos = (mu * uo + mv * vo) / (so * sm); R.cs += w * so * cos; R.c45 += cos > Math.SQRT1_2 ? w * so : 0; R.cw += w * so; }
             if (lowland[c]) {
                 const j = Math.floor(c / grid.w), am = slp[c] - zm[j], ao = op[c] - zo[j];
-                R.pe += w * (am - ao) ** 2; R.pw += w;
+                R.pe += w * (am - ao) ** 2; R.pw += w; R.pmm += w * am * am; R.poo += w * ao * ao; R.pmo += w * am * ao;
                 corrNum += w * am * ao; vS += w * am * am; vO += w * ao * ao;
             }
         }
     }
     const per = Object.fromEntries(ALL_REGIONS.map(k => {
         const R = acc[k];
-        return [k, { meanCos: R.cs / R.cw, within45: R.c45 / R.cw, speedRatio: R.sM / R.sO, slpAnomRmse: Math.sqrt(R.pe / R.pw) }];
+        return [k, { meanCos: R.cs / R.cw, within45: R.c45 / R.cw, speedRatio: R.sM / R.sO, slpAnomRmse: Math.sqrt(R.pe / R.pw),
+            slpCorr: R.pmo / Math.sqrt(R.pmm * R.poo), slpAmp: Math.sqrt(R.pmm / R.poo) }];
     }));
-    return { per, slpAnomCorr: corrNum / Math.sqrt(vS * vO) };
+    return { per, slpAnomCorr: corrNum / Math.sqrt(vS * vO), zonalRmse: Math.sqrt(zE / zW) };
 }
-const regionScore = (r) => 10 * (1 - r.meanCos) + 0.25 * r.slpAnomRmse;
+// Per region: wind direction; the pressure pattern by its correlation and its amplitude (not an RMS error, which
+// rewards a damped, featureless field whenever the features are a little misplaced); the wind's speed (a factor of e
+// off counts 2). The zonal-mean profile (the belts' depth and place) once for the planet.
+const regionScore = (r) => 10 * (1 - r.meanCos) + 3 * (1 - (r.slpCorr === r.slpCorr ? r.slpCorr : 0)) + 2 * Math.abs(Math.log(r.slpAmp || 1)) + 2 * Math.abs(Math.log(r.speedRatio));
 function itczError(getLat, months) {
     let s = 0, n = 0;
     for (const m of months) { const o = OBS_ITCZ[m]; for (let i = 0; i < grid.w; i++) { s += Math.abs(getLat(m, i) - o[i]); n++; } }
@@ -165,11 +171,12 @@ function evaluateOpen() {
     const itcz = itczError((m, i) => res.itczLat[m * grid.w + i], MONTHS12);
     const perScore = Object.fromEntries(TUNED_REGIONS.map(k => [k, regionScore(met.per[k])]));
     const mean = TUNED_REGIONS.reduce((a, k) => a + perScore[k], 0) / TUNED_REGIONS.length;
-    return { res, met, itcz, perScore, fit: mean + 0.15 * itcz };
+    return { res, met, itcz, perScore, fit: mean + 0.15 * itcz + 0.25 * met.zonalRmse };
 }
 
 // ── Tuning (region-aware, with priors) ──
-const TUNED = ['CIRC_HADLEY_SCALE', 'CIRC_FERREL_DEG', 'CIRC_TROPICAL_HPA', 'CIRC_MIDLAT_HPA_PER_K', 'CIRC_OPEN_SEA_BOOST', 'CIRC_POLAR_HPA',
+const TUNED = ['CIRC_HADLEY_SCALE', 'CIRC_FERREL_DEG', 'CIRC_TROPICAL_HPA', 'CIRC_MIDLAT_HPA', 'CIRC_OPEN_SEA_POWER', 'CIRC_POLAR_HPA',
+    'CIRC_HEAT_LOW_MILD', 'CIRC_HEAT_LOW_TROPICS', 'CIRC_OCEAN_HIGH_HPA', 'CIRC_COLD_HIGH_BOOST', 'CIRC_SURFACE_WIND', 'CIRC_SURFACE_WIND_LAND',
     'CIRC_THERMAL_HPA_PER_K', 'CIRC_ROSSBY_KM', 'CIRC_TURN_OCEAN_DEG', 'CIRC_TURN_LAND_DEG'];
 const PRIOR_WEIGHT = 0.5, WORSEN_TOLERANCE = 0.15;
 function priorPenalty(p) { let s = 0; for (const k of TUNED) { const pr = PARAM_PRIORS[k]; s += ((p[k] - pr.value) / (pr.max - pr.min)) ** 2; } return PRIOR_WEIGHT * s; }
@@ -208,7 +215,7 @@ if (TUNE) {
 const open = evaluateOpen();
 { const t = performance.now(); runOpen(); open.warmMs = performance.now() - t; }
 console.log(`\nCirculation stage, open loop (input: ${obsT.source}) — ${open.warmMs.toFixed(0)} ms warm`);
-console.log(`  Pressure pattern (east–west, low ground, 12 months): corr ${f2(open.met.slpAnomCorr)}    rain belt error ${f1(open.itcz)}°`);
+console.log(`  Pressure pattern (east–west, low ground, 12 months): corr ${f2(open.met.slpAnomCorr)}    zonal-mean profile error ${f1(open.met.zonalRmse)} hPa    rain belt error ${f1(open.itcz)}°`);
 
 // ── V1 on the same cells (June–August and December–February only) ──
 const readLab = (name) => { const b = fs.readFileSync(path.join(LAB_DIR, name)); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); };
@@ -231,12 +238,12 @@ const newSeason = seasonalMetrics(seasonView(open.res));
 const v1Season = seasonalMetrics(v1Month);
 const v1ItczRaw = JSON.parse(fs.readFileSync(path.join(LAB_DIR, 'stage-audit.json'), 'utf8')).itcz;
 
-console.log('\n  Region            wind within 45°  (new 12 mo | new Jul+Jan | V1 Jul+Jan)   pressure anomaly error hPa (new | V1)   speed new/real');
+console.log('\n  Region            wind within 45°  (new 12 mo | new Jul+Jan | V1 Jul+Jan)   pressure anomaly error hPa (new | V1)   speed new/real   pressure corr / amplitude');
 const perOut = {};
 for (const k of ALL_REGIONS) {
     const a = open.met.per[k], b = newSeason.per[k], c = v1Season.per[k];
     perOut[k] = { new12: a, newSeason: b, v1Season: c };
-    console.log(`    ${k.padEnd(16)}     ${pc(a.within45).padStart(5)}  |  ${pc(b.within45).padStart(5)}  |  ${pc(c.within45).padStart(5)}                    ${f1(b.slpAnomRmse).padStart(5)} | ${f1(c.slpAnomRmse).padStart(5)}           ${f2(a.speedRatio)}`);
+    console.log(`    ${k.padEnd(16)}     ${pc(a.within45).padStart(5)}  |  ${pc(b.within45).padStart(5)}  |  ${pc(c.within45).padStart(5)}                    ${f1(b.slpAnomRmse).padStart(5)} | ${f1(c.slpAnomRmse).padStart(5)}           ${f2(a.speedRatio)}      ${f2(a.slpCorr)} / ×${f2(a.slpAmp)}`);
 }
 const meanOver = (per, key) => TUNED_REGIONS.reduce((s, k) => s + per[k][key], 0) / TUNED_REGIONS.length;
 const newW45 = meanOver(newSeason.per, 'within45'), v1W45 = meanOver(v1Season.per, 'within45');

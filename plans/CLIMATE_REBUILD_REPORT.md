@@ -6,9 +6,13 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 
 ## In short
 
-All eight planned phases are built and committed, plus Phases 9 and 10 from your feedback. The new climate is a
-chain of stages you can read and check one at a time: temperature, pressure and wind, ocean, rain, then Köppen.
-- **Earth, every stage new: Köppen matches Beck on 50.6 % of land vs V1's 38 %.**
+All eight planned phases are built and committed, plus Phases 9–11 from your feedback. The new climate is a chain of
+stages you can read and check one at a time: temperature, pressure and wind, ocean, rain, then Köppen.
+- **Earth, every stage new: Köppen matches Beck on 48.5 % of land vs V1's 38 %** (50.6 % after Phase 10; Phase 11 traded
+  two points for more realistic pressure, winds, seas and seasons — see decision 7).
+- **Pressure and winds** (Phase 11): the Southern Ocean's deep trough and westerlies, the Siberian high, the Icelandic
+  and Aleutian lows and the oceanic subtropical highs now sit near their real places and strengths; stronger South and
+  East Asian monsoons; an overturning ocean that warms the North Atlantic.
 - **Detail:** since Phase 9, rain and seasons follow the terrain and coasts below the climate grid, with a gentle
   texture. 16.9 % of neighbouring land cells differ in class (real map 17.8 %, V1 15.1 %, Phase 8 9.7 %).
 - **Mountains** (Phase 10): wet windward slopes and dry rain shadows, twice as strong as before (real: about 3.4×).
@@ -21,9 +25,10 @@ chain of stages you can read and check one at a time: temperature, pressure and 
 - **Not yet where you want them:**
   1. **Mediterranean climates.** 13 % found, about the right area, but the Mediterranean basin itself is still mostly
      steppe: its winters are too dry.
-  2. **Western Europe's winters are too cold** (the UK is continental, not oceanic).
-  3. **The circulation:** monsoon winds, California's storm track, marine air reaching the US interior.
-  4. **Small islands are too dry.**
+  2. **Western Europe's winters are still too cold** (better: France is mostly oceanic now; Germany and the UK are not).
+  3. **The US interior West** is too cool in summer and too wet.
+  4. **Heat lows sit too near the equator** in the southern summer, so northern Australia's and West Africa's monsoons
+     stay weak.
   5. **Speed at V1's 40K default.** The new climate is 1.6× slower there.
 
 ## How to review
@@ -57,6 +62,7 @@ chain of stages you can read and check one at a time: temperature, pressure and 
 | 8 | Mediterranean climates | not met | Subtropical highs now migrate with the seasons; dry-winter climates appear (Cw 32 %, Dw 15 %); Köppen 50.5 %; Mediterranean area ≈ right but mostly misplaced (8 % recall) |
 | 9 | Your feedback: detail, Tibet, Mediterranean, warm and cold currents | mostly | Detail 15.9 % class edges (real 17.8 %, V1 15.1 %, before 9.7 %); Tibet tundra (ET 75 %); Mediterranean 13 % found; Köppen 49.5 % |
 | 10 | Your feedback: the equator, too wet, mountains | mostly | Tropics steady through the year; land rain 832 vs 839 mm/yr (was 898); windward ÷ lee ×2.0 (was ×1.4, real ×3.4); Köppen 50.6 % |
+| 11 | Your feedback: pressure, monsoons, Europe, the US West, islands | partly | Belts and centres of action near real; Southern Ocean westerlies 5.2 vs 6.8 m/s (was 2.3); stronger Asian monsoons; an overturning ocean; islands twice as wet; every physical measure better; Köppen 48.5 % |
 
 ## Decisions waiting for you
 
@@ -86,6 +92,11 @@ chain of stages you can read and check one at a time: temperature, pressure and 
      steps, in the plan) needs that page in this branch.
 6. **The CLAUDE.md smoothing rule** (from the research). The new climate doesn't depend on it; fixing it for terrain
    code is separate.
+7. **Realism vs the Köppen score** (Phase 11). Every physical measure improved (pressure, winds, sea and land
+   temperature, the Köppen major groups), but the exact Köppen match fell from 50.6 to 48.5 %. The Köppen tune also
+   chose a weak "land's own seasons" layer (`TEMP_LOCAL_K` 14): Australia's seasons are still half of real and the Great
+   Basin's summer 7 °C too cool. `TEMP_LOCAL_K` 8 gives them most of their real seasons for about a point of Köppen.
+   Which way do you want it?
 
 ## The approach, in one paragraph
 
@@ -495,3 +506,68 @@ in Node at 160K).
 
 **Check in the lab.** New climate → Earth → 160K → Run. Temperature → New in January and July across Africa and South
 America: no band at the equator. Rain → New along the Andes, the Sierra and New Zealand: wet windward, dry lee.
+
+## Phase 11 — your feedback: pressure, monsoons, Europe, the US West, islands
+
+**Where the pressure was wrong** (`node tuning/climate/diag-pressure.mjs --maps` shows it all):
+- **The Southern Ocean's trough was far too shallow**, so its westerlies blew at 40 % of real.
+- **The northern high latitudes were 10–13 hPa too low in winter**: the Aleutian and Icelandic lows too deep, the
+  Siberian high weak and too far south.
+- **The subtropical highs slid onto the land in winter** (the Azores high over the Sahara), so the trades were weak.
+- **The monsoons were weak** because the continents' summers were not hot enough to make heat lows.
+- The checks couldn't see much of this: they ignored the belts' depth and the winds' speed, and their error measure
+  rewarded a flattened pressure map.
+
+**What else I found on the way.**
+- **Mid-size continents had half their real seasons** (Australia, southern Africa, Argentina, the Great Basin): the
+  energy balance spreads heat over thousands of km, which ties them to the sea around them.
+- **The North Atlantic was 5 °C too cold** (the Norwegian Sea froze in winter): the model had no overturning ocean.
+- **India was 5 °C too cold**: Tibet's cold leaked through the Himalaya.
+- **Islands were ocean** on the rain grid.
+
+**Built.**
+- **The belts follow open sea:** a deep trough over the Southern Ocean and a shallow one where the continents break it
+  up, as on Earth.
+- **The highs and lows follow the ground:**
+  - heat lows are deep over hot, dry interiors and weak over mild land;
+  - cold highs are strong over very cold land;
+  - the subtropical highs stay over the oceans.
+- **Land keeps its own seasons** below the energy balance's scale, except where the wind brings the sea's air (so the UK
+  stays maritime).
+- **Mountains block the low air's heat:** India is shielded from Tibet, Chile from Argentina.
+- **An overturning ocean:** warm water flows to seas that open onto the polar ocean (the Atlantic through the Nordic
+  seas; not the Pacific) and releases its heat there.
+- **Islands are wetter:** their mountains count at full height, and warm islands draw in the sea's moist air.
+- **The checks now score the belts' depth, the winds' speed and the pressure map's strength.**
+
+**Numbers:**
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Trough at 65°S, July | 999 hPa | **988** | 987 |
+| Siberian high | 1024 hPa at 38°N | **1032 at 47°N** | 1036 at 47°N |
+| Icelandic / Aleutian low | 987 / 989 hPa | **993 / 996** | 994 / 998 |
+| Southern Ocean westerlies (July) | 2.3 m/s | **5.2** | 6.8 |
+| Indian / Bay of Bengal monsoon (July, northward) | 3.2 / 3.2 m/s | 3.5 / 3.9 | 2.9 / 5.7 |
+| Sea west of the UK / Norwegian Sea, January | 5 / −6 °C | 7 / −3 | 10.5 / 6.5 |
+| Australia's seasonal swing | 6.7 °C | 8.8 | 16.3 |
+| France: oceanic / Mediterranean | 42 / 51 % | **62 / 20 %** | 87 / 0 % |
+| Islands' rain (Hawaii, Fiji, Caribbean) | ≈ ⅓ of real | ≈ ½ | — |
+| Errors: land / sea temperature, pressure | 3.85 / 2.79 °C, 3.02 hPa | **3.75 / 2.64 °C, 2.89 hPa** | — |
+| Köppen: major group; exact | 76.8 %; 50.6 % | **78.6 %**; 48.5 % | (V1 38 %) |
+
+Every stage's own check passes (circulation, temperature, ocean); rain's is as before, with one more test-planet miss (a
+supercontinent's equatorial coasts slightly drier as its monsoon reaches inland). No drift across terrain resolutions;
+the same speed.
+
+**Still not right.**
+- **The US interior West** (the Great Basin and the Rockies, not California) is still too cool in summer and too wet:
+  continental Dfb instead of steppe. Decision 7 would help its summers.
+- **Heat lows sit too near the equator** in the southern summer, so northern Australia's and West Africa's monsoon
+  winds stay weak.
+- **Europe:** France is mostly oceanic now; Germany is still continental and the UK a mix, because the North Atlantic
+  is still ≈ 3.5 °C too cold.
+- **The Köppen score fell two points** — decision 7.
+
+**Check in the lab.** New climate → Earth → Run. Pressure & wind → New in January and July, side by side with
+Observed: the Southern Ocean's trough, the Siberian high, the oceanic highs. Köppen → New over France, Hawaii and Fiji.

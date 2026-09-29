@@ -4,16 +4,25 @@
 //  • The zonal belts — the tropical low (ITCZ), the subtropical highs, the subpolar lows, the polar highs. The ITCZ
 //    sits at the warmest latitude of the sea (the tropical rain belt follows the warmest ocean); each Hadley cell
 //    reaches as far as Held & Hou's scaling allows for this planet's rotation, size and equator-to-pole contrast;
-//    a Ferrel cell further out lies the subpolar low; the midlatitude pressure drop grows with the temperature
-//    contrast across the storm belt (stronger westerlies in winter, on colder planets).
+//    a Ferrel cell further out lies the subpolar low. The trough is deep only where the westerlies run round the
+//    planet over open sea (the Southern Ocean's ≈ 30 hPa below the subtropical highs; the land-broken north's ≈ 6,
+//    where the lows sit over the oceans and highs over the winter continents), and grows with the temperature contrast
+//    across the storm belt (stronger westerlies in winter, on colder planets).
 //  • Thermal lows and highs — air over ground warmer than its latitude's average rises and leaves low pressure; over
 //    colder ground it sinks and piles up (hydrostatic: the lower troposphere warmer or colder). Smoothed at the
 //    scale the atmosphere responds on (the Rossby radius). Summer continents get lows and the cooler oceans beside
-//    them highs (the summer highs over the eastern oceans); winter continents get highs and the oceans lows.
+//    them highs (the summer highs over the eastern oceans); winter continents get highs and the oceans lows. Heat lows
+//    need hot ground (a deep, dry boundary layer: the Sahara, Arabia to Pakistan, inland Australia) and are weaker over
+//    mild land and in the deep tropics, where the sun's heat goes into convection and rain rather than into the
+//    air near the ground (the rain belt's own low is the trough above); cold highs grow over very cold ground (the
+//    Siberian and Canadian highs). The subtropical highs sit over the oceans in every season (the Azores, Pacific and
+//    southern-ocean highs; over the land beside them in winter only weak ridges): within the subtropical belt the
+//    pressure is shifted toward the sea, the zonal mean kept.
 //
 // Winds follow from pressure with surface friction: along the isobars where the Coriolis force dominates, turned
 // toward low pressure by friction (more over land), and straight down the pressure gradient at the equator — one
-// linear balance (f k×u + r u = −∇p/ρ) covers all three.
+// linear balance (f k×u + r u = −∇p/ρ) covers all three. Near the ground the wind is a smaller share of that over
+// rough land than over the sea.
 
 import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { PARAMS } from './config.js';
@@ -24,12 +33,22 @@ const G_ACC = 9.81;               // m/s²
 const TROPOPAUSE_M = 15000;       // m, tropical tropopause height (Held & Hou's H)
 const RHO_AIR = 1.2;              // kg/m³
 const F45 = 2 * OMEGA_ROT * Math.sin(Math.PI / 4);
+const CONVECTIVE_DEG = 10;        // the convective, rainy tropics: a Gaussian of this width (degrees) about the rain belt
+const OCEAN_HIGH_DEG = 15;        // half-width of the subtropical ridge the oceanic highs sit on (degrees)
 const DEG = Math.PI / 180;
+
+/** Weight of the tropics' regime at a latitude: 1 from the ITCZ to halfway to each subtropical high, fading smoothly
+ *  to 0 at the high (convective and wet; the Hadley circulation evens the temperature aloft). */
+export function tropicsWeight(lat, itcz, hiN, hiS) {
+    const x = lat >= itcz ? (lat - itcz) / Math.max(5, hiN - itcz) : (itcz - lat) / Math.max(5, itcz - hiS);
+    const y = 2 * x - 1;
+    return y <= 0 ? 1 : y >= 1 ? 0 : 1 - y * y * (3 - 2 * y);
+}
 
 /**
  * The circulation stage. stage(ctx, temperature) → { u, v (12 × G, m/s, east / north), slp (12 × G, hPa),
  * conv (12 × G, low-level convergence, 1/s), itczLat (12 × grid.w, degrees), belts (per month), ms }.
- * temperature.monthlySL: sea-level temperature, 12 × G (°C).
+ * temperature.monthly: surface air temperature, 12 × G (°C).
  */
 export function derivedCirculation() {
     return (ctx, temperature) => {
@@ -60,6 +79,10 @@ export function derivedCirculation() {
         const Tfree = new Float64Array(core.size);
         const sea = new Float64Array(G);
         for (let c = 0; c < G; c++) sea[c] = 1 - land[c];
+        // the sea share around each cell at the Rossby scale, as a departure from its latitude's (for the oceanic highs)
+        const seaAround = Float64Array.from(sea), seaDep = new Float64Array(G);
+        gaussianSmooth(g, seaAround, new Float64Array(G), P.CIRC_ROSSBY_KM);
+        for (let j = 0; j < h; j++) { let s = 0; for (let i = 0; i < w; i++) s += seaAround[j * w + i] / w; for (let i = 0; i < w; i++) seaDep[j * w + i] = seaAround[j * w + i] - s; }
 
         // A month's zonal picture: the air's warmth on the grid (T), its zonal means — all cells, and weighted toward the
         // sea (for the ITCZ) — the ITCZ, and each hemisphere's equator-to-pole contrast
@@ -107,15 +130,18 @@ export function derivedCirculation() {
             const hwN = hadley(sea1 * dN + year1 * dNyear), hwS = hadley(sea1 * dS + year1 * dSyear);
             const hiN = Math.min(itcz + hwN, 60), hiS = Math.max(itcz - hwS, -60);
             const loN = Math.min(hiN + P.CIRC_FERREL_DEG, 82), loS = Math.max(hiS - P.CIRC_FERREL_DEG, -82);
-            // pressure drops: tropical (ITCZ to the highs); midlatitude — ∝ the temperature contrast across the storm
-            // belt, and larger where that belt is open sea: continents and their mountains break up the zonal flow
+            // pressure drops: tropical (ITCZ to the highs); midlatitude — the trough below the subtropical highs,
+            // CIRC_MIDLAT_HPA × (the belt's sea share)^CIRC_OPEN_SEA_POWER × √(the belt's temperature contrast / 25 K):
+            // continents and their mountains break up the zonal flow, and the storms grow with the contrast, less than
+            // in proportion
             const beltSea = (a, b) => {                              // sea share of the belt between latitudes a and b
                 let s = 0, n = 0;
                 for (let j = 0; j < h; j++) { const la = g.lat[j]; if (la < Math.min(a, b) || la > Math.max(a, b)) continue; for (let i = 0; i < w; i++) { s += sea[j * w + i] * cosLat[j]; n += cosLat[j]; } }
                 return n ? s / n : 0.5;
             };
-            const midN = P.CIRC_MIDLAT_HPA_PER_K * Math.max(0, zAt(hiN) - zAt(loN)) * (1 + P.CIRC_OPEN_SEA_BOOST * beltSea(hiN, loN));
-            const midS = P.CIRC_MIDLAT_HPA_PER_K * Math.max(0, zAt(hiS) - zAt(loS)) * (1 + P.CIRC_OPEN_SEA_BOOST * beltSea(hiS, loS));
+            const contrast = (a, b) => Math.sqrt(Math.max(0, zAt(a) - zAt(b)) / 25);
+            const midN = P.CIRC_MIDLAT_HPA * beltSea(hiN, loN) ** P.CIRC_OPEN_SEA_POWER * contrast(hiN, loN);
+            const midS = P.CIRC_MIDLAT_HPA * beltSea(hiS, loS) ** P.CIRC_OPEN_SEA_POWER * contrast(hiS, loS);
             belts.push({ itcz, hiN, hiS, loN, loS, midN, midS });
 
             // The tropical trough follows each longitude's own warmest latitude (over the sea the warmest water,
@@ -129,12 +155,30 @@ export function derivedCirculation() {
             }
 
             // ── Thermal lows and highs: temperature against its latitude's average, at the Rossby scale ──
-            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; anom[c] = T[c] - Tz[j]; }
+            // Over land, a heat low is CIRC_HEAT_LOW_MILD of its full depth on mild ground (≤ 15 °C at the surface) and
+            // in the rainy tropics (within ~CONVECTIVE_DEG of the rain belt), × (1 + CIRC_HEAT_LOW_HOT) on hot, dry
+            // ground (≥ 35 °C) between the rain belt and the subtropical highs; a cold high is
+            // × (1 + CIRC_COLD_HIGH_BOOST) on very cold ground (≤ −25 °C)
+            const Ts = coarsen(core, g, ratio, temperature.monthly.subarray(m * core.size, (m + 1) * core.size));
+            const smooth01 = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+            for (let j = 0; j < h; j++) {
+                const dry = 1 - P.CIRC_HEAT_LOW_TROPICS * Math.exp(-(((g.lat[j] - itcz) / CONVECTIVE_DEG) ** 2));
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i, a = T[c] - Tz[j], L = land[c];
+                    const hot = dry * smooth01((Ts[c] - 15) / 20);
+                    const wgt = a > 0 ? 1 - L * (1 - P.CIRC_HEAT_LOW_MILD) * (1 - hot) + L * P.CIRC_HEAT_LOW_HOT * hot
+                        : 1 + L * P.CIRC_COLD_HIGH_BOOST * smooth01(-Ts[c] / 25);
+                    anom[c] = a * wgt;
+                }
+            }
             gaussianSmooth(g, anom, tmp, P.CIRC_ROSSBY_KM);
+            // oceanic subtropical highs: CIRC_OCEAN_HIGH_HPA per unit of sea share above the latitude's, over a ridge
+            // ±OCEAN_HIGH_DEG about each hemisphere's high (cos²)
+            const ridge = (lat) => { let r = 0; for (const hi of [hiN, hiS]) { const x = (lat - hi) / OCEAN_HIGH_DEG; if (Math.abs(x) < 1) r += Math.cos(x * Math.PI / 2) ** 2; } return r; };
             let mean = 0, mw = 0;
             for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
                 const c = j * w + i;
-                p[c] = pz[c] - P.CIRC_THERMAL_HPA_PER_K * anom[c];
+                p[c] = pz[c] - P.CIRC_THERMAL_HPA_PER_K * anom[c] + P.CIRC_OCEAN_HIGH_HPA * seaDep[c] * ridge(g.lat[j]);
                 mean += p[c] * cosLat[j]; mw += cosLat[j];
             }
             mean /= mw;
@@ -151,9 +195,9 @@ export function derivedCirculation() {
                     const pn = j > 0 ? p[c - w] : p[c], ps = j < h - 1 ? p[c + w] : p[c];
                     const py = (pn - ps) * sy * (j > 0 && j < h - 1 ? 1 : 2);
                     const r = F45 * (tanO + (tanL - tanO) * land[c]);
-                    const d = RHO_AIR * (r * r + f * f);
-                    u[c] = -P.CIRC_SURFACE_WIND * (r * px + f * py) / d;
-                    v[c] = -P.CIRC_SURFACE_WIND * (r * py - f * px) / d;
+                    const d = RHO_AIR * (r * r + f * f), sh = P.CIRC_SURFACE_WIND + (P.CIRC_SURFACE_WIND_LAND - P.CIRC_SURFACE_WIND) * land[c];
+                    u[c] = -sh * (r * px + f * py) / d;
+                    v[c] = -sh * (r * py - f * px) / d;
                 }
             }
             // low-level convergence (−divergence), for the rain belt and later the rain stage
@@ -174,7 +218,8 @@ export function derivedCirculation() {
             // the rain belt per longitude: strongest convergence within 30° of the equator (smoothed)
             itczPerLongitude(g, cv, h, w, itczLat, m, core);
         }
-        return { u: U, v: V, slp: SLP, conv: CONV, itczLat, belts, surfaceShare: P.CIRC_SURFACE_WIND, ms: performance.now() - t0, source: 'derived circulation' };
+        return { u: U, v: V, slp: SLP, conv: CONV, itczLat, belts, surfaceShare: P.CIRC_SURFACE_WIND, surfaceShareLand: P.CIRC_SURFACE_WIND_LAND,
+            ms: performance.now() - t0, source: 'derived circulation' };
     };
 }
 
@@ -227,7 +272,7 @@ function smoothProfile(g, prof, sigmaDeg) {
 }
 
 /** Separable Gaussian smoothing on the sphere (σ in km): along latitude circles (wider in degrees toward the poles), then across. */
-function gaussianSmooth(g, f, tmp, sigmaKm) {
+export function gaussianSmooth(g, f, tmp, sigmaKm) {
     const w = g.w, h = g.h, sigDeg = sigmaKm / 111.2;
     for (let j = 0; j < h; j++) {
         const cl = Math.max(0.02, Math.cos(g.lat[j] * DEG));
