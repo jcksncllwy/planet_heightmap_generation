@@ -133,6 +133,12 @@ node tuning/climate/diag-belts.mjs              # the circulation's belts throug
 node tuning/climate/diag-detail.mjs             # Phase 9: how much detail the Köppen map has (class edges vs Beck), Tibet,
                                                 #   named regions; CORE='{"texture":null}' to try core options
 node tuning/climate/diag-v1-detail.mjs          # the same detail measure for V1's climate
+node tuning/climate/diag-equator.mjs [--lon 20] # Phase 10: temperature row by row across the equator; one meridian vs Beck
+node tuning/climate/diag-tropics.mjs            # Phase 10: tropical land Jan / Jul / swing in 2° bands; rain and arid share per continent
+node tuning/climate/diag-wet-map.mjs --region na  # Phase 10: text map of rain new ÷ Beck (na, eu, as, sa, af, au)
+node tuning/climate/diag-orography.mjs          # Phase 10: windward vs lee rain for twelve ranges, new vs Beck
+node tuning/climate/diag-regions.mjs [--set europe|west|islands]  # named regions: Köppen mix, coldest / warmest month,
+                                                #   summer / winter rain, new vs Beck (--params KEY=value,… to try settings)
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
 node tuning/dev-server.mjs 8147                 # then open http://localhost:8147/v2/climate-lab.html
 ```

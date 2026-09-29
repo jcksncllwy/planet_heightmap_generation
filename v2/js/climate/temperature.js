@@ -10,6 +10,9 @@
 //   D·∇²T   heat spread by weather and ocean
 //   γ·u·∇T  heat carried by the winds (mild coasts downwind of the sea, cold coasts downwind of a continent)
 //
+// In the tropics, evaporation from wet ground and sea steadies the seasons (a larger B for the seasonal harmonics),
+// and wet ground stays mild in its rainy season (below the grid, from the rain stage's rain).
+//
 // Solved directly for the yearly cycle — the annual mean and the first two harmonics — so no years of spin-up:
 // each harmonic is one steady problem (solver.js). What depends on temperature itself (snow and ice, the seasonal
 // swing of the winds) is updated over a few outer iterations. T is the sea-level temperature; the stage reports it
@@ -28,7 +31,22 @@ const R_PLANET = 6.371e6;
 const NT = 12;                              // samples per year for what is evaluated in time (≥ 5 for 2 harmonics)
 const OUTER = 4;                            // outer iterations (snow / ice, seasonal winds)
 const OUTER_WARM = 2;                       // … when starting from a previous run (temperature ↔ winds rounds)
+const CC_SLOPE_25 = Math.exp(17.67 * 25 / 268.5) * 17.67 * 243.5 / (268.5 * 268.5);   // de_s/dT at 25 °C (relative units)
+const WET_RAIN_MM = 800;                    // yearly rain at which land is ~63 % wet (evaporation not limited by water)
+const WET_MONTH_MM = 100;                   // mm/month of rain at which the ground is ~63 % wet
+const WET_SUN_REF = 400;                    // W/m² of daily sunlight (top of the air) at which TEMP_WET_COOL_C applies
+/** Δ/(Δ+γ): the share of the available energy a wet surface evaporates (equilibrium evaporation), relative to 25 °C. */
+const evapShareRaw = (T) => { const t = Math.max(-40, Math.min(45, T)), d = 4098 * 0.6108 * Math.exp(17.27 * t / (t + 237.3)) / ((t + 237.3) ** 2); return d / (d + 0.0665); };
+const EVAP_SHARE_25 = evapShareRaw(25);
+const evapShare = (T) => evapShareRaw(T) / EVAP_SHARE_25;
 const CLOUD_RAIN_MM = 100;                  // mm/month of rain at which land is ~63 % cloud-covered
+/** Weight of the tropics' even-temperature regime at a latitude: 1 from the ITCZ to halfway to each subtropical
+ *  high, fading smoothly to 0 at the high. */
+function tropicsWeight(lat, itcz, hiN, hiS) {
+    const x = lat >= itcz ? (lat - itcz) / Math.max(5, hiN - itcz) : (itcz - lat) / Math.max(5, itcz - hiS);
+    const y = 2 * x - 1;
+    return y <= 0 ? 1 : y >= 1 ? 0 : 1 - y * y * (3 - 2 * y);
+}
 const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean sunlight: below it, inversions form
 
 /**
@@ -131,6 +149,16 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const Tk = new Float64Array(G), iceYear = new Float64Array(G), seaIceYear = new Float64Array(G);
         const F0 = new Float64Array(G), F1r = new Float64Array(G), F1i = new Float64Array(G), F2r = new Float64Array(G), F2i = new Float64Array(G);
         const sr = new Float64Array(G).fill(P.TEMP_OLR_B), si = new Float64Array(G), zero = new Float64Array(G);
+        const srSeason = new Float64Array(G);
+        const beltYear = { itcz: 0, hiN: 30, hiS: -30 };           // the year's mean belts (from the winds, if derived)
+        if (winds?.belts) { beltYear.hiN = 0; beltYear.hiS = 0; for (const b of winds.belts) { beltYear.itcz += b.itcz / 12; beltYear.hiN += b.hiN / 12; beltYear.hiS += b.hiS / 12; } }
+        // land's wetness (0–1) from the rain stage's yearly rain, when there is one
+        let landWet = null;
+        if (rain) {
+            landWet = new Float64Array(G);
+            for (let m = 0; m < 12; m++) { const pm = coarsen(core, g, ratio, rain.subarray(m * core.size, (m + 1) * core.size)); for (let c = 0; c < G; c++) landWet[c] += pm[c]; }
+            for (let c = 0; c < G; c++) landWet[c] = 1 - Math.exp(-Math.max(0, landWet[c]) / WET_RAIN_MM);
+        }
         const C = new Float64Array(G);
         const stats = [];
         const prof = { setup: performance.now() - t0, forcing: 0, operator: 0, solve: 0, output: 0 };
@@ -176,23 +204,39 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 const Cs = Co * (1 - seaIceYear[c]) + Cl * seaIceYear[c];            // frozen sea stores little heat
                 C[c] = landFrac[c] * Cl + (1 - landFrac[c]) * Cs;
             }
+            // Evaporation steadies the tropics' seasons: there a wet surface puts extra heating into evaporation, and
+            // the even temperature aloft (the Hadley circulation's) lets it act locally — ≈ TEMP_EVAP_DAMPING
+            // W m⁻² K⁻¹ at 25 °C, following the Clausius–Clapeyron slope, over the sea and over land as wet as its
+            // yearly rain keeps it. Tropics only (tropicsWeight, from the year's belts): poleward, weather systems
+            // mix the air and the energy balance's own seasons stand.
+            if (P.TEMP_EVAP_DAMPING > 0) for (let j = 0; j < h; j++) {
+                const wt = tropicsWeight(g.lat[j], beltYear.itcz, beltYear.hiN, beltYear.hiS);
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    if (wt === 0) { srSeason[c] = P.TEMP_OLR_B; continue; }
+                    const t = Math.max(-40, Math.min(40, c0[c])), es = Math.exp(17.67 * t / (t + 243.5));
+                    const cc = es * 17.67 * 243.5 / ((t + 243.5) ** 2) / CC_SLOPE_25;
+                    const wet = (1 - landFrac[c]) * (1 - seaIceYear[c]) + landFrac[c] * (landWet ? landWet[c] : 0.5);
+                    srSeason[c] = P.TEMP_OLR_B + P.TEMP_EVAP_DAMPING * wt * cc * wet;
+                }
+            } else srSeason.fill(P.TEMP_OLR_B);
             const relax = it === 0 && !warm ? 1 : 0.8;
             const tol = it === outer - 1 ? 1e-4 : 1e-3;
             prof.forcing += performance.now() - tp;
-            const solveWith = (sigmaI, fr, fi, xr, xi) => {
+            const solveWith = (srArr, sigmaI, fr, fi, xr, xi) => {
                 let ta = performance.now();
-                solver.setOperator(sr, sigmaI, winds ? uBar : null, winds ? vBar : null, gamma);
+                solver.setOperator(srArr, sigmaI, winds ? uBar : null, winds ? vBar : null, gamma);
                 prof.operator += performance.now() - ta; ta = performance.now();
                 const r = solveRelaxed(solver, fr, fi, xr, xi, relax, tol);
                 prof.solve += performance.now() - ta;
                 return r;
             };
             // annual mean, then the first and second harmonics of the year
-            const n0 = solveWith(zero, F0, zero, c0, null);
+            const n0 = solveWith(sr, zero, F0, zero, c0, null);
             for (let c = 0; c < G; c++) si[c] = OMEGA * C[c];
-            const n1 = solveWith(si, F1r, F1i, c1r, c1i);
+            const n1 = solveWith(srSeason, si, F1r, F1i, c1r, c1i);
             for (let c = 0; c < G; c++) si[c] = 2 * OMEGA * C[c];
-            const n2 = solveWith(si, F2r, F2i, c2r, c2i);
+            const n2 = solveWith(srSeason, si, F2r, F2i, c2r, c2i);
             stats.push({ it, cycles: [n0.cycles, n1.cycles, n2.cycles] });
         }
         tp = performance.now();
@@ -264,6 +308,33 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 for (let m = 0; m < 12; m++) { const q = m * core.size + c; monthly[q] = mean + (monthly[q] - mean) * k; }
                 for (let q = 0; q < Kn; q++) { const x = q * core.size + c; T[x] = mean + (T[x] - mean) * k; }
             }
+        }
+        // Wet tropical ground stays mild. In the tropics the air aloft is nearly the same temperature everywhere (the
+        // Coriolis force is weak, so the Hadley circulation evens it out) and the air by the ground follows its own
+        // surface — which the energy balance, spreading any local heating over thousands of km, can't see. Rain keeps
+        // the ground wet (1 − e^{−P/P₀}) and a wet surface spends the sun's heat on evaporation rather than warming
+        // (Δ/(Δ+γ), the equilibrium evaporative share, larger in warm air): the rainy season stays mild and the dry
+        // season before the rains is the hottest, as in the real monsoon lands. Full strength from the ITCZ to halfway
+        // to each subtropical high, fading out at the high (the circulation's belts, month by month); poleward the
+        // energy balance's own seasons stand.
+        if (rain && P.TEMP_WET_COOL_C > 0) {
+            const lf = ctx.surface.landFrac, N = core.size, cw = core.w, ch = core.h;
+            const sunAt = new Float64Array(ch), belts = winds?.belts;
+            const adjust = (out, off, t) => {
+                const delta = declination(t, tiltDeg);
+                const pos = t - 0.5, m0 = Math.floor(pos), f = pos - m0, a = ((m0 % 12) + 12) % 12, b = (a + 1) % 12;
+                const bl = (key, def) => belts ? (1 - f) * belts[a][key] + f * belts[b][key] : def;
+                const itcz = bl('itcz', 0), hiN = bl('hiN', 30), hiS = bl('hiS', -30);
+                for (let j = 0; j < ch; j++) sunAt[j] = tropicsWeight(core.lat[j], itcz, hiN, hiS) * dailyInsolation(core.lat[j] * Math.PI / 180, delta) / WET_SUN_REF;
+                for (let c = 0; c < N; c++) {
+                    const s = sunAt[(c / cw) | 0];
+                    if (!(lf[c] > 0) || s === 0) continue;
+                    const p = (1 - f) * rain[a * N + c] + f * rain[b * N + c], wet = 1 - Math.exp(-Math.max(0, p) / WET_MONTH_MM);
+                    out[off + c] -= P.TEMP_WET_COOL_C * lf[c] * s * evapShare(out[off + c]) * wet;
+                }
+            };
+            for (let m = 0; m < 12; m++) adjust(monthly, m * N, m + 0.5);
+            ctx.anchorMonths.forEach((a, k) => adjust(T, k * N, a + 0.5));
         }
         const iceCore = new Float32Array(core.size);
         refine(g, core, ratio, iceYear, iceCore, 0);

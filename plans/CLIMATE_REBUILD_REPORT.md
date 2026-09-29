@@ -6,12 +6,14 @@ per phase are in `plans/CLIMATE_REBUILD_PLAN.md`.
 
 ## In short
 
-All eight planned phases are built and committed, plus Phase 9 from your first feedback. The new climate is a chain of
-stages you can read and check one at a time: temperature, pressure and wind, ocean, rain, then Köppen.
-- **Earth, every stage new: Köppen matches Beck on 49.5 % of land vs V1's 38 %.**
+All eight planned phases are built and committed, plus Phases 9 and 10 from your feedback. The new climate is a
+chain of stages you can read and check one at a time: temperature, pressure and wind, ocean, rain, then Köppen.
+- **Earth, every stage new: Köppen matches Beck on 50.6 % of land vs V1's 38 %.**
 - **Detail:** since Phase 9, rain and seasons follow the terrain and coasts below the climate grid, with a gentle
-  texture. 15.9 % of neighbouring land cells differ in class (real map 17.8 %, V1 15.1 %, Phase 8 9.7 %).
-- **Tibet is tundra** (ET 75 %, real 77 %).
+  texture. 16.9 % of neighbouring land cells differ in class (real map 17.8 %, V1 15.1 %, Phase 8 9.7 %).
+- **Mountains** (Phase 10): wet windward slopes and dry rain shadows, twice as strong as before (real: about 3.4×).
+- **The tropics** (Phase 10) keep a steady temperature through the year, with no jump at the equator.
+- **Tibet is tundra** (ET 84 %, real 77 %).
 - **The same result at 160K, 640K and 2.5M terrain cells.** V1 drifts with resolution.
 - **Speed:** 0.8–1.0 s in Chrome on the desktop at any terrain size. V1 takes 0.51 s at 40K but 2.07 s at 160K and
   10.9 s at 640K.
@@ -19,8 +21,10 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 - **Not yet where you want them:**
   1. **Mediterranean climates.** 13 % found, about the right area, but the Mediterranean basin itself is still mostly
      steppe: its winters are too dry.
-  2. **Western Europe's winters are too cold.**
-  3. **Speed at V1's 40K default.** The new climate is 1.6× slower there.
+  2. **Western Europe's winters are too cold** (the UK is continental, not oceanic).
+  3. **The circulation:** monsoon winds, California's storm track, marine air reaching the US interior.
+  4. **Small islands are too dry.**
+  5. **Speed at V1's 40K default.** The new climate is 1.6× slower there.
 
 ## How to review
 
@@ -52,6 +56,7 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 7 | Evolution (engine level) | passed | The climate runs on real Evolution frames (z north, km): 0.6–0.75 s; the page wiring waits for the Evolution page |
 | 8 | Mediterranean climates | not met | Subtropical highs now migrate with the seasons; dry-winter climates appear (Cw 32 %, Dw 15 %); Köppen 50.5 %; Mediterranean area ≈ right but mostly misplaced (8 % recall) |
 | 9 | Your feedback: detail, Tibet, Mediterranean, warm and cold currents | mostly | Detail 15.9 % class edges (real 17.8 %, V1 15.1 %, before 9.7 %); Tibet tundra (ET 75 %); Mediterranean 13 % found; Köppen 49.5 % |
+| 10 | Your feedback: the equator, too wet, mountains | mostly | Tropics steady through the year; land rain 832 vs 839 mm/yr (was 898); windward ÷ lee ×2.0 (was ×1.4, real ×3.4); Köppen 50.6 % |
 
 ## Decisions waiting for you
 
@@ -436,3 +441,57 @@ resolutions; every stage's gate still holds except rain's (as before).
 **Check in the lab.** New climate → Earth → 160K → "Detail below the climate grid" → Run → Köppen → New, side by side
 with the Beck map. Run it again with "Smooth" or "Terrain only" to compare. Tibet, the Andes and the Rockies show the
 terrain detail best.
+
+## Phase 10 — your feedback: the equator, too wet, mountains
+
+**What I found.**
+- **The equator.** The zonal means were smooth; the problem was tropical land north of the equator, whose seasons were
+  about twice the real swing (at 9°N: July 27.6, January 22.5 °C; real 24.9 and 25.0). Two things were missing:
+  - wet tropical ground spends the sun's heat on evaporation, which steadies its temperature;
+  - the rainy season's clouds and wet ground keep it mild. The energy balance spreads any local heating over thousands
+    of km, so it couldn't show this locally.
+- **Too wet.** Phase 9's fix for Tibet let every high basin hold nearly as much water as the windward coast, in every
+  season. North America had 955 mm/yr (real 745) and almost no dry climates (2 % vs 15 %).
+- **Mountains.** Measured on twelve ranges, windward rain was only 1.4× the lee's; real is 3.4×. Mountain rain was
+  driven by the gentle monthly-mean wind, while real mountain rain falls in storms. Rain shadows could only move rain
+  within one 3° grid cell, so a whole region behind a range could never be dry.
+
+**Built.**
+- **The tropics keep a steady temperature:**
+  - Evaporation damps the seasons over wet tropical ground and sea.
+  - Wet tropical ground stays mild under the grid: the rainy season is cooler, and the dry season before the rains is
+    the hottest, as in real monsoon lands.
+  - Both fade out toward the subtropical highs, so mid-latitude seasons are unchanged.
+- **Less wet:** high ground holds a deep moist layer only when it heats the air, like a sunlit plateau in summer. Cold
+  high basins hold water like the free air above them, so Tibet still gets its monsoon rain and the Great Basin dries.
+- **Mountains:**
+  - Air is forced up mountains at storm strength.
+  - Windward slopes take their rain from up to 600 km around, so the lee is dry.
+  - Air that has come down from higher ground upwind is dry: the rain shadow reaches a few hundred km behind a range.
+
+**Numbers:**
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Tropical land at 9°N: January, July | 22.5, 27.6 °C | 23.4, 25.5 °C | 25.0, 24.9 °C |
+| … at the equator (1°N) | 24.7, 26.0 °C | 24.2, 24.5 °C | 24.9, 24.1 °C |
+| Land rain, all / North America | 898 / 955 mm/yr | **832 / 826** | 839 / 745 |
+| North America's dry climates (B) | 2 % | 13 % | 15 % |
+| Mountains: windward ÷ lee | ×1.4 | **×2.0** | ×3.4 |
+| Detail (class edges) | 15.9 % | 16.9 % | 17.8 % |
+| Köppen, all land | 49.5 % | **50.6 %** | (V1 38 %) |
+
+No drift across terrain resolutions; every stage's check holds as before. The whole climate is ≈ 10 % slower (0.73 s
+in Node at 160K).
+
+**Still not right** (looked at with your later notes; the circulation is behind most of them, so it's next):
+- **Europe isn't oceanic enough.** Winters on the Atlantic fringe are far too cold (UK −1.5 vs 4.7 °C, Germany −2.6 vs
+  0.8) and summers too dry, so the UK comes out continental and France half Mediterranean.
+- **The US West.** The Great Basin is still ≈ 1.8× too wet, and its summers are 8 °C too cool: ocean air reaches the
+  interior as if the Sierra and Cascades weren't there. California's winters are 2.5× too wet.
+- **Monsoon winds.** In July the model's winds on the Gangetic plain blow down from Tibet instead of toward the
+  Himalaya.
+- **Small islands are about a third as wet as real** (Hawaii, Fiji, the Caribbean).
+
+**Check in the lab.** New climate → Earth → 160K → Run. Temperature → New in January and July across Africa and South
+America: no band at the equator. Rain → New along the Andes, the Sierra and New Zealand: wet windward, dry lee.

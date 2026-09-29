@@ -18,7 +18,12 @@
 //    Storms, growing where the poleward temperature gradient is strong, spread the humidity within the month and so
 //    raise the month's rain (the mid-latitude storm belts, winter rain). Air over a surface colder than its latitude
 //    (cold currents, upwelling, winter continents) is stable and rains less (the coastal deserts, dry winter highs).
-//    Air forced up rising ground rains out too, which dries the air beyond the mountains (rain shadows).
+//    Air forced up rising ground rains out too — in storms, so at the storms' wind speed — which dries the air beyond
+//    the mountains (rain shadows). High ground holds a share of the column that depends on how much it heats the air
+//    (a sunlit plateau's moist layer rides up with it; a cold high basin's air is like the free air's).
+//  • Below the grid, on the terrain's 1° grid: windward slopes wetter and the lee drier — including whole regions
+//    behind a range, looking upwind for the higher ground the air has come down from — rain moved within a few
+//    hundred km rather than made.
 //
 // Solved as a steady problem per point in the year (the multigrid solver of solver.js, transport in flux form so water
 // is conserved), with Newton steps for the steep rain-out; a second pass over the year lets snow and soil carry
@@ -63,36 +68,83 @@ export function saturatedColumn(T, vapourHeightKm) {
 }
 
 /**
- * Rain below the rain grid's scale, on the 1° grid: the wind blowing up a slope (u·∇h, the 1° mean heights) lifts the
- * air and wrings out more rain; blowing down it, less — windward slopes wet, rain shadows dry, at the scale of single
- * ranges. Each rain-grid cell keeps its total: the factor is normalised to average 1 over the fine cells it covers.
- * factor = e^{β·clamp(w / 0.1 m/s, −2, 2)}, w the upslope speed of the wind above the friction layer.
+ * Mountains below the rain grid's scale, on the 1° grid (its mean heights), at each point in the year. The wind
+ * blowing up a slope lifts the air and wrings out more rain, blowing down it less; and air that has come down from
+ * higher ground on its way is dry — the rain shadow: looking upwind along the wind, the largest drop from the ground
+ * there to here, each counted less with distance (e^{−d / RAIN_LEE_RECOVER_KM}) as the air takes up moisture again.
+ * The wind is the storms' as much as the month's mean (orographic rain falls in storms): the mean wind's direction at
+ * speed √(U² + (s·σL)²), σ the Eady rate, L the storms' size. factor = e^{β·clamp(w / 0.1 m/s, −2, 2) − λ·drop(km)}.
+ * Rain is moved, not made: the factor is normalised over the land within RAIN_OROG_SPREAD_KM, weighted by the rain —
+ * windward slopes take it from the lee, so whole regions behind a range are dry.
  */
-function windwardRain(ctx, core, g, ratio, uA, vA, shareCoarse, Pout, K, beta) {
-    const h = core.h, w = core.w, G = core.size, dRad = core.step * DEG;
-    const hk = ctx.surface.meanKm, cosL = Float64Array.from(core.lat, l => Math.max(0.02, Math.cos(l * DEG)));
-    const land = ctx.surface.landFrac;
-    const f = new Float64Array(G), blockSum = new Float64Array(g.size), blockW = new Float64Array(g.size);
+function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K) {
+    const P_ = PARAMS;
+    const h = core.h, w = core.w, G = core.size, dRad = core.step * DEG, stepKm = core.step * 111.2;
+    const hk = ctx.surface.meanKm, land = ctx.surface.landFrac;
+    const hc = (x) => Math.max(0, hk[x]);
+    const recoverKm = P_.RAIN_LEE_RECOVER_KM, beta = P_.RAIN_SLOPE_FACTOR, lambda = P_.RAIN_LEE_PER_KM, Dv = P_.RAIN_VAPOUR_HEIGHT_KM;
+    const nSteps = Math.max(1, Math.min(16, Math.ceil(2.5 * recoverKm / stepKm)));
+    const decay = Float64Array.from({ length: nSteps + 1 }, (_, s) => Math.exp(-s * stepKm / recoverKm));
+    const Lmix = P_.RAIN_EDDY_LENGTH_KM * 1000;
+    const f = new Float64Array(G), A = new Float64Array(G), B = new Float64Array(G), rowA = new Float64Array(G), rowB = new Float64Array(G);
+    const pre = new Float64Array(Math.max(w, h) + 1), preB = new Float64Array(Math.max(w, h) + 1);
+    const nr = Math.max(1, Math.round(P_.RAIN_OROG_SPREAD_KM / stepKm));
     for (let k = 0; k < K; k++) {
         const off = k * G;
-        blockSum.fill(0); blockW.fill(0);
         for (let j = 0; j < h; j++) {
-            const dx = 2 * dRad * R_PLANET * cosL[j], dy = 2 * dRad * R_PLANET, jb = Math.floor(j / ratio);
+            const cl = Math.max(0.02, Math.cos(core.lat[j] * DEG)), dx = 2 * dRad * R_PLANET * cl, dy = 2 * dRad * R_PLANET;
+            const jb = Math.floor(j / ratio), sU = P_.RAIN_OROG_STORM * eadyK[k][jb] / 86400 * Lmix;
             for (let i = 0; i < w; i++) {
-                const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                const c = j * w + i;
+                f[c] = 1;
+                if (!(land[c] > 0)) continue;
+                const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
                 const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
-                const hc = (x) => Math.max(0, hk[x]);
                 const share = shareCoarse[jb * g.w + Math.floor(i / ratio)] || 0.7;
-                const u = uA[off + c] / share, v = vA[off + c] / share;
-                const wUp = u * (hc(ce) - hc(cw)) * 1000 / dx + v * (hc(cn) - hc(cs)) * 1000 / (cn === c || cs === c ? dy / 2 : dy);
-                f[c] = land[c] > 0 ? Math.exp(beta * Math.max(-2, Math.min(2, wUp / 0.1))) : 1;
-                const b = jb * g.w + Math.floor(i / ratio), a = cosL[j];
-                blockSum[b] += f[c] * a; blockW[b] += a;
+                const u = uA[off + c] / share, v = vA[off + c] / share, sp = Math.hypot(u, v);
+                if (!(sp > 0.1)) continue;
+                const boost = Math.hypot(sp, sU) / sp;
+                const wUp = boost * (u * (hc(ce) - hc(cw)) * 1000 / dx + v * (hc(cn) - hc(cs)) * 1000 / (cn === c || cs === c ? dy / 2 : dy));
+                // the rain shadow: march upwind in 1° steps (east–west stretched by 1/cos latitude)
+                let drop = 0;
+                if (lambda > 0) {
+                    const h0 = hc(c), du = -u / sp, dv = -v / sp;
+                    let y = j + 0.5, x = i + 0.5;
+                    for (let s = 1; s <= nSteps; s++) {
+                        const cls = Math.max(0.05, Math.cos((90 - y * core.step) * DEG));
+                        y -= dv; x += du / cls;
+                        if (y < 0 || y >= h) break;
+                        const d = (hc(Math.floor(y) * w + ((Math.floor(x) % w) + w) % w) - h0) * decay[s];
+                        if (d > drop) drop = d;
+                    }
+                }
+                // (a drop counts less once it exceeds the moist layer: the air has little left to lose — D·(1 − e^{−drop/D}), D the vapour scale height)
+                f[c] = Math.exp(beta * Math.max(-2, Math.min(2, wUp / 0.1)) - lambda * Dv * (1 - Math.exp(-drop / Dv)));
             }
         }
-        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-            const c = j * w + i, b = Math.floor(j / ratio) * g.w + Math.floor(i / ratio);
-            Pout[off + c] *= f[c] * blockW[b] / blockSum[b];
+        // normalise over the land around, weighted by its rain: box sums by prefix sums — along each row (its width in
+        // cells growing toward the poles, so the box keeps its size in km), then down the columns
+        for (let c = 0; c < G; c++) { const q = Math.max(0, Pout[off + c]); A[c] = q * f[c]; B[c] = q; }
+        for (let j = 0; j < h; j++) {
+            const nc = Math.min(w >> 1, Math.max(1, Math.round(nr / Math.max(0.05, Math.cos(core.lat[j] * DEG)))));
+            pre[0] = 0; preB[0] = 0;
+            for (let i = 0; i < w; i++) { pre[i + 1] = pre[i] + A[j * w + i]; preB[i + 1] = preB[i] + B[j * w + i]; }
+            const sumRange = (P, a, b) => a < 0 ? P[w] - P[a + w] + P[b + 1] : b >= w ? P[w] - P[a] + P[b + 1 - w] : P[b + 1] - P[a];
+            for (let i = 0; i < w; i++) {
+                const a = i - nc, b = i + nc;
+                if (2 * nc + 1 >= w) { rowA[j * w + i] = pre[w]; rowB[j * w + i] = preB[w]; }
+                else { rowA[j * w + i] = sumRange(pre, a, b); rowB[j * w + i] = sumRange(preB, a, b); }
+            }
+        }
+        for (let i = 0; i < w; i++) {
+            pre[0] = 0; preB[0] = 0;
+            for (let j = 0; j < h; j++) { pre[j + 1] = pre[j] + rowA[j * w + i]; preB[j + 1] = preB[j] + rowB[j * w + i]; }
+            for (let j = 0; j < h; j++) {
+                const c = j * w + i;
+                const a = Math.max(0, j - nr), b = Math.min(h - 1, j + nr);
+                const sb = preB[b + 1] - preB[a];
+                if (sb > 0) Pout[off + c] *= f[c] * sb / (pre[b + 1] - pre[a]);
+            }
         }
     }
 }
@@ -133,19 +185,10 @@ export function columnWaterRain() {
 
         const solver = new HelmholtzSolver(g, 0, 0, { conservative: true });
         // Rising ground blocks the water. The solve is for the sea-level-equivalent column W* (the column over ground
-        // at height h holds W = β·W*, β = e^{−h/H_t}); what crosses a face between two cells — carried or mixed — is the
-        // part of the column above the higher of the two, β_face = e^{−max(h)/H_t}. So water piles up (and rains)
-        // windward of mountains, and only a share gets over them.
-        // (the column's share over high ground falls off more slowly than free air's water: the moist boundary layer
-        // rides up with the ground — RAIN_TERRAIN_HEIGHT_KM, from the water observed over the Tibetan Plateau)
+        // at height h holds W = β·W*, β = e^{−h/H}); what crosses a face between two cells — carried or mixed — is the
+        // part of the column above the higher of the two, β_face = min β. So water piles up (and rains) windward of
+        // mountains, and only a share gets over them. H per point in the year below (terrainShare).
         const Ht = P_.RAIN_TERRAIN_HEIGHT_KM * 1000;
-        const beta = Float64Array.from(hgt, x => Math.exp(-x * 1000 / Ht));
-        const faces = { e: new Float64Array(G), n: new Float64Array(G) };
-        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-            const c = j * w + i, ce = j * w + (i + 1) % w, cn = j > 0 ? c - w : c;
-            faces.e[c] = Math.min(beta[c], beta[ce]);
-            faces.n[c] = Math.min(beta[c], beta[cn]);
-        }
         const poisson = new HelmholtzSolver(g, 1, 1);
         const carrier = new HelmholtzSolver(g, 0, 0);                 // air-mass properties carried by the surface wind
         const zero = new Float64Array(G);
@@ -260,13 +303,16 @@ export function columnWaterRain() {
                     const stable = Sair[c] >= 0 ? Math.exp(-a * P_.RAIN_STABILITY * Sair[c]) : Math.exp(-a * P_.RAIN_INSTABILITY * Sair[c]);
                     p.rate[c] = storm * stable;
                     // Lift where the wind blows up rising ground (1/s per unit of column water: upslope speed over the
-                    // vapour scale height, times the share that rains out). Only the air above the blocked layer goes
-                    // over the mountain — a share Fr = U/(N·H) of it when the Froude number is below 1; the rest flows
-                    // around.
+                    // vapour scale height, times the share that rains out). Orographic rain falls in storms, so the wind
+                    // is taken at the storms' speed as well as the mean's — the mean wind's direction, √(U² + (s·σL)²).
+                    // Only the air above the blocked layer goes over the mountain — a share Fr = U/(N·H) of it when the
+                    // Froude number is below 1; the rest flows around.
                     const dhdx = (hgt[ce] - hgt[cw]) * 1000 / dx, dhdy = (hgt[cn] - hgt[cs]) * 1000 / dy;
-                    const speed = Math.hypot(p.gu[c], p.gv[c]), H = Math.max(hgt[ce], hgt[cw], hgt[cn], hgt[cs], hgt[c]) * 1000;
+                    const speed0 = Math.hypot(p.gu[c], p.gv[c]), speed = Math.hypot(speed0, P_.RAIN_OROG_STORM * eady[j] * Lmix);
+                    const H = Math.max(hgt[ce], hgt[cw], hgt[cn], hgt[cs], hgt[c]) * 1000;
                     const over = H > 0 ? Math.min(1, speed / (BRUNT * H)) : 1;
-                    p.lift[c] = stable * over * P_.RAIN_OROGRAPHIC * Math.max(0, p.gu[c] * dhdx + p.gv[c] * dhdy) / Hv;
+                    const boost = speed0 > 0.1 ? speed / speed0 : 0;
+                    p.lift[c] = stable * over * P_.RAIN_OROGRAPHIC * boost * Math.max(0, p.gu[c] * dhdx + p.gv[c] * dhdy) / Hv;
                     // saturated column (mm) and evaporation (kg m⁻² s⁻¹): the sea's, and the land's potential rate
                     // the column's temperature follows the surface only in part — the troposphere above a hot or frozen
                     // surface stays nearer its latitude's temperature — and that sets how much water it holds
@@ -285,6 +331,24 @@ export function columnWaterRain() {
                     p.eLand[c] = PT_ALPHA * slope / (slope + 0.66) * rn / LATENT;          // kg m⁻² s⁻¹ per unit land area
                 }
             }
+            // The column's share over high ground: the moist boundary layer rides up with ground that heats the air
+            // above it — a sunlit plateau in summer (RAIN_TERRAIN_HEIGHT_KM, from the water observed over the Tibetan
+            // Plateau in the monsoon) — but over ground no warmer than its latitude (winter, cold high basins) the
+            // water falls off with height like the free air's (the vapour scale height): smooth between, over
+            // RAIN_TERRAIN_HEAT_K of warmth.
+            p.beta = new Float64Array(G); p.faces = { e: new Float64Array(G), n: new Float64Array(G) };
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i;
+                let x = P_.RAIN_TERRAIN_HEAT_K > 0 ? (Tsl[c] - Tzs[j]) / P_.RAIN_TERRAIN_HEAT_K : 1;
+                x = x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+                p.beta[c] = Math.exp(-hgt[c] * 1000 / (Hv + (Ht - Hv) * x));
+            }
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i, ce = j * w + (i + 1) % w, cn = j > 0 ? c - w : c;
+                p.faces.e[c] = Math.min(p.beta[c], p.beta[ce]);
+                p.faces.n[c] = Math.min(p.beta[c], p.beta[cn]);
+            }
+            if (globalThis.RAIN_DEBUG) p.Sair = Float64Array.from(Sair);
             prep.push(p);
         }
 
@@ -316,7 +380,7 @@ export function columnWaterRain() {
          * land evaporates only the month's rain). Returns { P, E, balance }.
          */
         function solveAnchor(k, Wv, ground) {
-            const p = prep[k], Ws = p.Ws, rate = p.rate, lift = p.lift;
+            const p = prep[k], Ws = p.Ws, rate = p.rate, lift = p.lift, beta = p.beta, faces = p.faces;
             // Rain-out rate and its slope in W. In the air: (Ws/τ)·rate·e^{a(r−1)}, continued linearly beyond R_MAX. Over
             // rising ground: the lifted water λ·W, of which less condenses the drier the air (it must first be lifted
             // to its condensation level): × e^{(a/2)(r−1)}.
@@ -429,7 +493,7 @@ export function columnWaterRain() {
             for (let c = 0; c < G; c++) tmp[c] = Wk[k][c] / prep[k].Ws[c];
             refineField(g, core, ratio, tmp, Rout, off);
         }
-        if (P_.RAIN_SLOPE_FACTOR > 0) windwardRain(ctx, core, g, ratio, uA, vA, share, Pout, K, P_.RAIN_SLOPE_FACTOR);
+        if (P_.RAIN_SLOPE_FACTOR > 0 || P_.RAIN_LEE_PER_KM > 0) orographicRain(ctx, core, g, ratio, uA, vA, share, eadyOut, Pout, K);
         for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
         const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };

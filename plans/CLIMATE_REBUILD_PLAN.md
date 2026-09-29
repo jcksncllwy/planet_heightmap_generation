@@ -854,3 +854,79 @@ Köppen classes:
 - **Western Europe is too cold in winter** (Dfb 56 %, where the real map is Cfb 77 %). The ocean has no deep overturning
   (Phase 4).
 - **The texture is a choice.** It buys the look at about a point of Köppen. The lab's Detail switch shows it on and off.
+
+## Phase 10 — feedback 2: the tropics' temperature, too wet, mountains
+
+The developer's feedback on Phase 9: "a bit too wet"; "a discontinuity at the equator in temperature … a clear seasonal
+bias … it should be smooth, and a more stable temperature around the equator"; "mountains are not causing enough
+rainfall, or enough rain shadows".
+
+**Diagnosis.**
+- **Equator.** Zonal means were smooth; the jump was over land. North of the equator, tropical land ran about twice
+  the real seasonal swing (at 20°E, July 28–30 vs 24–26 °C at 0–12°N, January 3–5 °C too cold). The energy balance
+  spreads any local heating over thousands of km (diffusion D·l(l+1) ≫ B at 2000 km), so the rain's cloud albedo
+  couldn't cool a monsoon region locally; and nothing damped the tropical seasons by evaporation.
+- **Too wet.** Land 897 vs 839 mm/yr; North America 955 vs 745 with 2 % arid (real 15 %). Phase 9's terrain scale
+  height (3.5 km, for Tibet) let a high basin's column keep 59 % of the sea-level water in every season: the Great Basin
+  winter column was as humid, relative to saturation, as the windward coast (r 0.69 vs 0.66). Not the per-cell detail
+  (height factor, texture: ≈ 15 mm/yr).
+- **Mountains.** Windward ÷ lee rain for twelve ranges: ×1.4 vs Beck's ×3.4. Orographic lift used the monthly-mean
+  wind (a few m/s, often along the coast); the 1° windward factor was normalised per 3° cell, so a whole region behind a
+  range could never be dry. Ridge-crest blocking at the faces was tried and did nothing (the next barrier downstream
+  cancels it in the flux form); stability from the upwind drop at 3° did little (1° mean heights hide crests).
+
+**Built.**
+- `temperature.js`:
+  - Evaporative damping of the seasonal harmonics in the tropics: σ_season = B + TEMP_EVAP_DAMPING (15 W/m²/K) × the
+    Clausius–Clapeyron slope ratio × wetness (sea 1, land from the yearly rain), weighted by `tropicsWeight` (1 from the
+    ITCZ to halfway to each subtropical high, fading out at the high — the year's belts). Everywhere it would dampen
+    tuned mid-latitude seasons (tried: North America −10 points of Köppen, Cs and Dw collapse).
+  - Wet tropical ground stays mild, below the grid: T −= TEMP_WET_COOL_C (2 °C) × land × tropicsWeight(month's belts) ×
+    sun/400 W/m² × Δ/(Δ+γ) ratio × (1 − e^{−P/100 mm}). Cooling only; warming dry ground made a January warm band north of
+    the equator. Without the tropics weight, boreal summers cooled (Dfc → ET).
+- `rain.js`:
+  - The column's share over high ground depends on how much the ground heats the air: H = H_v + (H_t − H_v) ×
+    smoothstep((T_sl − T_zonal) / RAIN_TERRAIN_HEAT_K), H_t = 4 km, H_v = 2.5 km, 6 K. Sunlight (monsoon lands wet
+    again) and heating relative to the free air at that height (Congo dries) were tried and lost.
+  - Lift at the storms' speed: the mean wind's direction, √(U² + (s·σ_Eady·L)²) (RAIN_OROG_STORM 1); RAIN_OROGRAPHIC
+    0.6.
+  - `orographicRain` on the 1° grid (replaces `windwardRain`): e^{β·clamp(w/0.1, −2, 2) − λ·D(1 − e^{−drop/D})}, w the
+    upslope speed at the storm-boosted wind, drop the largest height drop from the ground upwind (1° steps, weighted
+    e^{−d/400 km}), D the vapour scale height; β = RAIN_SLOPE_FACTOR 1.2, λ = RAIN_LEE_PER_KM 1. Normalised by a
+    rain-weighted box mean over ±RAIN_OROG_SPREAD_KM (600 km, sea included) with prefix sums, so rain is moved, not
+    made, and whole lee regions can be dry. The drop saturates because a 4 km drop off Tibet otherwise wiped out the
+    Himalayan foothills (e^{−4}) whenever the wind blew off the plateau.
+
+**Numbers (Earth, every stage new, 160K).**
+
+| | Phase 9 | Phase 10 | Real |
+|---|---|---|---|
+| Tropical land at 1°N: January, July; swing | 24.7, 26.0; 3.3 °C | **24.2, 24.5; 1.3 °C** | 24.9, 24.1; 1.7 °C |
+| … at 9°N | 22.5, 27.6; 6.3 °C | 23.4, 25.5; 2.7 °C | 25.0, 24.9; 4.2 °C |
+| Land rain, mm/yr: all; North America (arid share) | 898; 955 (2 %) | **832; 826 (13 %)** | 839; 745 (15 %) |
+| Great Basin rain summer / winter, mm/month | 78 / 108 | 33 / 45 | 20 / 24 |
+| Windward ÷ lee, twelve ranges (geometric mean) | ×1.4 | **×2.0** | ×3.4 |
+| Detail: neighbouring land cells in different classes | 15.9 % | 16.9 % | 17.8 % |
+| Tibet | ET 75 % | ET 84 %, 541 mm/yr | ET 77 %, 487 mm/yr |
+| Köppen, all land (continents equal) | 49.5 % (48.5 %) | **50.6 % (48.9 %)** | V1 38 % |
+
+- No drift: 640K and 2.5M 50.7 %, class shares within 0.6 % of 160K. Guardrails: land temperature 3.85 °C, rain 0.73,
+  sea 2.79 °C, pressure 3.02 hPa (3.14), wind within 45° 79.0 % (76.7 %).
+- Rain's own gate (open loop, real winds and temperature) as before: error 0.66, truth swap 54.7 % (54.4) vs V1's 54.8.
+  Named features: southern Chile ÷ Patagonia now passes (×3.4); India's Jun–Aug ÷ Dec–Feb ratio fell from 5.9 to 3.4
+  (the heat-dependent terrain height; with the closed loop the monsoon's limit is its winds, below) and California's
+  winter ÷ summer from 2.5 to 1.2.
+- Evolution worlds: 15 / 35 / 14 / 18 / 18 % at 600 Myr; supercontinent 14 / 37 / 15 / 28 / 7 %. Checks pass except
+  the supercontinent's "interior drier than the coasts" (42 vs 44 %; as in Phase 8).
+- ≈ 0.73 s in Node at 160K (0.64 before; the upwind march is most of it).
+
+**Known (next: the circulation).**
+- **Europe:** winters far too cold on the Atlantic fringe (coldest month UK −1.5 vs 4.7 °C, Germany −2.6 vs 0.8,
+  Iceland −9 vs −3) and summers too dry (UK 54 vs 82 mm/month) → Dfc/Dsb/Csb instead of Cfb. As in Phase 9.
+- **US West:** summers 5–8 °C too cool inland (Great Basin warmest month 15.4 vs 23.5 °C): marine air reaches the
+  interior as if the Sierra and Cascades weren't there. California's winters 2.5× too wet (the storm track too far
+  south).
+- **Monsoon winds:** July winds on the Gangetic plain blow from the north (v −1.2 to −1.6 m/s) where the real monsoon
+  blows toward the Himalaya (+1.9 to +2.7).
+- **Small islands are about a third as wet as real** (Hawaii 40–58 vs 126–164 mm/month; Fiji 43 vs 288): on the 3°
+  rain grid an island is ocean, and the 1° mean heights dilute its mountains with sea.
