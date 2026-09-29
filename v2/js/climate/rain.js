@@ -305,7 +305,11 @@ export function columnWaterRain() {
             const descent = (lat) => Math.min(1, Math.max(0, lat >= 0 ? (hiN + 15 - lat) / 10 : (lat - hiS + 15) / 10));
             for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
                 const c = j * w + i, high = slp ? P_.RAIN_HIGH_K_PER_HPA * descent(g.lat[j]) * Math.max(0, slp[c] - slpRow[j]) : 0;
-                Sloc[c] = Math.min(STABLE_MAX_K, Math.max(-UNSTABLE_MAX_K, Tzs[j] - Tsl[c] + high)) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S;
+                // (instability only off the sea — a warm current, a warm sea under colder air — carried onshore by the
+                // wind; land's own heat, a desert's summer, does not make its air rain)
+                let sv = Tzs[j] - Tsl[c] + high;
+                if (sv < 0) sv *= 1 - land[c];
+                Sloc[c] = Math.min(STABLE_MAX_K, Math.max(-UNSTABLE_MAX_K, sv)) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S;
             }
             carrier.setOperator(new Float64Array(G).fill(1 / STABLE_RELAX_S), zero, u, v, 1);
             carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: P_.RAIN_CARRIER_CYCLES, tol: 1e-3 });
@@ -320,9 +324,9 @@ export function columnWaterRain() {
                     const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
                     const cn = j > 0 ? c - w : c, cs = j < h - 1 ? c + w : c;
                     // stable air (surface colder than its latitude): humidity effectively lowered by κ per K
-                    // … and unstable air (a surface warmer than its latitude: a heated plateau or desert margin in
-                    // summer, a warm current or a warm sea under colder air, carried onshore by the wind) convects and
-                    // rains more — humidity effectively raised by RAIN_INSTABILITY per K
+                    // … and unstable air (off a sea warmer than its latitude: a warm current, a warm sea under colder
+                    // air, carried onshore by the wind) convects and rains more — humidity effectively raised by
+                    // RAIN_INSTABILITY per K
                     const stable = Sair[c] >= 0 ? Math.exp(-a * P_.RAIN_STABILITY * Sair[c]) : Math.exp(-a * P_.RAIN_INSTABILITY * Sair[c]);
                     p.rate[c] = storm * stable;
                     // Lift where the wind blows up rising ground (1/s per unit of column water: upslope speed over the

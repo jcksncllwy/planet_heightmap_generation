@@ -28,6 +28,8 @@ const R_PLANET = 6.371e6;
 const RHO_AIR = 1.2, RHO_SEA = 1025, CP_SEA = 3990;
 const DRAG_COEFF = 1.3e-3;           // air–sea drag coefficient
 const DEG = Math.PI / 180;
+const CARRY_TRACE_KM = 1500;         // how far back a current's water keeps the temperature of where it came from …
+const CARRY_CALM_MS = 0.005;         // … faded where the surface current is below about this (m/s)
 const MOC_FROM_DEG = 40;             // the overturning's heat is released poleward of this latitude …
 const MOC_FULL_DEG = 55;             // … fully from here …
 const MOC_POLAR_DEG = 75;            // … in seas connected to the polar sea (poleward of this) …
@@ -35,7 +37,8 @@ const MOC_REACH_KM = 2500;           // … most near the polar opening (e-foldi
 
 /**
  * stage(ctx, circulation, temperature) → { psi (G, Sv), u, v (G, surface current m/s, annual), qflux (G, W/m², annual:
- * advection + upwelling), upwelling (G, m/day), channels, ms }. Fields on the core grid.
+ * advection + upwelling + overturning), carried (G, °C: the latitude-average sea temperature where each current's
+ * water comes from, minus here), upwelling (G, m/day), channels, ms }. Fields on the core grid.
  */
 /**
  * Heat of the overturning (W/m², G): per hemisphere without a circumpolar channel, the sea poleward of MOC_FROM_DEG
@@ -189,6 +192,17 @@ export function windDrivenOcean() {
         }
 
         // ── Heat: advection of the sea temperature by the currents, and upwelling ──
+        // Across latitudes, what a current carries is relative: flowing poleward it brings the warmer water of the
+        // latitudes it comes from, flowing equatorward the colder — so its heat is its north–south transport across
+        // the gradient of the latitude's average sea temperature (smoothed over ≈ ±6°), not the model's own local
+        // sea temperature (already evened out by the energy balance, which would carry almost nothing). East–west,
+        // the local sea temperature (the equatorial currents carry the cold east Pacific west).
+        const seaRow = new Float64Array(h), dTdy = new Float64Array(h);
+        for (let j = 0; j < h; j++) { let s = 0, n = 0; for (let i = 0; i < w; i++) { const c = j * w + i; if (isSea[c]) { s += sst[c]; n++; } } seaRow[j] = n ? s / n : NaN; }
+        for (let j = 0; j < h; j++) if (!(seaRow[j] === seaRow[j])) { let jj = j; while (jj > 0 && !(seaRow[jj] === seaRow[jj])) jj--; seaRow[j] = seaRow[jj] === seaRow[jj] ? seaRow[jj] : 0; }
+        const rowSm = new Float64Array(h), rSm = Math.max(1, Math.round(6 / g.step));
+        for (let j = 0; j < h; j++) { let s = 0, n = 0; for (let d = -rSm; d <= rSm; d++) { const jj = j + d; if (jj >= 0 && jj < h) { s += seaRow[jj]; n++; } } rowSm[j] = s / n; }
+        for (let j = 0; j < h; j++) { const jn = Math.max(0, j - 1), js = Math.min(h - 1, j + 1); dTdy[j] = (rowSm[jn] - rowSm[js]) / ((js - jn) * dRad * R_PLANET); }
         const qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
         const fMin = 2 * OMEGA_ROT * Math.sin(5 * DEG);
         const Mx = new Float64Array(G), My = new Float64Array(G);           // Ekman transport (m²/s), zero on land
@@ -212,13 +226,43 @@ export function windDrivenOcean() {
                 let gx = 0, gy = 0;
                 if (U[c] > 0 && isSea[cw]) gx = (Tc - sst[cw]) / dx; else if (U[c] < 0 && isSea[ce]) gx = (sst[ce] - Tc) / dx;
                 if (V[c] > 0 && cs >= 0 && isSea[cs]) gy = (Tc - sst[cs]) / dy; else if (V[c] < 0 && cn >= 0 && isSea[cn]) gy = (sst[cn] - Tc) / dy;
-                qAdv[c] = -RHO_SEA * CP_SEA * P.OCEAN_HEAT_SHARE * (U[c] * gx + V[c] * gy);
+                qAdv[c] = -RHO_SEA * CP_SEA * (P.OCEAN_HEAT_SHARE * U[c] * gx + P.OCEAN_MERID_SHARE * V[c] * dTdy[j]);
                 // Ekman divergence → upwelling (m/s); land neighbours carry no Ekman transport
                 const div = (Mx[ce] - Mx[cw]) / (2 * dx) + ((cn >= 0 ? My[cn] * cosLat[j - 1] : 0) - (cs >= 0 ? My[cs] * cosLat[j + 1] : 0)) / (2 * dy * cj);
-                const wv = Math.max(0, div);
+                // at a coast, the Ekman transport straight offshore wells up within the coastal cell (one-sided: the
+                // centred divergence spreads it over two cells)
+                let coastW = 0;
+                if (!isSea[ce]) coastW += Math.max(0, -Mx[c]) / dx;
+                if (!isSea[cw]) coastW += Math.max(0, Mx[c]) / dx;
+                if (cn >= 0 && !isSea[cn]) coastW += Math.max(0, -My[c]) / dy;
+                if (cs >= 0 && !isSea[cs]) coastW += Math.max(0, My[c]) / dy;
+                const wv = Math.max(0, div, coastW);
                 wUp[c] = wv;
                 const thermo = Math.max(0, Math.min(1, (Tc - 2) / 15));      // cold polar water has little to upwell
                 qUp[c] = -RHO_SEA * CP_SEA * wv * P.OCEAN_UPWELL_DT * thermo;
+            }
+        }
+        // ── What each current carries: the temperature of the latitudes its water comes from. Traced back along the
+        // current for CARRY_TRACE_KM (as far as surface water keeps its temperature against the air: a few months at
+        // the gyres' speeds), the average sea temperature there minus here — a poleward current warm, an equatorward
+        // one cold, a slow broad current as much as a fast narrow one; faded where the sea barely moves. ──
+        const carried = new Float64Array(G);
+        {
+            const nSteps = Math.max(1, Math.round(CARRY_TRACE_KM / (g.step * 111.2)));
+            const tzAt = (y) => { const yy = Math.max(0, Math.min(h - 1, y - 0.5)), j0 = Math.floor(yy), f = yy - j0; return rowSm[j0] * (1 - f) + rowSm[Math.min(h - 1, j0 + 1)] * f; };
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i; if (!isSea[c]) continue;
+                const sp0 = Math.hypot(U[c], V[c]); if (!(sp0 > 0)) continue;
+                let y = j + 0.5, x = i + 0.5;
+                for (let k = 0; k < nSteps; k++) {
+                    const cc = Math.floor(y) * w + ((Math.floor(x) % w) + w) % w, sp = Math.hypot(U[cc], V[cc]);
+                    if (!(sp > 0)) break;
+                    const cls = Math.max(0.1, cosLat[Math.floor(y)]);
+                    const ny = y + V[cc] / sp, nx = x - U[cc] / sp / cls;                // one cell upstream (rows run south)
+                    if (ny < 0 || ny >= h || !isSea[Math.floor(ny) * w + ((Math.floor(nx) % w) + w) % w]) break;
+                    y = ny; x = nx;
+                }
+                carried[c] = (tzAt(y) - tzAt(j + 0.5)) * Math.tanh(sp0 / P.OCEAN_CURRENT_DEPTH_M / CARRY_CALM_MS);
             }
         }
         // the overturning: OCEAN_OVERTURN_PW per hemisphere, released over the seas the polar ocean opens onto
@@ -235,7 +279,7 @@ export function windDrivenOcean() {
         const out = (src) => { const o = new Float32Array(core.size); refineField(g, core, ratio, src, o, 0); return o; };
         const surfU = U.map((x, c) => (isSea[c] ? x / P.OCEAN_CURRENT_DEPTH_M : 0)), surfV = V.map((x, c) => (isSea[c] ? x / P.OCEAN_CURRENT_DEPTH_M : 0));
         return {
-            psi: out(psi.map(x => x / 1e6)), u: out(surfU), v: out(surfV), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc),
+            psi: out(psi.map(x => x / 1e6)), u: out(surfU), v: out(surfV), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc), carried: out(carried),
             upwelling: out(wUp.map(x => x * 86400)), seaMask: out(Float64Array.from(isSea)), curl: out(curl),
             stress: { x: out(tx), y: out(ty) },
             channels: channels.map(ch => ({ fromLat: g.lat[ch.jStart], toLat: g.lat[ch.jEnd], transportSv: ch.transport / 1e6 })),

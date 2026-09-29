@@ -144,6 +144,8 @@ node tuning/climate/diag-blotch.mjs [--planet earth|evolution] [--parts]  # how 
                                                 #   specks, patches); --parts: each source of detail off in turn
 node tuning/climate/render-evolution-koppen.mjs [--crop lon0,lon1,lat0,lat1]  # an Evolution world's Köppen map as a PNG
 node tuning/climate/diag-ridges.mjs [--cells]   # rain across synthetic ridges (low, high, wide, one behind another)
+node tuning/climate/diag-currents.mjs           # warm and cold currents: sea, coast temperature and coast rain vs their
+                                                #   latitude, new vs OISST / Beck
 node tuning/climate/diag-pressure.mjs [--maps]  # where the circulation goes wrong vs NCEP: pressure error per region and
                                                 #   season, Jan / Jul error maps, zonal profile, centres of action, winds
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)
