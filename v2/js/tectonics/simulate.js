@@ -35,24 +35,31 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
  *                                              history itself does not depend on it)
  * @param {(world) => boolean} [opts.stopAt]    asked after each snapshot: true ends the history there (a chosen ending,
  *                                              tectonics/ending.js) — it never changes the history up to that point
+ * @param {boolean} [opts.resume]               the world is where an earlier call left it (after its last step): run on
+ *                                              from there exactly as one long call would have — no setting up again, and no
+ *                                              frame of the moment it starts from (the earlier call recorded it). With
+ *                                              untilMyr on the step grid (stepGridMyr), a history run on in pieces is the
+ *                                              one history run in one go, to the bit (the Evolution page's "Keep going")
  * @returns {{frames: import('./snapshot.js').Frame[], steps: number, stepLog: Object[], stopped: boolean}}
  *          frames[0] is the world as handed in (time 0 for a new world — a world can also be run on from
  *          where an earlier call stopped); then one frame per snapshot interval; the last is exactly untilMyr,
  *          or the snapshot where stopAt said stop (stopped: true)
  */
-export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null }) {
+export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false }) {
     const frames = [], stepLog = [];
     const record = frame => { frames.push(frame); onFrame?.(frame); };
-    for (const p of world.plates) p.refreshExtent(world.mesh.xyz);
-    resolve(world);
-    if (events && tidyPlates(world)) resolve(world);         // a scene may hand a plate cells that are not joined to it: settle that before anything moves
-    classifyBoundaries(world, 0);
-    if (world.time === 0 && !world.baseSeeded) { seedBaseRelief(world); world.baseSeeded = true; }   // (records only)
-    if (events && !world.hotspotsReady) insulateAtStart(world);   // (the first frame shows the start's mantle heat; step 1 sets it again)
-    if (events) trackCycle(world);                            // (is the start a supercontinent? — then the mantle already flows out from under it)
-    drive(world);
-    steerBackArcStrips(world);
-    record(captureFrame(world));
+    if (!resume) {
+        for (const p of world.plates) p.refreshExtent(world.mesh.xyz);
+        resolve(world);
+        if (events && tidyPlates(world)) resolve(world);         // a scene may hand a plate cells that are not joined to it: settle that before anything moves
+        classifyBoundaries(world, 0);
+        if (world.time === 0 && !world.baseSeeded) { seedBaseRelief(world); world.baseSeeded = true; }   // (records only)
+        if (events && !world.hotspotsReady) insulateAtStart(world);   // (the first frame shows the start's mantle heat; step 1 sets it again)
+        if (events) trackCycle(world);                            // (is the start a supercontinent? — then the mantle already flows out from under it)
+        drive(world);
+        steerBackArcStrips(world);
+        record(captureFrame(world));
+    }
 
     // Steps never cross a multiple of stepGridMyr (and end exactly at untilMyr); snapshots are taken on that grid.
     // The steps a history takes therefore depend on the world alone — never on how often it is recorded.

@@ -38,7 +38,7 @@ const SCENE = TERRAIN_SCENES.find(s => s.id === 'cycle');      // the start worl
 const $ = id => document.getElementById(id);
 const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
     seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
-    timeLabel: $('timeLabel'), rate: $('rate'), live: $('liveBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
+    timeLabel: $('timeLabel'), rate: $('rate'), live: $('liveBtn'), more: $('moreBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
     railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks') };
 
 // ── settings ──
@@ -58,7 +58,16 @@ $('reseedBtn').addEventListener('click', () => { ui.seed.value = String(Math.flo
 ui.build.addEventListener('click', () => build());
 // (terrain detail only redraws the terrain: the history is the same at any terrain resolution)
 ui.terrain.addEventListener('change', () => setTerrainDetail());
-const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}`);
+// (more: how far the history was kept going — a link rebuilds the same history, run on as far)
+const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
+    (B?.moreTo ? `&more=${B.moreTo}` : ''));
+let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
+// Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
+// interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)
+const GO_PIECE_MYR = 20;
+// …and stops for good when the history holds this much (a frame, packed, is ~24–28 bytes a plate cell: ~0.1 GB per
+// 1000 Myr at 40K) — some 13,000 Myr at 40K on a desktop, 7,000 Myr at 20K on a phone
+const HISTORY_BYTES = IS_TOUCH ? 400e6 : 1.5e9, FRAME_BYTES_PER_CELL = 28;
 ui.seed.addEventListener('keydown', e => { if (e.key === 'Enter') build(); });
 
 // ── drawing ──
@@ -112,9 +121,11 @@ async function build() {
     B?.player?.dispose();
     const seed = Number(ui.seed.value) || 0, cont = Number(ui.cont.value) / 100, len = Number(ui.len.value), ending = ui.ending.value;
     const simCells = Number(ui.sim.value), terrainCells = Number(ui.terrain.value);
-    saveUrl();
     const b = B = { controller: new AbortController(), player: null, frames: [], simMesh: null, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
-        climates: new Map(), climateJob: null, climateNote: null };       // (climates: frame → {tMesh, data}, while this history is open)
+        climates: new Map(), climateJob: null, climateNote: null,         // (climates: frame → {tMesh, data}, while this history is open)
+        run: null, going: false, wantGo: false, moreTo: linkedMore };      // (keep going: the history's run, kept to run on)
+    linkedMore = 0;
+    saveUrl();
     // (watching it build is playing it from the start, at the speed chosen — held at the newest moment built)
     playing = true; playTime = 0; preparing = null; painted = null; paintedT = null; paintedRaster = null; paintedMesh = null; paintedSharp = false; dirty = true;
     updateClimateUi();
@@ -123,6 +134,7 @@ async function build() {
     ui.timeLabel.textContent = 'Starting…';
     ui.play.innerHTML = '&#x23F8;';
     ui.timeline.hidden = false; ui.live.hidden = false;
+    updateGoUi();
     ui.info.textContent = IS_TOUCH ? 'Watching the planet evolve — scrub the timeline at any time; tap the planet for details'
         : 'Watching the planet evolve — scrub the timeline at any time; hover the planet for details';
     status(`Starting a world (seed ${seed})…`, 0);
@@ -132,7 +144,7 @@ async function build() {
     try {
         b.simMesh = simMeshOf(simCells);
         const meshReady = terrainMeshAsync(terrainCells);
-        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, lengthMyr: len }, b.simMesh, seed, SNAPSHOT_MYR,
+        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, lengthMyr: len, keep: true }, b.simMesh, seed, SNAPSHOT_MYR,
             t => { if (B === b) progress(b, t); },
             frame => { if (B !== b) return; if (!b.frames.length) console.info(`[evolution] first frame simulated at ${((performance.now() - b.started) / 1000).toFixed(1)} s`); b.frames.push(frame); b.player?.addFrame(frame); if (frame.time > Number(ui.time.max)) setScale(frame.time); rail(); },
             b.controller.signal);
@@ -144,6 +156,7 @@ async function build() {
         simRgb = new Uint8Array(b.simMesh.numCells * 3);
         const done = await run;
         if (B !== b) return;
+        b.run = done; b.simMyr = done.time; b.steps = done.steps;
         b.live = false; b.endMyr = b.frames.at(-1).time;
         setScale(b.endMyr); rail();
         b.player.finish();
@@ -153,12 +166,70 @@ async function build() {
         b.doneText = `${b.endMyr.toFixed(0)} Myr of history in ${secs.toFixed(0)} s · ${done.steps} steps` + (ending === 'none' ? '' : done.stopped ? ` — ends as ${stop.phrase}` : ` — did not reach ${stop.phrase} in time`);
         if (!b.retexturing) status(b.doneText, 1);
         dirty = true;
+        updateGoUi();
+        if (b.moreTo > b.simMyr) keepGoing(b, b.moreTo);                  // (a link to a history that was kept going)
+        else b.moreTo = 0;
     } catch (err) {
         if (err.name === 'AbortError' || B !== b) return;
         b.error = err;
         status(`Could not build this world: ${err.message}`, null);
         console.error(err);
     }
+}
+
+/**
+ * Keep going: the finished history runs on, a piece at a time, in the worker that ran it (it kept its world), until
+ * stopped — or, from a link, until `until` Myr. The pieces make one history: the same as had it been run that long.
+ */
+async function keepGoing(b, until = Infinity) {
+    if (B !== b || !b.run?.more || b.going) return;
+    b.going = true; b.wantGo = true; b.live = true;
+    b.goFrom ??= b.simMyr; b.goUntil = until; b.goStarted = performance.now();      // (from: where the history first ended)
+    ui.live.hidden = false;
+    updateGoUi();
+    if (until === Infinity) { playTime = builtTo(); ui.time.value = playTime; setPlaying(true); dirty = true; }   // (watch it go on)
+    progress(b, b.simMyr);
+    let failed = null;
+    try {
+        while (b.wantGo && B === b && b.simMyr < until - 1e-9) {
+            if (b.frames.length * FRAME_BYTES_PER_CELL * b.simMesh.numCells >= HISTORY_BYTES) { b.full = true; break; }
+            const to = Math.min(until, b.simMyr + GO_PIECE_MYR);
+            if (to > Number(ui.time.max)) { setScale(to); rail(); }
+            const r = await b.run.more(to);
+            if (B !== b) return;
+            b.simMyr = r.time; b.steps = r.steps; b.moreTo = r.time;
+            saveUrl();
+        }
+    } catch (err) {
+        if (err.name === 'AbortError' || B !== b) return;
+        failed = err; b.run = null;                                             // (its worker is gone)
+        console.error(err);
+    }
+    if (B !== b) return;
+    b.going = false; b.wantGo = false; b.live = false; b.endMyr = builtTo();
+    setScale(b.endMyr); rail();
+    ui.live.hidden = true;
+    if (painted) ui.timeLabel.textContent = `${painted.time.toFixed(0)} Myr`;       // (no longer building)
+    b.player?.finish();
+    b.goSecs = (b.goSecs ?? 0) + (performance.now() - b.goStarted) / 1000;
+    if (b.full) { b.run.close(); b.run = null; }                             // (its world goes too)
+    b.doneText = failed ? `Could not keep going: ${String(failed.message).split('\n')[0]} — ${b.endMyr.toFixed(0)} Myr of history`
+        : `${b.endMyr.toFixed(0)} Myr of history · ${b.steps} steps — kept going from ${b.goFrom.toFixed(0)} Myr (${b.goSecs.toFixed(0)} s)` +
+            (b.full ? ' — as long a history as this device can hold' : '');
+    if (!b.retexturing) status(b.doneText, failed ? null : 1);
+    updateGoUi(); dirty = true;
+}
+
+/** The Keep going button: shown once a history is done — Keep going, Stop while it goes on, Stopping… until its piece is done. */
+function updateGoUi() {
+    const b = B, btn = ui.more;
+    btn.hidden = !b?.run?.more;
+    if (btn.hidden) return;
+    btn.disabled = b.going && !b.wantGo;
+    btn.classList.toggle('on', b.going);
+    btn.innerHTML = !b.going ? '&#x23E9;<span class="lbl"> Keep going</span>' : b.wantGo ? '&#x25A0;<span class="lbl"> Stop</span>' : '&#x2026;<span class="lbl"> Stopping</span>';
+    btn.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.wantGo ? 'Stop the history here (you can keep going again later)' : 'Stopping once this piece of history is done';
+    btn.setAttribute('aria-label', b.going ? (b.wantGo ? 'Stop' : 'Stopping') : 'Keep going');
 }
 
 /** Draw a build's frames on a terrain mesh: a player of its own (the frames so far handed over; the rest arrive as they come). */
@@ -231,6 +302,12 @@ function drawMap() {
 
 function progress(b, t) {
     if (b.retexturing) return;
+    if (b.going) {
+        const secs = (performance.now() - b.goStarted) / 1000, linked = b.goUntil !== Infinity;
+        status(linked ? `Running on to ${b.goUntil} Myr, as in the link… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s` : `Keeping going… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s (from ${b.goFrom.toFixed(0)} Myr)`,
+            linked ? Math.min(1, (t - b.goFrom) / Math.max(1, b.goUntil - b.goFrom)) : null);
+        return;
+    }
     const target = b.lengthMyr, secs = (performance.now() - b.started) / 1000;
     status(t <= target ? `Simulating the history… ${t.toFixed(0)} of ${target} Myr · ${secs.toFixed(0)} s` : `Running on until it ends as asked… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s`, Math.min(1, t / target));
 }
@@ -243,7 +320,7 @@ function status(text, share) {
 /** The scale runs to `max` Myr (the history's length — or further, when it runs on to reach its ending), with a few labels. */
 function setScale(max) {
     ui.time.max = max;
-    const step = [100, 200, 250, 300, 500].find(s => max / s <= 6) ?? 500, marks = [];
+    const step = [100, 200, 250, 300, 500, 1000, 2000, 2500, 5000].find(s => max / s <= 6) ?? 10000, marks = [];
     for (let t = 0; t < max - step * 0.6; t += step) marks.push(t);
     marks.push(max);
     ui.ticks.innerHTML = marks.map(t => `<span style="left:${(100 * t / max).toFixed(2)}%">${t}</span>`).join('');
@@ -315,7 +392,7 @@ function paint(frame, sharpTable = null) {
         console.info(`[evolution] terrain at ${B.retexturing} cells drawn in ${((performance.now() - B.retextureAt) / 1000).toFixed(1)} s`);
         B.retexturing = null; if (B.doneText) status(B.doneText, 1);
     }
-    ui.timeLabel.textContent = B.live ? `${frame.time.toFixed(0)} of ${Number(ui.time.max)} Myr · building` : `${frame.time.toFixed(0)} Myr`;
+    ui.timeLabel.textContent = !B.live ? `${frame.time.toFixed(0)} Myr` : B.going ? `${frame.time.toFixed(0)} Myr · going on` : `${frame.time.toFixed(0)} of ${Number(ui.time.max)} Myr · building`;
     rail();
     stats(T, frame);
 }
@@ -418,6 +495,13 @@ ui.time.addEventListener('input', () => {
 });
 // Live: to the newest moment built, playing on from there
 ui.live.addEventListener('click', () => { if (!B?.frames.length) return; playTime = builtTo(); ui.time.value = playTime; setPlaying(true); dirty = true; rail(); });
+// Keep going / Stop (a stop lets the piece under way finish: the worker is in the middle of it)
+ui.more.addEventListener('click', () => {
+    const b = B;
+    if (!b?.run?.more) return;
+    if (!b.going) keepGoing(b);
+    else { b.wantGo = false; b.goUntil = Infinity; updateGoUi(); }
+});
 addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea')) return;
     if (e.code === 'Space') { e.preventDefault(); ui.play.click(); }

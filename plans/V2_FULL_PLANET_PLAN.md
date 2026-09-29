@@ -74,6 +74,16 @@ Draft, 2026-09-27, for the developer to agree before anything is built (plan fir
   build is playing from the start at the speed chosen, held at the newest moment built (Live jumps there); before, the
   view followed the newest frame at the simulation's pace and the speed did nothing until the history had finished.
   Measured (20K plates, 160K terrain): 5 / 10 / 25 / 50 Myr/s all achieved, building or finished.
+- **Keep going (2026-09-29; developer: "a 'keep going' button that gets the simulation going for as long as the user
+  wants").** Once a history is done, *Keep going* (on the timeline) runs it on in 20 Myr pieces until *Stop* (a stop
+  lets the piece under way finish); it can be resumed. The history worker keeps its world (`{type:'more', untilMyr}`);
+  `simulate(…, {resume: true})` skips the setting-up and the first frame, so pieces ending on the step grid are the one
+  history — hashes of every frame and the event log identical to a single run (20K: 300 → 360 Myr in pieces of 20; with
+  an ending, stopped at 330 as *dispersed*, run on to 700). Any ending is left behind: it runs on from wherever the
+  history ended. The link records how far (`more=`); opening it rebuilds the history and runs on to there. The timeline's
+  scale grows as it goes. A packed frame is ~24–28 bytes a plate cell (~0.1 GB per 1000 Myr at 40K): it stops for good
+  at 1.5 GB of frames (desktop; ~13,000 Myr at 40K) or 400 MB (phone; ~7,000 Myr at 20K). On phones the timeline now
+  puts its track on a row of its own, the buttons beneath (it had got too narrow to scrub).
 
 **B. How it looks, and the toggles.**
 - V1's palettes on V2's terrain (rivers carved on the shown frame), V1's toggles (grid, auto-rotate, globe/map, map

@@ -33,7 +33,10 @@ the developer before the next begins.**
 **Evolution** (`/evolution`, `evolution.html`) is the product page built on this engine — a side generator beside V1's
 Generate and Import Heightmap: Build New World runs a history (starting continent size, history length, ending; plates and
 terrain resolution) and shows the planet as it builds, then the whole history is a timeline to scrub and play; changing
-the terrain resolution redraws the same history (only the plates' resolution needs a new build). Its views are V1's:
+the terrain resolution redraws the same history (only the plates' resolution needs a new build). **Keep going** runs a
+finished history on, 20 Myr at a time in the worker that ran it, until Stop (`simulate`'s `resume`: the pieces are the
+one history, bit for bit; the link records how far — `more=` — and rebuilds it; it stops for good at a memory budget,
+~13,000 Myr at 40K). Its views are V1's:
 Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
 and setting. **Calculate Climate** gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
