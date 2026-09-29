@@ -1,0 +1,122 @@
+/* The Evolution page (evolution.html): V1's layout (styles.css) plus the timeline and the build status. */
+
+#canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+#mapCanvas {
+    position: fixed; top: 40px; left: 0; width: 100vw; height: calc(100vh - 40px);
+    object-fit: contain; background: #000; image-rendering: auto;
+}
+#mapCanvas[hidden] { display: none; }
+#ui [hidden] { display: none !important; }
+/* the readout above the timeline (V1's sits where the timeline is) */
+#hoverInfo { bottom: 112px; }
+
+/* the timeline: play, scrub, speed — along the bottom, clear of the side panel */
+.evo-timeline {
+    position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%);
+    width: min(760px, calc(100vw - 420px)); min-width: 360px;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(8,8,28,0.88); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 8px 12px; z-index: 20;
+}
+.evo-timeline[hidden] { display: none; }
+/* the track: the whole history, what is built so far (faint), up to the moment shown (bright); a scale beneath */
+.evo-track { position: relative; flex: 1 1 auto; min-width: 80px; height: 34px; }
+.evo-rail { position: absolute; left: 8px; right: 8px; top: 11px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.evo-rail i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; }
+.evo-rail .built { background: rgba(100,160,255,0.28); }
+.evo-rail .shown { background: #48f; }
+.evo-track input[type=range] {
+    position: absolute; left: 0; right: 0; top: 4px; width: 100%; height: 20px; margin: 0;
+    -webkit-appearance: none; appearance: none; background: transparent;
+}
+.evo-track input[type=range]::-webkit-slider-runnable-track { height: 20px; background: transparent; }
+.evo-track input[type=range]::-moz-range-track { height: 20px; background: transparent; }
+.evo-track input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%;
+    background: #cde; border: 2px solid #48f; box-shadow: 0 0 0 3px rgba(68,136,255,0.25);
+}
+.evo-track input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #cde; border: 2px solid #48f; }
+.evo-ticks { position: absolute; left: 8px; right: 8px; top: 21px; height: 12px; font-size: 10px; color: #778; pointer-events: none; }
+.evo-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.evo-ticks span:first-child { transform: none; }
+.evo-ticks span:last-child { transform: translateX(-100%); }
+.evo-play {
+    width: 36px; height: 36px; flex: none; border-radius: 50%;
+    border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.6);
+    color: #cde; font-size: 14px; cursor: pointer;
+}
+.evo-play:hover { filter: brightness(1.2); }
+.evo-time { flex: none; min-width: 120px; text-align: right; color: #cde; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.evo-timeline select {
+    flex: none; width: auto;
+    background: rgba(255,255,255,0.06); color: #aab; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px; padding: 4px 6px; font-size: 12px;
+}
+.evo-live {
+    flex: none; border-radius: 12px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+    border: 1px solid rgba(255,90,90,0.4); background: rgba(120,30,30,0.5); color: #fbb;
+}
+.evo-live.on { background: rgba(200,40,40,0.75); color: #fff; }
+
+/* the layer tabs: the terrain's, then the climate's. (V1's panel is as wide as its widest content: the tabs on one line
+   and the Köppen legend would stretch it — they take the panel's width instead of setting it) */
+#mapTabs, #climateGroup { contain: inline-size; }
+#mapTabs { flex-wrap: wrap; }
+#mapTabs .tab-break { flex-basis: 100%; height: 0; }
+/* the climate: the button, the moments with one, the legend; the chip over the planet on a climate layer */
+.evo-climate-btn {
+    width: 100%; padding: 9px 8px; margin-bottom: 6px; border-radius: 8px; cursor: pointer; font-size: 13px; font-family: inherit;
+    border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.6); color: #cde;
+}
+.evo-climate-btn:hover:not(:disabled) { filter: brightness(1.2); }
+.evo-climate-btn:disabled { opacity: 0.65; cursor: default; }
+.evo-climate-info { font-size: 12px; color: #9ab; line-height: 1.5; margin-bottom: 8px; }
+.evo-climate-info:empty { display: none; }
+.evo-climate-info a { color: #8bf; text-decoration: none; }
+.evo-climate-info a:hover { text-decoration: underline; }
+#climateLegend canvas { width: 100%; height: 22px; display: block; }
+.evo-legend-note { font-size: 11px; color: #9ab; margin-top: 2px; }
+.evo-koppen { display: flex; flex-wrap: wrap; gap: 3px 10px; }
+.evo-koppen span { white-space: nowrap; }
+.evo-koppen i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.evo-koppen em { color: #778; font-style: normal; }
+.evo-chip {
+    position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 20;
+    display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
+    background: rgba(8,8,28,0.88); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 18px; padding: 6px 8px 6px 14px; color: #cde; font-size: 13px;
+}
+.evo-chip[hidden] { display: none; }
+.evo-chip button {
+    flex: none; border-radius: 14px; padding: 5px 12px; font-size: 12px; font-family: inherit; cursor: pointer;
+    border: 1px solid rgba(100,160,255,0.45); background: rgba(50,90,200,0.75); color: #fff;
+}
+.evo-chip button[hidden] { display: none; }
+
+/* how far the history has got */
+.evo-status {
+    font-size: 12px; color: #9ab; margin: -4px 0 12px; line-height: 1.5;
+}
+.evo-status .bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); margin-top: 4px; overflow: hidden; }
+.evo-status .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #36c, #6af); width: 0; transition: width 0.3s; }
+#seedRow #seedCode { color: #cde; }
+#reseedBtn { font-size: 15px; }
+
+@media (max-width: 768px) {
+    /* above the collapsed bottom sheet, full width */
+    .evo-timeline {
+        left: 8px; right: 8px; transform: none; width: auto; min-width: 0;
+        bottom: 68px; gap: 6px; padding: 6px 8px;
+    }
+    .evo-play { width: 44px; height: 44px; }
+    .evo-time { min-width: 0; font-size: 12px; }
+    .evo-timeline select { min-height: 44px; }
+    .evo-live { min-height: 44px; }
+    #mapCanvas { top: 36px; height: calc(100vh - 36px); }
+    #info { display: none; }
+    #hoverInfo { bottom: 136px; }
+    .evo-chip { top: 92px; font-size: 12px; }
+    .evo-chip button { min-height: 44px; padding: 0 16px; }
+    .evo-climate-btn { min-height: 44px; }
+}

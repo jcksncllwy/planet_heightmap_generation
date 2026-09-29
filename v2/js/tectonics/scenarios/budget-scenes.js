@@ -47,7 +47,8 @@ export const BUDGET_SCENES = [
     {
         id: 'history', label: 'The crust budget over 600 Myr', maxMyr: 600, view: null,
         about: 'The generated supercontinent with every rule on, over 600 Myr (it takes a while to build). Continental area grows — arcs and fore-arc islands add crust — but not without bound: erosive margins, underthrusting at collisions and recycled arcs take some away again (chart: land share of the planet).',
-        build(simMesh, seed) { return buildStartWorld(simMesh, seed).world; },
+        // (overrides: start-world tunables — the Evolution page's starting continent size is continentalFraction)
+        build(simMesh, seed, overrides = {}) { return buildStartWorld(simMesh, seed, overrides).world; },
         drive: updatePlateMotion,
     },
 ];

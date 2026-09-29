@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Orogen — Evolution</title>
+    <meta name="description" content="Watch a planet evolve: a supercontinent breaks up, oceans open and close, continents collide and gather again — a tectonic history simulated in your browser, with every moment of it on a timeline to explore and export.">
+    <meta name="author" content="World Orogen">
+    <meta name="theme-color" content="#0a0e17">
+    <link rel="canonical" href="https://orogen.studio/evolution">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50' y='50' dominant-baseline='central' text-anchor='middle' font-size='75'>🌍</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="v2/evolution.css">
+</head>
+<body>
+    <nav id="topNav">
+        <a href="/" class="nav-tab">Generate</a>
+        <a href="/import" class="nav-tab">Import Heightmap</a>
+        <a href="/evolution" class="nav-tab active">Evolution</a>
+    </nav>
+    <canvas id="canvas"></canvas>
+    <canvas id="mapCanvas" hidden></canvas>
+    <div id="ui">
+        <div id="sheetHandle" class="sheet-handle"><span></span></div>
+        <div id="sidebarHeader">
+            <div>
+                <h2>World Orogen</h2>
+                <div class="sub">Evolution — a planet's tectonic history</div>
+            </div>
+            <button id="sidebarToggle" title="Collapse panel">&#x00AB;</button>
+        </div>
+        <div id="sidebarContent">
+        <details class="section" open>
+            <summary>Your Planet</summary>
+            <div class="section-body">
+                <div class="cg">
+                    <label>Starting Continent Size <span class="tip" data-tip="How much of the planet the first supercontinent covers, shelves included">?</span> <span class="v" id="vCont">30%</span></label>
+                    <input type="range" id="sCont" min="20" max="40" value="30" step="1">
+                    <div class="slider-hint"><span>Small</span><span>Large</span></div>
+                </div>
+                <div class="cg">
+                    <label>History Length <span class="tip" data-tip="How long the planet's tectonic history runs. A supercontinent breaks up and gathers again roughly every 600–700 million years">?</span> <span class="v" id="vLen">1200 Myr</span></label>
+                    <input type="range" id="sLen" min="300" max="1500" value="1200" step="50">
+                    <div class="slider-hint"><span>Short</span><span>Long</span></div>
+                </div>
+                <div class="cg">
+                    <label>End As <span class="tip" data-tip="Where the history should end: it runs on past its length until the planet is in that stage (at most 1000 Myr further)">?</span></label>
+                    <select id="ending"></select>
+                </div>
+                <div class="cg">
+                    <label>Plates <span class="tip" data-tip="Resolution of the plate simulation — finer plates take longer to build. Applies when you build a new world">?</span></label>
+                    <select id="simCells">
+                        <option value="20000">20K cells · 172 km (fastest)</option>
+                        <option value="40000" selected>40K cells · 121 km</option>
+                        <option value="80000">80K cells · 86 km</option>
+                        <option value="160000">160K cells · 61 km (slow)</option>
+                    </select>
+                </div>
+                <div class="cg">
+                    <label>Terrain Detail <span class="tip" data-tip="Resolution of the drawn terrain — finer detail takes longer to build each moment. Changing it redraws the same history straight away">?</span></label>
+                    <select id="terrainCells">
+                        <option value="160000" selected>160K cells · 61 km</option>
+                        <option value="640000">640K cells · 30 km</option>
+                        <option value="2500000">2.5M cells · 15 km (slow)</option>
+                    </select>
+                </div>
+            </div>
+        </details>
+        <button id="generate">Build New World</button>
+        <div id="seedRow">
+            <input type="text" id="seedCode" placeholder="Seed" inputmode="numeric" aria-label="World seed">
+            <button id="reseedBtn" title="A new random seed">&#x1F3B2;</button>
+        </div>
+        <div id="buildStatus" class="evo-status" hidden></div>
+        <details class="section" open>
+            <summary>Visual Options</summary>
+            <div class="section-body">
+                <div class="cg">
+                    <label>View</label>
+                    <select id="viewMode">
+                        <option value="globe">Globe</option>
+                        <option value="map">Map</option>
+                    </select>
+                </div>
+                <div class="cg" id="mapCenterLonGroup" hidden>
+                    <label>Center Longitude <span class="v" id="vMapCenterLon">0°</span></label>
+                    <input type="range" id="sMapCenterLon" min="-180" max="180" value="0" step="5">
+                </div>
+                <div class="map-tabs" id="mapTabs">
+                    <button class="map-tab active" data-layer="terrain">Terrain</button>
+                    <button class="map-tab" data-layer="heightmap">Heightmap</button>
+                    <button class="map-tab" data-layer="plates">Plates</button>
+                    <span class="tab-break"></span>
+                    <button class="map-tab" data-layer="koppen">Köppen</button>
+                    <button class="map-tab" data-layer="temperature">Temp</button>
+                    <button class="map-tab" data-layer="rain">Rain</button>
+                    <button class="map-tab" data-layer="wind">Wind</button>
+                    <button class="map-tab" data-layer="currents">Currents</button>
+                </div>
+                <div id="climateGroup">
+                    <button id="climateBtn" class="evo-climate-btn" disabled title="Calculates the climate of the moment shown — Köppen zones, temperature, rain, winds and currents (about a second). Kept for that moment while this history is open">Calculate Climate</button>
+                    <div id="climateInfo" class="evo-climate-info"></div>
+                    <div class="cg" id="seasonGroup" hidden>
+                        <label>Season</label>
+                        <select id="season">
+                            <option value="year" selected>Year</option>
+                            <option value="jan">January</option>
+                            <option value="jul">July</option>
+                        </select>
+                    </div>
+                    <div id="climateLegend" class="viz-legend"></div>
+                </div>
+                <div class="cg" id="paletteGroup">
+                    <label>Terrain Colours <span class="tip" data-tip="How heights are coloured on the Terrain view — all shaded by the relief">?</span></label>
+                    <select id="palette">
+                        <optgroup label="Maps">
+                            <option value="relief" selected>Relief</option>
+                            <option value="topographic">Topographic</option>
+                            <option value="natural">Natural</option>
+                            <option value="swiss">Swiss</option>
+                            <option value="school">School Atlas</option>
+                            <option value="etopo">ETOPO</option>
+                            <option value="dem">DEM</option>
+                            <option value="scientific">Scientific</option>
+                            <option value="satellite">Satellite</option>
+                            <option value="grey">Grey</option>
+                            <option value="antique">Antique</option>
+                        </optgroup>
+                        <optgroup label="Other worlds">
+                            <option value="arid">Arid</option>
+                            <option value="frozen">Frozen</option>
+                            <option value="lush">Lush</option>
+                            <option value="alien">Alien</option>
+                            <option value="volcanic">Volcanic</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="tg">
+                    <label class="toggle-label"><input type="checkbox" id="chkRotate"><span class="toggle-track"><span class="toggle-thumb"></span></span>Auto-Rotate</label>
+                    <label class="toggle-label"><input type="checkbox" id="chkGrid" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Grid Lines</label>
+                </div>
+                <div class="cg" id="gridSpacingGroup">
+                    <label>Grid Spacing</label>
+                    <select id="gridSpacing">
+                        <option value="30">30&deg;</option>
+                        <option value="15" selected>15&deg;</option>
+                        <option value="10">10&deg;</option>
+                        <option value="5">5&deg;</option>
+                        <option value="2.5">2.5&deg;</option>
+                    </select>
+                </div>
+                <details id="statsDetails" class="stats-toggle">
+                    <summary>Stats</summary>
+                    <div id="stats"></div>
+                </details>
+            </div>
+        </details>
+        <a id="repoLink" href="https://github.com/raguilar011095/planet_heightmap_generation" target="_blank" rel="noopener">GitHub</a>
+        </div>
+    </div>
+    <select id="mobileViewSwitch" class="mobile-view-switch" aria-label="Layer">
+        <option value="terrain">Terrain</option>
+        <option value="heightmap">Heightmap</option>
+        <option value="plates">Plates</option>
+        <optgroup label="Climate">
+            <option value="koppen">Köppen</option>
+            <option value="temperature">Temperature</option>
+            <option value="rain">Rain</option>
+            <option value="wind">Wind &amp; Pressure</option>
+            <option value="currents">Currents</option>
+        </optgroup>
+    </select>
+    <div id="climateChip" class="evo-chip" hidden><span id="climateChipText"></span><button id="climateChipBtn">Calculate</button></div>
+
+    <div id="timeline" class="evo-timeline" hidden>
+        <button id="playBtn" class="evo-play" aria-label="Play / pause">&#x25B6;</button>
+        <div class="evo-track">
+            <div class="evo-rail"><i id="railBuilt" class="built"></i><i id="railShown" class="shown"></i></div>
+            <input id="timeSlider" type="range" min="0" max="1200" step="10" value="0" aria-label="Time">
+            <div id="timeTicks" class="evo-ticks"></div>
+        </div>
+        <output id="timeLabel" class="evo-time">0 Myr</output>
+        <select id="rate" aria-label="Playback speed">
+            <option value="5">5 Myr/s</option>
+            <option value="10">10 Myr/s</option>
+            <option value="25" selected>25 Myr/s</option>
+            <option value="50">50 Myr/s</option>
+        </select>
+        <button id="liveBtn" class="evo-live" hidden title="Jump to the newest moment built and play on from there">&#x25CF; Live</button>
+    </div>
+    <div id="hoverInfo"></div>
+    <div id="info">Press Build New World to watch a planet's history unfold</div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+            "delaunator": "https://cdn.jsdelivr.net/npm/delaunator@5.0.1/+esm"
+        }
+    }
+    </script>
+    <script type="module" src="v2/js/evolution/evolution-main.js"></script>
+</body>
+</html>

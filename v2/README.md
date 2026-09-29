@@ -30,6 +30,17 @@ the developer before the next begins.**
 
 ## Running it
 
+**Evolution** (`/evolution`, `evolution.html`) is the product page built on this engine — a side generator beside V1's
+Generate and Import Heightmap: Build New World runs a history (starting continent size, history length, ending; plates and
+terrain resolution) and shows the planet as it builds, then the whole history is a timeline to scrub and play; changing
+the terrain resolution redraws the same history (only the plates' resolution needs a new build). Its views are V1's:
+Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds), Heightmap and Plates, globe (in V1's space: stars,
+atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
+and setting. **Calculate Climate** gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
+winds, currents — about a second, in a worker), kept per moment while the history is open. Its code is
+`js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
+[`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
+
 ```
 node tuning/dev-server.mjs 8123        # any static server works; there is no build step
 open http://localhost:8123/v2/         # the lab; ?phase=1, 2, 3, 4, 5, 5b, 6a, 7a, 7b, 7c, 8a, 8b; &seed=…, &scene=india, &mobility=3.5 …
@@ -135,6 +146,7 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
                    palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade)
+js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker (the climate of a moment, on request)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back)
 tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), trace / render / screenshot helpers

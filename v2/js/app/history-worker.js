@@ -10,18 +10,20 @@ import { historyEnding } from '../tectonics/ending.js';
 
 const SCENE_LISTS = { terrain: TERRAIN_SCENES };
 
-self.onmessage = ({ data: { list, sceneId, seed, mesh, snapshotEveryMyr, heights = {}, ending = 'none' } }) => {
+self.onmessage = ({ data: { list, sceneId, seed, mesh, snapshotEveryMyr, heights = {}, ending = 'none', start = {}, lengthMyr = null } }) => {
     try {
         const scene = SCENE_LISTS[list].find(s => s.id === sceneId), simMesh = meshFromArrays(mesh);
-        const world = scene.build(simMesh, seed);
+        const world = scene.build(simMesh, seed, start);                 // (start: start-world tunables, for scenes that take them)
         world.config.heights = terrainConfig(heights);                 // (the heights evolve with these; the history itself ignores them)
-        const { untilMyr, stopAt } = historyEnding(scene.maxMyr, ending, world.config);      // (a chosen ending: it may run on)
+        const { untilMyr, stopAt } = historyEnding(lengthMyr ?? scene.maxMyr, ending, world.config);      // (a chosen ending: it may run on)
+        let packMs = 0;
+        const started = performance.now();
         const { steps, stopped } = simulate(world, {
             untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr,
             // (packed: a whole history's frames are mostly zeros — tectonics/frame-pack.js)
-            onFrame: frame => { const { packed, transfer } = packFrame(frame); self.postMessage({ type: 'frame', frame: packed }, transfer); },
+            onFrame: frame => { const t = performance.now(), { packed, transfer } = packFrame(frame); packMs += performance.now() - t; self.postMessage({ type: 'frame', frame: packed }, transfer); },
         });
-        self.postMessage({ type: 'done', steps, stopped, untilMyr });
+        self.postMessage({ type: 'done', steps, stopped, untilMyr, ms: performance.now() - started, packMs });
     } catch (err) {
         self.postMessage({ type: 'error', message: err.stack ?? String(err) });
     }
