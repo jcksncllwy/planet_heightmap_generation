@@ -58,8 +58,8 @@ export function gatherLoads(world) {
     const { mesh, owner, ownerCell, plates, landClaims, collider, time, config } = world;
     const { xyz, numCells, edgeKm } = mesh;
     const edgeLength = edgeKm / Math.sqrt(3) / 100;       // one shared cell edge, in units of 100 km (hexagonal cells)
-    const loads = new Map();
-    for (const p of plates) if (p.alive && !p.isBackground && p.crust.count > 0) loads.set(p.id, newLoad());
+    const loads = new Map(), loadOf = [];
+    for (const p of plates) if (p.alive && !p.isBackground && p.crust.count > 0) { const l = newLoad(); loads.set(p.id, l); loadOf[p.id] = l; }
     const n = [0, 0, 0, 0];
     const ageFactor = formedAt => Math.sqrt(Math.min(1, Math.max(0, time - formedAt) / config.slabPullAgeRefMyr));
     const maturity = (crust, cell) => Math.min(1, crust.slabKm[cell] / config.slabMatureKm);
@@ -71,14 +71,14 @@ export function gatherLoads(world) {
     for (let w = 0; w < numCells; w++) {
         const a = owner[w];
         if (a < 0) continue;
-        const r = [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]];
+        const r0 = xyz[3 * w], r1 = xyz[3 * w + 1], r2 = xyz[3 * w + 2];
         if (flowing) {                                      // the mantle's flow drags on a continent's root
-            const load = loads.get(a), t = plates[a].crust.type[ownerCell[w]];
+            const load = loadOf[a], t = plates[a].crust.type[ownerCell[w]];
             if (load && (t === CrustType.CONTINENT || t === CrustType.CRATON)) {
-                mantleFlowAt(world, r[0], r[1], r[2], flow);
-                if (apart) repelAt(apart, a, r[0], r[1], r[2], flow);
+                mantleFlowAt(world, r0, r1, r2, flow);
+                if (apart) repelAt(apart, a, r0, r1, r2, flow);
                 const fx = flow[0] * flowArea, fy = flow[1] * flowArea, fz = flow[2] * flowArea;
-                const tx = r[1] * fz - r[2] * fy, ty = r[2] * fx - r[0] * fz, tz = r[0] * fy - r[1] * fx;
+                const tx = r1 * fz - r2 * fy, ty = r2 * fx - r0 * fz, tz = r0 * fy - r1 * fx;
                 load.torque[0] += tx; load.torque[1] += ty; load.torque[2] += tz;
                 load.flowTorque[0] += tx; load.flowTorque[1] += ty; load.flowTorque[2] += tz;
                 const k = load.byKind[FLOW]; k[0] += tx; k[1] += ty; k[2] += tz;
@@ -87,7 +87,7 @@ export function gatherLoads(world) {
             }
         }
         if (landClaims[w] > 1 && collider[w] >= 0) {        // land on land: tie the two plates together here
-            const other = plates[collider[w]], otherCell = other.cellAt(mesh.index, r[0], r[1], r[2]);
+            const r = [r0, r1, r2], other = plates[collider[w]], otherCell = other.cellAt(mesh.index, r0, r1, r2);
             // (not along a fresh rift itself, where the two margins jitter against each other — elsewhere the halves of a rift
             // lock like any colliding plates: a third plate may drive them back together)
             if (areYoungRiftPartners(plates[a], other, time, config) && (plates[a].crust.flags[ownerCell[w]] & CrustFlag.RIFT_MARGIN) && (other.crust.flags[otherCell] & CrustFlag.RIFT_MARGIN)) continue;
@@ -95,11 +95,11 @@ export function gatherLoads(world) {
             const craton = plates[a].crust.type[ownerCell[w]] === CrustType.CRATON || other.crust.type[otherCell] === CrustType.CRATON;
             const weight = craton ? config.cratonLockFactor : 1;         // cratons never underthrust: the lock hardens
             const nAB = frontNormal(world, w, a, collider[w], r);
-            loads.get(a)?.contacts.push({ r, n: nAB, other: collider[w], weight });
-            loads.get(collider[w])?.contacts.push({ r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
+            loadOf[a]?.contacts.push({ r, n: nAB, other: collider[w], weight });
+            loadOf[collider[w]]?.contacts.push({ r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
             continue;
         }
-        const load = loads.get(a);
+        const load = loadOf[a];
         if (!load) continue;
         const across = contactAt(world, w, n);
         if (across < 0) continue;
@@ -111,7 +111,7 @@ export function gatherLoads(world) {
         let kind = -1, size = 0, rAge;
         if (trenchB && oceanA && !trenchA) {
             kind = PULL; size = config.slabPull * ageFactor(A.formedAt[cellA]) * maturity(B, cellB);
-            load.slabs.push({ r, n: [n[0], n[1], n[2]], other: owner[across], length });
+            load.slabs.push({ r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length });
         } else if (trenchA && oceanB && !trenchB) { kind = SUCTION; size = config.slabSuction * ageFactor(B.formedAt[cellB]) * maturity(A, cellA); }
         else if ((rAge = riftAge(plates[a], A, cellA, plates[owner[across]], B, cellB, time)) < config.riftPushMyr) { kind = RIFT; size = -config.riftPush * (1 - rAge / config.riftPushMyr); }
         else if (oceanA && oceanB && isYoung(A, cellA) && isYoung(B, cellB)) { kind = RIDGE; size = -config.ridgePush; }
@@ -122,7 +122,7 @@ export function gatherLoads(world) {
         // the local normal. `size` is negative for the pushes (away from n); along riftPushDir the push is + that direction.
         if (kind === RIFT && plates[a].riftPushDir) { dir = plates[a].toWorld(plates[a].riftPushDir[0], plates[a].riftPushDir[1], plates[a].riftPushDir[2], [0, 0, 0]); size = Math.abs(size); }
         const f = size * length, fx = dir[0] * f, fy = dir[1] * f, fz = dir[2] * f;
-        const tx = r[1] * fz - r[2] * fy, ty = r[2] * fx - r[0] * fz, tz = r[0] * fy - r[1] * fx;      // r × F
+        const tx = r1 * fz - r2 * fy, ty = r2 * fx - r0 * fz, tz = r0 * fy - r1 * fx;      // r × F
         load.torque[0] += tx; load.torque[1] += ty; load.torque[2] += tz;
         const k = load.byKind[kind]; k[0] += tx; k[1] += ty; k[2] += tz;
         const v = load.forceByKind[kind]; v[0] += fx; v[1] += fy; v[2] += fz;

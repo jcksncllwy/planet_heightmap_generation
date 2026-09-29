@@ -55,7 +55,7 @@ export function growMarginIsles(world, dt) {
         for (const c of trench) {
             plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
             const rate = Math.max(0, world.convergence[index.nearest(P[0], P[1], P[2])]);
-            if (erosiveAt(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], rate)) flags[c] |= CrustFlag.EROSIVE; else flags[c] &= ~CrustFlag.EROSIVE;
+            if (erosiveAt(c, rate)) flags[c] |= CrustFlag.EROSIVE; else flags[c] &= ~CrustFlag.EROSIVE;
         }
         const { dist: trenchD, source: nearestTrench } = hopsFrom(mesh, trench, onPlate, Math.max(reachHops, erodeHops) + 1);
         const erosive = c => (flags[nearestTrench[c]] & CrustFlag.EROSIVE) !== 0;
@@ -141,11 +141,16 @@ function erosionField(world) {
         values.sort((p, q) => p - q);
         world.erosionThreshold = values[Math.min(values.length - 1, Math.floor((1 - config.marginErosiveShare) * values.length))];
     }
-    const threshold = world.erosionThreshold;
-    return (x, y, z, rate) => {
+    const threshold = world.erosionThreshold, { xyz, numCells } = world.mesh;
+    // (the field at each raster cell — a mesh cell, whose position never changes: computed the first time it is asked for)
+    if (!world.erosionAt || world.erosionAt.length !== numCells) world.erosionAt = new Float64Array(numCells).fill(NaN);
+    const at = world.erosionAt;
+    return (c, rate) => {
         if (config.marginErosiveShare <= 0) return false;
         const tilt = config.marginErosionRateBias * Math.max(-1, Math.min(1, (rate - config.marginErosionRefCmYr) / config.marginErosionRefCmYr));
-        return world.erosionNoise.fbm(x * f, y * f, z * f, 2) + tilt > threshold;
+        let v = at[c];
+        if (v !== v) v = at[c] = world.erosionNoise.fbm(xyz[3 * c] * f, xyz[3 * c + 1] * f, xyz[3 * c + 2] * f, 2);
+        return v + tilt > threshold;
     };
 }
 

@@ -30,15 +30,24 @@ async function spawn(file = './terrain-worker.js') {
     return { post: (m, t) => w.postMessage(m, t), listen: fn => w.addEventListener('message', e => fn(e.data)), terminate: () => w.terminate(), hold: () => {} };
 }
 
-/** How many workers to use by default: all cores but one (for the page), at most 8 (each holds a copy of the plan). */
+/**
+ * How many workers to use by default: all cores but one (for the page), at most 8 (each holds a copy of the plan). (Not
+ * more on a machine with more threads: the heights are noise arithmetic, which a core's second thread barely speeds up —
+ * 15 workers on an 8-core, 16-thread desktop were slower than 8 at every terrain size, 2026-09-28.)
+ */
 export async function defaultPoolSize() {
-    const cores = IS_NODE ? (await import('node:os')).availableParallelism() : (navigator.hardwareConcurrency || 4);
-    return Math.max(1, Math.min(8, cores - 1));
+    return Math.max(1, Math.min(8, (await coreCount()) - 1));
 }
+async function coreCount() { return IS_NODE ? (await import('node:os')).availableParallelism() : (navigator.hardwareConcurrency || 4); }
 
 export class TerrainPool {
-    /** @param {Object} simMesh  the mesh the frames live on (sent to every worker once) */
-    static async create(simMesh, size = null) {
+    /**
+     * @param {Object} simMesh  the mesh the frames live on (sent to every worker once)
+     * @param {number|null} size  synthesis workers (null: defaultPoolSize)
+     * @param {{carvers?: number|null}} [o]  carving workers: frames carved side by side (null: two with 8 cores or more —
+     *        each holds its own copy of the meshes the carving climbs, ~150 MB at 2.5M cells)
+     */
+    static async create(simMesh, size = null, { carvers = null } = {}) {
         const n = size ?? await defaultPoolSize();
         const workers = await Promise.all(Array.from({ length: n }, spawn));
         const arrays = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
@@ -50,12 +59,16 @@ export class TerrainPool {
             workers[0].post({ type: 'peer', port: port1 }, [port1]);
             workers[i].post({ type: 'planner', port: port2 }, [port2]);
         }
-        return new TerrainPool(workers, simMesh);
+        const pool = new TerrainPool(workers, simMesh);
+        pool.carverCount = carvers ?? ((await coreCount()) >= 8 ? 2 : 1);
+        return pool;
     }
 
     constructor(workers, simMesh) {
         this.workers = workers;
         this.sim = simMesh;
+        this.carverCount = 1;
+        this.carvers = [];                   // carving workers: { worker, pending, sent, queue, load }
         this.meshes = new Map();             // terrain mesh → { chunks: [{id, from, to}], sampler: {cells, weights, key} | null }
         this.nextJob = 1;
         this.queue = Promise.resolve();      // jobs run one at a time
@@ -68,7 +81,8 @@ export class TerrainPool {
     terminate() {
         for (const w of this.workers) w.terminate();
         this.workers = [];
-        this.carver?.worker.terminate(); this.carver = null;
+        for (const c of this.carvers) c?.worker.terminate();
+        this.carvers = [];
         this.shader?.worker.terminate(); this.shader = null;
     }
 
@@ -96,18 +110,25 @@ export class TerrainPool {
      * @returns {Promise<{z: Float32Array, area: Float32Array, ms: number}>}
      */
     carve(tMesh, built, cfg) {
-        const run = (this.carveQueue ?? Promise.resolve()).then(() => this.runCarve(tMesh, built, cfg));
-        this.carveQueue = run.catch(() => {});
+        // (the carving worker with the fewest frames waiting — each frame's carving is its own, whichever worker does it).
+        // A second one only for the finest terrain: on an 8-core desktop it carried 2.5M cells 12 % faster, but slowed
+        // 640K (the synthesis workers want those cores), 2026-09-28.
+        const K = tMesh.numCells >= 1.5e6 ? this.carverCount : 1;
+        let i = 0;
+        for (let j = 0; j < K; j++) if ((this.carvers[j]?.load ?? 0) < (this.carvers[i]?.load ?? 0)) i = j;
+        const slot = this.carvers[i] ??= { worker: null, pending: new Map(), sent: new Set(), queue: Promise.resolve(), load: 0 };
+        slot.load++;
+        const run = slot.queue.then(() => this.runCarve(slot, tMesh, built, cfg)).finally(() => { slot.load--; });
+        slot.queue = run.catch(() => {});
         return run;
     }
 
-    async runCarve(tMesh, built, cfg) {
-        if (!this.carver) {
-            const worker = await spawn('./carve-worker.js'), pending = new Map();
-            worker.listen(msg => pending.get(msg.jobId)?.(msg));
-            this.carver = { worker, pending, sent: new Set() };
+    async runCarve(slot, tMesh, built, cfg) {
+        if (!slot.worker) {
+            slot.worker = await spawn('./carve-worker.js');
+            slot.worker.listen(msg => slot.pending.get(msg.jobId)?.(msg));
         }
-        const { worker, pending, sent } = this.carver;
+        const { worker, pending, sent } = slot;
         const sizes = carveLadder(this.sim, tMesh, n => n).slice(1, -1);            // (the terrain meshes between)
         const ladder = [this.sim, ...(await Promise.all(sizes.map(n => terrainMeshAsync(n)))), tMesh];
         for (const m of ladder) if (!sent.has(m.numCells)) {                      // (each mesh sent once, copied)

@@ -57,19 +57,16 @@ export class MinHeap {
  * (to carry a label along, e.g. which source it came from). Stops at `maxKm`.
  */
 export function spreadKm(mesh, dist, { canEnter = null, onReach = null, maxKm = Infinity } = {}) {
-    const { adjOffset, adjList, xyz } = mesh;
+    const { adjOffset, adjList } = mesh, edge = edgeKmOf(mesh);
     const heap = new MinHeap(4096);
     for (let c = 0; c < dist.length; c++) if (dist[c] < Infinity) heap.push(dist[c], c);
-    const R = 6371;
     while (heap.size) {
         const c = heap.pop(), dc = heap.lastKey;
         if (dc > dist[c]) continue;
-        const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
             if (canEnter && !canEnter(c, nb)) continue;
-            const dot = cx * xyz[3 * nb] + cy * xyz[3 * nb + 1] + cz * xyz[3 * nb + 2];
-            const d = dc + Math.acos(Math.min(1, dot)) * R;
+            const d = dc + edge[k];
             if (d >= dist[nb] || d > maxKm) continue;
             dist[nb] = d;
             if (onReach) onReach(c, nb);
@@ -80,4 +77,22 @@ export function spreadKm(mesh, dist, { canEnter = null, onReach = null, maxKm = 
         }
     }
     return dist;
+}
+
+/** Each adjacency entry's length in km (the arc from the cell to that neighbour), once per mesh — as spreadKm had it. */
+const edgeKms = new WeakMap();
+function edgeKmOf(mesh) {
+    let e = edgeKms.get(mesh);
+    if (e) return e;
+    const { adjOffset, adjList, xyz } = mesh, n = adjOffset.length - 1, R = 6371;
+    e = new Float64Array(adjList.length);
+    for (let c = 0; c < n; c++) {
+        const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k], dot = cx * xyz[3 * nb] + cy * xyz[3 * nb + 1] + cz * xyz[3 * nb + 2];
+            e[k] = Math.acos(Math.min(1, dot)) * R;
+        }
+    }
+    edgeKms.set(mesh, e);
+    return e;
 }

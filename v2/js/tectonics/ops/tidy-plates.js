@@ -119,10 +119,13 @@ export function bridgePieces(plate, mesh, maxKm) {
     return filled;
 }
 
+let piecesSeen = null;       // (componentsOf's working array, kept between calls)
+
 /** Connected pieces of a plate's crust, in its own raster. */
 export function componentsOf(crust, mesh) {
     const { numCells, adjOffset, adjList } = mesh, { mask, type } = crust;
-    const seen = new Uint8Array(numCells), pieces = [];
+    if (!piecesSeen || piecesSeen.length !== numCells) piecesSeen = new Uint8Array(numCells);
+    const seen = piecesSeen.fill(0), pieces = [];
     for (let s = 0; s < numCells; s++) {
         if (!mask[s] || seen[s]) continue;
         const cells = [s]; seen[s] = 1;

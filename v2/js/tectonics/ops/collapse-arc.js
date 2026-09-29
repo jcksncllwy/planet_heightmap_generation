@@ -22,7 +22,8 @@ export function collapseArcs(world) {
         const { mask, type, formedAt } = plate.crust;
         if (!mayCollapse(plate, mesh, minCells, time, config.arcCollapseAgeMyr)) continue;   // (no arc chain big and old enough: skip the distance search)
         // distance from continental crust, through this plate's cells, with the first sea cell off the coast remembered
-        const dist = new Int16Array(numCells).fill(-1), coastCell = new Int32Array(numCells).fill(-1), parent = new Int32Array(numCells).fill(-1);
+        const { dist, coastCell, parent, sea } = work(numCells);
+        dist.fill(-1); coastCell.fill(-1); parent.fill(-1);
         let frontier = [];
         for (let c = 0; c < numCells; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) { dist[c] = 0; frontier.push(c); }
         if (!frontier.length) continue;
@@ -32,11 +33,13 @@ export function collapseArcs(world) {
                 const nb = adjList[k];
                 if (dist[nb] >= 0 || !mask[nb] || type[nb] === CrustType.CONTINENT || type[nb] === CrustType.CRATON) continue;
                 dist[nb] = d; parent[nb] = c; coastCell[nb] = d === 1 ? nb : coastCell[c]; next.push(nb);
+                // (sea on its way in: an ocean cell among the cells between it and the coast — its parent, or the parent's)
+                sea[nb] = dist[c] > 0 && (type[c] === CrustType.OCEAN || sea[c] === 1) ? 1 : 0;
             }
             frontier = next;
         }
         // arc chains
-        const seen = new Uint8Array(numCells);
+        const seen = work(numCells).seen.fill(0);
         for (let start = 0; start < numCells; start++) {
             if (seen[start] || !mask[start] || type[start] !== CrustType.ARC) continue;
             const chain = [start]; seen[start] = 1;
@@ -47,7 +50,7 @@ export function collapseArcs(world) {
             if (chain.length < minCells || chain.some(c => plate.crust.flags[c] & CrustFlag.MARGIN_ISLE)) continue;     // (fore-arc islands grow into their coast instead)
             // within reach of the coast, with SEA on the way in (a band of arc already stacked on the coast has nothing to close)
             const near = chain.filter(c => dist[c] > 0), age = time - Math.min(...chain.map(c => formedAt[c]));
-            const seaBetween = chain.filter(c => { for (let p = parent[c]; p >= 0 && dist[p] > 0; p = parent[p]) if (type[p] === CrustType.OCEAN) return true; return false; });
+            const seaBetween = chain.filter(c => dist[c] > 0 && sea[c] === 1);
             if (near.length < 0.5 * chain.length || seaBetween.length < 0.4 * chain.length || age < config.arcCollapseAgeMyr) continue;
 
             collapsed += collapseChain(world, plate, background, chain, dist, coastCell, parent);
@@ -61,7 +64,7 @@ export function collapseArcs(world) {
 /** Does the plate have an island-arc chain of at least minCells, with no fore-arc island in it, old enough — the tests below that need no distances (the same expressions)? */
 function mayCollapse(plate, mesh, minCells, time, minAgeMyr) {
     const { adjOffset, adjList, numCells } = mesh, { mask, type, flags, formedAt } = plate.crust;
-    const seen = new Uint8Array(numCells);
+    const seen = work(numCells).seen.fill(0);
     for (let start = 0; start < numCells; start++) {
         if (seen[start] || !mask[start] || type[start] !== CrustType.ARC) continue;
         const chain = [start]; seen[start] = 1;
@@ -123,4 +126,11 @@ function collapseChain(world, plate, background, chain, dist, coastCell, parent)
     return landed.size;
 }
 
-
+/** Cell-sized working arrays, kept between calls (filled afresh by each use). */
+let working = null;
+function work(numCells) {
+    if (!working || working.dist.length !== numCells) {
+        working = { dist: new Int16Array(numCells), coastCell: new Int32Array(numCells), parent: new Int32Array(numCells), sea: new Uint8Array(numCells), seen: new Uint8Array(numCells) };
+    }
+    return working;
+}

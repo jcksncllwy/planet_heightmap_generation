@@ -117,23 +117,31 @@ function growCrustIntoGaps(world, gaps) {
 
 /** Raster cells of `grower` that stand under a gap cell, plus a small neighbourhood of them. (Exported, like decideBirth, so a debugging script can ask why a cell was or was not born.) */
 export function candidateCells(world, grower, gaps) {
-    const { xyz, index, adjOffset, adjList } = world.mesh, cap = grower.capInWorld(world.mesh), mask = grower.crust.mask;
+    const { xyz, index, adjOffset, adjList, numCells } = world.mesh, cap = grower.capInWorld(world.mesh), mask = grower.crust.mask;
     const bins = binIndex(world.mesh), stamp = world.occupancyStamp;
-    const seen = new Set();
+    // (the cells seen, in the order first seen: marks instead of a Set — the same cells in the same order)
+    const seen = seenMarks(numCells), mark = seen.stamp, marks = seen.marks, order = [];
     let ring = [];
     for (const g of gaps) {
         const x = xyz[3 * g], y = xyz[3 * g + 1], z = xyz[3 * g + 2];
         if (x * cap[0] + y * cap[1] + z * cap[2] < cap[3]) continue;
         if (!mayHaveCrustNear(grower, bins.binOf[g], stamp, bins)) continue;             // a gap nowhere near this plate: nothing could attach
         const c = grower.cellAt(index, x, y, z);
-        if (!seen.has(c)) { seen.add(c); ring.push(c); }
+        if (marks[c] !== mark) { marks[c] = mark; order.push(c); ring.push(c); }
     }
     for (let r = 0; r < REACH_RINGS; r++) {
         const next = [];
-        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!seen.has(adjList[k])) { seen.add(adjList[k]); next.push(adjList[k]); }
+        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (marks[nb] !== mark) { marks[nb] = mark; order.push(nb); next.push(nb); } }
         ring = next;
     }
-    return [...seen].filter(c => !mask[c]);
+    return order.filter(c => !mask[c]);
+}
+let seen = null;
+/** A fresh mark on a cell-sized array (no clearing between uses). */
+function seenMarks(numCells) {
+    if (!seen || seen.marks.length !== numCells) seen = { marks: new Uint32Array(numCells), stamp: 0 };
+    if (++seen.stamp === 0xFFFFFFFF) { seen.marks.fill(0); seen.stamp = 1; }
+    return seen;
 }
 
 /**
@@ -151,8 +159,9 @@ export function decideBirth(world, grower, cell, everyone) {
     for (const { plate, cap } of everyone) {
         if (plate === grower || p[0] * cap[0] + p[1] * cap[1] + p[2] * cap[2] < cap[3]) continue;
         if (!mayHaveCrustNear(plate, bin, stamp, bins)) continue;                        // nothing of that plate anywhere near
-        if (plate.crust.mask[plate.cellAt(mesh.index, p[0], p[1], p[2])]) return { born: false, why: 'not a gap: another plate has crust here' };   // (a)
-        const hit = nearestCrust(plate, mesh, p);
+        const under = plate.cellAt(mesh.index, p[0], p[1], p[2]);
+        if (plate.crust.mask[under]) return { born: false, why: 'not a gap: another plate has crust here' };   // (a)
+        const hit = nearestCrust(plate, mesh, p, under);
         if (hit.cell < 0) continue;                                         // that plate has nothing nearby
         if (!plate.isBackground && hit.dot > rivalDot) rivalDot = hit.dot;
         if (!neighbourHit || hit.dot > neighbourHit.dot) { neighbourHit = hit; neighbour = plate; }
@@ -184,21 +193,25 @@ function assignGapOwners(world, gaps) {
         p[0] = xyz[3 * g]; p[1] = xyz[3 * g + 1]; p[2] = xyz[3 * g + 2];
         const bin = bins.binOf[g], near = everyone.filter(plate => mayHaveCrustNear(plate, bin, stamp, bins));
         let best = null, bestHit = null, foreign = null, foreignHit = null;
+        const under = [];
         for (const plate of near) {
             const cell = plate.cellAt(index, p[0], p[1], p[2]);
+            under.push(cell);
             if (plate.crust.mask[cell]) { best = plate; bestHit = { dot: 1, cell, real: true }; break; }     // filled this step
         }
         if (!best) {
-            for (const plate of near) {
-                const hit = nearestCrust(plate, mesh, p);
-                if (hit.cell < 0) continue;
+            // (each plate's nearest crust found once, for both searches)
+            const hits = near.map((plate, i) => nearestCrust(plate, mesh, p, under[i]));
+            near.forEach((plate, i) => {
+                const hit = hits[i];
+                if (hit.cell < 0) return;
                 if (!plate.isBackground && (!bestHit || hit.dot > bestHit.dot)) { best = plate; bestHit = hit; }
-            }
-            for (const plate of near) {
-                if (plate === best) continue;
-                const hit = nearestCrust(plate, mesh, p);
+            });
+            near.forEach((plate, i) => {
+                if (plate === best) return;
+                const hit = hits[i];
                 if (hit.cell >= 0 && (!foreignHit || hit.dot > foreignHit.dot)) { foreign = plate; foreignHit = hit; }
-            }
+            });
         }
         if (!best) continue;                               // nothing within reach: stays a gap and is reported as one
         owner[g] = best.id; ownerCell[g] = bestHit.cell; claimCount[g] = 1;
@@ -246,13 +259,14 @@ function isBehind(plate, edgeCell, cell, mesh) {
 /**
  * Nearest crust in the plate's raster to world position p, searching a few rings around it in the
  * plate's frame: { dot: cosine of the angular distance, cell } — cell = −1 (dot = −2) if none is near.
+ * `under`: the plate's raster cell under p if the caller has it already (plate.cellAt — the same lookup).
  */
-function nearestCrust(plate, mesh, p) {
+function nearestCrust(plate, mesh, p, under = -1) {
     const { xyz, index } = mesh, mask = plate.crust.mask;
     const l = plate.toPlateFrame(p[0], p[1], p[2], scratch.l);
     // Rings are read from a table built once per mesh (this runs millions of times per history): the same cells in
     // the same order as a ring-by-ring search from the nearest cell, so the answer — ties included — is unchanged.
-    const { start, cells, stride } = ringsOf(mesh), base = index.nearest(l[0], l[1], l[2]) * stride;
+    const { start, cells, stride } = ringsOf(mesh), base = (under >= 0 ? under : index.nearest(l[0], l[1], l[2])) * stride;
     let best = -2, bestCell = -1;
     for (let r = 0; r <= PROXIMITY_RINGS; r++) {
         for (let i = start[base + r], e = start[base + r + 1]; i < e; i++) {

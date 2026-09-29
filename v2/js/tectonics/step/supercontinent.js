@@ -138,20 +138,24 @@ export function dispersalField(world) {
         if (s[3] * cellAreaKm2 < 1e6 || plates[id].isBackground) continue;
         const l = Math.hypot(s[0], s[1], s[2]) || 1;
         // (its edge taken as the rim of a disc of its area about its centre: a big continent is ~4000 km across its middle)
-        centres.push({ id, c: [s[0] / l, s[1] / l, s[2] / l], share: s[3] / total, radius: Math.sqrt(s[3] * cellAreaKm2 / Math.PI) / PLANET_RADIUS_KM });
+        const radius = Math.sqrt(s[3] * cellAreaKm2 / Math.PI) / PLANET_RADIUS_KM, far = radius + config.dispersalRepulsionKm / PLANET_RADIUS_KM;
+        // (cutoff: a cell whose dot with the centre is below it is clearly out of reach — the exact test would say so too)
+        centres.push({ id, c: [s[0] / l, s[1] / l, s[2] / l], share: s[3] / total, radius, cutoff: far < Math.PI ? Math.cos(far) - 1e-9 : -3 });
     }
     // (not between two already in contact: the push keeps continents from meeting, it does not hold a collision open —
     // pushed apart at contact, one ground on unwelded; a clump that forms anyway rifts: step/rifting.js)
     const touching = new Set();
-    for (let w = 0; w < numCells; w++) if (world.landClaims[w] > 1 && world.collider[w] >= 0) { touching.add(`${owner[w]}:${world.collider[w]}`); touching.add(`${world.collider[w]}:${owner[w]}`); }
+    for (let w = 0; w < numCells; w++) if (world.landClaims[w] > 1 && world.collider[w] >= 0) { touching.add(owner[w] * PAIR + world.collider[w]); touching.add(world.collider[w] * PAIR + owner[w]); }
     return { centres, touching, k: config.dispersalRepulsion, reach: config.dispersalRepulsionKm / PLANET_RADIUS_KM };
 }
 
 /** Add to `out` the push on plate `id`'s land at (x, y, z) away from every other continent whose edge is within reach (more from a big one). */
 export function repelAt(field, id, x, y, z, out) {
-    for (const { id: j, c, share, radius } of field.centres) {
-        if (j === id || field.touching.has(`${id}:${j}`)) continue;
-        const d = c[0] * x + c[1] * y + c[2] * z, gap = Math.max(0, Math.acos(Math.max(-1, Math.min(1, d))) - radius);
+    for (const { id: j, c, share, radius, cutoff } of field.centres) {
+        if (j === id) continue;
+        const d = c[0] * x + c[1] * y + c[2] * z;
+        if (d < cutoff || field.touching.has(id * PAIR + j)) continue;
+        const gap = Math.max(0, Math.acos(Math.max(-1, Math.min(1, d))) - radius);
         if (gap >= field.reach) continue;
         const tx = d * x - c[0], ty = d * y - c[1], tz = d * z - c[2];      // away from c: −(the tangent at p toward c)
         const l = Math.hypot(tx, ty, tz);
@@ -161,6 +165,8 @@ export function repelAt(field, id, x, y, z, out) {
     }
     return out;
 }
+
+const PAIR = 65536;                 // a pair of plates (a, b) as the number a·PAIR + b (plate ids stay far below it)
 
 /** The mean mantle heat within cycleUpwellingKm of the upwelling (how hot the mantle the last supercontinent left still is). */
 function heatNear(world, cycle) {

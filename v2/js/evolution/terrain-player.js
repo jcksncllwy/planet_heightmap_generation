@@ -23,7 +23,7 @@ let poolPromise = null, poolKey = null;
 function poolFor(simMesh, workers) {
     if (poolKey?.mesh !== simMesh || poolKey?.workers !== workers) {
         const old = poolPromise;
-        poolKey = { mesh: simMesh, workers }; poolPromise = TerrainPool.create(simMesh, workers);
+        poolKey = { mesh: simMesh, workers }; poolPromise = TerrainPool.create(simMesh, workers, { carvers: smallDevice ? 1 : null });
         old?.then(p => p.terminate());
     }
     return poolPromise;
@@ -158,7 +158,7 @@ export class TerrainPlayer {
     async prefetch(pool) {
         if (this.prefetching || this.disposed) return;
         this.prefetching = true;
-        let carvingAhead = null;
+        const carving = [];                // (carvings under way, as many as the pool has carving workers)
         try {
             for (;;) {
                 if (this.disposed) return;
@@ -170,11 +170,11 @@ export class TerrainPlayer {
                 const surf = await pool.synthesize(frame, this.tMesh, { cfg: this.cfg, seed: this.seed, parts: false, records: false, carveInputs: true });
                 if (this.disposed) return;
                 this.sampler ??= surf.sampler;
-                // (carved on the carving worker while the next frame's surface is built)
-                await carvingAhead;
-                carvingAhead = this.carve(pool, frame, surf).catch(() => {});
+                // (carved on a carving worker while the next frame's surface is built)
+                while (carving.length >= pool.carverCount) await carving.shift();
+                carving.push(this.carve(pool, frame, surf).catch(() => {}));
             }
-            await carvingAhead;
+            await Promise.all(carving);
         } catch { /* building ahead is only a convenience: frames are built when asked for */ } finally { this.prefetching = false; }
     }
 }
