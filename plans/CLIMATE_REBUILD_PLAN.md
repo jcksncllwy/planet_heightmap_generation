@@ -1131,3 +1131,31 @@ gradient" rule made the narrow western currents overshoot and the broad eastern 
 - **Known:** the Gulf Stream's sea stays cold (the continent's winter air), California's cold current and Peru / Namib
   coast deserts are too weak (their cold is upwelling, left to the energy balance), and the Nordic seas are still ≈ 3 °C
   short of real.
+
+
+## Phase 11e — why generated worlds are too dry; the currents relative to each latitude
+
+The developer: "in the generated world … they are broadly coming out as too dry. can we investigate why?"
+
+**Measured** (`diag-dry.mjs`: land rain, temperature and arid share by latitude, distance from the sea, height, coast
+facing and the wind's fetch over land; four worlds of the current v2-tectonics terrain via `--root`, older climates via
+`--climate`). Worlds 34–40 % arid (Earth 30 %, Beck 30 %); with each latitude as arid as Earth's, 29–35 %. The excess:
+the subtropics (15–35°: 76–87 % arid vs Earth ≈ 60–67 %) and the inner southern tropics (0–15°S: 13–40 % vs 6–8 %).
+Ruled out: the 1° mountain rules (1–2 points), rain's unevenness (percentiles as Earth's), recycling (land E/P 0.83–0.88,
+real ≈ 0.6).
+
+**Cause 1 — Phase 11d.** The currents' sea anomaly had only its planet-wide mean removed. The broad slow equatorward half
+of a gyre covers more sea than its narrow poleward current, so the subtropical seas ran ≈ 1 K cold (10th percentile −3 K)
+and the equatorial seas slightly warm; tropical land lost ≈ 14 % of its rain to the sea (Earth too). Fix
+(`temperature.js`): each latitude's sea keeps its mean, over ±`CURRENT_ROW_DEG` (6°) so a narrow sea between continents
+keeps its anomaly. Worlds' 0–15°S rain +10–17 %; Earth Köppen 47.2 → 48.3 % (continents 45.5 → 47.5), sea temperature
+2.62 → 2.50 °C, pressure 2.83 hPa, wind 80.3 %; currents unchanged (warm minus cold: sea +1.2, coasts +1.2 °C, coast rain
+×1.38); ocean-check PASSED (test planets' west / east sea at 30°N 17.7 / 23.4 °C). The worlds' total arid share does not
+move: the cold subtropical seas had given subtropical land winter rain (its land looked warm for its latitude).
+
+**Cause 2 — weak summer monsoons** (left for the monsoon phase). Land rain, 10–20°S in January: real 169–243, model on
+Earth 87–150, worlds 79–104 mm/month; 20–25°N in July: real 115–125, Earth 134–146, worlds 54–59. On Earth the model's
+too-wet southern winters (July at 15–20°S 30–33 vs real 12) make up the annual total; the worlds' big continents have dry
+winters. The monsoon's column humidity (≈ 0.6) sits below the deep-convergence range (`RAIN_DEEP_R0` 0.6 … `R1` 0.9), so
+its inflow is treated as a shallow dry heat low. On a big continent the heat low sits to one side and the rest takes dry
+air from the interior (world 202: 9–24 mm/month across 5000 km in midsummer).

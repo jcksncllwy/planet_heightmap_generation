@@ -146,6 +146,16 @@ node tuning/climate/render-evolution-koppen.mjs [--crop lon0,lon1,lat0,lat1]  # 
 node tuning/climate/diag-ridges.mjs [--cells]   # rain across synthetic ridges (low, high, wide, one behind another)
 node tuning/climate/diag-currents.mjs           # warm and cold currents: sea, coast temperature and coast rain vs their
                                                 #   latitude, new vs OISST / Beck
+node tuning/climate/diag-dry.mjs [--planet earth|evolution] [--seed N] [--root <snapshot>] [--climate <snapshot>]
+                                                # why a planet is dry: land rain, temperature and arid share by latitude,
+                                                #   distance from the sea, height, coast facing and the wind's fetch over
+                                                #   land (Earth also vs Beck / observed); --root builds the Evolution world
+                                                #   with another branch's terrain, --climate runs another version's climate
+node tuning/climate/diag-continentality.mjs [--planet earth|evolution] [--seed N] [--root <snapshot>]
+                                                # continentality: the land's annual temperature range by latitude ×
+                                                #   distance from the sea, landmass size, west / east coasts and named
+                                                #   regions (coldest / warmest month), new vs observed; a world vs Earth's
+                                                #   observed land in the same bin
 node tuning/climate/diag-pressure.mjs [--maps]  # where the circulation goes wrong vs NCEP: pressure error per region and
                                                 #   season, Jan / Jul error maps, zonal profile, centres of action, winds
 node tuning/climate/test-solver.mjs             # the grid solver recovers a known field (correctness + speed)

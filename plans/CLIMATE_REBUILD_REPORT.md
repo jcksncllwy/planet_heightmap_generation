@@ -66,6 +66,7 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 11b | Your feedback: simulated planets too blotchy | done | The climate follows half of each terrain cell's own bumps: Evolution worlds ≈ 30–40 % fewer speckles and patches; Earth still near the real map's detail; Köppen 48.2 % |
 | 11c | Your question: do higher mountains release more rain? | done | Windward slopes now get wetter with height up to the crest; crests no longer drier than the plains; mountain contrast ×2.11 (real ×3.42) |
 | 11d | Your feedback: warm and cold currents, relative to their latitude, and their rain | mostly | Warm-current seas now clearly warmer than cold-current seas (+1.2 °C, was +0.1; real +2.8); their coasts warmer and wetter or cooler and drier; Köppen 47.2 % (decision 8) |
+| 11e | Your feedback: generated worlds too dry | found, part fixed | Two causes: Phase 11d cooled the subtropical seas ≈ 1 °C (fixed: currents now relative to each latitude; Köppen back to 48.3 %), and weak summer monsoons (next phases) |
 
 ## Decisions waiting for you
 
@@ -100,9 +101,8 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
    chose a weak "land's own seasons" layer (`TEMP_LOCAL_K` 14): Australia's seasons are still half of real and the Great
    Basin's summer 7 °C too cool. `TEMP_LOCAL_K` 8 gives them most of their real seasons for about a point of Köppen.
    Which way do you want it?
-8. **Currents vs the Köppen score** (Phase 11d). The currents' warmth and cold cost about a point of Köppen, mostly
-   Australia, where the interior gets wetter (closer to its real rain) but hot desert turns into hot steppe. The dial is
-   `TEMP_CURRENT_MEMORY` in `v2/js/climate/config.js` (0.6; 0 = off, 0.8 = stronger). Keep it?
+8. ~~Currents vs the Köppen score~~ — settled by Phase 11e: the point of Köppen was a bug (the subtropical seas ran
+   cold); with it fixed the currents cost nothing.
 
 ## The approach, in one paragraph
 
@@ -640,3 +640,21 @@ Köppen 48.3 → 47.2 % — decision 8.
 **Still not right.** The Gulf Stream's sea stays cold (the continent's winter air wins), and the coldest coasts (Peru,
 Namibia, California) are cold mostly from upwelling, which I tried to strengthen here but it bent the trade winds and
 broke South America's rain, so it stays as it was.
+
+## Phase 11e — why generated worlds are too dry
+
+**What I found.** Generated worlds are 34–40 % desert and steppe, against Earth's 30 %. Some of that is geography: they
+have less cold northern land, which can never be arid. If each latitude were as dry as Earth's they would be 29–35 %. The
+rest is in the subtropics (15–35°: about 85 % arid, Earth about 60–67 %) and just south of the equator. The mountain rules,
+how unevenly rain falls, and rain recycled from wet ground are all fine.
+
+**Cause 1 — my currents change (fixed).** Each sea's warmth or cold was balanced over the whole planet instead of per
+latitude. A gyre's broad slow cold side covers more sea than its narrow warm current, so the subtropical seas ran about
+1 °C cold and tropical land lost about 14 % of its rain to the sea, on Earth too. Now each latitude's sea is balanced on
+its own. Tropical land south of the equator gets 10–17 % more rain; Earth's Köppen match is back to 48.3 % (was 47.2), the
+sea temperature error falls, and the currents look the same (warm minus cold +1.2 °C).
+
+**Cause 2 — weak summer monsoons (next).** In January, land at 10–20°S gets about half its real rain in the model; on
+Earth the model's too-wet southern winters hide that, but the worlds' big continents have dry winters, so nothing hides
+it. The model treats monsoon air as a shallow, dry heat low, and on a big continent the heat low sits to one side while
+the rest of the continent breathes dry air from the interior.

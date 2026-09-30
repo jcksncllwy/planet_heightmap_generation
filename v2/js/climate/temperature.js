@@ -37,6 +37,7 @@ const WET_RAIN_MM = 800;                    // yearly rain at which land is ~63 
 const BLOCK_FLOOR = 0.5;        // the share of a face that stays open over any ridge: the weather aloft
 const EXPOSURE_KM = 700;                    // km: how far upwind the sea still makes land maritime (e-folding) …
 const EXPOSURE_STEPS = 4;                   // … looked at over this many grid steps
+const CURRENT_ROW_DEG = 6;                  // °: the currents' warmth and cold are relative to the sea within this of latitude
 const WET_MONTH_MM = 100;                   // mm/month of rain at which the ground is ~63 % wet
 const WET_SUN_REF = 400;                    // W/m² of daily sunlight (top of the air) at which TEMP_WET_COOL_C applies
 /** Δ/(Δ+γ): the share of the available energy a wet surface evaporates (equilibrium evaporation), relative to 25 °C. */
@@ -287,21 +288,28 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // warm and cold seas: more evaporation and unstable air off warm ones, stable air off cold ones.
         if (ocean?.carried && P.TEMP_CURRENT_MEMORY > 0) {
             // (the whole anomaly, not only where it departs from its region: the eastern half of a gyre is cold as a
-            // whole; the sea's planet-wide mean is kept)
+            // whole. But each latitude's sea keeps its mean — warm and cold relative to their latitude: the broad slow
+            // equatorward half of a gyre covers more sea than its narrow poleward current, so the anomaly's own mean
+            // would cool the subtropical seas ≈ 1 K and take the tropics' land rain to the sea. The mean is taken over
+            // ±CURRENT_ROW_DEG of latitude, so a narrow sea between continents keeps its anomaly.)
             const seaAnom = new Float64Array(G);
             const carriedE = coarsen(core, g, ratio, ocean.carried);
-            let sum = 0, area = 0;
+            const rowSum = new Float64Array(h), rowArea = new Float64Array(h);
             for (let j = 0; j < h; j++) {
-                const cw = Math.cos(g.lat[j] * Math.PI / 180);
                 for (let i = 0; i < w; i++) {
                     const c = j * w + i, s = (1 - landFrac[c]) * (1 - seaIceYear[c]);
                     if (!(s > 0)) continue;
                     seaAnom[c] = P.TEMP_CURRENT_MEMORY * carriedE[c];
-                    sum += s * cw * seaAnom[c]; area += s * cw;
+                    rowSum[j] += s * seaAnom[c]; rowArea[j] += s;
                 }
             }
-            const seaMean = area > 0 ? sum / area : 0;
-            for (let c = 0; c < G; c++) if (seaAnom[c]) seaAnom[c] -= seaMean;
+            const band = Math.max(0, Math.round(CURRENT_ROW_DEG / g.step));
+            for (let j = 0; j < h; j++) {
+                let sum = 0, area = 0;
+                for (let k = Math.max(0, j - band); k <= Math.min(h - 1, j + band); k++) { sum += rowSum[k]; area += rowArea[k]; }
+                const mean = area > 0 ? sum / area : 0;
+                for (let i = 0; i < w; i++) { const c = j * w + i; if (seaAnom[c]) seaAnom[c] -= mean; }
+            }
             for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
                 const c = j * w + i, f = landFrac[c];
                 let carried = 0;
