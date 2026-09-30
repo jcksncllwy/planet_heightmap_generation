@@ -1131,3 +1131,124 @@ gradient" rule made the narrow western currents overshoot and the broad eastern 
 - **Known:** the Gulf Stream's sea stays cold (the continent's winter air), California's cold current and Peru / Namib
   coast deserts are too weak (their cold is upwelling, left to the energy balance), and the Nordic seas are still ≈ 3 °C
   short of real.
+
+
+## Phase 11e — why generated worlds are too dry; the currents relative to each latitude
+
+The developer: "in the generated world … they are broadly coming out as too dry. can we investigate why?"
+
+**Measured** (`diag-dry.mjs`: land rain, temperature and arid share by latitude, distance from the sea, height, coast
+facing and the wind's fetch over land; four worlds of the current v2-tectonics terrain via `--root`, older climates via
+`--climate`). Worlds 34–40 % arid (Earth 30 %, Beck 30 %); with each latitude as arid as Earth's, 29–35 %. The excess:
+the subtropics (15–35°: 76–87 % arid vs Earth ≈ 60–67 %) and the inner southern tropics (0–15°S: 13–40 % vs 6–8 %).
+Ruled out: the 1° mountain rules (1–2 points), rain's unevenness (percentiles as Earth's), recycling (land E/P 0.83–0.88,
+real ≈ 0.6).
+
+**Cause 1 — Phase 11d.** The currents' sea anomaly had only its planet-wide mean removed. The broad slow equatorward half
+of a gyre covers more sea than its narrow poleward current, so the subtropical seas ran ≈ 1 K cold (10th percentile −3 K)
+and the equatorial seas slightly warm; tropical land lost ≈ 14 % of its rain to the sea (Earth too). Fix
+(`temperature.js`): each latitude's sea keeps its mean, over ±`CURRENT_ROW_DEG` (6°) so a narrow sea between continents
+keeps its anomaly. Worlds' 0–15°S rain +10–17 %; Earth Köppen 47.2 → 48.3 % (continents 45.5 → 47.5), sea temperature
+2.62 → 2.50 °C, pressure 2.83 hPa, wind 80.3 %; currents unchanged (warm minus cold: sea +1.2, coasts +1.2 °C, coast rain
+×1.38); ocean-check PASSED (test planets' west / east sea at 30°N 17.7 / 23.4 °C). The worlds' total arid share does not
+move: the cold subtropical seas had given subtropical land winter rain (its land looked warm for its latitude).
+
+**Cause 2 — weak summer monsoons** (left for the monsoon phase). Land rain, 10–20°S in January: real 169–243, model on
+Earth 87–150, worlds 79–104 mm/month; 20–25°N in July: real 115–125, Earth 134–146, worlds 54–59. On Earth the model's
+too-wet southern winters (July at 15–20°S 30–33 vs real 12) make up the annual total; the worlds' big continents have dry
+winters. The monsoon's column humidity (≈ 0.6) sits below the deep-convergence range (`RAIN_DEEP_R0` 0.6 … `R1` 0.9), so
+its inflow is treated as a shallow dry heat low. On a big continent the heat low sits to one side and the rest takes dry
+air from the interior (world 202: 9–24 mm/month across 5000 km in midsummer).
+
+
+## Phase 12 — continentality: air masses along the wind
+
+The developer: continentality "along coasts or islands … partially accounted for already, but not in enough detail",
+with a worldbuilding guide's zones (hyperoceanic → hypercontinental: west coasts oceanic, the continental zone well
+inland, east coasts continental, warm seas and lakes interrupting it, islands oceanic).
+
+**Measured** (`diag-continentality.mjs`: the land's annual range per terrain cell by latitude × distance from the sea,
+landmass size, west / east coasts, named regions with the coldest and warmest month; Earth vs the 1° observed t2m, a
+world vs Earth's observed land in the same bin). Earth's range right on average (18.2 vs 18.7 °C) but RMS 6.83 °C, and
+the errors are in winter: Europe's interior too cold (Moscow's coldest month −16.1 vs −7.3, Poland −6.3 vs −1.7,
+Ireland 1.9 vs 5.6), east coasts too mild (north-east China −8.3 vs −16.4, Japan 6.7 vs 1.3), Yakutsk −25 vs −37;
+summers within ≈ 1–2 °C. Neither the land-seasons layer nor the 1° coast rule causes it (switched off: the same): the
+energy balance spreads heat alike in every direction, while a month's weather is the air the wind brought.
+
+**Built** (`temperature.js`): air masses. Each month (and each anchor), the air over each energy-balance cell takes on
+the temperature of the surface beneath within τ and is carried by the month's surface wind meanwhile — σ·A + u·∇A = σ·θ
+(σ = 1/τ), solved by the multigrid carrier (as the rain's stability). τ: over the open sea (and frozen sea as land)
+`TEMP_AIR_SEA_DAYS` 1; over land `TEMP_AIR_SUN_DAYS` 0.5 where the sun is strong (convection mixes the air) to
+`TEMP_AIR_DARK_DAYS` 4 where it is weak (stable air on colder ground), blended in time by the day's sunlight from
+`AIR_MIXED_SUN` (S₀/5, ≈ 25° in midwinter) to `AIR_STABLE_SUN` (S₀/10, ≈ 45°). It carries potential temperature
+(θ = T + (9.8 − the grid's lapse) × height): air coming down from a plateau warms as it sinks. Ridges block it fully
+(`ridgeFaces` without the heat's 0.5 floor: the low air itself, not the weather aloft). Land's air is A; the sea's
+surface stays its own. Calm air stays put, so a still interior keeps its own temperature.
+- Tried and dropped: τ blended as a rate (the sunlit τ dominates, 6 → 12 days changed nothing); the inversion's darkness
+  ramp (too narrow) and S₀/6 … S₀/3, S₀/8 … S₀/4 (winter memory reaching the subtropics: south China 5.4 vs 9.8 °C,
+  Indochina out of the tropics); the ridge floor kept (Pacific air over the Great Plains: Minnesota −0.8 vs −11.3); a
+  wind-aware 1° coast rule (half the land share upwind: west coasts too mild, lee coasts wrong; RMS 6.26 → 6.37); a
+  stronger inversion for Yakutsk (−30.8 vs −37 but high-latitude coasts too cold, RMS 7.18); no evaporative damping
+  (tropical coasts overshoot).
+
+**Numbers (Earth, 160K).**
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Annual range: RMS error / correlation | 6.83 °C / 0.902 | **6.26 / 0.913** | — |
+| Coldest month: Ireland / Germany / Poland / Moscow | 1.9 / −2.6 / −6.3 / −16.1 | 3.2 / −0.1 / −1.6 / −7.7 | 5.6 / 0.7 / −1.7 / −7.3 |
+| … north-east China / south China / Central Asia | −8.3 / 11.3 / −13.7 | −13.3 / 9.2 / −9.0 | −16.4 / 9.8 / −7.8 |
+| Range, west / east coasts 35–65°N | 21.2 / 25.1 | 18.9 / 27.6 | 19.4 / 31.2 |
+| Köppen (continents equal) | 48.3 % (47.5) | 48.1 % (47.8) | V1 38 % |
+| Europe / North America / Asia | 45.6 / 50.2 / 32.5 % | 50.4 / 49.0 / 31.9 % | — |
+| Land temperature / pressure / wind 45° | 3.79 °C / 2.83 hPa / 80.3 % | 3.78 / 2.85 / 80.3 | — |
+
+- Gates: coupled PASSED, no drift (640K 48.3 %, 2.5M 48.4 %, shares within 1.0 %); ocean-check PASSED (its North
+  Atlantic line fails with or without this: a known shortfall). Timing unchanged (~0.8 s on Earth).
+- Worlds: west coasts milder and east coasts harsher (world 202 northern west / east 16.8 / 20.1 → 15.9 / 21.1 °C,
+  world 12345 12.6 / 19.0 → 10.5 / 19.0); aridity unchanged.
+- **Known:** North America's winter wind blows from the south-west over the Plains (real: north-west, Arctic air behind
+  the trough the Rockies force) — Minnesota's coldest month −2.9 vs −11.3, Montana −3.8 vs −6.3: the circulation has
+  no mountain-forced stationary waves. Yakutsk still −27 vs −37 (hypercontinental cold under a calm high). Tropical
+  interiors still flat (10–20° far inland 5–6 vs 8–10 °C). The North Atlantic ≈ 3 °C cold carries into Ireland and
+  Iceland.
+
+
+## Phase 13 — monsoons and land rain: less dry worlds
+
+From Phase 11e: generated worlds 34–42 % arid (the latitude alone predicts 29–35 %), the excess in the subtropics; the
+model's summer monsoons weak (Earth's land at 10–20°S in January 117 vs real 224 mm/month).
+
+**Diagnosed** (scratch probes on the rain stage's budget; `diag-dry.mjs` on four worlds).
+- Southern Africa in January: column relative humidity 0.54–0.60, so the deep-convergence share is 0 (`RAIN_DEEP_R0`
+  0.6): the monsoon inflow is treated as a shallow dry heat low. Land evaporation supplies most of the rain (E 2.4–3.7
+  of P 2.9–5.0 mm/day); the import from the sea (P − E) is 0.5–1.3 mm/day (real ≈ 4). Over all land E/P is
+  0.83–0.88 (real ≈ 0.6–0.65): too little ocean water reaches land.
+- The summer rain belts over land: southern Africa's peak at 7.5°S (real 12.5), Australia's on New Guinea (real
+  11.5°S), South America's 202 vs 312 mm/month; India's July peak at 6.5°N (real 19.5).
+- What did not help: the deep-convergence range lowered to 0.45 … 0.75 or 0.5 … 0.65 (January 10–20°S 117 → 129;
+  worlds 41 → 40 % arid; July in the north too wet); a land-weighted tropical trough (no change); rain efficiency over
+  land × the ground's wetness (concentrates rain where it already falls: 0–15°S more arid).
+
+**Built** (`rain.js`): land convection. Over sunlit land rain picks up at a lower column humidity than over the sea
+(afternoon storms: Schiro et al. 2016): the rate × e^{(a·s)²/2} — the same form as the storms' humidity spread — with
+s = `RAIN_LAND_CONVECTION` × land share × the sun's share of full strength (daily sunlight `CONVECT_SUN_LOW` S₀/8 …
+`CONVECT_SUN_FULL` S₀/4: none under a winter sun, full in the tropics and the summer). A desert's air is too dry for it
+to matter much; moisture passing over semi-arid land rains there rather than returning to the sea. At 0.065 it is ×1.38
+at full sun, an effective shift of ≈ 2.6 % of column humidity (the literature: 5–10 %).
+
+| | Before | 0.05 | **0.065** | 0.08 |
+|---|---|---|---|---|
+| Worlds 202 / 101 arid | 41 / 42 % | 38 / 39 | **36 / 36** | 35 / 34 |
+| Earth arid (Beck 31 %) | 32 % | 31 | 30 | 28 |
+| Köppen (continents equal) | 48.1 % (47.8) | 47.6 (47.4) | **47.0 (46.6)** | 46.0 (44.8) |
+| Australia / South America | 56.3 / 39.3 % | 56.0 / 37.8 | 53.6 / 36.4 | 46.9 / 34.3 |
+
+- Worlds (all four): arid 40 / 38 / 34 / 35 → 36 / 36 / 32 / 34 % (latitude alone: 31 / 33 / 35 / 29); land rain
+  +8–10 %. Test planets: the mid-latitude continent 63 → 59 % arid, the tropical 53 → 49, the supercontinent 91 → 86.
+- Gates: coupled PASSED, no drift (640K 47.5 %, 2.5M 47.6 %, shares within 1.0 %); guardrails hold (land temperature
+  3.87 °C, sea 2.50, pressure 2.85 hPa, wind 80.3 %). The Köppen cost is hot desert turning to hot steppe
+  (Australia, South America): BWh 12 → 10 % of land (real 14).
+- **Known:** the summer rain belts' positions and strength over land (above) are unchanged: the pressure pattern places
+  them (the tropical trough follows each longitude's warmest latitude, smoothed with the neighbouring seas); the
+  southern winter's tropics are too wet on Earth (July at 10–20°S 36 vs real 12 mm/month), which hid the weak summer.

@@ -33,9 +33,12 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
     TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
     TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
-    TEMP_LOCAL_KM: 1500,
+    TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
     TEMP_CURRENT_MEMORY: 0.6,     // –          share of the temperature of where its water comes from that a current keeps
-    TEMP_COAST_CARRY: 0.6,      // –          … the share of the upwind sea's anomaly onshore winds carry onto land        // km         … its departure from the region within this (Gaussian σ) is added over land
+    TEMP_COAST_CARRY: 0.6,      // –          … the share of the upwind sea's anomaly onshore winds carry onto land
+    TEMP_AIR_SEA_DAYS: 1,       // days       air masses: time for air over the open sea to take on its temperature …
+    TEMP_AIR_SUN_DAYS: 0.5,     // days       … over sunlit land (convection mixes the air) …
+    TEMP_AIR_DARK_DAYS: 4,      // days       … and over land under a weak sun (stable air on colder ground); 0 = off
     TEMP_EVAP_DAMPING: 15,      // W/m²/K     evaporation's damping of the seasons over a wet surface at 25 °C
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
@@ -102,6 +105,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
     RAIN_INSTABILITY: 0.0187,        // 1/K        … and gained per K a sea is warmer (unstable air off warm currents, warm currents)
     RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
+    RAIN_LAND_CONVECTION: 0.065, // –         spread of the column's relative humidity by afternoon storms over sunlit, wet land
     RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
     RAIN_LEE_PER_KM: 1,         // 1/km       rain shadows on the 1° grid: rain × e^{−this × km the air has come down from higher ground}
@@ -143,6 +147,9 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_LOCAL_K:       { value: 6, min: 3, max: 15, source: 'advective exchange of a ~1.5 km boundary layer at ~5 m/s over ~1000 km: ρ c_p H U / L ≈ 9 W/m²/K' },
     TEMP_CURRENT_MEMORY: { value: 0.6, min: 0.2, max: 1, source: 'western boundary currents run ≈ 2–5 °C warmer and eastern boundary currents ≈ 2–4 °C colder than their latitude (OISST) — against ≈ 6–10 °C of latitude temperature change along ≈ 1500 km of their path' },
     TEMP_COAST_CARRY:   { value: 0.6, min: 0.2, max: 1, source: 'onshore winds carry the sea\'s warmth or cold a few hundred km inland (the maritime west coasts; the cool coastal deserts beside cold currents)' },
+    TEMP_AIR_SEA_DAYS:  { value: 1, min: 0.3, max: 2, source: 'air-mass transformation over the sea: cold-air outbreaks warm ≈ 5–10 K within a day over open water (heat fluxes of 200–500 W/m² into a ≈ 1 km boundary layer)' },
+    TEMP_AIR_SUN_DAYS:  { value: 1, min: 0.5, max: 2, source: 'a sunlit convective boundary layer (1–2 km) takes on its surface\'s heating within a day or two (sensible heat 100–300 W/m²)' },
+    TEMP_AIR_DARK_DAYS: { value: 6, min: 3, max: 12, source: 'maritime air over snowy winter continents cools ≈ 1–2 K/day (radiative loss from a stable boundary layer): a 10–20 K contrast lasts about a week — Atlantic air keeps Europe mild 2000–3000 km inland' },
     TEMP_LOCAL_KM:      { value: 1500, min: 800, max: 2500, source: 'the scale of the weather systems whose heat transport the diffusion stands for (≈ 1000–2000 km)' },
     TEMP_EVAP_DAMPING:  { value: 15, min: 5, max: 30, source: 'sensitivity of the surface latent heat flux to temperature ≈ 10–20 W/m²/K over tropical oceans and wet land (e.g. Hartmann 2016; Zhang & McPhaden 1995)' },
     TEMP_WET_COOL_C:    { value: 3, min: 1, max: 8, source: 'soil-moisture–temperature coupling: dry soils raise monthly mean temperature by several K (Seneviratne et al. 2010); Sahel pre-monsoon vs monsoon months ≈ 5–6 K; tropical deforestation +1–3 K' },
@@ -193,6 +200,7 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_HIGH_K_PER_HPA: { value: 0.5, min: 0, max: 1.5, source: 'subsidence under the subtropical highs warms the air above the marine layer by several K (a trade-wind / stratocumulus inversion of 5–10 K under +5–10 hPa highs)' },
     RAIN_INSTABILITY:   { value: 0.015, min: 0, max: 0.03, source: 'convection over surfaces warmer than their surroundings (heated plateaus, warm currents such as the Gulf Stream and Kuroshio) raises rain for the same humidity; no direct literature value — kept to the scale of the stable-air term' },
     RAIN_SOIL_MM:       { value: 150, min: 50, max: 300, source: 'plant-available soil water capacity ≈ 100–200 mm (e.g. Manabe 1969 bucket: 150 mm)' },
+    RAIN_LAND_CONVECTION: { value: 0.08, min: 0, max: 0.12, source: 'daytime convection over wet land: rain over land peaks in the afternoon and picks up at ≈ 5–10 % lower column humidity than over the sea (Schiro et al. 2016; Bergemann & Jakob 2016); soil-moisture–precipitation coupling in monsoon regions (Koster et al. 2004)' },
     RAIN_COLUMN_LOCAL:  { value: 0.5, min: 0.2, max: 0.9, source: 'lower-tropospheric temperature anomalies over continents are ≈ 40–60 % of the surface anomaly' },
     RAIN_OROG_STORM:    { value: 1, min: 0.5, max: 1, source: 'orographic precipitation is concentrated in storms with strong cross-barrier flow (≈ 10–20 m/s), not the weak monthly-mean wind (Roe 2005)' },
     RAIN_LEE_PER_KM:    { value: 1, min: 0.3, max: 2, source: 'lee-side rain falls ≈ ×0.2–0.5 of windward within a few hundred km behind 1–2 km of relief (Cascades, Andes, Southern Alps; Roe 2005)' },

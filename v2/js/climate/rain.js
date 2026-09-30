@@ -16,7 +16,8 @@
 //  • Rain: the column rains out steeply as it nears saturation — rain grows exponentially with the column's relative
 //    humidity (Bretherton et al. 2004) — with a saturated column set by the air temperature (Clausius–Clapeyron).
 //    Storms, growing where the poleward temperature gradient is strong, spread the humidity within the month and so
-//    raise the month's rain (the mid-latitude storm belts, winter rain). Air over a surface colder than its latitude
+//    raise the month's rain (the mid-latitude storm belts, winter rain); so do afternoon storms over sunlit land (land
+//    rains at a lower column humidity than the sea). Air over a surface colder than its latitude
 //    (cold currents, upwelling, winter continents) is stable and rains less (the coastal deserts, dry winter highs).
 //    Air forced up rising ground rains out too — in storms, so at the storms' wind speed — which dries the air beyond
 //    the mountains (rain shadows). High ground holds a share of the column that depends on how much it heats the air
@@ -33,7 +34,7 @@ import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { HelmholtzSolver } from './solver.js';
 import { atAnchors } from './inputs.js';
 import { PARAMS } from './config.js';
-import { dailyInsolation, declination } from './insolation.js';
+import { dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
 
 const R_PLANET = 6.371e6;
 const RHO_AIR = 1.2;                          // kg/m³ near the surface
@@ -52,6 +53,8 @@ const ALBEDO_LAND = 0.15, ALBEDO_SNOW = 0.6;
 const BRUNT = 0.01;                           // 1/s, buoyancy frequency of the troposphere (Eady growth rate, flow blocking)
 const MAX_SHEAR = 4e-3;                       // 1/s, strongest vertical wind shear of a jet (≈ 40 m/s over 10 km)
 const STABLE_RELAX_S = 86400;                 // s, time for air to take on the stability of the surface beneath it
+const CONVECT_SUN_LOW = SOLAR_CONSTANT / 8;   // W/m² daily sunlight (top of the air) below which land does not convect …
+const CONVECT_SUN_FULL = SOLAR_CONSTANT / 4;  // … and above which it does fully (the tropics, the summer)
 
 /** Saturation specific humidity (kg/kg) at T (°C), 1013 hPa — Magnus formula. */
 export function qSat(T) {
@@ -316,6 +319,9 @@ export function columnWaterRain() {
 
             const delta = declination(ctx.anchorMonths[k] + 0.5, ctx.options.tiltDeg ?? 23.44);
             const sun = Float64Array.from(g.lat, l => dailyInsolation(l * DEG, delta));
+            // land convection's share of full strength by the day's sunlight: none under a winter sun, full in the
+            // tropics and the summer (CONVECT_SUN_LOW … CONVECT_SUN_FULL of daily sunlight at the top of the air)
+            p.sunConv = Float64Array.from(sun, q => { const x = Math.min(1, Math.max(0, (q - CONVECT_SUN_LOW) / (CONVECT_SUN_FULL - CONVECT_SUN_LOW))); return x * x * (3 - 2 * x); });
             for (let j = 0; j < h; j++) {
                 const x = P_.RAIN_STORM_RH * eady[j] * 86400, sd = S_MAX * (1 - Math.exp(-x / S_MAX));
                 const storm = Math.exp(0.5 * (a * sd) ** 2), gust2 = P_.OCEAN_GUST_MS ** 2 + (eady[j] * Lmix) ** 2;
@@ -328,7 +334,12 @@ export function columnWaterRain() {
                     // air, carried onshore by the wind) convects and rains more — humidity effectively raised by
                     // RAIN_INSTABILITY per K
                     const stable = Sair[c] >= 0 ? Math.exp(-a * P_.RAIN_STABILITY * Sair[c]) : Math.exp(-a * P_.RAIN_INSTABILITY * Sair[c]);
-                    p.rate[c] = storm * stable;
+                    // Land convection: sunlit ground heats the air near it by day, and afternoon storms spread the
+                    // column's humidity within the month (as the storms of the mid-latitudes do) — over land rain picks up
+                    // at a lower column humidity than over the sea: × e^{(a·s)²/2}, s = RAIN_LAND_CONVECTION × the sun's
+                    // share (none under a winter sun). A desert's air is too dry for it to matter much.
+                    const sc = a * P_.RAIN_LAND_CONVECTION * land[c] * p.sunConv[j];
+                    p.rate[c] = storm * stable * Math.exp(0.5 * sc * sc);
                     // Lift where the wind blows up rising ground (1/s per unit of column water: upslope speed over the
                     // vapour scale height, times the share that rains out). Orographic rain falls in storms, so the wind
                     // is taken at the storms' speed as well as the mean's — the mean wind's direction, √(U² + (s·σL)²).
@@ -383,7 +394,7 @@ export function columnWaterRain() {
          * The divergent part of the moisture wind by how deep the converging layer is: shallow where the air is dry
          * (heat lows under dry air aloft, the trade-wind layer), deep where the column is moist and convecting (the rain
          * belt, monsoons, rainforests) — from RAIN_WIND_DIV_DRY to RAIN_WIND_DIV_MOIST of the near-surface wind as the
-         * column's relative humidity rises from 0.45 to 0.75.
+         * column's relative humidity rises from RAIN_DEEP_R0 to RAIN_DEEP_R1.
          */
         function setWind(p, Wv) {
             const d0 = P_.RAIN_WIND_DIV_DRY, d1 = P_.RAIN_WIND_DIV_MOIST;

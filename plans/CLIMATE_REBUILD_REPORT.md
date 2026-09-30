@@ -66,6 +66,9 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 11b | Your feedback: simulated planets too blotchy | done | The climate follows half of each terrain cell's own bumps: Evolution worlds ≈ 30–40 % fewer speckles and patches; Earth still near the real map's detail; Köppen 48.2 % |
 | 11c | Your question: do higher mountains release more rain? | done | Windward slopes now get wetter with height up to the crest; crests no longer drier than the plains; mountain contrast ×2.11 (real ×3.42) |
 | 11d | Your feedback: warm and cold currents, relative to their latitude, and their rain | mostly | Warm-current seas now clearly warmer than cold-current seas (+1.2 °C, was +0.1; real +2.8); their coasts warmer and wetter or cooler and drier; Köppen 47.2 % (decision 8) |
+| 11e | Your feedback: generated worlds too dry | found, part fixed | Two causes: Phase 11d cooled the subtropical seas ≈ 1 °C (fixed: currents now relative to each latitude; Köppen back to 48.3 %), and weak summer monsoons (next phases) |
+| 12 | Your feedback: continentality along coasts and islands | mostly | Air masses carried by each month's wind: Europe's winters right inland (Moscow's coldest month −7.7 vs real −7.3, was −16.1), east coasts colder, the annual-range error 6.83 → 6.26 °C; Köppen 48.1 % (Europe +5 points) |
+| 13 | Your feedback: generated worlds too dry (monsoons) | partly | Land now rains more readily than the sea under a strong sun: worlds 36 % arid (were 40–42 %), within a few points of what their latitudes predict; Köppen 47.0 % (decision 9) |
 
 ## Decisions waiting for you
 
@@ -100,9 +103,12 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
    chose a weak "land's own seasons" layer (`TEMP_LOCAL_K` 14): Australia's seasons are still half of real and the Great
    Basin's summer 7 °C too cool. `TEMP_LOCAL_K` 8 gives them most of their real seasons for about a point of Köppen.
    Which way do you want it?
-8. **Currents vs the Köppen score** (Phase 11d). The currents' warmth and cold cost about a point of Köppen, mostly
-   Australia, where the interior gets wetter (closer to its real rain) but hot desert turns into hot steppe. The dial is
-   `TEMP_CURRENT_MEMORY` in `v2/js/climate/config.js` (0.6; 0 = off, 0.8 = stronger). Keep it?
+8. ~~Currents vs the Köppen score~~ — settled by Phase 11e: the point of Köppen was a bug (the subtropical seas ran
+   cold); with it fixed the currents cost nothing.
+9. **Wetter worlds vs the Köppen score** (Phase 13). Land convection (`RAIN_LAND_CONVECTION` in
+   `v2/js/climate/config.js`) makes generated worlds less arid at a cost on Earth: 0.05 → worlds 38–39 % arid, Köppen
+   47.6 %; **0.065 (now)** → 36 %, 47.0 %; 0.08 → 34–35 %, 46.0 % (Australia's deserts turn to steppe). Which feel do
+   you want?
 
 ## The approach, in one paragraph
 
@@ -640,3 +646,77 @@ Köppen 48.3 → 47.2 % — decision 8.
 **Still not right.** The Gulf Stream's sea stays cold (the continent's winter air wins), and the coldest coasts (Peru,
 Namibia, California) are cold mostly from upwelling, which I tried to strengthen here but it bent the trade winds and
 broke South America's rain, so it stays as it was.
+
+## Phase 11e — why generated worlds are too dry
+
+**What I found.** Generated worlds are 34–40 % desert and steppe, against Earth's 30 %. Some of that is geography: they
+have less cold northern land, which can never be arid. If each latitude were as dry as Earth's they would be 29–35 %. The
+rest is in the subtropics (15–35°: about 85 % arid, Earth about 60–67 %) and just south of the equator. The mountain rules,
+how unevenly rain falls, and rain recycled from wet ground are all fine.
+
+**Cause 1 — my currents change (fixed).** Each sea's warmth or cold was balanced over the whole planet instead of per
+latitude. A gyre's broad slow cold side covers more sea than its narrow warm current, so the subtropical seas ran about
+1 °C cold and tropical land lost about 14 % of its rain to the sea, on Earth too. Now each latitude's sea is balanced on
+its own. Tropical land south of the equator gets 10–17 % more rain; Earth's Köppen match is back to 48.3 % (was 47.2), the
+sea temperature error falls, and the currents look the same (warm minus cold +1.2 °C).
+
+**Cause 2 — weak summer monsoons (next).** In January, land at 10–20°S gets about half its real rain in the model; on
+Earth the model's too-wet southern winters hide that, but the worlds' big continents have dry winters, so nothing hides
+it. The model treats monsoon air as a shallow, dry heat low, and on a big continent the heat low sits to one side while
+the rest of the continent breathes dry air from the interior.
+
+## Phase 12 — continentality: air masses along the wind
+
+**What I found.** Summers were about right; winters didn't follow the wind that brings them. Europe inland was far too
+cold (Moscow's coldest month −16 °C, real −7), and east coasts too mild (north-east China −8, real −16; Japan 7, real 1).
+The model spread heat alike in every direction, while a month's weather is really the air the wind brought.
+
+**Built — air masses.** Each month, air moves with that month's wind and slowly takes on the temperature of the ground it
+crosses: within a day over the sea; within half a day over sunlit land, where convection mixes it; and over about four
+days over land in the winter half of the world, where it lies stable over cold ground. So Atlantic air keeps Europe mild
+far inland, the continent's cold blows out over east coasts, a narrow sea on the way (the Sea of Japan) partly warms the
+air again, islands and coasts the wind blows onto stay oceanic, and a calm interior keeps its own climate. Mountain
+ranges block it, and air coming down from a plateau warms as it sinks. Most of your guide's zone rules follow from this
+on their own, on any planet.
+
+| Coldest month, °C | Before | Now | Real |
+|---|---|---|---|
+| Germany | −2.6 | −0.1 | 0.7 |
+| Poland | −6.3 | −1.6 | −1.7 |
+| Moscow | −16.1 | −7.7 | −7.3 |
+| North-east China | −8.3 | −13.3 | −16.4 |
+| South China | 11.3 | 9.2 | 9.8 |
+
+The error in the yearly temperature range falls from 6.8 to 6.3 °C; Köppen 48.1 % (Europe 45.6 → 50.4 %); every other
+check holds. On the generated worlds west coasts get milder and east coasts harsher.
+
+**Still not right.** North America's winter wind over the Plains blows from the south-west in the model (really from the
+north-west, bringing Arctic air), so Minnesota's winter is 8 °C too mild — a gap in the pressure pattern (mountains
+bending the westerlies), not in continentality. Yakutsk's extreme cold (−37 °C) reaches only −27. Tropical interiors
+are still a little too even through the year.
+
+## Phase 13 — less dry worlds: land rain and monsoons
+
+**What I found.** The model's summer monsoons are weak — on Earth, land at 10–20°S gets about half its real January
+rain — and more generally too little of the ocean's water reaches land: the continents mostly rain their own
+evaporation (83–88 % of their rain; really about 60 %). The model treated the monsoon's inflow as a shallow, dry heat low,
+and it placed the southern summer rain belts too near the equator.
+
+**Built — land convection.** Over sunlit ground, afternoon storms make land rain at a lower humidity than the sea does.
+That is now in: full in the tropics and the summer, none under a winter sun, and it hardly touches deserts (their air is
+too dry). Air crossing semi-arid land now rains there instead of carrying its water back out to sea.
+
+| | Before | Now |
+|---|---|---|
+| Generated worlds, share desert and steppe | 34–42 % | 32–36 % |
+| … what their latitudes alone would predict | 29–35 % | |
+| Test supercontinent, share desert and steppe | 91 % | 86 % |
+| Earth: share desert and steppe (real 31 %) | 32 % | 30 % |
+| Köppen on Earth | 48.1 % | 47.0 % |
+
+Decision 9 is the dial: stronger makes the worlds greener and costs Earth's hot deserts.
+
+**Still not right.** Where the summer rain belts sit over land comes from the pressure pattern, and I could not move them
+here without breaking other things: southern Africa's belt peaks at 7.5°S (really 12.5°S), India's July rains
+fall mostly in the south. That, with North America's winter wind (Phase 12), points to the next big piece — the
+pressure pattern over continents (mountains bending the westerlies, and where heat lows sit).
