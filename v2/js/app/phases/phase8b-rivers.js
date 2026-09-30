@@ -15,8 +15,8 @@ const CHECKLISTS = {
     japan: ['The mountainous arc is cut by short, steep valleys running to both coasts.'],
     hawaii: ['The volcanic islands keep their shapes (too small for big rivers); the sea floor is not carved.'],
     traps: [
-        'Rivers cut canyons into the basalt with cliffed, stepped walls (hard caprock: flat treads and cliffs, flow on flow — "trap" is a stair); the escarpment and the flanks of mesas are stepped too, while the unbroken plateau top stays smooth.',
-        'Scrub through time: an intact plateau, then canyons and a retreating escarpment with mesas before it, then buttes and a low stepped remnant.',
+        'Rivers cut canyons into the basalt (hard caprock), and their valleys widen through it with time; the slopes are faintly benched (flow on flow — "trap" is a stair), while the unbroken plateau top stays smooth.',
+        'Scrub through time: an intact plateau with canyons, then a dissected plateau — the escarpment retreating from its edge, broad valleys along its rivers — then flat-topped hills on the divides, then remnants.',
     ],
     cratons: ['A trunk river gathers in the lowland along the front of India’s range (Drainage layer), fed from the range and from the shield; the shields themselves are cut slowly (hard rock), their rivers shallow.'],
     rift: ['The escarpment facing the young ocean is cut by short steep rivers; behind its crest the rivers flow inland, away from the new coast — the great escarpment is a divide.'],

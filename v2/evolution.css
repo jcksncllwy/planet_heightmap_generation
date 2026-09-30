@@ -103,6 +103,11 @@
 }
 .evo-chip button[hidden] { display: none; }
 
+/* the finish: its progress */
+.evo-finish-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); margin: -2px 0 8px; overflow: hidden; }
+.evo-finish-bar[hidden] { display: none; }
+.evo-finish-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6a4, #ad6); transition: width 0.4s; }
+
 /* how far the history has got */
 .evo-status {
     font-size: 12px; color: #9ab; margin: -4px 0 12px; line-height: 1.5;

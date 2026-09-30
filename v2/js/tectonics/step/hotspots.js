@@ -21,6 +21,7 @@ import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { tangentBasis, normalize } from '../../core/sphere-geom.js';
 import { SimplexNoise } from '../../../../js/simplex-noise.js';
+import { makeRng } from '../../../../js/rng.js';
 import { EventKind } from '../model/world.js';
 
 /**
@@ -166,34 +167,68 @@ function birth(world, xyz, { head = true, rift = 'chance', riftPlate = -1, riftC
 }
 
 /**
- * The head: flood basalt over a province lipRadiusMin…MaxKm across, thickest in the middle. Its outline is lobed and
- * ragged like a craton's (developer: not a disc) — low-order harmonics, each province with its own raggedness, plus
- * finer noise that bites bays into it and pushes tongues out.
+ * The head: flood basalt over a province of lipAreaMin…MaxMkm2 (log-uniform: many small, a few vast — the Columbia River
+ * basalts 0.2 Mkm², the Deccan 1.5, Siberia ~4), thickest by its vents. No two alike (developer: "all almost the same size
+ * and shape"): a province is the lava of a few great flows — one to four elongated lobes (ellipses of aspect 1…3, turned
+ * every way), the first on the plume and the others spilling off it, often along one axis (a rift's: the CAMP, the
+ * Karoo) — its edge ragged with lobes and tongues (a warped noise), like lava that flooded the low ground.
  */
 function eruptLip(world, h, w0) {
     const { config, mesh, plates, owner, ownerCell, provisional, time } = world, { adjOffset, adjList, cellAreaKm2, xyz } = mesh;
-    const radius = (config.lipRadiusMinKm + world.rngHotspot() * (config.lipRadiusMaxKm - config.lipRadiusMinKm)) / PLANET_RADIUS_KM;
+    // (the draws the shared streams always gave a head — the same number, in the same order; its shape from a stream of
+    // its own, seeded from them: the rest of the history is unchanged)
+    const u = world.rngHotspot();
     const rv = world.rngVolcano, ragged = 0.4 + 0.6 * rv();
     const lobes = [1, 2, 3, 4, 5].map(k => ({ k, amp: ragged * rv() * config.lipLobes / Math.sqrt(k), phase: rv() * 2 * Math.PI }));
-    const noise = new SimplexNoise(Math.floor(rv() * 1e9)), [e1, e2] = tangentBasis(h.xyz), freq = 3 / radius;
-    const reachOf = w => {                                  // the outline's radius in the direction of cell w
-        const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
-        const theta = Math.atan2(x * e2[0] + y * e2[1] + z * e2[2], x * e1[0] + y * e1[1] + z * e1[2]);
-        let shape = 1;
-        for (const l of lobes) shape += l.amp * Math.cos(l.k * theta + l.phase);
-        shape += config.lipEdgeNoise * noise.fbm(x * freq, y * freq, z * freq, 3);
-        return radius * Math.max(0.25, shape);
+    const noiseSeed = Math.floor(rv() * 1e9), noise = new SimplexNoise(noiseSeed), rs = makeRng((noiseSeed ^ 0x11b5) >>> 0);
+    const areaKm2 = 1e6 * config.lipAreaMinMkm2 * (config.lipAreaMaxMkm2 / config.lipAreaMinMkm2) ** u;
+    const radius = Math.sqrt(areaKm2 / Math.PI) / PLANET_RADIUS_KM;          // (of a disc of that area)
+    // the flows: a main lobe on the plume, and up to three more off it — mostly along the province's own axis
+    const axis = rs() * Math.PI, [b1, b2] = tangentBasis(h.xyz), count = 1 + Math.floor(rs() * rs() * 4);
+    const flows = [];
+    let weight = 0;
+    for (let i = 0; i < count; i++) {
+        const w = i === 0 ? 1 : 0.25 + 0.6 * rs();
+        const along = i === 0 ? 0 : (0.6 + 0.6 * rs()) * (rs() < 0.5 ? -1 : 1), off = i === 0 ? 0 : radius * along;
+        const dir = axis + (rs() - 0.5) * 1.2, cd = Math.cos(off), sd = Math.sin(off);
+        const c = normalize([cd * h.xyz[0] + sd * (Math.cos(dir) * b1[0] + Math.sin(dir) * b2[0]), cd * h.xyz[1] + sd * (Math.cos(dir) * b1[1] + Math.sin(dir) * b2[1]),
+            cd * h.xyz[2] + sd * (Math.cos(dir) * b1[2] + Math.sin(dir) * b2[2])]);
+        const aspect = 1 + 2 * rs() * rs(), turn = (i === 0 ? axis : dir) + (rs() - 0.5) * 0.8, [f1, f2] = tangentBasis(c);
+        flows.push({ c, f1, f2, w, aspect, cos: Math.cos(turn), sin: Math.sin(turn) });
+        weight += w;
+    }
+    // (their sizes shared out so the whole, overlaps and all, comes to about the province's area)
+    for (const f of flows) { const r = radius * Math.sqrt(1.25 * f.w / weight); f.a = r * Math.sqrt(f.aspect); f.b = r / Math.sqrt(f.aspect); }
+    const warpF = 2.5 / radius, freq = 5 / radius;
+    // how far inside the province a cell is: 1 at a vent, 0 on the edge (< 0 outside) — the nearest flow's, the edge
+    // pushed in and out by the lobes and a warped noise
+    const depth = w => {
+        let x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
+        const wx = 0.35 * radius * noise.fbm(x * warpF + 3.1, y * warpF, z * warpF, 2), wy = 0.35 * radius * noise.fbm(x * warpF, y * warpF + 5.3, z * warpF, 2), wz = 0.35 * radius * noise.fbm(x * warpF, y * warpF, z * warpF + 7.7, 2);
+        x += wx; y += wy; z += wz;
+        let best = -Infinity;
+        for (const f of flows) {
+            const px = x * f.f1[0] + y * f.f1[1] + z * f.f1[2], py = x * f.f2[0] + y * f.f2[1] + z * f.f2[2];
+            const pu = px * f.cos + py * f.sin, pv = -px * f.sin + py * f.cos, q = Math.hypot(pu / f.a, pv / f.b);
+            if (1 - q > best) best = 1 - q;
+        }
+        const theta = Math.atan2(x * b2[0] + y * b2[1] + z * b2[2], x * b1[0] + y * b1[1] + z * b1[2]);
+        let lobe = 0;
+        for (const l of lobes) lobe += l.amp * Math.cos(l.k * theta + l.phase);
+        return best + 0.5 * lobe + config.lipEdgeNoise * noise.fbm(x * freq, y * freq, z * freq, 3);
     };
-    const inside = w => Math.acos(Math.min(1, dotCell(mesh, w, h.xyz))) <= reachOf(w);
+    const inside = w => depth(w) > 0;
     let cells = 0, landCells = 0;
     const seen = new Set([w0]);
     for (let queue = [w0], i = 0; i < queue.length; i++) {
         const w = queue[i];
         if (owner[w] >= 0 && !provisional[w]) {
-            const crust = plates[owner[w]].crust, c = ownerCell[w], d = Math.min(1, Math.acos(Math.min(1, dotCell(mesh, w, h.xyz))) / reachOf(w));
+            const crust = plates[owner[w]].crust, c = ownerCell[w], d = 1 - Math.max(0, Math.min(1, depth(w)));
             crust.volcType[c] = VolcanicType.LIP;
             crust.volcAt[c] = time;
-            crust.volcKm[c] = Math.max(crust.volcKm[c], config.lipThicknessKm * (1 - 0.6 * d * d));
+            // (flat-lying flows: a plateau of nearly even thickness, a little thicker by the vents, thinning only near its edge)
+            const inn = 1 - d;
+            crust.volcKm[c] = Math.max(crust.volcKm[c], config.lipThicknessKm * (0.8 + 0.2 * inn) * (0.35 + 0.65 * Math.min(1, inn / 0.15)));
             crust.volcSource[c] = h.id + 1;
             crust.flags[c] |= CrustFlag.LIP;
             cells++;
@@ -202,7 +237,7 @@ function eruptLip(world, h, w0) {
         for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (!seen.has(nb) && inside(nb)) { seen.add(nb); queue.push(nb); } }
     }
     const onLand = landCells * 2 > cells, host = owner[w0] >= 0 && !plates[owner[w0]].isBackground ? plates[owner[w0]].name : 'the open ocean';
-    h.lip = { name: `${h.name} ${onLand ? 'Traps' : 'Plateau'}`, time, radiusKm: radius * PLANET_RADIUS_KM, cells, onLand };
+    h.lip = { name: `${h.name} ${onLand ? 'Traps' : 'Plateau'}`, time, radiusKm: radius * PLANET_RADIUS_KM, flows: count, cells, onLand };
     world.log(EventKind.LIP, `the ${h.lip.name} erupt${onLand ? '' : 's'}: ${(cells * cellAreaKm2 / 1e6).toFixed(1)} Mkm² of flood basalt on ${host}`,
         { hotspot: h.id, name: h.lip.name, onLand, areaMkm2: cells * cellAreaKm2 / 1e6, plate: owner[w0] >= 0 && !plates[owner[w0]].isBackground ? owner[w0] : -1 });
 }

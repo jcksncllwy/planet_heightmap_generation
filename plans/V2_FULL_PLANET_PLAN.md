@@ -232,7 +232,8 @@ sea COLOURS across each terrain triangle (a zig-zag along every shore). Built (o
     simulated planets — and windward rain growing with height): no change to the page needed (defaults). Re-checked:
     0.8 s a moment; seed 12345 at 600 Myr 17 / 40 / 12 / 11 / 15 % A / B / C / D / E; the supercontinent at 0 Myr 80 % B.
 
-**E. V1's erosion on the final state — an experiment.**
+**E. V1's erosion on the final state — an experiment.** *Replaced by the Finish step (plans/V2_FINISH_PLAN.md,
+F1–F4 built 2026-09-29): V2's own finishing, climate-driven, on request for a moment.*
 - V1's post-processing (warp, smoothing, hydraulic / thermal / glacial erosion, ridges) run on the chosen moment behind a
   compare toggle, to judge side by side against V2's own. Kept, dropped or blended by the developer's eye.
 

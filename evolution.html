@@ -74,6 +74,26 @@
             <button id="reseedBtn" title="A new random seed">&#x1F3B2;</button>
         </div>
         <div id="buildStatus" class="evo-status" hidden></div>
+        <details class="section" open id="finishSection">
+            <summary>Finish</summary>
+            <div class="section-body">
+                <div class="cg">
+                    <label>Finish Detail <span class="tip" data-tip="The moment shown, sculpted again with care: warped and roughened, its rivers carving longer with the climate's rain, dry basins left closed, sediment laid down, an ice age's glaciers and fjords, and the wind's sand seas and loess. Finer detail takes longer — 10M cells about a minute the first time">?</span></label>
+                    <select id="finishCells">
+                        <option value="160000">160K cells · 61 km</option>
+                        <option value="640000">640K cells · 30 km</option>
+                        <option value="2500000" selected>2.5M cells · 15 km</option>
+                        <option value="10000000">10M cells · 8 km (~1 min)</option>
+                    </select>
+                </div>
+                <button id="finishBtn" class="evo-climate-btn" disabled title="Finishes the moment shown at the detail chosen (seconds to a minute). Kept for that moment while this history is open">Finish This Moment</button>
+                <div id="finishBar" class="evo-finish-bar" hidden><i></i></div>
+                <div id="finishInfo" class="evo-climate-info"></div>
+                <div class="tg" id="finishShowRow" hidden>
+                    <label class="toggle-label"><input type="checkbox" id="chkFinished" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Show Finished Moments</label>
+                </div>
+            </div>
+        </details>
         <details class="section" open>
             <summary>Visual Options</summary>
             <div class="section-body">

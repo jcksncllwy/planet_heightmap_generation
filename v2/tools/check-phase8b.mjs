@@ -199,8 +199,10 @@ section('flood basalt');
         if (Math.abs(A.heightKm[t] - B.heightKm[t]) < 0.005) continue;
         cells++; flatA += nearlyLevel(A.heightKm, t); flatB += nearlyLevel(B.heightKm, t);
     }
-    // (at 30 km cells a steep wall puts each step in a cell of its own: a quarter more treads, not twice as many)
-    check('flood basalt is cut into a stair: flat treads with cliffs between — never raised', cells >= 500 && flatA >= 1.25 * flatB && flatA >= flatB + 0.1 * cells && higher === 0,
+    // (at 30 km cells a steep wall puts each step in a cell of its own: a quarter more treads, not twice as many. Since
+    // 2026-09-29 the stair is only a hint — lipStairShare, developer: "the mesa effect is way too strong … should erode down
+    // more smoothly" — so: more nearly level benches than without it, and never raised)
+    check('flood basalt is benched as it is cut into (flow on flow) — never raised', cells >= 300 && flatA >= 1.1 * flatB && higher === 0,
         `100 Myr on, over the ${cells} terrain cells of basalt the stair shaped: ${(100 * flatA / cells).toFixed(0)} % nearly level (within 20 m) with a neighbour, ${(100 * flatB / cells).toFixed(0)} % without it; ${higher} raised by it`);
 }
 

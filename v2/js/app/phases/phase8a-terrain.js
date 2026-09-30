@@ -73,7 +73,7 @@ const CHECKLISTS = {
     japan: ['The strip that rifted off is a mountainous island arc with volcanoes; the back-arc sea behind it is young ocean floor, shallower than the old ocean.'],
     hawaii: ['Near the plume the volcanoes stand as islands; downstream they are worn down and sink with the aging floor: seamounts in a line along the plate’s motion.'],
     traps: [
-        'Scrub from the eruption (12 Myr) on: a young province is a plateau with a lobed edge; with time its cap is cut away — first at its edge (an escarpment retreating inward) and where it is weakest — leaving flat-topped mesas, then buttes, then scattered remnants.',
+        'Scrub from the eruption (12 Myr) on: a province is a plateau with a ragged, lobed edge; the carving (8b) cuts it up with time — an escarpment retreating from its edge, valleys widening along its rivers, flat-topped hills left on the divides, then remnants.',
         'Hillshade: around the province, and on it where it has worn away, a faint grain of dykes radiating from the plume’s centre, out to about twice the province’s radius.',
     ],
     cratons: [

@@ -77,7 +77,7 @@ section('a plume head reaches a drifting continent (Deccan)');
     check('the head floods the continent with basalt the moment it arrives', !!lipEvent && Math.abs(lipEvent.time - scene.arrivesMyr) < SNAPSHOT_MYR + 1e-6 && lipEvent.data.onLand,
         lipEvent ? `${lipEvent.time.toFixed(0)} Myr: ${lipEvent.text}` : 'no LIP');
     const lip = cellsWhere(numCells, w => last.volcType[w] === VolcanicType.LIP && last.owner[w] >= 0);
-    const smallest = Math.PI * cfg.lipRadiusMinKm ** 2 / cellAreaKm2, largest = Math.PI * cfg.lipRadiusMaxKm ** 2 / cellAreaKm2;
+    const smallest = 1e6 * cfg.lipAreaMinMkm2 / cellAreaKm2, largest = 1e6 * cfg.lipAreaMaxMkm2 / cellAreaKm2;
     const onLand = lip.filter(w => continental(last, w)).length;
     // lobed and ragged, like a craton — not a disc (developer)
     const c = normalize(lip.reduce((s, w) => [s[0] + xyz[3 * w], s[1] + xyz[3 * w + 1], s[2] + xyz[3 * w + 2]], [0, 0, 0])), lipSet = new Set(lip);

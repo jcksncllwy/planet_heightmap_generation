@@ -395,14 +395,18 @@ section('flood basalts through time');
     // over the province (0.25 km of pile or more), away from the coast: where its cap (its top tier) still stands, and how that
     // differs from the third of it nearest its edge to the third furthest in. (The whole province lowers a little
     // as it wears: the cap is what stands within 15 % of the province's highest share of its pile, if that is half.)
-    // The pile unworn: the same frame with its wear record zeroed.
+    // The pile unworn: the same frame with its wear record zeroed. The cap is cut up by the carving (carve.js stripBasalt,
+    // 2026-09-29: along the drainage, from the edge and the rivers), so what stands is read on the carved terrain: the
+    // carved height less the ground under the lava.
+    const carved = f => { const tm = terrainMesh(640000), T = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true, carve: true }); return { ...T, tm }; };
     const cap = f => {
-        const T = terrain(f), U = terrain({ ...f, volcWornKm: new Float32Array(f.volcWornKm.length) }), { rec } = T, S = T.sampler;
+        const T = carved(f), U = terrain({ ...f, volcWornKm: new Float32Array(f.volcWornKm.length) }), { rec } = T, S = T.sampler;
         const share = new Float32Array(T.tm.numCells).fill(NaN), shares = [];
         for (let t = 0; t < T.tm.numCells; t++) {
             let ok = true;
             for (let i = 0; i < 3; i++) { const c = S.cells[3 * t + i]; ok &&= rec.land[c] && rec.coastKm[c] > 300; }
-            if (ok && U.parts.lip[t] >= 0.25) shares.push(share[t] = T.parts.lip[t] / U.parts.lip[t]);
+            const standing = T.parts.lip[t] > 0 ? Math.max(0, T.heightKm[t] - (T.tectonicKm[t] - T.parts.lip[t])) : 0;
+            if (ok && U.parts.lip[t] >= 0.25) shares.push(share[t] = standing / U.parts.lip[t]);
         }
         const highest = quantile(shares, 0.97);
         let thick = 0, kept = 0;
@@ -420,14 +424,15 @@ section('flood basalts through time');
         return { f, T, thick, kept: kept / thick, edge: share3(byEdge.slice(0, third)), inner: share3(byEdge.slice(-third)), third };
     };
     const young = cap(at(10)), mid = cap(at(100)), old = cap(at(250));
-    check('a young flood basalt is an unbroken plateau', young.thick >= 200 && young.kept >= 0.85,
+    // (0.75 since 2026-09-29: measured on the carved terrain, where the rivers' canyons count — the carving alone leaves 82 %)
+    check('a young flood basalt is an unbroken plateau', young.thick >= 200 && young.kept >= 0.75,
         `10 Myr after it erupted, the cap still stands over ${(100 * young.kept).toFixed(0)} % of ${young.thick} terrain cells of the province`);
     check('as it wears its cap is cut away into mesas, which shrink with time — but remnants stand for hundreds of Myr', mid.kept <= 0.7 && mid.kept >= 0.15 && old.kept < mid.kept && old.kept >= 0.02,
         `the cap still stands over ${(100 * mid.kept).toFixed(0)} % 100 Myr after the eruption, ${(100 * old.kept).toFixed(0)} % after 250 Myr`);
     check('its escarpment retreats from the edge: the cap goes sooner there than inside', mid.third >= 100 && mid.inner >= mid.edge + 0.15,
         `100 Myr on, the cap stands over ${(100 * mid.edge).toFixed(0)} % of the third of the province nearest its edge, ${(100 * mid.inner).toFixed(0)} % of the third furthest in (${mid.third} terrain cells each)`);
     // the dykes: the grain alone (with and without it), around the province; against itself along the rays and across them
-    const f = mid.f, T = mid.T, N = terrainWith(f, 640000, { dykeKm: 0 }), tm = T.tm, cells = lipCells(f);
+    const f = mid.f, T = terrain(f), N = terrainWith(f, 640000, { dykeKm: 0 }), tm = T.tm, cells = lipCells(f);
     const C = [0, 1, 2].map(i => cells.reduce((s, w) => s + mesh.xyz[3 * w + i], 0)), cl = Math.hypot(...C); C.forEach((v, i) => { C[i] = v / cl; });
     const Rp = Math.sqrt(cells.length * mesh.cellAreaKm2 / Math.PI), grain = t => T.heightKm[t] - N.heightKm[t];
     const c3 = [0, 0, 0], w3 = [0, 0, 0], s = 45 / 6371;
@@ -443,7 +448,8 @@ section('flood basalts through time');
     }
     const corr = (a, b) => { const ma = mean(a), mb = mean(b); let ab = 0, aa = 0, bb = 0; for (let i = 0; i < a.length; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; } return ab / Math.sqrt(aa * bb); };
     const rAlong = corr(here, along), rAcross = corr(here, across);
-    check('dykes radiate from the plume’s centre: their grain runs out along the rays', here.length >= 1000 && rAlong >= 0.6 && rAlong >= rAcross + 0.25,
+    // (500 cells: provinces come in every size since 2026-09-29 — the scene's is smaller, and so is the ring around it)
+    check('dykes radiate from the plume’s centre: their grain runs out along the rays', here.length >= 500 && rAlong >= 0.6 && rAlong >= rAcross + 0.25,
         `${here.length} land cells 1.1–2.1 radii from the centre: the grain against itself 45 km along the ray ${rAlong.toFixed(2)}, 45 km around ${rAcross.toFixed(2)}`);
 }
 

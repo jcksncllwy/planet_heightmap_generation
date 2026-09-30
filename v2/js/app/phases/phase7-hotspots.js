@@ -19,7 +19,7 @@ const TUNABLES = [
     { id: 'mantleInsulateMyr', label: 'Mantle under a continent warms over', min: 20, max: 400, step: 10, unit: ' Myr' },
     { id: 'mantleCoolMyr', label: '…and cools again over', min: 20, max: 400, step: 10, unit: ' Myr' },
     { id: 'plumeRiftChance', label: 'Chance a plume head splits a big continent', min: 0, max: 1, step: 0.05 },
-    { id: 'lipRadiusMaxKm', label: 'Largest flood-basalt province, radius', min: 300, max: 2000, step: 50, unit: ' km' },
+    { id: 'lipAreaMaxMkm2', label: 'Largest flood-basalt province', min: 0.5, max: 12, step: 0.25, unit: ' Mkm²' },
     { id: 'hotspotBuildKmPerMyr', label: 'Volcanic pile a burst builds per Myr', min: 1, max: 15, step: 0.5, unit: ' km' },
     { id: 'hotspotQuietMaxMyr', label: 'Longest quiet spell between bursts', min: 1.5, max: 12, step: 0.5, unit: ' Myr' },
     { id: 'lipLobes', label: 'How lobed a flood-basalt province is', min: 0, max: 1, step: 0.05 },

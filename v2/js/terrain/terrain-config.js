@@ -132,17 +132,24 @@ export const TERRAIN = {
     // the mesas and buttes it leaves (Ethiopia's ambas), stepped wherever they are cut into ("trap": a stair)
     lipWearKmPerMyr: 0.004,     // the pile wears this fast (× the erosion of the latitude; re-runs the history): the cap is
                                 // stripped as the wear goes through the pile — a thin edge first, the thick middle last…
-    lipEdgeWear: 1.5,           // …sooner near the province's edge, by up to this much (the escarpment retreats inward)…
-    lipEdgeKm: 100,             // …fading over this many km in from the edge (1 and 150 were tuned on edge distances a heap
-                                // bug inflated — core/min-heap.js spreadKm; measured true, a province is ~120 km deep at median)
-    lipMesaKm: 180,             // the cap stays where a mesa noise (features about this many km) stands above the stripping…
-    lipTiers: 3,                // …in this many tiers, each lower where the noise is lower (mesas with tiered flanks)…
-    lipTierStep: 0.15,          // …this far apart in the noise…
-    lipTierBand: 0.04,          // …each dropping over this much of it (steep: a mesa's wall takes about one cell)
-    lipWearFloor: 0.25,         // (and what stands lowers by up to this share as the wear goes through)
+    // …and cut up along its drainage (carve.js stripBasalt; developer, 2026-09-29: a mesa noise was "super blotchy"): its
+    // escarpment retreats from the province's edge, its rivers' valleys widen through it, the cap left on the divides —
+    // a dissected plateau (the Deccan), then mesas along the divides (Ethiopia's ambas), then remnants. Rates × the wear's
+    // age, which runs with the climate's erosion (a wet province goes faster)
+    lipEdgeRetreatKmPerMyr: 0.35, // the escarpment (the Western Ghats ~60–100 km in 66 Myr, the Drakensberg ~150 km in 180)…
+    lipValleyKmPerMyr: 0.12,    // …a river's valley widens this fast on each side (at 10⁴ km² of drainage; ∝ drainage^0.3)…
+    lipValleyAreaKm2: 3000,     // …rivers draining this much or more…
+    lipIncisionMyr: 20,         // …once they have cut down through the pile (a canyon first: a young plateau stays whole)
+    lipWallKm: 30,              // the cap's slopes fall over up to this, once retreated twice as far (6 made cliffed mesas — developer: "the mesa effect is way
+                                // too strong … should erode down more smoothly")…
+    lipWallNoise: 0.35,         // …and wander by up to this share of the escarpment's retreat (at most 40 km)…
+    lipWallNoiseKm: 70,         // …in features about this big: bays, spurs and outliers
+    lipWearFloor: 0.45,         // (the plateau's top lowers by up to this share as the wear goes through, and is gone once
+                                // worn right through)
     lipStepKm: 0.22,            // the stair: steps about this tall (± 40 %; real flow packets are 10–100 m — these read at
                                 // 15–30 km cells)…
-    lipRiser: 0.35,             // …a cliff taking this share of each step, the rest a flat tread
+    lipRiser: 0.35,             // …a cliff taking this share of each step, the rest a flat tread…
+    lipStairShare: 0.35,        // …and the stair only this strong: a hint of benches on the slopes, not cliffed treads
     lipCliff: 2,                // canyon walls in basalt stand this many times steeper (a hard cap: cliffs, not slopes)…
     lipHardness: 0.3,           // …and its rivers cut this much slower (k × 1 − this)
     dykeKm: 0.15,               // the radiating dyke swarm: a grain ± this high…
@@ -239,17 +246,26 @@ export const TERRAIN = {
     // a ridge — each exactly lower and wider, its bulk the same (profiles.js: a bump smoothed by a Gaussian of std σ) —
     // with σ growing as the square root of the time quiet; its parallel ridges and ridge noise wear the same way, by
     // wavelength, so the finest go first (a wave λ keeps e^(−2π²σ²/λ²) of itself)
-    crestSpreadKm: 55,          // σ after crestSpreadMyr quiet…
+    crestSpreadKm: 20,          // σ after crestSpreadMyr quiet (55 until 2026-09-29: "GREATLY turn down the … 'fattening'" —
+                                // developer; the crests' own spread, crestBaseKm, does the no-lines work now)…
     crestSpreadMyr: 200,
     crestSpreadMaxKm: 130,      // …and at most this
-    crestTextureShare: 0.5,     // the ridges' and the ridge noise's σ: this share of the crests' (they keep their grain longer)
+    crestTextureShare: 0.15,    // the ridges' and the ridge noise's σ: this share of the crests' (0.5 wore the wavy ridges away)
+    // No crest is a line (developer, 2026-09-29: the thin crest ridges "are simply too perfect and connected and they have
+    // to go" — on the timeline's terrain, most at high detail, and in the finish): a crest drawn at a distance from its
+    // belt's front is a contour of a smooth field — an unbroken curve. Every crest is spread by at least crestBaseKm (σ,
+    // its bulk kept: a broad high zone, not a line), and made of broken, branching ridges — a ridged fractal (the massif's
+    // octaves, read in the crust's frame) raising and lowering it by up to crestRugged of itself
+    crestBaseKm: 25,
+    crestRugged: 0.55,
     // …and every belt has a massif texture: rounded, fractal relief in every direction (not drawn out along the strike),
     // octaves from massifKm down to what the mesh can show — a share of the belt's crest height, more as its crests wear
     // (the bulk they spread becomes the massif's), its finer octaves worn as the ridges are
     massifKm: 200,
     massifRoughness: 0.4,       // (each octave this share of the one before: 0.55 was "slightly too fractally" — developer)
-    massifShare: 0.16,          // ± this share of the crest height on a belt as built…
-    massifWornShare: 0.4,       // …plus this share × how much its crests have spread (1 − their height kept)
+    massifShare: 0.04,          // ± this share of the crest height on a belt as built (0.16 until 2026-09-29: "GREATLY turn down
+                                // the fractal" — developer)…
+    massifWornShare: 0.1,       // …plus this share × how much its crests have spread (1 − their height kept)
 
     // ── Ridges inside a belt: strike-parallel stripes (stripes.js) ──
     stripeKm: {                 // wavelength of the main set of parallel ridges, per kind of belt
@@ -258,9 +274,11 @@ export const TERRAIN = {
     },
     // Their height is GUIDANCE layered on the belt's own uplift (developer: "guides, layered on top of other
     // increases"): a share of the local relief, plus a little on a young belt's low ground; 8b carves the rest
-    stripeShare: 0.3,           // ± this share of the belt's relief where they are (round 4: up from 0.14 — the layering
-                                // gives the texture, the ridges give it structure; 8b round 5, "strengthen the ridges,
-                                // the highs and the lows": 0.22 → 0.3)
+    stripeShare: 0.35,          // ± this share of the belt's relief where they are (2026-09-29: "the wavy ridges we had before …
+                                // a little stronger again … on the highs and especially lows" — developer: 0.3 → 0.35, and
+                                // stripeLowGain; before: round 4: up from 0.14 — the layering gives the texture, the ridges
+                                // give it structure; 8b round 5, "strengthen the ridges, the highs and the lows": 0.22 → 0.3)
+    stripeLowGain: 1.5,         // the troughs between the ridges this much deeper than the ridges are high
     stripeBaseKm: 0.17,         // …plus ± this much (× the belt's intensity and activity)
     stripeWaveJitter: 0.25,     // each kernel's wavelength varies by ± this share, and its direction by ±…
     stripeAngleJitterDeg: 10,   // …this: spacing and strike wander, ridges fork and end — less perfect
@@ -345,7 +363,8 @@ export const TERRAIN = {
     // decrease erosion in each step … active boundaries should do less cutting and more shaping"; then "a bit too far —
     // things are too high, let's land in the middle": the active hold and the history's clocks are halfway between the
     // two, the carving time back where it was — a 600 Myr planet's median land 0.69 km before, 0.89 at the peak, 0.78 now)
-    carveTimeMyr: 0.6,          // how long the rivers have worked on the present surface (longer: deeper, more graded)
+    carveTimeMyr: 0.75,         // how long the rivers have worked on the present surface (longer: deeper, more graded; 0.6 until
+                                // 2026-09-29 — developer: increase the carving "again a bit")
     // drowned valleys (developer: "where the mountains or hills hit the sea" — the coast there ran smooth past the valleys):
     // where hills and mountains meet the sea, the sea runs up the big river valleys — rias and fjords — and the ridges
     // between stand out as headlands. Along each river, within drownKm of its mouth (measured along the river), its
@@ -364,7 +383,7 @@ export const TERRAIN = {
     carveBgUplift: 0.02,        // background rock uplift (km/Myr) everywhere: rivers keep a gentle graded slope
     carveUpliftPerKm: 0.4,      // an active belt's rock uplift, per km of its relief (a 5 km range: 2 km/Myr) — its rivers stay high
     carveActiveMyr: 15,         // …fading with the time since the belt was active, over this
-    carveActiveHold: 0.45,      // an active belt's rivers cut this much less (uplift keeps pace with them: the range is
+    carveActiveHold: 0.3,       // an active belt's rivers cut this much less (0.45 until 2026-09-29) (uplift keeps pace with them: the range is
                                 // shaped, not trenched), fading with its activity
     carveCratonHardness: 0.5,   // shields erode this much slower (k × 1 − this)…
     carveCrestHardness: 0.5,    // …and so do the crests of a fold belt's ridges: rivers follow the strike valleys (trellis)

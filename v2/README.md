@@ -39,7 +39,16 @@ one history, bit for bit; the link records how far — `more=` — and rebuilds 
 ~13,000 Myr at 40K). Its views are V1's:
 Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
-and setting. **Calculate Climate** gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
+and setting. **Finish** sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
+cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
+calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation), dry basins left closed —
+flat pans where inflow and evaporation balance (the carve's `sink` / `base`); sediment laid down (fans, floodplains,
+deltas); soil creep where it is wet and warm; an Earth-like last ice age (U-troughs, fjords, scoured lake hollows,
+moraines, basins still sunk by the ice); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
+own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
+like the live terrain; kept per moment, a Show Finished Moments toggle compares. Measured (20K plates, desktop): 640K
+~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
+**Calculate Climate** gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
 winds, currents — about a second, in a worker), kept per moment while the history is open. Its code is
 `js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
 [`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
@@ -149,7 +158,11 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
                    palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade)
-js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker (the climate of a moment, on request)
+js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker (the climate of a moment, on request), finish-view (the Finish step's worker and painting)
+js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
+                   finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
+                   finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),
+                   finish-ice (the last ice age), finish-wind (sand seas, dunes, pans, loess)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back)
 tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), trace / render / screenshot helpers
@@ -283,13 +296,16 @@ Every erosion clock runs faster where it rains more — a hard-coded zonal-mean 
 the high latitudes eroding (terrain-config.js rainByLatitude, glacialErosion; erosionAtLatitude), and faster on high
 ground than on low (erosionAtHeight): old ranges linger as low hills. Volcanoes are irregular massifs, not cones: an
 edifice with a noise-warped outline, broad ridges (rift zones, arc ridges) running out from the summit, gullies in the
-lower flanks, sometimes a flank collapse. Flood basalts (`lips.js`) are cut up as they wear, not ground flat: the
-history records how far each province has worn (`volcWornKm`, by the rain of its latitude), and the terrain strips its
-cap where a mesa noise of its own stands below that — in tiers, sooner near the province's edge — so a young province
-is a plateau with a lobed edge, then an escarpment retreats with mesas left before it, then buttes and remnants; after
-the rivers carve, wherever the basalt is cut into it is stepped (`carve.js` terraceBasalt: flat treads, cliffs), its
-canyons steep-walled; and its dykes radiate from the plume's centre as a wavy, fanned grain that comes out from under
-the lava across its edge. The fine detail belongs to the crust (`anchor.js`): noise is read in the frame
+lower flanks, sometimes a flank collapse. Flood basalts come in every size and shape (2026-09-29; the history's
+`eruptLip`: 0.15–4 Mkm² log-uniform, one to four elongated flows off the plume, a warped ragged edge, nearly even
+thickness — a plateau, not a dome) and are cut up as they wear along their drainage, not by a noise: the history records
+how far each province has worn (`volcWornKm`, by the rain of its latitude), and the carving (`carve.js` stripBasalt)
+strips the cap where its escarpment has retreated from the province's edge or its rivers' valleys have widened through
+it — rates × the wear's age, a river's valley only once it has cut through the pile, the slopes widening as they retreat
+(to `lipWallKm`) and wandering with a noise — so a young province is a plateau with canyons, then a dissected plateau
+(the Deccan), then flat-topped hills along the divides, then remnants; the slopes are faintly benched
+(terraceBasalt at `lipStairShare`); and its dykes radiate from the plume's centre as a wavy, fanned grain that comes out
+from under the lava across its edge. The fine detail belongs to the crust (`anchor.js`): noise is read in the frame
 of the plate under each point, and ridge kernels and volcanoes are keyed to crust cells — scrub the history and a
 drifting continent carries its ridges and volcanoes with it. So does what they ride on (Phase 9): a frame carries every
 plate's crust (its cells, their types and belts — the world view shows only the crust cell nearest each world cell, and
@@ -315,7 +331,7 @@ re-shade.
 **Rivers (Phase 8b, `carve.js`).** The tectonic surface is carved by the stream power law, solved analytically in time
 along the river network (Tzathas, Gailleton, Steer & Cordonnier 2024): after `carveTimeMyr` a point stands where the
 ground downstream stood, the erosion wave having travelled up at k·A^m, plus the rock uplift gathered on the way —
-with a short time (0.6 Myr) a valley floor drops only to the ground a little way downstream, so rivers descend with the
+with a short time (0.75 Myr) a valley floor drops only to the ground a little way downstream, so rivers descend with the
 existing topography and cut deep where the land falls steeply; ridges and plateau tops survive. The network
 is a priority flood from the sea with slope-weighted random receivers; drainage areas are in km² (rain-weighted). Every
 river carves: a cell drops by the share of it its valley takes, the valley widening with √(discharge) (`carveValleyKm`
@@ -345,13 +361,14 @@ rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the me
 Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights
 (`SmoothMapRaster.paintHeights`), so a shore is the heights' zero line — crisp — not land and sea colours blended across
 a mesh triangle.
-**Old ranges erode fatter (2026-09-29).** A belt's crests, ridges and ridge noise lie along lines at some distance from
-its front, and crests outlast the ground under them: old belts stood as thin rings, crescents and tendrils. Now, as a
-belt falls quiet, its crests are smoothed as hillslope wear smooths a ridge — each bump exactly lower and wider, its bulk
-the same, σ growing with √(time quiet) (`crestSpreadKm`; `profiles.js`: a bump smoothed by a Gaussian) — and its ridges
-and ridge noise wear by wavelength, the finest first (`crestTextureShare`). Every belt also has a massif texture:
-rounded, fractal relief in every direction, a share of its crest height that grows as the crests spread (`massifKm`,
-`massifShare`, `massifWornShare`; never below sea level). The history is unchanged (its uplift uses the unworn profile).
+**No crest is a line (2026-09-29).** A belt's crests lie at distances from its front — contours of a smooth field, so
+unbroken curves: thin crest ridges "too perfect and connected" (developer), and rings and crescents where the front is a
+blob. Every crest is now spread by at least `crestBaseKm` (a Gaussian of that σ: exactly lower and wider, its bulk the
+same — `profiles.js`) and made of broken, branching ridges: a ridged fractal (`crestRugged`, the massif's octaves, read
+in the crust's frame) raises and lowers it. Old crests spread a little more with time quiet (`crestSpreadKm`, √ of the
+time), the parallel ridges and ridge noise wearing slightly by wavelength (`crestTextureShare`); a faint rounded massif
+texture (`massifKm`, `massifShare`). The parallel ridges are strong again, their troughs deeper than their crests are
+high (`stripeShare`, `stripeLowGain`). The history is unchanged (its uplift uses the unworn profile).
 **Scale invariance:** all lengths are km; noise is a function of position; waves shorter than ~2 terrain cells are
 faded out, not aliased. `check-phase8a.mjs` compares 160K, 640K and 2.5M cells sim cell by sim cell.
 A phase that draws terrain sets `displayMesh` (its layers paint terrain cells) and may offer `profileAlong` (the

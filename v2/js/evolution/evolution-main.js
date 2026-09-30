@@ -21,6 +21,9 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, paintClimate, paintUnavailable, drawArrows, drawLegend, readoutLines } from './climate-view.js';
+import { FinishService, paintFinished } from './finish-view.js';
+import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
+import { STAGES as FINISH_STAGES } from '../finish/finish.js';
 
 setDelaunator(Delaunator);
 
@@ -90,8 +93,13 @@ const seaMask = texture(MAP_WIDTH);     // where the sea is, for the glint (the 
 let glinting = false;
 const PALETTE_KEY = 'orogen.evolution.palette';
 const storedPalette = (() => { try { return localStorage.getItem(PALETTE_KEY); } catch { return null; } })();
-const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalette : 'relief', mode: 'globe', grid: true, gridStep: 15, centerLon: 0, season: 'year' };
+const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalette : 'relief', mode: 'globe', grid: true, gridStep: 15, centerLon: 0, season: 'year', finished: true };
 const climate = new ClimateService();   // the climate, on request, for the moment shown (climate-view.js)
+const finisher = new FinishService();   // the Finish step, on request, for the moment shown (finish-view.js)
+const FINISHES_KEPT = 4;                // (finished pictures kept per history: ~25–100 MB each)
+// (phones finish up to 640K: the finer ones need more memory than a phone's tab has)
+if (IS_TOUCH) for (const o of [...$('finishCells').options]) if (Number(o.value) > 640000) o.remove();
+if (IS_TOUCH) $('finishCells').value = '640000';
 /** Colour heights with the palette chosen (the lab's relief, or one of looks.js's). */
 const tint = (heightKm, shade, out) => (view.palette === 'relief' ? paintRelief(heightKm, shade, out, { seaLevelKm: SHADING.seaLevelKm }) : paintPalette(view.palette, heightKm, shade, out, SHADING.seaLevelKm));
 let raster = null;                      // the terrain mesh's pixel table (only the one in use: tens of MB at the finest detail)
@@ -117,13 +125,15 @@ let B = null;                           // { controller, player, frames, simMesh
 let playing = false, playTime = 0, lastTick = 0, preparing = null, painted = null, paintedT = null, paintedRaster = null, paintedMesh = null, paintedSharp = false, dirty = true, cellRgb = null, simRgb = null;
 
 async function build() {
+    if (B?.finishJob) finisher.cancel();
     B?.controller.abort();
     B?.player?.dispose();
     const seed = Number(ui.seed.value) || 0, cont = Number(ui.cont.value) / 100, len = Number(ui.len.value), ending = ui.ending.value;
     const simCells = Number(ui.sim.value), terrainCells = Number(ui.terrain.value);
     const b = B = { controller: new AbortController(), player: null, frames: [], simMesh: null, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
         climates: new Map(), climateJob: null, climateNote: null,         // (climates: frame → {tMesh, data}, while this history is open)
-        run: null, going: false, wantGo: false, moreTo: linkedMore };      // (keep going: the history's run, kept to run on)
+        run: null, going: false, wantGo: false, moreTo: linkedMore,        // (keep going: the history's run, kept to run on)
+        finishes: new Map(), finishJob: null, finishNote: null };           // (finishes: frame → {cells, raster, secs})
     linkedMore = 0;
     saveUrl();
     // (watching it build is playing it from the start, at the speed chosen — held at the newest moment built)
@@ -344,6 +354,9 @@ function frameAt(t) {
 
 function paint(frame, sharpTable = null) {
     const T = B.player.terrainOf(frame), out = cellRgb;
+    // (a finished moment: its picture instead of the live terrain, on the height layers)
+    const fin = view.finished && (view.layer === 'terrain' || view.layer === 'heightmap') ? B.finishes.get(frame) : null;
+    if (fin) { paintFinishedFrame(frame, fin, T, sharpTable); return; }
     // (the terrain and the heightmap are coloured per pixel from the heights — their coasts crisp; the other layers per cell)
     let byHeight = null;
     if (view.layer === 'plates') {
@@ -397,6 +410,74 @@ function paint(frame, sharpTable = null) {
     stats(T, frame);
 }
 
+/** A finished moment on the terrain or heightmap layer: its picture, coloured and shaded as the live terrain is. */
+function paintFinishedFrame(frame, fin, T, sharpTable) {
+    const t = sharpTable ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
+    const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette);
+    glint(view.layer === 'terrain');
+    paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration });
+    if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
+    t.ctx.putImageData(t.image, 0, 0);
+    if (view.grid) { const k = t.width / MAP_WIDTH; t.ctx.save(); t.ctx.scale(k, k); drawGraticule(t.ctx, MAP_WIDTH, MAP_WIDTH >> 1, view.gridStep); t.ctx.restore(); }
+    show(t);
+    painted = frame; paintedT = T; paintedRaster = sharpTable ?? B.raster; paintedMesh = B.tMesh; paintedSharp = !!sharpTable;
+    $('climateLegend').innerHTML = ''; $('climateLegend').dataset.key = '';
+    updateClimateUi(); updateFinishUi();
+    ui.timeLabel.textContent = `${frame.time.toFixed(0)} Myr · finished`;
+    rail();
+    stats(T, frame);
+}
+
+// ── the Finish step: on request, for the moment shown — kept per moment while the history is open ──
+async function finishMoment() {
+    const b = B, frame = painted;
+    if (!b?.simMesh || !frame) return;
+    if (b.finishJob) { finisher.cancel(); return; }                     // (the button cancels a finish under way)
+    setPlaying(false);
+    const cells = Number($('finishCells').value), width = IS_TOUCH ? 2048 : cells >= 5e6 ? 8192 : 4096;
+    const started = performance.now(), done = new Map(FINISH_STAGES);
+    b.finishJob = { frame, cells, stage: 'starting', share: 0 };
+    updateFinishUi();
+    const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
+    slim.plates = frame.plates.map(p => p && { quat: p.quat });
+    // (progress: the stages' shares so far, and the picture's own)
+    let before = 0;
+    const onStage = s => { if (!b.finishJob) return; before = 0; for (const [k, v] of FINISH_STAGES) { if (k === s) break; before += v; } b.finishJob.stage = s; b.finishJob.share = before; updateFinishUi(); };
+    const onProgress = p => { if (b.finishJob) { b.finishJob.share = before + p * (done.get('picture') ?? 0.1); updateFinishUi(); } };
+    try {
+        const { simMesh } = b;
+        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width }, { onStage, onProgress });
+        if (B !== b) return;
+        const secs = (performance.now() - started) / 1000;
+        b.finishes.delete(frame);
+        b.finishes.set(frame, { cells, raster: res.raster, secs });
+        while (b.finishes.size > FINISHES_KEPT) b.finishes.delete(b.finishes.keys().next().value);
+        const label = $('finishCells').selectedOptions[0]?.textContent.split(' ·')[0] ?? `${cells}`;
+        b.finishNote = `Finished ${frame.time.toFixed(0)} Myr at ${label} in ${secs.toFixed(0)} s`;
+        console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
+        view.finished = true; $('chkFinished').checked = true;
+        if (view.layer !== 'terrain' && view.layer !== 'heightmap') setLayer('terrain');
+    } catch (err) {
+        if (B === b) b.finishNote = err.name === 'AbortError' ? 'Finish cancelled' : `Could not finish: ${String(err.message).split('\n')[0]}`;
+        if (err.name !== 'AbortError') console.error(err);
+    } finally {
+        if (B === b) { b.finishJob = null; dirty = true; updateFinishUi(); }
+    }
+}
+
+/** The Finish button (Cancel while one runs), its progress, the moments finished, the Show toggle. */
+function updateFinishUi() {
+    const b = B, frame = painted, job = b?.finishJob, have = frame && b?.finishes.get(frame), btn = $('finishBtn');
+    btn.disabled = !frame || !b?.simMesh;
+    btn.textContent = job ? `Cancel · ${job.stage}… (${job.frame.time.toFixed(0)} Myr)` : have ? `Finish Again · ${frame.time.toFixed(0)} Myr` : frame ? `Finish This Moment · ${frame.time.toFixed(0)} Myr` : 'Finish This Moment';
+    $('finishBar').hidden = !job;
+    if (job) $('finishBar').firstElementChild.style.width = `${(100 * Math.min(1, job.share)).toFixed(1)}%`;
+    const done = b ? [...b.finishes.keys()].sort((x, y) => x.time - y.time) : [];
+    $('finishInfo').innerHTML = (b?.finishNote ? `<div>${b.finishNote}</div>` : '') +
+        (done.length ? `<div>Finished: ${done.map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ')}</div>` : '');
+    $('finishShowRow').hidden = !done.length;
+}
+
 // ── the climate (step D): calculated on request for the moment shown, kept per moment while the history is open ──
 const climateOf = frame => { const e = B?.climates.get(frame); return e && e.tMesh === B.tMesh ? e.data : null; };
 
@@ -443,6 +524,7 @@ function updateClimateUi() {
         $('climateChipBtn').hidden = !!job;
     }
     $('seasonGroup').hidden = !SEASONAL_LAYERS.has(view.layer);
+    updateFinishUi();
 }
 
 function stats(T, frame) {
@@ -518,6 +600,14 @@ function setLayer(layer) {
 for (const b of document.querySelectorAll('#mapTabs .map-tab')) b.addEventListener('click', () => setLayer(b.dataset.layer));
 $('mobileViewSwitch').addEventListener('change', e => setLayer(e.target.value));
 $('climateBtn').addEventListener('click', () => calculateClimate());
+$('finishBtn').addEventListener('click', () => finishMoment());
+$('chkFinished').addEventListener('change', e => { view.finished = e.target.checked; dirty = true; });
+$('finishInfo').addEventListener('click', e => {
+    const a = e.target.closest('a[data-t]');
+    if (!a || !B?.frames.length) return;
+    e.preventDefault(); setPlaying(false);
+    playTime = Number(a.dataset.t); ui.time.value = playTime; dirty = true; rail();
+});
 $('climateChipBtn').addEventListener('click', () => calculateClimate());
 $('season').addEventListener('change', e => { view.season = e.target.value; dirty = true; });
 $('climateInfo').addEventListener('click', e => {

@@ -26,7 +26,7 @@
 //     surface plus the carving found on the coarser one, so big rivers are settled where the whole continent is seen.
 // Heights in km, distances in km, time in Myr.
 
-import { MinHeap } from '../core/min-heap.js';
+import { MinHeap, spreadKm } from '../core/min-heap.js';
 import { locate } from '../core/mesh-locate.js';
 
 const R = 6371;
@@ -52,14 +52,17 @@ function infoOf(mesh) {
  * @param {Object} f       per-cell fields on this mesh: z (tectonic surface, km), u (rock uplift, km/Myr), k (the
  *                         wave speed at 1 km² of drainage, km/Myr), rain (drainage weight), micro (km: the crust's
  *                         micro-relief, for the routing only), inc (km: how deep the history's rivers cut here), slope
- *                         (hillslope gradient, km per km)
+ *                         (hillslope gradient, km per km); optionally sink (> 0.5: the floor of a closed basin — rivers
+ *                         end there as at the sea) and base (km: that floor's level, their base level instead of 0)
  * @param {Float32Array} route   the surface the rivers are routed over (the current estimate, micro-relief included)
  * @param {Object} cfg     { timeMyr, m, valleyKm, activeHold }
  * @returns {{z: Float32Array, recv: Int32Array, area: Float32Array}}  carved heights, receivers (−1: the sea), drainage (km²)
  */
 export function carveLevel(mesh, f, route, cfg) {
     const { adjOffset, adjList, numCells: n } = mesh, { dist, area: cellArea } = infoOf(mesh);
-    const land = c => f.z[c] > 0;
+    // (closed basins' floors are outlets like the sea, each at its own level: the finish's dry basins)
+    const sink = f.sink ?? null, land = sink ? c => f.z[c] > 0 && !(sink[c] > 0.5) : c => f.z[c] > 0;
+    const baseOf = sink ? c => (sink[c] > 0.5 ? f.base[c] : 0) : () => 0;
     // ── the priority flood: from the sea inward, lowest spill first ──
     const fill = new Float32Array(n), rank = new Int32Array(n).fill(-1), parent = new Int32Array(n).fill(-1), order = new Int32Array(n);
     const heap = new MinHeap(1 << 16);
@@ -69,7 +72,7 @@ export function carveLevel(mesh, f, route, cfg) {
         rank[c] = -2;                                                     // (the sea: a boundary, never ranked)
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (land(adjList[k]) && parent[adjList[k]] === -1) {
             const nb = adjList[k];
-            parent[nb] = c; fill[nb] = Math.max(0, route[nb]); heap.push(fill[nb], nb);
+            parent[nb] = c; fill[nb] = Math.max(baseOf(c), route[nb]); heap.push(fill[nb], nb);
         }
     }
     while (heap.size) {
@@ -89,7 +92,7 @@ export function carveLevel(mesh, f, route, cfg) {
         const c = order[i];
         let pick = -1, km = 0, steepest = 0;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-            const nb = adjList[k], fn = rank[nb] === -2 ? 0 : fill[nb];
+            const nb = adjList[k], fn = rank[nb] === -2 ? baseOf(nb) : fill[nb];
             if (!(rank[nb] === -2 || (rank[nb] >= 0 && rank[nb] < i)) || fn >= fill[c]) continue;
             const s = (fill[c] - fn) / dist[k];
             if (s > steepest) { steepest = s; pick = nb; km = dist[k]; }
@@ -120,18 +123,20 @@ export function carveLevel(mesh, f, route, cfg) {
     const fillAt = donorsAt.slice(0, n);
     for (let i = 0; i < count; i++) { const c = order[i], r = recv[c]; if (r >= 0) donors[fillAt[r]++] = c; }
     const pathCell = new Int32Array(count + 1), pathT = new Float64Array(count + 1), pathS = new Float64Array(count + 1), pathZ0 = new Float64Array(count + 1);
-    const walk = new Int32Array(count), walkDepth = new Int32Array(count);
+    const walk = new Int32Array(count), walkDepth = new Int32Array(count), baseAt = sink ? new Float32Array(n) : null;
     for (let i = 0; i < count; i++) {
         const root = order[i];
         if (recv[root] >= 0) continue;                                    // (roots: rivers that reach the sea)
+        const base = baseOf(-1 - recv[root]);                             // (or a closed basin's floor)
         let top = 0;
         walk[top] = root; walkDepth[top++] = 1;
-        pathT[0] = 0; pathS[0] = 0; pathZ0[0] = 0;                        // (depth 0: the coast, at sea level)
+        pathT[0] = 0; pathS[0] = base; pathZ0[0] = base;                  // (depth 0: the coast, at sea level)
         while (top > 0) {
             const c = walk[--top], d = walkDepth[top];
             // the path so far is depth 0 … d−1; c is at depth d
             const a = f.k[c] * Math.max(area[c], 1e-6) ** m, dx = recvKm[c];
-            pathCell[d] = c; pathT[d] = pathT[d - 1] + dx / a; pathS[d] = pathS[d - 1] + dx * f.u[c] / a; pathZ0[d] = Math.max(0, f.z[c] - f.u[c] * t);   // (never below the sea: its base level)
+            pathCell[d] = c; pathT[d] = pathT[d - 1] + dx / a; pathS[d] = pathS[d - 1] + dx * f.u[c] / a; pathZ0[d] = Math.max(base, f.z[c] - f.u[c] * t);   // (never below the sea: its base level)
+            if (baseAt) baseAt[c] = base;
             const target = pathT[d] - t;
             let h;
             if (target <= 0) h = pathS[d];                                // the steady state: graded from the coast
@@ -146,7 +151,7 @@ export function carveLevel(mesh, f, route, cfg) {
         }
     }
     // ── the history's rivers: a bed is at least as deep as they cut it (a canyon where a river held its way) ──
-    for (let i = 0; i < count; i++) { const c = order[i], old = f.z[c] - f.inc[c]; if (old < bed[c]) bed[c] = Math.max(0, old); }
+    for (let i = 0; i < count; i++) { const c = order[i], old = f.z[c] - f.inc[c]; if (old < bed[c]) bed[c] = Math.max(baseAt ? baseAt[c] : 0, old); }
     // ── an active belt rises as fast as its rivers cut: its beds stand higher — by activeHold at full activity (f.hold):
     // the range is shaped, not trenched (developer, 8b round 3) ──
     for (let i = 0; i < count; i++) { const c = order[i]; bed[c] = f.z[c] - (1 - cfg.activeHold * f.hold[c]) * (f.z[c] - bed[c]); }
@@ -169,11 +174,12 @@ export function carveLevel(mesh, f, route, cfg) {
     // ── valley sides: no ground stands more than its critical gradient (f.slope) above the ground its water runs to
     // — a limit, like the paper's thermal erosion: the sides of a deep valley reach into the cells beside it ──
     for (let i = 0; i < count; i++) {
-        const c = order[i], r = recv[c], lim = (r >= 0 ? z[r] : 0) + f.slope[c] * recvKm[c];
+        const c = order[i], r = recv[c], lim = (r >= 0 ? z[r] : baseOf(-1 - r)) + f.slope[c] * recvKm[c];
         if (lim < z[c]) z[c] = lim;
     }
-    // (land stays land: a river cut to its base level stands just above the sea)
-    for (let c = 0; c < n; c++) if (f.z[c] > 0 && z[c] < LAND_FLOOR) z[c] = Math.min(f.z[c], LAND_FLOOR);
+    // (land stays land: a river cut to its base level stands just above the sea — or above its basin's floor)
+    if (!baseAt) { for (let c = 0; c < n; c++) if (f.z[c] > 0 && z[c] < LAND_FLOOR) z[c] = Math.min(f.z[c], LAND_FLOOR); }
+    else for (let i = 0; i < count; i++) { const c = order[i], fl = baseAt[c] + LAND_FLOOR; if (z[c] < fl) z[c] = Math.min(f.z[c], fl); }
     return { z, recv, area, order: order.subarray(0, count) };
 }
 const LAND_FLOOR = 0.002;
@@ -187,6 +193,50 @@ function stairLevels(step) {
         levels.push(levels[k] + step * (0.6 + 0.8 * ((h >>> 0) / 4294967296)));
     }
     return levels;
+}
+
+/**
+ * A flood basalt cut up as real ones are (developer: the old mesa noise was "super blotchy … dont really remind me of
+ * actual LIPs like the Deccan"): the plateau is eaten from its edges — its escarpment retreats inward (the Western Ghats,
+ * the Drakensberg) — and down its rivers, whose valleys widen through it with time, the bigger river the faster; the cap
+ * stands on the divides between them, a dissected plateau (the Deccan), then mesas and buttes along the divides (the
+ * ambas of Ethiopia), then remnants. Each basalt cell is stripped to the ground under the lava where some edge or river's
+ * reach — retreat rate × the wear's age (lipAge: Myr, × the climate's erosion) — goes past its distance from it (along
+ * the basalt), with a wall lipWallKm wide that wanders by a noise of its own; the stair (terraceBasalt) then steps the
+ * walls. On the mesh shown only; a river counts only if it drains lipValleyAreaKm2 and at least four of its cells.
+ */
+function stripBasalt(mesh, f, C, cfg) {
+    const { z, area } = C, n = mesh.numCells, { adjOffset, adjList } = mesh, { area: cellArea } = infoOf(mesh);
+    const basalt = c => f.lip[c] > 0.05 && f.z[c] > 0, minArea = Math.max(cfg.lipValleyAreaKm2, 4 * cellArea);
+    const dist = new Float32Array(n).fill(Infinity), reach = new Float32Array(n);
+    let big = 0;
+    for (let c = 0; c < n; c++) {
+        const t = f.lipAge[c];
+        if (!(t > 0) || !basalt(c)) continue;
+        let r = 0;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!basalt(adjList[k])) { r = cfg.lipEdgeRetreat * t; break; }
+        // (a river first cuts a canyon through the pile; its valley widens only after that)
+        if (area[c] >= minArea) r = Math.max(r, cfg.lipValleyRate * Math.max(0, t - cfg.lipIncisionMyr) * (area[c] / 1e4) ** 0.3);
+        reach[c] = r;
+        if (r > big) big = r;
+    }
+    if (!(big > 0)) return;
+    // (the furthest reach at each cell, as a distance: B − reach at the sources, growing along the basalt)
+    const B = big + 1;
+    for (let c = 0; c < n; c++) if (reach[c] > 0) dist[c] = B - reach[c];
+    spreadKm(mesh, dist, { canEnter: (a, b) => basalt(b), maxKm: B });
+    const before = z.slice();
+    for (let c = 0; c < n; c++) {
+        if (!basalt(c) || !(f.lipAge[c] > 0)) continue;
+        // (a young escarpment is steep; it slopes back more gently as it retreats: its width grows with the retreat, to lipWallKm)
+        const back = cfg.lipEdgeRetreat * f.lipAge[c], W = Math.max(3, Math.min(cfg.lipWallKm, 0.5 * back));
+        const v = (dist[c] < Infinity ? B - dist[c] : -1e9) + cfg.lipWallNoise * Math.min(40, back) * f.lipNoise[c];
+        const s = smooth(-W, W, v), rel = z[c] - f.lipBase[c];
+        if (s > 0 && rel > 0) z[c] -= s * rel;
+    }
+    // (rivers still run downhill: a cell left below the one it drains into stands at that one's height again — never above
+    // where it was; in the flood's order, every cell after its receiver)
+    for (let i = 0; i < C.order.length; i++) { const c = C.order[i], r = C.recv[c]; if (r >= 0 && z[c] < z[r] && z[c] < before[c]) z[c] = Math.min(before[c], z[r]); }
 }
 
 /**
@@ -204,7 +254,7 @@ function terraceBasalt(f, C, cfg) {
         if (!(f.lip[c] > 0) || !(f.z[c] > 0)) continue;
         const rel = z[c] - f.lipBase[c];
         if (rel <= 0) continue;
-        const w = f.lip[c] * smooth(0.25 * step, step, f.lipTop[c] - rel);
+        const w = (cfg.lipStairShare ?? 1) * f.lip[c] * smooth(0.25 * step, step, f.lipTop[c] - rel);
         if (w <= 0) continue;
         let k = 0;
         while (k < levels.length - 2 && levels[k + 1] <= rel) k++;
@@ -216,6 +266,8 @@ function terraceBasalt(f, C, cfg) {
 
 /** For each cell of `fine`: the 3 cells of `coarse` around it and their weights (barycentric), and its nearest. Cached. */
 const maps = new WeakMap();
+/** Let go of what is cached for a mesh (its edge lengths, its maps to coarser meshes): ~0.5 GB at 10M cells (the finish). */
+export function forgetMesh(mesh) { infos.delete(mesh); maps.delete(mesh); }
 function mapBetween(coarse, fine) {
     let byCoarse = maps.get(fine);
     if (!byCoarse) maps.set(fine, byCoarse = new WeakMap());
@@ -239,6 +291,13 @@ function downsample(coarse, fine, f) {
     const M = mapBetween(coarse, fine), n = coarse.numCells, near = M.nearest, count = new Uint32Array(n), sum = new Float64Array(n);
     for (let i = 0; i < fine.numCells; i++) count[near[i]]++;
     const out = {};
+    // (closed basins: the share of a coarse cell that is basin floor, and the floor's mean level there)
+    if (f.sink) {
+        const sk = out.sink = new Float32Array(n), bs = out.base = new Float32Array(n), sb = new Float64Array(n);
+        sum.fill(0);
+        for (let i = 0; i < fine.numCells; i++) { const s = f.sink[i] > 0.5 ? 1 : 0; sum[near[i]] += s; sb[near[i]] += s * f.base[i]; }
+        for (let c = 0; c < n; c++) { sk[c] = count[c] ? sum[c] / count[c] : 0; bs[c] = sum[c] > 0 ? sb[c] / sum[c] : 0; }
+    }
     // (field by field — each coarse cell sums its fine cells in the same order, so to the same bits)
     for (const key of FIELDS) {
         const a = f[key], o = out[key] = new Float32Array(n);
@@ -250,6 +309,7 @@ function downsample(coarse, fine, f) {
     for (let c = 0; c < n; c++) if (!count[c]) {
         const i = fine.index.nearest(coarse.xyz[3 * c], coarse.xyz[3 * c + 1], coarse.xyz[3 * c + 2]);
         for (const key of FIELDS) out[key][c] = f[key][i];
+        if (f.sink) { out.sink[c] = f.sink[i]; out.base[c] = f.base[i]; }
     }
     return out;
 }
@@ -293,6 +353,7 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
         delta = new Float32Array(n);
         for (let i = 0; i < n; i++) delta[i] = result.z[i] - z[i];
     }
+    if (F[L - 1].lipAge && (cfg.lipEdgeRetreat > 0 || cfg.lipValleyRate > 0)) stripBasalt(meshes[L - 1], F[L - 1], result, cfg);
     if (cfg.lipStepKm > 0) terraceBasalt(F[L - 1], result, cfg);     // (on the mesh shown only)
     if (cfg.drownKm > 0 && cfg.drownDepthKm > 0) drownValleys(meshes, F, result, cfg);
     if (cfg.canyonKm > 0 && cfg.canyonDepthKm > 0) cutCanyons(meshes[L - 1], F[L - 1], result, cfg);
@@ -323,7 +384,7 @@ function drownValleys(meshes, F, C, cfg) {
         const c = order[i], r = recv[c], to = r >= 0 ? r : -1 - r;
         let step = 0;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (adjList[k] === to) { step = dist[k]; break; }
-        along[c] = (r >= 0 ? along[r] : 0) + step;
+        along[c] = (r >= 0 ? along[r] : f.sink && f.sink[to] > 0.5 ? Infinity : 0) + step;      // (a closed basin is no sea)
         if (along[c] >= cfg.drownKm) continue;
         const g = (1 - along[c] / cfg.drownKm) ** 2, drain = smooth(la1, la2, Math.log(Math.max(1, area[c]))), relief = smooth(r1, r2, around[c]);
         const d = show * cfg.drownDepthKm * g * drain * relief;
@@ -362,7 +423,7 @@ function cutCanyons(mesh, f, C, cfg) {
     const cut = new Float32Array(n);
     for (let i = 0; i < order.length; i++) {
         const c = order[i], r = recv[c];
-        if (r >= 0 || !(area[c] > a1)) continue;                      // (a river reaching the sea, and big enough)
+        if (r >= 0 || !(area[c] > a1) || (f.sink && f.sink[-1 - r] > 0.5)) continue;     // (a river reaching the sea, and big enough)
         const size = smooth(la1, la2, Math.log(area[c])), depth = show * cfg.canyonDepthKm * size;
         let at = -1 - r, along = 0;
         for (let steps = 0; steps < 4096 && along < L; steps++) {

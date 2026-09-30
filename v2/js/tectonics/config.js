@@ -207,8 +207,8 @@ export const TECTONICS = {
     plumeLifeMaxMyr: 250,
     plumeRiftChance: 0.35,      // chance a plume head under a continent big enough to rift (riftMinContinentKm2) splits it
     plumeJunctionKm: 450,       // a head under a craton rifts from the nearest ordinary ground within this
-    lipRadiusMinKm: 500,        // a plume head spreads its flood basalt over a disc this wide…
-    lipRadiusMaxKm: 1100,       // …up to this (Deccan ~800 km, Siberian Traps ~1200 km)
+    lipAreaMinMkm2: 0.15,       // a plume head spreads its flood basalt over this many million km²… (log-uniform: many small,
+    lipAreaMaxMkm2: 4,          // …a few vast — Columbia River 0.2, Deccan 1.5, Karoo 3, Siberia ~4; developer: not all alike)
     lipThicknessKm: 2,          // flood basalt piled onto the crust by a head (a record: Phase 8 makes a plateau of it)
     lipLobes: 0.5,              // strength of the low-order harmonics that make a LIP's outline lobed, as a craton's is…
     lipEdgeNoise: 0.3,          // …and of the finer noise that bites bays and pushes out tongues (developer: not discs)

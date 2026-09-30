@@ -69,7 +69,7 @@ export function surfaceParts(n) {
 /** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, slope, inc; carve.js). */
 export function carveInputs(n) {
     return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), slope: new Float32Array(n), inc: new Float32Array(n), hold: new Float32Array(n),
-        lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n) };
+        lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n) };
 }
 
 /**
@@ -92,12 +92,13 @@ export function settleFields(frame, simMesh, tMesh, cfg, seed) {
  * the one carved (made by `meshOf(numCells)`), then that one.
  */
 export function carveLadder(simMesh, tMesh, meshOf) {
-    return [simMesh, ...[160000, 640000].filter(c => c < tMesh.numCells * 0.9 && c > simMesh.numCells * 1.5).map(meshOf), tMesh];
+    return [simMesh, ...[160000, 640000, 2500000].filter(c => c < tMesh.numCells * 0.9 && c > simMesh.numCells * 1.5).map(meshOf), tMesh];
 }
 
 /** The carving's settings (the same on every mesh: carve.js scales the valleys to each mesh's cells). */
 export function carveSettings(cfg) {
     return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, activeHold: cfg.carveActiveHold, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
+        lipEdgeRetreat: cfg.lipEdgeRetreatKmPerMyr ?? 0, lipValleyRate: cfg.lipValleyKmPerMyr ?? 0, lipValleyAreaKm2: cfg.lipValleyAreaKm2 ?? 3000, lipWallKm: cfg.lipWallKm ?? 6, lipWallNoise: cfg.lipWallNoise ?? 0, lipStairShare: cfg.lipStairShare ?? 1, lipIncisionMyr: cfg.lipIncisionMyr ?? 0,
         drownKm: cfg.drownKm ?? 0, drownDepthKm: cfg.drownDepthKm ?? 0, drownAreaKm2: cfg.drownAreaKm2, drownReliefKm: cfg.drownReliefKm, drownWiden: cfg.drownWiden ?? 0,
         canyonKm: cfg.canyonKm ?? 0, canyonDepthKm: cfg.canyonDepthKm ?? 0, canyonAreaKm2: cfg.canyonAreaKm2 };
 }
@@ -269,10 +270,13 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const slopes = coastCurve > 0 || mountainCurve > 0 ? slopeMemo(plan, simMesh) : null, crossC = [0, 0];
     const cratF = R / 600, shapeF = R / cfg.cratonShapeKm, grainF = R / cfg.cratonGrainScaleKm, grainShow = fade(cfg.cratonGrainScaleKm);
     const coastF = R / 700, platF = R / 2000, strikeF = R / 900, segF = R / cfg.stripeSegmentKm, meanderF = R / cfg.stripeMeanderAlongKm, meander = cfg.stripeMeanderKm / R;
-    const blendF = R / cfg.blendNoiseKm, crestF = R / 150, slopeF = R / 300, microF = R / cfg.carveMicroScaleKm, mesaF = R / cfg.lipMesaKm;
+    const blendF = R / cfg.blendNoiseKm, crestF = R / 150, slopeF = R / 300, microF = R / cfg.carveMicroScaleKm, lipNoiseF = R / cfg.lipWallNoiseKm;
     // old ranges erode fatter; every belt's massif texture (terrain-config.js crestSpreadKm, massifKm): its octaves'
     // wavelengths and shares, down to what the mesh can show
     const spreadOn = (cfg.crestSpreadKm ?? 0) > 0, fineR2 = (cfg.stripeFineRatio ?? 2.6) ** 2 - 1, PI2x2 = 2 * Math.PI * Math.PI;
+    // (every crest spread by at least crestBaseKm; crests made rugged by a ridged fractal: no crest is a line)
+    const gBase = 2 * (cfg.crestBaseKm ?? 0) ** 2, rugged = cfg.crestRugged ?? 0;
+    const lowGain = cfg.stripeLowGain ?? 1;                  // (the ridges' troughs deeper than their crests are high)
     const massL = [], massA = [];
     if ((cfg.massifShare ?? 0) > 0 || (cfg.massifWornShare ?? 0) > 0) {
         let norm = 0;
@@ -375,7 +379,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 coast = Math.max(coast - cut, Math.min(coast, -10));
             }
         }
-        let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, ramp = 0, shieldS = 0, rimFade = 1;
+        let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, lipAge = 0, ramp = 0, shieldS = 0, rimFade = 1;
 
         if (coast >= 0) {
             // ── land side: the platform over the land corners (interfingering), dropping to the shelf toward the coast ──
@@ -384,21 +388,14 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             platform = lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-2, platformKm, true), platformKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
                 : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : cfg.continentKm;
             platform += cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
-            // ── a flood basalt (lips.js): the pile as it has worn — its cap gone first where the mesa noise is low and
-            // from the province's edge in: an intact plateau when young, then an escarpment with mesas before it, then
-            // buttes and remnants ──
+            // ── a flood basalt (lips.js): the pile as it has worn — here the whole plateau, its top lowering a little as it
+            // wears and gone once worn through; the carving cuts it up (carve.js stripBasalt: its escarpment retreating
+            // from the province's edge, its rivers' valleys widening — mesas left on the divides between them) ──
             lipTop = lw > 0 ? (n0 * lipKm[c0] + n1 * lipKm[c1] + n2 * lipKm[c2]) / lw : 0;
             if (lipTop > 0.002) {
-                const worn = (n0 * lipWornKm[c0] + n1 * lipWornKm[c1] + n2 * lipWornKm[c2]) / lw, edge = (n0 * lipEdgeKm[c0] + n1 * lipEdgeKm[c1] + n2 * lipEdgeKm[c2]) / lw;
-                const src = lipSrc[n0 * lipKm[c0] >= n1 * lipKm[c1] && n0 * lipKm[c0] >= n2 * lipKm[c2] ? c0 : n1 * lipKm[c1] >= n2 * lipKm[c2] ? c1 : c2], s = (src * 7.31) % 97;
-                // the mesa noise, spread about evenly over 0…1; how far the stripping has gone here — the share of the
-                // pile worn through, sooner near the edge; the cap stays where the noise stands above it, in tiers (worn
-                // right through, the top tier still stands on the highest third of the noise: remnants last)
-                const mesa = Math.max(0, Math.min(1, (1.6 * noise.fbm(x * mesaF + 0.37 * s, y * mesaF + 1.3 + 0.61 * s, z * mesaF + 2.9, 3, 0.5) + 0.65) / 1.3));
-                const p = worn / Math.max(0.15, lipTop) * (1 + cfg.lipEdgeWear * Math.exp(-edge / cfg.lipEdgeKm)), level = 0.7 * p - cfg.lipTierBand;
-                let keep = 0;
-                for (let j = 0; j < cfg.lipTiers; j++) keep += smooth(level - j * cfg.lipTierStep - cfg.lipTierBand, level - j * cfg.lipTierStep + cfg.lipTierBand, mesa);
-                lipKeep = lipTop * (1 - cfg.lipWearFloor * Math.min(1, p)) * keep / cfg.lipTiers;
+                const worn = (n0 * lipWornKm[c0] + n1 * lipWornKm[c1] + n2 * lipWornKm[c2]) / lw, p = worn / Math.max(0.15, lipTop);
+                lipKeep = lipTop * (1 - cfg.lipWearFloor * Math.min(1, p)) * (1 - smooth(1, 1.5, p));
+                lipAge = worn / cfg.lipWearKmPerMyr;           // (Myr of wear at the reference rate: its age, × its climate's erosion)
                 platform += lipKeep;
             }
             // ── a craton (terrain/cratons.js): its edge a line — the signed distance to it, on the plate's own raster where
@@ -494,6 +491,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     const s = Math.min(cfg.crestSpreadMaxKm, cfg.crestSpreadKm * Math.sqrt(Q / cfg.crestSpreadMyr)), st = cfg.crestTextureShare * s;
                     g = 2 * s * s; wear = PI2x2 * st * st;
                 }
+                const gAge = g;
+                g += gBase;
                 if (follow > 0) d += follow * (Math.max(0, kindSide(k) === BeltSide.LOWER ? -crossC[0] : crossC[0]) - d);
                 // the crests (the broad part of the belt is in the evolved uplift, carried by the platform above)
                 const type = kindType(k), side = kindSide(k);
@@ -509,7 +508,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 // the massif: a share of the crest height, more as the crests have spread (1 − their bulk's height kept, for
                 // a crest 40 km across)
                 if (massL.length) {
-                    const mAmp = m * edge * A * (cfg.massifShare + cfg.massifWornShare * (g ? 1 - 40 / Math.sqrt(1600 + g) : 0));
+                    const mAmp = m * edge * A * (cfg.massifShare + cfg.massifWornShare * (gAge ? 1 - 40 / Math.sqrt(1600 + gAge) : 0));
                     layerMassif += mAmp; layerMassifWear += mAmp * wear;
                 }
             }
@@ -545,8 +544,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     const key = 4096 * li + carryO + 1;
                     let C = carry.get(key);
                     if (!C) carry.set(key, C = carriedField(Ks[li], simMesh, A, carryO, cfg.stripeFineShare, cfg.stripeFineRatio));
-                    stripes += stripeAmp * texture * carriedStripeAt(C, cr3, cw3, wx, wy, wz, fineKeep);
-                } else if (stripeAmp > 0.005) stripes += stripeAmp * texture * stripeAt(Ks[li], cn, px, py, pz, wx, wy, wz, cfg.stripeFineShare * fineKeep, cfg.stripeFineRatio);
+                    const sv = carriedStripeAt(C, cr3, cw3, wx, wy, wz, fineKeep);
+                    stripes += stripeAmp * texture * (sv < 0 ? lowGain * sv : sv);
+                } else if (stripeAmp > 0.005) { const sv = stripeAt(Ks[li], cn, px, py, pz, wx, wy, wz, cfg.stripeFineShare * fineKeep, cfg.stripeFineRatio); stripes += stripeAmp * texture * (sv < 0 ? lowGain * sv : sv); }
                 // the ridge noise, read at the distance across the belt as the kernels carry it (smooth, bending with the front)
                 if (noiseAmp > 0.002) {
                     crossAt(Ks[li], cn, wx, wy, wz, cross);
@@ -560,16 +560,21 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             }
             // the belts' massif: rounded, fractal relief in every direction (read in the crust's frame, renewing as the other
             // detail does), its finer octaves worn as the ridges are
-            if (massifAmp > 0.002) {
-                const wm = massifWear / massifAmp;
-                let v = 0;
+            // …and the same octaves, ridged, make the crests rugged: broken, branching ridges, not a contour's line
+            const rugHere = rugged > 0 && relief > 0.005;
+            if (massifAmp > 0.002 || rugHere) {
+                const wm = massifAmp > 0 ? massifWear / massifAmp : 0;
+                let v = 0, rs = 0, rw = 0;
                 for (let o = 0; o < massL.length; o++) {
                     const L2 = massL[o] * massL[o], sh = massA[o] * (wm ? Math.exp(-wm / L2) : 1);
-                    if (sh < 1e-3) continue;
-                    const f = R / massL[o];
-                    v += sh * renewedNoise(x * f + 17.9 + 3.1 * o, y * f + 6.3 + 1.9 * o, z * f + 24.1 + 0.7 * o);
+                    if (sh < 1e-3 && !rugHere) continue;
+                    const f = R / massL[o], nv = renewedNoise(x * f + 17.9 + 3.1 * o, y * f + 6.3 + 1.9 * o, z * f + 24.1 + 0.7 * o);
+                    if (sh >= 1e-3) v += sh * nv;
+                    if (rugHere) { const r1 = 1 - Math.abs(nv); rs += massA[o] * r1 * r1; rw += massA[o]; }
                 }
-                massif = massifAmp * 1.4 * v;
+                if (massifAmp > 0.002) massif = massifAmp * 1.4 * v;
+                // (the ridged sum's mean 0.474 and spread 0.286 for one octave: up to ± rugged of the crest, never below 0.1 of it)
+                if (rugHere && rw > 0) relief *= Math.max(0.1, 1 + rugged * (rs / rw - 0.474) / 0.286);
             }
             // (a range pressed against a craton fades across its rim, along the line — not the cells' staircase)
             if (rimFade < 1) { relief *= rimFade; stripes *= rimFade; massif *= rimFade; }
@@ -639,6 +644,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // flood basalt: a hard cap — cliffed canyon walls, slower rivers; and the stair it is cut into (carve.js)
             const basalt = coast >= 0 ? smooth(0, 0.05, lipTop * ramp) : 0;
             carve.lip[i] = basalt; carve.lipTop[i] = lipTop * ramp; carve.lipBase[i] = heightKm[t] - lipKeep * ramp;
+            carve.lipAge[i] = basalt > 0 ? lipAge : 0;
+            carve.lipNoise[i] = basalt > 0 ? 1.6 * noise.fbm(x * lipNoiseF + 2.9, y * lipNoiseF + 1.3, z * lipNoiseF + 6.1, 3, 0.5) : 0;
             if (basalt > 0) { carve.slope[i] *= 1 + cfg.lipCliff * basalt; carve.k[i] *= 1 - cfg.lipHardness * basalt; }
             carve.micro[i] = cfg.carveMicroKm * noise.fbm(x * microF + 7.3, y * microF + 2.9, z * microF + 5.1, 3, 0.5) * 1.6;
             // how deep the history's rivers cut here (8b-2), over the land corners
