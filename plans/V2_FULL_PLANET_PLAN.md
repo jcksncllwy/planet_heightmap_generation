@@ -176,6 +176,25 @@ sea COLOURS across each terrain triangle (a zig-zag along every shore). Built (o
   the rest is stationary texture. Proposed: drowned valleys only on real hills and mountains, fewer and bigger, and
   regional; coast roughness by the kind of coast (rugged active margins and shields, smooth passive margins); the fine
   detail matched to the sim resolution (full at 20K, less at 80K).
+- **Ring and "eyebrow" ranges (2026-09-29; developer: "a lot of circular and eyebrow shaped mountains that look very
+  unrealistic"; stronger at higher terrain detail, present at all).** Diagnosis: a belt's crests, ridges and ridge noise
+  are all laid along lines at a distance from its recorded front, and fronts are often blobs or loops (at 1200 Myr, 20K,
+  20 % of collision-front cells lie amid their own belt; suture slivers of one plate inside the other ring themselves
+  with range); old crests outlast their ground (ruggedTauMyr 368 vs reliefTauMyr 100: belts quiet 300+ Myr kept 0.57 km
+  of crest on 0.1 km of uplift); belts cover ~90 % of land by 1200 Myr. First tried and **reverted** (developer: "made
+  all the mountains look worse … tendrilly ridges"): cleaning fronts, capping old crests to their ground, breaking crests
+  into pieces and wandering them. **Kept**: old ranges erode fatter — each crest smoothed as hillslope wear smooths it
+  (lower and wider, the same bulk; σ ∝ √(time quiet)), ridges and ridge noise worn by wavelength (finest first) — and a
+  rounded, fractal massif texture on every belt, more as crests spread ("a bit more fractal bulky and erode fatter/out";
+  then "slightly too fractally": roughness 0.55 → 0.4). The history is unchanged (hashes). +~3 % surface time at 2.5M.
+- **The same land at every terrain detail (2026-09-29; developer: "slopes and rivers … in the main rough area, but it
+  can move").** Measured (20K, 1200 Myr, against 2.5M): land flips 1.8 % (640K) / 2.5 % (160K) of the land area, half
+  of it rivers and drowned valleys; relief at ~140 km correlates 0.996 / 0.985, at ~60 km 0.95 / 0.84 (160K cannot hold
+  60 km features); rivers draining ≥ 20k km² 92–98 % within 60 km, ≥ 100k km² 71–90 %. Cause of the big rivers' moves:
+  the carve's coarse levels average the surface shown, which differs by ~90 m rms with the detail. `carveSettleCells`
+  (synthesize.js settleFields: those levels given the 160K surface at every finer detail) lifts the big rivers to 74–91 %;
+  built, **off** (the worker pool does not pass it yet; +~0.5 s a frame at 640K / 2.5M). Tried, no gain, removed:
+  stronger inheritance of the coarse valleys, less routing by fine detail, crests anti-aliased by the mesh spacing.
 
 **C. Export any moment, sea included; the planet code.**
 - V1's export dialog on the moment shown: 16-bit heightmap with the sea (its range widened to V2's depths and peaks),

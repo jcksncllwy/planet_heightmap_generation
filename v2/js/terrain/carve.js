@@ -266,10 +266,12 @@ function upsample(coarse, fine, values) {
  * `fields`: per-cell z, u, k, rain, micro, slope, inc on the finest. cfg: { timeMyr, m, rounds: [coarsest, …, finest] }.
  * @returns {{z: Float32Array, recv: Int32Array, area: Float32Array}} on the finest mesh
  */
-export function carveTerrain(meshes, fields, cfg) {
+export function carveTerrain(meshes, fields, cfg, given = null) {
     const L = meshes.length, F = new Array(L);
     F[L - 1] = fields;
-    for (let l = L - 2; l >= 0; l--) F[l] = downsample(meshes[l], meshes[l + 1], F[l + 1]);
+    // (a coarser level's fields given as they are at that detail — the surface synthesized there — rather than averaged
+    // from the finest: the levels that settle the big rivers then see the same surface whatever the detail shown)
+    for (let l = L - 2; l >= 0; l--) F[l] = given?.get(meshes[l].numCells) ?? downsample(meshes[l], meshes[l + 1], F[l + 1]);
     let result = null, delta = null;
     for (let l = 0; l < L; l++) {
         const mesh = meshes[l], f = F[l];

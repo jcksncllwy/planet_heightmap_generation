@@ -234,6 +234,22 @@ export const TERRAIN = {
     // A belt a newer orogeny overprinted still shows under it, at this share of its own (age-decayed) relief and with
     // its own ridge grain (developer: the new should dominate, not erase — cross-cutting grain makes ranges varied)
     overprintShare: 0.5,
+    // Old ranges erode fatter (developer, 2026-09-29: rings and "eyebrow" ranges, "tendrilly ridges" — "it should be a bit
+    // more fractal bulky and erode fatter/out"). As a belt falls quiet its crests are smoothed as hillslope wear smooths
+    // a ridge — each exactly lower and wider, its bulk the same (profiles.js: a bump smoothed by a Gaussian of std σ) —
+    // with σ growing as the square root of the time quiet; its parallel ridges and ridge noise wear the same way, by
+    // wavelength, so the finest go first (a wave λ keeps e^(−2π²σ²/λ²) of itself)
+    crestSpreadKm: 55,          // σ after crestSpreadMyr quiet…
+    crestSpreadMyr: 200,
+    crestSpreadMaxKm: 130,      // …and at most this
+    crestTextureShare: 0.5,     // the ridges' and the ridge noise's σ: this share of the crests' (they keep their grain longer)
+    // …and every belt has a massif texture: rounded, fractal relief in every direction (not drawn out along the strike),
+    // octaves from massifKm down to what the mesh can show — a share of the belt's crest height, more as its crests wear
+    // (the bulk they spread becomes the massif's), its finer octaves worn as the ridges are
+    massifKm: 200,
+    massifRoughness: 0.4,       // (each octave this share of the one before: 0.55 was "slightly too fractally" — developer)
+    massifShare: 0.16,          // ± this share of the crest height on a belt as built…
+    massifWornShare: 0.4,       // …plus this share × how much its crests have spread (1 − their height kept)
 
     // ── Ridges inside a belt: strike-parallel stripes (stripes.js) ──
     stripeKm: {                 // wavelength of the main set of parallel ridges, per kind of belt
@@ -372,6 +388,12 @@ export const TERRAIN = {
     carveMicroScaleKm: 150,     // crust, so they hold their courses between frames (it shapes the routing only, not the
                                 // heights; small-river drainage between frames 10 Myr apart correlates 0.30, from 0.12)
     carveRounds: [3, 2, 2, 1],  // rounds of routing ↔ carving per level, coarsest (the sim mesh) to finest
+    // The same big rivers at every terrain detail (developer: "slopes and rivers … being in the main rough area"): the
+    // carving's coarse levels, where the big rivers are settled, average the surface shown — which differs with the detail
+    // (~90 m rms over a 20K plate cell: ridges drawn or faded, crests sampled finely or coarsely), enough on gentle ground
+    // to send a big river down another valley. With this many cells (e.g. 160000), a finer terrain gives that level the
+    // surface synthesized at this detail instead (synthesize.js settleFields). 0: off
+    carveSettleCells: 0,
     // …except where ice does the work (developer): glaciers erode fast though little falls, so poleward of the storm
     // tracks erosion holds near their level — the rate is the larger of rain's and this, by |latitude|
     glacialErosion: [[45, 0], [52, 0.95], [58, 1.07], [90, 1.0]],

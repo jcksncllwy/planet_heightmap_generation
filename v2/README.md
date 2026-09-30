@@ -345,6 +345,13 @@ rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the me
 Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights
 (`SmoothMapRaster.paintHeights`), so a shore is the heights' zero line — crisp — not land and sea colours blended across
 a mesh triangle.
+**Old ranges erode fatter (2026-09-29).** A belt's crests, ridges and ridge noise lie along lines at some distance from
+its front, and crests outlast the ground under them: old belts stood as thin rings, crescents and tendrils. Now, as a
+belt falls quiet, its crests are smoothed as hillslope wear smooths a ridge — each bump exactly lower and wider, its bulk
+the same, σ growing with √(time quiet) (`crestSpreadKm`; `profiles.js`: a bump smoothed by a Gaussian) — and its ridges
+and ridge noise wear by wavelength, the finest first (`crestTextureShare`). Every belt also has a massif texture:
+rounded, fractal relief in every direction, a share of its crest height that grows as the crests spread (`massifKm`,
+`massifShare`, `massifWornShare`; never below sea level). The history is unchanged (its uplift uses the unworn profile).
 **Scale invariance:** all lengths are km; noise is a function of position; waves shorter than ~2 terrain cells are
 faded out, not aliased. `check-phase8a.mjs` compares 160K, 640K and 2.5M cells sim cell by sim cell.
 A phase that draws terrain sets `displayMesh` (its layers paint terrain cells) and may offer `profileAlong` (the

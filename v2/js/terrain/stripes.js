@@ -180,10 +180,11 @@ function corner(C, r) {
 
 /**
  * The carried stripe value at the point whose raster corners are r3 (weights w3) on C's plate; wx, wy, wz: the point in
- * the world, displaced by the meander warp. The same scale as stripeAt.
+ * the world, displaced by the meander warp; fineKeep: the share of the finer set kept here (a worn belt's goes first).
+ * The same scale as stripeAt.
  */
-export function carriedStripeAt(C, r3, w3, wx, wy, wz) {
-    const { f, p, fineShare, fineRatio } = C;
+export function carriedStripeAt(C, r3, w3, wx, wy, wz, fineKeep = 1) {
+    const { f, p, fineRatio } = C, fineShare = C.fineShare * fineKeep;
     let re = 0, im = 0, re2 = 0, im2 = 0, sum = 0, fadeSum = 0, fineSum = 0, agree = 0;
     for (let i = 0; i < 3; i++) {
         const r = r3[i], wt = w3[i];
