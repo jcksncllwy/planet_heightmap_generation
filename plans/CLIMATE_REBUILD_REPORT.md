@@ -67,6 +67,7 @@ stages you can read and check one at a time: temperature, pressure and wind, oce
 | 11c | Your question: do higher mountains release more rain? | done | Windward slopes now get wetter with height up to the crest; crests no longer drier than the plains; mountain contrast ×2.11 (real ×3.42) |
 | 11d | Your feedback: warm and cold currents, relative to their latitude, and their rain | mostly | Warm-current seas now clearly warmer than cold-current seas (+1.2 °C, was +0.1; real +2.8); their coasts warmer and wetter or cooler and drier; Köppen 47.2 % (decision 8) |
 | 11e | Your feedback: generated worlds too dry | found, part fixed | Two causes: Phase 11d cooled the subtropical seas ≈ 1 °C (fixed: currents now relative to each latitude; Köppen back to 48.3 %), and weak summer monsoons (next phases) |
+| 12 | Your feedback: continentality along coasts and islands | mostly | Air masses carried by each month's wind: Europe's winters right inland (Moscow's coldest month −7.7 vs real −7.3, was −16.1), east coasts colder, the annual-range error 6.83 → 6.26 °C; Köppen 48.1 % (Europe +5 points) |
 
 ## Decisions waiting for you
 
@@ -658,3 +659,33 @@ sea temperature error falls, and the currents look the same (warm minus cold +1.
 Earth the model's too-wet southern winters hide that, but the worlds' big continents have dry winters, so nothing hides
 it. The model treats monsoon air as a shallow, dry heat low, and on a big continent the heat low sits to one side while
 the rest of the continent breathes dry air from the interior.
+
+## Phase 12 — continentality: air masses along the wind
+
+**What I found.** Summers were about right; winters didn't follow the wind that brings them. Europe inland was far too
+cold (Moscow's coldest month −16 °C, real −7), and east coasts too mild (north-east China −8, real −16; Japan 7, real 1).
+The model spread heat alike in every direction, while a month's weather is really the air the wind brought.
+
+**Built — air masses.** Each month, air moves with that month's wind and slowly takes on the temperature of the ground it
+crosses: within a day over the sea; within half a day over sunlit land, where convection mixes it; and over about four
+days over land in the winter half of the world, where it lies stable over cold ground. So Atlantic air keeps Europe mild
+far inland, the continent's cold blows out over east coasts, a narrow sea on the way (the Sea of Japan) partly warms the
+air again, islands and coasts the wind blows onto stay oceanic, and a calm interior keeps its own climate. Mountain
+ranges block it, and air coming down from a plateau warms as it sinks. Most of your guide's zone rules follow from this
+on their own, on any planet.
+
+| Coldest month, °C | Before | Now | Real |
+|---|---|---|---|
+| Germany | −2.6 | −0.1 | 0.7 |
+| Poland | −6.3 | −1.6 | −1.7 |
+| Moscow | −16.1 | −7.7 | −7.3 |
+| North-east China | −8.3 | −13.3 | −16.4 |
+| South China | 11.3 | 9.2 | 9.8 |
+
+The error in the yearly temperature range falls from 6.8 to 6.3 °C; Köppen 48.1 % (Europe 45.6 → 50.4 %); every other
+check holds. On the generated worlds west coasts get milder and east coasts harsher.
+
+**Still not right.** North America's winter wind over the Plains blows from the south-west in the model (really from the
+north-west, bringing Arctic air), so Minnesota's winter is 8 °C too mild — a gap in the pressure pattern (mountains
+bending the westerlies), not in continentality. Yakutsk's extreme cold (−37 °C) reaches only −27. Tropical interiors
+are still a little too even through the year.

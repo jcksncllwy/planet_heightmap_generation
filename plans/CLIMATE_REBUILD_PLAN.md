@@ -1159,3 +1159,56 @@ too-wet southern winters (July at 15–20°S 30–33 vs real 12) make up the ann
 winters. The monsoon's column humidity (≈ 0.6) sits below the deep-convergence range (`RAIN_DEEP_R0` 0.6 … `R1` 0.9), so
 its inflow is treated as a shallow dry heat low. On a big continent the heat low sits to one side and the rest takes dry
 air from the interior (world 202: 9–24 mm/month across 5000 km in midsummer).
+
+
+## Phase 12 — continentality: air masses along the wind
+
+The developer: continentality "along coasts or islands … partially accounted for already, but not in enough detail",
+with a worldbuilding guide's zones (hyperoceanic → hypercontinental: west coasts oceanic, the continental zone well
+inland, east coasts continental, warm seas and lakes interrupting it, islands oceanic).
+
+**Measured** (`diag-continentality.mjs`: the land's annual range per terrain cell by latitude × distance from the sea,
+landmass size, west / east coasts, named regions with the coldest and warmest month; Earth vs the 1° observed t2m, a
+world vs Earth's observed land in the same bin). Earth's range right on average (18.2 vs 18.7 °C) but RMS 6.83 °C, and
+the errors are in winter: Europe's interior too cold (Moscow's coldest month −16.1 vs −7.3, Poland −6.3 vs −1.7,
+Ireland 1.9 vs 5.6), east coasts too mild (north-east China −8.3 vs −16.4, Japan 6.7 vs 1.3), Yakutsk −25 vs −37;
+summers within ≈ 1–2 °C. Neither the land-seasons layer nor the 1° coast rule causes it (switched off: the same): the
+energy balance spreads heat alike in every direction, while a month's weather is the air the wind brought.
+
+**Built** (`temperature.js`): air masses. Each month (and each anchor), the air over each energy-balance cell takes on
+the temperature of the surface beneath within τ and is carried by the month's surface wind meanwhile — σ·A + u·∇A = σ·θ
+(σ = 1/τ), solved by the multigrid carrier (as the rain's stability). τ: over the open sea (and frozen sea as land)
+`TEMP_AIR_SEA_DAYS` 1; over land `TEMP_AIR_SUN_DAYS` 0.5 where the sun is strong (convection mixes the air) to
+`TEMP_AIR_DARK_DAYS` 4 where it is weak (stable air on colder ground), blended in time by the day's sunlight from
+`AIR_MIXED_SUN` (S₀/5, ≈ 25° in midwinter) to `AIR_STABLE_SUN` (S₀/10, ≈ 45°). It carries potential temperature
+(θ = T + (9.8 − the grid's lapse) × height): air coming down from a plateau warms as it sinks. Ridges block it fully
+(`ridgeFaces` without the heat's 0.5 floor: the low air itself, not the weather aloft). Land's air is A; the sea's
+surface stays its own. Calm air stays put, so a still interior keeps its own temperature.
+- Tried and dropped: τ blended as a rate (the sunlit τ dominates, 6 → 12 days changed nothing); the inversion's darkness
+  ramp (too narrow) and S₀/6 … S₀/3, S₀/8 … S₀/4 (winter memory reaching the subtropics: south China 5.4 vs 9.8 °C,
+  Indochina out of the tropics); the ridge floor kept (Pacific air over the Great Plains: Minnesota −0.8 vs −11.3); a
+  wind-aware 1° coast rule (half the land share upwind: west coasts too mild, lee coasts wrong; RMS 6.26 → 6.37); a
+  stronger inversion for Yakutsk (−30.8 vs −37 but high-latitude coasts too cold, RMS 7.18); no evaporative damping
+  (tropical coasts overshoot).
+
+**Numbers (Earth, 160K).**
+
+| | Before | Now | Real |
+|---|---|---|---|
+| Annual range: RMS error / correlation | 6.83 °C / 0.902 | **6.26 / 0.913** | — |
+| Coldest month: Ireland / Germany / Poland / Moscow | 1.9 / −2.6 / −6.3 / −16.1 | 3.2 / −0.1 / −1.6 / −7.7 | 5.6 / 0.7 / −1.7 / −7.3 |
+| … north-east China / south China / Central Asia | −8.3 / 11.3 / −13.7 | −13.3 / 9.2 / −9.0 | −16.4 / 9.8 / −7.8 |
+| Range, west / east coasts 35–65°N | 21.2 / 25.1 | 18.9 / 27.6 | 19.4 / 31.2 |
+| Köppen (continents equal) | 48.3 % (47.5) | 48.1 % (47.8) | V1 38 % |
+| Europe / North America / Asia | 45.6 / 50.2 / 32.5 % | 50.4 / 49.0 / 31.9 % | — |
+| Land temperature / pressure / wind 45° | 3.79 °C / 2.83 hPa / 80.3 % | 3.78 / 2.85 / 80.3 | — |
+
+- Gates: coupled PASSED, no drift (640K 48.3 %, 2.5M 48.4 %, shares within 1.0 %); ocean-check PASSED (its North
+  Atlantic line fails with or without this: a known shortfall). Timing unchanged (~0.8 s on Earth).
+- Worlds: west coasts milder and east coasts harsher (world 202 northern west / east 16.8 / 20.1 → 15.9 / 21.1 °C,
+  world 12345 12.6 / 19.0 → 10.5 / 19.0); aridity unchanged.
+- **Known:** North America's winter wind blows from the south-west over the Plains (real: north-west, Arctic air behind
+  the trough the Rockies force) — Minnesota's coldest month −2.9 vs −11.3, Montana −3.8 vs −6.3: the circulation has
+  no mountain-forced stationary waves. Yakutsk still −27 vs −37 (hypercontinental cold under a calm high). Tropical
+  interiors still flat (10–20° far inland 5–6 vs 8–10 °C). The North Atlantic ≈ 3 °C cold carries into Ireland and
+  Iceland.

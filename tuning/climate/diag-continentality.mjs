@@ -172,7 +172,9 @@ if (PLANET === 'earth') {
         ['Yakutsk', 60, 64, 125, 135], ['Vancouver Is.', 48, 51, -128, -123], ['Montana', 45, 49, -112, -105], ['Minnesota', 44, 48, -96, -92],
         ['New England', 42, 45, -72, -69], ['Japan (Honshu)', 34, 40, 135, 141], ['NE China', 42, 47, 123, 130], ['Iceland', 63.5, 66, -22, -14],
         ['New Zealand S', -46, -42, 168, 173], ['Patagonia', -48, -42, -70, -66], ['Tasmania', -43, -41, 145, 148], ['Hawaii', 19, 22, -160, -155],
-        ['Sri Lanka', 6, 9, 80, 82], ['Madagascar', -24, -14, 44, 49], ['Central Asia', 42, 48, 60, 75]];
+        ['Sri Lanka', 6, 9, 80, 82], ['Madagascar', -24, -14, 44, 49], ['Central Asia', 42, 48, 60, 75],
+        ['Myanmar', 18, 24, 94, 98], ['Thailand', 13, 18, 99, 104], ['N Vietnam', 20, 23, 103, 107], ['S China', 22, 27, 108, 118],
+        ['Bolivia lowland', -18, -13, -66, -60], ['Paraguay', -25, -21, -60, -56], ['Sahel', 12, 16, -5, 15], ['India N', 24, 29, 75, 85]];
     console.log('regions: range new / observed; coldest and warmest month new / observed (°C, the grid cell\'s own height vs observed)');
     for (const [name, a, b, c, d] of REG) {
         const bn = cell(); let mc = 0, mw = 0, oc = 0, ow = 0, k2 = 0;

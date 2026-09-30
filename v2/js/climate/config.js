@@ -33,9 +33,12 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
     TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
     TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
-    TEMP_LOCAL_KM: 1500,
+    TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
     TEMP_CURRENT_MEMORY: 0.6,     // –          share of the temperature of where its water comes from that a current keeps
-    TEMP_COAST_CARRY: 0.6,      // –          … the share of the upwind sea's anomaly onshore winds carry onto land        // km         … its departure from the region within this (Gaussian σ) is added over land
+    TEMP_COAST_CARRY: 0.6,      // –          … the share of the upwind sea's anomaly onshore winds carry onto land
+    TEMP_AIR_SEA_DAYS: 1,       // days       air masses: time for air over the open sea to take on its temperature …
+    TEMP_AIR_SUN_DAYS: 0.5,     // days       … over sunlit land (convection mixes the air) …
+    TEMP_AIR_DARK_DAYS: 4,      // days       … and over land under a weak sun (stable air on colder ground); 0 = off
     TEMP_EVAP_DAMPING: 15,      // W/m²/K     evaporation's damping of the seasons over a wet surface at 25 °C
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
@@ -143,6 +146,9 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_LOCAL_K:       { value: 6, min: 3, max: 15, source: 'advective exchange of a ~1.5 km boundary layer at ~5 m/s over ~1000 km: ρ c_p H U / L ≈ 9 W/m²/K' },
     TEMP_CURRENT_MEMORY: { value: 0.6, min: 0.2, max: 1, source: 'western boundary currents run ≈ 2–5 °C warmer and eastern boundary currents ≈ 2–4 °C colder than their latitude (OISST) — against ≈ 6–10 °C of latitude temperature change along ≈ 1500 km of their path' },
     TEMP_COAST_CARRY:   { value: 0.6, min: 0.2, max: 1, source: 'onshore winds carry the sea\'s warmth or cold a few hundred km inland (the maritime west coasts; the cool coastal deserts beside cold currents)' },
+    TEMP_AIR_SEA_DAYS:  { value: 1, min: 0.3, max: 2, source: 'air-mass transformation over the sea: cold-air outbreaks warm ≈ 5–10 K within a day over open water (heat fluxes of 200–500 W/m² into a ≈ 1 km boundary layer)' },
+    TEMP_AIR_SUN_DAYS:  { value: 1, min: 0.5, max: 2, source: 'a sunlit convective boundary layer (1–2 km) takes on its surface\'s heating within a day or two (sensible heat 100–300 W/m²)' },
+    TEMP_AIR_DARK_DAYS: { value: 6, min: 3, max: 12, source: 'maritime air over snowy winter continents cools ≈ 1–2 K/day (radiative loss from a stable boundary layer): a 10–20 K contrast lasts about a week — Atlantic air keeps Europe mild 2000–3000 km inland' },
     TEMP_LOCAL_KM:      { value: 1500, min: 800, max: 2500, source: 'the scale of the weather systems whose heat transport the diffusion stands for (≈ 1000–2000 km)' },
     TEMP_EVAP_DAMPING:  { value: 15, min: 5, max: 30, source: 'sensitivity of the surface latent heat flux to temperature ≈ 10–20 W/m²/K over tropical oceans and wet land (e.g. Hartmann 2016; Zhang & McPhaden 1995)' },
     TEMP_WET_COOL_C:    { value: 3, min: 1, max: 8, source: 'soil-moisture–temperature coupling: dry soils raise monthly mean temperature by several K (Seneviratne et al. 2010); Sahel pre-monsoon vs monsoon months ≈ 5–6 K; tropical deforestation +1–3 K' },

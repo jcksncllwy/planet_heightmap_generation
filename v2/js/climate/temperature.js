@@ -38,6 +38,10 @@ const BLOCK_FLOOR = 0.5;        // the share of a face that stays open over any 
 const EXPOSURE_KM = 700;                    // km: how far upwind the sea still makes land maritime (e-folding) …
 const EXPOSURE_STEPS = 4;                   // … looked at over this many grid steps
 const CURRENT_ROW_DEG = 6;                  // °: the currents' warmth and cold are relative to the sea within this of latitude
+const AIR_CYCLES = 6;                       // multigrid cycles for the air masses (each month)
+const DRY_LAPSE = 9.8;                      // °C/km: air carried up or down warms or cools at the dry adiabatic rate
+const AIR_STABLE_SUN = SOLAR_CONSTANT / 10; // W/m² daily sunlight (top of the air) below which land's air lies stable (≈ 45° in midwinter) …
+const AIR_MIXED_SUN = SOLAR_CONSTANT / 5;   // … and above which convection mixes it (≈ 25° in midwinter)
 const WET_MONTH_MM = 100;                   // mm/month of rain at which the ground is ~63 % wet
 const WET_SUN_REF = 400;                    // W/m² of daily sunlight (top of the air) at which TEMP_WET_COOL_C applies
 /** Δ/(Δ+γ): the share of the available energy a wet surface evaporates (equilibrium evaporation), relative to 25 °C. */
@@ -341,21 +345,68 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             addLocal(2, F2r, F2i, c2r, c2i);
         }
 
-        // Surface air temperature at time t (months), on the energy-balance grid: the harmonics, and — near snowy or
-        // icy ground under a weak sun — the winter inversion, the air by the ground colder than the air above it.
+        // Air masses: continentality along the wind. The energy balance spreads heat alike in every direction, but a
+        // month's weather is the air the wind brought: maritime air keeps its mildness far inland in winter (Europe)
+        // and the continent's cold reaches the east coasts on the offshore winter wind (north-east China, New England).
+        // Air over each cell takes on the temperature of the surface beneath it within a time τ — over the sea (and
+        // frozen sea as land) TEMP_AIR_SEA_DAYS; over sunlit land, where convection mixes the air, TEMP_AIR_SUN_DAYS;
+        // over land under a weak sun, where the air lies stable on colder ground, TEMP_AIR_DARK_DAYS — and is carried by
+        // the month's wind meanwhile (σ·A + u·∇A = σ·θ, σ = 1/τ; ridges block it fully). It carries its potential
+        // temperature — air coming down from a plateau warms as it sinks, air rising onto one cools. The
+        // land's air is A; the sea's surface stays its own. Calm air goes nowhere, so a still interior keeps its own
+        // temperature; islands and coasts downwind of the sea take the sea's air.
+        const airSolver = winds && P.TEMP_AIR_DARK_DAYS > 0 ? new HelmholtzSolver(g, 0, 0) : null;
+        // (the low air itself, not the weather aloft: a range blocks it fully — Pacific air stays out of the Great Plains)
+        const airFaces = airSolver && P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, landKm, P.TEMP_BLOCK_KM, 0) : null;
+        const airCache = new Map(), airA = new Float64Array(G), airAi = new Float64Array(G), airRhs = new Float64Array(G);
+        const airSig = new Float64Array(G), airU = new Float64Array(G), airV = new Float64Array(G), airTheta = new Float64Array(G);
+        const airMass = (t, T) => {
+            let A = airCache.get(t);
+            if (!A) {
+                const delta = declination(t, tiltDeg);
+                const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
+                const day = 86400, sSea = 1 / (P.TEMP_AIR_SEA_DAYS * day);
+                for (let j = 0; j < h; j++) {
+                    // stable where the ground loses more heat than the sun gives it (winter poleward of ≈ 45°): below
+                    // AIR_STABLE_SUN of daily sunlight, mixed above AIR_MIXED_SUN
+                    const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
+                    let x = (AIR_MIXED_SUN - q) / (AIR_MIXED_SUN - AIR_STABLE_SUN); x = x <= 0 ? 0 : x >= 1 ? 1 : x;
+                    const dark = x * x * (3 - 2 * x), sLand = 1 / ((P.TEMP_AIR_SUN_DAYS + (P.TEMP_AIR_DARK_DAYS - P.TEMP_AIR_SUN_DAYS) * dark) * day);
+                    for (let i = 0; i < w; i++) {
+                        const c = j * w + i, f = landFrac[c], ice = iceRamp(T[c]);
+                        airSig[c] = f * sLand + (1 - f) * ((1 - ice) * sSea + ice * sLand);
+                        airTheta[c] = T[c] + (DRY_LAPSE - lapseEff[c]) * f * landKm[c];
+                        airRhs[c] = airSig[c] * airTheta[c];
+                        airU[c] = (1 - fm) * uM[ma * G + c] + fm * uM[mb * G + c]; airV[c] = (1 - fm) * vM[ma * G + c] + fm * vM[mb * G + c];
+                    }
+                }
+                airA.set(airTheta); airAi.fill(0);
+                airSolver.setOperator(airSig, zero, airU, airV, 1, airFaces);
+                airSolver.solve(airRhs, zero, airA, airAi, { maxCycles: AIR_CYCLES, tol: 1e-4 });
+                A = Float64Array.from(airA, (a, c) => a - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c]);
+                airCache.set(t, A);
+            }
+            for (let c = 0; c < G; c++) if (landFrac[c] > 0) T[c] += landFrac[c] * (A[c] - T[c]);
+        };
+
+        // Surface air temperature at time t (months), on the energy-balance grid: the harmonics, the air masses, and —
+        // near snowy or icy ground under a weak sun — the winter inversion, the air by the ground colder than the air
+        // above it.
         const tmp = new Float64Array(G);
         const surfaceAt = (t, withInversion) => {
             const th = 2 * Math.PI * t / 12, co = Math.cos(th), sn = Math.sin(th), co2 = Math.cos(2 * th), sn2 = Math.sin(2 * th);
             const delta = declination(t, tiltDeg);
             const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
             const U0sq = P.TEMP_INVERSION_WIND * P.TEMP_INVERSION_WIND;
+            for (let c = 0; c < G; c++) tmp[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
+            if (airSolver) airMass(t, tmp);
             for (let j = 0; j < h; j++) {
                 const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
                 let x = 1 - q / WEAK_SUN; x = x <= 0 ? 0 : x >= 1 ? 1 : x;
                 const dark = x * x * (3 - 2 * x);
                 for (let i = 0; i < w; i++) {
                     const c = j * w + i;
-                    let T = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
+                    let T = tmp[c];
                     if (withInversion && dark > 0) {
                         const f = landFrac[c], snow = f * iceRamp(T - lapseEff[c] * landKm[c]) + (1 - f) * iceRamp(T);
                         let calm = 1;
@@ -449,7 +500,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
  * e^{−(ridge − lower side)/H}, averaged over the 1° strips across the face; the ridge of a strip is the highest 1° mean
  * height from one cell's centre to the next, the sides the two cells' mean land heights.
  */
-function ridgeFaces(ctx, core, g, ratio, landKm, hKm) {
+function ridgeFaces(ctx, core, g, ratio, landKm, hKm, floor = BLOCK_FLOOR) {
     const w = g.w, h = g.h, G = g.size, cw1 = core.w, r2 = ratio >> 1, h1 = ctx.surface.meanKm;
     const hAt = (jj, ii) => { const v = h1[jj * cw1 + ((ii % cw1) + cw1) % cw1]; return v > 0 ? v : 0; };
     const faces = { e: new Float64Array(G).fill(1), n: new Float64Array(G).fill(1) };
@@ -460,10 +511,10 @@ function ridgeFaces(ctx, core, g, ratio, landKm, hKm) {
         const lowE = Math.min(landKm[c], landKm[ce]);
         for (let s = 0; s < ratio; s++) {
             let me = 0; for (let ii = i * ratio + r2; ii <= (i + 1) * ratio + r2; ii++) me = Math.max(me, hAt(j * ratio + s, ii));
-            se += BLOCK_FLOOR + (1 - BLOCK_FLOOR) * Math.exp(-Math.max(0, me - lowE) / hKm);
+            se += floor + (1 - floor) * Math.exp(-Math.max(0, me - lowE) / hKm);
             if (j > 0) {
                 let mn = 0; for (let jj = (j - 1) * ratio + r2; jj <= j * ratio + r2; jj++) mn = Math.max(mn, hAt(jj, i * ratio + s));
-                sn += BLOCK_FLOOR + (1 - BLOCK_FLOOR) * Math.exp(-Math.max(0, mn - Math.min(landKm[c], landKm[c - w])) / hKm);
+                sn += floor + (1 - floor) * Math.exp(-Math.max(0, mn - Math.min(landKm[c], landKm[c - w])) / hKm);
             }
         }
         faces.e[c] = se / ratio;
