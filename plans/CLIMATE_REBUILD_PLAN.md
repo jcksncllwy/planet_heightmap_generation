@@ -1212,3 +1212,43 @@ surface stays its own. Calm air stays put, so a still interior keeps its own tem
   no mountain-forced stationary waves. Yakutsk still −27 vs −37 (hypercontinental cold under a calm high). Tropical
   interiors still flat (10–20° far inland 5–6 vs 8–10 °C). The North Atlantic ≈ 3 °C cold carries into Ireland and
   Iceland.
+
+
+## Phase 13 — monsoons and land rain: less dry worlds
+
+From Phase 11e: generated worlds 34–42 % arid (the latitude alone predicts 29–35 %), the excess in the subtropics; the
+model's summer monsoons weak (Earth's land at 10–20°S in January 117 vs real 224 mm/month).
+
+**Diagnosed** (scratch probes on the rain stage's budget; `diag-dry.mjs` on four worlds).
+- Southern Africa in January: column relative humidity 0.54–0.60, so the deep-convergence share is 0 (`RAIN_DEEP_R0`
+  0.6): the monsoon inflow is treated as a shallow dry heat low. Land evaporation supplies most of the rain (E 2.4–3.7
+  of P 2.9–5.0 mm/day); the import from the sea (P − E) is 0.5–1.3 mm/day (real ≈ 4). Over all land E/P is
+  0.83–0.88 (real ≈ 0.6–0.65): too little ocean water reaches land.
+- The summer rain belts over land: southern Africa's peak at 7.5°S (real 12.5), Australia's on New Guinea (real
+  11.5°S), South America's 202 vs 312 mm/month; India's July peak at 6.5°N (real 19.5).
+- What did not help: the deep-convergence range lowered to 0.45 … 0.75 or 0.5 … 0.65 (January 10–20°S 117 → 129;
+  worlds 41 → 40 % arid; July in the north too wet); a land-weighted tropical trough (no change); rain efficiency over
+  land × the ground's wetness (concentrates rain where it already falls: 0–15°S more arid).
+
+**Built** (`rain.js`): land convection. Over sunlit land rain picks up at a lower column humidity than over the sea
+(afternoon storms: Schiro et al. 2016): the rate × e^{(a·s)²/2} — the same form as the storms' humidity spread — with
+s = `RAIN_LAND_CONVECTION` × land share × the sun's share of full strength (daily sunlight `CONVECT_SUN_LOW` S₀/8 …
+`CONVECT_SUN_FULL` S₀/4: none under a winter sun, full in the tropics and the summer). A desert's air is too dry for it
+to matter much; moisture passing over semi-arid land rains there rather than returning to the sea. At 0.065 it is ×1.38
+at full sun, an effective shift of ≈ 2.6 % of column humidity (the literature: 5–10 %).
+
+| | Before | 0.05 | **0.065** | 0.08 |
+|---|---|---|---|---|
+| Worlds 202 / 101 arid | 41 / 42 % | 38 / 39 | **36 / 36** | 35 / 34 |
+| Earth arid (Beck 31 %) | 32 % | 31 | 30 | 28 |
+| Köppen (continents equal) | 48.1 % (47.8) | 47.6 (47.4) | **47.0 (46.6)** | 46.0 (44.8) |
+| Australia / South America | 56.3 / 39.3 % | 56.0 / 37.8 | 53.6 / 36.4 | 46.9 / 34.3 |
+
+- Worlds (all four): arid 40 / 38 / 34 / 35 → 36 / 36 / 32 / 34 % (latitude alone: 31 / 33 / 35 / 29); land rain
+  +8–10 %. Test planets: the mid-latitude continent 63 → 59 % arid, the tropical 53 → 49, the supercontinent 91 → 86.
+- Gates: coupled PASSED, no drift (640K 47.5 %, 2.5M 47.6 %, shares within 1.0 %); guardrails hold (land temperature
+  3.87 °C, sea 2.50, pressure 2.85 hPa, wind 80.3 %). The Köppen cost is hot desert turning to hot steppe
+  (Australia, South America): BWh 12 → 10 % of land (real 14).
+- **Known:** the summer rain belts' positions and strength over land (above) are unchanged: the pressure pattern places
+  them (the tropical trough follows each longitude's warmest latitude, smoothed with the neighbouring seas); the
+  southern winter's tropics are too wet on Earth (July at 10–20°S 36 vs real 12 mm/month), which hid the weak summer.

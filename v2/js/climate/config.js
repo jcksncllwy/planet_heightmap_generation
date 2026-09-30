@@ -105,6 +105,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
     RAIN_INSTABILITY: 0.0187,        // 1/K        … and gained per K a sea is warmer (unstable air off warm currents, warm currents)
     RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
+    RAIN_LAND_CONVECTION: 0.065, // –         spread of the column's relative humidity by afternoon storms over sunlit, wet land
     RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
     RAIN_LEE_PER_KM: 1,         // 1/km       rain shadows on the 1° grid: rain × e^{−this × km the air has come down from higher ground}
@@ -199,6 +200,7 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_HIGH_K_PER_HPA: { value: 0.5, min: 0, max: 1.5, source: 'subsidence under the subtropical highs warms the air above the marine layer by several K (a trade-wind / stratocumulus inversion of 5–10 K under +5–10 hPa highs)' },
     RAIN_INSTABILITY:   { value: 0.015, min: 0, max: 0.03, source: 'convection over surfaces warmer than their surroundings (heated plateaus, warm currents such as the Gulf Stream and Kuroshio) raises rain for the same humidity; no direct literature value — kept to the scale of the stable-air term' },
     RAIN_SOIL_MM:       { value: 150, min: 50, max: 300, source: 'plant-available soil water capacity ≈ 100–200 mm (e.g. Manabe 1969 bucket: 150 mm)' },
+    RAIN_LAND_CONVECTION: { value: 0.08, min: 0, max: 0.12, source: 'daytime convection over wet land: rain over land peaks in the afternoon and picks up at ≈ 5–10 % lower column humidity than over the sea (Schiro et al. 2016; Bergemann & Jakob 2016); soil-moisture–precipitation coupling in monsoon regions (Koster et al. 2004)' },
     RAIN_COLUMN_LOCAL:  { value: 0.5, min: 0.2, max: 0.9, source: 'lower-tropospheric temperature anomalies over continents are ≈ 40–60 % of the surface anomaly' },
     RAIN_OROG_STORM:    { value: 1, min: 0.5, max: 1, source: 'orographic precipitation is concentrated in storms with strong cross-barrier flow (≈ 10–20 m/s), not the weak monthly-mean wind (Roe 2005)' },
     RAIN_LEE_PER_KM:    { value: 1, min: 0.3, max: 2, source: 'lee-side rain falls ≈ ×0.2–0.5 of windward within a few hundred km behind 1–2 km of relief (Cascades, Andes, Southern Alps; Roe 2005)' },
