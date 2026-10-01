@@ -90,6 +90,8 @@
 .evo-koppen span { white-space: nowrap; }
 .evo-koppen i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 .evo-koppen em { color: #778; font-style: normal; }
+#regimeRow { margin-top: 0; margin-bottom: 6px; }
+.evo-regime-legend { font-size: 12px; color: #aab; margin-bottom: 8px; }
 .evo-chip {
     position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 20;
     display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
@@ -129,6 +131,8 @@
     .evo-timeline select { min-height: 44px; }
     .evo-live { min-height: 44px; }
     .evo-more { min-height: 44px; min-width: 44px; }
+    #finishCells, #riverDensity { min-height: 44px; }
+    #finishShowRow .toggle-label, #regimeRow .toggle-label { min-height: 44px; }
     #mapCanvas { top: 36px; height: calc(100vh - 36px); }
     #info { display: none; }
     #hoverInfo { bottom: 176px; }

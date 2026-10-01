@@ -78,7 +78,7 @@
             <summary>Finish</summary>
             <div class="section-body">
                 <div class="cg">
-                    <label>Finish Detail <span class="tip" data-tip="The moment shown, sculpted again with care: warped and roughened, its rivers carving longer with the climate's rain, dry basins left closed, sediment laid down, an ice age's glaciers and fjords, and the wind's sand seas and loess. Finer detail takes longer — 10M cells about a minute the first time">?</span></label>
+                    <label>Finish Detail <span class="tip" data-tip="The moment shown, sculpted again with care: warped and roughened, its rivers carving longer with the climate's rain, dry basins left closed, sediment laid down, an ice age's glaciers and fjords, and the wind's sand seas and loess; and its climate, at this detail, for the climate tabs. Finer detail takes longer — 10M cells about a minute the first time">?</span></label>
                     <select id="finishCells">
                         <option value="160000">160K cells · 61 km</option>
                         <option value="640000">640K cells · 30 km</option>
@@ -91,6 +91,21 @@
                 <div id="finishInfo" class="evo-climate-info"></div>
                 <div class="tg" id="finishShowRow" hidden>
                     <label class="toggle-label"><input type="checkbox" id="chkFinished" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Show Finished Moments</label>
+                    <label class="toggle-label"><input type="checkbox" id="chkWater" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Rivers &amp; Lakes</label>
+                </div>
+                <div id="riverDensityGroup" hidden>
+                    <div class="cg">
+                        <label>River Density <span class="tip" data-tip="Which rivers are drawn on finished moments, by how much water they carry: Few — 150 m³/s and more; Normal — 40 m³/s; Many — 8 m³/s. The bigger a river, the stronger its line; seasonal rivers are dashed, and those dry most of the year dotted">?</span></label>
+                        <select id="riverDensity">
+                            <option value="150">Few</option>
+                            <option value="40" selected>Normal</option>
+                            <option value="8">Many</option>
+                        </select>
+                    </div>
+                    <div class="tg" id="regimeRow">
+                        <label class="toggle-label"><input type="checkbox" id="chkRegime"><span class="toggle-track"><span class="toggle-thumb"></span></span>Colour by Regime <span class="tip" data-tip="Colour the rivers by their year — each month's rain and snowmelt, run down the rivers: blue, permanent; violet, permanent with a yearly flood season (the Nile's, from rains far upstream; a snowmelt flood); cyan, seasonal — dry some months; brown, dry most of the year. Hover a river for its flood months">?</span></label>
+                    </div>
+                    <div id="regimeLegend" class="evo-koppen evo-regime-legend" hidden></div>
                 </div>
             </div>
         </details>
@@ -110,6 +125,7 @@
                 </div>
                 <div class="map-tabs" id="mapTabs">
                     <button class="map-tab active" data-layer="terrain">Terrain</button>
+                    <button class="map-tab" data-layer="satellite" title="The planet as from space, cloud-free: forest, grass, bare ground, snow and ice from its climate — Year, January or July. Comes with a finished moment">Satellite</button>
                     <button class="map-tab" data-layer="heightmap">Heightmap</button>
                     <button class="map-tab" data-layer="plates">Plates</button>
                     <span class="tab-break"></span>
@@ -144,7 +160,7 @@
                             <option value="etopo">ETOPO</option>
                             <option value="dem">DEM</option>
                             <option value="scientific">Scientific</option>
-                            <option value="satellite">Satellite</option>
+                            <option value="satellite">Blue Marble (by height)</option>
                             <option value="grey">Grey</option>
                             <option value="antique">Antique</option>
                         </optgroup>
@@ -182,6 +198,7 @@
     </div>
     <select id="mobileViewSwitch" class="mobile-view-switch" aria-label="Layer">
         <option value="terrain">Terrain</option>
+        <option value="satellite">Satellite</option>
         <option value="heightmap">Heightmap</option>
         <option value="plates">Plates</option>
         <optgroup label="Climate">

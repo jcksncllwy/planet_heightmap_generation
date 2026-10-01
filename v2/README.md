@@ -37,7 +37,8 @@ the terrain resolution redraws the same history (only the plates' resolution nee
 finished history on, 20 Myr at a time in the worker that ran it, until Stop (`simulate`'s `resume`: the pieces are the
 one history, bit for bit; the link records how far — `more=` — and rebuilds it; it stops for good at a memory budget,
 ~13,000 Myr at 40K). Its views are V1's:
-Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds), Heightmap and Plates, globe (in V1's space: stars,
+Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds; "Blue Marble (by height)" colours by
+height alone), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
 and setting. **Finish** sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
@@ -46,7 +47,32 @@ flat pans where inflow and evaporation balance (the carve's `sink` / `base`); se
 deltas); soil creep where it is wet and warm; an Earth-like last ice age (U-troughs, fjords, scoured lake hollows,
 moraines, basins still sunk by the ice); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
-like the live terrain; kept per moment, a Show Finished Moments toggle compares. Measured (20K plates, desktop): 640K
+like the live terrain; kept per moment, a Show Finished Moments toggle compares. A finished moment brings **its own
+climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
+again on the finished surface — the climate tabs (Köppen, temperature, rain, wind, currents) and the readout use it,
+drawn per pixel of the finished picture. **Satellite** (finished moments only; plans/V2_SATELLITE_PLAN.md): the planet as
+from space, cloud-free, for the Year, January or July — each cell's cover from its twelve months (`finish-cover.js`: tree,
+grass and bare shares by wetness and warmth through S-curves, so biomes blend; needle-leaved or broad, evergreen or
+deciduous; grass green or dormant — golden with drought, brown with cold; a snowpack through the cold months, hidden in
+part by forest canopy; ice caps), mixed in linear light from reference colours fitted to NASA's Blue Marble over Earth's
+own observed climate, each climate's mean moved toward its own colour for the season (Blue Marble's mean per Köppen class,
+greens made livelier) the deeper inside the climate (none at its edge, so transitions stay the cover's own, warped
+and roughened by noise); the rain the cover reads a little smoothed, warped and roughened (less splotchy); each kind of ground tinted by warped noise between
+a few natural colours (red, pale, dark or grey ground; lusher, olive or khaki grass; deeper, olive or bluer forest), with
+a fine brightness mottling; the terrain (S2): tree and snow lines
+by each place's full height, rock and scree on rugged or steep ground (most where dry or cold), in dry country greener
+pole-facing slopes and valleys, the wind's sand seas, loess and the flood basalt that still caps the ground, and a flow
+texture — an earthy tint by the area each place drains, so every valley network shows faintly; the sea dark by depth with lighter shelves and warm turquoise shallows, sea ice in its season, lakes
+frozen in a cold month; the readout names the ground's biome. **Rivers and lakes** by the climate
+(`finish-hydro.js`): discharge in m³/s from each place's runoff, less what dry river beds lose; each river's year — its
+monthly flows from each month's rain and snowmelt (and groundwater draining back slowly), routed down the rivers — and
+its regime: permanent, permanent with a yearly flood season (the Nile's), seasonal, dry most of the year; every river ends at the sea: a
+lake stays only where its river fills it and it is big for its river, and passes all its water on; anything smaller —
+or a basin its river cannot fill — is cut through by a gorge to its floor (old basins that overflow have cut their rims
+down; the ice age's hollows are lake districts); no closed basins, no dry land below sea level (a sunk basin's pit is
+filled in to sea level); only the real oceans are sea. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
+rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
+names a river's discharge, regime and flood months, and a lake's kind). Measured (20K plates, desktop): 640K
 ~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
 **Calculate Climate** gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
 winds, currents — about a second, in a worker), kept per moment while the history is open. Its code is
@@ -158,11 +184,12 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
                    palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade)
-js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker (the climate of a moment, on request), finish-view (the Finish step's worker and painting)
+js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own; the Satellite view), finish-view (the Finish step's worker and painting)
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
                    finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),
-                   finish-ice (the last ice age), finish-wind (sand seas, dunes, pans, loess)
+                   finish-ice (the last ice age), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
+                   regimes, lakes), finish-cover (the land's cover and its colours from space)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back)
 tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), trace / render / screenshot helpers

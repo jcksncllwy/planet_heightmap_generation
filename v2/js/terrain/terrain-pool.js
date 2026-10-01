@@ -78,7 +78,11 @@ export class TerrainPool {
 
     get size() { return this.workers.length; }
 
+    /** Let go of what the pool keeps for a mesh (its chunks, its sampler: ~0.3 GB at 10M cells). */
+    forget(tMesh) { this.meshes.delete(tMesh); }
+
     terminate() {
+        this.meshes.clear();
         for (const w of this.workers) w.terminate();
         this.workers = [];
         for (const c of this.carvers) c?.worker.terminate();

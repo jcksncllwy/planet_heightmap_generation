@@ -125,6 +125,16 @@ export function computeClimate(input, options = {}) {
     return { grid, surface, anchorMonths, anchors, months, cell, stages, timing };
 }
 
+/**
+ * Step 5 again, for new heights on the same terrain cells — the grid's climate kept (`res`: computeClimate's result, or
+ * {grid, surface, months, cell: {lat, lon}} kept from it): e.g. a surface carved after its climate was calculated.
+ * With the same heights and options it returns exactly res.cell. `onCell(r, T12, P12)`, if given, is shown each land
+ * cell's twelve months (°C, mm; reused arrays).
+ */
+export function cellClimate(res, xyz, elevKm, land, options = {}, onCell = null) {
+    return finishCells(res.grid, res.surface, res.months, res.cell.lat, res.cell.lon, elevKm, land, { ...CORE_DEFAULTS, ...options }, xyz, onCell);
+}
+
 // ── 1 ─────────────────────────────────────────────────────────────────────────
 export function cellLatLon(xyz, axes, lat, lon) {
     const n = lat.length, R = 180 / Math.PI;
@@ -225,7 +235,7 @@ function synthesizeGrid(grid, anchors, K, o) {
  * grid can't resolve. Grid cells without data (e.g. land-only observations over the sea) are filled from the nearest
  * grid cell that has data. Only land cells are classified; the sea gets class 0.
  */
-function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz) {
+function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCell = null) {
     const G = grid.size, n = lat.length, w = grid.w, h = grid.h, gamma = o.lapseRateCPerKm;
     // sea-level-reduced temperature and rain, with gaps filled
     const valid = new Uint8Array(G);
@@ -277,6 +287,7 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz) {
         if (!(ts === ts)) continue;                       // no data anywhere near (cannot happen with global fields)
         tAnnual[r] = ts / 12; pAnnual[r] = ps;
         koppen[r] = classifyCell(T12, P12);
+        if (onCell) onCell(r, T12, P12);
     }
     return { koppen, tAnnual, pAnnual, lat, lon };
 }

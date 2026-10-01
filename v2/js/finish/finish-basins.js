@@ -35,6 +35,10 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F) {
             if (parent[nb] < 0 || level < fill[nb]) { parent[nb] = c; fill[nb] = level; heap.push(level, nb); }
         }
     }
+    // (the tectonic surface's own hollows — rifts, forelands, closed basins — where lakes may stand; the finishing's
+    // later hollows are breached or filled: finish-hydro.js)
+    const tectonic = new Uint8Array(n);
+    for (let i = 0; i < count; i++) { const c = order[i]; if (fill[c] > z[c] + F.tectonicHollowKm) tectonic[c] = 1; }
     // ── the hollows: cells under their spill level, in patches of one level (one lake each, if it were full) ──
     const EPS = 1e-4, lake = new Int32Array(n).fill(-1), lakes = [];
     for (let i = 0; i < count; i++) {
@@ -72,5 +76,5 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F) {
         for (let i = 0; i <= k; i++) { const c = cells[i]; if (z[c] < level) { z[c] = level; levelled++; } sink[c] = 1; base[c] = level; }
         basins++;
     }
-    return { sink, base, basins, levelled };
+    return { sink, base, basins, levelled, tectonic };
 }

@@ -10,6 +10,12 @@ import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-i
 export const TERRAIN_MESH_SEED = 20260924;
 const meshes = new Map();
 
+/** Let go of every terrain mesh built here but this size's (the finishing worker builds one fine mesh at a time: kept,
+ *  a 10M-cell mesh — over a gigabyte — sat beside the next detail's and the page ran out of memory). */
+export function keepOnlyTerrainMesh(numCells) {
+    for (const k of [...meshes.keys()]) if (k !== numCells) meshes.delete(k);
+}
+
 /** A terrain mesh of about `numCells` cells (same shape as a SimMesh), built once per size. */
 export function terrainMesh(numCells) {
     if (!meshes.has(numCells)) meshes.set(numCells, buildSimMesh(numCells, TERRAIN_MESH_SEED));

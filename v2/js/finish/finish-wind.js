@@ -46,7 +46,8 @@ export function windWork(ctx, F) {
     }
     // (a sand sea is one sea, not a speckle: its extent smoothed over ~40 km)
     const ergG = grid.blur(grid.average(lat, lon, ergRaw, c => z[c] > 0), 40), fillG = grid.blur(grid.average(lat, lon, z, c => z[c] > 0), 30);
-    const erg = ctx.debug ? new Float32Array(n) : null, loessOut = ctx.debug ? new Float32Array(n) : null;
+    // (where the sand seas and the loess are: for the satellite view's ground, and the debug layers)
+    const erg = new Float32Array(n), loessOut = new Float32Array(n);
     // ── sand seas: hollows filled, dune ridges across (or along) the wind ──
     const lam = F.duneKm, show = fade(lam), warpF = R / (3 * lam);
     let ergKm2 = 0;

@@ -5,10 +5,13 @@
 // Currents (the sea's warm and cold water and its surface currents) — each shaded by the relief, as the Plates tab is.
 
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
+import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
 
-export const CLIMATE_LAYERS = new Set(['koppen', 'temperature', 'rain', 'wind', 'currents']);
-export const SEASONAL_LAYERS = new Set(['temperature', 'rain', 'wind']);
+export const CLIMATE_LAYERS = new Set(['satellite', 'koppen', 'temperature', 'rain', 'wind', 'currents']);
+export const SEASONAL_LAYERS = new Set(['satellite', 'temperature', 'rain', 'wind']);
+/** Layers only a finished moment has (its land's cover — plans/V2_SATELLITE_PLAN.md): greyed on the live timeline. */
+export const FINISHED_ONLY_LAYERS = new Set(['satellite']);
 export const SEASON_WORDS = { year: 'the year', jan: 'January', jul: 'July' };
 
 // ── the worker ──
@@ -187,14 +190,24 @@ export function drawArrows(ctx, width, layer, season, C) {
 }
 
 // ── the legend ──
+/** The legend of a climate layer. A finished moment's Köppen classes are counted on its climate picture (C.raster). */
 export function drawLegend(el, layer, season, C, terrain) {
     const ramp = { temperature: RAMPS.temperature, rain: RAMPS.rain, wind: RAMPS.pressure, currents: RAMPS.oceanAnom }[layer];
+    if (layer === 'satellite') { el.innerHTML = `<div class="evo-legend-note">As from space, cloud-free — ${SEASON_WORDS[season]}: forest, grass, bare ground, snow and ice from the climate</div>`; return; }
     if (layer === 'koppen') {
-        // the classes on this planet's land, the largest first
+        // the classes on this planet's land, the largest first (on a picture: each pixel by its area, cos latitude)
         const count = new Float64Array(KOPPEN_CLASSES.length);
-        const k = C.cell.koppen, h = terrain.heightKm;
         let land = 0;
-        for (let c = 0; c < k.length; c++) if (h[c] > 0) { count[k[c]]++; land++; }
+        if (C.raster) {
+            const R = C.raster;
+            for (let y = 0; y < R.h; y++) {
+                const a = Math.cos(((y + 0.5) / R.h - 0.5) * Math.PI);
+                for (let x = 0, i = y * R.w; x < R.w; x++, i++) if (R.koppen[i]) { count[R.koppen[i]] += a; land += a; }
+            }
+        } else {
+            const k = C.cell.koppen, h = terrain.heightKm;
+            for (let c = 0; c < k.length; c++) if (h[c] > 0) { count[k[c]]++; land++; }
+        }
         const rows = [...count.keys()].filter(i => i > 0 && count[i] / land >= 0.005).sort((a, b) => count[b] - count[a]);
         el.innerHTML = `<div class="evo-koppen">${rows.map(i => {
             const K = KOPPEN_CLASSES[i], [r, g, b] = KOPPEN_RGB[i];
@@ -206,6 +219,144 @@ export function drawLegend(el, layer, season, C, terrain) {
         currents: 'the sea against its latitude’s average, °C · arrows: surface currents' }[layer];
     el.innerHTML = `<canvas width="560" height="44"></canvas><div class="evo-legend-note">${note}</div>`;
     drawRampBar(el.querySelector('canvas'), ramp);
+}
+
+// ── a finished moment's climate (its own, at its detail — climate-fields.js, with a picture of the land's climate:
+// raster {w, h, koppen, tAnnual (°C × 100, the sea −32768), pAnnual (mm)}) — drawn per pixel of the finished picture ──
+/** Where a texture W wide samples the 1° grid (bilinear; longitude wraps): per column and per row. */
+function gridSampler(W) {
+    const H = W >> 1, i0 = new Uint16Array(W), fx = new Float32Array(W), j0 = new Uint8Array(H), fy = new Float32Array(H);
+    for (let x = 0; x < W; x++) { const g = (x + 0.5) / W * 360 - 0.5, i = Math.floor(g); i0[x] = (i + 360) % 360; fx[x] = g - i; }
+    for (let y = 0; y < H; y++) { const g = Math.min(178.999, Math.max(0, (y + 0.5) / H * 180 - 0.5)); j0[y] = Math.floor(g); fy[y] = g - j0[y]; }
+    return (field, x, y) => {
+        const a = i0[x], b = a === 359 ? 0 : a + 1, r0 = j0[y] * 360, r1 = r0 + 360, tx = fx[x], ty = fy[y];
+        return (field[r0 + a] * (1 - tx) + field[r0 + b] * tx) * (1 - ty) + (field[r1 + a] * (1 - tx) + field[r1 + b] * tx) * ty;
+    };
+}
+/** The climate picture's pixel for texture pixel (x, y) of a texture W wide — on land, the nearest land pixel (a coast
+ *  the two pictures draw a pixel apart) — or −1. */
+function landPixel(R, W, x, y) {
+    const s = R.w / W, cx = Math.min(R.w - 1, Math.floor((x + 0.5) * s)), cy = Math.min(R.h - 1, Math.floor((y + 0.5) * s)), i = cy * R.w + cx;
+    if (R.koppen[i]) return i;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const yy = cy + dy;
+        if (yy < 0 || yy >= R.h) continue;
+        const j = yy * R.w + (cx + dx + R.w) % R.w;
+        if (R.koppen[j]) return j;
+    }
+    return -1;
+}
+/** The live layers' shading (0.45 + 0.55 × the light) from the finished picture's light kk (0.35…1). */
+const shadeK = kk => 0.45 + 0.55 * (kk - 0.35) / 0.65;
+
+/**
+ * A climate layer's colouring per pixel of a finished picture, for finish-view.js paintFinished (a texture W wide):
+ * the land from the moment's own climate picture, the sea and the seasons from its grid — shaded by the finished relief,
+ * as the live layers by theirs. `lut`: the terrain's palette (the land under the currents).
+ */
+export function finishedClimateColor(layer, season, C, W, lut) {
+    if (layer === 'satellite') return satelliteColor(season, C, W);
+    const R = C.raster, g = gridSampler(W), T = { temperature: lutOf('temperature'), rain: lutOf('rain'), wind: lutOf('pressure'), currents: lutOf('sst') }[layer];
+    const px = [0, 0, 0];
+    const putPx = (out, o, kk, v) => {
+        const x = T.toX(v), i = 3 * Math.max(0, Math.min(T.n - 1, Math.round((x - T.a) / (T.b - T.a) * (T.n - 1)))), k = shadeK(kk);
+        out[o] = Math.min(255, T.lut[i] * k); out[o + 1] = Math.min(255, T.lut[i + 1] * k); out[o + 2] = Math.min(255, T.lut[i + 2] * k); out[o + 3] = 255;
+    };
+    const rgbPx = (out, o, kk, rgb) => { const k = shadeK(kk); out[o] = Math.min(255, rgb[0] * k); out[o + 1] = Math.min(255, rgb[1] * k); out[o + 2] = Math.min(255, rgb[2] * k); out[o + 3] = 255; };
+    return (out, o, x, y, wet, kk, k3) => {
+        const i = wet ? -1 : landPixel(R, W, x, y);
+        if (layer === 'koppen') {
+            let rgb = KOPPEN_RGB[i >= 0 ? R.koppen[i] : 0];
+            if (i < 0) { const ice = Math.min(1, Math.max(0, g(C.ice, x, y))); if (ice > 0.02) { for (let ch = 0; ch < 3; ch++) px[ch] = rgb[ch] + (ICE_RGB[ch] - rgb[ch]) * ice; rgb = px; } }
+            rgbPx(out, o, kk, rgb);
+        } else if (layer === 'temperature') {
+            const sea = g(C.T[season], x, y);
+            putPx(out, o, kk, i < 0 ? sea : R.tAnnual[i] / 100 + (season === 'year' ? 0 : sea - g(C.T.year, x, y)));
+        } else if (layer === 'rain') {
+            const p = g(C.P[season], x, y);
+            if (i < 0) { putPx(out, o, kk, p); return; }
+            const monthly = R.pAnnual[i] / 12, yr = season === 'year' ? 0 : g(C.P.year, x, y);
+            putPx(out, o, kk, season === 'year' || !(yr > 0.01) ? monthly : monthly * p / yr);
+        } else if (layer === 'wind') putPx(out, o, kk, g(C.slp[season], x, y));
+        else if (layer === 'currents') {
+            if (wet) { putPx(out, o, kk, g(C.sstAnom, x, y)); return; }
+            // (the land: its own colours, greyed and dimmed)
+            const L = lut.rgb, r = L[k3] * kk, gg = L[k3 + 1] * kk, b = L[k3 + 2] * kk, l = 0.3 * r + 0.59 * gg + 0.11 * b;
+            out[o] = (r + (l - r) * 0.55) * 0.75; out[o + 1] = (gg + (l - gg) * 0.55) * 0.75; out[o + 2] = (b + (l - b) * 0.55) * 0.75; out[o + 3] = 255;
+        }
+    };
+}
+
+// ── the Satellite layer (plans/V2_SATELLITE_PLAN.md): the land's own colours from space (the finish's, per view: the
+// year, January, July — finish-cover.js), the sea by its depth (Blue Marble's: near black in the deep, lighter over the
+// shelves, turquoise over warm shallows), sea ice in its season, lakes as water and salt pans white ──
+// (the shallowest water no brighter than a broad shelf's: the finished coasts' shelves are narrow, and a bright last
+// step drew every coast a cyan outline)
+const SEA_DEPTH = [[-6, [4, 10, 34]], [-4, [6, 15, 46]], [-2, [9, 26, 66]], [-0.6, [14, 40, 88]], [-0.15, [22, 62, 112]], [0, [30, 80, 128]]];
+const SHALLOW_WARM = [40, 118, 138], SEA_ICE = [214, 223, 230];
+const SAT_LAKE = [[0, 0, 0], [20, 38, 64], [52, 96, 100], [222, 218, 205]], LAKE_ICE = [208, 216, 224];
+function seaDepthRgb(km, out) {
+    const d = SEA_DEPTH;
+    let i = 0;
+    while (i < d.length - 2 && km > d[i + 1][0]) i++;
+    const t = Math.max(0, Math.min(1, (km - d[i][0]) / (d[i + 1][0] - d[i][0])));
+    for (let ch = 0; ch < 3; ch++) out[ch] = d[i][1][ch] + (d[i + 1][1][ch] - d[i][1][ch]) * t;
+    return out;
+}
+function satelliteColor(season, C, W) {
+    const R = C.raster, g = gridSampler(W), S = R.sat[season], rgb = [0, 0, 0], ice = C.seaIce?.[season] ?? C.ice;
+    return (out, o, x, y, wet, kk, k3, v, lake) => {
+        // (the land's relief shading deeper than the other layers': the mountains stand out, as on a satellite image)
+        const k = wet ? shadeK(kk) : 0.37 + 0.68 * (kk - 0.35) / 0.65;      // (0.28–1.08: "the hillshading is too strong")
+        if (wet) {
+            // (the sea: a gentler light on its floor's relief; shallow warm water turquoise; its ice in its season)
+            seaDepthRgb(v, rgb);
+            const warmShallow = 0.7 * Math.max(0, Math.min(1, (g(C.T[season], x, y) - 20) / 6)) * Math.max(0, Math.min(1, (v + 0.12) / 0.1));
+            // (the ice's edge sharpened: the 1° grid's fraction, bilinear, is a fog)
+            const fi = Math.min(1, Math.max(0, (g(ice, x, y) - 0.3) / 0.35));
+            const ks = 0.8 + 0.2 * k;
+            for (let ch = 0; ch < 3; ch++) {
+                let c = rgb[ch] + (SHALLOW_WARM[ch] - rgb[ch]) * warmShallow;
+                c += (SEA_ICE[ch] - c) * fi;
+                out[o + ch] = Math.min(255, c * ks);
+            }
+            out[o + 3] = 255;
+            return;
+        }
+        const i = landPixel(R, W, x, y);
+        if (lake) {
+            // (a lake: open water, or frozen in a cold month — in the year's view, where it is frozen most of the year)
+            const L = SAT_LAKE[lake];
+            let t = i >= 0 ? R.tAnnual[i] / 100 : 0, f = 0;
+            if (i >= 0 && lake !== 3) {
+                if (season !== 'year') t += g(C.T[season], x, y) - g(C.T.year, x, y);
+                f = season === 'year' ? Math.max(0, Math.min(1, (-2 - t) / 8)) : Math.max(0, Math.min(1, (-1 - t) / 5));
+            }
+            for (let ch = 0; ch < 3; ch++) out[o + ch] = L[ch] + (LAKE_ICE[ch] - L[ch]) * f;
+            out[o + 3] = 255;
+            return;
+        }
+        if (i < 0) { out[o] = out[o + 1] = out[o + 2] = 90; out[o + 3] = 255; return; }
+        out[o] = Math.min(255, S[3 * i] * k); out[o + 1] = Math.min(255, S[3 * i + 1] * k); out[o + 2] = Math.min(255, S[3 * i + 2] * k); out[o + 3] = 255;
+    };
+}
+
+/** The hover readout's climate lines on a finished moment, at (u, v) of the map (0…1); `sea`: the picture is sea there.
+ *  On the Satellite layer, the ground first: its biome, and its snow in the season shown. */
+export function finishedClimateLines(C, u, v, sea, layer = null, season = 'year') {
+    const R = C.raster, lines = [], W = R.w, x = Math.min(W - 1, Math.floor(u * W)), y = Math.min(R.h - 1, Math.floor(v * R.h));
+    const i = sea ? -1 : landPixel(R, W, x, y), g = gridSampler(W);
+    if (i >= 0 && layer === 'satellite' && R.cover) {
+        const cv = R.cover[i], snow = (cv & 31) !== 1 && (season === 'jan' ? cv & 32 : season === 'jul' ? cv & 64 : 0);
+        lines.push(`<span class="hi-label">Ground</span> ${BIOME_WORDS[cv & 31] || 'Land'}${snow ? ' · under snow' : ''}`);
+    }
+    if (i >= 0) {
+        const K = KOPPEN_CLASSES[R.koppen[i]], [r, gg, b] = KOPPEN_RGB[R.koppen[i]];
+        lines.push(`<span class="hi-label">Clima</span> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgb(${r},${gg},${b});vertical-align:middle;margin-right:4px"></span>${K.code} — ${K.name}`);
+        lines.push(`<span class="hi-label">Temp</span> ${(R.tAnnual[i] / 100).toFixed(1)} °C a year`);
+        lines.push(`<span class="hi-label">Rain</span> ${R.pAnnual[i].toLocaleString()} mm a year`);
+    } else lines.push(`<span class="hi-label">Sea</span> ${g(C.T.year, x, y).toFixed(1)} °C a year${g(C.ice, x, y) > 0.5 ? ' · sea ice' : ''}`);
+    return lines;
 }
 
 // ── the hover readout's climate lines, for terrain cell t ──
