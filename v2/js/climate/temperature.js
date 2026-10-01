@@ -122,9 +122,17 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // Large-scale height effect per cell (the core applies the standard rate below the grid): sunlit plateaus
         // cool gently with height, ground snowy most of the year like an ice sheet — blended by the snow's duration.
         const lapseEff = new Float64Array(G).fill(P.TEMP_PLATEAU_LAPSE);
+        // An ice sheet's surface stands at least TEMP_ICE_DOME_KM high, whatever the ground under it (Antarctica's and
+        // Greenland's domes are 2–3 km of ice): its own height keeps it cold — the snow, the inversion and the reported
+        // temperature see that surface. (On bare low polar land a sheet melted back every summer without it.)
+        const surfKm = new Float64Array(G);
         // An ice sheet forms only where snow survives the summer: from snow lasting ~70 % of the year to all of it
         const perennial = new Float64Array(G);
         const iceSheet = (share) => { const x = (share - 0.7) / 0.3; return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
+        // …and a sheet once there is kept while its snow lasts TEMP_ICE_KEEP of the year (an ice sheet outlives the summers
+        // that could not grow it: by the growing ramp alone, a sheet snowy ~85 % of the year counted as half a sheet, warmed
+        // round by round and was gone)
+        const keepSheet = (share) => { const x = (share - P.TEMP_ICE_KEEP[0]) / (P.TEMP_ICE_KEEP[1] - P.TEMP_ICE_KEEP[0]); return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
         const iceRamp = (T) => {
             const x = (P.TEMP_ICE_WARM_C - T) / (P.TEMP_ICE_WARM_C - P.TEMP_ICE_COLD_C);
             return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
@@ -141,6 +149,14 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const warm = !!(init && init.step === g.step && init.c0.length === G);
         if (warm) {
             c0.set(init.c0); c1r.set(init.c1r); c1i.set(init.c1i); c2r.set(init.c2r); c2i.set(init.c2i); snowYear.set(init.snowYear);
+            if (init.perennial) perennial.set(init.perennial); else for (let c = 0; c < G; c++) perennial[c] = iceSheet(snowYear[c]);
+        } else if (P.TEMP_ICE_START_C > -Infinity) {
+            // An ice sheet keeps itself cold — its whiteness, its height — so cold land can carry one through summers that
+            // bare ground there would not survive: two steady states. Started from bare ground the snow-and-ice rounds
+            // never find the icy one (polar land snowy ~60 % of the year stays bare, under the sheet's 70 %); so a fresh
+            // start begins with ice on land the first guess (by latitude alone) makes colder than TEMP_ICE_START_C, and
+            // the rounds keep the sheets that hold themselves (developer: the poles "frequently not icey … feels super wrong")
+            for (let c = 0; c < G; c++) if (landFrac[c] > 0 && c0[c] < P.TEMP_ICE_START_C) { snowYear[c] = 1; perennial[c] = 1; }
         }
         const outer = warm ? OUTER_WARM : OUTER;
         // heat the ocean's currents bring to (or take from) the sea's surface layer, W/m² (ocean.js)
@@ -175,7 +191,11 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             tp = performance.now();
             F0.fill(0); F1r.fill(0); F1i.fill(0); F2r.fill(0); F2i.fill(0); iceYear.fill(0); seaIceYear.fill(0);
             snowYearPrev.set(snowYear); snowYear.fill(0);
-            for (let c = 0; c < G; c++) { perennial[c] = iceSheet(snowYearPrev[c]); lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * perennial[c]; }
+            for (let c = 0; c < G; c++) {
+                perennial[c] = Math.max(iceSheet(snowYearPrev[c]), perennial[c] * keepSheet(snowYearPrev[c]));
+                lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * perennial[c];
+                surfKm[c] = Math.max(landKm[c], P.TEMP_ICE_DOME_KM * perennial[c]);
+            }
             for (let k = 0; k < NT; k++) {
                 const th = 2 * Math.PI * k / NT, co = Math.cos(th), sn = Math.sin(th), co2 = Math.cos(2 * th), sn2 = Math.sin(2 * th);
                 for (let c = 0; c < G; c++) Tk[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
@@ -184,12 +204,14 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                     const sx = 1 / (R_PLANET * Math.cos(g.lat[j] * Math.PI / 180) * dRad), sy = 1 / (R_PLANET * dRad);
                     for (let i = 0; i < w; i++) {
                         const c = j * w + i, T = Tk[c], f = landFrac[c];
-                        const sL = iceRamp(T - lapseEff[c] * landKm[c]), sO = iceRamp(T);
+                        const sL = iceRamp(T - lapseEff[c] * surfKm[c]), sO = iceRamp(T);
                         // snow on land: patchy seasonal snow reflects little; snow that survives the summer — an ice
-                        // sheet — like sea ice
+                        // sheet — like sea ice, and all year: a sheet stays white through its summer melt (by the month's
+                        // own snow alone, a sheet went dark the first month above freezing and melted away)
                         const albSnow = P.TEMP_ALBEDO_SNOW + (P.TEMP_ALBEDO_ICE - P.TEMP_ALBEDO_SNOW) * perennial[c];
-                        let alb = ab + f * sL * (albSnow - ab) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - ab);
-                        if (cloudT) alb += f * (1 - sL) * cloudT[k * G + c];          // clouds over snow-free land
+                        const sLa = Math.max(sL, perennial[c]);
+                        let alb = ab + f * sLa * (albSnow - ab) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - ab);
+                        if (cloudT) alb += f * (1 - sLa) * cloudT[k * G + c];          // clouds over snow-free land
                         snowYear[c] += sL / NT;
                         let gF = q * (1 - alb);
                         if (winds && gamma) {                   // the seasonal part of the winds' heat carrying
@@ -408,7 +430,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                     const c = j * w + i;
                     let T = tmp[c];
                     if (withInversion && dark > 0) {
-                        const f = landFrac[c], snow = f * iceRamp(T - lapseEff[c] * landKm[c]) + (1 - f) * iceRamp(T);
+                        const f = landFrac[c], snow = f * iceRamp(T - lapseEff[c] * surfKm[c]) + (1 - f) * iceRamp(T);
                         let calm = 1;
                         if (winds) {
                             const u = (1 - fm) * uM[ma * G + c] + fm * uM[mb * G + c], v = (1 - fm) * vM[ma * G + c] + fm * vM[mb * G + c];
@@ -424,13 +446,16 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // Back to the core grid: monthly sea-level temperature (no inversion: used for the sea surface), and the
         // surface air temperature at each grid cell's reference height
         const href = ctx.surface.meanLandKm;
-        for (let c = 0; c < G; c++) lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * iceSheet(snowYear[c]);
-        const lapseCore = new Float32Array(core.size);
+        const domeG = new Float64Array(G);
+        for (let c = 0; c < G; c++) { const p = perennial[c] = Math.max(iceSheet(snowYear[c]), perennial[c] * keepSheet(snowYear[c])); lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = P.TEMP_ICE_DOME_KM * p; }
+        const lapseCore = new Float32Array(core.size), domeCore = new Float32Array(core.size);
         refine(g, core, ratio, lapseEff, lapseCore, 0);
+        refine(g, core, ratio, domeG, domeCore, 0);
         const heightCorrect = (out, offset) => {
-            for (let c = 0; c < core.size; c++) { const hr = href[c] === href[c] ? Math.max(0, href[c]) : 0; out[offset + c] -= lapseCore[c] * hr; }
+            for (let c = 0; c < core.size; c++) { const hr = Math.max(href[c] === href[c] ? Math.max(0, href[c]) : 0, domeCore[c]); out[offset + c] -= lapseCore[c] * hr; }
         };
         const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size), seaIce = new Float32Array(12 * core.size);
+        const inversion = new Float32Array(12 * core.size);
         const iceTmp = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
             const sl = surfaceAt(m + 0.5, false);
@@ -438,6 +463,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             refine(g, core, ratio, iceTmp, seaIce, m * core.size);
             refine(g, core, ratio, sl, monthlySL, m * core.size);
             refine(g, core, ratio, surfaceAt(m + 0.5, true), monthly, m * core.size);
+            // (the inversion alone: a layer by the ground — the circulation reads the air above it)
+            for (let c = 0, o = m * core.size; c < core.size; c++) inversion[o + c] = monthly[o + c] - monthlySL[o + c];
             heightCorrect(monthly, m * core.size);
         }
         const K = ctx.anchorMonths.length, T = new Float32Array(K * core.size);
@@ -490,8 +517,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const iceCore = new Float32Array(core.size);
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;
-        const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear };
-        return { T, monthly, monthlySL, seaIce, iceFrac: iceCore, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial };
+        return { T, monthly, monthlySL, seaIce, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
     };
 }
 

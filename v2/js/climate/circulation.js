@@ -73,9 +73,11 @@ export function derivedCirculation() {
         // The air's warmth as the atmosphere feels it: surface temperature brought to sea level at the free air's
         // lapse rate. A sunlit plateau is far warmer than free air at its height (an elevated heat source — the
         // summer low over Tibet and South Asia); an ice sheet colder (the highs over Antarctica and Greenland).
+        // (an ice sheet's surface at the height its temperature was reported for — its dome, temperature.js: brought down
+        // from the ground under it, a low sheet read as air ~10 °C too cold, and its cold high shifted the hemisphere's belts)
         const freeLapse = ctx.options.lapseRateCPerKm ?? 6.5;
-        const href = new Float64Array(core.size);
-        for (let c = 0; c < core.size; c++) { const hr = ctx.surface.meanLandKm[c]; href[c] = hr === hr ? Math.max(0, hr) : 0; }
+        const href = new Float64Array(core.size), dome = temperature.domeKm;
+        for (let c = 0; c < core.size; c++) { const hr = ctx.surface.meanLandKm[c]; href[c] = Math.max(hr === hr ? Math.max(0, hr) : 0, dome ? dome[c] : 0); }
         const Tfree = new Float64Array(core.size);
         const sea = new Float64Array(G);
         for (let c = 0; c < G; c++) sea[c] = 1 - land[c];
@@ -89,8 +91,10 @@ export function derivedCirculation() {
         const zAt = (lat) => { const y = Math.max(0, Math.min(h - 1, (90 - lat) / g.step - 0.5)); const j0 = Math.floor(y), f = y - j0; return Tz[j0] * (1 - f) + Tz[Math.min(h - 1, j0 + 1)] * f; };
         const polar = (sgn) => { let s = 0, n = 0; for (let lat = 60; lat <= 80; lat += 2) { s += zAt(sgn * lat); n++; } return s / n; };
         const zonalMonth = (m) => {
-            const src = temperature.monthly.subarray(m * core.size, (m + 1) * core.size);
-            for (let c = 0; c < core.size; c++) Tfree[c] = src[c] + freeLapse * href[c];
+            // (above the winter inversion: the surface layer of cold air over snow is not the air the belts feel — its
+            // shallow cold highs come from CIRC_COLD_HIGH_BOOST on very cold ground)
+            const src = temperature.monthly.subarray(m * core.size, (m + 1) * core.size), inv = temperature.inversion ? temperature.inversion.subarray(m * core.size, (m + 1) * core.size) : null;
+            for (let c = 0; c < core.size; c++) Tfree[c] = src[c] + freeLapse * href[c] - (inv ? inv[c] : 0);
             T.set(coarsen(core, g, ratio, Tfree));
             let gSum = 0, gW = 0;
             for (let j = 0; j < h; j++) {

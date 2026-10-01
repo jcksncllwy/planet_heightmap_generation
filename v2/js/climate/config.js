@@ -31,6 +31,13 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            the terrain cells below the grid still use the standard rate) …
     TEMP_ICE_LAPSE: 8.0,        // °C/km      … and the same for ground under snow most of the year: ice sheets reflect
                                 //            the sun and chill the air, so more (blended by how long the snow lasts)
+    TEMP_ICE_START_C: -30,      // °C         a fresh start begins with ice sheets on land the first guess (sunlight by
+                                //            latitude, no heat carried) makes colder than this (~60° and poleward on an
+                                //            Earth-like planet): sheets that hold themselves stay; −Infinity = bare start
+    TEMP_ICE_DOME_KM: 1.5,      // km         an ice sheet's surface stands at least this high, whatever its bedrock (its
+                                //            own height keeps it cold); 0 = the bedrock's height
+    TEMP_ICE_KEEP: [0.72, 0.85],// –          a sheet once there is kept while its ground is snowy this share of the year
+                                //            (none below the first, all above the second; growing one takes all year)
     TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
     TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
     TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
@@ -156,6 +163,8 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_SEA_SWING:     { value: 0.3, min: 0.15, max: 0.5, source: 'mid-latitude sea-surface seasonal range ≈ 5–10 °C vs ≈ 20–40 °C over continents' },
     TEMP_CLOUD_ALBEDO:  { value: 0.15, min: 0.0, max: 0.3, source: 'shortwave cloud forcing over land ≈ −50 to −100 W/m² under persistent rain clouds, ≈ 0 over deserts (CERES): an albedo contrast ≈ 0.1–0.25' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
+    TEMP_ICE_DOME_KM:   { value: 1.5, min: 0.5, max: 3, source: 'mean surface elevation of ice sheets ≈ 2.1 km (Greenland) and 2.3 km (Antarctica); small ice caps less' },
+    TEMP_ICE_START_C:   { value: -30, min: -40, max: -20, source: 'ice-sheet hysteresis: once grown, polar ice sheets persist under climates that would not grow them (e.g. DeConto & Pollard 2003; Abe-Ouchi et al. 2013)' },
 
     CIRC_HADLEY_SCALE:  { value: 1.2, min: 0.9, max: 1.5, source: 'Held & Hou 1980 underestimates the observed Hadley edge by ~20 % (e.g. Frierson et al. 2007)' },
     CIRC_HADLEY_SEASONAL: { value: 0.5, min: 0, max: 1, source: 'observed subtropical highs migrate ≈ 10° with the rain belt (NCEP); Held & Hou per month would cancel it; seasonal Hadley cells are not in equilibrium with each month (Lindzen & Hou 1988)' },
