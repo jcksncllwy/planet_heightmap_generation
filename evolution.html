@@ -32,9 +32,17 @@
             <button id="sidebarToggle" title="Collapse panel">&#x00AB;</button>
         </div>
         <div id="sidebarContent">
-        <details class="section" open>
-            <summary>Your Planet</summary>
+        <button id="generate" title="Build a new world from a new random seed">New World</button>
+        <div id="buildStatus" class="evo-status" hidden></div>
+        <div class="evo-howto">Play the history, stop on a moment you like and press <b>Finish</b> — then look around and export it.</div>
+        <details class="section" id="settingsSection">
+            <summary>Settings</summary>
             <div class="section-body">
+                <div class="evo-set-head">World</div>
+                <div class="cg">
+                    <label>Seed <span class="tip" data-tip="The number a world is built from: the same seed and settings build the same history">?</span></label>
+                    <div id="seedRow"><input type="text" id="seedCode" placeholder="Seed" inputmode="numeric" aria-label="World seed"></div>
+                </div>
                 <div class="cg">
                     <label>Starting Continent Size <span class="tip" data-tip="How much of the planet the first supercontinent covers, shelves included">?</span> <span class="v" id="vCont">30%</span></label>
                     <input type="range" id="sCont" min="20" max="40" value="30" step="1">
@@ -50,7 +58,7 @@
                     <select id="ending"></select>
                 </div>
                 <div class="cg">
-                    <label>Plates <span class="tip" data-tip="Resolution of the plate simulation — finer plates take longer to build. Applies when you build a new world">?</span></label>
+                    <label>Plates <span class="tip" data-tip="Resolution of the plate simulation — finer plates take longer to build. Applies when you build a world">?</span></label>
                     <select id="simCells">
                         <option value="20000">20K cells · 172 km (fastest)</option>
                         <option value="40000" selected>40K cells · 121 km</option>
@@ -59,26 +67,18 @@
                     </select>
                 </div>
                 <div class="cg">
-                    <label>Terrain Detail <span class="tip" data-tip="Resolution of the drawn terrain — finer detail takes longer to build each moment. Changing it redraws the same history straight away">?</span></label>
+                    <label>Terrain Detail <span class="tip" data-tip="Resolution of the terrain drawn while you watch — finer detail takes longer to build each moment. Changing it redraws the same history straight away">?</span></label>
                     <select id="terrainCells">
                         <option value="160000" selected>160K cells · 61 km</option>
                         <option value="640000">640K cells · 30 km</option>
                         <option value="2500000">2.5M cells · 15 km (slow)</option>
                     </select>
                 </div>
-            </div>
-        </details>
-        <button id="generate">Build New World</button>
-        <div id="seedRow">
-            <input type="text" id="seedCode" placeholder="Seed" inputmode="numeric" aria-label="World seed">
-            <button id="reseedBtn" title="A new random seed">&#x1F3B2;</button>
-        </div>
-        <div id="buildStatus" class="evo-status" hidden></div>
-        <details class="section" open id="finishSection">
-            <summary>Finish</summary>
-            <div class="section-body">
+                <button id="rebuildBtn" class="evo-climate-btn" title="Build the world of this seed with these settings">Build This World</button>
+
+                <div class="evo-set-head">Finish</div>
                 <div class="cg">
-                    <label>Finish Detail <span class="tip" data-tip="The moment shown, sculpted again with care: warped and roughened, its rivers carving longer with the climate's rain, dry basins left closed, sediment laid down, an ice age's glaciers and fjords, and the wind's sand seas and loess; and its climate, at this detail, for the climate tabs. Finer detail takes longer — 10M cells about a minute the first time">?</span></label>
+                    <label>Finish Detail <span class="tip" data-tip="How finely Finish sculpts a moment again: warped and roughened, its rivers carving longer with the climate's rain, sediment laid down, an ice age's glaciers and fjords, the wind's sand seas and loess, and its own climate and Satellite view. Finer detail takes longer — 10M cells about a minute the first time">?</span></label>
                     <select id="finishCells">
                         <option value="160000">160K cells · 61 km</option>
                         <option value="640000">640K cells · 30 km</option>
@@ -86,68 +86,9 @@
                         <option value="10000000">10M cells · 8 km (~1 min)</option>
                     </select>
                 </div>
-                <button id="finishBtn" class="evo-climate-btn" disabled title="Finishes the moment shown at the detail chosen (seconds to a minute). Kept for that moment while this history is open">Finish This Moment</button>
-                <div id="finishBar" class="evo-finish-bar" hidden><i></i></div>
                 <div id="finishInfo" class="evo-climate-info"></div>
-                <div class="tg" id="finishShowRow" hidden>
-                    <label class="toggle-label"><input type="checkbox" id="chkFinished" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Show Finished Moments</label>
-                    <label class="toggle-label"><input type="checkbox" id="chkWater" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Rivers &amp; Lakes</label>
-                </div>
-                <div id="riverDensityGroup" hidden>
-                    <div class="cg">
-                        <label>River Density <span class="tip" data-tip="Which rivers are drawn on finished moments, by how much water they carry: Few — 150 m³/s and more; Normal — 40 m³/s; Many — 8 m³/s. The bigger a river, the stronger its line; seasonal rivers are dashed, and those dry most of the year dotted">?</span></label>
-                        <select id="riverDensity">
-                            <option value="150">Few</option>
-                            <option value="40" selected>Normal</option>
-                            <option value="8">Many</option>
-                        </select>
-                    </div>
-                    <div class="tg" id="regimeRow">
-                        <label class="toggle-label"><input type="checkbox" id="chkRegime"><span class="toggle-track"><span class="toggle-thumb"></span></span>Colour by Regime <span class="tip" data-tip="Colour the rivers by their year — each month's rain and snowmelt, run down the rivers: blue, permanent; violet, permanent with a yearly flood season (the Nile's, from rains far upstream; a snowmelt flood); cyan, seasonal — dry some months; brown, dry most of the year. Hover a river for its flood months">?</span></label>
-                    </div>
-                    <div id="regimeLegend" class="evo-koppen evo-regime-legend" hidden></div>
-                </div>
-            </div>
-        </details>
-        <details class="section" open>
-            <summary>Visual Options</summary>
-            <div class="section-body">
-                <div class="cg">
-                    <label>View</label>
-                    <select id="viewMode">
-                        <option value="globe">Globe</option>
-                        <option value="map">Map</option>
-                    </select>
-                </div>
-                <div class="cg" id="mapCenterLonGroup" hidden>
-                    <label>Center Longitude <span class="v" id="vMapCenterLon">0°</span></label>
-                    <input type="range" id="sMapCenterLon" min="-180" max="180" value="0" step="5">
-                </div>
-                <div class="map-tabs" id="mapTabs">
-                    <button class="map-tab active" data-layer="terrain">Terrain</button>
-                    <button class="map-tab" data-layer="satellite" title="The planet as from space, cloud-free: forest, grass, bare ground, snow and ice from its climate — Year, January or July. Comes with a finished moment">Satellite</button>
-                    <button class="map-tab" data-layer="heightmap">Heightmap</button>
-                    <button class="map-tab" data-layer="plates">Plates</button>
-                    <span class="tab-break"></span>
-                    <button class="map-tab" data-layer="koppen">Köppen</button>
-                    <button class="map-tab" data-layer="temperature">Temp</button>
-                    <button class="map-tab" data-layer="rain">Rain</button>
-                    <button class="map-tab" data-layer="wind">Wind</button>
-                    <button class="map-tab" data-layer="currents">Currents</button>
-                </div>
-                <div id="climateGroup">
-                    <button id="climateBtn" class="evo-climate-btn" disabled title="Calculates the climate of the moment shown — Köppen zones, temperature, rain, winds and currents (about a second). Kept for that moment while this history is open">Calculate Climate</button>
-                    <div id="climateInfo" class="evo-climate-info"></div>
-                    <div class="cg" id="seasonGroup" hidden>
-                        <label>Season</label>
-                        <select id="season">
-                            <option value="year" selected>Year</option>
-                            <option value="jan">January</option>
-                            <option value="jul">July</option>
-                        </select>
-                    </div>
-                    <div id="climateLegend" class="viz-legend"></div>
-                </div>
+
+                <div class="evo-set-head">Map</div>
                 <div class="cg" id="paletteGroup">
                     <label>Terrain Colours <span class="tip" data-tip="How heights are coloured on the Terrain view — all shaded by the relief">?</span></label>
                     <select id="palette">
@@ -174,6 +115,29 @@
                     </select>
                 </div>
                 <div class="tg">
+                    <label class="toggle-label"><input type="checkbox" id="chkWater" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Rivers &amp; Lakes</label>
+                    <label class="toggle-label" id="regimeRow"><input type="checkbox" id="chkRegime"><span class="toggle-track"><span class="toggle-thumb"></span></span>Colour by Regime <span class="tip" data-tip="Colour the rivers of a finished moment by their year — each month's rain and snowmelt, run down the rivers: blue, permanent; violet, permanent with a yearly flood season (the Nile's, from rains far upstream; a snowmelt flood); cyan, seasonal — dry some months; brown, dry most of the year. Hover a river for its flood months">?</span></label>
+                </div>
+                <div class="cg" id="riverDensityGroup">
+                    <label>River Density <span class="tip" data-tip="Which rivers are drawn on finished moments, by how much water they carry: Few — 150 m³/s and more; Normal — 40 m³/s; Many — 8 m³/s. The bigger a river, the stronger its line; seasonal rivers are dashed, and those dry most of the year dotted">?</span></label>
+                    <select id="riverDensity">
+                        <option value="150">Few</option>
+                        <option value="40" selected>Normal</option>
+                        <option value="8">Many</option>
+                    </select>
+                </div>
+                <div class="cg">
+                    <label>View</label>
+                    <select id="viewMode">
+                        <option value="globe">Globe</option>
+                        <option value="map">Map</option>
+                    </select>
+                </div>
+                <div class="cg" id="mapCenterLonGroup" hidden>
+                    <label>Center Longitude <span class="v" id="vMapCenterLon">0°</span></label>
+                    <input type="range" id="sMapCenterLon" min="-180" max="180" value="0" step="5">
+                </div>
+                <div class="tg">
                     <label class="toggle-label"><input type="checkbox" id="chkRotate"><span class="toggle-track"><span class="toggle-thumb"></span></span>Auto-Rotate</label>
                     <label class="toggle-label"><input type="checkbox" id="chkGrid" checked><span class="toggle-track"><span class="toggle-thumb"></span></span>Grid Lines</label>
                 </div>
@@ -185,6 +149,15 @@
                         <option value="10">10&deg;</option>
                         <option value="5">5&deg;</option>
                         <option value="2.5">2.5&deg;</option>
+                    </select>
+                </div>
+                <div class="cg">
+                    <label>Playback Speed</label>
+                    <select id="rate">
+                        <option value="5">5 Myr a second</option>
+                        <option value="10">10 Myr a second</option>
+                        <option value="25" selected>25 Myr a second</option>
+                        <option value="50">50 Myr a second</option>
                     </select>
                 </div>
                 <details id="statsDetails" class="stats-toggle">
@@ -209,6 +182,33 @@
             <option value="currents">Currents</option>
         </optgroup>
     </select>
+    <div id="layerBar" class="evo-layerbar">
+        <div class="map-tabs" id="mapTabs">
+            <button class="map-tab active" data-layer="terrain">Terrain</button>
+            <button class="map-tab" data-layer="satellite" title="The planet as from space, cloud-free: forest, grass, bare ground, snow and ice from its climate. Comes with a finished moment">Satellite</button>
+            <button class="map-tab" data-layer="climate" title="The moment's climate: Köppen zones, temperature, rain, winds and currents">Climate</button>
+            <button class="map-tab" data-layer="heightmap">Heightmap</button>
+            <button class="map-tab" data-layer="plates">Plates</button>
+        </div>
+        <div id="subBar" class="evo-subbar" hidden>
+            <div class="map-tabs" id="climateTabs">
+                <button class="map-tab" data-layer="koppen">Köppen</button>
+                <button class="map-tab" data-layer="temperature">Temperature</button>
+                <button class="map-tab" data-layer="rain">Rain</button>
+                <button class="map-tab" data-layer="wind">Wind</button>
+                <button class="map-tab" data-layer="currents">Currents</button>
+            </div>
+            <select id="season" aria-label="Season">
+                <option value="year" selected>Year</option>
+                <option value="jan">January</option>
+                <option value="jul">July</option>
+            </select>
+        </div>
+    </div>
+    <div id="legendCard" class="evo-legend-card" hidden>
+        <div id="climateLegend" class="viz-legend"></div>
+        <div id="regimeLegend" class="evo-koppen evo-regime-legend" hidden></div>
+    </div>
     <div id="climateChip" class="evo-chip" hidden><span id="climateChipText"></span><button id="climateChipBtn">Calculate</button></div>
 
     <div id="timeline" class="evo-timeline" hidden>
@@ -219,16 +219,32 @@
             <div id="timeTicks" class="evo-ticks"></div>
         </div>
         <output id="timeLabel" class="evo-time">0 Myr</output>
-        <select id="rate" aria-label="Playback speed">
-            <option value="5">5 Myr/s</option>
-            <option value="10">10 Myr/s</option>
-            <option value="25" selected>25 Myr/s</option>
-            <option value="50">50 Myr/s</option>
-        </select>
         <button id="liveBtn" class="evo-live" hidden title="Jump to the newest moment built and play on from there">&#x25CF; Live</button>
         <button id="moreBtn" class="evo-more" hidden aria-label="Keep going">&#x23E9;<span class="lbl"> Keep going</span></button>
+        <button id="finishBtn" class="evo-act evo-act-main" disabled title="Finish the moment shown: sculpted again in detail with its rivers, lakes and glaciers, its own climate and the Satellite view (seconds to a minute; the detail in Settings)">Finish</button>
+        <button id="exportBtn" class="evo-act" hidden title="Save the finished moment as map files: heightmaps (the sea floor too), a land mask and the colour map">Export</button>
+        <div id="finishBar" class="evo-finish-bar evo-timeline-progress" hidden><i></i></div>
     </div>
     <div id="hoverInfo"></div>
+    <div id="exportOverlay" class="hidden">
+        <div id="exportCard">
+            <button id="exportClose" aria-label="Close">&times;</button>
+            <h3>Export Map <span id="exportMoment" class="evo-export-moment"></span></h3>
+            <div class="cg">
+                <label>Type <span class="tip" data-tip="Colour Map — the Terrain view as shown, in your Terrain Colours, with rivers and lakes if Rivers &amp; Lakes is on. Heightmap with Sea Floor — 16-bit greyscale, the same scale on every planet: black −11 km, white +9 km (sea level at 55 %). Land Heightmap — 16-bit, the sea black and land from 0 to +9 km (re-imports on the Import Heightmap page, which reads white as 6 km). Land Mask — land white, the sea black">?</span></label>
+                <select id="exportType"></select>
+            </div>
+            <div class="cg">
+                <label>Width <span class="v" id="exportDims"></span></label>
+                <select id="exportWidth"></select>
+            </div>
+            <div id="exportProgress" class="evo-export-progress" hidden><div class="evo-finish-bar"><i></i></div><span></span></div>
+            <div class="export-actions">
+                <button id="exportCancel" class="btn-ghost">Cancel</button>
+                <button id="exportGo" class="btn-primary">Export</button>
+            </div>
+        </div>
+    </div>
     <div id="info">Press Build New World to watch a planet's history unfold</div>
 
     <script type="importmap">

@@ -24,6 +24,8 @@ import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, 
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
+import { EXPORT_TYPES, exportWidths, exportFileName, exportMap } from './export.js';
+import { downloadBlob } from '../view/png.js';
 
 setDelaunator(Delaunator);
 
@@ -57,8 +59,35 @@ setIf(ui.ending, url.get('end')); setIf(ui.sim, url.get('sim')); setIf(ui.terrai
 ui.seed.value = url.get('seed') ?? String(Math.floor(Math.random() * 1e6));
 const labels = () => { $('vCont').textContent = `${ui.cont.value}%`; $('vLen').textContent = `${ui.len.value} Myr`; };
 ui.cont.addEventListener('input', labels); ui.len.addEventListener('input', labels); labels();
-$('reseedBtn').addEventListener('click', () => { ui.seed.value = String(Math.floor(Math.random() * 1e6)); build(); });
-ui.build.addEventListener('click', () => build());
+// ── tooltips (the "?" marks): drawn over the page — V1's own sit inside the panel, which scrolls and so clips what spills
+// out of it (developer: "the tooltips are hidden inside the sidebar if they appear towards the right"); to the right of
+// the mark where there is room, else above it (always above on a narrow screen: the bottom sheet); a tap shows one ──
+const tipEl = document.createElement('div');
+tipEl.className = 'evo-tooltip'; tipEl.hidden = true;
+document.body.appendChild(tipEl);
+let tipFor = null;
+function showTip(el) {
+    tipFor = el; tipEl.textContent = el.dataset.tip; tipEl.hidden = false;
+    const r = el.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight, m = 8;
+    let x = r.right + m, y = r.top + r.height / 2 - h / 2;
+    if (innerWidth <= 768 || x + w > innerWidth - m) {
+        x = Math.max(m, Math.min(innerWidth - w - m, r.left + r.width / 2 - w / 2));
+        y = r.top - h - m;
+        if (y < m) y = r.bottom + m;
+    }
+    tipEl.style.left = `${x}px`; tipEl.style.top = `${Math.max(m, Math.min(innerHeight - h - m, y))}px`;
+}
+function hideTip() { tipFor = null; tipEl.hidden = true; }
+document.addEventListener('pointerover', e => { const t = e.target.closest?.('.tip[data-tip]'); if (t && e.pointerType === 'mouse') showTip(t); });
+document.addEventListener('pointerout', e => { if (tipFor && e.pointerType === 'mouse' && !tipFor.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener('click', e => {
+    const t = e.target.closest?.('.tip[data-tip]');
+    if (t) { e.preventDefault(); showTip(t); }                  // (a "?" inside a toggle's label does not flip it)
+    else if (tipFor) hideTip();
+}, true);
+$('sidebarContent').addEventListener('scroll', hideTip, { passive: true });
+ui.build.addEventListener('click', () => { ui.seed.value = String(Math.floor(Math.random() * 1e6)); build(); });   // (New World: a new seed)
+$('rebuildBtn').addEventListener('click', () => build());                                                         // (Settings: this seed, these settings)
 // (terrain detail only redraws the terrain: the history is the same at any terrain resolution)
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
@@ -494,7 +523,7 @@ async function finishMoment(again = null) {
         const label = $('finishCells').selectedOptions[0]?.textContent.split(' ·')[0] ?? `${cells}`;
         b.finishNote = `Finished ${frame.time.toFixed(0)} Myr at ${label} in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: earlier finished moments let go to make room)' : '');
         console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept (${b.finishes.size} moments, ${(total / 2 ** 20).toFixed(0)} MB)`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
-        view.finished = true; $('chkFinished').checked = true;
+        view.finished = true;
         if (view.layer === 'plates') setLayer('terrain');
     } catch (err) {
         // (out of memory — every worker of a page shares one browser process: the finishing worker is let go, its memory
@@ -517,22 +546,85 @@ async function finishMoment(again = null) {
     }
 }
 
-/** The Finish button (Cancel while one runs), its progress, the moments finished, the Show toggle. */
+// ── the page at its simplest (developer, 2026-10-01: the steps were "more confusing … overwhelming" — "what is the absolute
+// minimum that someone needs to see to make a planet, see everything, and export … surface that, and then hide all the
+// details or knobs"): New World; the timeline with Finish and Export on it; the layers over the planet; the rest folded in
+// Settings ──
+const cellsWords = n => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1e3}K`);
+/** Finish (its progress — Cancel while it runs) until the moment shown is finished at the detail chosen; then Export. The
+ *  moments finished, in Settings; the line beneath the timeline: what to do now. */
 function updateFinishUi() {
     const b = B, frame = painted, job = b?.finishJob, have = frame && b?.finishes.get(frame), btn = $('finishBtn');
+    const cells = Number($('finishCells').value);
     btn.disabled = !frame || !b?.simMesh;
-    btn.textContent = job ? `Cancel · ${job.stage}… (${job.frame.time.toFixed(0)} Myr)` : have ? `Finish Again · ${frame.time.toFixed(0)} Myr` : frame ? `Finish This Moment · ${frame.time.toFixed(0)} Myr` : 'Finish This Moment';
+    btn.hidden = !!have && have.cells === cells && !job;                // (finished at this detail: Export in its place)
+    btn.classList.toggle('busy', !!job);
+    btn.classList.toggle('evo-act-main', !have || !!job);              // (finished already: Export is the next step, Finish again a quieter one)
+    btn.textContent = job ? `Cancel · ${(100 * Math.min(1, job.share)).toFixed(0)}%` : have ? `Finish at ${cellsWords(cells)}` : 'Finish';
+    btn.title = job ? `Finishing ${job.frame.time.toFixed(0)} Myr (${job.stage}) — click to cancel` : btn.dataset.title ??= btn.title;
     $('finishBar').hidden = !job;
     if (job) $('finishBar').firstElementChild.style.width = `${(100 * Math.min(1, job.share)).toFixed(1)}%`;
+    $('exportBtn').hidden = !have || !!job;
     const done = b ? [...b.finishes.keys()].sort((x, y) => x.time - y.time) : [];
     $('finishInfo').innerHTML = (b?.finishNote ? `<div>${b.finishNote}</div>` : '') +
         (done.length ? `<div>Finished: ${done.map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ')}</div>` : '');
-    $('finishShowRow').hidden = !done.length;
-    $('riverDensityGroup').hidden = !done.length || !view.water;
     const legend = $('regimeLegend');
-    legend.hidden = !view.byRegime;
+    legend.hidden = !(view.byRegime && view.water && view.layer === 'terrain' && have);
     if (!legend.childElementCount) legend.innerHTML = REGIME_STYLE.map(s => `<span><i style="background:${s.rgb}"></i>${s.name}</span>`).join('');
+    $('legendCard').hidden = !$('climateLegend').innerHTML.trim() && legend.hidden;
+    if (b && frame) ui.info.textContent = job ? `Finishing ${job.frame.time.toFixed(0)} Myr…`
+        : have ? `${frame.time.toFixed(0)} Myr is finished — look around (Satellite, Climate), then Export`
+        : playing ? 'Play the history, stop on a moment you like and press Finish'
+        : `Press Finish to sculpt ${frame.time.toFixed(0)} Myr in detail — its rivers, climate and Satellite view`;
 }
+
+// ── the export (plans/V2_FULL_PLANET_PLAN.md C): the finished moment shown, as map files — V1's dialog ──
+$('exportType').innerHTML = EXPORT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+let exporting = null;                   // (the moment the dialog is open for: { frame, fin, seed, busy })
+function openExport() {
+    const frame = painted, fin = frame && B?.finishes.get(frame);
+    if (!fin) return;
+    setPlaying(false);
+    exporting = { frame, fin, seed: B.seed, busy: false };
+    $('exportWidth').innerHTML = exportWidths(fin.raster).map(w => `<option value="${w}">${w}</option>`).join('');
+    $('exportMoment').textContent = `· ${frame.time.toFixed(0)} Myr`;
+    exportDims();
+    $('exportProgress').hidden = true;
+    $('exportGo').disabled = false;
+    $('exportOverlay').classList.remove('hidden');
+}
+function exportDims() { const w = Number($('exportWidth').value); $('exportDims').textContent = `${w} × ${w >> 1}`; }
+function closeExport() { $('exportOverlay').classList.add('hidden'); if (!exporting?.busy) exporting = null; }
+async function runExport() {
+    const ex = exporting;
+    if (!ex || ex.busy) return;
+    ex.busy = true; $('exportGo').disabled = true;
+    const type = $('exportType').value, W = Number($('exportWidth').value), bar = $('exportProgress'), fill = bar.querySelector('i'), label = bar.querySelector('span');
+    const onProgress = (p, text) => { fill.style.width = `${(100 * p).toFixed(0)}%`; label.textContent = text; };
+    bar.hidden = false; onProgress(0, 'Starting…');
+    try {
+        // (the colour map as the Terrain view shows it: the palette chosen, Rivers & Lakes as set)
+        const look = { lut: heightLutOf(view.palette), exaggeration: SHADING.exaggeration, water: view.water, riverQ: view.riverQ, byRegime: view.byRegime };
+        const t0 = performance.now(), blob = await exportMap(type, ex.fin, W, look, onProgress);
+        const name = exportFileName(ex.seed, ex.frame.time, type);
+        downloadBlob(blob, name);
+        onProgress(1, `Saved ${name} · ${(blob.size / 2 ** 20).toFixed(1)} MB`);
+        console.info(`[evolution] export ${name}: ${W} × ${W >> 1}, ${(blob.size / 2 ** 20).toFixed(1)} MB in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+    } catch (err) {
+        onProgress(0, `Could not export: ${String(err.message).split('\n')[0]}`);
+        console.error(err);
+    } finally {
+        ex.busy = false;
+        if (exporting === ex) $('exportGo').disabled = false; else if (!exporting) exporting = null;
+    }
+}
+$('exportBtn').addEventListener('click', () => openExport());
+$('exportWidth').addEventListener('change', exportDims);
+$('exportGo').addEventListener('click', () => runExport());
+$('exportCancel').addEventListener('click', closeExport);
+$('exportClose').addEventListener('click', closeExport);
+$('exportOverlay').addEventListener('click', e => { if (e.target === $('exportOverlay')) closeExport(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('exportOverlay').classList.contains('hidden')) closeExport(); });
 
 // ── the climate (step D): calculated on request for the moment shown, kept per moment while the history is open ──
 const climateOf = frame => { const e = B?.climates.get(frame); return e && e.tMesh === B.tMesh ? e.data : null; };
@@ -561,36 +653,28 @@ async function calculateClimate() {
 }
 
 /** The Calculate button, the moments with a climate, the season choice, and the chip over the planet. */
+const CLIMATE_SUB = new Set(['koppen', 'temperature', 'rain', 'wind', 'currents']);
 function updateClimateUi() {
     const b = B, frame = painted, have = frame ? climateOf(frame) : null, job = b?.climateJob;
-    const btn = $('climateBtn');
-    btn.disabled = !frame || !!job || !!have;
-    btn.textContent = job ? `Calculating the climate for ${job.frame.time.toFixed(0)} Myr…` : have ? `Climate calculated · ${frame.time.toFixed(0)} Myr`
-        : frame ? `Calculate Climate · ${frame.time.toFixed(0)} Myr` : 'Calculate Climate';
-    const done = b ? [...b.climates.entries()].filter(([, e]) => e.tMesh === b.tMesh).map(([f]) => f).sort((x, y) => x.time - y.time) : [];
-    $('climateInfo').innerHTML = (b?.climateNote ? `<div>${b.climateNote}</div>` : '') +
-        (done.length ? `<div>Calculated for ${done.map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ')}</div>` : '');
-    const chip = $('climateChip');
-    // (a finished moment shown brings its own climate: nothing to calculate)
-    const finishedOnly = FINISHED_ONLY_LAYERS.has(view.layer);
-    chip.hidden = !CLIMATE_LAYERS.has(view.layer) || !frame || !!finishedShown(frame) || (!finishedOnly && !!have && !job);
-    if (!chip.hidden && finishedOnly) {
-        // (the satellite view comes with a finished moment: the chip offers to finish this one)
-        const fjob = b.finishJob;
-        const off = !view.finished && b.finishes.has(frame);
-        $('climateChipText').textContent = fjob ? `Finishing ${fjob.frame.time.toFixed(0)} Myr…` : off ? 'The satellite view needs Show Finished Moments on'
-            : `The satellite view comes with a finished moment — finish ${frame.time.toFixed(0)} Myr to see it`;
-        $('climateChipBtn').textContent = 'Finish';
-        $('climateChipBtn').hidden = !!fjob || off;
-    } else if (!chip.hidden) {
-        $('climateChipBtn').textContent = 'Calculate';
-        const stale = !job && b.climates.has(frame);
-        $('climateChipText').textContent = job ? `Calculating the climate for ${job.frame.time.toFixed(0)} Myr…`
-            : stale ? `The climate for ${frame.time.toFixed(0)} Myr was calculated at another terrain detail`
-            : `No climate for ${frame.time.toFixed(0)} Myr` + (done.length ? ` — calculated for ${done.map(f => f.time.toFixed(0)).join(', ')} Myr` : '');
-        $('climateChipBtn').hidden = !!job;
+    const fin = frame && b ? b.finishes.get(frame) : null;
+    // (the Climate tab works the climate out by itself — about a second — for the moment paused on; a finished moment brings
+    // its own. Once per moment and terrain detail: a failure is not retried in a loop)
+    if (b && CLIMATE_SUB.has(view.layer) && frame && !playing && !have && !fin?.climate && !job && !b.finishJob && paintedMesh === b.tMesh) {
+        const key = `${frame.time}|${b.terrainCells}`;
+        if (!(b.autoClimate ??= new Set()).has(key)) { b.autoClimate.add(key); setTimeout(() => calculateClimate(), 0); }
     }
-    $('seasonGroup').hidden = !SEASONAL_LAYERS.has(view.layer);
+    const chip = $('climateChip'), shown = frame ? finishedShown(frame) : null, t = frame ? frame.time.toFixed(0) : '';
+    let text = null, act = null;
+    if (frame && view.layer === 'satellite' && !shown) {
+        const fjob = b.finishJob;
+        text = fjob ? `Finishing ${fjob.frame.time.toFixed(0)} Myr…` : `The Satellite view comes with a finished moment — finish ${t} Myr to see it`;
+        act = fjob ? null : 'Finish';
+    } else if (frame && CLIMATE_SUB.has(view.layer) && !shown && !have) {
+        text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Stop on a moment to see its climate' : `No climate for ${t} Myr`;
+        act = job || playing ? null : 'Calculate';
+    }
+    chip.hidden = !text;
+    if (text) { $('climateChipText').textContent = text; $('climateChipBtn').hidden = !act; $('climateChipBtn').textContent = act ?? ''; }
     updateFinishUi();
 }
 
@@ -635,6 +719,7 @@ function setPlaying(on) {
     playing = on;
     ui.play.innerHTML = on ? '&#x23F8;' : '&#x25B6;';
     if (on && !B.live && playTime >= builtTo()) playTime = 0;                      // (at the end: from the start again)
+    updateClimateUi();
 }
 ui.play.addEventListener('click', () => { if (B?.frames.length) setPlaying(!playing); });
 ui.time.addEventListener('input', () => {
@@ -652,23 +737,28 @@ ui.more.addEventListener('click', () => {
     else { b.wantGo = false; b.goUntil = Infinity; updateGoUi(); }
 });
 addEventListener('keydown', e => {
-    if (e.target.closest('input, select, textarea')) return;
+    if (e.target.closest('input, select, textarea') || !$('exportOverlay').classList.contains('hidden')) return;
     if (e.code === 'Space') { e.preventDefault(); ui.play.click(); }
 });
 
 // ── view options (V1's) ──
+let climateLayer = 'koppen';            // (the Climate tab opens on the climate map last shown)
 function setLayer(layer) {
+    if (layer === 'climate') layer = climateLayer;
+    if (CLIMATE_SUB.has(layer)) climateLayer = layer;
     view.layer = layer; dirty = true;
-    for (const b of document.querySelectorAll('#mapTabs .map-tab')) b.classList.toggle('active', b.dataset.layer === layer);
+    for (const b of document.querySelectorAll('#mapTabs .map-tab')) b.classList.toggle('active', b.dataset.layer === layer || (b.dataset.layer === 'climate' && CLIMATE_SUB.has(layer)));
+    for (const b of document.querySelectorAll('#climateTabs .map-tab')) b.classList.toggle('active', b.dataset.layer === layer);
     $('mobileViewSwitch').value = layer;
-    $('paletteGroup').hidden = layer !== 'terrain';
+    $('subBar').hidden = !CLIMATE_SUB.has(layer) && !SEASONAL_LAYERS.has(layer);
+    $('climateTabs').hidden = !CLIMATE_SUB.has(layer);
+    $('season').hidden = !SEASONAL_LAYERS.has(layer);
     updateClimateUi();
 }
-for (const b of document.querySelectorAll('#mapTabs .map-tab')) b.addEventListener('click', () => setLayer(b.dataset.layer));
+for (const b of document.querySelectorAll('#mapTabs .map-tab, #climateTabs .map-tab')) b.addEventListener('click', () => setLayer(b.dataset.layer));
 $('mobileViewSwitch').addEventListener('change', e => setLayer(e.target.value));
-$('climateBtn').addEventListener('click', () => calculateClimate());
 $('finishBtn').addEventListener('click', () => finishMoment());
-$('chkFinished').addEventListener('change', e => { view.finished = e.target.checked; dirty = true; });
+$('finishCells').addEventListener('change', () => updateFinishUi());
 $('chkWater').addEventListener('change', e => { view.water = e.target.checked; dirty = true; updateFinishUi(); });
 $('riverDensity').addEventListener('change', e => { view.riverQ = Number(e.target.value); dirty = true; });
 $('chkRegime').addEventListener('change', e => { view.byRegime = e.target.checked; dirty = true; updateFinishUi(); });
@@ -680,14 +770,6 @@ $('finishInfo').addEventListener('click', e => {
 });
 $('climateChipBtn').addEventListener('click', () => (FINISHED_ONLY_LAYERS.has(view.layer) ? finishMoment() : calculateClimate()));
 $('season').addEventListener('change', e => { view.season = e.target.value; dirty = true; });
-$('climateInfo').addEventListener('click', e => {
-    // (a moment with a climate: go there)
-    const a = e.target.closest('a[data-t]');
-    if (!a || !B?.frames.length) return;
-    e.preventDefault();
-    setPlaying(false);
-    playTime = Number(a.dataset.t); ui.time.value = playTime; dirty = true; rail();
-});
 $('palette').value = view.palette;
 $('palette').addEventListener('change', e => {
     view.palette = e.target.value; dirty = true;
@@ -708,7 +790,7 @@ $('sMapCenterLon').addEventListener('input', e => {
     drawMap();
 });
 $('chkGrid').checked = view.grid;
-$('chkGrid').addEventListener('change', e => { view.grid = e.target.checked; dirty = true; });
+$('chkGrid').addEventListener('change', e => { view.grid = e.target.checked; dirty = true; $('gridSpacingGroup').hidden = !view.grid; });
 $('gridSpacing').addEventListener('change', e => { view.gridStep = Number(e.target.value); dirty = true; });
 $('statsDetails').addEventListener('toggle', () => { dirty = true; });
 
@@ -768,7 +850,7 @@ for (const el of [ui.canvas, ui.map]) {
 }
 
 // ── the side panel: collapse on desktop, a draggable bottom sheet on phones (as V1's) ──
-$('sidebarToggle').addEventListener('click', () => ui.panel.classList.toggle('collapsed'));
+$('sidebarToggle').addEventListener('click', () => { ui.panel.classList.toggle('collapsed'); updateClimateUi(); });
 (function bottomSheet() {
     const handle = $('sheetHandle'), mobile = () => matchMedia('(max-width: 768px)').matches;
     let startY = 0, startOffset = 0, dragging = false, moved = false, lastY = 0, lastT = 0, velocity = 0;

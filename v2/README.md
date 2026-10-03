@@ -31,7 +31,13 @@ the developer before the next begins.**
 ## Running it
 
 **Evolution** (`/evolution`, `evolution.html`) is the product page built on this engine — a side generator beside V1's
-Generate and Import Heightmap: Build New World runs a history (starting continent size, history length, ending; plates and
+Generate and Import Heightmap. The page shows only what it takes to make a planet, see it and export it: **New World** (a new seed),
+the timeline with **Finish** and **Export** on it, and the layers over the planet (Terrain, Satellite, Climate — its own
+row: Köppen, temperature, rain, wind, currents, and the season — Heightmap, Plates); every knob is folded in **Settings**
+(the world's seed, sliders and resolutions with Build This World; the finish detail and the moments finished; the map's
+colours, rivers, globe or map, grid, playback speed, stats). The Climate tab works the moment's climate out by itself
+(about a second); Satellite asks for a finish; a legend card sits beside the planet; the "?" tooltips are drawn over the
+page (V1's are clipped by the scrolling panel). A world runs its history (starting continent size, history length, ending; plates and
 terrain resolution) and shows the planet as it builds, then the whole history is a timeline to scrub and play; changing
 the terrain resolution redraws the same history (only the plates' resolution needs a new build). **Keep going** runs a
 finished history on, 20 Myr at a time in the worker that ran it, until Stop (`simulate`'s `resume`: the pieces are the
@@ -74,7 +80,13 @@ filled in to sea level); only the real oceans are sea. Drawn on the Terrain view
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
 names a river's discharge, regime and flood months, and a lake's kind). Measured (20K plates, desktop): 640K
 ~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
-**Calculate Climate** gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
+**Export** (on the timeline once the moment shown is finished; `js/evolution/export.js`, PNG files by `js/view/png.js`):
+a 16-bit heightmap with the sea floor on a fixed scale (black −11 km, white +9 km — the same shade the same height on
+every planet), a 16-bit land heightmap (the sea black, land 0…+9 km; re-imports on the Import Heightmap page, which
+reads white as 6 km), a land mask, and the colour map as the Terrain view shows it (palette, lakes, rivers); at the
+finished picture's width (4096, 8192 at 10M, 2048 on phones) or a half or quarter of it, averaged down; named by seed and
+moment (`orogen-evolution-12345-760Myr-heightmap.png`).
+The **Climate** tab gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
 winds, currents — about a second, in a worker), kept per moment while the history is open. Its code is
 `js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
 [`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
@@ -183,8 +195,9 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread
                    only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
-                   palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade)
-js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own; the Satellite view), finish-view (the Finish step's worker and painting)
+                   palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade),
+                   png (PNG files in the browser: 8/16-bit greyscale by hand, colour through a canvas; the download)
+js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own; the Satellite view), finish-view (the Finish step's worker and painting), export (a finished moment's maps as PNG files)
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
                    finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),

@@ -201,6 +201,34 @@ sea COLOURS across each terrain triangle (a zig-zag along every shore). Built (o
   land heightmap, land mask, colour; Export All. File names carry the code and the time (e.g. `…-760Myr`).
 - A planet code for this generator (seed + sliders + resolutions) in the URL, as V1's.
 - *Done when*: an exported heightmap of any moment re-imports cleanly (Import Heightmap page) and matches what is shown.
+- **Decided 2026-10-01 (developer):** finished moments only (export lives with the Finish step); the 16-bit heightmap
+  with the sea floor on a fixed −11…+9 km scale; the land heightmap 0…+9 km (the Import page reads white as 6 km:
+  heights come back × 2/3, the shape exact); rivers drawn on the colour and satellite maps as on screen, plus a
+  transparent rivers-and-lakes layer; Export All as one ZIP file (a small built-in writer). Phases: E1 the dialog,
+  heightmaps, mask, colour as shown; E2 climate, satellite, the rivers layer, Export All; E3 the planet code and docs.
+- **E1 built 2026-10-01, awaiting the developer's test** — an Export Map button under Finish (the finished moment shown)
+  opens V1's dialog (its markup and styles.css look; 44 px targets on phones): Colour Map (as shown), Heightmap with Sea
+  Floor (16-bit), Land Heightmap (16-bit), Land Mask; widths the finished picture's own, a half and a quarter
+  (averaged down, never enlarged). `js/evolution/export.js` (the maps), `js/view/png.js` (V1's 16-bit greyscale encoder,
+  rows Sub-filtered, 8-bit too; colour through a canvas). Checked (160K, 4096): every greyscale file decodes to exactly
+  the values written; the heightmap back within 0.15 m of the finished heights; the land mask's land = the finished
+  ocean's complement; files 4.0 / 1.5 / 0.03 MB, colour 3.7 MB, each ~1 s in the browser. Peaks above 9 km clip (11
+  pixels of that planet, to 11.9 km).
+
+**The page at its simplest (2026-10-01).** The developer first asked for a clearer order ("everything is jumbled up … make
+it clear to a user what the intended actions are and in what order"); numbered steps in the panel (1 Build, 2 This Moment,
+3 View, 4 Export) were "more confusing … overwhelming" — then: "what is the absolute minimum that someone needs to see to
+make a planet, see everything, and export … surface that, and then hide all the details or knobs". Built: the panel —
+New World (a new seed), the build's progress, one line on what to do ("Play the history, stop on a moment you like and
+press Finish — then look around and export it"), and Settings, folded: World (seed, the sliders, plates, terrain detail,
+Build This World), Finish (its detail, the moments finished), Map (colours, rivers and lakes, regime colours, density,
+globe or map, rotate, grid, playback speed, stats); the layers over the planet — Terrain, Satellite, Climate (a row of its
+own: Köppen, Temperature, Rain, Wind, Currents; the season where it matters), Heightmap, Plates; the timeline — Finish
+(its progress, Cancel), Export in its place once the moment is finished at the detail chosen; the line beneath it says
+what to do now. Gone: Calculate Climate (the Climate tab works it out by itself, once per moment), Show Finished Moments (a
+finish simply shows), the step numbers and notes. Satellite before a finish: a chip under the tabs with Finish. The legend
+in a card beside the planet. Tooltips drawn over the page (still). Phones: V1's layer switch, the season beneath it.
+Awaiting the developer's test.
 
 **D. Climate for a chosen moment — on request only.**
 - Never computed automatically (developer: "we dont need climate on every moment. It takes way too long … there should
