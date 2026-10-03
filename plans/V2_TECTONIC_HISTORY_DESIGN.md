@@ -888,6 +888,43 @@ they found was fixed, and each fix has a check that would catch its return.
   ±0.5 the detours did not pay for their length and the cuts stayed straight. Plates ringing a big sea (Phase 11: kept
   apart so it can close) weld round it after sutureLockMaxMyr — held apart for good, they ground on without end and left
   seas inside supercontinents.
+- The pace of breakups (2026-10-01; developer: "the supercontinent cycle is too extreme. During the supercontinent phase
+  there is a long period of only erosion and 0 breakups. And during other phases there are way way too many breakups all
+  at once … aiming for at most one major rifting event every 30 Myr, and closer to 50 … not more than 150 [Myr] without
+  one, and really closer to 100. Use simulation to get closer-ish … then hard rules to ensure the 30 and 150"). Measured
+  first (v2/tools/trace-rifts.mjs, the Evolution history, 4 seeds at 20K): 34–42 rifts in 1200 Myr, 23–31 gaps under
+  30 Myr, up to 7 rifts in 30 Myr; quiet spells to 348 Myr around each supercontinent (the gathering's rift factor 0.2
+  and the 100 Myr hold were applied to every continent on the planet). Now (step/rifting.js): the pace kept from the last
+  rift anywhere — one a step, none within riftMinGapMyr 30 (a plume head then only erupts), the chance back over 30→60
+  Myr (smoothstep), × (1 + ((gap − 90) ÷ 30)²) past riftDueMyr; at riftMaxGapMyr 150 a rift is forced (the last step before
+  the gap would pass it; the likeliest continent of ≥ riftForcedMinKm2 6 Mkm², those outside the landmass gathering first,
+  48 junctions, then looser shape rules — a just-gathered landmass is ragged and often admits no cut by the usual ones).
+  The supercontinent's hold and the gathering's factor now apply to its own plates only. dispersalRepulsion 0.2 → 0.3 (the
+  bursts had broken up pieces gathered too soon; with the pace the push keeps them apart: next supercontinent 460–910 Myr
+  at 0.2, 560–730 at 0.3). Result (10 histories, 20K and 40K): 21–26 rifts, gaps ≥ 31 Myr, median 40–50, mean 46–59, the
+  longest quiet ≤ 149 Myr, 0–2 forced per history. Side effects, for the developer's look: phase 7a — no plume-head rift in
+  its 300 Myr history (heads arriving within 30 Myr of a rift only erupt); phase 13 — the burst check fails by design, and
+  fewer rifts leave more land untouched, more lowland (43–48 %), a 10 Mkm² enclosed sea on one seed, crust growth to
+  × 1.22 on one seed.
+  Then, per piece (developer: "the rules dont apply to the whole world, but to each individual PIECE of continent … each
+  piece has its own timer for when it CAN break. This resets when they fit together … shouldnt FORCE something to break
+  apart if its too small … a limit globally … minimum at 10myrs"): each plate's clock runs from plate.born (reset for both
+  halves of a rift and for a weld; a terrane docking does not reset it) — none within riftMinGapMyr 30, the chance back over
+  30→50, × (1 + ((age − 90) ÷ 20)²) past 90, forced from 140 (riftMaxGapMyr 150 − riftGlobalGapMyr 10, so the world's floor
+  cannot push it past 150) if it holds riftMinContinentKm2 — the clock for the forcing counting from when it grew that big
+  (plate.bigSince: a piece grown big by accretion is not split at once for its years as a small one); the world: no two
+  rifts within riftGlobalGapMyr 10. The supercontinent's hold and the gathering's factor stay on its own plates; no
+  exemption from the forcing (welding resets the clocks). riftRatePerMyr 0.04 → 0.08 (with each piece paced, most otherwise
+  rifted only when forced). A plume head under a piece too young (or the world in its 10 Myr) waits plumeRiftWaitMyr 30 and
+  rifts once it may, from the junctions where it arrived (taken then in the plate's frame), with the looser shape rules if
+  the usual admit no cut (otherwise none ever rifted: the start's pieces are young when the early heads arrive). Result (4
+  seeds, 20K): pieces rift at 31–33 Myr at the least, median 48–58; no piece big enough over 148 Myr; world gaps ≥ 10, at
+  most 3 rifts in 30 Myr; 31–42 rifts in 1200 Myr, 2–6 forced, 0–2 by plumes; the next supercontinent 550–690 Myr. The world
+  may now go longer than 150 Myr without a rift when no piece is both big and old (one seed: 246 Myr). check-phase13's burst
+  check became the pace check, and "keep apart" a 60 Myr window (riftMinGapMyr + 30); check-phase7's plume rift may follow
+  its LIP by up to plumeRiftWaitMyr; the plume scene's Pangaea is born in prehistory (as the start world). Checks: phase 6
+  21/21; 7a 22/23 (the old mantle-memory one); 13 14/18 (compactness, untouched land, open-ocean arcs as before; the
+  enclosed sea 3.4 Mkm² on one seed; the timing now passes).
 - Lab speed (2026-09-26, during Phase 11; developer: at 2.5M, pressing Play in lab 8b "freezes up … my computer starts
   whirring aggressively"; "first without changing the output, and then … cut corners"). The freeze: the play clock ran
   on while a 2.5M frame took 2–5 s to build, so the frame asked for had always moved on and nothing was painted; and the

@@ -10,7 +10,7 @@ import { colorByPlate, colorByCrustType, colorByCrustAge, colorByWeakness, color
 import { describeCell, recordedFrameAt, boundaryLegend, eventRows, SNAPSHOT_MYR, latLonOf, speedSeries, orogenyLegend } from './phase-kit.js';
 
 const TUNABLES = [
-    { id: 'riftTenureMyr', label: 'A fresh continent is stable for', min: 0, max: 200, step: 10, unit: ' Myr' },
+    { id: 'riftMinGapMyr', label: 'A piece of continent may rift again after', min: 0, max: 100, step: 5, unit: ' Myr' },
     { id: 'riftRatePerMyr', label: 'Rift chance per Myr at full tension', min: 0, max: 0.1, step: 0.005 },
     { id: 'subductionInitRatePerMyr', label: 'Chance per Myr an old margin founders', min: 0, max: 0.1, step: 0.005 },
     { id: 'subductionInitAgeMyr', label: '…ocean must be older than', min: 40, max: 300, step: 10, unit: ' Myr' },

@@ -286,7 +286,8 @@ export const TECTONICS = {
     // ── Rifting (Phase 6a) [WBP]. Probabilistic, from the world's seeded rng (developer decision). ──
     riftMinContinentKm2: 1.8e7, // only a continent this big rifts on its own (South America 18, Africa 30 Mkm²; smaller ones need a plume)
     riftTenureMyr: 60,          // a fresh or just-sutured continent is stable this long
-    riftRatePerMyr: 0.04,       // chance per Myr = this × tension × (size ÷ riftMinContinentKm2 − 1, capped at riftSizeCap)
+    riftRatePerMyr: 0.08,       // chance per Myr = this × tension × (size ÷ riftMinContinentKm2 − 1, capped at riftSizeCap) × the pace
+                                // (below; 0.04 before the pace kept each piece's breakups apart: most then rifted only when forced)
     riftSizeCap: 4,             // a supercontinent (8× the minimum) at tension 0.35 rifts within ~20 Myr on average (developer: ~30 Myr);
                                 // a continent of twice the minimum at tension 0.5 waits ~50 Myr beyond its tenure
     riftWeaknessCost: 0.8,      // a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real
@@ -319,6 +320,21 @@ export const TECTONICS = {
     riftFailedArms: 2,          // how many arms fail at a junction (they strike out across ordinary ground, seeding NEW weak lines)
     riftPush: 0.6,              // a fresh rift pushes its two sides apart (uplifted rift shoulders), per 100 km of rift…
     riftPushMyr: 60,            // …fading to nothing over this long, by which time the ridge push of the young ocean has taken over
+    // The pace of breakups (developer: they came "way way too many … all at once", and the supercontinent sat through "a long
+    // period of only erosion and 0 breakups" — "at most one major rifting event every 30 Myr, and closer to 50 … not more
+    // than 150 [Myr] without one, and really closer to 100"; then: "the rules dont apply to the whole world, but to each
+    // individual PIECE of continent … each piece has its own timer … This resets when they fit together … shouldnt FORCE
+    // something to break apart if its too small … a limit globally … minimum at 10myrs"). Each piece's clock runs from when
+    // it was born of a rift or welded together (plate.born):
+    riftMinGapMyr: 30,          // it does not rift within this (a plume head arriving then erupts, but does not split it)…
+    riftSpacingMyr: 50,         // …its chance coming back smoothly from there to full by this (a piece then rifts at ~50 Myr typically)…
+    riftDueMyr: 90,             // …and growing once this has passed: × (1 + ((age − this) ÷ riftDueRampMyr)²) — × 3.25 at 120, × 10 at 150…
+    riftDueRampMyr: 20,
+    riftMaxGapMyr: 150,         // …and at this a rift is forced, if it is big enough to rift on its own (riftMinContinentKm2; the
+                                // clock for this counts from when it grew that big, if later)
+    riftGlobalGapMyr: 10,       // the world as a whole: no two rifts within this (one a step at most)
+    plumeRiftWaitMyr: 30,       // a plume head under a piece too young to rift (or while the world waits) splits it once it may,
+                                // up to this long after the head arrived; its flood basalt erupts on arrival
 
     // ── The supercontinent cycle (Phase 13, step/supercontinent.js) ──
     riftHeatFloor: 0.05,        // a continent's rift chance × (floor + gain × heat^power), heat = the mean mantle heat under its
@@ -351,17 +367,21 @@ export const TECTONICS = {
     cycleGatherMyr: 150,        // the pieces gather (the downwelling's pull on) over this long before the period is up…
     cycleDisperseMinMyr: 150,   // …but not before they have dispersed this long since the breakup began
     cycleRampMyr: 30,           // (the pull comes on over this long)
-    dispersalRepulsion: 0.2,   // until then each continent is pushed away from the others near it, per 10⁴ km² of continent,
+    dispersalRepulsion: 0.3,   // until then each continent is pushed away from the others near it, per 10⁴ km² of continent,
+                                // (0.2 when rifts came in bursts that broke up pieces gathered too soon; with breakups paced —
+                                // riftMinGapMyr — the push keeps them apart instead: the next supercontinent at ~560–730 Myr)
     dispersalRepulsionKm: 2000, // × (1 − distance to the other's edge ÷ this)², × its share of the land (twice, at most 1)
     dispersalMaxShare: 0.45,    // while they disperse, the plates of a landmass that holds more than this share of the continental
     dispersalRiftBoost: 10,     // crust (each 15 %+ of it) rift this many times more readily, after riftTenureHotMyr (gathered too soon)
     superHoldMarginKm: 500,     // until it first rifts, a supercontinent is held together over its own footprint: its disc and this
-    superTenureMyr: 100,        // a supercontinent just counted holds this long before any continent rifts on its own (Pangaea
-                                // held ~100–150 Myr; as soon as it was counted — often not yet welded — it came apart in 40–80)
+    superTenureMyr: 100,        // a supercontinent just counted holds this long before it rifts on its own (Pangaea held ~100–150
+                                // Myr; as soon as it was counted — often not yet welded — it came apart in 40–80); continents
+                                // outside it rift as ever
     disperseFounderFactor: 0.15, // while they disperse, the chance that a margin of an ocean opened since the breakup founders × this
                                 // (closing those oceans is how the pieces gather: at the usual rate they closed by ~300 Myr)
-    gatherRiftFactor: 0.2,      // while they gather, a continent's rift chance × this: over the downwelling the lithosphere is
-                                // pressed together, not stretched (and a gathering that rifted apart again never finished)
+    gatherRiftFactor: 0.2,      // while they gather, the rift chance of the landmass they gather into × this: over the downwelling
+                                // the lithosphere is pressed together, not stretched (and a gathering that rifted apart again never
+                                // finished); continents elsewhere rift as ever
     cycleCheckMyr: 10,          // how often the landmasses are counted
     cycleUpwellingKm: 2500,     // the upwelling's heat is the mean mantle heat within this of it
 

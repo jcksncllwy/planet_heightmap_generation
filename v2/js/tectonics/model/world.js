@@ -34,8 +34,10 @@ export class TectonicWorld {
         this.hotspotsReady = false;
         /** The supercontinent cycle (step/supercontinent.js): the mantle's upwelling and downwelling, the landmasses' state; null until first watched. */
         this.cycle = null;
-        /** Plume heads that arrived this step under a continent and may split it; step/rifting.js acts on them. */
+        /** Plume heads that arrived under a continent and may split it — this step, or waiting for it (plumeRiftWaitMyr); step/rifting.js acts on them. */
         this.pendingPlumeRifts = [];
+        /** When a continent last rifted (Myr), or null before the first: the pace of breakups is kept from it (step/rifting.js). */
+        this.lastRiftAt = null;
         /** @type {Object[]} plumes a scene SCHEDULES: {time, xyz, head?, rift?, …} in the mantle frame, or {time, plate, cell} (6a form); step/hotspots.js brings them up */
         this.plumes = [];
         /** @type {Object<number,string>|null} terrane id → craton letter, when the world was built from the start-world generator */
@@ -131,7 +133,7 @@ export const EventKind = Object.freeze({
     ISLE_MERGE: 'isle-merge',           // { plate, areaKm2 }                                     a fore-arc island grows into the mainland
     ARC_RECYCLED: 'arc-recycled',       // { donor, areaKm2 }                                     a small arc goes down with its slab instead of accreting
     FRAGMENT: 'fragment',               // { from, to, areaMkm2, cells }                          a cut-off piece of land joins another plate
-    RIFT: 'rift',                       // { plate, fresh, cause: 'plume' | 'tension', hotspot, lengthKm, weakKm (of it along old sutures,
+    RIFT: 'rift',                       // { plate, fresh, cause: 'plume' | 'tension' | 'overdue', hotspot, lengthKm, ageMyr (of the piece: since its last rift or weld), weakKm (of it along old sutures,
                                         //   failed arms and rifted margins), failedArmKm }
     SUBDUCTION_INIT: 'subduction-init', // { upper, lower, lengthKm, ageMyr }                     a passive margin founders
     SLAB_FLAT: 'slab-flat',             // { plate }                                              the slab under it flattens (Laramide)

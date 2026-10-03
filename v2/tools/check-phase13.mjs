@@ -18,6 +18,7 @@ import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 
 const SEEDS = [12345, 777, 4242];
+const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (a landmass holding most of the crust while the pieces disperse must come apart within this)
 const mesh = labMesh(), n = mesh.numCells, cellKm2 = mesh.cellAreaKm2;
 const scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
 
@@ -84,7 +85,13 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const kept = [], arcs = [];
     let calm = null, lowland = null, land0 = null, land1200 = null, cont0 = 0, cont1200 = 0;
     const started = performance.now();
-    simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
+    // (each step: the longest any piece big enough to rift has gone without a rift, a weld, or growing that big — step/rifting.js)
+    let oldestPiece = 0;
+    const drive = w => {
+        scene.drive(w);
+        for (const p of w.plates) if (p.alive && !p.isBackground && p.stats.continentalCells * w.mesh.cellAreaKm2 >= w.config.riftMinContinentKm2) oldestPiece = Math.max(oldestPiece, w.time - Math.max(p.born, p.bigSince ?? w.time));
+    };
+    simulate(world, { untilMyr: scene.maxMyr, drive, snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
         for (let w = 0; w < n; w++) { if (f.owner[w] < 0) continue; const t = f.type[w]; if (t === CrustType.CONTINENT || t === CrustType.CRATON) cont[w] = 1; else if (t === CrustType.OCEAN) ocean[w] = 1; }
         const sizes = comps(w => cont[w] === 1).map(c => c.length), total = sizes.reduce((x, y) => x + y, 0);
@@ -101,21 +108,25 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const ev = world.events;
     const supers = ev.filter(e => e.kind === EventKind.SUPERCONTINENT).map(e => e.time), broken = ev.filter(e => e.kind === EventKind.DISPERSED).map(e => e.time);
     const rifts = ev.filter(e => e.kind === EventKind.RIFT);
-    // the start's breakup: the most rifts in any 60 Myr before it has broken up (and a little after)
-    const firstBreak = broken[0] ?? scene.maxMyr, early = rifts.map(e => e.time).filter(t => t <= firstBreak + 30);
-    const burst = Math.max(0, ...early.map(t => early.filter(u => u >= t && u < t + 60).length));
+    // the pace (developer, 2026-10-01): the world's gaps between rifts, each piece's age when it rifted, and how the start's
+    // breakup gets going — rifts within 100 Myr of the first
+    const times = rifts.map(e => e.time), worldGap = Math.min(Infinity, ...times.slice(1).map((t, i) => t - times[i]));
+    const pieceAge = Math.min(Infinity, ...rifts.map(e => e.data.ageMyr ?? Infinity)), early = times.filter(t => t <= (times[0] ?? 0) + 100).length;
     // dispersal: the lowest share between the first rift and the next supercontinent; and the most any landmass held
     // for 30 Myr (three frames running) while the pieces were dispersing
     const reassembled = supers.find(t => t > 0), lowest = Math.min(...kept.filter(k => k.time >= (rifts[0]?.time ?? 0) && k.time <= (reassembled ?? scene.maxMyr)).map(k => k.share));
     const disp = kept.filter(k => k.phase === 'dispersing');
+    // (over CLUMP_MYR — the per-piece wait, riftMinGapMyr, and 30 Myr more: the piece a breakup leaves holding most of the
+    // crust may not rift again sooner)
     let clump = 0;
-    for (let i = 0; i + 2 < disp.length; i++) if (disp[i + 2].time - disp[i].time <= 20 + 1e-6) clump = Math.max(clump, Math.min(disp[i].share, disp[i + 1].share, disp[i + 2].share));
+    const span = Math.round(CLUMP_MYR / 10);
+    for (let i = 0; i + span < disp.length; i++) if (disp[i + span].time - disp[i].time <= CLUMP_MYR + 1e-6) clump = Math.max(clump, Math.min(...disp.slice(i, i + span + 1).map(d => d.share)));
     // the reassembled supercontinent at its fullest, before it breaks up again
     const againAt = broken.find(t => reassembled !== undefined && t > reassembled);
     const held = reassembled === undefined ? [] : kept.filter(k => k.time >= reassembled - 30 && k.time <= (againAt ?? scene.maxMyr));
     const fullest = held.reduce((b, k) => (!b || k.share > b.share ? k : b), null);
     const weak = rifts.reduce((s, e) => s + (e.data.weakKm ?? 0), 0) / Math.max(1, rifts.reduce((s, e) => s + e.data.lengthKm, 0));
-    return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, burst, lowest, clump, reassembled, againAt,
+    return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, worldGap, pieceAge, oldestPiece, early, lowest, clump, reassembled, againAt,
         fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, land0, land1200, contRatio: cont1200 / Math.max(1, cont0),
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
@@ -127,10 +138,13 @@ const txt = f => rows.map(r => `${r.seed}: ${f(r)}`).join(' · ');
 for (const r of rows) console.log(`    seed ${r.seed} (${r.secs.toFixed(0)} s): supercontinents at ${r.supers.map(t => t.toFixed(0)).join(', ')} Myr; broken up at ${r.broken.map(t => t.toFixed(0)).join(', ')}; ${r.rifts} rifts; largest landmass every 100 Myr ${r.shares.join(' ')} %`);
 
 check('the start world is a supercontinent', rows.every(r => r.supers[0] === 0), txt(r => `first at ${r.supers[0]?.toFixed(0)} Myr`));
-check('…which breaks up in a burst: ≥ 3 rifts within 60 Myr', rows.every(r => r.burst >= 3), txt(r => `${r.burst} rifts in the busiest 60 Myr of its breakup`));
+// (developer, 2026-10-01: breakups "way way too many … all at once" — each piece of continent its own clock, a floor for the world)
+check(`…which breaks up at a pace: rifts ≥ ${TECTONICS.riftGlobalGapMyr} Myr apart, a piece rifting ≥ ${TECTONICS.riftMinGapMyr} Myr after its own last rift or weld, none big enough going over ${TECTONICS.riftMaxGapMyr} Myr without one, and ≥ 2 rifts within 100 Myr of the first`,
+    rows.every(r => r.worldGap >= TECTONICS.riftGlobalGapMyr - 1e-6 && r.pieceAge >= TECTONICS.riftMinGapMyr - 1e-6 && r.oldestPiece <= TECTONICS.riftMaxGapMyr + 1e-6 && r.early >= 2),
+    txt(r => `gaps ≥ ${r.worldGap.toFixed(0)}, pieces ≥ ${r.pieceAge.toFixed(0)} Myr old, the oldest ${r.oldestPiece.toFixed(0)} Myr, ${r.early} rifts in the first 100 Myr`));
 check('the pieces disperse: the largest landmass falls to ≤ 40 % of the continental crust', rows.every(r => r.lowest <= 0.4), txt(r => `lowest ${(100 * r.lowest).toFixed(0)} %`));
 // (developer, after the first look: "the supercontinent really shouldnt happen until like 600 [Myr] in")
-check('…and keep apart: while they disperse no landmass holds 70 % for 30 Myr', rows.every(r => r.clump < 0.7), txt(r => `the most held ${(100 * r.clump).toFixed(0)} %`));
+check(`…and keep apart: while they disperse no landmass holds 70 % for ${CLUMP_MYR} Myr`, rows.every(r => r.clump < 0.7), txt(r => `the most held ${(100 * r.clump).toFixed(0)} %`));
 check('around 600 Myr they gather into a new supercontinent (≥ 70 %, held 30 Myr; 550–800 Myr)', rows.every(r => r.reassembled >= 550 && r.reassembled <= 800), txt(r => r.reassembled !== undefined ? `at ${r.reassembled.toFixed(0)} Myr` : 'never'));
 check('…which holds a while (≥ 80 Myr) and breaks up in its turn', rows.every(r => r.againAt !== undefined && r.againAt - r.reassembled >= 80),
     txt(r => r.againAt !== undefined ? `broken up at ${r.againAt.toFixed(0)} Myr, ${(r.againAt - r.reassembled).toFixed(0)} Myr on` : 'not by 1200 Myr'));

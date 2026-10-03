@@ -17,6 +17,7 @@ export const RIFT_SCENES = [
         build(simMesh, seed) {
             const { world, canvas, noise } = begin(simMesh, seed);
             const pangaea = world.addPlate('Pangaea');
+            pangaea.born = -world.config.riftTenureMyr;                       // (assembled in prehistory, as the start world: its clock — step/rifting.js — lets it rift)
             const land = addContinent(canvas, noise, { plate: pangaea, centre: [5, -20], radiusKm: 2600, cratonKm: 800, wobble: 0.12 });
             addApronAndTrench(canvas, pangaea, land, [[140, 220], [-40, 40]], world.config);
             fillBackground(canvas, world, world.config);

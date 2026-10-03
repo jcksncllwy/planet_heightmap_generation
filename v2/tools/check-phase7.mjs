@@ -6,6 +6,7 @@ import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { tangentToward } from '../js/core/sphere-geom.js';
 import { makeRng } from '../../js/rng.js';
 import { HOTSPOT_SCENES } from '../js/tectonics/scenarios/hotspot-scenes.js';
+import { TECTONICS } from '../js/tectonics/config.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { resolve } from '../js/tectonics/step/resolve.js';
 import { pickPlumeSite } from '../js/tectonics/step/hotspots.js';
@@ -142,9 +143,11 @@ section('the plumes of 6a and of 7a are one and the same');
 {
     const r = run('history', { plumeRiftChance: 1 });
     const plumeRifts = r.events.filter(e => e.kind === EventKind.RIFT && e.data.cause === 'plume');
-    const matched = plumeRifts.filter(rift => r.events.some(e => e.kind === EventKind.LIP && e.data.hotspot === rift.data.hotspot && Math.abs(e.time - rift.time) < 1e-6));
+    // (a head under a piece of continent too young to rift waits for it — plumeRiftWaitMyr; its LIP erupts on arrival)
+    const wait = TECTONICS.plumeRiftWaitMyr;
+    const matched = plumeRifts.filter(rift => r.events.some(e => e.kind === EventKind.LIP && e.data.hotspot === rift.data.hotspot && rift.time - e.time > -1e-6 && rift.time - e.time < wait + 1e-6));
     check('a plume head that splits a continent is the same plume that floods it with basalt', plumeRifts.length >= 1 && matched.length === plumeRifts.length,
-        `${plumeRifts.length} plume rifts (every head allowed to split); ${matched.length} of them erupted their own LIP at the same moment`);
+        `${plumeRifts.length} plume rifts (every head allowed to split); ${matched.length} of them erupted their own LIP when it arrived, at most ${wait} Myr before the rift`);
     const b = run('history', { plumeRiftChance: 1 });                       // (a replay of r)
     check('the same seed replays the same history', r.events.length === b.events.length && r.events.every((e, i) => e.text === b.events[i].text) && r.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
 }
