@@ -47,7 +47,7 @@ scrubbable while the rest fills in). On a phone the collapsed bottom sheet shows
 line. A first-run **tutorial** (the "?" opens it again) sits over a history already building. The layers sit over the
 planet (Terrain, Satellite — locked on previews — Climate, its own row: Köppen, temperature, rain, wind, currents, a
 More… menu with Generate's other Inspect layers — pressure with the ITCZ, upwelling, ice, temperature range, rain shadow,
-aridity, growing season, rain seasonality — and the season — Heightmap, Plates). The Climate tab works a paused preview's climate out by itself (about a second; its
+aridity, growing season, rain seasonality — and the season — Heightmap, Plates). The Climate tab works a paused preview's climate out by itself (a second or two; its
 legend says "Preview climate"); a legend card sits beside the planet; the "?" tooltips are drawn over the page (V1's are
 clipped by the scrolling panel). A world runs its history and shows the planet as it builds, then the whole history is a
 timeline to scrub and play; changing the terrain resolution redraws the same history (only the plates' resolution needs a
@@ -101,7 +101,7 @@ finished picture's width (4096, 8192 at 10M, 2048 on phones) or a half or quarte
 moment (`orogen-evolution-12345-760Myr-heightmap.png`).
 The **Climate** tab gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
 winds, currents — seasonal in the tropics, fading out by 60° — and More…'s layers, with Generate's colours and legends
-from `js/climate-layers.js`; about a second, in a worker), kept per moment while the history is open. Its code is
+from `js/climate-layers.js`; a second or two, in a worker), kept per moment while the history is open. Its code is
 `js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
 [`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
 
