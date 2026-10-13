@@ -140,6 +140,7 @@
 .evo-card-note a { color: #8bf; text-decoration: none; }
 .evo-card-note a:hover { text-decoration: underline; }
 #worldSection .evo-card-note { margin: 0 0 8px; color: #db9; }
+.evo-card .evo-card-replace { margin: 0 0 10px; color: #db9; }        /* (what Add detail costs, read before pressing it) */
 .evo-card-ghost {
     width: 100%; margin-top: 10px; padding: 8px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 13px;
     border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.4); color: #cde;
@@ -194,7 +195,7 @@
 .evo-act-main { background: linear-gradient(135deg, #2255cc, #3366ee); border-color: transparent; color: #fff; }
 .evo-act.busy { background: rgba(130,70,20,0.6); border-color: rgba(255,170,90,0.5); color: #fdb; }
 /* (one width for its labels — the track does not jump) */
-#timeline .evo-act { min-width: 132px; text-align: center; font-variant-numeric: tabular-nums; }
+#timeline .evo-act { min-width: 112px; text-align: center; font-variant-numeric: tabular-nums; }
 .evo-time { min-width: 64px; }
 #timeline .evo-badge { margin-left: -2px; }
 .evo-timeline-progress { position: absolute; left: 14px; right: 14px; bottom: 3px; margin: 0; height: 3px; }

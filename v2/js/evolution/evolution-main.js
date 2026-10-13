@@ -547,8 +547,9 @@ async function finishMoment(again = null) {
 
 // ── the context card (plans/V2_EVOLUTION_UI_PLAN.md; developer, 2026-10-13: the page was "too sparse and confusing. It
 // isn't intuitive what a user should be doing"): one card that says what is on screen and the one thing to do next —
-// Add detail, Replace, Cancel, Export — its button mirrored on the timeline, beside the moment chosen. One moment of a
-// history is kept in detail; the timeline's moments are previews ──
+// Add detail, Cancel, Export — its button mirrored on the timeline, beside the moment chosen. One moment of a history is
+// kept in detail; the timeline's moments are previews — the card says when adding detail replaces the one kept (the
+// button says what it does, not what it costs: developer, "the 'replace' wording on the timeline is a bit confusing") ──
 const cellsWords = n => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1e3}K`);
 /** The history's one detailed moment, as [frame, finished], or null. */
 const detailedOf = b => (b?.finishes.size ? b.finishes.entries().next().value : null);
@@ -562,7 +563,7 @@ function updateCard() {
     let main = 'Add detail', short = main, title = 'Sculpt the moment shown again, in detail: its rivers, lakes and glaciers, its own climate and the Satellite view (seconds to a minute)';
     if (job) { main = short = `Cancel · ${pct}%`; title = `Adding detail to ${job.frame.time.toFixed(0)} Myr (${job.stage}) — click to cancel`; }
     else if (isDet) { main = short = 'Export'; title = 'Save this detailed moment as map files: heightmaps (the sea floor too), a land mask and the colour map'; }
-    else if (detFrame) { main = `Replace ${dt} Myr with ${t} Myr`; short = `Replace ${dt} Myr`; title = `Add detail to ${t} Myr — the detailed ${dt} Myr is let go once it is done (one moment is kept in detail)`; }
+    else if (detFrame) title = `Add detail to ${t} Myr — it replaces the detailed ${dt} Myr once it is done (one moment is kept in detail)`;
     for (const [btn, label] of [[$('cardAction'), main], [$('timelineAction'), short]]) {
         btn.disabled = !frame || !b?.simMesh;
         btn.textContent = label; btn.title = title;
@@ -586,7 +587,10 @@ function updateCard() {
     showIf($('waterGroup'), isDet && !job);
     const again = $('cardAgain');
     if (showIf(again, isDet && !job && fin.cells !== cells)) again.textContent = `Add detail again at ${cellsWords(cells)}`;
-    if (showIf($('cardDetailed'), !!detFrame && !isDet)) $('cardDetailed').innerHTML = `Detailed: ${dt} Myr — <a href="#" data-t="${detFrame.time}">go to it</a>`;
+    if (showIf($('cardDetailed'), !!detFrame && !isDet)) {
+        $('cardDetailed').innerHTML = (job ? `Replaces the detailed ${dt} Myr once it is done.` : `Replaces the detailed ${dt} Myr — one moment is kept in detail.`) +
+            ` <a href="#" data-t="${detFrame.time}">Go to ${dt} Myr</a>`;
+    }
     const note = b?.finishNote && (isDet || !b.finishOk) ? b.finishNote : null;
     if (showIf($('cardNote'), !!note)) $('cardNote').textContent = note;
     // Extend history: once the history has reached its end — Stop while it runs on, Stopping… until its piece is done
@@ -608,7 +612,7 @@ function updateCard() {
     if (!legend.childElementCount) legend.innerHTML = REGIME_STYLE.map(s => `<span><i style="background:${s.rgb}"></i>${s.name}</span>`).join('');
     $('legendCard').hidden = !$('climateLegend').innerHTML.trim() && legend.hidden;
 }
-/** The card's and the timeline's button: Cancel while adding detail; Export on the detailed moment; else Add detail (or Replace). */
+/** The card's and the timeline's button: Cancel while adding detail; Export on the detailed moment; else Add detail. */
 function mainAction() {
     const b = B, frame = painted;
     if (!b || !frame) return;
@@ -704,9 +708,8 @@ function updateClimateUi() {
     let text = null, act = null;
     if (frame && view.layer === 'satellite' && !shown) {
         const fjob = b.finishJob;
-        const det = detailedOf(b);
         text = fjob ? `Adding detail to ${fjob.frame.time.toFixed(0)} Myr…` : `The Satellite view comes with detail — add detail to ${t} Myr to see it`;
-        act = fjob ? null : det ? `Replace ${det[0].time.toFixed(0)} Myr` : 'Add detail';
+        act = fjob ? null : 'Add detail';
     } else if (frame && CLIMATE_SUB.has(view.layer) && !shown && !have) {
         text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Pause on a moment to see its climate' : `No climate for ${t} Myr`;
         act = job || playing ? null : 'Calculate';

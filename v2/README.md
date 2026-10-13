@@ -36,9 +36,9 @@ the **World** section — folded to a one-line summary once a history is buildin
 history length, ending and **Quality** (Fast 20K plates / 160K terrain · Balanced 40K / 160K · Best 80K / 640K · Custom,
 which shows the two resolutions), with Build This World — then the **context card**, and **View** (terrain colours,
 globe or map, grid, auto-rotate, playback speed, stats). The context card names the moment shown, a **Preview** or
-**Detailed** badge, and the one thing to do next — **Add detail** (with its Detail level), **Replace** the detailed
-moment, **Cancel** while it runs, or **Export** — its button mirrored on the timeline, beside the moment; on the detailed
-moment it holds the rivers' options, elsewhere a link back to it; **Extend history** once the history has reached its end.
+**Detailed** badge, and the one thing to do next — **Add detail** (with its Detail level), **Cancel** while it runs, or
+**Export** — its button mirrored on the timeline, beside the moment; on the detailed moment it holds the rivers' options,
+elsewhere a note that adding detail replaces it, with a link back to it; **Extend history** once the history has reached its end.
 The timeline is play, scrub and the time, with the badge (no Live button: its rail shades the time computed so far,
 scrubbable while the rest fills in). On a phone the collapsed bottom sheet shows the moment and what is going on in a
 line. A first-run **tutorial** (the "?" opens it again) sits over a history already building. The layers sit over the

@@ -12,7 +12,7 @@ Decided with the developer (2026-10-13), after a round of questions and an adver
   Instead **one context card** always shows the single next action for what is on screen.
 - **The page builds on load**, like Generate, with a **first-run tutorial** over it (and a **?** to reopen it).
 - **"Finish" is shown as "Add detail"**; the globe says **Preview** or **Detailed**. (The code keeps `finish`.)
-- **One detailed moment at a time.** Adding detail to another moment replaces it — and the button says so.
+- **One detailed moment at a time.** Adding detail to another moment replaces it — and the card says so, above the button (first drafted as a "Replace 900 Myr" button; the developer: the wording on the timeline was "confusing since it's unclear what it DOES"). The button always says what it does: Add detail.
 - **The timeline is for time.** Live goes; Keep going moves to the card; Add detail sits beside the timeline *and* in the
   card (the developer: "I intuitively expected it to be there too").
 - **A Quality preset** (Fast / Balanced / Best / Custom) for the simulation; the **detail level** stays separate, next to
@@ -89,7 +89,7 @@ shown beside the timeline**, so the action is next to the decision; the card is 
 | History computing, playing | "Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail." | **Add detail** (pauses first) |
 | History done, playing | "Pause on a moment you like, then add detail." | **Add detail** |
 | Paused on a preview | "640 Myr · Preview", what detail adds (rivers, lakes, glaciers, its own climate, the Satellite view, export), the **Detail** drop-down | **Add detail** |
-| Paused on a preview, another moment detailed | as above, plus "Detailed: 900 Myr — go to it" | **Replace 900 Myr with 640 Myr** |
+| Paused on a preview, another moment detailed | as above, plus, above the button, "Replaces the detailed 900 Myr — one moment is kept in detail. Go to 900 Myr" | **Add detail** |
 | Adding detail | the stage and progress bar | **Cancel · 42 %** |
 | On the detailed moment | "640 Myr · Detailed", **Rivers & Lakes**, **Colour by Regime**, **River Density** | **Export** (+ a quiet "Add detail again at 10M" when the drop-down differs) |
 | At the end of the history (any of the above) | adds **Extend history** | — (a secondary button) |
@@ -97,7 +97,7 @@ shown beside the timeline**, so the action is next to the decision; the card is 
 - *As built*: the button is there while playing too — the timeline's button would otherwise come and go, and the track
   jump; pressing it pauses on the moment shown, as Finish did.
 - **Detail** drop-down: 160K · 640K · 2.5M (default) · 10M (~1 min); phones up to 640K, as now.
-- **Replace**: the old detailed moment stays until the new one is done, so cancelling loses nothing; then it goes.
+- **Replacing**: the old detailed moment stays until the new one is done, so cancelling loses nothing; then it goes.
   `FINISH_BUDGET` today evicts *before* the new finish starts (`evolution-main.js` ~l.503) — change it to keep one, and
   drop the old one on success. The budget already holds two at 10M on a desktop (2 × ~320 MB = 640 MB) and on a phone.
 - **"Detailed: 900 Myr — go to it"** stays in the card wherever the timeline is, so the detailed moment is never lost.
@@ -108,7 +108,7 @@ shown beside the timeline**, so the action is next to the decision; the card is 
 ### Timeline (bottom)
 
 - **Play/pause**, the **scrubber**, the **time label** — and the context card's main button on the right
-  (Add detail / Replace / Cancel / Export), nothing else.
+  (Add detail / Cancel / Export), nothing else.
 - **Live goes.** The rail shades the time computed so far, like a video's buffered bar: scrub anywhere inside it;
   playback waits at its edge until more is computed. Nothing marks "the newest moment" as special.
 - The playing-while-building behaviour stays (watching it build is playing it from the start).
