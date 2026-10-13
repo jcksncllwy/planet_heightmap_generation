@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { elevationToColor, elevToHeightKm, biomeColor } from './color-map.js';
 import { makeRng } from './rng.js';
 import { KOPPEN_CLASSES } from './koppen.js';
+import { climateColorFn, climateLayer, vectorAt, regionLatLon, sampleGrid as gridSampleAt } from './climate-layers.js';
 
 // Clipping planes for map wrap — keep everything within x ∈ [-2, 2]
 renderer.localClippingEnabled = true;
@@ -168,110 +169,10 @@ function debugValueToColor(v, minV, maxV) {
     }
 }
 
-// Precipitation debug color: brown (dry) → green (moderate) → blue (wet)
-function precipitationColor(value) {
-    // value is 0–1 (p95-normalized)
-    const t = Math.max(0, Math.min(1, value));
-    if (t < 0.25) {
-        // Very dry: tan/brown
-        const s = t / 0.25;
-        return [0.76 - s * 0.16, 0.60 - s * 0.05, 0.42 - s * 0.12];
-    } else if (t < 0.5) {
-        // Dry to moderate: brown → green
-        const s = (t - 0.25) / 0.25;
-        return [0.60 - s * 0.30, 0.55 + s * 0.20, 0.30 - s * 0.05];
-    } else if (t < 0.75) {
-        // Moderate to wet: green → teal
-        const s = (t - 0.5) / 0.25;
-        return [0.30 - s * 0.15, 0.75 - s * 0.10, 0.25 + s * 0.40];
-    } else {
-        // Wet to very wet: teal → deep blue
-        const s = (t - 0.75) / 0.25;
-        return [0.15 - s * 0.05, 0.65 - s * 0.35, 0.65 + s * 0.20];
-    }
-}
 
-// Rain shadow diverging color: blue (windward boost) ↔ neutral gray ↔ red-brown (leeward shadow)
-// Input is signed: positive = windward, negative = leeward shadow (propagated downwind)
-function rainShadowColor(value) {
-    if (value > 0.01) {
-        // Windward: gray → blue (saturates at 0.5)
-        const t = Math.min(1, value / 0.5);
-        return [0.55 - t * 0.40, 0.55 - t * 0.10, 0.58 + t * 0.37];
-    } else if (value < -0.01) {
-        // Leeward shadow: gray → red-brown (saturates at -0.5)
-        const t = Math.min(1, -value / 0.5);
-        return [0.55 + t * 0.35, 0.55 - t * 0.35, 0.58 - t * 0.45];
-    }
-    return [0.55, 0.55, 0.58]; // neutral gray (ocean / flat)
-}
 
-// Continentality debug color: ocean (blue) → coast (green) → interior (orange/red)
-// Input is 0–1: 0 = open ocean, ~0.3-0.5 = coast, 0.95+ = deep interior.
-function continentalityColor(value) {
-    const t = Math.max(0, Math.min(1, value));
-    if (t < 0.15) {
-        // Ocean: dark blue → lighter blue
-        const s = t / 0.15;
-        return [0.05 + s * 0.10, 0.10 + s * 0.20, 0.40 + s * 0.20];
-    } else if (t < 0.4) {
-        // Coastal: blue → green
-        const s = (t - 0.15) / 0.25;
-        return [0.15 - s * 0.05, 0.30 + s * 0.45, 0.60 - s * 0.35];
-    } else if (t < 0.7) {
-        // Moderate interior: green → yellow
-        const s = (t - 0.4) / 0.3;
-        return [0.10 + s * 0.80, 0.75 - s * 0.05, 0.25 - s * 0.15];
-    } else if (t < 0.9) {
-        // Deep interior: yellow → orange
-        const s = (t - 0.7) / 0.2;
-        return [0.90 + s * 0.05, 0.70 - s * 0.40, 0.10 - s * 0.05];
-    } else {
-        // Super-continent core: orange → dark red
-        const s = (t - 0.9) / 0.1;
-        return [0.95 - s * 0.25, 0.30 - s * 0.20, 0.05];
-    }
-}
 
-// Temperature continentality zones: 5 discrete colors matching the guide's zones.
-// 0.0 = Hyperoceanic (deep blue), 0.25 = Oceanic (teal), 0.5 = Subcontinental (green),
-// 0.75 = Continental (orange), 1.0 = Hypercontinental (red). Smoothed values interpolate.
-function tempContinentalityColor(value) {
-    // Ocean cells stored as -1 → clean dark blue
-    if (value < 0) return [0.06, 0.08, 0.22];
-    const t = Math.max(0, Math.min(1, value));
-    // 5 zone colors
-    const zones = [
-        [0.10, 0.20, 0.65],  // Hyperoceanic: deep blue
-        [0.15, 0.55, 0.65],  // Oceanic: teal
-        [0.30, 0.70, 0.25],  // Subcontinental: green
-        [0.85, 0.60, 0.15],  // Continental: orange
-        [0.80, 0.15, 0.10],  // Hypercontinental: red
-    ];
-    const idx = t * 4; // 0..4
-    const lo = Math.min(Math.floor(idx), 3);
-    const hi = lo + 1;
-    const f = idx - lo;
-    return [
-        zones[lo][0] + (zones[hi][0] - zones[lo][0]) * f,
-        zones[lo][1] + (zones[hi][1] - zones[lo][1]) * f,
-        zones[lo][2] + (zones[hi][2] - zones[lo][2]) * f,
-    ];
-}
 
-// Temperature debug color: discrete bands matching real climate map style.
-// Input is 0-1 normalized from -45 to +45 C. Convert back to C for thresholds.
-function temperatureColor(value) {
-    const T = -45 + Math.max(0, Math.min(1, value)) * 90;
-    if (T < -38) return [0.78, 0.78, 0.78];       // White-gray
-    if (T <   0) return [0.00, 0.00, 0.50];        // Dark blue
-    if (T <  10) return [0.53, 0.81, 0.92];        // Light blue
-    if (T <  18) return [1.00, 1.00, 0.00];        // Yellow
-    if (T <  22) return [1.00, 0.65, 0.00];        // Orange
-    if (T <  32) return [1.00, 0.00, 0.00];        // Red
-    if (T <  40) return [0.55, 0.00, 0.00];        // Dark red
-    return [0.20, 0.00, 0.00];                      // Darker red
-}
 
 // Köppen climate class color: returns [r,g,b] from KOPPEN_CLASSES lookup.
 function koppenColor(classId) {
@@ -312,27 +213,11 @@ export function buildMapMesh() {
     let dbgArr = null, dbgMin = 0, dbgMax = 0;
     const isHeightmap = debugLayer === 'heightmap';
     const isLandHeightmap = debugLayer === 'landheightmap';
-    const isOceanCurrent = debugLayer === 'oceanCurrentSummer' || debugLayer === 'oceanCurrentWinter';
-    const oceanSeason = debugLayer === 'oceanCurrentWinter' ? 'winter' : 'summer';
-    const oceanWarmth = isOceanCurrent ? state.curData[`r_ocean_warmth_${oceanSeason}`] : null;
-    const oceanSpeed = isOceanCurrent ? state.curData[`r_ocean_speed_${oceanSeason}`] : null;
-    if (isOceanCurrent && (!oceanWarmth || !oceanSpeed)) {
-        console.warn(`[buildMapMesh] Ocean current layer "${debugLayer}" selected but data missing (warmth=${!!oceanWarmth}, speed=${!!oceanSpeed}). Hard-refresh (Ctrl+Shift+R) and generate a new planet.`);
-    }
-    const isPrecip = debugLayer === 'precipSummer' || debugLayer === 'precipWinter';
-    const precipArr = isPrecip ? (debugLayers && debugLayers[debugLayer]) : null;
-    const isRainShadow = debugLayer === 'rainShadowSummer' || debugLayer === 'rainShadowWinter';
-    const rainShadowArr = isRainShadow ? (debugLayers && debugLayers[debugLayer]) : null;
-    const isTemp = debugLayer === 'tempSummer' || debugLayer === 'tempWinter';
-    const tempArr = isTemp ? (debugLayers && debugLayers[debugLayer]) : null;
+    const climateColor = climateColorFn(debugLayer, state.climateSeason, state.curData);
     const isKoppen = debugLayer === 'koppen';
     const isBiome = debugLayer === 'biome';
     const koppenArr = (isKoppen || isBiome) ? (debugLayers && debugLayers.koppen) : null;
-    const isCont = debugLayer === 'continentality';
-    const contArr = isCont ? (debugLayers && debugLayers.continentality) : null;
-    const isTempCont = debugLayer === 'tempContinentality';
-    const tempContArr = isTempCont ? (debugLayers && debugLayers.tempContinentality) : null;
-    if (!isHeightmap && !isLandHeightmap && !isOceanCurrent && !isPrecip && !isRainShadow && !isTemp && !isKoppen && !isBiome && !isCont && !isTempCont && debugLayer && debugLayers && debugLayers[debugLayer]) {
+    if (!isHeightmap && !isLandHeightmap && !climateColor && !isKoppen && !isBiome && debugLayer && debugLayers && debugLayers[debugLayer]) {
         dbgArr = debugLayers[debugLayer];
         for (let r = 0; r < mesh.numRegions; r++) {
             if (dbgArr[r] < dbgMin) dbgMin = dbgArr[r];
@@ -381,24 +266,12 @@ export function buildMapMesh() {
             c2r = c2g = c2b = v2;
         } else {
             let cr, cg, cb;
-            if (isBiome && biomeSmoothed) {
+            if (climateColor) {
+                [cr, cg, cb] = climateColor(br);
+            } else if (isBiome && biomeSmoothed) {
                 cr = biomeSmoothed[br * 3]; cg = biomeSmoothed[br * 3 + 1]; cb = biomeSmoothed[br * 3 + 2];
-            } else if (isCont && contArr) {
-                [cr, cg, cb] = continentalityColor(contArr[br]);
-            } else if (isTempCont && tempContArr) {
-                [cr, cg, cb] = tempContinentalityColor(tempContArr[br]);
             } else if (isKoppen && koppenArr) {
                 [cr, cg, cb] = koppenColor(koppenArr[br]);
-            } else if (isTemp && tempArr) {
-                [cr, cg, cb] = temperatureColor(tempArr[br]);
-            } else if (isPrecip && precipArr) {
-                [cr, cg, cb] = precipitationColor(precipArr[br]);
-            } else if (isRainShadow && rainShadowArr) {
-                [cr, cg, cb] = rainShadowColor(rainShadowArr[br]);
-            } else if (isOceanCurrent && oceanWarmth && oceanSpeed) {
-                [cr, cg, cb] = oceanCurrentColor(oceanWarmth[br], oceanSpeed[br], r_elevation[br] <= 0);
-            } else if (isOceanCurrent) {
-                cr = 0.5; cg = 0; cb = 0.5;
             } else if (dbgArr) {
                 [cr, cg, cb] = debugValueToColor(dbgArr[br], dbgMin, dbgMax);
             } else if (showPlates) {
@@ -620,31 +493,6 @@ export function rebuildGrids() {
     buildGlobeGrid();
 }
 
-// Ocean current debug color: warmth × speed, with gray land.
-function oceanCurrentColor(warmth, speed, isOcean) {
-    if (!isOcean) return [0.45, 0.45, 0.45]; // gray land
-
-    // speed is 0-1 (p95 normalized); ensure even low-speed areas are clearly visible
-    const intensity = Math.pow(Math.min(1, speed * 3), 0.6); // gamma curve for more visible low values
-    // Minimum brightness so all ocean is distinguishable from land and black background
-    const base = 0.12;
-
-    if (warmth > 0.05) {
-        // Warm (poleward) → dark red-orange to bright red
-        const w = Math.min(1, warmth * 1.5);
-        const t = base + (1 - base) * w * intensity;
-        return [t, base * 0.4 + t * 0.1, base * 0.3];
-    } else if (warmth < -0.05) {
-        // Cold (equatorward) → dark blue to bright blue
-        const w = Math.min(1, -warmth * 1.5);
-        const t = base + (1 - base) * w * intensity;
-        return [base * 0.3, base * 0.5 + t * 0.15, t];
-    } else {
-        // Neutral (zonal) → dark teal-gray
-        const t = base + intensity * 0.45;
-        return [t * 0.55, t * 0.7, t * 0.65];
-    }
-}
 
 // Build / destroy super plate boundary lines for both globe and map views.
 // Called from buildMesh, buildMapMesh, and the Show Plates checkbox handler.
@@ -747,27 +595,11 @@ export function buildMesh() {
     let dbgArr = null, dbgMin = 0, dbgMax = 0;
     const isHeightmap = debugLayer === 'heightmap';
     const isLandHeightmap = debugLayer === 'landheightmap';
-    const isOceanCurrent = debugLayer === 'oceanCurrentSummer' || debugLayer === 'oceanCurrentWinter';
-    const oceanSeason = debugLayer === 'oceanCurrentWinter' ? 'winter' : 'summer';
-    const oceanWarmth = isOceanCurrent ? state.curData[`r_ocean_warmth_${oceanSeason}`] : null;
-    const oceanSpeed = isOceanCurrent ? state.curData[`r_ocean_speed_${oceanSeason}`] : null;
-    if (isOceanCurrent && (!oceanWarmth || !oceanSpeed)) {
-        console.warn(`[buildMesh] Ocean current layer "${debugLayer}" selected but data missing (warmth=${!!oceanWarmth}, speed=${!!oceanSpeed}). Hard-refresh (Ctrl+Shift+R) and generate a new planet.`);
-    }
-    const isPrecip = debugLayer === 'precipSummer' || debugLayer === 'precipWinter';
-    const precipArr = isPrecip ? (debugLayers && debugLayers[debugLayer]) : null;
-    const isRainShadow = debugLayer === 'rainShadowSummer' || debugLayer === 'rainShadowWinter';
-    const rainShadowArr = isRainShadow ? (debugLayers && debugLayers[debugLayer]) : null;
-    const isTemp = debugLayer === 'tempSummer' || debugLayer === 'tempWinter';
-    const tempArr = isTemp ? (debugLayers && debugLayers[debugLayer]) : null;
+    const climateColor = climateColorFn(debugLayer, state.climateSeason, state.curData);
     const isKoppen = debugLayer === 'koppen';
     const isBiome = debugLayer === 'biome';
     const koppenArr = (isKoppen || isBiome) ? (debugLayers && debugLayers.koppen) : null;
-    const isCont = debugLayer === 'continentality';
-    const contArr = isCont ? (debugLayers && debugLayers.continentality) : null;
-    const isTempCont = debugLayer === 'tempContinentality';
-    const tempContArr = isTempCont ? (debugLayers && debugLayers.tempContinentality) : null;
-    if (!isHeightmap && !isLandHeightmap && !isOceanCurrent && !isPrecip && !isRainShadow && !isTemp && !isKoppen && !isBiome && !isCont && !isTempCont && debugLayer && debugLayers && debugLayers[debugLayer]) {
+    if (!isHeightmap && !isLandHeightmap && !climateColor && !isKoppen && !isBiome && debugLayer && debugLayers && debugLayers[debugLayer]) {
         dbgArr = debugLayers[debugLayer];
         for (let r = 0; r < mesh.numRegions; r++) {
             if (dbgArr[r] < dbgMin) dbgMin = dbgArr[r];
@@ -846,24 +678,12 @@ export function buildMesh() {
             col[off+6] = col[off+7] = col[off+8] = c2;
         } else {
             let cr, cg, cb;
-            if (isBiome && biomeSmoothed) {
+            if (climateColor) {
+                [cr, cg, cb] = climateColor(br);
+            } else if (isBiome && biomeSmoothed) {
                 cr = biomeSmoothed[br * 3]; cg = biomeSmoothed[br * 3 + 1]; cb = biomeSmoothed[br * 3 + 2];
-            } else if (isCont && contArr) {
-                [cr, cg, cb] = continentalityColor(contArr[br]);
-            } else if (isTempCont && tempContArr) {
-                [cr, cg, cb] = tempContinentalityColor(tempContArr[br]);
             } else if (isKoppen && koppenArr) {
                 [cr, cg, cb] = koppenColor(koppenArr[br]);
-            } else if (isTemp && tempArr) {
-                [cr, cg, cb] = temperatureColor(tempArr[br]);
-            } else if (isPrecip && precipArr) {
-                [cr, cg, cb] = precipitationColor(precipArr[br]);
-            } else if (isRainShadow && rainShadowArr) {
-                [cr, cg, cb] = rainShadowColor(rainShadowArr[br]);
-            } else if (isOceanCurrent && oceanWarmth && oceanSpeed) {
-                [cr, cg, cb] = oceanCurrentColor(oceanWarmth[br], oceanSpeed[br], r_elevation[br] <= 0);
-            } else if (isOceanCurrent) {
-                cr = 0.5; cg = 0; cb = 0.5;
             } else if (isLandHeightmap) {
                 [cr, cg, cb] = landHeightmapColor(r_elevation[br]);
             } else if (isHeightmap) {
@@ -990,24 +810,11 @@ export function updateMeshColors() {
     let dbgArr = null, dbgMin = 0, dbgMax = 0;
     const isHeightmap = debugLayer === 'heightmap';
     const isLandHeightmap = debugLayer === 'landheightmap';
-    const isOceanCurrent = debugLayer === 'oceanCurrentSummer' || debugLayer === 'oceanCurrentWinter';
-    const oceanSeason = debugLayer === 'oceanCurrentWinter' ? 'winter' : 'summer';
-    const oceanWarmth = isOceanCurrent ? state.curData[`r_ocean_warmth_${oceanSeason}`] : null;
-    const oceanSpeed = isOceanCurrent ? state.curData[`r_ocean_speed_${oceanSeason}`] : null;
-    const isPrecip = debugLayer === 'precipSummer' || debugLayer === 'precipWinter';
-    const precipArr = isPrecip ? (debugLayers && debugLayers[debugLayer]) : null;
-    const isRainShadow = debugLayer === 'rainShadowSummer' || debugLayer === 'rainShadowWinter';
-    const rainShadowArr = isRainShadow ? (debugLayers && debugLayers[debugLayer]) : null;
-    const isTemp = debugLayer === 'tempSummer' || debugLayer === 'tempWinter';
-    const tempArr = isTemp ? (debugLayers && debugLayers[debugLayer]) : null;
+    const climateColor = climateColorFn(debugLayer, state.climateSeason, state.curData);
     const isKoppen = debugLayer === 'koppen';
     const isBiome = debugLayer === 'biome';
     const koppenArr = (isKoppen || isBiome) ? (debugLayers && debugLayers.koppen) : null;
-    const isCont = debugLayer === 'continentality';
-    const contArr = isCont ? (debugLayers && debugLayers.continentality) : null;
-    const isTempCont = debugLayer === 'tempContinentality';
-    const tempContArr = isTempCont ? (debugLayers && debugLayers.tempContinentality) : null;
-    if (!isHeightmap && !isLandHeightmap && !isOceanCurrent && !isPrecip && !isRainShadow && !isTemp && !isKoppen && !isBiome && !isCont && !isTempCont && debugLayer && debugLayers && debugLayers[debugLayer]) {
+    if (!isHeightmap && !isLandHeightmap && !climateColor && !isKoppen && !isBiome && debugLayer && debugLayers && debugLayers[debugLayer]) {
         dbgArr = debugLayers[debugLayer];
         for (let r = 0; r < mesh.numRegions; r++) {
             if (dbgArr[r] < dbgMin) dbgMin = dbgArr[r];
@@ -1020,15 +827,9 @@ export function updateMeshColors() {
 
     // Color helper — returns [r,g,b] for a given region
     const getRegionColor = (br) => {
+        if (climateColor) return climateColor(br);
         if (isBiome && biomeSmoothed) return [biomeSmoothed[br * 3], biomeSmoothed[br * 3 + 1], biomeSmoothed[br * 3 + 2]];
-        if (isCont && contArr) return continentalityColor(contArr[br]);
-        if (isTempCont && tempContArr) return tempContinentalityColor(tempContArr[br]);
         if (isKoppen && koppenArr) return koppenColor(koppenArr[br]);
-        if (isTemp && tempArr) return temperatureColor(tempArr[br]);
-        if (isPrecip && precipArr) return precipitationColor(precipArr[br]);
-        if (isRainShadow && rainShadowArr) return rainShadowColor(rainShadowArr[br]);
-        if (isOceanCurrent && oceanWarmth && oceanSpeed) return oceanCurrentColor(oceanWarmth[br], oceanSpeed[br], r_elevation[br] <= 0);
-        if (isOceanCurrent) return [0.5, 0, 0.5];
         if (isLandHeightmap) return landHeightmapColor(r_elevation[br]);
         if (isHeightmap) return heightmapColor(r_elevation[br]);
         if (dbgArr) return debugValueToColor(dbgArr[br], dbgMin, dbgMax);
@@ -1472,15 +1273,12 @@ export function buildWindArrows(season) {
         state.windArrowGroup = null;
     }
 
-    if (!season || !state.curData || !state.curData.r_wind_east_summer) return;
+    // (season: 'year', 'jan' or 'jul' — the new climate's winds, m/s, on its 1° grid; null clears the arrows)
+    if (!season || !state.curData || !state.curData.climate) return;
 
-    const { mesh, r_xyz,
-        r_wind_east_summer, r_wind_north_summer,
-        r_wind_east_winter, r_wind_north_winter } = state.curData;
-
-    const windE = season === 'winter' ? r_wind_east_winter : r_wind_east_summer;
-    const windN = season === 'winter' ? r_wind_north_winter : r_wind_north_summer;
-    if (!windE || !windN) return;
+    const { mesh, r_xyz } = state.curData;
+    const climateGrid = state.curData.climate.grid;
+    const { lat: rLat, lon: rLon } = regionLatLon(state.curData);
 
     const PI = Math.PI;
     const DEG = PI / 180;
@@ -1532,14 +1330,16 @@ export function buildWindArrows(season) {
         const r = gridRegions[i];
         if (r < 0) continue;
 
-        const we = windE[r], wn = windN[r];
+        // (10 m/s → 1: the arrows' scale)
+        const [ue, vn] = vectorAt(climateGrid, 'wind', season, rLat[r], rLon[r]);
+        const we = ue / 10, wn = vn / 10;
         const speed = Math.sqrt(we * we + wn * wn);
-        if (speed < 0.001) continue;
+        if (speed < 0.01) continue;
 
         const x = r_xyz[3 * r], y = r_xyz[3 * r + 1], z = r_xyz[3 * r + 2];
 
-        // Color: blue (slow) → yellow (medium) → red (fast)
-        const t = Math.min(1, speed * 3);
+        // Color: blue (slow) → yellow (medium) → red (fast, 10 m/s and more)
+        const t = Math.min(1, speed);
         let cr, cg, cb;
         if (t < 0.5) {
             const s = t * 2;
@@ -1577,7 +1377,7 @@ export function buildWindArrows(season) {
             const plen = Math.sqrt(px * px + py * py + pz * pz) || 1;
             px /= plen; py /= plen; pz /= plen;
 
-            const arrowLen = 0.008 + Math.min(0.012, speed * 0.025);
+            const arrowLen = 0.008 + Math.min(0.012, speed * 0.012);
             const R = 1.007;
 
             const ox = x * R, oy = y * R, oz = z * R;
@@ -1613,7 +1413,7 @@ export function buildWindArrows(season) {
             const my = lat * sx;
 
             const norm = speed || 1;
-            const arrowLen = 0.006 + Math.min(0.012, speed * 0.025);
+            const arrowLen = 0.006 + Math.min(0.012, speed * 0.012);
             const dx = (we / norm) * arrowLen;
             const dy = (wn / norm) * arrowLen;
             const tipX = mx + dx, tipY = my + dy;
@@ -1666,9 +1466,11 @@ export function buildWindArrows(season) {
     }
 
     // ── ITCZ spline line (shown on pressure layers) ──
-    const isPressureLayer = season && (state.debugLayer === 'pressureSummer' || state.debugLayer === 'pressureWinter');
-    const itczLons = state.curData.itczLons;
-    const itczLats = season === 'winter' ? state.curData.itczLatsWinter : state.curData.itczLatsSummer;
+    const isPressureLayer = season && !!climateLayer(state.debugLayer)?.itcz;
+    // (the ITCZ: a latitude per 1° of longitude on the climate grid, degrees → radians)
+    const itczRow = climateGrid.itcz?.[season];
+    const itczLons = itczRow ? Float32Array.from(itczRow, (_, i) => (-180 + (i + 0.5) * climateGrid.step) * DEG) : null;
+    const itczLats = itczRow ? Float32Array.from(itczRow, v => v * DEG) : null;
 
     if (isPressureLayer && itczLons && itczLats) {
         const N = itczLons.length;
@@ -1728,19 +1530,22 @@ export function buildOceanCurrentArrows(season) {
         state.oceanCurrentArrowGroup = null;
     }
 
-    if (!season || !state.curData || !state.curData.r_ocean_current_east_summer) return;
+    // (season: 'year', 'jan' or 'jul' — the new climate's surface currents, m/s, on its 1° grid; null clears them)
+    if (!season || !state.curData || !state.curData.climate) return;
 
     const { mesh, r_xyz, r_elevation } = state.curData;
-
-    const currentE = season === 'winter'
-        ? state.curData.r_ocean_current_east_winter : state.curData.r_ocean_current_east_summer;
-    const currentN = season === 'winter'
-        ? state.curData.r_ocean_current_north_winter : state.curData.r_ocean_current_north_summer;
-    const speedArr = season === 'winter'
-        ? state.curData.r_ocean_speed_winter : state.curData.r_ocean_speed_summer;
-    const warmthArr = season === 'winter'
-        ? state.curData.r_ocean_warmth_winter : state.curData.r_ocean_warmth_summer;
-    if (!currentE || !currentN || !speedArr || !warmthArr) return;
+    const climateGrid = state.curData.climate.grid;
+    const { lat: rLat, lon: rLon } = regionLatLon(state.curData);
+    const sKey = ['year', 'jan', 'jul'].includes(season) ? season : 'year';
+    // speeds scaled by the sea's 95th percentile (the currents' own scale: the gyres' transport over a display depth)
+    let p95 = 0;
+    {
+        const U = climateGrid.currentU[sKey], V = climateGrid.currentV[sKey], sp = [];
+        for (let c = 0; c < U.length; c++) if (climateGrid.sea[c]) sp.push(Math.hypot(U[c], V[c]));
+        sp.sort((a, b) => a - b);
+        p95 = sp.length ? sp[Math.floor(0.95 * (sp.length - 1))] : 0;
+    }
+    if (!(p95 > 0)) return;
 
     const PI = Math.PI;
     const DEG = PI / 180;
@@ -1794,9 +1599,11 @@ export function buildOceanCurrentArrows(season) {
         const r = gridRegions[i];
         if (r < 0) continue;
 
-        const ce = currentE[r], cn = currentN[r];
-        const speed = speedArr[r];
-        const warmth = warmthArr[r];
+        const [cu, cv] = vectorAt(climateGrid, 'currents', sKey, rLat[r], rLon[r]);
+        const ce = cu / p95, cn = cv / p95;
+        const speed = Math.min(1.5, Math.hypot(ce, cn));
+        // warm or cold: the sea against its latitude's average (±0.2 °C and more)
+        const warmth = 5 * gridSampleAt(climateGrid, climateGrid.sstAnom[sKey], rLat[r], rLon[r]);
         if (speed < 0.01) continue;
 
         const x = r_xyz[3 * r], y = r_xyz[3 * r + 1], z = r_xyz[3 * r + 2];

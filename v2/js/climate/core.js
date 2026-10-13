@@ -119,7 +119,7 @@ export function computeClimate(input, options = {}) {
     lap('12 months (grid)');
 
     // 5. Per terrain cell: sample, correct for height, classify
-    const cell = finishCells(grid, surface, months, lat, lon, input.elevKm, land, o, input.xyz);
+    const cell = finishCells(grid, surface, months, lat, lon, input.elevKm, land, o, input.xyz, o.onCell ?? null);
     lap('terrain cells + Köppen');
 
     return { grid, surface, anchorMonths, anchors, months, cell, stages, timing };

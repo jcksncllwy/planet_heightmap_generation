@@ -257,6 +257,13 @@ button#generate.generating {
     display: flex; justify-content: space-between;
     font-size: 10px; color: #667;
 }
+/* the climate layers' legends (js/climate-layers.js): classes as swatches, and a line on what the layer shows */
+.legend-classes { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 11px; color: #aab; }
+.legend-classes span { white-space: nowrap; }
+.legend-classes i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.legend-note { font-size: 11px; color: #889; line-height: 1.4; margin-top: 4px; }
+/* (they wrap within the panel instead of widening it: the panel is as wide as its widest content) */
+.legend-note, .legend-classes { contain: inline-size; }
 
 .legend-koppen {
     display: grid;

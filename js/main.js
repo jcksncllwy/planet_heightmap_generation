@@ -11,6 +11,7 @@ import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, reb
 import { setupEditMode } from './edit-mode.js';
 import { detailFromSlider, sliderFromDetail } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
+import { needsClimate, climateLayer, climateLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker } from './climate-layers.js';
 import { elevationToColor } from './color-map.js';
 
 // Slider value displays + stale tracking
@@ -193,16 +194,8 @@ function shouldSkipClimate() {
     return detailFromSlider(+document.getElementById('sN').value) > AUTO_CLIMATE_THRESHOLD;
 }
 
-// Climate layer keys — layers that require climate data
-const CLIMATE_LAYERS = new Set([
-    'pressureSummer', 'pressureWinter',
-    'windSpeedSummer', 'windSpeedWinter',
-    'oceanCurrentSummer', 'oceanCurrentWinter',
-    'precipSummer', 'precipWinter',
-    'rainShadowSummer', 'rainShadowWinter',
-    'tempSummer', 'tempWinter',
-    'koppen', 'biome', 'continentality'
-]);
+// Layers that need a climate: the Inspect climate layers, Köppen and Satellite (js/climate-layers.js)
+const CLIMATE_LAYERS = { has: needsClimate };
 
 // Map tabs → tab-layer mapping
 const mapTabs = document.getElementById('mapTabs');
@@ -226,22 +219,8 @@ function applyLayer(layer) {
     state.debugLayer = layer;
     state.hoveredKoppen = -1;
     updateMeshColors();
-    // Show/hide wind/ocean arrows
-    const isWindLayer = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                        layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-    const isOceanLayer = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-    if (isOceanLayer) {
-        const season = layer.includes('Winter') ? 'winter' : 'summer';
-        buildWindArrows(null);
-        buildOceanCurrentArrows(season);
-    } else if (isWindLayer) {
-        const season = layer.includes('Winter') ? 'winter' : 'summer';
-        buildOceanCurrentArrows(null);
-        buildWindArrows(season);
-    } else {
-        buildWindArrows(null);
-        buildOceanCurrentArrows(null);
-    }
+    showClimateArrows(layer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    syncSeasonPicker(layer);
     updateLegend(layer);
 }
 
@@ -402,13 +381,11 @@ function updateLegend(layer) {
         const biomeGrad = biomeColors.map((c, i) => `${c} ${biomePcts[i]}%`).join(', ');
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${biomeGrad})"></div>` +
             `<div class="legend-labels"><span>${biomeStops[0].label}</span><span>${biomeStops[3].label}</span><span>${biomeStops[6].label}</span></div>`;
-    } else if (layer === 'rainShadowSummer' || layer === 'rainShadowWinter') {
-        // Rain shadow diverging legend: leeward shadow ↔ neutral ↔ windward boost
-        vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,rgb(230,51,33) 0%,rgb(140,140,148) 50%,rgb(38,102,243) 100%)"></div>` +
-            `<div class="legend-labels"><span>Rain Shadow</span><span>Neutral</span><span>Windward</span></div>`;
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
             `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;
+    } else if (climateLayer(layer)) {
+        vizLegend.innerHTML = climateLegendHTML(layer, state.climateSeason);
     } else {
         vizLegend.innerHTML = '';
     }
@@ -555,14 +532,8 @@ genBtn.addEventListener('generate-done', () => {
 
     // Rebuild wind/ocean arrows if a relevant debug layer is active
     const v = state.debugLayer;
-    const isWindLayer = v === 'pressureSummer' || v === 'pressureWinter' ||
-                        v === 'windSpeedSummer' || v === 'windSpeedWinter';
-    const isOceanLayer = v === 'oceanCurrentSummer' || v === 'oceanCurrentWinter';
-    if (isWindLayer) {
-        buildWindArrows(v.includes('Winter') ? 'winter' : 'summer');
-    } else if (isOceanLayer) {
-        buildOceanCurrentArrows(v.includes('Winter') ? 'winter' : 'summer');
-    }
+    showClimateArrows(v, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    syncSeasonPicker(v);
 });
 
 document.addEventListener('plates-edited', () => {
@@ -683,11 +654,7 @@ sMapCenterLon.addEventListener('change', () => {
         buildMapMesh();
         // Rebuild arrows if a wind/ocean layer is active
         const layer = state.debugLayer;
-        const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                       layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-        const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-        if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-        if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+        showClimateArrows(layer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
     }
 });
 
@@ -775,6 +742,13 @@ if (debugLayerEl) {
         switchVisualization(layer);
     });
 }
+
+// Season picker (Year · January · July) for the climate's Inspect layers
+initSeasonPicker(state, () => {
+    updateMeshColors();
+    showClimateArrows(state.debugLayer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    updateLegend(state.debugLayer);
+});
 
 // Export modal
 (function initExport() {

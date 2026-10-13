@@ -10,7 +10,8 @@ import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './ge
 import { buildMesh, updateMeshColors, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
-import { elevationToColor } from './color-map.js';
+import { needsClimate, climateLayer, climateLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker, climateReadoutLines } from './climate-layers.js';
+import { elevationToColor, elevToHeightKm } from './color-map.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
 
@@ -263,24 +264,14 @@ hiddenGenBtn.addEventListener('generate-done', () => {
     updateLegend(state.debugLayer);
     // Rebuild arrows if needed
     const v = state.debugLayer;
-    const isWindLayer = v === 'pressureSummer' || v === 'pressureWinter' ||
-                        v === 'windSpeedSummer' || v === 'windSpeedWinter';
-    const isOceanLayer = v === 'oceanCurrentSummer' || v === 'oceanCurrentWinter';
-    if (isWindLayer) buildWindArrows(v.includes('Winter') ? 'winter' : 'summer');
-    else if (isOceanLayer) buildOceanCurrentArrows(v.includes('Winter') ? 'winter' : 'summer');
+    showClimateArrows(v, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    syncSeasonPicker(v);
 });
 
 // ─── Climate layers ───────────────────────────────────────────────
 
-const CLIMATE_LAYERS = new Set([
-    'pressureSummer', 'pressureWinter',
-    'windSpeedSummer', 'windSpeedWinter',
-    'oceanCurrentSummer', 'oceanCurrentWinter',
-    'precipSummer', 'precipWinter',
-    'rainShadowSummer', 'rainShadowWinter',
-    'tempSummer', 'tempWinter',
-    'koppen', 'biome', 'continentality'
-]);
+// Layers that need a climate: the Inspect climate layers, Köppen and Satellite (js/climate-layers.js)
+const CLIMATE_LAYERS = { has: needsClimate };
 
 // ─── Visualization (debug layers, tabs, legend) ───────────────────
 
@@ -304,19 +295,8 @@ function applyLayer(layer) {
     state.debugLayer = layer;
     state.hoveredKoppen = -1;
     updateMeshColors();
-    const isWindLayer = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                        layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-    const isOceanLayer = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-    if (isOceanLayer) {
-        buildWindArrows(null);
-        buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
-    } else if (isWindLayer) {
-        buildOceanCurrentArrows(null);
-        buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-    } else {
-        buildWindArrows(null);
-        buildOceanCurrentArrows(null);
-    }
+    showClimateArrows(layer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    syncSeasonPicker(layer);
     updateLegend(layer);
 }
 
@@ -359,6 +339,13 @@ if (debugLayerEl) {
         switchVisualization(layer);
     });
 }
+
+// Season picker (Year · January · July) for the climate's Inspect layers
+initSeasonPicker(state, () => {
+    updateMeshColors();
+    showClimateArrows(state.debugLayer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    updateLegend(state.debugLayer);
+});
 
 // ─── Legend ────────────────────────────────────────────────────────
 
@@ -465,12 +452,11 @@ function updateLegend(layer) {
         const biomeGrad = biomeColors.map((c, i) => `${c} ${biomePcts[i]}%`).join(', ');
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${biomeGrad})"></div>` +
             `<div class="legend-labels"><span>${biomeStops[0].label}</span><span>${biomeStops[3].label}</span><span>${biomeStops[6].label}</span></div>`;
-    } else if (layer === 'rainShadowSummer' || layer === 'rainShadowWinter') {
-        vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,rgb(230,51,33) 0%,rgb(140,140,148) 50%,rgb(38,102,243) 100%)"></div>` +
-            `<div class="legend-labels"><span>Rain Shadow</span><span>Neutral</span><span>Windward</span></div>`;
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
             `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;
+    } else if (climateLayer(layer)) {
+        vizLegend.innerHTML = climateLegendHTML(layer, state.climateSeason);
     } else {
         vizLegend.innerHTML = '';
     }
@@ -554,11 +540,7 @@ sMapCenterLon.addEventListener('change', () => {
     if (state.mapMode) {
         buildMapMesh();
         const layer = state.debugLayer;
-        const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                       layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-        const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-        if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-        if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+        showClimateArrows(layer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
     }
 });
 
@@ -945,20 +927,14 @@ window.addEventListener('resize', () => {
         const lat = Math.asin(Math.max(-1, Math.min(1, y))) * 180 / Math.PI;
         const lon = Math.atan2(x, z) * 180 / Math.PI;
         const elev = d.r_elevation[r];
-        const heightKm = elev <= 0 ? (elev * 10).toFixed(1) : (6 * elev * elev).toFixed(1);
+        const heightKm = elevToHeightKm(elev).toFixed(1);
         const isOcean = elev <= 0;
 
         let html = `<span class="hi-label">Elev</span> ${heightKm} km (${isOcean ? 'ocean' : 'land'})<br>`;
         html += `<span class="hi-label">Coord</span> ${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
 
-        if (d.r_temperature_summer && d.r_precip_summer) {
-            const ts = d.r_temperature_summer[r], tw = d.r_temperature_winter[r];
-            const ps = d.r_precip_summer[r], pw = d.r_precip_winter[r];
-            const tAvg = ((ts + tw) / 2).toFixed(1);
-            const pTotal = Math.round(ps + pw);
-            html += `<br><span class="hi-label">Temp</span> ${tAvg}\u00b0C avg (${ts.toFixed(1)} summer, ${tw.toFixed(1)} winter)`;
-            html += `<br><span class="hi-label">Prec</span> ${pTotal} mm/yr`;
-        }
+        // the climate, in real units (js/climate-layers.js) — before, this printed the old climate's 0–1 values as °C and mm
+        if (d.climate) html += '<br>' + climateReadoutLines(d, r).join('<br>');
 
         if (d.debugLayers?.koppen) {
             const kIdx = d.debugLayers.koppen[r];

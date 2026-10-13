@@ -531,9 +531,19 @@ export function columnWaterRain() {
             for (let c = 0; c < G; c++) tmp[c] = Wk[k][c] / prep[k].Ws[c];
             refineField(g, core, ratio, tmp, Rout, off);
         }
+        // the mountains' share of the rain: the year's rain with them over the year's without (1: none; > 1 the windward
+        // slopes, < 1 the rain shadows) — for display (V1's Generate and Import: the Rain Shadow layer)
+        const before = new Float64Array(core.size);
+        for (let k = 0; k < K; k++) for (let c = 0; c < core.size; c++) before[c] += Math.max(0, Pout[k * core.size + c]);
         if (P_.RAIN_SLOPE_FACTOR > 0 || P_.RAIN_LEE_PER_KM > 0 || P_.RAIN_ISLAND_BOOST > 0) orographicRain(ctx, core, g, ratio, uA, vA, share, eadyOut, Pout, K, tA);
         for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
-        const out = { P: Pout, W: Wout, E: Eout, r: Rout, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
+        const orographic = new Float32Array(core.size);
+        for (let c = 0; c < core.size; c++) {
+            let after = 0;
+            for (let k = 0; k < K; k++) after += Pout[k * core.size + c];
+            orographic[c] = before[c] > 0 ? after / before[c] : 1;
+        }
+        const out = { P: Pout, W: Wout, E: Eout, r: Rout, orographic, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };
         if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt };
         return out;

@@ -24,6 +24,7 @@ export const state = {
     mapCenterLon: 0,
     dragStart: null,
     debugLayer: '',
+    climateSeason: 'year',       // the climate's Inspect layers: 'year', 'jan' or 'jul' (js/climate-layers.js)
     isTouchDevice: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),
     editMode: false,
     oceanCurrentArrowGroup: null,

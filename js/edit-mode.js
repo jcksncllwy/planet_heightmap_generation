@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { updateHoverHighlight, updateMapHoverHighlight, updatePendingHighlight, updateMapPendingHighlight } from './planet-mesh.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevToHeightKm } from './color-map.js';
+import { climateReadoutLines } from './climate-layers.js';
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -129,23 +130,10 @@ function buildHoverHTML(region, plate) {
     const lonStr = Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
     lines.push(`<span class="hi-label">Coord</span> ${latStr}, ${lonStr}`);
 
-    // Climate data (only if computed)
-    if (state.climateComputed && d.r_temperature_summer) {
-        const tS = -45 + Math.max(0, Math.min(1, d.r_temperature_summer[region])) * 90;
-        const tW = -45 + Math.max(0, Math.min(1, d.r_temperature_winter[region])) * 90;
-        if (elev <= 0) {
-            // Ocean: show as SST
-            lines.push(`<span class="hi-label">SST</span> ${tS.toFixed(0)}°C / ${tW.toFixed(0)}°C`);
-        } else {
-            lines.push(`<span class="hi-label">Temp</span> ${tS.toFixed(0)}°C / ${tW.toFixed(0)}°C`);
-
-            // Precipitation (land only)
-            if (d.r_precip_summer) {
-                const pS = (Math.max(0, Math.min(1, d.r_precip_summer[region])) * 1000).toFixed(0);
-                const pW = (Math.max(0, Math.min(1, d.r_precip_winter[region])) * 1000).toFixed(0);
-                lines.push(`<span class="hi-label">Precip</span> ${pS} / ${pW} mm`);
-            }
-
+    // Climate data (only if computed): the new climate, in real units (js/climate-layers.js)
+    if (state.climateComputed && d.climate) {
+        lines.push(...climateReadoutLines(d, region));
+        if (elev > 0) {
             // Köppen (land only)
             if (d.debugLayers && d.debugLayers.koppen) {
                 const kIdx = d.debugLayers.koppen[region];
