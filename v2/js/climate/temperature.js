@@ -473,12 +473,17 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             for (let c = 0; c < core.size; c++) { const hr = Math.max(href[c] === href[c] ? Math.max(0, href[c]) : 0, domeCore[c]); out[offset + c] -= lapseCore[c] * hr; }
         };
         const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size), seaIce = new Float32Array(12 * core.size);
+        // (and, for the pages' drawing only, the ice the sea would carry at every cell's temperature: the sea ice above is
+        // none on the energy-balance grid's mostly-land cells, and refined that reaches up to a cell out to sea — a rim
+        // of open water along every icy coast)
+        const seaIceOpen = new Float32Array(12 * core.size), iceAll = new Float64Array(G);
         const inversion = new Float32Array(12 * core.size);
         const iceTmp = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
             const sl = surfaceAt(m + 0.5, false);
-            for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? iceRamp(sl[c]) : 0;       // sea ice, by month
+            for (let c = 0; c < G; c++) { iceAll[c] = iceRamp(sl[c]); iceTmp[c] = landFrac[c] < 0.5 ? iceAll[c] : 0; }   // sea ice, by month
             refine(g, core, ratio, iceTmp, seaIce, m * core.size);
+            refine(g, core, ratio, iceAll, seaIceOpen, m * core.size);
             refine(g, core, ratio, sl, monthlySL, m * core.size);
             refine(g, core, ratio, surfaceAt(m + 0.5, true), monthly, m * core.size);
             // (the inversion alone: a layer by the ground — the circulation reads the air above it)
@@ -536,7 +541,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;
         const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial };
-        return { T, monthly, monthlySL, seaIce, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        return { T, monthly, monthlySL, seaIce, seaIceOpen, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
     };
 }
 
