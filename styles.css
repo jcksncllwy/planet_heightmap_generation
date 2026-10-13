@@ -972,6 +972,7 @@ button#generate.generating {
 
     /* Touch targets */
     .map-tab { padding: 12px 0; font-size: 13px; min-height: 44px; }
+    #debugLayer, #climateSeason { min-height: 44px; }
     #helpBtn { width: 44px; height: 44px; font-size: 20px; top: 40px; right: 12px; }
     .toggle-track { width: 38px; height: 22px; border-radius: 11px; }
     .toggle-thumb { width: 18px; height: 18px; }
