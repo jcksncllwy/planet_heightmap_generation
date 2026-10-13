@@ -36,8 +36,16 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            Earth-like planet): sheets that hold themselves stay; −Infinity = bare start
     TEMP_ICE_DOME_KM: 1.5,      // km         an ice sheet's surface stands at least this high, whatever its bedrock (its
                                 //            own height keeps it cold); 0 = the bedrock's height
-    TEMP_ICE_KEEP: [0.72, 0.85],// –          a sheet once there is kept while its ground is snowy this share of the year
-                                //            (none below the first, all above the second; growing one takes all year)
+    TEMP_ICE_FORM: [0.8, 1],    // –          an ice sheet grows where its ground is snowy this share of the year (none
+                                //            below the first, all at the second: snow that outlives most summers) …
+    TEMP_ICE_KEEP: [0.76, 0.9], // –          … and a sheet once there is kept while its ground is snowy this share
+    TEMP_SEA_ICE_GROW: 0.002,   // m/°C/day   sea ice thickens this much per degree-day of frost (thin ice; 0 = sea ice
+                                //            from each month's cold alone, none lasting into the summer) …
+    TEMP_SEA_ICE_STEFAN_M: 0.2, // m          … growing slower once thicker than this (insulated: Stefan's law; 0 = off) …
+    TEMP_SEA_ICE_MELT: 0.003,   // m/°C/day   … and thins this much per degree-day of thaw
+    TEMP_SEA_ICE_H0: 0.5,       // m          the sea is covered once its ice is this thick (and holds at most 6× this)
+    TEMP_SEA_ICE_SPREAD_KM: 700,// km         the ice follows the sea's temperature averaged within this (a warm current's
+                                //            water spreads well out from its coast; the pack drifts)
     TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
     TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
     TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
@@ -202,6 +210,11 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_CLOUD_LW_CANCEL: { value: 0.8, min: 0.5, max: 1, source: 'deep tropical convection: shortwave cloud forcing ≈ −100 W/m² nearly cancelled by longwave ≈ +90 W/m² (Kiehl 1994; Hartmann et al. 2001; ERBE/CERES)' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
     TEMP_ICE_DOME_KM:   { value: 1.5, min: 0.5, max: 3, source: 'mean surface elevation of ice sheets ≈ 2.1 km (Greenland) and 2.3 km (Antarctica); small ice caps less' },
+    TEMP_SEA_ICE_GROW:  { value: 0.002, min: 0.001, max: 0.004, source: 'thin sea ice grows ≈ 1–3 cm/day at −10 °C (Stefan / Lebedev: h ≈ 1.33·FDD^0.58 cm)' },
+    TEMP_SEA_ICE_STEFAN_M: { value: 0.2, min: 0.1, max: 0.4, source: 'first-year ice reaches ≈ 1–2 m after a winter of 2000–5000 °C·days (Lebedev 1938; Maykut 1986)' },
+    TEMP_SEA_ICE_MELT:  { value: 0.003, min: 0.002, max: 0.006, source: 'summer surface melt ≈ 0.5–1.5 m over a season of a few hundred positive degree-days (Perovich et al. 2003)' },
+    TEMP_SEA_ICE_H0:    { value: 0.5, min: 0.3, max: 1, source: 'ice ≈ 0.3–1 m thick closes the sea (consolidated pack vs new ice and leads)' },
+    TEMP_SEA_ICE_SPREAD_KM: { value: 700, min: 300, max: 1200, source: 'sea-ice drift ≈ 5–10 km/day — a few hundred to a thousand km over a season (IABP buoys)' },
     TEMP_ICE_START_C:   { value: -30, min: -40, max: -20, source: 'ice-sheet hysteresis: once grown, polar ice sheets persist under climates that would not grow them (e.g. DeConto & Pollard 2003; Abe-Ouchi et al. 2013)' },
 
     CIRC_HADLEY_SCALE:  { value: 1.2, min: 0.9, max: 1.5, source: 'Held & Hou 1980 underestimates the observed Hadley edge by ~20 % (e.g. Frierson et al. 2007)' },

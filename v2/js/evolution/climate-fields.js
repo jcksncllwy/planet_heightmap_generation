@@ -6,7 +6,7 @@
 //   (mm/month), slp (hPa), u and v (wind, m/s), currentU and currentV (surface currents, m/s — seasonal in the
 //   tropics, ocean.js), sstAnom (sea temperature minus its latitude's sea average, °C),
 //   seaIce (sea-ice fraction), upwelling (m/day); and sea (1 = sea), ice (the year's sea ice), orographic (the year's
-//   rain with the mountains over it without them), iceSheet (0–1: the ice sheets' domes), itcz (per 1° of longitude,
+//   rain with the mountains over it without them), iceSheet (0–1: the ice sheets' domes), snow (0–1, on land: year, January, July), itcz (per 1° of longitude,
 //   the ITCZ's latitude — year, January, July).
 
 import { CORE_DEFAULTS } from '../climate/core.js';
@@ -59,13 +59,18 @@ export function pageClimate(res, { cells = true } = {}) {
     const orographic = Float32Array.from(stages.rain.orographic ?? new Float32Array(G).fill(1));
     const iceSheet = new Float32Array(G), domeKm = PARAMS.TEMP_ICE_DOME_KM || 1, dome = temp.domeDraw ?? temp.domeKm;
     if (dome) for (let c = 0; c < G; c++) iceSheet[c] = Math.max(0, Math.min(1, dome[c] / domeKm));
+    // snow on the land in its season: each month's temperature at the land's height through the climate's own snow ramp
+    // (TEMP_ICE_WARM_C … TEMP_ICE_COLD_C), so the white runs from an ice sheet over the snowy land to the sea ice in winter
+    const snowAll = new Float32Array(12 * G), w0 = PARAMS.TEMP_ICE_WARM_C, w1 = PARAMS.TEMP_ICE_COLD_C;
+    for (let i = 0; i < 12 * G; i++) { const x = (w0 - months.T[i]) / (w0 - w1); snowAll[i] = x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); }
+    const snow = seasons(snowAll, G);
     const itcz = seasons(circ.itczLat, w);
     return {
         grid: { w, h },
         ...(cells ? { cell: { koppen: cell.koppen, tAnnual: cell.tAnnual, pAnnual: cell.pAnnual } } : {}),
         T, Tsea, P, slp, u, v,
         currentU, currentV, sea, sstAnom, ice, seaIce,
-        upwelling, orographic, iceSheet, itcz,
+        upwelling, orographic, iceSheet, snow, itcz,
     };
 }
 
@@ -77,6 +82,6 @@ export function climateTransfers(out) {
     if (out.raster?.stats) for (const a of Object.values(out.raster.stats)) list.push(a.buffer);
     if (out.raster) list.push(out.raster.koppen.buffer, out.raster.tAnnual.buffer, out.raster.pAnnual.buffer);
     if (out.raster?.sat) list.push(out.raster.sat.year.buffer, out.raster.sat.jan.buffer, out.raster.sat.jul.buffer, out.raster.cover.buffer);
-    for (const f of [out.T, out.Tsea, out.P, out.slp, out.u, out.v, out.seaIce, out.currentU, out.currentV, out.sstAnom, out.upwelling, out.itcz]) list.push(f.year.buffer, f.jan.buffer, f.jul.buffer);
+    for (const f of [out.T, out.Tsea, out.P, out.slp, out.u, out.v, out.seaIce, out.currentU, out.currentV, out.sstAnom, out.upwelling, out.snow, out.itcz]) list.push(f.year.buffer, f.jan.buffer, f.jul.buffer);
     return [...new Set(list)];
 }

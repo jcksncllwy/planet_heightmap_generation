@@ -101,7 +101,7 @@ const OROG_STOPS = [[-1.5, [0.90, 0.20, 0.13]], [-0.4, [0.75, 0.50, 0.45]], [0, 
 const orogColor = ramp(OROG_STOPS);
 
 /** Ice: sea ice (0–1) over a dark sea; an ice sheet (0–1) over the land's own colour. */
-const SEA_ICE_RGB = [[0.10, 0.20, 0.45], [0.92, 0.95, 1.00]], ICE_SHEET_RGB = [0.97, 0.98, 1.00];
+const SEA_ICE_RGB = [[0.10, 0.20, 0.45], [0.92, 0.95, 1.00]], ICE_SHEET_RGB = [0.97, 0.98, 1.00], SNOW_RGB = [0.84, 0.87, 0.92];
 const seaIceColor = (f) => lerp3(SEA_ICE_RGB[0], SEA_ICE_RGB[1], Math.max(0, Math.min(1, f)));
 /**
  * A quantity's colour ([r, g, b], 0–1) from its value, for the pages that colour their own way (Evolution's
@@ -112,7 +112,7 @@ export const QUANTITY_COLORS = {
     pressure: pressureColor, wind: windColor, upwelling: upwellColor, seaIce: seaIceColor, tRange: rangeColor,
     rainShadow: (v) => orogColor(Math.log2(Math.max(1e-3, v))), aridity: aridityColor, growing: growColor, rainSeason: seasonColor,
 };
-export { ICE_SHEET_RGB };
+export { ICE_SHEET_RGB, SNOW_RGB };
 /** The class a value falls in, for the class layers (aridity, rainSeason): its label — or '' for any other. */
 export function classLabel(id, v) {
     const list = id === 'aridity' ? ARIDITY : id === 'rainSeason' ? SEASONALITY : null;
@@ -137,7 +137,8 @@ export function climateColorFn(id, season, data) {
         case 'wind': return (r) => windColor(Math.hypot(at(g.u[s], r), at(g.v[s], r)));
         case 'currents': return (r) => (sea(r) ? anomColor(at(g.sstAnom[s], r)) : LAND);
         case 'upwelling': return (r) => (sea(r) ? upwellColor(at(g.upwelling[s], r)) : LAND);
-        case 'ice': return (r) => (sea(r) ? seaIceColor(at(g.seaIce[s], r)) : lerp3(LAND, ICE_SHEET_RGB, Math.max(0, Math.min(1, at(g.iceSheet, r)))));
+        case 'ice': return (r) => (sea(r) ? seaIceColor(at(g.seaIce[s], r))
+            : lerp3(g.snow ? lerp3(LAND, SNOW_RGB, Math.max(0, Math.min(1, at(g.snow[s], r)))) : LAND, ICE_SHEET_RGB, Math.max(0, Math.min(1, at(g.iceSheet, r)))));
         case 'tempRange': return (r) => (sea(r) ? SEA : rangeColor(cells.tRange[r]));
         case 'rainShadow': return (r) => (sea(r) ? SEA : QUANTITY_COLORS.rainShadow(at(g.orographic, r)));
         case 'aridity': return (r) => (sea(r) ? SEA : aridityColor(cells.aridity[r]));
@@ -168,7 +169,7 @@ export function climateLegendHTML(id, season) {
         case 'wind': return gradient(WIND_STOPS, 0, 16, ['0', '8', '16 m/s']) + note(`Surface wind speed${sn} · arrows: its direction`);
         case 'currents': return gradient(ANOM_STOPS, -5, 5, ['−5', '0', '+5 °C']) + note(`The sea against its latitude’s average${sn} (warm and cold currents) · arrows: surface currents — seasonal in the tropics`);
         case 'upwelling': return gradient(UPWELL_STOPS, 0, 2, ['0', '1', '2 m/day']) + note(`Cold, nutrient-rich water rising where the wind pushes the surface away${sn}`);
-        case 'ice': return gradient([[0, SEA_ICE_RGB[0]], [1, SEA_ICE_RGB[1]]], 0, 1, ['Open sea', 'Sea ice']) + note(`Sea ice${sn}; on land, ice sheets`);
+        case 'ice': return gradient([[0, SEA_ICE_RGB[0]], [1, SEA_ICE_RGB[1]]], 0, 1, ['Open sea', 'Sea ice']) + note(`Sea ice${sn}; on land, snow${sn} and the ice sheets`);
         case 'tempRange': return gradient(RANGE_STOPS, 0, 55, ['0', '20', '40 °C']) + note('Warmest month minus coldest — continentality: small by the sea, large deep inland');
         case 'rainShadow': return gradient(OROG_STOPS, -1.5, 1.5, ['Rain shadow', 'No effect', 'Windward']) + note('How mountains move the rain: wetter windward slopes, drier lands in their lee');
         case 'aridity': return swatches(ARIDITY) + note('UNEP aridity index: precipitation ÷ potential evaporation');

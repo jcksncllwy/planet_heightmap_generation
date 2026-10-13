@@ -156,7 +156,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const surfKm = new Float64Array(G);
         // An ice sheet forms only where snow survives the summer: from snow lasting ~70 % of the year to all of it
         const perennial = new Float64Array(G);
-        const iceSheet = (share) => { const x = (share - 0.7) / 0.3; return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
+        const iceSheet = (share) => { const f = P.TEMP_ICE_FORM ?? [0.7, 1], x = (share - f[0]) / (f[1] - f[0]); return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
         // …and a sheet once there is kept while its snow lasts TEMP_ICE_KEEP of the year (an ice sheet outlives the summers
         // that could not grow it: by the growing ramp alone, a sheet snowy ~85 % of the year counted as half a sheet, warmed
         // round by round and was gone)
@@ -211,6 +211,41 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const faces = P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, landKm, P.TEMP_BLOCK_KM) : null;
         const dRad = g.step * Math.PI / 180;
         const Tk = new Float64Array(G), iceYear = new Float64Array(G), seaIceYear = new Float64Array(G);
+        // The sea ice drawn and handed on, month by month: a degree-day budget through the year — the ice thickens by
+        // TEMP_SEA_ICE_GROW per °C·day below freezing (slower as it thickens) and thins by TEMP_SEA_ICE_MELT per °C·day
+        // above, and covers the sea as its thickness reaches TEMP_SEA_ICE_H0. So it lingers after the thaw (the summer
+        // pack where winters are long and summers cool), and follows the currents through the sea's temperature. (The
+        // energy balance's own sea ice stays each month's cold alone — iceRamp: the summer pack would chill the sea
+        // around it and creep the winter edge out.) 0 = off: each month's cold alone.
+        const thickOn = P.TEMP_SEA_ICE_GROW > 0;
+        const iceHm = new Float64Array(12 * G);
+        const thickCycle = (out, n, phase) => {
+            const dt = 365 / n, hMax = 6 * P.TEMP_SEA_ICE_H0, st = P.TEMP_SEA_ICE_STEFAN_M;
+            // the sea's temperature through the year, averaged over the sea within TEMP_SEA_ICE_SPREAD_KM (a warm current's
+            // water spreads well out from its coast, and the ice drifts)
+            const Tn = new Float64Array(n * G), wS = new Float64Array(G), tmpS = new Float64Array(G), sp = P.TEMP_SEA_ICE_SPREAD_KM;
+            for (let c = 0; c < G; c++) wS[c] = 1 - landFrac[c];
+            if (sp > 0) gaussianSmooth(g, wS, tmpS, sp);
+            for (let k = 0; k < n; k++) {
+                const th = 2 * Math.PI * (k + phase) / n, f = Tn.subarray(k * G, (k + 1) * G);
+                for (let c = 0; c < G; c++) f[c] = (1 - landFrac[c]) * (c0[c] + 2 * (c1r[c] * Math.cos(th) - c1i[c] * Math.sin(th)) + 2 * (c2r[c] * Math.cos(2 * th) - c2i[c] * Math.sin(2 * th)));
+                if (sp > 0) { gaussianSmooth(g, f, tmpS, sp); for (let c = 0; c < G; c++) f[c] = wS[c] > 1e-3 ? f[c] / wS[c] : 0; }
+                else for (let c = 0; c < G; c++) f[c] = landFrac[c] < 1 ? f[c] / (1 - landFrac[c]) : 0;
+            }
+            for (let c = 0; c < G; c++) {
+                if (landFrac[c] >= 1) continue;
+                let hh = 0;
+                for (let pass = 0; pass < 3; pass++) for (let k = 0; k < n; k++) {
+                    const T = Tn[k * G + c];
+                    // (growth slows as the ice thickens — it insulates the water below, Stefan's law: thickness grows
+                    // as the square root of the winter's frost, so a marginal sea's first-year ice stays thin enough to
+                    // melt back in summer)
+                    const grow = st > 0 ? P.TEMP_SEA_ICE_GROW * Math.min(1, st / Math.max(hh, 1e-3)) : P.TEMP_SEA_ICE_GROW;
+                    hh = Math.min(hMax, Math.max(0, hh + dt * (T < 0 ? -grow * T : -P.TEMP_SEA_ICE_MELT * T)));
+                    if (pass === 2) { const x = Math.min(1, hh / P.TEMP_SEA_ICE_H0); out[k * G + c] = x * x * (3 - 2 * x); }
+                }
+            }
+        };
         const F0 = new Float64Array(G), F1r = new Float64Array(G), F1i = new Float64Array(G), F2r = new Float64Array(G), F2i = new Float64Array(G);
         const sr = new Float64Array(G).fill(P.TEMP_OLR_B), si = new Float64Array(G), zero = new Float64Array(G);
         const srSeason = new Float64Array(G);
@@ -508,12 +543,15 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const seaCoarse = Uint8Array.from(landFrac, f => (f < 0.5 ? 1 : 0));
         const inversion = new Float32Array(12 * core.size);
         const iceTmp = new Float64Array(G);
+        if (thickOn) thickCycle(iceHm, 12, 0.5);
+        const iceHmAll = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
             const sl = surfaceAt(m + 0.5, false);
-            for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? iceRamp(sl[c]) : 0;       // sea ice, by month
+            for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? Math.max(iceRamp(sl[c]), iceHm[m * G + c]) : 0;       // sea ice, by month
             refine(g, core, ratio, iceTmp, seaIce, m * core.size);
             slSea.set(sl); fillAcross(g, slSea, seaCoarse);
-            for (let c = 0; c < G; c++) iceAll[c] = iceRamp(slSea[c]);
+            iceHmAll.set(iceHm.subarray(m * G, (m + 1) * G)); fillAcross(g, iceHmAll, seaCoarse);
+            for (let c = 0; c < G; c++) iceAll[c] = Math.max(iceRamp(slSea[c]), iceHmAll[c]);
             refineForDrawing(g, core, ratio, iceAll, seaIceOpen, m * core.size, null, 0, 1);
             refine(g, core, ratio, sl, monthlySL, m * core.size);
             const air = surfaceAt(m + 0.5, true);                     // (surfaceAt's buffer is shared: sl is done with)

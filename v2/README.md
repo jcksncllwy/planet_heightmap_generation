@@ -72,8 +72,8 @@ readout use it, drawn per pixel of the finished picture (the land's measures —
 rain seasonality, from each cell's twelve months by `js/climate/cell-stats.js` — kept a byte each on its climate picture). **Satellite** (finished moments only; plans/V2_SATELLITE_PLAN.md): the planet as
 from space, cloud-free, for the Year, January or July — each cell's cover from its twelve months (`finish-cover.js`: tree,
 grass and bare shares by wetness and warmth through S-curves, so biomes blend; needle-leaved or broad, evergreen or
-deciduous; grass green or dormant — golden with drought, brown with cold; a snowpack through the cold months, hidden in
-part by forest canopy; ice caps), mixed in linear light from reference colours fitted to NASA's Blue Marble over Earth's
+deciduous; grass green or dormant — golden with drought, brown with cold; a snowpack through the cold months (white once a few cm
+lie — the winter tundra and steppe white from space), hidden in part by forest canopy; ice caps), mixed in linear light from reference colours fitted to NASA's Blue Marble over Earth's
 own observed climate, each climate's mean moved toward its own colour for the season (Blue Marble's mean per Köppen class,
 greens made livelier) the deeper inside the climate (none at its edge, so transitions stay the cover's own, warped
 and roughened by noise); the rain the cover reads a little smoothed, warped and roughened (less splotchy); each kind of ground tinted by warped noise between

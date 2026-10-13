@@ -10,7 +10,7 @@ import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
 import { statValue } from '../climate/cell-stats.js';
-import { QUANTITY_COLORS, ICE_SHEET_RGB, climateLegendHTML, classLabel } from '../../../js/climate-layers.js';
+import { QUANTITY_COLORS, ICE_SHEET_RGB, SNOW_RGB, climateLegendHTML, classLabel } from '../../../js/climate-layers.js';
 
 /** The land's measures beyond Köppen (cell-stats.js), per cell or per pixel of a finished moment's picture. */
 const STAT_LAYERS = new Set(['tRange', 'aridity', 'growing', 'rainSeason']);
@@ -118,7 +118,7 @@ const shadeOf = (terrain, c) => 0.45 + 0.55 * terrain.shade[c];
 const KOPPEN_RGB = KOPPEN_CLASSES.map(k => k.color.map(v => Math.round(255 * v)));
 const ICE_RGB = [232, 238, 244];
 /** The sea under the land's layers (Aridity and the like): dark, shaded by its floor. */
-const SEA_DIM = [16, 22, 52], ICE_SHEET = ICE_SHEET_RGB.map(v => 255 * v);
+const SEA_DIM = [16, 22, 52], ICE_SHEET = ICE_SHEET_RGB.map(v => 255 * v), SNOW = SNOW_RGB.map(v => 255 * v);
 const windSpeed = (C, season, g) => Math.hypot(g(C.u[season]), g(C.v[season]));
 
 /** The moment's temperature at terrain cell c (°C): land from its own cell (its height and all), the sea at sea level. */
@@ -173,7 +173,8 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
         for (let c = 0; c < n; c++) {
             if (h[c] <= 0) { put(out, c, T, at(C.seaIce[season], p, c), shadeOf(terrain, c)); continue; }
             greyCell(out, c, 0.4, 0.85);
-            const f = Math.max(0, Math.min(1, at(C.iceSheet, p, c))), k = shadeOf(terrain, c);
+            const f = Math.max(0, Math.min(1, at(C.iceSheet, p, c))), k = shadeOf(terrain, c), sn = C.snow ? Math.max(0, Math.min(1, at(C.snow[season], p, c))) : 0;
+            if (sn > 0) for (let ch = 0; ch < 3; ch++) out[3 * c + ch] += (Math.min(255, SNOW[ch] * k) - out[3 * c + ch]) * sn;
             if (f > 0) for (let ch = 0; ch < 3; ch++) out[3 * c + ch] += (Math.min(255, ICE_SHEET[ch] * k) - out[3 * c + ch]) * f;
         }
     } else if (STAT_LAYERS.has(layer) || layer === 'rainShadow') {
@@ -362,7 +363,8 @@ export function finishedClimateColor(layer, season, C, W, lut) {
         } else if (layer === 'ice') {
             if (wet) { putPx(out, o, kk, g(C.seaIce[season], x, y)); return; }
             greyLand(out, o, kk, k3, 0.4, 0.85);
-            const f = Math.max(0, Math.min(1, g(C.iceSheet, x, y))), k = shadeK(kk);
+            const f = Math.max(0, Math.min(1, g(C.iceSheet, x, y))), k = shadeK(kk), sn = C.snow ? Math.max(0, Math.min(1, g(C.snow[season], x, y))) : 0;
+            if (sn > 0) for (let ch = 0; ch < 3; ch++) out[o + ch] += (Math.min(255, SNOW[ch] * k) - out[o + ch]) * sn;
             if (f > 0) for (let ch = 0; ch < 3; ch++) out[o + ch] += (Math.min(255, ICE_SHEET[ch] * k) - out[o + ch]) * f;
         } else {
             // (the land's own measures; the sea dark)
@@ -461,7 +463,7 @@ function layerLine(layer, season, C, g, land, stat) {
         case 'pressure': return L('Pressure', `${fmt(g(C.slp[season]))} hPa${sn}`);
         case 'wind': return L('Wind', `${fmt(windSpeed(C, season, g), 1)} m/s${sn}`);
         case 'upwelling': return land ? null : L('Upwelling', `${fmt(Math.max(0, g(C.upwelling[season])), 2)} m/day${sn}`);
-        case 'ice': return land ? (g(C.iceSheet) > 0.05 ? L('Ice', 'an ice sheet') : null) : L('Sea ice', `${fmt(100 * Math.max(0, Math.min(1, g(C.seaIce[season]))))} %${sn}`);
+        case 'ice': return land ? (g(C.iceSheet) > 0.05 ? L('Ice', 'an ice sheet') : C.snow && g(C.snow[season]) > 0.05 ? L('Snow', `${fmt(100 * Math.min(1, g(C.snow[season])))} %${sn}`) : null) : L('Sea ice', `${fmt(100 * Math.max(0, Math.min(1, g(C.seaIce[season]))))} %${sn}`);
         case 'rainShadow': {
             if (!land) return null;
             const r = g(C.orographic);

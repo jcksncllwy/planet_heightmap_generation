@@ -160,7 +160,8 @@ export const COVER = {
     lag: 0.4,                   // a month's look is this much the month before's (greening and browning take time)
     snowPhase: [2, -2],         // snow, not rain: from this °C (none) to this (all)
     snowMeltMmPerC: 90,         // snow melts this many mm a month per °C above freezing
-    snowCoverMm: [10, 80],      // snow on the ground (mm of water): first patches → white
+    snowCoverMm: [5, 40],       // snow on the ground (mm of water): first patches → white (a few cm of snow already
+                                // buries tundra and grass: the winter Arctic is white from space)
     snowLossMm: 10,             // a snowpack loses up to this much a month to the dry winter air (thin snow on dry steppes
     snowLossWarm: [-15, 0],     // goes) — the more, the less cold (°C: in a Siberian winter it hardly goes at all)
     snowYear: [0.5, 0.85],      // the year's look: snow where it lies over half the year (patchy) to most of it (white)
