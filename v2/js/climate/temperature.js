@@ -219,7 +219,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // around it and creep the winter edge out.) 0 = off: each month's cold alone.
         const thickOn = P.TEMP_SEA_ICE_GROW > 0;
         const iceHm = new Float64Array(12 * G);
-        const thickCycle = (out, n, phase) => {
+        const thickCycle = (out, n, phase) => {             // (n months from January: n = 12, phase 0.5 — mid-month)
             const dt = 365 / n, hMax = 6 * P.TEMP_SEA_ICE_H0, st = P.TEMP_SEA_ICE_STEFAN_M;
             // the sea's temperature through the year, averaged over the sea within TEMP_SEA_ICE_SPREAD_KM (a warm current's
             // water spreads well out from its coast, and the ice drifts)
@@ -244,6 +244,12 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                     hh = Math.min(hMax, Math.max(0, hh + dt * (T < 0 ? -grow * T : -P.TEMP_SEA_ICE_MELT * T)));
                     if (pass === 2) { const x = Math.min(1, hh / P.TEMP_SEA_ICE_H0); out[k * G + c] = x * x * (3 - 2 * x); }
                 }
+                // The summer pack only pulls back from the winter's edge: no month has more ice than the place's winter
+                // (the colder of January and July). (The sea's cold lags the sun by months, so a marginal sea's ice grew
+                // into the spring and lingered into the summer — wider in July than in January, past the winter's edge.)
+                const wm = Tn[c] <= Tn[6 * G + c] ? 0 : 6, x = (P.TEMP_ICE_WARM_C - Tn[wm * G + c]) / (P.TEMP_ICE_WARM_C - P.TEMP_ICE_COLD_C);
+                const cap = Math.max(out[wm * G + c], x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+                for (let k = 0; k < n; k++) if (out[k * G + c] > cap) out[k * G + c] = cap;
             }
         };
         const F0 = new Float64Array(G), F1r = new Float64Array(G), F1i = new Float64Array(G), F2r = new Float64Array(G), F2i = new Float64Array(G);
