@@ -137,10 +137,15 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
     RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
     RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
-    RAIN_STABILITY: 0.0262,       // 1/K        humidity effectively lost per K the surface is colder than its latitude (stable air)
+    RAIN_STABILITY: 0.015,      // 1/K        humidity effectively lost per K the surface is colder than its region (stable air) …
+    RAIN_STABLE_REF_KM: 1500,   // km         … the region: the surface's mean within this (Gaussian σ; the air mass's scale)
     RAIN_TERRAIN_HEAT_K: 6,     // K          … over ground this much warmer than its latitude (at sea level); none if 0
     RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
     RAIN_INSTABILITY: 0.0187,        // 1/K        … and gained per K a sea is warmer (unstable air off warm currents, warm currents)
+    RAIN_FRONT_MM: 10,          // mm/month   the polar front's baseline rain over land at its centre …
+    RAIN_FRONT_POS: 0.5,        // –          … the front this share of the way from each hemisphere's subtropical high to its subpolar low …
+    RAIN_FRONT_DEG: 10,         // °          … its band (Gaussian σ) …
+    RAIN_FRONT_HIGH_HPA: 4,     // hPa        … faded by e per this much pressure above the latitude's mean (the highs)
     RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
     RAIN_LAND_CONVECTION: 0.065, // –         spread of the column's relative humidity by afternoon storms over sunlit, wet land
     RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
@@ -258,6 +263,11 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_TERRAIN_HEAT_K: { value: 6, min: 3, max: 10, source: 'a deep convective boundary layer (2–4 km) forms over strongly heated high ground (Tibet, pre-monsoon and monsoon); over cold or snowy high ground the boundary layer is shallow and stable' },
     RAIN_HIGH_K_PER_HPA: { value: 0.5, min: 0, max: 1.5, source: 'subsidence under the subtropical highs warms the air above the marine layer by several K (a trade-wind / stratocumulus inversion of 5–10 K under +5–10 hPa highs)' },
     RAIN_INSTABILITY:   { value: 0.015, min: 0, max: 0.03, source: 'convection over surfaces warmer than their surroundings (heated plateaus, warm currents such as the Gulf Stream and Kuroshio) raises rain for the same humidity; no direct literature value — kept to the scale of the stable-air term' },
+    RAIN_STABLE_REF_KM: { value: 1500, min: 800, max: 3000, source: 'the free troposphere over a surface is set by its air mass over ≈ 1000–2000 km (the Rossby radius), not by the latitude circle: Siberian winter air is cold aloft too' },
+    RAIN_FRONT_MM:      { value: 10, min: 0, max: 25, source: 'frontal cyclones bring 30–60 mm/month to mid-latitude continental interiors at 45–60° (eastern Europe, the Canadian prairies, the Russian plain) well beyond the reach of the mean flow; the polar-front band of Worldbuilding Pasta' },
+    RAIN_FRONT_POS:     { value: 0.5, min: 0.4, max: 0.7, source: 'the polar-front jet and storm track ≈ 40°N in winter and 50–55°N in summer, about midway between the subtropical high and the subpolar low' },
+    RAIN_FRONT_DEG:     { value: 10, min: 6, max: 14, source: 'the storm track ≈ 15–25° of latitude wide' },
+    RAIN_FRONT_HIGH_HPA: { value: 4, min: 2, max: 8, source: 'fronts steer around blocking and subtropical highs (a few hPa above the zonal mean)' },
     RAIN_SOIL_MM:       { value: 150, min: 50, max: 300, source: 'plant-available soil water capacity ≈ 100–200 mm (e.g. Manabe 1969 bucket: 150 mm)' },
     RAIN_LAND_CONVECTION: { value: 0.08, min: 0, max: 0.12, source: 'daytime convection over wet land: rain over land peaks in the afternoon and picks up at ≈ 5–10 % lower column humidity than over the sea (Schiro et al. 2016; Bergemann & Jakob 2016); soil-moisture–precipitation coupling in monsoon regions (Koster et al. 2004)' },
     RAIN_COLUMN_LOCAL:  { value: 0.5, min: 0.2, max: 0.9, source: 'lower-tropospheric temperature anomalies over continents are ≈ 40–60 % of the surface anomaly' },

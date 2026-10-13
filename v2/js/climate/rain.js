@@ -296,9 +296,12 @@ export function columnWaterRain() {
             }
             eadyOut.push(Float32Array.from(eady, x => x * 86400));
 
-            // Stability: how much colder the surface is than its latitude (the air above set by the zonal mean). It belongs
-            // to the air mass — air off a cold sea stays stable over the coast — so it is carried by the surface wind and
-            // relaxes to the local value within about a day: σ·S + u·∇S = σ·S_local.
+            // Stability: how much colder the surface is than the air above it — set by its region's surface within
+            // RAIN_STABLE_REF_KM (the air mass's scale), not by its latitude's mean: measured against a latitude that is
+            // mostly sea, every winter continent counted as stable and lost its winter rain (cold deserts at 40–60° on
+            // planets whose mid-latitudes are mostly ocean). It belongs to the air mass — air off a cold sea stays stable
+            // over the coast — so it is carried by the surface wind and relaxes to the local value within about a day:
+            // σ·S + u·∇S = σ·S_local.
             const Sloc = new Float64Array(G), Sair = new Float64Array(G), SairI = new Float64Array(G);
             // Air sinking under a high (pressure above its latitude's mean: the eastern-ocean highs in summer) is dry and
             // capped by an inversion — counted as RAIN_HIGH_K_PER_HPA more stability per hPa, and carried onshore
@@ -310,11 +313,13 @@ export function columnWaterRain() {
             const mIdx = ((Math.round(ctx.anchorMonths[k]) % 12) + 12) % 12, belt = winds.belts?.[mIdx];
             const hiN = belt ? belt.hiN : 32, hiS = belt ? belt.hiS : -32;
             const descent = (lat) => Math.min(1, Math.max(0, lat >= 0 ? (hiN + 15 - lat) / 10 : (lat - hiS + 15) / 10));
+            const Tref = Float64Array.from(Tsl);
+            gaussianSmooth(g, Tref, new Float64Array(G), P_.RAIN_STABLE_REF_KM);
             for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
                 const c = j * w + i, high = slp ? P_.RAIN_HIGH_K_PER_HPA * descent(g.lat[j]) * Math.max(0, slp[c] - slpRow[j]) : 0;
                 // (instability only off the sea — a warm current, a warm sea under colder air — carried onshore by the
                 // wind; land's own heat, a desert's summer, does not make its air rain)
-                let sv = Tzs[j] - Tsl[c] + high;
+                let sv = Tref[c] - Tsl[c] + high;
                 if (sv < 0) sv *= 1 - land[c];
                 Sloc[c] = Math.min(STABLE_MAX_K, Math.max(-UNSTABLE_MAX_K, sv)) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S;
             }
@@ -573,6 +578,29 @@ export function columnWaterRain() {
             let after = 0;
             for (let k = 0; k < K; k++) after += Pout[k * core.size + c];
             orographic[c] = before[c] > 0 ? after / before[c] : 1;
+        }
+        // The polar front (after Worldbuilding Pasta): each hemisphere's frontal storm band, RAIN_FRONT_POS of the way from
+        // its subtropical high to its subpolar low that month (≈ 40°–50°, moving with the seasons), brings land a baseline of
+        // RAIN_FRONT_MM a month at its centre (Gaussian ±RAIN_FRONT_DEG) — the fronts' own lift as they sweep inland, which
+        // the monthly mean budget leaves out — faded under pressure above the latitude's mean (e-folding RAIN_FRONT_HIGH_HPA:
+        // the highs) and in rain shadows (× the mountains' share of the rain, at most 1).
+        if (P_.RAIN_FRONT_MM > 0 && winds.belts && winds.slp) {
+            const cw = core.w, ch = core.h, lf = ctx.surface.landFrac, sg = P_.RAIN_FRONT_DEG;
+            for (let k = 0; k < K; k++) {
+                const m = ((Math.round(ctx.anchorMonths[k]) % 12) + 12) % 12, b = winds.belts[m], sl = winds.slp.subarray(m * core.size, (m + 1) * core.size);
+                const fN = b.hiN + P_.RAIN_FRONT_POS * (b.loN - b.hiN), fS = b.hiS + P_.RAIN_FRONT_POS * (b.loS - b.hiS);
+                for (let j = 0; j < ch; j++) {
+                    const la = core.lat[j], wf = Math.exp(-(((la - fN) / sg) ** 2)) + Math.exp(-(((la - fS) / sg) ** 2));
+                    if (wf < 1e-3) continue;
+                    let row = 0;
+                    for (let i = 0; i < cw; i++) row += sl[j * cw + i] / cw;
+                    for (let i = 0; i < cw; i++) {
+                        const c = j * cw + i;
+                        if (!(lf[c] > 0)) continue;
+                        Pout[k * core.size + c] += lf[c] * P_.RAIN_FRONT_MM * wf * Math.exp(-Math.max(0, sl[c] - row) / P_.RAIN_FRONT_HIGH_HPA) * Math.min(1, orographic[c]);
+                    }
+                }
+            }
         }
         const out = { P: Pout, W: Wout, E: Eout, r: Rout, orographic, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };
