@@ -103,29 +103,48 @@ heat — advection, upwelling, the overturning — is worked out per month and h
 it into its harmonics (`ocean.monthly.qflux`). `OCEAN_SEASON_SCALE` = 0 gives back the old annual ocean exactly (checked:
 identical Köppen on Earth). Evolution's Currents view now has Year / January / July (currents and sea-temperature anomaly).
 
-**On Earth** (V1's Earth mesh, 40K, through the new climate; `season-ocean` experiment):
+**First version, and Sumatra.** The first version took each month's heat as it came. On Earth it changed 7 % of the land's
+Köppen — mostly toward the real map (Alaska's north slope ice cap → tundra, Kamchatka, Uruguay, Western Australia) — but
+dried Sumatra and Malaya (Af → Am / Aw). The developer: *"Overall I think this is not bad! Let's look into why Sumatra
+is drying."* Why: month by month, upwelling is **rectified** — a reversing monsoon wells water up one season and pushes it
+down the other, and only the first cools. The model's December–March winds just north of the equator west of Sumatra
+blow from the north at ≈ 10 m/s (real: a weak north-easterly, ≈ 3–4), turning the Ekman transport offshore along the
+coasts; with the upwelled water always 4 °C colder (`OCEAN_UPWELL_DT`), the Indo-Pacific warm pool — in reality the
+warmest sea on Earth, its thermocline deep — cooled ≈ 1 °C all year, and the ocean's heat budget handed the difference to
+every other sea as warmth (so part of the high latitudes' "gains" was that hand-out, not physics). Using the year's wind
+for the Ekman transport within a few degrees of the equator barely helped (Sumatra's January rain 105 → 110 mm of 173).
+
+**Now: the seasons move heat through the year, not across it** (`OCEAN_SEASON_RECTIFY` = 0). Each month's heat is the
+year's (from the year's stress, exactly as without seasons) plus the month's departure from the months' mean — so the
+climate's yearly heat, which it was tuned on, is unchanged, and the seasonal currents and upwelling add the swing.
+`OCEAN_SEASON_RECTIFY` = 1 is the first version (rectified), for scoring locally.
+
+**On Earth** (V1's Earth mesh, 40K, through the new climate; `tuning/climate/diag-seasonal-ocean.mjs`):
 
 | | Annual ocean | Seasonal | Real |
 |---|---|---|---|
-| Somali Current, Jan → Jul (m/s, + north) | −0.011 → −0.011 | −0.058 → **+0.040** | reverses with the monsoon |
-| Arabian Sea upwelling, July (m/day) | 0 | **0.24** | strong in the summer monsoon |
-| Arabian Sea sea temperature, July | 29.8 °C | 29.0 °C | ≈ 27 °C |
-| Equatorial countercurrent, Jan → Jul | −0.012 → −0.012 | −0.10 → +0.07 | strongest Aug–Oct |
-| California upwelling, Jan → Jul | 0.013 → 0.013 | 0.016 → 0.040 | spring–summer peak |
-| Gulf Stream | 0.037 | 0.035 / 0.038 | steady |
-| Western Europe air, Jan / Jul | 2.3 / 15.8 °C | 2.8 / 16.3 °C | (the known cold bias eases) |
+| Somali Current, Jan → Jul (m/s, + north) | −0.011 → −0.011 | −0.061 → **+0.040** | reverses with the monsoon |
+| Arabian Sea upwelling, July (m/day) | 0 | **0.26** | strong in the summer monsoon |
+| Arabian Sea ocean heat, Jan / Jul (W/m²) | +5 / +5 | +20 / −28 | — |
+| Arabian Sea sea temperature, Jul / Aug | 30.2 / 30.8 °C | 30.1 / 30.6 °C | ≈ 27 / 26 °C (the monsoon's winds, evaporation and clouds; not this change) |
+| Equatorial countercurrent, Jan → Jul | −0.012 → −0.012 | −0.089 → +0.069 | strongest Aug–Oct |
+| California upwelling, Jan → Jul | 0.013 → 0.013 | 0.015 → 0.041 | spring–summer peak |
+| Gulf Stream | 0.037 | 0.035 / 0.039 | steady |
+| Sumatra / Malaya Köppen (Af · Am · Aw cells) | 11 · 61 · 56 | 11 · 59 · 58 | mostly Af |
 
-Köppen: 7.3 % of land cells change class (2.8 % their major group). Most look like gains — ice cap → tundra on Alaska's
-north slope and west Greenland, tundra → subarctic on Kamchatka and the Bering coast, Cfb → Cfa in Uruguay, BSk → BSh in
-Western Australia — and one like a loss: Sumatra Am → Aw (it is rainforest). Part of the high latitudes' warming is not
-the currents (faded there) but the upwelling: monthly upwelling cools more in all than the year's did, and the ocean
-moves heat without making it, so the difference is spread over all the sea.
+Köppen: **1.8 %** of the land changes class at 40K (1.7 % at 160K) — scattered single cells along class boundaries, no
+region moving as a whole. The seasonal swing in heat is real but a 50 m mixed layer damps it: the sea's own seasons
+barely move (the Arabian Sea's summer cooling in reality is mostly the monsoon's winds and clouds). So this version is
+mostly visible in the Currents and Upwelling layers, and safe for the climate.
 
-**Cost**: the ocean stage ≈ 2.5× (≈ +0.3 s in this container's Node, ≈ +8 % of the whole climate in a browser).
+**Cost**: the ocean stage ≈ 2.5–3× (≈ +0.3–0.5 s in this container's Node, ≈ +10 % of the whole climate in a browser).
 
 **Still to do — the real score.** The reference data (NOAA, Beck) cannot be fetched in the cloud container, so the
 Earth-match has to be run locally, with and without: `node tuning/climate/fetch-references.mjs` once, then
-`node tuning/climate/coupled-check.mjs --quick` and `… --quick --set OCEAN_SEASON_SCALE=0`.
+`node tuning/climate/coupled-check.mjs --quick`, `… --quick --set OCEAN_SEASON_SCALE=0` (no seasons) and
+`… --quick --set OCEAN_SEASON_RECTIFY=1` (rectified) — and in between, if the rectified one scores better somewhere.
+**Behind it, a wind bug to look at**: the circulation's cross-equatorial winds over the eastern Indian Ocean in the
+northern winter (≈ 10 m/s from the north vs ≈ 3–4 real).
 
 ## Phases
 
