@@ -97,7 +97,10 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
 
         // Clouds over land (with the rain stage's rain): cloudiness 1 − e^{−P/P₀} makes rainy land brighter and dry land
         // darker than the land's average — the average stays in the base albedo — so deserts get the full summer sun
-        // and monsoon, rainforest and boreal summers are shaded. Per sample time, relative to the land's mean.
+        // and monsoon, rainforest and boreal summers are shaded. Per sample time, relative to the land's mean. In the
+        // rainy tropics (tropicsWeight about that month's belts) the extra brightness is × (1 − TEMP_CLOUD_LW_CANCEL):
+        // deep convective clouds trap about as much heat as they reflect (Kiehl 1994) — at full strength the rainforests
+        // of Sumatra, Borneo and the Amazon came out cold and the energy balance spread it over the seas around them.
         let cloudT = null;
         if (rain && P.TEMP_CLOUD_ALBEDO > 0) {
             cloudT = new Float64Array(NT * G);
@@ -114,8 +117,14 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                         cloudT[k * G + c] = cf; sum += cf * landFrac[c] * cw; wsum += landFrac[c] * cw;
                     }
                 }
-                const meanCf = wsum > 0 ? sum / wsum : 0;
-                for (let c = 0; c < G; c++) cloudT[k * G + c] = P.TEMP_CLOUD_ALBEDO * (cloudT[k * G + c] - meanCf);
+                const meanCf = wsum > 0 ? sum / wsum : 0, bt = winds?.belts?.[a];
+                for (let j = 0; j < h; j++) {
+                    const keep = bt ? 1 - P.TEMP_CLOUD_LW_CANCEL * tropicsWeight(g.lat[j], bt.itcz, bt.hiN, bt.hiS) : 1;
+                    for (let i = 0; i < w; i++) {
+                        const c = j * w + i, d = cloudT[k * G + c] - meanCf;
+                        cloudT[k * G + c] = P.TEMP_CLOUD_ALBEDO * (d > 0 ? d * keep : d);
+                    }
+                }
             }
         }
 

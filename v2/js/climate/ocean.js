@@ -263,10 +263,14 @@ export function windDrivenOcean() {
             for (let j = 0; j < h; j++) {
                 let fc = 2 * OMEGA_ROT * Math.sin(g.lat[j] * DEG);
                 if (Math.abs(fc) < fMin) fc = fc < 0 ? -fMin : fMin;
+                // (near the equator a north–south stress drives a downwind drift, not a sideways one: its Ekman part fades
+                // within OCEAN_EKMAN_TAUY_DEG — taken at face value with the clamped f, the monsoons' cross-equatorial
+                // winds welled the east Indian Ocean up cold and set its winds and thermocline the Pacific's way round)
+                const fadeY = 1 - Math.exp(-((g.lat[j] / P.OCEAN_EKMAN_TAUY_DEG) ** 2));
                 for (let i = 0; i < w; i++) {
                     const c = j * w + i;
                     if (!isSea[c]) continue;
-                    Mx[c] = sy[c] / (RHO_SEA * fc); My[c] = -sx[c] / (RHO_SEA * fc);
+                    Mx[c] = fadeY * sy[c] / (RHO_SEA * fc); My[c] = -sx[c] / (RHO_SEA * fc);
                 }
             }
             for (let j = 0; j < h; j++) {

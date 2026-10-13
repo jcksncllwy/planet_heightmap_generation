@@ -50,6 +50,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
     TEMP_CLOUD_ALBEDO: 0.262,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_CLOUD_LW_CANCEL: 0.8,  // –          … less this share of it in the rainy tropics (deep clouds trap about the heat they reflect)
     TEMP_ALBEDO_VARY: 0.025,    // –          the surface's own variety of brightness (soils, cover, cloudiness): smooth fractal
     TEMP_ALBEDO_VARY_KM: 900,   // km         noise up to ± this, its largest features this big — an input the energy balance
                                 //            works through, so snow lines and ice-sheet edges come out irregular, by the physics
@@ -104,6 +105,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_GPRIME: 0.03,         // m/s²       reduced gravity across the thermocline (how far the winds can tilt it)
     OCEAN_EQ_DEG: 6,            // °          the equatorial waveguide: the trade winds tilt the thermocline within this (e-folding);
                                 //            beyond, the gyres' Ekman pumping sets its depth (Sverdrup)
+    OCEAN_EKMAN_TAUY_DEG: 5,    // °          within this of the equator a north–south wind stress drives no sideways (Ekman) drift (e-folding)
     OCEAN_COAST_KM: 300,        // km         coastal upwelling wells up within this of the coast (the zone and its filaments)
     OCEAN_COAST_LAND_SHARE: 0.35, // –        … fully where at least this share of the zone around the coast is land (a continent's
                                 //            coast); round a small island the water pushed offshore is made up from its other side
@@ -191,6 +193,7 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_ALBEDO_VARY:   { value: 0.025, min: 0, max: 0.05, source: 'regional variation of surface and cloud albedo about the zonal mean ≈ ±0.02–0.05 (ERBE / CERES clear-sky and all-sky maps)' },
     TEMP_ALBEDO_VARY_KM: { value: 900, min: 400, max: 2000, source: 'the size of regional albedo anomalies (deserts, forests, cloud decks) ≈ 500–2000 km' },
     TEMP_CLOUD_ALBEDO:  { value: 0.15, min: 0.0, max: 0.3, source: 'shortwave cloud forcing over land ≈ −50 to −100 W/m² under persistent rain clouds, ≈ 0 over deserts (CERES): an albedo contrast ≈ 0.1–0.25' },
+    TEMP_CLOUD_LW_CANCEL: { value: 0.8, min: 0.5, max: 1, source: 'deep tropical convection: shortwave cloud forcing ≈ −100 W/m² nearly cancelled by longwave ≈ +90 W/m² (Kiehl 1994; Hartmann et al. 2001; ERBE/CERES)' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
     TEMP_ICE_DOME_KM:   { value: 1.5, min: 0.5, max: 3, source: 'mean surface elevation of ice sheets ≈ 2.1 km (Greenland) and 2.3 km (Antarctica); small ice caps less' },
     TEMP_ICE_START_C:   { value: -30, min: -40, max: -20, source: 'ice-sheet hysteresis: once grown, polar ice sheets persist under climates that would not grow them (e.g. DeConto & Pollard 2003; Abe-Ouchi et al. 2013)' },
@@ -229,6 +232,7 @@ export const PARAM_PRIORS = Object.freeze({
     OCEAN_SHORE_KM:     { value: 600, min: 300, max: 1500, source: 'islands smaller than a few deformation radii (≈ 100–300 km) barely block the planetary waves that set the thermocline' },
     OCEAN_GPRIME:       { value: 0.03, min: 0.02, max: 0.05, source: 'reduced gravity of the tropical thermocline ≈ 0.02–0.04 m/s² (Δρ/ρ ≈ 0.002–0.004)' },
     OCEAN_EQ_DEG:       { value: 6, min: 3, max: 10, source: 'the equatorial Rossby radius ≈ 300 km ≈ 3°; the zonal tilt holds within ≈ 5–8° of the equator' },
+    OCEAN_EKMAN_TAUY_DEG: { value: 5, min: 3, max: 8, source: 'Ekman balance fails within ≈ 3–5° of the equator; there a meridional stress drives a downwind, not a zonal, drift (Zebiak & Cane 1987; Philander & Pacanowski 1981)' },
     OCEAN_COAST_LAND_SHARE: { value: 0.35, min: 0.2, max: 0.5, source: 'coastal upwelling needs a coast long compared with the deformation radius (Allen 1980; island wakes and island upwelling are weak and local)' },
     OCEAN_COAST_KM:     { value: 300, min: 100, max: 400, source: 'coastal upwelling zones and their filaments reach ≈ 100–300 km offshore (California, Peru, Benguela)' },
     OCEAN_SEASON_SCALE: { value: 1, min: 0, max: 1, source: 'the wind-driven gyres\' seasonal cycle: large in the tropics (the Somali Current reverses with the monsoon; the equatorial countercurrent swells and ebbs), small in the subtropical gyres (Schott & McCreary 2001)' },
