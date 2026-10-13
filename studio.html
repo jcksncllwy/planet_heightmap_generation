@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Orogen Studio — Free Planet &amp; Worldbuilding Tools</title>
+    <meta name="description" content="World Orogen's free, open-source planet tools in one place: generate a planet in seconds, import your own heightmap and simulate its climate, or watch a planet's tectonic history unfold — plus worldbuilding blogs, channels and tools worth knowing.">
+    <meta name="author" content="World Orogen">
+    <meta name="theme-color" content="#0a0e17">
+    <link rel="canonical" href="https://orogen.studio/studio">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://orogen.studio/studio">
+    <meta property="og:title" content="World Orogen Studio — Free Planet &amp; Worldbuilding Tools">
+    <meta property="og:description" content="Three free, in-browser tools for building believable planets — and the worldbuilding resources behind them.">
+    <meta property="og:image" content="https://orogen.studio/preview.png">
+    <meta property="og:site_name" content="World Orogen">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="World Orogen Studio — Free Planet &amp; Worldbuilding Tools">
+    <meta name="twitter:description" content="Three free, in-browser tools for building believable planets — and the worldbuilding resources behind them.">
+    <meta name="twitter:image" content="https://orogen.studio/preview.png">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50' y='50' dominant-baseline='central' text-anchor='middle' font-size='75'>🌍</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="studio.css">
+</head>
+<body class="studio">
+    <nav id="topNav">
+        <a href="/studio" class="nav-tab active">Studio</a>
+        <a href="/" class="nav-tab">Generate</a>
+        <a href="/import" class="nav-tab">Import<span class="nav-long">&nbsp;Heightmap</span></a>
+        <a href="/evolution" class="nav-tab">Evolution</a>
+    </nav>
+
+    <main class="studio-page">
+        <header class="studio-hero">
+            <h1>World Orogen Studio</h1>
+            <p class="studio-lede">Free, open-source tools for building believable planets, right in your browser. No install, no account. Pick the one that fits how you like to work.</p>
+        </header>
+
+        <section class="studio-section" aria-labelledby="toolsHead">
+            <h2 id="toolsHead">The tools</h2>
+            <div class="tool-grid">
+                <article class="tool-card">
+                    <a class="tool-shot" href="/" tabindex="-1" aria-hidden="true"><img src="assets/studio/generate.jpg" alt="" loading="lazy" width="1200" height="750"></a>
+                    <div class="tool-body">
+                        <h3>Generate</h3>
+                        <p class="tool-tag">A planet in seconds, shaped by hand.</p>
+                        <p>Set the continents, plates and climate with sliders, then reshape any plate you don't like: Ctrl-click on desktop, or tap in edit mode on a phone. Every planet comes with wind, ocean currents, rain and Köppen climate zones.</p>
+                        <ul class="tool-facts">
+                            <li><span>Best for</span>Fast iteration and direct control</li>
+                            <li><span>Time</span>Seconds</li>
+                            <li><span>Share</span>A planet code rebuilds it exactly</li>
+                        </ul>
+                        <a class="tool-open" href="/">Open Generate</a>
+                    </div>
+                </article>
+                <article class="tool-card">
+                    <a class="tool-shot" href="/import" tabindex="-1" aria-hidden="true"><img src="assets/studio/import.jpg" alt="" loading="lazy" width="1200" height="750"></a>
+                    <div class="tool-body">
+                        <h3>Import Heightmap</h3>
+                        <p class="tool-tag">Bring your own map; see its climate.</p>
+                        <p>Upload an equirectangular heightmap, whether hand-drawn, from another tool or of a real planet, and Orogen wraps it onto a globe and runs the full climate simulation on it. It starts with Earth, so you can see how well the climate matches.</p>
+                        <ul class="tool-facts">
+                            <li><span>Best for</span>Checking how a world you drew would really behave</li>
+                            <li><span>Time</span>Seconds</li>
+                            <li><span>Input</span>PNG, JPEG or WebP heightmap</li>
+                        </ul>
+                        <a class="tool-open" href="/import">Open Import Heightmap</a>
+                    </div>
+                </article>
+                <article class="tool-card">
+                    <a class="tool-shot" href="/evolution" tabindex="-1" aria-hidden="true"><img src="assets/studio/evolution.jpg" alt="" loading="lazy" width="1200" height="750"></a>
+                    <div class="tool-body">
+                        <h3>Evolution <span class="tool-new">New</span></h3>
+                        <p class="tool-tag">A planet with a past.</p>
+                        <p>Watch a supercontinent break up, oceans open and close, and continents collide and gather again over hundreds of millions of years. Stop on a moment you like and add detail: rivers and lakes, glaciers and fjords, its own climate and a satellite view.</p>
+                        <ul class="tool-facts">
+                            <li><span>Best for</span>Continents with a believable history</li>
+                            <li><span>Time</span>A minute or two for a history, up to a minute more for detail</li>
+                            <li><span>Export</span>Heightmaps, land mask and colour map</li>
+                        </ul>
+                        <a class="tool-open" href="/evolution">Open Evolution</a>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <!--
+            Resources: a section per kind, an entry per link. To add one, copy an <li> and change it.
+            data-draft marks a placeholder note: replace it with your own words before launch (and remove the attribute).
+            data-verify marks a link not yet checked by hand: open it, then remove the attribute.
+        -->
+        <section class="studio-section" aria-labelledby="resourcesHead">
+            <h2 id="resourcesHead">Resources I love</h2>
+            <p class="studio-intro" data-draft>The blogs, channels and tools that shaped how I think about worlds. If you like World Orogen, you'll probably like these too.</p>
+
+            <h3 class="res-head">Blogs</h3>
+            <ul class="res-list">
+                <li class="res-item">
+                    <a class="res-link" href="https://worldbuildingpasta.blogspot.com/" target="_blank" rel="noopener" data-verify>Worldbuilding Pasta</a>
+                    <p class="res-note" data-draft>Long, meticulously researched deep dives into the science of building planets: plate tectonics, climate, and how the pieces fit together.</p>
+                </li>
+                <li class="res-item">
+                    <a class="res-link" href="https://www.madelinejameswrites.com/" target="_blank" rel="noopener" data-verify>Madeline James Writes</a>
+                    <p class="res-note" data-draft>A fantasy author's blog on writing and worldbuilding, with practical takes on making a setting feel lived in.</p>
+                </li>
+            </ul>
+
+            <h3 class="res-head">YouTube</h3>
+            <ul class="res-list">
+                <li class="res-item">
+                    <a class="res-link" href="https://www.youtube.com/channel/UCKrcjFcFMknmkxIGOSRfsHQ" target="_blank" rel="noopener" data-verify>Madeline James</a>
+                    <p class="res-note" data-draft>Worldbuilding videos and writing vlogs from a fantasy author: approachable, thoughtful, and focused on worlds that serve a story.</p>
+                </li>
+                <li class="res-item">
+                    <a class="res-link" href="https://www.youtube.com/@Artifexian" target="_blank" rel="noopener" data-verify>Artifexian</a>
+                    <p class="res-note" data-draft>Scientifically grounded worldbuilding, from stars and orbits down to tectonics, climate and rivers, with clear animated explanations.</p>
+                </li>
+            </ul>
+
+            <!-- Other generators & tools — uncomment when it has entries:
+            <h3 class="res-head">Other generators &amp; tools</h3>
+            <ul class="res-list">
+                <li class="res-item">
+                    <a class="res-link" href="https://example.com/" target="_blank" rel="noopener">Name</a>
+                    <p class="res-note">Why you like it.</p>
+                </li>
+            </ul>
+            -->
+        </section>
+
+        <footer class="studio-footer">
+            <p>World Orogen is free and open source under the GPL-3.0 license. No paywalls, no account, no tracking.</p>
+            <p><a href="https://github.com/raguilar011095/planet_heightmap_generation" target="_blank" rel="noopener">Source on GitHub</a> · <a href="https://github.com/raguilar011095/planet_heightmap_generation/issues" target="_blank" rel="noopener">Ideas &amp; bug reports</a></p>
+        </footer>
+    </main>
+</body>
+</html>

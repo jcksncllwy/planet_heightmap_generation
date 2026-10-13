@@ -63,9 +63,13 @@ Click **Build New World** to create a new random planet. The button changes colo
 
 ### Navigation
 
-A top navigation bar connects the two pages:
+A top navigation bar connects the pages:
+- **Studio** (`/studio`) — the three tools side by side, what each is for, and curated worldbuilding resources (blogs, YouTube channels, other tools)
 - **Generate** (`/`) — procedural planet generation with tectonic plates, erosion, and climate
 - **Import** (`/import`) — import your own equirectangular B&W heightmap, view it on a 3D globe, and run climate simulation. Black (0) = ocean, brighter = higher elevation. Supports PNG, JPEG, and WebP.
+- **Evolution** (`/evolution`) — watch a planet's tectonic history unfold, stop on a moment and add detail (rivers, glaciers, its own climate, a satellite view), then export it; see `v2/README.md`
+
+On narrow phones the Import tab reads just "Import".
 
 ### Sharing Planets
 
@@ -228,7 +232,11 @@ World Orogen is fully usable on phones and tablets:
 ```
 index.html              Main page — HTML markup + import map + structured data
 import.html             Import page — heightmap upload + climate visualization
-styles.css              All CSS (shared by both pages)
+evolution.html          Evolution page — a planet's tectonic history (v2/)
+studio.html             Studio page — the tools explained + curated resources
+studio.css              Studio page styles
+assets/studio/          Screenshots of each tool for the Studio cards
+styles.css              Shared CSS (all pages)
 robots.txt              Search engine crawler directives
 sitemap.xml             Sitemap for search engine indexing
 site.webmanifest        Web app manifest (metadata + theming)

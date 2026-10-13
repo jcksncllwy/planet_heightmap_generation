@@ -22,6 +22,9 @@ body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, s
 .nav-tab.active {
     color: #8bf; background: rgba(68,136,255,0.15);
 }
+#topNav { overflow-x: auto; scrollbar-width: none; }
+#topNav::-webkit-scrollbar { display: none; }
+.nav-tab { flex: none; white-space: nowrap; }
 
 #ui {
     position: absolute; top: 56px; left: 16px;
@@ -1000,6 +1003,8 @@ button#generate.generating {
 
 /* ───── Small phones ───── */
 @media (max-width: 480px) {
+    .nav-tab { padding: 4px 10px; }
+    .nav-long { display: none; }
     #ui { padding: 8px 14px 14px; }
     #tutorialCard { padding: 20px 16px 14px; }
     #whatsNewCard { padding: 20px 16px 14px; }

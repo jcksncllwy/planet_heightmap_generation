@@ -13,6 +13,7 @@ World Orogen generates realistic procedural planets shaped by tectonic plate sim
 - Creates hotspot volcanism with drift-trail island chains (like Hawaii)
 - Allows interactive editing — select multiple tectonic plates for batch reshaping with visual preview before rebuild
 - Import your own equirectangular B&W heightmaps (Earth, Mars, hand-drawn) onto a 3D globe with automatic climate simulation
+- Evolution: simulates a planet's tectonic history (a supercontinent breaking up, oceans opening and closing, continents colliding) as a timeline to scrub; any moment can be sculpted in detail with rivers, lakes, glaciers, its own climate and a satellite view, then exported
 
 ## Who it's for
 
@@ -34,7 +35,10 @@ World Orogen generates realistic procedural planets shaped by tectonic plate sim
 
 ## URL
 
-https://orogen.studio/
+https://orogen.studio/ — Generate
+https://orogen.studio/import — Import Heightmap
+https://orogen.studio/evolution — Evolution
+https://orogen.studio/studio — Studio: the three tools explained, plus curated worldbuilding resources
 
 ## Technical details
 
