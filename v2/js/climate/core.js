@@ -112,10 +112,13 @@ export function computeClimate(input, options = {}) {
         anchors = o.anchorSource(sctx);
         lap('anchors');
     }
-    if (o.tempOffsetC) for (let i = 0; i < anchors.T.length; i++) anchors.T[i] += o.tempOffsetC;
+    // (the page's Temperature and Precipitation work inside the stages — a forcing in the energy balance, the water
+    // cycle's pace in the rain budget — so the ice, winds, currents and rain answer them; an anchor source, which has
+    // no physics, takes them as they are)
+    if (!o.stages && o.tempOffsetC) for (let i = 0; i < anchors.T.length; i++) anchors.T[i] += o.tempOffsetC;
 
     // 4. Twelve months on the grid (temperature at the grid's reference height)
-    const months = synthesizeGrid(grid, anchors, K, o);
+    const months = synthesizeGrid(grid, anchors, K, o.stages ? { ...o, precipScale: 1 } : o);
     lap('12 months (grid)');
 
     // 5. Per terrain cell: sample, correct for height, classify

@@ -59,9 +59,21 @@ the main thread** and change the colour ramps and readouts to physical scales �
 
 ### The temperature offset
 
-`tempOffsetC` is added **after** the physics (`core.js:115`): a −15 °C world reads colder and classifies colder, but
-grows no extra sea ice or ice sheets and its rain does not change. For a believable "ice world" / "hothouse", feed it into
-the energy balance instead (a forcing in `temperature.js`, so albedo and ice respond). Phase 1 decides by looking at both.
+Was added **after** the physics: a −15 °C world read colder and classified colder, but grew no sea ice or ice sheets
+and its rain did not change. **Now (2026-10-13, the developer: "integrate the temperature (and precipitation if
+relevant) into the physics")** both work inside the stages:
+
+- `tempOffsetC` is a forcing in `temperature.js`: the heat to space (`TEMP_OLR_A`) lowered by `TEMP_OLR_B × ΔT / gain`,
+  the gain measured on Earth so the planet's average ends up about ΔT warmer or colder (1.6 for a cooling — the snow and
+  ice amplify it — 1.15 for a warming). Earth, global mean surface change for the slider at −15 / −10 / −5 / +5 / +10 /
+  +15: −17.9 / −10.8 / −4.9 / +5.5 / +10.6 / +15.2 °C; sea ice 2.9 % → 23 % of the sea at −15, 0 at +10; ice sheets 11 %
+  → 30 % of the land at −15, 4 % at +15. The forcing without the gain runs away to a snowball beyond about −9 °C.
+- `precipScale` scales evaporation (sea and land) in `rain.js`: Earth's land rain −46 % / +41 % at −1 / +1 (global
+  rain −50 % / +49 %); the clouds the rain brings shade the land a little more or less.
+- Warmth brings rain on its own (warmer seas evaporate more — Clausius–Clapeyron): Earth's global rain ×0.37 at −15
+  and ×2.1 at +15, about twice the real world's hydrological sensitivity (≈ 2–3 %/K, energy-limited). Left as is for
+  now: a hothouse that is lush and an ice age that is dry read right.
+- At the defaults the climate is bit-identical (`hash-climate.mjs`).
 
 ## Inspect layers (decided 2026-10-13)
 

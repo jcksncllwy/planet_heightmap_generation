@@ -34,7 +34,7 @@ the developer before the next begins.**
 Generate and Import Heightmap. Its layout (plans/V2_EVOLUTION_UI_PLAN.md): the sidebar holds **New World** (a new seed),
 the **World** section — folded to a one-line summary once a history is building: the seed, starting continent size,
 history length, ending, the planet's **Temperature** (−15…+15 °C) and **Precipitation** (±50 %) — the climate's
-options (`tempOffsetC`, `precipScale`), for the preview climate and Add detail alike; they change the climate only, so
+options (`tempOffsetC`: a greenhouse-like forcing in the energy balance; `precipScale`: the evaporation in the rain budget — so the ice, winds, currents and rain answer them), for the preview climate and Add detail alike; they change the climate only, so
 previews are worked out again when shown and a detailed moment says it was made with the old ones (in the link: `temp=`,
 `rain=`) — and **Quality** (Fast 20K plates / 160K terrain · Balanced 40K / 160K · Best 80K / 640K · Custom,
 which shows the two resolutions), with Build This World — then the **context card**, and **View** (terrain colours,

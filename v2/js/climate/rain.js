@@ -186,6 +186,9 @@ export function columnWaterRain() {
     return (ctx, winds, temperature, init = null) => {
         const t0 = performance.now();
         const P_ = PARAMS;
+        // (the page's Precipitation: the planet's water cycle faster or slower — its evaporation, from sea and land, scaled;
+        // where the extra water falls, and how far inland it is carried, is the budget's own doing)
+        const evapScale = Math.max(0, ctx.options?.precipScale ?? 1);
         const core = ctx.grid;
         const ratio = Math.max(1, Math.round(P_.RAIN_GRID_DEG / core.step));
         const g = ratio > 1 ? new LatLonGrid(core.step * ratio) : core;
@@ -358,7 +361,7 @@ export function columnWaterRain() {
                     p.snow[c] = Math.min(1, Math.max(0, (2 - Tair[c]) / 4));            // share of the rain falling as snow
                     p.Tair[c] = Tair[c];
                     const bulk = RHO_AIR * P_.RAIN_EVAP_COEFF * Math.sqrt(u[c] * u[c] + v[c] * v[c] + gust2) * (1 - P_.RAIN_SURFACE_RH);
-                    p.eSea[c] = (1 - land[c]) * bulk * qSat(Tsl[c]) * (ice ? 1 - Math.min(1, ice[c]) : 1);
+                    p.eSea[c] = evapScale * (1 - land[c]) * bulk * qSat(Tsl[c]) * (ice ? 1 - Math.min(1, ice[c]) : 1);
                     // Land's potential evaporation is limited by the energy it gets (Priestley–Taylor): the sunlight
                     // reaching the ground minus its net longwave loss, times Δ/(Δ + γ) (Clausius–Clapeyron slope Δ,
                     // psychrometric constant γ) — little in cold or dark months, most in the sunny tropics.
@@ -366,7 +369,7 @@ export function columnWaterRain() {
                     const rn = Math.max(0, SURFACE_SW * (1 - alb) * sun[j] - NET_LW);
                     const tc = Math.max(-40, Math.min(45, Tair[c])), es = 6.112 * Math.exp(17.67 * tc / (tc + 243.5));
                     const slope = es * 17.67 * 243.5 / ((tc + 243.5) ** 2);
-                    p.eLand[c] = PT_ALPHA * slope / (slope + 0.66) * rn / LATENT;          // kg m⁻² s⁻¹ per unit land area
+                    p.eLand[c] = evapScale * PT_ALPHA * slope / (slope + 0.66) * rn / LATENT;   // kg m⁻² s⁻¹ per unit land area
                 }
             }
             // The column's share over high ground: the moist boundary layer rides up with ground that heats the air

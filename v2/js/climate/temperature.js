@@ -50,6 +50,10 @@ const EVAP_SHARE_25 = evapShareRaw(25);
 const evapShare = (T) => evapShareRaw(T) / EVAP_SHARE_25;
 const CLOUD_RAIN_MM = 100;                  // mm/month of rain at which land is ~63 % cloud-covered
 const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean sunlight: below it, inversions form
+// The page's Temperature as a forcing: how much an Earth-like planet's average answers a forcing of 1 °C (before
+// feedbacks) — measured on Earth, the snow and ice amplifying a cooling (−2 … −8 °C of forcing: ×1.55–1.8) more than
+// a warming (+5 … +15: ×1.15–1.25). Beyond about −9 °C of forcing the ice runs away to a snowball (not on the slider).
+const FEEDBACK_GAIN_COLD = 1.6, FEEDBACK_GAIN_WARM = 1.15;
 
 /**
  * The temperature stage. Options: { tiltDeg = 23.44 }.
@@ -64,6 +68,11 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
     return (ctx, winds, init = null, qflux = null, rain = null, ocean = null) => {
         const t0 = performance.now();
         const P = { ...PARAMS };
+        // (the page's Temperature: a forcing — the planet's heat to space changed as a greenhouse would — sized so an
+        // Earth-like planet ends up about that many °C warmer or colder on average once its snow, ice and seas have
+        // answered: they amplify a cooling far more than a warming)
+        const dT = ctx.options?.tempOffsetC ?? 0;
+        P.TEMP_OLR_A -= P.TEMP_OLR_B * dT / (dT < 0 ? FEEDBACK_GAIN_COLD : FEEDBACK_GAIN_WARM);
         const core = ctx.grid;
         const ratio = Math.round(P.TEMP_GRID_DEG / core.step);
         const g = ratio > 1 ? new LatLonGrid(core.step * ratio) : core;
