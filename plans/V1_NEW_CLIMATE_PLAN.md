@@ -63,6 +63,32 @@ the main thread** and change the colour ramps and readouts to physical scales �
 grows no extra sea ice or ice sheets and its rain does not change. For a believable "ice world" / "hothouse", feed it into
 the energy balance instead (a forcing in `temperature.js`, so albedo and ice respond). Phase 1 decides by looking at both.
 
+## Inspect layers (decided 2026-10-13)
+
+The developer: *"re-evaluate all the inspect layers … lean on what makes sense for the new model (or is a real life value
+that is easy to compute from the model)"*; then: Jan and July *"make sense"*, and *"add all the optional layers"*.
+
+Each climate layer is **one entry with a season picker — Year · January · July** (as Evolution's), instead of V1's
+Summer / Winter pairs (which were northern-hemisphere seasons). Generate and Import get the same list:
+
+| Layer | Shows | From the model |
+|---|---|---|
+| Pressure | sea-level pressure, hPa; the ITCZ line; wind arrows | circulation `slp`, `itczLat`, `u` / `v` |
+| Wind | speed, m/s; arrows | circulation `u`, `v` |
+| Ocean Currents | arrows, warm / cold by the sea's temperature against its latitude's mean | ocean `u`, `v`; `monthlySL` over sea (annual today — see *Seasonal currents*) |
+| Temperature | °C, land and sea (the sea's is its surface temperature) | per-cell 12 months (`onCell`), the grid's `monthlySL` at sea |
+| Precipitation | mm/month (mm/year on Year) | per-cell 12 months; the grid's `months.P` at sea |
+| Rain Shadow | how mountains move rain: windward wetter, the lee drier (one layer) | `rain.js`'s orographic factor — to be exposed |
+| Temperature Range | warmest month − coldest month, °C (what continentality does) | per-cell 12 months |
+| Ice | sea ice by season; ice sheets | temperature `seaIce`, `iceFrac`, `domeKm` |
+| Aridity | UNEP aridity index P / PET: hyper-arid · arid · semi-arid · dry sub-humid · humid | per-cell 12 months; PET from temperature (Thornthwaite) |
+| Growing Season | months above 10 °C | per-cell 12 months |
+| Rain Seasonality | wettest month against the driest (monsoons, Mediterranean summers) | per-cell 12 months |
+| Upwelling | cold, nutrient-rich coasts (why the Atacama and Namib are deserts) | ocean `upwelling` (m/day) |
+
+Dropped: **Temp Continentality** (V1's zone bookkeeping; nothing in the new model is like it). The Geology and Plate
+Physics groups are the terrain generator's and are not part of this port.
+
 ## Phases
 
 **0 — Spike (S).** In Node: run the new climate on a Generate planet and an Import Earth at 2K · 40K · 200K · 640K · 2.5M
@@ -82,7 +108,7 @@ V1 cached wind and ocean; the new one recomputes, which is what the coupling nee
 **3 — Consumers (M).** `planet-mesh.js` colour functions (three copies: map mesh, globe mesh, recolour) to physical
 ramps; legends; hover readouts on both pages (fixes Import's mislabelled units); ITCZ line; the Inspect list
 (Rain Shadow from the exposed factor; Continentality → annual temperature range; drop or re-point Temp Continentality —
-**decision**). Consider adding the new climate's extras as layers: sea ice, ice sheets, sea-temperature anomaly.
+**decision**). The list is decided — see *Inspect layers*; the season picker replaces the paired entries.
 
 **4 — Deferred climate and speed (S).** With ~1 s at any size, drop the 300K "skip climate" path (`shouldSkipClimate`,
 `state.climateComputed`, the export modal's disabled types, Export All's pre-compute) or keep it only on phones — measure
@@ -124,10 +150,9 @@ planet codes still load but climates change, as last time).
 
 ## Decisions needed
 
-1. **Continentality layers**: re-point *Continentality* to the annual temperature range and drop *Temp Continentality*
-   (it shows V1's zone bookkeeping), or keep both with new meanings?
+1. ~~Continentality layers~~ — decided: Temperature Range; Temp Continentality dropped.
 2. **Temperature slider semantics**: a post-hoc shift (as now, cheap) or a forcing (ice and rain respond — more believable
    at ±15 °C)?
-3. **Seasons**: keep V1's Summer / Winter labels, or use Evolution's January / July / Year everywhere?
+3. ~~Seasons~~ — decided: Year · January · July everywhere.
 4. **Satellite (Phase 8)**: in this project or later?
 5. **Transition**: ship behind a flag first, or switch outright on the branch and compare there?
