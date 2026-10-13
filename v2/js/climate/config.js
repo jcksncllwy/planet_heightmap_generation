@@ -76,7 +76,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     CIRC_HEAT_LOW_HOT: 1,       // –          … and over hot, dry land (≥ 35 °C, outside the rainy tropics) × (1 + this): a deep boundary layer
     CIRC_COLD_HIGH_BOOST: 0.685,  // –          … a cold high over very cold land (≤ −25 °C) × (1 + this)
     CIRC_ROSSBY_KM: 812,        // km         scale the pressure responds to heating on (the Rossby radius)
-    CIRC_TROUGH_MAX_LAT: 30,    // °          the tropical trough follows each longitude's warmest latitude as far as this (into the
+    CIRC_TROUGH_MAX_LAT: 35,    // °          the tropical trough follows each longitude's warmest latitude as far as this (into the
                                 //            summer heat lows: Tibet, the Sahara, Mexico, inland Australia) …
     CIRC_TROUGH_HIGH_DEG: 6,    // °          … and that longitude's subtropical high stands at least this far beyond it (one trough
                                 //            with the heat low, not a ridge between them)
@@ -205,7 +205,7 @@ export const PARAM_PRIORS = Object.freeze({
     CIRC_HEAT_LOW_HOT:  { value: 0.5, min: 0, max: 1.5, source: 'heat lows over hot deserts reach 10–20 hPa below the latitude mean (Pakistan ≈ 996 hPa in July): the heated boundary layer is 3–5 km deep, several times that over mild land or sea (NCEP)' },
     CIRC_COLD_HIGH_BOOST: { value: 0.5, min: 0, max: 1.5, source: 'cold anticyclones strengthen as the surface inversion deepens over very cold snow (Siberian high ≈ 1035 hPa at −30 °C)' },
     CIRC_THERMAL_HPA_PER_K: { value: 1.0, min: 0.4, max: 1.6, source: 'hydrostatic: warming the lowest 2–3 km by 1 K lowers surface pressure ≈ 0.9–1.3 hPa' },
-    CIRC_TROUGH_MAX_LAT: { value: 30, min: 25, max: 40, source: 'the summer monsoon trough joins the heat lows of Pakistan and Tibet (≈ 28–35°N), the Sahara (≈ 20–25°N), Arizona (≈ 33°N), the Pilbara (≈ 22°S) (NCEP)' },
+    CIRC_TROUGH_MAX_LAT: { value: 35, min: 28, max: 40, source: 'the summer monsoon trough joins the heat lows of Pakistan and Tibet (≈ 28–35°N), the Sahara (≈ 20–25°N), Arizona (≈ 33°N), the Pilbara (≈ 22°S) (NCEP)' },
     CIRC_TROUGH_HIGH_DEG: { value: 6, min: 4, max: 12, source: 'over a summer continent the subtropical ridge lies poleward of the heat low (the Tibetan High aloft and the westerlies beyond ≈ 40°N in July)' },
     CIRC_ROSSBY_KM:     { value: 1000, min: 500, max: 2000, source: 'Rossby radius of deformation ≈ 1000 km in midlatitudes' },
     CIRC_TURN_OCEAN_DEG: { value: 20, min: 10, max: 30, source: 'surface wind crosses isobars at ≈ 10–20° over the sea' },
