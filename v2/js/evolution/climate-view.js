@@ -1,15 +1,24 @@
 // The Evolution page's climate (step D): the new climate (v2/js/climate/) for the moment shown, on request only — a
 // "Calculate Climate" button, never automatic, never per frame (developer: "it takes way too long") — computed in a
 // worker (climate-worker.js), kept per moment while the history is open, and drawn as layers: Köppen (per terrain
-// cell), Temperature and Rain (Year / January / July), Wind & Pressure (sea-level pressure and wind arrows) and
-// Currents (the sea's warm and cold water and its surface currents) — each shaded by the relief, as the Plates tab is.
+// cell), Temperature and Rain (Year / January / July), Wind (its speed and arrows) and Currents (the sea's warm and cold
+// water and its surface currents) — and Generate's other Inspect layers (js/climate-layers.js: their colours and
+// legends): Pressure (with the winds and the ITCZ), Upwelling, Ice, Temperature Range, Rain Shadow, Aridity, Growing
+// Season, Rain Seasonality — each shaded by the relief, as the Plates tab is.
 
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
+import { statValue } from '../climate/cell-stats.js';
+import { QUANTITY_COLORS, ICE_SHEET_RGB, climateLegendHTML, classLabel } from '../../../js/climate-layers.js';
 
-export const CLIMATE_LAYERS = new Set(['satellite', 'koppen', 'temperature', 'rain', 'wind', 'currents']);
-export const SEASONAL_LAYERS = new Set(['satellite', 'temperature', 'rain', 'wind', 'currents']);
+/** The land's measures beyond Köppen (cell-stats.js), per cell or per pixel of a finished moment's picture. */
+const STAT_LAYERS = new Set(['tRange', 'aridity', 'growing', 'rainSeason']);
+export const CLIMATE_LAYERS = new Set(['satellite', 'koppen', 'temperature', 'rain', 'wind', 'currents',
+    'pressure', 'upwelling', 'ice', 'tempRange', 'rainShadow', 'aridity', 'growing', 'rainSeason']);
+export const SEASONAL_LAYERS = new Set(['satellite', 'temperature', 'rain', 'wind', 'currents', 'pressure', 'upwelling', 'ice']);
+/** The layers drawn with arrows, and which: the winds or the currents. */
+export const ARROW_LAYERS = { wind: 'wind', pressure: 'wind', currents: 'currents' };
 /** Layers only a finished moment has (its land's cover — plans/V2_SATELLITE_PLAN.md): greyed on the live timeline. */
 export const FINISHED_ONLY_LAYERS = new Set(['satellite']);
 export const SEASON_WORDS = { year: 'the year', jan: 'January', jul: 'July' };
@@ -76,12 +85,27 @@ function table(ramp, lo, hi, n, toX = v => v, fromX = x => x) {
     return { lut, n, a, b, toX };
 }
 let tables = null;
+/** A colour function's table (climate-layers.js QUANTITY_COLORS: [r, g, b] in 0–1). */
+function fnTable(fn, lo, hi, n, toX = v => v, fromX = x => x) {
+    const lut = new Uint8Array(3 * n), a = toX(lo), b = toX(hi);
+    for (let i = 0; i < n; i++) { const c = fn(fromX(a + (b - a) * i / (n - 1))); lut[3 * i] = 255 * c[0]; lut[3 * i + 1] = 255 * c[1]; lut[3 * i + 2] = 255 * c[2]; }
+    return { lut, n, a, b, toX };
+}
 function lutOf(name) {
+    const Q = QUANTITY_COLORS;
     tables ??= {
         temperature: table(RAMPS.temperature, -45, 45, 721),
         rain: table(RAMPS.rain, 0, 600, 512, v => Math.log1p(Math.max(0, v)), x => Math.expm1(x)),
         pressure: table(RAMPS.pressure, 985, 1040, 551),
         sst: table(RAMPS.oceanAnom, -7, 7, 281),
+        wind: fnTable(Q.wind, 0, 16, 161),
+        upwelling: fnTable(Q.upwelling, 0, 2, 201),
+        seaIce: fnTable(Q.seaIce, 0, 1, 101),
+        tRange: fnTable(Q.tRange, 0, 55, 221),
+        rainShadow: fnTable(Q.rainShadow, 2 ** -1.5, 2 ** 1.5, 301, Math.log2, x => 2 ** x),
+        aridity: fnTable(Q.aridity, 1e-3, 10, 801, Math.log10, x => 10 ** x),
+        growing: fnTable(Q.growing, 0, 12, 121),
+        rainSeason: fnTable(Q.rainSeason, 0, 1.6, 161),
     };
     return tables[name];
 }
@@ -93,6 +117,9 @@ const shadeOf = (terrain, c) => 0.45 + 0.55 * terrain.shade[c];
 
 const KOPPEN_RGB = KOPPEN_CLASSES.map(k => k.color.map(v => Math.round(255 * v)));
 const ICE_RGB = [232, 238, 244];
+/** The sea under the land's layers (Aridity and the like): dark, shaded by its floor. */
+const SEA_DIM = [16, 22, 52], ICE_SHEET = ICE_SHEET_RGB.map(v => 255 * v);
+const windSpeed = (C, season, g) => Math.hypot(g(C.u[season]), g(C.v[season]));
 
 /** The moment's temperature at terrain cell c (°C): land from its own cell (its height and all), the sea at sea level. */
 function temperatureAt(C, season, p, c, landCell) {
@@ -128,9 +155,37 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
     } else if (layer === 'rain') {
         const T = lutOf('rain');
         for (let c = 0; c < n; c++) put(out, c, T, rainAt(C, season, p, c, h[c] > 0), shadeOf(terrain, c));
-    } else if (layer === 'wind') {
+    } else if (layer === 'pressure') {
         const T = lutOf('pressure');
         for (let c = 0; c < n; c++) put(out, c, T, at(C.slp[season], p, c), shadeOf(terrain, c));
+    } else if (layer === 'wind') {
+        const T = lutOf('wind');
+        for (let c = 0; c < n; c++) put(out, c, T, windSpeed(C, season, f => at(f, p, c)), shadeOf(terrain, c));
+    } else if (layer === 'upwelling') {
+        // the sea: where cold water rises; the land: its own colours, greyed and dimmed
+        relief(out);
+        const T = lutOf('upwelling');
+        for (let c = 0; c < n; c++) { if (h[c] <= 0) put(out, c, T, at(C.upwelling[season], p, c), shadeOf(terrain, c)); else greyCell(out, c, 0.55, 0.75); }
+    } else if (layer === 'ice') {
+        // the sea's ice in its season; on land, the ice sheets over the land's own colours
+        relief(out);
+        const T = lutOf('seaIce');
+        for (let c = 0; c < n; c++) {
+            if (h[c] <= 0) { put(out, c, T, at(C.seaIce[season], p, c), shadeOf(terrain, c)); continue; }
+            greyCell(out, c, 0.4, 0.85);
+            const f = Math.max(0, Math.min(1, at(C.iceSheet, p, c))), k = shadeOf(terrain, c);
+            if (f > 0) for (let ch = 0; ch < 3; ch++) out[3 * c + ch] += (Math.min(255, ICE_SHEET[ch] * k) - out[3 * c + ch]) * f;
+        }
+    } else if (STAT_LAYERS.has(layer) || layer === 'rainShadow') {
+        // the land's own measures; the sea dark
+        const T = lutOf(layer), st = C.cell.stats?.[layer];
+        for (let c = 0; c < n; c++) {
+            const k = shadeOf(terrain, c);
+            if (h[c] <= 0) { out[3 * c] = SEA_DIM[0] * k; out[3 * c + 1] = SEA_DIM[1] * k; out[3 * c + 2] = SEA_DIM[2] * k; continue; }
+            const v = layer === 'rainShadow' ? at(C.orographic, p, c) : st ? statValue(st, layer, c) : NaN;
+            if (v === v) put(out, c, T, v, k);
+            else { out[3 * c] = out[3 * c + 1] = out[3 * c + 2] = 105 * k; }
+        }
     } else if (layer === 'currents') {
         // the sea: warm and cold water; the land: its own colours, greyed and dimmed
         relief(out);
@@ -156,17 +211,20 @@ function greyCell(out, c, grey, dim) {
  */
 export function drawArrows(ctx, width, layer, season, C) {
     const H = width / 2, px = width / 360;              // pixels per degree
-    const U = layer === 'wind' ? C.u[season] : C.currentU[season], V = layer === 'wind' ? C.v[season] : C.currentV[season];
-    const only = layer === 'currents' ? C.sea : null;
+    const wind = ARROW_LAYERS[layer] === 'wind';
+    const U = wind ? C.u[season] : C.currentU[season], V = wind ? C.v[season] : C.currentV[season];
+    const only = wind ? null : C.sea;
     // (arrow length: the field's strong speeds — its 95th percentile — make a full-length arrow)
     const speeds = [];
     for (let c = 0; c < U.length; c += 7) if (!only || only[c]) speeds.push(Math.hypot(U[c], V[c]));
     speeds.sort((a, b) => a - b);
     const strong = speeds[Math.floor(0.95 * (speeds.length - 1))] || 1;
-    const step = layer === 'wind' ? 7.5 : 6, full = step * px * 0.9;
+    const step = wind ? 7.5 : 6, full = step * px * 0.9;
     ctx.save();
     ctx.lineCap = 'round';
-    ctx.strokeStyle = layer === 'wind' ? 'rgba(255,255,255,0.8)' : 'rgba(235,245,255,0.85)';
+    ctx.strokeStyle = wind ? 'rgba(255,255,255,0.8)' : 'rgba(235,245,255,0.85)';
+    // (over the Wind layer's pale calms, each arrow outlined)
+    if (layer === 'wind') { ctx.shadowColor = 'rgba(10,10,30,0.85)'; ctx.shadowBlur = Math.max(1.5, width / 1200); }
     ctx.lineWidth = Math.max(1, width / 1600);
     ctx.beginPath();
     for (let lat = 90 - step / 2; lat > -90; lat -= step) {
@@ -190,10 +248,26 @@ export function drawArrows(ctx, width, layer, season, C) {
     ctx.restore();
 }
 
+/** The ITCZ (the Pressure layer's): its latitude per 1° of longitude in the season shown, a green line. */
+export function drawItcz(ctx, width, season, C) {
+    const L = C.itcz?.[season];
+    if (!L) return;
+    const px = width / 360, H = width / 2, n = L.length;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(60,230,120,0.9)'; ctx.lineWidth = Math.max(1.5, width / 900); ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+        const x = (i % n + 0.5) * (360 / n) * px + (i === n ? 360 * px : 0), y = (90 - L[i % n]) / 180 * H;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+}
+
 // ── the legend ──
 /** The legend of a climate layer. A finished moment's Köppen classes are counted on its climate picture (C.raster). */
 export function drawLegend(el, layer, season, C, terrain) {
-    const ramp = { temperature: RAMPS.temperature, rain: RAMPS.rain, wind: RAMPS.pressure, currents: RAMPS.oceanAnom }[layer];
+    const ramp = { temperature: RAMPS.temperature, rain: RAMPS.rain, pressure: RAMPS.pressure, currents: RAMPS.oceanAnom }[layer];
     if (layer === 'satellite') { el.innerHTML = `<div class="evo-legend-note">As from space, cloud-free — ${SEASON_WORDS[season]}: forest, grass, bare ground, snow and ice from the climate</div>`; return; }
     if (layer === 'koppen') {
         // the classes on this planet's land, the largest first (on a picture: each pixel by its area, cos latitude)
@@ -216,7 +290,9 @@ export function drawLegend(el, layer, season, C, terrain) {
         }).join('')}</div>`;
         return;
     }
-    const note = { temperature: `°C, ${SEASON_WORDS[season]}`, rain: `mm per month, ${SEASON_WORDS[season]}`, wind: `sea-level pressure, hPa, ${SEASON_WORDS[season]} · arrows: the wind`,
+    // (Generate's Inspect layers: its legends)
+    if (!ramp) { el.innerHTML = climateLegendHTML(layer, season); return; }
+    const note = { temperature: `°C, ${SEASON_WORDS[season]}`, rain: `mm per month, ${SEASON_WORDS[season]}`, pressure: `sea-level pressure, hPa, ${SEASON_WORDS[season]} · arrows: the wind · green line: the ITCZ`,
         currents: 'the sea against its latitude’s average, °C · arrows: surface currents' }[layer];
     el.innerHTML = `<canvas width="560" height="44"></canvas><div class="evo-legend-note">${note}</div>`;
     drawRampBar(el.querySelector('canvas'), ramp);
@@ -257,7 +333,7 @@ const shadeK = kk => 0.45 + 0.55 * (kk - 0.35) / 0.65;
  */
 export function finishedClimateColor(layer, season, C, W, lut) {
     if (layer === 'satellite') return satelliteColor(season, C, W);
-    const R = C.raster, g = gridSampler(W), T = { temperature: lutOf('temperature'), rain: lutOf('rain'), wind: lutOf('pressure'), currents: lutOf('sst') }[layer];
+    const R = C.raster, g = gridSampler(W), T = lutOf({ currents: 'sst', ice: 'seaIce' }[layer] ?? layer), st = R.stats?.[layer];
     const px = [0, 0, 0];
     const putPx = (out, o, kk, v) => {
         const x = T.toX(v), i = 3 * Math.max(0, Math.min(T.n - 1, Math.round((x - T.a) / (T.b - T.a) * (T.n - 1)))), k = shadeK(kk);
@@ -278,14 +354,28 @@ export function finishedClimateColor(layer, season, C, W, lut) {
             if (i < 0) { putPx(out, o, kk, p); return; }
             const monthly = R.pAnnual[i] / 12, yr = season === 'year' ? 0 : g(C.P.year, x, y);
             putPx(out, o, kk, season === 'year' || !(yr > 0.01) ? monthly : monthly * p / yr);
-        } else if (layer === 'wind') putPx(out, o, kk, g(C.slp[season], x, y));
-        else if (layer === 'currents') {
-            if (wet) { putPx(out, o, kk, g(C.sstAnom[season], x, y)); return; }
-            // (the land: its own colours, greyed and dimmed)
-            const L = lut.rgb, r = L[k3] * kk, gg = L[k3 + 1] * kk, b = L[k3 + 2] * kk, l = 0.3 * r + 0.59 * gg + 0.11 * b;
-            out[o] = (r + (l - r) * 0.55) * 0.75; out[o + 1] = (gg + (l - gg) * 0.55) * 0.75; out[o + 2] = (b + (l - b) * 0.55) * 0.75; out[o + 3] = 255;
+        } else if (layer === 'pressure') putPx(out, o, kk, g(C.slp[season], x, y));
+        else if (layer === 'wind') putPx(out, o, kk, windSpeed(C, season, f => g(f, x, y)));
+        else if (layer === 'currents' || layer === 'upwelling') {
+            if (wet) { putPx(out, o, kk, g((layer === 'currents' ? C.sstAnom : C.upwelling)[season], x, y)); return; }
+            greyLand(out, o, kk, k3, 0.55, 0.75);
+        } else if (layer === 'ice') {
+            if (wet) { putPx(out, o, kk, g(C.seaIce[season], x, y)); return; }
+            greyLand(out, o, kk, k3, 0.4, 0.85);
+            const f = Math.max(0, Math.min(1, g(C.iceSheet, x, y))), k = shadeK(kk);
+            if (f > 0) for (let ch = 0; ch < 3; ch++) out[o + ch] += (Math.min(255, ICE_SHEET[ch] * k) - out[o + ch]) * f;
+        } else {
+            // (the land's own measures; the sea dark)
+            if (i < 0) { const k = shadeK(kk); out[o] = SEA_DIM[0] * k; out[o + 1] = SEA_DIM[1] * k; out[o + 2] = SEA_DIM[2] * k; out[o + 3] = 255; return; }
+            const v = layer === 'rainShadow' ? g(C.orographic, x, y) : st ? statValue(st, layer, i) : NaN;
+            if (v === v) putPx(out, o, kk, v); else rgbPx(out, o, kk, [105, 105, 105]);
         }
     };
+    /** The land under a sea's layer: its own colours, greyed and dimmed. */
+    function greyLand(out, o, kk, k3, grey, dim) {
+        const L = lut.rgb, r = L[k3] * kk, gg = L[k3 + 1] * kk, b = L[k3 + 2] * kk, l = 0.3 * r + 0.59 * gg + 0.11 * b;
+        out[o] = (r + (l - r) * grey) * dim; out[o + 1] = (gg + (l - gg) * grey) * dim; out[o + 2] = (b + (l - b) * grey) * dim; out[o + 3] = 255;
+    }
 }
 
 // ── the Satellite layer (plans/V2_SATELLITE_PLAN.md): the land's own colours from space (the finish's, per view: the
@@ -357,13 +447,40 @@ export function finishedClimateLines(C, u, v, sea, layer = null, season = 'year'
         lines.push(`<span class="hi-label">Temp</span> ${(R.tAnnual[i] / 100).toFixed(1)} °C a year`);
         lines.push(`<span class="hi-label">Rain</span> ${R.pAnnual[i].toLocaleString()} mm a year`);
     } else lines.push(`<span class="hi-label">Sea</span> ${g(C.T.year, x, y).toFixed(1)} °C a year${g(C.ice, x, y) > 0.5 ? ' · sea ice' : ''}`);
+    const line = layerLine(layer, season, C, f => g(f, x, y), i >= 0, key => (R.stats?.[key] && i >= 0 ? statValue(R.stats[key], key, i) : NaN));
+    if (line) lines.unshift(line);
     return lines;
 }
 
+/** The hover readout's line for the layer shown, where it is not already in the lines (the Inspect layers'). */
+function layerLine(layer, season, C, g, land, stat) {
+    const fmt = (v, d = 0) => (v === v ? v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }) : '—');
+    const sn = SEASONAL_LAYERS.has(layer) && season !== 'year' ? ` in ${SEASON_WORDS[season]}` : '';
+    const L = (label, text) => `<span class="hi-label">${label}</span> ${text}`;
+    switch (layer) {
+        case 'pressure': return L('Pressure', `${fmt(g(C.slp[season]))} hPa${sn}`);
+        case 'wind': return L('Wind', `${fmt(windSpeed(C, season, g), 1)} m/s${sn}`);
+        case 'upwelling': return land ? null : L('Upwelling', `${fmt(Math.max(0, g(C.upwelling[season])), 2)} m/day${sn}`);
+        case 'ice': return land ? (g(C.iceSheet) > 0.05 ? L('Ice', 'an ice sheet') : null) : L('Sea ice', `${fmt(100 * Math.max(0, Math.min(1, g(C.seaIce[season]))))} %${sn}`);
+        case 'rainShadow': {
+            if (!land) return null;
+            const r = g(C.orographic);
+            return L('Mountains', r >= 1 ? `${fmt(100 * (r - 1))} % more rain` : `${fmt(100 * (1 - r))} % less rain`);
+        }
+        case 'tempRange': return land ? L('Range', `${fmt(stat('tRange'), 1)} °C warmest − coldest month`) : null;
+        case 'aridity': { const v = stat('aridity'); return land && v === v ? L('Aridity', `${classLabel('aridity', v)} (${fmt(v, 2)})`) : null; }
+        case 'growing': { const v = stat('growing'); return land && v === v ? L('Growing', `${fmt(v)} month${Math.round(v) === 1 ? '' : 's'} above 10 °C`) : null; }
+        case 'rainSeason': { const v = stat('rainSeason'); return land && v === v ? L('Rain', `${classLabel('rainSeason', v)} (${fmt(v, 2)})`) : null; }
+    }
+    return null;
+}
+
 // ── the hover readout's climate lines, for terrain cell t ──
-export function readoutLines(C, terrain, tMesh, t) {
-    const p = placementOf(tMesh), lines = [];
-    if (terrain.heightKm[t] > 0) {
+export function readoutLines(C, terrain, tMesh, t, layer = null, season = 'year') {
+    const p = placementOf(tMesh), lines = [], land = terrain.heightKm[t] > 0;
+    const line = layerLine(layer, season, C, f => at(f, p, t), land, key => (C.cell.stats?.[key] ? statValue(C.cell.stats[key], key, t) : NaN));
+    if (line) lines.push(line);
+    if (land) {
         const K = KOPPEN_CLASSES[C.cell.koppen[t]], [r, g, b] = KOPPEN_RGB[C.cell.koppen[t]];
         lines.push(`<span class="hi-label">Clima</span> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgb(${r},${g},${b});vertical-align:middle;margin-right:4px"></span>${K.code} — ${K.name}`);
         lines.push(`<span class="hi-label">Temp</span> ${C.cell.tAnnual[t].toFixed(1)} °C a year`);

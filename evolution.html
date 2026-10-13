@@ -212,15 +212,25 @@
             <option value="koppen">Köppen</option>
             <option value="temperature">Temperature</option>
             <option value="rain">Rain</option>
-            <option value="wind">Wind &amp; Pressure</option>
+            <option value="wind">Wind</option>
             <option value="currents">Currents</option>
+        </optgroup>
+        <optgroup label="Climate: more">
+            <option value="pressure">Pressure</option>
+            <option value="upwelling">Upwelling</option>
+            <option value="ice">Ice</option>
+            <option value="tempRange">Temperature Range</option>
+            <option value="rainShadow">Rain Shadow</option>
+            <option value="aridity">Aridity</option>
+            <option value="growing">Growing Season</option>
+            <option value="rainSeason">Rain Seasonality</option>
         </optgroup>
     </select>
     <div id="layerBar" class="evo-layerbar">
         <div class="map-tabs" id="mapTabs">
             <button class="map-tab active" data-layer="terrain">Terrain</button>
             <button class="map-tab" data-layer="satellite" title="The planet as from space, cloud-free: forest, grass, bare ground, snow and ice from its climate. Comes with Add detail">Satellite</button>
-            <button class="map-tab" data-layer="climate" title="The moment's climate: Köppen zones, temperature, rain, winds and currents">Climate</button>
+            <button class="map-tab" data-layer="climate" title="The moment's climate: Köppen zones, temperature, rain, winds and currents — and under More, pressure, upwelling, ice, aridity and more">Climate</button>
             <button class="map-tab" data-layer="heightmap">Heightmap</button>
             <button class="map-tab" data-layer="plates">Plates</button>
         </div>
@@ -232,6 +242,23 @@
                 <button class="map-tab" data-layer="wind">Wind</button>
                 <button class="map-tab" data-layer="currents">Currents</button>
             </div>
+            <select id="climateMore" aria-label="More climate layers" title="More climate layers: pressure, the sea, and what the land's twelve months say">
+                <option value="">More…</option>
+                <optgroup label="Atmosphere">
+                    <option value="pressure">Pressure</option>
+                </optgroup>
+                <optgroup label="Ocean">
+                    <option value="upwelling">Upwelling</option>
+                    <option value="ice">Ice</option>
+                </optgroup>
+                <optgroup label="Land">
+                    <option value="tempRange">Temperature Range</option>
+                    <option value="rainShadow">Rain Shadow</option>
+                    <option value="aridity">Aridity</option>
+                    <option value="growing">Growing Season</option>
+                    <option value="rainSeason">Rain Seasonality</option>
+                </optgroup>
+            </select>
             <select id="season" aria-label="Season">
                 <option value="year" selected>Year</option>
                 <option value="jan">January</option>
@@ -297,7 +324,7 @@
             </div>
             <div class="tutorial-step" data-step="3">
                 <h3>Look Around &amp; Export</h3>
-                <p>Switch between <strong>Terrain</strong>, <strong>Satellite</strong>, <strong>Climate</strong>, <strong>Heightmap</strong> and <strong>Plates</strong> with the tabs over the planet. Climate also works on a paused preview.</p>
+                <p>Switch between <strong>Terrain</strong>, <strong>Satellite</strong>, <strong>Climate</strong>, <strong>Heightmap</strong> and <strong>Plates</strong> with the tabs over the planet. Climate shows Köppen zones, temperature, rain, wind and currents, with more layers (pressure, upwelling, ice, aridity, growing season and others) under <strong>More…</strong> or in the layer list. Climate also works on a paused preview.</p>
                 <p><strong>Export</strong> saves the detailed moment as map files: a colour map, heightmaps with and without the sea floor, and a land mask.</p>
             </div>
             <div class="tutorial-step" data-step="4">

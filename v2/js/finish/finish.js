@@ -21,6 +21,7 @@ import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimate } from '../climate/climate.js';
 import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
 import { pageClimate } from '../evolution/climate-fields.js';
+import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { locate } from '../core/mesh-locate.js';
 
@@ -190,7 +191,10 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // surroundings: tree and snow lines follow all of it — its surroundings' height as the climate has it, the 1° grid's
     // mean land height)
     const relief = COVER.fullLapse ? (1 - CORE_DEFAULTS.terrainRelief) * gamma : 0, hLand = gridClimate.surface.meanLandKm, T12c = new Float64Array(12);
+    // (and its measures beyond Köppen — cell-stats.js, one byte each — from the climate's own twelve months)
+    const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true });
     const cellsClimate = cellClimate(gridClimate, mesh.xyz, C.z, land, {}, (c, T12, P12) => {
+        cellStats.add(c, T12, P12);
         let T = T12;
         if (relief) {
             corners(climGrid, lat[c], lon[c], bi, bw);
@@ -216,7 +220,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     biasTowardClimate(sat, cellsClimate.koppen, lat, lon, c => land[c] === 1 && cellsClimate.koppen[c] > 0, new LatLonGrid(0.5), seed);
     lap('final climate');
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats,
-        climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
+        climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow: Float32Array.from(Hy.area, a => Math.log10(Math.max(1, a))), young, rivers: Hy.rivers, ripSat } },
         layers: debug ? { ice: I.ice, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };
 }
@@ -346,6 +350,8 @@ export function finishRaster(mesh, z, ocean, w, onRow = null, lake = null, lakeL
     const mottle = sat ? new FastNoise(climate.mottleSeed ?? 0) : null, flowPx = sat && climate.flow ? new Float32Array(cw * ch) : null;
     const youngPx = sat && climate.young ? new Uint8Array(cw * ch) : null;
     const ripPx = sat && climate.ripSat ? climate.ripSat.map(() => new Uint8Array(3 * cw * ch)) : null;
+    // (and the land's measures beyond Köppen, cell-stats.js bytes — the weightiest land cell's)
+    const statPx = cw && climate.stats ? Object.fromEntries(STAT_KEYS.map(k => [k, new Uint8Array(cw * ch)])) : null;
     for (let py = 0; py < h; py++) {
         const lat = (0.5 - (py + 0.5) / h) * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
         for (let px = 0; px < w; px++) {
@@ -368,6 +374,7 @@ export function finishRaster(mesh, z, ocean, w, onRow = null, lake = null, lakeL
                 if (best >= 0) {
                     const k = (py / f) * cw + px / f;
                     kop[k] = climate.koppen[best]; tA[k] = Math.round(100 * t / ws); pA[k] = Math.min(65535, Math.round(p / ws));
+                    if (statPx) for (const key of STAT_KEYS) statPx[key][k] = climate.stats[key][best];
                     if (sat) {
                         // (a fine mottling of the brightness, per pixel — the same in every view)
                         const mf = fineMottle(cl * Math.cos(lon), cl * Math.sin(lon), sl, mottle);
@@ -401,7 +408,7 @@ export function finishRaster(mesh, z, ocean, w, onRow = null, lake = null, lakeL
     }
     // (the terrain on the satellite picture: rock where steep, slopes and valleys in dry country — from the heights)
     if (sat) terrainLook({ w: cw, h: ch, sat: { year: sat[0], jan: sat[1], jul: sat[2] }, cover: cov, tAnnual: tA, pAnnual: pA, koppen: kop, flow: flowPx, young: youngPx, noise: mottle, rivers: climate.rivers, water: lake ? water : null, ripSat: ripPx ? { year: ripPx[0], jan: ripPx[1], jul: ripPx[2] } : null }, heightM, w);
-    return { w, h, heightM, ocean: sea, water, climate: cw ? { w: cw, h: ch, koppen: kop, tAnnual: tA, pAnnual: pA, ...(sat ? { sat: { year: sat[0], jan: sat[1], jul: sat[2] }, cover: cov } : {}) } : null };
+    return { w, h, heightM, ocean: sea, water, climate: cw ? { w: cw, h: ch, koppen: kop, tAnnual: tA, pAnnual: pA, ...(statPx ? { stats: statPx } : {}), ...(sat ? { sat: { year: sat[0], jan: sat[1], jul: sat[2] }, cover: cov } : {}) } : null };
 }
 
 /** The widest climate picture a finish makes: the page's sharpest texture (finer would not be seen). */

@@ -45,8 +45,9 @@ elsewhere a note that adding detail replaces it, with a link back to it; **Exten
 The timeline is play, scrub and the time, with the badge (no Live button: its rail shades the time computed so far,
 scrubbable while the rest fills in). On a phone the collapsed bottom sheet shows the moment and what is going on in a
 line. A first-run **tutorial** (the "?" opens it again) sits over a history already building. The layers sit over the
-planet (Terrain, Satellite — locked on previews — Climate, its own row: Köppen, temperature, rain, wind, currents, and
-the season — Heightmap, Plates). The Climate tab works a paused preview's climate out by itself (about a second; its
+planet (Terrain, Satellite — locked on previews — Climate, its own row: Köppen, temperature, rain, wind, currents, a
+More… menu with Generate's other Inspect layers — pressure with the ITCZ, upwelling, ice, temperature range, rain shadow,
+aridity, growing season, rain seasonality — and the season — Heightmap, Plates). The Climate tab works a paused preview's climate out by itself (about a second; its
 legend says "Preview climate"); a legend card sits beside the planet; the "?" tooltips are drawn over the page (V1's are
 clipped by the scrolling panel). A world runs its history and shows the planet as it builds, then the whole history is a
 timeline to scrub and play; changing the terrain resolution redraws the same history (only the plates' resolution needs a
@@ -66,8 +67,9 @@ moraines, basins still sunk by the ice); and the wind (sand seas with dune ridge
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
 like the live terrain; one moment is kept in detail per history (the one before is let go once the next is done, so a cancel loses nothing). A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
-again on the finished surface — the climate tabs (Köppen, temperature, rain, wind, currents) and the readout use it,
-drawn per pixel of the finished picture. **Satellite** (finished moments only; plans/V2_SATELLITE_PLAN.md): the planet as
+again on the finished surface — the climate tabs (Köppen, temperature, rain, wind, currents, and More…'s layers) and the
+readout use it, drawn per pixel of the finished picture (the land's measures — temperature range, aridity, growing season,
+rain seasonality, from each cell's twelve months by `js/climate/cell-stats.js` — kept a byte each on its climate picture). **Satellite** (finished moments only; plans/V2_SATELLITE_PLAN.md): the planet as
 from space, cloud-free, for the Year, January or July — each cell's cover from its twelve months (`finish-cover.js`: tree,
 grass and bare shares by wetness and warmth through S-curves, so biomes blend; needle-leaved or broad, evergreen or
 deciduous; grass green or dormant — golden with drought, brown with cold; a snowpack through the cold months, hidden in
@@ -98,7 +100,8 @@ reads white as 6 km), a land mask, and the colour map as the Terrain view shows 
 finished picture's width (4096, 8192 at 10M, 2048 on phones) or a half or quarter of it, averaged down; named by seed and
 moment (`orogen-evolution-12345-760Myr-heightmap.png`).
 The **Climate** tab gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
-winds, currents — seasonal in the tropics, fading out by 60° — about a second, in a worker), kept per moment while the history is open. Its code is
+winds, currents — seasonal in the tropics, fading out by 60° — and More…'s layers, with Generate's colours and legends
+from `js/climate-layers.js`; about a second, in a worker), kept per moment while the history is open. Its code is
 `js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
 [`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
 

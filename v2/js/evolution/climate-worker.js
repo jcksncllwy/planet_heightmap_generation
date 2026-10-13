@@ -6,10 +6,11 @@
 //               {type: 'climate', id, key, heightKm, options}  a frame's terrain heights (km, the sea at 0) on that mesh;
 //                                                         options: the page's Temperature / Precipitation (tempOffsetC, precipScale)
 // Message out:  {type: 'climate', id, data} | {type: 'error', id, message} — only what the page draws, handed over
-//   (climate-fields.js).
+//   (climate-fields.js; data.cell.stats: the land cells' tRange, aridity, growing, rainSeason — cell-stats.js bytes).
 
 import { planetClimate } from '../climate/climate.js';
 import { pageClimate, climateTransfers } from './climate-fields.js';
+import { cellStatsCollector } from '../climate/cell-stats.js';
 
 const meshes = new Map();
 
@@ -19,8 +20,11 @@ self.onmessage = ({ data }) => {
     const { id, key, heightKm, options = {} } = data;
     try {
         const t0 = performance.now();
-        const res = planetClimate({ xyz: meshes.get(key), elevKm: heightKm, axes: 'z-up' }, options);
+        // (and each land cell's measures beyond Köppen, from its twelve months — cell-stats.js — one byte each)
+        const xyz = meshes.get(key), stats = cellStatsCollector(heightKm.length, c => Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2]))), { bytes: true });
+        const res = planetClimate({ xyz, elevKm: heightKm, axes: 'z-up' }, { ...options, onCell: stats.add });
         const out = pageClimate(res);
+        out.cell.stats = stats.stats;
         out.ms = performance.now() - t0;
         self.postMessage({ type: 'climate', id, data: out }, climateTransfers(out));
     } catch (err) {

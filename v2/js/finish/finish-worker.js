@@ -7,7 +7,7 @@
 //              rotations), simMesh {numCells, xyz, adjOffset, adjList}, seed, cells, width, delaunatorUrl, poolSize?}
 // Messages out: {type: 'stage', id, stage} · {type: 'progress', id, share} (the picture) · {type: 'done', id, raster:
 //              {w, h, heightM, ocean, water}, rivers (finish-hydro.js), climate (the moment's own, at its detail: the
-//              grid's fields, climate-fields.js, and raster {w, h, koppen, tAnnual (°C × 100), pAnnual (mm)} — the land's
+//              grid's fields, climate-fields.js, and raster {w, h, koppen, tAnnual (°C × 100), pAnnual (mm), stats} — the land's
 //              climate, at most 4096 px wide), stats, ms} · {type: 'error', id, message}
 
 import { finishPlanet, finishRaster } from './finish.js';

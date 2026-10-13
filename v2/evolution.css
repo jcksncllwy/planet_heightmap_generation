@@ -166,12 +166,14 @@
 }
 .evo-layerbar .map-tab { flex: none; padding: 7px 16px; font-size: 13px; }
 .evo-subbar { display: flex; align-items: center; gap: 8px; }
-.evo-subbar[hidden], #climateTabs[hidden], #season[hidden] { display: none; }
+.evo-subbar[hidden], #climateTabs[hidden], #climateMore[hidden], #season[hidden] { display: none; }
 .evo-subbar .map-tab { padding: 5px 12px; font-size: 12px; }
 .evo-subbar select {
     background: rgba(8,8,28,0.86); color: #cde; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
     padding: 6px 8px; font-size: 12px; font-family: inherit; width: auto;
 }
+/* (More…: lit as a tab is, while one of its layers is shown) */
+.evo-subbar select.active { background: rgba(40,70,150,0.75); color: #8bf; border-color: rgba(100,160,255,0.45); }
 /* the chip: what a layer needs (Satellite: a finish), beneath the layers */
 .evo-chip { top: 138px; }
 /* the legend, beside the planet */
@@ -248,7 +250,7 @@
     .evo-act { min-height: 44px; }
     /* the layers: the switch at the top (V1's), the season beneath it; the legend under that */
     .evo-layerbar { top: 92px; }
-    .evo-layerbar #mapTabs, #climateTabs { display: none !important; }
+    .evo-layerbar #mapTabs, #climateTabs, #climateMore { display: none !important; }
     .evo-subbar select { min-height: 44px; }
     .evo-legend-card { top: 140px; bottom: auto; left: 8px; right: 8px; width: auto; max-height: 28vh; }
     #exportClose { min-width: 44px; min-height: 44px; top: 4px; right: 6px; }

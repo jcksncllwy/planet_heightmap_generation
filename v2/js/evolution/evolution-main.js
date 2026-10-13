@@ -20,7 +20,7 @@ import { TERRAIN_SCENES } from '../tectonics/scenarios/terrain-scenes.js';
 import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
-import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, paintClimate, paintUnavailable, drawArrows, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
+import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -445,10 +445,7 @@ function paint(frame, sharpTable = null) {
     else table.paint(out, t.image.data);
     t.ctx.putImageData(t.image, 0, 0);
     const C = CLIMATE_LAYERS.has(view.layer) && !FINISHED_ONLY_LAYERS.has(view.layer) ? climateOf(frame) : null;
-    if (C && (view.layer === 'wind' || view.layer === 'currents')) {
-        const k = t.width / MAP_WIDTH;
-        t.ctx.save(); t.ctx.scale(k, k); drawArrows(t.ctx, MAP_WIDTH, view.layer, view.season, C); t.ctx.restore();
-    }
+    if (C) climateOverlays(t, C);
     if (view.grid) {
         // (lines as thick on the sharper texture as on the other)
         const k = t.width / MAP_WIDTH;
@@ -473,6 +470,16 @@ function paint(frame, sharpTable = null) {
     stats(T, frame);
 }
 
+/** A climate layer's lines over its colours (on texture t): the winds' or the currents' arrows, and the ITCZ. */
+function climateOverlays(t, C) {
+    if (!ARROW_LAYERS[view.layer] && view.layer !== 'pressure') return;
+    const k = t.width / MAP_WIDTH;
+    t.ctx.save(); t.ctx.scale(k, k);
+    if (view.layer === 'pressure') drawItcz(t.ctx, MAP_WIDTH, view.season, C);
+    if (ARROW_LAYERS[view.layer]) drawArrows(t.ctx, MAP_WIDTH, view.layer, view.season, C);
+    t.ctx.restore();
+}
+
 /** The finished moment shown for a frame on the layer shown, if any: on the height layers, and on the climate layers
  *  (a finish brings the moment's own climate) — or null. */
 function finishedShown(frame) {
@@ -495,7 +502,7 @@ function paintFinishedFrame(frame, fin, T, sharpTable) {
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
     // (the rivers' lines on the Terrain view; from space they are ground, not lines — the Satellite view draws none)
     if (water && view.layer === 'terrain' && fin.rivers) { const k = t.width / MAP_WIDTH * (MAP_WIDTH / 2048); t.ctx.save(); t.ctx.scale(k, k); drawRivers(t.ctx, riverPaths(fin, view.riverQ), view.byRegime); t.ctx.restore(); }
-    if (C && (view.layer === 'wind' || view.layer === 'currents')) { const k = t.width / MAP_WIDTH; t.ctx.save(); t.ctx.scale(k, k); drawArrows(t.ctx, MAP_WIDTH, view.layer, view.season, C); t.ctx.restore(); }
+    if (C) climateOverlays(t, C);
     if (view.grid) { const k = t.width / MAP_WIDTH; t.ctx.save(); t.ctx.scale(k, k); drawGraticule(t.ctx, MAP_WIDTH, MAP_WIDTH >> 1, view.gridStep); t.ctx.restore(); }
     show(t);
     painted = frame; paintedT = T; paintedRaster = sharpTable ?? B.raster; paintedMesh = B.tMesh; paintedSharp = !!sharpTable;
@@ -709,7 +716,8 @@ async function calculateClimate() {
 }
 
 /** The Calculate button, the moments with a climate, the season choice, and the chip over the planet. */
-const CLIMATE_SUB = new Set(['koppen', 'temperature', 'rain', 'wind', 'currents']);
+// (every climate layer but Satellite, which comes with a finish: the main five as tabs, the rest under More)
+const CLIMATE_SUB = new Set([...CLIMATE_LAYERS].filter(l => !FINISHED_ONLY_LAYERS.has(l)));
 function updateClimateUi() {
     const b = B, frame = painted, have = frame ? climateOf(frame) : null, job = b?.climateJob;
     const fin = frame && b ? b.finishes.get(frame) : null;
@@ -801,14 +809,17 @@ function setLayer(layer) {
     view.layer = layer; dirty = true;
     for (const b of document.querySelectorAll('#mapTabs .map-tab')) b.classList.toggle('active', b.dataset.layer === layer || (b.dataset.layer === 'climate' && CLIMATE_SUB.has(layer)));
     for (const b of document.querySelectorAll('#climateTabs .map-tab')) b.classList.toggle('active', b.dataset.layer === layer);
+    const more = $('climateMore'), inMore = !!more.querySelector(`option[value="${layer}"]`);
+    more.value = inMore ? layer : ''; more.classList.toggle('active', inMore);
     $('mobileViewSwitch').value = layer;
     $('subBar').hidden = !CLIMATE_SUB.has(layer) && !SEASONAL_LAYERS.has(layer);
-    $('climateTabs').hidden = !CLIMATE_SUB.has(layer);
+    $('climateTabs').hidden = $('climateMore').hidden = !CLIMATE_SUB.has(layer);
     $('season').hidden = !SEASONAL_LAYERS.has(layer);
     updateClimateUi();
 }
 for (const b of document.querySelectorAll('#mapTabs .map-tab, #climateTabs .map-tab')) b.addEventListener('click', () => setLayer(b.dataset.layer));
 $('mobileViewSwitch').addEventListener('change', e => setLayer(e.target.value));
+$('climateMore').addEventListener('change', e => { if (e.target.value) setLayer(e.target.value); });
 $('cardAction').addEventListener('click', mainAction);
 $('timelineAction').addEventListener('click', mainAction);
 $('cardAgain').addEventListener('click', () => finishMoment());
@@ -887,7 +898,7 @@ function readout(e) {
     // the climate, where this moment has one: its Köppen class, temperature and rain
     const C = climateOf(f);
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
-    else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t));
+    else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));
     ui.hover.innerHTML = lines.join('<br>');
     ui.hover.style.display = 'block';
 }
