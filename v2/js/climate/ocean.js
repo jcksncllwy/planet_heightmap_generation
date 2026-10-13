@@ -202,7 +202,9 @@ export function windDrivenOcean() {
             solver.apply(psiRow, psiRowI, Aref, ArefI);
             for (let c = 0; c < G; c++) f[c] = sigma[c] > 0 ? 0 : -R_PLANET * R_PLANET * sCurl[c] / RHO_SEA - Aref[c];
             const psi = new Float64Array(G), psiI = new Float64Array(G);
-            const stats = solver.solve(f, fi, psi, psiI, { maxCycles: 80, tol: 1e-10 });
+            // (to a millionth: the 1e-10 it had differed by a few millionths of a °C and no Köppen class on Earth or three
+            // test planets, for ≈ 3 more V-cycles a solve)
+            const stats = solver.solve(f, fi, psi, psiI, { maxCycles: 80, tol: 1e-6 });
             for (let c = 0; c < G; c++) psi[c] += psiRow[c];
             const U = new Float64Array(G), V = new Float64Array(G);
             for (let j = 0; j < h; j++) {
