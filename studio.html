@@ -39,7 +39,7 @@
 
         <section class="studio-section" aria-labelledby="toolsHead">
             <h2 id="toolsHead">The tools</h2>
-            <div class="tool-grid">
+            <div class="tool-grid" id="toolGrid">
                 <article class="tool-card">
                     <a class="tool-shot" href="/" tabindex="-1" aria-hidden="true"><img src="assets/studio/generate.jpg" alt="" loading="lazy" width="1200" height="750"></a>
                     <div class="tool-body">
@@ -82,6 +82,11 @@
                         <a class="tool-open" href="/evolution">Open Evolution</a>
                     </div>
                 </article>
+            </div>
+            <div class="tool-dots" id="toolDots" aria-label="Tools">
+                <button type="button" aria-label="Generate" aria-current="true"></button>
+                <button type="button" aria-label="Import Heightmap"></button>
+                <button type="button" aria-label="Evolution"></button>
             </div>
         </section>
 
@@ -134,5 +139,23 @@
             <p><a href="https://github.com/raguilar011095/planet_heightmap_generation" target="_blank" rel="noopener">Source on GitHub</a> · <a href="https://github.com/raguilar011095/planet_heightmap_generation/issues" target="_blank" rel="noopener">Ideas &amp; bug reports</a></p>
         </footer>
     </main>
+<script>
+    // On a narrow screen the tools are a row to swipe through; the dots show which is in view and jump to one
+    (function toolCarousel() {
+        const grid = document.getElementById('toolGrid'), cards = [...grid.children], dots = [...document.getElementById('toolDots').children];
+        const current = () => {
+            const left = grid.scrollLeft + grid.clientWidth * 0.3;
+            let i = 0;
+            cards.forEach((c, k) => { if (c.offsetLeft - grid.offsetLeft <= left) i = k; });
+            return i;
+        };
+        let raf = 0;
+        grid.addEventListener('scroll', () => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => { const i = current(); dots.forEach((d, k) => d.toggleAttribute('aria-current', k === i)); });
+        }, { passive: true });
+        dots.forEach((d, k) => d.addEventListener('click', () => grid.scrollTo({ left: cards[k].offsetLeft - grid.offsetLeft - parseFloat(getComputedStyle(grid).scrollPaddingLeft || 0), behavior: 'smooth' })));
+    })();
+</script>
 </body>
 </html>
