@@ -29,8 +29,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLIMATE_DEFAULTS } from '../../js/climate-config.js';
-import { PARAM_SPACE, HIGH_IMPACT_KEYS, repairParams } from './param-space.mjs';
+import { PARAM_SPACE, HIGH_IMPACT_KEYS, repairParams, DEFAULTS as CLIMATE_DEFAULTS } from './param-space.mjs';
 import { buildEarthContext } from './lib/earth-context.mjs';
 import { evaluateParams } from './lib/score.mjs';
 

@@ -3,11 +3,17 @@
 Automated tuning of the climate simulation parameters against **real Earth**.
 
 The suite runs the app's heightmap-import pipeline on `assets/earth.png` directly
-in Node (no browser), simulates climate (wind → ocean currents → precipitation →
-temperature → Köppen), and scores the resulting Köppen map against the observed
-Köppen-Geiger classification (Kottek et al. 2006, 0.5°, observed 1976–2000).
-An optimizer then tweaks the parameters in `js/climate-config.js` to maximize
-the match.
+in Node (no browser), simulates the app's climate — the new climate
+(`v2/js/climate/`, through `js/climate-new.js`, as Generate and Import run it;
+`plans/V1_NEW_CLIMATE_PLAN.md`) — and scores the resulting Köppen map against the
+observed Köppen-Geiger classification (Kottek et al. 2006, 0.5°, observed
+1976–2000). An optimizer then tweaks the parameters in `v2/js/climate/config.js`
+(within their `PARAM_PRIORS` ranges) to maximize the match.
+
+(The old climate — `js/wind.js` → `ocean.js` → `precipitation.js` →
+`temperature.js` → `koppen.js`, its parameters in `js/climate-config.js` — is no
+longer run by the app; `lib/score.mjs`'s `runClimate()` keeps it for the old
+`probe-*` / `diagnose` / `stage-audit` scripts.)
 
 ## Scoring
 
@@ -20,7 +26,10 @@ excluded (and reported separately as `landAgreement`).
 - `macroF1` — unweighted mean F1 across classes present in the truth, so rare
   but important classes (Mediterranean Csa/Csb, monsoon Cwa/Dwa…) aren't drowned
   out by large deserts and subarctic zones
-- **objective = 0.5·exactAcc + 0.5·macroF1** — what the optimizer maximizes
+- **objective = 0.60·graded + 0.12·macroF1 + 0.15·groupBalance + 0.13·watchlistF1** —
+  what the optimizer maximizes (`lib/score.mjs`): `graded` gives partial credit by
+  climatic distance, `groupBalance` penalizes too much or too little of a major
+  group, `watchlistF1` protects the rare seasonal climates (Cs, Cw, Ds, Dw)
 
 Ground-truth codes are mapped onto the app's class set (`As` → `Aw`, the standard
 merge). Ground truth lives in `data/ascii/Koeppen-Geiger-ASCII.txt`.

@@ -1,6 +1,7 @@
 /**
  * Apply tuned climate parameters to the app by rewriting the default values
- * in js/climate-config.js.
+ * in v2/js/climate/config.js (PARAMS_DEFAULTS — the new climate, which
+ * Generate, Import and Evolution all run).
  *
  * Usage:  node tuning/climate/apply-params.mjs tuning/results/climate/<label>-best.json
  *
@@ -14,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { CLIMATE_DEFAULTS } from '../../js/climate-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.resolve(__dirname, '..', '..', 'js', 'climate-config.js');
+const CONFIG_PATH = path.resolve(__dirname, '..', '..', 'v2', 'js', 'climate', 'config.js');
 
 const bestFile = process.argv[2];
 if (!bestFile) {
@@ -33,7 +34,7 @@ for (const [key, value] of Object.entries(params)) {
     if (value === CLIMATE_DEFAULTS[key]) continue;
     const rounded = +value.toFixed(4);
     // Match "    KEY: <number>," preserving indentation and trailing comment
-    const re = new RegExp(`(\\n\\s*${key}:\\s*)(-?[\\d.]+)(,)`);
+    const re = new RegExp(`(\\n\\s*${key}:\\s*)(-?[\\d.]+(?:e-?\\d+)?)(,)`);
     if (!re.test(src)) throw new Error(`Could not locate ${key} in climate-config.js`);
     src = src.replace(re, `$1${rounded}$3`);
     console.log(`  ${key}: ${CLIMATE_DEFAULTS[key]} → ${rounded}`);
