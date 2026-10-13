@@ -82,7 +82,7 @@ export class LatLonGrid {
  * NaN skipped, all-NaN → 0). ratio 1 copies.
  */
 export function coarsenField(fine, coarse, ratio, src) {
-    if (ratio === 1) return Float64Array.from(src, v => (v === v ? v : 0));
+    if (ratio === 1) { const out = new Float64Array(src.length); for (let c = 0; c < src.length; c++) { const v = src[c]; out[c] = v === v ? v : 0; } return out; }
     const out = new Float64Array(coarse.size);
     for (let J = 0; J < coarse.h; J++) for (let I = 0; I < coarse.w; I++) {
         let s = 0, ws = 0;
@@ -141,28 +141,44 @@ export const FILL_REACH_KM = 600;
  */
 export function fillAcross(grid, field, valid, reachKm = FILL_REACH_KM) {
     const { w, h, size } = grid;
-    let have = Uint8Array.from(valid, v => (v ? 1 : 0)), left = 0;
+    const have = new Uint8Array(size);                                // (a plain loop: TypedArray.from with a callback is slow)
+    for (let c = 0; c < size; c++) have[c] = valid[c] ? 1 : 0;
+    let left = 0;
     for (let c = 0; c < size; c++) if (!have[c]) left++;
     if (left === size) return field;                                  // (nothing to carry)
-    const next = new Uint8Array(size), set = [];
     const rings = Math.max(1, Math.round(reachKm / (6371 * grid.step * DEG)));
-    for (let ring = 0; ring < rings && left > 0; ring++) {
-        next.set(have); set.length = 0;
-        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-            const c = j * w + i;
-            if (have[c]) continue;
+    // (ring by ring, only the cells beside the last ring's — the first ring's beside any set cell — are looked at: the
+    // same cells, the same means of their set neighbours in the same order, without scanning the grid each ring)
+    const queued = new Uint8Array(size), set = [];
+    let front = [];
+    const near = (c, out) => {
+        const j = (c / w) | 0, i = c - j * w;
+        const W = j * w + (i === 0 ? w - 1 : i - 1), E = j * w + (i === w - 1 ? 0 : i + 1);
+        if (!have[W] && !queued[W]) { queued[W] = 1; out.push(W); }
+        if (!have[E] && !queued[E]) { queued[E] = 1; out.push(E); }
+        if (j > 0 && !have[c - w] && !queued[c - w]) { queued[c - w] = 1; out.push(c - w); }
+        if (j < h - 1 && !have[c + w] && !queued[c + w]) { queued[c + w] = 1; out.push(c + w); }
+    };
+    for (let c = 0; c < size; c++) if (have[c]) near(c, front);
+    for (let ring = 0; ring < rings && left > 0 && front.length; ring++) {
+        set.length = 0;
+        for (const c of front) {
+            const j = (c / w) | 0, i = c - j * w;
             const W = j * w + (i === 0 ? w - 1 : i - 1), E = j * w + (i === w - 1 ? 0 : i + 1);
             let s = 0, k = 0;
             if (have[W]) { s += field[W]; k++; }
             if (have[E]) { s += field[E]; k++; }
             if (j > 0 && have[c - w]) { s += field[c - w]; k++; }
             if (j < h - 1 && have[c + w]) { s += field[c + w]; k++; }
-            if (k) { set.push(c, s / k); next[c] = 1; }
+            if (k) set.push(c, s / k);
         }
         if (!set.length) break;
-        for (let q = 0; q < set.length; q += 2) field[set[q]] = set[q + 1];
+        for (let q = 0; q < set.length; q += 2) { field[set[q]] = set[q + 1]; have[set[q]] = 1; }
         left -= set.length / 2;
-        have.set(next);
+        const next = [];
+        for (const c of front) queued[c] = 0;
+        for (let q = 0; q < set.length; q += 2) near(set[q], next);
+        front = next;
     }
     return field;
 }

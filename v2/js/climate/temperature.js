@@ -488,7 +488,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 airA.set(airTheta); airAi.fill(0);
                 airSolver.setOperator(airSig, zero, airU, airV, 1, airFaces);
                 airSolver.solve(airRhs, zero, airA, airAi, { maxCycles: AIR_CYCLES, tol: 1e-4 });
-                A = Float64Array.from(airA, (a, c) => a - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c]);
+                A = new Float64Array(G);
+                for (let c = 0; c < G; c++) A[c] = airA[c] - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c];
                 airCache.set(t, A);
             }
             for (let c = 0; c < G; c++) if (landFrac[c] > 0) T[c] += landFrac[c] * (A[c] - T[c]);
@@ -534,35 +535,15 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const lapseCore = new Float32Array(core.size), domeCore = new Float32Array(core.size);
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
-        const domeDraw = new Float32Array(core.size);
-        refineForDrawing(g, core, ratio, domeG, domeDraw, 0, Uint8Array.from(landFrac, f => (f >= 0.5 ? 1 : 0)), 0, Infinity);   // (from the land; an island far out, its own)
         const heightCorrect = (out, offset) => {
             for (let c = 0; c < core.size; c++) { const hr = Math.max(href[c] === href[c] ? Math.max(0, href[c]) : 0, domeCore[c]); out[offset + c] -= lapseCore[c] * hr; }
         };
-        const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size), seaIce = new Float32Array(12 * core.size);
-        // (and, for the pages' drawing only — grid.js refineForDrawing — the sea's own air temperature and its ice:
-        // the energy balance's mostly-land cells carry the land's temperature and no sea ice, and refined linearly that
-        // drew every coast's sea with the coarse cells' straight edges (a rim of open water along icy coasts). Here the
-        // sea's temperature is carried across its coasts from the sea, its ice follows from it, and both are refined
-        // smoothly. And the ice sheets likewise, carried from the land.)
-        const seaSL = new Float32Array(12 * core.size), seaIceOpen = new Float32Array(12 * core.size), slSea = new Float64Array(G), airSea = new Float64Array(G), iceAll = new Float64Array(G);
-        const seaCoarse = Uint8Array.from(landFrac, f => (f < 0.5 ? 1 : 0));
+        const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size);
         const inversion = new Float32Array(12 * core.size);
-        const iceTmp = new Float64Array(G);
-        if (thickOn) thickCycle(iceHm, 12, 0.5);
-        const iceHmAll = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
             const sl = surfaceAt(m + 0.5, false);
-            for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? Math.max(iceRamp(sl[c]), iceHm[m * G + c]) : 0;       // sea ice, by month
-            refine(g, core, ratio, iceTmp, seaIce, m * core.size);
-            slSea.set(sl); fillAcross(g, slSea, seaCoarse);
-            iceHmAll.set(iceHm.subarray(m * G, (m + 1) * G)); fillAcross(g, iceHmAll, seaCoarse);
-            for (let c = 0; c < G; c++) iceAll[c] = Math.max(iceRamp(slSea[c]), iceHmAll[c]);
-            refineForDrawing(g, core, ratio, iceAll, seaIceOpen, m * core.size, null, 0, 1);
             refine(g, core, ratio, sl, monthlySL, m * core.size);
             const air = surfaceAt(m + 0.5, true);                     // (surfaceAt's buffer is shared: sl is done with)
-            airSea.set(air);
-            refineForDrawing(g, core, ratio, airSea, seaSL, m * core.size, seaCoarse);
             refine(g, core, ratio, air, monthly, m * core.size);
             // (the inversion alone: a layer by the ground — the circulation reads the air above it)
             for (let c = 0, o = m * core.size; c < core.size; c++) inversion[o + c] = monthly[o + c] - monthlySL[o + c];
@@ -618,8 +599,55 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const iceCore = new Float32Array(core.size);
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;
+        // The sea ice by month (the rain stage reads it) and what only the pages draw — worked out when first asked for:
+        // the coupled rounds before the last never are. (From this call's own fields alone — the next call copies its
+        // start from `state`, it does not write into it — so the same whenever it is asked.)
+        let seaIce = null, drawn = null;
+        const seaIceOf = () => {
+            if (seaIce) return seaIce;
+            seaIce = new Float32Array(12 * core.size);
+            const iceTmp = new Float64Array(G);
+            if (thickOn) thickCycle(iceHm, 12, 0.5);
+            for (let m = 0; m < 12; m++) {
+                const sl = surfaceAt(m + 0.5, false);
+                for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? Math.max(iceRamp(sl[c]), iceHm[m * G + c]) : 0;       // sea ice, by month
+                refine(g, core, ratio, iceTmp, seaIce, m * core.size);
+            }
+            return seaIce;
+        };
+        // (for the pages' drawing only — grid.js refineForDrawing — the sea's own air temperature and its ice: the energy
+        // balance's mostly-land cells carry the land's temperature and no sea ice, and refined linearly that drew every
+        // coast's sea with the coarse cells' straight edges (a rim of open water along icy coasts). Here the sea's
+        // temperature is carried across its coasts from the sea, its ice follows from it, and both are refined smoothly.
+        // And the ice sheets likewise, carried from the land.)
+        const drawnOf = () => {
+            if (drawn) return drawn;
+            seaIceOf();
+            const seaSL = new Float32Array(12 * core.size), seaIceOpen = new Float32Array(12 * core.size), slSea = new Float64Array(G), airSea = new Float64Array(G), iceAll = new Float64Array(G);
+            const seaCoarse = new Uint8Array(G), landCoarse = new Uint8Array(G);
+            for (let c = 0; c < G; c++) { seaCoarse[c] = landFrac[c] < 0.5 ? 1 : 0; landCoarse[c] = landFrac[c] >= 0.5 ? 1 : 0; }
+            const iceHmAll = new Float64Array(G);
+            for (let m = 0; m < 12; m++) {
+                const sl = surfaceAt(m + 0.5, false);
+                slSea.set(sl); fillAcross(g, slSea, seaCoarse);
+                iceHmAll.set(iceHm.subarray(m * G, (m + 1) * G)); fillAcross(g, iceHmAll, seaCoarse);
+                for (let c = 0; c < G; c++) iceAll[c] = Math.max(iceRamp(slSea[c]), iceHmAll[c]);
+                refineForDrawing(g, core, ratio, iceAll, seaIceOpen, m * core.size, null, 0, 1);
+                airSea.set(surfaceAt(m + 0.5, true));
+                refineForDrawing(g, core, ratio, airSea, seaSL, m * core.size, seaCoarse);
+            }
+            const domeDraw = new Float32Array(core.size);
+            refineForDrawing(g, core, ratio, domeG, domeDraw, 0, landCoarse, 0, Infinity);   // (from the land; an island far out, its own)
+            return (drawn = { seaSL, seaIceOpen, domeDraw });
+        };
         const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial };
-        return { T, monthly, monthlySL, seaIce, seaIceOpen, seaSL, domeDraw, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        const out = { T, monthly, monthlySL, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        return Object.defineProperties(out, {
+            seaIce: { get: seaIceOf, enumerable: true },
+            seaIceOpen: { get: () => drawnOf().seaIceOpen, enumerable: true },
+            seaSL: { get: () => drawnOf().seaSL, enumerable: true },
+            domeDraw: { get: () => drawnOf().domeDraw, enumerable: true },
+        });
     };
 }
 

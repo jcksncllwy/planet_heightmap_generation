@@ -293,7 +293,42 @@ function smoothProfile(g, prof, sigmaDeg) {
 
 /** Separable Gaussian smoothing on the sphere (σ in km): along latitude circles (wider in degrees toward the poles), then across. */
 export function gaussianSmooth(g, f, tmp, sigmaKm) {
-    const w = g.w, h = g.h, sigDeg = sigmaKm / 111.2;
+    const w = g.w, h = g.h, K = smoothKernels(g, sigmaKm);
+    // along each latitude circle: the row padded by its own wrap on both sides, then for every cell the centre and each
+    // pair of taps out to r, nearest first (the same sums, in the same order, as tap by tap with the wrap worked out)
+    const row = K.row;
+    for (let j = 0; j < h; j++) {
+        const { r, wt, norm } = K.lon[j], o = j * w;
+        for (let k = 0; k < w + 2 * r; k++) row[k] = f[o + (((k - r) % w) + w) % w];
+        for (let i = 0; i < w; i++) {
+            let s = row[i + r] * wt[0];
+            for (let d = 1; d <= r; d++) s += (row[i + r + d] + row[i + r - d]) * wt[d];
+            tmp[o + i] = s / norm;
+        }
+    }
+    // across: each row from the rows within r, nearest the pole first (as before), a row at a time
+    const { r, wLat } = K, acc = K.acc;
+    for (let j = 0; j < h; j++) {
+        let norm = 0;
+        for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < h) norm += wLat[d + r]; }
+        acc.fill(0);
+        for (let d = -r; d <= r; d++) {
+            const jj = j + d; if (jj < 0 || jj >= h) continue;
+            const wd = wLat[d + r], o = jj * w;
+            for (let i = 0; i < w; i++) acc[i] += tmp[o + i] * wd;
+        }
+        for (let i = 0; i < w; i++) f[j * w + i] = acc[i] / norm;
+    }
+}
+
+/** gaussianSmooth's weights, per grid and σ (the rows' along the circle, and across), built once. */
+const kernelCache = new Map();
+function smoothKernels(g, sigmaKm) {
+    const key = `${g.step}|${g.w}|${g.h}|${sigmaKm}`;
+    let K = kernelCache.get(key);
+    if (K) return K;
+    const w = g.w, h = g.h, sigDeg = sigmaKm / 111.2, lon = [];
+    let rMax = 0;
     for (let j = 0; j < h; j++) {
         const cl = Math.max(0.02, Math.cos(g.lat[j] * DEG));
         const sLon = Math.min(180, sigDeg / cl) / g.step;                      // σ in cells along the circle
@@ -301,24 +336,15 @@ export function gaussianSmooth(g, f, tmp, sigmaKm) {
         const wt = new Float64Array(r + 1);
         let norm = 0;
         for (let d = 0; d <= r; d++) { wt[d] = Math.exp(-0.5 * (d / sLon) ** 2); norm += d ? 2 * wt[d] : wt[d]; }
-        for (let i = 0; i < w; i++) {
-            let s = f[j * w + i] * wt[0];
-            for (let d = 1; d <= r; d++) s += (f[j * w + (i + d) % w] + f[j * w + (i - d + w * 8) % w]) * wt[d];
-            tmp[j * w + i] = s / norm;
-        }
+        lon.push({ r, wt, norm }); rMax = Math.max(rMax, r);
     }
     const sLat = sigDeg / g.step, r = Math.ceil(2.5 * sLat);
     const wLat = new Float64Array(2 * r + 1);
     for (let d = -r; d <= r; d++) wLat[d + r] = Math.exp(-0.5 * (d / sLat) ** 2);
-    for (let j = 0; j < h; j++) {
-        let norm = 0;
-        for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < h) norm += wLat[d + r]; }
-        for (let i = 0; i < w; i++) {
-            let s = 0;
-            for (let d = -r; d <= r; d++) { const jj = j + d; if (jj < 0 || jj >= h) continue; s += tmp[jj * w + i] * wLat[d + r]; }
-            f[j * w + i] = s / norm;
-        }
-    }
+    K = { lon, r, wLat, row: new Float64Array(w + 2 * rMax), acc: new Float64Array(w) };
+    if (kernelCache.size > 32) kernelCache.clear();
+    kernelCache.set(key, K);
+    return K;
 }
 
 function itczPerLongitude(g, cv, h, w, out, m, core) {

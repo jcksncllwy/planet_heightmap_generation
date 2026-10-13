@@ -310,29 +310,31 @@ function factorRows(L) {
 
 /** Forward / back substitution of row starting at offset o, right-hand side L.br/L.bi → L.xr/L.xi. */
 function substitute(L, o) {
-    const w = L.w, dpr = L.dpr, dpi = L.dpi;
+    const w = L.w, dpr = L.dpr, dpi = L.dpi, sub = L.sub, br = L.br, bi = L.bi, mir = L.mir, mii = L.mii, cpr = L.cpr, cpi = L.cpi, Xr = L.xr, Xi = L.xi;
     let pr = 0, pi = 0;
     for (let i = 0; i < w; i++) {
         const c = o + i;
-        const a = i === 0 ? 0 : L.sub[c];
-        const tr = L.br[i] - a * pr, ti = L.bi[i] - a * pi;
-        pr = tr * L.mir[c] - ti * L.mii[c];
-        pi = tr * L.mii[c] + ti * L.mir[c];
+        const a = i === 0 ? 0 : sub[c];
+        const tr = br[i] - a * pr, ti = bi[i] - a * pi;
+        pr = tr * mir[c] - ti * mii[c];
+        pi = tr * mii[c] + ti * mir[c];
         dpr[i] = pr; dpi[i] = pi;
     }
     let xr = dpr[w - 1], xi = dpi[w - 1];
-    L.xr[w - 1] = xr; L.xi[w - 1] = xi;
+    Xr[w - 1] = xr; Xi[w - 1] = xi;
     for (let i = w - 2; i >= 0; i--) {
         const c = o + i;
-        const nr = dpr[i] - (L.cpr[c] * xr - L.cpi[c] * xi);
-        const ni = dpi[i] - (L.cpr[c] * xi + L.cpi[c] * xr);
-        L.xr[i] = nr; L.xi[i] = ni; xr = nr; xi = ni;
+        const nr = dpr[i] - (cpr[c] * xr - cpi[c] * xi);
+        const ni = dpi[i] - (cpr[c] * xi + cpi[c] * xr);
+        Xr[i] = nr; Xi[i] = ni; xr = nr; xi = ni;
     }
 }
 
 /** One zonal-line Gauss–Seidel sweep (dir 0: north → south, 1: south → north). */
 function relax(L, dir) {
     const { w, h, Tr, Ti, fr, fi } = L;
+    // (the arrays held in locals: the same arithmetic, in the same order)
+    const As = L.as, An = L.an, br = L.br, bi = L.bi, xr = L.xr, xi = L.xi, zr = L.zr, zi = L.zi, rowK = L.rowK;
     for (let jj = 0; jj < h; jj++) {
         const j = dir ? h - 1 - jj : jj, o = j * w;
         const kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j];
@@ -341,20 +343,20 @@ function relax(L, dir) {
             let rr = fr[c], ri = fi[c];
             if (j > 0) { rr += kn * Tr[c - w]; ri += kn * Ti[c - w]; }
             if (j < h - 1) { rr += ks * Tr[c + w]; ri += ks * Ti[c + w]; }
-            const as = L.as[c], an = L.an[c];
+            const as = As[c], an = An[c];
             if (as > 0) { rr += as * Tr[c + w]; ri += as * Ti[c + w]; }
             if (an > 0) { rr += an * Tr[c - w]; ri += an * Ti[c - w]; }
-            L.br[i] = rr; L.bi[i] = ri;
+            br[i] = rr; bi[i] = ri;
         }
         substitute(L, o);
-        const k = j * 4, bgr = L.rowK[k], bgi = L.rowK[k + 1], idr = L.rowK[k + 2], idi = L.rowK[k + 3];
-        const x0r = L.xr[0], x0i = L.xi[0], xNr = L.xr[w - 1], xNi = L.xi[w - 1];
+        const k = j * 4, bgr = rowK[k], bgi = rowK[k + 1], idr = rowK[k + 2], idi = rowK[k + 3];
+        const x0r = xr[0], x0i = xi[0], xNr = xr[w - 1], xNi = xi[w - 1];
         const nr = x0r + (bgr * xNr - bgi * xNi), ni = x0i + (bgr * xNi + bgi * xNr);
         const fr2 = nr * idr - ni * idi, fi2 = nr * idi + ni * idr;                    // fact
         for (let i = 0; i < w; i++) {
             const c = o + i;
-            Tr[c] = L.xr[i] - (fr2 * L.zr[c] - fi2 * L.zi[c]);
-            Ti[c] = L.xi[i] - (fr2 * L.zi[c] + fi2 * L.zr[c]);
+            Tr[c] = xr[i] - (fr2 * zr[c] - fi2 * zi[c]);
+            Ti[c] = xi[i] - (fr2 * zi[c] + fi2 * zr[c]);
         }
     }
 }
@@ -362,20 +364,21 @@ function relax(L, dir) {
 /** r = f − A·T into L.rr/L.ri; returns |r|² (area-weighted). */
 function residual(L) {
     const { w, h, Tr, Ti, fr, fi } = L;
+    const bdr = L.bdr, bdi = L.bdi, sub = L.sub, sup = L.sup, As = L.as, An = L.an, Rr = L.rr, Ri = L.ri;
     let s = 0;
     for (let j = 0; j < h; j++) {
         const kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j], rw = L.rowWeight[j];
         for (let i = 0; i < w; i++) {
             const c = j * w + i, cw = j * w + (i === 0 ? w - 1 : i - 1), ce = j * w + (i === w - 1 ? 0 : i + 1);
-            let ar = L.bdr[c] * Tr[c] - L.bdi[c] * Ti[c] + L.sub[c] * Tr[cw] + L.sup[c] * Tr[ce];
-            let ai = L.bdr[c] * Ti[c] + L.bdi[c] * Tr[c] + L.sub[c] * Ti[cw] + L.sup[c] * Ti[ce];
+            let ar = bdr[c] * Tr[c] - bdi[c] * Ti[c] + sub[c] * Tr[cw] + sup[c] * Tr[ce];
+            let ai = bdr[c] * Ti[c] + bdi[c] * Tr[c] + sub[c] * Ti[cw] + sup[c] * Ti[ce];
             if (j > 0) { ar -= kn * Tr[c - w]; ai -= kn * Ti[c - w]; }
             if (j < h - 1) { ar -= ks * Tr[c + w]; ai -= ks * Ti[c + w]; }
-            const as = L.as[c], an = L.an[c];
+            const as = As[c], an = An[c];
             if (as > 0) { ar -= as * Tr[c + w]; ai -= as * Ti[c + w]; }
             if (an > 0) { ar -= an * Tr[c - w]; ai -= an * Ti[c - w]; }
             const r1 = fr[c] - ar, r2 = fi[c] - ai;
-            L.rr[c] = r1; L.ri[c] = r2;
+            Rr[c] = r1; Ri[c] = r2;
             s += rw * (r1 * r1 + r2 * r2);
         }
     }
@@ -396,19 +399,32 @@ function restrict(F, C, src, dst) {
 
 /** Bilinear interpolation of the coarse correction onto the fine cells (cell-centred), added to the fine solution. */
 function prolongAdd(C, F) {
-    const wc = C.w, hc = C.h, wf = F.w;
+    const wc = C.w, hc = C.h, wf = F.w, FTr = F.Tr, FTi = F.Ti, CTr = C.Tr, CTi = C.Ti;
+    // (each fine column's two coarse columns and its weight, the same for every row: worked out once per level pair)
+    const key = `${wc}|${wf}`;
+    let cols = prolongCols.get(key);
+    if (!cols) {
+        cols = { I0: new Int32Array(wf), I1: new Int32Array(wf), fx: new Float64Array(wf) };
+        for (let i = 0; i < wf; i++) {
+            const X = i / 2 - 0.25, I0f = Math.floor(X), fx = X - I0f;
+            const I0 = ((I0f % wc) + wc) % wc, I1 = I0 + 1 === wc ? 0 : I0 + 1;
+            cols.I0[i] = I0; cols.I1[i] = I1; cols.fx[i] = fx;
+        }
+        prolongCols.set(key, cols);
+    }
+    const CI0 = cols.I0, CI1 = cols.I1, CFX = cols.fx;
     for (let j = 0; j < F.h; j++) {
         let Y = j / 2 - 0.25, J0 = Math.floor(Y), fy = Y - J0;
         if (J0 < 0) { J0 = 0; fy = 0; }
         if (J0 >= hc - 1) { J0 = hc - 1; fy = 0; }
         const J1 = Math.min(hc - 1, J0 + 1);
         for (let i = 0; i < wf; i++) {
-            const X = i / 2 - 0.25, I0f = Math.floor(X), fx = X - I0f;
-            const I0 = ((I0f % wc) + wc) % wc, I1 = I0 + 1 === wc ? 0 : I0 + 1;
+            const I0 = CI0[i], I1 = CI1[i], fx = CFX[i];
             const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
             const a = J0 * wc + I0, b = J0 * wc + I1, c = J1 * wc + I0, d = J1 * wc + I1, f = j * wf + i;
-            F.Tr[f] += w00 * C.Tr[a] + w10 * C.Tr[b] + w01 * C.Tr[c] + w11 * C.Tr[d];
-            F.Ti[f] += w00 * C.Ti[a] + w10 * C.Ti[b] + w01 * C.Ti[c] + w11 * C.Ti[d];
+            FTr[f] += w00 * CTr[a] + w10 * CTr[b] + w01 * CTr[c] + w11 * CTr[d];
+            FTi[f] += w00 * CTi[a] + w10 * CTi[b] + w01 * CTi[c] + w11 * CTi[d];
         }
     }
 }
+const prolongCols = new Map();
