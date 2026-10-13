@@ -257,11 +257,9 @@ export function windDrivenOcean() {
             return { rowSm, dTdy };
         };
         const fMin = 2 * OMEGA_ROT * Math.sin(5 * DEG);
-        /** One period's heat (W/m²) from its stress, currents and sea temperature: advection, upwelling (and m/s of it). */
-        const heatOf = (sx, sy, Uc, Vc, sstF) => {
-            const { dTdy } = rowsOf(sstF);
-            const qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
-            const Mx = new Float64Array(G), My = new Float64Array(G);           // Ekman transport (m²/s), zero on land
+        /** The Ekman transport of a stress (m²/s; zero on land) and its divergence (m/s: upwelling where positive). */
+        const ekmanOf = (sx, sy) => {
+            const Mx = new Float64Array(G), My = new Float64Array(G), div = new Float64Array(G);
             for (let j = 0; j < h; j++) {
                 let fc = 2 * OMEGA_ROT * Math.sin(g.lat[j] * DEG);
                 if (Math.abs(fc) < fMin) fc = fc < 0 ? -fMin : fMin;
@@ -277,24 +275,168 @@ export function windDrivenOcean() {
                     const c = j * w + i;
                     if (!isSea[c]) continue;
                     const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w, cn = j > 0 ? c - w : -1, cs = j < h - 1 ? c + w : -1;
+                    // (land neighbours carry no Ekman transport)
+                    div[c] = (Mx[ce] - Mx[cw]) / (2 * dx) + ((cn >= 0 ? My[cn] * cosLat[j - 1] : 0) - (cs >= 0 ? My[cs] * cosLat[j + 1] : 0)) / (2 * dy * cj);
+                }
+            }
+            return { Mx, My, div };
+        };
+
+        // ── Coastal upwelling, over a zone of fixed width ──
+        // At a coast, the Ekman transport straight offshore wells up within OCEAN_COAST_KM of it (the upwelling zone and
+        // its filaments) — spread over however many cells that is, so its strength does not depend on the grid (counted
+        // within the coastal cell alone, a 1° grid upwelled three times as hard as a 3° one). Each sea cell within the
+        // zone takes its nearest coastal cell's upwelling (a search over the sea, once).
+        const coastRings = Math.max(1, Math.round(P.OCEAN_COAST_KM * 1000 / (dRad * R_PLANET)));
+        const coastOf = new Int32Array(G).fill(-1);
+        {
+            let front = [];
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i;
+                if (!isSea[c]) continue;
+                const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                if (!isSea[ce] || !isSea[cw] || (j > 0 && !isSea[c - w]) || (j < h - 1 && !isSea[c + w])) { coastOf[c] = c; front.push(c); }
+            }
+            for (let ring = 1; ring < coastRings && front.length; ring++) {
+                const next = [];
+                for (const c of front) {
+                    const j = Math.floor(c / w), i = c - j * w;
+                    for (const q of [j * w + (i + 1) % w, j * w + (i - 1 + w) % w, j > 0 ? c - w : -1, j < h - 1 ? c + w : -1]) {
+                        if (q < 0 || !isSea[q] || coastOf[q] >= 0) continue;
+                        coastOf[q] = coastOf[c]; next.push(q);
+                    }
+                }
+                front = next;
+            }
+        }
+
+        // A coast drives upwelling only if there is enough of it: round a small island the water pushed offshore on one
+        // side is made up from the other, so a coastal cell's upwelling is weighted by the land within the zone around it
+        // (full from OCEAN_COAST_LAND_SHARE of it: a continent's coast; little round a small island in open sea).
+        const coastFull = new Float64Array(G);
+        {
+            const landF = Float64Array.from(isSea, v => 1 - v), tmp = new Float64Array(G);
+            const ry = Math.max(1, Math.round(P.OCEAN_COAST_KM * 1000 / (dRad * R_PLANET)));
+            for (let j = 0; j < h; j++) {
+                const rx = Math.min(w >> 1, Math.max(1, Math.round(P.OCEAN_COAST_KM * 1000 / (dRad * R_PLANET * Math.max(0.05, cosLat[j])))));
+                let sum = 0;
+                for (let d = -rx; d <= rx; d++) sum += landF[j * w + ((d % w) + w) % w];
+                for (let i = 0; i < w; i++) {
+                    tmp[j * w + i] = sum / (2 * rx + 1);
+                    sum += landF[j * w + (i + rx + 1) % w] - landF[j * w + ((i - rx) % w + w) % w];
+                }
+            }
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i;
+                if (coastOf[c] !== c) continue;
+                let s = 0, n = 0;
+                for (let d = -ry; d <= ry; d++) { const jj = j + d; if (jj >= 0 && jj < h) { s += tmp[jj * w + i]; n++; } }
+                const x = Math.min(1, (s / n) / P.OCEAN_COAST_LAND_SHARE);
+                coastFull[c] = x * x * (3 - 2 * x);
+            }
+        }
+
+        // ── The thermocline's depth, from the year's winds ──
+        // Upwelled water is as cold as the water under the warm surface layer — very cold where that layer is thin, hardly
+        // colder than the surface where it is deep. Its depth h, row by row across each basin (shore to shore: land wider
+        // than OCEAN_SHORE_KM along the row — a smaller island the ocean's slow adjustment passes round):
+        //  • along the equator (within OCEAN_EQ_DEG, blended), tilted by the winds about the basin's mean depth
+        //    OCEAN_THERMO_EQ_M — g′ ∂(h²/2)/∂x = τₓ/ρ: easterlies pile the warm water up in the west (the warm pool, the
+        //    east Pacific's cold tongue — Bjerknes), westerlies in the east (the Indian Ocean). The equatorial ocean answers
+        //    the winds over its whole waveguide, so τₓ there is their mean within OCEAN_EQ_DEG of the equator (the trades
+        //    blow on either side of a calm rain belt as much as on it);
+        //  • away from it, set by the gyres' Ekman pumping from the basin's eastern shore, where it is shallowest
+        //    (OCEAN_THERMO_EAST_M): deep under the subtropical highs, shallow under the subpolar lows (Sverdrup:
+        //    h² = h_E² + (2f²/βg′)∫(−w_E)dx).
+        const thermoD = new Float64Array(G).fill(P.OCEAN_THERMO_EAST_M), upDT = new Float64Array(G);
+        {
+            const ek = ekmanOf(tx, ty), hE2 = P.OCEAN_THERMO_EAST_M ** 2, h02 = P.OCEAN_THERMO_EQ_M ** 2, H_MIN = 20, H_MAX = 400;
+            // (the waveguide's mean east–west stress, per longitude: weighted e^{−(lat/OCEAN_EQ_DEG)²}, over the sea)
+            const txEq = new Float64Array(w);
+            {
+                const sw = new Float64Array(w);
+                for (let j = 0; j < h; j++) {
+                    const wt = Math.exp(-((g.lat[j] / P.OCEAN_EQ_DEG) ** 2));
+                    if (wt < 0.05) continue;
+                    for (let i = 0; i < w; i++) { const c = j * w + i; if (isSea[c]) { txEq[i] += wt * tx[c]; sw[i] += wt; } }
+                }
+                for (let i = 0; i < w; i++) txEq[i] = sw[i] > 0 ? txEq[i] / sw[i] : 0;
+            }
+            const seg = [], aEqs = [], aSvs = [];
+            for (let j = 0; j < h; j++) {
+                const la = g.lat[j], f = 2 * OMEGA_ROT * Math.sin(la * DEG), beta = Math.max(1e-13, 2 * OMEGA_ROT * Math.cos(la * DEG) / R_PLANET);
+                const wEq = Math.exp(-((la / P.OCEAN_EQ_DEG) ** 2)), kEq = 2 / (RHO_SEA * P.OCEAN_GPRIME), kSv = 2 * f * f / (beta * P.OCEAN_GPRIME);
+                const dx = dRad * R_PLANET * Math.max(0.05, cosLat[j]), minRun = Math.max(1, Math.round(P.OCEAN_SHORE_KM * 1000 / dx));
+                // the row's shores: runs of land at least minRun cells long
+                const shore = new Uint8Array(w);
+                for (let i = 0; i < w; i++) {
+                    if (isSea[j * w + i] || shore[i]) continue;
+                    let len = 0; while (len < w && !isSea[j * w + (i + len) % w]) len++;
+                    if (len >= minRun) for (let k = 0; k < len; k++) shore[(i + k) % w] = 1;
+                }
+                let i0 = shore.indexOf(1);
+                const shoreless = i0 < 0;
+                if (shoreless) i0 = 0;
+                // each basin, westward from its eastern shore: the integrals, then the depth
+                const flush = () => {
+                    if (!seg.length) return;
+                    let mEq = 0; for (const v of aEqs) mEq += v; mEq /= aEqs.length;
+                    for (let q = 0; q < seg.length; q++) {
+                        const hEq2 = h02 + kEq * (aEqs[q] - mEq), hSv2 = shoreless ? hE2 : hE2 + kSv * aSvs[q];
+                        thermoD[seg[q]] = Math.sqrt(Math.max(H_MIN * H_MIN, Math.min(H_MAX * H_MAX, wEq * hEq2 + (1 - wEq) * hSv2)));
+                    }
+                    seg.length = 0; aEqs.length = 0; aSvs.length = 0;
+                };
+                let aEq = 0, aSv = 0;
+                for (let k = 1; k <= w; k++) {
+                    const i = ((i0 - k) % w + w) % w, c = j * w + i;
+                    if (shore[i]) { flush(); aEq = 0; aSv = 0; continue; }
+                    if (!isSea[c]) continue;                                   // (an island: passed round)
+                    aEq += -txEq[i] * dx; aSv += -ek.div[c] * dx;
+                    seg.push(c); aEqs.push(aEq); aSvs.push(aSv);
+                }
+                flush();
+            }
+            for (let c = 0; c < G; c++) upDT[c] = P.OCEAN_UPWELL_DT * Math.exp(-Math.max(0, thermoD[c] - P.OCEAN_THERMO_EAST_M) / P.OCEAN_THERMO_SCALE_M);
+        }
+
+        /** One period's heat (W/m²) from its stress, currents and sea temperature: advection, upwelling (and m/s of it). */
+        const heatOf = (sx, sy, Uc, Vc, sstF) => {
+            const { dTdy } = rowsOf(sstF);
+            const qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
+            const { Mx, My, div } = ekmanOf(sx, sy);
+            // the coastal cells' upwelling (offshore Ekman transport over the zone's width), then the zone takes it
+            const coastW0 = new Float64Array(G);
+            for (let j = 0; j < h; j++) {
+                const cj = Math.max(0.05, cosLat[j]), zx = coastRings * dRad * R_PLANET * cj, zy = coastRings * dRad * R_PLANET;
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    if (coastOf[c] !== c) continue;
+                    const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w, cn = j > 0 ? c - w : -1, cs = j < h - 1 ? c + w : -1;
+                    let wc = 0;
+                    if (!isSea[ce]) wc += Math.max(0, -Mx[c]) / zx;
+                    if (!isSea[cw]) wc += Math.max(0, Mx[c]) / zx;
+                    if (cn >= 0 && !isSea[cn]) wc += Math.max(0, -My[c]) / zy;
+                    if (cs >= 0 && !isSea[cs]) wc += Math.max(0, My[c]) / zy;
+                    coastW0[c] = wc * coastFull[c];
+                }
+            }
+            for (let j = 0; j < h; j++) {
+                const cj = Math.max(0.05, cosLat[j]), dx = dRad * R_PLANET * cj;
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    if (!isSea[c]) continue;
+                    const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
                     // upwind gradient of the sea temperature (sea neighbours only)
                     const Tc = sstF[c];
-                    let gx = 0, gy = 0;
+                    let gx = 0;
                     if (Uc[c] > 0 && isSea[cw]) gx = (Tc - sstF[cw]) / dx; else if (Uc[c] < 0 && isSea[ce]) gx = (sstF[ce] - Tc) / dx;
                     qAdv[c] = -RHO_SEA * CP_SEA * (P.OCEAN_HEAT_SHARE * Uc[c] * gx + P.OCEAN_MERID_SHARE * Vc[c] * dTdy[j]);
-                    // Ekman divergence → upwelling (m/s); land neighbours carry no Ekman transport
-                    const div = (Mx[ce] - Mx[cw]) / (2 * dx) + ((cn >= 0 ? My[cn] * cosLat[j - 1] : 0) - (cs >= 0 ? My[cs] * cosLat[j + 1] : 0)) / (2 * dy * cj);
-                    // at a coast, the Ekman transport straight offshore wells up within the coastal cell (one-sided: the
-                    // centred divergence spreads it over two cells)
-                    let coastW = 0;
-                    if (!isSea[ce]) coastW += Math.max(0, -Mx[c]) / dx;
-                    if (!isSea[cw]) coastW += Math.max(0, Mx[c]) / dx;
-                    if (cn >= 0 && !isSea[cn]) coastW += Math.max(0, -My[c]) / dy;
-                    if (cs >= 0 && !isSea[cs]) coastW += Math.max(0, My[c]) / dy;
-                    const wv = Math.max(0, div, coastW);
+                    // upwelling (m/s): the Ekman divergence, or the coastal zone's
+                    const wv = Math.max(0, div[c], coastOf[c] >= 0 ? coastW0[coastOf[c]] : 0);
                     wUp[c] = wv;
                     const thermo = Math.max(0, Math.min(1, (Tc - 2) / 15));      // cold polar water has little to upwell
-                    qUp[c] = -RHO_SEA * CP_SEA * wv * P.OCEAN_UPWELL_DT * thermo;
+                    qUp[c] = -RHO_SEA * CP_SEA * wv * upDT[c] * thermo;
                 }
             }
             return { qAdv, qUp, wUp };
@@ -364,6 +506,7 @@ export function windDrivenOcean() {
         return {
             psi: out(psi.map(x => x / 1e6)), u: draw(U.map(surf)), v: draw(V.map(surf)), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc), carried: out(carried),
             upwelling: draw(wUp.map(x => x * 86400)), seaMask: out(Float64Array.from(isSea)), curl: out(curl),
+            thermocline: draw(thermoD), upwelledDT: out(upDT),
             // (null without seasons: the temperature stage then takes the year's heat, as before)
             monthly: seasonal ? { u: drawM(UM.map(surf)), v: drawM(VM.map(surf)), qflux: outM(qM), upwelling: drawM(wUpM.map(x => x * 86400)) } : null,
             stress: { x: out(tx), y: out(ty) },

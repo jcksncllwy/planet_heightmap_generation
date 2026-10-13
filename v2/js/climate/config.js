@@ -91,7 +91,18 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_HEAT_SHARE: 0.073,    // –          share of the gyres' transport whose temperature reaches the sea surface
     OCEAN_OVERTURN_PW: 0.925,       // PW         the overturning's poleward heat, per hemisphere open to the polar sea
     OCEAN_MERID_SHARE: 0.03,   // –          … and of their north–south transport across the latitudes' temperature gradient
-    OCEAN_UPWELL_DT: 4,         // °C         how much colder upwelled water is than the surface (warm seas; less in cold)
+    OCEAN_UPWELL_DT: 6,         // °C         how much colder upwelled water is than the surface where the thermocline is shallowest …
+    OCEAN_THERMO_EAST_M: 50,    // m          … the thermocline's depth at a basin's eastern shore (where it is shallowest) …
+    OCEAN_THERMO_SCALE_M: 70,   // m          … and the upwelled water's coldness fading by e for each this much deeper (the warm pool)
+    OCEAN_THERMO_EQ_M: 100,     // m          … the equator's mean thermocline depth, about which the winds tilt it …
+    OCEAN_SHORE_KM: 600,        // km         … across each basin, shore to shore: land at least this wide along a latitude (smaller
+                                //            islands the ocean's slow adjustment passes round)
+    OCEAN_GPRIME: 0.03,         // m/s²       reduced gravity across the thermocline (how far the winds can tilt it)
+    OCEAN_EQ_DEG: 6,            // °          the equatorial waveguide: the trade winds tilt the thermocline within this (e-folding);
+                                //            beyond, the gyres' Ekman pumping sets its depth (Sverdrup)
+    OCEAN_COAST_KM: 300,        // km         coastal upwelling wells up within this of the coast (the zone and its filaments)
+    OCEAN_COAST_LAND_SHARE: 0.35, // –        … fully where at least this share of the zone around the coast is land (a continent's
+                                //            coast); round a small island the water pushed offshore is made up from its other side
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
     OCEAN_GRID_DEG: 1,          // °          grid the ocean is computed on (the core grid: coastal upwelling and boundary
@@ -202,7 +213,15 @@ export const PARAM_PRIORS = Object.freeze({
     OCEAN_HEAT_SHARE:   { value: 0.05, min: 0.01, max: 0.2, source: 'scaled to the ocean\'s ≈ 1–2 PW poleward heat transport; no direct literature value' },
     OCEAN_OVERTURN_PW:  { value: 1.0, min: 0.4, max: 1.5, source: 'Atlantic meridional overturning heat transport ≈ 1.2 PW at 26°N (RAPID array), released in the subpolar and Nordic seas' },
     OCEAN_MERID_SHARE:  { value: 0.15, min: 0.03, max: 0.4, source: 'western boundary currents release ≈ 100–200 W/m² (Gulf Stream, Kuroshio), eastern boundary currents take up ≈ 20–50 W/m² plus upwelling (Yu & Weller 2007 OAFlux); the gyres carry ≈ 1 PW poleward' },
-    OCEAN_UPWELL_DT:    { value: 4, min: 2, max: 8, source: 'coastal upwelling cools the surface a few °C (thermocline water)' },
+    OCEAN_UPWELL_DT:    { value: 6, min: 3, max: 10, source: 'upwelling under a shallow thermocline cools the surface 5–10 °C below its latitude (Peru, Benguela, the east Pacific cold tongue)' },
+    OCEAN_THERMO_EAST_M: { value: 50, min: 30, max: 80, source: 'the thermocline at the eastern ocean margins ≈ 30–60 m deep (east Pacific, Benguela)' },
+    OCEAN_THERMO_SCALE_M: { value: 70, min: 40, max: 120, source: 'the warm pool\'s thermocline ≈ 150–200 m deep: upwelling there barely cools the surface (Bjerknes; McPhaden & Picaut 1990)' },
+    OCEAN_THERMO_EQ_M:  { value: 100, min: 70, max: 150, source: 'the equatorial thermocline (20 °C isotherm) ≈ 150–200 m deep in the west Pacific, ≈ 50 m in the east: a mean ≈ 100–120 m' },
+    OCEAN_SHORE_KM:     { value: 600, min: 300, max: 1500, source: 'islands smaller than a few deformation radii (≈ 100–300 km) barely block the planetary waves that set the thermocline' },
+    OCEAN_GPRIME:       { value: 0.03, min: 0.02, max: 0.05, source: 'reduced gravity of the tropical thermocline ≈ 0.02–0.04 m/s² (Δρ/ρ ≈ 0.002–0.004)' },
+    OCEAN_EQ_DEG:       { value: 6, min: 3, max: 10, source: 'the equatorial Rossby radius ≈ 300 km ≈ 3°; the zonal tilt holds within ≈ 5–8° of the equator' },
+    OCEAN_COAST_LAND_SHARE: { value: 0.35, min: 0.2, max: 0.5, source: 'coastal upwelling needs a coast long compared with the deformation radius (Allen 1980; island wakes and island upwelling are weak and local)' },
+    OCEAN_COAST_KM:     { value: 300, min: 100, max: 400, source: 'coastal upwelling zones and their filaments reach ≈ 100–300 km offshore (California, Peru, Benguela)' },
     OCEAN_SEASON_SCALE: { value: 1, min: 0, max: 1, source: 'the wind-driven gyres\' seasonal cycle: large in the tropics (the Somali Current reverses with the monsoon; the equatorial countercurrent swells and ebbs), small in the subtropical gyres (Schott & McCreary 2001)' },
     OCEAN_SEASON_FULL_DEG: { value: 10, min: 5, max: 20, source: 'equatorial Kelvin and Rossby waves cross a basin in weeks to months: the tropical ocean follows the seasons' },
     OCEAN_SEASON_ZERO_DEG: { value: 60, min: 30, max: 70, source: 'midlatitude Rossby waves take years to cross a basin, so the gyres there hold their annual-mean state (developer: fade out by ≈ 60°)' },
