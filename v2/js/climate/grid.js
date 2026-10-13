@@ -131,17 +131,22 @@ function refineMap(g, core) {
 // edges, and near the poles — where a row's cells are much narrower than they are tall — wedges. So: carry the field
 // across the coast from its own side (as far as it takes), even out the polar rows, and refine with a smooth curve.
 
+/** How far a field is carried across the coast (km): enough to close any coastal rim; farther — an island far out at sea,
+ *  an inland sea — a cell keeps its own value (all of them mean something there: the energy balance's ice sheet and
+ *  temperature are worked out everywhere). */
+export const FILL_REACH_KM = 600;
 /**
- * Carry a field across from the cells where `valid` is set to all the others, ring by ring (each taking its set
- * neighbours' mean; longitude wraps), as far as it takes. In place; returns the field.
+ * Carry a field across from the cells where `valid` is set to the others, ring by ring (each taking its set neighbours'
+ * mean; longitude wraps), up to `reachKm` from them. In place; returns the field.
  */
-export function fillAcross(grid, field, valid) {
+export function fillAcross(grid, field, valid, reachKm = FILL_REACH_KM) {
     const { w, h, size } = grid;
     let have = Uint8Array.from(valid, v => (v ? 1 : 0)), left = 0;
     for (let c = 0; c < size; c++) if (!have[c]) left++;
     if (left === size) return field;                                  // (nothing to carry)
     const next = new Uint8Array(size), set = [];
-    while (left > 0) {
+    const rings = Math.max(1, Math.round(reachKm / (6371 * grid.step * DEG)));
+    for (let ring = 0; ring < rings && left > 0; ring++) {
         next.set(have); set.length = 0;
         for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
             const c = j * w + i;
@@ -211,7 +216,7 @@ export function refineSmooth(coarse, fine, ratio, src, out, offset = 0, lo = -In
 }
 
 /**
- * A coarse field for drawing: carried across the coast from where `valid` is set (or not, with null), its polar rows
+ * A coarse field for drawing: carried across the coast from where `valid` is set (or not, with null; FILL_REACH_KM), its polar rows
  * evened, refined smoothly onto the core grid at out[offset …] (within [lo, hi]). `src` is left as it is.
  */
 export function refineForDrawing(coarse, fine, ratio, src, out, offset = 0, valid = null, lo = -Infinity, hi = Infinity) {

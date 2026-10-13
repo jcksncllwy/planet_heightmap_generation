@@ -90,7 +90,9 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_UPWELL_DT: 4,         // °C         how much colder upwelled water is than the surface (warm seas; less in cold)
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
-    OCEAN_GRID_DEG: 3,          // °          grid the ocean is computed on (interpolated to 1°)
+    OCEAN_GRID_DEG: 1,          // °          grid the ocean is computed on (the core grid: coastal upwelling and boundary
+                                //            currents hug the coasts — at 3° they were blobs a coarse cell wide; ≈ +1 s;
+                                //            Earth: 88 % of land keeps its Köppen class, land ≈ 1 °C warmer — retune)
     OCEAN_SEASON_SCALE: 1,      // –          strength of the gyres' seasonal cycle (0: the year's gyres all year, as before)
     OCEAN_SEASON_FULL_DEG: 10,  // °          the gyres follow the season's winds fully within this latitude …
     OCEAN_SEASON_ZERO_DEG: 60,  // °          … and not at all from this one (slower planetary waves: years to adjust)

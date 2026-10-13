@@ -470,7 +470,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
         const domeDraw = new Float32Array(core.size);
-        refineForDrawing(g, core, ratio, domeG, domeDraw, 0, Uint8Array.from(landFrac, f => (f >= 0.5 ? 1 : 0)), 0, Infinity);
+        refineForDrawing(g, core, ratio, domeG, domeDraw, 0, Uint8Array.from(landFrac, f => (f >= 0.5 ? 1 : 0)), 0, Infinity);   // (from the land; an island far out, its own)
         const heightCorrect = (out, offset) => {
             for (let c = 0; c < core.size; c++) { const hr = Math.max(href[c] === href[c] ? Math.max(0, href[c]) : 0, domeCore[c]); out[offset + c] -= lapseCore[c] * hr; }
         };

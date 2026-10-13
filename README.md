@@ -33,9 +33,9 @@ All three are considered together; ties are broken in the order above.
 - **3D globe rendering** with atmosphere rim shader, translucent water sphere, terrain displacement, and starfield
 - **Equirectangular map projection** with antimeridian wrapping
 - **Interactive editing** — Ctrl-click plates to mark them for reshaping (multi-select with visual tinting), then click Rebuild to apply all changes at once. Ctrl-click again to undo a pending selection. Press Escape to cancel all pending edits
-- **Climate simulation** — one climate shared with the Evolution page (`v2/js/climate/`; Generate and Import run it through `js/climate-new.js`): a seasonal energy balance (sunlight for the planet's tilt, snow and sea-ice albedo, ice sheets, air masses carried inland, clouds), pressure belts and winds from it (the ITCZ at the thermal equator, the Hadley and Ferrel cells, monsoon thermal lows and highs, friction), a wind-driven ocean (gyres with western boundary currents like the Gulf Stream, circumpolar currents, coastal upwelling, the overturning's heat — its currents seasonal in the tropics, so the monsoon seas' currents reverse), and a rain budget of the water each air column carries (evaporation, transport, rain-out, storms, windward slopes and rain shadows) — coupled, and solved for all twelve months on a fixed 1° grid, so it takes about a second at any detail and looks the same at every resolution. Each region's twelve months, at its own height, give its Köppen class. Against real Earth it matches the observed Köppen map on about half the land (the old climate: about 38 %); see `plans/CLIMATE_REBUILD_REPORT.md`.
+- **Climate simulation** — one climate shared with the Evolution page (`v2/js/climate/`; Generate and Import run it through `js/climate-new.js`): a seasonal energy balance (sunlight for the planet's tilt, snow and sea-ice albedo, ice sheets, air masses carried inland, clouds), pressure belts and winds from it (the ITCZ at the thermal equator, the Hadley and Ferrel cells, monsoon thermal lows and highs, friction), a wind-driven ocean (gyres with western boundary currents like the Gulf Stream, circumpolar currents, coastal upwelling, the overturning's heat — its currents seasonal in the tropics, so the monsoon seas' currents reverse), and a rain budget of the water each air column carries (evaporation, transport, rain-out, storms, windward slopes and rain shadows) — coupled, and solved for all twelve months on a fixed 1° grid, so it takes a second or two at any detail and looks the same at every resolution. Each region's twelve months, at its own height, give its Köppen class. Against real Earth it matches the observed Köppen map on about half the land (the old climate: about 38 %); see `plans/CLIMATE_REBUILD_REPORT.md`.
 - **Map type switcher** — first-class Terrain / Satellite / Climate / Heightmap tabs with color legends for each view
-- **Climate at any detail** — about a second whatever the detail; on phones, above 640K regions, it is computed when a climate view is first chosen
+- **Climate at any detail** — a second or two whatever the detail; on phones, above 640K regions, it is computed when a climate view is first chosen
 - **Detailed visualization** — climate layers in real units, each where it has seasons for the Year, January or July (pressure with the ITCZ, wind, ocean currents, upwelling, ice, temperature, precipitation, temperature range, rain shadow, aridity, growing season, rain seasonality), plus the geology and plate-physics layers, for viewing each component in isolation. Wind and current layers draw arrows on both globe and map views.
 - **Heightmap import** — bring your own equirectangular B&W heightmap (Earth, Mars, hand-drawn maps) onto a 3D globe. Black pixels become ocean, brighter pixels become higher land. The import page (`/import`) runs full climate simulation (wind, precipitation, temperature, K&ouml;ppen) on your imported terrain, with optional terrain sculpting (smoothing, erosion, ridge sharpening). Supported formats: PNG, JPEG, WebP.
 - **Map export** — download high-resolution equirectangular PNGs (color terrain, satellite biome, climate/Köppen, B&W heightmap, land-only heightmap, or B&W land mask) at configurable widths up to 65536px with tiled rendering. **Export All** downloads Satellite, Climate, Heightmap, and Land Mask in one click, auto-computing climate if needed.
@@ -108,7 +108,7 @@ Post-processing passes that refine the terrain (collapsed by default — the def
 
 ### Climate
 
-Global climate offsets that adjust temperature and precipitation without a full rebuild. Changing these recomputes only the climate (about a second).
+Global climate offsets that adjust temperature and precipitation without a full rebuild. Changing these recomputes only the climate (a second or two).
 
 | Control | Range | Default | Description |
 |---------|-------|---------|-------------|
@@ -117,7 +117,7 @@ Global climate offsets that adjust temperature and precipitation without a full 
 
 ### Auto Climate
 
-The climate (temperature, pressure and wind, ocean currents, rain, Köppen classification) runs with every generation: it works on a fixed 1° grid, so it takes about a second at any detail. On phones, above 640K regions, it is computed on demand when a climate-dependent view is first chosen.
+The climate (temperature, pressure and wind, ocean currents, rain, Köppen classification) runs with every generation: it works on a fixed 1° grid, so it takes a second or two at any detail. On phones, above 640K regions, it is computed on demand when a climate-dependent view is first chosen.
 
 ### Visual Options
 
