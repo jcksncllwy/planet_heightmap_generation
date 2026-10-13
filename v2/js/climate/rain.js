@@ -35,6 +35,7 @@ import { HelmholtzSolver } from './solver.js';
 import { atAnchors } from './inputs.js';
 import { PARAMS } from './config.js';
 import { dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
+import { gaussianSmooth } from './circulation.js';
 
 const R_PLANET = 6.371e6;
 const RHO_AIR = 1.2;                          // kg/m³ near the surface
@@ -325,9 +326,34 @@ export function columnWaterRain() {
             // land convection's share of full strength by the day's sunlight: none under a winter sun, full in the
             // tropics and the summer (CONVECT_SUN_LOW … CONVECT_SUN_FULL of daily sunlight at the top of the air)
             p.sunConv = Float64Array.from(sun, q => { const x = Math.min(1, Math.max(0, (q - CONVECT_SUN_LOW) / (CONVECT_SUN_FULL - CONVECT_SUN_LOW))); return x * x * (3 - 2 * x); });
+            // Tropical disturbances: where the low-level winds turn cyclonically (westerlies on the equator's side of a
+            // trough, easterlies on the pole's — a monsoon trough), lows and waves form and run along it (the monsoon
+            // depressions that bring the Ganges plain much of its rain, the African easterly waves, the Australian monsoon's
+            // lows), spreading the column's humidity within the month as the storms of the mid-latitudes do — by
+            // RAIN_TROPICAL_RH × the cyclonic vorticity (per day), smoothed over RAIN_TROPICAL_KM, within the tropics
+            // (fading out from 25° to 40°, where the storms above take over).
+            const trop = new Float64Array(G);
+            if (P_.RAIN_TROPICAL_RH > 0) {
+                for (let j = 1; j < h - 1; j++) {
+                    const sgn = g.lat[j] >= 0 ? 1 : -1, cj = Math.max(0.05, cosLat[j]), dx = 2 * dRad * R_PLANET * cj, dy = 2 * dRad * R_PLANET;
+                    for (let i = 0; i < w; i++) {
+                        const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
+                        const zeta = (v[ce] - v[cw]) / dx - (u[c - w] * cosLat[j - 1] - u[c + w] * cosLat[j + 1]) / (dy * cj);
+                        trop[c] = Math.max(0, sgn * zeta);
+                    }
+                }
+                gaussianSmooth(g, trop, new Float64Array(G), P_.RAIN_TROPICAL_KM);
+                for (let j = 0; j < h; j++) {
+                    const x = Math.min(1, Math.max(0, (Math.abs(g.lat[j]) - 25) / 15)), fade = 1 - x * x * (3 - 2 * x);
+                    for (let i = 0; i < w; i++) {
+                        const c = j * w + i, xt = P_.RAIN_TROPICAL_RH * trop[c] * 86400 * fade;
+                        trop[c] = S_MAX * (1 - Math.exp(-xt / S_MAX));
+                    }
+                }
+            }
             for (let j = 0; j < h; j++) {
                 const x = P_.RAIN_STORM_RH * eady[j] * 86400, sd = S_MAX * (1 - Math.exp(-x / S_MAX));
-                const storm = Math.exp(0.5 * (a * sd) ** 2), gust2 = P_.OCEAN_GUST_MS ** 2 + (eady[j] * Lmix) ** 2;
+                const gust2 = P_.OCEAN_GUST_MS ** 2 + (eady[j] * Lmix) ** 2;
                 const cj = Math.max(0.02, cosLat[j]), dx = 2 * dRad * R_PLANET * cj, dy = 2 * dRad * R_PLANET;
                 for (let i = 0; i < w; i++) {
                     const c = j * w + i, ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w;
@@ -342,6 +368,8 @@ export function columnWaterRain() {
                     // at a lower column humidity than over the sea: × e^{(a·s)²/2}, s = RAIN_LAND_CONVECTION × the sun's
                     // share (none under a winter sun). A desert's air is too dry for it to matter much.
                     const sc = a * P_.RAIN_LAND_CONVECTION * land[c] * p.sunConv[j];
+                    // (the storms' and the tropical disturbances' spreads add as variances)
+                    const storm = Math.exp(0.5 * a * a * (sd * sd + trop[c] * trop[c]));
                     p.rate[c] = storm * stable * Math.exp(0.5 * sc * sc);
                     // Lift where the wind blows up rising ground (1/s per unit of column water: upslope speed over the
                     // vapour scale height, times the share that rains out). Orographic rain falls in storms, so the wind
