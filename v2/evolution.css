@@ -53,23 +53,8 @@
     background: rgba(255,255,255,0.06); color: #aab; border: 1px solid rgba(255,255,255,0.1);
     border-radius: 6px; padding: 4px 6px; font-size: 12px;
 }
-.evo-live {
-    flex: none; border-radius: 12px; padding: 4px 10px; font-size: 12px; cursor: pointer;
-    border: 1px solid rgba(255,90,90,0.4); background: rgba(120,30,30,0.5); color: #fbb;
-}
-.evo-live.on { background: rgba(200,40,40,0.75); color: #fff; }
-/* keep going: run the finished history on; Stop while it goes */
-.evo-more {
-    flex: none; border-radius: 12px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; font-family: inherit;
-    border: 1px solid rgba(100,160,255,0.45); background: rgba(40,70,150,0.65); color: #cde;
-}
-.evo-more:hover:not(:disabled) { filter: brightness(1.2); }
-.evo-more.on { border-color: rgba(255,170,90,0.5); background: rgba(130,70,20,0.6); color: #fdb; }
-.evo-more:disabled { opacity: 0.65; cursor: default; }
-.evo-more[hidden] { display: none; }
-
 /* (the notes in the panel take its width instead of setting it: V1's panel is as wide as its widest content) */
-#finishInfo, .viz-legend { contain: inline-size; }
+.viz-legend { contain: inline-size; }
 #mapTabs { flex-wrap: wrap; }
 #mapTabs .tab-break { flex-basis: 100%; height: 0; }
 /* the climate: the button, the moments with one, the legend; the chip over the planet on a climate layer */
@@ -109,17 +94,65 @@
 .evo-finish-bar[hidden] { display: none; }
 .evo-finish-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6a4, #ad6); transition: width 0.4s; }
 
-/* the page at its simplest (developer: "what is the absolute minimum that someone needs to see to make a planet, see
-   everything, and export … surface that, and then hide all the details or knobs"): New World, a line on what to do, the
-   rest folded in Settings; the layers over the planet; Finish and Export on the timeline */
-#ui #generate { margin-bottom: 8px; }
-.evo-howto { font-size: 12px; color: #99a; line-height: 1.45; margin: 2px 0 12px; contain: inline-size; }
-.evo-howto b { color: #cde; font-weight: 600; }
-.evo-set-head { font-size: 11px; font-weight: 600; color: #778; text-transform: uppercase; letter-spacing: 0.06em; margin: 14px 0 8px; }
-.evo-set-head:first-child { margin-top: 2px; }
-#settingsSection #seedRow { margin-bottom: 0; }
-#settingsSection .tg { margin: 4px 0 10px; }
+/* the sidebar (plans/V2_EVOLUTION_UI_PLAN.md): New World; the World section, folded to a line; the context card — the
+   moment shown and the one thing to do next; the View section. A set width: the card's text wraps instead of widening it */
+#ui { width: 300px; max-height: calc(100vh - 168px); }          /* (clear of the timeline: the panel scrolls) */
+#ui.collapsed { width: auto; }
+#ui #generate { margin-bottom: 8px; background: rgba(40,60,120,0.6); border: 1px solid rgba(100,160,255,0.35); color: #cde; }
+#worldSection #seedRow { margin-bottom: 0; }
+#worldSection summary, #viewSection summary { min-height: 30px; }
+.evo-world-sum {
+    margin-left: auto; min-width: 0; contain: inline-size; flex: 1 1 auto; text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; color: #778;
+}
+#worldSection[open] .evo-world-sum { display: none; }
 #rebuildBtn { margin-top: 2px; }
+.evo-card {
+    margin: 10px 0 12px; padding: 12px; border-radius: 10px;
+    background: rgba(68,136,255,0.07); border: 1px solid rgba(100,160,255,0.18);
+}
+.evo-card-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    font-size: 17px; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums;
+}
+.evo-badge {
+    flex: none; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;
+    padding: 2px 7px; border-radius: 5px; background: rgba(255,255,255,0.1); color: #bcd;
+}
+.evo-badge.detailed { background: rgba(110,200,90,0.18); color: #ad8; }
+.evo-badge[hidden] { display: none; }
+.evo-card-text { font-size: 13px; color: #9ab; line-height: 1.5; margin-bottom: 10px; contain: inline-size; }
+.evo-card #detailGroup { margin-bottom: 10px; }
+.evo-card #waterGroup .tg { margin: 0 0 8px; }
+.evo-card-btn {
+    width: 100%; padding: 11px 8px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-family: inherit;
+    font-size: 15px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #2255cc, #3366ee);
+    font-variant-numeric: tabular-nums; transition: filter 0.2s;
+}
+.evo-card-btn:hover:not(:disabled) { filter: brightness(1.15); }
+.evo-card-btn:disabled { opacity: 0.5; cursor: default; }
+.evo-card-btn.busy { background: rgba(130,70,20,0.6); border-color: rgba(255,170,90,0.5); color: #fdb; }
+.evo-card #cardBar { margin: 6px 0 0; }
+.evo-card-link { display: block; background: none; border: none; padding: 8px 0 0; color: #8bf; font-size: 12px; font-family: inherit; cursor: pointer; }
+.evo-card-link:hover { text-decoration: underline; }
+.evo-card-note { font-size: 12px; color: #9ab; line-height: 1.5; margin-top: 8px; contain: inline-size; }
+.evo-card-note a { color: #8bf; text-decoration: none; }
+.evo-card-note a:hover { text-decoration: underline; }
+#worldSection .evo-card-note { margin: 0 0 8px; color: #db9; }
+.evo-card-ghost {
+    width: 100%; margin-top: 10px; padding: 8px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 13px;
+    border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.4); color: #cde;
+}
+.evo-card-ghost:hover:not(:disabled) { filter: brightness(1.2); }
+.evo-card-ghost.on { border-color: rgba(255,170,90,0.5); background: rgba(130,70,20,0.6); color: #fdb; }
+.evo-card-ghost:disabled { opacity: 0.65; cursor: default; }
+/* the collapsed bottom sheet's line (phones): the moment and what is going on */
+.evo-sheet-line { display: none; }
+/* Satellite comes with detail: its tab locked on previews */
+.map-tab[data-layer="satellite"]::after { content: ' \1F512'; font-size: 10px; opacity: 0.75; visibility: hidden; }
+.map-tab.locked::after { visibility: visible; }               /* (its room kept: the tabs do not shift as it comes and goes) */
+.evo-legend-head { font-size: 11px; color: #9ab; margin-bottom: 6px; }
 /* the layers, over the planet: Terrain · Satellite · Climate (its own row: the five maps) · Heightmap · Plates; the season */
 .evo-layerbar {
     position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 20;
@@ -149,7 +182,7 @@
 .evo-legend-card[hidden] { display: none; }
 .evo-legend-card .viz-legend { margin: 0; }
 .evo-legend-card .evo-regime-legend { margin: 6px 0 0; }
-/* Finish and Export, on the timeline beside the moment */
+/* the context card's button, on the timeline beside the moment (Add detail · Replace · Cancel · Export) */
 .evo-timeline { width: min(880px, calc(100vw - 420px)); }
 .evo-act {
     flex: none; border-radius: 14px; padding: 6px 16px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
@@ -160,12 +193,10 @@
 .evo-act[hidden] { display: none; }
 .evo-act-main { background: linear-gradient(135deg, #2255cc, #3366ee); border-color: transparent; color: #fff; }
 .evo-act.busy { background: rgba(130,70,20,0.6); border-color: rgba(255,170,90,0.5); color: #fdb; }
-/* (one width for Finish, its progress and Export, which takes its place — the track does not jump; and V1's #exportBtn, a
-   full-width panel button in styles.css, undone here) */
-#timeline .evo-act { min-width: 112px; text-align: center; font-variant-numeric: tabular-nums; }
-#timeline #exportBtn { width: auto; margin: 0; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #fff;
-    background: linear-gradient(135deg, #2255cc, #3366ee); border: 1px solid transparent; border-radius: 14px; }
-#timeline #exportBtn:hover { filter: brightness(1.15); background: linear-gradient(135deg, #2255cc, #3366ee); border-color: transparent; color: #fff; }
+/* (one width for its labels — the track does not jump) */
+#timeline .evo-act { min-width: 132px; text-align: center; font-variant-numeric: tabular-nums; }
+.evo-time { min-width: 64px; }
+#timeline .evo-badge { margin-left: -2px; }
 .evo-timeline-progress { position: absolute; left: 14px; right: 14px; bottom: 3px; margin: 0; height: 3px; }
 /* the tooltips: drawn over the page by evolution-main.js (V1's, inside the panel, were clipped by its scrolling) */
 .tip:hover::after { display: none; }
@@ -201,9 +232,17 @@
     .evo-play { width: 44px; height: 44px; }
     .evo-time { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; font-size: 12px; }
     .evo-timeline select { min-height: 44px; }
-    .evo-live { min-height: 44px; }
-    .evo-more { min-height: 44px; min-width: 44px; }
-    #finishCells, #riverDensity, #rate { min-height: 44px; }
+    #finishCells, #riverDensity, #rate, #quality, #simCells, #terrainCells, #ending { min-height: 44px; }
+    .evo-card-btn, .evo-card-ghost { min-height: 48px; }
+    .evo-card-link { min-height: 44px; padding: 0; }
+    #worldSection summary, #viewSection summary { min-height: 44px; }
+    #ui { width: auto; max-height: 70vh; }
+    /* the collapsed sheet shows the moment and what is going on; open, the header instead */
+    .evo-sheet-line {
+        display: block; height: 22px; margin: -4px 0 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        font-size: 13px; color: #cde; font-variant-numeric: tabular-nums;
+    }
+    #ui:not(.collapsed) .evo-sheet-line { display: none; }
     #exportCard select, #exportCard .btn-primary, #exportCard .btn-ghost { min-height: 44px; }
     .evo-act { min-height: 44px; }
     /* the layers: the switch at the top (V1's), the season beneath it; the legend under that */
@@ -212,7 +251,7 @@
     .evo-subbar select { min-height: 44px; }
     .evo-legend-card { top: 140px; bottom: auto; left: 8px; right: 8px; width: auto; max-height: 28vh; }
     #exportClose { min-width: 44px; min-height: 44px; top: 4px; right: 6px; }
-    #settingsSection .toggle-label { min-height: 44px; }
+    #ui .toggle-label { min-height: 44px; }
     #mapCanvas { top: 36px; height: calc(100vh - 36px); }
     #info { display: none; }
     #hoverInfo { bottom: 176px; }

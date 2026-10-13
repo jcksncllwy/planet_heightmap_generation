@@ -31,29 +31,37 @@ the developer before the next begins.**
 ## Running it
 
 **Evolution** (`/evolution`, `evolution.html`) is the product page built on this engine — a side generator beside V1's
-Generate and Import Heightmap. The page shows only what it takes to make a planet, see it and export it: **New World** (a new seed),
-the timeline with **Finish** and **Export** on it, and the layers over the planet (Terrain, Satellite, Climate — its own
-row: Köppen, temperature, rain, wind, currents, and the season — Heightmap, Plates); every knob is folded in **Settings**
-(the world's seed, sliders and resolutions with Build This World; the finish detail and the moments finished; the map's
-colours, rivers, globe or map, grid, playback speed, stats). The Climate tab works the moment's climate out by itself
-(about a second); Satellite asks for a finish; a legend card sits beside the planet; the "?" tooltips are drawn over the
-page (V1's are clipped by the scrolling panel). A world runs its history (starting continent size, history length, ending; plates and
-terrain resolution) and shows the planet as it builds, then the whole history is a timeline to scrub and play; changing
-the terrain resolution redraws the same history (only the plates' resolution needs a new build). **Keep going** runs a
-finished history on, 20 Myr at a time in the worker that ran it, until Stop (`simulate`'s `resume`: the pieces are the
+Generate and Import Heightmap. Its layout (plans/V2_EVOLUTION_UI_PLAN.md): the sidebar holds **New World** (a new seed),
+the **World** section — folded to a one-line summary once a history is building: the seed, starting continent size,
+history length, ending and **Quality** (Fast 20K plates / 160K terrain · Balanced 40K / 160K · Best 80K / 640K · Custom,
+which shows the two resolutions), with Build This World — then the **context card**, and **View** (terrain colours,
+globe or map, grid, auto-rotate, playback speed, stats). The context card names the moment shown, a **Preview** or
+**Detailed** badge, and the one thing to do next — **Add detail** (with its Detail level), **Replace** the detailed
+moment, **Cancel** while it runs, or **Export** — its button mirrored on the timeline, beside the moment; on the detailed
+moment it holds the rivers' options, elsewhere a link back to it; **Extend history** once the history has reached its end.
+The timeline is play, scrub and the time, with the badge (no Live button: its rail shades the time computed so far,
+scrubbable while the rest fills in). On a phone the collapsed bottom sheet shows the moment and what is going on in a
+line. A first-run **tutorial** (the "?" opens it again) sits over a history already building. The layers sit over the
+planet (Terrain, Satellite — locked on previews — Climate, its own row: Köppen, temperature, rain, wind, currents, and
+the season — Heightmap, Plates). The Climate tab works a paused preview's climate out by itself (about a second; its
+legend says "Preview climate"); a legend card sits beside the planet; the "?" tooltips are drawn over the page (V1's are
+clipped by the scrolling panel). A world runs its history and shows the planet as it builds, then the whole history is a
+timeline to scrub and play; changing the terrain resolution redraws the same history (only the plates' resolution needs a
+new build). **Extend history** runs a finished history on, 20 Myr at a time in the worker that ran it, until Stop
+extending (`simulate`'s `resume`: the pieces are the
 one history, bit for bit; the link records how far — `more=` — and rebuilds it; it stops for good at a memory budget,
 ~13,000 Myr at 40K). Its views are V1's:
 Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds; "Blue Marble (by height)" colours by
 height alone), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
-and setting. **Finish** sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
+and setting. **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
 calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation), dry basins left closed —
 flat pans where inflow and evaporation balance (the carve's `sink` / `base`); sediment laid down (fans, floodplains,
 deltas); soil creep where it is wet and warm; an Earth-like last ice age (U-troughs, fjords, scoured lake hollows,
 moraines, basins still sunk by the ice); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
-like the live terrain; kept per moment, a Show Finished Moments toggle compares. A finished moment brings **its own
+like the live terrain; one moment is kept in detail per history (the one before is let go once the next is done, so a cancel loses nothing). A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
 again on the finished surface — the climate tabs (Köppen, temperature, rain, wind, currents) and the readout use it,
 drawn per pixel of the finished picture. **Satellite** (finished moments only; plans/V2_SATELLITE_PLAN.md): the planet as

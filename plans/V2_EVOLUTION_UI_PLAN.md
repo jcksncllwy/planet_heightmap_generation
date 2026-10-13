@@ -3,6 +3,9 @@
 The developer (2026-10-13): *"the ui on the v2 'evolution' page is a bit too sparse and confusing. It isn't intuitive
 what a user should be doing and interacting with."*
 
+Built 2026-10-13 (`evolution.html`, `v2/evolution.css`, `v2/js/evolution/evolution-main.js`); where the build differs
+from the first draft below, it says so.
+
 Decided with the developer (2026-10-13), after a round of questions and an adversarial pass against CLAUDE.md:
 - **Who it's for: explore, then commit.** Watch and scrub a history first, then turn one moment into a detailed world.
 - **No numbered steps.** The workflow loops (scrub, add detail, scrub again, extend), so a wizard's "current step" lies.
@@ -57,7 +60,8 @@ Decided with the developer (2026-10-13), after a round of questions and an adver
 
 ### World section (top of the sidebar)
 
-- **New World** (new seed, these settings) — the primary button while no history is wanted yet.
+- **New World** (new seed, these settings) — *as built*, a quieter button than V1's: the card's button is the one bright
+  one.
 - **Seed**, **Starting Continent Size**, **History Length**, **End As** — as today.
 - **Quality**: *Fast* · *Balanced* · *Best* · *Custom*, the simulation's resolution in one choice:
 
@@ -82,14 +86,16 @@ shown beside the timeline**, so the action is next to the decision; the card is 
 
 | On screen | Card | Main button |
 |---|---|---|
-| History computing, playing | "Computing the history — scrub through any of it as it fills in; pause on a moment you like" | — (pause is on the timeline) |
-| History done, playing | "Pause on a moment you like" | — |
+| History computing, playing | "Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail." | **Add detail** (pauses first) |
+| History done, playing | "Pause on a moment you like, then add detail." | **Add detail** |
 | Paused on a preview | "640 Myr · Preview", what detail adds (rivers, lakes, glaciers, its own climate, the Satellite view, export), the **Detail** drop-down | **Add detail** |
 | Paused on a preview, another moment detailed | as above, plus "Detailed: 900 Myr — go to it" | **Replace 900 Myr with 640 Myr** |
 | Adding detail | the stage and progress bar | **Cancel · 42 %** |
 | On the detailed moment | "640 Myr · Detailed", **Rivers & Lakes**, **Colour by Regime**, **River Density** | **Export** (+ a quiet "Add detail again at 10M" when the drop-down differs) |
 | At the end of the history (any of the above) | adds **Extend history** | — (a secondary button) |
 
+- *As built*: the button is there while playing too — the timeline's button would otherwise come and go, and the track
+  jump; pressing it pauses on the moment shown, as Finish did.
 - **Detail** drop-down: 160K · 640K · 2.5M (default) · 10M (~1 min); phones up to 640K, as now.
 - **Replace**: the old detailed moment stays until the new one is done, so cancelling loses nothing; then it goes.
   `FINISH_BUDGET` today evicts *before* the new finish starts (`evolution-main.js` ~l.503) — change it to keep one, and
@@ -109,7 +115,9 @@ shown beside the timeline**, so the action is next to the decision; the card is 
 
 ### On the globe
 
-- A **Preview** / **Detailed** badge by the layer bar. Detailed moments also show their detail ("Detailed · 2.5M").
+- A **Preview** / **Detailed** badge — *as built*, on the timeline beside the time and in the card's heading (by the
+  layer bar it competed with the tabs, and on a phone with the layer switch). The detailed moment's shows its detail
+  ("Detailed · 2.5M").
 - **Layer tabs**: Terrain, Heightmap, Plates — always. **Climate** — on paused previews (worked out on demand, as now,
   and labelled "Preview climate" in its legend) and on the detailed moment (its own climate). **Satellite** — shown
   with a lock on previews; choosing it explains that it comes with Add detail and offers the button (today's chip,

@@ -43,8 +43,8 @@ const SCENE = TERRAIN_SCENES.find(s => s.id === 'cycle');      // the start worl
 const $ = id => document.getElementById(id);
 const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
     seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
-    timeLabel: $('timeLabel'), rate: $('rate'), live: $('liveBtn'), more: $('moreBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
-    railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks') };
+    timeLabel: $('timeLabel'), rate: $('rate'), extend: $('extendBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
+    railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), quality: $('quality'), world: $('worldSection') };
 
 // ── settings ──
 ui.ending.innerHTML = ENDINGS.map(e => `<option value="${e.id}">${e.label}</option>`).join('');
@@ -57,8 +57,30 @@ if (url.get('len')) ui.len.value = url.get('len');
 if (IS_TOUCH) ui.sim.value = '20000';
 setIf(ui.ending, url.get('end')); setIf(ui.sim, url.get('sim')); setIf(ui.terrain, url.get('terrain'));
 ui.seed.value = url.get('seed') ?? String(Math.floor(Math.random() * 1e6));
-const labels = () => { $('vCont').textContent = `${ui.cont.value}%`; $('vLen').textContent = `${ui.len.value} Myr`; };
-ui.cont.addEventListener('input', labels); ui.len.addEventListener('input', labels); labels();
+// Quality: the two resolutions in one choice (plans/V2_EVOLUTION_UI_PLAN.md) — Custom shows them; a link whose pair is a
+// preset shows the preset
+const QUALITY = { fast: { sim: '20000', terrain: '160000' }, balanced: { sim: '40000', terrain: '160000' }, best: { sim: '80000', terrain: '640000' } };
+const QUALITY_WORDS = { fast: 'Fast', balanced: 'Balanced', best: 'Best', custom: 'Custom' };
+ui.quality.value = Object.keys(QUALITY).find(k => QUALITY[k].sim === ui.sim.value && QUALITY[k].terrain === ui.terrain.value) ?? 'custom';
+$('customGroup').hidden = ui.quality.value !== 'custom';
+ui.quality.addEventListener('change', () => {
+    const q = QUALITY[ui.quality.value];
+    $('customGroup').hidden = !!q;
+    if (q) {
+        ui.sim.value = q.sim;
+        if (ui.terrain.value !== q.terrain) { ui.terrain.value = q.terrain; setTerrainDetail(); }
+    }
+    labels(); saveUrl();
+});
+ui.sim.addEventListener('change', () => { labels(); saveUrl(); });
+/** The World section's values, and its one-line summary (shown while it is folded). */
+function labels() {
+    $('vCont').textContent = `${ui.cont.value}%`; $('vLen').textContent = `${ui.len.value} Myr`;
+    $('worldSummary').textContent = `Seed ${Number(ui.seed.value) || 0} · ${ui.len.value} Myr · ${QUALITY_WORDS[ui.quality.value]}`;
+    // (the plates' resolution is the one setting a history cannot change: it waits for a build)
+    $('worldPending').hidden = !B?.simCells || B.simCells === Number(ui.sim.value);
+}
+for (const el of [ui.cont, ui.len, ui.seed]) el.addEventListener('input', labels);
 // ── tooltips (the "?" marks): drawn over the page — V1's own sit inside the panel, which scrolls and so clips what spills
 // out of it (developer: "the tooltips are hidden inside the sidebar if they appear towards the right"); to the right of
 // the mark where there is room, else above it (always above on a narrow screen: the bottom sheet); a tap shows one ──
@@ -126,10 +148,8 @@ const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalett
     water: true, riverQ: 40, byRegime: false };                      // (rivers and lakes on finished moments: the density's threshold, m³/s; coloured by regime)
 const climate = new ClimateService();   // the climate, on request, for the moment shown (climate-view.js)
 const finisher = new FinishService();   // the Finish step, on request, for the moment shown (finish-view.js)
-// (finished moments kept per history — their pictures, rivers and climate: ~50 MB each on a phone, ~190 MB at 2.5M on a
-// desktop, ~320 MB at 10M — within this many bytes, the newest always; every worker of a page shares one browser process,
-// and the finishing worker needs its share)
-const FINISH_BUDGET = (IS_TOUCH ? 160 : 640) * 2 ** 20;
+// (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
+// ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
 function bytesOf(x, seen = new Set(), depth = 0) {
     if (!x || typeof x !== 'object' || depth > 4) return 0;
@@ -172,12 +192,13 @@ async function build() {
     B?.player?.dispose();
     const seed = Number(ui.seed.value) || 0, cont = Number(ui.cont.value) / 100, len = Number(ui.len.value), ending = ui.ending.value;
     const simCells = Number(ui.sim.value), terrainCells = Number(ui.terrain.value);
-    const b = B = { controller: new AbortController(), player: null, frames: [], simMesh: null, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
+    const b = B = { controller: new AbortController(), player: null, frames: [], simMesh: null, simCells, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
         climates: new Map(), climateJob: null, climateNote: null,         // (climates: frame → {tMesh, data}, while this history is open)
         run: null, going: false, wantGo: false, moreTo: linkedMore,        // (keep going: the history's run, kept to run on)
-        finishes: new Map(), finishJob: null, finishNote: null };           // (finishes: frame → {cells, raster, secs})
+        finishes: new Map(), finishJob: null, finishNote: null };           // (finishes: frame → {cells, raster, secs} — the one detailed moment)
     linkedMore = 0;
-    saveUrl();
+    saveUrl(); labels();
+    ui.world.open = false;                                                            // (the World section folds to its summary)
     // (watching it build is playing it from the start, at the speed chosen — held at the newest moment built)
     playing = true; playTime = 0; preparing = null; painted = null; paintedT = null; paintedRaster = null; paintedMesh = null; paintedSharp = false; dirty = true;
     updateClimateUi();
@@ -185,10 +206,8 @@ async function build() {
     blank();                                                                          // (the old world goes at once: a new one is starting)
     ui.timeLabel.textContent = 'Starting…';
     ui.play.innerHTML = '&#x23F8;';
-    ui.timeline.hidden = false; ui.live.hidden = false;
-    updateGoUi();
-    ui.info.textContent = IS_TOUCH ? 'Watching the planet evolve — scrub the timeline at any time; tap the planet for details'
-        : 'Watching the planet evolve — scrub the timeline at any time; hover the planet for details';
+    ui.timeline.hidden = false;
+    updateCard();
     status(`Starting a world (seed ${seed})…`, 0);
     if (IS_TOUCH) ui.panel.classList.add('collapsed');
     await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));            // (let the status paint first)
@@ -212,13 +231,12 @@ async function build() {
         b.live = false; b.endMyr = b.frames.at(-1).time;
         setScale(b.endMyr); rail();
         b.player.finish();
-        ui.live.hidden = true;
         const secs = (performance.now() - b.started) / 1000, stop = ENDINGS.find(e => e.id === ending);
         console.info(`[evolution] history: ${(done.ms / 1000).toFixed(1)} s in the worker, of which packing frames ${(done.packMs / 1000).toFixed(1)} s`);
         b.doneText = `${b.endMyr.toFixed(0)} Myr of history in ${secs.toFixed(0)} s · ${done.steps} steps` + (ending === 'none' ? '' : done.stopped ? ` — ends as ${stop.phrase}` : ` — did not reach ${stop.phrase} in time`);
         if (!b.retexturing) status(b.doneText, 1);
         dirty = true;
-        updateGoUi();
+        updateCard();
         if (b.moreTo > b.simMyr) keepGoing(b, b.moreTo);                  // (a link to a history that was kept going)
         else b.moreTo = 0;
     } catch (err) {
@@ -237,8 +255,7 @@ async function keepGoing(b, until = Infinity) {
     if (B !== b || !b.run?.more || b.going) return;
     b.going = true; b.wantGo = true; b.live = true;
     b.goFrom ??= b.simMyr; b.goUntil = until; b.goStarted = performance.now();      // (from: where the history first ended)
-    ui.live.hidden = false;
-    updateGoUi();
+    updateCard();
     if (until === Infinity) { playTime = builtTo(); ui.time.value = playTime; setPlaying(true); dirty = true; }   // (watch it go on)
     progress(b, b.simMyr);
     let failed = null;
@@ -260,28 +277,14 @@ async function keepGoing(b, until = Infinity) {
     if (B !== b) return;
     b.going = false; b.wantGo = false; b.live = false; b.endMyr = builtTo();
     setScale(b.endMyr); rail();
-    ui.live.hidden = true;
-    if (painted) ui.timeLabel.textContent = `${painted.time.toFixed(0)} Myr`;       // (no longer building)
     b.player?.finish();
     b.goSecs = (b.goSecs ?? 0) + (performance.now() - b.goStarted) / 1000;
     if (b.full) { b.run.close(); b.run = null; }                             // (its world goes too)
-    b.doneText = failed ? `Could not keep going: ${String(failed.message).split('\n')[0]} — ${b.endMyr.toFixed(0)} Myr of history`
-        : `${b.endMyr.toFixed(0)} Myr of history · ${b.steps} steps — kept going from ${b.goFrom.toFixed(0)} Myr (${b.goSecs.toFixed(0)} s)` +
+    b.doneText = failed ? `Could not extend the history: ${String(failed.message).split('\n')[0]} — ${b.endMyr.toFixed(0)} Myr of history`
+        : `${b.endMyr.toFixed(0)} Myr of history · ${b.steps} steps — extended from ${b.goFrom.toFixed(0)} Myr (${b.goSecs.toFixed(0)} s)` +
             (b.full ? ' — as long a history as this device can hold' : '');
     if (!b.retexturing) status(b.doneText, failed ? null : 1);
-    updateGoUi(); dirty = true;
-}
-
-/** The Keep going button: shown once a history is done — Keep going, Stop while it goes on, Stopping… until its piece is done. */
-function updateGoUi() {
-    const b = B, btn = ui.more;
-    btn.hidden = !b?.run?.more;
-    if (btn.hidden) return;
-    btn.disabled = b.going && !b.wantGo;
-    btn.classList.toggle('on', b.going);
-    btn.innerHTML = !b.going ? '&#x23E9;<span class="lbl"> Keep going</span>' : b.wantGo ? '&#x25A0;<span class="lbl"> Stop</span>' : '&#x2026;<span class="lbl"> Stopping</span>';
-    btn.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.wantGo ? 'Stop the history here (you can keep going again later)' : 'Stopping once this piece of history is done';
-    btn.setAttribute('aria-label', b.going ? (b.wantGo ? 'Stop' : 'Stopping') : 'Keep going');
+    updateCard(); dirty = true;
 }
 
 /** Draw a build's frames on a terrain mesh: a player of its own (the frames so far handed over; the rest arrive as they come). */
@@ -356,7 +359,7 @@ function progress(b, t) {
     if (b.retexturing) return;
     if (b.going) {
         const secs = (performance.now() - b.goStarted) / 1000, linked = b.goUntil !== Infinity;
-        status(linked ? `Running on to ${b.goUntil} Myr, as in the link… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s` : `Keeping going… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s (from ${b.goFrom.toFixed(0)} Myr)`,
+        status(linked ? `Running on to ${b.goUntil} Myr, as in the link… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s` : `Extending the history… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s (from ${b.goFrom.toFixed(0)} Myr)`,
             linked ? Math.min(1, (t - b.goFrom) / Math.max(1, b.goUntil - b.goFrom)) : null);
         return;
     }
@@ -442,13 +445,17 @@ function paint(frame, sharpTable = null) {
     if (!B.firstDrawn) { B.firstDrawn = true; console.info(`[evolution] first frame drawn at ${((performance.now() - B.started) / 1000).toFixed(1)} s`); }
     painted = frame; paintedT = T; paintedRaster = table; paintedMesh = B.tMesh; paintedSharp = !!sharpTable;
     const legend = $('climateLegend'), legendKey = C ? `${view.layer}|${view.season}|${frame.time}|${B.terrainCells}` : '';
-    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, T); else legend.innerHTML = ''; legend.dataset.key = legendKey; }
+    if (legend.dataset.key !== legendKey) {
+        if (C) { drawLegend(legend, view.layer, view.season, C, T); legend.insertAdjacentHTML('afterbegin', '<div class="evo-legend-head">Preview climate — Add detail for this moment’s own</div>'); }
+        else legend.innerHTML = '';
+        legend.dataset.key = legendKey;
+    }
     updateClimateUi();
     if (B.retexturing && B.retexturing === B.terrainCells) {
         console.info(`[evolution] terrain at ${B.retexturing} cells drawn in ${((performance.now() - B.retextureAt) / 1000).toFixed(1)} s`);
         B.retexturing = null; if (B.doneText) status(B.doneText, 1);
     }
-    ui.timeLabel.textContent = !B.live ? `${frame.time.toFixed(0)} Myr` : B.going ? `${frame.time.toFixed(0)} Myr · going on` : `${frame.time.toFixed(0)} of ${Number(ui.time.max)} Myr · building`;
+    ui.timeLabel.textContent = `${frame.time.toFixed(0)} Myr`;
     rail();
     stats(T, frame);
 }
@@ -481,8 +488,8 @@ function paintFinishedFrame(frame, fin, T, sharpTable) {
     painted = frame; paintedT = T; paintedRaster = sharpTable ?? B.raster; paintedMesh = B.tMesh; paintedSharp = !!sharpTable;
     const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : '';
     if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = ''; legend.dataset.key = legendKey; }
-    updateClimateUi(); updateFinishUi();
-    ui.timeLabel.textContent = `${frame.time.toFixed(0)} Myr · finished`;
+    updateClimateUi();
+    ui.timeLabel.textContent = `${frame.time.toFixed(0)} Myr`;
     rail();
     stats(T, frame);
 }
@@ -495,12 +502,7 @@ async function finishMoment(again = null) {
     setPlaying(false);
     const cells = Number($('finishCells').value), width = IS_TOUCH ? 2048 : cells >= 5e6 ? 8192 : 4096;
     const started = performance.now(), done = new Map(FINISH_STAGES);
-    // (room first: the oldest finished moments let go while the kept ones and this one — its pictures ~19 bytes a pixel,
-    // its rivers ~2 bytes a cell — would be over the budget, so the memory is back before the worker needs it)
-    const cw = Math.min(width, 4096), expected = width * (width >> 1) * 4 + cw * (cw >> 1) * 15 + 2 * cells;
-    let kept = 0;
-    for (const f of b.finishes.values()) kept += finishBytes(f);
-    for (const k of [...b.finishes.keys()]) { if (kept + expected <= FINISH_BUDGET || k === frame) continue; kept -= finishBytes(b.finishes.get(k)); b.finishes.delete(k); }
+    b.finishNote = null; b.finishOk = false;
     b.finishJob = { frame, cells, stage: 'starting', share: 0 };
     updateClimateUi();
     const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
@@ -514,15 +516,12 @@ async function finishMoment(again = null) {
         const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width }, { onStage, onProgress });
         if (B !== b) return;
         const secs = (performance.now() - started) / 1000;
-        b.finishes.delete(frame);
+        // (one detailed moment: this one replaces the one before, now that it is done)
+        b.finishes.clear();
         b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, stats: res.stats, secs });
-        // (the oldest let go while the kept ones are over the budget — never the one just finished)
-        let total = 0;
-        for (const f of b.finishes.values()) total += finishBytes(f);
-        while (total > FINISH_BUDGET && b.finishes.size > 1) { const k = b.finishes.keys().next().value; total -= finishBytes(b.finishes.get(k)); b.finishes.delete(k); }
-        const label = $('finishCells').selectedOptions[0]?.textContent.split(' ·')[0] ?? `${cells}`;
-        b.finishNote = `Finished ${frame.time.toFixed(0)} Myr at ${label} in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: earlier finished moments let go to make room)' : '');
-        console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept (${b.finishes.size} moments, ${(total / 2 ** 20).toFixed(0)} MB)`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
+        b.finishOk = true;
+        b.finishNote = `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
+        console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
         view.finished = true;
         if (view.layer === 'plates') setLayer('terrain');
     } catch (err) {
@@ -530,52 +529,91 @@ async function finishMoment(again = null) {
         // with it, and the finer details are named as the likely cause)
         const oom = /allocation failed|out of memory/i.test(String(err.message));
         if (oom) finisher.cancel();
-        // (once: the earlier finished moments let go — they hold memory — and the finish tried again in a fresh worker,
-        // the old one's memory gone with it)
+        // (once: the moment kept in detail let go — it holds memory — and the finish tried again in a fresh worker, the old
+        // one's memory gone with it)
         if (oom && !again && B === b) {
             b.finishes.clear(); b.finishJob = null; dirty = true;
-            console.warn('[evolution] out of memory finishing: earlier finished moments and the old worker let go, trying again');
+            console.warn('[evolution] out of memory finishing: the detailed moment kept and the old worker let go, trying again');
             setTimeout(() => finishMoment(frame), 300);
             return;
         }
-        if (B === b) b.finishNote = err.name === 'AbortError' ? 'Finish cancelled'
-            : oom ? 'Not enough memory to finish at this detail — try a coarser one, or close other tabs (other World Orogen tabs can share this one’s memory)' :`Could not finish: ${String(err.message).split('\n')[0]}`;
+        if (B === b) b.finishNote = err.name === 'AbortError' ? 'Adding detail cancelled'
+            : oom ? 'Not enough memory for this detail — try a coarser one, or close other tabs (other World Orogen tabs can share this one’s memory)' : `Could not add detail: ${String(err.message).split('\n')[0]}`;
         if (err.name !== 'AbortError') console.error(err);
     } finally {
         if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; updateClimateUi(); }
     }
 }
 
-// ── the page at its simplest (developer, 2026-10-01: the steps were "more confusing … overwhelming" — "what is the absolute
-// minimum that someone needs to see to make a planet, see everything, and export … surface that, and then hide all the
-// details or knobs"): New World; the timeline with Finish and Export on it; the layers over the planet; the rest folded in
-// Settings ──
+// ── the context card (plans/V2_EVOLUTION_UI_PLAN.md; developer, 2026-10-13: the page was "too sparse and confusing. It
+// isn't intuitive what a user should be doing"): one card that says what is on screen and the one thing to do next —
+// Add detail, Replace, Cancel, Export — its button mirrored on the timeline, beside the moment chosen. One moment of a
+// history is kept in detail; the timeline's moments are previews ──
 const cellsWords = n => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1e3}K`);
-/** Finish (its progress — Cancel while it runs) until the moment shown is finished at the detail chosen; then Export. The
- *  moments finished, in Settings; the line beneath the timeline: what to do now. */
-function updateFinishUi() {
-    const b = B, frame = painted, job = b?.finishJob, have = frame && b?.finishes.get(frame), btn = $('finishBtn');
-    const cells = Number($('finishCells').value);
-    btn.disabled = !frame || !b?.simMesh;
-    btn.hidden = !!have && have.cells === cells && !job;                // (finished at this detail: Export in its place)
-    btn.classList.toggle('busy', !!job);
-    btn.classList.toggle('evo-act-main', !have || !!job);              // (finished already: Export is the next step, Finish again a quieter one)
-    btn.textContent = job ? `Cancel · ${(100 * Math.min(1, job.share)).toFixed(0)}%` : have ? `Finish at ${cellsWords(cells)}` : 'Finish';
-    btn.title = job ? `Finishing ${job.frame.time.toFixed(0)} Myr (${job.stage}) — click to cancel` : btn.dataset.title ??= btn.title;
-    $('finishBar').hidden = !job;
-    if (job) $('finishBar').firstElementChild.style.width = `${(100 * Math.min(1, job.share)).toFixed(1)}%`;
-    $('exportBtn').hidden = !have || !!job;
-    const done = b ? [...b.finishes.keys()].sort((x, y) => x.time - y.time) : [];
-    $('finishInfo').innerHTML = (b?.finishNote ? `<div>${b.finishNote}</div>` : '') +
-        (done.length ? `<div>Finished: ${done.map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ')}</div>` : '');
+/** The history's one detailed moment, as [frame, finished], or null. */
+const detailedOf = b => (b?.finishes.size ? b.finishes.entries().next().value : null);
+const showIf = (el, on) => { el.hidden = !on; return on; };
+/** The card, the timeline's button and badge, the Extend history button, the sheet's line and the Satellite tab's lock. */
+function updateCard() {
+    const b = B, frame = painted, job = b?.finishJob, det = detailedOf(b), detFrame = det?.[0], fin = det?.[1];
+    const isDet = !!frame && frame === detFrame, cells = Number($('finishCells').value);
+    const t = frame ? frame.time.toFixed(0) : '', dt = detFrame?.time.toFixed(0), pct = job ? (100 * Math.min(1, job.share)).toFixed(0) : 0;
+    // the one thing to do next: the card's button and the timeline's
+    let main = 'Add detail', short = main, title = 'Sculpt the moment shown again, in detail: its rivers, lakes and glaciers, its own climate and the Satellite view (seconds to a minute)';
+    if (job) { main = short = `Cancel · ${pct}%`; title = `Adding detail to ${job.frame.time.toFixed(0)} Myr (${job.stage}) — click to cancel`; }
+    else if (isDet) { main = short = 'Export'; title = 'Save this detailed moment as map files: heightmaps (the sea floor too), a land mask and the colour map'; }
+    else if (detFrame) { main = `Replace ${dt} Myr with ${t} Myr`; short = `Replace ${dt} Myr`; title = `Add detail to ${t} Myr — the detailed ${dt} Myr is let go once it is done (one moment is kept in detail)`; }
+    for (const [btn, label] of [[$('cardAction'), main], [$('timelineAction'), short]]) {
+        btn.disabled = !frame || !b?.simMesh;
+        btn.textContent = label; btn.title = title;
+        btn.classList.toggle('busy', !!job);
+    }
+    $('finishBar').hidden = $('cardBar').hidden = !job;
+    if (job) for (const bar of [$('finishBar'), $('cardBar')]) bar.firstElementChild.style.width = `${(100 * Math.min(1, job.share)).toFixed(1)}%`;
+    // what is on screen: the moment, a preview or detailed
+    const badge = !frame ? null : isDet ? `Detailed · ${cellsWords(fin.cells)}` : 'Preview';
+    for (const el of [$('cardBadge'), $('momentBadge')]) {
+        if (showIf(el, !!badge)) { el.textContent = badge; el.classList.toggle('detailed', isDet); }
+    }
+    $('cardTitle').textContent = frame ? `${t} Myr` : 'Starting…';
+    const computing = !!b?.live && !b.going;
+    $('cardText').textContent = !frame ? 'A new world is starting…'
+        : job ? `Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`
+        : isDet ? 'This moment, sculpted in detail. Look around — Satellite and Climate show it at its detail — then export it as map files.'
+        : playing ? (computing ? 'Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail.' : 'Pause on a moment you like, then add detail.')
+        : 'This is a preview. Add detail sculpts it again, finely: rivers and lakes, glaciers, its own climate and the Satellite view — ready to export.';
+    showIf($('detailGroup'), !!frame && !job);
+    showIf($('waterGroup'), isDet && !job);
+    const again = $('cardAgain');
+    if (showIf(again, isDet && !job && fin.cells !== cells)) again.textContent = `Add detail again at ${cellsWords(cells)}`;
+    if (showIf($('cardDetailed'), !!detFrame && !isDet)) $('cardDetailed').innerHTML = `Detailed: ${dt} Myr — <a href="#" data-t="${detFrame.time}">go to it</a>`;
+    const note = b?.finishNote && (isDet || !b.finishOk) ? b.finishNote : null;
+    if (showIf($('cardNote'), !!note)) $('cardNote').textContent = note;
+    // Extend history: once the history has reached its end — Stop while it runs on, Stopping… until its piece is done
+    const ext = ui.extend;
+    if (showIf(ext, !!b?.run?.more)) {
+        ext.disabled = b.going && !b.wantGo;
+        ext.classList.toggle('on', b.going);
+        ext.textContent = !b.going ? 'Extend history' : b.wantGo ? 'Stop extending' : 'Stopping…';
+        ext.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.wantGo ? 'Stop the history here (you can extend it again later)' : 'Stopping once this piece of history is done';
+    }
+    // (the collapsed bottom sheet: the moment and what is going on, in a line)
+    $('sheetLine').textContent = !frame ? 'Starting a world…' : `${t} Myr · ${badge}` + (job ? ` · adding detail ${pct}%` : computing ? ' · computing the history…' : b?.going ? ' · extending the history…' : '');
+    // Satellite comes with detail: its tab locked on previews
+    const satOk = !!(frame && b?.finishes.get(frame)?.climate?.raster?.sat);
+    document.querySelector('#mapTabs [data-layer="satellite"]').classList.toggle('locked', !satOk);
+    $('mobileViewSwitch').querySelector('option[value="satellite"]').textContent = satOk ? 'Satellite' : 'Satellite 🔒';
     const legend = $('regimeLegend');
-    legend.hidden = !(view.byRegime && view.water && view.layer === 'terrain' && have);
+    legend.hidden = !(view.byRegime && view.water && view.layer === 'terrain' && isDet);
     if (!legend.childElementCount) legend.innerHTML = REGIME_STYLE.map(s => `<span><i style="background:${s.rgb}"></i>${s.name}</span>`).join('');
     $('legendCard').hidden = !$('climateLegend').innerHTML.trim() && legend.hidden;
-    if (b && frame) ui.info.textContent = job ? `Finishing ${job.frame.time.toFixed(0)} Myr…`
-        : have ? `${frame.time.toFixed(0)} Myr is finished — look around (Satellite, Climate), then Export`
-        : playing ? 'Play the history, stop on a moment you like and press Finish'
-        : `Press Finish to sculpt ${frame.time.toFixed(0)} Myr in detail — its rivers, climate and Satellite view`;
+}
+/** The card's and the timeline's button: Cancel while adding detail; Export on the detailed moment; else Add detail (or Replace). */
+function mainAction() {
+    const b = B, frame = painted;
+    if (!b || !frame) return;
+    if (!b.finishJob && b.finishes.get(frame)) openExport();
+    else finishMoment();
 }
 
 // ── the export (plans/V2_FULL_PLANET_PLAN.md C): the finished moment shown, as map files — V1's dialog ──
@@ -618,7 +656,6 @@ async function runExport() {
         if (exporting === ex) $('exportGo').disabled = false; else if (!exporting) exporting = null;
     }
 }
-$('exportBtn').addEventListener('click', () => openExport());
 $('exportWidth').addEventListener('change', exportDims);
 $('exportGo').addEventListener('click', () => runExport());
 $('exportCancel').addEventListener('click', closeExport);
@@ -667,15 +704,16 @@ function updateClimateUi() {
     let text = null, act = null;
     if (frame && view.layer === 'satellite' && !shown) {
         const fjob = b.finishJob;
-        text = fjob ? `Finishing ${fjob.frame.time.toFixed(0)} Myr…` : `The Satellite view comes with a finished moment — finish ${t} Myr to see it`;
-        act = fjob ? null : 'Finish';
+        const det = detailedOf(b);
+        text = fjob ? `Adding detail to ${fjob.frame.time.toFixed(0)} Myr…` : `The Satellite view comes with detail — add detail to ${t} Myr to see it`;
+        act = fjob ? null : det ? `Replace ${det[0].time.toFixed(0)} Myr` : 'Add detail';
     } else if (frame && CLIMATE_SUB.has(view.layer) && !shown && !have) {
-        text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Stop on a moment to see its climate' : `No climate for ${t} Myr`;
+        text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Pause on a moment to see its climate' : `No climate for ${t} Myr`;
         act = job || playing ? null : 'Calculate';
     }
     chip.hidden = !text;
     if (text) { $('climateChipText').textContent = text; $('climateChipBtn').hidden = !act; $('climateChipBtn').textContent = act ?? ''; }
-    updateFinishUi();
+    updateCard();
 }
 
 function stats(T, frame) {
@@ -706,8 +744,6 @@ function tick(now) {
         else if (!preparing) {
             const p = preparing = B.player.prepare(frame).catch(err => console.error(err)).finally(() => { if (preparing === p) preparing = null; dirty = true; });
         }
-        // (the Live button lit while the playhead is at the newest moment built)
-        ui.live.classList.toggle('on', B.live && playing && playTime >= builtTo() - SNAPSHOT_MYR);
     }
     globe.controls.autoRotate = $('chkRotate').checked && view.mode === 'globe';
     if (view.mode === 'globe') { globe.resize(); globe.renderIfNeeded(); }
@@ -727,17 +763,15 @@ ui.time.addEventListener('input', () => {
     if (Number(ui.time.value) > builtTo()) ui.time.value = builtTo();
     playTime = Number(ui.time.value); dirty = true; lastScrub = performance.now(); rail();
 });
-// Live: to the newest moment built, playing on from there
-ui.live.addEventListener('click', () => { if (!B?.frames.length) return; playTime = builtTo(); ui.time.value = playTime; setPlaying(true); dirty = true; rail(); });
-// Keep going / Stop (a stop lets the piece under way finish: the worker is in the middle of it)
-ui.more.addEventListener('click', () => {
+// Extend history / Stop (a stop lets the piece under way finish: the worker is in the middle of it)
+ui.extend.addEventListener('click', () => {
     const b = B;
     if (!b?.run?.more) return;
     if (!b.going) keepGoing(b);
-    else { b.wantGo = false; b.goUntil = Infinity; updateGoUi(); }
+    else { b.wantGo = false; b.goUntil = Infinity; updateCard(); }
 });
 addEventListener('keydown', e => {
-    if (e.target.closest('input, select, textarea') || !$('exportOverlay').classList.contains('hidden')) return;
+    if (e.target.closest('input, select, textarea') || !$('exportOverlay').classList.contains('hidden') || !$('tutorialOverlay').classList.contains('hidden')) return;
     if (e.code === 'Space') { e.preventDefault(); ui.play.click(); }
 });
 
@@ -757,12 +791,14 @@ function setLayer(layer) {
 }
 for (const b of document.querySelectorAll('#mapTabs .map-tab, #climateTabs .map-tab')) b.addEventListener('click', () => setLayer(b.dataset.layer));
 $('mobileViewSwitch').addEventListener('change', e => setLayer(e.target.value));
-$('finishBtn').addEventListener('click', () => finishMoment());
-$('finishCells').addEventListener('change', () => updateFinishUi());
-$('chkWater').addEventListener('change', e => { view.water = e.target.checked; dirty = true; updateFinishUi(); });
+$('cardAction').addEventListener('click', mainAction);
+$('timelineAction').addEventListener('click', mainAction);
+$('cardAgain').addEventListener('click', () => finishMoment());
+$('finishCells').addEventListener('change', () => updateCard());
+$('chkWater').addEventListener('change', e => { view.water = e.target.checked; dirty = true; updateCard(); });
 $('riverDensity').addEventListener('change', e => { view.riverQ = Number(e.target.value); dirty = true; });
-$('chkRegime').addEventListener('change', e => { view.byRegime = e.target.checked; dirty = true; updateFinishUi(); });
-$('finishInfo').addEventListener('click', e => {
+$('chkRegime').addEventListener('change', e => { view.byRegime = e.target.checked; dirty = true; updateCard(); });
+$('cardDetailed').addEventListener('click', e => {
     const a = e.target.closest('a[data-t]');
     if (!a || !B?.frames.length) return;
     e.preventDefault(); setPlaying(false);
@@ -883,4 +919,35 @@ $('sidebarToggle').addEventListener('click', () => { ui.panel.classList.toggle('
     if (mobile()) ui.panel.classList.add('collapsed');
 })();
 
+// ── the tutorial (V1's, js/main.js): over a history already building, on the first visit; the "?" opens it again ──
+(function tutorial() {
+    const overlay = $('tutorialOverlay'), steps = overlay.querySelectorAll('.tutorial-step'), dots = overlay.querySelectorAll('.dot');
+    const KEY = 'orogen.evolution.tutorial-seen';
+    let current = 0;
+    const show = i => {
+        current = i;
+        steps.forEach((s, k) => s.classList.toggle('active', k === i));
+        dots.forEach((d, k) => d.classList.toggle('active', k === i));
+        $('tutorialBack').disabled = i === 0;
+        $('tutorialNext').textContent = i === steps.length - 1 ? 'Get Started' : 'Next';
+    };
+    const open = () => { show(0); overlay.classList.remove('hidden'); };
+    const close = () => { overlay.classList.add('hidden'); try { localStorage.setItem(KEY, '1'); } catch { /* (remembered only where the browser allows) */ } };
+    $('tutorialNext').addEventListener('click', () => (current < steps.length - 1 ? show(current + 1) : close()));
+    $('tutorialBack').addEventListener('click', () => { if (current > 0) show(current - 1); });
+    $('tutorialClose').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.classList.contains('hidden')) close(); });
+    $('helpBtn').addEventListener('click', open);
+    // (a finger taps where a mouse hovers)
+    if (IS_TOUCH) {
+        for (const el of overlay.querySelectorAll('[data-touch]')) el.textContent = el.dataset.touch;
+        for (const s of overlay.querySelectorAll('.tutorial-step p')) s.innerHTML = s.innerHTML.replace('<strong>scroll</strong> to zoom', '<strong>pinch</strong> to zoom');
+        ui.info.textContent = '';
+    }
+    const seen = (() => { try { return localStorage.getItem(KEY); } catch { return '1'; } })();
+    if (!seen) open();
+})();
+
+labels();
 build();
