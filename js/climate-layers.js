@@ -131,7 +131,7 @@ export function climateColorFn(id, season, data) {
     const sea = (r) => !(elev[r] > 0);
     const at = (f, r) => gridAt(data, f, r);
     switch (id) {
-        case 'temperature': return (r) => tempColor(sea(r) ? at(g.T[s], r) : cells.t[s][r]);
+        case 'temperature': return (r) => tempColor(sea(r) ? at((g.Tsea ?? g.T)[s], r) : cells.t[s][r]);
         case 'precip': return (r) => rainColor(sea(r) ? at(g.P[s], r) : cells.p[s][r]);
         case 'pressure': return (r) => pressureColor(at(g.slp[s], r));
         case 'wind': return (r) => windColor(Math.hypot(at(g.u[s], r), at(g.v[s], r)));
@@ -186,7 +186,8 @@ export function climateReadoutLines(data, r) {
     const g = C.grid, cells = C.cells, isSea = !(data.r_elevation[r] > 0), lines = [];
     const at = (f) => gridAt(data, f, r);
     if (isSea) {
-        lines.push(`<span class="hi-label">SST</span> ${fmt(at(g.T.jan))}°C Jan · ${fmt(at(g.T.jul))}°C Jul`);
+        const Ts = g.Tsea ?? g.T;
+        lines.push(`<span class="hi-label">SST</span> ${fmt(at(Ts.jan))}°C Jan · ${fmt(at(Ts.jul))}°C Jul`);
         const ice = Math.max(at(g.seaIce.jan), at(g.seaIce.jul));
         if (ice > 0.05) lines.push(`<span class="hi-label">Sea ice</span> ${fmt(100 * at(g.seaIce.jan))}% Jan · ${fmt(100 * at(g.seaIce.jul))}% Jul`);
     } else {

@@ -18,7 +18,7 @@
 // swing of the winds) is updated over a few outer iterations. T is the sea-level temperature; the stage reports it
 // at each grid cell's reference height (its mean land height), and the core lifts it to each terrain cell.
 
-import { LatLonGrid, coarsenField, refineField } from './grid.js';
+import { LatLonGrid, coarsenField, refineField, refineForDrawing, fillAcross } from './grid.js';
 import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
 import { HelmholtzSolver } from './solver.js';
 import { PARAMS } from './config.js';
@@ -469,23 +469,33 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const lapseCore = new Float32Array(core.size), domeCore = new Float32Array(core.size);
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
+        const domeDraw = new Float32Array(core.size);
+        refineForDrawing(g, core, ratio, domeG, domeDraw, 0, Uint8Array.from(landFrac, f => (f >= 0.5 ? 1 : 0)), 0, Infinity);
         const heightCorrect = (out, offset) => {
             for (let c = 0; c < core.size; c++) { const hr = Math.max(href[c] === href[c] ? Math.max(0, href[c]) : 0, domeCore[c]); out[offset + c] -= lapseCore[c] * hr; }
         };
         const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size), seaIce = new Float32Array(12 * core.size);
-        // (and, for the pages' drawing only, the ice the sea would carry at every cell's temperature: the sea ice above is
-        // none on the energy-balance grid's mostly-land cells, and refined that reaches up to a cell out to sea — a rim
-        // of open water along every icy coast)
-        const seaIceOpen = new Float32Array(12 * core.size), iceAll = new Float64Array(G);
+        // (and, for the pages' drawing only — grid.js refineForDrawing — the sea's own air temperature and its ice:
+        // the energy balance's mostly-land cells carry the land's temperature and no sea ice, and refined linearly that
+        // drew every coast's sea with the coarse cells' straight edges (a rim of open water along icy coasts). Here the
+        // sea's temperature is carried across its coasts from the sea, its ice follows from it, and both are refined
+        // smoothly. And the ice sheets likewise, carried from the land.)
+        const seaSL = new Float32Array(12 * core.size), seaIceOpen = new Float32Array(12 * core.size), slSea = new Float64Array(G), airSea = new Float64Array(G), iceAll = new Float64Array(G);
+        const seaCoarse = Uint8Array.from(landFrac, f => (f < 0.5 ? 1 : 0));
         const inversion = new Float32Array(12 * core.size);
         const iceTmp = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
             const sl = surfaceAt(m + 0.5, false);
-            for (let c = 0; c < G; c++) { iceAll[c] = iceRamp(sl[c]); iceTmp[c] = landFrac[c] < 0.5 ? iceAll[c] : 0; }   // sea ice, by month
+            for (let c = 0; c < G; c++) iceTmp[c] = landFrac[c] < 0.5 ? iceRamp(sl[c]) : 0;       // sea ice, by month
             refine(g, core, ratio, iceTmp, seaIce, m * core.size);
-            refine(g, core, ratio, iceAll, seaIceOpen, m * core.size);
+            slSea.set(sl); fillAcross(g, slSea, seaCoarse);
+            for (let c = 0; c < G; c++) iceAll[c] = iceRamp(slSea[c]);
+            refineForDrawing(g, core, ratio, iceAll, seaIceOpen, m * core.size, null, 0, 1);
             refine(g, core, ratio, sl, monthlySL, m * core.size);
-            refine(g, core, ratio, surfaceAt(m + 0.5, true), monthly, m * core.size);
+            const air = surfaceAt(m + 0.5, true);                     // (surfaceAt's buffer is shared: sl is done with)
+            airSea.set(air);
+            refineForDrawing(g, core, ratio, airSea, seaSL, m * core.size, seaCoarse);
+            refine(g, core, ratio, air, monthly, m * core.size);
             // (the inversion alone: a layer by the ground — the circulation reads the air above it)
             for (let c = 0, o = m * core.size; c < core.size; c++) inversion[o + c] = monthly[o + c] - monthlySL[o + c];
             heightCorrect(monthly, m * core.size);
@@ -541,7 +551,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         refine(g, core, ratio, iceYear, iceCore, 0);
         prof.output = performance.now() - tp;
         const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial };
-        return { T, monthly, monthlySL, seaIce, seaIceOpen, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
+        return { T, monthly, monthlySL, seaIce, seaIceOpen, seaSL, domeDraw, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
     };
 }
 

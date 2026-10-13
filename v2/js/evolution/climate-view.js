@@ -123,7 +123,7 @@ const windSpeed = (C, season, g) => Math.hypot(g(C.u[season]), g(C.v[season]));
 
 /** The moment's temperature at terrain cell c (°C): land from its own cell (its height and all), the sea at sea level. */
 function temperatureAt(C, season, p, c, landCell) {
-    if (!landCell) return at(C.T[season], p, c);
+    if (!landCell) return at((C.Tsea ?? C.T)[season], p, c);
     const t = C.cell.tAnnual[c];
     return season === 'year' ? t : t + at(C.T[season], p, c) - at(C.T.year, p, c);
 }
@@ -347,8 +347,8 @@ export function finishedClimateColor(layer, season, C, W, lut) {
             if (i < 0) { const ice = Math.min(1, Math.max(0, g(C.ice, x, y))); if (ice > 0.02) { for (let ch = 0; ch < 3; ch++) px[ch] = rgb[ch] + (ICE_RGB[ch] - rgb[ch]) * ice; rgb = px; } }
             rgbPx(out, o, kk, rgb);
         } else if (layer === 'temperature') {
-            const sea = g(C.T[season], x, y);
-            putPx(out, o, kk, i < 0 ? sea : R.tAnnual[i] / 100 + (season === 'year' ? 0 : sea - g(C.T.year, x, y)));
+            if (i < 0) { putPx(out, o, kk, g((C.Tsea ?? C.T)[season], x, y)); return; }
+            putPx(out, o, kk, R.tAnnual[i] / 100 + (season === 'year' ? 0 : g(C.T[season], x, y) - g(C.T.year, x, y)));
         } else if (layer === 'rain') {
             const p = g(C.P[season], x, y);
             if (i < 0) { putPx(out, o, kk, p); return; }
@@ -402,7 +402,7 @@ function satelliteColor(season, C, W) {
         if (wet) {
             // (the sea: a gentler light on its floor's relief; shallow warm water turquoise; its ice in its season)
             seaDepthRgb(v, rgb);
-            const warmShallow = 0.7 * Math.max(0, Math.min(1, (g(C.T[season], x, y) - 20) / 6)) * Math.max(0, Math.min(1, (v + 0.12) / 0.1));
+            const warmShallow = 0.7 * Math.max(0, Math.min(1, (g((C.Tsea ?? C.T)[season], x, y) - 20) / 6)) * Math.max(0, Math.min(1, (v + 0.12) / 0.1));
             // (the ice's edge sharpened: the 1° grid's fraction, bilinear, is a fog)
             const fi = Math.min(1, Math.max(0, (g(ice, x, y) - 0.3) / 0.35));
             const ks = 0.8 + 0.2 * k;
@@ -446,7 +446,7 @@ export function finishedClimateLines(C, u, v, sea, layer = null, season = 'year'
         lines.push(`<span class="hi-label">Clima</span> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgb(${r},${gg},${b});vertical-align:middle;margin-right:4px"></span>${K.code} — ${K.name}`);
         lines.push(`<span class="hi-label">Temp</span> ${(R.tAnnual[i] / 100).toFixed(1)} °C a year`);
         lines.push(`<span class="hi-label">Rain</span> ${R.pAnnual[i].toLocaleString()} mm a year`);
-    } else lines.push(`<span class="hi-label">Sea</span> ${g(C.T.year, x, y).toFixed(1)} °C a year${g(C.ice, x, y) > 0.5 ? ' · sea ice' : ''}`);
+    } else lines.push(`<span class="hi-label">Sea</span> ${g((C.Tsea ?? C.T).year, x, y).toFixed(1)} °C a year${g(C.ice, x, y) > 0.5 ? ' · sea ice' : ''}`);
     const line = layerLine(layer, season, C, f => g(f, x, y), i >= 0, key => (R.stats?.[key] && i >= 0 ? statValue(R.stats[key], key, i) : NaN));
     if (line) lines.unshift(line);
     return lines;
@@ -486,7 +486,7 @@ export function readoutLines(C, terrain, tMesh, t, layer = null, season = 'year'
         lines.push(`<span class="hi-label">Temp</span> ${C.cell.tAnnual[t].toFixed(1)} °C a year`);
         lines.push(`<span class="hi-label">Rain</span> ${Math.round(C.cell.pAnnual[t]).toLocaleString()} mm a year`);
     } else {
-        lines.push(`<span class="hi-label">Sea</span> ${at(C.T.year, p, t).toFixed(1)} °C a year${at(C.ice, p, t) > 0.5 ? ' · sea ice' : ''}`);
+        lines.push(`<span class="hi-label">Sea</span> ${at((C.Tsea ?? C.T).year, p, t).toFixed(1)} °C a year${at(C.ice, p, t) > 0.5 ? ' · sea ice' : ''}`);
     }
     return lines;
 }

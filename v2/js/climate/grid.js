@@ -125,6 +125,102 @@ function refineMap(g, core) {
     return m;
 }
 
+// ── For drawing: a coarse field to the core grid without the coarse grid showing through ──
+// A field that only means something on one side of the coast (the sea's currents and ice, the land's ice sheets) is zero
+// or arbitrary on the other side's coarse cells; refined linearly, every coast then shows the coarse cells' straight
+// edges, and near the poles — where a row's cells are much narrower than they are tall — wedges. So: carry the field
+// across the coast from its own side (as far as it takes), even out the polar rows, and refine with a smooth curve.
+
+/**
+ * Carry a field across from the cells where `valid` is set to all the others, ring by ring (each taking its set
+ * neighbours' mean; longitude wraps), as far as it takes. In place; returns the field.
+ */
+export function fillAcross(grid, field, valid) {
+    const { w, h, size } = grid;
+    let have = Uint8Array.from(valid, v => (v ? 1 : 0)), left = 0;
+    for (let c = 0; c < size; c++) if (!have[c]) left++;
+    if (left === size) return field;                                  // (nothing to carry)
+    const next = new Uint8Array(size), set = [];
+    while (left > 0) {
+        next.set(have); set.length = 0;
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+            const c = j * w + i;
+            if (have[c]) continue;
+            const W = j * w + (i === 0 ? w - 1 : i - 1), E = j * w + (i === w - 1 ? 0 : i + 1);
+            let s = 0, k = 0;
+            if (have[W]) { s += field[W]; k++; }
+            if (have[E]) { s += field[E]; k++; }
+            if (j > 0 && have[c - w]) { s += field[c - w]; k++; }
+            if (j < h - 1 && have[c + w]) { s += field[c + w]; k++; }
+            if (k) { set.push(c, s / k); next[c] = 1; }
+        }
+        if (!set.length) break;
+        for (let q = 0; q < set.length; q += 2) field[set[q]] = set[q + 1];
+        left -= set.length / 2;
+        have.set(next);
+    }
+    return field;
+}
+
+/**
+ * Even out the rows near the poles: each row averaged along its length over about as many cells as one cell is tall
+ * (a box of ≈ 1 / cos latitude cells) — nothing changes where the cells are square. In place; returns the field.
+ */
+export function evenPolarRows(grid, field) {
+    const { w, h } = grid, row = new Float64Array(w);
+    for (let j = 0; j < h; j++) {
+        const r = Math.round((1 / Math.max(1e-3, Math.cos(grid.lat[j] * DEG)) - 1) / 2);
+        if (r <= 0) continue;
+        if (2 * r + 1 >= w) { let s = 0; for (let i = 0; i < w; i++) s += field[j * w + i]; s /= w; for (let i = 0; i < w; i++) field[j * w + i] = s; continue; }
+        for (let i = 0; i < w; i++) row[i] = field[j * w + i];
+        let s = 0;
+        for (let d = -r; d <= r; d++) s += row[(d + w) % w];
+        for (let i = 0; i < w; i++) {
+            field[j * w + i] = s / (2 * r + 1);
+            s += row[(i + r + 1) % w] - row[(i - r + w) % w];
+        }
+    }
+    return field;
+}
+
+/** Catmull–Rom weights for a point t (0…1) between the 2nd and 3rd of four samples. */
+function cubicWeights(t, out) {
+    const t2 = t * t, t3 = t2 * t;
+    out[0] = 0.5 * (-t3 + 2 * t2 - t); out[1] = 0.5 * (3 * t3 - 5 * t2 + 2); out[2] = 0.5 * (-3 * t3 + 4 * t2 + t); out[3] = 0.5 * (t3 - t2);
+}
+/** A coarse-grid field onto the fine grid by a smooth (Catmull–Rom, 4 × 4) curve, written at out[offset …]; longitude
+ *  wraps, latitude holds at the poles; the result kept within [lo, hi]. ratio 1 copies. */
+export function refineSmooth(coarse, fine, ratio, src, out, offset = 0, lo = -Infinity, hi = Infinity) {
+    if (ratio === 1) { for (let c = 0; c < fine.size; c++) out[offset + c] = src[c]; return; }
+    const W = coarse.w, H = coarse.h, wx = new Float64Array(4), wy = new Float64Array(4), ix = new Int32Array(4);
+    for (let j = 0; j < fine.h; j++) {
+        const y = Math.max(0, Math.min(H - 1, coarse.rowOf(fine.lat[j]))), y0 = Math.floor(y);
+        cubicWeights(y - y0, wy);
+        for (let i = 0; i < fine.w; i++) {
+            const x = coarse.colOf(fine.lon[i]), x0 = Math.floor(x);
+            cubicWeights(x - x0, wx);
+            for (let a = 0; a < 4; a++) ix[a] = (((x0 - 1 + a) % W) + W) % W;
+            let v = 0;
+            for (let b = 0; b < 4; b++) {
+                const row = Math.max(0, Math.min(H - 1, y0 - 1 + b)) * W;
+                v += wy[b] * (wx[0] * src[row + ix[0]] + wx[1] * src[row + ix[1]] + wx[2] * src[row + ix[2]] + wx[3] * src[row + ix[3]]);
+            }
+            out[offset + j * fine.w + i] = v < lo ? lo : v > hi ? hi : v;
+        }
+    }
+}
+
+/**
+ * A coarse field for drawing: carried across the coast from where `valid` is set (or not, with null), its polar rows
+ * evened, refined smoothly onto the core grid at out[offset …] (within [lo, hi]). `src` is left as it is.
+ */
+export function refineForDrawing(coarse, fine, ratio, src, out, offset = 0, valid = null, lo = -Infinity, hi = Infinity) {
+    const f = Float64Array.from(src);
+    if (valid) fillAcross(coarse, f, valid);
+    evenPolarRows(coarse, f);
+    refineSmooth(coarse, fine, ratio, f, out, offset, lo, hi);
+}
+
 /**
  * Regrid a field given on any regular source lat/lon grid (1-D coordinate arrays in degrees, either orientation,
  * longitudes 0…360 or −180…180) onto `grid` by bilinear interpolation. `src` holds `layers` stacked layers of

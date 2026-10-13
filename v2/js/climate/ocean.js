@@ -27,7 +27,7 @@
 //    Nordic seas; not the Pacific, closed at the Bering Strait) and not beyond a circumpolar channel (its current
 //    blocks the way, as the Antarctic Circumpolar Current does).
 
-import { LatLonGrid, coarsenField, refineField } from './grid.js';
+import { LatLonGrid, coarsenField, refineField, refineForDrawing } from './grid.js';
 import { HelmholtzSolver } from './solver.js';
 import { PARAMS } from './config.js';
 
@@ -357,11 +357,15 @@ export function windDrivenOcean() {
         const out = (src) => { const o = new Float32Array(core.size); refineField(g, core, ratio, src, o, 0); return o; };
         const outM = (src) => { const o = new Float32Array(12 * core.size); for (let m = 0; m < 12; m++) refineField(g, core, ratio, src.subarray(m * G, (m + 1) * G), o.subarray(m * core.size, (m + 1) * core.size), 0); return o; };
         const surf = (x, c) => (isSea[c % G] ? x / P.OCEAN_CURRENT_DEPTH_M : 0);
+        // (what only the pages draw — the currents and the upwelling: carried from the sea across its coasts and refined
+        // smoothly, so no coarse cell's straight edge shows — grid.js refineForDrawing)
+        const draw = (src) => { const o = new Float32Array(core.size); refineForDrawing(g, core, ratio, src, o, 0, isSea); return o; };
+        const drawM = (src) => { const o = new Float32Array(12 * core.size); for (let m = 0; m < 12; m++) refineForDrawing(g, core, ratio, src.subarray(m * G, (m + 1) * G), o, m * core.size, isSea); return o; };
         return {
-            psi: out(psi.map(x => x / 1e6)), u: out(U.map(surf)), v: out(V.map(surf)), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc), carried: out(carried),
-            upwelling: out(wUp.map(x => x * 86400)), seaMask: out(Float64Array.from(isSea)), curl: out(curl),
+            psi: out(psi.map(x => x / 1e6)), u: draw(U.map(surf)), v: draw(V.map(surf)), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc), carried: out(carried),
+            upwelling: draw(wUp.map(x => x * 86400)), seaMask: out(Float64Array.from(isSea)), curl: out(curl),
             // (null without seasons: the temperature stage then takes the year's heat, as before)
-            monthly: seasonal ? { u: outM(UM.map(surf)), v: outM(VM.map(surf)), qflux: outM(qM), upwelling: outM(wUpM.map(x => x * 86400)) } : null,
+            monthly: seasonal ? { u: drawM(UM.map(surf)), v: drawM(VM.map(surf)), qflux: outM(qM), upwelling: drawM(wUpM.map(x => x * 86400)) } : null,
             stress: { x: out(tx), y: out(ty) },
             channels: channels.map(ch => ({ fromLat: g.lat[ch.jStart], toLat: g.lat[ch.jEnd], transportSv: ch.transport / 1e6 })),
             solver: solveStats, ms: performance.now() - t0, source: 'wind-driven ocean',
