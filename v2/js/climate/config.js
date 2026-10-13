@@ -94,8 +94,6 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_SEASON_SCALE: 1,      // –          strength of the gyres' seasonal cycle (0: the year's gyres all year, as before)
     OCEAN_SEASON_FULL_DEG: 10,  // °          the gyres follow the season's winds fully within this latitude …
     OCEAN_SEASON_ZERO_DEG: 60,  // °          … and not at all from this one (slower planetary waves: years to adjust)
-    OCEAN_SEASON_RECTIFY: 0,    // –          share of the seasons' change to the YEAR's ocean heat kept (0: the seasons only move
-                                //            heat through the year; 1: month-by-month upwelling also cools the year)
 
     // ── Rain (rain.js) ──
     RAIN_EVAP_COEFF: 1.3e-3,    // –          bulk transfer coefficient for evaporation
@@ -200,7 +198,6 @@ export const PARAM_PRIORS = Object.freeze({
     OCEAN_SEASON_SCALE: { value: 1, min: 0, max: 1, source: 'the wind-driven gyres\' seasonal cycle: large in the tropics (the Somali Current reverses with the monsoon; the equatorial countercurrent swells and ebbs), small in the subtropical gyres (Schott & McCreary 2001)' },
     OCEAN_SEASON_FULL_DEG: { value: 10, min: 5, max: 20, source: 'equatorial Kelvin and Rossby waves cross a basin in weeks to months: the tropical ocean follows the seasons' },
     OCEAN_SEASON_ZERO_DEG: { value: 60, min: 30, max: 70, source: 'midlatitude Rossby waves take years to cross a basin, so the gyres there hold their annual-mean state (developer: fade out by ≈ 60°)' },
-    OCEAN_SEASON_RECTIFY: { value: 0, min: 0, max: 1, source: 'month-by-month upwelling under reversing monsoons cools the year as well as the season (rectification) — real, but with a fixed upwelled-water ΔT and a 3° grid it cooled the Indo-Pacific warm pool ≈ 1 °C (Sumatra Af → Am / Aw); to be scored on Earth' },
 
     RAIN_EVAP_COEFF:    { value: 1.3e-3, min: 1.0e-3, max: 1.8e-3, source: 'bulk transfer coefficient C_E ≈ 1.1–1.5 × 10⁻³ (Large & Pond 1982; COARE)' },
     RAIN_SURFACE_RH:    { value: 0.8, min: 0.7, max: 0.85, source: 'near-surface relative humidity over the oceans ≈ 75–80 %' },

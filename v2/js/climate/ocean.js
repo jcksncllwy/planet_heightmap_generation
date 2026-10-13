@@ -339,30 +339,16 @@ export function windDrivenOcean() {
         };
         const q = new Float64Array(G), qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
         const qM = new Float64Array(12 * G), wUpM = new Float64Array(12 * G);
-        // With seasons, each month's heat from its own stress, currents and sea; but the year's heat stays the year's —
-        // the seasons move heat through the year, not across it (OCEAN_SEASON_RECTIFY = 0). Counted month by month,
-        // upwelling is "rectified": a reversing monsoon wells water up one season and pushes it down the other, and only
-        // the first cools — on Earth that cooled the Indo-Pacific warm pool ≈ 1 °C all year (dried Sumatra), and the
-        // ocean's heat budget handed the difference to every other sea as warmth. So each month's heat is the year's
-        // (from the year's stress, as without seasons) plus the month's departure from the months' mean.
-        const H0 = heatOf(tx, ty, U, V, sst), q0 = qOf(H0);
         if (seasonal) {
-            const qRaw = new Float64Array(12 * G), qMean = new Float64Array(G);
             for (let m = 0; m < 12; m++) {
                 const sl = (f) => f.subarray(m * G, (m + 1) * G);
                 const H = heatOf(sl(txM), sl(tyM), sl(UM), sl(VM), sl(sstM)), qm = qOf(H);
-                qRaw.set(qm, m * G); wUpM.set(H.wUp, m * G);
-                for (let c = 0; c < G; c++) { qMean[c] += qm[c] / 12; wUp[c] += H.wUp[c] / 12; }
+                qM.set(qm, m * G); wUpM.set(H.wUp, m * G);
+                for (let c = 0; c < G; c++) { q[c] += qm[c] / 12; qAdv[c] += H.qAdv[c] / 12; qUp[c] += H.qUp[c] / 12; wUp[c] += H.wUp[c] / 12; }
             }
-            const keep = 1 - P.OCEAN_SEASON_RECTIFY;
-            for (let m = 0; m < 12; m++) for (let c = 0; c < G; c++) {
-                const k = m * G + c, v = qRaw[k] - keep * (qMean[c] - q0[c]);
-                qM[k] = isSea[c] ? Math.max(-P.OCEAN_QFLUX_MAX, Math.min(P.OCEAN_QFLUX_MAX, v)) : 0;
-                q[c] += qM[k] / 12;
-            }
-            qAdv.set(H0.qAdv); qUp.set(H0.qUp);
         } else {
-            q.set(q0); qAdv.set(H0.qAdv); qUp.set(H0.qUp); wUp.set(H0.wUp);
+            const H = heatOf(tx, ty, U, V, sst);
+            q.set(qOf(H)); qAdv.set(H.qAdv); qUp.set(H.qUp); wUp.set(H.wUp);
             for (let m = 0; m < 12; m++) { qM.set(q, m * G); wUpM.set(wUp, m * G); }
         }
         for (let c = 0; c < G; c++) qAdv[c] += qMoc[c];
