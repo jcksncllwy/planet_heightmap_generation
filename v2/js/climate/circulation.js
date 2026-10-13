@@ -150,22 +150,6 @@ export function derivedCirculation() {
             const midS = P.CIRC_MIDLAT_HPA * beltSea(hiS, loS) ** P.CIRC_OPEN_SEA_POWER * contrast(hiS, loS);
             belts.push({ itcz, hiN, hiS, loN, loS, midN, midS });
 
-            // The tropical trough follows each longitude's own warmest latitude (over the sea the warmest water,
-            // over a summer continent its heat low — the monsoon trough), smoothed along ~20° of longitude, as far as
-            // CIRC_TROUGH_MAX_LAT. Where it runs poleward into a heat low (Tibet and the Ganges plain, the Sahara, the
-            // Mexican and Australian deserts), the rain belt's trough and the heat low are one: that longitude's
-            // subtropical high stands CIRC_TROUGH_HIGH_DEG beyond it instead of on top of it (a ridge between the two
-            // left the Himalayan foothills in dry northerlies off the mountains, not in the monsoon's flow).
-            const trough = localTrough(g, T, h, w, P.CIRC_TROUGH_MAX_LAT, itcz);
-            for (let i = 0; i < w; i++) {
-                const hiNi = Math.min(60, Math.max(hiN, trough[i] + P.CIRC_TROUGH_HIGH_DEG)), hiSi = Math.max(-60, Math.min(hiS, trough[i] - P.CIRC_TROUGH_HIGH_DEG));
-                const loNi = Math.max(loN, hiNi + 10), loSi = Math.min(loS, hiSi - 10);
-                const knots = [
-                    [-90, -midS + P.CIRC_POLAR_HPA], [loSi, -midS], [hiSi, 0], [trough[i], -P.CIRC_TROPICAL_HPA], [hiNi, 0], [loNi, -midN], [90, -midN + P.CIRC_POLAR_HPA],
-                ];
-                for (let j = 0; j < h; j++) pz[j * w + i] = profileAt(knots, g.lat[j]);
-            }
-
             // ── Thermal lows and highs: temperature against its latitude's average, at the Rossby scale ──
             // Over land, a heat low is CIRC_HEAT_LOW_MILD of its full depth on mild ground (≤ 15 °C at the surface) and
             // in the rainy tropics (within ~CONVECTIVE_DEG of the rain belt), × (1 + CIRC_HEAT_LOW_HOT) on hot, dry
@@ -184,6 +168,30 @@ export function derivedCirculation() {
                 }
             }
             gaussianSmooth(g, anom, tmp, P.CIRC_ROSSBY_KM);
+            // The tropical trough follows each longitude's own warmest latitude (over the sea the warmest water,
+            // over a summer continent its heat low — the monsoon trough), smoothed along ~20° of longitude, as far as
+            // CIRC_TROUGH_MAX_LAT. Where it runs poleward into a heat low (Tibet and the Ganges plain, the Sahara, the
+            // Mexican and Australian deserts), the rain belt's trough and the heat low are one: that longitude's
+            // subtropical high stands CIRC_TROUGH_HIGH_DEG beyond it instead of on top of it (a ridge between the two
+            // left the Himalayan foothills in dry northerlies off the mountains, not in the monsoon's flow).
+            // A trough drawn away from the rain belt (fully by CONVECTIVE_DEG) is a monsoon trough, deeper than the rain
+            // belt by CIRC_MONSOON_HPA_PER_K per degree its heat low is warmer than the latitude (the thermal anomaly
+            // above, at the trough): deep where a plateau heats the air aloft over a large continent (South Asia ≈ 996
+            // hPa in July), shallow over a flat desert (the Sahara ≈ 1008) — the monsoon's push from the sea, by the
+            // planet's own terrain (with the trough no deeper than the rain belt, the Ganges plain and the Himalayan
+            // foothills had too little of it).
+            const trough = localTrough(g, T, h, w, P.CIRC_TROUGH_MAX_LAT, itcz);
+            for (let i = 0; i < w; i++) {
+                const hiNi = Math.min(60, Math.max(hiN, trough[i] + P.CIRC_TROUGH_HIGH_DEG)), hiSi = Math.max(-60, Math.min(hiS, trough[i] - P.CIRC_TROUGH_HIGH_DEG));
+                const loNi = Math.max(loN, hiNi + 10), loSi = Math.min(loS, hiSi - 10);
+                const away = Math.abs(trough[i] - itcz), jt = Math.max(0, Math.min(h - 1, Math.round((90 - trough[i]) / g.step - 0.5)));
+                const deep = P.CIRC_MONSOON_HPA_PER_K * Math.max(0, anom[jt * w + i]) * smooth01(away / CONVECTIVE_DEG);
+                const knots = [
+                    [-90, -midS + P.CIRC_POLAR_HPA], [loSi, -midS], [hiSi, 0], [trough[i], -P.CIRC_TROPICAL_HPA - deep], [hiNi, 0], [loNi, -midN], [90, -midN + P.CIRC_POLAR_HPA],
+                ];
+                for (let j = 0; j < h; j++) pz[j * w + i] = profileAt(knots, g.lat[j]);
+            }
+
             // oceanic subtropical highs: CIRC_OCEAN_HIGH_HPA per unit of sea share above the latitude's, over a ridge
             // ±OCEAN_HIGH_DEG about each hemisphere's high (cos²)
             const ridge = (lat) => { let r = 0; for (const hi of [hiN, hiS]) { const x = (lat - hi) / OCEAN_HIGH_DEG; if (Math.abs(x) < 1) r += Math.cos(x * Math.PI / 2) ** 2; } return r; };

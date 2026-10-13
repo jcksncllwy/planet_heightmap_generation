@@ -81,6 +81,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
                                 //            summer heat lows: Tibet, the Sahara, Mexico, inland Australia) …
     CIRC_TROUGH_HIGH_DEG: 6,    // °          … and that longitude's subtropical high stands at least this far beyond it (one trough
                                 //            with the heat low, not a ridge between them)
+    CIRC_MONSOON_HPA_PER_K: 1.0, // hPa/K     a monsoon trough (drawn away from the rain belt) deeper by this per degree its heat low is warm
     CIRC_TURN_OCEAN_DEG: 12.5,    // °          surface wind turned toward low pressure by friction, over the sea …
     CIRC_TURN_LAND_DEG: 30,   // °          … and over land (rougher)
     CIRC_SURFACE_WIND: 0.75,     // –          near-surface wind as a share of the wind above the friction layer, over the sea …
@@ -213,6 +214,7 @@ export const PARAM_PRIORS = Object.freeze({
     CIRC_THERMAL_HPA_PER_K: { value: 1.0, min: 0.4, max: 1.6, source: 'hydrostatic: warming the lowest 2–3 km by 1 K lowers surface pressure ≈ 0.9–1.3 hPa' },
     CIRC_TROUGH_MAX_LAT: { value: 35, min: 28, max: 40, source: 'the summer monsoon trough joins the heat lows of Pakistan and Tibet (≈ 28–35°N), the Sahara (≈ 20–25°N), Arizona (≈ 33°N), the Pilbara (≈ 22°S) (NCEP)' },
     CIRC_TROUGH_HIGH_DEG: { value: 6, min: 4, max: 12, source: 'over a summer continent the subtropical ridge lies poleward of the heat low (the Tibetan High aloft and the westerlies beyond ≈ 40°N in July)' },
+    CIRC_MONSOON_HPA_PER_K: { value: 1.0, min: 0.5, max: 2, source: 'summer monsoon troughs below the rain belt (≈ 1010 hPa): South Asia ≈ 996–1000 hPa over a ≈ 10 K heat low (Tibet heating the air aloft), the Sahara ≈ 1008 over ≈ 3 K (NCEP July)' },
     CIRC_ROSSBY_KM:     { value: 1000, min: 500, max: 2000, source: 'Rossby radius of deformation ≈ 1000 km in midlatitudes' },
     CIRC_TURN_OCEAN_DEG: { value: 20, min: 10, max: 30, source: 'surface wind crosses isobars at ≈ 10–20° over the sea' },
     CIRC_TURN_LAND_DEG: { value: 35, min: 25, max: 45, source: '… and ≈ 30–45° over land' },
