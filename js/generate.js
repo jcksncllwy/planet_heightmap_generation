@@ -25,7 +25,7 @@ function readSliders() {
         ridgeSharpening: +document.getElementById('sRs').value,
         glacialErosion: +document.getElementById('sGl').value,
         continentSizeVariety: +document.getElementById('sCsv').value,
-        temperatureOffset: +document.getElementById('sTmp').value,
+        greenhouse: +document.getElementById('sTmp').value,
         precipitationOffset: +document.getElementById('sPrc').value,
         landCoverage: +document.getElementById('sLc').value,
     };
@@ -347,7 +347,7 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
     // Dynamic import already resolved — run synchronously via rAF stages
     const m = _fallbackModules;
     const btn = document.getElementById('generate');
-    const { N, P, jitter, nMag, numContinents, terrainWarp, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, continentSizeVariety, temperatureOffset, precipitationOffset, landCoverage } = readSliders();
+    const { N, P, jitter, nMag, numContinents, terrainWarp, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, continentSizeVariety, greenhouse, precipitationOffset, landCoverage } = readSliders();
     const progress = onProgress || (() => {});
     const ctx = {};
 
@@ -443,7 +443,7 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
             for (let r = 0; r < ctx.mesh.numRegions; r++) dl_erosionDelta[r] = r_elevation[r] - preErosion[r];
             debugLayers.erosionDelta = dl_erosionDelta;
             if (!skipClimate) {
-                ctx.climate = m.climateNew.runNewClimate(ctx.r_xyz, r_elevation, { temperatureOffset, precipitationOffset });
+                ctx.climate = m.climateNew.runNewClimate(ctx.r_xyz, r_elevation, { greenhouse, precipitationOffset });
             }
             const t_elevation = new Float32Array(ctx.mesh.numTriangles);
             for (let t = 0; t < ctx.mesh.numTriangles; t++) {
@@ -521,13 +521,13 @@ export function reapplyViaWorker(onDone, skipClimate = false) {
     _t0 = performance.now();
 
     const s = readSlidersOptional();
-    const temperatureOffset = +(document.getElementById('sTmp')?.value ?? 0);
+    const greenhouse = +(document.getElementById('sTmp')?.value ?? 0);
     const precipitationOffset = +(document.getElementById('sPrc')?.value ?? 0);
     const landCoverage = +(document.getElementById('sLc')?.value ?? 0.3);
 
     worker.postMessage({
         cmd: 'reapply',
-        ...s, temperatureOffset, precipitationOffset, landCoverage,
+        ...s, greenhouse, precipitationOffset, landCoverage,
         skipClimate
     });
 }
@@ -540,14 +540,14 @@ export function editRecomputeViaWorker(onDone, skipClimate = false) {
     _onDone = onDone || null;
     _t0 = performance.now();
 
-    const { nMag, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, temperatureOffset, precipitationOffset, landCoverage } = readSliders();
+    const { nMag, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, greenhouse, precipitationOffset, landCoverage } = readSliders();
 
     worker.postMessage({
         cmd: 'editRecompute',
         plateIsOcean: Array.from(d.plateIsOcean),
         plateDensity: d.plateDensity,
         nMag, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening,
-        temperatureOffset, precipitationOffset, landCoverage,
+        greenhouse, precipitationOffset, landCoverage,
         skipClimate
     });
 }
@@ -557,13 +557,13 @@ export function computeClimateViaWorker(onProgress, onDone) {
     _onProgress = onProgress || (() => {});
     _onDone = onDone || null;
     _t0 = performance.now();
-    const temperatureOffset = +(document.getElementById('sTmp')?.value ?? 0);
+    const greenhouse = +(document.getElementById('sTmp')?.value ?? 0);
     const precipitationOffset = +(document.getElementById('sPrc')?.value ?? 0);
     const landCoverage = +(document.getElementById('sLc')?.value ?? 0.3);
 
     worker.postMessage({
         cmd: 'computeClimate',
-        temperatureOffset, precipitationOffset, landCoverage
+        greenhouse, precipitationOffset, landCoverage
     });
 }
 
@@ -581,7 +581,7 @@ export function importHeightmap(grayscale, imageWidth, imageHeight, onProgress, 
         grayscale, imageWidth, imageHeight,
         terrainWarp, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion,
         // (the climate sliders from the first import on — before, the first import always used 0 / 0)
-        temperatureOffset: +(document.getElementById('sTmp')?.value ?? 0),
+        greenhouse: +(document.getElementById('sTmp')?.value ?? 0),
         precipitationOffset: +(document.getElementById('sPrc')?.value ?? 0),
         skipClimate
     }, [grayscale.buffer]);

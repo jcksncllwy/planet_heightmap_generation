@@ -28,7 +28,7 @@ export class ClimateService {
     constructor() { this.worker = null; this.jobs = new Map(); this.sent = new Set(); this.nextId = 1; }
 
     /** The climate of a frame's terrain (heights in km, the sea at 0) on a terrain mesh: a promise of the page's data.
-     *  `options`: the page's Temperature / Precipitation (tempOffsetC, precipScale). */
+     *  `options`: the page's Greenhouse / Precipitation (greenhouseWm2, precipScale). */
     compute(tMesh, heightKm, options = {}) {
         this.worker ??= this.start();
         const key = tMesh.numCells;

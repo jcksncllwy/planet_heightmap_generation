@@ -21,7 +21,7 @@ export function climateStages({ tiltDeg = 23.44 } = {}) {
 
 /**
  * @param {{xyz: Float32Array|Float64Array, elevKm: Float32Array, axes: 'y-up'|'z-up', land?: Uint8Array}} input
- * @param {object} [options]  core options (anchors, lapseRateCPerKm, tempOffsetC, precipScale, …) and tiltDeg
+ * @param {object} [options]  core options (anchors, lapseRateCPerKm, greenhouseWm2, precipScale, …) and tiltDeg
  */
 export function planetClimate(input, options = {}) {
     return computeClimate(input, { ...options, stages: climateStages(options) });

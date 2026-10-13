@@ -58,9 +58,9 @@
                     <select id="ending"></select>
                 </div>
                 <div class="cg">
-                    <label>Temperature <span class="tip" data-tip="Warm or cool the planet as a greenhouse would — about this many °C on average. Snow, sea ice and ice sheets spread or retreat (amplifying a cooling), the winds and currents shift, and a warmer planet is a wetter one. Changes the climate only, not the history">?</span> <span class="v" id="vTmp">±0°C</span></label>
-                    <input type="range" id="sTmp" min="-15" max="15" value="0" step="1">
-                    <div class="slider-hint"><span>Colder</span><span>Warmer</span></div>
+                    <label>Greenhouse <span class="tip" data-tip="How strongly the air holds in the planet's heat — more or less greenhouse gas — in W/m² (Earth's doubling of CO₂ ≈ +4). Snow, sea ice and ice sheets amplify a cooling far more than a warming: on an Earth-like planet −10 cools it about 8 °C and +10 warms it about 6 °C, and past −20 the ice starts to run away — by about −28 the whole planet freezes over. The winds, currents and rain follow — a hothouse is wetter, an icehouse drier. Changes the climate only, not the history">?</span> <span class="v" id="vTmp">±0 W/m²</span></label>
+                    <input type="range" id="sTmp" min="-30" max="30" value="0" step="2">
+                    <div class="slider-hint"><span>Icehouse</span><span>Hothouse</span></div>
                 </div>
                 <div class="cg">
                     <label>Precipitation <span class="tip" data-tip="Speed up or slow down the planet's water cycle — more or less evaporation from its seas and land, so about this much more or less rain overall. Where it falls still follows the winds and mountains. Changes the climate only, not the history">?</span> <span class="v" id="vPrc">±0%</span></label>

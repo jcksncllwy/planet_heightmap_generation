@@ -63,15 +63,18 @@ Was added **after** the physics: a −15 °C world read colder and classified co
 and its rain did not change. **Now (2026-10-13, the developer: "integrate the temperature (and precipitation if
 relevant) into the physics")** both work inside the stages:
 
-- `tempOffsetC` is a forcing in `temperature.js`: the heat to space (`TEMP_OLR_A`) lowered by `TEMP_OLR_B × ΔT / gain`,
-  the gain measured on Earth so the planet's average ends up about ΔT warmer or colder (1.6 for a cooling — the snow and
-  ice amplify it — 1.15 for a warming). Earth, global mean surface change for the slider at −15 / −10 / −5 / +5 / +10 /
-  +15: −17.9 / −10.8 / −4.9 / +5.5 / +10.6 / +15.2 °C; sea ice 2.9 % → 23 % of the sea at −15, 0 at +10; ice sheets 11 %
-  → 30 % of the land at −15, 4 % at +15. The forcing without the gain runs away to a snowball beyond about −9 °C.
+- **Greenhouse** (was Temperature): `greenhouseWm2`, a radiative forcing in `temperature.js` — the heat to space
+  (`TEMP_OLR_A`) lowered by that many W/m²; the slider −30…+30 in steps of 2 (the same 31 positions as the old −15…15,
+  so planet codes keep their slider positions; Evolution's old `temp=` links read as ×2). First calibrated so the
+  average matched a °C label; the developer then: *"I kind of love the implications of the runaway effects here. So
+  maybe we keep it… just name the slider something more appropriate"* — so no calibration, the snow and ice amplify it
+  as they will. Earth, global mean surface change at −30 / −28 / −24 / −20 / −10 / +10 / +20 / +30 W/m²: −64.5 /
+  −47.6 / −27.6 / −19.1 / −8.0 / +6.0 / +11.5 / +16.6 °C; sea ice 2.9 % → 25 % of the sea at −20, 62 % at −26, 96 % at
+  −28 (a snowball), 0 at +20; ice sheets 11 % → 33 % of the land at −20, 3 % at +30.
 - `precipScale` scales evaporation (sea and land) in `rain.js`: Earth's land rain −46 % / +41 % at −1 / +1 (global
   rain −50 % / +49 %); the clouds the rain brings shade the land a little more or less.
-- Warmth brings rain on its own (warmer seas evaporate more — Clausius–Clapeyron): Earth's global rain ×0.37 at −15
-  and ×2.1 at +15, about twice the real world's hydrological sensitivity (≈ 2–3 %/K, energy-limited). Left as is for
+- Warmth brings rain on its own (warmer seas evaporate more — Clausius–Clapeyron): Earth's global rain ×0.34 at −20 W/m²
+  and ×2.3 at +30, about twice the real world's hydrological sensitivity (≈ 2–3 %/K, energy-limited). Left as is for
   now: a hothouse that is lush and an ice age that is dry read right.
 - At the defaults the climate is bit-identical (`hash-climate.mjs`).
 

@@ -28,7 +28,7 @@ export const CORE_DEFAULTS = Object.freeze({
     anchorPhase: 0,             // month of anchor 0 (0 = the month after the northern winter solstice; Earth: January)
     precipTransform: 'sqrt',    // how rain is interpolated between anchors (Phase 0 season test: best with points)
     lapseRateCPerKm: 6.5,       // standard environmental lapse rate
-    tempOffsetC: 0,
+    greenhouseWm2: 0,           // radiative forcing (W/m²): the pages' Greenhouse — in the energy balance (temperature.js)
     precipScale: 1,
     rainPerKm: 1.0,             // rain × e^{this × (cell height − its surroundings’ mean, km)}, bounded 0.4–2.5
     terrainRelief: 0.5,         // share of a cell's own relief (its height beyond its surroundings' 1° mean) the climate
@@ -112,10 +112,9 @@ export function computeClimate(input, options = {}) {
         anchors = o.anchorSource(sctx);
         lap('anchors');
     }
-    // (the page's Temperature and Precipitation work inside the stages — a forcing in the energy balance, the water
+    // (the pages' Greenhouse and Precipitation work inside the stages — a forcing in the energy balance, the water
     // cycle's pace in the rain budget — so the ice, winds, currents and rain answer them; an anchor source, which has
-    // no physics, takes them as they are)
-    if (!o.stages && o.tempOffsetC) for (let i = 0; i < anchors.T.length; i++) anchors.T[i] += o.tempOffsetC;
+    // no physics, takes only the rain's, as a scale)
 
     // 4. Twelve months on the grid (temperature at the grid's reference height)
     const months = synthesizeGrid(grid, anchors, K, o.stages ? { ...o, precipScale: 1 } : o);

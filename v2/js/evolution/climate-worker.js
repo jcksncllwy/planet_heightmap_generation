@@ -4,7 +4,7 @@
 //
 // Messages in:  {type: 'mesh', key, xyz}                 a terrain mesh's unit-sphere positions (z north), once per mesh
 //               {type: 'climate', id, key, heightKm, options}  a frame's terrain heights (km, the sea at 0) on that mesh;
-//                                                         options: the page's Temperature / Precipitation (tempOffsetC, precipScale)
+//                                                         options: the page's Greenhouse / Precipitation (greenhouseWm2, precipScale)
 // Message out:  {type: 'climate', id, data} | {type: 'error', id, message} — only what the page draws, handed over
 //   (climate-fields.js; data.cell.stats: the land cells' tRange, aridity, growing, rainSeason — cell-stats.js bytes).
 

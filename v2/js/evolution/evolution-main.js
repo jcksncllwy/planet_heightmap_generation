@@ -52,11 +52,12 @@ const url = new URLSearchParams(location.search);
 const setIf = (el, v) => { if (v !== null && [...(el.options ?? [])].some(o => o.value === v)) el.value = v; };
 if (url.get('cont')) ui.cont.value = url.get('cont');
 if (url.get('len')) ui.len.value = url.get('len');
-if (url.get('temp')) ui.tmp.value = url.get('temp');
+// (Greenhouse, W/m²; an older link's temp= was the same slider in °C steps of 1)
+if (url.get('greenhouse')) ui.tmp.value = url.get('greenhouse'); else if (url.get('temp')) ui.tmp.value = 2 * Number(url.get('temp'));
 if (url.get('rain')) ui.prc.value = url.get('rain');
 // The planet's Temperature and Precipitation (as Generate's): the climate's options, for the preview climate and for Add
 // detail — they change the climate only, not the history (plans/V1_NEW_CLIMATE_PLAN.md, phase 7)
-const climateOptions = () => ({ tempOffsetC: Number(ui.tmp.value), precipScale: Math.max(0, 1 + 0.5 * Number(ui.prc.value)) });
+const climateOptions = () => ({ greenhouseWm2: Number(ui.tmp.value), precipScale: Math.max(0, 1 + 0.5 * Number(ui.prc.value)) });
 const climateKey = () => `${Number(ui.tmp.value)}|${Number(ui.prc.value)}`;
 // (a phone builds on 20K plates by default: a 1200 Myr history takes ~40 s on a desktop at 20K, ~85 s at 40K, and a phone's
 // cores are several times slower — plans/V2_FULL_PLANET_PLAN.md, step A)
@@ -83,10 +84,10 @@ ui.sim.addEventListener('change', () => { labels(); saveUrl(); });
 function labels() {
     $('vCont').textContent = `${ui.cont.value}%`; $('vLen').textContent = `${ui.len.value} Myr`;
     const t = Number(ui.tmp.value), p = Math.round(50 * Number(ui.prc.value));
-    $('vTmp').textContent = t ? `${t > 0 ? '+' : '−'}${Math.abs(t)}°C` : '±0°C';
+    $('vTmp').textContent = t ? `${t > 0 ? '+' : '−'}${Math.abs(t)} W/m²` : '±0 W/m²';
     $('vPrc').textContent = p ? `${p > 0 ? '+' : '−'}${Math.abs(p)}%` : '±0%';
     $('worldSummary').textContent = `Seed ${Number(ui.seed.value) || 0} · ${ui.len.value} Myr · ${QUALITY_WORDS[ui.quality.value]}` +
-        (t ? ` · ${$('vTmp').textContent}` : '') + (p ? ` · ${$('vPrc').textContent} rain` : '');
+        (t ? ` · greenhouse ${$('vTmp').textContent}` : '') + (p ? ` · ${$('vPrc').textContent} rain` : '');
     // (the plates' resolution is the one setting a history cannot change: it waits for a build)
     $('worldPending').hidden = !B?.simCells || B.simCells === Number(ui.sim.value);
 }
@@ -127,7 +128,7 @@ $('rebuildBtn').addEventListener('click', () => build());                       
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
 const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
-    (Number(ui.tmp.value) ? `&temp=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : ''));
+    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
 // interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)

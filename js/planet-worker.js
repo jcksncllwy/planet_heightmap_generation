@@ -157,27 +157,27 @@ function runPostProcessing(mesh, r_xyz, r_elevation, params, neighborDist, seed,
 }
 
 function getClimateParams(data) {
-    const temperatureOffset = data?.temperatureOffset ?? W?.temperatureOffset ?? 0;
+    const greenhouse = data?.greenhouse ?? W?.greenhouse ?? 0;
     const precipitationOffset = data?.precipitationOffset ?? W?.precipitationOffset ?? 0;
     const landCoverage = data?.landCoverage ?? W?.landCoverage ?? 0.3;
-    if (W) { W.temperatureOffset = temperatureOffset; W.precipitationOffset = precipitationOffset; W.landCoverage = landCoverage; }
-    return { temperatureOffset, precipitationOffset, landCoverage };
+    if (W) { W.greenhouse = greenhouse; W.precipitationOffset = precipitationOffset; W.landCoverage = landCoverage; }
+    return { greenhouse, precipitationOffset, landCoverage };
 }
 
 /**
  * The planet's climate — the new climate (js/climate-new.js; plans/V1_NEW_CLIMATE_PLAN.md) — on its final elevation,
  * with the Temperature / Precipitation sliders. Its buffers go to the main thread with the result (newClimateTransfers).
  */
-function climateFor(r_xyz, r_elevation, { temperatureOffset = 0, precipitationOffset = 0 } = {}, timing = null, pct = 80) {
+function climateFor(r_xyz, r_elevation, { greenhouse = 0, precipitationOffset = 0 } = {}, timing = null, pct = 80) {
     progress(pct, 'Simulating the climate\u2026');
     const t0 = performance.now();
-    const climate = runNewClimate(r_xyz, r_elevation, { temperatureOffset, precipitationOffset });
+    const climate = runNewClimate(r_xyz, r_elevation, { greenhouse, precipitationOffset });
     if (timing) timing.push({ stage: 'Climate', ms: performance.now() - t0 }, ...climate.timing.stages.map(t => ({ stage: `  climate · ${t.stage}`, ms: t.ms })));
     return climate;
 }
 
 function handleGenerate(data) {
-    const { N, P, jitter, nMag, numContinents, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, terrainWarp, continentSizeVariety = 0, temperatureOffset = 0, precipitationOffset = 0, landCoverage = 0.3, seed: overrideSeed, toggledIndices, skipClimate } = data;
+    const { N, P, jitter, nMag, numContinents, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, terrainWarp, continentSizeVariety = 0, greenhouse = 0, precipitationOffset = 0, landCoverage = 0.3, seed: overrideSeed, toggledIndices, skipClimate } = data;
     const spread = 5;
     const timing = []; // top-level pipeline timing
 
@@ -316,7 +316,7 @@ function handleGenerate(data) {
             debugLayers.mantleFlow = ppd.dl_mantleFlow;
         }
 
-        const climate = skipClimate ? null : climateFor(r_xyz, r_elevation, { temperatureOffset, precipitationOffset }, timing, 70);
+        const climate = skipClimate ? null : climateFor(r_xyz, r_elevation, { greenhouse, precipitationOffset }, timing, 70);
         if (climate) debugLayers.koppen = climate.koppen;
 
         progress(skipClimate ? 75 : 90, 'Computing triangle elevations\u2026');
@@ -339,7 +339,7 @@ function handleGenerate(data) {
             seed, nMag, noise, P,
             mountain_r: new Set(mountain_r), coastline_r: new Set(coastline_r), ocean_r: new Set(ocean_r),
             r_stress: new Float32Array(r_stress),
-            temperatureOffset, precipitationOffset, landCoverage,
+            greenhouse, precipitationOffset, landCoverage,
             // Retain detail-noise dampen + orogenic fields so reapply (which
             // reuses prePostElev) shapes the noise the same way as the initial
             // generate over craton/basin and orogenic regions.
@@ -398,7 +398,7 @@ function handleGenerate(data) {
             _pipelineTiming: timing,          // top-level pipeline stages
             _postTiming: postTiming,          // post-processing sub-stages
             _workerTotal: tWorkerTotal,
-            _params: { N, P, jitter, nMag, numContinents, smoothing, terrainWarp, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, continentSizeVariety, temperatureOffset, precipitationOffset, landCoverage, seed },
+            _params: { N, P, jitter, nMag, numContinents, smoothing, terrainWarp, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, continentSizeVariety, greenhouse, precipitationOffset, landCoverage, seed },
             terrainMetrics
         };
 
@@ -420,7 +420,7 @@ function handleReapply(data) {
     if (!W) { self.postMessage({ type: 'error', message: 'No retained state for reapply' }); return; }
 
     const skipClimate = !!data.skipClimate;
-    const { temperatureOffset, precipitationOffset, landCoverage } = getClimateParams(data);
+    const { greenhouse, precipitationOffset, landCoverage } = getClimateParams(data);
 
     try {
         const tTotal0 = performance.now();
@@ -440,7 +440,7 @@ function handleReapply(data) {
         W.r_elevation_final = new Float32Array(r_elevation);
 
         t0 = performance.now();
-        const climate = skipClimate ? null : climateFor(W.r_xyz, r_elevation, { temperatureOffset, precipitationOffset }, null, 60);
+        const climate = skipClimate ? null : climateFor(W.r_xyz, r_elevation, { greenhouse, precipitationOffset }, null, 60);
         const tClimate = performance.now() - t0;
 
         progress(skipClimate ? 70 : 90, 'Computing triangle elevations\u2026');
@@ -478,7 +478,7 @@ function handleEditRecompute(data) {
     if (!W) { self.postMessage({ type: 'error', message: 'No retained state for editRecompute' }); return; }
 
     const skipClimate = !!data.skipClimate;
-    const { temperatureOffset, precipitationOffset, landCoverage } = getClimateParams(data);
+    const { greenhouse, precipitationOffset, landCoverage } = getClimateParams(data);
 
     try {
         const tTotal0 = performance.now();
@@ -521,7 +521,7 @@ function handleEditRecompute(data) {
         W.r_elevation_final = new Float32Array(r_elevation);
 
         t0 = performance.now();
-        const climate = skipClimate ? null : climateFor(r_xyz, r_elevation, { temperatureOffset, precipitationOffset }, null, 65);
+        const climate = skipClimate ? null : climateFor(r_xyz, r_elevation, { greenhouse, precipitationOffset }, null, 65);
         if (climate) debugLayers.koppen = climate.koppen;
         const tClimate = performance.now() - t0;
 
@@ -577,10 +577,10 @@ function handleEditRecompute(data) {
 
 function handleComputeClimate(data) {
     if (!W) { self.postMessage({ type: 'error', message: 'No retained state for computeClimate' }); return; }
-    const { temperatureOffset, precipitationOffset } = getClimateParams(data);
+    const { greenhouse, precipitationOffset } = getClimateParams(data);
     try {
         const t0 = performance.now();
-        const climate = climateFor(W.r_xyz, W.r_elevation_final, { temperatureOffset, precipitationOffset }, null, 10);
+        const climate = climateFor(W.r_xyz, W.r_elevation_final, { greenhouse, precipitationOffset }, null, 10);
         progress(95, 'Done');
         self.postMessage({ type: 'climateDone', climate, _climateTiming: { climate: climate.timing.climate, workerTotal: performance.now() - t0 } },
             newClimateTransfers(climate));
@@ -682,7 +682,7 @@ function deriveSyntheticPlates(mesh, r_elevation) {
 }
 
 function handleImportHeightmap(data) {
-    const { N, jitter, grayscale, imageWidth, imageHeight, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, terrainWarp, temperatureOffset = 0, precipitationOffset = 0, landCoverage = 0.3, seed: overrideSeed, skipClimate } = data;
+    const { N, jitter, grayscale, imageWidth, imageHeight, smoothing, hydraulicErosion, thermalErosion, ridgeSharpening, glacialErosion, terrainWarp, greenhouse = 0, precipitationOffset = 0, landCoverage = 0.3, seed: overrideSeed, skipClimate } = data;
     const timing = [];
 
     try {
@@ -747,7 +747,7 @@ function handleImportHeightmap(data) {
         const debugLayers = { erosionDelta: dl_erosionDelta };
         const nMag = 0;
 
-        const climate = skipClimate ? null : climateFor(r_xyz, r_elevation, { temperatureOffset, precipitationOffset }, timing, 75);
+        const climate = skipClimate ? null : climateFor(r_xyz, r_elevation, { greenhouse, precipitationOffset }, timing, 75);
         if (climate) debugLayers.koppen = climate.koppen;
 
         progress(skipClimate ? 75 : 92, 'Computing triangle elevations\u2026');

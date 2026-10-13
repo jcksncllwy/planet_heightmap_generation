@@ -148,8 +148,9 @@ for (const [s, v] of [['sN','vN'],['sTw','vTw'],['sS','vS'],['sGl','vGl'],['sHEr
             document.getElementById(v).textContent = detail.toLocaleString();
             updateDetailWarning(detail);
         } else if (s === 'sTmp') {
+            // Greenhouse: a forcing in W/m²
             const val = +e.target.value;
-            document.getElementById(v).textContent = (val > 0 ? '+' : val === 0 ? '\u00b1' : '') + val + '\u00b0C';
+            document.getElementById(v).textContent = (val > 0 ? '+' : val === 0 ? '\u00b1' : '\u2212') + Math.abs(val) + ' W/m\u00b2';
         } else if (s === 'sPrc') {
             const val = +e.target.value;
             const pct = Math.round(val * 50);

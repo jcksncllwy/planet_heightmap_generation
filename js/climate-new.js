@@ -23,9 +23,9 @@ import { elevToHeightKm } from './color-map.js';
  * Run the new climate on a V1 planet.
  * @param {Float32Array} r_xyz       unit-sphere positions, Y-up (as V1's meshes)
  * @param {Float32Array} r_elevation V1's elevation (≤ 0 sea)
- * @param {{temperatureOffset?: number, precipitationOffset?: number}} sliders  °C; −1…1 (±50 % rain)
+ * @param {{greenhouse?: number, precipitationOffset?: number}} sliders  Greenhouse, W/m² of forcing (−30…30); −1…1 (±50 % rain)
  */
-export function runNewClimate(r_xyz, r_elevation, { temperatureOffset = 0, precipitationOffset = 0 } = {}) {
+export function runNewClimate(r_xyz, r_elevation, { greenhouse = 0, precipitationOffset = 0 } = {}) {
     const t0 = performance.now();
     const n = r_elevation.length;
     const elevKm = new Float32Array(n), land = new Uint8Array(n);
@@ -45,7 +45,7 @@ export function runNewClimate(r_xyz, r_elevation, { temperatureOffset = 0, preci
     };
 
     const res = planetClimate({ xyz: r_xyz, elevKm, land, axes: 'y-up' },
-        { tempOffsetC: temperatureOffset, precipScale: Math.max(0, 1 + 0.5 * precipitationOffset), onCell });
+        { greenhouseWm2: greenhouse, precipScale: Math.max(0, 1 + 0.5 * precipitationOffset), onCell });
     const tClimate = performance.now() - t0;
 
     // the grid, as Evolution's views have it

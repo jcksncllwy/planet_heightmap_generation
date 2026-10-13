@@ -60,7 +60,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
 
     // ── the climate, on this surface ──
     onStage('climate');
-    // (climateOptions: the page's Temperature and Precipitation — tempOffsetC, precipScale)
+    // (climateOptions: the page's Greenhouse and Precipitation — greenhouseWm2, precipScale)
     let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up' }, climateOptions);
     const { koppen, tAnnual: tAnn, pAnnual: pAnn, lat, lon } = res.cell, G = res.grid.size;
     for (let c = 0; c < n; c++) if (pAnn[c] > F.rainMaxMm) pAnn[c] = F.rainMaxMm;     // (the climate's rare wet hotspots)
