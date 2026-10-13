@@ -468,15 +468,20 @@ export function windDrivenOcean() {
         }
         // the overturning: OCEAN_OVERTURN_PW per hemisphere, released over the seas the polar ocean opens onto
         const qMoc = overturningHeat(g, isSea, channels, P.OCEAN_OVERTURN_PW);
-        // The heat of a period: advection + overturning + upwelling, less the net (the ocean moves heat, it does not make
-        // it; area-weighted over the sea), capped. Seasonal: each month from its own stress, currents and sea; else the
-        // year's (as before seasons: the months then all carry the year's heat).
+        // The heat of a period: advection + overturning + upwelling, capped, less the net (the ocean moves heat, it does
+        // not make it; area-weighted over the sea — after the cap, or capping a strong upwelling's cooling would warm
+        // every other sea). Seasonal: each month from its own stress, currents and sea; else the year's (as before
+        // seasons: the months then all carry the year's heat).
         const qOf = (H) => {
-            let net = 0, area = 0;
-            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; if (!isSea[c]) continue; net += (H.qAdv[c] + qMoc[c] + H.qUp[c]) * cosLat[j]; area += cosLat[j]; }
-            net /= area;
             const q = new Float64Array(G);
-            for (let c = 0; c < G; c++) q[c] = isSea[c] ? Math.max(-P.OCEAN_QFLUX_MAX, Math.min(P.OCEAN_QFLUX_MAX, H.qAdv[c] + qMoc[c] + H.qUp[c] - net)) : 0;
+            let net = 0, area = 0;
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+                const c = j * w + i; if (!isSea[c]) continue;
+                q[c] = Math.max(-P.OCEAN_QFLUX_MAX, Math.min(P.OCEAN_QFLUX_MAX, H.qAdv[c] + qMoc[c] + H.qUp[c]));
+                net += q[c] * cosLat[j]; area += cosLat[j];
+            }
+            net /= area;
+            for (let c = 0; c < G; c++) if (isSea[c]) q[c] -= net;
             return q;
         };
         const q = new Float64Array(G), qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
