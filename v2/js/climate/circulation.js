@@ -2,7 +2,9 @@
 //
 // Pressure has two parts, both set by the planet's own temperatures (nothing is placed at Earth's latitudes):
 //  • The zonal belts — the tropical low (ITCZ), the subtropical highs, the subpolar lows, the polar highs. The ITCZ
-//    sits at the warmest latitude of the sea (the tropical rain belt follows the warmest ocean); each Hadley cell
+//    sits at the warmest latitude of the sea (the tropical rain belt follows the warmest ocean) — per longitude at that
+//    longitude's warmest latitude, into a summer continent's heat low (the monsoon trough reaching the Himalaya), the
+//    subtropical high there making way for it; each Hadley cell
 //    reaches as far as Held & Hou's scaling allows for this planet's rotation, size and equator-to-pole contrast;
 //    a Ferrel cell further out lies the subpolar low. The trough is deep only where the westerlies run round the
 //    planet over open sea (the Southern Ocean's ≈ 30 hPa below the subtropical highs; the land-broken north's ≈ 6,
@@ -149,11 +151,17 @@ export function derivedCirculation() {
             belts.push({ itcz, hiN, hiS, loN, loS, midN, midS });
 
             // The tropical trough follows each longitude's own warmest latitude (over the sea the warmest water,
-            // over a summer continent its heat low — the monsoon trough), smoothed along ~20° of longitude.
-            const trough = localTrough(g, T, h, w, hiN, hiS, itcz);
+            // over a summer continent its heat low — the monsoon trough), smoothed along ~20° of longitude, as far as
+            // CIRC_TROUGH_MAX_LAT. Where it runs poleward into a heat low (Tibet and the Ganges plain, the Sahara, the
+            // Mexican and Australian deserts), the rain belt's trough and the heat low are one: that longitude's
+            // subtropical high stands CIRC_TROUGH_HIGH_DEG beyond it instead of on top of it (a ridge between the two
+            // left the Himalayan foothills in dry northerlies off the mountains, not in the monsoon's flow).
+            const trough = localTrough(g, T, h, w, P.CIRC_TROUGH_MAX_LAT, itcz);
             for (let i = 0; i < w; i++) {
+                const hiNi = Math.min(60, Math.max(hiN, trough[i] + P.CIRC_TROUGH_HIGH_DEG)), hiSi = Math.max(-60, Math.min(hiS, trough[i] - P.CIRC_TROUGH_HIGH_DEG));
+                const loNi = Math.max(loN, hiNi + 10), loSi = Math.min(loS, hiSi - 10);
                 const knots = [
-                    [-90, -midS + P.CIRC_POLAR_HPA], [loS, -midS], [hiS, 0], [trough[i], -P.CIRC_TROPICAL_HPA], [hiN, 0], [loN, -midN], [90, -midN + P.CIRC_POLAR_HPA],
+                    [-90, -midS + P.CIRC_POLAR_HPA], [loSi, -midS], [hiSi, 0], [trough[i], -P.CIRC_TROPICAL_HPA], [hiNi, 0], [loNi, -midN], [90, -midN + P.CIRC_POLAR_HPA],
                 ];
                 for (let j = 0; j < h; j++) pz[j * w + i] = profileAt(knots, g.lat[j]);
             }
@@ -228,10 +236,10 @@ export function derivedCirculation() {
 }
 
 /**
- * Latitude of the tropical trough per longitude: the warmest latitude within the Hadley cells, from temperature
- * smoothed ~20° along longitude and ~5° in latitude; kept ≥ 5° inside the subtropical highs.
+ * Latitude of the tropical trough per longitude: the warmest latitude within ±maxLat, from temperature smoothed ~20°
+ * along longitude and ~5° in latitude (the subtropical highs then make way for it — the caller).
  */
-function localTrough(g, T, h, w, hiN, hiS, zonalItcz) {
+function localTrough(g, T, h, w, maxLat, zonalItcz) {
     const out = new Float64Array(w), col = new Float64Array(h);
     const sLon = 10 / g.step, rLon = Math.ceil(2 * sLon);
     const lonW = Array.from({ length: 2 * rLon + 1 }, (_, k) => Math.exp(-0.5 * ((k - rLon) / sLon) ** 2));
@@ -242,7 +250,7 @@ function localTrough(g, T, h, w, hiN, hiS, zonalItcz) {
             col[j] = s / ws;
         }
         const sm = smoothProfile(g, col, 5);
-        const lo = Math.max(hiS + 5, -35), hi = Math.min(hiN - 5, 35);
+        const lo = -maxLat, hi = maxLat;
         let best = -Infinity, bestLat = zonalItcz;
         for (let j = 0; j < h; j++) { const la = g.lat[j]; if (la < lo || la > hi) continue; if (sm[j] > best) { best = sm[j]; bestLat = la; } }
         out[i] = bestLat;
