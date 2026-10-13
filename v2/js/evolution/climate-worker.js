@@ -3,7 +3,8 @@
 // computed on a fixed 1° grid, so it takes about the same time at every terrain detail (~1 s on a desktop).
 //
 // Messages in:  {type: 'mesh', key, xyz}                 a terrain mesh's unit-sphere positions (z north), once per mesh
-//               {type: 'climate', id, key, heightKm}      a frame's terrain heights (km, the sea at 0) on that mesh
+//               {type: 'climate', id, key, heightKm, options}  a frame's terrain heights (km, the sea at 0) on that mesh;
+//                                                         options: the page's Temperature / Precipitation (tempOffsetC, precipScale)
 // Message out:  {type: 'climate', id, data} | {type: 'error', id, message} — only what the page draws, handed over
 //   (climate-fields.js).
 
@@ -15,10 +16,10 @@ const meshes = new Map();
 self.onmessage = ({ data }) => {
     if (data.type === 'mesh') { meshes.set(data.key, data.xyz); return; }
     if (data.type !== 'climate') return;
-    const { id, key, heightKm } = data;
+    const { id, key, heightKm, options = {} } = data;
     try {
         const t0 = performance.now();
-        const res = planetClimate({ xyz: meshes.get(key), elevKm: heightKm, axes: 'z-up' });
+        const res = planetClimate({ xyz: meshes.get(key), elevKm: heightKm, axes: 'z-up' }, options);
         const out = pageClimate(res);
         out.ms = performance.now() - t0;
         self.postMessage({ type: 'climate', id, data: out }, climateTransfers(out));

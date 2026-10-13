@@ -58,6 +58,16 @@
                     <select id="ending"></select>
                 </div>
                 <div class="cg">
+                    <label>Temperature <span class="tip" data-tip="Shift the planet's temperature — warmer or colder; its climate zones follow. Changes the climate only, not the history">?</span> <span class="v" id="vTmp">±0°C</span></label>
+                    <input type="range" id="sTmp" min="-15" max="15" value="0" step="1">
+                    <div class="slider-hint"><span>Colder</span><span>Warmer</span></div>
+                </div>
+                <div class="cg">
+                    <label>Precipitation <span class="tip" data-tip="Scale the planet's rain and snow — wetter or drier; deserts and rainforests follow. Changes the climate only, not the history">?</span> <span class="v" id="vPrc">±0%</span></label>
+                    <input type="range" id="sPrc" min="-1" max="1" value="0" step="0.1">
+                    <div class="slider-hint"><span>Drier</span><span>Wetter</span></div>
+                </div>
+                <div class="cg">
                     <label>Quality <span class="tip" data-tip="How finely the history is simulated and drawn while you watch. Fast: 20K plate cells, terrain 160K. Balanced: 40K, 160K. Best: 80K, 640K (slower to build). Custom: choose each">?</span></label>
                     <select id="quality">
                         <option value="fast">Fast</option>
@@ -292,7 +302,7 @@
             </div>
             <div class="tutorial-step" data-step="4">
                 <h3>Steer It</h3>
-                <p><strong>New World</strong> starts a fresh history from a random seed. Open <strong>World</strong> to set the seed, the starting continent size, how long the history runs, how it should end, and the <strong>Quality</strong>.</p>
+                <p><strong>New World</strong> starts a fresh history from a random seed. Open <strong>World</strong> to set the seed, the starting continent size, how long the history runs, how it should end, the planet's <strong>Temperature</strong> and <strong>Precipitation</strong>, and the <strong>Quality</strong>.</p>
                 <p>At the end of a history, <strong>Extend history</strong> runs it on for as long as you like. The link in your address bar rebuilds the same history, so you can share it.</p>
             </div>
             <div class="tutorial-dots">

@@ -35,7 +35,7 @@ export const STAGES = [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['ri
  *          onStage?: (name: string) => void, F?: Object, cfg?: Object}} o
  * @returns {Promise<{mesh: Object, z: Float32Array, ocean: Uint8Array, ms: Object, stats: Object}>}
  */
-export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false }) {
+export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {} }) {
     const ms = {}, stats = {};
     let t0 = performance.now();
     const lap = name => { const t = performance.now(); ms[name] = t - t0; t0 = t; };
@@ -59,7 +59,8 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
 
     // ── the climate, on this surface ──
     onStage('climate');
-    let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up' });
+    // (climateOptions: the page's Temperature and Precipitation — tempOffsetC, precipScale)
+    let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up' }, climateOptions);
     const { koppen, tAnnual: tAnn, pAnnual: pAnn, lat, lon } = res.cell, G = res.grid.size;
     for (let c = 0; c < n; c++) if (pAnn[c] > F.rainMaxMm) pAnn[c] = F.rainMaxMm;     // (the climate's rare wet hotspots)
     // (the warmest month at sea level, and the winds, on the climate's grid)

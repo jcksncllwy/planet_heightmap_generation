@@ -44,7 +44,7 @@ const $ = id => document.getElementById(id);
 const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
     seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
     timeLabel: $('timeLabel'), rate: $('rate'), extend: $('extendBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
-    railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), quality: $('quality'), world: $('worldSection') };
+    railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), quality: $('quality'), world: $('worldSection'), tmp: $('sTmp'), prc: $('sPrc') };
 
 // ── settings ──
 ui.ending.innerHTML = ENDINGS.map(e => `<option value="${e.id}">${e.label}</option>`).join('');
@@ -52,6 +52,12 @@ const url = new URLSearchParams(location.search);
 const setIf = (el, v) => { if (v !== null && [...(el.options ?? [])].some(o => o.value === v)) el.value = v; };
 if (url.get('cont')) ui.cont.value = url.get('cont');
 if (url.get('len')) ui.len.value = url.get('len');
+if (url.get('temp')) ui.tmp.value = url.get('temp');
+if (url.get('rain')) ui.prc.value = url.get('rain');
+// The planet's Temperature and Precipitation (as Generate's): the climate's options, for the preview climate and for Add
+// detail — they change the climate only, not the history (plans/V1_NEW_CLIMATE_PLAN.md, phase 7)
+const climateOptions = () => ({ tempOffsetC: Number(ui.tmp.value), precipScale: Math.max(0, 1 + 0.5 * Number(ui.prc.value)) });
+const climateKey = () => `${Number(ui.tmp.value)}|${Number(ui.prc.value)}`;
 // (a phone builds on 20K plates by default: a 1200 Myr history takes ~40 s on a desktop at 20K, ~85 s at 40K, and a phone's
 // cores are several times slower — plans/V2_FULL_PLANET_PLAN.md, step A)
 if (IS_TOUCH) ui.sim.value = '20000';
@@ -76,11 +82,18 @@ ui.sim.addEventListener('change', () => { labels(); saveUrl(); });
 /** The World section's values, and its one-line summary (shown while it is folded). */
 function labels() {
     $('vCont').textContent = `${ui.cont.value}%`; $('vLen').textContent = `${ui.len.value} Myr`;
-    $('worldSummary').textContent = `Seed ${Number(ui.seed.value) || 0} · ${ui.len.value} Myr · ${QUALITY_WORDS[ui.quality.value]}`;
+    const t = Number(ui.tmp.value), p = Math.round(50 * Number(ui.prc.value));
+    $('vTmp').textContent = t ? `${t > 0 ? '+' : '−'}${Math.abs(t)}°C` : '±0°C';
+    $('vPrc').textContent = p ? `${p > 0 ? '+' : '−'}${Math.abs(p)}%` : '±0%';
+    $('worldSummary').textContent = `Seed ${Number(ui.seed.value) || 0} · ${ui.len.value} Myr · ${QUALITY_WORDS[ui.quality.value]}` +
+        (t ? ` · ${$('vTmp').textContent}` : '') + (p ? ` · ${$('vPrc').textContent} rain` : '');
     // (the plates' resolution is the one setting a history cannot change: it waits for a build)
     $('worldPending').hidden = !B?.simCells || B.simCells === Number(ui.sim.value);
 }
-for (const el of [ui.cont, ui.len, ui.seed]) el.addEventListener('input', labels);
+for (const el of [ui.cont, ui.len, ui.seed, ui.tmp, ui.prc]) el.addEventListener('input', labels);
+// (a new Temperature or Precipitation: the previews' climates are worked out again when shown; a detailed moment keeps
+// its old climate — its rivers, ice and Satellite were sculpted by it — until detail is added again)
+for (const el of [ui.tmp, ui.prc]) el.addEventListener('change', () => { saveUrl(); labels(); dirty = true; updateClimateUi(); });
 // ── tooltips (the "?" marks): drawn over the page — V1's own sit inside the panel, which scrolls and so clips what spills
 // out of it (developer: "the tooltips are hidden inside the sidebar if they appear towards the right"); to the right of
 // the mark where there is room, else above it (always above on a narrow screen: the bottom sheet); a tap shows one ──
@@ -114,7 +127,7 @@ $('rebuildBtn').addEventListener('click', () => build());                       
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
 const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
-    (B?.moreTo ? `&more=${B.moreTo}` : ''));
+    (Number(ui.tmp.value) ? `&temp=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
 // interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)
@@ -513,12 +526,13 @@ async function finishMoment(again = null) {
     const onProgress = p => { if (b.finishJob) { b.finishJob.share = before + p * (done.get('picture') ?? 0.1); updateClimateUi(); } };
     try {
         const { simMesh } = b;
-        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width }, { onStage, onProgress });
+        const key = climateKey();
+        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions() }, { onStage, onProgress });
         if (B !== b) return;
         const secs = (performance.now() - started) / 1000;
         // (one detailed moment: this one replaces the one before, now that it is done)
         b.finishes.clear();
-        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, stats: res.stats, secs });
+        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, stats: res.stats, secs, climateKey: key });
         b.finishOk = true;
         b.finishNote = `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
         console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
@@ -585,13 +599,14 @@ function updateCard() {
         : 'This is a preview. Add detail sculpts it again, finely: rivers and lakes, glaciers, its own climate and the Satellite view — ready to export.';
     showIf($('detailGroup'), !!frame && !job);
     showIf($('waterGroup'), isDet && !job);
-    const again = $('cardAgain');
-    if (showIf(again, isDet && !job && fin.cells !== cells)) again.textContent = `Add detail again at ${cellsWords(cells)}`;
+    const again = $('cardAgain'), stale = isDet && fin.climateKey !== climateKey();
+    if (showIf(again, isDet && !job && (fin.cells !== cells || stale))) again.textContent = stale ? 'Add detail again with the new climate' : `Add detail again at ${cellsWords(cells)}`;
     if (showIf($('cardDetailed'), !!detFrame && !isDet)) {
         $('cardDetailed').innerHTML = (job ? `Replaces the detailed ${dt} Myr once it is done.` : `Replaces the detailed ${dt} Myr — one moment is kept in detail.`) +
             ` <a href="#" data-t="${detFrame.time}">Go to ${dt} Myr</a>`;
     }
-    const note = b?.finishNote && (isDet || !b.finishOk) ? b.finishNote : null;
+    const note = stale && !job ? 'Detailed with the Temperature and Precipitation as they were — its rivers, ice and Satellite view too.'
+        : b?.finishNote && (isDet || !b.finishOk) ? b.finishNote : null;
     if (showIf($('cardNote'), !!note)) $('cardNote').textContent = note;
     // Extend history: once the history has reached its end — Stop while it runs on, Stopping… until its piece is done
     const ext = ui.extend;
@@ -668,19 +683,19 @@ $('exportOverlay').addEventListener('click', e => { if (e.target === $('exportOv
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('exportOverlay').classList.contains('hidden')) closeExport(); });
 
 // ── the climate (step D): calculated on request for the moment shown, kept per moment while the history is open ──
-const climateOf = frame => { const e = B?.climates.get(frame); return e && e.tMesh === B.tMesh ? e.data : null; };
+const climateOf = frame => { const e = B?.climates.get(frame); return e && e.tMesh === B.tMesh && e.key === climateKey() ? e.data : null; };
 
 async function calculateClimate() {
     const b = B, frame = painted, T = paintedT;
     if (!b?.tMesh || !frame || paintedMesh !== b.tMesh || b.climateJob || climateOf(frame)) return;
     setPlaying(false);                                  // (it is this moment you are looking at)
-    const tMesh = b.tMesh, started = performance.now();
+    const tMesh = b.tMesh, started = performance.now(), key = climateKey();
     b.climateJob = { frame };
     updateClimateUi();
     try {
-        const data = await climate.compute(tMesh, T.heightKm);
+        const data = await climate.compute(tMesh, T.heightKm, climateOptions());
         if (B !== b) return;
-        b.climates.set(frame, { tMesh, data });
+        b.climates.set(frame, { tMesh, data, key });
         const secs = (performance.now() - started) / 1000;
         b.climateNote = `Climate for ${frame.time.toFixed(0)} Myr in ${secs.toFixed(1)} s`;
         console.info(`[evolution] climate for ${frame.time.toFixed(0)} Myr: ${(data.ms / 1000).toFixed(2)} s in the worker, ${secs.toFixed(2)} s in all`);
@@ -701,7 +716,7 @@ function updateClimateUi() {
     // (the Climate tab works the climate out by itself — about a second — for the moment paused on; a finished moment brings
     // its own. Once per moment and terrain detail: a failure is not retried in a loop)
     if (b && CLIMATE_SUB.has(view.layer) && frame && !playing && !have && !fin?.climate && !job && !b.finishJob && paintedMesh === b.tMesh) {
-        const key = `${frame.time}|${b.terrainCells}`;
+        const key = `${frame.time}|${b.terrainCells}|${climateKey()}`;
         if (!(b.autoClimate ??= new Set()).has(key)) { b.autoClimate.add(key); setTimeout(() => calculateClimate(), 0); }
     }
     const chip = $('climateChip'), shown = frame ? finishedShown(frame) : null, t = frame ? frame.time.toFixed(0) : '';

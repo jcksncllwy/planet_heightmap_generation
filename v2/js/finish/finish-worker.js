@@ -21,13 +21,13 @@ let sim = null, simCells = 0, delaunatorSet = false;
 
 self.onmessage = async ({ data }) => {
     if (data.type !== 'finish') return;
-    const { id, frame, seed, cells, width, poolSize = null } = data;
+    const { id, frame, seed, cells, width, poolSize = null, climateOptions = {} } = data;
     try {
         if (!delaunatorSet) { setDelaunator((await import(data.delaunatorUrl)).default); delaunatorSet = true; }
         if (!sim || simCells !== data.simMesh.numCells) { sim = meshFromArrays(data.simMesh); simCells = data.simMesh.numCells; }
         keepOnlyTerrainMesh(cells);                                   // (another detail's mesh goes: one fine mesh at a time)
         const pool = await TerrainPool.create(sim, poolSize);
-        const out = await finishPlanet({ frame, simMesh: sim, seed, cells, pool, closePool: true, onStage: stage => self.postMessage({ type: 'stage', id, stage }) });
+        const out = await finishPlanet({ frame, simMesh: sim, seed, cells, pool, closePool: true, climateOptions, onStage: stage => self.postMessage({ type: 'stage', id, stage }) });
         self.postMessage({ type: 'stage', id, stage: 'picture' });
         const t0 = performance.now();
         const raster = finishRaster(out.mesh, out.z, out.ocean, width, share => self.postMessage({ type: 'progress', id, share }), out.lake, out.lakeLevel, out.climate.cell);

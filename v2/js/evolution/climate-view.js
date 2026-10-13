@@ -18,15 +18,16 @@ export const SEASON_WORDS = { year: 'the year', jan: 'January', jul: 'July' };
 export class ClimateService {
     constructor() { this.worker = null; this.jobs = new Map(); this.sent = new Set(); this.nextId = 1; }
 
-    /** The climate of a frame's terrain (heights in km, the sea at 0) on a terrain mesh: a promise of the page's data. */
-    compute(tMesh, heightKm) {
+    /** The climate of a frame's terrain (heights in km, the sea at 0) on a terrain mesh: a promise of the page's data.
+     *  `options`: the page's Temperature / Precipitation (tempOffsetC, precipScale). */
+    compute(tMesh, heightKm, options = {}) {
         this.worker ??= this.start();
         const key = tMesh.numCells;
         if (!this.sent.has(key)) { this.worker.postMessage({ type: 'mesh', key, xyz: tMesh.xyz }); this.sent.add(key); }
         const id = this.nextId++;
         return new Promise((resolve, reject) => {
             this.jobs.set(id, { resolve, reject });
-            this.worker.postMessage({ type: 'climate', id, key, heightKm: Float32Array.from(heightKm) });
+            this.worker.postMessage({ type: 'climate', id, key, heightKm: Float32Array.from(heightKm), options });
         });
     }
 

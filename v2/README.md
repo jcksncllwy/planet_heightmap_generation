@@ -33,7 +33,10 @@ the developer before the next begins.**
 **Evolution** (`/evolution`, `evolution.html`) is the product page built on this engine — a side generator beside V1's
 Generate and Import Heightmap. Its layout (plans/V2_EVOLUTION_UI_PLAN.md): the sidebar holds **New World** (a new seed),
 the **World** section — folded to a one-line summary once a history is building: the seed, starting continent size,
-history length, ending and **Quality** (Fast 20K plates / 160K terrain · Balanced 40K / 160K · Best 80K / 640K · Custom,
+history length, ending, the planet's **Temperature** (−15…+15 °C) and **Precipitation** (±50 %) — the climate's
+options (`tempOffsetC`, `precipScale`), for the preview climate and Add detail alike; they change the climate only, so
+previews are worked out again when shown and a detailed moment says it was made with the old ones (in the link: `temp=`,
+`rain=`) — and **Quality** (Fast 20K plates / 160K terrain · Balanced 40K / 160K · Best 80K / 640K · Custom,
 which shows the two resolutions), with Build This World — then the **context card**, and **View** (terrain colours,
 globe or map, grid, auto-rotate, playback speed, stats). The context card names the moment shown, a **Preview** or
 **Detailed** badge, and the one thing to do next — **Add detail** (with its Detail level), **Cancel** while it runs, or
