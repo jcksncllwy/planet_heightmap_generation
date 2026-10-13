@@ -9,7 +9,7 @@ import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
 
 export const CLIMATE_LAYERS = new Set(['satellite', 'koppen', 'temperature', 'rain', 'wind', 'currents']);
-export const SEASONAL_LAYERS = new Set(['satellite', 'temperature', 'rain', 'wind']);
+export const SEASONAL_LAYERS = new Set(['satellite', 'temperature', 'rain', 'wind', 'currents']);
 /** Layers only a finished moment has (its land's cover — plans/V2_SATELLITE_PLAN.md): greyed on the live timeline. */
 export const FINISHED_ONLY_LAYERS = new Set(['satellite']);
 export const SEASON_WORDS = { year: 'the year', jan: 'January', jul: 'July' };
@@ -135,7 +135,7 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
         relief(out);
         const T = lutOf('sst');
         for (let c = 0; c < n; c++) {
-            if (h[c] <= 0) { put(out, c, T, at(C.sstAnom, p, c), shadeOf(terrain, c)); continue; }
+            if (h[c] <= 0) { put(out, c, T, at(C.sstAnom[season], p, c), shadeOf(terrain, c)); continue; }
             greyCell(out, c, 0.55, 0.75);
         }
     }
@@ -155,7 +155,7 @@ function greyCell(out, c, grey, dim) {
  */
 export function drawArrows(ctx, width, layer, season, C) {
     const H = width / 2, px = width / 360;              // pixels per degree
-    const U = layer === 'wind' ? C.u[season] : C.currentU, V = layer === 'wind' ? C.v[season] : C.currentV;
+    const U = layer === 'wind' ? C.u[season] : C.currentU[season], V = layer === 'wind' ? C.v[season] : C.currentV[season];
     const only = layer === 'currents' ? C.sea : null;
     // (arrow length: the field's strong speeds — its 95th percentile — make a full-length arrow)
     const speeds = [];
@@ -279,7 +279,7 @@ export function finishedClimateColor(layer, season, C, W, lut) {
             putPx(out, o, kk, season === 'year' || !(yr > 0.01) ? monthly : monthly * p / yr);
         } else if (layer === 'wind') putPx(out, o, kk, g(C.slp[season], x, y));
         else if (layer === 'currents') {
-            if (wet) { putPx(out, o, kk, g(C.sstAnom, x, y)); return; }
+            if (wet) { putPx(out, o, kk, g(C.sstAnom[season], x, y)); return; }
             // (the land: its own colours, greyed and dimmed)
             const L = lut.rgb, r = L[k3] * kk, gg = L[k3 + 1] * kk, b = L[k3 + 2] * kk, l = 0.3 * r + 0.59 * gg + 0.11 * b;
             out[o] = (r + (l - r) * 0.55) * 0.75; out[o + 1] = (gg + (l - gg) * 0.55) * 0.75; out[o + 2] = (b + (l - b) * 0.55) * 0.75; out[o + 3] = 255;

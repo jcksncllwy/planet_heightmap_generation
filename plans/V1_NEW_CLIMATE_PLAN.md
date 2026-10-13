@@ -75,7 +75,7 @@ Summer / Winter pairs (which were northern-hemisphere seasons). Generate and Imp
 |---|---|---|
 | Pressure | sea-level pressure, hPa; the ITCZ line; wind arrows | circulation `slp`, `itczLat`, `u` / `v` |
 | Wind | speed, m/s; arrows | circulation `u`, `v` |
-| Ocean Currents | arrows, warm / cold by the sea's temperature against its latitude's mean | ocean `u`, `v`; `monthlySL` over sea (annual today — see *Seasonal currents*) |
+| Ocean Currents | arrows, warm / cold by the sea's temperature against its latitude's mean | ocean `monthly.u`, `monthly.v` (seasonal — see *Seasonal currents*); `monthlySL` over sea |
 | Temperature | °C, land and sea (the sea's is its surface temperature) | per-cell 12 months (`onCell`), the grid's `monthlySL` at sea |
 | Precipitation | mm/month (mm/year on Year) | per-cell 12 months; the grid's `months.P` at sea |
 | Rain Shadow | how mountains move rain: windward wetter, the lee drier (one layer) | `rain.js`'s orographic factor — to be exposed |
@@ -88,6 +88,44 @@ Summer / Winter pairs (which were northern-hemisphere seasons). Generate and Imp
 
 Dropped: **Temp Continentality** (V1's zone bookkeeping; nothing in the new model is like it). The Geology and Plate
 Physics groups are the terrain generator's and are not part of this port.
+
+## Seasonal currents (built 2026-10-13)
+
+The developer: *"let's definitely update to have more seasonality. I think the fade out should go all the way to like 60
+degrees"* — done first, in the new climate itself (so Evolution has it too), before the port.
+
+**How** (`v2/js/climate/ocean.js`). The gyre model is linear in the wind stress, so it is solved three times — for the
+year's mean stress and for the two parts of its annual cycle (first harmonic) — and each month's currents are the mean
+plus that month's share of the cycle. The seasonal part is whole within `OCEAN_SEASON_FULL_DEG` (10°) and fades smoothly
+to nothing at `OCEAN_SEASON_ZERO_DEG` (60°): the tropical ocean adjusts to the wind in weeks to months, the midlatitude
+gyres take years. The Ekman upwelling follows each month's wind at every latitude, unfaded (it answers within days). The
+heat — advection, upwelling, the overturning — is worked out per month and handed to the temperature stage, which takes
+it into its harmonics (`ocean.monthly.qflux`). `OCEAN_SEASON_SCALE` = 0 gives back the old annual ocean exactly (checked:
+identical Köppen on Earth). Evolution's Currents view now has Year / January / July (currents and sea-temperature anomaly).
+
+**On Earth** (V1's Earth mesh, 40K, through the new climate; `season-ocean` experiment):
+
+| | Annual ocean | Seasonal | Real |
+|---|---|---|---|
+| Somali Current, Jan → Jul (m/s, + north) | −0.011 → −0.011 | −0.058 → **+0.040** | reverses with the monsoon |
+| Arabian Sea upwelling, July (m/day) | 0 | **0.24** | strong in the summer monsoon |
+| Arabian Sea sea temperature, July | 29.8 °C | 29.0 °C | ≈ 27 °C |
+| Equatorial countercurrent, Jan → Jul | −0.012 → −0.012 | −0.10 → +0.07 | strongest Aug–Oct |
+| California upwelling, Jan → Jul | 0.013 → 0.013 | 0.016 → 0.040 | spring–summer peak |
+| Gulf Stream | 0.037 | 0.035 / 0.038 | steady |
+| Western Europe air, Jan / Jul | 2.3 / 15.8 °C | 2.8 / 16.3 °C | (the known cold bias eases) |
+
+Köppen: 7.3 % of land cells change class (2.8 % their major group). Most look like gains — ice cap → tundra on Alaska's
+north slope and west Greenland, tundra → subarctic on Kamchatka and the Bering coast, Cfb → Cfa in Uruguay, BSk → BSh in
+Western Australia — and one like a loss: Sumatra Am → Aw (it is rainforest). Part of the high latitudes' warming is not
+the currents (faded there) but the upwelling: monthly upwelling cools more in all than the year's did, and the ocean
+moves heat without making it, so the difference is spread over all the sea.
+
+**Cost**: the ocean stage ≈ 2.5× (≈ +0.3 s in this container's Node, ≈ +8 % of the whole climate in a browser).
+
+**Still to do — the real score.** The reference data (NOAA, Beck) cannot be fetched in the cloud container, so the
+Earth-match has to be run locally, with and without: `node tuning/climate/fetch-references.mjs` once, then
+`node tuning/climate/coupled-check.mjs --quick` and `… --quick --set OCEAN_SEASON_SCALE=0`.
 
 ## Phases
 

@@ -13,6 +13,14 @@
 //    cold water wells up from below. Both become a heat source / sink for the sea's mixed layer, which the
 //    temperature stage adds to its energy balance; the winds carry the result inland (a mild Europe, cool
 //    California and Namib coasts).
+//  • Seasons (plans/V1_NEW_CLIMATE_PLAN.md, "Seasonal currents"). The model is linear in the wind stress, so it is solved
+//    for the year's mean stress and for its annual cycle (the first harmonic, two more solves), and each month's
+//    gyres are the mean plus that month's part of the cycle. Real gyres adjust to the wind over months near the
+//    equator but years at midlatitudes (the planetary waves that set them up are slow there), so the seasonal part is
+//    whole in the tropics and fades out poleward (OCEAN_SEASON_FULL_DEG → OCEAN_SEASON_ZERO_DEG): the monsoon seas'
+//    currents reverse (the Somali Current), the equatorial currents swell and ebb, the great gyres hold steady. The
+//    Ekman transport answers each month's wind at once at every latitude, so the upwelling follows the month (the
+//    summer monsoon's cold Arabian Sea, California's spring and summer). The heat they carry is monthly too.
 //  • The overturning. Warm surface water also flows poleward to the seas that open onto the polar ocean, sinks there
 //    and gives up its heat (the North Atlantic Drift: a mild north-west Europe, an ice-free Norwegian Sea). It forms in
 //    a hemisphere's seas that reach the polar ocean through open water from the midlatitudes (the Atlantic through the
@@ -38,7 +46,8 @@ const MOC_REACH_KM = 2500;           // … most near the polar opening (e-foldi
 /**
  * stage(ctx, circulation, temperature) → { psi (G, Sv), u, v (G, surface current m/s, annual), qflux (G, W/m², annual:
  * advection + upwelling + overturning), carried (G, °C: the latitude-average sea temperature where each current's
- * water comes from, minus here), upwelling (G, m/day), channels, ms }. Fields on the core grid.
+ * water comes from, minus here), upwelling (G, m/day), monthly: { u, v, qflux, upwelling (12 × G, mid-month) }, channels,
+ * ms }. Fields on the core grid; the annual ones are the months' means.
  */
 /**
  * Heat of the overturning (W/m², G): per hemisphere without a circumpolar channel, the sea poleward of MOC_FROM_DEG
@@ -103,8 +112,9 @@ export function windDrivenOcean() {
         const dRad = g.step * DEG;
         const cosLat = Float64Array.from(g.lat, l => Math.cos(l * DEG));
 
-        // ── Annual-mean wind stress (from the monthly winds: τ = ρ_a C_d |U| U) and sea temperature ──
+        // ── Each month's wind stress (from the monthly winds: τ = ρ_a C_d |U| U) and sea temperature, and their means ──
         const tx = new Float64Array(G), ty = new Float64Array(G), sst = new Float64Array(G);
+        const txM = new Float64Array(12 * G), tyM = new Float64Array(12 * G), sstM = new Float64Array(12 * G);
         const uM = new Float64Array(G), vM = new Float64Array(G), tM = new Float64Array(G);
         for (let m = 0; m < 12; m++) {
             uM.set(co(circ.u.subarray(m * core.size, (m + 1) * core.size)));
@@ -112,82 +122,122 @@ export function windDrivenOcean() {
             tM.set(co(temperature.monthlySL.subarray(m * core.size, (m + 1) * core.size)));
             for (let c = 0; c < G; c++) {
                 // bulk stress with the storms the monthly mean leaves out: the typical speed, not the mean vector's
-                const s = Math.sqrt(uM[c] * uM[c] + vM[c] * vM[c] + P.OCEAN_GUST_MS * P.OCEAN_GUST_MS);
-                tx[c] += RHO_AIR * DRAG_COEFF * s * uM[c] / 12;
-                ty[c] += RHO_AIR * DRAG_COEFF * s * vM[c] / 12;
-                sst[c] += Math.max(-1.8, tM[c]) / 12;
+                const s = Math.sqrt(uM[c] * uM[c] + vM[c] * vM[c] + P.OCEAN_GUST_MS * P.OCEAN_GUST_MS), k = m * G + c;
+                txM[k] = RHO_AIR * DRAG_COEFF * s * uM[c]; tyM[k] = RHO_AIR * DRAG_COEFF * s * vM[c]; sstM[k] = Math.max(-1.8, tM[c]);
+                tx[c] += txM[k] / 12; ty[c] += tyM[k] / 12; sst[c] += sstM[k] / 12;
             }
+        }
+        // the stress's annual cycle: its first harmonic, x(t) ≈ x̄ + 2(x₁ᵣ cos θ − x₁ᵢ sin θ), θ = 2πt/12, month m at t = m + ½
+        const seasonal = P.OCEAN_SEASON_SCALE > 0;
+        const phase = m => 2 * Math.PI * (m + 0.5) / 12;
+        const tx1r = new Float64Array(G), tx1i = new Float64Array(G), ty1r = new Float64Array(G), ty1i = new Float64Array(G);
+        if (seasonal) for (let m = 0; m < 12; m++) {
+            const cm = Math.cos(phase(m)) / 12, sm = Math.sin(phase(m)) / 12;
+            for (let c = 0; c < G; c++) { const k = m * G + c; tx1r[c] += txM[k] * cm; tx1i[c] -= txM[k] * sm; ty1r[c] += tyM[k] * cm; ty1i[c] -= tyM[k] * sm; }
         }
 
         // ── Wind-stress curl (N/m³) ──
-        const curl = new Float64Array(G);
-        for (let j = 0; j < h; j++) {
-            const cj = Math.max(0.05, cosLat[j]);
-            for (let i = 0; i < w; i++) {
-                const c = j * w + i;
-                const dtydl = (ty[j * w + (i + 1) % w] - ty[j * w + (i - 1 + w) % w]) / (2 * dRad);
-                const txN = j > 0 ? tx[c - w] * cosLat[j - 1] : tx[c] * cosLat[j], txS = j < h - 1 ? tx[c + w] * cosLat[j + 1] : tx[c] * cosLat[j];
-                const dtxdp = (txN - txS) / ((j > 0 && j < h - 1 ? 2 : 1) * dRad);
-                curl[c] = (dtydl - dtxdp) / (R_PLANET * cj);
+        const curlOf = (sx, sy) => {
+            const out = new Float64Array(G);
+            for (let j = 0; j < h; j++) {
+                const cj = Math.max(0.05, cosLat[j]);
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    const dtydl = (sy[j * w + (i + 1) % w] - sy[j * w + (i - 1 + w) % w]) / (2 * dRad);
+                    const txN = j > 0 ? sx[c - w] * cosLat[j - 1] : sx[c] * cosLat[j], txS = j < h - 1 ? sx[c + w] * cosLat[j + 1] : sx[c] * cosLat[j];
+                    const dtxdp = (txN - txS) / ((j > 0 && j < h - 1 ? 2 : 1) * dRad);
+                    out[c] = (dtydl - dtxdp) / (R_PLANET * cj);
+                }
             }
-        }
+            return out;
+        };
+        const curl = curlOf(tx, ty);
 
         // ── Circumpolar channels: latitude rows that are open sea all round; eastward current, friction-balanced ──
         const openRow = new Uint8Array(h);
         for (let j = 0; j < h; j++) { let all = true; for (let i = 0; i < w && all; i++) all = isSea[j * w + i] === 1; openRow[j] = all ? 1 : 0; }
-        // transport per row (m³/s) of the channel's zonal-mean wind stress over friction
-        let psiAcc = 0;
-        const psiRef = new Float64Array(h);          // Ψ a landmass takes if it lies just north of row j (from the south pole)
-        const channels = [];
-        for (let j = h - 1; j >= 0; j--) {
-            if (openRow[j]) {
-                let txm = 0; for (let i = 0; i < w; i++) txm += tx[j * w + i]; txm /= w;
-                const U = txm / (RHO_SEA * P.OCEAN_CHANNEL_DRAG);     // depth-integrated eastward transport per width (m²/s)
-                psiAcc -= U * R_PLANET * dRad;                         // Ψ decreases northward for eastward flow (U = −∂Ψ/∂y)
-                if (!channels.length || channels[channels.length - 1].jEnd !== j + 1) channels.push({ jStart: j, jEnd: j, transport: 0 });
-                const ch = channels[channels.length - 1]; ch.jEnd = j; ch.transport += U * R_PLANET * dRad;
+        // transport per row (m³/s) of the channel's zonal-mean wind stress over friction; psiRef[j]: the Ψ a landmass
+        // takes if it lies just north of row j (from the south pole)
+        const channelsOf = (sx) => {
+            let psiAcc = 0;
+            const psiRef = new Float64Array(h), channels = [];
+            for (let j = h - 1; j >= 0; j--) {
+                if (openRow[j]) {
+                    let txm = 0; for (let i = 0; i < w; i++) txm += sx[j * w + i]; txm /= w;
+                    const U = txm / (RHO_SEA * P.OCEAN_CHANNEL_DRAG);     // depth-integrated eastward transport per width (m²/s)
+                    psiAcc -= U * R_PLANET * dRad;                         // Ψ decreases northward for eastward flow (U = −∂Ψ/∂y)
+                    if (!channels.length || channels[channels.length - 1].jEnd !== j + 1) channels.push({ jStart: j, jEnd: j, transport: 0 });
+                    const ch = channels[channels.length - 1]; ch.jEnd = j; ch.transport += U * R_PLANET * dRad;
+                }
+                psiRef[j] = psiAcc;
             }
-            psiRef[j] = psiAcc;
-        }
+            return { psiRef, channels };
+        };
+        const { channels } = channelsOf(tx);
 
         // ── Stommel: −r∇²Ψ − 2Ω ∂Ψ/∂λ = −a² curl τ / ρ₀ over the sea; Ψ held at its coast value on land ──
         // (the solver's form σΨ − D∇²Ψ + (γu·∇)Ψ = f on the unit sphere; the β term as an eastward "advection"
         // coefficient −2Ω·a·cos φ; land by a large σ pinning Ψ to the landmass's value)
         const r = P.OCEAN_FRICTION;
         const sigma = new Float64Array(G), zeroI = new Float64Array(G), gu = new Float64Array(G), gv = new Float64Array(G);
-        const f = new Float64Array(G), fi = new Float64Array(G);
         const pin = 1e3 * r / (dRad * dRad);
         for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
             const c = j * w + i;
             gu[c] = -2 * OMEGA_ROT * R_PLANET * cosLat[j];
             // land and the open channel rows are held at their Ψ (in a channel, the friction-balanced current)
-            if (isSea[c] && !openRow[j]) { f[c] = -R_PLANET * R_PLANET * curl[c] / RHO_SEA; }
-            else { sigma[c] = pin; f[c] = pin * psiRef[j]; }
+            if (!(isSea[c] && !openRow[j])) sigma[c] = pin;
         }
         // friction: east–west sets the western boundary current's width; north–south kept small so the open ocean
         // keeps its Sverdrup balance (isotropic friction wide enough for the grid smears the gyres — Stommel box test)
         const solver = new HelmholtzSolver(g, P.OCEAN_FRICTION_NS, r);
         solver.setOperator(sigma, zeroI, gu, gv, 1);
-        // Solve for the departure Ψ' from the held values (Ψ = Ψ_ref + Ψ'), so the convergence test measures the open
-        // sea and not the large pinning terms: Ψ' = 0 where held, A·Ψ' = f − A·Ψ_ref over the sea.
-        const psiRow = new Float64Array(G), psiRowI = new Float64Array(G), Aref = new Float64Array(G), ArefI = new Float64Array(G);
-        for (let c = 0; c < G; c++) psiRow[c] = psiRef[Math.floor(c / w)];
-        solver.apply(psiRow, psiRowI, Aref, ArefI);
-        for (let c = 0; c < G; c++) f[c] = sigma[c] > 0 ? 0 : f[c] - Aref[c];
-        const psi = new Float64Array(G), psiI = new Float64Array(G);
-        const solveStats = solver.solve(f, fi, psi, psiI, { maxCycles: 80, tol: 1e-10 });
-        for (let c = 0; c < G; c++) psi[c] += psiRow[c];
+        /** The gyres of a wind stress (linear in it): Ψ, and the depth-integrated transport U = −∂Ψ/∂y, V = ∂Ψ/∂x. */
+        const gyres = (sx, sy, sCurl) => {
+            const { psiRef } = channelsOf(sx);
+            // Solve for the departure Ψ' from the held values (Ψ = Ψ_ref + Ψ'), so the convergence test measures the open
+            // sea and not the large pinning terms: Ψ' = 0 where held, A·Ψ' = f − A·Ψ_ref over the sea.
+            const f = new Float64Array(G), fi = new Float64Array(G);
+            const psiRow = new Float64Array(G), psiRowI = new Float64Array(G), Aref = new Float64Array(G), ArefI = new Float64Array(G);
+            for (let c = 0; c < G; c++) psiRow[c] = psiRef[Math.floor(c / w)];
+            solver.apply(psiRow, psiRowI, Aref, ArefI);
+            for (let c = 0; c < G; c++) f[c] = sigma[c] > 0 ? 0 : -R_PLANET * R_PLANET * sCurl[c] / RHO_SEA - Aref[c];
+            const psi = new Float64Array(G), psiI = new Float64Array(G);
+            const stats = solver.solve(f, fi, psi, psiI, { maxCycles: 80, tol: 1e-10 });
+            for (let c = 0; c < G; c++) psi[c] += psiRow[c];
+            const U = new Float64Array(G), V = new Float64Array(G);
+            for (let j = 0; j < h; j++) {
+                const cj = Math.max(0.05, cosLat[j]);
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    if (!isSea[c]) continue;
+                    const pn = j > 0 ? psi[c - w] : psi[c], ps = j < h - 1 ? psi[c + w] : psi[c];
+                    U[c] = -(pn - ps) / ((j > 0 && j < h - 1 ? 2 : 1) * dRad * R_PLANET);
+                    V[c] = (psi[j * w + (i + 1) % w] - psi[j * w + (i - 1 + w) % w]) / (2 * dRad * R_PLANET * cj);
+                }
+            }
+            return { psi, U, V, stats };
+        };
+        const mean = gyres(tx, ty, curl), psi = mean.psi, U = mean.U, V = mean.V, solveStats = mean.stats;
 
-        // ── Currents: depth-integrated transport U = −∂Ψ/∂y, V = ∂Ψ/∂x; surface speed = transport / effective depth ──
-        const U = new Float64Array(G), V = new Float64Array(G);
-        for (let j = 0; j < h; j++) {
-            const cj = Math.max(0.05, cosLat[j]);
-            for (let i = 0; i < w; i++) {
-                const c = j * w + i;
-                if (!isSea[c]) continue;
-                const pn = j > 0 ? psi[c - w] : psi[c], ps = j < h - 1 ? psi[c + w] : psi[c];
-                U[c] = -(pn - ps) / ((j > 0 && j < h - 1 ? 2 : 1) * dRad * R_PLANET);
-                V[c] = (psi[j * w + (i + 1) % w] - psi[j * w + (i - 1 + w) % w]) / (2 * dRad * R_PLANET * cj);
+        // ── Each month's currents: the mean, plus the month's part of the annual cycle where the gyres can follow it —
+        // whole to OCEAN_SEASON_FULL_DEG, fading (smoothly) to nothing at OCEAN_SEASON_ZERO_DEG ──
+        const UM = new Float64Array(12 * G), VM = new Float64Array(12 * G);
+        for (let m = 0; m < 12; m++) { UM.set(U, m * G); VM.set(V, m * G); }
+        if (seasonal) {
+            const re = gyres(tx1r, ty1r, curlOf(tx1r, ty1r)), im = gyres(tx1i, ty1i, curlOf(tx1i, ty1i));
+            const fade = new Float64Array(h);
+            for (let j = 0; j < h; j++) {
+                const x = Math.max(0, Math.min(1, (Math.abs(g.lat[j]) - P.OCEAN_SEASON_FULL_DEG) / Math.max(1e-6, P.OCEAN_SEASON_ZERO_DEG - P.OCEAN_SEASON_FULL_DEG)));
+                fade[j] = P.OCEAN_SEASON_SCALE * (1 - x * x * (3 - 2 * x));
+            }
+            for (let m = 0; m < 12; m++) {
+                const cm = 2 * Math.cos(phase(m)), sm = 2 * Math.sin(phase(m));
+                for (let c = 0; c < G; c++) {
+                    if (!isSea[c]) continue;
+                    const k = m * G + c, fj = fade[Math.floor(c / w)];
+                    UM[k] += fj * (re.U[c] * cm - im.U[c] * sm);
+                    VM[k] += fj * (re.V[c] * cm - im.V[c] * sm);
+                }
             }
         }
 
@@ -197,57 +247,66 @@ export function windDrivenOcean() {
         // the gradient of the latitude's average sea temperature (smoothed over ≈ ±6°), not the model's own local
         // sea temperature (already evened out by the energy balance, which would carry almost nothing). East–west,
         // the local sea temperature (the equatorial currents carry the cold east Pacific west).
-        const seaRow = new Float64Array(h), dTdy = new Float64Array(h);
-        for (let j = 0; j < h; j++) { let s = 0, n = 0; for (let i = 0; i < w; i++) { const c = j * w + i; if (isSea[c]) { s += sst[c]; n++; } } seaRow[j] = n ? s / n : NaN; }
-        for (let j = 0; j < h; j++) if (!(seaRow[j] === seaRow[j])) { let jj = j; while (jj > 0 && !(seaRow[jj] === seaRow[jj])) jj--; seaRow[j] = seaRow[jj] === seaRow[jj] ? seaRow[jj] : 0; }
-        const rowSm = new Float64Array(h), rSm = Math.max(1, Math.round(6 / g.step));
-        for (let j = 0; j < h; j++) { let s = 0, n = 0; for (let d = -rSm; d <= rSm; d++) { const jj = j + d; if (jj >= 0 && jj < h) { s += seaRow[jj]; n++; } } rowSm[j] = s / n; }
-        for (let j = 0; j < h; j++) { const jn = Math.max(0, j - 1), js = Math.min(h - 1, j + 1); dTdy[j] = (rowSm[jn] - rowSm[js]) / ((js - jn) * dRad * R_PLANET); }
-        const qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
+        const rowsOf = (sstF) => {
+            const seaRow = new Float64Array(h), dTdy = new Float64Array(h);
+            for (let j = 0; j < h; j++) { let s = 0, n = 0; for (let i = 0; i < w; i++) { const c = j * w + i; if (isSea[c]) { s += sstF[c]; n++; } } seaRow[j] = n ? s / n : NaN; }
+            for (let j = 0; j < h; j++) if (!(seaRow[j] === seaRow[j])) { let jj = j; while (jj > 0 && !(seaRow[jj] === seaRow[jj])) jj--; seaRow[j] = seaRow[jj] === seaRow[jj] ? seaRow[jj] : 0; }
+            const rowSm = new Float64Array(h), rSm = Math.max(1, Math.round(6 / g.step));
+            for (let j = 0; j < h; j++) { let s = 0, n = 0; for (let d = -rSm; d <= rSm; d++) { const jj = j + d; if (jj >= 0 && jj < h) { s += seaRow[jj]; n++; } } rowSm[j] = s / n; }
+            for (let j = 0; j < h; j++) { const jn = Math.max(0, j - 1), js = Math.min(h - 1, j + 1); dTdy[j] = (rowSm[jn] - rowSm[js]) / ((js - jn) * dRad * R_PLANET); }
+            return { rowSm, dTdy };
+        };
         const fMin = 2 * OMEGA_ROT * Math.sin(5 * DEG);
-        const Mx = new Float64Array(G), My = new Float64Array(G);           // Ekman transport (m²/s), zero on land
-        for (let j = 0; j < h; j++) {
-            let fc = 2 * OMEGA_ROT * Math.sin(g.lat[j] * DEG);
-            if (Math.abs(fc) < fMin) fc = fc < 0 ? -fMin : fMin;
-            for (let i = 0; i < w; i++) {
-                const c = j * w + i;
-                if (!isSea[c]) continue;
-                Mx[c] = ty[c] / (RHO_SEA * fc); My[c] = -tx[c] / (RHO_SEA * fc);
+        /** One period's heat (W/m²) from its stress, currents and sea temperature: advection, upwelling (and m/s of it). */
+        const heatOf = (sx, sy, Uc, Vc, sstF) => {
+            const { dTdy } = rowsOf(sstF);
+            const qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
+            const Mx = new Float64Array(G), My = new Float64Array(G);           // Ekman transport (m²/s), zero on land
+            for (let j = 0; j < h; j++) {
+                let fc = 2 * OMEGA_ROT * Math.sin(g.lat[j] * DEG);
+                if (Math.abs(fc) < fMin) fc = fc < 0 ? -fMin : fMin;
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    if (!isSea[c]) continue;
+                    Mx[c] = sy[c] / (RHO_SEA * fc); My[c] = -sx[c] / (RHO_SEA * fc);
+                }
             }
-        }
-        for (let j = 0; j < h; j++) {
-            const cj = Math.max(0.05, cosLat[j]), dx = dRad * R_PLANET * cj, dy = dRad * R_PLANET;
-            for (let i = 0; i < w; i++) {
-                const c = j * w + i;
-                if (!isSea[c]) continue;
-                const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w, cn = j > 0 ? c - w : -1, cs = j < h - 1 ? c + w : -1;
-                // upwind gradient of the sea temperature (sea neighbours only)
-                const Tc = sst[c];
-                let gx = 0, gy = 0;
-                if (U[c] > 0 && isSea[cw]) gx = (Tc - sst[cw]) / dx; else if (U[c] < 0 && isSea[ce]) gx = (sst[ce] - Tc) / dx;
-                if (V[c] > 0 && cs >= 0 && isSea[cs]) gy = (Tc - sst[cs]) / dy; else if (V[c] < 0 && cn >= 0 && isSea[cn]) gy = (sst[cn] - Tc) / dy;
-                qAdv[c] = -RHO_SEA * CP_SEA * (P.OCEAN_HEAT_SHARE * U[c] * gx + P.OCEAN_MERID_SHARE * V[c] * dTdy[j]);
-                // Ekman divergence → upwelling (m/s); land neighbours carry no Ekman transport
-                const div = (Mx[ce] - Mx[cw]) / (2 * dx) + ((cn >= 0 ? My[cn] * cosLat[j - 1] : 0) - (cs >= 0 ? My[cs] * cosLat[j + 1] : 0)) / (2 * dy * cj);
-                // at a coast, the Ekman transport straight offshore wells up within the coastal cell (one-sided: the
-                // centred divergence spreads it over two cells)
-                let coastW = 0;
-                if (!isSea[ce]) coastW += Math.max(0, -Mx[c]) / dx;
-                if (!isSea[cw]) coastW += Math.max(0, Mx[c]) / dx;
-                if (cn >= 0 && !isSea[cn]) coastW += Math.max(0, -My[c]) / dy;
-                if (cs >= 0 && !isSea[cs]) coastW += Math.max(0, My[c]) / dy;
-                const wv = Math.max(0, div, coastW);
-                wUp[c] = wv;
-                const thermo = Math.max(0, Math.min(1, (Tc - 2) / 15));      // cold polar water has little to upwell
-                qUp[c] = -RHO_SEA * CP_SEA * wv * P.OCEAN_UPWELL_DT * thermo;
+            for (let j = 0; j < h; j++) {
+                const cj = Math.max(0.05, cosLat[j]), dx = dRad * R_PLANET * cj, dy = dRad * R_PLANET;
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i;
+                    if (!isSea[c]) continue;
+                    const ce = j * w + (i + 1) % w, cw = j * w + (i - 1 + w) % w, cn = j > 0 ? c - w : -1, cs = j < h - 1 ? c + w : -1;
+                    // upwind gradient of the sea temperature (sea neighbours only)
+                    const Tc = sstF[c];
+                    let gx = 0, gy = 0;
+                    if (Uc[c] > 0 && isSea[cw]) gx = (Tc - sstF[cw]) / dx; else if (Uc[c] < 0 && isSea[ce]) gx = (sstF[ce] - Tc) / dx;
+                    qAdv[c] = -RHO_SEA * CP_SEA * (P.OCEAN_HEAT_SHARE * Uc[c] * gx + P.OCEAN_MERID_SHARE * Vc[c] * dTdy[j]);
+                    // Ekman divergence → upwelling (m/s); land neighbours carry no Ekman transport
+                    const div = (Mx[ce] - Mx[cw]) / (2 * dx) + ((cn >= 0 ? My[cn] * cosLat[j - 1] : 0) - (cs >= 0 ? My[cs] * cosLat[j + 1] : 0)) / (2 * dy * cj);
+                    // at a coast, the Ekman transport straight offshore wells up within the coastal cell (one-sided: the
+                    // centred divergence spreads it over two cells)
+                    let coastW = 0;
+                    if (!isSea[ce]) coastW += Math.max(0, -Mx[c]) / dx;
+                    if (!isSea[cw]) coastW += Math.max(0, Mx[c]) / dx;
+                    if (cn >= 0 && !isSea[cn]) coastW += Math.max(0, -My[c]) / dy;
+                    if (cs >= 0 && !isSea[cs]) coastW += Math.max(0, My[c]) / dy;
+                    const wv = Math.max(0, div, coastW);
+                    wUp[c] = wv;
+                    const thermo = Math.max(0, Math.min(1, (Tc - 2) / 15));      // cold polar water has little to upwell
+                    qUp[c] = -RHO_SEA * CP_SEA * wv * P.OCEAN_UPWELL_DT * thermo;
+                }
             }
-        }
+            return { qAdv, qUp, wUp };
+        };
         // ── What each current carries: the temperature of the latitudes its water comes from. Traced back along the
         // current for CARRY_TRACE_KM (as far as surface water keeps its temperature against the air: a few months at
         // the gyres' speeds), the average sea temperature there minus here — a poleward current warm, an equatorward
-        // one cold, a slow broad current as much as a fast narrow one; faded where the sea barely moves. ──
+        // one cold, a slow broad current as much as a fast narrow one; faded where the sea barely moves. (The year's
+        // currents: it is the sea's lasting warm and cold.) ──
         const carried = new Float64Array(G);
         {
+            const { rowSm } = rowsOf(sst);
             const nSteps = Math.max(1, Math.round(CARRY_TRACE_KM / (g.step * 111.2)));
             const tzAt = (y) => { const yy = Math.max(0, Math.min(h - 1, y - 0.5)), j0 = Math.floor(yy), f = yy - j0; return rowSm[j0] * (1 - f) + rowSm[Math.min(h - 1, j0 + 1)] * f; };
             for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
@@ -267,20 +326,42 @@ export function windDrivenOcean() {
         }
         // the overturning: OCEAN_OVERTURN_PW per hemisphere, released over the seas the polar ocean opens onto
         const qMoc = overturningHeat(g, isSea, channels, P.OCEAN_OVERTURN_PW);
+        // The heat of a period: advection + overturning + upwelling, less the net (the ocean moves heat, it does not make
+        // it; area-weighted over the sea), capped. Seasonal: each month from its own stress, currents and sea; else the
+        // year's (as before seasons: the months then all carry the year's heat).
+        const qOf = (H) => {
+            let net = 0, area = 0;
+            for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; if (!isSea[c]) continue; net += (H.qAdv[c] + qMoc[c] + H.qUp[c]) * cosLat[j]; area += cosLat[j]; }
+            net /= area;
+            const q = new Float64Array(G);
+            for (let c = 0; c < G; c++) q[c] = isSea[c] ? Math.max(-P.OCEAN_QFLUX_MAX, Math.min(P.OCEAN_QFLUX_MAX, H.qAdv[c] + qMoc[c] + H.qUp[c] - net)) : 0;
+            return q;
+        };
+        const q = new Float64Array(G), qAdv = new Float64Array(G), qUp = new Float64Array(G), wUp = new Float64Array(G);
+        const qM = new Float64Array(12 * G), wUpM = new Float64Array(12 * G);
+        if (seasonal) {
+            for (let m = 0; m < 12; m++) {
+                const sl = (f) => f.subarray(m * G, (m + 1) * G);
+                const H = heatOf(sl(txM), sl(tyM), sl(UM), sl(VM), sl(sstM)), qm = qOf(H);
+                qM.set(qm, m * G); wUpM.set(H.wUp, m * G);
+                for (let c = 0; c < G; c++) { q[c] += qm[c] / 12; qAdv[c] += H.qAdv[c] / 12; qUp[c] += H.qUp[c] / 12; wUp[c] += H.wUp[c] / 12; }
+            }
+        } else {
+            const H = heatOf(tx, ty, U, V, sst);
+            q.set(qOf(H)); qAdv.set(H.qAdv); qUp.set(H.qUp); wUp.set(H.wUp);
+            for (let m = 0; m < 12; m++) { qM.set(q, m * G); wUpM.set(wUp, m * G); }
+        }
         for (let c = 0; c < G; c++) qAdv[c] += qMoc[c];
-        // the ocean moves heat, it does not make it: remove the net (area-weighted over the sea)
-        let net = 0, area = 0;
-        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = j * w + i; if (!isSea[c]) continue; net += (qAdv[c] + qUp[c]) * cosLat[j]; area += cosLat[j]; }
-        net /= area;
-        const q = new Float64Array(G);
-        for (let c = 0; c < G; c++) q[c] = isSea[c] ? Math.max(-P.OCEAN_QFLUX_MAX, Math.min(P.OCEAN_QFLUX_MAX, qAdv[c] + qUp[c] - net)) : 0;
 
         // ── To the core grid ──
         const out = (src) => { const o = new Float32Array(core.size); refineField(g, core, ratio, src, o, 0); return o; };
-        const surfU = U.map((x, c) => (isSea[c] ? x / P.OCEAN_CURRENT_DEPTH_M : 0)), surfV = V.map((x, c) => (isSea[c] ? x / P.OCEAN_CURRENT_DEPTH_M : 0));
+        const outM = (src) => { const o = new Float32Array(12 * core.size); for (let m = 0; m < 12; m++) refineField(g, core, ratio, src.subarray(m * G, (m + 1) * G), o.subarray(m * core.size, (m + 1) * core.size), 0); return o; };
+        const surf = (x, c) => (isSea[c % G] ? x / P.OCEAN_CURRENT_DEPTH_M : 0);
         return {
-            psi: out(psi.map(x => x / 1e6)), u: out(surfU), v: out(surfV), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc), carried: out(carried),
+            psi: out(psi.map(x => x / 1e6)), u: out(U.map(surf)), v: out(V.map(surf)), qflux: out(q), qAdvection: out(qAdv), qUpwelling: out(qUp), qOverturning: out(qMoc), carried: out(carried),
             upwelling: out(wUp.map(x => x * 86400)), seaMask: out(Float64Array.from(isSea)), curl: out(curl),
+            // (null without seasons: the temperature stage then takes the year's heat, as before)
+            monthly: seasonal ? { u: outM(UM.map(surf)), v: outM(VM.map(surf)), qflux: outM(qM), upwelling: outM(wUpM.map(x => x * 86400)) } : null,
             stress: { x: out(tx), y: out(ty) },
             channels: channels.map(ch => ({ fromLat: g.lat[ch.jStart], toLat: g.lat[ch.jEnd], transportSv: ch.transport / 1e6 })),
             solver: solveStats, ms: performance.now() - t0, source: 'wind-driven ocean',

@@ -95,7 +95,7 @@ reads white as 6 km), a land mask, and the colour map as the Terrain view shows 
 finished picture's width (4096, 8192 at 10M, 2048 on phones) or a half or quarter of it, averaged down; named by seed and
 moment (`orogen-evolution-12345-760Myr-heightmap.png`).
 The **Climate** tab gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
-winds, currents — about a second, in a worker), kept per moment while the history is open. Its code is
+winds, currents — seasonal in the tropics, fading out by 60° — about a second, in a worker), kept per moment while the history is open. Its code is
 `js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
 [`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
 

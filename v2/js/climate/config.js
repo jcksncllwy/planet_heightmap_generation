@@ -91,6 +91,9 @@ export const PARAMS_DEFAULTS = Object.freeze({
     OCEAN_QFLUX_MAX: 150,       // W/m²       cap on the ocean's local heating or cooling of the surface layer
     OCEAN_CURRENT_DEPTH_M: 200, // m          depth the gyres' transport is spread over, for surface current speed (display)
     OCEAN_GRID_DEG: 3,          // °          grid the ocean is computed on (interpolated to 1°)
+    OCEAN_SEASON_SCALE: 1,      // –          strength of the gyres' seasonal cycle (0: the year's gyres all year, as before)
+    OCEAN_SEASON_FULL_DEG: 10,  // °          the gyres follow the season's winds fully within this latitude …
+    OCEAN_SEASON_ZERO_DEG: 60,  // °          … and not at all from this one (slower planetary waves: years to adjust)
 
     // ── Rain (rain.js) ──
     RAIN_EVAP_COEFF: 1.3e-3,    // –          bulk transfer coefficient for evaporation
@@ -192,6 +195,9 @@ export const PARAM_PRIORS = Object.freeze({
     OCEAN_OVERTURN_PW:  { value: 1.0, min: 0.4, max: 1.5, source: 'Atlantic meridional overturning heat transport ≈ 1.2 PW at 26°N (RAPID array), released in the subpolar and Nordic seas' },
     OCEAN_MERID_SHARE:  { value: 0.15, min: 0.03, max: 0.4, source: 'western boundary currents release ≈ 100–200 W/m² (Gulf Stream, Kuroshio), eastern boundary currents take up ≈ 20–50 W/m² plus upwelling (Yu & Weller 2007 OAFlux); the gyres carry ≈ 1 PW poleward' },
     OCEAN_UPWELL_DT:    { value: 4, min: 2, max: 8, source: 'coastal upwelling cools the surface a few °C (thermocline water)' },
+    OCEAN_SEASON_SCALE: { value: 1, min: 0, max: 1, source: 'the wind-driven gyres\' seasonal cycle: large in the tropics (the Somali Current reverses with the monsoon; the equatorial countercurrent swells and ebbs), small in the subtropical gyres (Schott & McCreary 2001)' },
+    OCEAN_SEASON_FULL_DEG: { value: 10, min: 5, max: 20, source: 'equatorial Kelvin and Rossby waves cross a basin in weeks to months: the tropical ocean follows the seasons' },
+    OCEAN_SEASON_ZERO_DEG: { value: 60, min: 30, max: 70, source: 'midlatitude Rossby waves take years to cross a basin, so the gyres there hold their annual-mean state (developer: fade out by ≈ 60°)' },
 
     RAIN_EVAP_COEFF:    { value: 1.3e-3, min: 1.0e-3, max: 1.8e-3, source: 'bulk transfer coefficient C_E ≈ 1.1–1.5 × 10⁻³ (Large & Pond 1982; COARE)' },
     RAIN_SURFACE_RH:    { value: 0.8, min: 0.7, max: 0.85, source: 'near-surface relative humidity over the oceans ≈ 75–80 %' },

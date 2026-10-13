@@ -161,6 +161,18 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const outer = warm ? OUTER_WARM : OUTER;
         // heat the ocean's currents bring to (or take from) the sea's surface layer, W/m² (ocean.js)
         const qEbm = qflux ? coarsen(core, g, ratio, qflux) : null;
+        // … or, when the ocean has seasons (ocean.js: the monsoon seas' currents, the month's upwelling), each month's:
+        // at each sample time t = 12k/NT months, between the mid-month values either side
+        let qAt = null;
+        if (ocean?.monthly?.qflux) {
+            const qm = [];
+            for (let m = 0; m < 12; m++) qm.push(coarsen(core, g, ratio, ocean.monthly.qflux.subarray(m * core.size, (m + 1) * core.size)));
+            qAt = new Float64Array(NT * G);
+            for (let k = 0; k < NT; k++) {
+                const pos = 12 * k / NT - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
+                for (let c = 0; c < G; c++) qAt[k * G + c] = (1 - fm) * qm[ma][c] + fm * qm[mb][c];
+            }
+        }
 
         const solver = new HelmholtzSolver(g, P.TEMP_DIFFUSIVITY, P.TEMP_DIFFUSIVITY_EW);
         // Mountains block the air near the ground, and the heat it carries and mixes, between the lowlands on either
@@ -223,6 +235,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                             else if (dv < 0 && j > 0) gy = Tk[c - w] - T;
                             gF -= gamma * (du * gx * sx + dv * gy * sy);
                         }
+                        if (qAt) gF += qAt[k * G + c] * (1 - f);
                         F0[c] += gF; F1r[c] += gF * co; F1i[c] -= gF * sn; F2r[c] += gF * co2; F2i[c] -= gF * sn2;
                         iceYear[c] += (f * sL + (1 - f) * sO) / NT;
                         seaIceYear[c] += sO / NT;
@@ -230,7 +243,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 }
             }
             for (let c = 0; c < G; c++) {
-                F0[c] = F0[c] / NT - P.TEMP_OLR_A + (qEbm ? qEbm[c] * (1 - landFrac[c]) : 0); F1r[c] /= NT; F1i[c] /= NT; F2r[c] /= NT; F2i[c] /= NT;
+                F0[c] = F0[c] / NT - P.TEMP_OLR_A + (qEbm && !qAt ? qEbm[c] * (1 - landFrac[c]) : 0); F1r[c] /= NT; F1i[c] /= NT; F2r[c] /= NT; F2i[c] /= NT;
                 const Cs = Co * (1 - seaIceYear[c]) + Cl * seaIceYear[c];            // frozen sea stores little heat
                 C[c] = landFrac[c] * Cl + (1 - landFrac[c]) * Cs;
             }
