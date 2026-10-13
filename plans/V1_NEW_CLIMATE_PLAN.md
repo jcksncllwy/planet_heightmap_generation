@@ -123,6 +123,15 @@ moves heat without making it, so the difference is spread over all the sea.
 
 **Cost**: the ocean stage ≈ 2.5× (≈ +0.3 s in this container's Node, ≈ +8 % of the whole climate in a browser).
 
+**Open: Sumatra dries** (Af → Am / Aw). Why: month by month, upwelling under a reversing monsoon is rectified — it wells
+up one season and sinks the other, and only the first cools. The model's December–March winds just north of the equator
+west of Sumatra blow from the north at ≈ 10 m/s (real: a weak north-easterly, ≈ 3–4), turning the Ekman transport
+offshore; the Indo-Pacific warm pool cools ≈ 1 °C all year, and the ocean's heat budget hands the difference to every
+other sea as warmth — so part of the high latitudes' gains above is that hand-out. A fix that kept each place's yearly
+ocean heat and added only the seasonal swing (Köppen change 7.3 % → 1.8 %, Sumatra Af again) was tried and reverted —
+the developer: *"I don't know if we need to implement that hacky fix right now. We can wait until I'm on my machine for
+the comparisons."* The likelier root cause is the circulation's cross-equatorial winds there.
+
 **Still to do — the real score.** The reference data (NOAA, Beck) cannot be fetched in the cloud container, so the
 Earth-match has to be run locally, with and without: `node tuning/climate/fetch-references.mjs` once, then
 `node tuning/climate/coupled-check.mjs --quick` and `… --quick --set OCEAN_SEASON_SCALE=0`.
