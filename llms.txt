@@ -45,5 +45,5 @@ https://orogen.studio/studio — Studio: the three tools explained, plus curated
 - Built with Three.js (WebGL), vanilla JavaScript ES modules
 - Fibonacci sphere meshing with Voronoi tessellation
 - Braun-Willett stream power erosion, Barnes et al. pit-filling algorithm
-- Coupled climate on a fixed 1° grid: seasonal energy balance, derived pressure belts and winds, wind-driven ocean gyres with upwelling (seasonal in the tropics), and a column-water rain budget — a second or two at any resolution; Köppen from each region's twelve months
+- Coupled climate on a fixed 1° grid: seasonal energy balance, derived pressure belts and winds, wind-driven ocean gyres with upwelling (seasonal in the tropics), and a column-water rain budget — a few seconds at any resolution; Köppen from each region's twelve months
 - Fully client-side — no server, no data collection

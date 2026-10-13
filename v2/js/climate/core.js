@@ -21,6 +21,27 @@ import { interpolationMatrix, PRECIP_TRANSFORMS } from './seasons.js';
 import { classifyCell } from './koppen.js';
 import { FastNoise } from '../core/fast-noise.js';
 
+/**
+ * The climate's wander: each place reads the climate grid a little away from where it is — smooth fractal noise of a
+ * fixed size in km, by geographic position — so the grid's straight contours (an ice cap's edge, a Köppen border, a
+ * temperature band) come out as organic curves, the same at every terrain resolution. The pages read the grid through
+ * it as well (warpLatLon), so their layers agree with each place's own values.
+ */
+export const CLIMATE_WARP = Object.freeze({ km: 180, scaleKm: 600, octaves: 3 });
+let warpNoise = null;
+/** Where a place at latDeg / lonDeg reads the climate grid: [lat, lon] (degrees) into `out`. */
+export function warpLatLon(latDeg, lonDeg, out = [0, 0], warp = CLIMATE_WARP) {
+    if (!warp) { out[0] = latDeg; out[1] = lonDeg; return out; }
+    warpNoise ??= [new FastNoise(0x5eed1), new FastNoise(0x5eed2)];
+    const la = latDeg * Math.PI / 180, lo = lonDeg * Math.PI / 180, s = 6371 / warp.scaleKm, cl = Math.cos(la);
+    const x = cl * Math.cos(lo) * s, y = cl * Math.sin(lo) * s, z = Math.sin(la) * s;
+    const east = warp.km * warpNoise[0].fbm(x, y, z, warp.octaves, 0.5), north = warp.km * warpNoise[1].fbm(x, y, z, warp.octaves, 0.5);
+    out[0] = Math.max(-89.99, Math.min(89.99, latDeg + north / 111.2));
+    const lon = lonDeg + east / (111.2 * Math.max(0.05, cl));
+    out[1] = ((((lon + 180) % 360) + 360) % 360) - 180;
+    return out;
+}
+
 /** Default settings. Units in the names. */
 export const CORE_DEFAULTS = Object.freeze({
     gridStepDeg: 1,
@@ -34,6 +55,7 @@ export const CORE_DEFAULTS = Object.freeze({
     terrainRelief: 0.5,         // share of a cell's own relief (its height beyond its surroundings' 1° mean) the climate
                                 //   follows — for the lapse rate and rain by height: the air near the ground mixes over
                                 //   small hills; 1 = every cell's own height (speckled on rough terrain)
+    warp: CLIMATE_WARP,         // where each place reads the grid (CLIMATE_WARP above); null = where it is
     texture: { tempC: 1.2, rain: 0.35, km: 200 },   // local variety the grid can't resolve (lakes, soils, mesoscale weather):
                                 //   smooth noise at a fixed size in km — °C, and rain × e^{±rain}; null = none
     seed: 1,
@@ -260,10 +282,11 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCe
     const koppen = new Uint8Array(n);
     const tAnnual = new Float32Array(n).fill(NaN), pAnnual = new Float32Array(n).fill(NaN);
     const T12 = new Float64Array(12), P12 = new Float64Array(12);
-    const step = grid.step;
+    const step = grid.step, at = [0, 0];
     for (let r = 0; r < n; r++) {
         if (!land[r]) continue;
-        const x = (lon[r] + 180) / step - 0.5, y = Math.max(0, Math.min(h - 1, (90 - lat[r]) / step - 0.5));
+        warpLatLon(lat[r], lon[r], at, o.warp);
+        const x = (at[1] + 180) / step - 0.5, y = Math.max(0, Math.min(h - 1, (90 - at[0]) / step - 0.5));
         const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
         const i0 = ((x0 % w) + w) % w, i1 = i0 + 1 === w ? 0 : i0 + 1;
         const j1 = y0 + 1 < h ? y0 + 1 : y0;

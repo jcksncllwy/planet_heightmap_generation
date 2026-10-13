@@ -50,9 +50,10 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
     TEMP_CLOUD_ALBEDO: 0.262,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
-    TEMP_GRID_DEG: 3,           // °          grid the energy balance is solved on (its fields are smooth: 2° scored the
-                                //            same as 1°, and the whole climate at 3° the same as at 2° at half the cost —
-                                //            Phase 6; results are interpolated to 1°)
+    TEMP_GRID_DEG: 1,           // °          grid the energy balance is solved on: the core grid (at 3° — Phase 6: it scored
+                                //            the same at half the cost — its ice sheets came in 3° blocks, their edges
+                                //            straight lines across the land; ≈ +1.5 s; Earth: 82 % of land keeps its
+                                //            Köppen class, land ≈ 0.5 °C warmer — retune)
 
     // ── Pressure and wind (circulation.js) ──
     // Tuned 2026-09-28 (tuning/climate/circulation-check.mjs --tune: open loop, continents and ocean basins weighted

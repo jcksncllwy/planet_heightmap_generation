@@ -10,6 +10,7 @@ import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
 import { statValue } from '../climate/cell-stats.js';
+import { warpLatLon } from '../climate/core.js';
 import { QUANTITY_COLORS, ICE_SHEET_RGB, climateLegendHTML, classLabel } from '../../../js/climate-layers.js';
 
 /** The land's measures beyond Köppen (cell-stats.js), per cell or per pixel of a finished moment's picture. */
@@ -58,10 +59,11 @@ const placements = new WeakMap();
 function placementOf(tMesh) {
     if (placements.has(tMesh)) return placements.get(tMesh);
     const n = tMesh.numCells, xyz = tMesh.xyz, R = 180 / Math.PI;
-    const i0 = new Uint16Array(n), j0 = new Uint8Array(n), fx = new Float32Array(n), fy = new Float32Array(n), cosLat = new Float32Array(n);
+    const i0 = new Uint16Array(n), j0 = new Uint8Array(n), fx = new Float32Array(n), fy = new Float32Array(n), cosLat = new Float32Array(n), at = [0, 0];
     for (let c = 0; c < n; c++) {
         const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
-        const lat = Math.asin(Math.max(-1, Math.min(1, z))) * R, lon = Math.atan2(y, x) * R;
+        // (through the climate's wander, as each cell's own values were — core.js warpLatLon)
+        const [lat, lon] = warpLatLon(Math.asin(Math.max(-1, Math.min(1, z))) * R, Math.atan2(y, x) * R, at);
         const gx = lon + 180 - 0.5, gy = Math.min(178.999, Math.max(0, 90 - lat - 0.5));
         const ix = Math.floor(gx);
         i0[c] = (ix + 360) % 360; fx[c] = gx - ix;
