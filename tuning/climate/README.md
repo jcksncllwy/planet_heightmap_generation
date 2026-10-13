@@ -40,18 +40,18 @@ merge). Ground truth lives in `data/ascii/Koeppen-Geiger-ASCII.txt`.
 # Baseline score of current defaults (+ PNG comparison maps)
 node tuning/climate/evaluate.mjs --maps
 
-# Optimize the ~35 high-impact parameters (150 evaluations)
-node tuning/climate/optimize.mjs
+# Every stage scored against observations (temperature, pressure and wind, ocean, rain, Köppen)
+node tuning/climate/coupled-check.mjs --quick
 
-# Longer run over all ~80 parameters
-node tuning/climate/optimize.mjs --iters 500 --subset all --label big-run
-
-# Validate the winner at higher resolution before trusting it
-node tuning/climate/evaluate.mjs --params tuning/results/climate/<label>-best.json --n 160000 --maps
-
-# Write the tuned values into js/climate-config.js (then review the diff!)
-node tuning/climate/apply-params.mjs tuning/results/climate/<label>-best.json
+# Tune: the Köppen-level couplings, each within its literature range (PARAM_PRIORS), no continent worse,
+# every stage's score a guardrail; it writes the values to tuning/results/climate/coupled-tuned.json —
+# copy them into PARAMS_DEFAULTS in v2/js/climate/config.js (then review the diff)
+node tuning/climate/coupled-check.mjs --tune
 ```
+
+(The old coordinate-descent optimizer — `optimize.mjs`, `param-space.mjs`, `apply-params.mjs` — tuned the old
+climate's `js/climate-config.js`; it was removed with the move to the new climate, `coupled-check.mjs --tune`
+taking its place. See git history.)
 
 Default mesh resolution is `--n 40000` (fast, ~seconds per evaluation).
 Tuning results are exchangeable across resolutions to a good approximation
@@ -62,9 +62,6 @@ because the simulation is scale-invariant by design, but always validate at
 
 ```
 evaluate.mjs        score one parameter set, print report, optional PNG maps
-optimize.mjs        coordinate descent + stochastic hill-climb over param-space
-apply-params.mjs    write tuned values back into js/climate-config.js
-param-space.mjs     min/max range + high-impact flag for every parameter
 diagnose.mjs        spatial error report: group fractions per lat band + named regions
 probe.mjs           parameter sensitivity: swing each lever, flag inert ones
 probe-nindia.mjs    root-cause probe for the monsoon region
@@ -202,9 +199,9 @@ climate lab). Outputs: `tuning/results/climate/{season-test,stage-audit-N}.json`
 
 ## How parameters flow
 
-`js/climate-config.js` exports a mutable `CLIMATE` object (defaults frozen in
-`CLIMATE_DEFAULTS`). The climate modules (`wind.js`, `temperature.js`,
-`precipitation.js`, `heuristic-precip.js`) read it at runtime, so the optimizer
-sweeps parameters in-process without reloading. The browser app always runs the
-defaults — tuning only changes the app when you run `apply-params.mjs` and
-commit the result.
+`v2/js/climate/config.js` exports a mutable `PARAMS` object (defaults in
+`PARAMS_DEFAULTS`, each parameter's literature range in `PARAM_PRIORS`). The
+climate's stages read it at runtime, so the checks (`--set KEY=value,…`) and
+`coupled-check.mjs --tune` sweep parameters in-process without reloading. The
+browser app always runs the defaults — tuning only changes the app when the
+values are written into `PARAMS_DEFAULTS` and committed.
