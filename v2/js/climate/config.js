@@ -126,7 +126,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
     RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
     RAIN_STORM_RH: 0.138,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
-    RAIN_TROPICAL_RH: 0.5,      // day        … and by tropical disturbances (monsoon depressions, easterly waves), per unit of the
+    RAIN_TROPICAL_RH: 0.3,      // day        … and by tropical disturbances (monsoon depressions, easterly waves), per unit of the
     RAIN_TROPICAL_KM: 600,      // km         low-level winds' cyclonic vorticity (1/day), smoothed over this, within the tropics
                                 //            (the derived winds are smooth: their vorticity is ≈ ¼ of a real monsoon trough's)
     RAIN_WIND_ROT: 0.757,       // –          rotational wind carrying the column's water, as a share of the wind above the friction layer …
@@ -242,7 +242,7 @@ export const PARAM_PRIORS = Object.freeze({
     RAIN_RH_STEEPNESS:  { value: 15.6, min: 8, max: 20, source: 'Bretherton et al. 2004 (15.6), from satellite column water and rain over the tropical oceans' },
     RAIN_EDDY_DIFF:     { value: 5e5, min: 1e5, max: 1.5e6, source: 'tropical transients (easterly waves, convection) mix far less than mid-latitude storms; no direct literature value' },
     RAIN_EDDY_LENGTH_KM: { value: 700, min: 400, max: 1200, source: 'mixing length ≈ the size of the storms (Rossby radius ≈ 1000 km); gives K ≈ 1–3 × 10⁶ m²/s in the storm belts (Frierson et al. 2007: 1.06 × 10⁶ m²/s for moist static energy)' },
-    RAIN_TROPICAL_RH:   { value: 0.5, min: 0, max: 1, source: 'monsoon depressions and easterly waves form in the monsoon troughs\' cyclonic shear (≈ 1–3 × 10⁻⁵ s⁻¹) and bring ≈ 40–50 % of central and north India\'s monsoon rain (Hurley & Boos 2015); no direct value for the humidity spread; the derived winds are smooth, their cyclonic vorticity ≈ 5 × 10⁻⁶ s⁻¹, so the coefficient is larger than the shear alone would give' },
+    RAIN_TROPICAL_RH:   { value: 0.3, min: 0, max: 1, source: 'monsoon depressions and easterly waves form in the monsoon troughs\' cyclonic shear (≈ 1–3 × 10⁻⁵ s⁻¹) and bring ≈ 40–50 % of central and north India\'s monsoon rain (Hurley & Boos 2015); no direct value for the humidity spread; the derived winds are smooth, their cyclonic vorticity ≈ 5 × 10⁻⁶ s⁻¹, so the coefficient is larger than the shear alone would give' },
     RAIN_TROPICAL_KM:   { value: 600, min: 300, max: 1200, source: 'monsoon depressions and easterly waves ≈ 1000–2000 km across' },
     RAIN_STORM_RH:      { value: 0.2, min: 0.1, max: 0.35, source: 'sub-monthly spread of column relative humidity ≈ 0.1–0.2 in the storm belts, where the Eady growth rate is ≈ 0.6–0.8 per day; no direct literature value' },
     RAIN_WIND_ROT:      { value: 0.9, min: 0.6, max: 1.2, source: 'the moisture-weighted wind (≈ 900 hPa) is close to the wind above the friction layer' },
