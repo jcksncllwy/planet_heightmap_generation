@@ -81,7 +81,10 @@ reapplyBtn.addEventListener('click', () => {
 });
 
 // Auto Climate checkbox — default OFF above threshold
-const AUTO_CLIMATE_THRESHOLD = 300000;
+// The climate is deferred (computed when a climate view is chosen) only above this detail: the new climate takes about
+// a second at any detail on a desktop (its work is on a fixed 1° grid), so never there; phones keep a limit, for the
+// per-region climate's memory (plans/V1_NEW_CLIMATE_PLAN.md, phase 4)
+const AUTO_CLIMATE_THRESHOLD = state.isTouchDevice ? 640000 : Infinity;
 
 // Detail slider warning update (lower thresholds on touch devices)
 const WARN_ORANGE = state.isTouchDevice ? 200000 : 640000;
