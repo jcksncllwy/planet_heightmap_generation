@@ -5,8 +5,6 @@
 // Land layers read each region's own values (state.curData.climate.cells: the region's twelve months at its own height);
 // the sea, and the winds and currents, are sampled from the 1° climate grid at the region's latitude and longitude.
 
-import { warpLatLon } from '../v2/js/climate/core.js';
-
 export const CLIMATE_INSPECT = [
     { id: 'pressure',    label: 'Pressure',          seasonal: true,  arrows: 'wind', itcz: true },
     { id: 'wind',        label: 'Wind',              seasonal: true,  arrows: 'wind' },
@@ -38,15 +36,13 @@ export function sampleGrid(grid, f, latDeg, lonDeg) {
     const i0 = ((x0 % w) + w) % w, i1 = (i0 + 1) % w, j1 = Math.min(h - 1, y0 + 1);
     return (1 - fy) * ((1 - fx) * f[y0 * w + i0] + fx * f[y0 * w + i1]) + fy * ((1 - fx) * f[j1 * w + i0] + fx * f[j1 * w + i1]);
 }
-/** Where each region reads the climate grid (degrees, Y-up): its latitude and longitude through the climate's wander
- *  (v2/js/climate/core.js warpLatLon — as each region's own values were), kept on the planet's data while its mesh lasts. */
+/** Each region's latitude and longitude (degrees, Y-up), kept on the planet's data while its mesh lasts. */
 export function regionLatLon(data) {
     if (data._latlon && data._latlon.n === data.r_xyz.length) return data._latlon;
-    const n = data.r_xyz.length / 3, lat = new Float32Array(n), lon = new Float32Array(n), R = 180 / Math.PI, at = [0, 0];
+    const n = data.r_xyz.length / 3, lat = new Float32Array(n), lon = new Float32Array(n), R = 180 / Math.PI;
     for (let r = 0; r < n; r++) {
         const x = data.r_xyz[3 * r], y = data.r_xyz[3 * r + 1], z = data.r_xyz[3 * r + 2];
-        warpLatLon(Math.asin(Math.max(-1, Math.min(1, y))) * R, Math.atan2(x, z) * R, at);
-        lat[r] = at[0]; lon[r] = at[1];
+        lat[r] = Math.asin(Math.max(-1, Math.min(1, y))) * R; lon[r] = Math.atan2(x, z) * R;
     }
     return (data._latlon = { n: data.r_xyz.length, lat, lon });
 }

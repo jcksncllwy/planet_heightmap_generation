@@ -101,7 +101,7 @@ finished picture's width (4096, 8192 at 10M, 2048 on phones) or a half or quarte
 moment (`orogen-evolution-12345-760Myr-heightmap.png`).
 The **Climate** tab gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
 winds, currents — seasonal in the tropics, fading out by 60° — and More…'s layers, with Generate's colours and legends
-from `js/climate-layers.js`; each cell reads the 1° grid a little away from where it is — `CLIMATE_WARP`, core.js — so ice-cap edges and Köppen borders curve organically; a few seconds, in a worker), kept per moment while the history is open. Its code is
+from `js/climate-layers.js`; a few seconds, in a worker), kept per moment while the history is open. Its code is
 `js/evolution/` (the shell, and `terrain-player.js`: per-frame terrain for frames that stream in); plan and status in
 [`plans/V2_FULL_PLANET_PLAN.md`](../plans/V2_FULL_PLANET_PLAN.md). The rest of this section is the lab.
 

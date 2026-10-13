@@ -23,6 +23,7 @@ import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from '.
 import { HelmholtzSolver } from './solver.js';
 import { PARAMS } from './config.js';
 import { tropicsWeight, gaussianSmooth } from './circulation.js';
+import { FastNoise } from '../core/fast-noise.js';
 
 const SECONDS_PER_YEAR = 3.156e7;
 const OMEGA = 2 * Math.PI / SECONDS_PER_YEAR;
@@ -122,6 +123,19 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const Q = insolationTable(g.lat, tiltDeg, NT);
         const albBase = new Float64Array(h);
         for (let j = 0; j < h; j++) { const x = Math.sin(g.lat[j] * Math.PI / 180); albBase[j] = P.TEMP_ALBEDO + P.TEMP_ALBEDO_LAT * (1.5 * x * x - 0.5); }
+        // (and the surface's own variety about that: smooth fractal noise by geographic position, a fixed size in km — an
+        // input like the rest, which the heat's spread and the snow and ice then work through)
+        const albVary = new Float64Array(G);
+        if (P.TEMP_ALBEDO_VARY > 0) {
+            const nz = new FastNoise(((ctx.options?.seed ?? 1) * 0x2c1b + 0x51) >>> 0), s = 6371 / P.TEMP_ALBEDO_VARY_KM;
+            for (let j = 0; j < h; j++) {
+                const la = g.lat[j] * Math.PI / 180, cl = Math.cos(la), z = Math.sin(la) * s;
+                for (let i = 0; i < w; i++) {
+                    const lo = g.lon[i] * Math.PI / 180;
+                    albVary[j * w + i] = P.TEMP_ALBEDO_VARY * Math.max(-1, Math.min(1, 2 * nz.fbm(cl * Math.cos(lo) * s, cl * Math.sin(lo) * s, z, 4, 0.5)));
+                }
+            }
+        }
         const gamma = P.TEMP_WIND_CARRY * AIR_COLUMN_HEAT_CAP;
         const Cl = P.TEMP_LAND_HEAT_CAP, Co = SEAWATER_HEAT_CAP * P.TEMP_OCEAN_MIX_M;
         // Large-scale height effect per cell (the core applies the standard rate below the grid): sunlit plateaus
@@ -227,7 +241,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                         // own snow alone, a sheet went dark the first month above freezing and melted away)
                         const albSnow = P.TEMP_ALBEDO_SNOW + (P.TEMP_ALBEDO_ICE - P.TEMP_ALBEDO_SNOW) * perennial[c];
                         const sLa = Math.max(sL, perennial[c]);
-                        let alb = ab + f * sLa * (albSnow - ab) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - ab);
+                        const abc = ab + albVary[c];
+                        let alb = abc + f * sLa * (albSnow - abc) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - abc);
                         if (cloudT) alb += f * (1 - sLa) * cloudT[k * G + c];          // clouds over snow-free land
                         snowYear[c] += sL / NT;
                         let gF = q * (1 - alb);

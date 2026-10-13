@@ -50,6 +50,9 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
     TEMP_CLOUD_ALBEDO: 0.262,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_ALBEDO_VARY: 0.025,    // –          the surface's own variety of brightness (soils, cover, cloudiness): smooth fractal
+    TEMP_ALBEDO_VARY_KM: 900,   // km         noise up to ± this, its largest features this big — an input the energy balance
+                                //            works through, so snow lines and ice-sheet edges come out irregular, by the physics
     TEMP_GRID_DEG: 1,           // °          grid the energy balance is solved on: the core grid (at 3° — Phase 6: it scored
                                 //            the same at half the cost — its ice sheets came in 3° blocks, their edges
                                 //            straight lines across the land; ≈ +1.5 s; Earth: 82 % of land keeps its
@@ -167,6 +170,8 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_EVAP_DAMPING:  { value: 15, min: 5, max: 30, source: 'sensitivity of the surface latent heat flux to temperature ≈ 10–20 W/m²/K over tropical oceans and wet land (e.g. Hartmann 2016; Zhang & McPhaden 1995)' },
     TEMP_WET_COOL_C:    { value: 3, min: 1, max: 8, source: 'soil-moisture–temperature coupling: dry soils raise monthly mean temperature by several K (Seneviratne et al. 2010); Sahel pre-monsoon vs monsoon months ≈ 5–6 K; tropical deforestation +1–3 K' },
     TEMP_SEA_SWING:     { value: 0.3, min: 0.15, max: 0.5, source: 'mid-latitude sea-surface seasonal range ≈ 5–10 °C vs ≈ 20–40 °C over continents' },
+    TEMP_ALBEDO_VARY:   { value: 0.025, min: 0, max: 0.05, source: 'regional variation of surface and cloud albedo about the zonal mean ≈ ±0.02–0.05 (ERBE / CERES clear-sky and all-sky maps)' },
+    TEMP_ALBEDO_VARY_KM: { value: 900, min: 400, max: 2000, source: 'the size of regional albedo anomalies (deserts, forests, cloud decks) ≈ 500–2000 km' },
     TEMP_CLOUD_ALBEDO:  { value: 0.15, min: 0.0, max: 0.3, source: 'shortwave cloud forcing over land ≈ −50 to −100 W/m² under persistent rain clouds, ≈ 0 over deserts (CERES): an albedo contrast ≈ 0.1–0.25' },
     TEMP_ICE_LAPSE:     { value: 8.0, min: 6.5, max: 10, source: 'Antarctic ice-sheet surface temperature vs height ≈ 8 K/km (Fortuin & Oerlemans 1990)' },
     TEMP_ICE_DOME_KM:   { value: 1.5, min: 0.5, max: 3, source: 'mean surface elevation of ice sheets ≈ 2.1 km (Greenland) and 2.3 km (Antarctica); small ice caps less' },
