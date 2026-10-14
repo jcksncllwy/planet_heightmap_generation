@@ -3,7 +3,7 @@
  * Evolution world: its land's rain, temperature and arid (B) share — overall, by latitude, by distance from the sea and by
  * height — and the planet's water budget (rain over land and sea).
  *
- *   node tuning/climate/diag-dry.mjs [--planet earth|evolution] [--seed 12345] [--ending none|supercontinent]
+ *   node tuning/climate/diag-dry.mjs [--planet earth|evolution|<a lib/gen-planets.mjs key, e.g. gen-6>] [--seed 12345] [--ending none|supercontinent]
  *                                    [--n 160000] [--root <a code snapshot with v2/ and js/>]
  *                                    [--climate <a snapshot with v2/js/climate/>] [--set KEY=value,…]
  *
@@ -40,6 +40,12 @@ if (PLANET === 'earth') {
     xyz = e.r_xyz; axes = 'y-up';
     elevKm = new Float32Array(e.mesh.numRegions);
     for (let r = 0; r < elevKm.length; r++) elevKm[r] = elevToHeightKm(e.r_elevation[r]);
+} else if (PLANET !== 'evolution') {
+    // one of lib/gen-planets.mjs's planets by key, e.g. gen-6, evo-202, test-supercontinent
+    const { loadGenPlanets } = await import('./lib/gen-planets.mjs');
+    const [p] = await loadGenPlanets({ only: [PLANET] });
+    if (!p) throw new Error(`no planet ${PLANET} in lib/gen-planets.mjs`);
+    ({ xyz, elevKm, axes } = p);
 } else {
     const tag = ROOT ? 'root-' + path.basename(ROOT) : 'here';
     const dir = path.join(__dirname, '..', 'results', 'climate', 'cache'), file = path.join(dir, `evolution-${tag}-${SEED}-${ENDING}-${N}.f32`);

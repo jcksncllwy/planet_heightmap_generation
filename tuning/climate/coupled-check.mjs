@@ -3,8 +3,9 @@
  * guardrail; plus the named features, the test planets, drift across terrain resolutions and timing.
  *
  *   node tuning/climate/coupled-check.mjs              score the current settings
- *   node tuning/climate/coupled-check.mjs --tune       the final Köppen-level tune (a few coupling knobs, priors, no
- *                                                      continent worse, stage guardrails), then score
+ *   node tuning/climate/coupled-check.mjs --tune       the final Köppen-level tune on the near match (a few coupling
+ *                                                      knobs, priors, no continent worse, stage guardrails, no
+ *                                                      generated planet drier — lib/gen-planets.mjs), then score
  *   node tuning/climate/coupled-check.mjs --quick      Earth at 160K only (no drift, no test planets)
  *   node tuning/climate/coupled-check.mjs --set KEY=value,…
  *
@@ -36,6 +37,8 @@ import { columnWaterRain } from '../../v2/js/climate/rain.js';
 import { PARAMS, PARAMS_DEFAULTS, PARAM_PRIORS, setParams, resetParams } from '../../v2/js/climate/config.js';
 import { TEST_PLANETS, buildTestPlanet } from '../../v2/js/climate/test-planets.js';
 import { KOPPEN_CLASSES } from '../../v2/js/climate/koppen.js';
+import { planetClimate } from '../../v2/js/climate/climate.js';
+import { loadGenPlanets, dryness } from './lib/gen-planets.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(__dirname, '..', 'results', 'climate');
@@ -95,10 +98,13 @@ function evaluate(E = E160, opts = {}) {
     const res = computeClimate({ xyz: E.xyz, elevKm: E.elevKm, axes: 'y-up' }, { stages: stages(), ...CORE, ...opts });
     const ms = performance.now() - t0;
     const cmp = compareClasses(E.truth, res.cell.koppen);
-    const perCont = {};
+    // exact match, and the near match (lib/koppen-distance.mjs: partial credit by how alike the two climates are in
+    // warmth, wetness and seasonality — Dfb for Dfa nearly right, desert for rainforest wholly wrong)
+    const perCont = {}, perContNear = {};
     for (const k of TUNED_CONTINENTS) {
         const mask = new Uint8Array(E.n); for (let r = 0; r < E.n; r++) mask[r] = E.cont[r] === k ? 1 : 0;
-        perCont[k] = compareClasses(E.truth, res.cell.koppen, null, mask).exact;
+        const c = compareClasses(E.truth, res.cell.koppen, null, mask);
+        perCont[k] = c.exact; perContNear[k] = c.graded;
     }
     const regimes = Object.fromEntries(Object.entries(REGIMES).map(([k, codes]) => [k, groupStats(cmp, codes)]));
     const T = res.stages.temperature, P = res.months.P;
@@ -109,7 +115,8 @@ function evaluate(E = E160, opts = {}) {
         sst: rmse(T.monthlySL, obs.sst, sstMask),
         ...circulationScore(res.stages.circulation),
     };
-    return { res, ms, exact: cmp.exact, major: cmp.major, macroF1: cmp.macroF1, perCont, meanCont: mean(perCont), regimes, guard, cmp };
+    return { res, ms, exact: cmp.exact, near: cmp.graded, major: cmp.major, macroF1: cmp.macroF1, perCont, meanCont: mean(perCont),
+        perContNear, meanContNear: mean(perContNear), regimes, guard, cmp };
 }
 const guardSummary = (g) => ({ temperature: mean(g.temperature), rain: (mean(g.rainLand) + mean(g.rainSea)) / 2, sst: g.sst, pressure: g.pressure, wind45: g.wind45 });
 
@@ -139,20 +146,35 @@ function circulationScore(C) {
 // ── The final Köppen-level tune: a few coupling knobs, within their literature ranges ──
 const TUNED = (process.env.TUNE_KEYS ?? 'RAIN_COLUMN_LOCAL,RAIN_STABILITY,RAIN_STORM_RH,RAIN_WIND_DIV_MOIST,RAIN_SOIL_MM,TEMP_INVERSION_C').split(',');
 const REGIME_WEIGHT = +(process.env.REGIME_WEIGHT ?? 0.25);
-const PRIOR_WEIGHT = 0.02, WORSEN = 0.02, GUARD = { temperature: 0.15, rain: 0.04, sst: 0.15, pressure: 0.3, wind45: 0.02 };
+const PRIOR_WEIGHT = 0.02, WORSEN_NEAR = 0.01, GUARD ={ temperature: 0.15, rain: 0.04, sst: 0.15, pressure: 0.3, wind45: 0.02 };
+// Generated planets must not dry out: fitting Earth alone once dried the worlds the app makes. Each planet's arid share
+// (ice-free land) may rise at most PLANET_ARID and their mean at most PLANET_ARID_MEAN, and the planets' mean land rain
+// fall at most PLANET_RAIN (a fraction). GEN_KEYS=… picks the planets (lib/gen-planets.mjs; default all).
+const PLANET_ARID = 0.01, PLANET_ARID_MEAN = 0.003, PLANET_RAIN = 0.03;
 let tuneLog = null;
 if (TUNE) {
+    const genPlanets = await loadGenPlanets({ only: process.env.GEN_KEYS?.split(',') ?? null });
+    const genDry = () => genPlanets.map(p => dryness(planetClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes })));
+    const meanOf = (d, k) => d.reduce((s, x) => s + x[k], 0) / d.length;
+    const dry0 = genDry();
+    const okPlanets = (d) => d.every((x, i) => x.aridShare <= dry0[i].aridShare + PLANET_ARID)
+        && meanOf(d, 'aridShare') <= meanOf(dry0, 'aridShare') + PLANET_ARID_MEAN && meanOf(d, 'rainMm') >= (1 - PLANET_RAIN) * meanOf(dry0, 'rainMm');
+    const planetLine = (d) => `planets arid ${pc(meanOf(d, 'aridShare'))} (${d.map(x => (100 * x.aridShare).toFixed(0)).join(' ')}), rain ${meanOf(d, 'rainMm').toFixed(0)} mm`;
+    let dryBest = dry0, planetVetoes = 0;
     let best = { ...PARAMS_DEFAULTS, ...OVERRIDES };
     const prior = (p) => { let s = 0; for (const k of TUNED) { const pr = PARAM_PRIORS[k]; if (pr) s += ((p[k] - pr.value) / (pr.max - pr.min)) ** 2; } return PRIOR_WEIGHT * s; };
     // the rarer regimes count too (Cs, Cw, Am, Dw — as V1's tuner counted macro-F1): big classes must not drown them
     const regimeMean = (e) => ['Cs (Mediterranean)', 'Cw (dry-winter temperate)', 'Am (tropical monsoon)', 'Dw (dry-winter continental)'].reduce((s, k) => s + (e.regimes[k].recall || 0), 0) / 4;
-    const ev = (p) => { setParams(p); const e = evaluate(); return { e, total: -e.meanCont - 0.5 * e.exact - REGIME_WEIGHT * regimeMean(e) + prior(p) }; };
+    // mostly the near match (a climate like the real one is what reads as right), the exact match second
+    const ev = (p) => { setParams(p); const e = evaluate(); return { e, total: -2 * e.meanContNear - e.meanCont - REGIME_WEIGHT * regimeMean(e) + prior(p) }; };
     let bestE = ev(best);
-    const start = { ...bestE.e.perCont }, g0 = guardSummary(bestE.e.guard);
+    const start = { ...bestE.e.perContNear }, g0 = guardSummary(bestE.e.guard);
     const okGuard = (e) => { const g = guardSummary(e.guard); return g.temperature <= g0.temperature + GUARD.temperature && g.rain <= g0.rain + GUARD.rain && g.sst <= g0.sst + GUARD.sst
         && g.pressure <= g0.pressure + GUARD.pressure && g.wind45 >= g0.wind45 - GUARD.wind45; };
-    console.log(`Köppen-level tune of ${TUNED.join(', ')} (continents equal; none > ${100 * WORSEN} pts worse; stage guardrails).`);
-    console.log(`  start: Köppen ${pc(bestE.e.exact)}, continents ${pc(bestE.e.meanCont)}`);
+    console.log(`Köppen-level tune of ${TUNED.join(', ')} (near match, continents equal; none > ${100 * WORSEN_NEAR} pt worse; stage guardrails; `
+        + `${genPlanets.length} generated planets: none > ${100 * PLANET_ARID} pt more arid, their mean > ${100 * PLANET_ARID_MEAN} pt, rain down < ${100 * PLANET_RAIN} %).`);
+    const scoreLine = (e) => `Köppen ${pc(e.exact)} exact / ${pc(e.near)} near, continents ${pc(e.meanCont)} / ${pc(e.meanContNear)}`;
+    console.log(`  start: ${scoreLine(bestE.e)}; ${planetLine(dry0)}`);
     let step = 0.25;
     for (let round = 0; round < 4; round++) {
         let improved = false;
@@ -162,13 +184,20 @@ if (TUNE) {
                 const trial = { ...best, [k]: Math.max(pr.min, Math.min(pr.max, best[k] + dir * step * (pr.max - pr.min))) };
                 if (trial[k] === best[k]) continue;
                 const t = ev(trial);
-                if (t.total < bestE.total - 1e-4 && TUNED_CONTINENTS.every(c => t.e.perCont[c] >= start[c] - WORSEN) && okGuard(t.e)) { best = trial; bestE = t; improved = true; break; }
+                if (!(t.total < bestE.total - 1e-4 && TUNED_CONTINENTS.every(c => t.e.perContNear[c] >= start[c] - WORSEN_NEAR) && okGuard(t.e))) continue;
+                const d = genDry();                         // only for a step Earth would take (the planets cost ~10× Earth)
+                if (!okPlanets(d)) { planetVetoes++; console.log(`    ${k} ${dir > 0 ? '+' : '−'}: Earth ${scoreLine(t.e)} but vetoed — ${planetLine(d)}`); continue; }
+                best = trial; bestE = t; dryBest = d; improved = true;
+                console.log(`    ${k} → ${+(+trial[k]).toPrecision(3)}: ${scoreLine(t.e)}; ${planetLine(d)}`);
+                break;
             }
         }
-        console.log(`  round ${round + 1} (step ${(100 * step).toFixed(1)} %): Köppen ${pc(bestE.e.exact)}, continents ${pc(bestE.e.meanCont)}`);
+        console.log(`  round ${round + 1} (step ${(100 * step).toFixed(1)} %): ${scoreLine(bestE.e)}; ${planetLine(dryBest)}`);
         if (!improved) step /= 2;
     }
-    tuneLog = { params: Object.fromEntries(TUNED.map(k => [k, best[k]])), exact: bestE.e.exact, meanCont: bestE.e.meanCont };
+    if (planetVetoes) console.log(`  ${planetVetoes} step(s) that Earth wanted were vetoed for drying the generated planets`);
+    tuneLog = { params: Object.fromEntries(TUNED.map(k => [k, best[k]])), exact: bestE.e.exact, near: bestE.e.near, meanCont: bestE.e.meanCont, meanContNear: bestE.e.meanContNear,
+        planets: genPlanets.map((p, i) => ({ key: p.key, start: dry0[i], tuned: dryBest[i] })) };
     setParams(best);
     fs.mkdirSync(OUT_DIR, { recursive: true });
     fs.writeFileSync(path.join(OUT_DIR, 'coupled-tuned.json'), JSON.stringify(tuneLog, null, 2));
@@ -180,8 +209,8 @@ const main = evaluate();
 const noClouds = evaluate(E160, { cloudsFromRain: false });              // the Phase 6 coupling: clouds from the rain
 const g = guardSummary(main.guard), gn = guardSummary(noClouds.guard);
 console.log(`\nCoupled climate on Earth, 160K (${main.res.timing.map(t => `${t.stage} ${t.ms.toFixed(0)}`).join(' · ')} ms; total ${main.ms.toFixed(0)} ms)`);
-console.log(`  Köppen vs Beck: ${pc(main.exact)} of land (major group ${pc(main.major)}; continents equal ${pc(main.meanCont)}) — without clouds from the rain ${pc(noClouds.exact)} (${pc(noClouds.meanCont)}); V1 38 %`);
-console.log('  per continent: ' + TUNED_CONTINENTS.map(k => `${k} ${pc(main.perCont[k])}`).join(', '));
+console.log(`  Köppen vs Beck: ${pc(main.exact)} of land exact, ${pc(main.near)} near match (major group ${pc(main.major)}; continents equal ${pc(main.meanCont)} / ${pc(main.meanContNear)}) — without clouds from the rain ${pc(noClouds.exact)} (${pc(noClouds.meanCont)}); V1 38 %`);
+console.log('  per continent, exact / near: ' + TUNED_CONTINENTS.map(k => `${k} ${pc(main.perCont[k])} / ${pc(main.perContNear[k])}`).join(', '));
 console.log('  regimes (recall, area new ÷ real): ' + Object.entries(main.regimes).map(([k, r]) => `${k.split(' ')[0]} ${pc(r.recall)} ×${f2(r.areaRatio)}`).join(', '));
 console.log(`  guardrails: land temperature ${f2(g.temperature)} °C (${f2(gn.temperature)} without clouds), rain ${f2(g.rain)} (${f2(gn.rain)}), sea temperature ${f2(g.sst)} °C (${f2(gn.sst)}), pressure ${f2(g.pressure)} hPa, wind within 45° ${pc(g.wind45)}`);
 const big = Object.entries(main.cmp.perClass).filter(([, p]) => p.truthArea > 0.02).sort((a, b) => b[1].truthArea - a[1].truthArea);
@@ -244,7 +273,8 @@ console.log(`\nGate: Köppen beats V1 ${gate.beatsV1 ? '✓' : '✗'} · stage g
 
 const results = {
     tuned: tuneLog, params: { ...PARAMS },
-    earth: { ms: main.ms, timing: main.res.timing, exact: main.exact, major: main.major, macroF1: main.macroF1, perCont: main.perCont, meanCont: main.meanCont,
+    earth: { ms: main.ms, timing: main.res.timing, exact: main.exact, near: main.near, major: main.major, macroF1: main.macroF1, perCont: main.perCont, meanCont: main.meanCont,
+        perContNear: main.perContNear, meanContNear: main.meanContNear,
         regimes: Object.fromEntries(Object.entries(main.regimes).map(([k, r]) => [k, { recall: r.recall, areaRatio: r.areaRatio }])), guard: main.guard,
         withoutClouds: { exact: noClouds.exact, meanCont: noClouds.meanCont, guard: noClouds.guard } },
     drift, planets, gate,

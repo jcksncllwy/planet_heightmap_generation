@@ -22,7 +22,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_ICE_COLD_C: -10,       // °C         … and covers everything below this (smooth in between)
     TEMP_LAND_HEAT_CAP: 8.93e6, // J/m²/K     how much heat land stores per degree (air column + top soil)
     TEMP_OCEAN_MIX_M: 50,       // m          depth of the sea's mixed layer (its heat store)
-    TEMP_WIND_CARRY: 0.143,     // –          share of the air column's heat the wind carries along (mild west coasts)
+    TEMP_WIND_CARRY: 0.068,     // –          share of the air column's heat the wind carries along (mild west coasts)
     TEMP_INVERSION_C: 10,       // °C         how much colder the air near snowy ground gets than the air above it
                                 //            when the sun is weak and the air calm (winter inversions over snow and ice)
     TEMP_INVERSION_WIND: 4.69,  // m/s        wind speed at which that inversion is half mixed away
@@ -47,13 +47,13 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_SEA_ICE_SPREAD_KM: 700,// km         the ice follows the sea's temperature averaged within this (a warm current's
                                 //            water spreads well out from its coast; the pack drifts)
     TEMP_BLOCK_KM: 1.5,           // km         mountains block the low air's heat exchange: e^{−(ridge above the lower side)/this}; 0 = off
-    TEMP_LOCAL_K: 14,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
-    TEMP_LOCAL_KM: 1500,        // km         … its departure from the region within this (Gaussian σ) is added over land
+    TEMP_LOCAL_K: 11,            // W/m²/K     land's own seasons below the grid: a column's exchange with its surroundings (0 = off)
+    TEMP_LOCAL_KM: 1925,        // km         … its departure from the region within this (Gaussian σ) is added over land
     TEMP_CURRENT_MEMORY: 0.6,     // –          share of the temperature of where its water comes from that a current keeps
     TEMP_COAST_CARRY: 0.6,      // –          … the share of the upwind sea's anomaly onshore winds carry onto land
     TEMP_AIR_SEA_DAYS: 1,       // days       air masses: time for air over the open sea to take on its temperature …
     TEMP_AIR_SUN_DAYS: 0.5,     // days       … over sunlit land (convection mixes the air) …
-    TEMP_AIR_DARK_DAYS: 4,      // days       … and over land under a weak sun (stable air on colder ground); 0 = off
+    TEMP_AIR_DARK_DAYS: 3,      // days       … and over land under a weak sun (stable air on colder ground); 0 = off
     TEMP_EVAP_DAMPING: 15,      // W/m²/K     evaporation's damping of the seasons over a wet surface at 25 °C
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
@@ -136,7 +136,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
     RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
-    RAIN_STORM_RH: 0.138,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
+    RAIN_STORM_RH: 0.263,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
     RAIN_TROPICAL_RH: 0.3,      // day        … and by tropical disturbances (monsoon depressions, easterly waves), per unit of the
     RAIN_TROPICAL_KM: 600,      // km         low-level winds' cyclonic vorticity (1/day), smoothed over this, within the tropics
                                 //            (the derived winds are smooth: their vorticity is ≈ ¼ of a real monsoon trough's)
@@ -145,7 +145,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
     RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
     RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
-    RAIN_STABILITY: 0.015,      // 1/K        humidity effectively lost per K the surface is colder than its region (stable air) …
+    RAIN_STABILITY: 0.0225,     // 1/K        humidity effectively lost per K the surface is colder than its region (stable air) …
     RAIN_STABLE_REF_KM: 1500,   // km         … the region: the surface's mean within this (Gaussian σ; the air mass's scale)
     RAIN_TERRAIN_HEAT_K: 6,     // K          … over ground this much warmer than its latitude (at sea level); none if 0
     RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
@@ -154,9 +154,9 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_FRONT_POS: 0.5,        // –          … the front this share of the way from each hemisphere's subtropical high to its subpolar low …
     RAIN_FRONT_DEG: 10,         // °          … its band (Gaussian σ) …
     RAIN_FRONT_HIGH_HPA: 4,     // hPa        … faded by e per this much pressure above the latitude's mean (the highs)
-    RAIN_SOIL_MM: 150,          // mm         water the soil holds for evaporation in dry months
+    RAIN_SOIL_MM: 87.5,         // mm         water the soil holds for evaporation in dry months
     RAIN_LAND_CONVECTION: 0.065, // –         spread of the column's relative humidity by afternoon storms over sunlit, wet land
-    RAIN_COLUMN_LOCAL: 0.414,   // –          share of the surface's departure from its latitude's temperature felt through the air column
+    RAIN_COLUMN_LOCAL: 0.2,     // –          share of the surface's departure from its latitude's temperature felt through the air column
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
     RAIN_LEE_PER_KM: 1,         // 1/km       rain shadows on the 1° grid: rain × e^{−this × km the air has come down from higher ground}
     RAIN_LEE_RECOVER_KM: 400,   // km         … a drop counted less with distance (the air takes up moisture again)

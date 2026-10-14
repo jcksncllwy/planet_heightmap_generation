@@ -128,9 +128,19 @@ node tuning/climate/rain-check.mjs [--tune] [--quick]  # Phase 5: rain per conti
                                                 #   real and with derived winds; vs V1; named features; truth swap;
                                                 #   every stage new; test planets (--quick: open loop only)
 node tuning/climate/diag-rain.mjs [--derived]   # where the rain is wrong: zonal means, named boxes, wet-season map
-node tuning/climate/coupled-check.mjs [--tune] [--quick]  # Phase 6: every stage new — Köppen per continent with each
-                                                #   stage's score as a guardrail; drift at 640K/2.5M; test planets;
-                                                #   --tune: the final Köppen-level tune (TUNE_KEYS=… to choose)
+node tuning/climate/coupled-check.mjs [--tune] [--quick]  # Phase 6: every stage new — Köppen per continent, exact and near
+                                                #   match (lib/koppen-distance.mjs: partial credit by warmth, wetness
+                                                #   and seasonality), with each stage's score as a guardrail; drift at
+                                                #   640K/2.5M; test planets; --tune: the final Köppen-level tune on the
+                                                #   near match (TUNE_KEYS=… to choose), vetoing any step that dries the
+                                                #   generated planets (GEN_KEYS=… to choose them)
+node tuning/climate/planets-dry.mjs [--set …] [--climate <snapshot>]  # the generated planets' arid share and rain vs Earth
+                                                #   observed and vs what their land's latitudes predict; --screen N
+                                                #   ranks Generate seeds by how Earth-like their land is
+node tuning/climate/render-koppen-maps.mjs --tag <name> [--set …]   # Köppen PNGs of Earth (and observed) and the generated
+                                                #   planets → tuning/results/climate/maps/<name>/, to compare by eye
+node tuning/climate/probe-planets.mjs [--prefix RAIN_,CIRC_]  # each setting ±¼ of its range: Earth's score and aridity vs
+                                                #   the generated planets' (which settings dry the planets)
 node tuning/climate/profile-climate.mjs         # every stage call timed
 node tuning/climate/hash-climate.mjs            # fingerprint of every stage's output (exact speed-ups keep it)
 node tuning/climate/evolution-check.mjs         # Phase 7: the climate on Evolution worlds (V2 history → terrain, z north)
@@ -154,7 +164,7 @@ node tuning/climate/diag-currents.mjs           # warm and cold currents: sea, c
                                                 #   latitude, new vs OISST / Beck
 node tuning/climate/diag-seasonal-ocean.mjs <name> [--set …] [--compare <name>]   # the ocean's seasons on Earth: the Somali
                                                 # Current, monsoon upwelling, Jan / Jul; Köppen changed vs another run
-node tuning/climate/diag-dry.mjs [--planet earth|evolution] [--seed N] [--root <snapshot>] [--climate <snapshot>]
+node tuning/climate/diag-dry.mjs [--planet earth|evolution|<a lib/gen-planets.mjs key>] [--seed N] [--root <snapshot>] [--climate <snapshot>]
                                                 # why a planet is dry: land rain, temperature and arid share by latitude,
                                                 #   distance from the sea, height, coast facing and the wind's fetch over
                                                 #   land (Earth also vs Beck / observed); --root builds the Evolution world
@@ -188,8 +198,16 @@ its own and weighted equally (`lib/continents.mjs`), a change is kept only if no
 literature values, and every setting is pulled toward its literature value. Each stage must also behave as physics
 expects on synthetic test planets (`v2/js/climate/test-planets.js`).
 
+The worlds the app makes are guarded too (`lib/gen-planets.mjs`): Generate planets whose land is Earth-like in amount
+and latitude, ones that are not (one continent, much or little land), stock Evolution worlds and the test planets. The
+tune turns down any step that leaves one of them more than 1 point more arid. They come out drier than Earth (about 38–43 %
+of ice-free land arid against Earth's 31 %) because their continents are walled by mountains — about a third of their
+coast has high ground within 300 km, against 8 % of Earth's — so expect that, not a fault, unless the terrain changes.
+
 Files: `fetch-references.mjs`, `regrid-references.mjs`, `inspect-references.mjs` (list variables),
-`season-test.mjs`, `stage-audit.mjs`, `hash-earth.mjs`, `skeleton-check.mjs`, `temperature-check.mjs`,
+`season-test.mjs`, `stage-audit.mjs`, `hash-earth.mjs`, `skeleton-check.mjs`, `temperature-check.mjs`, `planets-dry.mjs`,
+`render-koppen-maps.mjs`, `probe-planets.mjs`, `lib/gen-planets.mjs` (the generated planets, terrain cached in
+`tuning/results/climate/cache/`),
 `diag-temperature.mjs`, `test-solver.mjs`, `circulation-check.mjs`, `ocean-check.mjs`, `rain-check.mjs`, `diag-rain.mjs`, `diag-planet-rain.mjs`, `coupled-check.mjs`,
 `profile-climate.mjs`, `hash-climate.mjs`; `lib/continents.mjs` (continent-aware scoring),
 `lib/regions.mjs` (continents + ocean basins), `lib/nc-read.mjs` (netCDF reader), `lib/unzip.mjs`
