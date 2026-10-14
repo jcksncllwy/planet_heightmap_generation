@@ -10,6 +10,7 @@ import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
 import { statValue } from '../climate/cell-stats.js';
+import { FastNoise } from '../core/fast-noise.js';
 import { QUANTITY_COLORS, ICE_SHEET_RGB, SNOW_RGB, climateLegendHTML, classLabel } from '../../../js/climate-layers.js';
 
 /** The land's measures beyond Köppen (cell-stats.js), per cell or per pixel of a finished moment's picture. */
@@ -396,6 +397,19 @@ function seaDepthRgb(km, out) {
     for (let ch = 0; ch < 3; ch++) out[ch] = d[i][1][ch] + (d[i + 1][1][ch] - d[i][1][ch]) * t;
     return out;
 }
+// The sea ice as from space: a sharp, ragged edge, not the 1° grid's fraction smoothed into a fog — the fraction against
+// a threshold moved by fractal noise (the pack's edge over ~SEA_ICE_EDGE_KM; loose floes, ~SEA_ICE_FLOE_KM, where the
+// cover is partial), the edge itself about a pixel wide.
+const SEA_ICE_EDGE_KM = 160, SEA_ICE_FLOE_KM = 30, SEA_ICE_NOISE = 0.42, iceNoise = new FastNoise(7919);
+function seaIceAt(c, x, y, W) {
+    if (!(c > 0.04)) return 0;
+    if (c > 0.96) return 1;
+    const H = W >> 1, lat = (0.5 - (y + 0.5) / H) * Math.PI, lon = ((x + 0.5) / W - 0.5) * 2 * Math.PI, cl = Math.cos(lat);
+    const px = cl * Math.cos(lon), py = cl * Math.sin(lon), pz = Math.sin(lat), fE = 6371 / SEA_ICE_EDGE_KM, fF = 6371 / SEA_ICE_FLOE_KM;
+    const n = 0.7 * iceNoise.fbm(fE * px, fE * py, fE * pz, 3, 0.5) + 0.3 * iceNoise.noise3D(fF * px + 5.1, fF * py - 2.7, fF * pz + 8.3);
+    const t = c + SEA_ICE_NOISE * n, e = Math.max(0, Math.min(1, (t - 0.47) / 0.06));
+    return e * e * (3 - 2 * e);
+}
 function satelliteColor(season, C, W) {
     const R = C.raster, g = gridSampler(W), S = R.sat[season], rgb = [0, 0, 0], ice = C.seaIce?.[season] ?? C.ice;
     return (out, o, x, y, wet, kk, k3, v, lake) => {
@@ -405,8 +419,7 @@ function satelliteColor(season, C, W) {
             // (the sea: a gentler light on its floor's relief; shallow warm water turquoise; its ice in its season)
             seaDepthRgb(v, rgb);
             const warmShallow = 0.7 * Math.max(0, Math.min(1, (g((C.Tsea ?? C.T)[season], x, y) - 20) / 6)) * Math.max(0, Math.min(1, (v + 0.12) / 0.1));
-            // (the ice's edge sharpened: the 1° grid's fraction, bilinear, is a fog)
-            const fi = Math.min(1, Math.max(0, (g(ice, x, y) - 0.3) / 0.35));
+            const fi = seaIceAt(g(ice, x, y), x, y, W);
             const ks = 0.8 + 0.2 * k;
             for (let ch = 0; ch < 3; ch++) {
                 let c = rgb[ch] + (SHALLOW_WARM[ch] - rgb[ch]) * warmShallow;
