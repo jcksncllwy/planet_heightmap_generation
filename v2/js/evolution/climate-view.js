@@ -11,6 +11,7 @@ import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { RAMPS, rampColor, drawRampBar } from '../climate-lab/palettes.js';
 import { statValue } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
+import { styledSatellite, SAT_SHADE } from './sat-style.js';
 import { QUANTITY_COLORS, ICE_SHEET_RGB, SNOW_RGB, climateLegendHTML, classLabel } from '../../../js/climate-layers.js';
 
 /** The land's measures beyond Köppen (cell-stats.js), per cell or per pixel of a finished moment's picture. */
@@ -270,7 +271,7 @@ export function drawItcz(ctx, width, season, C) {
 /** The legend of a climate layer. A finished moment's Köppen classes are counted on its climate picture (C.raster). */
 export function drawLegend(el, layer, season, C, terrain) {
     const ramp = { temperature: RAMPS.temperature, rain: RAMPS.rain, pressure: RAMPS.pressure, currents: RAMPS.oceanAnom }[layer];
-    if (layer === 'satellite') { el.innerHTML = `<div class="evo-legend-note">As from space, cloud-free — ${SEASON_WORDS[season]}: forest, grass, bare ground, snow and ice from the climate</div>`; return; }
+    if (layer === 'satellite') { el.innerHTML = `<div class="evo-legend-note">As from space, cloud-free — ${SEASON_WORDS[season]}: each climate's colours climbing with the land to rock and snow, rivers greening dry country, snow and ice from the climate</div>`; return; }
     if (layer === 'koppen') {
         // the classes on this planet's land, the largest first (on a picture: each pixel by its area, cos latitude)
         const count = new Float64Array(KOPPEN_CLASSES.length);
@@ -333,8 +334,8 @@ const shadeK = kk => 0.45 + 0.55 * (kk - 0.35) / 0.65;
  * the land from the moment's own climate picture, the sea and the seasons from its grid — shaded by the finished relief,
  * as the live layers by theirs. `lut`: the terrain's palette (the land under the currents).
  */
-export function finishedClimateColor(layer, season, C, W, lut) {
-    if (layer === 'satellite') return satelliteColor(season, C, W);
+export function finishedClimateColor(layer, season, C, W, lut, fin = null) {
+    if (layer === 'satellite') return satelliteColor(season, C, W, fin);
     const R = C.raster, g = gridSampler(W), T = lutOf({ currents: 'sst', ice: 'seaIce' }[layer] ?? layer), st = R.stats?.[layer];
     const px = [0, 0, 0];
     const putPx = (out, o, kk, v) => {
@@ -410,11 +411,16 @@ function seaIceAt(c, x, y, W) {
     const t = c + SEA_ICE_NOISE * n, e = Math.max(0, Math.min(1, (t - 0.47) / 0.06));
     return e * e * (3 - 2 * e);
 }
-function satelliteColor(season, C, W) {
-    const R = C.raster, g = gridSampler(W), S = R.sat[season], rgb = [0, 0, 0], ice = C.seaIce?.[season] ?? C.ice;
+function satelliteColor(season, C, W, fin = null) {
+    const R = C.raster, g = gridSampler(W), rgb = [0, 0, 0], ice = C.seaIce?.[season] ?? C.ice;
+    // (the land: the climates' colours by height with the realistic picture's texture — sat-style.js — where the finished
+    // heights are at hand; else the realistic picture itself)
+    const styled = !!fin?.raster?.heightM;
+    const S = styled ? styledSatellite(R, season, fin.raster.heightM, fin.raster.w, fin.rivers) : R.sat[season];
+    const shadeAmp = styled ? SAT_SHADE : 1;
     return (out, o, x, y, wet, kk, k3, v, lake) => {
         // (the land's relief shading deeper than the other layers': the mountains stand out, as on a satellite image)
-        const k = wet ? shadeK(kk) : 0.37 + 0.68 * (kk - 0.35) / 0.65;      // (0.28–1.08: "the hillshading is too strong")
+        const k = wet ? shadeK(kk) : 1 + shadeAmp * (0.37 + 0.68 * (kk - 0.35) / 0.65 - 1);      // (0.28–1.08: "the hillshading is too strong")
         if (wet) {
             // (the sea: a gentler light on its floor's relief; shallow warm water turquoise; its ice in its season)
             seaDepthRgb(v, rgb);

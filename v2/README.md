@@ -82,7 +82,15 @@ a fine brightness mottling; the terrain (S2): tree and snow lines
 by each place's full height, rock and scree on rugged or steep ground (most where dry or cold), in dry country greener
 pole-facing slopes and valleys, the wind's sand seas, loess and the flood basalt that still caps the ground, and a flow
 texture — an earthy tint by the area each place drains, so every valley network shows faintly; the sea dark by depth with lighter shelves and warm turquoise shallows, sea ice in its season, lakes
-frozen in a cold month; the readout names the ground's biome. **Rivers and lakes** by the climate
+frozen in a cold month; the readout names the ground's biome. On the page the land is drawn in its climates' colours by height
+(`evolution/sat-style.js`): each family of climates (rainforest, savanna, desert, steppe, Mediterranean, temperate,
+continental, taiga, tundra, ice) its lowland colour up to its tree line, then dark grey-red rock with a little of the biome
+under it, grey rock and snow — a summer and a winter version (the lines lower in winter), each place by its latitude in its
+own season and the even mean toward the equator (nothing flips there); the families blended over ~60 km, their edges
+warped by fractal noise; an ice sheet's edge kept sharp; cold dry climates in the tundra's colours; the rivers' banks
+greener the drier the climate and season (none under snow); the picture above's fine detail as brightness, and a quarter
+of it over all for its texture; its snow where the climate has snow in the season shown. The sea ice is drawn with a
+sharp, noise-ragged edge and loose floes where the cover is partial. **Rivers and lakes** by the climate
 (`finish-hydro.js`): discharge in m³/s from each place's runoff, less what dry river beds lose; each river's year — its
 monthly flows from each month's rain and snowmelt (and groundwater draining back slowly), routed down the rivers — and
 its regime: permanent, permanent with a yearly flood season (the Nile's), seasonal, dry most of the year; every river ends at the sea: a

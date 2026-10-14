@@ -497,7 +497,7 @@ function paintFinishedFrame(frame, fin, T, sharpTable) {
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes: water || view.layer === 'satellite',
-        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut) : null });
+        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : null });
     if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
     t.ctx.putImageData(t.image, 0, 0);
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
