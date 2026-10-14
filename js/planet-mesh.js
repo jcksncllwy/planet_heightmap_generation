@@ -7,6 +7,8 @@ import { elevationToColor, elevToHeightKm, biomeColor } from './color-map.js';
 import { makeRng } from './rng.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { climateColorFn, climateLayer, vectorAt, regionLatLon, sampleGrid as gridSampleAt } from './climate-layers.js';
+import { satelliteRegionColors, seaIceRegion } from '../v2/js/evolution/sat-style.js';
+import { FastNoise } from '../v2/js/core/fast-noise.js';
 
 // Clipping planes for map wrap — keep everything within x ∈ [-2, 2]
 renderer.localClippingEnabled = true;
@@ -15,26 +17,59 @@ const MAP_CLIP_PLANES = [
     new THREE.Plane(new THREE.Vector3(-1, 0, 0), 2),   // x <= 2
 ];
 
-// Precompute smoothed biome colors: each region blends with its neighbors' average.
-// Uses mesh adjacency (~6 neighbors per region) so it's inherently scale-independent.
-// Cached on state to avoid redundant computation across render paths.
+// The Satellite view's colours, per region: each climate's colours climbing with the land to rock and snow, in the season
+// chosen (v2/js/evolution/sat-style.js — the same look as Evolution's), the sea by depth with its sea ice sharp and
+// ragged; then each region blended a little with its neighbours (mesh adjacency, ~6 neighbours: scale-independent).
+// The globe and the map take vertex colours in linear light (three.js shows them in sRGB), the PNG export writes them as
+// they are: so the land's colours are kept both ways (V1's sea colours as before, in both). Cached per climate, Köppen
+// array and season.
 let _biomeCache = null;
 let _biomeCacheKey = null;
 
-function getCachedBiomeSmoothed(mesh, koppenArr, r_elevation) {
-    if (_biomeCache && _biomeCacheKey === koppenArr) return _biomeCache;
-    _biomeCache = smoothBiomeColors(mesh, koppenArr, r_elevation);
-    _biomeCacheKey = koppenArr;
-    return _biomeCache;
+function getCachedBiomeSmoothed(mesh, koppenArr, r_elevation, forExport = false) {
+    const data = state.curData, season = state.climateSeason || 'year', key = [koppenArr, data?.climate, season, r_elevation];
+    if (!(_biomeCache && _biomeCacheKey && key.every((k, i) => k === _biomeCacheKey[i]))) {
+        const raw = satelliteRaw(mesh, koppenArr, r_elevation, data, season);
+        _biomeCache = { display: smoothBiomeColors(mesh, raw.display), export: raw.export === raw.display ? null : smoothBiomeColors(mesh, raw.export) };
+        _biomeCacheKey = key;
+    }
+    return forExport && _biomeCache.export ? _biomeCache.export : _biomeCache.display;
 }
 
-function smoothBiomeColors(mesh, koppenArr, r_elevation) {
-    const n = mesh.numRegions;
-    const raw = new Float32Array(n * 3);
-    for (let r = 0; r < n; r++) {
-        const [cr, cg, cb] = biomeColor(koppenArr[r], r_elevation[r]);
-        raw[r * 3] = cr; raw[r * 3 + 1] = cg; raw[r * 3 + 2] = cb;
+const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
+/** Each region's Satellite colour before smoothing (0–1, 3 per region): { display, export }. */
+function satelliteRaw(mesh, koppenArr, r_elevation, data, season) {
+    const n = mesh.numRegions, C = data?.climate;
+    if (!C?.cells || !C.grid || !data.r_xyz || data.r_xyz.length !== 3 * n) {
+        // (no climate of the new kind at hand: V1's own colours, as they always were)
+        const raw = new Float32Array(n * 3);
+        for (let r = 0; r < n; r++) { const [cr, cg, cb] = biomeColor(koppenArr[r], r_elevation[r]); raw[r * 3] = cr; raw[r * 3 + 1] = cg; raw[r * 3 + 2] = cb; }
+        return { display: raw, export: raw };
     }
+    const display = new Float32Array(n * 3), exp = new Float32Array(n * 3);
+    const { lat, lon } = regionLatLon(data), g = C.grid, s = season in { year: 1, jan: 1, jul: 1 } ? season : 'year';
+    const land = new Uint8Array(n);
+    for (let r = 0; r < n; r++) land[r] = r_elevation[r] > 0 ? koppenArr[r] : 0;
+    const at = (f, r) => gridSampleAt(g, f, lat[r], lon[r]);
+    const lc = satelliteRegionColors({ n, xyz: data.r_xyz, lat, lon, elevKm: (r) => elevToHeightKm(r_elevation[r]), koppen: land,
+        tAnnual: C.cells.t.year, tRange: C.cells.tRange, season: s, FastNoise,
+        snowAt: g.snow ? (r) => at(g.snow[s], r) : () => 0, iceSheetAt: g.iceSheet ? (r) => at(g.iceSheet, r) : () => 0 });
+    for (let r = 0; r < n; r++) {
+        if (land[r]) {
+            for (let c = 0; c < 3; c++) { exp[r * 3 + c] = lc[r * 3 + c]; display[r * 3 + c] = srgbToLinear(lc[r * 3 + c]); }
+            continue;
+        }
+        const sea = elevationToColor(r_elevation[r]);
+        const fi = g.seaIce ? seaIceRegion(at(g.seaIce[s], r), data.r_xyz[3 * r], data.r_xyz[3 * r + 1], data.r_xyz[3 * r + 2], FastNoise) : 0;
+        for (let c = 0; c < 3; c++) { exp[r * 3 + c] = sea[c] + (SAT_SEA_ICE[c] - sea[c]) * fi; display[r * 3 + c] = sea[c] + (srgbToLinear(SAT_SEA_ICE[c]) - sea[c]) * fi; }
+    }
+    return { display, export: exp };
+}
+const SAT_SEA_ICE = [214 / 255, 223 / 255, 230 / 255];
+
+function smoothBiomeColors(mesh, raw) {
+    const n = mesh.numRegions;
     const out = new Float32Array(n * 3);
     const alpha = 0.35;
     const { adjOffset, adjList } = mesh;
@@ -1745,7 +1780,7 @@ export async function exportMap(type, width, onProgress) {
     // Climate-dependent export types (Satellite / Köppen)
     const debugLayers = state.curData.debugLayers;
     const koppenArr = (type === 'biome' || type === 'koppen') ? (debugLayers && debugLayers.koppen) : null;
-    const biomeSmoothed = (type === 'biome' && koppenArr) ? getCachedBiomeSmoothed(mesh, koppenArr, r_elevation) : null;
+    const biomeSmoothed = (type === 'biome' && koppenArr) ? getCachedBiomeSmoothed(mesh, koppenArr, r_elevation, true) : null;
 
     // Build map triangles (same projection as buildMapMesh, chosen coloring, no grid)
     const { numSides, numTriangles } = mesh;
@@ -2020,7 +2055,7 @@ export async function exportMapBatch(types, width, onProgress) {
     const { mesh, r_xyz, t_xyz, r_elevation } = state.curData;
     const debugLayers = state.curData.debugLayers;
     const koppenArr = debugLayers && debugLayers.koppen;
-    const biomeSmoothed = koppenArr ? getCachedBiomeSmoothed(mesh, koppenArr, r_elevation) : null;
+    const biomeSmoothed = koppenArr ? getCachedBiomeSmoothed(mesh, koppenArr, r_elevation, true) : null;
     const { numSides, numTriangles } = mesh;
     const PI = Math.PI;
     const sx = 2 / PI;

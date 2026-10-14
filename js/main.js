@@ -11,7 +11,7 @@ import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, reb
 import { setupEditMode } from './edit-mode.js';
 import { detailFromSlider, sliderFromDetail } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
-import { needsClimate, climateLayer, climateLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker } from './climate-layers.js';
+import { needsClimate, climateLayer, climateLegendHTML, satelliteLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker } from './climate-layers.js';
 import { elevationToColor } from './color-map.js';
 
 // Slider value displays + stale tracking
@@ -367,24 +367,7 @@ function updateLegend(layer) {
             });
         });
     } else if (layer === 'biome') {
-        // Satellite biome legend — gradient bar of key biome colors
-        const biomeStops = [
-            { color: [0.82,0.72,0.50], label: 'Desert' },
-            { color: [0.72,0.62,0.30], label: 'Steppe' },
-            { color: [0.42,0.50,0.18], label: 'Savanna' },
-            { color: [0.12,0.38,0.10], label: 'Forest' },
-            { color: [0.06,0.22,0.08], label: 'Taiga' },
-            { color: [0.35,0.32,0.22], label: 'Tundra' },
-            { color: [0.78,0.80,0.84], label: 'Ice' },
-        ];
-        const biomeColors = biomeStops.map(s => {
-            const [r, g, b] = s.color;
-            return `rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`;
-        });
-        const biomePcts = biomeStops.map((_, i) => Math.round(i / (biomeStops.length - 1) * 100));
-        const biomeGrad = biomeColors.map((c, i) => `${c} ${biomePcts[i]}%`).join(', ');
-        vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${biomeGrad})"></div>` +
-            `<div class="legend-labels"><span>${biomeStops[0].label}</span><span>${biomeStops[3].label}</span><span>${biomeStops[6].label}</span></div>`;
+        vizLegend.innerHTML = satelliteLegendHTML(state.climateSeason);
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
             `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;

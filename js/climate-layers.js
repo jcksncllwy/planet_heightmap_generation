@@ -5,6 +5,8 @@
 // Land layers read each region's own values (state.curData.climate.cells: the region's twelve months at its own height);
 // the sea, and the winds and currents, are sampled from the 1° climate grid at the region's latitude and longitude.
 
+import { RAMP_FAMILIES } from '../v2/js/evolution/sat-style.js';
+
 export const CLIMATE_INSPECT = [
     { id: 'pressure',    label: 'Pressure',          seasonal: true,  arrows: 'wind', itcz: true },
     { id: 'wind',        label: 'Wind',              seasonal: true,  arrows: 'wind' },
@@ -217,7 +219,18 @@ export function showClimateArrows(layer, season, buildWind, buildCurrents) {
 /** The season picker beside Inspect: shown for a layer with seasons. */
 export function syncSeasonPicker(layer) {
     const group = document.getElementById('climateSeasonGroup');
-    if (group) group.hidden = !BY_ID[layer]?.seasonal;
+    if (group) group.hidden = !(BY_ID[layer]?.seasonal || layer === 'biome');        // (the Satellite view has seasons too)
+}
+/** The Satellite view's legend: its climates' lowland colours, and what it shows, in the season chosen. */
+export function satelliteLegendHTML(season) {
+    const F = Object.fromEntries(RAMP_FAMILIES.map(f => [f.name, f]));
+    const stops = [['desert', 'Desert'], ['steppe', 'Steppe'], ['savanna', 'Savanna'], ['temperate', 'Forest'], ['taiga', 'Taiga'], ['tundra', 'Tundra'], ['ice', 'Ice']]
+        .map(([k, label]) => ({ c: F[k].summer.low[0], label }));
+    const grad = stops.map((s, i) => `rgb(${s.c.join(',')}) ${Math.round(i / (stops.length - 1) * 100)}%`).join(', ');
+    const sn = season in SEASON_LABELS && season !== 'year' ? ` in ${SEASON_LABELS[season]}` : '';
+    return `<div class="legend-gradient" style="background:linear-gradient(to right,${grad})"></div>` +
+        `<div class="legend-labels"><span>${stops[0].label}</span><span>${stops[3].label}</span><span>${stops[6].label}</span></div>` +
+        note(`Each climate's colours${sn}, climbing with the land to rock and snow`);
 }
 /** Wire the season picker: `onChange(season)` after state.climateSeason is set. */
 export function initSeasonPicker(state, onChange) {

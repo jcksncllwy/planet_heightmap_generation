@@ -265,3 +265,88 @@ export function styledSatellite(R, season, heightM, hw, rivers) {
     byS.set(season, out);
     return out;
 }
+
+// ── the same colours per region of a mesh (Generate and Import's Satellite view: no realistic picture, no rivers) ──
+// The families' shares on a fixed lat-lon grid (~39 km cells, blurred and noise-warped as above), sampled back at each
+// region — the same blend at every detail; a gentle fractal mottling of brightness for texture; the climate's snow and
+// ice sheets; the sea ice sharp and ragged, like Evolution's.
+const REGION_GRID_W = 1024;
+let regionNoise = null;
+/**
+ * @param {{n: number, xyz: Float32Array, lat: Float32Array, lon: Float32Array, elevKm: (r: number) => number,
+ *          koppen: Uint8Array, tAnnual: ArrayLike<number>, tRange: ArrayLike<number>, season: 'year'|'jan'|'jul',
+ *          snowAt: (r: number) => number, iceSheetAt: (r: number) => number, FastNoise: Function}} p
+ *   lat/lon in degrees; koppen 0 at sea; tAnnual / tRange per region (°C; NaN at sea); snowAt: the season's snow on land 0–1.
+ * @returns {Float32Array} sRGB 0–1 per land region (3 n; the sea left 0)
+ */
+export function satelliteRegionColors(p) {
+    const { n, xyz, lat, lon, elevKm, koppen, tAnnual, tRange, season, snowAt, iceSheetAt } = p;
+    regionNoise ??= new p.FastNoise(4243);
+    const gw = REGION_GRID_W, gh = gw / 2, N = gw * gh, share = new Float32Array(NF * N), cellOf = new Int32Array(n);
+    for (let r = 0; r < n; r++) {
+        const k = koppen[r]; cellOf[r] = -1; if (!k) continue;
+        const g = familyOfClass[k]; if (g < 0 || g === ICE) continue;
+        const x = Math.min(gw - 1, Math.floor((lon[r] + 180) / 360 * gw)), y = Math.min(gh - 1, Math.floor((90 - lat[r]) / 180 * gh)), c = y * gw + x;
+        cellOf[r] = c;
+        let cold = 0;
+        if (DRY.has(g)) {
+            const tA = tAnnual[r], range = tRange[r], warmest = tA + (range === range ? range / 2 : 8);
+            if (tA === tA) cold = sm(0, 1, Math.max((COLD_DRY_C[0] - warmest) / (COLD_DRY_C[0] - COLD_DRY_C[1]), (COLD_DRY_YEAR_C[0] - tA) / (COLD_DRY_YEAR_C[0] - COLD_DRY_YEAR_C[1])));
+        }
+        share[g * N + c] += 1 - cold;
+        if (cold > 0) share[TUNDRA * N + c] += cold;
+    }
+    const pxKm = 2 * Math.PI * 6371 / gw, rB = Math.max(1, Math.round(RAMP_BLEND_KM / pxKm / 2));
+    for (let g = 0; g < NF; g++) if (g !== ICE) boxBlur(share.subarray(g * N, (g + 1) * N), gw, gh, rB);
+    const out = new Float32Array(3 * n), col = [0, 0, 0], period = Math.max(4, Math.round(2 * Math.PI * 6371 / WARP_FEATURE_KM)), warpCells = WARP_KM / pxKm;
+    const fM1 = 6371 / 300, fM2 = 6371 / 60;
+    for (let r = 0; r < n; r++) {
+        const k = koppen[r]; if (!k) continue;
+        const own = familyOfClass[k], h = elevKm(r), s = Math.min(NS - 1, Math.round((h > 0 ? h : 0) / STEP_KM));
+        const ss = summerShare(lat[r], season), ws = 1 - ss;
+        col[0] = col[1] = col[2] = 0;
+        let tot = 0;
+        const add = (g, wt) => {
+            const a = ((g * 2) * NS + s) * 3, b = a + NS * 3;
+            col[0] += wt * (ss * TABLE[a] + ws * TABLE[b]); col[1] += wt * (ss * TABLE[a + 1] + ws * TABLE[b + 1]); col[2] += wt * (ss * TABLE[a + 2] + ws * TABLE[b + 2]);
+        };
+        if (own === ICE) { add(ICE, 1); tot = 1; }
+        else {
+            const u = (lon[r] + 180) / 360 * period, v = (90 - lat[r]) / 180 * period / 2;
+            const X = (lon[r] + 180) / 360 * gw - 0.5 + warpCells * 2 * (fbm(u, v, period) - 0.5);
+            const Yc = Math.max(0, Math.min(gh - 1.001, (90 - lat[r]) / 180 * gh - 0.5 + warpCells * 2 * (fbm(u + 17.3, v + 9.1, period) - 0.5)));
+            const x0 = Math.floor(X), y0 = Math.floor(Yc), fx = X - x0, fy = Yc - y0;
+            const c00 = y0 * gw + ((x0 % gw) + gw) % gw, c10 = y0 * gw + ((x0 + 1) % gw + gw) % gw, c01 = c00 + gw, c11 = c10 + gw;
+            for (let g = 0; g < NF; g++) {
+                if (g === ICE) continue;
+                const o = g * N, wt = (1 - fx) * (1 - fy) * share[o + c00] + fx * (1 - fy) * share[o + c10] + (1 - fx) * fy * share[o + c01] + fx * fy * share[o + c11];
+                if (wt > 1e-6) { add(g, wt); tot += wt; }
+            }
+            if (tot < 1e-6) { add(Math.max(0, own), 1); tot = 1; }
+        }
+        // (texture: a gentle fractal mottling of brightness)
+        const px = xyz[3 * r], py = xyz[3 * r + 1], pz = xyz[3 * r + 2];
+        const mot = 1 + 0.06 * regionNoise.fbm(fM1 * px, fM1 * py, fM1 * pz, 3, 0.5) + 0.04 * regionNoise.noise3D(fM2 * px + 3.3, fM2 * py - 1.7, fM2 * pz + 5.9);
+        // (the climate's snow in the season, and the ice sheets)
+        const white = Math.max(sm(0.3, 0.85, snowAt(r)), sm(0.2, 0.6, iceSheetAt(r)));
+        const sn = [SNOW_LIN[0], SNOW_LIN[1], SNOW_LIN[2]];
+        for (let c = 0; c < 3; c++) {
+            let L = col[c] / tot * mot;
+            L += (sn[c] - L) * white;
+            out[3 * r + c] = toSrgb(Math.min(1, Math.max(0, L))) / 255;
+        }
+    }
+    return out;
+}
+const SNOW_LIN = linOf(SNOW);
+
+/** The sea ice as Evolution draws it, per region: a sharp, noise-ragged edge on the ice fraction `c` (0–1) at unit-sphere
+ *  point (x, y, z). */
+export function seaIceRegion(c, x, y, z, FastNoise) {
+    if (!(c > 0.04)) return 0;
+    if (c > 0.96) return 1;
+    regionNoise ??= new FastNoise(4243);
+    const fE = 6371 / 160, fF = 6371 / 30;
+    const n = 0.7 * regionNoise.fbm(fE * x, fE * y, fE * z, 3, 0.5) + 0.3 * regionNoise.noise3D(fF * x + 5.1, fF * y - 2.7, fF * z + 8.3);
+    return sm(0.47, 0.53, c + 0.42 * n);
+}

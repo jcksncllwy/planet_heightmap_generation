@@ -123,7 +123,7 @@ The climate (temperature, pressure and wind, ocean currents, rain, Köppen class
 
 - **Map Type** — segmented Terrain / Satellite / Climate / Heightmap tabs for quick switching between the four most common visualizations. Each tab shows a color legend:
   - **Terrain** — elevation color ramp from deep ocean through sea level to mountain peaks
-  - **Satellite** — realistic biome colors based on Köppen climate classification and elevation (lush green rainforests, tan deserts, white ice caps, dark taiga, gray tundra), with ocean using the standard terrain palette. High elevations blend toward snow white based on climate-aware snow lines.
+  - **Satellite** — the same look as Evolution's Satellite view (`v2/js/evolution/sat-style.js`): each family of climates in its own colours by height — its lowland colour up to its tree line, then dark grey-red rock, grey rock and snow (rainforests deep green, deserts sand to rust to dark rock, taiga dark green, tundra grey-green, cold deserts like tundra) — blended across the climates' edges (noise-warped, on a fixed grid so it looks the same at every detail), with a gentle fractal mottling; for the year, January or July (the season picker): each place in its own season by latitude, the even mean toward the equator, the snow line lower in winter, the climate's own snow and ice sheets; the sea in the terrain palette with sharp, ragged sea ice in its season.
   - **Climate** — Köppen-Geiger classification with color swatches for all 30 climate types
   - **Heightmap** — black-to-white gradient on a fixed absolute scale (-5 km ocean floor to 6 km peaks), so the same physical height always maps to the same shade
 - **View** dropdown — switch between Globe and Map (equirectangular projection)
