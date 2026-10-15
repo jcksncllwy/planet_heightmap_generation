@@ -68,6 +68,11 @@ body.studio {
 .res-link::after { content: ' \2197'; font-size: 12px; color: #678; }
 .res-link:hover { text-decoration: underline; }
 .res-note { font-size: 14px; line-height: 1.55; color: #9ab; margin-top: 4px; }
+.res-item { display: flex; gap: 14px; align-items: flex-start; }
+.res-icon { flex: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: rgba(255,255,255,0.06); }
+.res-body { min-width: 0; }
+.res-kind { margin-left: 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #678; }
+.res-note a { color: #8bf; }
 
 .studio-footer {
     text-align: center; font-size: 13px; line-height: 1.8; color: #778;

@@ -11,6 +11,7 @@ Worldbuilding Pasta (https://worldbuildingpasta.blogspot.com/) — worldbuilding
 Artifexian (https://www.youtube.com/@Artifexian) — worldbuilding tutorials and planetary science inspiration
 Madeline James (https://www.youtube.com/@MadelineJamesWorldbuilds, https://www.youtube.com/@madelinejameswrites, https://www.madelinejameswrites.com/) — worldbuilding methodology and climate design reference
 Fractal Philosophy (https://www.youtube.com/watch?v=7xL0udlhnqI) — procedural terrain generation inspiration
+Kilroy's Kartography (https://www.youtube.com/@KilroysKartography) — world-scale terrain with Gaea; a conceptual inspiration
 
 /* SITE */
 Standards: HTML5, ES Modules, WebGL
