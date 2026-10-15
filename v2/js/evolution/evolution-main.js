@@ -87,7 +87,7 @@ function labels() {
     $('vTmp').textContent = t ? `${t > 0 ? '+' : '−'}${Math.abs(t)} W/m²` : '±0 W/m²';
     $('vPrc').textContent = p ? `${p > 0 ? '+' : '−'}${Math.abs(p)}%` : '±0%';
     $('worldSummary').textContent = `Seed ${Number(ui.seed.value) || 0} · ${ui.len.value} Myr · ${QUALITY_WORDS[ui.quality.value]}` +
-        (t ? ` · greenhouse ${$('vTmp').textContent}` : '') + (p ? ` · ${$('vPrc').textContent} rain` : '');
+        (t ? ` · temperature ${$('vTmp').textContent}` : '') + (p ? ` · ${$('vPrc').textContent} rain` : '');
     // (the plates' resolution is the one setting a history cannot change: it waits for a build)
     $('worldPending').hidden = !B?.simCells || B.simCells === Number(ui.sim.value);
 }
@@ -207,7 +207,7 @@ async function build() {
     const seed = Number(ui.seed.value) || 0, cont = Number(ui.cont.value) / 100, len = Number(ui.len.value), ending = ui.ending.value;
     const simCells = Number(ui.sim.value), terrainCells = Number(ui.terrain.value);
     const b = B = { controller: new AbortController(), player: null, frames: [], simMesh: null, simCells, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
-        climates: new Map(), climateJob: null, climateNote: null,         // (climates: frame → {tMesh, data}, while this history is open)
+        climates: new Map(), climateJob: null, problem: null,         // (climates: frame → {tMesh, data}, while this history is open)
         run: null, going: false, wantGo: false, moreTo: linkedMore,        // (keep going: the history's run, kept to run on)
         finishes: new Map(), finishJob: null, finishNote: null };           // (finishes: frame → {cells, raster, secs} — the one detailed moment)
     linkedMore = 0;
@@ -256,7 +256,9 @@ async function build() {
     } catch (err) {
         if (err.name === 'AbortError' || B !== b) return;
         b.error = err;
+        b.problem = `Could not build this world: ${String(err.message).split('\n')[0]}. Try a lower Quality, or reload the page.`;
         status(`Could not build this world: ${err.message}`, null);
+        updateCard();
         console.error(err);
     }
 }
@@ -298,6 +300,7 @@ async function keepGoing(b, until = Infinity) {
         : `${b.endMyr.toFixed(0)} Myr of history · ${b.steps} steps — extended from ${b.goFrom.toFixed(0)} Myr (${b.goSecs.toFixed(0)} s)` +
             (b.full ? ' — as long a history as this device can hold' : '');
     if (!b.retexturing) status(b.doneText, failed ? null : 1);
+    if (failed) { b.problem = `Could not extend the history: ${String(failed.message).split('\n')[0]}`; updateCard(); }
     updateCard(); dirty = true;
 }
 
@@ -329,7 +332,12 @@ async function setTerrainDetail() {
         if (B !== b || b.retexturing !== cells) return;
         useTerrain(b, tMesh, cells);
     } catch (err) {
-        if (B === b) { b.retexturing = null; status(`Could not build the terrain: ${err.message}`, null); }
+        if (B === b) {
+            b.retexturing = null;
+            b.problem = `Could not build the terrain at this detail: ${String(err.message).split('\n')[0]}. Try a lower Terrain Detail.`;
+            status(`Could not build the terrain: ${err.message}`, null);
+            updateCard();
+        }
         console.error(err);
     }
 }
@@ -516,15 +524,18 @@ function paintFinishedFrame(frame, fin, T, sharpTable) {
 }
 
 // ── the Finish step: on request, for the moment shown — kept per moment while the history is open ──
+const CANCEL_GRACE_MS = 600;
 async function finishMoment(again = null) {
     const b = B, frame = again ?? painted;
     if (!b?.simMesh || !frame) return;
-    if (b.finishJob) { finisher.cancel(); return; }                     // (the button cancels a finish under way)
+    // (the button cancels a finish under way — but not in its first moments: it turns into Cancel where Add detail was,
+    // so a double click would otherwise start a finish and stop it at once)
+    if (b.finishJob) { if (performance.now() - b.finishJob.startedAt >= CANCEL_GRACE_MS) finisher.cancel(); return; }
     setPlaying(false);
     const cells = Number($('finishCells').value), width = IS_TOUCH ? 2048 : cells >= 5e6 ? 8192 : 4096;
     const started = performance.now(), done = new Map(FINISH_STAGES);
     b.finishNote = null; b.finishOk = false;
-    b.finishJob = { frame, cells, stage: 'starting', share: 0 };
+    b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now() };
     updateClimateUi();
     const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
     slim.plates = frame.plates.map(p => p && { quat: p.quat });
@@ -613,7 +624,8 @@ function updateCard() {
         $('cardDetailed').innerHTML = (job ? `Replaces the detailed ${dt} Myr once it is done.` : `Replaces the detailed ${dt} Myr — one moment is kept in detail.`) +
             ` <a href="#" data-t="${detFrame.time}">Go to ${dt} Myr</a>`;
     }
-    const note = stale && !job ? 'Detailed with the Temperature and Precipitation as they were — its rivers, ice and Satellite view too.'
+    const note = b?.problem ? b.problem
+        : stale && !job ? 'Detailed with the Temperature and Precipitation as they were — its rivers, ice and Satellite view too.'
         : b?.finishNote && (isDet || !b.finishOk) ? b.finishNote : null;
     if (showIf($('cardNote'), !!note)) $('cardNote').textContent = note;
     // Extend history: once the history has reached its end — Stop while it runs on, Stopping… until its piece is done
@@ -625,7 +637,7 @@ function updateCard() {
         ext.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.wantGo ? 'Stop the history here (you can extend it again later)' : 'Stopping once this piece of history is done';
     }
     // (the collapsed bottom sheet: the moment and what is going on, in a line)
-    $('sheetLine').textContent = !frame ? 'Starting a world…' : `${t} Myr · ${badge}` + (job ? ` · adding detail ${pct}%` : computing ? ' · computing the history…' : b?.going ? ' · extending the history…' : '');
+    $('sheetLine').textContent = b?.problem && !frame ? b.problem : !frame ? 'Starting a world…' : `${t} Myr · ${badge}` + (job ? ` · adding detail ${pct}%` : computing ? ' · computing the history…' : b?.going ? ' · extending the history…' : '');
     // Satellite comes with detail: its tab locked on previews
     const satOk = !!(frame && b?.finishes.get(frame)?.climate?.raster?.sat);
     document.querySelector('#mapTabs [data-layer="satellite"]').classList.toggle('locked', !satOk);
@@ -692,6 +704,17 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('exportOverlay')
 
 // ── the climate (step D): calculated on request for the moment shown, kept per moment while the history is open ──
 const climateOf = frame => { const e = B?.climates.get(frame); return e && e.tMesh === B.tMesh && e.key === climateKey() ? e.data : null; };
+// Preview climates are kept while the history is open, within a memory budget: each holds the 1° grid's fields
+// (≈ 9.5 MB) and ≈ 13 bytes per terrain cell. Any made for other settings or another terrain mesh go at once, then the
+// oldest — so scrubbing through many moments on the Climate tab no longer fills a phone's memory.
+const CLIMATE_BUDGET = IS_TOUCH ? 120e6 : 600e6;
+function keepClimate(b, frame, entry) {
+    for (const [f, e] of b.climates) if (e.tMesh !== entry.tMesh || e.key !== entry.key) b.climates.delete(f);
+    b.climates.delete(frame);
+    b.climates.set(frame, entry);
+    const each = 9.5e6 + 13 * entry.tMesh.numCells;
+    while (b.climates.size > 1 && b.climates.size * each > CLIMATE_BUDGET) b.climates.delete(b.climates.keys().next().value);
+}
 
 async function calculateClimate() {
     const b = B, frame = painted, T = paintedT;
@@ -703,13 +726,13 @@ async function calculateClimate() {
     try {
         const data = await climate.compute(tMesh, T.heightKm, climateOptions());
         if (B !== b) return;
-        b.climates.set(frame, { tMesh, data, key });
+        keepClimate(b, frame, { tMesh, data, key });
+        if (b.problem?.startsWith('Could not work out the climate')) b.problem = null;
         const secs = (performance.now() - started) / 1000;
-        b.climateNote = `Climate for ${frame.time.toFixed(0)} Myr in ${secs.toFixed(1)} s`;
         console.info(`[evolution] climate for ${frame.time.toFixed(0)} Myr: ${(data.ms / 1000).toFixed(2)} s in the worker, ${secs.toFixed(2)} s in all`);
         if (!CLIMATE_LAYERS.has(view.layer)) setLayer('koppen');
     } catch (err) {
-        if (B === b) b.climateNote = `Could not calculate the climate: ${String(err.message).split('\n')[0]}`;
+        if (B === b) b.problem = `Could not work out the climate for ${frame.time.toFixed(0)} Myr: ${String(err.message).split('\n')[0]}`;
         console.error(err);
     } finally {
         if (B === b) { b.climateJob = null; dirty = true; updateClimateUi(); }
@@ -768,8 +791,20 @@ function tick(now) {
         // (paused and settled: the sharper texture, once its table is built)
         const sharpTable = !playing && now - lastScrub > SHARP_AFTER_MS ? sharpTableOf(B.tMesh) : null;
         if (B.player.isReady(frame)) { if (frame !== painted || dirty || !!sharpTable !== paintedSharp) { paint(frame, sharpTable); dirty = false; } }
-        else if (!preparing) {
-            const p = preparing = B.player.prepare(frame).catch(err => console.error(err)).finally(() => { if (preparing === p) preparing = null; dirty = true; });
+        else if (!preparing && !(B.drawFailed?.frame === frame && now < B.drawFailed.retryAt)) {
+            const b = B;
+            const p = preparing = b.player.prepare(frame)
+                .then(() => { if (b.drawFailed?.frame === frame) { b.drawFailed = null; b.problem = null; updateCard(); } })
+                .catch(err => {
+                    console.error(err);
+                    if (B !== b) return;
+                    const tries = (b.drawFailed?.frame === frame ? b.drawFailed.tries : 0) + 1;
+                    b.drawFailed = { frame, tries, retryAt: performance.now() + (tries >= 3 ? Infinity : 2000 * tries) };
+                    b.problem = `Could not draw ${frame.time.toFixed(0)} Myr: ${String(err.message).split('\n')[0]}` +
+                        (tries >= 3 ? '. Try a lower Terrain Detail, or reload the page.' : ' — trying again…');
+                    updateCard();
+                })
+                .finally(() => { if (preparing === p) preparing = null; dirty = true; });
         }
     }
     globe.controls.autoRotate = $('chkRotate').checked && view.mode === 'globe';

@@ -16,7 +16,7 @@ const SLIDERS = [
     { min: 0,     step: 0.05, count: 21  }, // Soil Creep
     { min: 0,     step: 0.05, count: 21  }, // Terrain Warp
     { min: 0,     step: 0.05, count: 21  }, // 12: Continent Size Variety
-    { min: -30,   step: 2,    count: 31  }, // 13: Greenhouse (W/m²; was Temperature −15…15 °C — same positions)
+    { min: -30,   step: 2,    count: 31  }, // 13: Temperature (a forcing in W/m²; before 2026-10 −15…15 °C — same positions)
     { min: -1,    step: 0.1,  count: 21  }, // 14: Precipitation
     { min: 0,     step: 0.01, count: 101 }, // 15: Land Coverage
 ];
@@ -188,7 +188,7 @@ function decodeFormat(packed, config, toggleStr) {
  * @param {number} ridgeSharpening - Ridge Sharpening (0–1, step 0.05)
  * @param {number} soilCreep - Soil Creep (0–1, step 0.05)
  * @param {number} continentSizeVariety - Continent Size Variety (0–1, step 0.05)
- * @param {number} greenhouse - Greenhouse forcing, W/m² (-30–30, step 2)
+ * @param {number} greenhouse - the Temperature slider: a forcing in W/m² (-30–30, step 2)
  * @param {number} precipitationOffset - Precipitation offset (-1–1, step 0.1)
  * @param {number} landCoverage - Land Coverage (0–1, step 0.05)
  * @param {number[]} [toggledIndices=[]] - Sorted array of toggled plate indices

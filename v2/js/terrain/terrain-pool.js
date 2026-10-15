@@ -24,10 +24,13 @@ async function spawn(file = './terrain-worker.js') {
         const { Worker } = await import('node:worker_threads');
         const w = new Worker(url);
         w.unref();                                        // (idle workers never keep a Node process alive; a job holds them)
-        return { post: (m, t) => w.postMessage(m, t), listen: fn => w.on('message', fn), terminate: () => w.terminate(), hold: on => (on ? w.ref() : w.unref()) };
+        return { post: (m, t) => w.postMessage(m, t), listen: fn => w.on('message', fn), onCrash: fn => w.on('error', err => fn(err.message)),
+            terminate: () => w.terminate(), hold: on => (on ? w.ref() : w.unref()) };
     }
     const w = new Worker(url, { type: 'module' });
-    return { post: (m, t) => w.postMessage(m, t), listen: fn => w.addEventListener('message', e => fn(e.data)), terminate: () => w.terminate(), hold: () => {} };
+    // (onCrash: the worker died without a word — out of memory, most often — so the jobs it held never answer)
+    return { post: (m, t) => w.postMessage(m, t), listen: fn => w.addEventListener('message', e => fn(e.data)),
+        onCrash: fn => w.addEventListener('error', e => { e.preventDefault?.(); fn(e.message || 'a worker stopped'); }), terminate: () => w.terminate(), hold: () => {} };
 }
 
 /**
@@ -73,7 +76,19 @@ export class TerrainPool {
         this.nextJob = 1;
         this.queue = Promise.resolve();      // jobs run one at a time
         this.pending = new Map();            // job id → handler
-        workers.forEach(w => w.listen(msg => this.pending.get(msg.jobId)?.(msg)));
+        this.broken = false;                 // a worker died: every job is failed and the pool must be replaced (onBroken)
+        this.onBroken = null;
+        workers.forEach(w => { w.listen(msg => this.pending.get(msg.jobId)?.(msg)); w.onCrash(m => this.crashed(m)); });
+    }
+
+    /** A worker died without answering: fail every job waiting on any of the pool's workers, so nothing waits forever. */
+    crashed(message) {
+        if (this.broken) return;
+        this.broken = true;
+        const msg = { type: 'error', message: `a worker stopped (${message || 'out of memory?'})` };
+        const all = [this.pending, ...this.carvers.map(c => c.pending), ...(this.shader ? [this.shader.pending] : [])];
+        for (const pending of all) for (const handler of [...pending.values()]) handler(msg);
+        this.onBroken?.(message);
     }
 
     get size() { return this.workers.length; }
@@ -131,6 +146,7 @@ export class TerrainPool {
         if (!slot.worker) {
             slot.worker = await spawn('./carve-worker.js');
             slot.worker.listen(msg => slot.pending.get(msg.jobId)?.(msg));
+            slot.worker.onCrash(m => this.crashed(m));
         }
         const { worker, pending, sent } = slot;
         const sizes = carveLadder(this.sim, tMesh, n => n).slice(1, -1);            // (the terrain meshes between)
@@ -168,6 +184,7 @@ export class TerrainPool {
         if (!this.shader) {
             const worker = await spawn('./shade-worker.js'), pending = new Map();
             worker.listen(msg => pending.get(msg.jobId)?.(msg));
+            worker.onCrash(m => this.crashed(m));
             this.shader = { worker, pending, sent: new Set() };
         }
         const { worker, pending, sent } = this.shader;

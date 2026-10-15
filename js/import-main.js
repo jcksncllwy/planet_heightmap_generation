@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom } from './scene.js';
+         tickZoom, tickMapZoom, fitCamera } from './scene.js';
 import { state } from './state.js';
 import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './generate.js';
 import { buildMesh, updateMeshColors, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
@@ -12,6 +12,7 @@ import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { needsClimate, climateLayer, climateLegendHTML, satelliteLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker, climateReadoutLines } from './climate-layers.js';
 import { elevationToColor, elevToHeightKm } from './color-map.js';
+import { showBuildError, clearBuildError, describeFailure } from './build-error.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
 
@@ -232,21 +233,26 @@ importBtn.addEventListener('click', () => {
     importHeightmap(grayCopy, storedWidth, storedHeight, onProgress, shouldSkipClimate());
 });
 
-// Generate-done handler (fired from generate.js after 'done' message)
+// Generate-done handler: js/generate.js dispatches 'generate-done' on #generate, which this page has no use for — a
+// hidden #generate receives it
 const genBtn = document.getElementById('importBtn');
-// The generate.js dispatches 'generate-done' on #generate, but for import page
-// we use the same element ID pattern. Actually generate.js dispatches on
-// document.getElementById('generate'). Since import page has no #generate,
-// we need to listen on the actual element. Let me check...
-// Actually, generate.js does: document.getElementById('generate').dispatchEvent(...)
-// Since import page doesn't have a #generate element, we need a workaround.
-// The cleanest approach: add a hidden #generate element, or listen differently.
-
-// For now, we'll create a hidden generate button to receive the event
 const hiddenGenBtn = document.createElement('button');
 hiddenGenBtn.id = 'generate';
 hiddenGenBtn.style.display = 'none';
 document.body.appendChild(hiddenGenBtn);
+
+// a failed import (js/generate.js): the overlay says what happened, and Import can be pressed again
+window.addEventListener('orogen:build-failed', (e) => {
+    overlayActive = false;
+    importBtn.disabled = !storedGrayscale;
+    importBtn.textContent = 'Import';
+    showBuildError(describeFailure(e.detail.message, 'import this heightmap'), e.detail.message);
+});
+const exportFailed = (err) => {
+    console.error('[World Orogen] Export failed:', err);
+    overlayActive = false;
+    showBuildError(describeFailure(err?.message, 'export this map'), err?.message);
+};
 
 hiddenGenBtn.addEventListener('generate-done', () => {
     hideBuildOverlay();
@@ -255,7 +261,7 @@ hiddenGenBtn.addEventListener('generate-done', () => {
     state.importedHeightmap = true;
     // Update info text
     const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Drag to rotate \u00b7 Scroll to zoom';
+    if (infoEl) infoEl.textContent = state.isTouchDevice ? 'Drag to rotate \u00b7 Pinch to zoom' : 'Drag to rotate \u00b7 Scroll to zoom';
     // Sync view
     if (!state.climateComputed && CLIMATE_LAYERS.has(state.debugLayer)) {
         state.debugLayer = '';
@@ -467,6 +473,7 @@ function onProgress(pct, label) {
 }
 
 function showBuildOverlay() {
+    clearBuildError();
     if (!buildBarFill || !buildOverlay) return;
     buildBarFill.style.transition = 'none';
     buildBarFill.style.transform = 'scaleX(0)';
@@ -651,8 +658,10 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         closeModal();
         showBuildOverlay();
         onProgress(0, 'Preparing export...');
-        await exportMap(type, w, onProgress);
-        hideBuildOverlay();
+        try {
+            await exportMap(type, w, onProgress);
+            hideBuildOverlay();
+        } catch (err) { exportFailed(err); }
     });
 
     const exportAllBtn = document.getElementById('exportAllGo');
@@ -667,12 +676,14 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         const w = +widthEl.value;
         closeModal();
         showBuildOverlay();
-        if (!state.climateComputed) {
-            onProgress(0, 'Computing climate...');
-            await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
-        }
-        await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
-        hideBuildOverlay();
+        try {
+            if (!state.climateComputed) {
+                onProgress(0, 'Computing climate...');
+                await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+            }
+            await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
+            hideBuildOverlay();
+        } catch (err) { exportFailed(err); }
     });
 })();
 
@@ -796,8 +807,7 @@ if (state.isTouchDevice) {
 
 window.addEventListener('orientationchange', () => {
     setTimeout(() => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
+        fitCamera(innerWidth, innerHeight);
         updateMapCameraFrustum();
         renderer.setSize(innerWidth, innerHeight);
     }, 100);
@@ -823,8 +833,7 @@ function animate() {
 // ─── Resize handler ───────────────────────────────────────────────
 
 window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
+    fitCamera(innerWidth, innerHeight);
     updateMapCameraFrustum();
     renderer.setSize(innerWidth, innerHeight);
 });
@@ -948,7 +957,6 @@ window.addEventListener('resize', () => {
 window.takePreview = function(width = 1200, height = 630) {
     const savedW = renderer.domElement.width;
     const savedH = renderer.domElement.height;
-    const savedAspect = camera.aspect;
     const savedPixelRatio = renderer.getPixelRatio();
 
     const hiddenEls = [];
@@ -962,8 +970,7 @@ window.takePreview = function(width = 1200, height = 630) {
         }
     }
 
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    fitCamera(width, height);
     renderer.setPixelRatio(1);
     renderer.setSize(width, height);
     renderer.render(scene, state.mapMode ? mapCamera : camera);
@@ -975,8 +982,7 @@ window.takePreview = function(width = 1200, height = 630) {
 
     renderer.setPixelRatio(savedPixelRatio);
     renderer.setSize(savedW / savedPixelRatio, savedH / savedPixelRatio);
-    camera.aspect = savedAspect;
-    camera.updateProjectionMatrix();
+    fitCamera(innerWidth, innerHeight);
     for (const { el, prev } of hiddenEls) el.style.display = prev;
     renderer.render(scene, state.mapMode ? mapCamera : camera);
     console.log('preview.png downloaded!');

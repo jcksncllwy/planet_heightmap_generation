@@ -5,14 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>World Orogen — Evolution</title>
     <meta name="description" content="Watch a planet evolve: a supercontinent breaks up, oceans open and close, continents collide and gather again — a tectonic history simulated in your browser, with every moment of it on a timeline to explore and export.">
+    <meta name="keywords" content="plate tectonics simulator, tectonic history, supercontinent cycle, continental drift simulation, procedural planet generator, worldbuilding tool, heightmap generator, Köppen climate, fantasy map maker">
     <meta name="author" content="World Orogen">
     <meta name="theme-color" content="#0a0e17">
     <link rel="canonical" href="https://orogen.studio/evolution">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://orogen.studio/evolution">
+    <meta property="og:title" content="World Orogen — Evolution">
+    <meta property="og:description" content="Watch a planet evolve over a billion years: continents rift, drift and collide. Pause on any moment and sculpt it in detail, with rivers, glaciers, its own climate and a satellite view. Free, in your browser.">
+    <meta property="og:image" content="https://orogen.studio/assets/studio/evolution.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="750">
+    <meta property="og:site_name" content="World Orogen">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="World Orogen — Evolution">
+    <meta name="twitter:description" content="Watch a planet evolve over a billion years of plate tectonics, then sculpt any moment in detail. Free, in your browser.">
+    <meta name="twitter:image" content="https://orogen.studio/assets/studio/evolution.jpg">
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "World Orogen — Evolution",
+        "url": "https://orogen.studio/evolution",
+        "description": "Simulates a planet's tectonic history in the browser: plates rift, drift and collide over hundreds of millions of years while continents grow. Any moment can be sculpted in detail with rivers, lakes, glaciers, a seasonal climate and a satellite view, and exported as heightmaps.",
+        "applicationCategory": "DesignApplication",
+        "operatingSystem": "Any (browser-based)",
+        "browserRequirements": "Requires a modern browser with WebGL support",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "featureList": [
+            "Tectonic history simulation: rifting, drift, subduction, collision and supercontinent cycles",
+            "Timeline of the whole history to scrub and replay",
+            "Detailed moments with rivers, lakes, glaciers and a seasonal climate",
+            "Satellite and Köppen climate views of a detailed moment",
+            "16-bit heightmap, land mask and colour map export"
+        ],
+        "screenshot": "https://orogen.studio/assets/studio/evolution.jpg",
+        "isPartOf": { "@type": "WebSite", "name": "World Orogen", "url": "https://orogen.studio/" }
+    }
+    </script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="manifest" href="site.webmanifest">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50' y='50' dominant-baseline='central' text-anchor='middle' font-size='75'>🌍</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="v2/evolution.css">
+    <script src="js/support-check.js"></script>
 </head>
 <body>
     <nav id="topNav">
@@ -58,7 +100,7 @@
                     <select id="ending"></select>
                 </div>
                 <div class="cg">
-                    <label>Greenhouse <span class="tip" data-tip="How strongly the air holds in the planet's heat — more or less greenhouse gas — in W/m² (Earth's doubling of CO₂ ≈ +4). Snow, sea ice and ice sheets amplify a cooling far more than a warming: on an Earth-like planet −10 cools it about 8 °C and +10 warms it about 6 °C, and past −20 the ice starts to run away — by about −28 the whole planet freezes over. The winds, currents and rain follow — a hothouse is wetter, an icehouse drier. Changes the climate only, not the history">?</span> <span class="v" id="vTmp">±0 W/m²</span></label>
+                    <label>Temperature <span class="tip" data-tip="Warms or cools the whole planet. The value is the change in the heat its air holds in, in W/m²: on an Earth-like planet −10 cools it about 8 °C and +10 warms it about 6 °C. Snow, sea ice and ice sheets amplify a cooling far more than a warming — past −20 the ice starts to run away, and by about −28 the whole planet freezes over. The winds, currents and rain follow: a warm world is wetter, a cold one drier. Changes the climate only, not the history">?</span> <span class="v" id="vTmp">±0 W/m²</span></label>
                     <input type="range" id="sTmp" min="-30" max="30" value="0" step="2">
                     <div class="slider-hint"><span>Icehouse</span><span>Hothouse</span></div>
                 </div>
@@ -356,6 +398,6 @@
         }
     }
     </script>
-    <script type="module" src="v2/js/evolution/evolution-main.js"></script>
+    <script type="module" src="v2/js/evolution/evolution-main.js" onerror="orogenCantRun()"></script>
 </body>
 </html>

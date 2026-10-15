@@ -22,8 +22,10 @@ const AHEAD = 10;
 let poolPromise = null, poolKey = null;
 function poolFor(simMesh, workers) {
     if (poolKey?.mesh !== simMesh || poolKey?.workers !== workers) {
-        const old = poolPromise;
-        poolKey = { mesh: simMesh, workers }; poolPromise = TerrainPool.create(simMesh, workers, { carvers: smallDevice ? 1 : null });
+        const old = poolPromise, key = poolKey = { mesh: simMesh, workers };
+        poolPromise = TerrainPool.create(simMesh, workers, { carvers: smallDevice ? 1 : null });
+        // a worker that dies (out of memory) breaks the pool: its jobs fail at once, and the next frame asked for gets a new one
+        poolPromise.then(p => { p.onBroken = () => { if (poolKey === key) poolKey = null; p.terminate(); }; });
         old?.then(p => p.terminate());
     }
     return poolPromise;

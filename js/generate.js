@@ -71,6 +71,8 @@ function fail(err) {
     console.error('[World Orogen] Generation failed:', err);
     resetUI();
     if (_onProgress) _onProgress(0, '');
+    // the page turns its build overlay into a message (js/build-error.js) instead of leaving it up over the planet
+    window.dispatchEvent(new CustomEvent('orogen:build-failed', { detail: { message: String(err?.message ?? err ?? '') } }));
 }
 
 // Reconstruct SphereMesh from transferred data
@@ -321,6 +323,13 @@ if (worker) {
     worker.onerror = (e) => {
         fail(e.message || 'Worker crashed');
         if (_onDone) { _onDone(); _onDone = null; }
+        // a crashed worker answers nothing more: start a fresh one with the same handlers, so the next Build works
+        const { onmessage, onerror } = worker;
+        worker.terminate();
+        try {
+            worker = new Worker(new URL('./planet-worker.js', import.meta.url), { type: 'module' });
+            worker.onmessage = onmessage; worker.onerror = onerror;
+        } catch (err) { console.error('[World Orogen] Could not restart the worker:', err); }
     };
 }
 

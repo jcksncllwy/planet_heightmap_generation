@@ -50,7 +50,14 @@ export class ClimateService {
             this.jobs.delete(data.id);
             if (data.type === 'climate') job.resolve(data.data); else job.reject(new Error(data.message));
         };
-        w.onerror = e => { for (const job of this.jobs.values()) job.reject(new Error(e.message || 'climate worker failed')); this.jobs.clear(); };
+        // a worker that dies (out of memory) answers nothing more: fail its jobs, and let the next request start a new
+        // one (with the meshes sent again)
+        w.onerror = e => {
+            e.preventDefault?.();
+            for (const job of this.jobs.values()) job.reject(new Error(e.message || 'the climate worker stopped'));
+            this.jobs.clear();
+            if (this.worker === w) { w.terminate(); this.worker = null; this.sent.clear(); }
+        };
         return w;
     }
 }

@@ -14,6 +14,19 @@ scene.background = new THREE.Color(0x030308);
 export const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
 camera.position.set(0, 0.4, 2.8);
 
+/**
+ * Fit the globe's camera to a w × h view: 50° vertically on landscape screens; on portrait ones the horizontal field is
+ * held at 50° instead, so a phone shows the whole planet rather than a close-up wider than the screen (Evolution's globe,
+ * v2/js/app/globe-view.js, does the same).
+ */
+export function fitCamera(w, h) {
+    const aspect = w / h, half = Math.tan(25 * Math.PI / 180);
+    camera.aspect = aspect;
+    camera.fov = 2 * Math.atan(half / Math.min(1, aspect)) * 180 / Math.PI;
+    camera.updateProjectionMatrix();
+}
+fitCamera(innerWidth, innerHeight);
+
 export const ctrl = new OrbitControls(camera, canvas);
 ctrl.enableDamping = true; ctrl.dampingFactor = 0.06;
 ctrl.enablePan = false;

@@ -547,6 +547,34 @@ button#generate.generating {
     margin-top: 16px; color: #667;
     font-size: 14px;
 }
+/* A browser that cannot run the app, or app code that could not load (js/support-check.js) */
+#cantRun {
+    position: fixed; inset: 0; z-index: 3000;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: #030308;
+}
+.cant-run-card { max-width: 440px; text-align: center; }
+.cant-run-card h2 { margin: 0 0 10px; color: #dde; font-size: 18px; font-weight: 600; }
+.cant-run-card p { margin: 0; color: #99a; font-size: 14px; line-height: 1.6; }
+
+/* A failed build, import or export: the overlay shows a message and a Close button (js/build-error.js) */
+.build-error { display: none; }
+.build-overlay.failed .build-overlay-spinner,
+.build-overlay.failed .progress-bar-container,
+.build-overlay.failed .progress-label { display: none; }
+.build-overlay.failed .build-error {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    max-width: min(360px, calc(100vw - 48px)); margin-top: 18px; text-align: center;
+}
+.build-error-text { margin: 0; color: #dde; font-size: 14px; line-height: 1.5; }
+.build-error-detail { margin: 0; color: #778; font-size: 12px; overflow-wrap: anywhere; }
+.build-error-detail:empty { display: none; }
+.build-error-close {
+    min-height: 44px; padding: 0 24px; margin-top: 4px;
+    background: transparent; color: #abc; font: inherit; font-size: 14px;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; cursor: pointer;
+}
+.build-error-close:hover, .build-error-close:focus-visible { border-color: #48f; color: #cde; outline: none; }
 
 /* Progress bar */
 .progress-bar-container {

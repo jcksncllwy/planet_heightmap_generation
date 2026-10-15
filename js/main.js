@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom } from './scene.js';
+         tickZoom, tickMapZoom, fitCamera } from './scene.js';
 import { state } from './state.js';
 import { generate, reapplyViaWorker, computeClimateViaWorker, editRecomputeViaWorker } from './generate.js';
 import { encodePlanetCode, decodePlanetCode } from './planet-code.js';
@@ -13,6 +13,7 @@ import { detailFromSlider, sliderFromDetail } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { needsClimate, climateLayer, climateLegendHTML, satelliteLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker } from './climate-layers.js';
 import { elevationToColor } from './color-map.js';
+import { showBuildError, clearBuildError, describeFailure } from './build-error.js';
 
 // Slider value displays + stale tracking
 const sliderIds = ['sN','sP','sCn','sJ','sNs','sCsv','sLc'];
@@ -391,6 +392,7 @@ function onProgress(pct, label) {
 }
 
 function showBuildOverlay() {
+    clearBuildError();
     if (!buildBarFill || !buildOverlay) return;
     // Snap bar to 0 instantly — disable transition, reset transform, force reflow
     buildBarFill.style.transition = 'none';
@@ -434,6 +436,16 @@ genBtn.addEventListener('click', () => {
 });
 genBtn.addEventListener('generate-done', snapshotSliders);
 genBtn.addEventListener('generate-done', hideBuildOverlay);
+// a failed build (js/generate.js): the overlay says what happened instead of spinning on over the planet
+window.addEventListener('orogen:build-failed', (e) => {
+    overlayActive = false;
+    showBuildError(describeFailure(e.detail.message), e.detail.message);
+});
+const exportFailed = (err) => {
+    console.error('[World Orogen] Export failed:', err);
+    overlayActive = false;
+    showBuildError(describeFailure(err?.message, 'export this map'), err?.message);
+};
 genBtn.addEventListener('generate-done', () => {
     const infoEl = document.getElementById('info');
     if (!infoEl.dataset.nudged) {
@@ -781,8 +793,10 @@ initSeasonPicker(state, () => {
         closeModal();
         showBuildOverlay();
         onProgress(0, 'Preparing export...');
-        await exportMap(type, w, onProgress);
-        hideBuildOverlay();
+        try {
+            await exportMap(type, w, onProgress);
+            hideBuildOverlay();
+        } catch (err) { exportFailed(err); }
     });
 
     // Export All — downloads Satellite, Climate, Heightmap, and Land Mask
@@ -799,14 +813,15 @@ initSeasonPicker(state, () => {
         closeModal();
         showBuildOverlay();
 
-        // Compute climate first if needed (Satellite & Climate require it)
-        if (!state.climateComputed) {
-            onProgress(0, 'Computing climate...');
-            await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
-        }
-
-        await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
-        hideBuildOverlay();
+        try {
+            // Compute climate first if needed (Satellite & Climate require it)
+            if (!state.climateComputed) {
+                onProgress(0, 'Computing climate...');
+                await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+            }
+            await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
+            hideBuildOverlay();
+        } catch (err) { exportFailed(err); }
     });
 })();
 
@@ -1066,8 +1081,7 @@ if (state.isTouchDevice) {
 // Orientation change handler
 window.addEventListener('orientationchange', () => {
     setTimeout(() => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
+        fitCamera(innerWidth, innerHeight);
         updateMapCameraFrustum();
         renderer.setSize(innerWidth, innerHeight);
     }, 100);
@@ -1091,11 +1105,17 @@ function animate() {
 
 // Resize handler
 window.addEventListener('resize', () => {
-    camera.aspect = innerWidth/innerHeight;
-    camera.updateProjectionMatrix();
+    fitCamera(innerWidth, innerHeight);
     updateMapCameraFrustum();
     renderer.setSize(innerWidth, innerHeight);
 });
+
+// Site storage can be blocked (privacy settings, some private windows): reading or writing it then throws. Treat that
+// as nothing stored, so the tutorial and What's New still work and the page still builds a planet.
+const store = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch { /* not remembered where the browser forbids it */ } },
+};
 
 // Tutorial modal
 (function initTutorial() {
@@ -1127,7 +1147,7 @@ window.addEventListener('resize', () => {
 
     function closeModal() {
         overlay.classList.add('hidden');
-        localStorage.setItem(LS_KEY, '1');
+        store.set(LS_KEY, '1');
     }
 
     nextBtn.addEventListener('click', () => {
@@ -1162,7 +1182,7 @@ window.addEventListener('resize', () => {
 
     // Auto-show on first visit — wait until the build overlay has faded out
     overlay.classList.add('hidden');
-    if (!localStorage.getItem(LS_KEY)) {
+    if (!store.get(LS_KEY)) {
         genBtn.addEventListener('generate-done', () => {
             if (buildOverlay) {
                 buildOverlay.addEventListener('transitionend', () => openModal(), { once: true });
@@ -1175,7 +1195,7 @@ window.addEventListener('resize', () => {
 
 // What's New modal — shown once per version for returning users
 (function initWhatsNew() {
-    const VERSION    = '2';
+    const VERSION    = '3';
     const LS_KEY     = 'wo-whatsnew-seen';
     const LS_TUTORIAL = 'atlas-engine-tutorial-seen';
     const overlay    = document.getElementById('whatsNewOverlay');
@@ -1200,7 +1220,7 @@ window.addEventListener('resize', () => {
 
     function closeModal() {
         overlay.classList.add('hidden');
-        localStorage.setItem(LS_KEY, VERSION);
+        store.set(LS_KEY, VERSION);
     }
 
     nextBtn.addEventListener('click', () => {
@@ -1218,8 +1238,8 @@ window.addEventListener('resize', () => {
 
     // Only show for returning users (tutorial already seen) who haven't seen this version
     overlay.classList.add('hidden');
-    const seenVersion = localStorage.getItem(LS_KEY);
-    const isReturningUser = localStorage.getItem(LS_TUTORIAL);
+    const seenVersion = store.get(LS_KEY);
+    const isReturningUser = store.get(LS_TUTORIAL);
     if (isReturningUser && seenVersion !== VERSION) {
         genBtn.addEventListener('generate-done', () => {
             showStep(0);
@@ -1233,7 +1253,7 @@ window.addEventListener('resize', () => {
     const LS = 'wo-usage';
     const LS_DISMISSED = 'wo-survey-dismissed';
 
-    if (localStorage.getItem(LS_DISMISSED)) return;
+    if (store.get(LS_DISMISSED)) return;
 
     // Simple hash so we don't store raw timestamps
     function hash(str) {
@@ -1243,7 +1263,7 @@ window.addEventListener('resize', () => {
     }
 
     let data;
-    try { data = JSON.parse(localStorage.getItem(LS)) || {}; } catch (_) { data = {}; }
+    try { data = JSON.parse(store.get(LS)) || {}; } catch (_) { data = {}; }
     const hours = data.h || 0;
     const days  = data.d || 0;
     const lastH = data.lh || '';
@@ -1256,7 +1276,7 @@ window.addEventListener('resize', () => {
     const newHours = hourKey !== lastH ? hours + 1 : hours;
     const newDays  = dayKey  !== lastD ? days  + 1 : days;
 
-    localStorage.setItem(LS, JSON.stringify({ h: newHours, d: newDays, lh: hourKey, ld: dayKey }));
+    store.set(LS, JSON.stringify({ h: newHours, d: newDays, lh: hourKey, ld: dayKey }));
 
     if (newHours >= 3 && newDays >= 2) {
         const overlay    = document.getElementById('surveyOverlay');
@@ -1267,7 +1287,7 @@ window.addEventListener('resize', () => {
 
         function dismiss() {
             overlay.classList.add('hidden');
-            localStorage.setItem(LS_DISMISSED, '1');
+            store.set(LS_DISMISSED, '1');
         }
 
         // Show after the first generation completes
@@ -1291,7 +1311,6 @@ window.takePreview = function(width = 1200, height = 630) {
     // Save current state
     const savedW = renderer.domElement.width;
     const savedH = renderer.domElement.height;
-    const savedAspect = camera.aspect;
     const savedPixelRatio = renderer.getPixelRatio();
 
     // Hide all UI elements
@@ -1307,8 +1326,7 @@ window.takePreview = function(width = 1200, height = 630) {
     }
 
     // Keep the current camera angle, just adjust aspect ratio for the output size
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    fitCamera(width, height);
 
     // Render at exact target size
     renderer.setPixelRatio(1);
@@ -1324,8 +1342,7 @@ window.takePreview = function(width = 1200, height = 630) {
     // Restore everything
     renderer.setPixelRatio(savedPixelRatio);
     renderer.setSize(savedW / savedPixelRatio, savedH / savedPixelRatio);
-    camera.aspect = savedAspect;
-    camera.updateProjectionMatrix();
+    fitCamera(innerWidth, innerHeight);
     for (const { el, prev } of hiddenEls) el.style.display = prev;
     renderer.render(scene, state.mapMode ? mapCamera : camera);
     console.log('preview.png downloaded!');
