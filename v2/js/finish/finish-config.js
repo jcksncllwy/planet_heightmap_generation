@@ -102,6 +102,28 @@ export const FINISH = {
                                 // (0: never — developer: a small trapped sea is "NOT a valid end it should go out to the real sea")…
     seaCutFloorKm: 0.003,       // …else its gorge stops this little above sea level (no arm of the sea winding inland); the
                                 // ground it leaves below sea level is filled in to there (no dry land below sea level)
+    // inland seas (2026-10-15, developer: inland seas "COMPLETELY dried out … leaving holes in the ground"): a body below
+    // sea level behind a low, short barrier is a sea the mesh cannot connect — a strait narrower than its cells, low land
+    // the carve keeps at its 2 m floor — opened into the ocean along the way it would spill, by a smooth weight on the
+    // barrier's height and its length over dry land (open below the first of each, closed beyond the second)
+    straitSillM: [3, 30],
+    straitKm: [40, 160],
+    straitDepthKm: 0.02,        // …the strait cut this far below sea level
+    // a basin below sea level the ocean does not reach is a remnant of the sea: it holds water as its water balance
+    // allows, up to its rim — full, it spills on (a fresh lake whatever its size); short of it, a terminal salt sea where
+    // it is big for its river or an old sea floor this deep (km, from the first fully at the second — the Caspian, the
+    // Dead Sea: developer, 2026-10-15, "allow terminal salt seas"), else a salt pan…
+    saltSeaDeepKm: [0.2, 0.5],
+    seaBasinKm2: [5000, 20000], // a remnant of the sea: a body below sea level this big (km², from the first to fully the
+    seaBasinDeepKm: [0.05, 0.2],// second) and this deep (km) — a smooth weight, the same at every detail; a smaller or
+                                // shallower pit — a dip the finer mesh finds — is the land's: its rivers cut it through
+    seaFillKm: 1,               // its floor filled with sediment since it was cut off, toward at most about this far below
+                                // its rim (depth d → this × tanh(d / this)): the Caspian's and Black Sea's depths, not an
+                                // ocean's 5–9 km — a salt sea in a bowl, not at the foot of a cliff…
+    panDepthKm: 0.12,           // …and a salt pan's (or a drained basin's pocket) filled further, toward a flat at most about
+                                // this far below its rim (d → this × tanh(d / this): the Qattara's, Death Valley's scale —
+                                // never a dry hole the size of the sea)
+    panFlatShare: 1.5,          // the pan itself: where the basin was deeper than this × panDepthKm (its flat floor)
     seaSeedKm2: 250000,         // the sea: a body below sea level at least this big, holding deep water (below seaDeepKm) —
     seaDeepKm: 1,               // the real oceans; a pit on a continent is a basin, not a sea (15 000: rivers "all ending in
                                 // small lakes now instead of going to the ocean" — developer)

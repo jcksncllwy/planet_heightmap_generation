@@ -97,7 +97,12 @@ its regime: permanent, permanent with a yearly flood season (the Nile's), season
 lake stays only where its river fills it and it is big for its river, and passes all its water on; anything smaller —
 or a basin its river cannot fill — is cut through by a gorge to its floor (old basins that overflow have cut their rims
 down; the ice age's hollows are lake districts); no closed basins, no dry land below sea level (a sunk basin's pit is
-filled in to sea level); only the real oceans are sea. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
+filled in to sea level); only the real oceans are sea. **Inland seas** (2026-10-15): a sea behind a low, short barrier
+(sill ≲ 30 m, ≲ 160 km of dry land — a strait narrower than the cells) is opened into the ocean; a remnant of the sea cut
+off in a basin (≳ 5 000–20 000 km² and 50–200 m below sea level) has its floor filled with sediment toward ≤ ~1 km below its
+rim, then holds water by its water balance — full, a fresh inland sea spilling on (its outlet cut down, the water standing
+at the basin's own inner sill); short of it, a terminal salt sea where it is big for its river or an old sea floor, else a
+salt pan ≤ ~120 m below its rim — never a dry hole. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
 names a river's discharge, regime and flood months, and a lake's kind). Measured (20K plates, desktop): 640K
 ~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
@@ -138,6 +143,8 @@ node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells ag
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
+node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--debug]
+                                       # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes and any empty basins
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
 node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)
 node v2/tools/bench-lab.mjs 2500000           # the lab's terrain pipeline piece by piece: timings + output hashes (is a speed-up exact?)

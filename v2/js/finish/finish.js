@@ -10,7 +10,7 @@ import { closedBasins } from './finish-basins.js';
 import { depositSediment, creepByClimate, dissect } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
-import { hydrology, Water } from './finish-hydro.js';
+import { hydrology, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
 import { terrainMesh } from '../terrain/terrain-mesh.js';
@@ -156,6 +156,12 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // ── the sea: water below sea level that the open ocean reaches (fjords, sunk basins); hollows it cannot reach stay land ──
     onStage('sea');
     let ocean = oceanMask(mesh, C.z);
+    // (an inland sea the ocean all but reaches — behind a low, short barrier — is opened into it; one left closed is a
+    // remnant of the sea in a basin, for the hydrology: finish-hydro.js)
+    const straits = openStraits(mesh, C.z, ocean, F);
+    stats.straits = straits;
+    if (straits.opened) ocean = oceanMask(mesh, C.z);
+    const seaBasin = fillSeaBasins(mesh, C.z, ocean, F);
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's and the distances' caches for this mesh)
     lap('sea');
 
@@ -165,7 +171,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     for (let c = 0; c < n; c++) if (koppen[c] === KOPPEN_ID.EF) ice[c] = 1;
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
-    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, tectonic: B.tectonic, fillHollows: true, lat, lon, months, debug }, F);
+    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, tectonic: B.tectonic, seaBasin, fillHollows: true, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     // (the sea again, after the rivers' gorges)
     ocean = oceanMask(mesh, C.z);
