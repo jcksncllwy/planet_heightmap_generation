@@ -17,6 +17,8 @@
 import { MinHeap } from '../core/min-heap.js';
 
 const SEC_PER_YEAR = 3.156e7, R = 6371;
+/** The distance (km) between two neighbouring cells (the chord: the same to well under a metre at a cell's size). */
+const edgeKmOf = (xyz, a, b) => R * Math.hypot(xyz[3 * a] - xyz[3 * b], xyz[3 * a + 1] - xyz[3 * b + 1], xyz[3 * a + 2] - xyz[3 * b + 2]);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** Lake kinds (per cell, and per pixel of the finished picture). */
@@ -168,10 +170,61 @@ export function hydrology(ctx, F) {
         const dx = xyz[3 * pick] - xyz[3 * c], dy = xyz[3 * pick + 1] - xyz[3 * c + 1], dz = xyz[3 * pick + 2] - xyz[3 * c + 2];
         stepKm[c] = R * Math.hypot(dx, dy, dz);
     }
-    // (a gorge: from cell x down its receivers — through the hollow to its outlet, then on — the ground cut down to
-    // `level` until it is lower: rivers carve through, the land is never raised)
+    // (inside a hollow: a priority flood over its cells from its outlet, on the ground as it is — `ground`, its water at
+    // its level: where each cell's water would stand (innerFill). Scratch arrays, stamped)
+    const innerFill = new Float32Array(n), innerStamp = new Int32Array(n), innerHeap = new MinHeap(1 << 12);
+    let innerId = 0;
+    const innerFlood = (id, outlet, ground) => {
+        innerId++;
+        innerFill[outlet] = ground(outlet); innerStamp[outlet] = innerId; innerHeap.push(innerFill[outlet], outlet);
+        while (innerHeap.size) {
+            const x = innerHeap.pop();
+            for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) {
+                const nb = adjList[k];
+                if (hollow[nb] !== id || innerStamp[nb] === innerId) continue;
+                innerStamp[nb] = innerId; innerFill[nb] = Math.max(innerFill[x], ground(nb)); innerHeap.push(innerFill[nb], nb);
+            }
+        }
+    };
+    const groundZ = x => z[x];
+    // (a gorge's way through its hollow, from cell x to the outlet: its river's own course — down its receivers, the way the
+    // flood found across the hollow, every bend of it — unless a shortcut is enough less work. The work: the rock cut down to
+    // `level` and a little for the length (gorgeLengthKm); along the river's own course only riverDirectness of it — so a
+    // bend is cut through only where the course round it is over 1 / riverDirectness times the shortcut's work (0.5: a
+    // detour twice as long). Developer: rivers "that go back and forth", but "some windyness is good" — 0 keeps every
+    // course as it was, 1 takes the way of least work. Dijkstra over the hollow's cells)
+    const pathCost = new Float64Array(n), pathFrom = new Int32Array(n), pathStamp = new Int32Array(n), pathDone = new Int32Array(n), onCourse = new Int32Array(n);
+    const pathHeap = new MinHeap(1 << 12), pathCells = [], keepCourse = Math.min(1, Math.max(0, F.riverDirectness ?? 0.1));
+    let pathId = 0;
+    // (exitAt: a cell the gorge may end at instead — from there its water already runs out without rising above `level`)
+    const gorgeWay = (x, own, out, level, ground, exitAt = null) => {
+        pathId++;
+        for (let y = x, g = 0; y >= 0 && hollow[y] === own && g < 1e6; y = recv[y], g++) { onCourse[y] = pathId; if (y === out) break; }
+        pathCost[x] = 0; pathFrom[x] = -1; pathStamp[x] = pathId; pathHeap.push(0, x);
+        let end = -1;
+        while (pathHeap.size) {
+            const a = pathHeap.pop();
+            if (pathDone[a] === pathId) continue;
+            pathDone[a] = pathId;
+            if (a === out || (exitAt && exitAt(a, level))) { end = a; break; }
+            for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
+                const nb = adjList[k];
+                if (hollow[nb] !== own || pathDone[nb] === pathId) continue;
+                const c = pathCost[a] + edgeKmOf(xyz, a, nb) * (F.gorgeLengthKm + Math.max(0, ground(nb) - level)) * (onCourse[nb] === pathId && onCourse[a] === pathId ? keepCourse : 1);
+                if (pathStamp[nb] !== pathId || c < pathCost[nb]) { pathStamp[nb] = pathId; pathCost[nb] = c; pathFrom[nb] = a; pathHeap.push(c, nb); }
+            }
+        }
+        pathHeap.size = 0;
+        pathCells.length = 0;
+        if (end < 0) return pathCells;
+        for (let y = end; y >= 0; y = pathFrom[y]) pathCells.push(y);
+        return pathCells.reverse();                                 // (x … out, or the cell it could end at)
+    };
+    // (a gorge: from cell x the way its water would find out — through its hollow by gorgeWay to the hollow's outlet, then
+    // down the receivers — the ground cut down to `level` until it is lower: rivers carve through, the land is never raised)
     let cutCells = 0, cutMaxKm = 0, cutKm3 = 0;
-    const cut = (x, level) => {
+    const lower = (y, level) => { if (z[y] > level) { const d = z[y] - level; cutCells++; cutKm3 += d * cellKm2; if (d > cutMaxKm) cutMaxKm = d; z[y] = level; } };
+    const cut = (x, level, ground = groundZ, exitAt = null) => {
         // (below sea level only to open a small trapped sea into the ocean nearby — its cut through dry land at most
         // seaCutKm long; further, the sea would wind inland down the gorge: then the gorge stops at sea level)
         if (level < 0) {
@@ -186,8 +239,13 @@ export function hydrology(ctx, F) {
             if (!(open && km <= F.seaCutKm)) level = Math.max(level, F.seaCutFloorKm);
         }
         const own = hollow[x];
+        if (own >= 0 && x !== hollows[own].outlet && keepCourse > 0) {
+            const out = hollows[own].outlet, way = gorgeWay(x, own, out, level, ground, exitAt);
+            if (way.length) { for (const y of way) lower(y, level); x = way[way.length - 1]; }
+            if (x !== out) return level;                            // (it ended where its water runs out anyway)
+        }
         for (let guard = 0; x >= 0 && rank[x] >= 0 && guard < 100000; guard++) {
-            if (z[x] > level) { const d = z[x] - level; cutCells++; cutKm3 += d * cellKm2; if (d > cutMaxKm) cutMaxKm = d; z[x] = level; }
+            lower(x, level);
             const r = recv[x];
             if (r < 0 || rank[r] < 0 || (z[r] < level && !(own >= 0 && hollow[r] === own))) break;
             x = r;
@@ -239,21 +297,12 @@ export function hydrology(ctx, F) {
     // that the gorge from the hollow's floor does not reach, gets its own gorge out from its lowest point, down the way its
     // water would spill; until none is left — a pocket within a pocket next. Its water counts at its level. Scratch
     // arrays, stamped)
-    const innerFill = new Float32Array(n), innerStamp = new Int32Array(n), innerHeap = new MinHeap(1 << 12), pocketSeen = new Int32Array(n);
-    let innerId = 0;
+    const pocketSeen = new Int32Array(n);
     const ground = x => (lakeKind[x] === Water.FRESH || lakeKind[x] === Water.SALT ? Math.max(z[x], lakeLevel[x]) : z[x]);
+    const drainsAt = (y, level) => innerStamp[y] === innerId && innerFill[y] <= level;
     const cutPockets = (h, id, outlet) => {
         for (let round = 0; round < 8; round++) {
-            innerId++;
-            innerFill[outlet] = ground(outlet); innerStamp[outlet] = innerId; innerHeap.push(innerFill[outlet], outlet);
-            while (innerHeap.size) {
-                const x = innerHeap.pop();
-                for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) {
-                    const nb = adjList[k];
-                    if (hollow[nb] !== id || innerStamp[nb] === innerId) continue;
-                    innerStamp[nb] = innerId; innerFill[nb] = Math.max(innerFill[x], ground(nb)); innerHeap.push(innerFill[nb], nb);
-                }
-            }
+            innerFlood(id, outlet, ground);
             let any = false;
             for (const s of h.cells) {
                 if (innerStamp[s] !== innerId || pocketSeen[s] === innerId || !(innerFill[s] > ground(s) + EPS)) continue;
@@ -267,7 +316,7 @@ export function hydrology(ctx, F) {
                         pocketSeen[nb] = innerId; cells.push(nb); if (z[nb] < z[low]) low = nb;
                     }
                 }
-                cut(low, z[low]);
+                cut(low, z[low], ground, drainsAt);
                 any = true;
             }
             if (!any) break;

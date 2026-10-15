@@ -98,6 +98,14 @@ export const FINISH = {
     // glacialKeepShare of that) — no closed basins
     lakeKeepKm2: 5000,
     glacialKeepShare: 0.5,
+    // Where a river must cut through — a basin it drains, a pocket in it — its gorge keeps the river's own course, every bend
+    // of it, unless a shortcut is enough less work: the rock it cuts, and gorgeLengthKm for each km of its length (developer:
+    // rivers "that go back and forth"; then "there should be some balance … between the 'true down' path and the 'shortcut'
+    // path … Some windyness is good"). How direct: along its own course a river does only this share of the work, so a bend is
+    // cut through only where the way round is over 1 / this times the shortcut (0.5: a detour twice as long); 0 keeps every
+    // course as it was, 1 takes the way of least work
+    riverDirectness: 0.1,
+    gorgeLengthKm: 0.02,
     seaCutKm: 0,                // a basin below sea level opens into the ocean if its cut through dry land is at most this long
                                 // (0: never — developer: a small trapped sea is "NOT a valid end it should go out to the real sea")…
     seaCutFloorKm: 0.003,       // …else its gorge stops this little above sea level (no arm of the sea winding inland); the

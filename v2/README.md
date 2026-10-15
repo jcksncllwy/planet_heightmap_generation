@@ -96,7 +96,11 @@ monthly flows from each month's rain and snowmelt (and groundwater draining back
 its regime: permanent, permanent with a yearly flood season (the Nile's), seasonal, dry most of the year; every river ends at the sea: a
 lake stays only where its river fills it and it is big for its river, and passes all its water on; anything smaller —
 or a basin its river cannot fill — is cut through by a gorge to its floor (old basins that overflow have cut their rims
-down; the ice age's hollows are lake districts); no closed basins, no dry land below sea level (a sunk basin's pit is
+down; the ice age's hollows are lake districts). A gorge keeps its river's own course through the basin, every bend of
+it, unless a shortcut is enough less work — the rock cut and a little for the length: along its own course a river does
+only `riverDirectness` of the work (0.1), so a bend is cut through only where the way round is over ten times the
+shortcut's (the worst hooks and tangles across drained basins — developer, rivers "that go back and forth", but "some
+windyness is good"; 0 keeps every course, 1 takes the way of least work); no closed basins, no dry land below sea level (a sunk basin's pit is
 filled in to sea level); only the real oceans are sea. **Inland seas** (2026-10-15): a sea behind a low, short barrier
 (sill ≲ 30 m, ≲ 160 km of dry land — a strait narrower than the cells) is opened into the ocean; a remnant of the sea cut
 off in a basin (≳ 5 000–20 000 km² and 50–200 m below sea level) has its floor filled with sediment toward ≤ ~1 km below its
@@ -148,7 +152,7 @@ node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells ag
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
-node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--debug]
+node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--rivers [q0]] [--set key=value,…] [--debug]
                                        # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes and any empty basins
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
 node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)

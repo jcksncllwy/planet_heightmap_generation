@@ -6,7 +6,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--set key=value,…]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). Output: v2/out/moments/.
 
@@ -22,6 +22,7 @@ import { runHistory } from '../js/app/history-runner.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { TerrainPool, FRAME_FIELDS } from '../js/terrain/terrain-pool.js';
 import { finishPlanet, finishRaster } from '../js/finish/finish.js';
+import { FINISH } from '../js/finish/finish-config.js';
 import { paintFinished } from '../js/evolution/finish-view.js';
 import { heightLutOf } from '../js/evolution/looks.js';
 import { MinHeap } from '../js/core/min-heap.js';
@@ -57,13 +58,55 @@ console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 // ── the finish, as the page's worker runs it ──
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
 const DEBUG = process.argv.includes('--debug');
-const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, onStage: s => process.stdout.write(`${s}… `) });
+// (--set key=value[,key=value]: the finish's constants changed for this run — finish-config.js; numbers, or JSON)
+const F = { ...FINISH };
+for (const kv of (arg('--set', '') || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
+const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
 console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages ms: ${Object.entries(fin.ms).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}`);
 
 // ── the picture, painted as the page paints it ──
 const raster = finishRaster(fin.mesh, fin.z, fin.ocean, W, null, fin.lake, fin.lakeLevel, null);
 const H = W >> 1, image = { data: new Uint8ClampedArray(W * H * 4) };
 paintFinished(raster, { width: W, image }, heightLutOf(PALETTE), { lakes: true, exaggeration: 20 });
+// (--rivers [q0]: the rivers drawn over it as the page draws them — every reach carrying q0 m³/s or more (the page's default
+// density 40), smoothed (Chaikin, twice), hairlines whose strength grows with the log of the discharge — scaled to this width)
+if (process.argv.includes('--rivers') && fin.rivers) {
+    const q0 = Number(arg('--rivers', '40')) || 40, R = fin.rivers, starts = [...R.start, R.lat.length], k = W / 2048;
+    const ALPHA = [0.35, 0.5, 0.65, 0.8, 0.92], WIDTH = [0.45, 0.55, 0.65, 0.8, 1.0], RGB = [30, 90, 210];
+    const strength = q => Math.max(0, Math.min(4, Math.round(4 * Math.log10(q / q0) / 2.5)));
+    const dot = (x, y, r, a) => {
+        for (let py = Math.floor(y - r - 1); py <= Math.ceil(y + r + 1); py++) for (let px = Math.floor(x - r - 1); px <= Math.ceil(x + r + 1); px++) {
+            if (py < 0 || py >= H) continue;
+            const cov = Math.max(0, Math.min(1, r + 0.5 - Math.hypot(px - x, py - y))) * a, i = 4 * (py * W + ((px % W) + W) % W);
+            if (cov > cover[i >> 2]) cover[i >> 2] = cov;
+        }
+    };
+    const cover = new Float32Array(W * H);         // (each pixel's strongest river: lines are not darkened where they overlap)
+    for (let r = 0; r < starts.length - 1; r++) {
+        const parts = [[]];
+        for (let i = starts[r]; i < starts[r + 1]; i++) {
+            if (!(R.q[i] >= q0)) { if (parts.at(-1).length) parts.push([]); continue; }
+            const p = [(R.lon[i] + 180) / 360 * W, (90 - R.lat[i]) / 180 * H, R.q[i]], cur = parts.at(-1);
+            if (cur.length && Math.abs(p[0] - cur.at(-1)[0]) > W / 2) parts.push([]);
+            parts.at(-1).push(p);
+        }
+        for (let pts of parts) {
+            if (pts.length < 2) continue;
+            for (let it = 0; it < 2; it++) {
+                const nx = [pts[0]];
+                for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1]; nx.push(a.map((v, j) => 0.75 * v + 0.25 * b[j]), a.map((v, j) => 0.25 * v + 0.75 * b[j])); }
+                nx.push(pts.at(-1)); pts = nx;
+            }
+            for (let i = 0; i < pts.length - 1; i++) {
+                const a = pts[i], b = pts[i + 1], s = strength(a[2]), rad = 0.5 * WIDTH[s] * k, len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+                // (stamped every half pixel along the segment: a hairline's coverage, not a sum of overlapping dots)
+                const steps = Math.max(1, Math.ceil(len / 0.5));
+                for (let j = 0; j < steps; j++) dot(a[0] + (b[0] - a[0]) * j / steps, a[1] + (b[1] - a[1]) * j / steps, rad, ALPHA[s]);
+            }
+        }
+    }
+    for (let p = 0; p < W * H; p++) if (cover[p] > 0) for (let ch = 0; ch < 3; ch++) image.data[4 * p + ch] = image.data[4 * p + ch] * (1 - cover[p]) + RGB[ch] * cover[p];
+}
 const outDir = path.join(ROOT, 'v2', 'out', 'moments');
 fs.mkdirSync(outDir, { recursive: true });
 const writePng = (file, w, h, rgba) => { const p = new PNG({ width: w, height: h }); p.data = Buffer.from(rgba.buffer, rgba.byteOffset, rgba.byteLength); fs.writeFileSync(file, PNG.sync.write(p)); };
