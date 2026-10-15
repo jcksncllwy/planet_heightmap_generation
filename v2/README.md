@@ -61,7 +61,11 @@ atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and 
 and setting. **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
 calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation), dry basins left closed —
-flat pans where inflow and evaporation balance (the carve's `sink` / `base`); sediment laid down (fans, floodplains,
+flat pans where inflow and evaporation balance (the carve's `sink` / `base`) — at the finish's own erosion strength
+(`erosionStrength` 0–3, 3; developer, 2026-10-15: "break up SOME of the monotony of the ridges"): the stream power's m
+lowered and k raised so its erosion climbs further up the headwaters (rivers draining 10⁵ km² cutting as before), the
+dissection cut deeper (by drainage area in km², the same at every detail), soil creep shorter and the fold belts' crests
+harder — over the mountains 5 % more relief, 13 % less ground above 4 km than at 0; sediment laid down (fans, floodplains,
 deltas); soil creep where it is wet and warm; an Earth-like last ice age (U-troughs, fjords, scoured lake hollows,
 moraines, basins still sunk by the ice); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted

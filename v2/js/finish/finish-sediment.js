@@ -88,7 +88,7 @@ function spread(mesh, f, z, km) {
  */
 export function dissect(mesh, z, C, cellKm2, F) {
     const { adjOffset, adjList, edgeKm } = mesh, { recv, area, order } = C;
-    const [c1, c2] = F.dissectCells, la1 = Math.log(c1 * cellKm2), la2 = Math.log(c2 * cellKm2), before = z.slice();
+    const la1 = Math.log(F.dissectKm2[0]), la2 = Math.log(F.dissectKm2[1]), before = z.slice();
     for (let i = 0; i < order.length; i++) {
         const c = order[i];
         let m = 0, k0 = 0;

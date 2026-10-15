@@ -28,6 +28,15 @@ import { locate } from '../core/mesh-locate.js';
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
+/** The finish's erosion at F.erosionStrength (finish-config.js erosionLevels, linear between the levels): the stream power's
+ *  m, and its k as a multiple of the terrain's (a river draining F.erosionPivotKm2 cuts as fast as before); the dissection's
+ *  deepest cut, the soil creep's reach (km) and the crests' hardness. */
+export function erosionAt(F, cfg) {
+    const L = F.erosionLevels, s = Math.min(L.carveM.length - 1, Math.max(0, F.erosionStrength ?? 0)), i = Math.min(L.carveM.length - 2, Math.floor(s)), f = s - i;
+    const at = a => a[i] + (a[i + 1] - a[i]) * f, m = at(L.carveM);
+    return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), dissectKm: at(L.dissectKm), creepKm: at(L.creepKm), crestHardness: at(L.crestHardness) };
+}
+
 /** The stages, in order, with their rough share of the time (for the progress bar). */
 export const STAGES = [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['ice age', 0.08], ['wind', 0.05], ['sea', 0.02], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]];
 
@@ -49,7 +58,9 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // (memory: at 10M cells every array is 40 MB or more — each let go as soon as it is done with, the warped positions
     // and the sampler with the surface, the carving's inputs and caches with the carve)
     let warped = { numCells: n, xyz: warpPositions(mesh, seed, F), edgeKm: mesh.edgeKm };
-    let surf = await pool.synthesize(frame, warped, { cfg, seed, records: false, carveInputs: true });
+    // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
+    const E = erosionAt(F, cfg);
+    let surf = await pool.synthesize(frame, warped, { cfg: { ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness }, seed, records: false, carveInputs: true });
     if (closePool) pool.terminate();                                  // (its workers' memory back before the heavy stages)
     pool.forget?.(warped);
     let carveIn = surf.carveIn;
@@ -119,7 +130,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F);
     stats.closedBasins = B.basins;
     const before = z.slice();
-    const settings = carveSettings({ ...cfg, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds });
+    const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds });
     const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base }, settings);
     // (where flood basalt still caps the ground after the carving — its pile not cut through — for the satellite view)
     const basalt = new Uint8Array(n);
@@ -128,7 +139,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     const young = Uint8Array.from(carveIn.hold, v => Math.round(255 * Math.max(0, Math.min(1, v))));
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
-    dissect(mesh, C.z, C, cellKm2, F);
+    dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
     lap('rivers');
 
     // ── F2: sediment, then hillslopes by climate ──
@@ -136,7 +147,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     stats.deltas = depositSediment(mesh, before, C, B.sink, cellKm2, F).deltas;
     lap('sediment');
     onStage('hillslopes');
-    creepByClimate(mesh, C.z, pAnn, tAnn, F);
+    creepByClimate(mesh, C.z, pAnn, tAnn, { ...F, creepKm: E.creepKm });
     lap('hillslopes');
 
     // ── F3: the last ice age ──

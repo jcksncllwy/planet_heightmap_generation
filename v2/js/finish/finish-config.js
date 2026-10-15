@@ -31,10 +31,26 @@ export const FINISH = {
     meanderFromKm: 60,
     // dissection everywhere (developer: cutting "isolated … some mountains look blurry and not cut in"): every drainage
     // line cut in by a share of how steep the ground is — mountains dissected all over down to the mesh's own valleys,
-    // plains calm; the ridges between them (the cells nothing drains into) kept
-    dissectKm: 0.35,            // deepest cut, on steep ground…
+    // plains calm; the ridges between them (the cells nothing drains into) kept. Its deepest cut, on steep ground: the
+    // erosion strength's dissectKm (below)…
     dissectSlope: [0.02, 0.25], // …by the ground's steepness (km per km)…
-    dissectCells: [1.5, 40],    // …and by how many cells drain there (a ridge … a valley the mesh can show)
+    dissectKm2: [300, 8000],    // …and by the area draining there (km²: a ridge … a valley; 1.5 and 40 cells at 2.5M — in cells
+                                // until 2026-10-15, so finer detail cut finer, shallower valleys)
+
+    // ── how strongly the finish erodes the mountains (developer, 2026-10-15: "strengthen the erosion in a final detail pass,
+    // particularly the fancy generated erosion we adapted from the paper, but not too much … break up SOME of the
+    // monotony of the ridges"): 0 as it was … 3. The stream power (carve.js; Tzathas et al. 2024: erosion a wave climbing
+    // each river at k·A^m) reaches further up the headwaters — m lower, k raised so a river draining erosionPivotKm2 cuts as
+    // before; the dissection cuts deeper; soil creep rounds less; and the fold belts' crests stand harder, so the valleys
+    // deepen between them rather than the ridges wearing away. The timeline's terrain is untouched
+    erosionStrength: 3,
+    erosionPivotKm2: 1e5,
+    erosionLevels: {            // at strength 0, 1, 2, 3 (between them, linear)
+        carveM: [0.4, 0.35, 0.3, 0.25],
+        dissectKm: [0.35, 0.45, 0.55, 0.65],
+        creepKm: [10, 8.5, 7, 5.5],
+        crestHardness: [0.5, 0.55, 0.6, 0.65],
+    },
 
     // ── F2: closed basins — a basin whose inflow cannot make up what its lake would lose to evaporation stays closed:
     // a flat salt pan or playa at the level where the two balance, the rivers of its catchment ending there ──
@@ -50,7 +66,7 @@ export const FINISH = {
     deltaMaxDepthKm: 0.15,      // …and grows only over the shelf
     // ── F2: hillslopes by climate — soil creep rounds the hills where it is wet and warm; deserts and cold ground stay
     // sharp ──
-    creepKm: 10,                // rounding (σ) at full wetness
+    // (its rounding, σ at full wetness: the erosion strength's creepKm, above)
     creepRainMm: [300, 1200],   // wetness from the annual rain…
     creepTempC: [-5, 10],       // …and the annual temperature
 

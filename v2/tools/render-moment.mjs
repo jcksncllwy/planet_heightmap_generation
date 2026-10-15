@@ -167,6 +167,30 @@ console.log(`dry hollows (land below where water would stand): >50 m ${Math.roun
     `; deepest ${Math.round(deepest)} m${deepestAt >= 0 ? ` at ${latOf(deepestAt)}°, ${lonOf(deepestAt)}°` : ''}; dry land below sea level ${Math.round(dryBelowSea).toLocaleString()} km²`);
 if (DEBUG && fin.layers?.terminal) console.log('terminal basins (inflow, full evaporation m³/s):', JSON.stringify(fin.layers.terminal));
 if (fin.stats?.water) console.log('hydrology:', JSON.stringify(fin.stats.water).slice(0, 400));
+// (--stats: the land's heights and the mountains' roughness — for comparing the finish's erosion: land height quantiles
+// (km), area above 2 and 4 km, and over the mountains (land above 1 km) the mean local relief — the spread of heights
+// within each cell's two rings, ~2.5 cells: valleys cut between ridges raise it, uniform crests and mounds keep it low)
+if (process.argv.includes('--stats')) {
+    const land = [], mtn = [], cellKm2s = 4 * Math.PI * R * R / n;
+    let above2 = 0, above4 = 0;
+    const ring = new Int32Array(64);
+    for (let c = 0; c < n; c++) {
+        if (fin.ocean[c] || !(z[c] > 0)) continue;
+        land.push(z[c]);
+        if (z[c] > 2) above2 += cellKm2s;
+        if (z[c] > 4) above4 += cellKm2s;
+        if (z[c] <= 1) continue;
+        let lo = z[c], hi = z[c], m = 0;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const a = adjList[k]; ring[m++] = a; for (let j = adjOffset[a]; j < adjOffset[a + 1]; j++) if (m < 64) ring[m++] = adjList[j]; }
+        for (let i = 0; i < m; i++) { const v = z[ring[i]]; if (v < lo) lo = v; if (v > hi) hi = v; }
+        mtn.push(hi - lo);
+    }
+    land.sort((a, b) => a - b);
+    const q = p => land[Math.min(land.length - 1, Math.floor(p * land.length))];
+    const meanRelief = mtn.reduce((a, b) => a + b, 0) / Math.max(1, mtn.length);
+    const S = { landP50: q(0.5), landP90: q(0.9), landP99: q(0.99), landMax: land[land.length - 1], above2Km2: Math.round(above2), above4Km2: Math.round(above4), mountainKm2: Math.round(mtn.length * cellKm2s), meanReliefKm: meanRelief, riversMs: Math.round(fin.ms.rivers) };
+    console.log('stats: ' + JSON.stringify(S));
+}
 // (--lakes: the biggest bodies of standing water — connected lake cells of one kind — with where they are)
 if (process.argv.includes('--lakes') && lake) {
     const seenLake = new Uint8Array(n), bodies = [];
