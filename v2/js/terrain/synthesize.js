@@ -287,7 +287,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const noisy = (c, w) => { const r = cell[c]; return w * Math.exp(cfg.blendNoise * noise.fbm(x0 * blendF + (r % 101) * 1.37, y0 * blendF + (r % 89) * 2.11, z0 * blendF + (r % 83) * 0.73, 3, 0.5) * 1.6); };
     let x0 = 0, y0 = 0, z0 = 0;
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm } = rec;
+    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -332,7 +332,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 c0 = loc3[0]; c1 = loc3[1]; c2 = loc3[2]; w0 = locw3[0]; w1 = locw3[1]; w2 = locw3[2];
             }
         }
-        let coastR = null, shelfR = 0, plainR = 0;
+        let coastR = null, shelfR = 0, plainR = 0, matureR = 0;
         if (anchorOn && oc >= 0 && A.moved[oc]) {
             const S = rec.coastRaster.get(oc);
             if (S) {
@@ -343,6 +343,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     if (coastCurve > 0) coastR += coastCurve * curveOf(simMesh, slopes.of(oc, S.coast), S.coast, q3[0], q3[1], q3[2], qw3[0], qw3[1], qw3[2]);
                     shelfR = qw3[0] * S.shelf[q3[0]] + qw3[1] * S.shelf[q3[1]] + qw3[2] * S.shelf[q3[2]];
                     plainR = qw3[0] * S.plain[q3[0]] + qw3[1] * S.plain[q3[1]] + qw3[2] * S.plain[q3[2]];
+                    matureR = qw3[0] * S.maturity[q3[0]] + qw3[1] * S.maturity[q3[1]] + qw3[2] * S.maturity[q3[2]];
                 }
             }
         }
@@ -445,6 +446,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const shelf = coastR !== null ? shelfR : w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2];
             const plain = coastR !== null ? plainR : w0 * plainKm[c0] + w1 * plainKm[c1] + w2 * plainKm[c2];
             ramp = coast < shelf ? 0 : smooth(0, 1, (coast - shelf) / Math.max(1, plain));
+            // (a passive margin's relief buried under its shelf and coastal plain, by its maturity: records.js)
+            const buried = (coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2]) * (1 - smooth(shelf, shelf + plain, coast));
             if (parts) { parts.dcoast[t] = coast; parts.dshelf[t] = shelf; parts.dplain[t] = plain; }
             h = coast < shelf ? cfg.shelfEdgeKm * (1 - coast / shelf) : platform * ramp;
             // the radiating dykes: coming out from under the lava across its edge (a signed distance — negative inside the
@@ -463,7 +466,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const nsum = e0 + e1 + e2;
             nts[0] = e0 / nsum; nts[1] = e1 / nsum; nts[2] = e2 / nsum;
             const jitter = cfg.edgeJitter * noise.fbm(x * blendF + 6.2, y * blendF + 1.9, z * blendF + 4.4, 3, 0.5) * 1.6;
-            const atEdge = smooth(0, 40, coast);        // (relief tapers to nothing at the edge of the continental crust: no step at the slope)
+            // (relief tapers to nothing at the edge of the continental crust: no step at the slope; on a mature passive
+            // margin it lies buried under the shelf and the coastal plain)
+            const atEdge = smooth(0, 40, coast) * (1 - buried);
             let warped = false, wx = 0, wy = 0, wz = 0, texture = 0, massifAmp = 0, massifWear = 0, massif = 0;
             for (let li = 0; li < 2; li++) {
             const { kind, dKm, reach, reliefKm, quietMyr: beltQuiet } = rec.belts[li], share = li === 0 ? 1 : cfg.overprintShare;

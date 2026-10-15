@@ -14,6 +14,7 @@ import { buildAnchor } from './anchor.js';
 import { plateCratons } from './cratons.js';
 
 const R = 6371;
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** A belt KIND: its orogeny type and its side of a collision (the profile depends on both). 0 = no belt. */
 export const kindOf = (type, side) => type * 3 + side;
@@ -135,12 +136,13 @@ function rasterAcross(simMesh, A, kind, u, reach, worldAcross, frame, layer) {
  * On the plate's raster — the sim mesh carried by the plate — its land is where its crust is: each raster cell takes the
  * land/sea of the world cell showing it; one no world cell shows (a rotated raster leaves a few) takes its neighbours'
  * majority; beyond the plate's edge, the world as it stands (another plate's land, or the sea). The distance is spread over
- * the raster from where land meets sea, carrying the kind of coast, as on the world grid. It overwrites `dist` and
- * `coastKind` for the plate's world cells, and is returned per plate (signed km per raster cell — the plate and the ring
+ * the raster from where land meets sea, carrying the kind of coast (and `carried`: fields that go with it — its maturity), as
+ * on the world grid. It overwrites `dist`, `coastKind` and the carried fields for the plate's world cells, and is
+ * returned per plate (signed km per raster cell, the kind and the carried fields by their names — the plate and the ring
  * just beyond its edge; NaN further off) for the terrain, which reads the coast on the raster of the plate whose land is
  * there (synthesize.js): so a coastline rides with its continent even where the sea beyond is another plate's.
  */
-function plateCoasts(simMesh, A, land, dist, coastKind, frame, pocketKm2) {
+function plateCoasts(simMesh, A, land, dist, coastKind, carried, frame, pocketKm2) {
     const { xyz, numCells: n, adjOffset, adjList } = simMesh, m = A.mats, out = new Map();
     const byPlate = new Map();
     for (let w = 0; w < n; w++) { const o = A.owner[w]; if (o >= 0) (byPlate.get(o) ?? byPlate.set(o, []).get(o)).push(w); }
@@ -148,10 +150,13 @@ function plateCoasts(simMesh, A, land, dist, coastKind, frame, pocketKm2) {
     const runs = new Map();
     if (frame.crustCells) for (let i = 0; i < frame.crustCells.length; i++) { const o = Math.floor(frame.crustCells[i] / n); const r = runs.get(o); if (r) r.end = i + 1; else runs.set(o, { start: i, end: i + 1 }); }
     const landR = new Int8Array(n), kindR = new Uint8Array(n), onPlate = new Uint8Array(n), d = new Float32Array(n), land01 = new Uint8Array(n);
+    const names = Object.keys(carried), from = names.map(k => carried[k]), onR = names.map(() => new Float32Array(n));
+    const take = (r, w) => { for (let e = 0; e < onR.length; e++) onR[e][r] = from[e][w]; };       // (raster cell ← world cell)
+    const copy = (r, q) => { for (let e = 0; e < onR.length; e++) onR[e][r] = onR[e][q]; };        // (raster cell ← raster cell)
     for (const o of [...byPlate.keys()].sort((a, b) => a - b)) {
         const cells = byPlate.get(o), b = 9 * o, known = [], run = runs.get(o);
         landR.fill(-1); onPlate.fill(0);
-        for (const w of cells) { const r = A.cell[w]; if (landR[r] < 0) known.push(r); landR[r] = land[w]; kindR[r] = coastKind[w]; onPlate[r] = 1; }
+        for (const w of cells) { const r = A.cell[w]; if (landR[r] < 0) known.push(r); landR[r] = land[w]; kindR[r] = coastKind[w]; take(r, w); onPlate[r] = 1; }
         if (run) {
             // the whole plate, exactly: every crust cell's own type (small sea pockets in its land filled, as on the world
             // grid); a cell no world cell shows takes a shown neighbour's kind of coast
@@ -162,18 +167,18 @@ function plateCoasts(simMesh, A, land, dist, coastKind, frame, pocketKm2) {
             for (let pass = 0; pass < 3; pass++) for (let i = run.start; i < run.end; i++) {
                 const r = frame.crustCells[i] - o * n;
                 if (kindR[r] !== 255) continue;
-                for (let k = adjOffset[r]; k < adjOffset[r + 1]; k++) { const q = adjList[k]; if (onPlate[q] && kindR[q] !== 255) { kindR[r] = kindR[q]; break; } }
+                for (let k = adjOffset[r]; k < adjOffset[r + 1]; k++) { const q = adjList[k]; if (onPlate[q] && kindR[q] !== 255) { kindR[r] = kindR[q]; copy(r, q); break; } }
             }
-            for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; if (kindR[r] === 255) kindR[r] = 0; }
+            for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; if (kindR[r] === 255) { kindR[r] = 0; for (const a of onR) a[r] = 0; } }
         }
         // (no crust in the frame: a cell no world cell shows takes its shown neighbours' majority)
         if (!run) for (const r0 of known) for (let k = adjOffset[r0]; k < adjOffset[r0 + 1]; k++) {
             const r = adjList[k];
             if (landR[r] >= 0) continue;
-            let shown = 0, landN = 0, kind = 0;
-            for (let j = adjOffset[r]; j < adjOffset[r + 1]; j++) { const q = adjList[j]; if (onPlate[q]) { shown++; landN += landR[q]; kind = kindR[q]; } }
+            let shown = 0, landN = 0, kind = 0, last = -1;
+            for (let j = adjOffset[r]; j < adjOffset[r + 1]; j++) { const q = adjList[j]; if (onPlate[q]) { shown++; landN += landR[q]; kind = kindR[q]; last = q; } }
             if (shown * 3 < 2 * (adjOffset[r + 1] - adjOffset[r])) continue;
-            landR[r] = landN * 2 >= shown ? 1 : 0; kindR[r] = kind; onPlate[r] = 2;
+            landR[r] = landN * 2 >= shown ? 1 : 0; kindR[r] = kind; copy(r, last); onPlate[r] = 2;
         }
         // one ring beyond the plate's edge: the world there, as it stands
         const ring = [], inRing = new Uint8Array(n);
@@ -184,7 +189,7 @@ function plateCoasts(simMesh, A, land, dist, coastKind, frame, pocketKm2) {
                 if (landR[r] >= 0) continue;
                 const x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
                 const w = simMesh.index.nearest(m[b] * x + m[b + 1] * y + m[b + 2] * z, m[b + 3] * x + m[b + 4] * y + m[b + 5] * z, m[b + 6] * x + m[b + 7] * y + m[b + 8] * z);
-                landR[r] = land[w]; kindR[r] = coastKind[w]; ring.push(r); inRing[r] = 1;
+                landR[r] = land[w]; kindR[r] = coastKind[w]; take(r, w); ring.push(r); inRing[r] = 1;
             }
         }
         // where land meets sea: half the distance between the two cells, the kind of the land side's coast
@@ -195,18 +200,35 @@ function plateCoasts(simMesh, A, land, dist, coastKind, frame, pocketKm2) {
                 const q = adjList[k];
                 if (landR[q] < 0 || landR[q] === landR[r]) continue;
                 const half = 0.5 * R * Math.acos(Math.min(1, xyz[3 * r] * xyz[3 * q] + xyz[3 * r + 1] * xyz[3 * q + 1] + xyz[3 * r + 2] * xyz[3 * q + 2]));
-                if (half < d[r]) { d[r] = half; if (!landR[r]) kindR[r] = kindR[q]; }
+                if (half < d[r]) { d[r] = half; if (!landR[r]) { kindR[r] = kindR[q]; copy(r, q); } }
             }
         }
-        spreadKm(simMesh, d, { canEnter: (a, q) => landR[q] >= 0 && landR[q] === landR[a], onReach: (a, q) => { kindR[q] = kindR[a]; }, maxKm: 6000 });
+        spreadKm(simMesh, d, { canEnter: (a, q) => landR[q] >= 0 && landR[q] === landR[a], onReach: (a, q) => { kindR[q] = kindR[a]; copy(q, a); }, maxKm: 6000 });
         const signed = new Float32Array(n).fill(NaN);
         for (let r = 0; r < n; r++) if (onPlate[r] || inRing[r]) signed[r] = d[r] === Infinity ? (landR[r] ? 6000 : -6000) : landR[r] ? Math.min(6000, d[r]) : -Math.min(6000, d[r]);
-        for (const w of cells) { const r = A.cell[w]; if (d[r] < Infinity) { dist[w] = d[r]; coastKind[w] = kindR[r]; } }
-        const kind = new Uint8Array(n);
-        for (let r = 0; r < n; r++) if (signed[r] === signed[r]) kind[r] = kindR[r];
-        out.set(o, { coast: signed, kind });
+        for (const w of cells) { const r = A.cell[w]; if (d[r] < Infinity) { dist[w] = d[r]; coastKind[w] = kindR[r]; for (let e = 0; e < onR.length; e++) from[e][w] = onR[e][r]; } }
+        const kind = new Uint8Array(n), P = { coast: signed, kind };
+        for (const k of names) P[k] = new Float32Array(n);
+        for (let r = 0; r < n; r++) if (signed[r] === signed[r]) { kind[r] = kindR[r]; for (let e = 0; e < onR.length; e++) P[names[e]][r] = onR[e][r]; }
+        out.set(o, P);
     }
     return out;
+}
+
+/** The area (km²) of the body of sea each sea cell belongs to (connected non-land cells); 0 on land. */
+function seaAreas(simMesh, land) {
+    const { adjOffset, adjList, numCells: n } = simMesh, cellKm2 = 4 * Math.PI * R * R / n;
+    const area = new Float32Array(n), seen = new Uint8Array(n), members = [];
+    for (let s = 0; s < n; s++) {
+        if (land[s] || seen[s]) continue;
+        members.length = 0; members.push(s); seen[s] = 1;
+        for (let i = 0; i < members.length; i++) {
+            const c = members[i];
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!land[nb] && !seen[nb]) { seen[nb] = 1; members.push(nb); } }
+        }
+        for (const c of members) area[c] = members.length * cellKm2;
+    }
+    return area;
 }
 
 /** Sea pockets smaller than `maxKm2` (connected non-land cells enclosed by land) become land, in place. */
@@ -228,12 +250,18 @@ function fillPockets(simMesh, land, maxKm2) {
 /** Kinds of coast, for shelf / plain / slope widths (terrain-config.js `margins`). */
 export const CoastKind = Object.freeze({ PASSIVE: 0, ACTIVE: 1, TRANSFORM: 2, COLLISION: 3, ARC: 4 });
 const COAST_KEYS = ['passive', 'active', 'transform', 'collision', 'arc'];
+/** A margin's shelf and coastal plain (km): its kind's, or for a passive one between the young and the mature widths by
+ *  how far it has widened (its maturity on the open ocean) and its maturity (terrain-config.js marginMatureMyr). */
+const shelfOf = (m, mature) => (m.youngShelfKm === undefined ? m.shelfKm : m.youngShelfKm + (m.shelfKm - m.youngShelfKm) * mature);
+const plainOf = (m, mature) => (m.youngPlainKm === undefined ? m.plainKm : m.youngPlainKm + (m.plainKm - m.youngPlainKm) * mature);
 
 /**
  * @returns {Object} per-sim-cell fields (typed arrays of length numCells unless noted):
  *   land (1 = non-ocean crust) · arc (1 = island-arc crust) · craton · riverIncKm / riverKm2 (the history's rivers:
  *   how deep they cut, what they drain; tectonics/step/rivers.js) · coastKm (signed distance to the edge of the continental crust, + inland) ·
- *   shelfKm / plainKm / slopeKm (from the nearest coast's kind) · depthKm (sea floor, ocean cells) · ageMyr and
+ *   shelfKm / plainKm / slopeKm (from the nearest coast's kind) · maturity (the nearest coast's, if passive: 0 young … 1
+ *   mature — its relief buried under the shelf and plain by that share; its shelf widened by it on the open ocean only:
+ *   widen) · depthKm (sea floor, ocean cells) · ageMyr and
  *   fabricKm (abyssal-hill wavelength) for ocean cells · trenchKm / trenchDepthKm (distance to, and depth of, the
  *   live trench nearby) · riseKm (distance to it on the subducting plate) · platformKm (what a land cell stands at
  *   before relief) · armKm (distance from a failed rift arm) · erosion (how many times faster than the reference things
@@ -254,7 +282,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     fillPockets(simMesh, land, cfg.pocketSeaKm2);
 
     // ── the coast: signed distance to the edge of the land crust, and what kind of coast is nearest ──
-    const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n);
+    const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n);
     const kindAtCoast = w => {                                        // w: a land cell on the coast
         if (frame.type[w] === CrustType.ARC && !(frame.flags[w] & CrustFlag.MARGIN_ISLE)) return CoastKind.ARC;
         const t = frame.margin[w] & Margin.TYPE;
@@ -275,16 +303,33 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const carried = ownKind.slice();
     spreadKm(simMesh, along, { canEnter: (a, b) => onCoast[b] === 1, onReach: (a, b) => { carried[b] = carried[a]; }, maxKm: cfg.coastKindKm });
     for (let w = 0; w < n; w++) if (onCoast[w] && ownKind[w] === CoastKind.PASSIVE && along[w] <= cfg.coastKindKm) ownKind[w] = carried[w];
+    // a passive coast's maturity (cfg.marginMatureMyr), by its age: the oldest ocean floor beside it — the floor that formed
+    // as it broke away (a pre-history coast's: the pre-history floor's) — or less where its own belt was active since; on
+    // its shelf widening with it on the open ocean only (cfg.marginOpenSeaKm2: by the area of the sea it faces)
+    const seaKm2 = seaAreas(simMesh, land), ownMature = new Float32Array(n), ownWiden = new Float32Array(n);
+    for (let w = 0; w < n; w++) {
+        if (!onCoast[w] || ownKind[w] !== CoastKind.PASSIVE) continue;
+        let age = frame.oroType[w] ? Math.max(0, time - frame.oroLast[w]) : Infinity, floor = -1, sea = 0;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+            const nb = adjList[k];
+            if (land[nb]) continue;
+            if (seaKm2[nb] > sea) sea = seaKm2[nb];
+            if (frame.owner[nb] >= 0) floor = Math.max(floor, time - frame.formedAt[nb]);
+        }
+        if (floor >= 0) age = Math.min(age, floor);
+        ownMature[w] = age === Infinity ? 1 : 1 - Math.exp(-age / cfg.marginMatureMyr);
+        ownWiden[w] = ownMature[w] * smooth(cfg.marginOpenSeaKm2[0], cfg.marginOpenSeaKm2[1], sea);
+    }
     for (let w = 0; w < n; w++) for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
         const nb = adjList[k];
         if (land[nb] === land[w]) continue;
         const half = 0.5 * R * Math.acos(Math.min(1, xyz[3 * w] * xyz[3 * nb] + xyz[3 * w + 1] * xyz[3 * nb + 1] + xyz[3 * w + 2] * xyz[3 * nb + 2]));
-        if (half < dist[w]) { dist[w] = half; coastKind[w] = ownKind[land[w] ? w : nb]; }
+        if (half < dist[w]) { const at = land[w] ? w : nb; dist[w] = half; coastKind[w] = ownKind[at]; maturity[w] = ownMature[at]; widen[w] = ownWiden[at]; }
     }
-    spreadKm(simMesh, dist, { canEnter: (a, b) => land[a] === land[b], onReach: (a, b) => { coastKind[b] = coastKind[a]; }, maxKm: 6000 });
+    spreadKm(simMesh, dist, { canEnter: (a, b) => land[a] === land[b], onReach: (a, b) => { coastKind[b] = coastKind[a]; maturity[b] = maturity[a]; widen[b] = widen[a]; }, maxKm: 6000 });
     // …and measured again on each plate's own raster, which the world grid shows re-sampled a little differently every
     // step as the plate moves: the coast measured there is fixed in the crust (Phase 9, steady detail)
-    const coastRaster = plateCoasts(simMesh, A, land, dist, coastKind, frame, cfg.pocketSeaKm2);
+    const coastRaster = plateCoasts(simMesh, A, land, dist, coastKind, { maturity, widen }, frame, cfg.pocketSeaKm2);
     const coastKm = new Float32Array(n), shelfKm = new Float32Array(n), plainKm = new Float32Array(n), slopeKm = new Float32Array(n);
     for (let w = 0; w < n; w++) {
         const d = Math.min(6000, dist[w]);
@@ -292,7 +337,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // (the shelf's width varies by a noise read where the crust is in its plate's frame: it rides with the coast)
         const m = cfg.margins[COAST_KEYS[coastKind[w]]], rc = A.cell[w], x = xyz[3 * rc], y = xyz[3 * rc + 1], z = xyz[3 * rc + 2];
         const vary = 1 + cfg.shelfNoise * noise.fbm(x * 9 + 1.7, y * 9 + 4.2, z * 9 + 8.1, 3, 0.5) * 1.6;
-        shelfKm[w] = m.shelfKm * Math.max(0.2, vary); plainKm[w] = m.plainKm; slopeKm[w] = m.slopeKm;
+        shelfKm[w] = shelfOf(m, widen[w]) * Math.max(0.2, vary); plainKm[w] = plainOf(m, maturity[w]); slopeKm[w] = m.slopeKm;
     }
     // …and each plate's shelf and coastal plain on its raster, from its kind of coast there (the same noise, read at the
     // raster cell: the crust's own position): the terrain reads them with the coast
@@ -302,7 +347,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
             if (!(P.coast[r] === P.coast[r])) continue;
             const m = cfg.margins[COAST_KEYS[P.kind[r]]], x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
             const vary = 1 + cfg.shelfNoise * noise.fbm(x * 9 + 1.7, y * 9 + 4.2, z * 9 + 8.1, 3, 0.5) * 1.6;
-            P.shelf[r] = m.shelfKm * Math.max(0.2, vary); P.plain[r] = m.plainKm;
+            P.shelf[r] = shelfOf(m, P.widen[r]) * Math.max(0.2, vary); P.plain[r] = plainOf(m, P.maturity[r]);
         }
     }
 
@@ -436,7 +481,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         }
     }
 
-    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm,
+    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm,
         platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
 }
 

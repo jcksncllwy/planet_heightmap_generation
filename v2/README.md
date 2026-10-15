@@ -102,7 +102,9 @@ filled in to sea level); only the real oceans are sea. **Inland seas** (2026-10-
 off in a basin (≳ 5 000–20 000 km² and 50–200 m below sea level) has its floor filled with sediment toward ≤ ~1 km below its
 rim, then holds water by its water balance — full, a fresh inland sea spilling on (its outlet cut down, the water standing
 at the basin's own inner sill); short of it, a terminal salt sea where it is big for its river or an old sea floor, else a
-salt pan ≤ ~120 m below its rim — never a dry hole. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
+salt pan ≤ ~120 m below its rim — never a dry hole. A land basin left without water drains whole: every
+pocket in it (a sub-basin behind its own sill, which the gorge from the basin's floor does not reach) gets its own gorge
+out from its lowest point. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
 names a river's discharge, regime and flood months, and a lake's kind). Measured (20K plates, desktop): 640K
 ~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
@@ -143,7 +145,7 @@ node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells ag
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
-node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--debug]
+node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--debug]
                                        # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes and any empty basins
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
 node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)
@@ -391,7 +393,13 @@ the shield beyond, then a low forebulge), except where a plateau's back meets th
 scraps of craton inside a range read as the range; and each craton has a character — a shallow sag basin, a broad swell
 or a flat shield (`cratonCharacter`) — with a faint grain of domes and keels. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
-`coastKindKm` of its coast. In the lab, the erosion clocks marked "re-runs the history" rebuild the history (in its
+`coastKindKm` of its coast. **Passive margins mature** (2026-10-15, `marginMatureMyr`): a passive coast's age is the
+oldest ocean floor beside it (the floor that formed as it broke away), or less where its own belt was active since; its
+maturity, 1 − e^(−age / 60 Myr) (a stretched margin's thermal subsidence), widens the shelf from ~40 to ~180 km and the
+coastal plain from ~50 to ~240 km, and buries the relief under them by that share — a young rifted margin's shoulders
+stand at the sea (the Red Sea), an old one's lie well inland behind a wide shelf and a low coastal plain (the US east
+coast). A sea enclosed by land under ~1–4 million km² (`marginOpenSeaKm2`) is filled from its rim instead: its rim
+matures into a lowland, but no widening shelf drowns it. In the lab, the erosion clocks marked "re-runs the history" rebuild the history (in its
 worker) with the new constants; the history itself comes out the same. The lab builds the frame shown, then the ten frames
 next to it the way you are moving (five behind) in the background (heights only, within a memory budget), so scrubbing
 and playing near it need no building, and playing waits for a frame still being built; sea level and hillshade only

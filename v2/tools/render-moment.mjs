@@ -6,7 +6,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). Output: v2/out/moments/.
 
@@ -124,6 +124,25 @@ console.log(`dry hollows (land below where water would stand): >50 m ${Math.roun
     `; deepest ${Math.round(deepest)} m${deepestAt >= 0 ? ` at ${latOf(deepestAt)}°, ${lonOf(deepestAt)}°` : ''}; dry land below sea level ${Math.round(dryBelowSea).toLocaleString()} km²`);
 if (DEBUG && fin.layers?.terminal) console.log('terminal basins (inflow, full evaporation m³/s):', JSON.stringify(fin.layers.terminal));
 if (fin.stats?.water) console.log('hydrology:', JSON.stringify(fin.stats.water).slice(0, 400));
+// (--lakes: the biggest bodies of standing water — connected lake cells of one kind — with where they are)
+if (process.argv.includes('--lakes') && lake) {
+    const seenLake = new Uint8Array(n), bodies = [];
+    for (let s = 0; s < n; s++) {
+        if (seenLake[s] || !lake[s] || lake[s] === 3) continue;
+        const cells = [s];
+        seenLake[s] = 1;
+        let sx = 0, sy = 0, sz = 0, floor = Infinity;
+        for (let i = 0; i < cells.length; i++) {
+            const c = cells[i];
+            sx += xyz[3 * c]; sy += xyz[3 * c + 1]; sz += xyz[3 * c + 2]; floor = Math.min(floor, z[c]);
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seenLake[nb] && lake[nb] === lake[s]) { seenLake[nb] = 1; cells.push(nb); } }
+        }
+        const r = Math.hypot(sx, sy, sz);
+        bodies.push({ km2: cells.length * cellKm2, kind: kinds[lake[s]], lat: Math.asin(sz / r) * 180 / Math.PI, lon: Math.atan2(sy, sx) * 180 / Math.PI, level: lev[s], floor });
+    }
+    bodies.sort((a, b) => b.km2 - a.km2);
+    console.log('biggest lakes: ' + bodies.slice(0, 10).map(b => `${b.kind} ${Math.round(b.km2).toLocaleString()} km² at ${b.lat.toFixed(1)}°,${b.lon.toFixed(1)}° (water ${Math.round(b.level * 1000)} m, floor ${Math.round(b.floor * 1000)} m)`).join(' · '));
+}
 // (--probe "lat,lon;lat,lon": what the finish made of each place — its height, water kind and level)
 const PROBE = arg('--probe', null);
 if (PROBE) for (const pt of PROBE.split(';')) {

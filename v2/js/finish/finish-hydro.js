@@ -251,6 +251,41 @@ export function hydrology(ctx, F) {
         }
         return innerStamp[h.deepCell] === innerId ? innerFill[h.deepCell] : level;
     };
+    // (a land hollow left without water drains whole — developer: no closed basins, no holes: every pocket left in it, a
+    // sub-basin behind its own sill that the gorge from the hollow's floor does not reach, gets its own gorge out from its
+    // lowest point, down the way its water would spill; until none is left — a pocket within a pocket next)
+    const pocketSeen = new Int32Array(n);
+    const cutPockets = (h, id, outlet) => {
+        for (let round = 0; round < 8; round++) {
+            innerId++;
+            innerFill[outlet] = z[outlet]; innerStamp[outlet] = innerId; innerHeap.push(z[outlet], outlet);
+            while (innerHeap.size) {
+                const x = innerHeap.pop();
+                for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) {
+                    const nb = adjList[k];
+                    if (hollow[nb] !== id || innerStamp[nb] === innerId) continue;
+                    innerStamp[nb] = innerId; innerFill[nb] = Math.max(innerFill[x], z[nb]); innerHeap.push(innerFill[nb], nb);
+                }
+            }
+            let any = false;
+            for (const s of h.cells) {
+                if (innerStamp[s] !== innerId || pocketSeen[s] === innerId || !(innerFill[s] > z[s] + EPS)) continue;
+                // (the pocket: connected cells under the same spill level; cut from its lowest)
+                const L = innerFill[s], cells = [s];
+                pocketSeen[s] = innerId;
+                let low = s;
+                for (let i = 0; i < cells.length; i++) for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) {
+                    const nb = adjList[k];
+                    if (hollow[nb] === id && innerStamp[nb] === innerId && pocketSeen[nb] !== innerId && innerFill[nb] > z[nb] + EPS && Math.abs(innerFill[nb] - L) < 1e-6) {
+                        pocketSeen[nb] = innerId; cells.push(nb); if (z[nb] < z[low]) low = nb;
+                    }
+                }
+                cut(low, z[low]);
+                any = true;
+            }
+            if (!any) break;
+        }
+    };
     const lakeDeficit = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c]));     // (mm/yr off open water)
     let toSea = 0, toBasins = 0, lost = 0, total = 0;
     for (let i = count - 1; i >= 0; i--) {
@@ -319,6 +354,7 @@ export function hydrology(ctx, F) {
             // (a remnant of the sea keeps its water whatever its size: no gorge could drain it)
             if (!h.sea && water.length && water.length * cellKm2 < keepKm2) { cut(h.deepCell, h.floor); level = h.floor; water.length = 0; }
             if (kind === Water.SALT && !water.length) { kind = Water.PAN; h.pan = true; }
+            if (!h.sea && !water.length) cutPockets(h, id, c);
             for (const x of water) { lakeKind[x] = kind; lakeLevel[x] = level; }
             h.kind = water.length ? kind : h.pan ? Water.PAN : Water.NONE; h.levelNow = level; h.outflow = outflow; h.fullEvap = full; h.outletIn = h.inflow;
             q[c] = outflow; qw[c] = h.seasonW; area[c] = h.area;

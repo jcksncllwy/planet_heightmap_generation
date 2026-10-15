@@ -59,9 +59,10 @@ export const TERRAIN = {
     canyonDepthKm: 0.7,
     shelfEdgeKm: -0.15,         // depth of the shelf break, at the edge of the continental crust
     // per kind of margin (measure.js Margin): width of the continental shelf, of the low coastal plain behind the
-    // shoreline, and of the slope down to the deep sea
+    // shoreline, and of the slope down to the deep sea (a passive margin's shelf and plain: a mature one's; a young one's
+    // are youngShelfKm and youngPlainKm — marginMatureMyr below)
     margins: {
-        passive:   { shelfKm: 150, plainKm: 180, slopeKm: 110 },   // rifted, trailing: wide shelves, low coasts (Argentina, the US east coast)
+        passive:   { shelfKm: 180, plainKm: 240, slopeKm: 110, youngShelfKm: 40, youngPlainKm: 50 },   // rifted, trailing: wide shelves, low coasts (Argentina, the US east coast)
         active:    { shelfKm: 15,  plainKm: 25,  slopeKm: 45 },    // a trench offshore: narrow shelf, the coastal range rises from the sea
         transform: { shelfKm: 30,  plainKm: 50,  slopeKm: 50 },
         collision: { shelfKm: 40,  plainKm: 80,  slopeKm: 80 },
@@ -72,6 +73,17 @@ export const TERRAIN = {
                                 // one-cell sliver would otherwise stand as a deep hole ringed by drowned shelf)
     coastKindKm: 250,           // a margin's kind holds along its stretch of coast: a bay or a headland's flank within this
                                 // many km (along the coast) of an active / transform / collision coast is one too
+    // Passive margins flatten and widen as they age (developer, 2026-10-15: "after a while of no tectonic activity they
+    // should flatten/widen and create a bit of a bigger shelf, as things erode"). A margin's age: the oldest ocean floor
+    // beside its coast — the floor that formed as it broke away — or less where its own belt was active since. A stretched
+    // margin subsides as it cools and fills with sediment, e-folding over about this (McKenzie 1978: ~60 Myr); its
+    // maturity, 1 − e^(−age / this), widens the shelf and the coastal plain from the young widths to the mature ones and
+    // buries the relief under them by that share — a young rifted margin's shoulders stand at the sea (the Red Sea), an
+    // old one's lie well inland, worn and lowered, behind a wide shelf and a low coastal plain (the US east coast)
+    marginMatureMyr: 60,
+    marginOpenSeaKm2: [1e6, 4e6],   // …its shelf widening only on the open ocean: a sea enclosed by land smaller than the first
+                                // (km²; fully open from the second) fills with sediment from its rim (the North Caspian's
+                                // shelf builds out into it) — its rim matures into a lowland, but no shelf drowns it
 
     // ── Continental platform ──
     continentKm: 0.12,          // unthickened continental crust: lowland platforms and plains
