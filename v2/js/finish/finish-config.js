@@ -120,9 +120,10 @@ export const FINISH = {
     seaFillKm: 1,               // its floor filled with sediment since it was cut off, toward at most about this far below
                                 // its rim (depth d → this × tanh(d / this)): the Caspian's and Black Sea's depths, not an
                                 // ocean's 5–9 km — a salt sea in a bowl, not at the foot of a cliff…
-    panDepthKm: 0.12,           // …and a salt pan's (or a drained basin's pocket) filled further, toward a flat at most about
-                                // this far below its rim (d → this × tanh(d / this): the Qattara's, Death Valley's scale —
-                                // never a dry hole the size of the sea)
+    panDepthKm: 0.12,           // …and a pocket a salt sea left dry below its water filled further, toward a flat at most about
+                                // this far below it (d → this × tanh(d / this): the Qattara's, Death Valley's scale); a salt
+                                // pan — a hole its river keeps all but dry — filled to a flat just above sea level: never a
+                                // dry hole the size of the sea
     panFlatShare: 1.5,          // the pan itself: where the basin was deeper than this × panDepthKm (its flat floor)
     seaSeedKm2: 250000,         // the sea: a body below sea level at least this big, holding deep water (below seaDeepKm) —
     seaDeepKm: 1,               // the real oceans; a pit on a continent is a basin, not a sea (15 000: rivers "all ending in

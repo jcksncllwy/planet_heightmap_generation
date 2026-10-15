@@ -142,6 +142,23 @@ if (process.argv.includes('--lakes') && lake) {
     }
     bodies.sort((a, b) => b.km2 - a.km2);
     console.log('biggest lakes: ' + bodies.slice(0, 10).map(b => `${b.kind} ${Math.round(b.km2).toLocaleString()} km² at ${b.lat.toFixed(1)}°,${b.lon.toFixed(1)}° (water ${Math.round(b.level * 1000)} m, floor ${Math.round(b.floor * 1000)} m)`).join(' · '));
+    // (and the biggest patches of dry land below sea level, with how much of each lies under ice)
+    const dry = c => !fin.ocean[c] && z[c] < 0 && lake[c] !== 1 && lake[c] !== 2, seenDry = new Uint8Array(n), patches = [];
+    for (let s = 0; s < n; s++) {
+        if (seenDry[s] || !dry(s)) continue;
+        const cells = [s];
+        seenDry[s] = 1;
+        let low = 0, iced = 0, salt = 0;
+        for (let i = 0; i < cells.length; i++) {
+            const c = cells[i];
+            if (z[c] < low) low = z[c];
+            if (fin.layers?.ice?.[c] > 0) iced++;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (lake[nb] === 2) salt = 1; if (!seenDry[nb] && dry(nb)) { seenDry[nb] = 1; cells.push(nb); } }
+        }
+        patches.push({ km2: cells.length * cellKm2, low, iced: iced / cells.length, salt, at: s });
+    }
+    patches.sort((a, b) => b.km2 - a.km2);
+    console.log('dry land below sea level, biggest: ' + patches.slice(0, 8).map(p => `${Math.round(p.km2).toLocaleString()} km² at ${latOf(p.at)}°,${lonOf(p.at)}° (lowest ${Math.round(p.low * 1000)} m${p.iced ? `, ${Math.round(100 * p.iced)} % glaciated` : ''}${p.salt ? ', a salt sea\'s shore' : ''})`).join(' · '));
 }
 // (--probe "lat,lon;lat,lon": what the finish made of each place — its height, water kind and level)
 const PROBE = arg('--probe', null);

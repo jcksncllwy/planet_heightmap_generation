@@ -234,49 +234,36 @@ export function hydrology(ctx, F) {
     const area = new Float32Array(n);
     const q = new Float32Array(n), qw = new Float32Array(n), lakeKind = new Uint8Array(n), lakeLevel = new Float32Array(n).fill(NaN), seen = new Int32Array(n);
     const own = c => Math.max(0, runoff[c]) * cellKm2 * 1e3 / SEC_PER_YEAR;         // (mm × km² → m³/s)
-    // (a sea basin's water after its outlet is cut down: a priority flood inside the basin from the outlet at the cut level
-    // — the water stands at the basin's own inner sill, the lowest way from its deep part out; scratch arrays, stamped)
-    const innerFill = new Float32Array(n), innerStamp = new Int32Array(n), innerHeap = new MinHeap(1 << 12);
+    // (a hollow that drains whole — a land hollow left without water, the lowland round a trapped sea that spills — has no
+    // closed basin left in it (developer: no closed basins, no holes): every pocket in it, a sub-basin behind its own sill
+    // that the gorge from the hollow's floor does not reach, gets its own gorge out from its lowest point, down the way its
+    // water would spill; until none is left — a pocket within a pocket next. Its water counts at its level. Scratch
+    // arrays, stamped)
+    const innerFill = new Float32Array(n), innerStamp = new Int32Array(n), innerHeap = new MinHeap(1 << 12), pocketSeen = new Int32Array(n);
     let innerId = 0;
-    const innerLevel = (h, id, outlet, level) => {
-        innerId++;
-        innerFill[outlet] = Math.max(level, Math.min(z[outlet], h.level)); innerStamp[outlet] = innerId; innerHeap.push(innerFill[outlet], outlet);
-        while (innerHeap.size) {
-            const x = innerHeap.pop();
-            for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) {
-                const nb = adjList[k];
-                if (hollow[nb] !== id || innerStamp[nb] === innerId) continue;
-                innerStamp[nb] = innerId; innerFill[nb] = Math.max(innerFill[x], z[nb]); innerHeap.push(innerFill[nb], nb);
-            }
-        }
-        return innerStamp[h.deepCell] === innerId ? innerFill[h.deepCell] : level;
-    };
-    // (a land hollow left without water drains whole — developer: no closed basins, no holes: every pocket left in it, a
-    // sub-basin behind its own sill that the gorge from the hollow's floor does not reach, gets its own gorge out from its
-    // lowest point, down the way its water would spill; until none is left — a pocket within a pocket next)
-    const pocketSeen = new Int32Array(n);
+    const ground = x => (lakeKind[x] === Water.FRESH || lakeKind[x] === Water.SALT ? Math.max(z[x], lakeLevel[x]) : z[x]);
     const cutPockets = (h, id, outlet) => {
         for (let round = 0; round < 8; round++) {
             innerId++;
-            innerFill[outlet] = z[outlet]; innerStamp[outlet] = innerId; innerHeap.push(z[outlet], outlet);
+            innerFill[outlet] = ground(outlet); innerStamp[outlet] = innerId; innerHeap.push(innerFill[outlet], outlet);
             while (innerHeap.size) {
                 const x = innerHeap.pop();
                 for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) {
                     const nb = adjList[k];
                     if (hollow[nb] !== id || innerStamp[nb] === innerId) continue;
-                    innerStamp[nb] = innerId; innerFill[nb] = Math.max(innerFill[x], z[nb]); innerHeap.push(innerFill[nb], nb);
+                    innerStamp[nb] = innerId; innerFill[nb] = Math.max(innerFill[x], ground(nb)); innerHeap.push(innerFill[nb], nb);
                 }
             }
             let any = false;
             for (const s of h.cells) {
-                if (innerStamp[s] !== innerId || pocketSeen[s] === innerId || !(innerFill[s] > z[s] + EPS)) continue;
+                if (innerStamp[s] !== innerId || pocketSeen[s] === innerId || !(innerFill[s] > ground(s) + EPS)) continue;
                 // (the pocket: connected cells under the same spill level; cut from its lowest)
                 const L = innerFill[s], cells = [s];
                 pocketSeen[s] = innerId;
                 let low = s;
                 for (let i = 0; i < cells.length; i++) for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) {
                     const nb = adjList[k];
-                    if (hollow[nb] === id && innerStamp[nb] === innerId && pocketSeen[nb] !== innerId && innerFill[nb] > z[nb] + EPS && Math.abs(innerFill[nb] - L) < 1e-6) {
+                    if (hollow[nb] === id && innerStamp[nb] === innerId && pocketSeen[nb] !== innerId && innerFill[nb] > ground(nb) + EPS && Math.abs(innerFill[nb] - L) < 1e-6) {
                         pocketSeen[nb] = innerId; cells.push(nb); if (z[nb] < z[low]) low = nb;
                     }
                 }
@@ -307,19 +294,30 @@ export function hydrology(ctx, F) {
             const areaKm2 = h.cells.length * cellKm2, young = h.glacial && !h.old;
             const keepKm2 = F.lakeKeepKm2 * Math.sqrt(Math.max(1, h.inflow) / 1000) * (young ? F.glacialKeepShare : 1);
             let outflow = h.inflow, level = h.level, kind = Water.FRESH, from = c;
-            if (h.sea && h.inflow < full) {
-                // A remnant of the sea its inflow cannot fill (developer, 2026-10-15: inland seas "COMPLETELY dried out …
-                // leaving holes in the ground"): it shrinks to where what flows in balances what evaporates — the lowest
-                // cells, as much area as its inflow keeps wet. A terminal salt sea where that is big for its river, or the
-                // basin an old sea floor deep enough (the Caspian, the Dead Sea — developer: "allow terminal salt seas");
-                // else a salt pan, its floor filled toward a flat (below). Its rivers end there
-                const low = h.cells.slice().sort((a, b) => z[a] - z[b]);
+            // A remnant of the sea (developer, 2026-10-15: inland seas "COMPLETELY dried out … leaving holes in the ground")
+            // is its hole — the basin's cells below sea level — and its water stays in it (developer: the lakes over trapped
+            // seas were "just too enormous": filled to the basin's sill they drowned the whole lowland round the hole)
+            let hole = null, fullHole = 0;
+            if (h.sea) {
+                hole = h.cells.filter(x => z[x] < 0);
+                for (const x of hole) fullHole += lakeDeficit(x) * cellKm2 * 1e3 / SEC_PER_YEAR;
+            }
+            if (h.sea && h.inflow < fullHole) {
+                // short of filling it, it shrinks to where what flows in balances what evaporates — the lowest cells, as
+                // much area as its inflow keeps wet. A terminal salt sea where that is big for its river, or the basin an old
+                // sea floor deep enough (the Caspian, the Dead Sea — developer: "allow terminal salt seas"); else a salt pan,
+                // its floor filled toward a flat (below). Its rivers end there
+                const low = hole.sort((a, b) => z[a] - z[b]);
                 let evap = 0, k = -1;
                 for (let i = 0; i < low.length; i++) { const e = lakeDeficit(low[i]) * cellKm2 * 1e3 / SEC_PER_YEAR; if (evap + e > h.inflow) break; evap += e; k = i; }
                 outflow = 0; toBasins += h.inflow; from = h.deepCell;
                 if (k >= 1 && ((k + 1) * cellKm2 >= keepKm2 || smooth(F.saltSeaDeepKm[0], F.saltSeaDeepKm[1], -h.floor) >= 0.5)) { kind = Water.SALT; level = z[low[k]] + 1e-5; }
                 else { kind = Water.PAN; level = h.floor; h.pan = true; }
-            } else if (!h.sea && (areaKm2 < keepKm2 || h.inflow < full)) { cut(h.deepCell, h.floor); level = h.floor; }
+            } else if (h.sea) {
+                // full, it fills its hole to the brim and spills: its outflow has cut its way down to it (a gorge just above
+                // sea level), and the lowland round it drains as land does (below)
+                level = cut(h.deepCell, F.seaCutFloorKm); from = h.deepCell;
+            } else if (areaKm2 < keepKm2 || h.inflow < full) { cut(h.deepCell, h.floor); level = h.floor; }
             else if (F.breachKm > 0) {
                 // an old basin that overflows has cut its outlet down (developer: the erosion should "break these basins
                 // up"): a gorge through its rim, deeper the more spills over; the lake drains to what lies below the gorge —
@@ -337,7 +335,8 @@ export function hydrology(ctx, F) {
             // the water: what is connected to the outlet below the level. Pockets below it but cut off from it (a breached
             // basin's hollows) are dry ground the rivers cross
             const id = hollow[c], water = [], seeds = [];
-            if (h.sea && kind === Water.FRESH) { level = Math.max(level, innerLevel(h, id, c, level)); from = h.deepCell; }
+            // (a trapped sea full to its brim: the whole of its hole, each part of it behind a low sill too)
+            if (h.sea && kind === Water.FRESH) for (const x of hole) if (z[x] < level) seeds.push(x);
             if (kind !== Water.PAN) {
                 if (z[from] < level) seeds.push(from);
                 else for (let k = adjOffset[from]; k < adjOffset[from + 1]; k++) { const nb = adjList[k]; if (hollow[nb] === id && z[nb] < level) seeds.push(nb); }
@@ -354,8 +353,8 @@ export function hydrology(ctx, F) {
             // (a remnant of the sea keeps its water whatever its size: no gorge could drain it)
             if (!h.sea && water.length && water.length * cellKm2 < keepKm2) { cut(h.deepCell, h.floor); level = h.floor; water.length = 0; }
             if (kind === Water.SALT && !water.length) { kind = Water.PAN; h.pan = true; }
-            if (!h.sea && !water.length) cutPockets(h, id, c);
             for (const x of water) { lakeKind[x] = kind; lakeLevel[x] = level; }
+            if (h.sea ? kind === Water.FRESH : !water.length) cutPockets(h, id, c);
             h.kind = water.length ? kind : h.pan ? Water.PAN : Water.NONE; h.levelNow = level; h.outflow = outflow; h.fullEvap = full; h.outletIn = h.inflow;
             q[c] = outflow; qw[c] = h.seasonW; area[c] = h.area;
             if (!(outflow > 0)) continue;
@@ -383,16 +382,16 @@ export function hydrology(ctx, F) {
         if (rank[c] < 0 || lakeKind[c] === Water.FRESH || lakeKind[c] === Water.SALT) continue;
         const h = hollow[c] >= 0 ? hollows[hollow[c]] : null;
         if (h && h.sea) {
-            // (a pan from its rim; a basin that keeps water — its dry ground above the water is its shore — only where it lies
-            // below the water, cut off from it: a pocket a breach left)
-            const ref = h.pan || !(h.levelNow === h.levelNow) ? h.level : h.levelNow, d = ref - z[c];
+            // (a pan from its hole's rim, sea level; a basin that keeps water — its dry ground above the water is its shore —
+            // only where it lies below the water, cut off from it)
+            const ref = h.pan ? 0 : !(h.levelNow === h.levelNow) ? h.level : h.levelNow, d = ref - z[c];
             if (d > 0) {
                 z[c] = Math.max(z[c], ref - F.panDepthKm * Math.tanh(d / F.panDepthKm));
                 if (h.pan && d > F.panFlatShare * F.panDepthKm) { lakeKind[c] = Water.PAN; lakeLevel[c] = Math.max(z[c], F.seaCutFloorKm) + 1e-3; }
             }
         }
-        // (the shore of a basin that holds water may lie below sea level — the Dead Sea's, the Caspian's; elsewhere none)
-        if (z[c] < 0 && !(h && h.sea && (h.kind === Water.FRESH || h.kind === Water.SALT))) z[c] = F.seaCutFloorKm;
+        // (the shore of a salt sea may lie below sea level — the Dead Sea's, the Caspian's; elsewhere none)
+        if (z[c] < 0 && !(h && h.sea && h.kind === Water.SALT)) z[c] = F.seaCutFloorKm;
     }
     // ── the rivers inside a lake's basin: its cells gathered their water straight into the lake (its balance); where the
     // water does not cover the basin — a lake shrunk to its balance, a basin breached and drained — the rivers still
