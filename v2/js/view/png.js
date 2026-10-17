@@ -11,7 +11,7 @@ const CRC_TABLE = (() => {
     return t;
 })();
 
-function crc32(buf) {
+export function crc32(buf) {
     let crc = 0xFFFFFFFF;
     for (let i = 0; i < buf.length; i++) crc = CRC_TABLE[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
     return (crc ^ 0xFFFFFFFF) >>> 0;
@@ -56,6 +56,32 @@ export async function encodeGrayPng(width, height, data, bits = 16) {
     const z = new Uint8Array(await new Response(cs.readable).arrayBuffer());
     const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', z), chunk('IEND', new Uint8Array(0))];
     return new Blob(parts, { type: 'image/png' });
+}
+
+/**
+ * A colour PNG without a canvas (no browser canvas-size limit): `rgba` is width × height × 4 bytes (an ImageData's data,
+ * say), written as RGB — the alpha dropped, the maps are opaque — each row filtered by its left neighbour.
+ * @returns {Promise<Blob>}
+ */
+export async function encodeRgbPng(width, height, rgba) {
+    const ihdr = new Uint8Array(13), iv = new DataView(ihdr.buffer);
+    iv.setUint32(0, width); iv.setUint32(4, height);
+    ihdr[8] = 8; ihdr[9] = 2;                                      // (8 bits, colour type 2: RGB)
+    const rowLen = 1 + 3 * width, raw = new Uint8Array(height * rowLen);
+    for (let y = 0; y < height; y++) {
+        const o = y * rowLen, row = 4 * y * width;
+        raw[o] = 1;                                                 // (filter: Sub)
+        let pr = 0, pg = 0, pb = 0;
+        for (let x = 0; x < width; x++) {
+            const i = row + 4 * x, r = rgba[i], g = rgba[i + 1], b = rgba[i + 2], q = o + 1 + 3 * x;
+            raw[q] = (r - pr) & 0xFF; raw[q + 1] = (g - pg) & 0xFF; raw[q + 2] = (b - pb) & 0xFF;
+            pr = r; pg = g; pb = b;
+        }
+    }
+    const cs = new CompressionStream('deflate'), writer = cs.writable.getWriter();
+    writer.write(raw); writer.close();
+    const z = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+    return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', z), chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
 }
 
 /** A canvas of the given size (an OffscreenCanvas where there is one). */

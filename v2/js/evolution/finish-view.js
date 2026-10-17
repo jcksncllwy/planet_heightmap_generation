@@ -42,8 +42,78 @@ export class FinishService {
 }
 
 /**
- * Paint a finished picture onto a texture ({width, image}: width × width/2): its heights averaged down (or taken) to
- * the texture's pixels, coloured by `lut` (looks.js heightLutOf — land by its height, the sea by its depth; a hollow
+ * A finished picture at width W (× W/2): its heights (km), its sea (1) and, with `lakes`, its lakes (finish-hydro.js Water
+ * kinds). Narrower than the picture, each pixel is the mean of its block (the sea, a lake, where at least half of it is);
+ * wider — an export enlarged for use downstream — heights by a clamped bicubic (Catmull–Rom, held within the four nearest
+ * values: smooth, with no halos), the sea and the lakes by the weighted majority of the four nearest pixels (coasts and
+ * shores that curve rather than step). `landOnly`: the land's own heights — a block's land pixels; enlarged, the sea as 0 m.
+ */
+export function rasterAt(r, W, { lakes = false, landOnly = false } = {}) {
+    const H = W >> 1, h = new Float32Array(W * H), sea = new Uint8Array(W * H), wat = lakes && r.water ? new Uint8Array(W * H) : null, k = r.w / W;
+    const val = i => (landOnly ? (r.ocean[i] ? 0 : Math.max(0, r.heightM[i])) : r.heightM[i]);
+    if (k >= 1) {
+        const K = Math.round(k);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            let s = 0, n = 0, m = 0, cnt = 0, wk = 0, wn = 0;
+            for (let dy = 0; dy < K; dy++) for (let dx = 0; dx < K; dx++) {
+                const i = (y * K + dy) * r.w + x * K + dx;
+                if (!landOnly || !r.ocean[i]) { s += r.heightM[i]; n++; }
+                m += r.ocean[i]; cnt++;
+                if (wat && r.water[i]) { wk = r.water[i]; wn++; }
+            }
+            const p = y * W + x;
+            h[p] = (n ? s / n : 0) / 1000; sea[p] = 2 * m >= cnt ? 1 : 0;
+            if (wat && 2 * wn >= cnt) wat[p] = wk;
+        }
+        return { h, sea, wat };
+    }
+    // (enlarged: each output pixel's place on the picture, its four columns — round the globe — and four rows, and the
+    // Catmull–Rom weights of each)
+    const cx = new Int32Array(4 * W), wx = new Float32Array(4 * W), fxs = new Float32Array(W);
+    const cy = new Int32Array(4 * H), wy = new Float32Array(4 * H), fys = new Float32Array(H);
+    const weights = (t, out, o) => { const t2 = t * t, t3 = t2 * t; out[o] = 0.5 * (-t3 + 2 * t2 - t); out[o + 1] = 0.5 * (3 * t3 - 5 * t2 + 2); out[o + 2] = 0.5 * (-3 * t3 + 4 * t2 + t); out[o + 3] = 0.5 * (t3 - t2); };
+    for (let x = 0; x < W; x++) {
+        const u = (x + 0.5) * k - 0.5, x0 = Math.floor(u);
+        fxs[x] = u - x0; weights(fxs[x], wx, 4 * x);
+        for (let d = 0; d < 4; d++) cx[4 * x + d] = ((x0 - 1 + d) % r.w + r.w) % r.w;
+    }
+    for (let y = 0; y < H; y++) {
+        const v = (y + 0.5) * k - 0.5, y0 = Math.floor(v);
+        fys[y] = v - y0; weights(fys[y], wy, 4 * y);
+        for (let d = 0; d < 4; d++) cy[4 * y + d] = Math.min(r.h - 1, Math.max(0, y0 - 1 + d)) * r.w;
+    }
+    const kinds = [0, 0, 0, 0];
+    for (let y = 0; y < H; y++) {
+        const ry = 4 * y, fy = fys[y];
+        for (let x = 0; x < W; x++) {
+            const rx = 4 * x, fx = fxs[x];
+            let s = 0;
+            for (let j = 0; j < 4; j++) {
+                const row = cy[ry + j];
+                s += wy[ry + j] * (wx[rx] * val(row + cx[rx]) + wx[rx + 1] * val(row + cx[rx + 1]) + wx[rx + 2] * val(row + cx[rx + 2]) + wx[rx + 3] * val(row + cx[rx + 3]));
+            }
+            // (held within the four nearest: no ringing at a cliff or a coast)
+            const a = cy[ry + 1] + cx[rx + 1], b = cy[ry + 1] + cx[rx + 2], c = cy[ry + 2] + cx[rx + 1], d = cy[ry + 2] + cx[rx + 2];
+            const va = val(a), vb = val(b), vc = val(c), vd = val(d);
+            s = Math.min(Math.max(va, vb, vc, vd), Math.max(Math.min(va, vb, vc, vd), s));
+            const p = y * W + x, wa = (1 - fx) * (1 - fy), wb = fx * (1 - fy), wc = (1 - fx) * fy, wd = fx * fy;
+            h[p] = s / 1000;
+            sea[p] = wa * r.ocean[a] + wb * r.ocean[b] + wc * r.ocean[c] + wd * r.ocean[d] >= 0.5 ? 1 : 0;
+            if (wat) {
+                kinds[0] = kinds[1] = kinds[2] = kinds[3] = 0;
+                kinds[r.water[a]] += wa; kinds[r.water[b]] += wb; kinds[r.water[c]] += wc; kinds[r.water[d]] += wd;
+                let best = 0;
+                for (let q = 1; q < 4; q++) if (kinds[q] > kinds[best]) best = q;
+                wat[p] = best;
+            }
+        }
+    }
+    return { h, sea, wat };
+}
+
+/**
+ * Paint a finished picture onto a texture ({width, image}: width × width/2): its heights averaged down (or enlarged,
+ * rasterAt) to the texture's pixels, coloured by `lut` (looks.js heightLutOf — land by its height, the sea by its depth; a hollow
  * below sea level the ocean does not reach is land) and, for a shaded palette, hillshaded from the same light as the
  * live terrain (terrain-shade.js). `seaImage` (optional, RGBA of any width × width/2): 255 on the sea, for the glint.
  * `colorAt(out, o, x, y, wet, kk, k3, v, lake)` (optional): another colouring per pixel — a climate layer's
@@ -51,16 +121,7 @@ export class FinishService {
  * height v (km) and its lake kind (with `lakes`).
  */
 export function paintFinished(r, t, lut, { seaImage = null, seaWidth = 0, exaggeration = 20, lakes = false, colorAt = null } = {}) {
-    const W = t.width, H = W >> 1, h = new Float32Array(W * H), sea = new Uint8Array(W * H), wat = lakes && r.water ? new Uint8Array(W * H) : null, k = r.w / W;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        let s = 0, m = 0, cnt = 0, wk = 0, wn = 0;
-        if (k >= 1) {
-            const K = Math.round(k);
-            for (let dy = 0; dy < K; dy++) for (let dx = 0; dx < K; dx++) { const i = (y * K + dy) * r.w + x * K + dx; s += r.heightM[i]; m += r.ocean[i]; cnt++; if (wat && r.water[i]) { wk = r.water[i]; wn++; } }
-        } else { const i = Math.min(r.h - 1, Math.floor(y * k)) * r.w + Math.min(r.w - 1, Math.floor(x * k)); s = r.heightM[i]; m = r.ocean[i]; cnt = 1; if (wat && r.water[i]) { wk = r.water[i]; wn = 1; } }
-        h[y * W + x] = s / cnt / 1000; sea[y * W + x] = 2 * m >= cnt ? 1 : 0;
-        if (wat && 2 * wn >= cnt) wat[y * W + x] = wk;
-    }
+    const W = t.width, H = W >> 1, { h, sea, wat } = rasterAt(r, W, { lakes });
     const out = t.image.data, L = lut.rgb, { minM, stepM, zero } = lut, top = lut.n - 1;
     const pxKm = 2 * Math.PI * 6371 / W, Le = -0.5, Ln = 0.5, Lu = Math.SQRT1_2;
     for (let y = 0; y < H; y++) {
@@ -101,6 +162,8 @@ export function paintFinished(r, t, lut, { seaImage = null, seaWidth = 0, exagge
 // discharge, seasonal ones dashed, those dry most of the year dotted; or coloured by their regime ──
 const PAN_RGB = [226, 220, 204];
 const lakeCache = new Map();
+/** A lake's colour as the Terrain view draws it (fresh, salt, a pan) in a palette — for the exports' rivers-and-lakes layer. */
+export const lakeColor = (lut, kind) => (kind === 3 ? PAN_RGB : lakeRgb(lut, kind));
 /** A lake's colour in a palette: its water at ~150 m deep (fresh), turned toward teal (salt). */
 function lakeRgb(lut, kind) {
     const key = `${lut.minM}|${lut.rgb[0]}|${lut.rgb[3 * (lut.zero - 15)]}|${kind}`;

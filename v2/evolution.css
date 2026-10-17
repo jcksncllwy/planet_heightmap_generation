@@ -215,6 +215,7 @@
 .evo-export-progress { margin-top: 12px; font-size: 12px; color: #9ab; }
 .evo-export-progress[hidden] { display: none; }
 .evo-export-progress .evo-finish-bar { margin: 0 0 4px; }
+#exportCard .export-actions { flex-wrap: wrap; }      /* (Cancel, Export, Export All: on a phone they wrap rather than overflow) */
 
 /* how far the history has got */
 .evo-status {

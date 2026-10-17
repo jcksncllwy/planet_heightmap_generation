@@ -119,12 +119,18 @@ out from its lowest point. Drawn on the Terrain view as a flow map (hairlines, s
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
 names a river's discharge, regime and flood months, and a lake's kind). Measured (20K plates, desktop): 640K
 ~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
-**Export** (on the timeline once the moment shown is finished; `js/evolution/export.js`, PNG files by `js/view/png.js`):
+**Export** (on the timeline once the moment shown is finished; `js/evolution/export.js`, PNG files by `js/view/png.js`,
+the ZIP by `js/view/zip.js`): the colour map as the Terrain view shows it (palette, lakes, rivers); the Satellite view
+for the year, January or July (as shown: no grid, no glint); the Köppen climate zones in their own colours, unshaded;
 a 16-bit heightmap with the sea floor on a fixed scale (black −11 km, white +9 km — the same shade the same height on
-every planet), a 16-bit land heightmap (the sea black, land 0…+9 km; re-imports on the Import Heightmap page, which
-reads white as 6 km), a land mask, and the colour map as the Terrain view shows it (palette, lakes, rivers); at the
-finished picture's width (4096, 8192 at 10M, 2048 on phones) or a half or quarter of it, averaged down; named by seed and
-moment (`orogen-evolution-12345-760Myr-heightmap.png`).
+every planet); a 16-bit land heightmap (the sea black, land 0…+9 km; re-imports on the Import Heightmap page, which reads
+white as 6 km); a land mask; and the rivers and lakes alone on a transparent ground (the Terrain view's density and
+colouring). **Export All** saves one of each (Satellite for the year) in one ZIP. Widths from 1024 to 16384 px (4096 on
+phones): up to the finished picture's own (4096, 8192 at 10M, 2048 on phones) drawn from its detail, narrower ones
+averaged down; wider ones enlarged for use downstream (developer, 2026-10-17) — heights by a clamped bicubic, coasts,
+lakes and climate zones by the weighted majority of the nearest pixels, satellite colours blended, then painted at the
+full width (`finish-view.js rasterAt`), so the shading, the coasts and the rivers' lines stay sharp. Named by seed and
+moment (`orogen-evolution-12345-760Myr-heightmap.png`, `orogen-evolution-12345-760Myr.zip`).
 The **Climate** tab gives the moment shown the new climate (`js/climate/`; Köppen, temperature, rain,
 winds, currents — seasonal in the tropics, fading out by 60° — and More…'s layers, with Generate's colours and legends
 from `js/climate-layers.js`; a few seconds, in a worker), kept per moment while the history is open. Its code is
@@ -238,8 +244,8 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
                    palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade),
-                   png (PNG files in the browser: 8/16-bit greyscale by hand, colour through a canvas; the download)
-js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own — the sea's drawn fields come carried across the coast from their own side and smoothly refined — grid.js refineForDrawing — so the sea shows no coastal rims, coarse-cell edges or polar wedges; the Satellite view), finish-view (the Finish step's worker and painting), export (a finished moment's maps as PNG files)
+                   png (PNG files in the browser: 8/16-bit greyscale and RGB by hand, colour with transparency through a canvas; the download), zip (a store-only ZIP for Export All)
+js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own — the sea's drawn fields come carried across the coast from their own side and smoothly refined — grid.js refineForDrawing — so the sea shows no coastal rims, coarse-cell edges or polar wedges; the Satellite view), finish-view (the Finish step's worker and painting), export (a finished moment's maps as PNG files, or all in a ZIP)
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
                    finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),

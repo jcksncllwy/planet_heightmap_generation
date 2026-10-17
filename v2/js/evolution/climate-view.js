@@ -333,6 +333,25 @@ function landPixel(R, W, x, y) {
     }
     return -1;
 }
+/** Enlarged — a texture wider than the climate picture: the land colour (3 per pixel in S) blended from the four nearest
+ *  land pixels by their bilinear weights, into out — false where none of them is land. */
+function landBlend(R, S, W, x, y, out) {
+    const s = R.w / W, u = (x + 0.5) * s - 0.5, v = (y + 0.5) * s - 0.5, x0 = Math.floor(u), y0 = Math.floor(v), fx = u - x0, fy = v - y0;
+    let ws = 0;
+    out[0] = out[1] = out[2] = 0;
+    for (let j = 0; j < 2; j++) {
+        const yy = Math.min(R.h - 1, Math.max(0, y0 + j));
+        for (let i = 0; i < 2; i++) {
+            const p = yy * R.w + ((x0 + i) % R.w + R.w) % R.w;
+            if (!R.koppen[p]) continue;
+            const w = (i ? fx : 1 - fx) * (j ? fy : 1 - fy);
+            out[0] += w * S[3 * p]; out[1] += w * S[3 * p + 1]; out[2] += w * S[3 * p + 2]; ws += w;
+        }
+    }
+    if (!(ws > 0)) return false;
+    out[0] /= ws; out[1] /= ws; out[2] /= ws;
+    return true;
+}
 /** The live layers' shading (0.45 + 0.55 × the light) from the finished picture's light kk (0.35…1). */
 const shadeK = kk => 0.45 + 0.55 * (kk - 0.35) / 0.65;
 
@@ -424,7 +443,7 @@ function satelliteColor(season, C, W, fin = null) {
     // heights are at hand; else the realistic picture itself)
     const styled = !!fin?.raster?.heightM;
     const S = styled ? styledSatellite(R, season, fin.raster.heightM, fin.raster.w, fin.rivers) : R.sat[season];
-    const shadeAmp = styled ? SAT_SHADE : 1;
+    const shadeAmp = styled ? SAT_SHADE : 1, enlarged = R.w < W, blend = [0, 0, 0];
     return (out, o, x, y, wet, kk, k3, v, lake) => {
         // (the land's relief shading deeper than the other layers': the mountains stand out, as on a satellite image)
         const k = wet ? shadeK(kk) : 1 + shadeAmp * (0.37 + 0.68 * (kk - 0.35) / 0.65 - 1);      // (0.28–1.08: "the hillshading is too strong")
@@ -456,6 +475,8 @@ function satelliteColor(season, C, W, fin = null) {
             return;
         }
         if (i < 0) { out[o] = out[o + 1] = out[o + 2] = 90; out[o + 3] = 255; return; }
+        // (enlarged: blended from the nearest land pixels, not blocks of one colour)
+        if (enlarged && landBlend(R, S, W, x, y, blend)) { out[o] = Math.min(255, blend[0] * k); out[o + 1] = Math.min(255, blend[1] * k); out[o + 2] = Math.min(255, blend[2] * k); out[o + 3] = 255; return; }
         out[o] = Math.min(255, S[3 * i] * k); out[o + 1] = Math.min(255, S[3 * i + 1] * k); out[o + 2] = Math.min(255, S[3 * i + 2] * k); out[o + 3] = 255;
     };
 }

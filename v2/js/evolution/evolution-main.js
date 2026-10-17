@@ -24,7 +24,7 @@ import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, 
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
-import { EXPORT_TYPES, exportWidths, exportFileName, exportMap } from './export.js';
+import { exportTypes, exportWidths, exportFileName, exportMap, exportAll, EXPORT_MAX, EXPORT_MAX_TOUCH } from './export.js';
 import { downloadBlob } from '../view/png.js';
 
 setDelaunator(Delaunator);
@@ -656,34 +656,44 @@ function mainAction() {
 }
 
 // ── the export (plans/V2_FULL_PLANET_PLAN.md C): the finished moment shown, as map files — V1's dialog ──
-$('exportType').innerHTML = EXPORT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
 let exporting = null;                   // (the moment the dialog is open for: { frame, fin, seed, busy })
 function openExport() {
     const frame = painted, fin = frame && B?.finishes.get(frame);
     if (!fin) return;
     setPlaying(false);
     exporting = { frame, fin, seed: B.seed, busy: false };
-    $('exportWidth').innerHTML = exportWidths(fin.raster).map(w => `<option value="${w}">${w}</option>`).join('');
+    // (the maps this moment has — the climate's where it has its climate — keeping the type chosen last where it can)
+    const was = $('exportType').value;
+    $('exportType').innerHTML = exportTypes(fin).map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+    if ([...$('exportType').options].some(o => o.value === was)) $('exportType').value = was;
+    // (every width up to the widest — its own chosen at first; wider ones enlarged from it, smoothly: export.js)
+    const wasW = Number($('exportWidth').value);
+    $('exportWidth').innerHTML = exportWidths(fin.raster, IS_TOUCH ? EXPORT_MAX_TOUCH : EXPORT_MAX)
+        .map(({ w, enlarged }) => `<option value="${w}"${w === fin.raster.w ? ' selected' : ''}>${w}${enlarged ? ` · enlarged ×${w / fin.raster.w}` : w === fin.raster.w ? ' · as detailed' : ''}</option>`).join('');
+    if ([...$('exportWidth').options].some(o => Number(o.value) === wasW)) $('exportWidth').value = String(wasW);
     $('exportMoment').textContent = `· ${frame.time.toFixed(0)} Myr`;
     exportDims();
     $('exportProgress').hidden = true;
-    $('exportGo').disabled = false;
+    $('exportGo').disabled = false; $('exportAllGo').disabled = false;
     $('exportOverlay').classList.remove('hidden');
 }
 function exportDims() { const w = Number($('exportWidth').value); $('exportDims').textContent = `${w} × ${w >> 1}`; }
 function closeExport() { $('exportOverlay').classList.add('hidden'); if (!exporting?.busy) exporting = null; }
-async function runExport() {
+async function runExport(all = false) {
     const ex = exporting;
     if (!ex || ex.busy) return;
-    ex.busy = true; $('exportGo').disabled = true;
+    ex.busy = true; $('exportGo').disabled = true; $('exportAllGo').disabled = true;
     const type = $('exportType').value, W = Number($('exportWidth').value), bar = $('exportProgress'), fill = bar.querySelector('i'), label = bar.querySelector('span');
     const onProgress = (p, text) => { fill.style.width = `${(100 * p).toFixed(0)}%`; label.textContent = text; };
     bar.hidden = false; onProgress(0, 'Starting…');
     try {
-        // (the colour map as the Terrain view shows it: the palette chosen, Rivers & Lakes as set)
+        // (the colour map as the Terrain view shows it: the palette chosen, Rivers & Lakes as set; the rivers-and-lakes
+        // layer with the same density and colouring)
         const look = { lut: heightLutOf(view.palette), exaggeration: SHADING.exaggeration, water: view.water, riverQ: view.riverQ, byRegime: view.byRegime };
-        const t0 = performance.now(), blob = await exportMap(type, ex.fin, W, look, onProgress);
-        const name = exportFileName(ex.seed, ex.frame.time, type);
+        const t0 = performance.now();
+        const blob = all ? await exportAll(ex.fin, W, look, t => exportFileName(ex.seed, ex.frame.time, t), onProgress)
+            : await exportMap(type, ex.fin, W, look, onProgress);
+        const name = all ? exportFileName(ex.seed, ex.frame.time, null, 'zip') : exportFileName(ex.seed, ex.frame.time, type);
         downloadBlob(blob, name);
         onProgress(1, `Saved ${name} · ${(blob.size / 2 ** 20).toFixed(1)} MB`);
         console.info(`[evolution] export ${name}: ${W} × ${W >> 1}, ${(blob.size / 2 ** 20).toFixed(1)} MB in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
@@ -692,11 +702,12 @@ async function runExport() {
         console.error(err);
     } finally {
         ex.busy = false;
-        if (exporting === ex) $('exportGo').disabled = false; else if (!exporting) exporting = null;
+        if (exporting === ex) { $('exportGo').disabled = false; $('exportAllGo').disabled = false; } else if (!exporting) exporting = null;
     }
 }
 $('exportWidth').addEventListener('change', exportDims);
 $('exportGo').addEventListener('click', () => runExport());
+$('exportAllGo').addEventListener('click', () => runExport(true));
 $('exportCancel').addEventListener('click', closeExport);
 $('exportClose').addEventListener('click', closeExport);
 $('exportOverlay').addEventListener('click', e => { if (e.target === $('exportOverlay')) closeExport(); });
