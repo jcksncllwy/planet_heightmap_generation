@@ -38,6 +38,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     const { mesh, config, time } = world, { xyz, numCells, index, adjOffset, adjList, edgeKm } = mesh;
     const U = upper.crust, L = lower.crust;
     const landBefore = upper.stats.continentalCells + lower.stats.continentalCells;
+    const hue = (lower.stats.cells > upper.stats.cells ? lower : upper).hue;     // (the welded plate is drawn in the larger one's colour)
 
     // ── the lower plate seen from the upper plate's frame ──
     const fromL = new Int32Array(numCells).fill(-1), p = [0, 0, 0];
@@ -183,6 +184,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     upper.bornOfRift = false;
                                           // or it would come apart the moment it welded (developer)
     lower.alive = false;
+    upper.hue = hue;
     lower.crust = new CrustRaster(numCells);
     lower.omega = [0, 0, 0];
     lower.dynamics = null;

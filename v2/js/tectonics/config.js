@@ -52,6 +52,11 @@ export const TECTONICS = {
     rimTrenchCoverage: 0.85,    // share of the rim that starts as an active trench (rest = passive margin)
     initialOceanAgeMyr: 150,    // pre-history ocean floor: uniformly old, soon overwritten
     initialLandAgeMyr: 2000,    // continental crust is ancient at the start of recorded history
+    startSutureBeltKm: 350,     // the start supercontinent's sutures carry old ranges (init/start-world.js): this wide…
+    startSutureWorkKm: 600,     // …built by this much convergence (0: none)…
+    startSutureAgeMyr: 300,     // …this long before the history starts…
+    startSutureKeep: 0.45,      // …and worn down to this share of a fresh range's relief…
+    startSutureNoiseKm: 1600,   // …along about half the suture network: long stretches this size come and go
 
     // ── Boundaries & crust bookkeeping (step/boundaries.js, step/resolve.js) ──
     boundaryActiveCmYr: 0.3,    // relative motion below this counts as a locked / welded contact
@@ -91,6 +96,8 @@ export const TECTONICS = {
     maxSpeedOceanic: 25,
     maxSpeedContinental: 10,
     continentalPlateShare: 0.15, // a plate with more than this share of land is held to the continental limit
+    continentalSoftCmYr: 7,     // …and its speed saturates smoothly: v → this × tanh(v ÷ this) (0: off) — a third slower near the limit
+    oceanicSoftCmYr: 12,        // an oceanic plate's likewise (20 cm/yr → 11; Earth's fastest, the Pacific, ~10)
 
     // ── Collision & orogeny (Phase 5a). Records only: heights come later. ──
     // A belt reaches inland by an amount that grows with the convergence it has absorbed (rate × time) and
@@ -279,6 +286,18 @@ export const TECTONICS = {
     oceanPlateReachKm: 5000,          // how much of the passive ocean a newborn oceanic plate takes with it
     oceanPlateMinAreaKm2: 8e6,        // below this there is not enough old ocean to be worth a plate of its own
     subductionInitSlabKm: 150,        // the slab a new trench starts with: it pulls weakly until it has swallowed more
+    marginFounderRatePerMyr: 0.02,    // the same, for a margin INSIDE a plate (its old ocean breaks away as a plate of its own,
+                                      // founderWithinPlates): without it a plate that holds its whole ocean never breaks up again
+    marginFounderMinShare: 0.25,      // …only in a plate that holds this much of the planet (it breaks up giant plates)
+
+    // ── Oceans that break into plates (realism pass, phase 3: step/ocean-plates.js) ──
+    backgroundEndMyr: 150,            // from then on, each region of the passive pre-history ocean big enough becomes a plate
+    oceanSplitAreaKm2: 40e6,          // a plate with more ocean than this may break along a new ridge (the Pacific: ~100 Mkm²)…
+    oceanSplitRatePerMyr: 0.03,       // …a chance per Myr this × its excess (ocean ÷ oceanSplitAreaKm2 − 1)…
+    oceanSplitAreaCap: 2,             // …counted up to this…
+    oceanSplitMinAgeMyr: 60,          // …not within this of its birth, a weld, a rift or its last split…
+    oceanSplitLandKm: 800,            // …on a line through its open ocean: over this far from its land
+    oceanPlateCaptureKm2: 2e6,        // an ocean plate subducted down to less than this is captured by its neighbour (a microplate)
 
 
     // ── Terranes & plate integrity (step/collision.js, ops/accrete-terrane.js, ops/tidy-plates.js) ──
@@ -415,6 +434,10 @@ export const MECHANISMS = Object.freeze({
     rifts:          { riftRatePerMyr: 0 },                                   // continental rifting (step/rifting.js)
     plumes:         { plumeRatePerMyr: 0, hotspotInitialCount: 0 },          // mantle plumes, LIPs and tracks (step/hotspots.js)
     subductionInit: { subductionInitRatePerMyr: 0 },                         // passive margins foundering (step/subduction-init.js)
+    marginFounder:  { marginFounderRatePerMyr: 0 },                          // margins inside a plate foundering: the ocean breaks away (step/subduction-init.js)
+    backgroundRetires: { backgroundEndMyr: Infinity },                       // the pre-history ocean becomes plates (step/ocean-plates.js)
+    oceanSplits:    { oceanSplitRatePerMyr: 0 },                             // big ocean plates split along a new ridge (step/ocean-plates.js)
+    microplates:    { oceanPlateCaptureKm2: 0 },                             // small ocean plates captured by a neighbour (step/ocean-plates.js)
     flatSlabs:      { flatSlabMaxAgeMyr: 0 },                                // flat slabs → Laramide belts (step/boundaries.js)
     backArcs:       { backArcRatePerMyr: 0 },                                // slab rollback → back-arc seas (step/backarc.js)
     marginIsles:    { marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 },  // fore-arc islands (step/margin-isles.js)

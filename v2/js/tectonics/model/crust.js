@@ -50,7 +50,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'volcType', 'volcAt', 'volcKm', 'volcSource']);
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -100,6 +100,7 @@ export class CrustRaster {
         this.volcAt = new Float32Array(numCells);      // sim time of the last eruption here (a track's age progression lives in this)
         this.volcKm = new Float32Array(numCells);      // thickness of the volcanic pile (km): flood basalt, or a volcano's edifice
         this.volcSource = new Uint16Array(numCells);   // the plume that built it: hotspot id + 1 (0 = none)
+        this.fzU = new Float32Array(numCells);         // where along its ridge ocean floor formed, in segment lengths (model/segments.js; records only: fracture zones)
         this.count = 0;                                // number of masked cells
         this.fields = CELL_FIELDS.map(name => this[name]);
     }

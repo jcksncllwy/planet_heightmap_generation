@@ -16,6 +16,7 @@ import { deriveRecords, kindType, kindSide } from './records.js';
 import { beltProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
 import { buildStripeKernels, stripeAt, crossAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
+import { SEGMENT_KM } from '../tectonics/model/segments.js';
 import { buildVolcanoes, coneAt, volcanoNoise } from './volcanoes.js';
 import { cratonCharacter } from './cratons.js';
 import { BeltSide } from '../tectonics/model/crust.js';
@@ -287,7 +288,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const noisy = (c, w) => { const r = cell[c]; return w * Math.exp(cfg.blendNoise * noise.fbm(x0 * blendF + (r % 101) * 1.37, y0 * blendF + (r % 89) * 2.11, z0 * blendF + (r % 83) * 0.73, 3, 0.5) * 1.6); };
     let x0 = 0, y0 = 0, z0 = 0;
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm } = rec;
+    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, fractureU } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -627,6 +628,19 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (tk < 450) h -= (w0 * trenchDepthKm[c0] + w1 * trenchDepthKm[c1] + w2 * trenchDepthKm[c2]) * Math.exp(-((tk / cfg.trenchHalfKm) ** 2)) * smooth(0, 40, -coast);
             const rk = w0 * riseKm[c0] + w1 * riseKm[c1] + w2 * riseKm[c2];
             if (rk < 450) h += cfg.riseKm * Math.exp(-(((rk - cfg.riseAtKm) / 70) ** 2));
+            // a fracture zone's trough, where the fracture-zone coordinate (records.js) passes a whole number — read across
+            // the triangle from its ocean corners; not where they disagree by a segment or more (a pole that jumped, two
+            // plates' floor) — where the mesh can draw it
+            if (fractureU && ow > 0) {
+                const u0 = fractureU[c0], u1 = fractureU[c1], u2 = fractureU[c2];
+                const has0 = !land[c0] && u0 !== 0, has1 = !land[c1] && u1 !== 0, has2 = !land[c2] && u2 !== 0;
+                const uw = (has0 ? w0 : 0) + (has1 ? w1 : 0) + (has2 ? w2 : 0);
+                const lo = Math.min(has0 ? u0 : Infinity, has1 ? u1 : Infinity, has2 ? u2 : Infinity), hi = Math.max(has0 ? u0 : -Infinity, has1 ? u1 : -Infinity, has2 ? u2 : -Infinity);
+                if (uw > 0.5 && hi - lo < 0.8) {
+                    const u = ((has0 ? w0 * u0 : 0) + (has1 ? w1 * u1 : 0) + (has2 ? w2 * u2 : 0)) / uw, d = Math.abs(u - Math.round(u)) * SEGMENT_KM;
+                    if (d < 4 * cfg.fractureHalfKm) h -= cfg.fractureTroughKm * fade(4 * cfg.fractureHalfKm) * Math.exp(-((d / cfg.fractureHalfKm) ** 2)) * smooth(0, 150, -coast);
+                }
+            }
             platform = h;
         }
         const cone = coneAt(V, cn, px, py, pz, h);

@@ -17,6 +17,9 @@ export class Plate {
         this.alive = true;
         this.born = born;
         this.bornOfRift = false;                  // born as a piece of a rift (its tenure shrinks over hot mantle: step/rifting.js)
+        // the colour it is drawn in (view/palettes.js plateHue): its own id at first, the larger partner's after a weld, the
+        // larger half's after a rift — so a giant plate keeps its colour when it swallows a small one (display only)
+        this.hue = id;
         this.isBackground = false;                // passive pre-history ocean: never drives, never grows
         this.quat = quatIdentity();               // plate frame → world frame
         this.mat = quatToMat3(this.quat, new Float64Array(9));   // same rotation, row-major 3×3
@@ -42,6 +45,9 @@ export class Plate {
         this.marginIsleTerrane = null;            // terrane id given to its fore-arc islands, once it has any (step/margin-isles.js)
         // Rifting (ops/rift.js, step/forces.js)
         this.riftPartner = -1;                    // the plate this one was rifted from / into, if any
+        this.oceanSplitWith = -1;                 // …the same, when a new ridge split an ocean plate (step/ocean-plates.js): old floor
+                                                  // along the line counts as a rifted margin for the push
+        this.splitAt = -Infinity;                 // when that last happened
         this.riftPushDir = null;                  // plate-frame unit vector: straight away from that partner, fixed at the split
         // Slabs and margins (step/boundaries.js, step/backarc.js)
         this.flatSlab = false;                    // the slab under this plate's trench is flat right now

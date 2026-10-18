@@ -201,7 +201,9 @@ js/tectonics/
                                     continents allows: a Mariana at sea, a Japan near land), margin-isles
                                     (fore-arc islands on accretionary margins, coast retreat on erosive ones),
                                     rifting (when a continent rifts), backarc (slab rollback, back-arc seas),
-                                    subduction-init (when a passive margin founders)
+                                    subduction-init (when a passive margin founders — between two plates, or inside a giant
+                                    one: its old ocean then breaks away as a plate of its own), ocean-plates (the pre-history
+                                    ocean becomes plates; big ocean plates split along a new ridge)
                      heights:       the evolving height records (root, uplift, crest size, volcano wear) and
                                     their erosion by latitude — records only, the history never reads them
                      rivers:        the history's rivers: drained every few Myr, cutting as they go (gorges
@@ -275,7 +277,7 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    → **events**, in this order — `updateHotspots` (first: it only stamps records) · `trackCycle` (the supercontinent
    cycle: counts the landmasses, moves the mantle's upwelling and downwelling; reads only) · `trackCollisions` · `growWings`
    · `buildArcs` · `collapseArcs` · `growMarginIsles` · `riftContinents` · `openBackArcs` · `initiateSubduction` ·
-   `closeRemnantSeas` · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
+   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock) · `closeRemnantSeas` · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
    `tidyPlates` → if any changed crust: refresh, `resolve` and classify again → `drive` (next velocities: a scene's
    prescribed motion, or `updatePlateMotion`) → `steerBackArcStrips`. `evolveHeights` (erosion of the height records,
    below) runs before `drive`. Steps are adaptive (a plate moves at most a
@@ -559,6 +561,28 @@ Detailed moments are still painted on canvases (their pictures come from the Fin
 is painted as before (`?gpu=0` forces it, for comparison). The map view is the same texture drawn flat by the globe's
 renderer, letterboxed under the `#mapCanvas` frame. Zoom is V1's (`app/globe-view.js`): a wheel's notch is 14 % nearer
 (OrbitControls' own was 5 %, and stepped), a pinch the fingers' ratio, and the camera eases to it.
+
+## The realism pass (2026-10-18; plans/V2_REALISM_PASS_PLAN.md)
+
+Twelve recorded 1200 Myr histories (3 seeds × 20K–160K) showed worlds that froze into one plate, oceans twice Earth's age,
+explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a flat start world. In order:
+- **Plate colours** follow the larger partner through welds and rifts (`Plate.hue`; display only). **Erosive margins** retreat
+  along the trench's length, not per coast cell (a finer mesh draws a longer coast: it lost twice the land at 160K).
+- **Living plates.** An old passive margin inside a giant plate (one holding `marginFounderMinShare` of the planet) founders
+  like one between plates: its ocean breaks away as a plate of its own (`founderWithinPlates`). From `backgroundEndMyr` the
+  pre-history ocean becomes plates; a plate with more than `oceanSplitAreaKm2` of ocean may split along a new ridge, its
+  halves pushed apart as a rift's (`step/ocean-plates.js`); an ocean plate subducted below `oceanPlateCaptureKm2` is captured
+  by its neighbour. Plates rise from ~6 to ~10–12, the largest falls from up to 100 % of the planet to about half.
+- **Speeds saturate** smoothly (`continentalSoftCmYr`, `oceanicSoftCmYr`: v → S·tanh(v/S)) and the step follows the plates'
+  fastest surface speeds, not their |ω| (a speck of a plate could spin at any rate). Breakups drift rather than fly apart;
+  a 600 Myr history at 40K takes fewer steps than before (506 against 561), each a little dearer with more plates.
+- **Ocean plateaus** are one smooth rise (`lipSeaSmoothKm`). **Ridge segments and fracture zones:** each cell of new floor
+  records its distance from the two plates' spreading pole (`Crust.fzU`, `model/segments.js`; averaged rotations): the
+  segments' floor reads a little older or younger and the ridge and isochrons step; troughs mark where it passes a whole
+  number of segment lengths. **Open-ocean arcs** stand deeper (`arcOceanMatureKm` −1.5 km): a ridge its volcanoes break.
+- **Old ranges in the start supercontinent:** worn Ural-type belts along about half its suture network (`startSuture*`),
+  records only — the plate history is unchanged (hash).
+Everything is to be tuned together at the end (developer); the measured impact of each step is in the plan.
 
 ## Conventions
 

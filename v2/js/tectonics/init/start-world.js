@@ -8,6 +8,7 @@ import { TECTONICS } from '../config.js';
 import { TectonicWorld, EventKind } from '../model/world.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { tangentBasis } from '../../core/sphere-geom.js';
+import { spreadBelt, OrogenyType } from '../step/orogeny.js';
 import { placeCratons } from './cratons.js';
 import { shapeLandmass } from './landmass.js';
 import { plateOutlineWithApron, chooseActiveRim } from './rim-trench.js';
@@ -67,6 +68,34 @@ function withLayout(simMesh, seed, cfg, attempt, got) {
 }
 
 /** The rest of the start world, once its layout is chosen. */
+/**
+ * The supercontinent was assembled by collisions, long before the history begins: its sutures carry old, worn ranges
+ * (plans/V2_REALISM_PASS_PLAN.md, phase 8 — the recordings found the start world 90 % below ~750 m, its opening frames
+ * flat). An old Ural-type belt along every suture, recorded startSutureAgeMyr before the start, its relief worn down to
+ * startSutureKeep of a fresh belt's — the Appalachians and Caledonides of this Pangaea, where its rifts (which follow old
+ * sutures) open. Not along every suture: their network rings every craton (a honeycomb), so a broad noise of its own
+ * (startSutureNoiseKm; no seeded stream drawn) sets each stretch's strength — about half the network carries ranges, in
+ * long broken stretches of varying height and width. Records only: belts and heights; the history never reads them.
+ */
+function oldSutureRanges(world, continent) {
+    const cfg = world.config, crust = continent.crust;
+    if (!(cfg.startSutureWorkKm > 0)) return;
+    const sources = [];
+    for (let c = 0; c < crust.mask.length; c++) if (crust.mask[c] && (crust.flags[c] & CrustFlag.SUTURE) && crust.type[c] !== CrustType.OCEAN) sources.push(c);
+    if (!sources.length) return;
+    const before = { root: crust.rootKm.slice(), uplift: crust.upliftKm.slice(), rugged: crust.rugged.slice() };
+    const { xyz } = world.mesh, noise = new SimplexNoise((world.seed ^ 0x5a7e) >>> 0), f = 6371 / cfg.startSutureNoiseKm;
+    const strength = sources.map(c => { const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2]; const v = noise.noise3D(x * f, y * f, z * f) + 0.4 * noise.noise3D(x * 2.7 * f + 3.3, y * 2.7 * f + 8.1, z * 2.7 * f + 1.9); return Math.max(0, Math.min(1, (v + 0.05) / 0.6)); });
+    spreadBelt(continent, world.mesh, sources, { type: OrogenyType.URAL, time: -cfg.startSutureAgeMyr,
+        works: strength.map(s => cfg.startSutureWorkKm * s), widths: strength.map(s => cfg.startSutureBeltKm * (0.55 + 0.45 * s)) }, cfg);
+    const keep = cfg.startSutureKeep;
+    for (let c = 0; c < crust.mask.length; c++) {
+        crust.rootKm[c] = before.root[c] + (crust.rootKm[c] - before.root[c]) * keep;
+        crust.upliftKm[c] = before.uplift[c] + (crust.upliftKm[c] - before.uplift[c]) * keep;
+        crust.rugged[c] = before.rugged[c] + (crust.rugged[c] - before.rugged[c]) * keep;
+    }
+}
+
 function assemble(world, simMesh, seed, found) {
     const cfg = world.config;
     if (!found) throw new Error(`These settings do not fit on the planet for seed ${seed}: the cratons, the required gaps between them and their margins need more room than the requested continental area allows.`);
@@ -92,6 +121,7 @@ function assemble(world, simMesh, seed, found) {
             if (land.suture[c]) continent.crust.flags[c] |= CrustFlag.SUTURE;
         }
     }
+    oldSutureRanges(world, continent);
     for (const p of world.plates) p.refreshExtent(simMesh.xyz);
     world.terraneLetters = Object.fromEntries(layout.cratons.map(c => [c.id, c.letter]));
     continent.born = -cfg.riftTenureMyr;                  // assembled in prehistory: it may rift from the first step (developer: within ~30 Myr)

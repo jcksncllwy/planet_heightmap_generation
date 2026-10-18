@@ -352,12 +352,37 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     }
 
     // ── the sea floor: half-space cooling depth; oceanic plateaus; abyssal-hill wavelength from the age gradient ──
-    const depthKm = new Float32Array(n), ageMyr = new Float32Array(n), fabricKm = new Float32Array(n);
+    // Ridge segments (plans/V2_REALISM_PASS_PLAN.md, phase 6; tectonics/model/segments.js): each segment's floor (the whole
+    // part of its fracture-zone coordinate) reads as a little older or younger (± fractureOffsetMyr, fixed per segment), so
+    // the ridge crest and the isochrons step where two segments meet — transform faults at the ridge, the scarps of fracture
+    // zones across the ocean, shrinking with age as the two sides' depths converge (a fracture zone joins floor of two ages)
+    const depthKm = new Float32Array(n), ageMyr = new Float32Array(n), fabricKm = new Float32Array(n), fzU = frame.fzU;
+    const segmentShift = u => { const k = Math.floor(u), h = (Math.imul(k | 0, 2654435761) >>> 0) / 4294967296; return 2 * h - 1; };
     for (let w = 0; w < n; w++) {
         if (land[w]) continue;
-        const age = frame.owner[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
+        const raw = frame.owner[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
+        const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
-        depthKm[w] = seaDepthKm(age) - (frame.volcType[w] === VolcanicType.LIP ? cfg.lipSeaKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]) : 0);
+        depthKm[w] = seaDepthKm(age);
+    }
+    // oceanic plateaus (a flood basalt on the sea floor): read from the world view, where at any moment ~15 % of a moving
+    // plate's cells show a neighbour's crust, then smoothed over lipSeaSmoothKm and never lowered inside — one broad rise
+    // with gentle flanks, not pocked by those cells and the province's ragged edge (plans/V2_REALISM_PASS_PLAN.md, phase 4:
+    // the recordings showed moth-eaten plateaus, and a rash of shallow specks wherever one moved)
+    {
+        const lift = new Float32Array(n);
+        for (let w = 0; w < n; w++) if (!land[w] && frame.volcType[w] === VolcanicType.LIP) lift[w] = cfg.lipSeaKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]);
+        let a = lift.slice(), b = new Float32Array(n);
+        for (let pass = 0, passes = Math.max(1, Math.round(cfg.lipSeaSmoothKm / simMesh.edgeKm)); pass < passes; pass++) {
+            for (let w = 0; w < n; w++) {
+                if (land[w]) { b[w] = 0; continue; }
+                let s = a[w], k = 1;
+                for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const nb = adjList[j]; if (!land[nb]) { s += a[nb]; k++; } }
+                b[w] = s / k;
+            }
+            [a, b] = [b, a];
+        }
+        for (let w = 0; w < n; w++) if (!land[w]) depthKm[w] -= Math.max(lift[w], a[w]);
     }
     const grad = [0, 0, 0];
     for (let w = 0; w < n; w++) {
@@ -366,6 +391,25 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         fabricKm[w] = g > 1e-4 ? cfg.fabricPeriodMyr / g : 1e4;
     }
 
+    // the fracture zones themselves are drawn where the coordinate, read across the terrain mesh, passes a whole number
+    // (synthesize.js): the ocean's coordinates, handed on
+    // (smoothed over fractureSmoothKm within each plate's floor: the spreading poles drift a few degrees between rows, and
+    // the strips show through the noise that leaves)
+    let fractureU = new Float32Array(n);
+    if (fzU) {
+        for (let w = 0; w < n; w++) if (!land[w] && frame.owner[w] >= 0) fractureU[w] = fzU[w];
+        let b = new Float32Array(n);
+        for (let pass = 0, passes = Math.max(1, Math.round(cfg.fractureSmoothKm / simMesh.edgeKm)); pass < passes; pass++) {
+            for (let w = 0; w < n; w++) {
+                if (!fractureU[w]) { b[w] = 0; continue; }
+                let s = fractureU[w], k = 1;
+                for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const nb = adjList[j]; if (fractureU[nb] && frame.owner[nb] === frame.owner[w] && Math.abs(fractureU[nb] - fractureU[w]) < 2) { s += fractureU[nb]; k++; } }
+                b[w] = s / k;
+            }
+            [fractureU, b] = [b, fractureU];
+        }
+    }
+
     // ── live trenches: the axis is the subducting plate's edge; depth by the age of the slab going down ──
     const trenchDist = new Float32Array(n).fill(Infinity), riseDist = new Float32Array(n).fill(Infinity), trenchDepthKm = new Float32Array(n);
     for (let w = 0; w < n; w++) {
@@ -481,7 +525,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         }
     }
 
-    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm,
+    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
 }
 

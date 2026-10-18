@@ -83,7 +83,8 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     const kept = [], arcs = [];
-    let calm = null, lowland = null, land0 = null, land1200 = null, cont0 = 0, cont1200 = 0;
+    let calm = null, lowland = null, land0 = null, land1200 = null, cont0 = 0, cont1200 = 0, largestPlate = 0;
+    const plateCounts = [];
     const started = performance.now();
     // (each step: the longest any piece big enough to rift has gone without a rift, a weld, or growing that big — step/rifting.js)
     let oldestPiece = 0;
@@ -99,6 +100,14 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         // counts nothing, joined by any land)
         kept.push({ time: f.time, share: f.cycle ? f.cycle.share : total ? Math.max(...sizes) / total : 0, phase: f.cycle?.phase, cont, ocean });
         if (f.time % 200 === 0 && f.time > 0) arcs.push(arcsOf(f));
+        // (the plates as the world view holds them: the largest one's share, and how many hold ≥ 1 % of the planet — once
+        // the start world's supercontinent, one plate with its ocean by design, has broken up)
+        if (f.time >= 100) {
+            const per = new Map();
+            for (let w = 0; w < n; w++) { const o = f.owner[w]; if (o >= 0 && !f.plates[o]?.isBackground) per.set(o, (per.get(o) ?? 0) + 1); }
+            largestPlate = Math.max(largestPlate, Math.max(0, ...per.values()) / n);
+            plateCounts.push([...per.values()].filter(c => c >= 0.01 * n).length);
+        }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
         if (terrain && (f.time === 0 || Math.abs(f.time - scene.maxMyr) < 1e-6)) { const share = hypsometry(synthesizeTerrain(f, mesh, tm, { seed }).heightKm).landShare; if (f.time === 0) land0 = share; else land1200 = share; }
@@ -129,6 +138,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, worldGap, pieceAge, oldestPiece, early, lowest, clump, reassembled, againAt,
         fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, land0, land1200, contRatio: cont1200 / Math.max(1, cont0),
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
+        largestPlate, platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
 }
 
@@ -170,6 +180,15 @@ check('about a third to 40 % of the land is lowland before the rivers carve it (
 check('the land holds over the history: continental crust at 1200 Myr within ±20 % of the start, the land above sea level not shrinking (≥ −1 point) and growing at most 6 points',
     rows.every(r => Math.abs(r.contRatio - 1) <= 0.2 && r.land1200 - r.land0 >= -0.01 && r.land1200 - r.land0 <= 0.06),
     txt(r => `continental crust ×${r.contRatio.toFixed(2)}, land ${(100 * r.land0).toFixed(1)} → ${(100 * r.land1200).toFixed(1)} %`) + ' (before: ×0.74–0.84, 27.9 → 25.0 % on seed 12345)');
+
+section('living plates (plans/V2_REALISM_PASS_PLAN.md, phase 2)');
+// (the recordings, 2026-10-18: with no boundary to found a trench on, a plate that held its continents and its whole ocean
+// never broke up again — one plate held 79–100 % of the planet at some point in 5 of 6 histories, and a world froze as a
+// single plate for 200 Myr; old margins inside a plate now founder too: step/subduction-init.js founderWithinPlates)
+check('no plate holds most of the planet: the largest at most 60 % of it, at every moment from 100 Myr on',
+    rows.every(r => r.largestPlate <= 0.6), txt(r => `largest ${(100 * r.largestPlate).toFixed(0)} %`) + ' (before: up to 100 %)');
+check('…and the world keeps several plates: at least 6 holding ≥ 1 % of the planet on average, never fewer than 3',
+    rows.every(r => r.platesMean >= 6 && r.platesMin >= 3), txt(r => `${r.platesMean.toFixed(1)} on average, at least ${r.platesMin}`));
 
 section('the switches');
 {

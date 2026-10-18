@@ -39,7 +39,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
     const simMs = performance.now() - started;
 
     const movers = frames[0].plates.filter(p => !p.isBackground);
-    const series = movers.map(p => ({ name: p.name, color: plateCss(p.id), points: frames.map(f => [f.time, f.plates[p.id].speedCmYr]) }));
+    const series = movers.map(p => ({ name: p.name, color: plateCss(p.hue ?? p.id), points: frames.map(f => [f.time, f.plates[p.id].speedCmYr]) }));
     let forceScale = 1e-9;
     for (const f of frames) for (const p of f.plates) for (const force of p.dynamics?.forces ?? []) forceScale = Math.max(forceScale, Math.hypot(...force.vector));
 

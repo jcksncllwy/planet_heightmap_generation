@@ -22,6 +22,8 @@ export class TectonicWorld {
         // must not re-roll the others. A new mechanism gets a new stream (README: "Adding a mechanism").
         this.rng = makeRng((seed ^ 0x5eed) >>> 0);                   // rifting: when a continent rifts, and along which path (step/rifting.js)
         this.rngSubduction = makeRng((seed ^ 0x51ab) >>> 0);         // which passive margins founder (step/subduction-init.js)
+        this.rngMarginFounder = makeRng((seed ^ 0xf0d2) >>> 0);      // which margins inside a plate founder (step/subduction-init.js founderWithinPlates)
+        this.rngOceanSplit = makeRng((seed ^ 0x0c5a) >>> 0);         // which big ocean plates split along a new ridge (step/ocean-plates.js)
         this.rngHotspot = makeRng((seed ^ 0x7075) >>> 0);            // plumes: when and where they rise, their names and lives (step/hotspots.js)
         this.rngVolcano = makeRng((seed ^ 0x7a1c) >>> 0);   // the details of eruptions: LIP outlines, a tail's pulses
         this.rngBackArc = makeRng((seed ^ 0xbac4) >>> 0);   // when a rolling-back trench opens a basin behind it (step/backarc.js)
@@ -138,6 +140,8 @@ export const EventKind = Object.freeze({
     RIFT: 'rift',                       // { plate, fresh, cause: 'plume' | 'tension' | 'overdue', hotspot, lengthKm, ageMyr (of the piece: since its last rift or weld), weakKm (of it along old sutures,
                                         //   failed arms and rifted margins), failedArmKm }
     SUBDUCTION_INIT: 'subduction-init', // { upper, lower, lengthKm, ageMyr }                     a passive margin founders
+    OCEAN_SPLIT: 'ocean-split',         // { plate, fresh, areaMkm2 }                             a new ridge splits an ocean plate
+    MICROPLATE: 'microplate',           // { plate, host, areaMkm2 }                              a small ocean plate is captured by its neighbour
     SLAB_FLAT: 'slab-flat',             // { plate }                                              the slab under it flattens (Laramide)
     SLAB_STEEP: 'slab-steep',           // { plate }                                              …and steepens again
     BACKARC_OPEN: 'backarc-open',       // { parent, strip, continental, slabAgeMyr, lengthKm }   a strip rifts off behind a rolling-back trench

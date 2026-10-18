@@ -13,6 +13,7 @@ import { forEachClaim, clearWorldView } from './gather.js';
 import { overrides } from './polarity.js';
 import { binIndex, markBin, mayHaveCrustNear } from './occupancy.js';
 import { ringsOf, RING_COUNT } from '../../core/mesh-rings.js';
+import { fractureCoordinate } from '../model/segments.js';
 
 // How far the growth step looks, in cells. Both assume a gap opens by a cell or so per step, each flank growing its half
 // (config.maxCellsPerStep ≲ 2.25 — the whole-planet scenes' — about a cell a flank): raise that and these must grow with it.
@@ -105,6 +106,7 @@ function growCrustIntoGaps(world, gaps) {
         const crust = plate.crust;
         crust.create(cell, CrustType.OCEAN, world.time);
         plate.toWorld(world.mesh.xyz[3 * cell], world.mesh.xyz[3 * cell + 1], world.mesh.xyz[3 * cell + 2], P);
+        crust.fzU[cell] = fractureAt(world, plate, cell, P);
         markBin(plate, bins.at(P[0], P[1], P[2]), world.occupancyStamp, bins.count);       // so the owner search below sees it
         // Trench rollback, in its simplest form: when a plate backs away from its own trench, the trench is
         // not left behind inside the plate — it stays at the plate's edge, on the new crust that forms
@@ -113,6 +115,36 @@ function growCrustIntoGaps(world, gaps) {
         plate.dirty = true;
     }
     return births.length;
+}
+
+/**
+ * Where along its ridge new floor at world point P forms (records only: model/segments.js): its coordinate about the
+ * relative rotation of the grower and the plate across the gap — the most frequent other owner around P's world cell
+ * (the passive ocean, or no one, counts as still).
+ */
+function fractureAt(world, grower, cell, P) {
+    const { index, adjOffset, adjList } = world.mesh, { owner, plates } = world, w = index.nearest(P[0], P[1], P[2]);
+    // (across the gap, ring by ring through the gap's own cells, to the first ring that meets another plate: a gap is often
+    // wider than a cell, and the grower alone around a cell would measure about its own rotation, not the ridge's)
+    let partner = -1, most = 0, ring = [w];
+    const seen = new Set(ring), count = new Map();
+    for (let hop = 0; hop < 8 && ring.length && partner < 0; hop++) {
+        const next = [];
+        for (const q of ring) for (let k = adjOffset[q] - 1; k < adjOffset[q + 1]; k++) {
+            const r = k < adjOffset[q] ? q : adjList[k], o = owner[r];
+            if (o >= 0 && o !== grower.id) { const c = (count.get(o) ?? 0) + 1; count.set(o, c); if (c > most) { most = c; partner = o; } }
+            else if (o < 0 && !seen.has(r)) { seen.add(r); next.push(r); }
+        }
+        ring = next;
+    }
+    // (their rotations averaged over ~20 Myr — simulate.js: the steady spreading pole, not the step's wobble)
+    const other = partner >= 0 && !plates[partner].isBackground ? plates[partner].omegaSlow ?? plates[partner].omega : [0, 0, 0], g = grower.omegaSlow ?? grower.omega;
+    // (oriented by plate id, so both flanks of a ridge measure about the same pole)
+    const rel = partner < 0 || grower.id < partner ? [g[0] - other[0], g[1] - other[1], g[2] - other[2]] : [other[0] - g[0], other[1] - g[1], other[2] - g[2]];
+    // (in the grower's own frame: a fracture zone is fixed to the plate's floor, not to the world the ridge drifts across —
+    // about a steady relative pole the coordinate of new floor then stays the same along each strip)
+    const { xyz } = world.mesh, a = grower.toPlateFrame(rel[0], rel[1], rel[2], [0, 0, 0]);
+    return fractureCoordinate(xyz[3 * cell], xyz[3 * cell + 1], xyz[3 * cell + 2], a);
 }
 
 /** Raster cells of `grower` that stand under a gap cell, plus a small neighbourhood of them. (Exported, like decideBirth, so a debugging script can ask why a cell was or was not born.) */

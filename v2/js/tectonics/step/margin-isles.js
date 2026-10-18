@@ -61,14 +61,21 @@ export function growMarginIsles(world, dt) {
         const erosive = c => (flags[nearestTrench[c]] & CrustFlag.EROSIVE) !== 0;
         // an erosive margin eats its coast (never a craton), back to marginErosionMaxGapKm from its trench
         if (pErode > 0) {
-            const eaten = [];
+            const coastCells = [];
             for (let c = 0; c < numCells; c++) {
                 if (!mask[c] || trenchD[c] < 0 || trenchD[c] >= erodeHops || !erosive(c)) continue;
                 if (type[c] === CrustType.OCEAN || type[c] === CrustType.CRATON) continue;
                 let sea = null;                                          // a coast cell: sea of its own plate beside it
                 for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (mask[nb] && type[nb] === CrustType.OCEAN) { sea = nb; break; } }
-                if (sea !== null && rng() < pErode) eaten.push([c, crust.formedAt[sea]]);
+                if (sea !== null) coastCells.push([c, sea]);
             }
+            // (the coast retreats marginErosionKmPerMyr along the TRENCH's length: a coast counted cell by cell is longer
+            // the finer the mesh — its every inlet drawn — so per coast cell it lost twice the land at 160K as at 20K;
+            // where the coast is more intricate than its trench, the same retreat is shared among more cells)
+            let erosiveTrench = 0;
+            for (const c of trench) if (flags[c] & CrustFlag.EROSIVE) erosiveTrench++;
+            const p = pErode * Math.min(1, erosiveTrench / Math.max(1, coastCells.length)), eaten = [];
+            for (const [c, sea] of coastCells) if (rng() < p) eaten.push([c, crust.formedAt[sea]]);
             for (const [c, age] of eaten) { crust.create(c, CrustType.OCEAN, age); flags[c] = CrustFlag.APRON; }
             if (eaten.length) { plate.dirty = true; changed += eaten.length; world.budget.erodedCells += eaten.length; }
         }

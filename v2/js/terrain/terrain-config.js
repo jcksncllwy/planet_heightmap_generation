@@ -139,6 +139,7 @@ export const TERRAIN = {
                                 // stands ~1.5 km, the Western Ghats 1–1.6)
     lipSeaKm: 1.4,              // an oceanic plateau (Ontong Java) rises this much per km of basalt
     lipMaxKm: 2.5,              // (only this much of a pile counts: where a hotspot track crossed a LIP the record holds the edifice)
+    lipSeaSmoothKm: 150,        // …one broad rise: smoothed over this (holes filled, flanks sloping), never lowered inside
     // Flood basalts on land are cut up as they wear, not ground flat (developer, 8b round 6; terrain/lips.js): hard, they
     // last (the Drakensberg basalt ~1.4 km after 180 Myr, 0.5–1 km of it gone), as canyons, a retreating escarpment and
     // the mesas and buttes it leaves (Ethiopia's ambas), stepped wherever they are cut into ("trap": a stair)
@@ -178,7 +179,7 @@ export const TERRAIN = {
     // ── Island arcs ──
     arcYoungKm: -2.0,           // the ridge an arc stands on, when young: under water, only its volcanoes break the surface
     arcMatureKm: 0.3,           // …and when mature: continuous land (Japan) — near a continent (within arcCoastKm);
-    arcOceanMatureKm: -0.7,     // out in the open ocean (arcOceanKm or more from any continent) it stays a submerged ridge its
+    arcOceanMatureKm: -1.5,     // out in the open ocean (arcOceanKm or more from any continent) it stays a submerged ridge its
     arcCoastKm: 300,            // volcanoes break through (the Marianas, Tonga); between, a smooth blend
     arcOceanKm: 1000,
     arcMatureMyr: 150,          // (a Mariana, ~50 Myr old, is still mostly under water: islands on a submarine ridge)
@@ -194,6 +195,11 @@ export const TERRAIN = {
     trenchHalfKm: 55,           // its half-width
     riseKm: 0.35,               // the outer rise on the subducting plate, this high…
     riseAtKm: 160,              // …this far from the trench axis
+    // ridge segments and fracture zones (records.js; tectonics/model/segments.js)
+    fractureOffsetMyr: 12,      // each segment's floor reads this much older or younger at most: the ridge and isochrons step
+    fractureTroughKm: 0.7,      // a fracture zone's trough, this deep…
+    fractureHalfKm: 30,         // …and this wide either side of the boundary
+    fractureSmoothKm: 200,      // (the coordinate smoothed over this: the spreading poles drift between rows)
 
     anchorRecords: true,        // read the records over each plate's own raster (Phase 9: steady detail); false = the fixed
                                 // world grid, as before (kept for comparisons)

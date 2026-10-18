@@ -57,6 +57,7 @@ export function splitPlate(world, plate, path, failedArm, nameFor, across = null
     if (lifted[0].length) spreadBelt(plate, mesh, lifted[0], shoulder, config, notFailed(crust));
     if (lifted[1].length) spreadBelt(fresh, mesh, lifted[1], shoulder, config, notFailed(fresh.crust));
     plate.born = time; fresh.born = time;
+    if (fresh.crust.count > crust.count) { fresh.hue = plate.hue; plate.hue = fresh.id; }      // (the larger half keeps the colour)
     plate.bornOfRift = fresh.bornOfRift = true;
     plate.riftPartner = fresh.id; fresh.riftPartner = plate.id;
     // the rift push drives each half straight ACROSS the rift's line (the normal to its great circle), each toward its own side

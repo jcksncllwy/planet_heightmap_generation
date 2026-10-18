@@ -50,7 +50,7 @@ export function colorByPlate(frame, out) {
         let rgb = lut.get(key);
         if (!rgb && frame.plates?.[id]?.isBackground) { rgb = BACKGROUND_OCEAN_RGB; lut.set(key, rgb); }   // not a real plate: keep it neutral
         if (!rgb) {
-            const h = plateHue(id);
+            const h = plateHue(frame.plates?.[id]?.hue ?? id);
             rgb = type === CrustType.OCEAN ? hslToRgb(h, 0.40, 0.24)
                 : type === CrustType.CRATON ? hslToRgb(h, 0.35, 0.42)
                 : hslToRgb(h, 0.50, 0.62);

@@ -162,7 +162,9 @@ function frontNormal(world, w, a, b, r) {
 function riftAge(plateA, A, cellA, plateB, B, cellB, time) {
     const born = Math.max(plateA.born, plateB.born);
     if (plateA.riftPartner !== plateB.id || plateB.riftPartner !== plateA.id) return Infinity;     // real rift partners only
-    const marginA = (A.flags[cellA] & CrustFlag.RIFT_MARGIN) !== 0, marginB = (B.flags[cellB] & CrustFlag.RIFT_MARGIN) !== 0;
+    // (a new ridge in an ocean plate: its old floor along the line is the margin — step/ocean-plates.js)
+    const split = plateA.oceanSplitWith === plateB.id && plateB.oceanSplitWith === plateA.id;
+    const marginA = split || (A.flags[cellA] & CrustFlag.RIFT_MARGIN) !== 0, marginB = split || (B.flags[cellB] & CrustFlag.RIFT_MARGIN) !== 0;
     const youngA = A.type[cellA] === CrustType.OCEAN && A.formedAt[cellA] >= born, youngB = B.type[cellB] === CrustType.OCEAN && B.formedAt[cellB] >= born;
     return (marginA || youngA) && (marginB || youngB) ? time - born : Infinity;
 }

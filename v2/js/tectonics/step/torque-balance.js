@@ -34,6 +34,7 @@ export function updatePlateMotion(world) {
         const load = loads.get(plate.id);
         const target = balancedRotation(world, plate, load, before);
         const centre = plate.toWorld(plate.capCenter[0], plate.capCenter[1], plate.capCenter[2], [0, 0, 0]);
+        softenSpeed(target, plate, centre, config);
         const capped = clampSpeed(target, plate, centre, config);
         plate.omega = [0, 1, 2].map(i => before[plate.id][i] + (target[i] - before[plate.id][i]) * blend);
         plate.dynamics = describeDynamics(load, target, centre, capped, world.mesh);
@@ -70,19 +71,43 @@ function balancedRotation(world, plate, load, omegaOf) {
     return solve3(D, T);
 }
 
+/** The fastest surface speed over the plate's cap, rad/Myr: rate · sin(angle from the axis), the angle axisAngle ± capRadius. */
+export function fastestSpeed(omega, plate, centre) {
+    const rate = Math.hypot(omega[0], omega[1], omega[2]);
+    if (rate < 1e-12) return 0;
+    const axisAngle = Math.acos(Math.max(-1, Math.min(1, (omega[0] * centre[0] + omega[1] * centre[1] + omega[2] * centre[2]) / rate)));
+    const capRadius = Math.acos(Math.max(-1, Math.min(1, plate.capCos)));
+    const reachesEquator = axisAngle - capRadius <= Math.PI / 2 && axisAngle + capRadius >= Math.PI / 2;
+    return rate * (reachesEquator ? 1 : Math.max(Math.sin(axisAngle - capRadius), Math.sin(axisAngle + capRadius)));
+}
+
+/**
+ * A continent's speed saturates smoothly: its fastest point's speed v becomes S·tanh(v / S), S = continentalSoftCmYr —
+ * hardly changed at a few cm/yr, a third slower near the limit (plans/V2_REALISM_PASS_PLAN.md, phase 4: the recordings
+ * found the land of a supercontinent just broken up moving at 5–10 cm/yr, much of it against the limit — the rift push, the
+ * mantle's outflow and the pieces' repulsion stacking — and the pieces flew apart into a ring around a round ocean;
+ * Pangaea's opened the Atlantic at 2–4 cm/yr). The deep roots of continents drag ever harder the faster they go.
+ */
+function softenSpeed(omega, plate, centre, config) {
+    // (an oceanic plate as well, at oceanicSoftCmYr: the plates oceans now break into ran at 15–20 cm/yr under slab pull —
+    // Earth's fastest run ~10 — and halved every step of the history)
+    const continental = plate.stats.continentalCells > config.continentalPlateShare * plate.stats.cells;
+    const S = (continental ? config.continentalSoftCmYr : config.oceanicSoftCmYr) * CM_PER_YR_TO_RAD_PER_MYR;
+    if (!(S > 0)) return;
+    const v = fastestSpeed(omega, plate, centre);
+    if (v < 1e-12) return;
+    const k = S * Math.tanh(v / S) / v;
+    for (let i = 0; i < 3; i++) omega[i] *= k;
+}
+
 /**
  * Backstop only — the force balance should keep plates inside these limits by itself, and the Phase 4
  * checks assert that it does. Scales `omega` down in place if the fastest point of the plate would
  * exceed the limit. @returns {boolean} whether it had to
  */
 function clampSpeed(omega, plate, centre, config) {
-    const rate = Math.hypot(omega[0], omega[1], omega[2]);
-    if (rate < 1e-12) return false;
-    // surface speed = rate · sin(angle from the rotation axis); over the plate's cap that angle spans axisAngle ± capRadius
-    const axisAngle = Math.acos(Math.max(-1, Math.min(1, (omega[0] * centre[0] + omega[1] * centre[1] + omega[2] * centre[2]) / rate)));
-    const capRadius = Math.acos(Math.max(-1, Math.min(1, plate.capCos)));
-    const reachesEquator = axisAngle - capRadius <= Math.PI / 2 && axisAngle + capRadius >= Math.PI / 2;
-    const fastest = rate * (reachesEquator ? 1 : Math.max(Math.sin(axisAngle - capRadius), Math.sin(axisAngle + capRadius)));
+    const fastest = fastestSpeed(omega, plate, centre);
+    if (fastest < 1e-12) return false;
     const continental = plate.stats.continentalCells > config.continentalPlateShare * plate.stats.cells;
     const limit = (continental ? config.maxSpeedContinental : config.maxSpeedOceanic) * CM_PER_YR_TO_RAD_PER_MYR;
     if (fastest <= limit) return false;

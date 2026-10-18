@@ -167,7 +167,7 @@ export function orogenyLegend(types = Object.keys(OROGENY_NAME).map(Number), not
 /** The speed chart: one line per plate that ever lived in the run (plates born later included), 0 while not alive. */
 export function speedSeries(frames) {
     const last = frames.at(-1);
-    return last.plates.filter(p => !p.isBackground).map(p => ({ name: p.name, color: plateCss(p.id), points: frames.map(f => [f.time, f.plates[p.id]?.alive ? f.plates[p.id].speedCmYr : 0]) }));
+    return last.plates.filter(p => !p.isBackground).map(p => ({ name: p.name, color: plateCss(p.hue ?? p.id), points: frames.map(f => [f.time, f.plates[p.id]?.alive ? f.plates[p.id].speedCmYr : 0]) }));
 }
 
 /** [lat, lon] in degrees of a unit vector — where the globe should look first. */

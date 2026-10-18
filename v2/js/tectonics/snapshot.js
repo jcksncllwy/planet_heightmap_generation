@@ -70,7 +70,7 @@ export function captureFrame(world, reuse = null) {
     const f = reuse ?? {
         owner: new Int16Array(n), collider: new Int16Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), flags: new Uint8Array(n),
         terrane: new Uint16Array(n), boundary: new Uint8Array(n), overlap: new Uint8Array(n), trench: new Uint8Array(n),
-        provisional: new Uint8Array(n), slabKm: new Float32Array(n),
+        provisional: new Uint8Array(n), slabKm: new Float32Array(n), fzU: new Float32Array(n),
         oroType: new Uint8Array(n), oroWork: new Float32Array(n), oroStart: new Float32Array(n), oroLast: new Float32Array(n), thickKm: new Float32Array(n),
         beltU: new Uint8Array(n), beltReach: new Uint16Array(n), beltSide: new Uint8Array(n), beltShear: new Int8Array(n),
         prevType: new Uint8Array(n), prevLast: new Float32Array(n), prevU: new Uint8Array(n), prevReach: new Uint16Array(n), prevSide: new Uint8Array(n), prevShear: new Int8Array(n),
@@ -102,6 +102,7 @@ export function captureFrame(world, reuse = null) {
         f.prevType[w] = 0; f.prevLast[w] = 0; f.prevU[w] = 0; f.prevReach[w] = 0; f.prevSide[w] = 0; f.prevShear[w] = 0;
         f.rootKm[w] = 0; f.upliftKm[w] = 0; f.baseKm[w] = 0; f.rugged[w] = 0; f.prevRugged[w] = 0; f.volcWornKm[w] = 0; f.riverIncKm[w] = 0;
         f.riverKm2[w] = world.riverKm2 ? world.riverKm2[w] : 0;
+        f.fzU[w] = 0;
         if (owner[w] < 0) { f.type[w] = 0; f.formedAt[w] = 0; f.flags[w] = 0; f.terrane[w] = 0; f.slabKm[w] = 0; f.oroType[w] = 0; f.oroWork[w] = 0; f.oroStart[w] = 0; f.oroLast[w] = 0; f.thickKm[w] = 0; continue; }
         const crust = plates[owner[w]].crust, c = ownerCell[w];
         if (provisional[w] === Provisional.NEWBORN) {          // the ridge axis: crust forming right now
@@ -110,6 +111,7 @@ export function captureFrame(world, reuse = null) {
         }
         f.type[w] = crust.type[c];
         f.formedAt[w] = crust.formedAt[c];
+        f.fzU[w] = crust.fzU[c];
         f.flags[w] = crust.flags[c];
         f.terrane[w] = crust.terrane[c];
         f.slabKm[w] = (crust.flags[c] & CrustFlag.TRENCH) ? crust.slabKm[c] : 0;
@@ -145,7 +147,7 @@ export function captureFrame(world, reuse = null) {
         const centre = p.toWorld(p.capCenter[0], p.capCenter[1], p.capCenter[2], [0, 0, 0]);
         return {
             id: p.id, name: p.name, alive: p.alive, isBackground: p.isBackground,
-            omega: p.omega.slice(), quat: p.quat.slice(), centre,
+            omega: p.omega.slice(), quat: p.quat.slice(), centre, hue: p.hue,
             cells: p.stats.cells, landCells: p.stats.continentalCells,
             speedCmYr: speedCmYrAt(p.omega, centre[0], centre[1], centre[2]),
             dynamics: p.dynamics ? JSON.parse(JSON.stringify(p.dynamics)) : null,

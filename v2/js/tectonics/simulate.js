@@ -4,6 +4,7 @@
 // world, including at time 0, and `world.lastDt` tells it how long the last step was.
 
 import { advancePlates } from './step/kinematics.js';
+import { fastestSpeed } from './step/torque-balance.js';
 import { resolve } from './step/resolve.js';
 import { classifyBoundaries } from './step/boundaries.js';
 import { trackCollisions } from './step/collision.js';
@@ -13,7 +14,8 @@ import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
 import { closeRemnantSeas } from './step/remnant-seas.js';
 import { matureArcs } from './step/arc-maturation.js';
 import { riftContinents, searchJunctions } from './step/rifting.js';
-import { initiateSubduction } from './step/subduction-init.js';
+import { initiateSubduction, founderWithinPlates } from './step/subduction-init.js';
+import { retireBackground, splitOceanPlates, captureMicroplates } from './step/ocean-plates.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
 import { trackCycle } from './step/supercontinent.js';
 import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
@@ -62,6 +64,8 @@ export async function simulateAsync(world, opts, helpers) {
 }
 
 // The history's steps, as a generator: it yields each rift's request for its junctions' searches (step/rifting.js).
+const SLOW_ROTATION_MYR = 20;        // (a plate's averaged rotation: in the step loop)
+
 function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false, keepFrames = true }) {
     const frames = [], stepLog = [];
     const record = frame => { if (keepFrames) frames.push(frame); onFrame?.(frame); };
@@ -109,6 +113,9 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             changed += yield* riftContinents(world, dt);   // plume and tension rifts (splits plates)
             changed += openBackArcs(world, dt);        // rolling-back trenches split off strips; finished strips rejoin
             changed += initiateSubduction(world, dt);  // passive margins founder (may carve an ocean plate)
+            if (slow) changed += founderWithinPlates(world, slowDt);  // …and margins inside a plate: its old ocean breaks away as a plate
+            if (slow) changed += retireBackground(world) + splitOceanPlates(world, slowDt);  // the pre-history ocean becomes plates; big ocean plates split
+            changed += captureMicroplates(world);       // a small ocean plate is captured by its neighbour
             if (slow) changed += closeRemnantSeas(world, slowDt);  // seas sealed inside a plate close from their shores
             if (slow) changed += matureArcs(world, slowDt);  // arcs welded onto a continent become continent (cell types only)
             changed += tidyPlates(world);              // fragments join a neighbour; ocean scraps go to the passive ocean
@@ -123,6 +130,14 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         evolveRivers(world, dt);                            // rivers drain the land and cut into it (records only too; on a clock of their own)
         drive(world);
         steerBackArcStrips(world);                          // a back-arc strip follows its retreating trench, whatever drives the rest
+        // (each plate's rotation averaged over ~SLOW_ROTATION_MYR: the spreading poles fracture zones are measured about —
+        // records only, tectonics/model/segments.js; the rotation itself wobbles a degree or two from step to step)
+        for (const p of world.plates) {
+            if (!p.alive) continue;
+            const k = p.omegaSlow ? 1 - Math.exp(-dt / SLOW_ROTATION_MYR) : 1;
+            p.omegaSlow ??= p.omega.slice();
+            for (let i = 0; i < 3; i++) p.omegaSlow[i] += (p.omega[i] - p.omegaSlow[i]) * k;
+        }
         stepLog.push({ time: world.time, dt, cellsMoved, ...tally });
         if (world.time >= nextSnapshot - 1e-9) {
             record(captureFrame(world));
@@ -133,12 +148,16 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
     return { frames, steps: world.step, stepLog, stopped: false };
 }
 
-/** The fastest rate (rad/Myr) at which any two plates could be closing: the two largest |ω| added. */
+/**
+ * The fastest rate (rad/Myr) at which any two plates could be closing: the two fastest plates' speeds added — each the
+ * fastest point of its own cap, not its |ω| (a speck of a plate can spin at any rate while nothing on it moves far; its
+ * |ω| shrank every step of a history to the floor).
+ */
 function closingRate(world) {
     let first = 0, second = 0;
     for (const p of world.plates) {
         if (!p.alive) continue;
-        const rate = Math.hypot(p.omega[0], p.omega[1], p.omega[2]);
+        const rate = p.crust.count ? fastestSpeed(p.omega, p, p.toWorld(p.capCenter[0], p.capCenter[1], p.capCenter[2], [0, 0, 0])) : 0;
         if (rate > first) { second = first; first = rate; } else if (rate > second) second = rate;
     }
     return first + second;
