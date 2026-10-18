@@ -282,7 +282,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     fillPockets(simMesh, land, cfg.pocketSeaKm2);
 
     // ── the coast: signed distance to the edge of the land crust, and what kind of coast is nearest ──
-    const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n);
+    const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n), fresh = new Float32Array(n);
     const kindAtCoast = w => {                                        // w: a land cell on the coast
         if (frame.type[w] === CrustType.ARC && !(frame.flags[w] & CrustFlag.MARGIN_ISLE)) return CoastKind.ARC;
         const t = frame.margin[w] & Margin.TYPE;
@@ -320,16 +320,26 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         ownMature[w] = age === Infinity ? 1 : 1 - Math.exp(-age / cfg.marginMatureMyr);
         ownWiden[w] = ownMature[w] * smooth(cfg.marginOpenSeaKm2[0], cfg.marginOpenSeaKm2[1], sea);
     }
+    // how fresh a coast is (developer, 2026-10-18: the coast's cell-scale noise "weaker around fresh orogeny/rifts so that
+    // mountain building dominates and the 'puzzle pieces' around continents sort of still fit"): a young rifted margin's
+    // youth (1 − its maturity: the two sides of a young ocean still mirror each other), or how recently its own belt was
+    // active (a rift's shoulders are a belt too) — 1 fresh, 0 long settled
+    const ownFresh = new Float32Array(n);
+    for (let w = 0; w < n; w++) {
+        if (!onCoast[w]) continue;
+        const belt = frame.oroType[w] ? Math.exp(-Math.max(0, time - frame.oroLast[w]) / cfg.coastFreshMyr) : 0;
+        ownFresh[w] = Math.max(belt, ownKind[w] === CoastKind.PASSIVE ? 1 - ownMature[w] : 0);
+    }
     for (let w = 0; w < n; w++) for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
         const nb = adjList[k];
         if (land[nb] === land[w]) continue;
         const half = 0.5 * R * Math.acos(Math.min(1, xyz[3 * w] * xyz[3 * nb] + xyz[3 * w + 1] * xyz[3 * nb + 1] + xyz[3 * w + 2] * xyz[3 * nb + 2]));
-        if (half < dist[w]) { const at = land[w] ? w : nb; dist[w] = half; coastKind[w] = ownKind[at]; maturity[w] = ownMature[at]; widen[w] = ownWiden[at]; }
+        if (half < dist[w]) { const at = land[w] ? w : nb; dist[w] = half; coastKind[w] = ownKind[at]; maturity[w] = ownMature[at]; widen[w] = ownWiden[at]; fresh[w] = ownFresh[at]; }
     }
-    spreadKm(simMesh, dist, { canEnter: (a, b) => land[a] === land[b], onReach: (a, b) => { coastKind[b] = coastKind[a]; maturity[b] = maturity[a]; widen[b] = widen[a]; }, maxKm: 6000 });
+    spreadKm(simMesh, dist, { canEnter: (a, b) => land[a] === land[b], onReach: (a, b) => { coastKind[b] = coastKind[a]; maturity[b] = maturity[a]; widen[b] = widen[a]; fresh[b] = fresh[a]; }, maxKm: 6000 });
     // …and measured again on each plate's own raster, which the world grid shows re-sampled a little differently every
     // step as the plate moves: the coast measured there is fixed in the crust (Phase 9, steady detail)
-    const coastRaster = plateCoasts(simMesh, A, land, dist, coastKind, { maturity, widen }, frame, cfg.pocketSeaKm2);
+    const coastRaster = plateCoasts(simMesh, A, land, dist, coastKind, { maturity, widen, fresh }, frame, cfg.pocketSeaKm2);
     const coastKm = new Float32Array(n), shelfKm = new Float32Array(n), plainKm = new Float32Array(n), slopeKm = new Float32Array(n);
     for (let w = 0; w < n; w++) {
         const d = Math.min(6000, dist[w]);
@@ -525,7 +535,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         }
     }
 
-    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
+    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastFresh: fresh, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
 }
 
