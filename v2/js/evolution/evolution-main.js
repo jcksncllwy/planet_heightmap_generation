@@ -11,6 +11,8 @@ import { buildSimMesh } from '../core/sim-mesh.js';
 import { terrainMeshAsync } from '../terrain/terrain-mesh.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { SmoothMapRaster } from '../view/map-raster.js';
+import { GpuPainter } from '../view/gpu-paint.js';
+import { locate } from '../core/mesh-locate.js';
 import { paintRelief } from '../view/terrain-shade.js';
 import { colorByPlate } from '../view/palettes.js';
 import { GlobeView } from '../app/globe-view.js';
@@ -36,6 +38,9 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
 const MAP_WIDTH = IS_TOUCH ? 1024 : 2048;
 const SHARP_WIDTH = IS_TOUCH ? 0 : 4096;  // the sharper texture, when paused (desktop; developer: "Sharper when paused")
 const SHARP_AFTER_MS = 300;               // (a scrub draws the lighter texture; the sharper one once it has settled)
+// painted on the GPU (view/gpu-paint.js), where it can be: always this sharp — it costs a millisecond or two — and twice
+// as sharp on a phone as the CPU's (?gpu=0: the CPU's painting, as before, for comparison)
+const GPU_WIDTH = IS_TOUCH ? 2048 : 4096;
 const SHADING = { exaggeration: 20, seaLevelKm: 0 };
 // terrain workers: on a phone a few (each holds its own copy of the meshes: memory), elsewhere one per core but one
 const WORKERS = Number(new URLSearchParams(location.search).get('workers')) || (IS_TOUCH ? 3 : null);
@@ -140,8 +145,10 @@ const HISTORY_BYTES = IS_TOUCH ? 400e6 : 1.5e9, FRAME_BYTES_PER_CELL = 28;
 ui.seed.addEventListener('keydown', e => { if (e.key === 'Enter') build(); });
 
 // ── drawing ──
-// The planet is painted on an equirectangular texture — the globe's, and the map's (#mapCanvas shows it, turned to the
-// centre longitude). Two of them on a desktop: the one painted while playing, and a sharper one painted when paused.
+// The planet is painted on an equirectangular texture — the globe's, and the map's (drawn flat by the globe's renderer,
+// turned to the centre longitude, under the #mapCanvas frame). The history's moments are painted on the GPU where it
+// can (GPU_WIDTH); the detailed moments, and every moment without WebGL 2, on canvases — two of them on a desktop: the
+// one painted while playing, and a sharper one painted when paused.
 function texture(width) {
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = width >> 1;
@@ -149,14 +156,16 @@ function texture(width) {
     return { canvas, ctx, image: ctx.createImageData(width, width >> 1), width };
 }
 const tex = { lo: texture(MAP_WIDTH), sharp: null };
-let shownTex = tex.lo;
 // (V1's space around the globe — stars, atmosphere, its light, the sun glinting off the sea: developer: "I do like the
 // starry background and the sunlight/reflection of V1")
 const globe = new GlobeView(ui.canvas, tex.lo.canvas, { space: true });
 globe.setSmooth(true);
 globe.controls.autoRotateSpeed = 0.6;
+const gpu = url.get('gpu') !== '0' && GpuPainter.available(globe.renderer) ? new GpuPainter(globe.renderer, GPU_WIDTH, MAP_WIDTH) : null;
+console.info(`[evolution] painting ${gpu ? `on the GPU at ${GPU_WIDTH} px` : 'on the CPU'}`);
 const seaMask = texture(MAP_WIDTH);     // where the sea is, for the glint (the lighter resolution is enough for a glint)
-let glinting = false;
+let glinting = false, glintFrom = null;
+let lines = null, linesKey = null;      // the GPU's overlay: the grid and a climate layer's arrows, drawn again only when they change
 const PALETTE_KEY = 'orogen.evolution.palette';
 const storedPalette = (() => { try { return localStorage.getItem(PALETTE_KEY); } catch { return null; } })();
 const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalette : 'relief', mode: 'globe', grid: true, gridStep: 15, centerLon: 0, season: 'year', finished: true,
@@ -199,7 +208,7 @@ const simMeshOf = n => { if (!simMeshes.has(n)) simMeshes.set(n, buildSimMesh(n,
 
 // ── one build: the history streaming in, its terrain, the timeline ──
 let B = null;                           // { controller, player, frames, simMesh, tMesh, raster, live, started, endMyr, error }
-let playing = false, playTime = 0, lastTick = 0, preparing = null, painted = null, paintedT = null, paintedRaster = null, paintedMesh = null, paintedSharp = false, dirty = true, cellRgb = null, simRgb = null;
+let playing = false, playTime = 0, lastTick = 0, preparing = null, painted = null, paintedT = null, paintedMesh = null, paintedSharp = false, dirty = true, cellRgb = null, simRgb = null;
 
 async function build() {
     if (B?.finishJob) finisher.cancel();
@@ -215,7 +224,7 @@ async function build() {
     saveUrl(); labels();
     ui.world.open = false;                                                            // (the World section folds to its summary)
     // (watching it build is playing it from the start, at the speed chosen — held at the newest moment built)
-    playing = true; playTime = 0; preparing = null; painted = null; paintedT = null; paintedRaster = null; paintedMesh = null; paintedSharp = false; dirty = true;
+    playing = true; playTime = 0; preparing = null; painted = null; paintedT = null; paintedMesh = null; paintedSharp = false; dirty = true;
     updateClimateUi();
     setScale(len); ui.time.value = 0; rail();
     blank();                                                                          // (the old world goes at once: a new one is starting)
@@ -309,7 +318,7 @@ async function keepGoing(b, until = Infinity) {
 function useTerrain(b, tMesh, cells) {
     const old = b.player;
     b.tMesh = tMesh; b.terrainCells = cells;             // (the setting: a mesh has about that many cells)
-    b.raster = rasterOf(tMesh);
+    if (gpu) gpu.setMesh(tMesh); else b.raster = rasterOf(tMesh);       // (the GPU's triangles, or the CPU's pixel table)
     b.player = new TerrainPlayer({ simMesh: b.simMesh, tMesh, cfg: terrainConfig(), seed: b.seed, shading: SHADING, workers: WORKERS, onBuilt: () => { dirty = true; } });
     for (const f of b.frames) b.player.addFrame(f);
     old?.dispose();
@@ -353,30 +362,22 @@ function blank() {
     show(t);
 }
 
-/** The glint on (the sea mask painted with each frame) or off. */
-function glint(on) {
-    if (on === glinting) return;
-    glinting = on;
-    globe.setSeaMask(on ? seaMask.canvas : null);
+/** The glint on (the sea mask painted with each frame: the canvas's, or the GPU's) or off. */
+function glint(on, from = seaMask.canvas) {
+    const want = on ? from : null;
+    if (want === glintFrom) return;
+    glintFrom = want; glinting = on;
+    globe.setSeaMask(want);
 }
 
-/** Put a painted texture on the globe and the map. */
+/** Put a painted texture (a canvas's, or the GPU's) on the globe and the map. */
 function show(t) {
-    shownTex = t;
-    globe.setSource(t.canvas);
+    globe.setSource(t.isTexture ? t : t.canvas);
     globe.textureChanged();
-    drawMap();
 }
 
-/** The map view: the texture turned so that the centre longitude is in the middle. */
-function drawMap() {
-    if (view.mode !== 'map') return;
-    const src = shownTex.canvas, W = src.width, H = src.height, c = ui.map.getContext('2d');
-    if (ui.map.width !== W) { ui.map.width = W; ui.map.height = H; }
-    const s = Math.round((((view.centerLon / 360) * W) % W + W) % W);
-    c.drawImage(src, s, 0, W - s, H, 0, 0, W - s, H);
-    if (s) c.drawImage(src, 0, 0, s, H, W - s, 0, s, H);
-}
+/** The map view (or the globe): the texture flat, turned so that the centre longitude is in the middle. */
+const showMap = () => globe.setMap(view.mode === 'map' ? ui.map : null, view.centerLon);
 
 function progress(b, t) {
     if (b.retexturing) return;
@@ -420,12 +421,12 @@ function frameAt(t) {
     return lo > 0 && Math.abs(f[lo - 1].time - t) <= Math.abs(f[lo].time - t) ? f[lo - 1] : f[lo];
 }
 
-function paint(frame, sharpTable = null) {
+function paint(frame, sharpTable = null, sharp = !!sharpTable) {
     const T = B.player.terrainOf(frame), out = cellRgb;
     // (a finished moment: its picture instead of the live terrain, on the height layers — and its own climate, at its
     // detail, on the climate layers)
     const fin = finishedShown(frame);
-    if (fin) { paintFinishedFrame(frame, fin, T, sharpTable); return; }
+    if (fin) { paintFinishedFrame(frame, fin, T, sharp); return; }
     // (the terrain and the heightmap are coloured per pixel from the heights — their coasts crisp; the other layers per cell)
     let byHeight = null;
     if (view.layer === 'plates') {
@@ -443,27 +444,32 @@ function paint(frame, sharpTable = null) {
         if (C) paintClimate(view.layer, view.season, C, T, B.tMesh, out, o => tint(T.heightKm, T.shade, o));
         else { tint(T.heightKm, T.shade, out); paintUnavailable(out, B.tMesh.numCells); }
     } else byHeight = heightLutOf(view.palette);
-    // the sun glints off the sea on the Terrain view (V1's water shows there only)
-    glint(view.layer === 'terrain');
-    if (glinting) {
-        B.raster.paintSea(T.heightKm, seaMask.image.data, SHADING.seaLevelKm);
-        seaMask.ctx.putImageData(seaMask.image, 0, 0);
-        globe.seaMaskChanged();
-    }
-    const table = sharpTable ?? B.raster, t = sharpTable ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
-    if (byHeight) table.paintHeights(T.heightKm, T.shade, byHeight, t.image.data, SHADING.seaLevelKm);
-    else table.paint(out, t.image.data);
-    t.ctx.putImageData(t.image, 0, 0);
     const C = CLIMATE_LAYERS.has(view.layer) && !FINISHED_ONLY_LAYERS.has(view.layer) ? climateOf(frame) : null;
-    if (C) climateOverlays(t, C);
-    if (view.grid) {
-        // (lines as thick on the sharper texture as on the other)
-        const k = t.width / MAP_WIDTH;
-        t.ctx.save(); t.ctx.scale(k, k); drawGraticule(t.ctx, MAP_WIDTH, MAP_WIDTH >> 1, view.gridStep); t.ctx.restore();
+    // the sun glints off the sea on the Terrain view (V1's water shows there only)
+    if (gpu) {
+        // (on the GPU: the cells' heights or colours sent, the picture drawn there — its sea and its lines with it)
+        glint(view.layer === 'terrain', gpu.seaTexture);
+        gpu.setMesh(B.tMesh);
+        layLines(C);
+        if (byHeight) gpu.drawHeights(T.heightKm, T.shade, byHeight, SHADING.seaLevelKm, glinting);
+        else gpu.drawCells(out, T.heightKm, SHADING.seaLevelKm, glinting);
+        show(gpu.texture);
+    } else {
+        glint(view.layer === 'terrain');
+        if (glinting) {
+            B.raster.paintSea(T.heightKm, seaMask.image.data, SHADING.seaLevelKm);
+            seaMask.ctx.putImageData(seaMask.image, 0, 0);
+            globe.seaMaskChanged();
+        }
+        const table = sharpTable ?? B.raster, t = sharpTable ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
+        if (byHeight) table.paintHeights(T.heightKm, T.shade, byHeight, t.image.data, SHADING.seaLevelKm);
+        else table.paint(out, t.image.data);
+        t.ctx.putImageData(t.image, 0, 0);
+        drawLines(t, C);
+        show(t);
     }
-    show(t);
     if (!B.firstDrawn) { B.firstDrawn = true; console.info(`[evolution] first frame drawn at ${((performance.now() - B.started) / 1000).toFixed(1)} s`); }
-    painted = frame; paintedT = T; paintedRaster = table; paintedMesh = B.tMesh; paintedSharp = !!sharpTable;
+    painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
     const legend = $('climateLegend'), legendKey = C ? `${view.layer}|${view.season}|${frame.time}|${B.terrainCells}` : '';
     if (legend.dataset.key !== legendKey) {
         if (C) { drawLegend(legend, view.layer, view.season, C, T); legend.insertAdjacentHTML('afterbegin', '<div class="evo-legend-head">Preview climate — Add detail for this moment’s own</div>'); }
@@ -478,6 +484,28 @@ function paint(frame, sharpTable = null) {
     ui.timeLabel.textContent = `${frame.time.toFixed(0)} Myr`;
     rail();
     stats(T, frame);
+}
+
+/** The lines over a picture (on texture t, as thick on the sharper texture as on the other): a climate layer's, then the grid. */
+function drawLines(t, C) {
+    if (C) climateOverlays(t, C);
+    if (view.grid) { const k = t.width / MAP_WIDTH; t.ctx.save(); t.ctx.scale(k, k); drawGraticule(t.ctx, MAP_WIDTH, MAP_WIDTH >> 1, view.gridStep); t.ctx.restore(); }
+}
+
+/** The GPU's overlay for the picture painted next: the lines drawn on a transparent canvas — again only when they change (a
+ *  4096-pixel canvas is 32 MB to send) — or none. */
+function layLines(C) {
+    const arrows = C && (ARROW_LAYERS[view.layer] || view.layer === 'pressure') ? C : null;
+    if (!view.grid && !arrows) { gpu.setOverlay(null); return; }
+    const key = [view.grid && view.gridStep, arrows, arrows && view.layer, arrows && view.season];
+    const changed = !linesKey || key.some((v, i) => v !== linesKey[i]);
+    if (changed) {
+        if (!lines) { const canvas = document.createElement('canvas'); canvas.width = GPU_WIDTH; canvas.height = GPU_WIDTH >> 1; lines = { canvas, ctx: canvas.getContext('2d'), width: GPU_WIDTH }; }
+        lines.ctx.clearRect(0, 0, GPU_WIDTH, GPU_WIDTH >> 1);
+        drawLines(lines, arrows);
+        linesKey = key;
+    }
+    gpu.setOverlay(lines.canvas, changed);
 }
 
 /** A climate layer's lines over its colours (on texture t): the winds' or the currents' arrows, and the ITCZ. */
@@ -499,8 +527,8 @@ function finishedShown(frame) {
 }
 
 /** A finished moment: its picture, coloured and shaded as the live terrain is — or its climate, per pixel. */
-function paintFinishedFrame(frame, fin, T, sharpTable) {
-    const t = sharpTable ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
+function paintFinishedFrame(frame, fin, T, sharp) {
+    const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
     const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null;
     glint(view.layer === 'terrain' || view.layer === 'satellite');
@@ -512,10 +540,9 @@ function paintFinishedFrame(frame, fin, T, sharpTable) {
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
     // (the rivers' lines on the Terrain view; from space they are ground, not lines — the Satellite view draws none)
     if (water && view.layer === 'terrain' && fin.rivers) { const k = t.width / MAP_WIDTH * (MAP_WIDTH / 2048); t.ctx.save(); t.ctx.scale(k, k); drawRivers(t.ctx, riverPaths(fin, view.riverQ), view.byRegime); t.ctx.restore(); }
-    if (C) climateOverlays(t, C);
-    if (view.grid) { const k = t.width / MAP_WIDTH; t.ctx.save(); t.ctx.scale(k, k); drawGraticule(t.ctx, MAP_WIDTH, MAP_WIDTH >> 1, view.gridStep); t.ctx.restore(); }
+    drawLines(t, C);
     show(t);
-    painted = frame; paintedT = T; paintedRaster = sharpTable ?? B.raster; paintedMesh = B.tMesh; paintedSharp = !!sharpTable;
+    painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
     const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : '';
     if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = ''; legend.dataset.key = legendKey; }
     updateClimateUi();
@@ -806,9 +833,11 @@ function tick(now) {
             ui.time.value = playTime;
         }
         const frame = frameAt(Number(ui.time.value));
-        // (paused and settled: the sharper texture, once its table is built)
-        const sharpTable = !playing && now - lastScrub > SHARP_AFTER_MS ? sharpTableOf(B.tMesh) : null;
-        if (B.player.isReady(frame)) { if (frame !== painted || dirty || !!sharpTable !== paintedSharp) { paint(frame, sharpTable); dirty = false; } }
+        // (paused and settled: the sharper texture — on the CPU once its table is built; on the GPU every moment is that
+        // sharp, but a detailed moment's picture is painted on a canvas still)
+        const settled = !playing && now - lastScrub > SHARP_AFTER_MS;
+        const sharpTable = settled && !gpu ? sharpTableOf(B.tMesh) : null, sharp = gpu ? settled && SHARP_WIDTH > 0 : !!sharpTable;
+        if (B.player.isReady(frame)) { if (frame !== painted || dirty || sharp !== paintedSharp) { paint(frame, sharpTable, sharp); dirty = false; } }
         else if (!preparing && !(B.drawFailed?.frame === frame && now < B.drawFailed.retryAt)) {
             const b = B;
             const p = preparing = b.player.prepare(frame)
@@ -826,7 +855,7 @@ function tick(now) {
         }
     }
     globe.controls.autoRotate = $('chkRotate').checked && view.mode === 'globe';
-    if (view.mode === 'globe') { globe.resize(); globe.renderIfNeeded(); }
+    globe.resize(); globe.renderIfNeeded();                 // (the globe, or the map: the same renderer draws both)
 }
 requestAnimationFrame(tick);
 
@@ -896,17 +925,15 @@ $('palette').addEventListener('change', e => {
 });
 $('viewMode').addEventListener('change', e => {
     view.mode = e.target.value;
-    globe._dirty = true;
-    ui.canvas.hidden = view.mode !== 'globe';
-    ui.map.hidden = view.mode !== 'map';
+    ui.map.hidden = view.mode !== 'map';                    // (the map's frame: the map is drawn under it, and it takes the pointer)
     $('mapCenterLonGroup').hidden = view.mode !== 'map';
     ui.hover.style.display = 'none';
-    drawMap();
+    showMap();
 });
 $('sMapCenterLon').addEventListener('input', e => {
     view.centerLon = Number(e.target.value);
     $('vMapCenterLon').textContent = `${view.centerLon}°`;
-    drawMap();
+    showMap();
 });
 $('chkGrid').checked = view.grid;
 $('chkGrid').addEventListener('change', e => { view.grid = e.target.checked; dirty = true; $('gridSpacingGroup').hidden = !view.grid; });
@@ -916,19 +943,21 @@ $('statsDetails').addEventListener('toggle', () => { dirty = true; });
 // ── hover readout (V1's): the crust and plate, height, position, crust age and setting under the pointer ──
 /** Where the pointer is on the texture, as fractions [u (west → east), v (north → south)] — or null, off the planet. */
 function placeUnder(e) {
-    if (view.mode === 'globe') {
-        const uv = globe.uvAt(e.clientX, e.clientY);
-        return uv ? [uv.x, 1 - uv.y] : null;
-    }
-    const W = ui.map.width, H = ui.map.height, r = ui.map.getBoundingClientRect(), s = Math.min(r.width / W, r.height / H);
-    const x = (e.clientX - r.left - (r.width - W * s) / 2) / s, y = (e.clientY - r.top - (r.height - H * s) / 2) / s;
-    if (x < 0 || y < 0 || x >= W || y >= H) return null;
-    return [((x / W + view.centerLon / 360) % 1 + 1) % 1, y / H];
+    if (view.mode === 'map') return globe.mapUvAt(e.clientX, e.clientY);
+    const uv = globe.uvAt(e.clientX, e.clientY);
+    return uv ? [uv.x, 1 - uv.y] : null;
+}
+/** The terrain cell that weighs most at a place [u, v] (the mesh triangle it falls in: the one a pixel there blends). */
+const C3 = [0, 0, 0], W3 = [0, 0, 0];
+function cellUnder(mesh, [u, v]) {
+    const lon = u * 2 * Math.PI - Math.PI, lat = Math.PI / 2 - v * Math.PI;
+    locate(mesh, Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat), C3, W3);
+    return C3[W3[0] >= W3[1] && W3[0] >= W3[2] ? 0 : W3[1] >= W3[2] ? 1 : 2];
 }
 function readout(e) {
-    const p = painted && paintedRaster ? placeUnder(e) : null;
+    const p = painted && paintedMesh ? placeUnder(e) : null;
     if (!p) { ui.hover.style.display = 'none'; return; }
-    const t = paintedRaster.cellAt(p[0] * paintedRaster.width, p[1] * paintedRaster.height), h = paintedT.heightKm[t] - SHADING.seaLevelKm;
+    const t = cellUnder(paintedMesh, p), h = paintedT.heightKm[t] - SHADING.seaLevelKm;
     // (the sim cell that weighs most in this terrain cell: its crust, plate and history)
     const { cells, weights } = paintedT.sampler;
     let w = cells[3 * t];

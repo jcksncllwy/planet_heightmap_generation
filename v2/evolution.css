@@ -1,9 +1,10 @@
 /* The Evolution page (evolution.html): V1's layout (styles.css) plus the timeline and the build status. */
 
 #canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+/* the map's frame: the globe's canvas draws the map under it (letterboxed in this box); it takes the pointer */
 #mapCanvas {
     position: fixed; top: 40px; left: 0; width: 100vw; height: calc(100vh - 40px);
-    object-fit: contain; background: #000; image-rendering: auto;
+    background: transparent;
 }
 #mapCanvas[hidden] { display: none; }
 #ui [hidden], #layerBar [hidden], #legendCard [hidden], #timeline [hidden] { display: none !important; }

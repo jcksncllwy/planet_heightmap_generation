@@ -244,6 +244,7 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread
                    only paints
 js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, SmoothMapRaster blending a fine mesh),
+                   gpu-paint (Evolution's moments painted on the GPU: the terrain mesh's triangles drawn flat on the texture),
                    palettes (colours AND the name tables, e.g. OROGENY_NAME), terrain-shade (hypsometric tint, hillshade),
                    png (PNG files in the browser: 8/16-bit greyscale and RGB by hand, colour with transparency through a canvas; the download), zip (a store-only ZIP for Export All)
 js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own — the sea's drawn fields come carried across the coast from their own side and smoothly refined — grid.js refineForDrawing — so the sea shows no coastal rims, coarse-cell edges or polar wedges; the Satellite view), finish-view (the Finish step's worker and painting), export (a finished moment's maps as PNG files, or all in a ZIP)
@@ -456,8 +457,8 @@ In `carve.js`: drowned valleys where hills and mountains meet the sea — each b
 the river, the sea then flooding in only where it connects (rias, fjords; `drownKm`) — and submarine canyons from big
 rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
 Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights
-(`SmoothMapRaster.paintHeights`), so a shore is the heights' zero line — crisp — not land and sea colours blended across
-a mesh triangle.
+(`SmoothMapRaster.paintHeights`, or on the GPU `view/gpu-paint.js`), so a shore is the heights' zero line — crisp — not
+land and sea colours blended across a mesh triangle.
 **No crest is a line (2026-09-29).** A belt's crests lie at distances from its front — contours of a smooth field, so
 unbroken curves: thin crest ridges "too perfect and connected" (developer), and rings and crescents where the front is a
 blob. Every crest is now spread by at least `crestBaseKm` (a Gaussian of that σ: exactly lower and wider, its bulk the
@@ -542,6 +543,22 @@ For that the step loop is a generator (simulate.js `stepsOf`): a rift yields its
 helpers, and one extended in two pieces; the page: its packed frames against Node's, desktop and phone settings). The start
 world 25–40 % sooner (0.7–1.8 s → 0.5–1.2 s), a history 7–15 % (1200 Myr at 20K, 600 at 40K). Where a worker cannot start
 workers of its own, the history runs in place as before.
+
+The picture on the GPU (2026-10-18; developer: "lets do the GPU repaint"): Evolution painted every moment on the page's
+thread — ~2M pixels each blended from three cells through a pixel table (`SmoothMapRaster`; 37 ms at 2048 px, 130 ms at
+4096, and the 4096 table itself ~1 s and 117 MB to build), then sent as a texture. Now (`view/gpu-paint.js`) the terrain
+mesh's triangles are drawn flat onto the texture by the GPU (a render target): a frame sends only each cell's height and
+shade (or colour) as a small data texture; the GPU's own filling of each triangle is the three cells' blend, the palette
+and shading done per pixel in the shader (heights blended, then coloured — the coasts as crisp), the sea mask for the glint
+drawn the same way, and the lines (grid, a climate layer's arrows) blended over in the same pass from a transparent canvas,
+sent again only when they change. Against the CPU's painting: under 1 of 255 per channel on average, no gaps; ~1–2 ms at
+4096. So every moment is drawn at 4096 px on a desktop (2048 on phones, twice the CPU's 1024) and no pixel table is built:
+scrubbing at 160K went from 73 frames a second (43 slow frames in 4 s, 47 % of the page's time) to 144 (none, 1 %); at 640K
+the worst frame from 118 to 9 ms; while a history builds, slow frames 51 → 5; the page's memory ~320 → 155 MB at 160K.
+Detailed moments are still painted on canvases (their pictures come from the Finish step), and without WebGL 2 everything
+is painted as before (`?gpu=0` forces it, for comparison). The map view is the same texture drawn flat by the globe's
+renderer, letterboxed under the `#mapCanvas` frame. Zoom is V1's (`app/globe-view.js`): a wheel's notch is 14 % nearer
+(OrbitControls' own was 5 %, and stepped), a pinch the fingers' ratio, and the camera eases to it.
 
 ## Conventions
 

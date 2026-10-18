@@ -4,9 +4,16 @@
 // light and sun — the sun over the viewer's shoulder, where V1's stands for its opening view, so whatever is turned to
 // face you is lit as V1's planet is — and the sun glinting off the sea (V1's water sphere: shininess 120, specular
 // 0x4488bb at its opacity 0.55), the sea given by a mask (setSeaMask).
+// The texture is a canvas's, or one painted on the GPU (view/gpu-paint.js: setSource takes either). Zoom is V1's
+// (js/scene.js): the wheel or a pinch sets the distance aimed at and the camera eases there. The map view (setMap) is
+// the same texture drawn flat by the same renderer, letterboxed in a frame element's box.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// a wheel's notch (100 px): 14 % nearer or farther — OrbitControls' own was 5 % and felt slow (developer, 2026-10-18:
+// "zooming in is also very slow"); V1's is 8 %. The camera covers this share of the way left each 60th of a second.
+const ZOOM_PER_PX = 0.0015, ZOOM_EASE = 0.15;
 
 export class GlobeView {
     /** @param {HTMLCanvasElement} glCanvas  @param {HTMLCanvasElement} mapCanvas  @param {{space?: boolean}} [o] */
@@ -19,11 +26,10 @@ export class GlobeView {
         this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, space ? 200 : 50);
         this.camera.position.set(0, 0.9, 3.2);
 
-        this.texture = new THREE.CanvasTexture(mapCanvas);
-        this.texture.colorSpace = THREE.SRGBColorSpace;
-        this.texture.magFilter = THREE.NearestFilter;      // keep sim cells crisp
-        this.texture.minFilter = THREE.LinearFilter;
-        this.texture.generateMipmaps = false;
+        // (how a canvas's texture is sampled: sim cells crisp by default — setSmooth; repeating east–west, for the map's turn)
+        this.look = { colorSpace: THREE.SRGBColorSpace, magFilter: THREE.NearestFilter, minFilter: THREE.LinearFilter, generateMipmaps: false, wrapS: THREE.RepeatWrapping };
+        this.texture = Object.assign(new THREE.CanvasTexture(mapCanvas), this.look);
+        this.ownTexture = true;                            // (a canvas's: made here; a GPU-painted one belongs to its painter)
         this.globe = new THREE.Mesh(
             new THREE.SphereGeometry(1, 128, 64),
             space ? new THREE.MeshPhongMaterial({ map: this.texture, specular: new THREE.Color(0x4488bb).multiplyScalar(0.55), shininess: 120 })
@@ -39,6 +45,26 @@ export class GlobeView {
         this.controls.minDistance = 1.4;
         this.controls.maxDistance = 8;
         this.controls.rotateSpeed = 0.6;
+        this.controls.enableZoom = false;                  // (V1's zoom instead, below)
+        this.zoomTo = this.camera.position.length();
+        this._zoomAt = 0;
+        glCanvas.addEventListener('wheel', e => {
+            if (!this.controls.enabled) return;
+            e.preventDefault();
+            // (a mouse's notch is ~100 px, or 3 lines, or a page; a trackpad sends many small steps)
+            const px = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 800 : 1);
+            this.zoomBy(Math.exp(Math.max(-200, Math.min(200, px)) * ZOOM_PER_PX));
+        }, { passive: false });
+        let pinch = 0;
+        const apart = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        glCanvas.addEventListener('touchstart', e => { pinch = this.controls.enabled && e.touches.length === 2 ? apart(e) : 0; }, { passive: true });
+        glCanvas.addEventListener('touchmove', e => {
+            if (!pinch || e.touches.length !== 2) return;
+            const d = apart(e);
+            if (d > 0) { this.zoomBy(pinch / d); pinch = d; }
+        }, { passive: true });
+        glCanvas.addEventListener('touchend', () => { pinch = 0; }, { passive: true });
+        this.map = null;                                   // the map view, while shown: { frame, centerLon }
 
         this._raycaster = new THREE.Raycaster();
         this._ndc = new THREE.Vector2();
@@ -65,7 +91,24 @@ export class GlobeView {
         this.controls.update();
     }
 
-    textureChanged() { this.texture.needsUpdate = true; this._dirty = true; }
+    /** A canvas texture's canvas was painted again (a GPU-painted texture needs no upload: only drawing again). */
+    textureChanged() { if (this.ownTexture) this.texture.needsUpdate = true; this._dirty = true; }
+
+    /** Nearer (k < 1) or farther (k > 1): where the camera eases to. */
+    zoomBy(k) {
+        this.zoomTo = Math.max(this.controls.minDistance, Math.min(this.controls.maxDistance, this.zoomTo * k));
+        this._dirty = true;
+    }
+
+    /** The camera a step nearer the distance aimed at; whether it moved. */
+    easeZoom() {
+        const now = performance.now(), dt = this._zoomAt ? Math.min(0.1, (now - this._zoomAt) / 1000) : 1 / 60;
+        this._zoomAt = now;
+        const d = this.camera.position.length();
+        if (Math.abs(this.zoomTo - d) < 1e-4) return false;
+        this.camera.position.setLength(d + (this.zoomTo - d) * (1 - Math.pow(1 - ZOOM_EASE, dt * 60)));
+        return true;
+    }
 
     /** V1's stars, atmosphere and light (js/scene.js). */
     addSpace() {
@@ -93,43 +136,95 @@ export class GlobeView {
         this.setSeaMask(null);
     }
 
-    /** Where the sea is (a canvas the texture's shape: white sea, black land) — the sun glints there only; null: nowhere. */
-    setSeaMask(canvas) {
+    /**
+     * Where the sea is (white sea, black land; a canvas the texture's shape, or a texture painted on the GPU) — the sun
+     * glints there only; null: nowhere.
+     */
+    setSeaMask(src) {
         const m = this.globe.material;
         if (!('specularMap' in m)) return;
-        if (canvas && this.seaMask?.image !== canvas) {
-            this.seaMask?.dispose();
-            this.seaMask = new THREE.CanvasTexture(canvas);
+        if (src?.isTexture) this.seaMask = src;
+        else if (src && this.seaMaskCanvas?.image !== src) {
+            this.seaMaskCanvas?.dispose();
+            this.seaMask = this.seaMaskCanvas = new THREE.CanvasTexture(src);
             this.seaMask.generateMipmaps = false;
             this.seaMask.minFilter = THREE.LinearFilter;
-        }
-        m.specularMap = canvas ? this.seaMask : null;
+        } else if (src) this.seaMask = this.seaMaskCanvas;
+        const map = src ? this.seaMask : null;
+        if (m.specularMap !== map) { m.specularMap = map; m.needsUpdate = true; }
         m.specular.setScalar(0);
-        if (canvas) m.specular.set(0x4488bb).multiplyScalar(0.55);
-        m.needsUpdate = true;
+        if (src) m.specular.set(0x4488bb).multiplyScalar(0.55);
         this._dirty = true;
     }
-    seaMaskChanged() { if (this.seaMask) { this.seaMask.needsUpdate = true; this._dirty = true; } }
+    /** The sea mask's canvas was painted again. */
+    seaMaskChanged() { if (this.seaMask && this.seaMask === this.seaMaskCanvas) this.seaMask.needsUpdate = true; this._dirty = true; }
 
-    /** Show another canvas (of another size) as the globe's texture, with the same filtering. */
-    setSource(canvas) {
-        if (this.texture.image === canvas) return;
-        const old = this.texture;
-        this.texture = new THREE.CanvasTexture(canvas);
-        for (const k of ['colorSpace', 'magFilter', 'minFilter', 'generateMipmaps']) this.texture[k] = old[k];
+    /** Show another canvas (of another size) as the globe's texture, with the same filtering — or a texture painted on the GPU. */
+    setSource(src) {
+        if (this.texture === src || (this.ownTexture && this.texture.image === src)) return;
+        const old = this.texture, owned = this.ownTexture;
+        this.ownTexture = !src.isTexture;
+        this.texture = src.isTexture ? src : Object.assign(new THREE.CanvasTexture(src), this.look);
         this.globe.material.map = this.texture;
         this.globe.material.needsUpdate = true;
-        old.dispose();
+        if (owned) old.dispose();
         this._dirty = true;
     }
 
-    /** Crisp texels (sim cells, the default) or smoothly filtered ones (shaded terrain). */
+    /** Crisp texels (sim cells, the default) or smoothly filtered ones (shaded terrain) — a canvas's texture. */
     setSmooth(on) {
         const filter = on ? THREE.LinearFilter : THREE.NearestFilter;
-        if (this.texture.magFilter !== filter) { this.texture.magFilter = filter; this.texture.needsUpdate = true; }
+        this.look.magFilter = filter;
+        if (this.ownTexture && this.texture.magFilter !== filter) { this.texture.magFilter = filter; this.texture.needsUpdate = true; }
+    }
+
+    /**
+     * The map view: the texture flat, letterboxed (2 : 1) in `frame`'s box, turned so that `centerLon` (degrees) is in
+     * the middle — drawn on this canvas, under the frame (which should be transparent: it takes the pointer, so the globe's
+     * controls rest); null: the globe again.
+     */
+    setMap(frame, centerLon = 0) {
+        this.map = frame ? { frame, centerLon } : null;
+        this.controls.enabled = !frame;
+        if (frame && !this.mapScene) {
+            this.mapScene = new THREE.Scene();
+            this.mapScene.background = new THREE.Color(0x000000);
+            this.mapQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+                uniforms: { map: { value: null }, turn: { value: 0 } },
+                vertexShader: 'varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+                fragmentShader: 'uniform sampler2D map; uniform float turn; varying vec2 vUv;\nvoid main() {\n    gl_FragColor = texture2D(map, vec2(vUv.x + turn, vUv.y));\n    #include <colorspace_fragment>\n}',
+                depthTest: false, depthWrite: false,
+            }));
+            this.mapQuad.frustumCulled = false;
+            this.mapScene.add(this.mapQuad);
+        }
+        this._dirty = true;
+    }
+
+    /** The map's box in client pixels: the frame's, letterboxed to 2 : 1. */
+    mapBox() {
+        const f = this.map.frame.getBoundingClientRect(), s = Math.min(f.width / 2, f.height);
+        return { left: f.left + (f.width - 2 * s) / 2, top: f.top + (f.height - s) / 2, width: 2 * s, height: s };
+    }
+
+    /** On the map view: the texture's place under a client-space point, [u (west → east), v (north → south)] — or null, off the map. */
+    mapUvAt(clientX, clientY) {
+        const b = this.mapBox(), x = (clientX - b.left) / b.width, y = (clientY - b.top) / b.height;
+        if (!(x >= 0 && x < 1 && y >= 0 && y < 1)) return null;
+        return [((x + this.map.centerLon / 360) % 1 + 1) % 1, y];
+    }
+
+    renderMap() {
+        const r = this.renderer, b = this.mapBox(), c = this.canvas.getBoundingClientRect(), u = this.mapQuad.material.uniforms;
+        u.map.value = this.texture; u.turn.value = this.map.centerLon / 360;
+        r.setViewport(b.left - c.left, c.height - (b.top - c.top) - b.height, b.width, b.height);      // (from the bottom)
+        r.render(this.mapScene, this.camera);                                                         // (its background clears the whole canvas)
+        r.setViewport(0, 0, c.width, c.height);
     }
 
     render() {
+        if (this.map) { this.renderMap(); return; }
+        this.easeZoom();
         this.controls.update();
         this.renderer.render(this.scene, this.camera);
     }
@@ -139,8 +234,14 @@ export class GlobeView {
      * redrawn at 60 fps for nothing takes a core from the workers building the history (and a phone's battery).
      */
     renderIfNeeded() {
-        const moved = this.controls.update();
-        if (!moved && !this._dirty) return false;
+        if (this.map) {
+            if (!this._dirty) return false;
+            this.renderMap();
+            this._dirty = false;
+            return true;
+        }
+        const zoomed = this.easeZoom(), moved = this.controls.update();
+        if (!zoomed && !moved && !this._dirty) return false;
         this.renderer.render(this.scene, this.camera);
         this._dirty = false;
         return true;
