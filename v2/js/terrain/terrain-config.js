@@ -33,7 +33,6 @@ export const TERRAIN = {
     coastCellWaveCells: 2.5,    // …in waves of this many sim cells and finer octaves — the lobes a coast read over the cells makes, broken…
     coastFreshFloor: 0.3,       // …down to this share on a fresh coast (a young rift's sides still fit; a fresh belt's shape leads)…
     coastFreshMyr: 60,          // …a belt counting as fresh for about this long after it was last active (a rift: by its margin's maturity)
-    mountainCellNoise: 0.35,    // the high ground (platform rise, uplift, crests) scaled by 1 ± this at the same scales: no cell-sized blobs
     // mountain shape (developer: "i want to see what we cook up"): the evolved uplift and the platform read with each sim
     // cell's slope, as the coast distance is — curved slopes instead of a flat facet per sim triangle — each corner's
     // reading kept within the range of its cell and its neighbours (no overshoot at a steep front); 1: fully, 0: as before

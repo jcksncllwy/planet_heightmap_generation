@@ -96,8 +96,8 @@ export const TECTONICS = {
     maxSpeedOceanic: 25,
     maxSpeedContinental: 10,
     continentalPlateShare: 0.15, // a plate with more than this share of land is held to the continental limit
-    continentalSoftCmYr: 7,     // …and its speed saturates smoothly: v → this × tanh(v ÷ this) (0: off) — a third slower near the limit
-    oceanicSoftCmYr: 12,        // an oceanic plate's likewise (20 cm/yr → 11; Earth's fastest, the Pacific, ~10)
+    continentalSoftCmYr: 7,     // …and its speed saturates smoothly: v → v ÷ √(1 + (v ÷ this)²) (0: off) — a third slower near the limit
+    oceanicSoftCmYr: 12,        // an oceanic plate's likewise (20 cm/yr → 10; Earth's fastest, the Pacific, ~10)
 
     // ── Collision & orogeny (Phase 5a). Records only: heights come later. ──
     // A belt reaches inland by an amount that grows with the convergence it has absorbed (rate × time) and

@@ -82,7 +82,7 @@ export function fastestSpeed(omega, plate, centre) {
 }
 
 /**
- * A continent's speed saturates smoothly: its fastest point's speed v becomes S·tanh(v / S), S = continentalSoftCmYr —
+ * A continent's speed saturates smoothly: its fastest point's speed v becomes v / √(1 + (v/S)²), S = continentalSoftCmYr —
  * hardly changed at a few cm/yr, a third slower near the limit (plans/V2_REALISM_PASS_PLAN.md, phase 4: the recordings
  * found the land of a supercontinent just broken up moving at 5–10 cm/yr, much of it against the limit — the rift push, the
  * mantle's outflow and the pieces' repulsion stacking — and the pieces flew apart into a ring around a round ocean;
@@ -96,7 +96,9 @@ function softenSpeed(omega, plate, centre, config) {
     if (!(S > 0)) return;
     const v = fastestSpeed(omega, plate, centre);
     if (v < 1e-12) return;
-    const k = S * Math.tanh(v / S) / v;
+    // (a square root, not Math.tanh: tanh's last digit differs between JavaScript engines — Node's and Chrome's V8 already —
+    // and the history would differ with it; a square root is exactly rounded everywhere, so a seed builds one planet)
+    const k = 1 / Math.sqrt(1 + (v / S) * (v / S));
     for (let i = 0; i < 3; i++) omega[i] *= k;
 }
 

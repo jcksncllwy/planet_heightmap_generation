@@ -573,7 +573,7 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   pre-history ocean becomes plates; a plate with more than `oceanSplitAreaKm2` of ocean may split along a new ridge, its
   halves pushed apart as a rift's (`step/ocean-plates.js`); an ocean plate subducted below `oceanPlateCaptureKm2` is captured
   by its neighbour. Plates rise from ~6 to ~10–12, the largest falls from up to 100 % of the planet to about half.
-- **Speeds saturate** smoothly (`continentalSoftCmYr`, `oceanicSoftCmYr`: v → S·tanh(v/S)) and the step follows the plates'
+- **Speeds saturate** smoothly (`continentalSoftCmYr`, `oceanicSoftCmYr`: v → v/√(1+(v/S)²); not tanh, whose last digit differs between engines) and the step follows the plates'
   fastest surface speeds, not their |ω| (a speck of a plate could spin at any rate). Breakups drift rather than fly apart;
   a 600 Myr history at 40K takes fewer steps than before (506 against 561), each a little dearer with more plates.
 - **Ocean plateaus** are one smooth rise (`lipSeaSmoothKm`). **Ridge segments and fracture zones:** each cell of new floor
@@ -582,10 +582,9 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   number of segment lengths. **Open-ocean arcs** stand deeper (`arcOceanMatureKm` −1.5 km): a ridge its volcanoes break.
 - **Old ranges in the start supercontinent:** worn Ural-type belts along about half its suture network (`startSuture*`),
   records only — the plate history is unchanged (hash).
-- **Coasts and high ground at the sim's own scale:** a coast read over the plates' cells ran as a chain of rounded lobes one
-  cell across, and highlands came as cell-sized blobs (most obvious at 20K–40K). The coast is moved in and out by up to half
-  a sim cell (`coastCellNoise`) and the high ground scaled by 1 ± 0.35 (`mountainCellNoise`), in waves of 2.5 sim cells and
-  finer (`coastCellWaveCells`), in sim cells (a coarse mesh's lobes broken as much as a fine one's), down to what the terrain
+- **Coasts at the sim's own scale:** a coast read over the plates' cells ran as a chain of rounded lobes one cell across
+  (most obvious at 20K–40K). The coast is moved in and out by up to half a sim cell (`coastCellNoise`), in waves of 2.5 sim
+  cells and finer (`coastCellWaveCells`), in sim cells (a coarse mesh's lobes broken as much as a fine one's), down to what the terrain
   mesh can show — the same live and in Add detail. On a fresh coast the coast's share falls to `coastFreshFloor` (a young
   rifted margin, by its maturity, or a coast whose belt was active within ~`coastFreshMyr`; records.js `coastFresh`), so a
   young ocean's two sides still fit like puzzle pieces and a fresh range's shape leads.
