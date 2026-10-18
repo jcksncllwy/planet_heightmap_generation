@@ -77,6 +77,31 @@ Measured in headless Chrome made to look like an 8-core 4 GB phone (20K plates, 
   stretches), heights and rivers. The terrain per frame (~0.63 s at 160K on one thread) is noise and the surface's own
   arithmetic, already bit-matched and tuned. What is left is the approximations' — re-evaluated below.
 
+## Phase 3 (2026-10-18): the options re-evaluated, the history's pace
+
+Developer: "for 3, we should re-evaluate all our options there"; picked the history's pace (A), then the world view by
+bands (B) — re-measured at the new pace B was worth ~5–10 %, not 20–25 % (the growth half of the rebuild already works at
+plate edges only), so: "ok lets do the rift search improvement. Also lets stress things on 80 and 160K".
+
+- **A, the pace** (the whole-planet scenes only): 2.25 cells a step, the slow rules every 3 Myr (not tidying — every
+  step costs ~7 % but leaves no fragments lingering; not the rivers — fed in 3 Myr chunks their 4 Myr clock stretched to
+  6). Measured on a copy of the engine first (two seeds: −28 to −33 %), then in the engine: 20–39 % at 20K / 1200 Myr,
+  19 % at 40K / 600 Myr. Extend history still the one history. Checks: no new miss beyond chance.
+- **The rift search, exactly**: per plate (not per junction) the outer sea, coast distances and crust cells; the grain
+  once per history; the cuts scored over the plate's cells — −6 to −8 % of a history, hashes unchanged. (A search runs
+  ~56 times a history, a third failing; ~67 ms each on the desktop — bursts in the collision-heavy stretches.)
+- **The gather, exactly**: blocks of 128 cells wholly outside a plate's band of latitude skipped (the Fibonacci mesh is
+  numbered down the sphere) — −3 to −5 % at 20–40K, more at 160K.
+- **Scaling** (300 Myr at 20K / 40K / 80K / 160K: 6.8 / 15 / 30 / 72 s): the passes over every cell every step grow
+  14–21× (the gather 18 % at 160K, boundaries 12 %, forces and contacts ~8 %), the rift search 9×. Nothing pathological;
+  a band-wise (incremental) world view would pay more at high detail than at 20K.
+- **Rendering** (headless Chrome on the real GPU, ANGLE/D3D11): turning the globe is smooth (66/s, no slow frames); every
+  new frame repaints the map texture on the page's thread — paintHeights ~20 ms at 2048, paintSea ~4 ms — the stutter
+  playing (24 slow frames in 8 s) and scrubbing (43 of 202). Proposed: draw the terrain mesh's triangles into the texture
+  on the GPU (its rasterising is the table's blending), heights and shade the only upload.
+- **Not done**: B; GPU terrain (the noise is ~30 % of a 160K frame; GPUs differ in their rounding, so a link could carve
+  different rivers on two devices — only with a plan for that); WebGPU heights for 2.5M+.
+
 ## Proposed approximations (not implemented — the developer's call)
 
 **History**

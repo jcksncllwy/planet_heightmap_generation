@@ -14,7 +14,12 @@ export const TECTONICS = {
                                 // (snapshotEveryMyr should be a multiple of it)
     maxCellsPerStep: 1.5,       // adaptive dt: the two fastest plates together cover at most this many cells (Phase 12:
                                 // 1.0 → 1.5 for a third fewer steps — the most crust growth in step/resolve.js allows: it
-                                // looks ~2 cells around a gap)
+                                // looks ~2 cells around a gap; the whole-planet scenes take 2.25 — scenarios/terrain-scenes.js
+                                // WHOLE_PLANET_PACE: a gap of 2.25 cells is ~1.1 for each flank to grow)
+    slowRulesEveryMyr: 0,       // the slow rules — arcs, margin islands, arc collapse, remnant seas, arc maturing, heights —
+                                // every this many Myr, with the time since (0: every step; tidying stays every step — a fragment
+                                // left a few Myr is a scrap — and the rivers keep their own clock, heights.riverEveryMyr). Their work
+                                // changes little from step to step; run less often, the world view rebuilt after them is too
     snapshotEveryMyr: 10,
 
     // ── Initial supercontinent [WBP] (init/) ──

@@ -55,6 +55,11 @@ function buildCratons(simMesh, seed) {
 
 // (the rift scenes carry no drive of their own — their lab phase supplies the force model — so it is given here)
 const from = (list, id, overrides = {}) => ({ drive: updatePlateMotion, ...list.find(s => s.id === id), ...overrides });
+// The whole-planet histories (Evolution's, and the lab's) at a faster pace: two plates closing up to 2.25 cells a step, not
+// 1.5, and the slow rules every 3 Myr, not every step — about 30 % off a history (plans/V2_PERFORMANCE_PLAN.md, 2026-10-18;
+// developer: "it could be faster and more efficient on all devices"). The scenes of one mechanism keep the finer pace.
+const WHOLE_PLANET_PACE = { maxCellsPerStep: 2.25, slowRulesEveryMyr: 3 };
+const wholePlanet = scene => ({ ...scene, build(simMesh, seed, overrides) { const world = scene.build(simMesh, seed, overrides); Object.assign(world.config, WHOLE_PLANET_PACE); return world; } });
 
 export const TERRAIN_SCENES = [
     from(MARGIN_SCENES, 'margins', { id: 'andes', label: 'An Andean margin', about: 'A continent overrides an ocean plate along its leading coast: a coastal range, a valley behind it, the main volcanic range, fold-and-thrust ridges inland — all parallel to the coast. Offshore, the trench and its outer rise; the trailing coast behind has a wide shelf.' }),
@@ -79,7 +84,7 @@ export const TERRAIN_SCENES = [
         about: 'India, with a big shield close behind its leading coast, collides with Asia, whose shield lies ~900 km behind its south coast. On India’s side (the lower plate) the range’s foothills ride onto the shield’s rim, and in front of them a lowland bends the shield down; on Asia’s side the plateau reaches the shield and its back meets it in a steep front. Neither shield’s outline shows as the sim’s cells.',
     },
     // (a whole planet may be asked to end in a stage of the supercontinent cycle: `endings` — tectonics/ending.js)
-    from(BUDGET_SCENES, 'history', { id: 'history', label: 'A whole planet (600 Myr)', endings: true, about: 'The start world run for 600 Myr with every rule on (building takes about a minute). Young belts stand high and sharp, old ones low but still grained; cratons flat and low; wide shelves on passive margins, narrow ones on active margins; mid-ocean ridges and trenches in the sea.' }),
+    wholePlanet(from(BUDGET_SCENES, 'history', { id: 'history', label: 'A whole planet (600 Myr)', endings: true, about: 'The start world run for 600 Myr with every rule on (building takes about a minute). Young belts stand high and sharp, old ones low but still grained; cratons flat and low; wide shelves on passive margins, narrow ones on active margins; mid-ocean ridges and trenches in the sea.' })),
     // (Phase 13: the same start world, twice as long — long enough for the supercontinent to break up, disperse and gather again)
-    from(BUDGET_SCENES, 'history', { id: 'cycle', label: 'The supercontinent cycle (1200 Myr)', maxMyr: 1200, endings: true, about: 'The start world run for 1200 Myr with every rule on (building takes two minutes or so). The supercontinent breaks up in a burst of rifts, its pieces drift apart, and over a few hundred Myr they gather again into a new one — about 90° from the last, where the mantle goes down — which in its turn breaks up (chart: the largest landmass’s share of the continental crust, how many landmasses, the rifts).' }),
+    wholePlanet(from(BUDGET_SCENES, 'history', { id: 'cycle', label: 'The supercontinent cycle (1200 Myr)', maxMyr: 1200, endings: true, about: 'The start world run for 1200 Myr with every rule on (building takes two minutes or so). The supercontinent breaks up in a burst of rifts, its pieces drift apart, and over a few hundred Myr they gather again into a new one — about 90° from the last, where the mantle goes down — which in its turn breaks up (chart: the largest landmass’s share of the continental crust, how many landmasses, the rifts).' })),
 ];

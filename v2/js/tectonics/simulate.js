@@ -75,6 +75,10 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
         world.lastDt = dt;
         const tally = resolve(world);
         classifyBoundaries(world, dt);
+        // (the slow rules every config.slowRulesEveryMyr, with the time since they last ran)
+        world.slowMyr += dt;
+        const slowDt = world.slowMyr, slow = slowDt >= world.config.slowRulesEveryMyr - 1e-9;
+        if (slow) world.slowMyr = 0;
         if (events) {
             // The event stages, in order. The world view (owner / ownerCell) was built by the resolve above; a stage that
             // adds, removes or rewrites a plate's cells marks it reshaped, and later stages skip reshaped plates or read
@@ -84,14 +88,14 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
             trackCycle(world);                         // the supercontinent cycle: count the landmasses, move the mantle's up- and downwelling
             changed += trackCollisions(world, dt) ? 1 : 0;   // collision records, belts, sutures, docking, arc scraping (merges plates)
             changed += growWings(world, dt);           // trench wings capture passive ocean
-            changed += buildArcs(world);               // island arcs behind mature ocean trenches (cell types only)
-            changed += collapseArcs(world);            // an arc near its own coast lands on it
-            changed += growMarginIsles(world, dt);     // fore-arc islands rise and join the coast (cell types only)
+            if (slow) changed += buildArcs(world);      // island arcs behind mature ocean trenches (cell types only)
+            if (slow) changed += collapseArcs(world);   // an arc near its own coast lands on it
+            if (slow) changed += growMarginIsles(world, slowDt);  // fore-arc islands rise and join the coast (cell types only)
             changed += riftContinents(world, dt);      // plume and tension rifts (splits plates)
             changed += openBackArcs(world, dt);        // rolling-back trenches split off strips; finished strips rejoin
             changed += initiateSubduction(world, dt);  // passive margins founder (may carve an ocean plate)
-            changed += closeRemnantSeas(world, dt);    // seas sealed inside a plate close from their shores
-            changed += matureArcs(world, dt);          // arcs welded onto a continent become continent (cell types only)
+            if (slow) changed += closeRemnantSeas(world, slowDt);  // seas sealed inside a plate close from their shores
+            if (slow) changed += matureArcs(world, slowDt);  // arcs welded onto a continent become continent (cell types only)
             changed += tidyPlates(world);              // fragments join a neighbour; ocean scraps go to the passive ocean
             if (changed) {                              // crust changed: the world view must be rebuilt before anything reads it
                 for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz);
@@ -100,8 +104,8 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
                 classifyBoundaries(world, 0);
             }
         }
-        evolveHeights(world, dt);                           // heights wear down and spread (records only: nothing below reads them)
-        evolveRivers(world, dt);                            // rivers drain the land and cut into it (records only too)
+        if (slow) evolveHeights(world, slowDt);  // heights wear down and spread (records only: nothing below reads them)
+        evolveRivers(world, dt);                            // rivers drain the land and cut into it (records only too; on a clock of their own)
         drive(world);
         steerBackArcStrips(world);                          // a back-arc strip follows its retreating trench, whatever drives the rest
         stepLog.push({ time: world.time, dt, cellsMoved, ...tally });

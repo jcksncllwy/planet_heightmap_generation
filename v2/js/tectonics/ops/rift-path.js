@@ -4,7 +4,7 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { tangentToward, normalize, cross, dot, cellDistanceKm } from '../../core/sphere-geom.js';
-import { sidesOf, exteriorSea } from './rift-partition.js';
+import { sidesOf, exteriorSea, maskedCells } from './rift-partition.js';
 import { FastNoise } from '../../core/fast-noise.js';
 
 /**
@@ -20,31 +20,46 @@ function grainOf(world) {
     if (!(config.riftCurveAmp > 0 || config.riftJagAmp > 0)) return () => 1;
     const noise = world.riftGrain ??= new FastNoise((world.seed ^ 0x6a41) >>> 0);
     const f1 = PLANET_RADIUS_KM / config.riftCurveKm, f2 = PLANET_RADIUS_KM / config.riftJagKm, { xyz } = world.mesh;
+    // (a raster cell's grain is fixed — the plate's frame, the world's seed — so it is worked out once per history)
+    const known = world.riftGrainOf ??= new Float64Array(world.mesh.numCells).fill(NaN);
     return c => {
+        let g = known[c];
+        if (g === g) return g;
         const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
-        return Math.max(0.2, 1 + config.riftCurveAmp * noise.noise3D(x * f1, y * f1, z * f1) + config.riftJagAmp * noise.noise3D(x * f2 + 31.7, y * f2 + 17.3, z * f2 + 5.1));
+        g = known[c] = Math.max(0.2, 1 + config.riftCurveAmp * noise.noise3D(x * f1, y * f1, z * f1) + config.riftJagAmp * noise.noise3D(x * f2 + 31.7, y * f2 + 17.3, z * f2 + 5.1));
+        return g;
     };
+}
+
+/**
+ * What a rift search reads of a plate's crust, the same for every junction tried (rifting.js tryRift): its cells in order,
+ * the sea its outer coast faces, each land cell's hops from that coast, and the grain.
+ */
+export function riftContext(world, plate) {
+    const { mesh } = world, crust = plate.crust, exterior = exteriorSea(mesh, crust);
+    return { cells: maskedCells(crust), exterior, fromCoast: coastDistance(mesh, crust, exterior), grain: grainOf(world) };
 }
 
 /**
  * Find a rift across `plate`'s landmass through raster cell `junction`.
  * @param {number[]|null} pullAxis   plate-frame unit vector of the tug of war (the rift prefers to run across it); null = no preference
+ * @param {Object} [ctx]   riftContext(world, plate), when several junctions of the same crust are tried
  * @returns {{path: number[], failedArm: number[], arms: number[][], across: number[], value: number}|null}   path = coast to coast through the junction
  */
-export function findRift(world, plate, junction, pullAxis, needCratonsBothSides = true) {
-    const { mesh, config } = world, { xyz, adjOffset, adjList, numCells, edgeKm } = mesh, crust = plate.crust;
+export function findRift(world, plate, junction, pullAxis, needCratonsBothSides = true, ctx = null) {
+    const { mesh, config } = world, { xyz, adjOffset, adjList, edgeKm } = mesh, crust = plate.crust;
     const land = c => crust.mask[c] && crust.type[c] !== CrustType.OCEAN;
     if (!land(junction) || crust.type[junction] === CrustType.CRATON) return null;
+    ctx ??= riftContext(world, plate);
 
     // cheapest paths from the junction across the land: weak lines cost riftWeaknessCost, cratons cannot be entered at all
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
-    const grain = grainOf(world);
+    const grain = ctx.grain;
     const { cost, from } = cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * grain(c));
     // coastal land cells reached — on the OUTER coast (an inland sea is not a way out), with the direction they lie in
-    const exterior = exteriorSea(mesh, crust);
-    const fromCoast = coastDistance(mesh, crust, exterior);
+    const { exterior, fromCoast } = ctx;
     const J = pos(xyz, junction), coast = [];
-    for (let c = 0; c < numCells; c++) {
+    for (const c of ctx.cells) {
         if (!land(c) || cost[c] === Infinity) continue;
         let isCoast = false;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (exterior[adjList[k]]) { isCoast = true; break; }
@@ -87,7 +102,7 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
         const path = [...trace(pair.a.c).slice(1).reverse(), junction, ...trace(pair.b.c).slice(1)];
         if (!isMonotone(mesh, path, config)) continue;
         if (!crossesRatherThanHugs(mesh, path, fromCoast, config)) continue;
-        const sides = sidesOf(mesh, crust, path);
+        const sides = sidesOf(mesh, crust, path, ctx.cells);
         if (sides.share < config.riftMinPieceShare || (needCratonsBothSides && !sides.cratonsBothSides)) continue;   // a rift divides cratons: each side keeps at least one (a plume may shear a craton-less piece off)
         const value = pair.perKm * (1 + config.riftElongationBias * (sides.elongation - 1));
         if (value < bestValue) { bestValue = value; chosen = pair; chosenPath = path; }

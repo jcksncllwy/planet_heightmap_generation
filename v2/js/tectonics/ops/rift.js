@@ -14,7 +14,7 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { tangentToward, normalize, dot } from '../../core/sphere-geom.js';
 import { spreadBelt, OrogenyType } from '../step/orogeny.js';
 import { partition } from './rift-partition.js';
-export { findRift } from './rift-path.js';
+export { findRift, riftContext } from './rift-path.js';
 
 /**
  * Split `plate` in two along `path` (raster cells, coast to coast). Cells left of the path stay with the

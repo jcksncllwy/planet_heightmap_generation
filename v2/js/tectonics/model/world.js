@@ -46,6 +46,8 @@ export class TectonicWorld {
         this.step = 0;
         this.occupancyStamp = 0;                     // counts resolve passes: the mark plates leave in the coarse occupancy bins (step/occupancy.js)
         this.lastDt = 0;            // length of the step just taken (Myr)
+        this.slowMyr = 0;           // time since the slow rules last ran (config.slowRulesEveryMyr; kept so a history run on in
+                                    // pieces is the one history)
         /** @type {Plate[]} index === plate id; dead plates stay in place */
         this.plates = [];
 

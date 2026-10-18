@@ -11,7 +11,7 @@
 
 import { CrustFlag, CrustType } from '../model/crust.js';
 import { tangentToward } from '../../core/sphere-geom.js';
-import { findRift, splitPlate, chooseJunction } from '../ops/rift.js';
+import { findRift, riftContext, splitPlate, chooseJunction } from '../ops/rift.js';
 import { EventKind } from '../model/world.js';
 import { isContinental } from './hotspots.js';
 
@@ -142,11 +142,11 @@ function heatUnderContinents(world) {
  * @param {{text: string, kind: 'plume' | 'tension', hotspot: number}} cause   what started it (for the event)
  */
 export function tryRift(world, plate, junctions, cause, needCratonsBothSides = true) {
-    const { mesh } = world, pull = pullAxisOf(plate, mesh);
+    const { mesh } = world, pull = pullAxisOf(plate, mesh), ctx = riftContext(world, plate);     // (what every junction's search reads of the crust)
     let rift = null;
     for (const junction of junctions) {
         if (junction < 0) continue;
-        const found = findRift(world, plate, junction, pull, needCratonsBothSides);
+        const found = findRift(world, plate, junction, pull, needCratonsBothSides, ctx);
         if (found && (!rift || found.value < rift.value)) rift = found;
     }
     if (!rift) return false;

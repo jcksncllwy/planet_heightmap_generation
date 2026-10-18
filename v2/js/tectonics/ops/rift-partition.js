@@ -9,10 +9,18 @@ import { tangentToward } from '../../core/sphere-geom.js';
  * the elongation of the less compact side (long axis ÷ short axis of its land, from second moments; 1 = round), and
  * whether both sides hold craton cells.
  */
-export function sidesOf(mesh, crust, path) {
-    const { side, land, cratons } = partition(mesh, crust, path), a = land[1], b = land[2];
+export function sidesOf(mesh, crust, path, cells = maskedCells(crust)) {
+    const { side, land, cratons } = partition(mesh, crust, path, cells), a = land[1], b = land[2];
     if (a + b === 0) return { share: 0, elongation: 1, cratonsBothSides: false };
-    return { share: Math.min(a, b) / (a + b), elongation: Math.max(elongationOf(mesh, side, 1), elongationOf(mesh, side, 2)), cratonsBothSides: cratons[1] > 0 && cratons[2] > 0 };
+    return { share: Math.min(a, b) / (a + b), elongation: Math.max(elongationOf(mesh, side, 1, cells), elongationOf(mesh, side, 2, cells)), cratonsBothSides: cratons[1] > 0 && cratons[2] > 0 };
+}
+
+/** The plate's crust cells, in order — what the partition's scans visit (a rift scores many cuts of the same crust). */
+export function maskedCells(crust) {
+    const mask = crust.mask, out = new Int32Array(crust.count);
+    let k = 0;
+    for (let c = 0; c < mask.length; c++) if (mask[c]) out[k++] = c;
+    return k === out.length ? out : out.subarray(0, k);
 }
 
 /**
@@ -23,9 +31,9 @@ export function sidesOf(mesh, crust, path) {
  * side it is not joined to by land would hang on by ocean alone and drift off as the sea between subducts. The path
  * never crosses a craton, so no craton is ever divided. The plate's ocean (apron, fore-arc, wake) follows its nearest
  * land. Returns the side of every cell (1 left, 2 right; 0 = not on the plate), and per side the count of land cells
- * and of whole cratons.
+ * and of whole cratons. `cells`: the plate's crust cells in order (maskedCells) — every scan visits only those.
  */
-export function partition(mesh, crust, path) {
+export function partition(mesh, crust, path, cells = maskedCells(crust)) {
     path = throughOcean(mesh, crust, path);
     const { xyz, numCells, adjOffset, adjList } = mesh, onPath = new Uint8Array(numCells), side = new Int8Array(numCells);
     for (const c of path) onPath[c] = 1;
@@ -44,7 +52,7 @@ export function partition(mesh, crust, path) {
     }
     // the pieces of land the path leaves, each voting by the cells of it that touch the path
     const piece = new Int32Array(numCells).fill(-1), pieces = [];
-    for (let s0 = 0; s0 < numCells; s0++) {
+    for (const s0 of cells) {
         if (!isLand(s0) || onPath[s0] || piece[s0] >= 0) continue;
         const id = pieces.length, cells = [s0]; piece[s0] = id;
         let vote = 0;
@@ -57,19 +65,18 @@ export function partition(mesh, crust, path) {
     }
     let right = null;
     for (const p of pieces) if (p.vote < 0 && (!right || p.cells.length > right.cells.length)) right = p;
-    for (let c = 0; c < numCells; c++) if (isLand(c)) side[c] = 1;
+    for (const c of cells) if (isLand(c)) side[c] = 1;
     if (right) for (const c of right.cells) side[c] = 2;
     // the plate's ocean follows its nearest land; anything unreached (shouldn't happen) stays
     let frontier = [];
-    for (let c = 0; c < numCells; c++) if (side[c]) frontier.push(c);
+    for (const c of cells) if (side[c]) frontier.push(c);
     while (frontier.length) {
         const next = [];
         for (const c of frontier) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (crust.mask[nb] && !side[nb]) { side[nb] = side[c]; next.push(nb); } }
         frontier = next;
     }
     const land = [0, 0, 0], cratons = [0, 0, 0], seenCraton = new Set();
-    for (let c = 0; c < numCells; c++) {
-        if (!crust.mask[c]) continue;
+    for (const c of cells) {
         if (!side[c]) side[c] = 1;
         if (!isLand(c)) continue;
         land[side[c]]++;
@@ -135,14 +142,15 @@ function throughOcean(mesh, crust, path) {
 }
 
 /** Long axis ÷ short axis of the cells marked `which` in `side`, from the two largest eigenvalues of their position covariance. */
-export function elongationOf(mesh, side, which) {
+export function elongationOf(mesh, side, which, cells = null) {
     const { xyz, numCells } = mesh;
+    if (!cells) { cells = []; for (let c = 0; c < numCells; c++) if (side[c]) cells.push(c); }       // (only a plate's cells have a side)
     let n = 0, m = [0, 0, 0];
-    for (let c = 0; c < numCells; c++) if (side[c] === which) { n++; m[0] += xyz[3 * c]; m[1] += xyz[3 * c + 1]; m[2] += xyz[3 * c + 2]; }
+    for (const c of cells) if (side[c] === which) { n++; m[0] += xyz[3 * c]; m[1] += xyz[3 * c + 1]; m[2] += xyz[3 * c + 2]; }
     if (n < 6) return 1;
     m = m.map(v => v / n);
     const C = new Float64Array(9);
-    for (let c = 0; c < numCells; c++) {
+    for (const c of cells) {
         if (side[c] !== which) continue;
         const d = [xyz[3 * c] - m[0], xyz[3 * c + 1] - m[1], xyz[3 * c + 2] - m[2]];
         for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[3 * i + j] += d[i] * d[j];

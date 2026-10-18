@@ -516,6 +516,19 @@ plain loops (`Float32Array.from` with a callback was most of their time) — the
 (the world view's gather, the nearest-crust searches, the rift search) gained nothing measurable from further exact
 changes (tried: each plate's edge marks kept while its crust is unchanged; the rift partition's arrays reused — reverted).
 
+The whole-planet histories' pace (2026-10-18; plans/V2_PERFORMANCE_PLAN.md, phase 3 — every planet changes): the
+Evolution history and the lab's whole planet (scenarios/terrain-scenes.js `WHOLE_PLANET_PACE`) let two closing plates move 2.25
+cells a step (not 1.5: each flank of a gap grows about a cell) and run the slow rules every 3 Myr with the time since
+(config `slowRulesEveryMyr`: arcs, margin islands, arc collapse, remnant seas, arc maturing, heights — tidying stays every step,
+a fragment left a few Myr being a scrap, and the rivers keep their own clock); the scenes of one mechanism keep the finer
+pace. Two exact changes with it: a rift's search works out the outer sea, the coast distances and its crust cells once
+per plate (not per junction tried), the grain once per history, and scores its cuts over the plate's own cells
+(ops/rift-path.js `riftContext`); the world view's gather passes over blocks of cells wholly outside a plate's band of
+latitude (the mesh's cells are numbered down the sphere). A 1200 Myr history at 20K 29.5–33.2 s → 18.6–23.7 s (20–39 %),
+600 Myr at 40K 31.1 → 25.2 s; Extend history still the one history. At 160K, 300 Myr 72 → 59 s. Checks 8a, 8b, 9, 10, 13
+against the old pace: no new miss beyond chance (a different planet each run) — and the scraps of craton that sink into
+a range as a flat hole (check 10) turn out to come at the old pace too, on other seeds (5.7 km on one): a terrain matter.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

@@ -34,20 +34,45 @@ export function forEachClaim(world, onClaim) {
         //   the answer cannot be crust — re-tested against the crust of the moment whenever the map is reused.
         const map = claimMap(plate, numCells), m = plate.mat;
         let near = null;
-        for (let w = 0; w < numCells; w++) {
-            const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
-            if (x * cx + y * cy + z * cz < capCos) continue;
-            let cell = map[w];
-            if (cell < 0) {
-                const px = m[0] * x + m[3] * y + m[6] * z, py = m[1] * x + m[4] * y + m[7] * z, pz = m[2] * x + m[5] * y + m[8] * z;
-                const guess = cell === -1 ? index.start(px, py, pz) : -2 - cell;
-                near ??= nearEdge(plate, mesh);
-                if (!mask[guess] && near.marks[guess] !== near.stamp) { map[w] = -2 - guess; continue; }
-                cell = map[w] = index.walk(guess, px, py, pz);
+        // (the mesh's cells are numbered down the sphere — a Fibonacci spiral — so blocks of them lie in bands of latitude:
+        // a block wholly outside the cap's band of latitude is passed over; every other cell is tested as before, in order)
+        const blocks = latitudeBlocks(mesh), { zLo, zHi } = capBand(cx, cy, cz, capCos);
+        for (let b = 0, w = 0; b < blocks.count; b++) {
+            const end = Math.min(numCells, w + BLOCK);
+            if (blocks.zMax[b] < zLo || blocks.zMin[b] > zHi) { w = end; continue; }
+            for (; w < end; w++) {
+                const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
+                if (x * cx + y * cy + z * cz < capCos) continue;
+                let cell = map[w];
+                if (cell < 0) {
+                    const px = m[0] * x + m[3] * y + m[6] * z, py = m[1] * x + m[4] * y + m[7] * z, pz = m[2] * x + m[5] * y + m[8] * z;
+                    const guess = cell === -1 ? index.start(px, py, pz) : -2 - cell;
+                    near ??= nearEdge(plate, mesh);
+                    if (!mask[guess] && near.marks[guess] !== near.stamp) { map[w] = -2 - guess; continue; }
+                    cell = map[w] = index.walk(guess, px, py, pz);
+                }
+                if (mask[cell]) onClaim(w, plate, cell);
             }
-            if (mask[cell]) onClaim(w, plate, cell);
         }
     }
+}
+
+// Blocks of BLOCK consecutive cells, each with the least and greatest z of its cells (per mesh, once).
+const BLOCK = 128, blocksOf = new WeakMap();
+function latitudeBlocks(mesh) {
+    let B = blocksOf.get(mesh);
+    if (B) return B;
+    const { xyz, numCells } = mesh, count = Math.ceil(numCells / BLOCK);
+    B = { count, zMin: new Float64Array(count).fill(Infinity), zMax: new Float64Array(count).fill(-Infinity) };
+    for (let w = 0; w < numCells; w++) { const b = (w / BLOCK) | 0, z = xyz[3 * w + 2]; if (z < B.zMin[b]) B.zMin[b] = z; if (z > B.zMax[b]) B.zMax[b] = z; }
+    blocksOf.set(mesh, B);
+    return B;
+}
+/** The band of z a cap (unit centre, cosine of its radius) covers, widened by a margin far beyond rounding (1e-4 ≈ 0.6 km). */
+function capBand(cx, cy, cz, capCos) {
+    if (capCos <= -1) return { zLo: -Infinity, zHi: Infinity };
+    const theta = Math.acos(Math.max(-1, Math.min(1, cz))), r = Math.acos(capCos);
+    return { zLo: Math.cos(Math.min(Math.PI, theta + r)) - 1e-4, zHi: Math.cos(Math.max(0, theta - r)) + 1e-4 };
 }
 
 /** The plate's world cell → raster cell map for its current rotation (see forEachClaim), reset when it has turned. */

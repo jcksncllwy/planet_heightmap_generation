@@ -14,8 +14,8 @@ import { overrides } from './polarity.js';
 import { binIndex, markBin, mayHaveCrustNear } from './occupancy.js';
 import { ringsOf, RING_COUNT } from '../../core/mesh-rings.js';
 
-// How far the growth step looks, in cells. Both assume a gap opens by about one cell per step
-// (config.maxCellsPerStep ≲ 1.5): raise that and these must grow with it.
+// How far the growth step looks, in cells. Both assume a gap opens by a cell or so per step, each flank growing its half
+// (config.maxCellsPerStep ≲ 2.25 — the whole-planet scenes' — about a cell a flank): raise that and these must grow with it.
 const REACH_RINGS = 2;        // rings of raster cells around a gap cell that are considered for growth
 const AHEAD_CONE = 0.5;        // cos 60°: crust counts as "ahead" of a moving edge if it lies within 60° of the motion
 const PROXIMITY_RINGS = 3;    // how far from existing crust a new cell may be, and how far "nearby" crust is sought
