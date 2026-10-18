@@ -83,7 +83,9 @@ export function windWork(ctx, F) {
         if (v > 0) z[c] = Math.max(Math.min(z[c], 0.003), z[c] - panShow * F.panKm * Math.min(1, v / 0.5));
     }
     // ── loess: dust from the deserts and the outwash, carried downwind (on the grid), laid on gentle land beyond ──
-    const src = grid.average(lat, lon, Float32Array.from(desert, (d, c) => Math.max(d > 0.5 ? 1 : 0, ctx.outwash?.[c] ? 1 : 0)), c => z[c] > 0);
+    const bare = new Float32Array(desert.length);
+    for (let c = 0; c < desert.length; c++) bare[c] = Math.max(desert[c] > 0.5 ? 1 : 0, ctx.outwash?.[c] ? 1 : 0);
+    const src = grid.average(lat, lon, bare, c => z[c] > 0);
     const loess = new Float32Array(grid.size), steps = 12, stepKm = F.loessReachKm / 6;
     for (let j = 0; j < grid.h; j++) {
         const la = 90 - (j + 0.5) * grid.step;

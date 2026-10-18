@@ -136,7 +136,8 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     const basalt = new Uint8Array(n);
     for (let c = 0; c < n; c++) if (carveIn.lip[c] > 0) basalt[c] = Math.round(255 * carveIn.lip[c] * smooth(0, 0.05, C.z[c] - carveIn.lipBase[c]));
     // (and how young the mountains are: the belt's activity, 1 while the history still raises it — the satellite view's tone)
-    const young = Uint8Array.from(carveIn.hold, v => Math.round(255 * Math.max(0, Math.min(1, v))));
+    const young = new Uint8Array(n);
+    for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
@@ -236,9 +237,11 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // (and toward each climate's own colours, regionally — on a coarser grid: the correction is smooth, ~100 km)
     biasTowardClimate(sat, cellsClimate.koppen, lat, lon, c => land[c] === 1 && cellsClimate.koppen[c] > 0, new LatLonGrid(0.5), seed);
     lap('final climate');
+    const flow = new Float32Array(n);
+    for (let c = 0; c < n; c++) flow[c] = Math.log10(Math.max(1, Hy.area[c]));
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
-            flow: Float32Array.from(Hy.area, a => Math.log10(Math.max(1, a))), young, rivers: Hy.rivers, ripSat } },
+            flow, young, rivers: Hy.rivers, ripSat } },
         layers: debug ? { ice: I.ice, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };
 }
 
@@ -369,11 +372,13 @@ export function finishRaster(mesh, z, ocean, w, onRow = null, lake = null, lakeL
     const ripPx = sat && climate.ripSat ? climate.ripSat.map(() => new Uint8Array(3 * cw * ch)) : null;
     // (and the land's measures beyond Köppen, cell-stats.js bytes — the weightiest land cell's)
     const statPx = cw && climate.stats ? Object.fromEntries(STAT_KEYS.map(k => [k, new Uint8Array(cw * ch)])) : null;
+    // (each column's longitude's cosine and sine, once)
+    const cosLon = new Float64Array(w), sinLon = new Float64Array(w);
+    for (let px = 0; px < w; px++) { const lon = ((px + 0.5) / w - 0.5) * 2 * Math.PI; cosLon[px] = Math.cos(lon); sinLon[px] = Math.sin(lon); }
     for (let py = 0; py < h; py++) {
         const lat = (0.5 - (py + 0.5) / h) * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
         for (let px = 0; px < w; px++) {
-            const lon = ((px + 0.5) / w - 0.5) * 2 * Math.PI;
-            locate(mesh, cl * Math.cos(lon), cl * Math.sin(lon), sl, c3, w3);
+            locate(mesh, cl * cosLon[px], cl * sinLon[px], sl, c3, w3);
             const i = py * w + px, v = w3[0] * z[c3[0]] + w3[1] * z[c3[1]] + w3[2] * z[c3[2]];
             heightM[i] = Math.max(-32000, Math.min(32000, Math.round(v * 1000)));
             const near = w3[0] >= w3[1] && w3[0] >= w3[2] ? c3[0] : w3[1] >= w3[2] ? c3[1] : c3[2];
@@ -394,7 +399,7 @@ export function finishRaster(mesh, z, ocean, w, onRow = null, lake = null, lakeL
                     if (statPx) for (const key of STAT_KEYS) statPx[key][k] = climate.stats[key][best];
                     if (sat) {
                         // (a fine mottling of the brightness, per pixel — the same in every view)
-                        const mf = fineMottle(cl * Math.cos(lon), cl * Math.sin(lon), sl, mottle);
+                        const mf = fineMottle(cl * cosLon[px], cl * sinLon[px], sl, mottle);
                         for (let v = 0; v < 3; v++) {
                             const S = climate.sat[v];
                             s3[0] = s3[1] = s3[2] = 0;

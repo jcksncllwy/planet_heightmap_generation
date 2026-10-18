@@ -180,7 +180,8 @@ js/core/           geometry with no tectonics in it: rotations, sphere index, si
                    centroids), mesh-bfs (hop distances, floods, connected pieces — use these, don't hand-roll a BFS),
                    mesh-locate (the triangle a point falls in, with barycentric weights), min-heap (+ spreadKm: Dijkstra
                    in km over a mesh), mesh-rings (every cell's rings 0–3, precomputed), fast-noise (bit-identical to V1's
-                   SimplexNoise, faster); sim-mesh also rebuilds a mesh from its arrays (meshFromArrays: how workers get it)
+                   SimplexNoise, faster); sim-mesh also rebuilds a mesh from its arrays (meshFromArrays: how workers get it);
+                   device (SMALL_DEVICE: a phone or a device reporting ≤ 4 GB — the memory budgets that follow it)
 js/tectonics/
   config.js        every tunable, in physical units (km, Myr, cm/yr); MECHANISMS = each mechanism's off-switch
   model/           crust.js (CrustRaster: per-plate cells in the plate's own frame; CELL_FIELDS; the type / flag /
@@ -497,6 +498,23 @@ frames side by side at 2.5M only (−12 % a frame playing ahead; slower at 640K)
 worker planning the frame itself, and more synthesis workers than cores (both slower: the heights are noise arithmetic,
 which a core's second thread barely helps). A multi-threaded history was assessed (~1.3× at best on 8 cores) and not
 built; the plan lists approximations that would take a large share off, for the developer to choose.
+
+Memory and speed on phones (2026-10-18, after Add detail at 640K closed the tab on a phone; measured in Chrome made to
+look like an 8-core 4 GB phone — 20K, 160K, 1200 Myr — every output unchanged, by hashes): the history's worker no longer
+keeps the frames it has sent (simulate's `keepFrames: false`: ~2 MB a frame at 20K — the whole history held twice); on a
+small device Add detail lets the terrain's workers go while it runs (`TerrainPlayer.rest` / `wake`: frames asked for
+meanwhile are built after), builds its surface on 3 workers rather than one per core, and its worker goes when it is done
+(everywhere below 2.5M cells, whose mesh takes under a second or two to build again — the finer ones' is kept); a small
+device keeps a third of the unpacked frames (32 MB). The page's memory once the history is built 1.36 → 1.03 GB, at its
+peak during a 640K Add detail 1.81 → 1.35 GB, after it 1.53 → 0.84 GB (the browser's own count, its garbage included;
+what the page's threads hold 0.97 → 0.58 GB built, 1.43 → 0.80 GB at the peak). Then an exact pass on Add detail: the
+finished picture and the satellite look work out each column's longitude once (not per pixel), the look's tone and snow
+exponentials once per pixel for its three views, its box statistics and the regional grid's blur run their column sums a
+row at a time (in memory order; the same sums in the same order), and the grid's mean and blur fill their results with
+plain loops (`Float32Array.from` with a callback was most of their time) — the picture at 4096 6.0 → 4.4 s, the ice age
+0.65 → 0.28 s, the wind 1.17 → 0.71 s, the final climate 1.63 → 1.37 s (640K). In the history the remaining hot spots
+(the world view's gather, the nearest-crust searches, the rift search) gained nothing measurable from further exact
+changes (tried: each plate's edge marks kept while its crust is unchanged; the rift partition's arrays reused — reverted).
 
 ## Conventions
 

@@ -54,6 +54,29 @@ headers: a service worker would, on every page of the site). Recommendation: not
 | a frame at 160K terrain | ~0.4–0.5 s | the plan ~0.2 s (one worker; the others wait), handing it out ~0.1 s, the heights ~0.1 s, carving 0.1 s |
 | a frame at 2.5M terrain | ~1.1 s playing ahead (2 carvers), ~2 s asked for alone | the heights ~0.9 s (noise: ~50 evaluations per land cell), carving ~1.0 s (one priority flood over 2.5M cells), the plan 0.2 s |
 
+## Phones and a second exact pass (2026-10-18)
+
+Developer, after a phone test: "collisions are particularly heavy and take a long time on phone. And the add detail at 640
+crashed the site" … "in general, it could be faster and more efficient on all devices!" … "i only care about evolution".
+Measured in headless Chrome made to look like an 8-core 4 GB phone (20K plates, 160K terrain, 1200 Myr):
+
+- **Memory (phase 1, exact).** The page peaked at 1.8 GB during a 640K Add detail (phones close a tab well before):
+  the history's worker kept every frame it had sent (~2 MB each at 20K); Add detail spawned one surface worker per core
+  (7 on an 8-core phone) while the terrain's own workers sat idle with their copies of the meshes; its worker kept the
+  640K mesh after (~0.3 GB) and the climate's garbage. Fixed: frames not kept by the worker (simulate `keepFrames`);
+  on small devices (core/device.js) the terrain's workers let go during Add detail (TerrainPlayer.rest / wake), 3 surface
+  workers, a third of the unpacked frames; the finishing worker let go after any finish below 2.5M. Peak 1.81 → 1.35 GB
+  (the browser's count; the threads' own 1.43 → 0.80 GB), built 1.36 → 1.03 GB, after Add detail 1.53 → 0.84 GB.
+- **Speed (phase 2, exact; hashes of three histories, the terrain pool, the climate and a 640K Add detail).** Add detail:
+  per-column trig in the picture and the satellite look, the look's exponentials once per pixel, column sums in memory
+  order (box statistics, the grid's blur), plain loops for the grid's results — picture at 4096 6.0 → 4.4 s, ice age −57 %,
+  wind −39 %, final climate −16 %. The history: nothing measurable left in exact changes (edge marks kept while a plate's
+  crust is unchanged, the rift partition's arrays reused — both reverted); its time is the world view rebuilt twice a step
+  (~35 %; the rebuild after the events runs on 83 % of steps — tidying, arcs and collisions change something nearly every
+  step), the rift search (~15 % at 20K; an overdue piece is searched every step until a cut passes — the collision-heavy
+  stretches), heights and rivers. The terrain per frame (~0.63 s at 160K on one thread) is noise and the surface's own
+  arithmetic, already bit-matched and tuned. What is left is the approximations' — re-evaluated below.
+
 ## Proposed approximations (not implemented — the developer's call)
 
 **History**

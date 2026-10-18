@@ -329,7 +329,7 @@ export function biasTowardClimate(sat, koppen, lat, lon, use, grid, seed = 0, K 
         for (let f = 0; f < 9; f++) sums[f][g] += off[f];
         count[g]++;
     }
-    const fields = sums.map(S => grid.blur(Float32Array.from(S, (v, g) => (count[g] ? v / count[g] : NaN)), K.climateBiasKm));
+    const fields = sums.map(S => { const m = new Float32Array(S.length); for (let g = 0; g < S.length; g++) m[g] = count[g] ? S[g] / count[g] : NaN; return grid.blur(m, K.climateBiasKm); });
     const { w: gw, h: gh, step } = grid;
     // how deep inside its climate each place is: the grid's main class per grid cell, the distance (km) to the nearest
     // grid cell of another (chamfer: rows narrower toward the poles; the sea passed over, never a climate of its own),
@@ -423,7 +423,9 @@ export function biasTowardClimate(sat, koppen, lat, lon, use, grid, seed = 0, K 
 export function coverRain(rain, lat, lon, use, grid, seed = 0, K = COVER) {
     const n = rain.length, G = grid.size, sum = new Float64Array(G), cnt = new Float64Array(G);
     for (let c = 0; c < n; c++) { if (!use(c) || !(rain[c] >= 0)) continue; const g = grid.index(lat[c], lon[c]); sum[g] += Math.log1p(rain[c]); cnt[g]++; }
-    const field = grid.blur(Float32Array.from(sum, (v, g) => (cnt[g] ? v / cnt[g] : NaN)), K.coverRainKm);
+    const mean = new Float32Array(sum.length);
+    for (let g = 0; g < sum.length; g++) mean[g] = cnt[g] ? sum[g] / cnt[g] : NaN;
+    const field = grid.blur(mean, K.coverRainKm);
     const { w: gw, step } = grid, noise = new FastNoise(((seed | 0) * 0x3d2f + 0x11d) >>> 0), f = 6371 / K.coverRainNoiseKm, deg = 180 / Math.PI;
     const wdeg = K.coverRainWarpKm / (6371 * Math.PI / 180), warped = new Float32Array(G);
     for (let g = 0; g < G; g++) {
@@ -482,6 +484,10 @@ export function terrainLook(C, heightM, w, K = COVER) {
     mOct = Math.max(1, mOct);
     const mf = 6371 / K.mtnTextureKm, dU = 0.25 * (K.mtnTextureKm / 2 ** (mOct - 1)) / 6371, Le = -0.5, Ln = 0.5, Lu = Math.SQRT1_2;
     const ridged = (x, y, z) => { let s = 0, a = 1, t = 0, f = mf; for (let o = 0; o < mOct; o++, a *= 0.5, f *= 2) { const v = 1 - Math.abs(noise.noise3D(f * x + 11.3, f * y - 7.1, f * z + 3.9)); s += a * v * v; t += a; } return s / t; };
+    // (each column's longitude's cosine and sine, once; and per pixel the mountains' tone and the flow texture on snow
+    // worked out once for the three views, as they need them)
+    const cosL = new Float64Array(cw), sinL = new Float64Array(cw), toneE = [0, 0, 0], toneS = [0, 0, 0], flowS = [0, 0, 0];
+    for (let x = 0; x < cw; x++) { const lon = ((x + 0.5) / cw - 0.5) * 2 * Math.PI; cosL[x] = Math.cos(lon); sinL[x] = Math.sin(lon); }
     for (let y = 0; y < ch; y++) {
         const lat = (0.5 - (y + 0.5) / ch) * Math.PI, cl = Math.max(0.05, Math.cos(lat)), sl = Math.sin(lat), pole = lat >= 0 ? 1 : -1;
         const up = Math.max(0, y - 1) * cw, dn = Math.min(ch - 1, y + 1) * cw, row = y * cw;
@@ -503,18 +509,17 @@ export function terrainLook(C, heightM, w, K = COVER) {
             // the flow texture: its opacity by the area drained, grained
             let fo = 0;
             if (flow) {
-                const lon = ((x + 0.5) / cw - 0.5) * 2 * Math.PI;
                 fo = K.flowOpacity * smooth(fLo, fHi, flow[i]);
-                if (fo > 0 && noise) fo *= Math.max(0, 1 + K.flowGrain * noise.fbm(fg * cl * Math.cos(lon) - 4.1, fg * cl * Math.sin(lon) + 6.3, fg * sl + 2.2, 2, 0.5) / 0.3);
+                if (fo > 0 && noise) fo *= Math.max(0, 1 + K.flowGrain * noise.fbm(fg * cl * cosL[x] - 4.1, fg * cl * sinL[x] + 6.3, fg * sl + 2.2, 2, 0.5) / 0.3);
             }
             // the mountains' texture: how mountainous (rugged, or high), a ridged micro-relief there lit as the page's relief,
             // its crests barer
             const M = Math.max(smooth(K.mtnRelief[0], K.mtnRelief[1], std[i]), K.mtnHigh * smooth(K.mtnHeightKm[0], K.mtnHeightKm[1], hC[i]));
             let dShade = 1, crest = 0;
             if (M > 0.01 && noise) {
-                const lon = ((x + 0.5) / cw - 0.5) * 2 * Math.PI, px = cl * Math.cos(lon), py = cl * Math.sin(lon), pz = sl;
+                const px = cl * cosL[x], py = cl * sinL[x], pz = sl;
                 // (east and north at this place, on the unit sphere)
-                const ex = -Math.sin(lon), ey = Math.cos(lon), nx = -sl * Math.cos(lon), ny = -sl * Math.sin(lon), nz = cl;
+                const ex = -sinL[x], ey = cosL[x], nx = -sl * cosL[x], ny = -sl * sinL[x], nz = cl;
                 const r0 = ridged(px, py, pz), rE = ridged(px + dU * ex, py + dU * ey, pz), rN = ridged(px + dU * nx, py + dU * ny, pz + dU * nz);
                 const amp = K.mtnReliefKm * M, gE = amp * (rE - r0) / (dU * 6371), gN = amp * (rN - r0) / (dU * 6371);
                 const sx = -K.mtnExaggeration * gE, sy = -K.mtnExaggeration * gN, len = Math.sqrt(sx * sx + sy * sy + 1);
@@ -529,22 +534,22 @@ export function terrainLook(C, heightM, w, K = COVER) {
             for (let c = 0; c < 3; c++) { mul[c] = Math.exp(a * tint[c] + fo * lnF[c]); mulR[c] = Math.exp(a * tint[c]); rk[c] = rC[c] + (rW[c] - rC[c]) * smooth(-2, 12, T); }
             // (the riverside's opacity, grained)
             let rp = rip && ripViews ? rip[i] * dry * K.ripMax : 0;
-            if (rp > 0 && noise) {
-                const lon = ((x + 0.5) / cw - 0.5) * 2 * Math.PI;
-                rp *= Math.max(0, 1 + K.ripGrain * noise.fbm(rg * cl * Math.cos(lon) + 8.8, rg * cl * Math.sin(lon) - 3.3, rg * sl + 6.1, 2, 0.5) / 0.3);
-            }
+            if (rp > 0 && noise) rp *= Math.max(0, 1 + K.ripGrain * noise.fbm(rg * cl * cosL[x] + 8.8, rg * cl * sinL[x] - 3.3, rg * sl + 6.1, 2, 0.5) / 0.3);
             const cv = cover[i], ice = (cv & 31) === 1;
+            let snowDone = false;
+            for (let c = 0; c < 3; c++) toneE[c] = Math.exp(tone * lnTone[c]);
             for (let v = 0; v < 3; v++) {
                 const S = views[v], o = 3 * i, snowy = ice || (v === 1 && cv & 32) || (v === 2 && cv & 64);
                 // (the riverside: the climate's own cover, well watered — its season and warmth its own)
                 const g = snowy ? 0 : Math.min(1, rp), RV = ripViews ? ripViews[v] : null;
                 const r = Math.min(0.95, (rock + crest * (1 - rock)) * (snowy ? K.rockUnderSnow : 1));
+                if (snowy && !snowDone) { for (let c = 0; c < 3; c++) { flowS[c] = Math.exp(-0.5 * fo * lnF[c]); toneS[c] = Math.exp(tone / 3 * lnTone[c]); } snowDone = true; }
                 for (let c = 0; c < 3; c++) {
                     // (the flow texture half as strong on snow, the mountains' tone a third)
-                    let L = LUT[S[o + c]] * (snowy ? mul[c] * Math.exp(-0.5 * fo * lnF[c]) : mul[c]);
+                    let L = LUT[S[o + c]] * (snowy ? mul[c] * flowS[c] : mul[c]);
                     // (the riverside over the flow texture: its green not darkened by it)
                     if (g > 0) L += (LUT[RV[o + c]] * mulR[c] - L) * g;
-                    L *= dShade * Math.exp((snowy ? tone / 3 : tone) * lnTone[c]);
+                    L *= dShade * (snowy ? toneS[c] : toneE[c]);
                     L += (rk[c] * dShade - L) * r;
                     S[o + c] = toSrgb(L);
                 }
@@ -558,6 +563,7 @@ function boxStats(v, land, w, h, pxKm, km) {
     const s1 = new Float64Array(w * h), s2 = new Float64Array(w * h), n = new Float64Array(w * h);
     for (let i = 0; i < w * h; i++) if (land[i]) { const x = Math.max(0, v[i]); s1[i] = x; s2[i] = x * x; n[i] = 1; }
     const ry = Math.max(1, Math.round(km / pxKm)), L = Math.max(w, h), t1 = new Float64Array(L), t2 = new Float64Array(L), tn = new Float64Array(L);
+    const R = ry + 1, r1 = new Float64Array(R * w), r2 = new Float64Array(R * w), rn = new Float64Array(R * w), A = new Float64Array(w), B = new Float64Array(w), C = new Float64Array(w);
     for (let pass = 0; pass < 2; pass++) {
         for (let y = 0; y < h; y++) {
             const cl = Math.max(0.05, Math.cos((0.5 - (y + 0.5) / h) * Math.PI)), r = Math.min(w >> 2, Math.max(1, Math.round(km / (pxKm * cl)))), o = y * w;
@@ -571,16 +577,19 @@ function boxStats(v, land, w, h, pxKm, km) {
             }
             for (let x = 0; x < w; x++) { s1[o + x] = t1[x]; s2[o + x] = t2[x]; n[o + x] = tn[x]; }
         }
-        for (let x = 0; x < w; x++) {
-            let a = 0, b = 0, c = 0;
-            for (let d = 0; d <= ry && d < h; d++) { const j = d * w + x; a += s1[j]; b += s2[j]; c += n[j]; }
-            for (let y = 0; y < h; y++) {
-                t1[y] = a; t2[y] = b; tn[y] = c;
-                const add = y + ry + 1, drop = y - ry;
-                if (add < h) { const j = add * w + x; a += s1[j]; b += s2[j]; c += n[j]; }
-                if (drop >= 0) { const j = drop * w + x; a -= s1[j]; b -= s2[j]; c -= n[j]; }
+        // (the columns' running sums side by side, a row at a time — memory in order — each row's values as they were kept
+        // in a ring until the window leaves them: the same sums, in the same order, as column by column)
+        A.fill(0); B.fill(0); C.fill(0);
+        for (let d = 0; d <= ry && d < h; d++) { const o = d * w; for (let x = 0; x < w; x++) { A[x] += s1[o + x]; B[x] += s2[o + x]; C[x] += n[o + x]; } }
+        for (let y = 0; y < h; y++) {
+            const o = y * w, add = y + ry + 1, drop = y - ry, ra = add * w, rd = (drop % R) * w, rs = (y % R) * w;
+            for (let x = 0; x < w; x++) {
+                const a = A[x], b = B[x], c = C[x];
+                if (add < h) { A[x] += s1[ra + x]; B[x] += s2[ra + x]; C[x] += n[ra + x]; }
+                if (drop >= 0) { A[x] -= r1[rd + x]; B[x] -= r2[rd + x]; C[x] -= rn[rd + x]; }
+                r1[rs + x] = s1[o + x]; r2[rs + x] = s2[o + x]; rn[rs + x] = n[o + x];
+                s1[o + x] = a; s2[o + x] = b; n[o + x] = c;
             }
-            for (let y = 0; y < h; y++) { const j = y * w + x; s1[j] = t1[y]; s2[j] = t2[y]; n[j] = tn[y]; }
         }
     }
     const mean = new Float32Array(w * h), std = new Float32Array(w * h);

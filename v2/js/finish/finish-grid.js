@@ -21,7 +21,9 @@ export class LatLonGrid {
     average(lat, lon, values, use = null) {
         const s = new Float64Array(this.size), k = new Float64Array(this.size), n = lat.length;
         for (let c = 0; c < n; c++) { if (use && !use(c)) continue; const g = this.index(lat[c], lon[c]); s[g] += values[c]; k[g]++; }
-        return Float32Array.from(s, (v, g) => (k[g] ? v / k[g] : NaN));
+        const out = new Float32Array(this.size);
+        for (let g = 0; g < this.size; g++) out[g] = k[g] ? s[g] / k[g] : NaN;
+        return out;
     }
     /**
      * Blur (three box passes ≈ a Gaussian of std radiusKm) over the cells that have a value; cells without one take the
@@ -36,31 +38,42 @@ export class LatLonGrid {
         for (let j = 0; j < h; j++) { const lat = 90 - (j + 0.5) * this.step, kmPer = KM_PER_DEG * this.step * Math.max(0.02, Math.cos(lat * Math.PI / 180)); rowR[j] = Math.min(w >> 1, rOf(radiusKm / kmPer)); }
         const colR = rOf(radiusKm / (KM_PER_DEG * this.step));
         const tmpV = new Float64Array(Math.max(w, h)), tmpW = new Float64Array(Math.max(w, h));
+        // (the columns' running sums side by side, a row at a time — memory in order — each row's values as they were
+        // kept in a ring until the window leaves them: the same sums, in the same order, as column by column)
+        const R = colR + 1, ringV = new Float64Array(R * w), ringW = new Float64Array(R * w), SV = new Float64Array(w), SW = new Float64Array(w);
         for (let pass = 0; pass < 3; pass++) {
             for (let j = 0; j < h; j++) {                             // along each row (longitude wraps)
                 const r = rowR[j]; if (!r) continue;
                 const o = j * w; let sv = 0, sw = 0;
-                for (let d = -r; d <= r; d++) { const i = ((d % w) + w) % w; sv += v[o + i]; sw += wt[o + i]; }
+                for (let d = -r; d <= r; d++) { const i = d < 0 ? d + w : d; sv += v[o + i]; sw += wt[o + i]; }
                 for (let i = 0; i < w; i++) {
                     tmpV[i] = sv; tmpW[i] = sw;
-                    const out = ((i - r) % w + w) % w, inn = (i + r + 1) % w;
+                    const out = i - r < 0 ? i - r + w : i - r, inn = i + r + 1 >= w ? i + r + 1 - w : i + r + 1;
                     sv += v[o + inn] - v[o + out]; sw += wt[o + inn] - wt[o + out];
                 }
                 for (let i = 0; i < w; i++) { v[o + i] = tmpV[i] / (2 * r + 1); wt[o + i] = tmpW[i] / (2 * r + 1); }
             }
-            if (colR) for (let i = 0; i < w; i++) {                  // along each column (clamped at the poles)
-                let sv = 0, sw = 0, cnt = 0;
-                for (let d = 0; d <= colR && d < h; d++) { sv += v[d * w + i]; sw += wt[d * w + i]; cnt++; }
+            if (colR) {                                              // along each column (clamped at the poles)
+                SV.fill(0); SW.fill(0);
+                let cnt = 0;
+                for (let d = 0; d <= colR && d < h; d++) { const o = d * w; for (let i = 0; i < w; i++) { SV[i] += v[o + i]; SW[i] += wt[o + i]; } cnt++; }
                 for (let j = 0; j < h; j++) {
-                    tmpV[j] = sv / cnt; tmpW[j] = sw / cnt;
-                    const add = j + colR + 1, drop = j - colR;
-                    if (add < h) { sv += v[add * w + i]; sw += wt[add * w + i]; cnt++; }
-                    if (drop >= 0) { sv -= v[drop * w + i]; sw -= wt[drop * w + i]; cnt--; }
+                    const o = j * w, add = j + colR + 1, drop = j - colR, ra = add * w, rd = (drop % R) * w, rs = (j % R) * w, c = cnt;
+                    for (let i = 0; i < w; i++) {
+                        const ov = SV[i] / c, ow = SW[i] / c;
+                        if (add < h) { SV[i] += v[ra + i]; SW[i] += wt[ra + i]; }
+                        if (drop >= 0) { SV[i] -= ringV[rd + i]; SW[i] -= ringW[rd + i]; }
+                        ringV[rs + i] = v[o + i]; ringW[rs + i] = wt[o + i];
+                        v[o + i] = ov; wt[o + i] = ow;
+                    }
+                    if (add < h) cnt++;
+                    if (drop >= 0) cnt--;
                 }
-                for (let j = 0; j < h; j++) { v[j * w + i] = tmpV[j]; wt[j * w + i] = tmpW[j]; }
             }
         }
-        return Float32Array.from(v, (x, g) => (wt[g] > 1e-6 ? x / wt[g] : NaN));
+        const out = new Float32Array(this.size);
+        for (let g = 0; g < this.size; g++) out[g] = wt[g] > 1e-6 ? v[g] / wt[g] : NaN;
+        return out;
     }
     /** A grid field at each cell (bilinear; NaN grid cells fall back to the nearest of the four that has a value). */
     sample(field, lat, lon, out = new Float32Array(lat.length)) {
