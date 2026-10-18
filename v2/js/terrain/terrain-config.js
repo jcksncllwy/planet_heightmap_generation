@@ -28,6 +28,10 @@ export const TERRAIN = {
     coastDetailKm: 7,           // amplitude of the first (km of coast distance: how far it moves the coast in and out) (14 went a little too far — developer)
     coastDetailFromKm: 88,      // its wavelength
     coastDetailRoughness: 0.6,  // (a coast's fractal roughness: finer wiggles relatively larger than a smooth curve's)
+    // the coast at the sim's own scale (synthesize.js): the coast moved in and out by up to this share of a sim cell…
+    coastCellNoise: 0.5,
+    coastCellWaveCells: 2.5,    // …in waves of this many sim cells and finer octaves — the lobes a coast read over the cells makes, broken
+    mountainCellNoise: 0.35,    // the high ground (platform rise, uplift, crests) scaled by 1 ± this at the same scales: no cell-sized blobs
     // mountain shape (developer: "i want to see what we cook up"): the evolved uplift and the platform read with each sim
     // cell's slope, as the coast distance is — curved slopes instead of a flat facet per sim triangle — each corner's
     // reading kept within the range of its cell and its neighbours (no overshoot at a steep front); 1: fully, 0: as before

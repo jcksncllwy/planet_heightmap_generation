@@ -204,3 +204,14 @@ Levers for the end: the default continent size (developer: "we can just start de
 
 Speed: 600 Myr at 40K, seed 12345 — committed 561 steps / 24 s, now 506 steps / 28 s (more plates make each step dearer;
 no new rule is hot in a profile).
+
+## After the commit (9e909ee)
+
+- **check-phase9** (steady detail) fails one check on the committed realism pass: at 290→300 Myr the continent that moved most
+  (plate 11, turned 5.9°) has its land heights correlate 0.12 with 10 Myr before (0.45–0.49 before Phase 9). Its coasts and
+  rivers hold. Probably the history's own change (more plates, faster turnover) — for the tuning pass.
+- **Coasts and mountains at the sim's own scale** (developer: "obvious 'gridded' effects I can see on the coastline", then "apply
+  a version of this everywhere to make the mountains look more nuanced"): the coast moved in and out by up to half a sim cell
+  (`coastCellNoise`) and the high ground scaled by 1 ± 0.35 (`mountainCellNoise`), in waves of 2.5 sim cells and finer — the
+  cell-sized lobes of coasts and blobs of highland broken at every resolution, live and in Add detail. Steady detail: a
+  half-cell turn keeps 96.6 % of coasts (97.6 % without), land heights 0.86 (0.91).

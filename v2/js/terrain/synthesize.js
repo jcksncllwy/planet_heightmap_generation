@@ -258,6 +258,27 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         if (!(amp > 0.05)) break;
         detailF.push(R / lam); detailAmp.push(amp);
     }
+    // the coast at the sim's own scale (developer, 2026-10-18: "obvious 'gridded' effects … on the coastline" at 20K and
+    // 40K): the coast is the zero line of a distance read over the plates' cells, so it ran as a chain of rounded lobes all
+    // about one cell across — and the coast noise above (45 km) and the fine detail (7 km) could not break lobes of ~150 km.
+    // Octaves from coastCellWaveCells sim cells down, moving the coast in and out by up to coastCellNoise of a cell: in
+    // sim cells, so a coarse mesh's lobes are broken as much as a fine one's; down to what this terrain mesh can show
+    const cellCoastF = [], cellCoastAmp = [], simEdge = simMesh.edgeKm, cellCoastReach = 3 * simEdge;
+    for (let o = 0, lam = (cfg.coastCellWaveCells ?? 0) * simEdge; lam > 0 && o < 5; o++, lam /= 2) {
+        const amp = (cfg.coastCellNoise ?? 0) * simEdge * (cfg.coastDetailRoughness ?? 0.6) ** o * fade(lam);
+        if (!(amp > 0.5)) break;
+        cellCoastF.push(R / lam); cellCoastAmp.push(amp);
+    }
+    // …and the high ground likewise (developer: "apply a version of this everywhere to make the mountains look more
+    // nuanced"): the platform above the plains, the evolved uplift and the crests are read over the same cells — ranges
+    // and highlands of cell-sized blobs — so they are scaled by 1 ± mountainCellNoise at the same scales (a field of its own)
+    const mountCellF = [], mountCellW = [], mountainCell = cfg.mountainCellNoise ?? 0;
+    let mountCellNorm = 0;
+    for (let o = 0, lam = (cfg.coastCellWaveCells ?? 0) * simEdge; mountainCell > 0 && lam > 0 && o < 5; o++, lam /= 2) {
+        const wgt = (cfg.coastDetailRoughness ?? 0.6) ** o * fade(lam);
+        if (!(wgt > 0.02)) break;
+        mountCellF.push(R / lam); mountCellW.push(wgt); mountCellNorm += wgt;
+    }
     // the hills' octaves (frequency, amplitude) down to what this terrain mesh can show; the arcs' island noise
     const hillsF = [], hillsAmp = [];
     for (let o = 0, lam = cfg.hillsFromKm ?? 0; lam > 0 && o < 8; o++, lam /= 2) {
@@ -360,6 +381,11 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         }
         if (parts) parts.dcoastRaw[t] = coast;
         if (Math.abs(coast) < 600) coast += cfg.coastNoiseKm * renewed(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4) * 1.5;
+        if (cellCoastF.length && Math.abs(coast) < cellCoastReach) {
+            let sum = 0;
+            for (let o = 0; o < cellCoastF.length; o++) { const f = cellCoastF[o]; sum += cellCoastAmp[o] * renewedNoise(x * f + 41.3 + 3.1 * o, y * f + 17.9 + 1.7 * o, z * f + 29.3 + 2.9 * o); }
+            coast += 1.6 * sum * smooth(cellCoastReach, 0.5 * cellCoastReach, Math.abs(coast));
+        }
         // (the fine detail — renewing as the coast noise does — within 400 km of the coast, fading out from 250)
         if (detailF.length && Math.abs(coast) < 400) {
             let sum = 0;
@@ -381,7 +407,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 coast = Math.max(coast - cut, Math.min(coast, -10));
             }
         }
-        let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, lipAge = 0, ramp = 0, shieldS = 0, rimFade = 1;
+        let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, lipAge = 0, ramp = 0, shieldS = 0, rimFade = 1, cellK = 1;
 
         if (coast >= 0) {
             // ── land side: the platform over the land corners (interfingering), dropping to the shelf toward the coast ──
@@ -390,6 +416,13 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             platform = lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-2, platformKm, true), platformKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
                 : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : cfg.continentKm;
             platform += cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
+            // (the high ground's cell-scale nuance: its factor here, for the platform's rise above the plains, the uplift, the crests)
+            if (mountCellNorm > 0) {
+                let s = 0;
+                for (let o = 0; o < mountCellF.length; o++) { const f = mountCellF[o]; s += mountCellW[o] * renewedNoise(x * f + 53.1 + 2.3 * o, y * f + 11.7 + 3.7 * o, z * f + 37.9 + 1.1 * o); }
+                cellK = Math.max(0.25, 1 + mountainCell * 1.6 * s / mountCellNorm);
+                if (platform > cfg.continentKm) platform = cfg.continentKm + (platform - cfg.continentKm) * cellK;
+            }
             // ── a flood basalt (lips.js): the pile as it has worn — here the whole plateau, its top lowering a little as it
             // wears and gone once worn through; the carving cuts it up (carve.js stripBasalt: its escarpment retreating
             // from the province's edge, its rivers' valleys widening — mesas left on the divides between them) ──
@@ -588,7 +621,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // a range or escarpment near the coast still rises from the sea
             const uplift = (lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-3, upliftKm, true), upliftKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
                 : (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw) : 0) * rimFade;
-            const along = relief !== 0 || uplift !== 0 ? atEdge * (1 + cfg.alongStrikeVar * noise.fbm(x * strikeF + 8.8, y * strikeF + 2.2, z * strikeF + 6.6, 3, 0.5) * 1.5) : 0;
+            const along = relief !== 0 || uplift !== 0 ? cellK * atEdge * (1 + cfg.alongStrikeVar * noise.fbm(x * strikeF + 8.8, y * strikeF + 2.2, z * strikeF + 6.6, 3, 0.5) * 1.5) : 0;
             let lifted = h + uplift * along + stripes;
             // (the massif never takes land under the sea: a low of it stops just above sea level)
             if (massif) lifted = massif > 0 ? lifted + massif : Math.max(lifted + massif, Math.min(lifted, 0.025));

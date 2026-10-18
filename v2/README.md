@@ -582,6 +582,11 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   number of segment lengths. **Open-ocean arcs** stand deeper (`arcOceanMatureKm` −1.5 km): a ridge its volcanoes break.
 - **Old ranges in the start supercontinent:** worn Ural-type belts along about half its suture network (`startSuture*`),
   records only — the plate history is unchanged (hash).
+- **Coasts and high ground at the sim's own scale:** a coast read over the plates' cells ran as a chain of rounded lobes one
+  cell across, and highlands came as cell-sized blobs (most obvious at 20K–40K). The coast is moved in and out by up to half
+  a sim cell (`coastCellNoise`) and the high ground scaled by 1 ± 0.35 (`mountainCellNoise`), in waves of 2.5 sim cells and
+  finer (`coastCellWaveCells`), in sim cells (a coarse mesh's lobes broken as much as a fine one's), down to what the terrain
+  mesh can show — the same live and in Add detail.
 Everything is to be tuned together at the end (developer); the measured impact of each step is in the plan.
 
 ## Conventions
