@@ -5,7 +5,7 @@
 
 import { onlyMechanisms, mechanismsOn } from '../config.js';
 import { updatePlateMotion } from '../step/torque-balance.js';
-import { buildStartWorld } from '../init/start-world.js';
+import { buildStartWorld, buildStartWorldAsync } from '../init/start-world.js';
 import { MARGIN_SCENES } from './margin-scenes.js';
 import { FORCE_SCENES } from './force-scenes.js';
 import { EVENT_SCENES } from './event-scenes.js';
@@ -49,6 +49,8 @@ export const BUDGET_SCENES = [
         about: 'The generated supercontinent with every rule on, over 600 Myr (it takes a while to build). Continental area grows — arcs and fore-arc islands add crust — but not without bound: erosive margins, underthrusting at collisions and recycled arcs take some away again (chart: land share of the planet).',
         // (overrides: start-world tunables — the Evolution page's starting continent size is continentalFraction)
         build(simMesh, seed, overrides = {}) { return buildStartWorld(simMesh, seed, overrides).world; },
+        // (the same, its start world's layout attempts evaluated side by side: app/helper-pool.js)
+        async buildAsync(simMesh, seed, overrides = {}, helpers) { return (await buildStartWorldAsync(simMesh, seed, overrides, helpers)).world; },
         drive: updatePlateMotion,
     },
 ];

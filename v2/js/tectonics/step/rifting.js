@@ -19,10 +19,13 @@ const JUNCTION_TRIES = 12;     // junctions tried per rift chance: the best cros
 const FORCED_JUNCTION_TRIES = 48;  // …and for a rift that is overdue (a few a history): it must take
 
 /**
+ * A generator (simulate.js): each rift's search over its junctions is handed out as a request — { plate, junctions, pull,
+ * needCratonsBothSides, ctx, config } — and answered with the junctions' findRift results, in order (searchJunctions here,
+ * or helper workers side by side: app/helper-pool.js). The same answers either way, so the same history.
  * @param {number} dt
  * @returns {number} plates split this step
  */
-export function riftContinents(world, dt) {
+export function* riftContinents(world, dt) {
     const { plates, config, time, mesh } = world;
     let splits = 0;
     // The pace of breakups (developer, 2026-10-01): each PIECE of continent keeps its own clock — from when it was born of a
@@ -61,7 +64,7 @@ export function riftContinents(world, dt) {
         if (worldWaits || (paced && splits) || held(plate) || tooYoung(plate)) { if (paced && time - pr.since < config.plumeRiftWaitMyr - 1e-9) waiting.push(pr); continue; }
         // (one that waited finds the piece changed — often a coast near where the head arrived: the looser rules a forced rift
         // falls back on, if the usual ones admit no cut)
-        if (tryRift(world, plate, pr.junctions, pr.cause, false) || (time > pr.since && withLooseShape(config, () => tryRift(world, plate, pr.junctions, pr.cause, false)))) splits++;
+        if ((yield* tryRift(world, plate, pr.junctions, pr.cause, false)) || (time > pr.since && (yield* withLooseShape(config, function* () { return yield* tryRift(world, plate, pr.junctions, pr.cause, false); })))) splits++;
     }
     world.pendingPlumeRifts = waiting;
     if (worldWaits || (paced && splits)) return splits;
@@ -69,7 +72,7 @@ export function riftContinents(world, dt) {
     // pieces overdue: the one longest without a rift first
     if (paced) {
         const due = plates.filter(p => p.alive && !p.isBackground && p.dynamics && overdue(p)).sort((a, b) => bigAge(b) - bigAge(a));
-        for (const plate of due) if (forceRift(world, plate, age(plate))) return 1;
+        for (const plate of due) if (yield* forceRift(world, plate, age(plate))) return 1;
     }
     // spontaneous rifting under tension
     // (Phase 13, steered — step/supercontinent.js: while a supercontinent's pieces disperse, the plates of a landmass that has
@@ -92,7 +95,7 @@ export function riftContinents(world, dt) {
         const chance = pace * config.riftRatePerMyr * dt * tension * heatFactor * Math.min(config.riftSizeCap, areaKm2 / config.riftMinContinentKm2 - 1);   // a supercontinent rifts readily, a continent barely big enough hardly ever
         if (world.rng() >= chance) continue;
         const junctions = Array.from({ length: JUNCTION_TRIES }, () => chooseJunction(world, plate, world.rng));
-        if (tryRift(world, plate, junctions, { text: `tension ${tension.toFixed(2)}${heat ? `, mantle heat ${h.toFixed(2)}` : ''}`, kind: 'tension', hotspot: -1 })) { splits++; if (paced) break; }
+        if (yield* tryRift(world, plate, junctions, { text: `tension ${tension.toFixed(2)}${heat ? `, mantle heat ${h.toFixed(2)}` : ''}`, kind: 'tension', hotspot: -1 })) { splits++; if (paced) break; }
     }
     return splits;
 }
@@ -111,22 +114,27 @@ function paceOf(age, config) {
  * FORCED_JUNCTION_TRIES junctions; then, if no cut passes them — a landmass just gathered is ragged — by looser ones.
  * @returns {boolean} whether it split (if not, it is tried again next step)
  */
-function forceRift(world, plate, age) {
+function* forceRift(world, plate, age) {
     const { config } = world;
     const cause = { text: `no rift for ${age.toFixed(0)} Myr`, kind: 'overdue', hotspot: -1 };
-    const attempt = () => {
+    const attempt = function* () {
         const junctions = Array.from({ length: FORCED_JUNCTION_TRIES }, () => chooseJunction(world, plate, world.rng));
-        return tryRift(world, plate, junctions, cause) || tryRift(world, plate, junctions, cause, false);
+        return (yield* tryRift(world, plate, junctions, cause)) || (yield* tryRift(world, plate, junctions, cause, false));
     };
-    return attempt() || withLooseShape(config, attempt);
+    return (yield* attempt()) || (yield* withLooseShape(config, attempt));
 }
 /** A forced rift's looser rules of shape (and a plume's that waited), when no cut passes the usual ones. */
 const LOOSE_SHAPE = { riftTortuosityMax: 2, riftMinChordKm: 1000, riftMinPieceShare: 0.12, riftCoastHugKm: 1500 };
-/** Run fn with the rules of a rift's shape loosened (LOOSE_SHAPE), then put them back. */
-function withLooseShape(config, fn) {
+/** Run the generator gen with the rules of a rift's shape loosened (LOOSE_SHAPE), then put them back. */
+function* withLooseShape(config, gen) {
     const saved = {};
     for (const [k, v] of Object.entries(LOOSE_SHAPE)) { saved[k] = config[k]; config[k] = v; }
-    try { return fn(); } finally { Object.assign(config, saved); }
+    try { return yield* gen(); } finally { Object.assign(config, saved); }
+}
+
+/** A rift request answered right here: each junction's findRift, in order (null for none). */
+export function searchJunctions(world, { plate, junctions, pull, needCratonsBothSides, ctx }) {
+    return junctions.map(j => (j < 0 ? null : findRift(world, plate, j, pull, needCratonsBothSides, ctx)));
 }
 
 /** Per plate: the mean mantle heat under its continental crust (0 = cool, 1 = fully insulated). */
@@ -141,14 +149,12 @@ function heatUnderContinents(world) {
  * its arms end, so the compact-piece preference is settled here, between junctions), then the split.
  * @param {{text: string, kind: 'plume' | 'tension', hotspot: number}} cause   what started it (for the event)
  */
-export function tryRift(world, plate, junctions, cause, needCratonsBothSides = true) {
+export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = true) {
     const { mesh } = world, pull = pullAxisOf(plate, mesh), ctx = riftContext(world, plate);     // (what every junction's search reads of the crust)
+    // (the junctions' searches, handed out — each junction's own, the answers in the junctions' order)
+    const results = yield { plate, junctions, pull, needCratonsBothSides, ctx, config: world.config };
     let rift = null;
-    for (const junction of junctions) {
-        if (junction < 0) continue;
-        const found = findRift(world, plate, junction, pull, needCratonsBothSides, ctx);
-        if (found && (!rift || found.value < rift.value)) rift = found;
-    }
+    for (const found of results) if (found && (!rift || found.value < rift.value)) rift = found;
     if (!rift) return false;
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN, weakKm = rift.path.filter(c => plate.crust.flags[c] & weak).length * mesh.edgeKm;   // (before the split flags the new margins)
     const before = plate.name, ageMyr = world.time - plate.born, fresh = splitPlate(world, plate, rift.path, rift.failedArm, (a, b) => namesAfterSplit(world, a, b, before), rift.across);

@@ -21,8 +21,54 @@ const FRACTION_TOLERANCE = 0.004;   // how far from the requested continental fr
  * @returns {{world: TectonicWorld, start: Object}} `start` = layout facts (cratons, centre, passive sector, …)
  */
 export function buildStartWorld(simMesh, seed, overrides = {}) {
-    const world = new TectonicWorld(simMesh, seed, overrides), cfg = world.config;
-    const found = findLayout(simMesh, seed, cfg);
+    const world = new TectonicWorld(simMesh, seed, overrides);
+    return assemble(world, simMesh, seed, findLayout(simMesh, seed, world.config, a => evaluateAttempt(simMesh, seed, world.config, a)));
+}
+
+/**
+ * buildStartWorld, its layout attempts evaluated side by side by `helpers` (app/helper-pool.js) — a batch at a time, taken
+ * in order by the same rules: the same start world. @returns {Promise} buildStartWorld's result
+ */
+export async function buildStartWorldAsync(simMesh, seed, overrides = {}, helpers) {
+    const world = new TectonicWorld(simMesh, seed, overrides), cfg = world.config, results = new Map();
+    let next = 0;
+    const get = async a => {
+        if (!results.has(a)) {
+            const batch = [];
+            for (let k = a; k < Math.min(MAX_ATTEMPTS, a + helpers.size); k++) batch.push(k);
+            const got = await helpers.layoutAttempts(seed, cfg, batch);
+            batch.forEach((k, i) => results.set(k, got[i]));
+        }
+        return results.get(a);
+    };
+    // (the selection, replayed in order over the attempts as they come back: findLayout's own rules)
+    const evaluated = [];
+    for (; next < MAX_ATTEMPTS; next++) {
+        evaluated[next] = await get(next);
+        const found = findLayout(simMesh, seed, cfg, a => withLayout(simMesh, seed, cfg, a, evaluated[a]), next + 1);
+        if (found) return assemble(world, simMesh, seed, found);
+    }
+    return assemble(world, simMesh, seed, null);
+}
+
+/** A layout attempt as a helper evaluated it ({tried: [{areaScale, excess}], fit: {areaScale, land} | null}) made whole again:
+ *  each candidate's cratons and its rng (placed again — cheap — so the rng stands where it did), the land the helper made
+ *  for the fitting one, made again here for any other (the fallback's closest, rarely). */
+function withLayout(simMesh, seed, cfg, attempt, got) {
+    const stretch = 1 - attempt / MAX_ATTEMPTS;
+    const whole = c => {
+        if (c.layout) return c;
+        const rng = makeRng(seed * 31 + attempt * 7919 + 17), layout = placeCratons(rng, cfg, stretch, c.areaScale);
+        const land = c.land ?? shapeLandmass(simMesh, layout.cratons, layout.centre, new SimplexNoise(seed + attempt * 101), cfg, stretch);
+        return Object.assign(c, { layout, land, rng, attempts: attempt + 1 });
+    };
+    const tried = got.tried.map(c => (got.fit && c.areaScale === got.fit.areaScale ? Object.assign(c, { land: got.fit.land }) : c));
+    return { tried, fit: got.fit ? tried.find(c => c.areaScale === got.fit.areaScale) : null, whole };
+}
+
+/** The rest of the start world, once its layout is chosen. */
+function assemble(world, simMesh, seed, found) {
+    const cfg = world.config;
     if (!found) throw new Error(`These settings do not fit on the planet for seed ${seed}: the cratons, the required gaps between them and their margins need more room than the requested continental area allows.`);
     const { layout, land, rng, middle } = found;
     const { numCells } = simMesh;
@@ -69,25 +115,13 @@ export function buildStartWorld(simMesh, seed, overrides = {}) {
  * until the land the spacing rules force (cratons + their sea margins + the belts joining them) fits
  * inside the requested fraction. Later attempts use rounder, tighter clusters.
  */
-function findLayout(simMesh, seed, cfg) {
-    const { numCells } = simMesh, roundSpan = Math.acos(1 - 2 * cfg.continentalFraction) * 180 / Math.PI;
+function findLayout(simMesh, seed, cfg, attemptOf, upTo = MAX_ATTEMPTS) {
+    const roundSpan = Math.acos(1 - 2 * cfg.continentalFraction) * 180 / Math.PI;
     let closest = null;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        let fit = null;
-        for (const areaScale of shrinkSteps(cfg.cratonMinAreaScale)) {
-            const rng = makeRng(seed * 31 + attempt * 7919 + 17), noise = new SimplexNoise(seed + attempt * 101);
-            const stretch = 1 - attempt / MAX_ATTEMPTS;
-            const layout = placeCratons(rng, cfg, stretch, areaScale);
-            const land = layout && shapeLandmass(simMesh, layout.cratons, layout.centre, noise, cfg, stretch);
-            if (!land) continue;                                   // did not pack, or the cratons are not joined into one landmass
-            let cells = 0;
-            for (let c = 0; c < numCells; c++) if (land.type[c] !== CrustType.OCEAN) cells++;
-            const excess = cells / numCells - cfg.continentalFraction;
-            const candidate = { layout, land, rng, areaScale, excess, attempts: attempt + 1 };
-            if (!closest || Math.abs(excess) < Math.abs(closest.excess)) closest = candidate;
-            if (Math.abs(excess) <= FRACTION_TOLERANCE) { fit = candidate; break; }
-        }
-        const chosen = fit ?? (attempt === MAX_ATTEMPTS - 1 ? closest : null);
+    for (let attempt = 0; attempt < upTo; attempt++) {
+        const { tried, fit, whole = c => c } = attemptOf(attempt);
+        for (const candidate of tried) if (!closest || Math.abs(candidate.excess) < Math.abs(closest.candidate.excess)) closest = { candidate, whole };
+        const chosen = fit ? whole(fit) : (attempt === MAX_ATTEMPTS - 1 && closest ? closest.whole(closest.candidate) : null);
         if (!chosen) continue;
         chosen.middle = landCentroid(simMesh, chosen.land.type);
         const tooWide = halfSpanDeg(simMesh, chosen.land.type, chosen.middle) > roundSpan + cfg.spanAllowanceDeg;
@@ -95,6 +129,28 @@ function findLayout(simMesh, seed, cfg) {
         return { ...chosen, fractionMet: !!fit, attempts: attempt + 1 };
     }
     return null;
+}
+
+/**
+ * One attempt of the layout search: the cratons placed at each size in turn (full size first, then smaller) until the land
+ * hits the continental fraction — every candidate tried ({layout, land, rng, areaScale, excess, attempts}) and the fitting
+ * one, if any. An attempt depends on its number alone (its own rng and noise), so attempts can be evaluated apart.
+ */
+export function evaluateAttempt(simMesh, seed, cfg, attempt) {
+    const { numCells } = simMesh, tried = [];
+    for (const areaScale of shrinkSteps(cfg.cratonMinAreaScale)) {
+        const rng = makeRng(seed * 31 + attempt * 7919 + 17), noise = new SimplexNoise(seed + attempt * 101);
+        const stretch = 1 - attempt / MAX_ATTEMPTS;
+        const layout = placeCratons(rng, cfg, stretch, areaScale);
+        const land = layout && shapeLandmass(simMesh, layout.cratons, layout.centre, noise, cfg, stretch);
+        if (!land) continue;                                   // did not pack, or the cratons are not joined into one landmass
+        let cells = 0;
+        for (let c = 0; c < numCells; c++) if (land.type[c] !== CrustType.OCEAN) cells++;
+        const candidate = { layout, land, rng, areaScale, excess: cells / numCells - cfg.continentalFraction, attempts: attempt + 1 };
+        tried.push(candidate);
+        if (Math.abs(candidate.excess) <= FRACTION_TOLERANCE) return { tried, fit: candidate };
+    }
+    return { tried, fit: null };
 }
 
 /** Craton area factors to try, from full size down to the floor: 1, 0.85, 0.72, … , floor. */

@@ -253,7 +253,9 @@ js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the sta
                    finish-ice (the last ice age), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
                    regimes, lakes), finish-cover (the land's cover and its colours from space)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
-                   history-runner / history-worker (a scene's history off the page's thread, frames streamed back)
+                   history-runner / history-worker (a scene's history off the page's thread, frames streamed back),
+                   helper-pool / helper-worker (a few workers the history's worker starts: the start world's layout
+                   attempts and each rift's junctions, side by side — the same history)
 tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), trace / render / screenshot helpers
 ```
 
@@ -528,6 +530,18 @@ latitude (the mesh's cells are numbered down the sphere). A 1200 Myr history at 
 600 Myr at 40K 31.1 → 25.2 s; Extend history still the one history. At 160K, 300 Myr 72 → 59 s. Checks 8a, 8b, 9, 10, 13
 against the old pace: no new miss beyond chance (a different planet each run) — and the scraps of craton that sink into
 a range as a flat hole (check 10) turn out to come at the old pace too, on other seeds (5.7 km on one): a terrain matter.
+
+The history on more than one core, where it splits into pieces that do not depend on one another (2026-10-18; developer:
+"lets do the rift and start world on multiple cores"): the history's worker starts up to 4 helpers (app/helper-pool.js;
+the cores but one). The start world's layout attempts — each with its own rng and noise, so each depends on its number
+alone (init/start-world.js `evaluateAttempt`) — are evaluated a batch at a time and taken in order by the same rules
+(the chosen layout's cratons and rng placed again, cheaply, so the rim trenches come out the same); and each rift's search
+over its 12 junctions (48 for an overdue piece) is handed out in runs and its answers come back in the junctions' order.
+For that the step loop is a generator (simulate.js `stepsOf`): a rift yields its request (step/rifting.js), which
+`simulate` answers in place and `simulateAsync` by the helpers. Every frame the same (Node: five histories in place and with
+helpers, and one extended in two pieces; the page: its packed frames against Node's, desktop and phone settings). The start
+world 25–40 % sooner (0.7–1.8 s → 0.5–1.2 s), a history 7–15 % (1200 Myr at 20K, 600 at 40K). Where a worker cannot start
+workers of its own, the history runs in place as before.
 
 ## Conventions
 

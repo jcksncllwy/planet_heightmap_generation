@@ -12,7 +12,7 @@ import { collapseArcs } from './ops/collapse-arc.js';
 import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
 import { closeRemnantSeas } from './step/remnant-seas.js';
 import { matureArcs } from './step/arc-maturation.js';
-import { riftContinents } from './step/rifting.js';
+import { riftContinents, searchJunctions } from './step/rifting.js';
 import { initiateSubduction } from './step/subduction-init.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
 import { trackCycle } from './step/supercontinent.js';
@@ -47,7 +47,22 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
  *          where an earlier call stopped); then one frame per snapshot interval; the last is exactly untilMyr,
  *          or the snapshot where stopAt said stop (stopped: true). Empty with keepFrames false
  */
-export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false, keepFrames = true }) {
+export function simulate(world, opts) {
+    const run = stepsOf(world, opts);
+    for (let r = run.next(); ; r = run.next(searchJunctions(world, r.value))) if (r.done) return r.value;
+}
+
+/**
+ * simulate, with each rift's search over its junctions handed to `helpers` (app/helper-pool.js: workers side by side) —
+ * the junctions' answers come back in order, so it is the same history. @returns {Promise} simulate's result
+ */
+export async function simulateAsync(world, opts, helpers) {
+    const run = stepsOf(world, opts);
+    for (let r = run.next(); ; r = run.next(await helpers.searchJunctions(world, r.value))) if (r.done) return r.value;
+}
+
+// The history's steps, as a generator: it yields each rift's request for its junctions' searches (step/rifting.js).
+function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false, keepFrames = true }) {
     const frames = [], stepLog = [];
     const record = frame => { if (keepFrames) frames.push(frame); onFrame?.(frame); };
     if (!resume) {
@@ -91,7 +106,7 @@ export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.conf
             if (slow) changed += buildArcs(world);      // island arcs behind mature ocean trenches (cell types only)
             if (slow) changed += collapseArcs(world);   // an arc near its own coast lands on it
             if (slow) changed += growMarginIsles(world, slowDt);  // fore-arc islands rise and join the coast (cell types only)
-            changed += riftContinents(world, dt);      // plume and tension rifts (splits plates)
+            changed += yield* riftContinents(world, dt);   // plume and tension rifts (splits plates)
             changed += openBackArcs(world, dt);        // rolling-back trenches split off strips; finished strips rejoin
             changed += initiateSubduction(world, dt);  // passive margins founder (may carve an ocean plate)
             if (slow) changed += closeRemnantSeas(world, slowDt);  // seas sealed inside a plate close from their shores

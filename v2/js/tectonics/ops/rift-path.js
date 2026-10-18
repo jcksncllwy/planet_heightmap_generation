@@ -15,7 +15,7 @@ import { FastNoise } from '../../core/fast-noise.js';
  * had, and later rifts on the same crust follow the same fabric — scales the cost of breaking each cell: a broad swing
  * (riftCurveKm) that bends a rift, and a finer one (riftJagKm) that makes it jagged. × 1 ± the amplitudes.
  */
-function grainOf(world) {
+export function grainOf(world) {
     const { config } = world;
     if (!(config.riftCurveAmp > 0 || config.riftJagAmp > 0)) return () => 1;
     const noise = world.riftGrain ??= new FastNoise((world.seed ^ 0x6a41) >>> 0);

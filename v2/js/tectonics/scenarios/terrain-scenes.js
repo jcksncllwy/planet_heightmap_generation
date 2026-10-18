@@ -59,7 +59,11 @@ const from = (list, id, overrides = {}) => ({ drive: updatePlateMotion, ...list.
 // 1.5, and the slow rules every 3 Myr, not every step — about 30 % off a history (plans/V2_PERFORMANCE_PLAN.md, 2026-10-18;
 // developer: "it could be faster and more efficient on all devices"). The scenes of one mechanism keep the finer pace.
 const WHOLE_PLANET_PACE = { maxCellsPerStep: 2.25, slowRulesEveryMyr: 3 };
-const wholePlanet = scene => ({ ...scene, build(simMesh, seed, overrides) { const world = scene.build(simMesh, seed, overrides); Object.assign(world.config, WHOLE_PLANET_PACE); return world; } });
+const wholePlanet = scene => ({
+    ...scene,
+    build(simMesh, seed, overrides) { const world = scene.build(simMesh, seed, overrides); Object.assign(world.config, WHOLE_PLANET_PACE); return world; },
+    async buildAsync(simMesh, seed, overrides, helpers) { const world = await scene.buildAsync(simMesh, seed, overrides, helpers); Object.assign(world.config, WHOLE_PLANET_PACE); return world; },
+});
 
 export const TERRAIN_SCENES = [
     from(MARGIN_SCENES, 'margins', { id: 'andes', label: 'An Andean margin', about: 'A continent overrides an ocean plate along its leading coast: a coastal range, a valley behind it, the main volcanic range, fold-and-thrust ridges inland — all parallel to the coast. Offshore, the trench and its outer rise; the trailing coast behind has a wide shelf.' }),
