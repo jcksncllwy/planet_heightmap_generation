@@ -26,6 +26,7 @@ import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
 import { exportTypes, exportWidths, exportFileName, exportMap, exportAll, EXPORT_MAX, EXPORT_MAX_TOUCH } from './export.js';
 import { downloadBlob } from '../view/png.js';
+import { SMALL_DEVICE } from '../core/device.js';
 
 setDelaunator(Delaunator);
 
@@ -546,7 +547,12 @@ async function finishMoment(again = null) {
     try {
         const { simMesh } = b;
         const key = climateKey();
-        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions() }, { onStage, onProgress });
+        // (a small device: the finish's own surface workers few, the terrain's workers let go while it runs — every worker
+        // holds its copies of the meshes, and a phone closes a tab at well under 2 GB — and the finishing worker let go after
+        // unless its mesh takes long to build again)
+        if (SMALL_DEVICE) b.player?.rest();
+        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions(), poolSize: SMALL_DEVICE ? 3 : null },
+            { onStage, onProgress, keep: !SMALL_DEVICE && cells >= 2.5e6 });
         if (B !== b) return;
         const secs = (performance.now() - started) / 1000;
         // (one detailed moment: this one replaces the one before, now that it is done)
@@ -574,6 +580,7 @@ async function finishMoment(again = null) {
             : oom ? 'Not enough memory for this detail — try a coarser one, or close other tabs (other World Orogen tabs can share this one’s memory)' : `Could not add detail: ${String(err.message).split('\n')[0]}`;
         if (err.name !== 'AbortError') console.error(err);
     } finally {
+        b.player?.wake();
         if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; updateClimateUi(); }
     }
 }

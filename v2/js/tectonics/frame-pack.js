@@ -5,8 +5,12 @@
 // −0 and NaN are values too), and the rest whole — about 4× smaller. It reads like any frame: a field is unpacked the
 // first time it is read, and only the few frames read most recently keep theirs unpacked.
 
+import { SMALL_DEVICE } from '../core/device.js';
+
 const CTORS = { Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array };
-const UNPACKED_BYTES = 96e6;                   // unpacked fields kept, the frames read most recently (~20 frames at 40K cells, 5 at 160K)
+// unpacked fields kept, the frames read most recently (~20 frames at 40K cells, 5 at 160K; a small device a third — a
+// frame unpacks in milliseconds)
+const UNPACKED_BYTES = SMALL_DEVICE ? 32e6 : 96e6;
 
 /**
  * A frame's per-cell fields packed: { meta: every other property (time, plates, hotspots…), fields: { name: {type,

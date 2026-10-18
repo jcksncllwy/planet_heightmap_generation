@@ -78,6 +78,7 @@ export class TerrainPool {
         this.pending = new Map();            // job id → handler
         this.broken = false;                 // a worker died: every job is failed and the pool must be replaced (onBroken)
         this.onBroken = null;
+        this.closed = false;                 // terminated: its jobs failed, and any asked of it after
         workers.forEach(w => { w.listen(msg => this.pending.get(msg.jobId)?.(msg)); w.onCrash(m => this.crashed(m)); });
     }
 
@@ -85,11 +86,16 @@ export class TerrainPool {
     crashed(message) {
         if (this.broken) return;
         this.broken = true;
-        const msg = { type: 'error', message: `a worker stopped (${message || 'out of memory?'})` };
-        const all = [this.pending, ...this.carvers.map(c => c.pending), ...(this.shader ? [this.shader.pending] : [])];
-        for (const pending of all) for (const handler of [...pending.values()]) handler(msg);
+        this.failAll(`a worker stopped (${message || 'out of memory?'})`);
         this.onBroken?.(message);
     }
+    failAll(message) {
+        const msg = { type: 'error', message };
+        const all = [this.pending, ...this.carvers.map(c => c?.pending), this.shader?.pending];
+        for (const pending of all) if (pending) for (const handler of [...pending.values()]) handler(msg);
+    }
+    /** (a job asked of a terminated pool fails — its workers are gone) */
+    open() { if (this.closed) throw new Error('the terrain pool was closed'); }
 
     get size() { return this.workers.length; }
 
@@ -97,6 +103,7 @@ export class TerrainPool {
     forget(tMesh) { this.meshes.delete(tMesh); }
 
     terminate() {
+        if (!this.closed) { this.closed = true; this.failAll('the terrain pool was closed'); }
         this.meshes.clear();
         for (const w of this.workers) w.terminate();
         this.workers = [];
@@ -117,6 +124,7 @@ export class TerrainPool {
     }
 
     async run(frame, tMesh, { cfg, seed = 0, parts: wantParts = false, records = true, carveInputs = false }) {
+        this.open();
         const started = performance.now(), W = this.workers.length, n = tMesh.numCells;
         for (const w of this.workers) w.hold(true);
         try { return await this.runHeld(frame, tMesh, { cfg, seed, wantParts, records, carveInputs }, started, W, n); } finally { for (const w of this.workers) w.hold(false); }
@@ -143,6 +151,7 @@ export class TerrainPool {
     }
 
     async runCarve(slot, tMesh, built, cfg) {
+        this.open();
         if (!slot.worker) {
             slot.worker = await spawn('./carve-worker.js');
             slot.worker.listen(msg => slot.pending.get(msg.jobId)?.(msg));
@@ -181,6 +190,7 @@ export class TerrainPool {
     }
 
     async runShade(tMesh, heightKm, opts) {
+        this.open();
         if (!this.shader) {
             const worker = await spawn('./shade-worker.js'), pending = new Map();
             worker.listen(msg => pending.get(msg.jobId)?.(msg));

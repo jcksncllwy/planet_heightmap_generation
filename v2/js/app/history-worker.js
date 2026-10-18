@@ -21,7 +21,7 @@ self.onmessage = ({ data }) => {
     try {
         if (data.type === 'more') {
             const { world, scene, snapshotEveryMyr } = kept, started = performance.now();
-            const { steps } = simulate(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send });
+            const { steps } = simulate(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
             self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started });
             return;
         }
@@ -32,7 +32,7 @@ self.onmessage = ({ data }) => {
         const { untilMyr, stopAt } = historyEnding(lengthMyr ?? scene.maxMyr, ending, world.config);      // (a chosen ending: it may run on)
         packMs = 0;
         const started = performance.now();
-        const { steps, stopped } = simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send });
+        const { steps, stopped } = simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
         kept = { world, scene, snapshotEveryMyr };
         self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started, packMs });
     } catch (err) {

@@ -11,10 +11,10 @@ import { TerrainPool } from '../terrain/terrain-pool.js';
 import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
 import { hillshade } from '../view/terrain-shade.js';
+import { SMALL_DEVICE } from '../core/device.js';
 
 const usePool = typeof window !== 'undefined' && typeof Worker !== 'undefined';
-const smallDevice = typeof navigator !== 'undefined' && ((navigator.deviceMemory ?? 8) <= 4 || !!globalThis.matchMedia?.('(pointer: coarse)').matches);
-const BUDGET = smallDevice ? 64e6 : 320e6;
+const BUDGET = SMALL_DEVICE ? 64e6 : 320e6;
 const AHEAD = 10;
 
 // One worker pool for the page, for one sim mesh and size (a new sim resolution replaces it). `workers`: how many
@@ -23,12 +23,18 @@ let poolPromise = null, poolKey = null;
 function poolFor(simMesh, workers) {
     if (poolKey?.mesh !== simMesh || poolKey?.workers !== workers) {
         const old = poolPromise, key = poolKey = { mesh: simMesh, workers };
-        poolPromise = TerrainPool.create(simMesh, workers, { carvers: smallDevice ? 1 : null });
+        poolPromise = TerrainPool.create(simMesh, workers, { carvers: SMALL_DEVICE ? 1 : null });
         // a worker that dies (out of memory) breaks the pool: its jobs fail at once, and the next frame asked for gets a new one
         poolPromise.then(p => { p.onBroken = () => { if (poolKey === key) poolKey = null; p.terminate(); }; });
         old?.then(p => p.terminate());
     }
     return poolPromise;
+}
+/** Let the page's pool go (its workers and their copies of the meshes); the next asked for is a new one. */
+function releasePool() {
+    const p = poolPromise;
+    poolPromise = null; poolKey = null;
+    p?.then(pool => pool.terminate());
 }
 
 export class TerrainPlayer {
@@ -50,8 +56,14 @@ export class TerrainPlayer {
         this.carving = new Map();      // frame → its carving under way
         this.shown = new Map();        // frame → what is painted: heights + hillshade (the last few)
         this.prefetching = false;
-        this.pool = usePool ? poolFor(simMesh, workers) : null;
+        this.workers = workers;
+        this.resting = null;           // let go of the pool for a while (rest): { wake: a promise, resolve }
+        this.rests = 0;
+        if (usePool) poolFor(simMesh, workers);
     }
+
+    /** The worker pool (a promise) — a new one if the last broke or was let go; none while resting. */
+    get pool() { return usePool && !this.resting ? poolFor(this.simMesh, this.workers) : null; }
 
     /** A frame arrived from the history. */
     addFrame(frame) { this.index.set(frame, this.frames.length); this.frames.push(frame); }
@@ -60,6 +72,26 @@ export class TerrainPlayer {
     finish() { this.pool?.then(p => this.prefetch(p)); }
 
     dispose() { this.disposed = true; }
+
+    /**
+     * Let go of the worker pool for a while — a small device's memory, while a moment gets its detail (its own workers):
+     * frames asked for meanwhile are built after wake(). Frames already built stay; a build under way is done again.
+     */
+    rest() {
+        if (!usePool || this.resting) return;
+        let resolve;
+        const wake = new Promise(r => { resolve = r; });
+        this.resting = { wake, resolve };
+        this.rests++;
+        releasePool();
+    }
+    wake() {
+        const r = this.resting;
+        if (!r) return;
+        this.resting = null;
+        r.resolve();
+        this.finish();
+    }
 
     /** Another hillshade (or sea level) for every frame shown from now on. */
     setShading(shading) { this.shading = shading; this.shown.clear(); }
@@ -84,8 +116,14 @@ export class TerrainPlayer {
     async prepare(frame) {
         this.showing(frame);
         if (!usePool) return;
-        const pool = await this.pool;
-        if (this.disposed) return;
+        for (;;) {
+            if (this.resting) await this.resting.wake;
+            const pool = await this.pool, rests = this.rests;
+            if (this.disposed) return;
+            try { return await this.build(pool, frame); } catch (err) { if (!(pool.closed && this.rests !== rests)) throw err; }   // (let go mid-build: rest)
+        }
+    }
+    async build(pool, frame) {
         if (!this.built(frame)) {
             const surf = await pool.synthesize(frame, this.tMesh, { cfg: this.cfg, seed: this.seed, parts: false, records: false, carveInputs: true });
             if (this.disposed) return;
@@ -163,7 +201,7 @@ export class TerrainPlayer {
         const carving = [];                // (carvings under way, as many as the pool has carving workers)
         try {
             for (;;) {
-                if (this.disposed) return;
+                if (this.disposed || this.resting) return;
                 const room = Math.max(4, Math.floor(BUDGET / (2 * this.tMesh.numCells)));
                 const next = this.frames.map((_, i) => i).filter(i => this.distance(i) <= AHEAD).sort((a, b) => this.distance(a) - this.distance(b) || a - b)
                     .slice(0, room).find(i => !this.built(this.frames[i]) && !this.carving.has(this.frames[i]));

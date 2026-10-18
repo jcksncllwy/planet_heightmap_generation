@@ -1,15 +1,20 @@
 // The Evolution page's side of the Finish step (plans/V2_FINISH_PLAN.md): the worker that finishes a moment
-// (finish/finish-worker.js) — kept between finishes, so a mesh it built is built once — and the painting of a finished
-// moment, its picture of heights, onto the page's textures: coloured by the palette and shaded as the live terrain is.
+// (finish/finish-worker.js) — kept between finishes where asked (keep), so a fine mesh it built is built once — and the
+// painting of a finished moment, its picture of heights, onto the page's textures: coloured by the palette and shaded as
+// the live terrain is.
 
 export class FinishService {
     constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; }
 
-    /** Finish a moment. @returns {Promise<{raster: {w, h, heightM, ocean}, stats, ms}>} (rejects with an AbortError if cancelled) */
-    finish(msg, { onStage = null, onProgress = null } = {}) {
+    /**
+     * Finish a moment. keep: the worker stays afterwards, with the mesh it built (a 10M-cell mesh takes ~15 s; a 640K one
+     * under a second — its ~0.3 GB is not worth keeping); else it goes, its memory with it.
+     * @returns {Promise<{raster: {w, h, heightM, ocean}, stats, ms}>} (rejects with an AbortError if cancelled)
+     */
+    finish(msg, { onStage = null, onProgress = null, keep = true } = {}) {
         const w = this.start(), id = this.next++;
         return new Promise((resolve, reject) => {
-            this.jobs.set(id, { resolve, reject, onStage, onProgress });
+            this.jobs.set(id, { resolve, reject, onStage, onProgress, keep });
             w.postMessage({ type: 'finish', id, ...msg, delaunatorUrl: import.meta.resolve('delaunator') });
         });
     }
@@ -32,6 +37,7 @@ export class FinishService {
             else if (data.type === 'progress') j.onProgress?.(data.share);
             else if (data.type === 'done') { this.jobs.delete(data.id); j.resolve(data); }
             else { this.jobs.delete(data.id); j.reject(new Error(data.message)); }
+            if ((data.type === 'done' || data.type === 'error') && !j.keep && !this.jobs.size && this.worker === w) { w.terminate(); this.worker = null; }
         };
         w.onerror = e => {
             for (const j of this.jobs.values()) j.reject(new Error(e.message || 'the finishing worker stopped (out of memory?)'));

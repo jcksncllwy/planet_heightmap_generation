@@ -40,14 +40,16 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
  *                                              frame of the moment it starts from (the earlier call recorded it). With
  *                                              untilMyr on the step grid (stepGridMyr), a history run on in pieces is the
  *                                              one history run in one go, to the bit (the Evolution page's "Keep going")
+ * @param {boolean} [opts.keepFrames]           false: the frames go only to onFrame and are not kept (a worker that streams
+ *                                              them out would otherwise hold the whole history twice — ~2 MB a frame at 20K)
  * @returns {{frames: import('./snapshot.js').Frame[], steps: number, stepLog: Object[], stopped: boolean}}
  *          frames[0] is the world as handed in (time 0 for a new world — a world can also be run on from
  *          where an earlier call stopped); then one frame per snapshot interval; the last is exactly untilMyr,
- *          or the snapshot where stopAt said stop (stopped: true)
+ *          or the snapshot where stopAt said stop (stopped: true). Empty with keepFrames false
  */
-export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false }) {
+export function simulate(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false, keepFrames = true }) {
     const frames = [], stepLog = [];
-    const record = frame => { frames.push(frame); onFrame?.(frame); };
+    const record = frame => { if (keepFrames) frames.push(frame); onFrame?.(frame); };
     if (!resume) {
         for (const p of world.plates) p.refreshExtent(world.mesh.xyz);
         resolve(world);
