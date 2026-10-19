@@ -65,7 +65,7 @@ A top navigation bar connects the pages:
 - **Studio** (`/studio`) — the three tools side by side, what each is for, and curated worldbuilding resources (blogs, YouTube channels, other tools)
 - **Generate** (`/`) — procedural planet generation with tectonic plates, erosion, and climate
 - **Import** (`/import`) — import your own equirectangular B&W heightmap, view it on a 3D globe, and run climate simulation. Black (0) = ocean, brighter = higher elevation. Supports PNG, JPEG, and WebP.
-- **Evolution** (`/evolution`) — watch a planet's tectonic history unfold, stop on a moment and add detail (rivers, glaciers, its own climate, a satellite view), then export it; its Climate tab has every climate layer Generate's Inspect has; see `v2/README.md`
+- **Evolution** (`/evolution`, in beta and best on a desktop for now; tagged so on its page and the Studio card) — watch a planet's tectonic history unfold, stop on a moment and add detail (rivers, glaciers, its own climate, a satellite view), then export it; its Climate tab has every climate layer Generate's Inspect has; see `v2/README.md`
 
 On narrow phones the Import tab reads just "Import".
 

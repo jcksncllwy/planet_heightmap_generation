@@ -43,6 +43,10 @@ body.studio {
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
     padding: 2px 7px; border-radius: 5px; background: rgba(110,200,90,0.18); color: #ad8;
 }
+.tool-beta {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 5px; background: rgba(255,180,60,0.16); color: #fc8; margin-left: -2px;
+}
 .tool-tag { font-size: 14px; color: #8bf; margin-bottom: 10px; }
 .tool-body > p:not(.tool-tag) { font-size: 14px; line-height: 1.6; color: #9ab; margin-bottom: 14px; }
 .tool-facts { list-style: none; font-size: 13px; color: #cde; line-height: 1.5; margin-bottom: 18px; }
