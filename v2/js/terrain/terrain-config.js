@@ -41,6 +41,17 @@ export const TERRAIN = {
     // with the front) rather than one interpolated straight across the sim triangles (its crest lines zig-zagged from cell
     // to cell); 1: fully where the kernels cover the point, 0: as before
     crestFollow: 1,
+    // a belt's width, crest height and age read the same way — blended over its kernels — rather than over the sim triangles,
+    // whose cell-to-cell steps lobed a range's edges, bent its crests into crescents and made blobs of crest height at
+    // 20K–40K (developer, 2026-10-18: "realistic shaping … leading ridges and edges"); 1: fully, 0: as before
+    beltCarry: 1,
+    // the evolved uplift's SHAPE from the belt's profile at the point (the smooth coordinate), its height and wear from the
+    // record: fronts, plateau rims and far edges on the belt's own lines, not the cells' (1: fully, 0: as before)
+    envelopeCarry: 1,
+    // crests rise and fall along the strike — peaks and saddles — by up to this share, at crestAlongKm and half that, read on
+    // the belt's front line so nothing moves across the belt (fronts and parallel ridges keep their places)
+    crestAlongVar: 0.4,
+    crestAlongKm: 300,
     // hills down to what the terrain can show (developer): relief below the platform's noise (whose finest is ~250 km),
     // from hillsFromKm down to what the mesh can draw (none at 160K; 120 km at 640K; 120 and 60 km at 2.5M), each octave
     // hillsRoughness of the one before — hillsKm on the plains, up to hillsUplandGain times that on high ground (≥ 1.5 km);

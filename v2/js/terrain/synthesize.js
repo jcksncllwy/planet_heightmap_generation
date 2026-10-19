@@ -13,13 +13,13 @@
 
 import { TERRAIN } from './terrain-config.js';
 import { deriveRecords, kindType, kindSide } from './records.js';
-import { beltProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
-import { buildStripeKernels, stripeAt, crossAt, carriedField, carriedStripeAt } from './stripes.js';
+import { beltProfile, broadProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
+import { buildStripeKernels, stripeAt, crossAt, beltAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
 import { SEGMENT_KM } from '../tectonics/model/segments.js';
 import { buildVolcanoes, coneAt, volcanoNoise } from './volcanoes.js';
 import { cratonCharacter } from './cratons.js';
-import { BeltSide } from '../tectonics/model/crust.js';
+import { BeltSide, CrustType } from '../tectonics/model/crust.js';
 import { sampleOnto, warpField, warpPoint } from './terrain-mesh.js';
 import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
 import { locate } from '../core/mesh-locate.js';
@@ -110,9 +110,67 @@ export function carveSettings(cfg) {
  * resolution fade for a terrain mesh of `edgeKm` spacing) and the volcanoes. Small (sim-mesh sized): on the pool, one
  * worker builds it from the frame and hands it to the others (planToData).
  */
+const BLEND = 11;
 export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
     const A = buildAnchor(frame, simMesh), rec = deriveRecords(frame, simMesh, cfg, seed, A);
+    // The current belt's envelope (the evolved uplift) and its thickened crust (the isostatic part of the platform) as each
+    // sim cell samples them, and how high each stands against its profile there — the broad profile, and the thickening's
+    // (1 − u²) across the belt (tectonics/step/orogeny.js): the terrain takes their SHAPES from the profiles at the point
+    // (the smooth across-belt coordinate) and their heights from these ratios blended over the belt's kernels
+    // (surfaceRange: envelopeCarry) — moving each by its height × (the profile at the point − the profile as the cells
+    // sampled it): nothing counted twice, and where the cells sampled the profile well, nothing changes. Only cells that
+    // clearly fit a profile give a ratio, capped at a belt's own height (a cell at a belt's edge holding an older belt's
+    // uplift is not a tall belt) and at the most thickened crust's lift; a shield never thickens.
+    {
+        const L0 = rec.belts[0], n = simMesh.numCells;
+        const envRatio = new Float32Array(n).fill(-1), envShape = new Float32Array(n), rootRatio = new Float32Array(n).fill(-1), rootShape = new Float32Array(n);
+        for (let w = 0; w < n; w++) {
+            const k = L0.kind[w];
+            if (!k || !rec.land[w]) continue;
+            // (the belt's own height: what the history builds its uplift toward — tectonics/step/heights.js beltReliefKm)
+            const type = kindType(k), side = kindSide(k), p = broadProfile(type, side, L0.dKm[w], L0.reach[w]);
+            const own = cfg.reliefKm[type] * (cfg.youngShare + (1 - cfg.youngShare) * Math.min(1, L0.reach[w] / cfg.fullReachKm[type]));
+            envShape[w] = p;
+            if (p > 0.25) envRatio[w] = Math.min(own, Math.max(0, rec.upliftKm[w] / p));
+            if (frame.type[w] === CrustType.CRATON) continue;          // (a shield never thickens)
+            const u = L0.dKm[w] / Math.max(40, L0.reach[w]), t = 1 - u * u;
+            rootShape[w] = Math.max(0, t) * (1 - smooth(0.85, 1.05, u));
+            if (t > 0.3) {
+                const root = frame.rootKm[w] * (frame.type[w] === CrustType.ARC ? 0.25 : 1), iso = cfg.isoMaxKm * (1 - Math.exp(-root / cfg.isoScaleKm));
+                rootRatio[w] = Math.min(cfg.isoMaxKm, iso / t);
+            }
+        }
+        Object.assign(L0, { envRatio, rootRatio });
+        rec.envShape = envShape; rec.rootShape = rootShape;
+    }
+    // where the crust each world cell shows lies this frame (a moved plate's raster cell, turned into the world): the cells'
+    // blends below are read there, so they ride with the crust as the records do (Phase 9) — read at the world cells'
+    // own centres, a moving plate's ranges changed width and height at the scale of its cells as it went
+    const crustPos = new Float32Array(3 * simMesh.numCells);
+    {
+        const { xyz } = simMesh, m = A.mats;
+        for (let w = 0; w < simMesh.numCells; w++) {
+            const o = A.owner[w];
+            if (o < 0 || !A.moved[o]) { crustPos[3 * w] = xyz[3 * w]; crustPos[3 * w + 1] = xyz[3 * w + 1]; crustPos[3 * w + 2] = xyz[3 * w + 2]; continue; }
+            const r = A.cell[w], b = 9 * o, x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
+            crustPos[3 * w] = m[b] * x + m[b + 1] * y + m[b + 2] * z; crustPos[3 * w + 1] = m[b + 3] * x + m[b + 4] * y + m[b + 5] * z; crustPos[3 * w + 2] = m[b + 6] * x + m[b + 7] * y + m[b + 8] * z;
+        }
+    }
     const timeMyr = frame.time ?? 0, Ks = rec.belts.map((layer, i) => buildStripeKernels(layer, simMesh, cfg, seed + 7919 * i, A, timeMyr));
+    // each belt cell's blend of its kind's kernels (stripes.js beltAt): its width, crest height and quiet time, its across
+    // direction, how high its envelope and thickened crust stand — once per cell, read over the triangles by the terrain.
+    // Interleaved, BLEND values a cell: [W, A, Q, cover, ax, ay, az, envelope weight, × its height, root weight, × its height]
+    {
+        const L0 = rec.belts[0], K = Ks[0], n = simMesh.numCells, xyz = crustPos, out = new Array(11).fill(0), B = new Float32Array(BLEND * n);
+        if (K.count) for (let w = 0; w < n; w++) {
+            if (!L0.kind[w]) continue;
+            beltAt(K, w, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2], L0.kind[w], out);
+            const o = BLEND * w;
+            for (let i = 0; i < 7; i++) B[o + i] = out[i];
+            B[o + 7] = out[7]; B[o + 8] = out[7] * out[8]; B[o + 9] = out[9]; B[o + 10] = out[9] * out[10];
+        }
+        L0.blend = B;
+    }
     // each kernel's resolution fade (main and fine set) depends only on its wavelength and this mesh: computed once
     for (const K of Ks) {
         K.fade1 = Float64Array.from(K.wave, lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / edgeKm));
@@ -280,6 +338,11 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const islandF = R / Math.max(1, cfg.arcIslandKm ?? 140), strait = cfg.arcStraitKm ?? 0;
     const renewedNoise = (u, v, w) => fadeB > 0 ? fadeA * noise.noise3D(u + offA, v + offA, w + offA) + fadeB * noise.noise3D(u + offB, v + offB, w + offB) : noise.noise3D(u + offA, v + offA, w + offA);
     const coastCurve = cfg.coastCurve ?? 0, mountainCurve = cfg.mountainCurve ?? 0, crestFollow = cfg.crestFollow ?? 0;
+    // (a belt's width, crest height and age blended over its kernels; its envelope's shape from the profile at the point;
+    // its crests rising and falling along the strike only — read at the point moved back across the belt onto its front)
+    const beltCarry = cfg.beltCarry ?? 0, envelopeCarry = cfg.envelopeCarry ?? 0, crestAlongVar = cfg.crestAlongVar ?? 0, crestAlongF = R / (cfg.crestAlongKm ?? 300);
+    const bw = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], frontP = [0, 0, 0], A_ = A;   // (A_: in the belt loop below, A is a crest height)
+
     const slopes = coastCurve > 0 || mountainCurve > 0 ? slopeMemo(plan, simMesh) : null, crossC = [0, 0];
     const cratF = R / 600, shapeF = R / cfg.cratonShapeKm, grainF = R / cfg.cratonGrainScaleKm, grainShow = fade(cfg.cratonGrainScaleKm);
     const coastF = R / 700, platF = R / 2000, strikeF = R / 900, segF = R / cfg.stripeSegmentKm, meanderF = R / cfg.stripeMeanderAlongKm, meander = cfg.stripeMeanderKm / R;
@@ -300,7 +363,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const noisy = (c, w) => { const r = cell[c]; return w * Math.exp(cfg.blendNoise * noise.fbm(x0 * blendF + (r % 101) * 1.37, y0 * blendF + (r % 89) * 2.11, z0 * blendF + (r % 83) * 0.73, 3, 0.5) * 1.6); };
     let x0 = 0, y0 = 0, z0 = 0;
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, fractureU, coastFresh } = rec;
+    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, fractureU, coastFresh, envShape, rootShape } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -490,7 +553,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // (relief tapers to nothing at the edge of the continental crust: no step at the slope; on a mature passive
             // margin it lies buried under the shelf and the coastal plain)
             const atEdge = smooth(0, 40, coast) * (1 - buried);
-            let warped = false, wx = 0, wy = 0, wz = 0, texture = 0, massifAmp = 0, massifWear = 0, massif = 0;
+            let warped = false, wx = 0, wy = 0, wz = 0, texture = 0, massifAmp = 0, massifWear = 0, massif = 0, envHere = 0, envCover = 0, rootHere = 0, rootCover = 0;
             for (let li = 0; li < 2; li++) {
             const { kind, dKm, reach, reliefKm, quietMyr: beltQuiet } = rec.belts[li], share = li === 0 ? 1 : cfg.overprintShare;
             kinds[0] = kind[c0]; kinds[1] = kind[c1]; kinds[2] = kind[c2];
@@ -499,17 +562,37 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // (the distance across the belt as the kernels carry it — bending with the front — and how well they cover here)
             let follow = 0;
             if (crestFollow > 0 && Ks[li].count) { crossAt(Ks[li], cn, px, py, pz, crossC); follow = crestFollow * smooth(0.05, 0.4, crossC[1]); }
+            // (layer 0: its cells' blends — preparePlan — read over the triangles as the cells' own values are; the overprinted
+            // layer, at half weight, keeps the cells' own)
+            const Sb = li === 0 && (beltCarry > 0 || crestAlongVar > 0 || envelopeCarry > 0) ? rec.belts[0].blend : null;
             for (let a = 0; a < 3; a++) {
                 const k = kinds[a];
                 if (!k || (a > 0 && kinds[0] === k) || (a > 1 && kinds[1] === k)) continue;
                 let m = 0, ws = 0, d = 0, W = 0, A = 0, Q = 0;
+                let bW = 0, bA = 0, bQ = 0;
+                bw[3] = 0; bw[4] = 0; bw[5] = 0; bw[6] = 0; bw[7] = 0; bw[8] = 0; bw[9] = 0; bw[10] = 0;
                 for (let b = a; b < 3; b++) {
                     if (kinds[b] !== k) continue;
                     const c = b === 0 ? c0 : b === 1 ? c1 : c2, wb = wts[b];
                     m += nts[b]; ws += wb; d += wb * dKm[c]; W += wb * reach[c]; A += nts[b] * reliefKm[c]; Q += nts[b] * beltQuiet[c];
+                    if (Sb) {
+                        const o = BLEND * c;
+                        bW += wb * Sb[o]; bA += nts[b] * Sb[o + 1]; bQ += nts[b] * Sb[o + 2]; bw[3] += wb * Sb[o + 3];
+                        bw[4] += wb * Sb[o + 4]; bw[5] += wb * Sb[o + 5]; bw[6] += wb * Sb[o + 6];
+                        bw[7] += wb * Sb[o + 7]; bw[8] += wb * Sb[o + 8]; bw[9] += wb * Sb[o + 9]; bw[10] += wb * Sb[o + 10];
+                    }
                 }
                 if (m <= 0 || ws <= 0) continue;
                 d /= ws; W /= ws; A /= m; Q /= m;
+                // (width, crest height and age from this kind's kernels, where they cover it: no cell-to-cell steps)
+                let bwSum = 0;
+                if (Sb) {
+                    bwSum = bw[3] /= ws;
+                    if (bw[7] > 1e-9) { bw[8] /= bw[7]; bw[7] /= ws; }
+                    if (bw[9] > 1e-9) { bw[10] /= bw[9]; bw[9] /= ws; }
+                    const f = beltCarry * smooth(0.05, 0.4, bwSum);
+                    if (f > 0) { W += f * (bW / ws - W); A += f * (bA / m - A); Q += f * (bQ / m - Q); }
+                }
                 // how far this belt has worn since it fell quiet: its crests smoothed by σ (g = 2σ²), its ridges by a share
                 // of that (wear: 2π²σ², a wave λ keeping e^(−wear/λ²))
                 let g = 0, wear = 0;
@@ -519,10 +602,38 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 }
                 const gAge = g;
                 g += gBase;
+                const dCells = d;
                 if (follow > 0) d += follow * (Math.max(0, kindSide(k) === BeltSide.LOWER ? -crossC[0] : crossC[0]) - d);
-                // the crests (the broad part of the belt is in the evolved uplift, carried by the platform above)
+                // the crests (the broad part of the belt is in the evolved uplift, carried by the platform above) — rising and
+                // falling along the strike (peaks and saddles), read on the belt's front line so nothing moves across the belt
                 const type = kindType(k), side = kindSide(k);
-                layerRelief += m * A * crestProfile(type, side, d, W, jitter, g);
+                const crest = crestProfile(type, side, d, W, jitter, g);
+                let alongK = 1;
+                if (crestAlongVar > 0 && bwSum > 0.05 && crest !== 0) {
+                    const al = Math.sqrt(bw[4] * bw[4] + bw[5] * bw[5] + bw[6] * bw[6]);
+                    if (al > 1e-9) {
+                        // (the point moved back across the belt by its distance from the front, in the world, then into the crust's
+                        // frame as the point itself is — the noise rides with the range)
+                        const s = (side === BeltSide.LOWER ? -d : d) / (R * al);
+                        plateFramePoint(A_, c0, c1, c2, w0, w1, w2, px - s * bw[4], py - s * bw[5], pz - s * bw[6], frontP);
+                        const fx = frontP[0], fy = frontP[1], fz = frontP[2];
+                        const v = renewedNoise(fx * crestAlongF + 61.7, fy * crestAlongF + 23.3, fz * crestAlongF + 9.1) + 0.5 * renewedNoise(fx * 2 * crestAlongF + 4.9, fy * 2 * crestAlongF + 37.1, fz * 2 * crestAlongF + 15.5);
+                        alongK = Math.max(0.15, 1 + crestAlongVar * smooth(0.05, 0.4, bwSum) * v);
+                    }
+                }
+                layerRelief += m * A * alongK * crest;
+                // (the envelope and the thickened crust at the point: the profiles here × the belt's heights, blended over its kernels —
+                // where the kernels' distance across the belt and the cells' agree to within about a sim cell: it straightens the
+                // cells' lobes; where a junction of belts sets them hundreds of km apart, the records stand)
+                const agree = envelopeCarry > 0 ? smooth(simEdge, 0.5 * simEdge, Math.abs(d - dCells)) : 0;
+                if (li === 0 && envelopeCarry > 0 && bw[7] > 0) {
+                    const f = envelopeCarry * m * smooth(0.05, 0.4, bw[7]) * agree;
+                    envHere += f * bw[8] * broadProfile(type, side, d, W, jitter); envCover += f * bw[8];
+                }
+                if (li === 0 && envelopeCarry > 0 && bw[9] > 0) {
+                    const u = d / Math.max(40, W), f = envelopeCarry * m * smooth(0.05, 0.4, bw[9]) * agree;
+                    rootHere += f * bw[10] * Math.max(0, 1 - u * u) * (1 - smooth(0.85 + jitter, 1.05 + jitter, u)); rootCover += f * bw[10];
+                }
                 // the parallel ridges: a share of this belt's whole relief, plus a little on its low ground — worn by their
                 // wavelength (the finer set more)
                 const raised = Math.max(0, A * beltProfile(type, side, d, W, jitter)), intensity = A / cfg.reliefKm[type], lam = cfg.stripeKm[type];
@@ -606,8 +717,17 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (rimFade < 1) { relief *= rimFade; stripes *= rimFade; massif *= rimFade; }
             // the evolved uplift (over the land corners, interfingering like the platform) — on top of the shelf and plain, so
             // a range or escarpment near the coast still rises from the sea
-            const uplift = (lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-3, upliftKm, true), upliftKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
-                : (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw) : 0) * rimFade;
+            let uplift = lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-3, upliftKm, true), upliftKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
+                : (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw) : 0;
+            // (within a belt, its part of the uplift — as the cells sampled it — replaced by the smooth one: fronts, plateau rims
+            // and the far edge on the belt's own lines; older belts' uplift and basins stay as recorded)
+            if (envCover > 0 && lw > 0) uplift += envHere - envCover * (n0 * envShape[c0] + n1 * envShape[c1] + n2 * envShape[c2]) / lw;
+            uplift *= rimFade;
+            // (and the thickened crust's lift likewise, into the ground under the belt: no lobes of it, cell by cell)
+            if (rootCover > 0 && lw > 0) {
+                const notShield = (n0 * (craton[c0] ? 0 : 1) + n1 * (craton[c1] ? 0 : 1) + n2 * (craton[c2] ? 0 : 1)) / lw;
+                h += ramp * notShield * (rootHere - rootCover * (n0 * rootShape[c0] + n1 * rootShape[c1] + n2 * rootShape[c2]) / lw);
+            }
             const along = relief !== 0 || uplift !== 0 ? atEdge * (1 + cfg.alongStrikeVar * noise.fbm(x * strikeF + 8.8, y * strikeF + 2.2, z * strikeF + 6.6, 3, 0.5) * 1.5) : 0;
             let lifted = h + uplift * along + stripes;
             // (the massif never takes land under the sea: a low of it stops just above sea level)

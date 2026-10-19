@@ -215,3 +215,19 @@ no new rule is hot in a profile).
   (`coastCellNoise`) and the high ground scaled by 1 ± 0.35 (`mountainCellNoise`), in waves of 2.5 sim cells and finer — the
   cell-sized lobes of coasts and blobs of highland broken at every resolution, live and in Add detail. Steady detail: a
   half-cell turn keeps 96.6 % of coasts (97.6 % without), land heights 0.86 (0.91).
+- **Mountain noise removed (1009f69)** (developer: it "ruined the ridgelines … the overall structure of the mountain ranges");
+  the coast noise stays, weaker on fresh coasts (d1ba336).
+- **Mountains shaped along their belts** (v2/README.md, "Mountains shaped along their belts"): width, crest height and age
+  blended over the belt's kernels; the envelope's and thickened crust's shapes from their profiles at the point; crests
+  varying along the strike. Three things learned on the way:
+  - The first form replaced each cell's part of the envelope and root, a part known only where a cell fit the profile —
+    at belt edges and junctions the smooth version was added with nothing taken away: a 14.5 km summit (check-phase8a),
+    the top 0.01 % at 7.9 km. Moving the shape instead (height × (profile here − profile as sampled)), only where the
+    kernels' and the cells' distances agree within about a sim cell: 8.85 km, top 0.01 % 6.8 km (6.3 without the
+    mountain work) — the summits a little less bold than in the first form, for the end tuning.
+  - Blends read at the world cells' centres made a moving plate's ranges change with the grid: read at the crust each cell
+    shows.
+  - A coast following its Andean belt's smooth front (`coastFollowFront`) was tried and removed: the kernels' front is not
+    steady enough as a plate turns (a half-cell turn kept 95.7 % of coasts against 97.4 %), and it barely showed.
+  Checks 8a, 9, 10: the same failures as the committed tree (8a: main range behind the coast, young flood basalt; 9: ridges
+  after a turn; 10: the two craton-front checks) — the 290→300 Myr check of 9 passes again.

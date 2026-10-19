@@ -600,6 +600,17 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   mesh can show — the same live and in Add detail. On a fresh coast the coast's share falls to `coastFreshFloor` (a young
   rifted margin, by its maturity, or a coast whose belt was active within ~`coastFreshMyr`; records.js `coastFresh`), so a
   young ocean's two sides still fit like puzzle pieces and a fresh range's shape leads.
+- **Mountains shaped along their belts** (developer: noise on the mountains "ruined the ridgelines … leading ridges and
+  edges"; "make sure they get a realistic shaping"): only the distance across a belt followed its smooth kernels; its
+  width, crest height and age, its envelope (the evolved uplift) and its thickened crust were read cell by cell — lobed
+  range edges, crests bent into crescents, blobs of crest height. Now, for the current belt, its width, crest height and
+  quiet time are blended over its own kind's kernels (`beltCarry`; stripes.js `beltAt`, once per sim cell at the crust it
+  shows, read over the triangles); the envelope's and the thickened crust's shapes come from their profiles at the point,
+  times their heights blended the same way (`envelopeCarry`: moved by height × (the profile at the point − the profile as
+  the cells sampled it), only where the kernels' and the cells' distances across the belt agree to within about a sim
+  cell, the thickened crust's height capped at `isoMaxKm` and never on a shield); and the crests rise and fall along the
+  strike (`crestAlongVar` 0.4 over `crestAlongKm` 300), read on the belt's front line so nothing moves across the belt.
+  ~6 % more synthesis time at 640K; steady detail kept (a half-cell turn: 97.1 % of coasts, land heights 0.91).
 Everything is to be tuned together at the end (developer); the measured impact of each step is in the plan.
 
 ## Conventions

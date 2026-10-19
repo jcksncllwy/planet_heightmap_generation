@@ -25,7 +25,7 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
  * (anchor.js crustSites), so a moving belt keeps the same kernels frame after frame, and with them its ridges.
  */
 export function buildStripeKernels(rec, simMesh, cfg, seed, anchor, timeMyr = 0) {
-    const homes = [], pos = [], dir = [], wave = [], phase = [], phase2 = [], d0 = [], acr = [];
+    const homes = [], pos = [], dir = [], wave = [], phase = [], phase2 = [], d0 = [], acr = [], kW = [], kA = [], kQ = [], kKind = [], kE = [], kR = [];
     const wanted = w => rec.kind[w] && rec.reliefKm[w] >= 0.02 && (rec.across[3 * w] || rec.across[3 * w + 1] || rec.across[3 * w + 2]);
     const renew = cfg.detailRenewMyr > 0 ? timeMyr / cfg.detailRenewMyr : 0;
     crustSites(anchor, simMesh, wanted, (w, crustCell, x, y, z, o) => {
@@ -53,11 +53,14 @@ export function buildStripeKernels(rec, simMesh, cfg, seed, anchor, timeMyr = 0)
         // side of a collision, so the distance runs on through the suture)
         const sign = kindSide(rec.kind[w]) === BeltSide.LOWER ? -1 : 1;
         d0.push(sign * rec.dKm[w]); acr.push(sign * ax, sign * ay, sign * az);
+        kW.push(rec.reach[w]); kA.push(rec.reliefKm[w]); kQ.push(rec.quietMyr[w]); kKind.push(rec.kind[w]);
+        kE.push(rec.envRatio ? rec.envRatio[w] : -1); kR.push(rec.rootRatio ? rec.rootRatio[w] : -1);
     });
     const reachKm = cfg.stripeBandKm * 2.5;
     const near = nearLists(simMesh, homes, pos, () => reachKm);
     return { count: homes.length, pos: Float32Array.from(pos), dir: Float32Array.from(dir), wave: Float32Array.from(wave),
         phase: Float32Array.from(phase), phase2: Float32Array.from(phase2), d0: Float32Array.from(d0), acr: Float32Array.from(acr),
+        W: Float32Array.from(kW), A: Float32Array.from(kA), Q: Float32Array.from(kQ), kind: Uint8Array.from(kKind), envR: Float32Array.from(kE), rootR: Float32Array.from(kR),
         near, cut2: (reachKm / R) ** 2 };
 }
 
@@ -79,6 +82,34 @@ export function crossAt(K, c0, wx, wy, wz, out) {
     }
     out[0] = sum > 1e-9 ? s / sum : 0;
     out[1] = sum;
+}
+
+/**
+ * A belt's width, crest height and quiet time at the point w (a sim cell's place: the plan blends them there once, and
+ * the terrain reads the blend over the triangles — a field this smooth needs no more), for one kind of belt: that kind's
+ * kernels' own values, blended by their windows as crossAt blends the distance — smooth at the window's scale, where the
+ * cells' own values stepped from cell to cell (lobed range edges, crests bent into crescents, blobs of crest height:
+ * developer, 2026-10-18, "realistic shaping … leading ridges and edges") — and the kernels' across direction, blended.
+ * out = [W, A, Q, weight (0: none of this kind here), ax, ay, az (the direction unnormalised, in the world), and the
+ * envelope's and the thickened crust's heights against their profiles (synthesize.js preparePlan): weight, value, weight, value].
+ */
+export function beltAt(K, c0, wx, wy, wz, kind, out) {
+    const { offset, items } = K.near, { pos, acr, cut2, W, A, Q, envR, rootR } = K, kinds = K.kind;
+    let sW = 0, sA = 0, sQ = 0, sum = 0, ax = 0, ay = 0, az = 0, eS = 0, eW = 0, rS = 0, rW = 0;
+    for (let j = offset[c0]; j < offset[c0 + 1]; j++) {
+        const k = items[j];
+        if (kinds[k] !== kind) continue;
+        const dx = wx - pos[3 * k], dy = wy - pos[3 * k + 1], dz = wz - pos[3 * k + 2], d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= cut2) continue;
+        const q = 1 - d2 / cut2, g = q * q * q;
+        sW += g * W[k]; sA += g * A[k]; sQ += g * Q[k]; sum += g;
+        ax += g * acr[3 * k]; ay += g * acr[3 * k + 1]; az += g * acr[3 * k + 2];
+        if (envR && envR[k] >= 0) { eS += g * envR[k]; eW += g; }
+        if (rootR && rootR[k] >= 0) { rS += g * rootR[k]; rW += g; }
+    }
+    if (sum > 1e-9) { out[0] = sW / sum; out[1] = sA / sum; out[2] = sQ / sum; } else { out[0] = out[1] = out[2] = 0; }
+    out[3] = sum; out[4] = ax; out[5] = ay; out[6] = az;
+    out[7] = eW; out[8] = eW > 1e-9 ? eS / eW : 0; out[9] = rW; out[10] = rW > 1e-9 ? rS / rW : 0;
 }
 
 /** An asymmetric ridge profile of a phase angle: −1 in the valley, +1 on the crest, the steep face after the crest. */
