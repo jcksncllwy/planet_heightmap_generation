@@ -52,6 +52,8 @@ export class TectonicWorld {
                                     // pieces is the one history)
         /** @type {Plate[]} index === plate id; dead plates stay in place */
         this.plates = [];
+        /** The one empty raster every dead plate holds (simulate.js), made when the first plate goes */
+        this.goneCrust = null;
 
         const n = simMesh.numCells;
         // ── World view of "now" — rebuilt every step by step/resolve.js (or step/reconstruct.js, read-only) ──

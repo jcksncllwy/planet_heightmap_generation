@@ -16,6 +16,7 @@ import { matureArcs } from './step/arc-maturation.js';
 import { riftContinents, searchJunctions } from './step/rifting.js';
 import { initiateSubduction, founderWithinPlates } from './step/subduction-init.js';
 import { retireBackground, splitOceanPlates, captureMicroplates } from './step/ocean-plates.js';
+import { CrustRaster } from './model/crust.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
 import { trackCycle } from './step/supercontinent.js';
 import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
@@ -138,6 +139,10 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             p.omegaSlow ??= p.omega.slice();
             for (let i = 0; i < 3; i++) p.omegaSlow[i] += (p.omega[i] - p.omegaSlow[i]) * k;
         }
+        // (a plate that has gone — merged, captured, emptied — keeps its place in the list, its id, but not its rasters: the
+        // gone plates share one empty raster, as a merge gives the plate it ends a fresh one. A history makes ~100 plates
+        // and keeps ~10, each ~110 bytes a cell: at 20K the history held ~200 MB of empty rasters, and a phone ran out)
+        for (const p of world.plates) if (!p.alive && p.crust.count === 0 && p.crust !== world.goneCrust) p.crust = world.goneCrust ??= new CrustRaster(world.mesh.numCells);
         stepLog.push({ time: world.time, dt, cellsMoved, ...tally });
         if (world.time >= nextSnapshot - 1e-9) {
             record(captureFrame(world));

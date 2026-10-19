@@ -18,6 +18,7 @@ const SCENE_LISTS = { terrain: TERRAIN_SCENES };
 let kept = null;                  // { world, scene, snapshotEveryMyr }: the history run, to run on from
 let packMs = 0;
 let helpers = null;               // the helper pool, once made (null where a worker cannot start workers of its own)
+let small = false;                // a phone or small device (the page's core/device.js): the helpers go once a run is done
 // (packed: a whole history's frames are mostly zeros — tectonics/frame-pack.js)
 const send = frame => { const t = performance.now(), { packed, transfer } = packFrame(frame); packMs += performance.now() - t; self.postMessage({ type: 'frame', frame: packed }, transfer); };
 // (with helpers, or right here — the same history either way)
@@ -28,16 +29,22 @@ async function helpersFor(simMesh) {
     try { helpers = await HelperPool.create(simMesh); } catch { helpers = null; }
     return helpers;
 }
+// (on a small device, between runs: four idle workers hold ~200 MB a phone needs for Add detail; they start again — in
+// well under a second — when the history runs on. With or without them, the same history)
+const restHelpers = () => { if (small && helpers) { helpers.terminate(); helpers = null; } };
 
 self.onmessage = async ({ data }) => {
     try {
         if (data.type === 'more') {
             const { world, scene, snapshotEveryMyr } = kept, started = performance.now();
+            await helpersFor(world.mesh);
             const { steps } = await run(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
+            restHelpers();
             self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started });
             return;
         }
         const { list, sceneId, seed, mesh, snapshotEveryMyr, heights = {}, ending = 'none', start = {}, lengthMyr = null } = data;
+        small = !!data.small;
         const scene = SCENE_LISTS[list].find(s => s.id === sceneId), simMesh = meshFromArrays(mesh);
         await helpersFor(simMesh);
         // (start: start-world tunables, for scenes that take them)
@@ -48,7 +55,9 @@ self.onmessage = async ({ data }) => {
         const started = performance.now();
         const { steps, stopped } = await run(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
         kept = { world, scene, snapshotEveryMyr };
-        self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started, packMs, helpers: helpers?.size ?? 0 });
+        const helperCount = helpers?.size ?? 0;
+        restHelpers();
+        self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started, packMs, helpers: helperCount });
     } catch (err) {
         self.postMessage({ type: 'error', message: err.stack ?? String(err) });
     }

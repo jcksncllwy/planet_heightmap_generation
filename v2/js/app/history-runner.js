@@ -5,6 +5,7 @@ import { simulate } from '../tectonics/simulate.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { PackedFrame } from '../tectonics/frame-pack.js';
 import { historyEnding } from '../tectonics/ending.js';
+import { SMALL_DEVICE } from '../core/device.js';
 
 /**
  * @param {{list: string, scene: Object, heights?: Object, ending?: string, start?: Object, lengthMyr?: number, keep?: boolean}} which   the
@@ -53,7 +54,7 @@ export function runHistory({ list, scene, heights = {}, ending = 'none', start =
         };
         worker.onerror = e => fail(new Error(`history worker: ${e.message}`));
         signal?.addEventListener('abort', () => fail(new DOMException('The history was stopped', 'AbortError')), { once: true });
-        worker.postMessage({ list, sceneId: scene.id, seed, snapshotEveryMyr, heights, ending, start, lengthMyr,
+        worker.postMessage({ list, sceneId: scene.id, seed, snapshotEveryMyr, heights, ending, start, lengthMyr, small: SMALL_DEVICE,
             mesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList } });
     });
 }

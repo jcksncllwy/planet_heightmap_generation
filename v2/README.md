@@ -546,6 +546,15 @@ helpers, and one extended in two pieces; the page: its packed frames against Nod
 world 25–40 % sooner (0.7–1.8 s → 0.5–1.2 s), a history 7–15 % (1200 Myr at 20K, 600 at 40K). Where a worker cannot start
 workers of its own, the history runs in place as before.
 
+Phone memory again (2026-10-18, after Add detail closed the tab on a phone once more): the helpers and the realism pass
+had taken back what the first pass saved (peak 1.74 → 1.97 GB, same measure). A gone plate keeps its place in
+`world.plates` (its id is its index) and kept its rasters too — ~110 bytes a cell, and a history makes ~100 plates and keeps
+~20 (the realism pass's ocean plates and microplates: 54 → 92 at 1200 Myr, 20K). Now every gone plate shares one empty
+raster (`world.goneCrust`, simulate.js — as a merge already gave the plate it ended a fresh one): the history's world
+207 → 61 MB at 20K. And on a small device the history's worker lets its helpers go once a run is done (the page tells it:
+`small`), starting them again — well under a second — when the history runs on. Peak during a 640K Add detail
+1.97 → 1.66 GB, after it 1.64 → 1.22 GB; every frame the same (hashes: three histories in place, one with helpers).
+
 The picture on the GPU (2026-10-18; developer: "lets do the GPU repaint"): Evolution painted every moment on the page's
 thread — ~2M pixels each blended from three cells through a pixel table (`SmoothMapRaster`; 37 ms at 2048 px, 130 ms at
 4096, and the 4096 table itself ~1 s and 117 MB to build), then sent as a texture. Now (`view/gpu-paint.js`) the terrain
