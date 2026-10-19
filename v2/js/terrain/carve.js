@@ -364,7 +364,9 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
  * Drowned valleys (terrain-config drownKm …): where hills and mountains meet the sea, the sea runs up the big river valleys
  * — rias and fjords — and the ridges between them stand out as headlands. Each land cell's distance to the sea along its
  * river (the flood's order: every cell after the one it drains into); its valley floor lowered by
- *     drownDepthKm · (1 − s / drownKm)² · (how much it drains) · (how high the land around is)
+ *     depth · (1 − s / reach)² · (how much it drains) · (how high the land around is)
+ * — depth and reach a fjord's where the coast is cold, a ria's where it is not (fields.fjord, 0…1: Add detail's climate;
+ * without it, by latitude: drownColdLat)
  * — the land around read on the next coarser mesh (its mean tectonic height, over ~4 of these cells), so a valley's mouth,
  * graded to the sea, still counts as mountainous where its sides are. Then the sea floods in from the open ocean over
  * whatever is now below it; a hollow it cannot reach is given back its height (no pools of sea inland). Fades out where
@@ -377,6 +379,9 @@ function drownValleys(meshes, F, C, cfg) {
     const { adjOffset, adjList } = mesh, { dist } = infoOf(mesh);
     const around = L > 1 ? upsample(meshes[L - 2], mesh, F[L - 2].z) : f.z;
     const [a1, a2] = cfg.drownAreaKm2 ?? [2000, 30000], [r1, r2] = cfg.drownReliefKm ?? [0.15, 0.9], la1 = Math.log(a1), la2 = Math.log(a2);
+    // (fjord or ria: how cold here, 0…1 — the climate's where given, else the latitude's)
+    const [lat1, lat2] = cfg.drownColdLat ?? [44, 58], riaKm = cfg.riaKm ?? cfg.drownKm, riaDepth = cfg.riaDepthKm ?? cfg.drownDepthKm, { xyz } = mesh;
+    const coldAt = f.fjord ? c => f.fjord[c] : c => smooth(lat1, lat2, Math.abs(Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2])))) * 180 / Math.PI);
     // (along the river to the sea: each cell after its receiver, in the flood's order)
     const along = new Float32Array(n), before = z.slice(), sink = new Float32Array(n);
     let drowned = false;
@@ -386,8 +391,10 @@ function drownValleys(meshes, F, C, cfg) {
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (adjList[k] === to) { step = dist[k]; break; }
         along[c] = (r >= 0 ? along[r] : f.sink && f.sink[to] > 0.5 ? Infinity : 0) + step;      // (a closed basin is no sea)
         if (along[c] >= cfg.drownKm) continue;
-        const g = (1 - along[c] / cfg.drownKm) ** 2, drain = smooth(la1, la2, Math.log(Math.max(1, area[c]))), relief = smooth(r1, r2, around[c]);
-        const d = show * cfg.drownDepthKm * g * drain * relief;
+        const cold = coldAt(c), reach = riaKm + (cfg.drownKm - riaKm) * cold;
+        if (along[c] >= reach) continue;
+        const g = (1 - along[c] / reach) ** 2, drain = smooth(la1, la2, Math.log(Math.max(1, area[c]))), relief = smooth(r1, r2, around[c]);
+        const d = show * (riaDepth + (cfg.drownDepthKm - riaDepth) * cold) * g * drain * relief;
         if (d > 0) { sink[c] = d; drowned = true; }
     }
     if (!drowned) return;

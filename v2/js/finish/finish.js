@@ -130,6 +130,10 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F);
     stats.closedBasins = B.basins;
     const before = z.slice();
+    // (how cold each coast is — its warmest month at sea level: fjords where it is cold, rias where not; carve.js drownValleys)
+    const [warmC, coldC] = cfg.drownColdC ?? [19, 13];
+    carveIn.fjord = new Float32Array(n);
+    for (let c = 0; c < n; c++) carveIn.fjord[c] = smooth(warmC, coldC, warmSl[c]);
     const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds });
     const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base }, settings);
     // (where flood basalt still caps the ground after the carving — its pile not cut through — for the satellite view)

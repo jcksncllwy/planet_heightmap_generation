@@ -456,7 +456,10 @@ the distance across it that the ridge kernels carry (`crestFollow`: a main crest
 Hills go down to what the mesh can show, more on high ground, none at the shore (`hillsKm`); island arcs are cut
 into chains of islands by a noise of islands (`arcStraitKm`: straits are shallow sea; a broad arc keeps its interior).
 In `carve.js`: drowned valleys where hills and mountains meet the sea — each big valley lowered near its mouth along
-the river, the sea then flooding in only where it connects (rias, fjords; `drownKm`) — and submarine canyons from big
+the river, the sea then flooding in only where it connects — fjords (`drownKm` 180 km up the valley, 1.4 km deep at the
+mouth) where the coast is cold, short shallow rias elsewhere (`riaKm` 60, 0.15 km: the sea risen since the ice age);
+cold by the warmest month at sea level in Add detail (`drownColdC`: none at 19 °C, full by 13), by latitude on the
+timeline (`drownColdLat` 44–58°) — and submarine canyons from big
 rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
 Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights
 (`SmoothMapRaster.paintHeights`, or on the GPU `view/gpu-paint.js`), so a shore is the heights' zero line — crisp — not

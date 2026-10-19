@@ -396,8 +396,19 @@ export const TERRAIN = {
     // land's mean height over ~4 terrain cells: none on a lowland coast, full in the mountains). Whatever that leaves
     // below the sea but cut off from it is given back. Shown where the terrain can draw a valley's width (fading out
     // toward 160K's 61 km cells).
-    drownKm: 180,
-    drownDepthKm: 1.4,
+    // (developer, 2026-10-18: "a lot of fjords in areas where they arent that cold, it makes the coast look super fractal
+    // basically everywhere") Deep and long only where it is cold — fjords, where the ice age's glaciers reached the sea
+    // and cut the valleys far below it (Norway, Patagonia, British Columbia); elsewhere rias — the sea risen ~120 m since
+    // the ice age, up the lowest stretch of the big valleys (Galicia, south China): a few short inlets, not a fractal coast.
+    // Cold: the warmest month at sea level (Add detail: the moment's climate), from none at the first to full at the second
+    // (Galicia's rias ~20 °C, Puget Sound ~18, Norway's and Patagonia's fjords 11–15); the timeline, before any climate,
+    // by latitude (where Earth's coasts pass those summers).
+    drownKm: 180,               // a fjord's reach up its valley…
+    drownDepthKm: 1.4,          // …and its depth at the mouth
+    riaKm: 60,                  // a ria's
+    riaDepthKm: 0.15,
+    drownColdC: [19, 13],
+    drownColdLat: [44, 58],
     drownAreaKm2: [800, 15000],
     drownReliefKm: [0.15, 0.9],
     drownWiden: 0.55,           // a drowned valley's neighbours lowered by this share of it too (an inlet a few cells wide)
