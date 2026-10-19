@@ -4,13 +4,15 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom } from './scene.js';
+         tickZoom, tickMapZoom, fitCamera } from './scene.js';
 import { state } from './state.js';
 import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './generate.js';
 import { buildMesh, updateMeshColors, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
-import { elevationToColor } from './color-map.js';
+import { needsClimate, climateLayer, climateLegendHTML, satelliteLegendHTML, showClimateArrows, syncSeasonPicker, initSeasonPicker, climateReadoutLines } from './climate-layers.js';
+import { elevationToColor, elevToHeightKm } from './color-map.js';
+import { showBuildError, clearBuildError, describeFailure } from './build-error.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
 
@@ -79,7 +81,10 @@ fileInput.addEventListener('change', (e) => {
 
 // ─── Detail slider ────────────────────────────────────────────────
 
-const AUTO_CLIMATE_THRESHOLD = 300000;
+// The climate is deferred (computed when a climate view is chosen) only above this detail: the new climate takes about
+// a second at any detail on a desktop (its work is on a fixed 1° grid), so never there; phones keep a limit, for the
+// per-region climate's memory (plans/V1_NEW_CLIMATE_PLAN.md, phase 4)
+const AUTO_CLIMATE_THRESHOLD = state.isTouchDevice ? 640000 : Infinity;
 const WARN_ORANGE = state.isTouchDevice ? 200000 : 640000;
 const WARN_RED    = state.isTouchDevice ? 500000 : 1280000;
 
@@ -144,8 +149,9 @@ for (const [s, v] of [['sN','vN'],['sTw','vTw'],['sS','vS'],['sGl','vGl'],['sHEr
             document.getElementById(v).textContent = detail.toLocaleString();
             updateDetailWarning(detail);
         } else if (s === 'sTmp') {
+            // Greenhouse: a forcing in W/m²
             const val = +e.target.value;
-            document.getElementById(v).textContent = (val > 0 ? '+' : val === 0 ? '\u00b1' : '') + val + '\u00b0C';
+            document.getElementById(v).textContent = (val > 0 ? '+' : val === 0 ? '\u00b1' : '\u2212') + Math.abs(val) + ' W/m\u00b2';
         } else if (s === 'sPrc') {
             const val = +e.target.value;
             const pct = Math.round(val * 50);
@@ -227,21 +233,26 @@ importBtn.addEventListener('click', () => {
     importHeightmap(grayCopy, storedWidth, storedHeight, onProgress, shouldSkipClimate());
 });
 
-// Generate-done handler (fired from generate.js after 'done' message)
+// Generate-done handler: js/generate.js dispatches 'generate-done' on #generate, which this page has no use for — a
+// hidden #generate receives it
 const genBtn = document.getElementById('importBtn');
-// The generate.js dispatches 'generate-done' on #generate, but for import page
-// we use the same element ID pattern. Actually generate.js dispatches on
-// document.getElementById('generate'). Since import page has no #generate,
-// we need to listen on the actual element. Let me check...
-// Actually, generate.js does: document.getElementById('generate').dispatchEvent(...)
-// Since import page doesn't have a #generate element, we need a workaround.
-// The cleanest approach: add a hidden #generate element, or listen differently.
-
-// For now, we'll create a hidden generate button to receive the event
 const hiddenGenBtn = document.createElement('button');
 hiddenGenBtn.id = 'generate';
 hiddenGenBtn.style.display = 'none';
 document.body.appendChild(hiddenGenBtn);
+
+// a failed import (js/generate.js): the overlay says what happened, and Import can be pressed again
+window.addEventListener('orogen:build-failed', (e) => {
+    overlayActive = false;
+    importBtn.disabled = !storedGrayscale;
+    importBtn.textContent = 'Import';
+    showBuildError(describeFailure(e.detail.message, 'import this heightmap'), e.detail.message);
+});
+const exportFailed = (err) => {
+    console.error('[World Orogen] Export failed:', err);
+    overlayActive = false;
+    showBuildError(describeFailure(err?.message, 'export this map'), err?.message);
+};
 
 hiddenGenBtn.addEventListener('generate-done', () => {
     hideBuildOverlay();
@@ -250,7 +261,7 @@ hiddenGenBtn.addEventListener('generate-done', () => {
     state.importedHeightmap = true;
     // Update info text
     const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Drag to rotate \u00b7 Scroll to zoom';
+    if (infoEl) infoEl.textContent = state.isTouchDevice ? 'Drag to rotate \u00b7 Pinch to zoom' : 'Drag to rotate \u00b7 Scroll to zoom';
     // Sync view
     if (!state.climateComputed && CLIMATE_LAYERS.has(state.debugLayer)) {
         state.debugLayer = '';
@@ -263,24 +274,14 @@ hiddenGenBtn.addEventListener('generate-done', () => {
     updateLegend(state.debugLayer);
     // Rebuild arrows if needed
     const v = state.debugLayer;
-    const isWindLayer = v === 'pressureSummer' || v === 'pressureWinter' ||
-                        v === 'windSpeedSummer' || v === 'windSpeedWinter';
-    const isOceanLayer = v === 'oceanCurrentSummer' || v === 'oceanCurrentWinter';
-    if (isWindLayer) buildWindArrows(v.includes('Winter') ? 'winter' : 'summer');
-    else if (isOceanLayer) buildOceanCurrentArrows(v.includes('Winter') ? 'winter' : 'summer');
+    showClimateArrows(v, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    syncSeasonPicker(v);
 });
 
 // ─── Climate layers ───────────────────────────────────────────────
 
-const CLIMATE_LAYERS = new Set([
-    'pressureSummer', 'pressureWinter',
-    'windSpeedSummer', 'windSpeedWinter',
-    'oceanCurrentSummer', 'oceanCurrentWinter',
-    'precipSummer', 'precipWinter',
-    'rainShadowSummer', 'rainShadowWinter',
-    'tempSummer', 'tempWinter',
-    'koppen', 'biome', 'continentality'
-]);
+// Layers that need a climate: the Inspect climate layers, Köppen and Satellite (js/climate-layers.js)
+const CLIMATE_LAYERS = { has: needsClimate };
 
 // ─── Visualization (debug layers, tabs, legend) ───────────────────
 
@@ -304,19 +305,8 @@ function applyLayer(layer) {
     state.debugLayer = layer;
     state.hoveredKoppen = -1;
     updateMeshColors();
-    const isWindLayer = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                        layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-    const isOceanLayer = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-    if (isOceanLayer) {
-        buildWindArrows(null);
-        buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
-    } else if (isWindLayer) {
-        buildOceanCurrentArrows(null);
-        buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-    } else {
-        buildWindArrows(null);
-        buildOceanCurrentArrows(null);
-    }
+    showClimateArrows(layer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    syncSeasonPicker(layer);
     updateLegend(layer);
 }
 
@@ -359,6 +349,13 @@ if (debugLayerEl) {
         switchVisualization(layer);
     });
 }
+
+// Season picker (Year · January · July) for the climate's Inspect layers
+initSeasonPicker(state, () => {
+    updateMeshColors();
+    showClimateArrows(state.debugLayer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
+    updateLegend(state.debugLayer);
+});
 
 // ─── Legend ────────────────────────────────────────────────────────
 
@@ -451,26 +448,12 @@ function updateLegend(layer) {
             });
         });
     } else if (layer === 'biome') {
-        const biomeStops = [
-            { color: [0.82,0.72,0.50], label: 'Desert' },
-            { color: [0.72,0.62,0.30], label: 'Steppe' },
-            { color: [0.42,0.50,0.18], label: 'Savanna' },
-            { color: [0.12,0.38,0.10], label: 'Forest' },
-            { color: [0.06,0.22,0.08], label: 'Taiga' },
-            { color: [0.35,0.32,0.22], label: 'Tundra' },
-            { color: [0.78,0.80,0.84], label: 'Ice' },
-        ];
-        const biomeColors = biomeStops.map(s => `rgb(${Math.round(s.color[0]*255)},${Math.round(s.color[1]*255)},${Math.round(s.color[2]*255)})`);
-        const biomePcts = biomeStops.map((_, i) => Math.round(i / (biomeStops.length - 1) * 100));
-        const biomeGrad = biomeColors.map((c, i) => `${c} ${biomePcts[i]}%`).join(', ');
-        vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${biomeGrad})"></div>` +
-            `<div class="legend-labels"><span>${biomeStops[0].label}</span><span>${biomeStops[3].label}</span><span>${biomeStops[6].label}</span></div>`;
-    } else if (layer === 'rainShadowSummer' || layer === 'rainShadowWinter') {
-        vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,rgb(230,51,33) 0%,rgb(140,140,148) 50%,rgb(38,102,243) 100%)"></div>` +
-            `<div class="legend-labels"><span>Rain Shadow</span><span>Neutral</span><span>Windward</span></div>`;
+        vizLegend.innerHTML = satelliteLegendHTML(state.climateSeason);
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
             `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;
+    } else if (climateLayer(layer)) {
+        vizLegend.innerHTML = climateLegendHTML(layer, state.climateSeason);
     } else {
         vizLegend.innerHTML = '';
     }
@@ -490,6 +473,7 @@ function onProgress(pct, label) {
 }
 
 function showBuildOverlay() {
+    clearBuildError();
     if (!buildBarFill || !buildOverlay) return;
     buildBarFill.style.transition = 'none';
     buildBarFill.style.transform = 'scaleX(0)';
@@ -554,11 +538,7 @@ sMapCenterLon.addEventListener('change', () => {
     if (state.mapMode) {
         buildMapMesh();
         const layer = state.debugLayer;
-        const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                       layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-        const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-        if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-        if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+        showClimateArrows(layer, state.climateSeason, buildWindArrows, buildOceanCurrentArrows);
     }
 });
 
@@ -678,8 +658,10 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         closeModal();
         showBuildOverlay();
         onProgress(0, 'Preparing export...');
-        await exportMap(type, w, onProgress);
-        hideBuildOverlay();
+        try {
+            await exportMap(type, w, onProgress);
+            hideBuildOverlay();
+        } catch (err) { exportFailed(err); }
     });
 
     const exportAllBtn = document.getElementById('exportAllGo');
@@ -694,12 +676,14 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         const w = +widthEl.value;
         closeModal();
         showBuildOverlay();
-        if (!state.climateComputed) {
-            onProgress(0, 'Computing climate...');
-            await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
-        }
-        await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
-        hideBuildOverlay();
+        try {
+            if (!state.climateComputed) {
+                onProgress(0, 'Computing climate...');
+                await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+            }
+            await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
+            hideBuildOverlay();
+        } catch (err) { exportFailed(err); }
     });
 })();
 
@@ -823,8 +807,7 @@ if (state.isTouchDevice) {
 
 window.addEventListener('orientationchange', () => {
     setTimeout(() => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
+        fitCamera(innerWidth, innerHeight);
         updateMapCameraFrustum();
         renderer.setSize(innerWidth, innerHeight);
     }, 100);
@@ -850,8 +833,7 @@ function animate() {
 // ─── Resize handler ───────────────────────────────────────────────
 
 window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
+    fitCamera(innerWidth, innerHeight);
     updateMapCameraFrustum();
     renderer.setSize(innerWidth, innerHeight);
 });
@@ -945,20 +927,14 @@ window.addEventListener('resize', () => {
         const lat = Math.asin(Math.max(-1, Math.min(1, y))) * 180 / Math.PI;
         const lon = Math.atan2(x, z) * 180 / Math.PI;
         const elev = d.r_elevation[r];
-        const heightKm = elev <= 0 ? (elev * 10).toFixed(1) : (6 * elev * elev).toFixed(1);
+        const heightKm = elevToHeightKm(elev).toFixed(1);
         const isOcean = elev <= 0;
 
         let html = `<span class="hi-label">Elev</span> ${heightKm} km (${isOcean ? 'ocean' : 'land'})<br>`;
         html += `<span class="hi-label">Coord</span> ${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
 
-        if (d.r_temperature_summer && d.r_precip_summer) {
-            const ts = d.r_temperature_summer[r], tw = d.r_temperature_winter[r];
-            const ps = d.r_precip_summer[r], pw = d.r_precip_winter[r];
-            const tAvg = ((ts + tw) / 2).toFixed(1);
-            const pTotal = Math.round(ps + pw);
-            html += `<br><span class="hi-label">Temp</span> ${tAvg}\u00b0C avg (${ts.toFixed(1)} summer, ${tw.toFixed(1)} winter)`;
-            html += `<br><span class="hi-label">Prec</span> ${pTotal} mm/yr`;
-        }
+        // the climate, in real units (js/climate-layers.js) — before, this printed the old climate's 0–1 values as °C and mm
+        if (d.climate) html += '<br>' + climateReadoutLines(d, r).join('<br>');
 
         if (d.debugLayers?.koppen) {
             const kIdx = d.debugLayers.koppen[r];
@@ -981,7 +957,6 @@ window.addEventListener('resize', () => {
 window.takePreview = function(width = 1200, height = 630) {
     const savedW = renderer.domElement.width;
     const savedH = renderer.domElement.height;
-    const savedAspect = camera.aspect;
     const savedPixelRatio = renderer.getPixelRatio();
 
     const hiddenEls = [];
@@ -995,8 +970,7 @@ window.takePreview = function(width = 1200, height = 630) {
         }
     }
 
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    fitCamera(width, height);
     renderer.setPixelRatio(1);
     renderer.setSize(width, height);
     renderer.render(scene, state.mapMode ? mapCamera : camera);
@@ -1008,8 +982,7 @@ window.takePreview = function(width = 1200, height = 630) {
 
     renderer.setPixelRatio(savedPixelRatio);
     renderer.setSize(savedW / savedPixelRatio, savedH / savedPixelRatio);
-    camera.aspect = savedAspect;
-    camera.updateProjectionMatrix();
+    fitCamera(innerWidth, innerHeight);
     for (const { el, prev } of hiddenEls) el.style.display = prev;
     renderer.render(scene, state.mapMode ? mapCamera : camera);
     console.log('preview.png downloaded!');
