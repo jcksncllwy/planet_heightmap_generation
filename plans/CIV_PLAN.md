@@ -304,7 +304,7 @@ with similar scores.
   emptied countryside).
 - **Tiers:** 150, 500, 2500 and 15000 people (Kosse, then ×6).
 - **Polities:** a town falls under the nearest bigger one within 60 land-km. A polity with all three tiers above the
-  village is a state (Wright & Johnson).
+  village is a state (Wright & Johnson). (Replaced by war and collapse: see the next section.)
 
 Earth (`civ-sim.mjs --earth`):
 
@@ -321,10 +321,39 @@ Earth (`civ-sim.mjs --earth`):
 The People layer draws the towns of 2500+ for each frame from 12 ka on as dots, with state towns in gold and capitals
 ringed. The legend counts them and the readout names the nearest town.
 
+### Phase 4, second slice: polities by war and collapse (2026-10-21)
+
+`v2/js/civ/polity.js` keeps polities from century to century over each century's towns. Sources for every rule are in
+`CIV_SOURCES.md` §Polities.
+- **Founding:** a town new to its place joins the bigger town whose supply reach it grew in. Otherwise it is a polity of its own.
+- **War:** neighbouring polities fight, more often the fuller their land (Carneiro).
+  - The odds are Turchin et al. 2013's (P_a − P_d)/(P_a + P_d).
+  - Power grows with people and fades with distance from the capital (Boulding). The defender gains with height.
+  - Each side's power is multiplied by its fortune, so that equals can beat each other.
+- **Absorption:** a beaten town is absorbed only where its people cannot leave for free farmland: Carneiro's circumscription,
+  as an exit cost. A beaten capital brings its whole polity.
+- **Collapse:** more likely the more towns a polity holds.
+
+Earth, 5 ka:
+- 30 states (15 at 5.5 ka).
+- Near Uruk: about 85 polities among 126 towns, of which 2–3 city-states with 7–11 towns each. That is an Early
+  Dynastic-like patchwork.
+- Susa (Khuzestan), the Egyptian delta, the Nile valley and Merv also hold states.
+
+The false ones:
+- the Indus, ~1.5 ka early (its canals come as early as Sumer's);
+- the Jubba, the Senegal and the Upper Nile;
+- California's Central Valley.
+
+These are substrate and farming-spread problems.
+- Irrigation now needs 6+ months above 10 °C, full at 8. This dropped the Volga and Ural deltas, which led the world at 5.5 ka under [4, 7].
+- State membership flickers century to century (wars and collapses), so single-run spot checks are noisy.
+
 ## 8. Next
 
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
 2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
 3. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
-4. Phase 4, next: conflict and circumscription driving nucleation (Carneiro), Turchin-style polity growth and collapse, rain-fed
-   intensification (loess, the Yellow River), fewer states — then trade along settle.js's costs and metallurgy.
+4. Phase 4, next: rain-fed intensification (loess, the Yellow River; Erlitou is still a miss); the Indus too early (flood-
+   recession farming, not canals?); polities feeding back on people (war deaths, a state's canals); a states count averaged
+   over seeds — then trade along settle.js's costs and metallurgy.

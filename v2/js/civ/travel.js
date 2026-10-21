@@ -47,6 +47,31 @@ export function frontArrival(mesh, len, arrival, speed, sources = null, untilT =
     return arrival;
 }
 
+/**
+ * Cost-distance over land: `cost(a, b, k)` the cost of adjacency k from a to b (e.g. km, less along a river), `canEnter(b)`.
+ * Returns reach(c0, budget) → [[cell, cost]] in order of cost (c0 first, at 0) — a bounded Dijkstra reusing its arrays.
+ */
+export function costReach(mesh, cost, canEnter) {
+    const { adjOffset, adjList } = mesh, dist = new Float32Array(mesh.numCells).fill(Infinity), heap = new MinHeap(256);
+    return (c0, budget) => {
+        const out = [];
+        dist[c0] = 0; heap.push(0, c0);
+        while (heap.size) {
+            const a = heap.pop(), t = heap.lastKey;
+            if (t > dist[a]) continue;
+            out.push([a, t]);
+            for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
+                const b = adjList[k];
+                if (!canEnter(b)) continue;
+                const tb = t + cost(a, b, k);
+                if (tb <= budget && tb < dist[b]) { dist[b] = tb; heap.push(tb, b); }
+            }
+        }
+        for (const [c] of out) dist[c] = Infinity;
+        return out;
+    };
+}
+
 /** Distance (km) from each water cell to the nearest land, through water (land 0): how far out a crossing goes. */
 export function offshoreKm(mesh, isWater) {
     const d = new Float64Array(mesh.numCells).fill(Infinity);

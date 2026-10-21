@@ -65,7 +65,8 @@ export const CIV = {
     irrigHeadM: 40,             // at most this far above the river (levees, then the floodplain's gentle rise)
     irrigSlope: 0.0015,         // and this gentle (1.5 m/km)
     irrigNeedAridity: [0.2, 0.65],  // where it is needed: full below the first aridity index (P/PET), none above the second
-    irrigGrowMonths: [4, 7],    // months above 10 °C: the irrigated alluvia were all warm (Sumer, Egypt, the Indus: 8–12)
+    irrigGrowMonths: [6, 8],    // months above 10 °C: the irrigated alluvia were all warm (Sumer, Egypt, the Indus: 8–12;
+                                // the Volga and Ural deltas, ~6, were never canal lands)
     floodBonus: 0.25,           // a river with a flood season: basin / flood-recession farming (the Nile's), more taxable
     farFedBonus: 0.25,          // a river from wet mountains through dry country (the Nile, the Tigris and Euphrates)
     // persons a km² of farmland feeds: yield × (1 − fallow) × (1 − 1/seedRatio) / grain per person
@@ -169,7 +170,26 @@ export const CIV = {
     // tiers of size (people): village, large village, town, city — Kosse 1990's ~150 / ~500 / ~2500, then ×6 (Johnson's
     // scalar stress); a polity with all three tiers above the village is a state (Wright & Johnson 1975)
     tiers: [150, 500, 2500, 15000],
-    polityKm: 60,               // a town within this (land km; less by water) of a bigger one is its subordinate
+
+    // ── Phase 4: polities, by war and collapse (polity.js), every polityStepYears ──
+    polityStepYears: 100,
+    townDriftKm: 40,            // a town's site moving this far (land km) is the same town
+    warKm: 60,                  // towns this close (land km; less by water) are neighbours: they may fight
+    warPerCentury: 0.5,         // a pair of neighbours fights this often a century on full land (× density / capacity)
+    // power: 1 + warBeta × (people in its towns / warPowerPeople) × e^(−km from its capital / strengthKm) — Turchin et al.
+    // 2013's P = 1 + β Σ traits (β = 1), its people standing in for the traits; Boulding 1962's loss-of-strength gradient
+    warBeta: 1,
+    warPowerPeople: 10000,
+    strengthKm: 300,
+    warLuck: 0.5,               // the fortune of war: each side's power × e^(this × a standard normal draw) (ours)
+    warElevation: 4,            // the defender's power + this per km of height (Turchin et al. 2013: γ = 4) [V]
+    // a beaten town is absorbed with a chance rising from 0 to 1 over this cost to free farmland (land km; Carneiro 1970)
+    exitKm: [30, 150],
+    freeShare: 0.5,             // farmland is free to settle where it holds under this share of what farming feeds
+    // a polity breaks up this often a century, and this much more for each town past its capital (Turchin et al. 2013's
+    // δ₀ + δ_s·size, without its traits' δ_a)
+    collapseBase: 0.05,
+    collapsePerTown: 0.01,
 };
 
 /** Literature ranges each constant may be tuned within (Earth test, plans/CIV_PLAN.md §6). */

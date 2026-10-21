@@ -97,7 +97,7 @@ export function drawTowns(ctx, P, f) {
     if (!T) return;
     ctx.save();
     ctx.lineWidth = 0.8; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-    for (let i = T.length - 4; i >= 0; i -= 4) {          // (the smallest first: the big drawn over them)
+    for (let i = T.length - 5; i >= 0; i -= 5) {          // (the smallest first: the big drawn over them)
         const x = (T[i + 1] + 180) / 360 * 2048, y = (90 - T[i]) / 180 * 1024, r = Math.max(1.2, Math.sqrt(T[i + 2] / 2500) * 1.2), fl = T[i + 3];
         ctx.fillStyle = fl & TownFlag.STATE ? 'rgb(255,215,90)' : 'rgb(245,245,240)';
         ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
@@ -106,17 +106,17 @@ export function drawTowns(ctx, P, f) {
     ctx.restore();
 }
 
-/** The town nearest a point of the map (u, v as peopleLine), within px pixels of a 2048-wide map: [lat, lon, people, flags] or null. */
+/** The town nearest a point of the map (u, v as peopleLine), within px pixels of a 2048-wide map: [lat, lon, people, flags, polity] or null. */
 function townNear(P, f, u, v, px = 5) {
     const T = P.towns[f];
     if (!T) return null;
     let best = -1, bd = px * px;
-    for (let i = 0; i < T.length; i += 4) {
+    for (let i = 0; i < T.length; i += 5) {
         let dx = Math.abs((T[i + 1] + 180) / 360 * 2048 - u * 2048); if (dx > 1024) dx = 2048 - dx;
         const dy = (90 - T[i]) / 180 * 1024 - v * 1024, d2 = dx * dx + dy * dy;
         if (d2 < bd) { bd = d2; best = i; }
     }
-    return best < 0 ? null : T.subarray(best, best + 4);
+    return best < 0 ? null : T.subarray(best, best + 5);
 }
 
 export const yearsWords = bp => (bp <= 0 ? 'Now' : `${Math.round(bp).toLocaleString()} years ago`);
@@ -128,7 +128,7 @@ const gradient = ramp => `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(t
 export function peopleLegendHTML(P, f) {
     const bp = P.bp[f], founded = P.centres.filter(c => c.bp >= bp), T = P.towns[f];
     let towns = 0, states = 0, biggest = 0;
-    if (T) for (let i = 0; i < T.length; i += 4) { towns++; if (T[i + 3] & TownFlag.CAPITAL) states++; biggest = Math.max(biggest, T[i + 2]); }
+    if (T) for (let i = 0; i < T.length; i += 5) { towns++; if (T[i + 3] & TownFlag.CAPITAL) states++; biggest = Math.max(biggest, T[i + 2]); }
     return `<div><b>People</b> · ${yearsWords(bp)} · ${millions(P.people[f])}${P.farmers[f] > 0 ? ` (${millions(P.farmers[f])} farmers)` : ''}</div>
 <div class="evo-people-ramp"><span>Foragers</span><i style="background:${gradient(cool)}"></i></div>
 <div class="evo-people-ramp"><span>Farmers</span><i style="background:${gradient(warm)}"></i></div>

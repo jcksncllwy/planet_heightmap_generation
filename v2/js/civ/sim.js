@@ -21,6 +21,7 @@ import { PACKAGES } from './substrate.js';
 import { edgeLengths, frontArrival, offshoreKm, schedule, toblerFactor } from './travel.js';
 import { spreadKm } from '../core/min-heap.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
+import { Polities } from './polity.js';
 
 const rise = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const DEG = 180 / Math.PI;
@@ -36,10 +37,11 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
 /**
  * @param w    the world (civ-cradles.mjs worldOf / earth-world.mjs): mesh, z (km; the sea floor's depth where known), ocean, lake, koppen
  * @param sub  civSubstrate(w)
- * @param opts { origins: [cell] (default: the richest savanna of the biggest landmass), endBP (default 0), onFrame(frame), C }
+ * @param opts { origins: [cell] (default: the richest savanna of the biggest landmass), endBP (default 0), onFrame(frame),
+ *   polities (default true: towns and polities, polity.js, every polityStepYears once there are farmers), C }
  * @returns { frames, centres, totals, arrivalBP (Float32, per cell; NaN never), farmBP (per cell) }
  */
-export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C = CIV } = {}) {
+export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, polities = true, C = CIV } = {}) {
     const { mesh, z, ocean, lake, koppen } = w, n = mesh.numCells, { adjOffset, adjList } = mesh, len = edgeLengths(mesh);
     const cellKm2 = sub.cellKm2, T0 = C.originBP;
     const tOf = bp => T0 - bp, bpOf = t => T0 - t;
@@ -168,7 +170,8 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
     };
 
     const end = tOf(endBP);
-    let nextFrame = 0;
+    let nextFrame = 0, nextPolity = 0, anyFarmers = false;
+    const pol = polities ? new Polities(w, sub, C) : null, Kc = pol ? new Float32Array(n) : null;
     for (let t = 0, step = 0; t <= end + 1e-9; t += C.stepYears, step++) {
         const bp = bpOf(t), seaKm = schedule(C.seaLevelM, bp) / 1000, holo = bp <= C.holoceneBP;
         const g = rise(-C.glacialToBP[0], -C.glacialToBP[1], -bp);
@@ -223,10 +226,18 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
             if (bi >= 0) { farmPkg[c] = bi; farmT[c] = Math.max(bt, arrival[c]); }
         }
         totals.push({ bp, people: Math.round(people), farmers: Math.round(farmersPeople) });
+        // towns and polities, every polityStepYears once there are farmers
+        if (pol && farmersPeople > 0 && t >= nextPolity - 1e-9) {
+            for (const c of cells) Kc[c] = farmPkg[c] >= 0 ? farmK(c, t) : 0;
+            pol.step(d, life, Kc, anyFarmers ? C.polityStepYears : 0);
+            anyFarmers = true;
+            nextPolity = t + C.polityStepYears;
+        }
         if (t >= nextFrame - 1e-9) {
             const dens = new Uint8Array(n), way = new Uint8Array(n);
             for (const c of cells) { dens[c] = densityByte(d[c]); way[c] = d[c] > 0 ? (life[c] || Life.FORAGER) : 0; }
-            const frame = { bp, density: dens, life: way, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000) };
+            const frame = { bp, density: dens, life: way, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000),
+                towns: pol && anyFarmers ? pol.packed() : null, polities: pol && anyFarmers ? pol.counts() : null };
             frames.push(frame);
             if (onFrame) onFrame(frame);
             nextFrame += C.frameYears;
@@ -234,7 +245,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
     }
     const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN);
     for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); }
-    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, origins };
+    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, origins, polities: pol };
 }
 
 /** Domestication cells, gathered into centres: the same package, within `km` of one another — each with its first date and its middle. */
