@@ -23,7 +23,7 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
-import { PeopleService, peopleColor, drawCentres, peopleLegendHTML, peopleLine, yearsWords } from './people-view.js';
+import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLine, yearsWords } from './people-view.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -558,7 +558,7 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
     // (the rivers' lines on the Terrain view; from space they are ground, not lines — the Satellite view draws none)
     if (water && view.layer === 'terrain' && fin.rivers) { const k = t.width / MAP_WIDTH * (MAP_WIDTH / 2048); t.ctx.save(); t.ctx.scale(k, k); drawRivers(t.ctx, riverPaths(fin, view.riverQ), view.byRegime); t.ctx.restore(); }
-    if (P) { const k = t.width / 2048; t.ctx.save(); t.ctx.scale(k, k); drawCentres(t.ctx, P, P.bp[pf]); t.ctx.restore(); }
+    if (P) { const k = t.width / 2048; t.ctx.save(); t.ctx.scale(k, k); drawCentres(t.ctx, P, P.bp[pf]); drawTowns(t.ctx, P, pf); t.ctx.restore(); }
     drawLines(t, C);
     show(t);
     painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;

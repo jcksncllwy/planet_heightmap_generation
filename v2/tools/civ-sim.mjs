@@ -13,6 +13,7 @@ import path from 'node:path';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
 import { runCivSim, byteDensity, Life } from '../js/civ/sim.js';
+import { settle } from '../js/civ/settle.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { OUT, MESH_SEED, worldOf, writePng, pixelCells, ramp, warmRamp, drawText } from './lib/civ-world.mjs';
 
@@ -39,6 +40,19 @@ for (const c of res.centres.slice(0, 25)) console.log(`  ${String(Math.round(c.b
 
 // ── on Earth: the record ──
 const summary = { origins: res.origins.map(c => [+latOf(c).toFixed(2), +lonOf(c).toFixed(2)]), centres: res.centres, totals: res.totals.filter((x, i) => i % 20 === 0) };
+// ── towns and polities (settle.js), at a few moments ──
+const townsAt = f => { const dens = new Float32Array(f.density.length); for (let c = 0; c < dens.length; c++) dens[c] = byteDensity(f.density[c]); return settle(w, sub, dens, f.life); };
+const frameNear = bp => res.frames.reduce((a, b) => (Math.abs(b.bp - bp) < Math.abs(a.bp - bp) ? b : a));
+const settled = [];
+for (const bp of [8000, 7000, 6000, 5000, 4000]) {
+    const f = frameNear(bp), S = townsAt(f), states = S.polities.filter(p => p.state);
+    const rainMax = S.towns.find(t => !t.irrigated)?.pop ?? 0;
+    console.log(`towns ${bp} BP: ${S.towns.length.toLocaleString()} (${(S.urban / 1e6).toFixed(2)} M in them), ${states.length} states; the biggest rain-fed ${rainMax.toLocaleString()}`);
+    console.log('   ' + S.towns.slice(0, 8).map(t => `${(t.pop / 1000).toFixed(1)}k${t.irrigated ? '*' : ''} ${t.lat},${t.lon}`).join(' · '));
+    settled.push({ bp: f.bp, S });
+}
+summary.towns = settled.map(({ bp, S }) => ({ bp, count: S.towns.length, urban: S.urban, states: S.polities.filter(p => p.state).length, top: S.towns.slice(0, 20) }));
+
 if (EARTH) {
     // (each place: the earliest within 75 km — a river or a coast is often a cell away from the point named)
     const near = (lat, lon, A) => {
@@ -91,6 +105,17 @@ if (EARTH) {
     const spurious = res.centres.filter(x => !DOM.some(([, lat, lon]) => km(lat, lon, x.lat, x.lon) < 600)).length;
     console.log(`  ${okC}/${DOM.length} within ±2 ka; ${spurious} of ${res.centres.length} centres far from any known one`);
     summary.farming = score('farming arrives:', FARM, res.farmBP);
+    // the first cities: the biggest town within 300 km of each, at each moment (record: the first ≥ 10 000 people, ka BP)
+    const CITIES = [['Uruk (Sumer)', 31.3, 45.6, 5.5], ['Memphis (Egypt)', 29.85, 31.25, 5.0], ['Mohenjo-daro (Indus)', 27.3, 68.1, 4.5], ['Erlitou (Yellow R.)', 34.7, 112.7, 3.8]];
+    console.log('the biggest town near each early city (k people; * irrigated; a state where marked §):');
+    summary.cities = CITIES.map(([label, lat, lon, ka]) => {
+        const row = settled.map(({ bp, S }) => {
+            const t = S.towns.find(t => km(lat, lon, t.lat, t.lon) < 300);
+            return t ? { bp, pop: t.pop, irrigated: t.irrigated, state: S.polities[t.polity].state } : { bp, pop: 0 };
+        });
+        console.log(`  ${label.padEnd(22)} ${row.map(r => `${(r.bp / 1000).toFixed(0)} ka ${(r.pop / 1000).toFixed(1)}k${r.irrigated ? '*' : ''}${r.state ? '§' : ''}`.padEnd(14)).join(' ')}  (record: a city ~${ka} ka)`);
+        return { label, row, recordKa: ka };
+    });
 }
 
 // ── the timeline picture: eight moments ──

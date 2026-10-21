@@ -12,7 +12,7 @@ self.onmessage = ({ data }) => {
     const { id, world, width } = data;
     try {
         const r = peopleOfWorld({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }));
-        self.postMessage({ type: 'people', id, ...r }, [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, r.pix.buffer]);
+        self.postMessage({ type: 'people', id, ...r }, [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, r.pix.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)]);
     } catch (err) {
         self.postMessage({ type: 'error', id, message: err?.stack ?? String(err) });
     }

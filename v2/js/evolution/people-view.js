@@ -3,7 +3,7 @@
 // request (the layer chosen) — and drawn per pixel of the finished picture at the year chosen on the layer's own
 // timeline: foragers in cool colours, farmers in warm ones, by density; the domestication centres ringed.
 
-import { peopleOf, WAYS } from '../civ/civ-page.js';
+import { peopleOf, WAYS, TownFlag } from '../civ/civ-page.js';
 
 export class PeopleService {
     constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; }
@@ -90,6 +90,35 @@ export function drawCentres(ctx, P, bp) {
     ctx.restore();
 }
 
+/** The towns of frame f (2500+ people), as dots by size on a texture's context (scaled to 2048 × 1024): a state's towns
+ *  gold, its capital ringed. */
+export function drawTowns(ctx, P, f) {
+    const T = P.towns[f];
+    if (!T) return;
+    ctx.save();
+    ctx.lineWidth = 0.8; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    for (let i = T.length - 4; i >= 0; i -= 4) {          // (the smallest first: the big drawn over them)
+        const x = (T[i + 1] + 180) / 360 * 2048, y = (90 - T[i]) / 180 * 1024, r = Math.max(1.2, Math.sqrt(T[i + 2] / 2500) * 1.2), fl = T[i + 3];
+        ctx.fillStyle = fl & TownFlag.STATE ? 'rgb(255,215,90)' : 'rgb(245,245,240)';
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        if (fl & TownFlag.CAPITAL) { ctx.strokeStyle = 'rgb(255,215,90)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 2 * Math.PI); ctx.stroke(); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 0.8; }
+    }
+    ctx.restore();
+}
+
+/** The town nearest a point of the map (u, v as peopleLine), within px pixels of a 2048-wide map: [lat, lon, people, flags] or null. */
+function townNear(P, f, u, v, px = 5) {
+    const T = P.towns[f];
+    if (!T) return null;
+    let best = -1, bd = px * px;
+    for (let i = 0; i < T.length; i += 4) {
+        let dx = Math.abs((T[i + 1] + 180) / 360 * 2048 - u * 2048); if (dx > 1024) dx = 2048 - dx;
+        const dy = (90 - T[i]) / 180 * 1024 - v * 1024, d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = i; }
+    }
+    return best < 0 ? null : T.subarray(best, best + 4);
+}
+
 export const yearsWords = bp => (bp <= 0 ? 'Now' : `${Math.round(bp).toLocaleString()} years ago`);
 const millions = v => (v >= 1e7 ? `${(v / 1e6).toFixed(0)} M` : v >= 1e6 ? `${(v / 1e6).toFixed(1)} M` : `${Math.round(v / 1e3).toLocaleString()} K`);
 const PKG_WORDS = { winterCereal: 'winter-rain cereals', summerCereal: 'summer-rain cereals', tuber: 'roots and tubers' };
@@ -97,10 +126,13 @@ const gradient = ramp => `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(t
 
 /** The legend: the year, how many, the two ramps and the centres so far. */
 export function peopleLegendHTML(P, f) {
-    const bp = P.bp[f], founded = P.centres.filter(c => c.bp >= bp);
+    const bp = P.bp[f], founded = P.centres.filter(c => c.bp >= bp), T = P.towns[f];
+    let towns = 0, states = 0, biggest = 0;
+    if (T) for (let i = 0; i < T.length; i += 4) { towns++; if (T[i + 3] & TownFlag.CAPITAL) states++; biggest = Math.max(biggest, T[i + 2]); }
     return `<div><b>People</b> · ${yearsWords(bp)} · ${millions(P.people[f])}${P.farmers[f] > 0 ? ` (${millions(P.farmers[f])} farmers)` : ''}</div>
 <div class="evo-people-ramp"><span>Foragers</span><i style="background:${gradient(cool)}"></i></div>
 <div class="evo-people-ramp"><span>Farmers</span><i style="background:${gradient(warm)}"></i></div>
+${towns ? `<div class="evo-legend-note">● ${towns.toLocaleString()} towns of 2,500+ (the biggest ${Math.round(biggest).toLocaleString()})${states ? ` · <span style="color:rgb(255,215,90)">◎ ${states} state${states > 1 ? 's' : ''}</span>` : ''}</div>` : ''}
 <div class="evo-legend-note">0.001 → 100 people per km² · ◯ a domestication centre${founded.length ? ` (${founded.length} so far; the first ${yearsWords(founded[0].bp).toLowerCase()}, ${PKG_WORDS[founded[0].pkg] ?? founded[0].pkg})` : ''}</div>`;
 }
 
@@ -110,5 +142,6 @@ export function peopleLine(P, f, u, v) {
     const p = peopleOf(P.frames[f * P.cells + c]);
     if (!p) return '<span class="hi-label">People</span> nobody yet';
     const d = p.d >= 10 ? p.d.toFixed(0) : p.d >= 1 ? p.d.toFixed(1) : p.d >= 0.01 ? p.d.toFixed(2) : p.d.toFixed(3);
-    return `<span class="hi-label">People</span> ${WAYS[p.way]} · ${d} per km²`;
+    const t = townNear(P, f, u, v), town = !t ? '' : `<br><span class="hi-label">Town</span> ${(t[2] / 1000).toFixed(t[2] >= 1e4 ? 0 : 1)}k people${t[3] & TownFlag.IRRIGATED ? ', irrigation-fed' : ''}${t[3] & TownFlag.CAPITAL ? ' · a state’s capital' : t[3] & TownFlag.STATE ? ' · in a state' : ''}`;
+    return `<span class="hi-label">People</span> ${WAYS[p.way]} · ${d} per km²${town}`;
 }

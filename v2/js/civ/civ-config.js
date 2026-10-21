@@ -149,6 +149,27 @@ export const CIV = {
     cerealReachKm: 1000,        // wild cereals within this (the hilly flanks are 300–800 km from Sumer)
     cerealCore: 0.6,            // suitability that counts as a wild-cereal zone
     resourceReachKm: 2000,      // raw materials within this (Sumer's tin came from ~2000–2500 km)
+
+    // ── Phase 4: towns, their size, polities (settle.js) ──
+    // A town is fed by its own fields — within an hour's walk, on part of the land (Chisholm 1968; Vita-Finzi & Higgs 1970)
+    // — and by grain brought in: overland only a little way, by river and coast much further (ORBIS's costs, land : river :
+    // sea ~ 30–40 : 4–5 : 1; Scheidel 2014). So a rain-fed town tops out near ~100–120 ha, a few thousand people
+    // (Wilkinson 1994), and a river city on an irrigated plain reaches Uruk's tens of thousands (Algaze 2008).
+    feedKm: 5,                  // its fields: within this…
+    fieldShare: 0.5,            // …this share of the land in them (the rest fallow pasture, marsh, houses, roads)
+    importKm: 40,               // grain brought in: overland this far, at most (falling off linearly)…
+    riverCostShare: 0.25,       // …a navigable river's km costing this many land km (both ways: down with the current, up by towing)
+    coastCostShare: 0.125,      // …a coast's, this many
+    navigableM3s: 100,          // a river this big carries boats
+    surplusShare: [0.1, 0.25],  // the share of a district's people its harvest can spare for a town: rain-fed, irrigated
+    // the share of a district's people who come to live in its town: rain-fed, irrigated — the irrigated alluvia's countryside
+    // emptied into walled cities (Adams 1981: ~80 % urban in Early Dynastic Sumer)
+    nucleation: [0.2, 0.6],
+    townMin: 150,               // a settlement smaller than this is a hamlet, not counted
+    // tiers of size (people): village, large village, town, city — Kosse 1990's ~150 / ~500 / ~2500, then ×6 (Johnson's
+    // scalar stress); a polity with all three tiers above the village is a state (Wright & Johnson 1975)
+    tiers: [150, 500, 2500, 15000],
+    polityKm: 60,               // a town within this (land km; less by water) of a bigger one is its subordinate
 };
 
 /** Literature ranges each constant may be tuned within (Earth test, plans/CIV_PLAN.md §6). */

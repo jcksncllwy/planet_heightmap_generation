@@ -332,6 +332,7 @@ js/civ/            the civ layer (plans/CIV_PLAN.md): civ-config (its constants,
                    crop packages by Köppen, rain-fed and irrigated farming), resources (ores and materials from the
                    tectonic record), cradles (the irrigable alluvia where an Ur could arise, ranked), travel (fronts
                    in km/yr over the mesh, waiting at barriers), sim (the people: density and way of life per cell, 25-yr steps),
+                   settle (towns fed by their fields and by water-borne surplus, polities, states),
                    civ-page + civ-worker (the Evolution page's People layer: a finish's world resampled to 160K cells, run in a
                    worker, one byte per cell and frame)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),

@@ -8,6 +8,7 @@ import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
 import { civSubstrate } from './substrate.js';
 import { runCivSim, byteDensity, Life } from './sim.js';
+import { settle } from './settle.js';
 import { CIV } from './civ-config.js';
 
 export const PAGE_CELLS = 160000;
@@ -19,6 +20,10 @@ const wayOf = life => (life >= Life.IRRIGATOR ? 3 : life >= Life.FARMER ? 2 : li
 export const peopleByte = (d, life) => (d > 1e-4 ? (wayOf(life) << 6) | Math.min(63, 1 + Math.round(8 * (Math.log10(d) + 4))) : 0);
 /** A frame byte's density (persons/km²) and way of life (WAYS index), or null for nobody. */
 export function peopleOf(b) { return b ? { d: Math.pow(10, ((b & 63) - 1) / 8 - 4), way: b >> 6 } : null; }
+
+/** The towns sent per frame: settle.js tier 2 and up (2500+ people); flags on each. */
+export const TOWN_TIER = 2;
+export const TownFlag = Object.freeze({ IRRIGATED: 1, STATE: 2, CAPITAL: 4 });
 
 let coarse = null;
 /** The civ layer's world from finishPlanet's output (finish.js): the moment's fields on a mesh of at most PAGE_CELLS — taken
@@ -40,7 +45,8 @@ export function civWorldFromFinish(out) {
 /**
  * Run the people on a finished moment's world (civWorldFromFinish). `width`: the picture the page paints (width × width/2), for each pixel's cell.
  * @returns {{cells, frames: Uint8Array (frame-major, cells each), bp: Float32Array, people: Float64Array, farmers: Float64Array,
- *   centres, origin: [lat, lon], pix: Int32Array, pixW, ms}}
+ *   towns: [Float32Array [lat, lon, people, TownFlag] × each town of TOWN_TIER and up, or null] per frame, centres,
+ *   origin: [lat, lon], pix: Int32Array, pixW, ms}}
  */
 export function peopleOfWorld(w, width, onProgress = () => {}) {
     const t0 = performance.now();
@@ -48,10 +54,25 @@ export function peopleOfWorld(w, width, onProgress = () => {}) {
     const count = Math.floor(CIV.originBP / CIV.frameYears) + 1, frames = new Uint8Array(count * n);
     const bp = new Float32Array(count), people = new Float64Array(count), farmers = new Float64Array(count);
     let f = 0;
+    const towns = [], dens = new Float32Array(n);
     const res = runCivSim(w, sub, { onFrame: fr => {
         if (f >= count) return;
         const o = f * n;
-        for (let c = 0; c < n; c++) if (fr.density[c]) frames[o + c] = peopleByte(byteDensity(fr.density[c]), fr.life[c]);
+        for (let c = 0; c < n; c++) {
+            dens[c] = byteDensity(fr.density[c]);
+            if (fr.density[c]) frames[o + c] = peopleByte(dens[c], fr.life[c]);
+        }
+        // (the towns of TOWN_TIER and up, once there are farmers: [lat, lon, people, flags] each — TownFlag)
+        let list = null;
+        if (fr.farmers > 0) {
+            const S = settle(w, sub, dens, fr.life), big = S.towns.filter(t => t.tier >= TOWN_TIER);
+            list = new Float32Array(4 * big.length);
+            big.forEach((t, i) => {
+                const p = S.polities[t.polity];
+                list.set([t.lat, t.lon, t.pop, (t.irrigated ? TownFlag.IRRIGATED : 0) | (p.state ? TownFlag.STATE : 0) | (p.state && S.towns[p.capital] === t ? TownFlag.CAPITAL : 0)], 4 * i);
+            });
+        }
+        towns.push(list);
         bp[f] = fr.bp; people[f] = fr.people; farmers[f] = fr.farmers; f++;
         onProgress(f / count);
     } });
@@ -62,5 +83,5 @@ export function peopleOfWorld(w, width, onProgress = () => {}) {
     }
     const o = res.origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
     return { cells: n, frames: f < count ? frames.slice(0, f * n) : frames, bp: bp.slice(0, f), people: people.slice(0, f), farmers: farmers.slice(0, f),
-        centres: res.centres, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D], pix, pixW: W, ms: performance.now() - t0 };
+        towns, centres: res.centres, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D], pix, pixW: W, ms: performance.now() - t0 };
 }

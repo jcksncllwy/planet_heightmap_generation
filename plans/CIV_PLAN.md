@@ -294,9 +294,37 @@ play button scrub from 70 ka to now. The layer paints foragers in cool colours a
 centres, a legend with totals, and a hover readout. Results at 160K vs 640K on Earth are close: 75 vs 69 M people at 6 ka,
 with similar scores.
 
+### Phase 4, first slice: towns and states (2026-10-21)
+
+`v2/js/civ/settle.js` works on any moment of the sim:
+- **Town size:** each farmed district's town is fed by its own fields (5 km, half farmed, at the yield its density shows, so it
+  grows with the canals). It also gets the surplus of districts it reaches: 40 land-km, a navigable river's km costing ¼
+  and a coast's ⅛. The biggest claim first, so a primate city takes its rivals' surplus.
+- **Who moves in:** a share of each district's people, 20 % rain-fed rising to 60 % as irrigation intensifies (Adams's
+  emptied countryside).
+- **Tiers:** 150, 500, 2500 and 15000 people (Kosse, then ×6).
+- **Polities:** a town falls under the nearest bigger one within 60 land-km. A polity with all three tiers above the
+  village is a state (Wright & Johnson).
+
+Earth (`civ-sim.mjs --earth`):
+
+| Region | 7 ka | 6 ka | 5 ka | Record |
+|---|---|---|---|---|
+| Near Uruk | 10k | 19k, a state | 22k, a state | a city ~5.5 ka, ~40k by 5 ka |
+| Near Memphis | 10k | 22k, a state | 32k | |
+| Indus | 16k, a state | | | 2 ka too early: the spurious Ganges centre gives it irrigation by 7.4 ka |
+| Erlitou | under 1k | | | rain-fed millet: a miss |
+
+- Rain-fed towns stay under ~3–5k everywhere: Wilkinson's cap, Ur chain link 7 ✓.
+- States worldwide: 1 at 7 ka, 29 at 6 ka, 79 at 5 ka. That is high; every big desert river grows them.
+
+The People layer draws the towns of 2500+ for each frame from 12 ka on as dots, with state towns in gold and capitals
+ringed. The legend counts them and the readout names the nearest town.
+
 ## 8. Next
 
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
 2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
 3. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
-4. Phase 4: settlements and hierarchy on the irrigated alluvia (Ur), then trade costs (ORBIS ratios) and metallurgy.
+4. Phase 4, next: conflict and circumscription driving nucleation (Carneiro), Turchin-style polity growth and collapse, rain-fed
+   intensification (loess, the Yellow River), fewer states — then trade along settle.js's costs and metallurgy.
