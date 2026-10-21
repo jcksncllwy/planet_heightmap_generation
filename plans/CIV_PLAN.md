@@ -285,10 +285,18 @@ Generated world 12345 (time 300), the origin the richest savanna of the biggest 
 the main continent filled by ~30 ka, seven centres between 10.6 and 3.9 ka, farmers over much of it by 0 BP; the other
 continents reached by sea after ~3 ka, their coasts first.
 
+### The People layer (2026-10-21)
+
+Evolution's layer bar has a **People** tab, which works on a detailed moment. Each finish also sends back the moment's world for
+the civ layer: a 160K-cell resample, ~0.3 s and ~5 MB more per finish. Choosing People runs the sim in
+`v2/js/civ/civ-worker.js` (~3 s). The result is 141 frames, one every 500 years, at one byte per cell (~22 MB). A slider and
+play button scrub from 70 ka to now. The layer paints foragers in cool colours and farmers in warm ones, with ringed
+centres, a legend with totals, and a hover readout. Results at 160K vs 640K on Earth are close: 75 vs 69 M people at 6 ka,
+with similar scores.
+
 ## 8. Next
 
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
 2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
 3. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
-4. The People layer in the page: density and way of life with a timeline slider (frames are already per-cell bytes).
-5. Phase 4: settlements and hierarchy on the irrigated alluvia (Ur), then trade costs (ORBIS ratios) and metallurgy.
+4. Phase 4: settlements and hierarchy on the irrigated alluvia (Ur), then trade costs (ORBIS ratios) and metallurgy.

@@ -251,6 +251,7 @@
         <option value="satellite">Satellite</option>
         <option value="heightmap">Heightmap</option>
         <option value="plates">Plates</option>
+        <option value="people">People</option>
         <optgroup label="Climate">
             <option value="koppen">Köppen</option>
             <option value="temperature">Temperature</option>
@@ -276,6 +277,7 @@
             <button class="map-tab" data-layer="climate" title="The moment's climate: Köppen zones, temperature, rain, winds and currents — and under More, pressure, upwelling, ice, aridity and more">Climate</button>
             <button class="map-tab" data-layer="heightmap">Heightmap</button>
             <button class="map-tab" data-layer="plates">Plates</button>
+            <button class="map-tab" data-layer="people" title="The detailed moment's people, from the first humans 70 000 years ago to now: foragers spreading, settling, farming beginning and spreading — by density, on a timeline of its own. Comes with Add detail">People</button>
         </div>
         <div id="subBar" class="evo-subbar" hidden>
             <div class="map-tabs" id="climateTabs">
@@ -307,6 +309,11 @@
                 <option value="jan">January</option>
                 <option value="jul">July</option>
             </select>
+        </div>
+        <div id="peopleBar" class="evo-subbar evo-people-bar" hidden>
+            <button id="peoplePlay" class="evo-people-play" aria-label="Play / pause the people">&#x25B6;</button>
+            <input id="peopleSlider" type="range" min="0" max="140" step="1" value="140" aria-label="Years ago">
+            <output id="peopleLabel" class="evo-people-label">Now</output>
         </div>
     </div>
     <button id="helpBtn" title="How it works">?</button>

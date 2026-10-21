@@ -23,6 +23,7 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
+import { PeopleService, peopleColor, drawCentres, peopleLegendHTML, peopleLine, yearsWords } from './people-view.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -178,6 +179,9 @@ const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalett
     water: true, riverQ: 40, byRegime: false };                      // (rivers and lakes on finished moments: the density's threshold, m³/s; coloured by regime)
 const climate = new ClimateService();   // the climate, on request, for the moment shown (climate-view.js)
 const finisher = new FinishService();   // the Finish step, on request, for the moment shown (finish-view.js)
+const peopler = new PeopleService();    // the People layer, on request, for the detailed moment (people-view.js)
+// (the People layer's own timeline: the frame shown — years BP every 500 years — and its playback)
+const peopleView = { f: Infinity, playing: false, at: 0 };
 // (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
 // ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
@@ -534,7 +538,7 @@ function climateOverlays(t, C) {
 /** The finished moment shown for a frame on the layer shown, if any: on the height layers, and on the climate layers
  *  (a finish brings the moment's own climate) — or null. */
 function finishedShown(frame) {
-    if (!view.finished || !B || !(view.layer === 'terrain' || view.layer === 'heightmap' || CLIMATE_LAYERS.has(view.layer))) return null;
+    if (!view.finished || !B || !(view.layer === 'terrain' || view.layer === 'heightmap' || view.layer === 'people' || CLIMATE_LAYERS.has(view.layer))) return null;
     const fin = B.finishes.get(frame);
     return fin && (!CLIMATE_LAYERS.has(view.layer) || fin.climate) && (!FINISHED_ONLY_LAYERS.has(view.layer) || fin.climate?.raster?.sat) ? fin : null;
 }
@@ -543,21 +547,24 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null;
+    const pf = P ? peopleFrame(P) : 0;
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes: water || view.layer === 'satellite',
-        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : null });
+        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? peopleColor(P, pf, t.width, lut) : null });
     if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
     t.ctx.putImageData(t.image, 0, 0);
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
     // (the rivers' lines on the Terrain view; from space they are ground, not lines — the Satellite view draws none)
     if (water && view.layer === 'terrain' && fin.rivers) { const k = t.width / MAP_WIDTH * (MAP_WIDTH / 2048); t.ctx.save(); t.ctx.scale(k, k); drawRivers(t.ctx, riverPaths(fin, view.riverQ), view.byRegime); t.ctx.restore(); }
+    if (P) { const k = t.width / 2048; t.ctx.save(); t.ctx.scale(k, k); drawCentres(t.ctx, P, P.bp[pf]); t.ctx.restore(); }
     drawLines(t, C);
     show(t);
     painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
-    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : '';
-    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = ''; legend.dataset.key = legendKey; }
+    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? `people|${frame.time}|${pf}` : '';
+    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? peopleLegendHTML(P, pf) : ''; legend.dataset.key = legendKey; }
+    if (P) { $('peopleSlider').max = P.bp.length - 1; $('peopleSlider').value = pf; $('peopleLabel').textContent = yearsWords(P.bp[pf]); }
     updateClimateUi();
     ui.timeLabel.textContent = `${frame.time.toFixed(0)} Myr`;
     rail();
@@ -597,7 +604,7 @@ async function finishMoment(again = null) {
         const secs = (performance.now() - started) / 1000;
         // (one detailed moment: this one replaces the one before, now that it is done)
         b.finishes.clear();
-        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, stats: res.stats, secs, climateKey: key });
+        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key });
         b.finishOk = true;
         b.finishNote = `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
         console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
@@ -624,6 +631,25 @@ async function finishMoment(again = null) {
         if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; updateClimateUi(); }
     }
 }
+
+// ── the People layer: the detailed moment's people, worked out once, when the layer is first shown on it ──
+async function runPeople(fin) {
+    if (!fin?.civ || fin.people || fin.peopleJob || fin.peopleNote) return;
+    const started = performance.now();
+    fin.peopleJob = { share: 0 };
+    updateClimateUi();
+    try {
+        fin.people = await peopler.run(fin.civ, MAP_WIDTH, share => { if (fin.peopleJob) { fin.peopleJob.share = share; updateClimateUi(); } });
+        console.info(`[evolution] people: ${(fin.people.ms / 1000).toFixed(1)} s in the worker on ${fin.people.cells.toLocaleString()} cells, ${((performance.now() - started) / 1000).toFixed(1)} s in all; ${fin.people.centres.length} domestication centres`);
+    } catch (err) {
+        fin.peopleNote = `Could not work out its people: ${String(err.message).split('\n')[0]}`;
+        console.error(err);
+    } finally {
+        fin.peopleJob = null; dirty = true; updateClimateUi();
+    }
+}
+/** The People layer's frame shown, of P's. */
+const peopleFrame = P => Math.max(0, Math.min(P.bp.length - 1, Math.round(peopleView.f)));
 
 // ── the context card (plans/V2_EVOLUTION_UI_PLAN.md; developer, 2026-10-13: the page was "too sparse and confusing. It
 // isn't intuitive what a user should be doing"): one card that says what is on screen and the one thing to do next —
@@ -689,6 +715,10 @@ function updateCard() {
     const satOk = !!(frame && b?.finishes.get(frame)?.climate?.raster?.sat);
     document.querySelector('#mapTabs [data-layer="satellite"]').classList.toggle('locked', !satOk);
     $('mobileViewSwitch').querySelector('option[value="satellite"]').textContent = satOk ? 'Satellite' : 'Satellite 🔒';
+    // (and People: they live on a detailed moment's world)
+    const peopleOk = !!(frame && b?.finishes.get(frame)?.civ);
+    document.querySelector('#mapTabs [data-layer="people"]').classList.toggle('locked', !peopleOk);
+    $('mobileViewSwitch').querySelector('option[value="people"]').textContent = peopleOk ? 'People' : 'People 🔒';
     const legend = $('regimeLegend');
     legend.hidden = !(view.byRegime && view.water && view.layer === 'terrain' && isDet);
     if (!legend.childElementCount) legend.innerHTML = REGIME_STYLE.map(s => `<span><i style="background:${s.rgb}"></i>${s.name}</span>`).join('');
@@ -815,6 +845,15 @@ function updateClimateUi() {
         const fjob = b.finishJob;
         text = fjob ? `Adding detail to ${fjob.frame.time.toFixed(0)} Myr…` : `The Satellite view comes with detail — add detail to ${t} Myr to see it`;
         act = fjob ? null : 'Add detail';
+    } else if (frame && view.layer === 'people' && !fin?.people) {
+        const fjob = b.finishJob;
+        if (!fin) { text = fjob ? `Adding detail to ${fjob.frame.time.toFixed(0)} Myr…` : `People come with detail — add detail to ${t} Myr to see its people`; act = fjob ? null : 'Add detail'; }
+        else if (!fin.civ) text = 'This detailed moment has no world for people — add detail to it again';
+        else if (fin.peopleNote) text = fin.peopleNote;
+        else {
+            text = `Working out its people, 70 000 years of them… ${Math.round(100 * (fin.peopleJob?.share ?? 0))}%`;
+            if (!fin.peopleJob) setTimeout(() => runPeople(fin), 0);
+        }
     } else if (frame && CLIMATE_SUB.has(view.layer) && !shown && !have) {
         text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Pause on a moment to see its climate' : `No climate for ${t} Myr`;
         act = job || playing ? null : 'Calculate';
@@ -867,6 +906,16 @@ function tick(now) {
             ui.time.value = playTime;
         }
         const frame = frameAt(Number(ui.time.value));
+        if (peopleView.playing) {
+            const P = B.finishes.get(frame)?.people;
+            if (!P || view.layer !== 'people') setPeoplePlaying(false);
+            else {
+                const f = peopleFrame(P);
+                peopleView.f = Math.min(P.bp.length - 1, Math.max(f, Number.isFinite(peopleView.f) ? peopleView.f : 0) + dt * (P.bp[f] > 12000 ? 12 : 4));
+                if (peopleView.f >= P.bp.length - 1) setPeoplePlaying(false);
+                dirty = true; lastScrub = now;                       // (the lighter texture while it plays)
+            }
+        }
         // (paused and settled: the sharper texture — on the CPU once its table is built; on the GPU every moment is that
         // sharp, but a detailed moment's picture is painted on a canvas still)
         const settled = !playing && now - lastScrub > SHARP_AFTER_MS;
@@ -932,6 +981,8 @@ function setLayer(layer) {
     $('subBar').hidden = !CLIMATE_SUB.has(layer) && !SEASONAL_LAYERS.has(layer);
     $('climateTabs').hidden = $('climateMore').hidden = !CLIMATE_SUB.has(layer);
     $('season').hidden = !SEASONAL_LAYERS.has(layer);
+    $('peopleBar').hidden = layer !== 'people';
+    if (layer !== 'people') setPeoplePlaying(false);
     updateClimateUi();
 }
 for (const b of document.querySelectorAll('#mapTabs .map-tab, #climateTabs .map-tab')) b.addEventListener('click', () => setLayer(b.dataset.layer));
@@ -950,7 +1001,16 @@ $('cardDetailed').addEventListener('click', e => {
     e.preventDefault(); setPlaying(false);
     playTime = Number(a.dataset.t); ui.time.value = playTime; dirty = true; rail();
 });
-$('climateChipBtn').addEventListener('click', () => (FINISHED_ONLY_LAYERS.has(view.layer) ? finishMoment() : calculateClimate()));
+$('climateChipBtn').addEventListener('click', () => (FINISHED_ONLY_LAYERS.has(view.layer) || view.layer === 'people' ? finishMoment() : calculateClimate()));
+// the People layer's timeline: scrub, or play (faster through the long glacial ages, slower through the last 12 000 years)
+$('peopleSlider').addEventListener('input', e => { peopleView.f = Number(e.target.value); setPeoplePlaying(false); dirty = true; lastScrub = performance.now(); });
+$('peoplePlay').addEventListener('click', () => setPeoplePlaying(!peopleView.playing));
+function setPeoplePlaying(on) {
+    const P = on ? painted && B?.finishes.get(painted)?.people : null;
+    if (on && P && peopleFrame(P) >= P.bp.length - 1) peopleView.f = 0;            // (at the end: from the start again)
+    peopleView.playing = on && !!P;
+    $('peoplePlay').innerHTML = peopleView.playing ? '&#x23F8;' : '&#x25B6;';
+}
 $('season').addEventListener('change', e => { view.season = e.target.value; dirty = true; });
 $('palette').value = view.palette;
 $('palette').addEventListener('change', e => {
@@ -1018,6 +1078,7 @@ function readout(e) {
     if (setting) lines.push(`<span class="hi-label">Setting</span> ${setting}`);
     // the climate, where this moment has one: its Köppen class, temperature and rain
     const C = climateOf(f);
+    if (view.layer === 'people' && fin?.people && !at.ocean) lines.push(peopleLine(fin.people, peopleFrame(fin.people), p[0], p[1]));
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
     else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));
     ui.hover.innerHTML = lines.join('<br>');
