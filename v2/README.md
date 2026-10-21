@@ -205,6 +205,14 @@ node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 
                                        # (--live: the timeline's frame before any detail, at --cells, its cut-off seas tinted; --plain: as before they were)
 node v2/tools/coast-shape.mjs --seed 626225 --cont 30 --time 950 [--cells 1000000] [--bands] [--finish]
                                        # the coastline's divider dimension D and L(50 km)/L(500 km) by kind of margin, against Earth; --bands: by source of its shape
+node --max-old-space-size=16000 v2/tools/civ-cradles.mjs --seed 12345 --time 300 [--cells 640000] [--seeds 1,2,3]
+                                       # the civ layer (plans/CIV_PLAN.md): a finished moment's substrate, resources and ranked
+                                       # cradles — maps + cradles.json → v2/out/civ/; --seeds: a census of several worlds
+node --max-old-space-size=16000 tuning/civ/earth-check.mjs   # the same cradle finder on real Earth (tuning/civ/fetch-earth.sh first)
+node --max-old-space-size=16000 v2/tools/civ-sim.mjs --seed 12345 --time 300 [--origin lat,lon] [--end 0]   # or --earth
+                                       # the civ layer's people, 70 ka → now on a human clock: foragers' dispersal, settling,
+                                       # domestication centres, farming's fronts, irrigation — timeline.png + summary.json →
+                                       # v2/out/civ/sim-*/; on Earth, scored against the record (arrivals, centres, farming)
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
 node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)
 node v2/tools/bench-lab.mjs 2500000           # the lab's terrain pipeline piece by piece: timings + output hashes (is a speed-up exact?)
@@ -319,6 +327,11 @@ js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the sta
                    finish-basins (closed basins, cut-off seas: their lakes by water balance), finish-sediment (fans, floodplains, deltas; creep by climate),
                    finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-coast (waves, cliffs, longshore drift), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
                    regimes, lakes), finish-cover (the land's cover and its colours from space)
+js/civ/            the civ layer (plans/CIV_PLAN.md): civ-config (its constants, in km / years / persons per km² / kg per ha,
+                   each with its source; CIV_PRIORS), substrate (what a finished moment offers people: NPP, foragers, wild
+                   crop packages by Köppen, rain-fed and irrigated farming), resources (ores and materials from the
+                   tectonic record), cradles (the irrigable alluvia where an Ur could arise, ranked), travel (fronts
+                   in km/yr over the mesh, waiting at barriers), sim (the people: density and way of life per cell, 25-yr steps)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back),
                    helper-pool / helper-worker (a few workers the history's worker starts: the start world's layout

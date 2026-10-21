@@ -1,0 +1,66 @@
+// How people move over a finished moment (plans/CIV_PLAN.md §4.6): fronts that spread at so many km a year — the cheapest
+// path in time, edge by edge, each edge's speed given by the caller (inland, along a coast or a big river, across water).
+// Fisher–KPP's front speed v = 2√(rD) is what a population's wave of advance does over even ground; the edges scale it by
+// the slope (Tobler's hiking function, relative to the flat) and by the land's capacity. The same graph will carry trade's
+// costs in days (later phases).
+
+import { MinHeap } from '../core/min-heap.js';
+import { spreadKm } from '../core/min-heap.js';
+
+const R = 6371;
+
+/** Each adjacency's length, km (parallel to mesh.adjList). */
+export function edgeLengths(mesh) {
+    const { adjOffset, adjList, xyz, numCells: n } = mesh, e = new Float32Array(adjList.length);
+    for (let c = 0; c < n; c++) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+        const nb = adjList[k], d = xyz[3 * c] * xyz[3 * nb] + xyz[3 * c + 1] * xyz[3 * nb + 1] + xyz[3 * c + 2] * xyz[3 * nb + 2];
+        e[k] = Math.acos(Math.min(1, d)) * R;
+    }
+    return e;
+}
+
+/** Tobler's walking speed on slope S (rise over run), relative to the flat: 1 on level ground, ~0.5 at 20 %. */
+export function toblerFactor(S) { return Math.exp(-3.5 * Math.abs(S + 0.05)) / Math.exp(-3.5 * 0.05); }
+
+/**
+ * Arrival times of fronts (years), the cheapest path in time: `arrival` pre-filled with the sources' start times and
+ * Infinity elsewhere; `speed(a, b, k, t)` the km/yr from cell a to b along adjacency k when leaving a at time t (0: no way).
+ * `opensAt(b, t)` (optional): the earliest time ≥ t that b can be entered — a front waits at a barrier (an ice sheet, the
+ * cold) until it opens. Only improves `arrival` (so it can be run again from new sources). Stops past `untilT`.
+ */
+export function frontArrival(mesh, len, arrival, speed, sources = null, untilT = Infinity, opensAt = null) {
+    const { adjOffset, adjList } = mesh, heap = new MinHeap(4096);
+    if (sources) for (const c of sources) heap.push(arrival[c], c);
+    else for (let c = 0; c < arrival.length; c++) if (arrival[c] < Infinity) heap.push(arrival[c], c);
+    while (heap.size) {
+        const a = heap.pop(), t = heap.lastKey;
+        if (t > arrival[a] || t > untilT) continue;
+        for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
+            const b = adjList[k], t0 = opensAt ? opensAt(b, t) : t;
+            if (!(t0 < Infinity)) continue;
+            const v = speed(a, b, k, t0);
+            if (!(v > 0)) continue;
+            const tb = t0 + len[k] / v;
+            if (tb < arrival[b]) { arrival[b] = tb; heap.push(tb, b); }
+        }
+    }
+    return arrival;
+}
+
+/** Distance (km) from each water cell to the nearest land, through water (land 0): how far out a crossing goes. */
+export function offshoreKm(mesh, isWater) {
+    const d = new Float64Array(mesh.numCells).fill(Infinity);
+    for (let c = 0; c < mesh.numCells; c++) if (!isWater(c)) d[c] = 0;
+    spreadKm(mesh, d, { canEnter: (a, b) => isWater(b) });
+    return d;
+}
+
+/** A piecewise-linear schedule [[x, y], …] (x descending, as years BP are) read at x. */
+export function schedule(table, x) {
+    if (x >= table[0][0]) return table[0][1];
+    for (let i = 1; i < table.length; i++) if (x >= table[i][0]) {
+        const [x0, y0] = table[i - 1], [x1, y1] = table[i];
+        return y1 + (y0 - y1) * (x - x1) / (x0 - x1);
+    }
+    return table[table.length - 1][1];
+}

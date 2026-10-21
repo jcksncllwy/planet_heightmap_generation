@@ -1,0 +1,290 @@
+# Civ layer — early human civilization on an Orogen planet
+
+**Goal:** a ruleset that, run on a World Orogen planet, reliably grows foragers → farmers → villages → city-states → trade networks, up to simple metallurgy (copper, arsenical copper, tin bronze). **Acceptance test: it produces an Ur / Uruk / Babylon — and on Earth's own data it puts them where they were.**
+
+Status: Phase 0 built (2026-10-21, branch `civ`). Sources and numbers are in [CIV_RESEARCH.md](CIV_RESEARCH.md); `[L]` marks a figure from the literature not yet checked against its primary source.
+
+**Decisions (developer, 2026-10-21):**
+- The civ layer is a feature *inside* Orogen (`v2/js/civ/`), not a separate codebase.
+- Earth reference data may be downloaded for the Earth test (`tuning/civ/fetch-earth.sh`).
+- The sim runs on a **human clock** (years, not Myr) for as long as it is asked to, on a finished moment's fixed geography.
+- The first milestone is Phase 0: the cradle finder.
+
+---
+
+## 1. Philosophy (borrowed from Orogen)
+
+Orogen is "concept art for planets: plausibility, not precision", and the civ layer should work the same way. Each rule should be **one documented heuristic from the archaeology/anthropology literature, in physical units** (km, years, persons/km², kg/ha, mm of rain). That gives three properties:
+
+- **Scale invariance.** Results don't depend on mesh resolution, the same rule Orogen enforces.
+- **Testability.** Every rule can be checked against Earth, the way Orogen's `tuning/climate/evaluate.mjs` scores its Köppen classes against the real map.
+- **Explainability.** A city should be able to say *why* it's there: "levee on a flood-regime river through desert, 600 km downstream of a wild-cereal zone, with copper 1,100 km away by water".
+
+We simulate **populations on cells** (GLUES-style aggregates), not individuals. Discrete settlements and polities appear only once villages exist. Household-level noise enters as **yield variance**, following the MASS project's finding that settlements fail because of their *most-stressed* households, not the average one.
+
+## 2. What Orogen already gives us (and it's a lot)
+
+All of these are per-cell fields from Evolution's **Add detail** (`v2/js/finish/finish.js`), and they run headlessly through `v2/tools/render-moment.mjs`:
+
+| Orogen field | Civ use |
+|---|---|
+| `z` elevation, slope, `ocean`, `lake`, `lakeLevel` | Movement cost (Tobler), coast, harbours, defensibility, Last Glacial Maximum shoreline (re-threshold `z` at −120 m to expose the shelves) |
+| Monthly T12 / P12 (via `cellClimate`), Köppen, `tAnnual`, `pAnnual` | Net primary productivity (Miami model), effective temperature (ET), crop envelopes, the 200–300 mm rain-fed limit |
+| `cell-stats`: `aridity`, `growing` (months > 10 °C), `rainSeason` (seasonality), `tRange` | Wild-cereal suitability (Mediterranean seasonality), farming failure risk |
+| `cover`: tree / grass / bare shares, biome, snow months | Forager game vs plant base, pastoral potential, timber |
+| `rivers`: discharge (m³/s), **monthly flows**, **regime** (steady / *flood season* / seasonal / ephemeral), flood months, **`farFed`** | Irrigation and flood-recession farming, river transport. `farFed` is literally "a big river from wet mountains through dry country", the Nile / Tigris–Euphrates signature |
+| `loess`, `erg` (sand seas), flood-basalt, ice | Fertile soils (loess, cf. the LBK and the Yellow River), barriers |
+| Tectonic record (`CrustType`, `OrogenyType`, `CrustFlag`: SUTURE, FAILED_RIFT, LIP, TRENCH, ARC; belt side UPPER/LOWER; volcanic type) | **Ore geology**, see §5.6 |
+
+So Orogen can already generate the *physical* preconditions of Mesopotamia from first principles. A collision belt (Zagros = HIMALAYAN/URAL, LOWER side) produces a foreland basin. Orographic rain on that belt feeds a far-fed river with a spring snowmelt flood. The river crosses a BWh desert to a gulf. The civ layer's job is to turn those preconditions into people.
+
+## 3. Architecture
+
+A feature of Evolution's finished moments, beside the climate and rivers it reads:
+
+```
+history → moment → finishPlanet (finish.js)        Earth: WorldClim + HydroRIVERS + MRDS (tuning/civ/lib/earth-world.mjs)
+                 │                                         │
+                 └────────────► the civ "world" ◄───────────┘  { mesh, z, ocean, lake, koppen, tAnnual, pAnnual, stats, rivers, loess, erg }
+                                     │
+v2/js/civ/civ-config.js     every constant in physical units, with its source; CIV_PRIORS = tuning ranges
+v2/js/civ/substrate.js      static layers: NPP, ET, foragers, wild crop packages, rain-fed and irrigated yields, river regimes
+v2/js/civ/resources.js      ores and materials from the tectonic record (or mapped deposits, on Earth)
+v2/js/civ/cradles.js        Phase 0: ranked irrigable alluvia — where an Ur could arise
+v2/js/civ/sim/…             Phases 1–5: the time-stepped rules (to come)
+v2/tools/civ-cradles.mjs    headless: a generated world's layers, maps and cradles (→ v2/out/civ/); --seeds for a census
+tuning/civ/earth-check.mjs  the Earth test (→ tuning/civ/results/)
+```
+
+- **No changes to the finish.** The civ layer reads `finishPlanet`'s return (with `debug` for loess and sand) and the moment's frame. Monthly T/P per cell would need a small hook in `finish.js`; Phase 0 manages without one (the cell-stats measures and Köppen carry the seasonality).
+- **Köppen everywhere it helps.** The crop packages' climate envelopes are keyed by Köppen class (Cs → winter-rain cereals, Cw/Dw/Cfa → summer-rain cereals, Af/Am/Cwb → tubers), as are timber and salt flats. Envelopes keyed by class also make Diamond's axis effect come out of the rules by itself.
+- **Scale.** Rules are in km. Phase 0 runs at 640K cells (~30 km), where a river's floodplain is narrower than a cell, so each river cell carries an *irrigable share* (floodplain width ∝ √discharge). Settlement-scale phases (city-states 15–30 km apart) want 2.5M cells (~14 km) on land.
+- **The clock.** Years. Steps of ~25 yr (one generation) for foragers and early farmers, ~10 yr once villages exist, 1 yr once polities fight (as in Turchin 2013). The world's geography stays fixed while the sim runs; sea level and climate can be offset (a glacial stage: −120 m and a cooler, drier climate through the climate's own `greenhouseWm2` / `precipScale`). A run starts from a chosen origin (people arriving, or a "Holocene" switch) and runs until stopped.
+
+## 4. Substrate (static layers, computed once per world)
+
+1. **Net primary productivity (NPP)** from T and P (Miami model, Lieth 1975). **Effective temperature (ET)** = (18W − 10C)/(W − C + 8), from the warmest and coldest months.
+2. **Forager carrying capacity K_f** = 10^(9.6e-4·NPP − 1.53) persons/km², times aquatic multipliers:
+   - ×3–10 on coast, estuary, lake shore, and big-river cells (by discharge)
+   - a seasonality penalty (short growing season → meat diet)
+
+   Sanity bands: arctic 0.005–0.05, desert 0.01–0.2, savanna 0.1–0.5, rich coast 0.5–3.
+3. **Wild-cereal suitability W** (Blumler; Mediterranean seasonality) = rainfall 300–800 mm × strong winter-wet/summer-dry seasonality (Csa/Csb/BSk margins) × hilly relief (ecotones, many microclimates within one territory). Analogous envelopes for other crop packages:
+   - summer-monsoon millet/rice (Cwa / Cfa with flood plains)
+   - tropical tubers (Af/Am, highland)
+   - highland tubers / quinoa (cold high plateaus)
+
+   Each package carries its own climate envelope, so Diamond's axis effect *emerges*: a package spreads only into cells inside its envelope.
+4. **Farm yield Y** (kg/ha):
+   - rain-fed 400–750 where P ≥ 250–300 mm (barley alone down to 200)
+   - failure risk rising toward the isohyet, ~1 in 3 years at the edge
+   - loess and floodplain bonus
+5. **Irrigation potential I**: flat floodplain cells (low slope, near the channel, a few metres above it = levees) beside a river with regime FLOOD or STEADY, discharge above a threshold, and ideally `farFed` with low local rain.
+   - Yield ~1,500 kg/ha, seed:yield ~1:20–30 (Ur III) vs 1:3–10 dry farming.
+   - **Farmer capacity:** irrigated ≈ 250/km² of cultivated land vs rain-fed ≈ 17/km² regionally.
+   - **Salinisation debt** accumulates where evaporation is high and drainage poor (−0.5–1%/yr; barley replaces wheat).
+6. **Cost surfaces.**
+   - Land: Tobler v = 6·e^(−3.5|S+0.05|) km/h; ×0.6 off-path; penalties for forest, swamp, desert and river crossings.
+   - River: downstream ~65 km/day, upstream 10–15.
+   - Sea: ~50–100 km per daylight day, coast-hugging, with max open-water hops by era.
+   - Relative bulk cost sea : river-down : river-up : donkey ≈ **1 : 4–5 : 8–10 : 30–40** (from ORBIS / Diocletian's edict).
+7. **Resource deposits** from geology (§5.6).
+
+## 5. Rules, in the order they switch on
+
+### 5.1 Origin and dispersal (foragers)
+- **Origin:** a tropical savanna (Aw) region with high K_f on the largest continent, or chosen by the user.
+- **Spread** is reaction–diffusion on K_f (Fisher–KPP with generation delay): v = 2√(aD)/(1 + aT/2), a ≈ 0.02–0.03/yr, T ≈ 25–30 yr. Inland fronts move ~0.5–1 km/yr; coasts and river valleys run 2–10× faster (coastal route; ~5–10 km/yr down the Americas).
+- **Barriers:**
+  - ice
+  - hyper-arid cells (P < ~150–250 mm) unless a "green" humid-period pulse is on; pulses are optional climate wiggles
+  - open water beyond the era's limit: ≤ 20–30 km before 60 ka; ≤ ~100 km if the far shore is visible after; open ocean only with Austronesian-style tech
+- **Sea level:** −120 m during the glacial stage, so Beringia-style land bridges and exposed shelves appear for free from Orogen's bathymetry. They drown at the Holocene transition, pushing people inland. This is the "Gulf Oasis" story behind southern Mesopotamia.
+- **Group structure:** bands of ~25, mating networks of ~500. Territory = group size / density.
+
+### 5.2 Holocene switch, sedentism and packing
+- **Farming is impossible before the Holocene switch** (Richerson, Boyd & Bettinger 2001), modelled as a drop in climate variance plus a CO₂ rise.
+- **Packing:**
+  - Density > 1.6/100 km² constrains big-game hunting.
+  - Density > **9.1/100 km²** (Binford's packing threshold) marks a cell as *intensifying*: broad-spectrum diet, aquatic foods, sedentism where resources are dense and storable (aquatic + W).
+
+### 5.3 Domestication
+For each sedentary, packed cell with W > 0, a "cultivation" counter runs:
+
+```
+hazard ∝ W · packing · invU(climate volatility) · time
+```
+
+- `invU` is the inverted-U of Ashraf & Michalopoulos: intermediate volatility domesticates first.
+- Pre-domestication cultivation lasts ~1–3 kyr before the package "fixes".
+- Expect 2–10 independent centres per Earth-like world. Animals (sheep, goats, cattle) come from grassland/steppe herds near the same centres.
+
+### 5.4 Spread of farming
+- **Demic wave:** ~0.6–1.3 km/yr (Pinhasi et al. 2005), with a ≈ 0.03/yr and ⟨Δ²⟩ ≈ 1,500 km² per generation.
+- **Leapfrog** along coasts and rivers at 5–10 km/yr: seed colonies up to 100–300 km ahead.
+- **Stall** at envelope edges, slowed by climate mismatch. Loess is a highway.
+- Farmers reach 10–100× forager density. Foragers next to farmers either adopt (if already packed) or retreat.
+- **Pastoralism** branches off where grass share is high but rain-fed farming fails (BSk), creating the steppe frontier Turchin needs.
+
+### 5.5 Settlements, hierarchy, and the state
+- **Settlement siting** (fine grid). Score =
+  - farm catchment: distance-weighted yield within ~5 km, weight 1 at 0–1 km falling to 0 at 4–5 km (Chisholm; Vita-Finzi & Higgs)
+  - water: exp(−d / 0.5–1 km) to permanent water
+  - levee crest bonus
+  - confluence, head of navigation, harbour, delta-edge bonuses
+  - defensibility × local conflict
+- **Settlement size cap.** A settlement can't exceed what its catchment yields × reliability feeds, plus *imported grain by water*. Rain-fed towns therefore cap near ~100–120 ha (Wilkinson 1994), while river cities can reach Uruk's 400+ ha.
+- **Hierarchy tiers.** Thresholds at ~150 / ~500 / ~2,500 people (Kosse; Alberti 2014 measured 127), each tier ~×6 units (Johnson's scalar stress). A **state** is ≥ 3 administrative levels above the village (Wright & Johnson). Otherwise villages fission.
+- **Surplus capture** ∝ storable-crop share × harvest seasonality × predictability (Mayshar, Moav & Pascali). Cereals and flood-recession farming are taxable; tubers aren't, so the humid tropics resist states.
+- **Circumscription** (Carneiro; Allen). Exit cost = least-cost distance to farmable land outside the region. When pressure P/K → 1, conflicts arise. Losers are absorbed (taxed) rather than displaced with probability ∝ exit cost × P/K. A river corridor through desert maximises this.
+- **War and polity dynamics:** Turchin et al. 2013 almost verbatim.
+  - P_att = 1 + β·Σtraits
+  - P_def adds +γ·elev (γ = 4)
+  - win = (P_att − P_def)/(P_att + P_def)
+  - ethnocide, trait mutation (μ₀₁ = 1e-4, μ₁₀ = 2e-3), disintegration δ₀ = 0.05 + δ_s·size − δ_a·traits
+  - military technology seeded at pastoral/steppe frontiers
+
+  Use their 4-neighbour logic on the fine grid, scaled to km.
+- **Nucleation.** When conflict is high, the rural population moves into the nearest walled centre (Adams's Early Dynastic "emptying countryside"). That produces primate cities.
+
+### 5.6 Resources and metallurgy from the tectonic record
+| Resource | Orogen signal | Earth analogue |
+|---|---|---|
+| Copper (ophiolite / volcanogenic massive sulfide, VMS) | `SUTURE` flag + old oceanic slivers (`APRON`, docked `ARC` terranes) | Troodos, Oman ("Magan"), Ergani |
+| Copper (porphyry / skarn), gold | `ANDEAN` / `ARC` belts, UPPER side | Iranian arc, Andes |
+| Native copper | `LIP` flood basalts, `FAILED_RIFT` | Keweenaw |
+| Tin | `HIMALAYAN` / `URAL` collision belts (S-type granites), rare and patchy | Cornwall, Erzgebirge, Afghanistan, Kestel |
+| Obsidian | Young (< ~10 Myr) volcanics: `ARC`, rifts, hotspot `TRACK` on continents | Göllü Dağ, Melos, Ethiopian Rift |
+| Flint / chert | Old sedimentary platforms, passive margins (`RIFT_MARGIN`), cratonic cover | Chalk of NW Europe |
+| Bitumen, salt | Foreland basin (collision LOWER side); evaporites in terminal lakes / rifts / arid coasts | Hit on the Euphrates |
+| Timber | Climate: tree share on rainy uplands | Lebanon cedars, Zagros oak |
+| Building stone | Anything except alluvium / sand sea | (Mesopotamia had none) |
+
+- **Tech gates.** Each is a diffusing trait that needs both the resource *in the network* and a prerequisite, so it spreads by contact, not by date:
+  - copper working ← native copper + sedentism
+  - smelting ← pottery kilns (sedentary farming + time); Earth ~5000 BCE
+  - arsenical copper ← arc/skarn ores
+  - tin bronze ← tin AND copper both in the trade network (~3300–3000 BCE)
+- **Obsidian** is the first long-distance good, so it bootstraps networks early. Fall-off: share = 0.8 within a ~300 km supply zone, then ×e^(−(d−300)/λ) with λ ≈ 40–70 km (Renfrew).
+
+### 5.7 Trade
+- A least-cost graph over settlements, mixing land, river and sea edges.
+- Gravity flows T_ij = k·M_i·M_j / C_ij^(1–2).
+- **Demand** = elite population × materials *missing* locally (Algaze's asymmetry: the alluvium exports textiles and grain, imports metal, timber and stone).
+- Water access multiplies market reach, which is the Sumerian advantage.
+- High-demand, high-cost links spawn **trade colonies** upriver toward deposits (the Uruk expansion).
+- **Seasonal sea edges:** monsoon direction by month comes straight from Orogen's monthly winds.
+- **Pack animals:** donkey caravans at ~30 km/day with ~65–75 kg loads (Old Assyrian); camels only after ~1000 BCE.
+
+## 6. The "Ur chain": what must happen, as checks
+
+These are the acceptance tests. Each link is a measurable predicate on a run:
+
+1. **Mesopotamia candidates exist.** The world has ≥ 1 region with an arid alluvial plain (BWh/BSh, aridity < 0.2) beside a `farFed` river with a FLOOD regime, discharge ≳ 500 m³/s, with circumscription exit cost above a threshold. *(Computable from Orogen data alone, before any sim. This should be Phase 0.)*
+2. **A domestication centre arises in a high-W zone within ~300–1,000 km upstream or adjacent** (the hilly flanks), several kyr after the Holocene switch.
+3. **Farming reaches the alluvium, irrigation switches on**, and density jumps ≥ 10× over rain-fed neighbours.
+4. **Settlements on levees 15–30 km apart**, with the countryside nucleating into a primate city ≥ 10–40k people within ~2–4 kyr of irrigation (Uruk ~40–50k by 3000 BCE).
+5. **≥ 3 administrative tiers** → state.
+6. **Trade routes reach copper (suture/arc) and later tin through river + coastal sea legs.** Bronze appears there before rain-fed regions with the same climate but no water transport.
+7. **Counterfactual:** the same climate without the far-fed river (rain-fed only) produces towns capped near ~100–120 ha and no early state.
+
+**Earth test** (the real validation, like Orogen's Köppen score). Run on real Earth data (WorldClim + HydroSHEDS + ETOPO + a geology/deposits layer) from a ~60 ka start. Score:
+- domestication centres vs the known ~10 (Fertile Crescent, Yangtze, Yellow River, New Guinea, Mesoamerica, Andes, eastern North America, Sahel, Ethiopia, India)
+- first-farming dates vs the Pinhasi radiocarbon fronts
+- first cities in Mesopotamia / Nile / Indus / Yellow River
+- population against HYDE 3.2 (~4.5M at 10,000 BCE, ~45M at 3000 BCE)
+
+Then tune within the literature ranges, exactly as `coupled-check.mjs --tune` tunes Orogen's climate within `PARAM_PRIORS`.
+
+## 7. Phases
+
+| # | Phase | Status |
+|---|---|---|
+| 0 | **Substrate, resources, cradle finder; the Earth test** | **Built.** Earth: Sumer #2, Egypt #5, the Indus #9 of 57 (the Oxus delta #1). See below |
+| 1 | Forager dispersal (sea level, crossings, density over time) | next |
+| 2 | Holocene: sedentism and domestication | |
+| 3 | Farming spread, pastoralism, irrigation | |
+| 4 | Settlements, hierarchy, polities, war | |
+| 5 | Resources, trade and metallurgy | |
+| 6 | Tuning against Earth (dates, places, HYDE population) | |
+| 7 | The page: a civ tab on Evolution's finished moment, a timeline of the people | |
+
+### Phase 0 results (2026-10-21)
+
+**Earth** (`node --max-old-space-size=16000 tuning/civ/earth-check.mjs`, 640K cells; WorldClim 1970–2000, HydroRIVERS, MRDS):
+
+| Known cradle | Rank |
+|---|---|
+| Oxus (BMAC) | #1 |
+| Sumer / Susiana | #2 |
+| Egypt | #5 |
+| Indus | #9 |
+| Norte Chico (Peru) | not found (its valleys are small: < 5,000 km², < 150 m³/s) |
+
+The rest of the top 15 are real irrigation societies that stayed below statehood (the lower Colorado's Hohokam, the Helmand's Shahr-i Sokhta, the Draa) or places farming arrived late (Patagonia's Chubut, the Columbia, the Murray, the Orange). Telling those apart is the time-stepped sim's job (the domestication centre's distance and timing, the trade network), not the cradle finder's.
+
+**Known gaps:**
+- Earth's rivers have no regimes (HydroRIVERS has no monthly flows), so Earth gets no flood-season bonus.
+- Alluvia are generous where flat desert surrounds a river (Egypt's region spreads into Sudan's plains).
+- Phase 0 has no travel costs yet: distances are km over the mesh (wild cereals over land only; resources over land and sea alike), not Tobler/ORBIS costs.
+
+## 7b. What the worldbuilding sources change (CIV_RESEARCH.md §C)
+
+Adopted, each because the literature backs it:
+- **Deltas aren't penalised.** Ur, Uruk and Eridu grew on levees in a deltaic marsh (Pournelle 2003; Algaze 2008), even though Madeline James's overlay avoids deltas. Levee-and-marsh mosaics score high for proto-cities; marsh foods count as aquatic resources.
+- **Salt layer** (Artifexian WL48; Harding 2013):
+  - coastal pans in dry climates, boiling elsewhere (needs fuel)
+  - playas
+  - brine springs and diapirs over old evaporites
+
+  Salt towns are early trade nodes (Provadia-Solnitsata).
+- **Fuel layer** (WL45–47). A tree line by growing-season temperature (Körner & Paulsen 2004), not latitude bands. Forest is charcoal; peat; dung and reed on treeless floodplains. Smelting output ∝ ore ∩ fuel. Fuel can be traded.
+- **Metallurgy tiers** (WL45–46; Lechtman 1996; Thornton 2010):
+  1. native copper on flood basalts, cold-hammered
+  2. oxidised, enriched caps, best in semi-arid climates (Sillitoe 2005): the first smelting
+  3. arsenical copper (widespread)
+  4. tin bronze, with **placer tin downstream of collisional granites**. Tin is a long-distance good, and Near Eastern tin came from Central Asia.
+
+  Before ~1000 BCE only rich ores (~10 % Cu) count.
+- **Domesticates.** Animal availability comes from biome × megafauna extinction (Koch & Barnosky 2006: Africa 21 % … Australia 88 % lost). It gates the plough, the wheel and pastoralism, and with them the steppe-nomad "mirror empires" (Barfield 1989).
+- **Crop gate.** Growing degree-days plus growing-season aridity (Worldbuilding Pasta's bioclimate; BIOME / GAEZ), beside the Köppen envelopes. Soil bonuses: loess, alluvium, andosols on young volcanics.
+- **Foragers.** The diet mix (hunting / gathering / fishing) follows effective temperature (Binford; Marlowe 2005). **Upwelling coasts** give dense sedentary foragers (Moseley 1975: the Andean coast).
+- **Farming adoption.** Foragers adopt farming when its returns beat their falling foraging returns (Winterhalder & Kennett 2006). Adoption brings a fertility bump at the Neolithic demographic transition (Bocquet-Appel 2011). Domestication takes millennia (Purugganan & Fuller 2009), not 10 generations.
+- **Settlements.**
+  - Size follows Zipf with primacy allowed, since early Mesopotamia was primate.
+  - Footprint ∝ population^(2/3) (Ortman et al. 2014).
+  - Mines work through a foothill river town, then boats.
+- **Polities.**
+  - Turchin 2013 plus per-cell solidarity ("asabiya") and Boulding's loss-of-strength gradient with distance from the capital. Fractal Philosophy's attempt warns of two failure modes: freezing at chokepoints and churning too fast.
+  - Era caps on empire area for calibration (Taagepera: ≤ ~1M km² before 600 BCE).
+- **Trade** by social distance: gift with kin, exchange further out, raiding strangers (Sahlins 1972). Monsoon reversal opens the first open-water routes.
+- **Corrections:** grain need is ~250 kg/person/yr, not 1 t. Cities come after farming, not before (contra Jacobs).
+
+### Phases 1–3 results (2026-10-21)
+
+`v2/js/civ/sim.js` runs 70 ka → 0 BP in 25-yr steps (~17 s on Earth at 640k cells): one forager front from the origin
+(travel.js: 0.35 km/yr inland, 4 along glacial coasts, 1 along big rivers, sea crossings ≤ 30 km before 60 ka and 100 km
+after; it waits at the ice sheets until 15.5 ka and at cold country until a ladder by how cold: 45 ka → 20 ka), glacial
+capacity blending to Holocene between 14.7 and 11.7 ka, shelves drowned as the sea rises; then settling (Binford's
+packing plus wetland/coast/lake or rich stands), a rare onset of cultivation (hazard ∝ W⁶, crowding), cultivation when it
+pays better (Winterhalder & Kennett), 2000 yr to domesticate, then each package's farming front (0.7 km/yr, 4 on coasts,
+1.5 on rivers, slowed to 20 % where its climate fits badly); a desert's alluvium waits until the package has known
+irrigation for 2500 yr, and its canals grow to full density over 3000 more.
+
+Earth (`civ-sim.mjs --earth`):
+- **Arrivals:** 6/10 within ±2 ka. Misses: the Levant is too early (65 ka), Japan and Tasmania are early (45 ka), and Alaska is far too early (34 ka; there's no Beringian standstill).
+- **Centres:** Fertile Crescent 10.8 ka ✓ (the 2nd centre, after one in Burma at 10.9 ka), Ganges 9.9 ✓, Ethiopia 7.8 ✓. There are 20 centres in all, 15 far from known ones (California, Zambia, SE Brazil, …). Yangtze, Yellow River, New Guinea and Andes have none; Mesoamerica is late. Wild ranges on Earth are contingent, so these misses are expected from climate alone.
+- **Farming arrives:** 6/7 within ±2 ka: Greece 10.4, Southern Mesopotamia 8.2, Egypt 7.9, Iberia 8.9, Britain 7.5, Scandinavia 5.7. Mehrgarh is never reached.
+- **Population** vs HYDE 3.2: 10 ka 21 M (7), 8 ka 31 M (11.5), 6 ka 69 M (28), 4 ka 101 M (72). The excess is mostly foragers (~18 M of Holocene capacity).
+
+Generated world 12345 (time 300): people never leave the origin's continent (no crossing ≤ 100 km). Nine centres
+between 10.8 and 1.4 ka.
+
+## 8. Next
+
+1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
+2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
+3. Later seafaring (crossings growing in the Holocene: Austronesians ~3.5 ka), so generated worlds' other continents fill.
+4. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
+5. The People layer in the page: density and way of life with a timeline slider (frames are already per-cell bytes).
+6. Phase 4: settlements and hierarchy on the irrigated alluvia (Ur), then trade costs (ORBIS ratios) and metallurgy.

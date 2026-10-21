@@ -12,3 +12,6 @@ v2/out/
 # Private research and reports (kept locally, never committed)
 reports/
 research_notes/
+
+# Earth reference data for the civ layer (downloaded by tuning/civ/fetch-earth.sh)
+tuning/civ/data/
