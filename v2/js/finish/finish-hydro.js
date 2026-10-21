@@ -126,7 +126,7 @@ export function fillSeaBasins(mesh, z, ocean, F) {
 
 /**
  * @param {{mesh, z: Float32Array, ocean: Uint8Array, runoff: Float32Array (mm/yr), pet: Float32Array (mm/yr),
- *          rain: Float32Array (mm/yr), wetMonths: Float32Array (0–12), ice: Uint8Array|null (1: an ice cap now), glaciated: Uint8Array|null (1: under the ice age's ice), lat, lon}} ctx
+ *          rain: Float32Array (mm/yr), wetMonths: Float32Array (0–12), ice: Uint8Array|null (1: an ice cap now), glaciated: Uint8Array|null (1: under the ice age's ice), basin: Float32Array|null (km the ice dug its basins), lat, lon}} ctx
  * @returns {{lake: Uint8Array (Water per cell), lakeLevel: Float32Array (km; NaN if none), q: Float32Array (m³/s),
  *            rivers: {start: Int32Array, lat: Float32Array, lon: Float32Array, q: Float32Array, season: Float32Array},
  *            stats: Object}}
@@ -273,16 +273,19 @@ export function hydrology(ctx, F) {
         // tectonic surface itself (rifts, forelands, closed basins). The finishing's own hollows — a fan or loess damming a
         // valley, a dissected floor — the rivers cut through: a channel from the hollow's floor out through its rim
         // (developer: rivers "shouldn't 'elevate' a ton of the land, it should just carve through" — they were filled))
-        let glacial = 0, tect = 0;
-        for (const c of cells) { if (ctx.glaciated?.[c]) glacial++; if (ctx.tectonic?.[c]) tect++; }
+        let glacial = 0, tect = 0, dug = 0;
+        for (const c of cells) { if (ctx.glaciated?.[c]) glacial++; if (ctx.tectonic?.[c]) tect++; if (ctx.basin?.[c] > F.basinLakeKm) dug++; }
+        // (a basin the ice dug in soft rock — the Great Lakes — is a lake district's whole hollow, its rim often past the
+        // ice's edge: a lake wherever a share of it was dug)
+        const scoured = dug >= F.basinLakeShare * cells.length;
         // (a hollow whose floor lies below sea level is a remnant of the sea — old, whatever else: it holds water as its
         // water balance allows, and is never cut through to its floor, which no gorge could drain)
         const sea = !!ctx.seaBasin && cells.some(c => ctx.seaBasin[c]);
-        const origin = sea || glacial >= 0.5 * cells.length || tect >= F.lakeTectonicShare * cells.length || !ctx.tectonic;
+        const origin = sea || scoured || glacial >= 0.5 * cells.length || tect >= F.lakeTectonicShare * cells.length || !ctx.tectonic;
         const lake = origin && cells.length * cellKm2 >= F.lakeMinKm2 && cells.length >= 2 && (L - deepest) * 1000 >= F.lakeMinDepthM;
         if (!origin && ctx.fillHollows) laterCuts.push(id);
         // (old: a hollow of the tectonic surface, glaciated or not; the ice age's own hollows are young)
-        hollows.push({ cells, level: L, outlet, deepCell, floor: deepest, lake, inflow: 0, seasonW: 0, area: 0, glacial: glacial >= 0.5 * cells.length, old: sea || (!!ctx.tectonic && tect >= F.lakeTectonicShare * cells.length), sea });
+        hollows.push({ cells, level: L, outlet, deepCell, floor: deepest, lake, inflow: 0, seasonW: 0, area: 0, glacial: scoured || glacial >= 0.5 * cells.length, scoured, old: sea || (!!ctx.tectonic && tect >= F.lakeTectonicShare * cells.length), sea });
     }
     // ── discharge, upstream first (each cell comes after the cell it drains into in the flood's order): each cell's own
     // runoff; a lake gathers its cells' and passes on only what it does not evaporate, at its outlet; a river loses water
@@ -348,7 +351,7 @@ export function hydrology(ctx, F) {
             let crossed = Infinity;
             if (!h.sea) for (const x of h.cells) if (cutAt[x] < crossed) crossed = cutAt[x];
             const drained = crossed < h.level - 0.01;
-            const keepKm2 = F.lakeKeepKm2 * Math.sqrt(Math.max(1, h.inflow) / 1000) * (young ? F.glacialKeepShare : 1);
+            const keepKm2 = F.lakeKeepKm2 * Math.sqrt(Math.max(1, h.inflow) / 1000) * (h.scoured ? F.basinKeepShare : young ? F.glacialKeepShare : 1);
             let outflow = h.inflow, level = h.level, kind = Water.FRESH, from = c;
             // A remnant of the sea (developer, 2026-10-15: inland seas "COMPLETELY dried out … leaving holes in the ground")
             // is its hole — the basin's cells below sea level — and its water stays in it (developer: the lakes over trapped
@@ -373,8 +376,12 @@ export function hydrology(ctx, F) {
                 // full, it fills its hole to the brim and spills: its outflow has cut its way down to it (a gorge just above
                 // sea level), and the lowland round it drains as land does (below)
                 level = cut(h.deepCell, F.seaCutFloorKm); from = h.deepCell;
-            } else if (drained || areaKm2 < keepKm2 || h.inflow < full) { cut(h.deepCell, h.floor); level = h.floor; }
-            else if (F.breachKm > 0) {
+            } else if (drained || areaKm2 < keepKm2 || h.inflow < full) {
+                // (drained by a gorge through it — a flood's, a river's from upstream — its pockets drain by it as well:
+                // not pits along the gorge)
+                cut(h.deepCell, h.floor); level = h.floor;
+                if (drained) cutPockets(h, hollow[c], h.outlet);
+            } else if (F.breachKm > 0) {
                 // an old basin that overflows has cut its outlet down (developer: the erosion should "break these basins
                 // up"): a gorge through its rim, deeper the more spills over; the lake drains to what lies below the gorge —
                 // often nothing. (The carving could not: a gorge is far narrower than a cell, so the rim cell hardly drops.)
