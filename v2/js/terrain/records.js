@@ -264,7 +264,8 @@ const plainOf = (m, mature) => (m.youngPlainKm === undefined ? m.plainKm : m.you
  *   widen) · depthKm (sea floor, ocean cells) · ageMyr and
  *   fabricKm (abyssal-hill wavelength) for ocean cells · trenchKm / trenchDepthKm (distance to, and depth of, the
  *   live trench nearby) · riseKm (distance to it on the subducting plate) · platformKm (what a land cell stands at
- *   before relief) · armKm (distance from a failed rift arm) · erosion (how many times faster than the reference things
+ *   before relief) · armKm (distance from a failed rift arm) · iceSoft (0 hard … 1 soft: the rock to the ice's
+ *   erosion, shields aside — finish-ice.js) · erosion (how many times faster than the reference things
  *   erode here, by the latitude's estimated rainfall) · belts: [current, overprinted] (beltLayer below; the
  *   current layer's fields are also on the record itself: kind / dKm / reach / reliefKm / shear / across) · across (3 per cell: unit vector
  *   across the belt's strike, toward its far edge; zero if unknown).
@@ -419,7 +420,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
             [fractureU, b] = [b, fractureU];
         }
     }
-
+
     // ── live trenches: the axis is the subducting plate's edge; depth by the age of the slab going down ──
     const trenchDist = new Float32Array(n).fill(Infinity), riseDist = new Float32Array(n).fill(Infinity), trenchDepthKm = new Float32Array(n);
     for (let w = 0; w < n; w++) {
@@ -492,6 +493,32 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     spreadKm(simMesh, armDist, { maxKm: 600 });
     const armKm = Float32Array.from(armDist, d => Math.min(1e4, d));
 
+    // ── how soft the rock is to the ice (finish-ice.js; the shields are set by the terrain, by their edge line): the
+    // platforms' sedimentary cover soft, softer down failed rift arms (Superior's Midcontinent Rift), along old sutures and
+    // in forelands (the basins a range sheds its sediment into); the crystalline cores of young ranges, flood basalt and arcs
+    // harder; the shelves' sediment soft. Varied by a broad noise (the rock is not one formation) ──
+    const sutureDist = new Float32Array(n).fill(Infinity);
+    for (let w = 0; w < n; w++) if (land[w] && (frame.flags[w] & (CrustFlag.SUTURE | CrustFlag.RIFT_MARGIN))) sutureDist[w] = 0;
+    spreadKm(simMesh, sutureDist, { maxKm: 600 });
+    const iceSoft = new Float32Array(n), softF = 6371 / cfg.iceSoftNoiseKm;
+    for (let w = 0; w < n; w++) {
+        let s = cfg.iceSoftPlatform;
+        if (!land[w]) s = cfg.iceSoftShelf;
+        else if (arc[w]) s = cfg.iceSoftArc;
+        else {
+            s += cfg.iceSoftArm * Math.exp(-((armKm[w] / cfg.iceSoftArmKm) ** 2)) + cfg.iceSoftSuture * Math.exp(-((sutureDist[w] / cfg.iceSoftSutureKm) ** 2));
+            const t = frame.oroType[w];
+            if (t && t !== OrogenyType.RIFT && t !== OrogenyType.ARC) {
+                const young = Math.exp(-Math.max(0, time - frame.oroLast[w]) / cfg.iceHardBeltMyr);
+                s += frame.beltSide[w] === BeltSide.LOWER ? cfg.iceSoftForeland : -cfg.iceHardBelt * young;
+            }
+            if (frame.volcType[w] === VolcanicType.LIP && frame.volcKm[w] > 0) s = Math.min(s, cfg.iceSoftBasalt);
+        }
+        const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
+        s += cfg.iceSoftNoise * noise.noise3D(x * softF + 17.1, y * softF + 3.7, z * softF + 9.4);
+        iceSoft[w] = Math.min(1, Math.max(0, s));
+    }
+
     // ── belts, in two layers: the current belt, and the one it overprinted (crust.prev*) ──
     const current = beltLayer(frame, simMesh, cfg, land, coastKm, A, { type: frame.oroType, u: frame.beltU, reach: frame.beltReach, side: frame.beltSide, shear: frame.beltShear, last: frame.oroLast, rugged: frame.rugged, layer: 0 });
     const overprinted = beltLayer(frame, simMesh, cfg, land, coastKm, A, { type: frame.prevType, u: frame.prevU, reach: frame.prevReach, side: frame.prevSide, shear: frame.prevShear, last: frame.prevLast, rugged: frame.prevRugged, layer: 1 });
@@ -536,7 +563,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     }
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastFresh: fresh, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
-        platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
+        platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
 }
 
 /**

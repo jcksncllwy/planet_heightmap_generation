@@ -86,6 +86,24 @@ export const FINISH = {
     // the ice cuts where it slides fast: outlet glaciers and ice streams near its margins, down the land's own valleys (it
     // is steered by the bed) — not across the frozen interior of a sheet along its dome's straight flow lines
     iceCutsWithinKm: [250, 40], // (full within the second of the margin, none beyond the first)
+    troughSoftGain: 0.5,        // a trough this much deeper per unit of the rock's softness above ½ (terrain/records.js iceSoft)
+    // basins: an ice lobe sliding over soft rock digs it out broadly (the Great Lakes, the Baltic, the shield-edge lakes)
+    basinKm: 0.5,               // the deepest a basin is dug (Superior's floor ~0.4 km below sea level, ~0.6 below its rim)…
+    basinFeedKm: [10, 40],      // …where this much snowfield (km²) feeds each km of the ice's width (from the first, full by
+                                // the second: a lobe's trunk; an ice sheet's median ~40)…
+    basinWithinKm: [700, 300],  // …sliding near its margin (none farther in than the first, full within the second)…
+    basinLipKm: [10, 80],       // …but shallowing toward the snout, where the ice thins (none at the margin, full by the
+                                // second): the rim that holds the lake once the ice is gone…
+    basinSoftPower: 2,          // …and the rock is soft (softness to this power: the platform's shales, not the shield)
+    basinSmoothKm: 70,          // a lobe's breadth: its trunk's flux blurred over this
+    basinCoreKm: 0.06,          // a basin: the cells dug at least this, joined — each cut below its rim's lowest ground…
+    basinMaxCutKm: 0.8,         // …by at most this in all (a basin on steep ground holds its lake in its lower end)
+    basinLowKm: [1.2, 0.5],     // …on lowland: the region's ground (blurred basinLowBlurKm) none above the first, full below the second…
+    basinLowBlurKm: 150,
+    basinSillKm: 40,            // …inland, behind a sill this far from the coast the ice did not dig (a basin open to the sea is a sound)…
+    basinMaxKm2: 100000,        // …each a lobe's, at most this big (Superior 82,000 km²): a bigger one split where it was dug deepest…
+    basinSplitStep: 1.25,       // …its core raised by this factor at a time
+    basinRim: 0.15,             // hard rock in a basin is cut this share as deep as soft (the escarpments stand)
     iceSteer: 0.06,             // the ice routed over the bed plus this share of its thickness (its surface's pull)
     scourKm: 0.07,              // an ice sheet scours hollows this deep in its bed (lake districts on shields)…
     scourScaleKm: 45,           // …about this far apart
@@ -93,6 +111,24 @@ export const FINISH = {
     reboundLeft: 0.08,          // of the ice's weight (ρi/ρm × thickness), this share not yet rebounded (Hudson Bay, the Baltic;
                                 // 0.2 sank basins that held vast lakes)…
     reboundKm: 350,             // …spread by the lithosphere over about this
+    // ── F3b: outburst floods from the ice-dammed lakes (finish-floods.js; 0 floodCutKm: none) ──
+    floodLakeMinKm2: 5000,      // an ice-dammed lake floods if at least this big…
+    floodVolumeKm3: [20, 5000], // …and holding this much water above where the bare ground would hold it (a jökulhlaup …
+                                // Lake Missoula's ~2 500): the flood's strength grows over this range, by the log
+    floodCutKm: 0.25,           // the deepest a flood scours (the Scablands' coulees: 50–250 m)…
+    floodWidthKm: [8, 45],      // …and its swath's half-width, a small flood → the greatest
+    floodReachKm: 1500,         // a flood's strength fades over this far down its way
+    floodSpillShare: 0.7,       // the spillway's flood, of the dam failure's
+    floodUnderIce: 0.6,         // where it runs under the ice (tunnel valleys), of its strength in the open
+    floodThreadKm: 40,          // the braided channels: about this far apart (wider than the Scablands' — shown from 2.5M cells)…
+    floodThreadWidth: 0.12,     // …and this wide (of the noise's range on either side of its zero lines)
+    floodTractShare: 0.35,      // the whole swath is scoured this share of the channels' depth (the land left between them)
+    floodNotchKm: 0.25,         // the sill a lake spilled over notched at most this much below the swath…
+    floodNotchReachKm: 150,     // …within this of the lake
+    floodFloorKm: 0.03,         // a flood never cuts the land below this (on a lowland by the sea it lays its gravel down)
+    floodRock: 0.6,             // the scoured ground's bare rock on the satellite view, of the flood basalt's tint
+    lakeSiltShare: 0.3,         // a drained lake's floor raised by this share of the water over it…
+    lakeSiltMaxKm: 0.04,        // …at most this: a flat plain of lake silts
 
     // ── R1: rivers and lakes (finish-hydro.js) ──
     riverMinM3s: 8,             // a river is traced from this discharge (the page draws from its own threshold, above it)
@@ -114,6 +150,12 @@ export const FINISH = {
     // glacialKeepShare of that) — no closed basins
     lakeKeepKm2: 5000,
     glacialKeepShare: 0.5,
+    // a hollow the ice dug in soft rock (its basin, finish-ice) is a lake where at least basinLakeShare of its cells were dug
+    // over basinLakeKm, and kept if its river fills it and it is basinKeepShare of lakeKeepKm2 × √(inflow / 1000 m³/s) —
+    // the Great Lakes hold a river many times their size would cut through anywhere else
+    basinLakeKm: 0.05,
+    basinLakeShare: 0.25,
+    basinKeepShare: 0.1,
     // Where a river must cut through — a basin it drains, a pocket in it — its gorge keeps the river's own course, every bend
     // of it, unless a shortcut is enough less work: the rock it cuts, and gorgeLengthKm for each km of its length (developer:
     // rivers "that go back and forth"; then "there should be some balance … between the 'true down' path and the 'shortcut'

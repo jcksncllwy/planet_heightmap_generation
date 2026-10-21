@@ -67,7 +67,16 @@ lowered and k raised so its erosion climbs further up the headwaters (rivers dra
 dissection cut deeper (by drainage area in km², the same at every detail), soil creep shorter and the fold belts' crests
 harder — over the mountains 5 % more relief, 13 % less ground above 4 km than at 0; sediment laid down (fans, floodplains,
 deltas); soil creep where it is wet and warm; an Earth-like last ice age (U-troughs, fjords, scoured lake hollows,
-moraines, basins still sunk by the ice); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
+moraines, basins still sunk by the ice; troughs deeper in soft rock, and where a lobe of the ice slid out over soft lowland
+rock it dug a basin below its rim's lowest ground — the Great Lakes, Ladoga, Winnipeg; each a lobe's, at most Superior's
+size, a bigger one split where it was dug deepest — kept as a lake behind a sill
+of undug ground, or a sound where it opens to the sea; the rock's softness from the tectonic record, `records.js`
+`iceSoft`: shields hard, failed rift arms, sutures and forelands soft, young belts and flood basalts harder) — and its
+outburst floods: lakes dammed by the ice (water a priority flood holds
+with the ice standing as a wall, and not without it) spill over their sills and burst their dams, each flood scouring a
+swath of braided channels down its way to the sea as wide and deep as the lake's volume (the Channeled Scablands, River
+Warren, tunnel valleys under the ice), its loess stripped and its rock bare on the satellite view, the lakes' floors left
+flat with their silts (a hollow a flood's gorge drains, its pockets cut through with it); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
 like the live terrain; one moment is kept in detail per history (the one before is let go once the next is done, so a cancel loses nothing). A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
@@ -253,7 +262,7 @@ js/evolution/      the Evolution page: its shell (evolution-main), terrain-playe
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
                    finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),
-                   finish-ice (the last ice age), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
+                   finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
                    regimes, lakes), finish-cover (the land's cover and its colours from space)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back),

@@ -6,7 +6,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--set key=value,…]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). Output: v2/out/moments/.
 
@@ -26,6 +26,7 @@ import { FINISH } from '../js/finish/finish-config.js';
 import { paintFinished } from '../js/evolution/finish-view.js';
 import { heightLutOf } from '../js/evolution/looks.js';
 import { MinHeap } from '../js/core/min-heap.js';
+import { locate } from '../js/core/mesh-locate.js';
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -60,7 +61,7 @@ const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(si
 const DEBUG = process.argv.includes('--debug');
 // (--set key=value[,key=value]: the finish's constants changed for this run — finish-config.js; numbers, or JSON)
 const F = { ...FINISH };
-for (const kv of (arg('--set', '') || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
+for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
 console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages ms: ${Object.entries(fin.ms).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}`);
 
@@ -106,6 +107,25 @@ if (process.argv.includes('--rivers') && fin.rivers) {
         }
     }
     for (let p = 0; p < W * H; p++) if (cover[p] > 0) for (let ch = 0; ch < 3; ch++) image.data[4 * p + ch] = image.data[4 * p + ch] * (1 - cover[p]) + RGB[ch] * cover[p];
+}
+// (--overlay name, with --debug: one of the finish's debug layers tinted red over the picture, by its value over its
+// largest — flood (where the ice age's outburst floods scoured), basin (how deep its ice dug basins), soft (the rock's
+// softness to the ice), ice, …)
+const OVERLAY = arg('--overlay', null);
+if (OVERLAY && fin.layers?.[OVERLAY]) {
+    const c3 = [0, 0, 0], w3 = [0, 0, 0], fl = fin.layers[OVERLAY];
+    let top = 0;
+    for (let c = 0; c < fl.length; c++) if (fl[c] > top) top = fl[c];
+    top ||= 1;
+    for (let py = 0; py < H; py++) {
+        const la = (0.5 - (py + 0.5) / H) * Math.PI, cl = Math.cos(la), sl = Math.sin(la);
+        for (let px = 0; px < W; px++) {
+            const lo = ((px + 0.5) / W - 0.5) * 2 * Math.PI;
+            locate(fin.mesh, cl * Math.cos(lo), cl * Math.sin(lo), sl, c3, w3);
+            const a = 0.75 * (w3[0] * fl[c3[0]] + w3[1] * fl[c3[1]] + w3[2] * fl[c3[2]]) / top, i = 4 * (py * W + px);
+            if (a > 0) { image.data[i] += (255 - image.data[i]) * a; image.data[i + 1] *= 1 - a; image.data[i + 2] *= 1 - a; }
+        }
+    }
 }
 const outDir = path.join(ROOT, 'v2', 'out', 'moments');
 fs.mkdirSync(outDir, { recursive: true });
@@ -166,6 +186,12 @@ console.log(`water: ${kinds.slice(1).map((k, i) => `${k}s ${Math.round(kindKm2[i
 console.log(`dry hollows (land below where water would stand): >50 m ${Math.round(holeKm2[50]).toLocaleString()} km² · >150 m ${Math.round(holeKm2[150]).toLocaleString()} km² · >300 m ${Math.round(holeKm2[300]).toLocaleString()} km²` +
     `; deepest ${Math.round(deepest)} m${deepestAt >= 0 ? ` at ${latOf(deepestAt)}°, ${lonOf(deepestAt)}°` : ''}; dry land below sea level ${Math.round(dryBelowSea).toLocaleString()} km²`);
 if (DEBUG && fin.layers?.terminal) console.log('terminal basins (inflow, full evaporation m³/s):', JSON.stringify(fin.layers.terminal));
+// (with --debug: what became of the ice's basins — finish-ice.js — where it dug more than 50 m: sea, lake or dry land)
+if (fin.layers?.basin) {
+    const B = fin.layers.basin, to = { sea: 0, lake: 0, land: 0 };
+    for (let c = 0; c < n; c++) if (B[c] > 0.05) to[fin.ocean[c] ? 'sea' : lake?.[c] === 1 || lake?.[c] === 2 ? 'lake' : 'land'] += cellKm2;
+    console.log(`ice basins (dug > 50 m): ${Object.entries(to).map(([k, v]) => `${k} ${Math.round(v).toLocaleString()} km²`).join(' · ')}`);
+}
 if (fin.stats?.water) console.log('hydrology:', JSON.stringify(fin.stats.water).slice(0, 400));
 // (--stats: the land's heights and the mountains' roughness — for comparing the finish's erosion: land height quantiles
 // (km), area above 2 and 4 km, and over the mountains (land above 1 km) the mean local relief — the spread of heights

@@ -192,6 +192,22 @@ export const TERRAIN = {
     failedArmKm: 0.4,           // a failed rift arm (aulacogen) is a sagged, sediment-filled corridor this much lower…
     failedArmHalfKm: 45,        // …about twice this wide — low land, not sea (the Benue trough, the Reelfoot rift)
 
+    // ── How soft the rock is to the ice (records.js iceSoft, 0 hard … 1 soft; finish-ice.js digs soft rock deepest) ──
+    iceSoftPlatform: 0.55,      // a continent's platform: sedimentary cover over a basement
+    iceSoftShield: 0.08,        // a shield: crystalline (by the craton's edge line — synthesize.js)
+    iceSoftShelf: 0.7,          // the shelves' young sediment (bare in the ice age)
+    iceSoftArc: 0.35,           // island-arc crust: volcanic
+    iceSoftBasalt: 0.15,        // flood basalt
+    iceSoftArm: 0.35,           // softer down a failed rift arm (its sediment fill: Superior in the Midcontinent Rift)…
+    iceSoftArmKm: 250,          // …within about this
+    iceSoftSuture: 0.2,         // softer along an old suture or rifted margin (sheared, broken rock)…
+    iceSoftSutureKm: 150,       // …within about this
+    iceSoftForeland: 0.2,       // softer in a range's foreland basin (the sediment it shed)
+    iceHardBelt: 0.35,          // harder in a young range's core (crystalline, metamorphic)…
+    iceHardBeltMyr: 250,        // …fading as the range wears down over about this
+    iceSoftNoise: 0.15,         // the rock varies (one formation, then another)…
+    iceSoftNoiseKm: 600,        // …over about this
+
     // ── Island arcs ──
     arcYoungKm: -2.0,           // the ridge an arc stands on, when young: under water, only its volcanoes break the surface
     arcMatureKm: 0.3,           // …and when mature: continuous land (Japan) — near a continent (within arcCoastKm);

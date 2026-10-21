@@ -111,7 +111,8 @@ export function windWork(ctx, F) {
         if (!(L > 0.02)) continue;
         let m = 0;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) m = Math.max(m, Math.abs(z[adjList[k]] - z[c]));
-        const t = F.loessKm * Math.min(1, L / 0.35) * smooth(0.06, 0.01, m / edgeKm);
+        // (none left where the ice age's floods scoured: finish-floods.js — the Scablands are the Palouse's loess stripped)
+        const t = F.loessKm * Math.min(1, L / 0.35) * smooth(0.06, 0.01, m / edgeKm) * (ctx.scoured ? 1 - ctx.scoured[c] / 255 : 1);
         if (t > 0) { z[c] += t; loessKm2 += cellKm2 * t / F.loessKm; if (loessOut) loessOut[c] = t; }
     }
     return { ergKm2, loessKm2, erg, loess: loessOut };

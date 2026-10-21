@@ -142,6 +142,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // (and how young the mountains are: the belt's activity, 1 while the history still raises it — the satellite view's tone)
     const young = new Uint8Array(n);
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
+    const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
@@ -158,14 +159,18 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed }, F);
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft }, F);
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;
+    let basinKm2 = 0, basinMaxKm = 0;
+    for (let c = 0; c < n; c++) { if (I.basin[c] > 0.05) basinKm2 += cellKm2; if (I.basin[c] > basinMaxKm) basinMaxKm = I.basin[c]; }
+    stats.iceBasins = { km2: Math.round(basinKm2), maxKm: Math.round(basinMaxKm * 1000) / 1000 };
+    stats.floods = { lakes: I.floods.lakes, lakeKm2: Math.round(I.floods.lakeKm2), volumeKm3: Math.round(I.floods.volumeKm3), largestKm3: Math.round(I.floods.largestKm3), biggest: I.floods.biggest ?? [] };
     lap('ice age');
 
     // ── F4: the wind ──
     onStage('wind');
-    const W = windWork({ mesh, z: C.z, lat, lon, koppen, grid, wind, climGrid, outwash: I.margin, seed, fade, debug }, F);
+    const W = windWork({ mesh, z: C.z, lat, lon, koppen, grid, wind, climGrid, outwash: I.margin, scoured: I.floods.flood, seed, fade, debug }, F);
     stats.ergKm2 = W.ergKm2; stats.loessKm2 = W.loessKm2;
     lap('wind');
 
@@ -187,7 +192,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     for (let c = 0; c < n; c++) if (koppen[c] === KOPPEN_ID.EF) ice[c] = 1;
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
-    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, tectonic: B.tectonic, seaBasin, fillHollows: true, lat, lon, months, debug }, F);
+    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, basin: I.basin, tectonic: B.tectonic, seaBasin, fillHollows: true, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     // (the sea again, after the rivers' gorges)
     ocean = oceanMask(mesh, C.z);
@@ -228,7 +233,8 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
         }
         landCover(T, coverRainScale(P12, rainTarget[c], P12c), cv, F, COVER, lat[c]);
         placeVariety(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], varyNoise, vy);
-        placeGround(vy, W.erg[c], W.loess[c] / F.loessKm, basalt[c] / 255);
+        // (the floods' scoured ground: bare rock, dark as the flood basalt's — finish-floods.js)
+        placeGround(vy, W.erg[c], W.loess[c] / F.loessKm, Math.max(basalt[c], F.floodRock * I.floods.flood[c]) / 255);
         for (let v = 0; v < 3; v++) coverRgb(cv, v, sat[v], 3 * c, undefined, vy);
         if (cv.wetness < COVER.ripWetness) {
             const k = COVER.ripWetness / Math.max(0.02, cv.wetness);
@@ -246,7 +252,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
-        layers: debug ? { ice: I.ice, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };
+        layers: debug ? { ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };
 }
 
 /** The mesh's positions displaced by a smooth noise field (km-sized waves, three octaves): a domain warp of everything read there. */
