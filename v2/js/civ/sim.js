@@ -36,7 +36,7 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
 /**
  * @param w    the world (civ-cradles.mjs worldOf / earth-world.mjs): mesh, z (km; the sea floor's depth where known), ocean, lake, koppen
  * @param sub  civSubstrate(w)
- * @param opts { origins: [cell] (default: the richest savanna), endBP (default 0), onFrame(frame), C }
+ * @param opts { origins: [cell] (default: the richest savanna of the biggest landmass), endBP (default 0), onFrame(frame), C }
  * @returns { frames, centres, totals, arrivalBP (Float32, per cell; NaN never), farmBP (per cell) }
  */
 export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C = CIV } = {}) {
@@ -64,11 +64,21 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
     const coastG = new Uint8Array(n);
     for (const c of cells) if (dry(c, frontSeaKm)) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (isWater(adjList[k])) { coastG[c] = 1; break; }
     const riverQ = sub.river.q;
-    const crossingAt = t => schedule(C.crossingKm, bpOf(t));
+    const crossingAt = t => schedule(C.crossingKm, bpOf(t)), seaSpeed = t => schedule(C.frontSeaKmYr, bpOf(t));
+    // the earliest time ≥ t a front may put out over water cell b (crossings only lengthen): a front waits at the shore
+    const seaOpens = (b, t) => {
+        const need = 2 * offshore[b];
+        if (crossingAt(t) >= need) return t;
+        const K = C.crossingKm;
+        for (let i = 1; i < K.length; i++) if (K[i][1] >= need) {
+            const [b0, k0] = K[i - 1], [b1, k1] = K[i];
+            return Math.max(t, tOf(b0 + (b1 - b0) * (need - k0) / (k1 - k0)));
+        }
+        return Infinity;
+    };
     const slope = (a, b, k) => toblerFactor((Math.max(0, z[b]) - Math.max(0, z[a])) / len[k]);
     const foragerSpeed = (a, b, k, t) => {
-        if (isWater(b)) return offshore[b] <= crossingAt(t) / 2 ? C.frontSeaKmYr : 0;
-        if (isWater(a)) return C.frontSeaKmYr;
+        if (isWater(a) || isWater(b)) return seaSpeed(t);
         const bp = bpOf(t), g = rise(-C.glacialToBP[0], -C.glacialToBP[1], -bp);
         const hab = rise(C.habitableKm2[0], C.habitableKm2[1], KfG[b] + (Kf[b] - KfG[b]) * g);
         if (!hab) return 0;
@@ -80,9 +90,27 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
 
     // ── Phase 1's front, from the origin(s) ──
     if (!origins) {
-        let best = -1, bk = -1;
-        for (const c of cells) if (KOPPEN_CLASSES[koppen[c]]?.code === 'Aw' && Kf[c] > bk) { bk = Kf[c]; best = c; }
-        origins = best >= 0 ? [best] : [cells[0]];
+        // the richest savanna of the biggest landmass (joined by the glacial sea's land bridges): a species arising where
+        // the most land lies open to it, as Africa's did
+        const part = new Int32Array(n).fill(-1), size = [];
+        for (const c0 of cells) {
+            if (part[c0] >= 0 || !dry(c0, minSeaKm)) continue;
+            const id = size.length, stack = [c0];
+            part[c0] = id; size.push(0);
+            while (stack.length) {
+                const c = stack.pop();
+                size[id]++;
+                for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const b = adjList[k]; if (part[b] < 0 && home[b] >= 0 && dry(b, minSeaKm)) { part[b] = id; stack.push(b); } }
+            }
+        }
+        const main = size.indexOf(Math.max(...size));
+        let best = -1, bk = -1, any = -1, ak = -1;
+        for (const c of cells) {
+            if (part[c] !== main) continue;
+            if (KOPPEN_CLASSES[koppen[home[c]]]?.code === 'Aw' && Kf[c] > bk) { bk = Kf[c]; best = c; }
+            if (Kf[c] > ak) { ak = Kf[c]; any = c; }
+        }
+        origins = [best >= 0 ? best : any];
     }
     const arrival = new Float64Array(n).fill(Infinity);
     for (const c of origins) arrival[c] = 0;
@@ -91,7 +119,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
     const lastCold = C.coldOpensBP[C.coldOpensBP.length - 1];
     const coldOpens = x => (x >= lastCold[0] ? lastCold[1] : schedule(C.coldOpensBP.map(([k, bp]) => [-k, bp]), -x));
     const opensAt = (b, t) => {
-        if (isWater(b)) return t;
+        if (isWater(b)) return seaOpens(b, t);
         let o = t;
         if (ice && ice[b]) o = Math.max(o, tOf(C.iceUntilBP));
         if (coldBy(b) > 0) o = Math.max(o, tOf(coldOpens(coldBy(b))));
@@ -116,11 +144,11 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, C
     const farmArrival = PACKAGES.map(() => new Float64Array(n).fill(Infinity));
     // each package's farmers know irrigation from this long after its first centre; a desert's alluvium waits for it
     const irrigKnown = PACKAGES.map(() => Infinity);
-    const farmOpensAt = i => (b, t) => (isWater(b) || sub.farmDry[home[b]] > 0 ? t : Math.max(t, irrigKnown[i]));
-    const farmSpeed = i => (a, b, k) => {
-        if (isWater(b)) return offshore[b] <= crossingAt(T0) / 2 ? C.frontSeaKmYr : 0;
+    const farmOpensAt = i => (b, t) => (isWater(b) ? seaOpens(b, t) : sub.farmDry[home[b]] > 0 ? t : Math.max(t, irrigKnown[i]));
+    const farmSpeed = i => (a, b, k, t) => {
+        if (isWater(b)) return seaSpeed(t);
         if (!grows[i][b]) return 0;
-        if (isWater(a)) return C.frontSeaKmYr;
+        if (isWater(a)) return seaSpeed(t);
         let v = C.frontFarmKmYr * slope(a, b, k);
         if (coastG[a] && coastG[b]) v = Math.max(v, C.frontFarmCoastKmYr);
         if (riverQ[a] >= C.frontRiverM3s && riverQ[b] >= C.frontRiverM3s) v = Math.max(v, C.frontFarmRiverKmYr);

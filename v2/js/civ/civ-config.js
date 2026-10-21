@@ -98,8 +98,11 @@ export const CIV = {
     frontCoastKmYr: 4,          // the coastal route: to Sahul in a few kyr (Macaulay et al. 2005), down the Americas' coast fast
     frontRiverKmYr: 1.0,        // along big rivers
     frontRiverM3s: 100,
-    frontSeaKmYr: 1.5,          // across water, where the crossing is short enough
-    crossingKm: [[70000, 30], [60000, 100]],  // the longest crossing by era: ≤ 20–30 km before ~60 ka, then ~100 (Sahul; Bird et al. 2019)
+    // across water, where the crossing is short enough — by era (years BP → km/yr, km; each never falling): ≤ 20–30 km
+    // before ~60 ka, then ~100 (Sahul; Bird et al. 2019); the outrigger and the sail from ~3.3 ka — Lapita from the
+    // Bismarcks to Samoa, ~3000 km in ~300 yr, gaps of ~850 km (Kirch 2017) — and Remote Oceania's longest legs by ~1 ka
+    frontSeaKmYr: [[70000, 1.5], [3500, 1.5], [3200, 10]],
+    crossingKm: [[70000, 30], [60000, 100], [3500, 100], [3200, 900], [1000, 2000]],
     habitableKm2: [0.005, 0.05], // the front slows over thin land (capacity, persons/km²) and stops below the first
     coldET: 12,                 // and stops where Binford's effective temperature (the glacial one) is under this…
     // …until cold-climate kit (tailored clothing, needles, storage) — the colder, the later: by how far under (°C), when it

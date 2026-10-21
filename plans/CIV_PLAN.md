@@ -277,14 +277,18 @@ Earth (`civ-sim.mjs --earth`):
 - **Farming arrives:** 6/7 within ±2 ka: Greece 10.4, Southern Mesopotamia 8.2, Egypt 7.9, Iberia 8.9, Britain 7.5, Scandinavia 5.7. Mehrgarh is never reached.
 - **Population** vs HYDE 3.2: 10 ka 21 M (7), 8 ka 31 M (11.5), 6 ka 69 M (28), 4 ka 101 M (72). The excess is mostly foragers (~18 M of Holocene capacity).
 
-Generated world 12345 (time 300): people never leave the origin's continent (no crossing ≤ 100 km). Nine centres
-between 10.8 and 1.4 ka.
+Holocene seafaring (crossings 100 km → 900 km at 3.2 ka → 2000 km at 1 ka, 10 km/yr at sea; fronts wait at the shore
+until the crossing opens): Fiji 3.2 ka ✓, Madagascar 3.1 ✓ (a little early), New Zealand 2.9 ✗ (0.8–0.7 in the record) —
+arrivals 8/13.
+
+Generated world 12345 (time 300), the origin the richest savanna of the biggest landmass (glacial bridges joining it):
+the main continent filled by ~30 ka, seven centres between 10.6 and 3.9 ka, farmers over much of it by 0 BP; the other
+continents reached by sea after ~3 ka, their coasts first.
 
 ## 8. Next
 
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
 2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
-3. Later seafaring (crossings growing in the Holocene: Austronesians ~3.5 ka), so generated worlds' other continents fill.
-4. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
-5. The People layer in the page: density and way of life with a timeline slider (frames are already per-cell bytes).
-6. Phase 4: settlements and hierarchy on the irrigated alluvia (Ur), then trade costs (ORBIS ratios) and metallurgy.
+3. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
+4. The People layer in the page: density and way of life with a timeline slider (frames are already per-cell bytes).
+5. Phase 4: settlements and hierarchy on the irrigated alluvia (Ur), then trade costs (ORBIS ratios) and metallurgy.
