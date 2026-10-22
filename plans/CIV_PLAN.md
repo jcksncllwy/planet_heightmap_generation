@@ -420,11 +420,22 @@ Results:
 - **Earth:** arrivals 9/13, up from 8/13.
 - **World 12345:** its two other big continents (58M and 22M km²), which foragers cannot reach, are found by its farmers'
   voyagers ~1 ka. Their first people are farmers, as on Madagascar and New Zealand.
-- **World 626225:** now a dead end. People arise on a tropical continent of 23.8M km² whose best wild stands are middling
-  (tubers W ≤ 0.78), and they never domesticate anything. The odds are ∝ W⁶, about one expected onset over the Holocene,
-  and this run drew none. The neighbouring continent has the world's best wild cereals (W 1.0) but is 435 km off, beyond
-  foragers' reach. So there is no farming, no voyaging and no towns. To decide: accept such worlds, or soften the onset's
-  steepness.
+- **World 626225:** with only the origin and voyaging changes, it was a dead end. People arise on a tropical continent of
+  23.8M km² whose best wild stands are middling (tubers W ≤ 0.78). The W⁶ odds give about one expected onset over the
+  Holocene, and that run drew none.
+
+Two follow-ups, the same day:
+- **Domestication eases with time settled.** The odds' exponent falls from 6 to 3 over a cell's first 3000 years settled
+  and packed (Cohen's population pressure). Earth's later centres sat on middling stands (our W is 0.5–0.8 at Yellow River,
+  Mesoamerica, Andes and New Guinea).
+  - Earth: 4/10 known centres within 800 km, up from 2. But 24 centres in all, 20 of them away from known ones (was 11 of
+    14). 43M farmers at 6 ka (HYDE ~28M people in all).
+  - World 626225: tubers domesticated at 9.3 ka, a quarter of the continent farmed by 7 ka. Its voyagers reach the 28M km²
+    cereal continent ~0.5 ka.
+- **Voyagers carry the crops known on coasts.** Each package used to sail alone, so wheat and millet farmers landed first on
+  the tropical Pacific and lived there as foragers. Now one front carries every crop farmed on a coast by each landing's
+  time. Earth: Fiji, Samoa, Tahiti, North Island NZ and Madagascar farmed with tubers; South Island NZ foragers; arrivals
+  8/13. The early cities are unchanged.
 
 ## 8. Next
 

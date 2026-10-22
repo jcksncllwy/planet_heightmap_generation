@@ -173,38 +173,49 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
         if (riverQ[a] >= C.frontRiverM3s && riverQ[b] >= C.frontRiverM3s) v = Math.max(v, C.frontFarmRiverKmYr);
         return v * (C.farmClimateFloor + (1 - C.farmClimateFloor) * fit[i][b]);
     };
-    // ── voyaging: each package's farmers, from when they first farm a coast, cross ever further (C.voyageKm) — and land
-    // only on shores no one holds, where people then spread as on any other (foragers' front, and the package's own) ──
+    // ── voyaging: from when farmers first farm a coast, crossings grow (C.voyageKm) — the world's voyagers carrying every
+    // crop farmed on a coast by then (Lapita's kit: Austronesian voyagers took up New Guinea's taro, yams, bananas and
+    // breadfruit on the way; Kirch 2017). They land only on shores no one holds, farm them with the best-fitting of those
+    // crops (or forage, where none grows), and people spread from there as on any other land ──
     const ladderAt = (L, x) => schedule(L.map(([a, b]) => [-a, b]), -x);         // (a ladder [[x, y], …], x ascending)
     const ladderReaches = (L, y) => {
         if (L[0][1] >= y) return L[0][0];
         for (let i = 1; i < L.length; i++) if (L[i][1] >= y) { const [x0, y0] = L[i - 1], [x1, y1] = L[i]; return x0 + (x1 - x0) * (y - y0) / (y1 - y0); }
         return Infinity;
     };
-    const coastT = PACKAGES.map(() => Infinity), voyage = PACKAGES.map(() => null), launch = PACKAGES.map(() => []);
+    const coastT = PACKAGES.map(() => Infinity);
+    let firstCoast = Infinity, voyage = null, launch = [];
     const atSea = c => isWater(c) || ocean[c];
-    const voyageSpeed = i => (a, b, k, t) => {
-        if (atSea(b)) return ladderAt(C.voyageSeaKmYr, t - coastT[i]);
+    const voyageSpeed = (a, b, k, t) => {
+        if (atSea(b)) return ladderAt(C.voyageSeaKmYr, t - firstCoast);
         // (ashore: only from the sea, onto land no one holds, that people can live on — open of ice and cold)
-        return atSea(a) && arrival[b] > t && Kf[b] >= C.habitableKm2[0] && opensAt(b, t) <= t ? ladderAt(C.voyageSeaKmYr, t - coastT[i]) : 0;
+        return atSea(a) && arrival[b] > t && Kf[b] >= C.habitableKm2[0] && opensAt(b, t) <= t ? ladderAt(C.voyageSeaKmYr, t - firstCoast) : 0;
     };
-    const voyageOpens = i => (b, t) => (isWater(b) ? Math.max(t, coastT[i] + ladderReaches(C.voyageKm, 2 * offshore[b])) : t);
-    const sail = i => {
-        const v = voyage[i] ??= new Float64Array(n).fill(Infinity), from = launch[i];
-        for (const c of from) v[c] = Math.min(v[c], farmT[c]);
-        launch[i] = [];
-        frontArrival(mesh, len, v, voyageSpeed(i), from, Infinity, voyageOpens(i));
-        const landed = [], farmed = [];
-        for (const c of cells) if (!atSea(c) && v[c] < arrival[c]) {
+    const voyageOpens = (b, t) => (isWater(b) ? Math.max(t, firstCoast + ladderReaches(C.voyageKm, 2 * offshore[b])) : t);
+    /** The voyages from the coasts newly farmed, and the landings due by `until` (each with the crops known by then). */
+    const sail = until => {
+        const v = voyage ??= new Float64Array(n).fill(Infinity), from = launch;
+        if (from.length) {
+            for (const c of from) v[c] = Math.min(v[c], farmT[c]);
+            launch = [];
+            frontArrival(mesh, len, v, voyageSpeed, from, Infinity, voyageOpens);
+        }
+        const landed = [], farmed = PACKAGES.map(() => []);
+        for (const c of cells) if (!atSea(c) && v[c] <= until && v[c] < arrival[c]) {
             arrival[c] = v[c]; landed.push(c);
-            if (grows[i][c] && v[c] < farmArrival[i][c]) { farmArrival[i][c] = v[c]; farmed.push(c); }
+            let bi = -1;
+            for (let i = 0; i < PACKAGES.length; i++) if (coastT[i] <= v[c] && grows[i][c] && (bi < 0 || fit[i][c] > fit[bi][c])) bi = i;
+            if (bi >= 0 && v[c] < farmArrival[bi][c]) { farmArrival[bi][c] = v[c]; farmed[bi].push(c); }
         }
         if (landed.length) frontArrival(mesh, len, arrival, foragerSpeed, landed, Infinity, opensAt);
-        if (farmed.length) frontArrival(mesh, len, farmArrival[i], farmSpeed(i), farmed, Infinity, farmOpensAt(i));
+        farmed.forEach((F, i) => { if (F.length) frontArrival(mesh, len, farmArrival[i], farmSpeed(i), F, Infinity, farmOpensAt(i)); });
     };
 
     const d = new Float32Array(n), life = new Uint8Array(n), progress = new Float32Array(n), farmPkg = new Int8Array(n).fill(-1);
     const farmT = new Float64Array(n).fill(Infinity), centres = [], frames = [], totals = [], started = new Uint8Array(n);
+    // (the longer a people has lived settled and packed, the poorer the stands it will take up: the odds' steepness eases)
+    const settledYears = new Float32Array(n);
+    const onsetPower = c => C.onsetPower - (C.onsetPower - C.onsetPowerLate) * Math.min(1, settledYears[c] / C.onsetEaseYears);
     // a cell's chance in a step: a hash of the two, uniform in [0, 1) — the same each run
     const chance = (c, step) => { let h = Math.imul(c ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(step + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
     const aquaticHome = c => sub.wetland[home[c]] > 0 || sub.coastal[home[c]] || sub.lakeside[home[c]];
@@ -312,9 +323,10 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
             else {
                 const sedentary = bp <= C.cultivationFromBP && d[c] >= C.packingKm2 && (aquaticHome(c) || bestWild[c] >= C.sedentaryWild);
                 life[c] = sedentary ? Life.SEDENTARY : Life.FORAGER;
+                if (sedentary) settledYears[c] += C.stepYears;
                 // someone starts cultivating: a rare event, likeliest at the best stands
                 if (sedentary && !started[c] && bestWild[c] >= C.wildMin
-                    && chance(c, step) < 1 - Math.exp(-C.onsetPerKm2Yr * cellKm2 * Math.pow(bestWild[c], C.onsetPower) * Math.min(4, Math.pow(d[c] / C.packingKm2, C.onsetCrowding)) / 2 * C.stepYears)) started[c] = 1;
+                    && chance(c, step) < 1 - Math.exp(-C.onsetPerKm2Yr * cellKm2 * Math.pow(bestWild[c], onsetPower(c)) * Math.min(4, Math.pow(d[c] / C.packingKm2, C.onsetCrowding)) / 2 * C.stepYears)) started[c] = 1;
                 if (sedentary && started[c]) {
                     // cultivate when it pays better: foraging's returns falling as the land fills, cultivation's rising as
                     // the plants are domesticated
@@ -346,10 +358,10 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
             for (let i = 0; i < PACKAGES.length; i++) if (farmArrival[i][c] <= t && farmArrival[i][c] < bt) { bt = farmArrival[i][c]; bi = i; }
             if (bi >= 0) {
                 farmPkg[c] = bi; farmT[c] = Math.max(bt, arrival[c]);
-                if (home[c] === c && sub.coastal[c] === 1) { coastT[bi] = Math.min(coastT[bi], farmT[c]); launch[bi].push(c); }
+                if (home[c] === c && sub.coastal[c] === 1) { coastT[bi] = Math.min(coastT[bi], farmT[c]); firstCoast = Math.min(firstCoast, farmT[c]); launch.push(c); }
             }
         }
-        if (t >= nextVoyage) { nextVoyage += C.frameYears; for (let i = 0; i < PACKAGES.length; i++) if (launch[i].length) sail(i); }
+        if (t >= nextVoyage) { nextVoyage += C.frameYears; if (launch.length || voyage) sail(nextVoyage); }
         totals.push({ bp, people: Math.round(people), farmers: Math.round(farmersPeople), famineDead: Math.round(famineDead) });
         famineDead = 0;
         // towns and polities, every polityStepYears once there are farmers

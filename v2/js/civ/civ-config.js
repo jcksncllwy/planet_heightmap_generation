@@ -109,12 +109,12 @@ export const CIV = {
     // ~850 km gaps from ~3.3 ka, Remote Polynesia's 2000+ km legs by ~1 ka; Kirch 2017, Bellwood 2017). It came slowly:
     // the first farmers held a coast by ~10.5 ka (the Levant), and for ~7000 years after, crossings stayed short — ~100–200
     // km (Cyprus, Cuba ~7 ka) — until Lapita's leap past the ~350 km of open sea into Remote Oceania, ~850 km within a
-    // few centuries. So a package's farmers, from when they first farm a coast, learn to cross further — years since →
-    // km — and then sail at Lapita's pace…
+    // few centuries. So from when farmers first farm a coast, voyagers learn to cross further — years since → km — and
+    // then sail at Lapita's pace, carrying every crop farmed on a coast by then…
     voyageKm: [[0, 100], [7000, 200], [7300, 900], [9500, 2000]],
     voyageSeaKmYr: [[0, 1.5], [7000, 1.5], [7300, 10]],
-    // …and settle only land no one holds yet (where their crops grow they farm it; elsewhere they forage, as the Maori's
-    // moa-hunters did beyond the kūmara's range)
+    // …and settle only land no one holds yet (with the best-fitting of their crops; where none grows they forage, as the
+    // Maori's moa-hunters did beyond the kūmara's range)
     habitableKm2: [0.005, 0.05], // the front slows over thin land (capacity, persons/km²) and stops below the first
     coldET: 12,                 // and stops where Binford's effective temperature (the glacial one) is under this…
     // …until cold-climate kit (tailored clothing, needles, storage) — the colder, the later: by how far under (°C), when it
@@ -134,6 +134,12 @@ export const CIV = {
     // reach most others before they begin themselves (the record's ~10 centres, 11.5–4 ka)
     onsetPerKm2Yr: 2e-8,        // at W = 1 and twice the packing density: a 100 000 km² region of the best stands begins within ~500 yr
     onsetPower: 6,
+    // …easing, the longer a people has lived settled and packed, to this over this long: population pressure turns people
+    // to poorer plants (Cohen 1977; Binford 2001's packing → intensification). The best stands still go first; the
+    // middling ones go late, where no farmers reached first — New Guinea's ~8.5 ka, the Andes' ~7, eastern North
+    // America's ~4.5 (Larson et al. 2014)
+    onsetPowerLate: 3,
+    onsetEaseYears: 3000,
     onsetCrowding: 1,           // and ∝ (density / packing threshold)^this, at most ×4: the crowded (Natufians) begin first
     centreKm: 400,              // domestication cells of one package this close are one centre
     cultivationFromBP: 13000,   // cultivation began in the late glacial's warm spells (Abu Hureyra ~13 ka; Hillman et al. 2001)
