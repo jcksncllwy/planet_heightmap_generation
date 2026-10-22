@@ -8,7 +8,9 @@ import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
 import { civSubstrate } from './substrate.js';
 import { runCivSim, byteDensity, Life } from './sim.js';
-import { climateVariability } from './climate-var.js';
+import { climateVariability, spreadOf } from './climate-var.js';
+import { diseaseLoss } from './disease.js';
+import { PACKAGES } from './substrate.js';
 import { TownFlag } from './polity.js';
 import { CIV } from './civ-config.js';
 
@@ -54,12 +56,13 @@ export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
     const count = Math.floor(CIV.originBP / CIV.frameYears) + 1, frames = new Uint8Array(count * n);
     const bp = new Float32Array(count), people = new Float64Array(count), farmers = new Float64Array(count);
     let f = 0;
-    const towns = [];
+    const towns = [], polities = [];
     const res = runCivSim(w, sub, { vary, onFrame: fr => {
         if (f >= count) return;
         const o = f * n;
         for (let c = 0; c < n; c++) if (fr.density[c]) frames[o + c] = peopleByte(byteDensity(fr.density[c]), fr.life[c]);
         towns.push(fr.towns);                                   // (polity.js packed: its towns of 2500+, or null)
+        polities.push(fr.polityTable);                          // (and their polities: polity.js packedPolities)
         bp[f] = fr.bp; people[f] = fr.people; farmers[f] = fr.farmers; f++;
         onProgress(f / count);
     } });
@@ -70,5 +73,25 @@ export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
     }
     const o = res.origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
     return { cells: n, frames: f < count ? frames.slice(0, f * n) : frames, bp: bp.slice(0, f), people: people.slice(0, f), farmers: farmers.slice(0, f),
-        towns, centres: res.centres, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D], pix, pixW: W, ms: performance.now() - t0 };
+        towns, polities, place: placeStats(w, sub, res), packages: PACKAGES.map(p => p.id),
+        centres: res.centres, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D], pix, pixW: W, ms: performance.now() - t0 };
+}
+
+/** What the readout and a town's card say about a place, per cell: when people and farming came (years ago; NaN never),
+ *  the farming package, its fever (share of settled people lost, 0–255), its famine deaths (share of its people a
+ *  century, over its farming years), how much its rain and its river's flood vary from year to year (CV, %). */
+function placeStats(w, sub, res) {
+    const n = w.mesh.numCells, V = res.vary, fever = new Uint8Array(n), famine = new Float32Array(n), rainCV = new Uint8Array(n), floodCV = new Uint8Array(n);
+    for (let c = 0; c < n; c++) {
+        if (w.ocean[c]) continue;
+        if (res.parasites) fever[c] = Math.round(255 * diseaseLoss(w, c, res.parasites, sub.wetland[c] > 0 ? 1 : 0, false, true));
+        const since = res.farmBP[c];
+        if (res.famine && since > 0) famine[c] = res.famine[c] / Math.max(1, since / 100);
+        if (V) {
+            rainCV[c] = Math.min(255, Math.round(100 * spreadOf(V.rainLn, V.rainCV[c], c, 64)));
+            const s = sub.irrigSrc[c];
+            if (s >= 0) floodCV[c] = Math.min(255, Math.round(100 * spreadOf(V.riverLn, V.riverCV[s], s, 64)));
+        }
+    }
+    return { arrivalBP: res.arrivalBP, farmBP: res.farmBP, pkg: res.farmPkg, fever, famine, rainCV, floodCV, irrigable: Uint8Array.from(sub.irrig, v => (v > 0 ? 1 : 0)) };
 }

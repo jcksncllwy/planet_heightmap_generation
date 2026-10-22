@@ -184,6 +184,18 @@ export class Polities {
         return out;
     }
 
+    /** The polities of the towns packed (minTier and up), for frames: Float32Array [id, towns, people in its towns,
+     *  capital's lat, lon, people, state (1/0)] each. */
+    packedPolities(minTier = 2) {
+        const ids = new Set(this.towns.filter(t => t.tier >= minTier).map(t => this.polityOf[t.cell])), out = new Float32Array(7 * ids.size);
+        let i = 0;
+        for (const id of ids) {
+            const p = this.polities.get(id);
+            if (p) out.set([id, p.towns.length, p.people, p.capital.lat, p.capital.lon, p.capital.pop, p.state ? 1 : 0], 7 * i++);
+        }
+        return out.slice(0, 7 * i);
+    }
+
     /** Counts for a summary: towns, states, the biggest polity's towns. */
     counts() {
         let states = 0, biggest = 0;

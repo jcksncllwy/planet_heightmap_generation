@@ -191,6 +191,27 @@
 .evo-people-ramp span { width: 5.5em; }
 .evo-people-ramp i { flex: 1; height: 10px; border-radius: 2px; }
 .evo-subbar select.active { background: rgba(40,70,150,0.75); color: #8bf; border-color: rgba(100,160,255,0.45); }
+/* Settlements: an overlay on any map, toggled beside the layers */
+.evo-overlay-toggle {
+    background: rgba(8,8,28,0.86); color: #aab; border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;
+    padding: 5px 12px; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+.evo-overlay-toggle[aria-pressed="true"] { background: rgba(120,90,20,0.8); color: #ffd75a; border-color: rgba(255,215,90,0.55); }
+.evo-overlay-toggle.locked { opacity: 0.55; }
+/* a town's card, clicked */
+.evo-town-card {
+    position: fixed; right: 16px; top: 110px; width: 320px; z-index: 25; max-height: calc(100vh - 380px); overflow: auto;
+    background: rgba(8,8,28,0.92); backdrop-filter: blur(12px); border: 1px solid rgba(90,230,255,0.35); border-radius: 10px;
+    padding: 12px 14px; font-size: 12px; color: #bcd;
+}
+.evo-town-card[hidden] { display: none; }
+.evo-town-close { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: #9ab; font-size: 18px; cursor: pointer; }
+.evo-town-head { font-size: 15px; color: #fff; margin-right: 20px; }
+.evo-town-badge { font-size: 11px; color: #ffd75a; border: 1px solid rgba(255,215,90,0.5); border-radius: 8px; padding: 0 6px; margin-left: 4px; }
+.evo-town-sub { color: #89a; margin: 2px 0 8px; }
+.evo-town-card dl { margin: 0; display: grid; grid-template-columns: 6.5em 1fr; gap: 5px 8px; }
+.evo-town-card dt { color: #89a; }
+.evo-town-card dd { margin: 0; color: #dde; line-height: 1.35; }
 /* the chip: what a layer needs (Satellite: a finish), beneath the layers */
 .evo-chip { top: 138px; }
 /* the legend, beside the planet */
@@ -277,6 +298,8 @@
     #info { display: none; }
     #hoverInfo { bottom: 176px; }
     .evo-chip { top: 144px; font-size: 12px; }
+    .evo-town-card { left: 8px; right: 8px; top: auto; bottom: 180px; width: auto; max-height: 40vh; }
+    .evo-overlay-toggle { min-height: 44px; }
     .evo-chip button { min-height: 44px; padding: 0 16px; }
     .evo-climate-btn { min-height: 44px; }
 }

@@ -166,6 +166,18 @@ function hash01(a, b) {
     return (h >>> 0) / 4294967296;
 }
 
+/** A place's year-to-year spread (CV) of rain (lnTable rainLn, cv rainCV[c]) or of its river's flow (riverLn, riverCV),
+ *  by sampling the modes and the storms: the same each run. */
+export function spreadOf(lnTable, cv, c, draws = 256) {
+    let s = 0, s2 = 0;
+    for (let k = 0; k < draws; k++) {
+        const x = Math.exp(modeLn(lnTable, c, normal(k, 201), normal(k, 202)) + cv * normal(k, 203));
+        s += x; s2 += x * x;
+    }
+    const m = s / draws;
+    return Math.sqrt(Math.max(0, s2 / draws - m * m)) / m;
+}
+
 /** ln of a cell's rain (or flow: lnTable riverLn) against its mean in a year whose modes swing (aH, aL): each mode's
  *  response, + or − as it swings (the response is not symmetric: a rain belt's edge loses more than it gains). */
 export function modeLn(lnTable, c, aH, aL) {

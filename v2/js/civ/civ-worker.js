@@ -31,7 +31,7 @@ self.onmessage = async ({ data }) => {
     try {
         const runs = await ensembleRuns(world);
         const r = peopleOfWorld({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), runs);
-        self.postMessage({ type: 'people', id, ...r }, [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, r.pix.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)]);
+        self.postMessage({ type: 'people', id, ...r }, [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, r.pix.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)]);         // (polities and place are small: cloned)
     } catch (err) {
         self.postMessage({ type: 'error', id, message: err?.stack ?? String(err) });
     }

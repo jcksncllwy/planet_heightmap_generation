@@ -294,6 +294,19 @@ play button scrub from 70 ka to now. The layer paints foragers in cool colours a
 centres, a legend with totals, and a hover readout. Results at 160K vs 640K on Earth are close: 75 vs 69 M people at 6 ka,
 with similar scores.
 
+Settlements are their own overlay, as of 2026-10-22. A **● Settlements** toggle puts the towns and centres on any layer
+except Plates (Terrain, Satellite, Climate, Heightmap); it is always on in People. The choice is kept in localStorage. Town
+dots are sized by log population. Hovering anywhere shows the place's people, how long they have been there, its way of
+life and its nearest town. Clicking a town opens a card with:
+- what feeds it;
+- the people around it;
+- its polity (independent, a capital, or ruled from somewhere and how far away);
+- how long a town has stood there;
+- its land's rain and flood variability and its fever burden.
+
+The card follows that spot as the year slider moves, which shows a town's rise and fall. Per frame the sim also sends a
+small polity table (`Polities.packedPolities`) so the card can name a town's polity.
+
 ### Phase 4, first slice: towns and states (2026-10-21)
 
 `v2/js/civ/settle.js` works on any moment of the sim:

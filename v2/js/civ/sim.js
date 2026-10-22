@@ -327,7 +327,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
             const dens = new Uint8Array(n), way = new Uint8Array(n);
             for (const c of cells) { dens[c] = densityByte(d[c]); way[c] = d[c] > 0 ? (life[c] || Life.FORAGER) : 0; }
             const frame = { bp, density: dens, life: way, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000),
-                towns: pol && anyFarmers ? pol.packed() : null, polities: pol && anyFarmers ? pol.counts() : null };
+                towns: pol && anyFarmers ? pol.packed() : null, polityTable: pol && anyFarmers ? pol.packedPolities() : null, polities: pol && anyFarmers ? pol.counts() : null };
             frames.push(frame);
             if (onFrame) onFrame(frame);
             nextFrame += C.frameYears;
@@ -335,7 +335,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
     }
     const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN);
     for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); }
-    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range };
+    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V };
 }
 
 /** Domestication cells, gathered into centres: the same package, within `km` of one another — each with its first date and its middle. */

@@ -279,6 +279,7 @@
             <button class="map-tab" data-layer="plates">Plates</button>
             <button class="map-tab" data-layer="people" title="The detailed moment's people, from the first humans 70 000 years ago to now: foragers spreading, settling, farming beginning and spreading — by density, on a timeline of its own. Comes with Add detail">People</button>
         </div>
+        <button id="settlementsToggle" class="evo-overlay-toggle" aria-pressed="false" title="The detailed moment's towns and cities, on whichever map is shown — on the people's own timeline. Click a town for its story. Comes with Add detail">&#x25CF; Settlements</button>
         <div id="subBar" class="evo-subbar" hidden>
             <div class="map-tabs" id="climateTabs">
                 <button class="map-tab" data-layer="koppen">Köppen</button>
@@ -316,6 +317,7 @@
             <output id="peopleLabel" class="evo-people-label">Now</output>
         </div>
     </div>
+    <div id="townCard" class="evo-town-card" hidden><button id="townClose" class="evo-town-close" aria-label="Close">&times;</button><div id="townBody"></div></div>
     <button id="helpBtn" title="How it works">?</button>
     <div id="legendCard" class="evo-legend-card" hidden>
         <div id="climateLegend" class="viz-legend"></div>

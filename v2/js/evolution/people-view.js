@@ -90,33 +90,67 @@ export function drawCentres(ctx, P, bp) {
     ctx.restore();
 }
 
+/** A town's dot on a 2048-wide texture: by the log of its people (2500 → 0.7 px, 15 000 → 2, 50 000 → 2.9): towns are
+ *  tens of km apart and a pixel is ~20 km, so dots by area would run together. */
+const dotR = pop => 0.7 + 0.5 * Math.log2(Math.max(1, pop / 2500));
+
 /** The towns of frame f (2500+ people), as dots by size on a texture's context (scaled to 2048 × 1024): a state's towns
- *  gold, its capital ringed. */
-export function drawTowns(ctx, P, f) {
+ *  gold, its capital ringed; `selected` ({polity, lat, lon}, or null): that polity's towns ringed in cyan, the town itself
+ *  in white. */
+export function drawTowns(ctx, P, f, selected = null) {
     const T = P.towns[f];
     if (!T) return;
+    const xy = i => [(T[i + 1] + 180) / 360 * 2048, (90 - T[i]) / 180 * 1024];
     ctx.save();
-    ctx.lineWidth = 0.8; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.lineWidth = 0.6; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
     for (let i = T.length - 5; i >= 0; i -= 5) {          // (the smallest first: the big drawn over them)
-        const x = (T[i + 1] + 180) / 360 * 2048, y = (90 - T[i]) / 180 * 1024, r = Math.max(1.2, Math.sqrt(T[i + 2] / 2500) * 1.2), fl = T[i + 3];
+        const [x, y] = xy(i), r = dotR(T[i + 2]), fl = T[i + 3];
         ctx.fillStyle = fl & TownFlag.STATE ? 'rgb(255,215,90)' : 'rgb(245,245,240)';
         ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-        if (fl & TownFlag.CAPITAL) { ctx.strokeStyle = 'rgb(255,215,90)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 2 * Math.PI); ctx.stroke(); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 0.8; }
+        if (fl & TownFlag.CAPITAL) { ctx.strokeStyle = 'rgb(255,215,90)'; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.arc(x, y, r + 1.6, 0, 2 * Math.PI); ctx.stroke(); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 0.6; }
+    }
+    const sel = selected ? townAt(P, f, selected.lat, selected.lon, 40) : -1;
+    if (sel >= 0) {
+        ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgb(90,230,255)';
+        for (let i = 0; i < T.length; i += 5) if (T[i + 4] === T[sel + 4] && i !== sel) { const [x, y] = xy(i); ctx.beginPath(); ctx.arc(x, y, dotR(T[i + 2]) + 1.4, 0, 2 * Math.PI); ctx.stroke(); }
+        const [x, y] = xy(sel);
+        ctx.lineWidth = 1.6; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, dotR(T[sel + 2]) + 2.4, 0, 2 * Math.PI); ctx.stroke();
     }
     ctx.restore();
 }
 
-/** The town nearest a point of the map (u, v as peopleLine), within px pixels of a 2048-wide map: [lat, lon, people, flags, polity] or null. */
-function townNear(P, f, u, v, px = 5) {
+const DEG = Math.PI / 180;
+const kmBetween = (la1, lo1, la2, lo2) => 2 * 6371 * Math.asin(Math.sqrt(Math.sin((la2 - la1) * DEG / 2) ** 2 + Math.cos(la1 * DEG) * Math.cos(la2 * DEG) * Math.sin((lo2 - lo1) * DEG / 2) ** 2));
+/** The place (u west → east, v north → south) as [lat, lon]. */
+export const latLonOf = (u, v) => [90 - v * 180, u * 360 - 180];
+
+/** The town of frame f nearest a place (lat, lon), within km: its index in P.towns[f] (a multiple of 5), or −1. */
+export function townAt(P, f, lat, lon, km) {
     const T = P.towns[f];
-    if (!T) return null;
-    let best = -1, bd = px * px;
+    if (!T) return -1;
+    let best = -1, bd = km;
+    for (let i = 0; i < T.length; i += 5) { const d = kmBetween(lat, lon, T[i], T[i + 1]); if (d < bd) { bd = d; best = i; } }
+    return best;
+}
+/** The town under a pointer at (u, v) on frame f — within `px` of its dot on a 2048-wide map, or a little more on a
+ *  small one — its index, or −1. */
+export function townUnder(P, f, u, v, px = 4) {
+    const T = P.towns[f];
+    if (!T) return -1;
+    let best = -1, bd = Infinity;
     for (let i = 0; i < T.length; i += 5) {
         let dx = Math.abs((T[i + 1] + 180) / 360 * 2048 - u * 2048); if (dx > 1024) dx = 2048 - dx;
-        const dy = (90 - T[i]) / 180 * 1024 - v * 1024, d2 = dx * dx + dy * dy;
-        if (d2 < bd) { bd = d2; best = i; }
+        const dy = (90 - T[i]) / 180 * 1024 - v * 1024, d = Math.hypot(dx, dy) - dotR(T[i + 2]);
+        if (d < px && d < bd) { bd = d; best = i; }
     }
-    return best < 0 ? null : T.subarray(best, best + 5);
+    return best;
+}
+/** A polity's row in frame f's table (polity.js packedPolities): {towns, people, capLat, capLon, capPop, state}, or null. */
+function polityOf(P, f, id) {
+    const Q = P.polities?.[f];
+    if (!Q) return null;
+    for (let i = 0; i < Q.length; i += 7) if (Q[i] === id) return { towns: Q[i + 1], people: Q[i + 2], capLat: Q[i + 3], capLon: Q[i + 4], capPop: Q[i + 5], state: Q[i + 6] > 0 };
+    return null;
 }
 
 export const yearsWords = bp => (bp <= 0 ? 'Now' : `${Math.round(bp).toLocaleString()} years ago`);
@@ -136,12 +170,76 @@ ${towns ? `<div class="evo-legend-note">● ${towns.toLocaleString()} towns of 2
 <div class="evo-legend-note">0.001 → 100 people per km² · ◯ a domestication centre${founded.length ? ` (${founded.length} so far; the first ${yearsWords(founded[0].bp).toLowerCase()}, ${PKG_WORDS[founded[0].pkg] ?? founded[0].pkg})` : ''}</div>`;
 }
 
-/** The readout's line for a point of the map (u, v as finish-view.js riverAt): who lives there at frame f. */
-export function peopleLine(P, f, u, v) {
-    const W = P.pixW, H = W >> 1, c = P.pix[Math.min(H - 1, Math.floor(v * H)) * W + Math.min(W - 1, Math.floor(u * W))];
-    const p = peopleOf(P.frames[f * P.cells + c]);
-    if (!p) return '<span class="hi-label">People</span> nobody yet';
-    const d = p.d >= 10 ? p.d.toFixed(0) : p.d >= 1 ? p.d.toFixed(1) : p.d >= 0.01 ? p.d.toFixed(2) : p.d.toFixed(3);
-    const t = townNear(P, f, u, v), town = !t ? '' : `<br><span class="hi-label">Town</span> ${(t[2] / 1000).toFixed(t[2] >= 1e4 ? 0 : 1)}k people${t[3] & TownFlag.IRRIGATED ? ', irrigation-fed' : ''}${t[3] & TownFlag.CAPITAL ? ' · a state’s capital' : t[3] & TownFlag.STATE ? ' · in a state' : ''}`;
-    return `<span class="hi-label">People</span> ${WAYS[p.way]} · ${d} per km²${town}`;
+const TIER_WORDS = ['Village', 'Small town', 'Town', 'City'];
+const tierOfPop = pop => (pop >= 15000 ? 3 : pop >= 2500 ? 2 : pop >= 500 ? 1 : 0);
+const k = v => (v >= 1e4 ? `${Math.round(v / 1000)}k` : v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${Math.round(v)}`);
+const agoWords = bp => (bp > 0 ? `${Math.round(bp).toLocaleString()} years ago` : 'now');
+/** The cell under a place (u, v). */
+const cellAt = (P, u, v) => { const W = P.pixW, H = W >> 1; return P.pix[Math.min(H - 1, Math.floor(v * H)) * W + Math.min(W - 1, Math.floor(u * W))]; };
+const pct = v => `${Math.round(v)} %`;
+
+/** What a place's land does to its people, for the readout and a town's card: [the year's spread of its rain (and its
+ *  river's flood, where it can be irrigated), its famines, its fever] as words, each or null. */
+function hazards(P, c) {
+    const Q = P.place;
+    if (!Q) return [];
+    const out = [];
+    out.push(`rain ±${pct(Q.rainCV[c])} a year` + (Q.irrigable[c] && Q.floodCV[c] ? `, its river's flood ±${pct(Q.floodCV[c])}` : ''));
+    if (Q.famine[c] > 0.0005) out.push(`famine kills ~${(Q.famine[c]).toFixed(Q.famine[c] >= 0.1 ? 1 : 2)} % a year`);
+    if (Q.fever[c] > 5) out.push(`fever costs ~${pct(100 * Q.fever[c] / 255)} of its settled people`);
+    return out;
+}
+
+/** The readout's lines for a point of the map (u, v as finish-view.js riverAt) at frame f: who lives there, since when, what
+ *  the land does to them, and the town near. */
+export function peopleLines(P, f, u, v) {
+    const c = cellAt(P, u, v), p = peopleOf(P.frames[f * P.cells + c]), Q = P.place, lines = [];
+    if (!p) lines.push('<span class="hi-label">People</span> nobody yet');
+    else {
+        const d = p.d >= 10 ? p.d.toFixed(0) : p.d >= 1 ? p.d.toFixed(1) : p.d >= 0.01 ? p.d.toFixed(2) : p.d.toFixed(3);
+        lines.push(`<span class="hi-label">People</span> ${WAYS[p.way]} · ${d} per km²`);
+    }
+    if (Q) {
+        const bp = P.bp[f], came = Q.arrivalBP[c], farmed = Q.farmBP[c], since = [];
+        if (came >= bp) since.push(`people ${agoWords(came)}`);
+        if (farmed >= bp) since.push(`farming ${agoWords(farmed)}${Q.pkg[c] >= 0 ? ` (${PKG_WORDS[P.packages[Q.pkg[c]]] ?? P.packages[Q.pkg[c]]})` : ''}`);
+        if (since.length) lines.push(`<span class="hi-label">Since</span> ${since.join(' · ')}`);
+        const hz = hazards(P, c);
+        if (hz.length) lines.push(`<span class="hi-label">Land</span> ${hz.join(' · ')}`);
+    }
+    // (the town under the pointer, as a click would take it; else the nearest within 30 km)
+    const [lat, lon] = latLonOf(u, v), under = townUnder(P, f, u, v, 5), i = under >= 0 ? under : townAt(P, f, lat, lon, 30), T = P.towns[f];
+    if (i >= 0) lines.push(`<span class="hi-label">Town</span> ${k(T[i + 2])} people${T[i + 3] & TownFlag.IRRIGATED ? ', irrigation-fed' : ''}${T[i + 3] & TownFlag.CAPITAL ? ' · a state\u2019s capital' : T[i + 3] & TownFlag.STATE ? ' · in a state' : ''} <span style="opacity:.6">(click it)</span>`);
+    return lines;
+}
+
+/** How long a town has stood near here: back through the frames while a town of 2500+ stood within 40 km — the years ago it
+ *  first did. */
+function standingSince(P, f, lat, lon) {
+    let first = P.bp[f];
+    for (let g = f - 1; g >= 0 && P.towns[g]; g--) { if (townAt(P, g, lat, lon, 40) < 0) break; first = P.bp[g]; }
+    return first;
+}
+
+/** A town's card: its people, what feeds it, its polity, how long it has stood, what its land does to it. */
+export function townCardHTML(P, f, i) {
+    const T = P.towns[f], lat = T[i], lon = T[i + 1], pop = T[i + 2], fl = T[i + 3], id = T[i + 4], bp = P.bp[f];
+    const c = cellAt(P, (lon + 180) / 360, (90 - lat) / 180), Q = P.place, pl = peopleOf(P.frames[f * P.cells + c]), pol = polityOf(P, f, id);
+    const rows = [];
+    rows.push(['Fed by', fl & TownFlag.IRRIGATED ? 'irrigated fields along its river, and the surplus brought to it' : 'rain-fed fields, and the surplus brought to it']);
+    if (pl) rows.push(['Around it', `${WAYS[pl.way]}, ${pl.d >= 10 ? pl.d.toFixed(0) : pl.d.toFixed(1)} per km²` + (Q && Q.farmBP[c] >= bp ? `; farming here since ${agoWords(Q.farmBP[c])}` : '')]);
+    if (pol) {
+        const isCap = Math.abs(pol.capLat - lat) < 0.01 && Math.abs(pol.capLon - lon) < 0.01, kind = pol.state ? 'a state' : pol.towns > 1 ? 'a chiefdom' : null;
+        let words;
+        if (!kind) words = 'its own: no other town answers to it, and it answers to none';
+        else if (isCap) words = `the capital of ${kind}: ${pol.towns} towns, ${k(pol.people)} people in them`;
+        else words = `one of ${pol.towns} towns of ${kind} ruled from a ${TIER_WORDS[tierOfPop(pol.capPop)].toLowerCase()} of ${k(pol.capPop)}, ${Math.round(kmBetween(lat, lon, pol.capLat, pol.capLon))} km away`;
+        rows.push(['Polity', words + (pol.state ? ' <span style="opacity:.65">(three tiers of towns above its villages: Wright & Johnson\u2019s state)</span>' : kind ? ' <span style="opacity:.65">(fewer than three tiers: not yet a state)</span>' : '')]);
+    }
+    rows.push(['Stood here', `a town since ${agoWords(standingSince(P, f, lat, lon))}`]);
+    const hz = hazards(P, c);
+    if (hz.length) rows.push(['Its land', hz.join('; ')]);
+    return `<div class="evo-town-head"><b>${TIER_WORDS[tierOfPop(pop)]} of ${Math.round(pop).toLocaleString()}</b>${fl & TownFlag.CAPITAL ? ' <span class="evo-town-badge">capital</span>' : fl & TownFlag.STATE ? ' <span class="evo-town-badge">in a state</span>' : ''}</div>
+<div class="evo-town-sub">${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'} · ${yearsWords(bp)}</div>
+<dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;
 }
