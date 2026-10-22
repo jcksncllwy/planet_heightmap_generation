@@ -100,10 +100,21 @@ export const CIV = {
     frontRiverKmYr: 1.0,        // along big rivers
     frontRiverM3s: 100,
     // across water, where the crossing is short enough — by era (years BP → km/yr, km; each never falling): ≤ 20–30 km
-    // before ~60 ka, then ~100 (Sahul; Bird et al. 2019); the outrigger and the sail from ~3.3 ka — Lapita from the
-    // Bismarcks to Samoa, ~3000 km in ~300 yr, gaps of ~850 km (Kirch 2017) — and Remote Oceania's longest legs by ~1 ka
-    frontSeaKmYr: [[70000, 1.5], [3500, 1.5], [3200, 10]],
-    crossingKm: [[70000, 30], [60000, 100], [3500, 100], [3200, 900], [1000, 2000]],
+    // before ~60 ka, then ~100 (Sahul; Bird et al. 2019; Okinawa's ~35 ka, Cyprus's ~12 ka are no wider). No forager went
+    // further: the open ocean is the voyagers' (below)
+    frontSeaKmYr: [[70000, 1.5]],
+    crossingKm: [[70000, 30], [60000, 100]],
+    // Voyaging: open-ocean crossings were farmers' — the outrigger and the sail, crops and animals carried to plant an
+    // empty shore (the Austronesians: rice and millet farmers on the south China coast by ~7 ka, Taiwan ~5 ka, Lapita's
+    // ~850 km gaps from ~3.3 ka, Remote Polynesia's 2000+ km legs by ~1 ka; Kirch 2017, Bellwood 2017). It came slowly:
+    // the first farmers held a coast by ~10.5 ka (the Levant), and for ~7000 years after, crossings stayed short — ~100–200
+    // km (Cyprus, Cuba ~7 ka) — until Lapita's leap past the ~350 km of open sea into Remote Oceania, ~850 km within a
+    // few centuries. So a package's farmers, from when they first farm a coast, learn to cross further — years since →
+    // km — and then sail at Lapita's pace…
+    voyageKm: [[0, 100], [7000, 200], [7300, 900], [9500, 2000]],
+    voyageSeaKmYr: [[0, 1.5], [7000, 1.5], [7300, 10]],
+    // …and settle only land no one holds yet (where their crops grow they farm it; elsewhere they forage, as the Maori's
+    // moa-hunters did beyond the kūmara's range)
     habitableKm2: [0.005, 0.05], // the front slows over thin land (capacity, persons/km²) and stops below the first
     coldET: 12,                 // and stops where Binford's effective temperature (the glacial one) is under this…
     // …until cold-climate kit (tailored clothing, needles, storage) — the colder, the later: by how far under (°C), when it

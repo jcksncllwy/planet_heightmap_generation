@@ -403,6 +403,29 @@ Earth with all three:
 - The Ganges and Mesoamerican centres are lost (both were off-record anyway).
 - Page: People ~18 s (was ~6), the ensemble's five runs in parallel workers.
 
+### Who spreads first: the origin and voyaging (2026-10-22)
+
+On world 626225, foragers and farmers seemed to spread together. Two rules caused it:
+- **The origin.** It was the biggest landmass's richest savanna. Here the biggest landmass is a boreal one, with no savanna
+  at all.
+- **Seafaring by date.** It opened 900 km crossings at 3.2 ka on every world. The other four landmasses are 1,250 km of open
+  ocean away, so they were all reached at ~2 ka, foragers and farmers together.
+
+Changes:
+- **Origin.** People now arise on the landmass with the most tropical savanna.
+- **Voyaging.** It belongs to farmers. A package's crossings grow with the years since its farmers first farmed a coast,
+  and voyagers land only on empty land (sources: CIV_SOURCES.md, dispersal). Foragers never cross more than 100 km.
+
+Results:
+- **Earth:** arrivals 9/13, up from 8/13.
+- **World 12345:** its two other big continents (58M and 22M km²), which foragers cannot reach, are found by its farmers'
+  voyagers ~1 ka. Their first people are farmers, as on Madagascar and New Zealand.
+- **World 626225:** now a dead end. People arise on a tropical continent of 23.8M km² whose best wild stands are middling
+  (tubers W ≤ 0.78), and they never domesticate anything. The odds are ∝ W⁶, about one expected onset over the Holocene,
+  and this run drew none. The neighbouring continent has the world's best wild cereals (W 1.0) but is 435 km off, beyond
+  foragers' reach. So there is no farming, no voyaging and no towns. To decide: accept such worlds, or soften the onset's
+  steepness.
+
 ## 8. Next
 
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).

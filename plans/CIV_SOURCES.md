@@ -54,13 +54,13 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | A front advancing at so many km/yr: the cheapest path in time (arrival-time Dijkstra) | Fisher–KPP wave of advance, v = 2√(rD); Fort, Pujol & Cavalli-Sforza 2004 | Adapted: speeds set directly, not from r and D | [V] |
 | Speeds: 0.35 km/yr inland, 4 along coasts, 1 along big rivers | Coastal route out of Africa (Macaulay et al. 2005) | Ours; calibrated on Earth arrival dates | [L] |
 | Slope slows the front | Tobler's hiking function, 1993 | Direct form, relative to flat ground | [V] |
-| Sea crossings by era: ≤30 km before 60 ka, 100 km after (Sahul) | Bird et al. 2019 | Adapted | [V] |
-| Holocene seafaring: 900 km from 3.2 ka, 2000 km by 1 ka; 10 km/yr at sea | Lapita expansion (Kirch 2017): Bismarcks to Samoa in ~300 yr | Adapted | [L] |
+| Foragers' sea crossings: ≤30 km before 60 ka, 100 km after (Sahul); never more | Bird et al. 2019; Okinawa ~35 ka, Cyprus ~12 ka no wider | Adapted | [V] |
+| Voyaging is farmers': a package's farmers, from when they first farm a coast, cross 100 km, then 200 km by 7000 yr, then 900 km by 7300 yr, then 2000 km by 9500 yr. At sea they move 1.5 km/yr, then 10 km/yr from 7300 yr. They land only on land no one holds; they farm it where their crops grow and forage it elsewhere. (This replaces fixed dates: 900 km at 3.2 ka, 2000 km by 1 ka.) | Austronesian/Lapita expansion (Kirch 2017; Bellwood 2017): Bismarcks to Samoa in ~300 yr; ~7000 yr from the first coastal farmers (Levant ~10.5 ka) to Lapita (~3.3 ka); Cuba ~7 ka as a ~200 km hop. The Maori's moa-hunters foraged beyond the kūmara's range | Ours as a rule; the delay is calibrated on Earth's single case. Earth arrivals: 9/13 within ±2 ka (8/13 with dates). Fiji 2.8 ka, Madagascar 3.4, New Zealand 2.7 (record 0.8) | [L] |
 | Fronts wait at barriers (ice until 15.5 ka; cold land opening on a ladder by how cold, 45 ka → 20 ka) | The record (Bacho Kiro, Yana, the Beringian standstill) | Ours; the ladder is calibrated to the record | [L] |
 | Cold measured as Binford's effective temperature, with glacial cooling | Binford 2001 | Direct formula; the cooling share (0.6 °C per °C) is ours | [L] |
 | Glacial world: sea level schedule, −6 °C, rain ×0.7; shelves exposed and drowned | Standard LGM reconstructions | Adapted | [L] |
 | Logistic growth toward capacity (r 0.02 foragers, 0.03 farmers) | Neolithic demographic transition, Bocquet-Appel 2011 | Adapted: the rates are ours | [L] |
-| Default origin: richest savanna on the largest landmass | Ours (Africa as precedent) | Ours | — |
+| Default origin: the richest savanna on the landmass (glacial bridges joining it) with the most tropical savanna (Aw) | Homo as a species of the open tropical grasslands (deMenocal 2004); Africa as precedent | Ours | — |
 
 ## People: settling and domestication (`v2/js/civ/sim.js`)
 
