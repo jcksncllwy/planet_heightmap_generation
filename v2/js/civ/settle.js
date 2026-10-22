@@ -30,7 +30,7 @@ export const tierOf = (pop, C = CIV) => C.tiers.reduce((k, v, i) => (pop >= v ? 
  * @param density  persons/km² per cell (Float32Array)
  * @param life     each cell's way of life (sim.js Life)
  * @param net      townNetwork(w, sub) (made once per world)
- * @returns [{cell, lat, lon, pop, tier, irrigated}]
+ * @returns [{cell, lat, lon, pop, tier, irrigated (its own district), canalFed (most of its food grown on irrigated land)}]
  */
 export function towns(w, sub, density, life, net, C = CIV) {
     const { mesh } = w, n = mesh.numCells, A = sub.cellKm2, { land, reach } = net;
@@ -74,11 +74,14 @@ export function towns(w, sub, density, life, net, C = CIV) {
         if (pop < C.townMin) continue;
         // (what it takes is no longer there for the next: in proportion, from each district it reached)
         const shareFood = food > local[c] ? Math.max(0, pop - local[c]) / (food - local[c]) : 0, sharePeople = pop / people;
-        for (const [j, f] of takes) surplus[j] -= surplus[j] * f * shareFood;
+        // (and how much of what it eats was grown on irrigated land: its own fields, or grain brought from canals — a town
+        // beside an irrigated plain, or a port it ships to, lives on the canals though its own district is rain-fed)
+        let fromCanals = irrigated(c) ? Math.min(local[c], pop) : 0;
+        for (const [j, f] of takes) { if (irrigated(j)) fromCanals += surplus[j] * f * shareFood; surplus[j] -= surplus[j] * f * shareFood; }
         for (const [j, t] of r) movers[j] -= movers[j] * (1 - t / C.importKm) * sharePeople;
         const x = mesh.xyz[3 * c], y = mesh.xyz[3 * c + 1], z = mesh.xyz[3 * c + 2];
         out.push({ cell: c, lat: +(Math.asin(z) * DEG).toFixed(2), lon: +(Math.atan2(y, x) * DEG).toFixed(2), pop: Math.round(pop),
-            tier: tierOf(pop, C), irrigated: irrigated(c) });
+            tier: tierOf(pop, C), irrigated: irrigated(c), canalFed: fromCanals > pop / 2 });
     }
     return out.sort((a, b) => b.pop - a.pop);
 }

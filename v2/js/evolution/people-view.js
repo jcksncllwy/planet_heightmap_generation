@@ -209,7 +209,7 @@ export function peopleLines(P, f, u, v) {
     }
     // (the town under the pointer, as a click would take it; else the nearest within 30 km)
     const [lat, lon] = latLonOf(u, v), under = townUnder(P, f, u, v, 5), i = under >= 0 ? under : townAt(P, f, lat, lon, 30), T = P.towns[f];
-    if (i >= 0) lines.push(`<span class="hi-label">Town</span> ${k(T[i + 2])} people${T[i + 3] & TownFlag.IRRIGATED ? ', irrigation-fed' : ''}${T[i + 3] & TownFlag.CAPITAL ? ' · a state\u2019s capital' : T[i + 3] & TownFlag.STATE ? ' · in a state' : ''} <span style="opacity:.6">(click it)</span>`);
+    if (i >= 0) lines.push(`<span class="hi-label">Town</span> ${k(T[i + 2])} people${T[i + 3] & (TownFlag.IRRIGATED | TownFlag.CANAL_FED) ? ', irrigation-fed' : ''}${T[i + 3] & TownFlag.CAPITAL ? ' · a state\u2019s capital' : T[i + 3] & TownFlag.STATE ? ' · in a state' : ''} <span style="opacity:.6">(click it)</span>`);
     return lines;
 }
 
@@ -226,7 +226,9 @@ export function townCardHTML(P, f, i) {
     const T = P.towns[f], lat = T[i], lon = T[i + 1], pop = T[i + 2], fl = T[i + 3], id = T[i + 4], bp = P.bp[f];
     const c = cellAt(P, (lon + 180) / 360, (90 - lat) / 180), Q = P.place, pl = peopleOf(P.frames[f * P.cells + c]), pol = polityOf(P, f, id);
     const rows = [];
-    rows.push(['Fed by', fl & TownFlag.IRRIGATED ? 'irrigated fields along its river, and the surplus brought to it' : 'rain-fed fields, and the surplus brought to it']);
+    rows.push(['Fed by', fl & TownFlag.IRRIGATED ? 'irrigated fields along its river, and the surplus brought to it'
+        : fl & TownFlag.CANAL_FED ? 'grain brought from irrigated land nearby, or along its river or coast; its own fields are rain-fed'
+        : 'rain-fed fields, and the surplus brought to it']);
     if (pl) rows.push(['Around it', `${WAYS[pl.way]}, ${pl.d >= 10 ? pl.d.toFixed(0) : pl.d.toFixed(1)} per km²` + (Q && Q.farmBP[c] >= bp ? `; farming here since ${agoWords(Q.farmBP[c])}` : '')]);
     if (pol) {
         const isCap = Math.abs(pol.capLat - lat) < 0.01 && Math.abs(pol.capLon - lon) < 0.01, kind = pol.state ? 'a state' : pol.towns > 1 ? 'a chiefdom' : null;

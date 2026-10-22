@@ -33,7 +33,7 @@ const rise = (a, b, x) => Math.min(1, Math.max(0, (x - a) / (b - a)));
 const R = 6371;
 
 /** A town's flags in packed snapshots. */
-export const TownFlag = Object.freeze({ IRRIGATED: 1, STATE: 2, CAPITAL: 4 });
+export const TownFlag = Object.freeze({ IRRIGATED: 1, STATE: 2, CAPITAL: 4, CANAL_FED: 8 });
 
 export class Polities {
     constructor(w, sub, C = CIV) {
@@ -179,7 +179,7 @@ export class Polities {
         const big = this.towns.filter(t => t.tier >= minTier), out = new Float32Array(5 * big.length);
         big.forEach((t, i) => {
             const id = this.polityOf[t.cell], p = this.polities.get(id);
-            out.set([t.lat, t.lon, t.pop, (t.irrigated ? TownFlag.IRRIGATED : 0) | (p?.state ? TownFlag.STATE : 0) | (p?.state && p.capital === t ? TownFlag.CAPITAL : 0), id], 5 * i);
+            out.set([t.lat, t.lon, t.pop, (t.irrigated ? TownFlag.IRRIGATED : 0) | (p?.state ? TownFlag.STATE : 0) | (p?.state && p.capital === t ? TownFlag.CAPITAL : 0) | (t.canalFed ? TownFlag.CANAL_FED : 0), id], 5 * i);
         });
         return out;
     }

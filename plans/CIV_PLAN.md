@@ -307,6 +307,15 @@ life and its nearest town. Clicking a town opens a card with:
 The card follows that spot as the year slider moves, which shows a town's rise and fall. Per frame the sim also sends a
 small polity table (`Polities.packedPolities`) so the card can name a town's polity.
 
+The "oversized rain-fed towns" turned out to be a labelling problem. On world 626225 at 480 Myr, 263 towns of 2,500+ stood on
+rain-fed districts, and the biggest had 22k people. Of those 263:
+- 8, from 8.7k to 22k, are fed by irrigated land. More than half their grain comes from irrigated districts nearby, or
+  ships 100–200 km along a coast or river. Such a town is a canal economy's port or edge-town; its own ~60 km cell is
+  simply not irrigated. Towns now carry `canalFed`, with `TownFlag.CANAL_FED` set when its own district is not irrigated,
+  and the card says so.
+- The other 255 are truly rain-fed. 247 are under 5k and the biggest is 10.6k, in line with Wilkinson's few thousand
+  (and Tell Leilan/Brak's later peaks).
+
 ### Phase 4, first slice: towns and states (2026-10-21)
 
 `v2/js/civ/settle.js` works on any moment of the sim:
