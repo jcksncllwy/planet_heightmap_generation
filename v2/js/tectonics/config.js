@@ -344,6 +344,19 @@ export const TECTONICS = {
     riftFailedArms: 2,          // how many arms fail at a junction (they strike out across ordinary ground, seeding NEW weak lines)
     riftPush: 0.6,              // a fresh rift pushes its two sides apart (uplifted rift shoulders), per 100 km of rift…
     riftPushMyr: 60,            // …fading to nothing over this long, by which time the ridge push of the young ocean has taken over
+    // Scissor opening (developer: a rift "suddenly appear[s] across an entire continent all at once" — expected "a tear start
+    // to happen on an edge of a continent and then see it spread — not always, but sometimes"). Most rifts propagate: the
+    // South Atlantic unzipped from the south over ~20 Myr, the Red Sea and Gulf of Aden from the east, the Bay of Biscay and
+    // the Woodlark basin open as wedges. The halves turn about a pole just beyond the tip of the propagating rift, so the
+    // ocean opens as a wedge from one coast; as the tip runs along the rift the pole moves out past its far end and the
+    // spreading becomes nearly parallel. Modelled as a pin between the halves that slides from riftHingeFrom to riftHingeTo
+    // along the rift (0 its open end, 1 its far end, past 1 beyond the far coast) over riftHingeMyr, then lets go.
+    riftScissorShare: 0.75,     // the share of rifts that unzip from one end (the rest open along their whole length at once)
+    riftHingeMyr: 15,           // how long the tip takes to run the length of the rift
+    riftHingeFrom: 0.75,        // where the pin starts (short of the far end: the far quarter is still whole)…
+    riftHingeTo: 1.5,           // …and where it is when it lets go
+    riftHingeLock: 30,          // its stiffness, per 10⁴ km² of land of the smaller half (basal drag under a continent is 5)
+    riftHingeFade: 0.3,         // the last share of riftHingeMyr over which it loosens
     // The pace of breakups (developer: they came "way way too many … all at once", and the supercontinent sat through "a long
     // period of only erosion and 0 breakups" — "at most one major rifting event every 30 Myr, and closer to 50 … not more
     // than 150 [Myr] without one, and really closer to 100"; then: "the rules dont apply to the whole world, but to each

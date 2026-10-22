@@ -51,6 +51,7 @@ const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4;
  * @property {{r:number[], n:number[], other:number, length:number}[]} slabs     where this plate's ocean goes down a trench
  * @property {{r:number[], n:number[], other:number, weight:number}[]} contacts  land-on-land overlap cells (weight > 1 where a craton is
  *                                                                             involved; n: the front's normal there, toward the other plate)
+ * @property {{r:number[], other:number, c:number}[]} hinges   where a young rift's halves are still pinned together (stiffness c)
  */
 
 /** @returns {Map<number, PlateLoad>} loads for every living, non-background plate */
@@ -129,7 +130,29 @@ export function gatherLoads(world) {
         load.torqueMagnitudeSum += Math.hypot(tx, ty, tz);
         load.cells[kind]++;
     }
+    for (const p of plates) if (loadOf[p.id]) riftHinge(world, p, loadOf[p.id]);
     return loads;
+}
+
+/**
+ * A rift that unzips (config.riftScissorShare): its halves are pinned together at a point that slides from riftHingeFrom
+ * to riftHingeTo along the rift's chord over riftHingeMyr — the pole just beyond the propagating tip. The rift push then
+ * turns them about it: a wedge of ocean opens from one coast, and widens toward the other as the pin moves out.
+ */
+function riftHinge(world, plate, load) {
+    const { plates, time, config, mesh } = world, hinge = plate.riftHinge, other = plates[plate.riftPartner];
+    if (!hinge || !other?.alive || other.riftPartner !== plate.id || other.riftHinge !== hinge) return;
+    const age = (time - Math.max(plate.born, other.born)) / config.riftHingeMyr;
+    if (!(age >= 0 && age < 1)) return;
+    const f = config.riftHingeFrom + (config.riftHingeTo - config.riftHingeFrom) * age;
+    const { from: a, to: b } = hinge, cos = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])), th = Math.acos(cos);
+    if (th < 1e-6) return;
+    const wa = Math.sin((1 - f) * th) / Math.sin(th), wb = Math.sin(f * th) / Math.sin(th);      // along the great circle, past b when f > 1
+    const p = [wa * a[0] + wb * b[0], wa * a[1] + wb * b[1], wa * a[2] + wb * b[2]], l = Math.hypot(p[0], p[1], p[2]);
+    const r = plate.toWorld(p[0] / l, p[1] / l, p[2] / l, [0, 0, 0]);
+    const land = Math.min(plate.stats.continentalCells, other.stats.continentalCells) * mesh.cellAreaKm2 / 1e4;
+    const loose = Math.min(1, (1 - age) / config.riftHingeFade);
+    load.hinges.push({ r, other: other.id, c: config.riftHingeLock * land / config.mobility * loose });
 }
 
 /**
@@ -171,5 +194,5 @@ function riftAge(plateA, A, cellA, plateB, B, cellB, time) {
 
 function newLoad() {
     const zero = () => [0, 0, 0];
-    return { torque: zero(), flowTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [] };
+    return { torque: zero(), flowTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [], hinges: [] };
 }

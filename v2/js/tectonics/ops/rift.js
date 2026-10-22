@@ -67,6 +67,13 @@ export function splitPlate(world, plate, path, failedArm, nameFor, across = null
         const mid = normalize([ca[0] + cb[0], ca[1] + cb[1], ca[2] + cb[2]]), toA = tangentToward(mid, cb, ca), sign = dot(across, toA) >= 0 ? 1 : -1;
         plate.riftPushDir = across.map(x => sign * x); fresh.riftPushDir = across.map(x => -sign * x);
     } else { plate.riftPushDir = tangentToward(ca, cb, ca); fresh.riftPushDir = tangentToward(cb, ca, cb); }
+    // most rifts unzip from one coast: the halves stay pinned toward the far end (step/forces.js) — which end is chance
+    plate.riftHinge = fresh.riftHinge = null;
+    if (world.rng() < config.riftScissorShare) {
+        const flip = world.rng() < 0.5, at = c => [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]];
+        const ends = [at(path[0]), at(path[path.length - 1])];
+        plate.riftHinge = fresh.riftHinge = flip ? { from: ends[1], to: ends[0] } : { from: ends[0], to: ends[1] };
+    }
     plate.markReshaped(); fresh.markReshaped();
     plate.refreshExtent(xyz); fresh.refreshExtent(xyz);
     const [nameA, nameB] = nameFor(plate, fresh);

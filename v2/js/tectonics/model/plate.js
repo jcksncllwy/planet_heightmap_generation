@@ -49,6 +49,8 @@ export class Plate {
                                                   // along the line counts as a rifted margin for the push
         this.splitAt = -Infinity;                 // when that last happened
         this.riftPushDir = null;                  // plate-frame unit vector: straight away from that partner, fixed at the split
+        this.riftHinge = null;                    // {from, to}, plate-frame unit vectors shared by both halves: the rift's open end and
+                                                  // its far end — the two stay pinned near the far end while the rift unzips (step/forces.js)
         // Slabs and margins (step/boundaries.js, step/backarc.js)
         this.flatSlab = false;                    // the slab under this plate's trench is flat right now
         this.flatSlabKm = 0;                      // slab gone down flat since the slab flattened: how far inland the Laramide belt reaches

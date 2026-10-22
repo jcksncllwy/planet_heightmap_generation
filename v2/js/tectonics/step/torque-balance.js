@@ -68,6 +68,12 @@ function balancedRotation(world, plate, load, omegaOf) {
             for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) D[3 * i + j] += ck * a[i] * a[j]; T[i] += ck * oa * a[i]; }
         }
     }
+    // rift hinge, a pin:  F = −c v_rel at r — the halves turn about it (step/forces.js riftHinge)
+    for (const { r, other, c } of load.hinges) {
+        addProjector(D, r, c);
+        const o = omegaOf[other], ro = r[0] * o[0] + r[1] * o[1] + r[2] * o[2];
+        for (let i = 0; i < 3; i++) T[i] += c * (o[i] - r[i] * ro);
+    }
     return solve3(D, T);
 }
 
