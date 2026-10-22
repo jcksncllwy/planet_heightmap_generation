@@ -171,6 +171,32 @@ export const CIV = {
     // scalar stress); a polity with all three tiers above the village is a state (Wright & Johnson 1975)
     tiers: [150, 500, 2500, 15000],
 
+    // ── good and bad years (climate-var.js): the planet's climate run again under its modes of variability ──
+    varGridDeg: 2,              // the ensemble's climate grid (°): coarse is enough for rain belts' shifts
+    modeWm2: 2,                 // one standard deviation of each mode's forcing (W/m²): calibrated on Earth's year-to-year
+                                //   rain (the Sahel ~25 %, India's monsoon ~10 %; CIV_SOURCES §Climate variability)
+    modeRho: 0.4,               // a mode's year-to-year persistence (lag-1 correlation): droughts come in runs
+    eventMm: 20,                // rain per storm: CV = 1/√(P/eventMm) (Conrad 1941's curve)
+    regionDeg: 2,               // a storm region (°): one year's storms are shared over it
+    fuW: 2.6,                   // Fu's runoff curve's shape (Zhang et al. 2004: ~2.6 on average)
+    riverSnapKm: 60,            // a world river point takes the strongest routed flow within this
+    // a year's harvest against a normal one, and what the settled do about it (sim.js)
+    floodHigh: 1.4,             // a flood this far above the usual breaks the banks: the river's harvest falls …
+    floodDamage: 1,             // … by this per unit of flood beyond it (the Nile's high floods: Bell 1970; ours)
+    aquaticSteady: 0.5,         // settled foragers by water: this share of their food (fish, fowl, shellfish) is steady
+    storeYears: 1,              // farmers store up to a year's food (Halstead & O'Shea 1989: the normal surplus) …
+    storeYearsForagers: 0.5,    // … settled foragers half that
+    famineDeath: 0.3,           // deaths per year of food short beyond the store (Ó Gráda 2009's famines: ~5–15 % dead in
+                                //   one or two years of a quarter to a half short; ours in form)
+    famineMaxYear: 0.5,         // at most this share dies in one year
+
+    // ── disease (disease.js): a share of the people a place would hold ──
+    filterWarm: 0.5,            // the parasites pass only through country this suited to transmission by its warmth
+    feverLoss: 0.25,            // vector fever where fully suited (ours: malaria's share of deaths where holoendemic,
+                                //   ~a quarter of children's; Carter & Mendis 2002)
+    snailLoss: 0.1,             // snail fever on warm irrigated land (ours)
+    foragerExposure: 0.3,       // foragers on the move are this exposed (Livingstone 1958: settled farming made malaria)
+
     // ── Phase 4: polities, by war and collapse (polity.js), every polityStepYears ──
     polityStepYears: 100,
     townDriftKm: 40,            // a town's site moving this far (land km) is the same town
@@ -190,6 +216,12 @@ export const CIV = {
     // δ₀ + δ_s·size, without its traits' δ_a)
     collapseBase: 0.05,
     collapsePerTown: 0.01,
+    // famine: a century's famine deaths (share of the people) beyond the place's norm (a running mean over
+    // famineNormYears) raise war's odds × (1 + warFamine × it) and add collapseFamine × it to the collapse rate (ours,
+    // after Zhang et al. 2007, Hsiang et al. 2013 and Turchin & Nefedov 2009)
+    famineNormYears: 500,
+    warFamine: 10,
+    collapseFamine: 3,
 };
 
 /** Literature ranges each constant may be tuned within (Earth test, plans/CIV_PLAN.md §6). */

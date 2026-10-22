@@ -312,8 +312,12 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                     }
                 }
             }
+            // (an anomaly's forcing, W/m², for the civ layer's climate ensemble (civ/climate-modes.js): `hemi` warms the
+            // north and cools the south, most at 45° — sin 2φ; `land` warms land against the sea. Off by default)
+            const fHemi = ctx.options?.forcing?.hemi ?? 0, fLand = ctx.options?.forcing?.land ?? 0;
             for (let c = 0; c < G; c++) {
                 F0[c] = F0[c] / NT - P.TEMP_OLR_A + (qEbm && !qAt ? qEbm[c] * (1 - landFrac[c]) : 0); F1r[c] /= NT; F1i[c] /= NT; F2r[c] /= NT; F2i[c] /= NT;
+                if (fHemi || fLand) F0[c] += fHemi * Math.sin(2 * g.lat[Math.floor(c / w)] * Math.PI / 180) + fLand * landFrac[c];
                 const Cs = Co * (1 - seaIceYear[c]) + Cl * seaIceYear[c];            // frozen sea stores little heat
                 C[c] = landFrac[c] * Cl + (1 - landFrac[c]) * Cs;
             }

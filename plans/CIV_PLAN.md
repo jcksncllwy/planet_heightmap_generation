@@ -349,11 +349,50 @@ These are substrate and farming-spread problems.
 - Irrigation now needs 6+ months above 10 °C, full at 8. This dropped the Volga and Ural deltas, which led the world at 5.5 ka under [4, 7].
 - State membership flickers century to century (wars and collapses), so single-run spot checks are noisy.
 
+### Good and bad years, famine and disease (2026-10-22)
+
+Variability comes from the planet's own climate model, not noise on the yields (`climate-var.js`):
+- **Ensemble:** the climate is re-run under ±1 σ of two forcings, a hemispheric contrast (the rain belt follows the warmer
+  hemisphere) and a land–sea contrast (the monsoons). That's a small, default-off forcing hook in `climate/temperature.js`.
+- **Each cell's response** to each swing is its share of the year-to-year rain.
+- **Storms** add a dry place's chanciness (Conrad's curve).
+- **Rivers:** each run's runoff is routed down the land, so a river's flood answers its catchment's rain.
+- **What's random:** only the timing (a red-noise series of the swings).
+- **Earth, untuned:** rain CVs match observed ones (Sahel 0.25, India 0.19, Baghdad 0.37, the loess 0.20); rivers are within
+  about ±0.1 (the Nile a little steady). No ENSO, so the Andes are too steady.
+
+Famine (`sim.js`):
+- The settled live year by year: harvests by the substrate's own curves, against their long-run means, with a store of a
+  year (half for settled foragers). The shortfall beyond the store kills.
+- Famine falls on marginal dry farming (the Levant, Greece) and the erratic Tigris–Euphrates at ~0.4–0.7 %/yr. The Nile
+  is far gentler.
+- Polities answer famine shocks (beyond each place's norm) with more war and collapse.
+
+Disease (`disease.js`):
+- **Vector fever:** Craig et al.'s malaria climate suitability, from each cell's twelve months; standing water (wetlands,
+  canals) breeds it in deserts.
+- **Snail fever** on warm irrigated land.
+- **The cold filter:** the parasites spread with people only through warm country and short crossings, so on Earth the
+  Americas have none (Beringia filtered them out), while New Guinea is reached.
+
+Earth with all three:
+- 3 states at 5.5 ka (Akkad/Kish, the Indus, the Egyptian delta), 5 at 5 ka (adding Susiana, the Jubba, the Senegal).
+- Disease removed the tropical false states (Burma, the Gezira, Nubia).
+- The Ganges and Mesoamerican centres are lost (both were off-record anyway).
+- Page: People ~18 s (was ~6), the ensemble's five runs in parallel workers.
+
 ## 8. Next
 
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
 2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
 3. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
-4. Phase 4, next: rain-fed intensification (loess, the Yellow River; Erlitou is still a miss); the Indus too early (flood-
+4. A river network for the civ layer. Rebuild the reaches' order and junctions from the finish's river output
+   (start/cell, which `civWorldFromFinish` drops today) and HydroRIVERS' NEXT_DOWN (dropped by the Earth loader). Uses:
+   - upstream/downstream travel costs (ORBIS);
+   - basins as units (the upstream–downstream water conflict of Lagash and Umma);
+   - flood routing on the world's own rivers, in place of climate-var.js's coarse drainage.
+5. Long climate change from orbital forcing: the end of the African Humid Period ~5.5 ka pushed people into the Nile
+   valley (Kuper & Kröpelin 2006). It needs eccentricity and precession in climate/insolation.js.
+6. Phase 4, next: rain-fed intensification (loess, the Yellow River; Erlitou is still a miss); the Indus too early (flood-
    recession farming, not canals?); polities feeding back on people (war deaths, a state's canals); a states count averaged
    over seeds — then trade along settle.js's costs and metallurgy.

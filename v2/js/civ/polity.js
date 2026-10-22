@@ -14,6 +14,10 @@
 //             so — Lugalzagesi's Umma taking Uruk's).
 //   collapse  a polity breaks up, the likelier the more towns it holds (Turchin et al. 2013's disintegration, without the
 //             cultural traits that hold it together — not modelled yet).
+//   famine    a century's famine deaths (sim.js) beyond what the place is used to (its running norm: hardship that is
+//             usual is planned for; a shock is not — Hsiang et al. 2013 find conflict rising with the anomaly) make war
+//             likelier between hungry neighbours (Zhang et al. 2007: war follows harvest shortfalls) and break polities
+//             up (Turchin & Nefedov 2009's secular cycles).
 //   state     a polity holding all three tiers above the village (Wright & Johnson 1975).
 //
 // Deterministic: the same world and history give the same polities.
@@ -39,6 +43,7 @@ export class Polities {
         this.nextId = 0; this.tick = 0;
         this.towns = []; this.polities = new Map();
         this.exit = new Float32Array(w.mesh.numCells);
+        this.famineNorm = new Float32Array(w.mesh.numCells);     // (each place's usual famine a step: a running mean)
     }
 
     /** A hashed chance in [0, 1) for this tick and two numbers: the same each run. */
@@ -51,10 +56,18 @@ export class Polities {
     /**
      * One step of `years`: the towns as they now are, then wars and collapses.
      * @param density persons/km² per cell; @param life sim.js Life per cell; @param K what farming feeds per cell (persons/km²)
+     * @param famine each cell's famine deaths since the last step, as a share of its people (or null)
      */
-    step(density, life, K, years) {
+    step(density, life, K, years, famine = null) {
         const { w, sub, C, net, polityOf } = this, { mesh } = w, n = mesh.numCells, xyz = mesh.xyz;
         this.tick++;
+        // (famine beyond the usual: the shock, then the norm moves toward it)
+        let shock = null;
+        if (famine) {
+            shock = new Float32Array(n);
+            const norm = this.famineNorm, a = Math.min(1, years / C.famineNormYears);
+            for (let c = 0; c < n; c++) if (famine[c] > 0 || norm[c] > 0) { shock[c] = Math.max(0, famine[c] - norm[c]); norm[c] += a * (famine[c] - norm[c]); }
+        }
         // ── the towns now; each keeps its polity, a new one is its own ──
         const T = townsOf(w, sub, density, life, net, C), isTown = new Int32Array(n).fill(-1);
         T.forEach((t, i) => { isTown[t.cell] = i; });
@@ -119,7 +132,8 @@ export class Polities {
         for (const pr of pairs.values()) {
             const pA = P.get(pr.a), pB = P.get(pr.b);
             if (!pA || !pB || taken.has(pr.ta.cell) || taken.has(pr.tb.cell)) continue;
-            const press = (pressure(pr.ta.cell) + pressure(pr.tb.cell)) / 2;
+            const hunger = shock ? (shock[pr.ta.cell] + shock[pr.tb.cell]) / 2 : 0;
+            const press = (pressure(pr.ta.cell) + pressure(pr.tb.cell)) / 2 * (1 + C.warFamine * hunger);
             st.press += press / pairs.size;
             if (this.chance(pr.ta.cell, pr.tb.cell) >= 1 - Math.exp(-C.warPerCentury * press * years / 100)) continue;
             // (either side may attack; it attacks the other's nearest town)
@@ -145,7 +159,9 @@ export class Polities {
         // ── collapse: the bigger, the likelier ──
         for (const p of P.values()) {
             if (p.towns.length < 2) continue;
-            const rate = C.collapseBase + C.collapsePerTown * (p.towns.length - 1);
+            let hunger = 0;
+            if (shock) { for (const t of p.towns) hunger += shock[t.cell] * t.pop; hunger /= Math.max(1, p.people); }
+            const rate = C.collapseBase + C.collapsePerTown * (p.towns.length - 1) + C.collapseFamine * hunger;
             if (this.chance(p.capital.cell, p.id) >= 1 - Math.exp(-rate * years / 100)) continue;
             st.collapses++;
             for (const t of p.towns) polityOf[t.cell] = this.nextId++;

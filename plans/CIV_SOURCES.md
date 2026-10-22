@@ -30,6 +30,7 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Irrigated yield 1500 kg/ha, seed ratio 1:25 | Jacobsen & Adams 1958; Ur III records | Direct | [L] |
 | Persons per km² of farmland = yield·(1−fallow)·(1−1/seed ratio)/275 kg | Grain need 250–300 kg/person/yr (Ur III rations ~0.8 kg/day) | Direct arithmetic | [L] |
 | Irrigable land: broad plains within 120 km of a ≥150 m³/s river, ≤150 m above base level, ≤40 m above the river, gentle slope; floodplain width ∝ √discharge | Ours, from Sumer's and the Nile's geometry | Ours; calibrated so Earth's top cradles are Sumer, Egypt and the Indus | — |
+| Vector-fever climate per cell (from the twelve months: `vector.rain`, `vector.warm`) | See §Disease | | |
 | Irrigation only where the season is long: none under 6 months above 10 °C, full from 8 | Ours: the canal civilisations were all warm (Sumer ~9, Egypt 12, the Indus 10+) | Ours; set to drop the Volga and Ural deltas (~6), which grew states on Earth at [4, 7] | — |
 
 ## Cradles (`v2/js/civ/cradles.js`)
@@ -92,6 +93,42 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Size tiers 150 / 500 / 2500 / 15000 | Kosse 1990 (150, 500, 2500); Johnson 1982 scalar stress (×6); Alberti 2014 (127) | Direct thresholds, extended ×6 | [L], Alberti [V] |
 | State = a polity with 3 tiers above the village | Wright & Johnson 1975 | Direct definition | [L] |
 
+## Climate variability (`v2/js/civ/climate-var.js`; the forcing hook in `v2/js/climate/temperature.js`)
+
+The planet's own climate model, run again under forcings; only the timing of the swings is drawn at random.
+
+| Rule | Source | Fidelity | Checked |
+|---|---|---|---|
+| Year-to-year rain from two modes of the climate: one hemisphere warmer than the other (the rain belt follows it), and land warmer against the sea (monsoon strength). Each cell's response is the Orogen climate re-run at ±1 σ of each, on a 2° grid | Folland, Palmer & Parker 1986 (Sahel rain and the interhemispheric sea-temperature contrast); the ITCZ following the warmer hemisphere (Chiang & Friedman 2012) | Adapted: the modes as uniform forcings (sin 2φ hemispheric; land share), not observed patterns. No ENSO: the Andes and Pacific coasts come out too steady | [L] |
+| One σ = 2 W/m² of forcing | Ours: calibrated on Earth's year-to-year rain, not tuned further (modelled CV / observed: Sahel 0.25 / ~0.25, central India 0.19 / ~0.2, Baghdad 0.37 / ~0.4, Xi'an 0.20 / ~0.2, London 0.18 / ~0.15, Jerusalem 0.21 / ~0.3) | Ours | [L] targets |
+| The modes persist: red noise, lag-1 correlation 0.4 | Sahel droughts' multi-year runs (Nicholson 2013) | Ours in value | [L] |
+| Storms: CV = 1/√(P/20 mm), shared over a 2° region | Conrad 1941's curve of variability against mean rain; a Poisson count of storms reproduces it with ~20 mm storms | Adapted | [L] |
+| Runoff by Fu's curve, w = 2.6 | Fu 1981; Zhang et al. 2004 (w ≈ 2.6) | Direct | [L] |
+| Each mode's runoff routed down the land (priority flood, steepest descent); storms average out over a catchment; world river points snapped to the strongest routed flow within 60 km | Standard flow routing (the finish's own scheme, finish-hydro.js) | Ours: our own coarse routing (the world's river points carry no network yet) | — |
+| Modelled flood CV (observed): the Nile 0.14 (~0.2), the Euphrates 0.24 (~0.3), the Tigris 0.23 (~0.3), the Indus 0.21 (~0.15), the Yellow River 0.32 (~0.2), the Niger 0.36 (~0.25) | Gauge records, from memory: to check against GRDC | Check only | [L] |
+
+## Famine (`v2/js/civ/sim.js`)
+
+| Rule | Source | Fidelity | Checked |
+|---|---|---|---|
+| The settled live year by year on harvest and store; foragers move instead | Halstead & O'Shea 1989, *Bad Year Economics* (mobility, diversification, storage, exchange) | Adapted: storage only, for the settled | [L] |
+| Rain-fed harvest by the substrate's own yield ramp (200 → 450 mm); settled foragers' by the forager regression's own response to NPP, half their food (water's) steady | The substrate's rules (above) | Ours in combination | — |
+| The river's harvest: the land watered follows the flood; a flood over 1.4× the usual does damage | Bell 1970 (low Niles and famine); Butzer 1976 (basin irrigation's area set by the flood) | Ours in form | [L] |
+| Each year's harvest against its own long-run mean: the substrate's yields are averages over good and bad years | Halstead 1995 and Ur III yields are means | Ours (normalisation) | — |
+| Farmers store up to a year's food, settled foragers half a year | Halstead & O'Shea 1989 (the normal surplus) | Ours in value | [L] |
+| Deaths: 0.3 per year of food short beyond the store, at most half a year | Ó Gráda 2009, *Famine: A Short History* (5–15 % dead in major famines) | Ours; calibrated loosely | [L] |
+| Outcome: famine deaths ~0.4–0.7 %/yr on marginal dry farming and the erratic Tigris–Euphrates, far less on the Nile | Emergent; the Nile's regularity against Mesopotamia's erratic floods is the classic contrast | Check | [L] |
+
+## Disease (`v2/js/civ/disease.js`)
+
+| Rule | Source | Fidelity | Checked |
+|---|---|---|---|
+| Vector fever: the best 5-month run, each month min(temperature: 0 at 18 °C, 1 at 22–32, 0 at 40; rain: 0 at 0, 1 at 80 mm) | Craig, Snow & le Sueur 1999 (the MARA climate suitability for *P. falciparum*) | Direct form, from each cell's twelve months | [L] |
+| Standing water (wetlands, irrigation) breeds it in a dry climate: there the warm months alone decide | Craig et al. 1999 (rivers and irrigation as exceptions in deserts) | Adapted | [L] |
+| The cold filter: the parasites spread from the human origin only through country warm enough for transmission (suitability ≥ 0.5 by warmth), and across water people cross. Result on Earth: none in the Americas; New Guinea and northern Australia reached | The cold-filter argument for the Americas' freedom from Old World tropical disease before 1492 (e.g. Bates 1916–type arguments; reviewed by Reinhard et al. 2013 for parasites) | Ours as a rule | [L] |
+| Losses: vector fever 25 % of the people a place would hold, snail fever 10 % on warm irrigated land; mobile foragers 30 % as exposed | Carter & Mendis 2002 (malaria's historical burden); Livingstone 1958 (settled farming made malaria); Kloos & David 2002 (schistosomiasis in Egypt) | Ours in value | [L] |
+| Not modelled: tsetse (its range is Africa's by biogeography, not climate: it cannot be derived from the climate without pinning it); crowd diseases (need towns with their own demography); the Mediterranean's milder vivax malaria | — | — | — |
+
 ## Polities (`v2/js/civ/polity.js`)
 
 Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities do not feed back on the people yet.
@@ -109,6 +146,7 @@ Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities
 | A new town in a bigger town's supply reach (`importKm`) belongs to it | Ours, from the city-state's hinterland of dependent towns (Adams 1981, *Heartland of Cities*: the Uruk-period settlement hierarchy) | Ours | [L] |
 | A town whose site moves under 40 land-km is the same town (keeps its polity) | Ours (bookkeeping) | Ours | — |
 | Collapse: 5 % a century, + 1 % for each town past the capital; a collapsed polity's towns each go their own way | Turchin et al. 2013 (δ₀ + δ_s·size; the traits' δ_a not modelled) | Adapted: rates ours, set so Sumer holds several city-states at 5 ka | [L] |
+| A century's famine deaths beyond the place's norm (a 500-year running mean) raise war's odds × (1 + 10 × it) and add 3 × it to the collapse rate | Zhang et al. 2007, *PNAS* (war frequency follows harvest shortfalls); Hsiang, Burke & Miguel 2013, *Science* (conflict rises with the climate anomaly); Turchin & Nefedov 2009, *Secular Cycles* | Ours in form and value; the norm keeps usual hardship from breaking every polity | [L] |
 | State = a polity holding towns of the three tiers above the village | Wright & Johnson 1975 (three levels of administrative hierarchy above the village) | Direct definition, read off settlement size | [L] |
 
 ## Data for the Earth test (`tuning/civ/`)

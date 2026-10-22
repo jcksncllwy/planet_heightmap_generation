@@ -334,6 +334,8 @@ js/civ/            the civ layer (plans/CIV_PLAN.md): civ-config (its constants,
                    in km/yr over the mesh, waiting at barriers), sim (the people: density and way of life per cell, 25-yr steps),
                    settle (towns fed by their fields and by water-borne surplus),
                    polity (polities by war, circumscription and collapse, kept century to century; states),
+                   climate-var (good and bad years: the climate re-run under its modes; rivers routed) + climate-run-worker,
+                   disease (vector fever and snail fever from the months, standing water and the cold filter),
                    civ-page + civ-worker (the Evolution page's People layer: a finish's world resampled to 160K cells, run in a
                    worker, one byte per cell and frame)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),

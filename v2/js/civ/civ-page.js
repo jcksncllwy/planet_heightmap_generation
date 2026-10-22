@@ -8,6 +8,7 @@ import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
 import { civSubstrate } from './substrate.js';
 import { runCivSim, byteDensity, Life } from './sim.js';
+import { climateVariability } from './climate-var.js';
 import { TownFlag } from './polity.js';
 import { CIV } from './civ-config.js';
 
@@ -31,13 +32,14 @@ export function civWorldFromFinish(out) {
     // (the rivers copied: the page is sent the moment's own)
     const rivers = { lat: R.lat.slice(), lon: R.lon.slice(), q: R.q.slice(), regime: R.regime?.slice() ?? null, farFed: R.farFed?.slice() ?? null };
     const fine = { mesh: out.mesh, z: out.z, ocean: out.ocean, lake: out.lake, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
-        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null };
+        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null };
     if (out.mesh.numCells <= PAGE_CELLS) return fine;
     const mesh = coarse ??= buildSimMesh(PAGE_CELLS, MESH_SEED), n = mesh.numCells, xyz = mesh.xyz, src = new Int32Array(n);
     for (let c = 0; c < n; c++) src[c] = out.mesh.index.nearest(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]);
     const take = a => { if (!a) return null; const b = new a.constructor(n); for (let c = 0; c < n; c++) b[c] = a[src[c]]; return b; };
     return { mesh, z: take(fine.z), ocean: take(fine.ocean), lake: take(fine.lake), koppen: take(fine.koppen), tAnnual: take(fine.tAnnual), pAnnual: take(fine.pAnnual),
-        stats: Object.fromEntries(STAT_KEYS.map(k => [k, take(fine.stats[k])])), rivers: fine.rivers, loess: take(fine.loess), erg: take(fine.erg), ice: take(fine.ice) };
+        stats: Object.fromEntries(STAT_KEYS.map(k => [k, take(fine.stats[k])])), rivers: fine.rivers, loess: take(fine.loess), erg: take(fine.erg), ice: take(fine.ice),
+        vector: fine.vector ? { rain: take(fine.vector.rain), warm: take(fine.vector.warm) } : null };
 }
 
 /**
@@ -46,14 +48,14 @@ export function civWorldFromFinish(out) {
  *   towns: [Float32Array [lat, lon, people, TownFlag, polity] × each town of 2500+, or null] per frame, centres,
  *   origin: [lat, lon], pix: Int32Array, pixW, ms}}
  */
-export function peopleOfWorld(w, width, onProgress = () => {}) {
+export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
     const t0 = performance.now();
-    const sub = civSubstrate(w), n = w.mesh.numCells;
+    const sub = civSubstrate(w), n = w.mesh.numCells, vary = climateVariability(w, sub, CIV, runs);
     const count = Math.floor(CIV.originBP / CIV.frameYears) + 1, frames = new Uint8Array(count * n);
     const bp = new Float32Array(count), people = new Float64Array(count), farmers = new Float64Array(count);
     let f = 0;
     const towns = [];
-    const res = runCivSim(w, sub, { onFrame: fr => {
+    const res = runCivSim(w, sub, { vary, onFrame: fr => {
         if (f >= count) return;
         const o = f * n;
         for (let c = 0; c < n; c++) if (fr.density[c]) frames[o + c] = peopleByte(byteDensity(fr.density[c]), fr.life[c]);

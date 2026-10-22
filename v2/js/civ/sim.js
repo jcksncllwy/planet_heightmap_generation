@@ -12,6 +12,11 @@
 //   Phase 3  farming spreads from each centre as a front (~1 km/yr, leapfrogging along coasts and rivers), only into
 //            country its package grows in (Köppen envelopes: the axes come out by themselves); farmers grow faster and to
 //            more; on a dry alluvium they learn irrigation, and its far greater yields
+//   disease  vector fever and snail fever cost a share of the people where the months, the standing water and the
+//            parasites' way there allow (disease.js)
+//   famine   the settled live year by year on their harvests (climate-var.js: the planet's own good and bad years, the
+//            rivers' floods with their catchments' rain), keep a store, and die when it runs out (Halstead & O'Shea
+//            1989); foragers move instead
 //
 // Deterministic: the same world and options give the same history. Frames (density and way of life per cell) every
 // `frameYears`, for the timeline.
@@ -22,6 +27,8 @@ import { edgeLengths, frontArrival, offshoreKm, schedule, toblerFactor } from '.
 import { spreadKm } from '../core/min-heap.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { Polities } from './polity.js';
+import { climateVariability, modeSeries, modeLn, normal } from './climate-var.js';
+import { parasiteRange, diseaseLoss } from './disease.js';
 
 const rise = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const DEG = 180 / Math.PI;
@@ -38,10 +45,12 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
  * @param w    the world (civ-cradles.mjs worldOf / earth-world.mjs): mesh, z (km; the sea floor's depth where known), ocean, lake, koppen
  * @param sub  civSubstrate(w)
  * @param opts { origins: [cell] (default: the richest savanna of the biggest landmass), endBP (default 0), onFrame(frame),
- *   polities (default true: towns and polities, polity.js, every polityStepYears once there are farmers), C }
+ *   polities (default true: towns and polities, polity.js, every polityStepYears once there are farmers),
+ *   famine (default true: good and bad years, climate-var.js), vary (climateVariability(w, sub), if already made),
+ *   disease (default true: disease.js), C }
  * @returns { frames, centres, totals, arrivalBP (Float32, per cell; NaN never), farmBP (per cell) }
  */
-export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, polities = true, C = CIV } = {}) {
+export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, polities = true, famine = true, vary = null, disease = true, C = CIV } = {}) {
     const { mesh, z, ocean, lake, koppen } = w, n = mesh.numCells, { adjOffset, adjList } = mesh, len = edgeLengths(mesh);
     const cellKm2 = sub.cellKm2, T0 = C.originBP;
     const tOf = bp => T0 - bp, bpOf = t => T0 - t;
@@ -129,6 +138,11 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
     };
     frontArrival(mesh, len, arrival, foragerSpeed, null, Infinity, opensAt);
 
+    // ── disease: where the parasites reached with people (the cold filter), and what each way of life loses ──
+    const range = disease ? parasiteRange(w, origins,
+        (a, b) => (home[b] >= 0 && dry(b, minSeaKm)) || (isWater(b) && 2 * offshore[b] <= schedule(C.crossingKm, C.holoceneBP)), C, c => (isWater(c) ? -1 : home[c])) : null;
+    const health = (c, settled, irrigating) => (range ? 1 - diseaseLoss(w, home[c], range, sub.wetland[home[c]] > 0 || irrigating ? 1 : 0, irrigating, settled, C) : 1);
+
     // ── Phase 2–3 state ──
     const bestPkg = new Int8Array(n).fill(-1), bestWild = new Float32Array(n);
     for (const c of cells) PACKAGES.forEach((p, i) => { const v = sub.wild[p.id][c]; if (v > bestWild[c]) { bestWild[c] = v; bestPkg[c] = i; } });
@@ -162,11 +176,83 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
     const chance = (c, step) => { let h = Math.imul(c ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(step + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
     const aquaticHome = c => sub.wetland[home[c]] > 0 || sub.coastal[home[c]] || sub.lakeside[home[c]];
     /** What farming feeds here, persons/km² of country: fields on a share of it, irrigated on the alluvium once learnt. */
+    let kRain = 0, kIrr = 0;                    // (farmK's two parts: rain-fed, and watered by the river)
     const farmK = (c, t) => {
         const h = home[c], rain = C.cultivatedShare * sub.farmDry[h];
         const known = irrigKnown[farmPkg[c]], irr = sub.irrig[h] > 0 && t >= known
             ? sub.irrigShare[h] * C.alluviumShare * sub.farmWet[h] * Math.min(1, Math.max(0.05, (t - known) / C.irrigationRampYears)) : 0;
-        return rain * (1 - sub.irrigShare[h]) + irr + (irr ? 0 : rain * sub.irrigShare[h]);
+        kRain = rain * (1 - sub.irrigShare[h]) + (irr ? 0 : rain * sub.irrigShare[h]); kIrr = irr;
+        return kRain + kIrr;
+    };
+
+    // ── good and bad years: the settled live year by year on their harvests and their store ──
+    const V = famine ? (vary ?? climateVariability(w, sub, C)) : null;
+    const modes = V ? modeSeries(Math.ceil(tOf(endBP)) + C.stepYears + 1, C) : null;
+    const store = new Float32Array(n), famineShare = new Float32Array(n);
+    const famineCentury = new Float32Array(n);   // (each cell's famine deaths, summed over the run: a diagnostic)
+    const regionNoise = V ? new Float32Array(V.regions * C.stepYears) : null, regionStamp = V ? new Int32Array(V.regions).fill(-1) : null;
+    const smooth = (a, b, x) => { const u = Math.min(1, Math.max(0, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+    const nppP = p => C.nppMax * (1 - Math.exp(-0.000664 * p));
+    const riverNoise = new Map();               // (a river's storms, per year of this step: shared by everyone it waters)
+    let riverNoiseStep = -1, famineDead = 0;
+    const meanF = new Float32Array(3 * n).fill(NaN), MEAN_DRAWS = 64;
+    /** One step's years for a settled cell: each year's harvest against a normal one — rain-fed fields by the substrate's
+     *  own yield ramp, the river's by its flood (the land watered follows it; a flood far above the usual breaks the
+     *  banks and the works), the wild by the forager regression's own response to the year's NPP (water foods steady) —
+     *  its store, its famines. */
+    const liveYears = (c, t, step, farming, wildK) => {
+        const h = home[c], y0 = Math.round(t), cap = farming ? C.storeYears : C.storeYearsForagers;
+        if (!farming || farmK(c, t) < wildK) { kRain = 0; kIrr = 0; }
+        const kR = kRain, kI = kIrr, Kw = kR + kI > 0 ? 0 : wildK;
+        // (what stays the same all step)
+        const P = w.pAnnual[h], r = V.region[h], cv = V.rainCV[h];
+        if (regionStamp[r] !== step) { regionStamp[r] = step; for (let k = 0; k < C.stepYears; k++) regionNoise[r * C.stepYears + k] = normal(r, y0 + k); }
+        const ramp0 = kR > 0 ? smooth(C.rainfedMinMm, C.rainfedFullMm, P) : 0, lnFull = Math.log(C.rainfedFullMm / Math.max(1, P));
+        const src = kI > 0 ? sub.irrigSrc[h] : -1;
+        let rn = null;
+        if (src >= 0) {
+            if (riverNoiseStep !== step) { riverNoise.clear(); riverNoiseStep = step; }
+            rn = riverNoise.get(src);
+            if (!rn) { rn = new Float32Array(C.stepYears); for (let k = 0; k < C.stepYears; k++) rn[k] = V.riverCV[src] * normal(src + 7 * n, y0 + k); riverNoise.set(src, rn); }
+        }
+        const tl = Kw > 0 ? C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h])) : 0, n0 = Kw > 0 ? Math.min(tl, nppP(P)) : 0;
+        const steady = aquaticHome(c) ? C.aquaticSteady : 0, kWild = C.foragerSlope * 0.45;
+        // (the substrate's yields are averages over good years and bad — Halstead's, Ur III's — so each year's harvest is
+        // against its own long-run mean: capacity stays what the land feeds on average)
+        if (meanF[3 * c] !== meanF[3 * c]) {
+            let mR = 0, mI = 0, mW = 0;
+            for (let k = 0; k < MEAN_DRAWS; k++) {
+                const aH = normal(k, 101), aL = normal(k, 102), lnx = modeLn(V.rainLn, h, aH, aL) + cv * normal(k, 103);
+                mR += ramp0 > 0 ? (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / ramp0) : 1;
+                const s0 = sub.irrigSrc[h];
+                if (s0 >= 0) { const q = Math.exp(modeLn(V.riverLn, s0, aH, aL) + V.riverCV[s0] * normal(k, 104)); mI += q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1; }
+                else mI += 1;
+                const t1 = C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h]));
+                mW += Math.pow(10, kWild * (Math.min(t1, nppP(P * Math.exp(lnx))) - Math.min(t1, nppP(P))));
+            }
+            meanF[3 * c] = Math.max(0.05, mR / MEAN_DRAWS); meanF[3 * c + 1] = Math.max(0.05, mI / MEAN_DRAWS); meanF[3 * c + 2] = Math.max(0.05, mW / MEAN_DRAWS);
+        }
+        const mR = meanF[3 * c], mI = meanF[3 * c + 1], mW = steady + (1 - steady) * meanF[3 * c + 2];
+        let dd = d[c], st = store[c], dead = 0;
+        for (let j = 0; j < C.stepYears; j++) {
+            const y = y0 + j, aH = modes[2 * y], aL = modes[2 * y + 1];
+            const lnx = modeLn(V.rainLn, h, aH, aL) + cv * regionNoise[r * C.stepYears + j];
+            let food = 0;
+            if (kR > 0) food += kR * (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / ramp0) / mR;
+            if (src >= 0) {
+                const q = Math.exp(modeLn(V.riverLn, src, aH, aL) + rn[j]);
+                food += kI * (q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1) / mI;
+            } else food += kI;
+            if (Kw > 0) food += Kw * (steady + (1 - steady) * Math.pow(10, kWild * (Math.min(tl, nppP(P * Math.exp(lnx))) - n0))) / mW;
+            st += food / Math.max(1e-12, dd) - 1;
+            if (st > cap) st = cap;
+            if (st < 0) {
+                const loss = Math.min(C.famineMaxYear, C.famineDeath * -st);
+                dead += dd * loss; dd *= 1 - loss; st = 0;
+            }
+        }
+        store[c] = st;
+        if (dead > 0) { famineShare[c] += dead / d[c]; famineCentury[c] += dead / d[c]; d[c] = dd; famineDead += dead * cellKm2; }
     };
 
     const end = tOf(endBP);
@@ -183,7 +269,8 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
             // the sea over the shelves: their people move to the coast that feeds them
             if (!dry(c, seaKm)) { if (d[c] > 0) { d[home[c]] += d[c]; d[c] = 0; } life[c] = Life.EMPTY; continue; }
             const farming = farmPkg[c] >= 0;
-            const K = farming ? Math.max(farmK(c, t), forage(c)) : forage(c);
+            // (what the land feeds, less what its diseases take: by the way of life the cell had)
+            const K = (farming ? Math.max(farmK(c, t), forage(c)) : forage(c)) * health(c, life[c] >= Life.SEDENTARY, life[c] === Life.IRRIGATOR);
             if (d[c] === 0) d[c] = C.seedShare * K;
             const r = farming ? C.rFarmer : C.rForager;
             d[c] = K > 0 ? Math.max(0, d[c] + r * d[c] * (1 - d[c] / K) * C.stepYears) : d[c] * 0.5;
@@ -210,6 +297,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
                     }
                 }
             }
+            if (V && life[c] >= Life.SEDENTARY && d[c] > 0) liveYears(c, t, step, farming, forage(c));
             people += d[c] * cellKm2;
             if (farming) farmersPeople += d[c] * cellKm2;
         }
@@ -225,11 +313,13 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
             for (let i = 0; i < PACKAGES.length; i++) if (farmArrival[i][c] <= t && farmArrival[i][c] < bt) { bt = farmArrival[i][c]; bi = i; }
             if (bi >= 0) { farmPkg[c] = bi; farmT[c] = Math.max(bt, arrival[c]); }
         }
-        totals.push({ bp, people: Math.round(people), farmers: Math.round(farmersPeople) });
+        totals.push({ bp, people: Math.round(people), farmers: Math.round(farmersPeople), famineDead: Math.round(famineDead) });
+        famineDead = 0;
         // towns and polities, every polityStepYears once there are farmers
         if (pol && farmersPeople > 0 && t >= nextPolity - 1e-9) {
             for (const c of cells) Kc[c] = farmPkg[c] >= 0 ? farmK(c, t) : 0;
-            pol.step(d, life, Kc, anyFarmers ? C.polityStepYears : 0);
+            pol.step(d, life, Kc, anyFarmers ? C.polityStepYears : 0, famineShare);
+            famineShare.fill(0);
             anyFarmers = true;
             nextPolity = t + C.polityStepYears;
         }
@@ -245,7 +335,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
     }
     const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN);
     for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); }
-    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, origins, polities: pol };
+    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range };
 }
 
 /** Domestication cells, gathered into centres: the same package, within `km` of one another — each with its first date and its middle. */
