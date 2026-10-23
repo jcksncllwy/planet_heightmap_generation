@@ -64,11 +64,14 @@ export function growMarginIsles(world, dt) {
         B.marginTrenchKmMyr = (B.marginTrenchKmMyr ?? 0) + trench.length * km;
         B.erosiveTrenchKmMyr = (B.erosiveTrenchKmMyr ?? 0) + erosiveTrench * km;
         if (!trench.length) continue;
-        const { dist: trenchD, source: nearestTrench } = hopsFrom(mesh, trench, onPlate, Math.max(reachHops, erodeHops) + 1);
+        // (erosion measures from every margin trench cell; the fore-arc islands, as before, from the mature ones only)
+        const mature = trench.filter((c, i) => m.mature[i]);
+        const all = hopsFrom(mesh, trench, onPlate, Math.max(reachHops, erodeHops) + 1);
+        const { dist: trenchD, source: nearestTrench } = mature.length === trench.length ? all : hopsFrom(mesh, mature, onPlate, reachHops + 1);
         const erosive = c => (flags[nearestTrench[c]] & CrustFlag.EROSIVE) !== 0;
-        const matureAt = new Uint8Array(numCells); for (let i = 0; i < trench.length; i++) matureAt[trench[i]] = m.mature[i];
         // an erosive margin eats its coast (never a craton), back to marginErosionMaxGapKm from its trench
-        if (pErode > 0) {
+        if (pErode > 0 && erosiveTrench > 0) {
+            const trenchD = all.dist, erosive = c => (flags[all.source[c]] & CrustFlag.EROSIVE) !== 0;
             const coastCells = [];
             for (let c = 0; c < numCells; c++) {
                 if (!mask[c] || trenchD[c] < 0 || trenchD[c] >= erodeHops || !erosive(c)) continue;
@@ -88,7 +91,7 @@ export function growMarginIsles(world, dt) {
         // the fore-arc: sea between this coast and its trench, keeping the gap in front of the trench
         const raise = [];
         for (let c = 0; c < numCells; c++) {
-            if (!mask[c] || type[c] !== CrustType.OCEAN || (flags[c] & CrustFlag.TRENCH) || trenchD[c] < gapHops || landD[c] < 1 || landD[c] + trenchD[c] > reachHops + 1 || erosive(c) || !matureAt[nearestTrench[c]]) continue;
+            if (!mask[c] || type[c] !== CrustType.OCEAN || (flags[c] & CrustFlag.TRENCH) || trenchD[c] < gapHops || landD[c] < 1 || landD[c] + trenchD[c] > reachHops + 1 || erosive(c)) continue;
             let island = false, coast = false, edge = false;
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
                 const nb = adjList[k];

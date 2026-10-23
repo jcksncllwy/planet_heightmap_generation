@@ -14,6 +14,7 @@ const TUNABLES = [
     { id: 'erosiveConvergenceCmYr', label: 'A margin converging faster than this erodes', min: 2, max: 12, step: 0.5, unit: ' cm/yr' },
     { id: 'accretionSedimentKm', label: '…as does one with less sediment in its trench than', min: 0, max: 3, step: 0.1, unit: ' km' },
     { id: 'marginErosionKmPerMyr', label: '…their coast retreating at', min: 0, max: 10, step: 0.5, unit: ' km/Myr' },
+    { id: 'trenchDenudationKmPerMyr', label: 'The land draining into a trench wears down at', min: 0, max: 0.5, step: 0.01, unit: ' km/Myr' },
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
     { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
     { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast with age', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
@@ -21,9 +22,9 @@ const TUNABLES = [
 ];
 const CHECKLISTS = {
     erosion: [
-        'Driftia’s western coast is active all along, but in two kinds of stretches (Margins layer): EROSIVE (purple) and ACCRETIONARY (orange-red).',
-        'Off the accretionary stretches islands rise and grow into the coast (Crust type layer); along the erosive stretches there are none, and the coast retreats — by some 200–300 km over the run — while its mountain belt keeps forming on the new coast.',
-        'Which is which follows the trench: erosive where it is starved of sediment (little land upstream, dry latitudes) or the convergence is fast, accretionary where rivers off the land fill it. Cratons are never eaten.',
+        'Driftia’s western coast is active all along. Its trench converges slowly (~1–2.5 cm/yr), so the rivers off the continent keep it filled and most of it is ACCRETIONARY (Margins layer: orange-red); only a few stretches, and only now and then, turn EROSIVE (purple). Lower “A margin converging faster than this erodes” to ~2 cm/yr, or slow “The land draining into a trench wears down at”, to see long erosive stretches.',
+        'Off the accretionary stretches islands rise and grow into the coast (Crust type layer); along an erosive stretch there are none, and the coast retreats at the set rate while its mountain belt keeps forming on the new coast.',
+        'Which is which follows the trench: erosive where it is starved of sediment (little land upstream, dry latitudes, or convergence so fast it carries the fill away as it comes) or the convergence is fast, accretionary where rivers off the land fill it. Cratons are never eaten.',
     ],
     india: [
         'India reaches Asia at ~38 Myr. As they converge, India’s land in the overlap is consumed — it slides under Asia — so the land chart falls rather than rises through the collision.',

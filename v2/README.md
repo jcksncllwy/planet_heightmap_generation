@@ -216,6 +216,8 @@ js/tectonics/
                                     (belt spreading, underthrusting), wings (trench wings, island arcs — as wide as their distance from
                                     continents allows: a Mariana at sea, a Japan near land), margin-isles
                                     (fore-arc islands on accretionary margins, coast retreat on erosive ones),
+                                    sediment-subduction (the trench's sediment down the subduction channel: the
+                                    continent's sink at every active margin),
                                     rifting (when a continent rifts), backarc (slab rollback, back-arc seas),
                                     subduction-init (when a passive margin founders — between two plates, or inside a giant
                                     one: its old ocean then breaks away as a plate of its own), ocean-plates (the pre-history
@@ -660,6 +662,38 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   strike (`crestAlongVar` 0.4 over `crestAlongKm` 300), read on the belt's front line so nothing moves across the belt.
   ~6 % more synthesis time at 640K; steady detail kept (a half-cell turn: 97.1 % of coasts, land heights 0.91).
 Everything is to be tuned together at the end (developer); the measured impact of each step is in the plan.
+
+## The crust budget (2026-10-23)
+
+Continental crust grew ×1.14–1.23 over a 1200 Myr history; on Earth additions at arcs (~2.7 km³/yr) and losses
+(~3.2 km³/yr) about balance, and the Phanerozoic's net growth is "effectively nil" (Scholl & von Huene 2009). Measured
+per process and per km of overriding trench (area × `continentCrustKm`, 40 km), arcs maturing onto continents add
+~60–70 km³/Myr per km — Earth's rate (2.5 AU over ~42,000 km of ocean-margin trench ≈ 60) — and seams sealed at welds
+another ~15; erosive margins took ~15, underthrusting ~20–35, and nothing at all went down with the trench's sediment
+(Earth: ~24, ~40 % of the ~60 recycled at ocean margins). So:
+- **Sediment subduction** (`step/sediment-subduction.js`, its own ledger stage `sedimentSubduction`). At every active
+  continental margin the slab drags the base of the trench's fill down the subduction channel — about
+  `accretionSedimentKm` of it, which is why a trench with more than ~1 km of sediment accretes the rest (Clift & Vannucchi
+  2004; Cloos & Shreve 1988): F = v × min(h, 1 km) × the terrigenous share, km³/Myr per km of trench. It is booked as
+  continental area over `continentCrustKm` and taken from the coast facing the trench (`sedimentSubductionShare`: the
+  share lost for good, 1; 0 switches it off — mechanism `sedimentSubduction`).
+- **The trench's fill is a flux.** The land within `trenchSedimentReachKm` of the coast wears down at
+  `trenchDenudationKmPerMyr` (0.1 km/Myr; river basins by ¹⁰Be: median 0.054, mean 0.218 — Portenga & Bierman 2011) × its
+  latitude's erosion, and the fill stands at supply ÷ convergence: slow trenches off wet land fill, fast ones starve —
+  the correlation Clift & Vannucchi find. (Was `trenchTerrigenousKm`, a fixed thickness whatever the convergence, sampled
+  around the trench rather than behind its coast: a trench whose coast had retreated starved.)
+- **Erosive margins erode from their first convergence**: the slab-maturity gate (`marginIsleSlabKm`) now holds only the
+  fore-arc islands, and a trench cell no longer on a continental margin drops its EROSIVE flag. The 34 % of active coast
+  read erosive was partly young trenches never judged and stale flags; judged by trench length × time
+  (`world.budget.erosiveTrenchKmMyr ÷ marginTrenchKmMyr`), ~50–55 % of continental-margin trench is erosive (Earth ~57 %).
+- **Reports** (check-phase13): the crust's change over 0→500 and 500→1000 Myr against 0 ± 10 %; the erosive share of
+  margin trench; additions, losses, sediment and subduction erosion per km of trench against Scholl & von Huene (2009)
+  and Clift & Vannucchi (2004). The ledger check (check-invariants) holds `sedimentSubduction` to losing land only.
+
+Still open: only ~35–40 % of the engine's overriding trench lies off a continent (Earth: most of the Pacific rim), so
+sediment subduction stays well below Earth's per km of trench; intra-oceanic fore-arcs (Tonga, the Marianas) do not
+erode, so the arcs that later mature onto continents keep all their crust; and the seams filled at welds add crust no
+Earth process makes.
 
 ## Conventions
 

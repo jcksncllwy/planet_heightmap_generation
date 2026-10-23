@@ -34,13 +34,18 @@ section('erosive and accretionary margins');
     for (const f of r.frames) for (let w = 0; w < numCells; w++) if ((f.margin[w] & Margin.TYPE) === Margin.ACTIVE) { if (f.margin[w] & Margin.EROSIVE) erosive++; else accretionary++; }
     const share = erosive / Math.max(1, erosive + accretionary);
     // (a stretch is erosive where its convergence is fast or its trench is starved of sediment — Clift & Vannucchi 2004)
-    report('share of active coast that is erosive', 100 * share, { earth: [50, 60], unit: ' %', digits: 0, source: '~57 % of margins (Clift & Vannucchi 2004; recalled, unconfirmed)', detail: `of active-coast cell-frames (erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment)` });
-    // how fast it retreats: the land eaten, per km of erosive coast, per Myr (cut short once a coast lies marginErosionMaxGapKm
-    // from its trench, so at most the configured rate)
-    const erosiveKm = erosive / r.frames.length * mesh.edgeKm, erodedKm2 = r.budget.erodedCells * cellAreaKm2, retreat = erodedKm2 / Math.max(1, erosiveKm) / r.last.time;
-    const cap = r.world.config.marginErosionKmPerMyr;
+    // (one margin, converging at ~1–2.5 cm/yr: since the trench's fill is supply ÷ convergence — crust-sink branch — a margin
+    // this slow off a wide continent is kept filled and mostly accretes, as Cascadia or the Makran do; Earth's share is
+    // reported over a whole history below)
+    report('share of active coast that is erosive, this scene', 100 * share, { unit: ' %', digits: 0, source: 'one slow margin: no Earth figure (Earth’s share in the whole history below)', detail: `of active-coast cell-frames (erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment)` });
+    // how fast it retreats: the land eaten, per km of erosive TRENCH, per Myr — the length the retreat is set along
+    // (world.budget.erosiveTrenchKmMyr, km × Myr; was per km of erosive coast read off the frames, which counted coasts by
+    // the flag of whatever trench cell lay offshore) — cut short once a coast lies marginErosionMaxGapKm from its trench,
+    // so at most the configured rate
+    const erodedKm2 = r.budget.erodedCells * cellAreaKm2, retreat = erodedKm2 / Math.max(1, r.budget.erosiveTrenchKmMyr ?? 0);
+    const erosiveKm = (r.budget.erosiveTrenchKmMyr ?? 0) / r.last.time, cap = r.world.config.marginErosionKmPerMyr;
     check('an erosive coast retreats: its land turns to fore-arc sea, never faster than its configured rate', erodedKm2 > 0 && retreat <= 1.25 * cap,
-        `${Mkm2(r.budget.erodedCells).toFixed(2)} Mkm² of coast eaten in ${r.last.time} Myr along ~${erosiveKm.toFixed(0)} km of erosive coast: ${retreat.toFixed(2)} km/Myr (configured ${cap})`);
+        `${Mkm2(r.budget.erodedCells).toFixed(2)} Mkm² of coast eaten in ${r.last.time} Myr along ~${erosiveKm.toFixed(0)} km of erosive trench on average: ${retreat.toFixed(2)} km/Myr (configured ${cap})`);
     report('retreat of an erosive coast', retreat, { earth: [1, 6], unit: ' km/Myr', digits: 2, source: 'Clift & Vannucchi 2004: ~1–3, > 6 destabilises the arc' });
     // (a fore-arc island keeps its flag after it has grown into the mainland)
     const isles = countWhere(numCells, w => r.last.owner[w] >= 0 && (r.last.flags[w] & CrustFlag.MARGIN_ISLE));
@@ -95,6 +100,8 @@ section('the budget over 1000 Myr');
         detail: `land ${(100 * start / numCells).toFixed(1)} % of the planet at the start, ${(100 * t300 / numCells).toFixed(1)} % at 300 Myr, ${(100 * end / numCells).toFixed(1)} % at 1000 Myr` });
     check('land never runs away: under 60 % of the planet', r.frames.every(f => land(f) < 0.6 * numCells), `the most: ${(100 * Math.max(...r.frames.map(land)) / numCells).toFixed(1)} % of the planet`);
     const b = r.budget;
+    report('share of continental-margin trench that is erosive (length × time)', 100 * (b.erosiveTrenchKmMyr ?? 0) / Math.max(1, b.marginTrenchKmMyr ?? 0), { earth: [50, 60], unit: ' %', digits: 0,
+        source: '~57 % of margins (Clift & Vannucchi 2004; recalled, unconfirmed)', detail: `erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment` });
     check('all three sinks are at work in a whole history', b.erodedCells > 0 && b.underthrustCells > 0 && b.recycledCells > 0,
         `eroded ${Mkm2(b.erodedCells).toFixed(1)}, underthrust ${Mkm2(b.underthrustCells).toFixed(1)}, arcs recycled ${Mkm2(b.recycledCells).toFixed(1)} Mkm²`);
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
