@@ -98,13 +98,14 @@ section('fine detail renews slowly');
 {
     // (a frame read at a later time would change its records too — ages, quiet spells — so the frame stays and the
     // renewal's clock, time ÷ detailRenewMyr, is run on by shortening the period: t / P' = (t + Δt) / P. The coast's bays
-    // and headlands, the coast distance's noise, are read 100–300 km inland, where it is always on the land side.)
+    // and headlands, the coast distance's noise, are read 100–300 km inland, where it is always on the land side — on the
+    // rugged coasts that have any: records.js rugged)
     // (at 640K, as above: independent draws of the ridges then correlate within ±0.05)
     const F = frames150.at(-1), tm = terrainMesh(640000), P = terrainConfig().detailRenewMyr, t0 = F.time;
     const later = dt => synthesizeTerrain(F, mesh, tm, { seed: SEED, parts: true, cfg: terrainConfig({ detailRenewMyr: P * t0 / (t0 + dt) }) });
     const T0 = later(0), T10 = later(10), TP = later(P);
     const ridges = T => { const xs = [], ys = []; for (let t = 0; t < tm.numCells; t++) if (T0.parts.stripes[t] !== 0 || T.parts.stripes[t] !== 0) { xs.push(T0.parts.stripes[t]); ys.push(T.parts.stripes[t]); } return corr(xs, ys); };
-    const bays = T => { const xs = [], ys = []; for (let t = 0; t < tm.numCells; t++) if (T0.parts.dcoastRaw[t] >= 100 && T0.parts.dcoastRaw[t] <= 300 && T0.parts.dcoast[t] > 0 && T.parts.dcoast[t] > 0) { xs.push(T0.parts.dcoast[t] - T0.parts.dcoastRaw[t]); ys.push(T.parts.dcoast[t] - T.parts.dcoastRaw[t]); } return corr(xs, ys); };
+    const bays = T => { const xs = [], ys = []; for (let t = 0; t < tm.numCells; t++) if (T0.parts.dcoastRaw[t] >= 100 && T0.parts.dcoastRaw[t] <= 300 && T0.parts.dcoast[t] > 0 && T.parts.dcoast[t] > 0 && (T0.parts.dcoast[t] !== T0.parts.dcoastRaw[t] || T.parts.dcoast[t] !== T.parts.dcoastRaw[t])) { xs.push(T0.parts.dcoast[t] - T0.parts.dcoastRaw[t]); ys.push(T.parts.dcoast[t] - T.parts.dcoastRaw[t]); } return corr(xs, ys); };
     const r10 = ridges(T10), rP = ridges(TP), b10 = bays(T10), bP = bays(TP);
     check('from one frame to the next (10 Myr) the fine detail holds…', P > 0 && r10 >= 0.9 && b10 >= 0.98,
         `renewing over ${P} Myr: the ridges correlate ${r10.toFixed(2)} with themselves 10 Myr before, the bays and headlands ${b10.toFixed(3)}`);

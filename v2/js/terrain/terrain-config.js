@@ -18,35 +18,36 @@ export const TERRAIN = {
     cellWarpCells: 3,
 
     // ── Coasts ──
-    coastNoiseKm: 45,           // the coast is moved in and out by up to this, at 200–1500 km scales: bays and headlands
+    // A coast's shape (developer, 2026-10-23: "I'm still not seeing things like the western coast of India or Africa … they're
+    // always squiggly"). Earth's passive and active margins run smooth over hundreds of km — South Africa's coast has a
+    // divider dimension D ≈ 1.02 over 20–500 km rulers (Richardson 1961, in Mandelbrot 1967), Norway's fjords 1.52 (Feder
+    // 1988) — so a coast's line is the margin's (records.js, margin-line.js): the 0.5 contour of the land/sea raster seen
+    // through a Gaussian of coastLineCells sim cells — the raster's staircase and a rift's cell-to-cell steps gone, its
+    // bends and transform steps kept — down to coastLineRuggedCells where the coast is rugged. Its roughness is the rough
+    // land at the sea, not a blanket noise: an island arc's, and a young collision coast's by its relief (records.js
+    // rugged: full from coastRuggedKm of uplift while the belt is fresh, coastFreshMyr) take the coast noise and the fine
+    // detail below; drowned valleys (carve.js), fjords (finish-ice.js) and the waves (finish-coast.js) roughen every coast
+    // by its own relief and climate. tools/coast-shape.mjs measures D by kind of margin.
+    coastLineCells: 1,
+    coastLineRuggedCells: 0.5,
+    coastRuggedKm: 1.5,
+    coastFreshMyr: 60,
+    coastNoiseKm: 45,           // a rugged coast moved in and out by up to this, at 200–1500 km scales: bays and headlands
     // curved coasts (developer: "at high terrain detail the coast can look a bit polygonal, especially on island arcs"):
     // the coast distance is read with each sim cell's slope, so its lines curve between the sim cells as the coast they
     // measure does instead of running straight across every sim triangle (1: fully; 0: straight, as before)
     coastCurve: 1,
-    // the coast's fine detail: octaves below the coast noise, from coastDetailFromKm down to what the terrain mesh can show
-    // (none at 160K; coves, headlands and islets at 640K and 2.5M), each coastDetailRoughness of the one before
+    // a rugged coast's fine detail: octaves below the coast noise, from coastDetailFromKm down to what the terrain mesh can
+    // show (none at 160K; coves, headlands and islets at 640K and 2.5M), each coastDetailRoughness of the one before
     coastDetailKm: 7,           // amplitude of the first (km of coast distance: how far it moves the coast in and out) (14 went a little too far — developer)
     coastDetailFromKm: 88,      // its wavelength
     coastDetailRoughness: 0.6,  // (a coast's fractal roughness: finer wiggles relatively larger than a smooth curve's)
-    // the coast at the sim's own scale (synthesize.js): the coast moved in and out by up to this share of a sim cell…
-    coastCellNoise: 0.5,
-    coastCellWaveCells: 2.5,    // …in waves of this many sim cells and finer octaves — the lobes a coast read over the cells makes, broken…
-    coastFreshFloor: 0.3,       // …down to this share on a fresh coast (a young rift's sides still fit; a fresh belt's shape leads)…
-    coastFreshMyr: 60,          // …a belt counting as fresh for about this long after it was last active (a rift: by its margin's maturity)
-    // how rough a coast is at the large scales (the coast noise and the sim-scale noise; the fine detail by a share), by its margin
-    // (synthesize.js roughOf): Earth's margins run smooth over hundreds of km — a passive margin's sediment wedge and
-    // coastal plain the more the older, an active margin along its range — and break up on island arcs
-    coastRoughYoung: 0.6,       // a young passive (rifted) margin…
-    coastRoughMature: 0.3,      // …a mature one (records.js maturity: its age, by the oldest floor beside it)
-    coastRoughActive: 0.5,      // an active margin (a trench offshore, its coastal range)
-    coastRoughTransform: 0.45,
-    coastRoughCollision: 0.7,
-    coastRoughArc: 1.5,         // island-arc crust: fully rough from two-thirds arc up
-    coastRoughDetail: 0.6,      // the fine detail scaled by this share of it (a mature passive coast's coves 0.58 as deep)
-    // …and the coast drawn smooth at the sim's scale by as much (records.js smoothCoast): its signed distance relaxed
-    // toward its neighbours', coastSmoothPasses passes of coastSmooth × (1 − roughness)
-    coastSmooth: 0.9,
-    coastSmoothPasses: 3,
+    coastRoughArc: 1.5,         // island-arc crust: fully rugged from two-thirds arc up
+    // a margin's shelf, coastal plain and maturity are regional: smoothed along the coast over σ = this (records.js). The
+    // margin's lithosphere spreads its sediment load and its thermal subsidence over its flexural wavelength, 2πα ≈
+    // 400–700 km for the elastic thickness of a passive margin (Te 20–40 km: Watts 2001, Isostasy and Flexure of the
+    // Lithosphere, ch. 7) — a shelf does not widen and narrow from one sim cell to the next with the floor beside it
+    shelfAlongKm: 150,
     // mountain shape (developer: "i want to see what we cook up"): the evolved uplift and the platform read with each sim
     // cell's slope, as the coast distance is — curved slopes instead of a flat facet per sim triangle — each corner's
     // reading kept within the range of its cell and its neighbours (no overshoot at a steep front); 1: fully, 0: as before

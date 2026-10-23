@@ -13,15 +13,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import v8 from 'node:v8';
 import { fileURLToPath } from 'node:url';
 import Delaunator from 'delaunator';
 import { PNG } from 'pngjs';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
-import { runHistory } from '../js/app/history-runner.js';
-import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
-import { TerrainPool, FRAME_FIELDS } from '../js/terrain/terrain-pool.js';
+import { TerrainPool } from '../js/terrain/terrain-pool.js';
+import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { coastLoops, coastFractal, kindOf, COAST_KINDS } from './lib/coast-fractal.mjs';
+import { deriveRecords } from '../js/terrain/records.js';
+import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { finishPlanet, finishRaster } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { paintFinished } from '../js/evolution/finish-view.js';
@@ -36,25 +37,10 @@ const SEED = Number(arg('--seed', 12345)), CONT = Number(arg('--cont', 30)), SIM
 const CELLS = Number(arg('--cells', 2500000)), W = Number(arg('--width', 4096)), PALETTE = arg('--palette', 'relief');
 const CROP = arg('--crop', null)?.split(',').map(Number) ?? null;
 const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`);
-const MESH_SEED = 12345;                              // (the page's: every planet's sim mesh is the same; the seed shapes the world)
 const R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
 
 // ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; cached ──
-const frameDir = path.join(ROOT, 'v2', 'out', 'frames');
-const frameFile = path.join(frameDir, `frame-${SEED}-${CONT}-${SIM}-${TIME}.bin`);
-let frame;
-if (fs.existsSync(frameFile)) frame = v8.deserialize(fs.readFileSync(frameFile)).frame;
-else {
-    const scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
-    // (the history is causal — Keep going runs on to the same history — so running to just past the moment gives it)
-    await runHistory({ list: 'terrain', scene, ending: 'none', start: { continentalFraction: CONT / 100 }, lengthMyr: Math.ceil((TIME + 10) / 10) * 10, keep: false },
-        buildSimMesh(SIM, MESH_SEED), SEED, 10, () => {}, f => {
-            if (Math.abs(f.time - TIME) < 1e-6) { frame = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); frame.plates = f.plates.map(p => p && { quat: p.quat }); }
-        });
-    if (!frame) throw new Error(`no frame at ${TIME} Myr (moments come every 10 Myr)`);
-    fs.mkdirSync(frameDir, { recursive: true });
-    fs.writeFileSync(frameFile, v8.serialize({ frame }));
-}
+const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME });
 console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 
 // ── the finish, as the page's worker runs it ──
@@ -274,5 +260,9 @@ if (PROBE) for (const pt of PROBE.split(';')) {
     const c = best, kind = lake?.[c] ? kinds[lake[c]] : fin.ocean[c] ? 'sea' : 'land';
     console.log(`probe ${la}°,${lo}°: ${kind}, ground ${Math.round(z[c] * 1000)} m${lake?.[c] ? `, water at ${Math.round(lev[c] * 1000)} m` : ''}, water would stand at ${Math.round(fill[c] * 1000)} m`);
 }
+// (the coastline's shape: its divider dimension D over 50–500 km rulers and its length L(50 km) / L(500 km), by kind of margin
+// — tools/lib/coast-fractal.mjs; the ice age's coasts count as glacial)
+const coastShape = coastFractal(coastLoops(fin.mesh, c => fin.ocean[c] === 1, z), kindOf(simMesh, deriveRecords(frame, simMesh, TERRAIN, SEED), fin.glaciated ?? null), { kinds: COAST_KINDS });
+console.log('coast shape (D, L50/L500): ' + ['all', ...COAST_KINDS].filter(k => coastShape[k]).map(k => `${k} ${coastShape[k].D.toFixed(3)}${Number.isFinite(coastShape[k].ratio) ? ` ×${coastShape[k].ratio.toFixed(2)}` : ''} (${Math.round(coastShape[k].km).toLocaleString()} km)`).join(' · '));
 fs.writeFileSync(path.join(outDir, `${NAME}.json`), JSON.stringify({ seed: SEED, cont: CONT, sim: SIM, time: TIME, cells: CELLS, water: Object.fromEntries(kinds.slice(1).map((k, i) => [k, kindKm2[i + 1]])),
-    dryHollowKm2: holeKm2, deepestDryM: deepest, dryBelowSeaKm2: dryBelowSea, stats: fin.stats }, null, 2));
+    dryHollowKm2: holeKm2, deepestDryM: deepest, dryBelowSeaKm2: dryBelowSea, coastShape, stats: fin.stats }, null, 2));

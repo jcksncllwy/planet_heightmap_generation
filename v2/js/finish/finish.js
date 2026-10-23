@@ -258,7 +258,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     lap('final climate');
     const flow = new Float32Array(n);
     for (let c = 0; c < n; c++) flow[c] = Math.log10(Math.max(1, Hy.area[c]));
-    return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats,
+    return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
         layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };

@@ -19,6 +19,7 @@ import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { TERRAIN, terrainConfig, erosionAtLatitude } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide, gradient, CoastKind } from '../js/terrain/records.js';
 import { crossAt } from '../js/terrain/stripes.js';
+import { coastLoops, coastFractal, kindOf as coastKindOf, COAST_KINDS, EARTH_D } from './lib/coast-fractal.mjs';
 
 const SEED = 12345;
 const mesh = labMesh();
@@ -41,6 +42,8 @@ function terrain(frame, cells = 640000) {
     const T = synthesizeTerrain(frame, mesh, tm, { seed: SEED, parts: true });
     return { ...T, tm, seconds: (performance.now() - started) / 1000 };
 }
+/** The coast's divider dimension by kind of margin on a terrain (the zero contour of its heights). */
+const coastShape = T => coastFractal(coastLoops(T.tm, t => T.heightKm[t] < 0, T.heightKm), coastKindOf(mesh, T.rec), { kinds: COAST_KINDS });
 /** Per terrain cell: the sim cell it takes its records from (its nearest corner), and that cell's belt kind / position. */
 const corner = (T, t) => T.sampler.cells[3 * t];
 /** Angle between two tangent directions taken as LINES (0…90°). */
@@ -489,9 +492,10 @@ const T640 = terrain(history.frame);
     }
     // (active belts pooled over three frames: one frame alone can be a quiet one — the Phase 11 history's 600 Myr holds
     // only 289 cells of active belt, standing to 2.4 km, while every other frame from 250 Myr holds 5,000–39,000)
-    const pooled = active.slice();
+    const pooled = active.slice(), coastShapes = [coastShape(T640)];
     for (const F of history.frames.filter(g => g.time === 400 || g.time === 500)) {
         const TT = terrain(F);
+        coastShapes.push(coastShape(TT));
         for (let t = 0; t < TT.tm.numCells; t++) { const c = corner(TT, t); if (TT.rec.land[c] && TT.heightKm[t] > 0 && TT.rec.kind[c] && kindType(TT.rec.kind[c]) !== OrogenyType.ARC && TT.rec.quietMyr[c] < 10) pooled.push(TT.heightKm[t]); }
     }
     // (a 2 km floor: that convergence raises ranges at all — how high is the history's)
@@ -507,6 +511,14 @@ const T640 = terrain(history.frame);
     // (before carving: Earth's figure is after erosion, so not directly comparable — 8b reports the carved surface)
     report('land below 400 m before carving', 100 * hy.below400, { unit: ' %', digits: 0, source: 'Earth ~54 % below 500 m after erosion (ETOPO) — not comparable before carving',
         detail: `median land height ${hy.landKm[2].toFixed(2)} km` });
+    // the coastline's shape (tools/lib/coast-fractal.mjs): its divider dimension D over 50–500 km rulers by kind of margin,
+    // over the three frames (length-weighted) — the margin's smooth line (margin-line.js), roughness where the land is rough
+    for (const k of ['all', ...COAST_KINDS.slice(0, 5)]) {
+        let wD = 0, w = 0, km = 0;
+        for (const F of coastShapes) { const f = F[k]; if (f && f.D === f.D) { wD += f.D * f.km; w += f.km; km += f.km; } }
+        if (!(w > 0)) continue;
+        report(`coastline divider dimension D: ${k}`, wD / w, { earth: EARTH_D[k].earth, digits: 3, source: EARTH_D[k].source, detail: `${Math.round(km).toLocaleString()} km of coast at 640K cells, tectonic surface` });
+    }
     check('no height is missing, none absurd', nan === 0 && max <= 9.5, `${nan} NaN; highest ${max.toFixed(2)} km`);
     check('terrain at 640K cells within 3 s', T640.seconds < 3, `${T640.seconds.toFixed(2)} s (records ${T640.ms.records.toFixed(0)} ms, sampling ${T640.ms.sample.toFixed(0)} ms, surface ${T640.ms.surface.toFixed(0)} ms)`);
 }
