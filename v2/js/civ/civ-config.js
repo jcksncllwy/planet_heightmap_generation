@@ -229,6 +229,10 @@ export const CIV = {
     famineDeath: 0.3,           // deaths per year of food short beyond the store (Ó Gráda 2009's famines: ~5–15 % dead in
                                 //   one or two years of a quarter to a half short; ours in form)
     famineMaxYear: 0.5,         // at most this share dies in one year
+    // herds (sim.js herdYear): a drought's die-off and the slow regrowth (droughts take 30–60 % of the herds; mixed herds
+    // rebuild in 3–4 years, small stock faster, cattle slower: McCabe 1987, Turkana; Marsabit 2009–11; FAO) [L]
+    herdDieOff: 1,              // the share of the animals the year's grazing can't carry that die
+    herdRecovery: 0.4,          // the herd's regrowth a year (logistic): from half to ~90 % in ~5 years
 
     // ── disease (disease.js): a share of the people a place would hold ──
     filterWarm: 0.5,            // the parasites pass only through country this suited to transmission by its warmth

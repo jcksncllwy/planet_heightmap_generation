@@ -76,6 +76,7 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Logistic growth toward capacity (r 0.02 foragers, 0.03 farmers) | Neolithic demographic transition, Bocquet-Appel 2011 | Adapted: the rates are ours | [L] |
 | Default origin: the richest savanna on the landmass (glacial bridges joining it) with the most tropical savanna (Aw) | Homo as a species of the open tropical grasslands (deMenocal 2004); Africa as precedent | Ours | — |
 
+| Each cell records its source: the cell the front reached it from (across water, the last peopled cell), a voyage's launch, the shelf the sea drove its people off. Each crop's front records its own; a centre or a landing starts one | Ours (bookkeeping for §9.4: migrants carry what they know) | Ours | — |
 ## People: settling and domestication (`v2/js/civ/sim.js`)
 
 | Rule | Source | Fidelity | Checked |
@@ -108,6 +109,8 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Size tiers 150 / 500 / 2500 / 15000 | Kosse 1990 (150, 500, 2500); Johnson 1982 scalar stress (×6); Alberti 2014 (127) | Direct thresholds, extended ×6 | [L], Alberti [V] |
 | State = a polity with 3 tiers above the village | Wright & Johnson 1975 | Direct definition | [L] |
 
+| Ways of life (`life.js`): towns are fed only by farmers' districts; herders' and foragers' land counts as free farmland for the exit test | Ours; pastoral land was farmed over where it could be (e.g. the Sahel, the steppe's edges) | Ours | — |
+| Ways of life read off the diet (`lifeOfDiet`): the largest of wild, cultivated, crops, herds; canals make irrigators, packed storable wild food settled foragers | CIV_PLAN §9.3's labels (not yet used by the switches model) | Ours | — |
 ## Climate variability (`v2/js/civ/climate-var.js`; the forcing hook in `v2/js/climate/temperature.js`)
 
 The planet's own climate model, run again under forcings; only the timing of the swings is drawn at random.
@@ -134,6 +137,7 @@ The planet's own climate model, run again under forcings; only the timing of the
 | Deaths: 0.3 per year of food short beyond the store, at most half a year | Ó Gráda 2009, *Famine: A Short History* (5–15 % dead in major famines) | Ours; calibrated loosely | [L] |
 | Outcome: famine deaths ~0.4–0.7 %/yr on marginal dry farming and the erratic Tigris–Euphrates, far less on the Nile | Emergent; the Nile's regularity against Mesopotamia's erratic floods is the classic contrast | Check | [L] |
 
+| Herds (the herd response class): each year the animals the grazing can't carry die (grazing ∝ the year's NPP against a normal year's); the herd regrows logistically at 0.4 a year, from half to ~90 % in ~5 years; food ∝ the herd against its long-run mean | Drought losses of 30–60 %: McCabe 1987 (Turkana, a two-year drought: 63 % of cattle, 55 % of small stock); recovery in 3–4 years in Marsabit after 2009 and 2011; FAO (small stock 1.5–3 yr, cattle up to 10–12, after 30–40 % losses); Lesnoff et al. 2012 (Sahel: recovery times vary widely) | Ours in form; rates set between small stock and cattle. Not used by the switches model (no herders) | [L] |
 ## Disease (`v2/js/civ/disease.js`)
 
 | Rule | Source | Fidelity | Checked |

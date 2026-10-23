@@ -8,7 +8,7 @@
 // Scale-invariant: every reach is in km.
 
 import { CIV } from './civ-config.js';
-import { Life } from './sim.js';
+import { Life, farms } from './life.js';
 import { edgeLengths, costReach } from './travel.js';
 
 const DEG = 180 / Math.PI;
@@ -28,7 +28,7 @@ export const tierOf = (pop, C = CIV) => C.tiers.reduce((k, v, i) => (pop >= v ? 
 /**
  * The towns at one moment, biggest first.
  * @param density  persons/km² per cell (Float32Array)
- * @param life     each cell's way of life (sim.js Life)
+ * @param life     each cell's way of life (life.js Life): only farmers' districts feed towns
  * @param net      townNetwork(w, sub) (made once per world)
  * @returns [{cell, lat, lon, pop, tier, irrigated (its own district), canalFed (most of its food grown on irrigated land)}]
  */
@@ -40,7 +40,7 @@ export function towns(w, sub, density, life, net, C = CIV) {
     const cands = [];
     const fieldsKm2 = Math.min(A, Math.PI * C.feedKm * C.feedKm) * C.fieldShare;
     for (let c = 0; c < n; c++) {
-        if (!land(c) || life[c] < Life.FARMER || !(density[c] > 0)) continue;
+        if (!land(c) || !farms(life[c]) || !(density[c] > 0)) continue;
         const irr = irrigated(c) ? 1 : 0, share = irr ? sub.irrigShare[c] : 0;
         P[c] = density[c] * A;
         // (its fields' yield as its farmers' density shows it — the canals grow over centuries (sim.js), and a district's

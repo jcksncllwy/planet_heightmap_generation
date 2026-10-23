@@ -27,8 +27,10 @@ export function toblerFactor(S) { return Math.exp(-3.5 * Math.abs(S + 0.05)) / M
  * Infinity elsewhere; `speed(a, b, k, t)` the km/yr from cell a to b along adjacency k when leaving a at time t (0: no way).
  * `opensAt(b, t)` (optional): the earliest time ≥ t that b can be entered — a front waits at a barrier (an ice sheet, the
  * cold) until it opens. Only improves `arrival` (so it can be run again from new sources). Stops past `untilT`.
+ * `from` (optional, Int32Array): each cell's source — the cell the front reached it from, written as `arrival` improves
+ * (sources keep theirs): who its people came from, so they can carry what they know and grow.
  */
-export function frontArrival(mesh, len, arrival, speed, sources = null, untilT = Infinity, opensAt = null) {
+export function frontArrival(mesh, len, arrival, speed, sources = null, untilT = Infinity, opensAt = null, from = null) {
     const { adjOffset, adjList } = mesh, heap = new MinHeap(4096);
     if (sources) for (const c of sources) heap.push(arrival[c], c);
     else for (let c = 0; c < arrival.length; c++) if (arrival[c] < Infinity) heap.push(arrival[c], c);
@@ -41,7 +43,7 @@ export function frontArrival(mesh, len, arrival, speed, sources = null, untilT =
             const v = speed(a, b, k, t0);
             if (!(v > 0)) continue;
             const tb = t0 + len[k] / v;
-            if (tb < arrival[b]) { arrival[b] = tb; heap.push(tb, b); }
+            if (tb < arrival[b]) { arrival[b] = tb; if (from) from[b] = a; heap.push(tb, b); }
         }
     }
     return arrival;

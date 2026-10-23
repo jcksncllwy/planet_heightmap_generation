@@ -23,7 +23,7 @@
 // Deterministic: the same world and history give the same polities.
 
 import { CIV } from './civ-config.js';
-import { Life } from './sim.js';
+import { farms } from './life.js';
 import { MinHeap } from '../core/min-heap.js';
 import { towns as townsOf, townNetwork } from './settle.js';
 
@@ -55,7 +55,7 @@ export class Polities {
 
     /**
      * One step of `years`: the towns as they now are, then wars and collapses.
-     * @param density persons/km² per cell; @param life sim.js Life per cell; @param K what farming feeds per cell (persons/km²)
+     * @param density persons/km² per cell; @param life life.js Life per cell; @param K what farming feeds per cell (persons/km²)
      * @param famine each cell's famine deaths since the last step, as a share of its people (or null)
      */
     step(density, life, K, years, famine = null) {
@@ -96,11 +96,12 @@ export class Polities {
             return P;
         };
         let P = members();
-        // ── how far each place is from free farmland: farmable, and empty or thinly farmed (cost in land km) ──
+        // ── how far each place is from free farmland: farmable, and empty or thinly farmed (cost in land km) — land herders
+        // or foragers hold counts as free: farmers took it from them (ours) ──
         const exit = this.exit.fill(Infinity), heap = new MinHeap(4096);
         for (let c = 0; c < n; c++) {
             if (!net.land(c) || !(sub.farmDry[c] > 0 || sub.irrig[c] > 0)) continue;
-            if (life[c] < Life.FARMER || density[c] < C.freeShare * K[c]) { exit[c] = 0; heap.push(0, c); }
+            if (!farms(life[c]) || density[c] < C.freeShare * K[c]) { exit[c] = 0; heap.push(0, c); }
         }
         while (heap.size) {
             const a = heap.pop(), t = heap.lastKey;

@@ -36,7 +36,7 @@ const rise = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))
 const window4 = (w, x) => rise(w[0], w[1], x) * (1 - rise(w[2], w[3], x));
 
 /**
- * The crop packages, each with its climate envelope: how suitable each Köppen class is for its wild ancestors (Blumler's
+ * The crop packages, each with its climate envelope (and `food`: its crop among FOODS): how suitable each Köppen class is for its wild ancestors (Blumler's
  * Mediterranean grasses; the monsoon's millets and rice; the tropics' roots and tubers). The envelope is what keeps a
  * package inside its own kind of country, so spreading along a latitude is easier than across it (Diamond's axes) by itself.
  */
@@ -44,11 +44,11 @@ const window4 = (w, x) => rise(w[0], w[1], x) * (1 - rise(w[2], w[3], x));
 // long summer drought (Blumler 1992: of the 56 largest-seeded grasses, 32 are Mediterranean); summer-rain savannas are
 // held by perennials, their wild cereals thinner — one reason the Levant came first and the tropics' cereals late.
 export const PACKAGES = [
-    { id: 'winterCereal', name: 'winter-rain cereals (wheat, barley, lentils)', rainMm: CIV.cerealRainMm, tempC: CIV.cerealTempC, cereal: true, abundance: 1,
+    { id: 'winterCereal', food: 'winterCereal', name: 'winter-rain cereals (wheat, barley, lentils)', rainMm: CIV.cerealRainMm, tempC: CIV.cerealTempC, cereal: true, abundance: 1,
         koppen: { Csa: 1, Csb: 0.85, Dsa: 0.6, Dsb: 0.5, BSk: 0.45, BSh: 0.3, Cfa: 0.25, Dfa: 0.25, Cfb: 0.2, Dfb: 0.15 } },
-    { id: 'summerCereal', name: 'summer-rain cereals (millets, rice)', rainMm: [350, 500, 1800, 2800], tempC: [8, 13, 26, 29], cereal: true, abundance: 0.8,
+    { id: 'summerCereal', food: 'summerCereal', name: 'summer-rain cereals (millets, rice)', rainMm: [350, 500, 1800, 2800], tempC: [8, 13, 26, 29], cereal: true, abundance: 0.8,
         koppen: { Cwa: 1, Dwa: 0.8, Cwb: 0.6, Dwb: 0.55, Aw: 0.3, Cfa: 0.4, BSh: 0.35, BSk: 0.2 } },
-    { id: 'tuber', name: 'roots and tubers (taro, yams, potatoes)', rainMm: [900, 1400, 6000, 9000], tempC: [8, 14, 28, 31], abundance: 0.75,
+    { id: 'tuber', food: 'roots', name: 'roots and tubers (taro, yams, potatoes)', rainMm: [900, 1400, 6000, 9000], tempC: [8, 14, 28, 31], abundance: 0.75,
         koppen: { Af: 0.7, Am: 0.8, Cwb: 0.9, Cfb: 0.4, Aw: 0.4 }, highlandBonus: true },
 ];
 

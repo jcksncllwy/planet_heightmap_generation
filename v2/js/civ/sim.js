@@ -22,7 +22,8 @@
 // `frameYears`, for the timeline.
 
 import { CIV } from './civ-config.js';
-import { PACKAGES } from './substrate.js';
+import { PACKAGES, FOODS } from './substrate.js';
+import { Life, farms, settled } from './life.js';
 import { edgeLengths, frontArrival, offshoreKm, schedule, toblerFactor } from './travel.js';
 import { spreadKm } from '../core/min-heap.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
@@ -30,12 +31,17 @@ import { Polities } from './polity.js';
 import { climateVariability, modeSeries, modeLn, normal } from './climate-var.js';
 import { parasiteRange, diseaseLoss } from './disease.js';
 
+/** A herd's year (plans/CIV_PLAN.md §9.2, the herd response class): the animals the year's grazing (`g`, against a normal
+ *  year's) can't carry die, and the herd grows back slowly — over years, where a harvest comes back the next. */
+export const herdYear = (stock, g, C = CIV) => {
+    const s = stock - C.herdDieOff * Math.max(0, stock - g);
+    return s + C.herdRecovery * s * (1 - s);
+};
+
 const rise = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const DEG = 180 / Math.PI;
 
-/** A cell's way of life, as frames keep it. */
-export const Life = Object.freeze({ EMPTY: 0, FORAGER: 1, SEDENTARY: 2, CULTIVATING: 3, FARMER: 4, IRRIGATOR: 5 });
-export const LIFE_NAMES = ['empty', 'foragers', 'settled foragers', 'cultivators', 'farmers', 'irrigation farmers'];
+export { Life, LIFE_NAMES, farms, settled, lifeOfDiet } from './life.js';
 
 /** Density's one-byte encoding in frames: 0 = nobody, else 10^((q − 1)/40 − 4) persons/km² (1e-4 … ~2000). */
 export const densityByte = d => (d > 1e-4 ? Math.min(255, 1 + Math.round(40 * (Math.log10(d) + 4))) : 0);
@@ -48,7 +54,9 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
  *   polities (default true: towns and polities, polity.js, every polityStepYears once there are farmers),
  *   famine (default true: good and bad years, climate-var.js), vary (climateVariability(w, sub), if already made),
  *   disease (default true: disease.js), C }
- * @returns { frames, centres, totals, arrivalBP (Float32, per cell; NaN never), farmBP (per cell) }
+ * @returns { frames (each: density, life, crop — its dominant crop, a FOODS index or −1 — farmPkg, …), centres, totals,
+ *   arrivalBP (Float32, per cell; NaN never), farmBP (per cell), cameFrom (per cell: the cell its people came from; −1
+ *   never), farmFrom ({crop: per cell, the cell its farmers came from}), coastBP ({crop: when voyagers took it up}) }
  */
 export function runCivSim(w, sub, opts = {}) {
     const sim = createCivSim(w, sub, opts);
@@ -138,7 +146,10 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         origins = [best >= 0 ? best : any];
     }
     const arrival = new Float64Array(n).fill(Infinity);
-    for (const c of origins) arrival[c] = 0;
+    // (each cell's source: who its people came from — the front's cell before it, a voyage's launch, the shelf the sea
+    // drove them off — so that they can carry what they know and grow; plans/CIV_PLAN.md §9.4)
+    const cameFrom = new Int32Array(n).fill(-1);
+    for (const c of origins) { arrival[c] = 0; cameFrom[c] = c; }
     // (barriers that lift: the ice sheets as they melt, the cold country once people are equipped for it — the front waits)
     const coldBy = c => C.coldET - (sub.et[home[c]] + C.glacialDT * 0.6);       // (ET falls ~0.6 °C per °C of cooling)
     const lastCold = C.coldOpensBP[C.coldOpensBP.length - 1];
@@ -150,7 +161,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         if (coldBy(b) > 0) o = Math.max(o, tOf(coldOpens(coldBy(b))));
         return o;
     };
-    frontArrival(mesh, len, arrival, foragerSpeed, null, Infinity, opensAt);
+    frontArrival(mesh, len, arrival, foragerSpeed, null, Infinity, opensAt, cameFrom);
 
     // ── disease: where the parasites reached with people (the cold filter), and what each way of life loses ──
     const range = disease ? parasiteRange(w, origins,
@@ -171,7 +182,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         }
         return ok;
     });
-    const farmArrival = PACKAGES.map(() => new Float64Array(n).fill(Infinity));
+    const farmArrival = PACKAGES.map(() => new Float64Array(n).fill(Infinity)), farmFrom = PACKAGES.map(() => new Int32Array(n).fill(-1));
     // each package's farmers know irrigation from this long after its first centre; a desert's alluvium waits for it
     const irrigKnown = PACKAGES.map(() => Infinity);
     const farmOpensAt = i => (b, t) => (isWater(b) ? seaOpens(b, t) : sub.farmDry[home[b]] > 0 ? t : Math.max(t, irrigKnown[i]));
@@ -195,7 +206,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         return Infinity;
     };
     const coastT = PACKAGES.map(() => Infinity);
-    let firstCoast = Infinity, voyage = null, launch = [];
+    let firstCoast = Infinity, voyage = null, voyageFrom = null, launch = [];
     const atSea = c => isWater(c) || ocean[c];
     const voyageSpeed = (a, b, k, t) => {
         if (atSea(b)) return ladderAt(C.voyageSeaKmYr, t - firstCoast);
@@ -203,23 +214,27 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         return atSea(a) && arrival[b] > t && Kf[b] >= C.habitableKm2[0] && opensAt(b, t) <= t ? ladderAt(C.voyageSeaKmYr, t - firstCoast) : 0;
     };
     const voyageOpens = (b, t) => (isWater(b) ? Math.max(t, firstCoast + ladderReaches(C.voyageKm, 2 * offshore[b])) : t);
+    /** The voyage's launch cell for a landing at c: back along its course to the coast it set out from. */
+    const launchOf = c => { let a = voyageFrom[c]; while (a >= 0 && voyageFrom[a] !== a) a = voyageFrom[a]; return a; };
     /** The voyages from the coasts newly farmed, and the landings due by `until` (each with the crops known by then). */
     const sail = until => {
         const v = voyage ??= new Float64Array(n).fill(Infinity), from = launch;
+        voyageFrom ??= new Int32Array(n).fill(-1);
         if (from.length) {
-            for (const c of from) v[c] = Math.min(v[c], farmT[c]);
+            for (const c of from) { v[c] = Math.min(v[c], farmT[c]); if (v[c] === farmT[c]) voyageFrom[c] = c; }
             launch = [];
-            frontArrival(mesh, len, v, voyageSpeed, from, Infinity, voyageOpens);
+            frontArrival(mesh, len, v, voyageSpeed, from, Infinity, voyageOpens, voyageFrom);
         }
         const landed = [], farmed = PACKAGES.map(() => []);
         for (const c of cells) if (!atSea(c) && v[c] <= until && v[c] < arrival[c]) {
-            arrival[c] = v[c]; landed.push(c);
+            arrival[c] = v[c]; cameFrom[c] = launchOf(c); landed.push(c);
             let bi = -1;
             for (let i = 0; i < PACKAGES.length; i++) if (coastT[i] <= v[c] && grows[i][c] && (bi < 0 || fit[i][c] > fit[bi][c])) bi = i;
-            if (bi >= 0 && v[c] < farmArrival[bi][c]) { farmArrival[bi][c] = v[c]; farmed[bi].push(c); }
+            // (the crop's front starts again here: its farmers came from the launch, as cameFrom says)
+            if (bi >= 0 && v[c] < farmArrival[bi][c]) { farmArrival[bi][c] = v[c]; farmFrom[bi][c] = c; farmed[bi].push(c); }
         }
-        if (landed.length) frontArrival(mesh, len, arrival, foragerSpeed, landed, Infinity, opensAt);
-        farmed.forEach((F, i) => { if (F.length) frontArrival(mesh, len, farmArrival[i], farmSpeed(i), F, Infinity, farmOpensAt(i)); });
+        if (landed.length) frontArrival(mesh, len, arrival, foragerSpeed, landed, Infinity, opensAt, cameFrom);
+        farmed.forEach((F, i) => { if (F.length) frontArrival(mesh, len, farmArrival[i], farmSpeed(i), F, Infinity, farmOpensAt(i), farmFrom[i]); });
     };
 
     const d = new Float32Array(n), life = new Uint8Array(n), progress = new Float32Array(n), farmPkg = new Int8Array(n).fill(-1);
@@ -251,14 +266,15 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     const riverNoise = new Map();               // (a river's storms, per year of this step: shared by everyone it waters)
     let riverNoiseStep = -1, famineDead = 0;
     const meanF = new Float32Array(3 * n).fill(NaN), MEAN_DRAWS = 64;
-    /** One step's years for a settled cell: each year's harvest against a normal one — rain-fed fields by the substrate's
-     *  own yield ramp, the river's by its flood (the land watered follows it; a flood far above the usual breaks the
-     *  banks and the works), the wild by the forager regression's own response to the year's NPP (water foods steady) —
-     *  its store, its famines. */
-    const liveYears = (c, t, step, farming, wildK) => {
+    let herdStock = null, herdMean = null;      // (each cell's herd against a full one, and its long-run mean: made once herds are kept)
+    /** One step's years for a settled or herding cell: each year's harvest against a normal one — rain-fed fields by the
+     *  substrate's own yield ramp, the river's by its flood (the land watered follows it; a flood far above the usual breaks
+     *  the banks and the works), the wild by the forager regression's own response to the year's NPP (water foods steady),
+     *  herds by their stock (herdYear: the year's grazing, with the NPP) — its store, its famines. */
+    const liveYears = (c, t, step, farming, wildK, herdK = 0) => {
         const h = home[c], y0 = Math.round(t), cap = farming ? C.storeYears : C.storeYearsForagers;
         if (!farming || farmK(c, t) < wildK) { kRain = 0; kIrr = 0; }
-        const kR = kRain, kI = kIrr, Kw = kR + kI > 0 ? 0 : wildK;
+        const kR = kRain, kI = kIrr, kH = herdK, Kw = kR + kI + kH > 0 ? 0 : wildK;
         // (what stays the same all step)
         const P = w.pAnnual[h], r = V.region[h], cv = V.rainCV[h];
         if (regionStamp[r] !== step) { regionStamp[r] = step; for (let k = 0; k < C.stepYears; k++) regionNoise[r * C.stepYears + k] = normal(r, y0 + k); }
@@ -270,7 +286,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             rn = riverNoise.get(src);
             if (!rn) { rn = new Float32Array(C.stepYears); for (let k = 0; k < C.stepYears; k++) rn[k] = V.riverCV[src] * normal(src + 7 * n, y0 + k); riverNoise.set(src, rn); }
         }
-        const tl = Kw > 0 ? C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h])) : 0, n0 = Kw > 0 ? Math.min(tl, nppP(P)) : 0;
+        const grazed = Kw > 0 || kH > 0, tl = grazed ? C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h])) : 0, n0 = grazed ? Math.min(tl, nppP(P)) : 0;
         const steady = aquaticHome(c) ? C.aquaticSteady : 0, kWild = C.foragerSlope * 0.45;
         // (the substrate's yields are averages over good years and bad — Halstead's, Ur III's — so each year's harvest is
         // against its own long-run mean: capacity stays what the land feeds on average)
@@ -287,6 +303,19 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             }
             meanF[3 * c] = Math.max(0.05, mR / MEAN_DRAWS); meanF[3 * c + 1] = Math.max(0.05, mI / MEAN_DRAWS); meanF[3 * c + 2] = Math.max(0.05, mW / MEAN_DRAWS);
         }
+        // (a herd's mean stock, from a long run of its years: its yield's average over good years and bad, as the fields')
+        if (kH > 0) {
+            herdStock ??= new Float32Array(n).fill(1); herdMean ??= new Float32Array(n);
+            if (!(herdMean[c] > 0)) {
+                let s = 1, m = 0;
+                for (let k = 0; k < 20 + 4 * MEAN_DRAWS; k++) {
+                    const lnx = modeLn(V.rainLn, h, normal(k, 101), normal(k, 102)) + cv * normal(k, 103);
+                    s = herdYear(s, Math.min(tl, nppP(P * Math.exp(lnx))) / Math.max(1e-9, n0), C);
+                    if (k >= 20) m += s;
+                }
+                herdMean[c] = Math.max(0.05, m / (4 * MEAN_DRAWS));
+            }
+        }
         const mR = meanF[3 * c], mI = meanF[3 * c + 1], mW = steady + (1 - steady) * meanF[3 * c + 2];
         let dd = d[c], st = store[c], dead = 0;
         for (let j = 0; j < C.stepYears; j++) {
@@ -300,6 +329,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
                 const q = Math.exp(modeLn(V.riverLn, src, aH, aL) + rn[j]);
                 food += kI * (q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1) / mI;
             } else food += kI;
+            if (kH > 0) { const hs = herdStock[c] = herdYear(herdStock[c], Math.min(tl, nppP(P * Math.exp(lnx))) / Math.max(1e-9, n0), C); food += kH * hs / herdMean[c]; }
             if (Kw > 0) food += Kw * (steady + (1 - steady) * Math.pow(10, kWild * (Math.min(tl, nppP(P * Math.exp(lnx))) - n0))) / mW;
             st += food / Math.max(1e-12, dd) - 1;
             if (st > cap) st = cap;
@@ -314,6 +344,10 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
 
     let nextFrame = 0, nextPolity = 0, nextVoyage = 0, anyFarmers = false, frameYears = C.frameYears, t = 0, step = 0;
     const pol = polities ? new Polities(w, sub, C) : null, Kc = pol ? new Float32Array(n) : null;
+    /** A cell's dominant crop (a FOODS index), or −1, as its way of life shows it: its farmers' package, the wild stand its
+     *  cultivators tend, herds. (Farmers who arrive this generation are farmers, with their crop, from the next.) */
+    const FOOD_OF = PACKAGES.map(p => FOODS.indexOf(p.food)), HERDS = FOODS.indexOf('herds');
+    const cropOf = c => (farms(life[c]) ? FOOD_OF[farmPkg[c]] : life[c] === Life.CULTIVATING ? FOOD_OF[bestPkg[c]] : life[c] === Life.HERDER ? HERDS : -1);
     /** One generation (C.stepYears) of the run. */
     const live = () => {
         const bp = bpOf(t), seaKm = schedule(C.seaLevelM, bp) / 1000, holo = bp <= C.holoceneBP;
@@ -323,11 +357,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         let people = 0, farmersPeople = 0;
         for (const c of cells) {
             if (arrival[c] > t) continue;
-            // the sea over the shelves: their people move to the coast that feeds them
-            if (!dry(c, seaKm)) { if (d[c] > 0) { d[home[c]] += d[c]; d[c] = 0; } life[c] = Life.EMPTY; continue; }
+            // the sea over the shelves: their people move to the coast that feeds them (and are its source, if it had none;
+            // where it had people, the two mix — the economy's skills will be shared out here, by people)
+            if (!dry(c, seaKm)) { if (d[c] > 0) { const h = home[c]; if (!(d[h] > 0)) cameFrom[h] = c; d[h] += d[c]; d[c] = 0; } life[c] = Life.EMPTY; continue; }
             const farming = farmPkg[c] >= 0;
             // (what the land feeds, less what its diseases take: by the way of life the cell had)
-            const K = (farming ? Math.max(farmK(c, t), forage(c)) : forage(c)) * health(c, life[c] >= Life.SEDENTARY, life[c] === Life.IRRIGATOR);
+            const K = (farming ? Math.max(farmK(c, t), forage(c)) : forage(c)) * health(c, settled(life[c]), life[c] === Life.IRRIGATOR);
             if (d[c] === 0) d[c] = C.seedShare * K;
             const r = farming ? C.rFarmer : C.rForager;
             d[c] = K > 0 ? Math.max(0, d[c] + r * d[c] * (1 - d[c] / K) * C.stepYears) : d[c] * 0.5;
@@ -350,19 +385,19 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
                         progress[c] += C.stepYears / C.domesticationYears;
                         if (progress[c] >= 1) {
                             const i = bestPkg[c];
-                            if (farmArrival[i][c] > t) { farmArrival[i][c] = t; newCentres.push([i, c]); centres.push({ cell: c, pkg: PACKAGES[i].id, bp }); }
+                            if (farmArrival[i][c] > t) { farmArrival[i][c] = t; farmFrom[i][c] = c; newCentres.push([i, c]); centres.push({ cell: c, pkg: PACKAGES[i].id, bp }); }
                         }
                     }
                 }
             }
-            if (V && life[c] >= Life.SEDENTARY && d[c] > 0) liveYears(c, t, step, farming, forage(c));
+            if (V && (settled(life[c]) || life[c] === Life.HERDER) && d[c] > 0) liveYears(c, t, step, farming, forage(c), life[c] === Life.HERDER ? sub.food.herds[home[c]] : 0);
             people += d[c] * cellKm2;
             if (farming) farmersPeople += d[c] * cellKm2;
         }
         // new centres: their packages' fronts (each package's arrival only improves)
         for (const i of new Set(newCentres.map(x => x[0]))) {
             if (irrigKnown[i] === Infinity) irrigKnown[i] = t + C.irrigationDelayYears;
-            frontArrival(mesh, len, farmArrival[i], farmSpeed(i), newCentres.filter(x => x[0] === i).map(x => x[1]), Infinity, farmOpensAt(i));
+            frontArrival(mesh, len, farmArrival[i], farmSpeed(i), newCentres.filter(x => x[0] === i).map(x => x[1]), Infinity, farmOpensAt(i), farmFrom[i]);
         }
         // farmers arriving: the earliest package wins the cell
         for (const c of cells) {
@@ -386,9 +421,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             nextPolity = t + C.polityStepYears;
         }
         if (t >= nextFrame - 1e-9) {
-            const dens = new Uint8Array(n), way = new Uint8Array(n);
-            for (const c of cells) { dens[c] = densityByte(d[c]); way[c] = d[c] > 0 ? (life[c] || Life.FORAGER) : 0; }
-            const frame = { bp, density: dens, life: way, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000),
+            const dens = new Uint8Array(n), way = new Uint8Array(n), crop = new Int8Array(n).fill(-1);
+            for (const c of cells) {
+                dens[c] = densityByte(d[c]); way[c] = d[c] > 0 ? (life[c] || Life.FORAGER) : 0;
+                if (d[c] > 0) crop[c] = cropOf(c);
+            }
+            const frame = { bp, density: dens, life: way, crop, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000),
                 towns: pol && anyFarmers ? pol.packed() : null, polityTable: pol && anyFarmers ? pol.packedPolities() : null, polities: pol && anyFarmers ? pol.counts() : null };
             frames.push(frame);
             if (onFrame) onFrame(frame);
@@ -401,9 +439,18 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     };
     const result = () => {
         const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN), onsetBP = new Float32Array(n).fill(NaN);
+        // (sources across water: fronts cross lakes and the sea, where no one lives — back to the last place people do)
+        const peopled = from => {
+            const out = new Int32Array(n).fill(-1);
+            for (const c of cells) { let a = from[c], k = 0; while (a >= 0 && home[a] < 0 && from[a] !== a && k++ < n) a = from[a]; out[c] = a; }
+            return out;
+        };
         for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); if (startT[c] < Infinity) onsetBP[c] = bpOf(startT[c]); }
         return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, onsetBP, centreCells: centres, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
-            voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)) };
+            voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)),
+            // (per crop: when its farmers first farmed a coast — from then voyagers carry it)
+            coastBP: Object.fromEntries(PACKAGES.map((p, i) => [p.food, coastT[i] < Infinity ? bpOf(coastT[i]) : null])),
+            cameFrom: peopled(cameFrom), farmFrom: Object.fromEntries(PACKAGES.map((p, i) => [p.food, peopled(farmFrom[i])])) };
     };
     return { advance, result, get bp() { return bpOf(t - C.stepYears); }, get frames() { return frames; } };
 }

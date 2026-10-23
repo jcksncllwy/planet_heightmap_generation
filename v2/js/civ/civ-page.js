@@ -1,8 +1,8 @@
 // The civ layer on the Evolution page (plans/CIV_PLAN.md): a finished moment's people, worked out in the finishing worker
 // (finish/finish-worker.js), which holds the moment — on a mesh of at most PAGE_CELLS (~56 km cells: a world's people at a
 // glance, a run in a few seconds), each of its cells read from the finer cell at its centre (the rivers are points: they
-// map onto any mesh). What goes back to the page is small: one byte per cell and frame — the density, 8 steps a decade,
-// and the way of life — and, for a picture of a given width, each pixel's cell.
+// map onto any mesh). What goes back to the page is small: two bytes per cell and frame — the density, 8 steps a decade;
+// the way of life and the crop it lives on — and, for a picture of a given width, each pixel's cell.
 
 import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
@@ -19,16 +19,18 @@ export const PAGE_CELLS = 160000;
 export const STEP_YEARS = CIV.stepYears;
 const MESH_SEED = 12345;
 
-/** A frame's byte: 0 nobody; else the way of life (WAYS) in the top two bits, the density in the low six. */
-export const WAYS = ['foragers', 'settled foragers', 'farmers', 'irrigation farmers'];
-const wayOf = life => (life >= Life.IRRIGATOR ? 3 : life >= Life.FARMER ? 2 : life >= Life.SEDENTARY ? 1 : 0);
-export const peopleByte = (d, life) => (d > 1e-4 ? (wayOf(life) << 6) | Math.min(63, 1 + Math.round(8 * (Math.log10(d) + 4))) : 0);
+/** A frame's two bytes per cell. The density byte: 0 nobody, else 1–63, 8 steps a decade from 1e-4 persons/km². The way
+ *  byte: the way of life (WAYS) in the low three bits, the crop it lives on (FOODS index + 1; 0 none) above them. */
+export const WAYS = ['foragers', 'settled foragers', 'herders', 'farmers', 'irrigation farmers'];
+const WAY_OF_LIFE = { [Life.FORAGER]: 0, [Life.SEDENTARY]: 1, [Life.CULTIVATING]: 1, [Life.HERDER]: 2, [Life.FARMER]: 3, [Life.IRRIGATOR]: 4 };
+export const densityCode = d => (d > 1e-4 ? Math.min(63, 1 + Math.round(8 * (Math.log10(d) + 4))) : 0);
+export const wayCode = (life, crop) => (WAY_OF_LIFE[life] ?? 0) | ((crop + 1) << 3);
 /** A food byte (substrate.js food, persons/km²): 0 none; 1–251 from 0.01 to 1000, 50 steps a decade. */
 export const foodByte = d => (d >= 0.01 ? Math.min(255, 1 + Math.round(50 * (Math.log10(d) + 2))) : 0);
 export const byteFood = b => (b ? Math.pow(10, (b - 1) / 50 - 2) : 0);
 export { FOODS };
-/** A frame byte's density (persons/km²) and way of life (WAYS index), or null for nobody. */
-export function peopleOf(b) { return b ? { d: Math.pow(10, ((b & 63) - 1) / 8 - 4), way: b >> 6 } : null; }
+/** A frame's two bytes as density (persons/km²), way of life (WAYS index) and crop (a FOODS key, or null); null for nobody. */
+export function peopleOf(b, wb) { return b ? { d: Math.pow(10, (b - 1) / 8 - 4), way: wb & 7, crop: FOODS[(wb >> 3) - 1] ?? null } : null; }
 
 export { TownFlag };
 
@@ -54,7 +56,8 @@ export function civWorldFromFinish(out) {
 /**
  * Run the people on a finished moment's world (civWorldFromFinish), to now. `width`: the picture the page paints (width ×
  * width/2), for each pixel's cell. The run stays alive in `state`, to go on with (morePeople).
- * @returns {{state, result: {cells, frames: Uint8Array (frame-major, cells each), bp: Float32Array, people: Float64Array,
+ * @returns {{state, result: {cells, frames: Uint8Array (frame-major, cells each: densityCode), ways: Uint8Array (the same:
+ *   wayCode), bp: Float32Array, people: Float64Array,
  *   farmers: Float64Array, towns: [Float32Array [lat, lon, people, TownFlag, polity] × each town of 2500+, or null] per frame,
  *   polities, centres, place, origin: [lat, lon], pix: Int32Array, pixW, ms}}}
  */
@@ -89,21 +92,21 @@ export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
     return startPeople(w, width, onProgress, runs).result;
 }
 
-/** The frames a step of the run adds, packed: one byte per cell and frame, each frame's year, people, towns, polities. */
+/** The frames a step of the run adds, packed: two bytes per cell and frame, each frame's year, people, towns, polities. */
 function collect(state, run, onFrame = () => {}) {
     const { n } = state, list = [];
     state.onFrame = fr => {
-        const b = new Uint8Array(n);
-        for (let c = 0; c < n; c++) if (fr.density[c]) b[c] = peopleByte(byteDensity(fr.density[c]), fr.life[c]);
-        list.push({ b, bp: fr.bp, people: fr.people, farmers: fr.farmers, towns: fr.towns, polities: fr.polityTable });
+        const b = new Uint8Array(n), wb = new Uint8Array(n);
+        for (let c = 0; c < n; c++) if ((b[c] = densityCode(byteDensity(fr.density[c])))) wb[c] = wayCode(fr.life[c], fr.crop[c]);
+        list.push({ b, wb, bp: fr.bp, people: fr.people, farmers: fr.farmers, towns: fr.towns, polities: fr.polityTable });
         onFrame(list.length);
     };
     run();
     state.onFrame = null;
-    const frames = new Uint8Array(list.length * n);
-    list.forEach((x, i) => frames.set(x.b, i * n));
+    const frames = new Uint8Array(list.length * n), ways = new Uint8Array(list.length * n);
+    list.forEach((x, i) => { frames.set(x.b, i * n); ways.set(x.wb, i * n); });
     const res = state.sim.result();
-    return { frames, bp: Float32Array.from(list, x => x.bp), people: Float64Array.from(list, x => x.people), farmers: Float64Array.from(list, x => x.farmers),
+    return { frames, ways, bp: Float32Array.from(list, x => x.bp), people: Float64Array.from(list, x => x.people), farmers: Float64Array.from(list, x => x.farmers),
         towns: list.map(x => x.towns), polities: list.map(x => x.polities), centres: res.centres, place: placeStats(state, res, state.sim.bp) };
 }
 

@@ -20,7 +20,7 @@ import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { civWorldFromFinish } from '../js/civ/civ-page.js';
 import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
-import { runCivSim, Life } from '../js/civ/sim.js';
+import { runCivSim, farms } from '../js/civ/sim.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { CROP_KEYS } from '../js/civ/crops.js';
 
@@ -68,7 +68,7 @@ async function one(spec, label, C) {
             if (peopledBy.get(i) !== null && farmedBy.get(i) !== null) continue;
             for (let c = 0; c < n; c++) if (comp[c] === i) {
                 if (peopledBy.get(i) === null && f.life[c]) peopledBy.set(i, f.bp);
-                if (farmedBy.get(i) === null && f.life[c] >= Life.FARMER) { farmedBy.set(i, f.bp); break; }
+                if (farmedBy.get(i) === null && farms(f.life[c])) { farmedBy.set(i, f.bp); break; }
             }
         }
         const T = f.towns;
@@ -86,7 +86,7 @@ async function one(spec, label, C) {
         landmasses: big.map(([k, i]) => ({ Mkm2: +(k * A / 1e6).toFixed(1), origin: i === comp[origin], peopledBP: peopledBy.get(i), farmedBP: farmedBy.get(i) })),
         originMkm2: originMass && +(originMass / 1e6).toFixed(1),
         peopledShare: { '20ka': +share(at(20000), x => x > 0).toFixed(2), '10ka': +share(at(10000), x => x > 0).toFixed(2), '0': +share(last, x => x > 0).toFixed(2) },
-        farmedShare: { '5ka': +share(f5, x => x >= Life.FARMER).toFixed(2), '0': +share(last, x => x >= Life.FARMER).toFixed(2) },
+        farmedShare: { '5ka': +share(f5, farms).toFixed(2), '0': +share(last, farms).toFixed(2) },
         centres: r.centres.length, firstCentreBP: r.centres[0]?.bp ?? null, packages: [...new Set(r.centres.map(c => c.pkg))],
         voyagingBP: Math.max(...r.voyagingBP.map(x => x ?? -Infinity)) > -Infinity ? Math.max(...r.voyagingBP.filter(x => x !== null)) : null,
         peopleM: { '10ka': +(at(10000).people / 1e6).toFixed(1), '6ka': +(at(6000).people / 1e6).toFixed(1), '0': +(last.people / 1e6).toFixed(1) },

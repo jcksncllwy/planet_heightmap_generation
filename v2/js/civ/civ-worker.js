@@ -29,7 +29,7 @@ async function ensembleRuns(world) {
 
 const KEEP = 2;                 // (runs kept alive to go on with: the latest few moments')
 const runs = new Map();
-const moved = r => [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)];   // (the rest is small: cloned)
+const moved = r => [r.frames.buffer, r.ways.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)];   // (the rest is small: cloned)
 
 self.onmessage = async ({ data }) => {
     const { id } = data;

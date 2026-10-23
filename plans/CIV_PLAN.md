@@ -677,6 +677,23 @@ growth rate rises with the share of stored, sedentary food, a stand-in for the N
   - Not yet: the land budget (C1 shares the land out), and the wild split's ratios are round figures to tune in C1.
 
 - **C0. Compatibility layer:** labels → `Life`, the dominant crop, the source-cell record in `frontArrival`, herd famine.
+  Built 2026-10-23:
+  - `life.js`: `Life` with HERDER (appended, so the old values keep their numbers), the predicates `farms` and `settled`,
+    and `lifeOfDiet`, §9.3's labels (the largest diet class). Towns and polities test `farms`, not "≥ FARMER": herders
+    feed no towns, and their land counts as free farmland.
+  - Frames carry `crop`, the dominant crop as a FOODS index (packages now name theirs: tubers are `roots`). The page
+    sends two bytes per cell and frame: density, and way of life with crop. The People layer shows herders in earth
+    tones and the readout says "farmers of summer cereals".
+  - `frontArrival(…, from)` records each cell's source. The run returns `cameFrom` (who its people came from: across
+    water, the last peopled cell; a landing's launch; the shelf the sea drove them off) and `farmFrom` per crop (a centre
+    or a landing starts a crop's front). Checked: every peopled cell has a source, and every farmed cell traces back to
+    a root.
+  - `coastBP` per crop: when voyagers took it up.
+  - `liveYears` has the herd class (`herdYear`): drought kills the animals the grazing can't carry; the herd regrows over
+    ~5 years. A half year's grazing kills 40 %.
+  - The old model is unchanged: three worlds' runs are byte-identical (frames, towns, polities, arrival and farming
+    dates; `v2/tools/civ-fingerprint.mjs`), the 20-world ensemble matches base in every number, and the bench is identical
+    (its runs took ~3 s longer, within what timings vary).
 - **C1. The economy on today's movement,** behind the option. Compare on Earth, the ensemble and the bench.
 - **C2 (optional). Reaction–diffusion movement,** if C1's fronts are the weak point.
 - **D.** Retire the switches once C1 wins.

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
-import { runCivSim, byteDensity, Life } from '../js/civ/sim.js';
+import { runCivSim, byteDensity, farms } from '../js/civ/sim.js';
 import { TownFlag } from '../js/civ/polity.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { OUT, MESH_SEED, worldOf, writePng, pixelCells, ramp, warmRamp, drawText } from './lib/civ-world.mjs';
@@ -131,7 +131,7 @@ pick.forEach((f, i) => {
         let col;
         if (q) {
             const t = (Math.log10(byteDensity(q)) + 3) / 5;             // 0.001 … 100 per km²
-            col = f.life[c] >= Life.FARMER ? warmRamp(t) : ramp(t * 0.85);
+            col = farms(f.life[c]) ? warmRamp(t) : ramp(t * 0.85);
         } else col = w.ocean[c] ? [18, 26, 44] : [62, 62, 58];
         img[o] = col[0]; img[o + 1] = col[1]; img[o + 2] = col[2]; img[o + 3] = 255;
     }

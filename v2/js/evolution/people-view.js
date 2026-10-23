@@ -1,7 +1,8 @@
 // The Evolution page's People layer (plans/CIV_PLAN.md): a detailed moment's people, from the first humans 70 000 years
 // ago to now — worked out in a worker (civ/civ-worker.js) from the world its finish sent, once per detailed moment, on
 // request (the layer chosen) — and drawn per pixel of the finished picture at the year chosen on the layer's own
-// timeline: foragers in cool colours, farmers in warm ones, by density; the domestication centres ringed.
+// timeline: foragers in cool colours, farmers in warm ones, herders in earth tones, by density; the domestication centres
+// ringed.
 
 import { peopleOf, WAYS, TownFlag, FOODS, byteFood } from '../civ/civ-page.js';
 
@@ -47,7 +48,8 @@ export class PeopleService {
     }
 }
 
-// ── colours: foragers cool (violet → teal → green), farmers warm (dark red → orange → pale yellow), by density ──
+// ── colours: foragers cool (violet → teal → green), farmers warm (dark red → orange → pale yellow), herders earth (dark
+// brown → sand), by density ──
 const rampOf = stops => t => {
     t = Math.max(0, Math.min(1, t)) * (stops.length - 1);
     const i = Math.min(stops.length - 2, Math.floor(t)), f = t - i;
@@ -55,36 +57,37 @@ const rampOf = stops => t => {
 };
 const COOL = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [190, 225, 60]];
 const WARM = [[90, 10, 20], [180, 40, 30], [240, 120, 30], [255, 220, 120]];
-const cool = rampOf(COOL), warm = rampOf(WARM);
+const EARTH = [[55, 35, 20], [120, 80, 45], [185, 140, 85], [235, 210, 160]];
+const cool = rampOf(COOL), warm = rampOf(WARM), earth = rampOf(EARTH);
 /** Density's place on the ramps: 0.001 … 100 persons/km². */
 const LO = -3, HI = 2;
 const tOf = d => (Math.log10(d) - LO) / (HI - LO);
-// (a table per frame byte: 256 colours)
-const BYTE_RGB = new Uint8Array(3 * 256);
-for (let b = 1; b < 256; b++) {
-    const p = peopleOf(b), c = p.way >= 2 ? warm(tOf(p.d)) : cool(tOf(p.d) * 0.9 + (p.way === 1 ? 0.1 : 0));
-    BYTE_RGB[3 * b] = c[0]; BYTE_RGB[3 * b + 1] = c[1]; BYTE_RGB[3 * b + 2] = c[2];
+// (a table by way of life and density byte: (way << 6) | density)
+const BYTE_RGB = new Uint8Array(3 * WAYS.length * 64);
+for (let way = 0; way < WAYS.length; way++) for (let b = 1; b < 64; b++) {
+    const p = peopleOf(b, way), t = tOf(p.d), c = way >= 3 ? warm(t) : way === 2 ? earth(t) : cool(t * 0.9 + (way === 1 ? 0.1 : 0)), i = 3 * ((way << 6) | b);
+    BYTE_RGB[i] = c[0]; BYTE_RGB[i + 1] = c[1]; BYTE_RGB[i + 2] = c[2];
 }
 const SEA = [14, 20, 44];
 
 /** A finish-view.js paintFinished colouring: the people of frame f, per pixel of a texture `width` wide. */
 export function peopleColor(P, f, width, lut) {
-    const L = lut.rgb, k = P.pixW / width, W = P.pixW, o0 = f * P.cells, frames = P.frames, pix = P.pix;
+    const L = lut.rgb, k = P.pixW / width, W = P.pixW, o0 = f * P.cells, frames = P.frames, ways = P.ways, pix = P.pix;
     return (out, o, x, y, wet, kk, k3, v, lake) => {
         if (wet || lake === 1 || lake === 2) {
             const s = 0.55 + 0.45 * kk;
             out[o] = SEA[0] * s; out[o + 1] = SEA[1] * s; out[o + 2] = SEA[2] * s; out[o + 3] = 255;
             return;
         }
-        const b = frames[o0 + pix[Math.floor(y * k) * W + Math.floor(x * k)]];
+        const i = o0 + pix[Math.floor(y * k) * W + Math.floor(x * k)], b = frames[i];
         if (!b) {
             // (nobody: the land in grey, by its own colour's lightness, shaded)
             const g = (0.2 + 0.25 * (L[k3] + L[k3 + 1] + L[k3 + 2]) / 765) * 255 * kk;
             out[o] = g; out[o + 1] = g; out[o + 2] = g * 0.95; out[o + 3] = 255;
             return;
         }
-        const s = 0.7 + 0.3 * kk;
-        out[o] = Math.min(255, BYTE_RGB[3 * b] * s); out[o + 1] = Math.min(255, BYTE_RGB[3 * b + 1] * s); out[o + 2] = Math.min(255, BYTE_RGB[3 * b + 2] * s); out[o + 3] = 255;
+        const s = 0.7 + 0.3 * kk, j = 3 * (((ways[i] & 7) << 6) | b);
+        out[o] = Math.min(255, BYTE_RGB[j] * s); out[o + 1] = Math.min(255, BYTE_RGB[j + 1] * s); out[o + 2] = Math.min(255, BYTE_RGB[j + 2] * s); out[o + 3] = 255;
     };
 }
 
@@ -228,12 +231,13 @@ function polityOf(P, f, id) {
 
 export const yearsWords = bp => { const w = agoWords(bp); return w[0].toUpperCase() + w.slice(1); };
 
-/** Add a run's further frames (PeopleService.more) to its people: the frames' bytes into a buffer that grows by doubling
+/** Add a run's further frames (PeopleService.more) to its people: the frames' bytes into buffers that grow by doubling
  *  (so a long run on stays cheap), the rest replaced or appended. */
 export function addPeople(P, more) {
     const k = P.bp.length, m = more.bp.length, need = (k + m) * P.cells;
-    if (need > P.frames.length) { const b = new Uint8Array(Math.max(need, 2 * P.frames.length)); b.set(P.frames.subarray(0, k * P.cells)); P.frames = b; }
-    P.frames.set(more.frames, k * P.cells);
+    const grow = a => { if (need <= a.length) return a; const b = new Uint8Array(Math.max(need, 2 * a.length)); b.set(a.subarray(0, k * P.cells)); return b; };
+    P.frames = grow(P.frames); P.ways = grow(P.ways);
+    P.frames.set(more.frames, k * P.cells); P.ways.set(more.ways, k * P.cells);
     const join = (a, b) => { const c = new a.constructor(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
     P.bp = join(P.bp, more.bp); P.people = join(P.people, more.people); P.farmers = join(P.farmers, more.farmers);
     P.towns.push(...more.towns); P.polities.push(...more.polities);
@@ -243,14 +247,17 @@ const millions = v => (v >= 1e7 ? `${(v / 1e6).toFixed(0)} M` : v >= 1e6 ? `${(v
 const PKG_WORDS = { winterCereal: 'winter-rain cereals', summerCereal: 'summer-rain cereals', tuber: 'roots and tubers' };
 const gradient = ramp => `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(t => `rgb(${ramp(t).map(Math.round).join(',')})`).join(', ')})`;
 
-/** The legend: the year, how many, the two ramps and the centres so far. */
+/** The legend: the year, how many, the ramps (herders' where there are any) and the centres so far. */
 export function peopleLegendHTML(P, f) {
     const bp = P.bp[f], founded = P.centres.filter(c => c.bp >= bp), T = P.towns[f];
+    let herders = false;
+    for (let i = f * P.cells, e = i + P.cells; i < e && !herders; i++) herders = P.frames[i] > 0 && (P.ways[i] & 7) === 2;
     let towns = 0, states = 0, biggest = 0;
     if (T) for (let i = 0; i < T.length; i += 5) { towns++; if (T[i + 3] & TownFlag.CAPITAL) states++; biggest = Math.max(biggest, T[i + 2]); }
     return `<div><b>People</b> · ${yearsWords(bp)} · ${millions(P.people[f])}${P.farmers[f] > 0 ? ` (${millions(P.farmers[f])} farmers)` : ''}</div>
 <div class="evo-people-ramp"><span>Foragers</span><i style="background:${gradient(cool)}"></i></div>
 <div class="evo-people-ramp"><span>Farmers</span><i style="background:${gradient(warm)}"></i></div>
+${herders ? `<div class="evo-people-ramp"><span>Herders</span><i style="background:${gradient(earth)}"></i></div>` : ''}
 ${towns ? `<div class="evo-legend-note">● ${towns.toLocaleString()} towns of 2,500+ (the biggest ${Math.round(biggest).toLocaleString()})${states ? ` · <span style="color:rgb(255,215,90)">◎ ${states} state${states > 1 ? 's' : ''}</span>` : ''}</div>` : ''}
 <div class="evo-legend-note">0.001 → 100 people per km² · ◯ a domestication centre${founded.length ? ` (${founded.length} so far; the first ${yearsWords(founded[0].bp).toLowerCase()}, ${PKG_WORDS[founded[0].pkg] ?? founded[0].pkg})` : ''}</div>`;
 }
@@ -278,11 +285,11 @@ function hazards(P, c) {
 /** The readout's lines for a point of the map (u, v as finish-view.js riverAt) at frame f: who lives there, since when, what
  *  the land does to them, and the town near. */
 export function peopleLines(P, f, u, v) {
-    const c = cellAt(P, u, v), p = peopleOf(P.frames[f * P.cells + c]), Q = P.place, lines = [];
+    const c = cellAt(P, u, v), p = peopleOf(P.frames[f * P.cells + c], P.ways[f * P.cells + c]), Q = P.place, lines = [];
     if (!p) lines.push('<span class="hi-label">People</span> nobody yet');
     else {
         const d = p.d >= 10 ? p.d.toFixed(0) : p.d >= 1 ? p.d.toFixed(1) : p.d >= 0.01 ? p.d.toFixed(2) : p.d.toFixed(3);
-        lines.push(`<span class="hi-label">People</span> ${WAYS[p.way]} · ${d} per km²`);
+        lines.push(`<span class="hi-label">People</span> ${WAYS[p.way]}${p.crop ? ` of ${FOOD_WORDS[p.crop]}` : ''} · ${d} per km²`);
     }
     if (Q) {
         const bp = P.bp[f], came = Q.arrivalBP[c], farmed = Q.farmBP[c], since = [];
@@ -309,12 +316,12 @@ function standingSince(P, f, lat, lon) {
 /** A town's card: its people, what feeds it, its polity, how long it has stood, what its land does to it. */
 export function townCardHTML(P, f, i) {
     const T = P.towns[f], lat = T[i], lon = T[i + 1], pop = T[i + 2], fl = T[i + 3], id = T[i + 4], bp = P.bp[f];
-    const c = cellAt(P, (lon + 180) / 360, (90 - lat) / 180), Q = P.place, pl = peopleOf(P.frames[f * P.cells + c]), pol = polityOf(P, f, id);
+    const c = cellAt(P, (lon + 180) / 360, (90 - lat) / 180), Q = P.place, pl = peopleOf(P.frames[f * P.cells + c], P.ways[f * P.cells + c]), pol = polityOf(P, f, id);
     const rows = [];
     rows.push(['Fed by', fl & TownFlag.IRRIGATED ? 'irrigated fields along its river, and the surplus brought to it'
         : fl & TownFlag.CANAL_FED ? 'grain brought from irrigated land nearby, or along its river or coast; its own fields are rain-fed'
         : 'rain-fed fields, and the surplus brought to it']);
-    if (pl) rows.push(['Around it', `${WAYS[pl.way]}, ${pl.d >= 10 ? pl.d.toFixed(0) : pl.d.toFixed(1)} per km²` + (Q && Q.farmBP[c] >= bp ? `; farming here since ${agoWords(Q.farmBP[c])}` : '')]);
+    if (pl) rows.push(['Around it', `${WAYS[pl.way]}${pl.crop ? ` of ${FOOD_WORDS[pl.crop]}` : ''}, ${pl.d >= 10 ? pl.d.toFixed(0) : pl.d.toFixed(1)} per km²` + (Q && Q.farmBP[c] >= bp ? `; farming here since ${agoWords(Q.farmBP[c])}` : '')]);
     if (pol) {
         const isCap = Math.abs(pol.capLat - lat) < 0.01 && Math.abs(pol.capLon - lon) < 0.01, kind = pol.state ? 'a state' : pol.towns > 1 ? 'a chiefdom' : null;
         let words;
