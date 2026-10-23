@@ -2,7 +2,8 @@
 // Earth-likeness report — every report() line of every suite, against Earth's range, the ones outside it flagged ⚑.
 // Usage: node v2/tools/run-checks.mjs [suite …] [--jobs 4]      (suite: invariants, phase6, scale, …; default all)
 // On a machine shared through sim-slots (a CPU/memory semaphore on PATH; machine-local, not in this repo) each suite waits
-// for its own slots — TERRAIN_SLOTS for the suites that build terrain, 2 for the rest — and is told its share as
+// for its own slots — TERRAIN_SLOTS and 3 GB for the suites that build terrain; 1 slot and 2 GB for the rest, which run on one core (measured
+// 1.0–1.3 cores and ~1.4 GB each, 2026-10-23) — and is told its share as
 // SIM_THREADS, which sizes its pools; not when run-checks itself was given SIM_THREADS (it already holds its slots).
 import { spawn, spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,7 +27,7 @@ async function runOne(name) {
     const out = await new Promise(resolve => {
         let text = '';
         const cmd = [process.execPath, join(here, `check-${name}.mjs`)];
-        const [exe, ...argv] = slots ? [slots, 'run', '-n', String(terrainSuites.has(name) ? TERRAIN_SLOTS : 2), '--gb', '3', '--who', `checks:${name}`, '--', ...cmd] : cmd;
+        const [exe, ...argv] = slots ? [slots, 'run', '-n', String(terrainSuites.has(name) ? TERRAIN_SLOTS : 1), '--gb', terrainSuites.has(name) ? '3' : '2', '--who', `checks:${name}`, '--', ...cmd] : cmd;
         const child = spawn(exe, argv, { env: { ...process.env, REPORT_JSON: reportFile } });
         child.stdout.on('data', d => { text += d; });
         child.stderr.on('data', d => { text += d; });
