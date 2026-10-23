@@ -24,6 +24,7 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Aquatic bonus for coasts, lake shores and big rivers (×2–2.5, capped ×8), on a 15 km strip | Binford 2001; Kelly 2013: aquatic foragers are the densest | Adapted: the multipliers and strip width are ours | [L] |
 | Wetland and delta bonus (×4); delta reach ∝ √discharge | Pournelle 2003; Algaze 2008 (deltaic marsh Sumer). Delta geometry from hydraulic-geometry scaling | Adapted; reach coefficient ours (Nile and Tigris–Euphrates ~130 km) | [L] |
 | Wild cereal suitability: rain and temperature windows, relief ("hilly flanks"), rain seasonality | Blumler 1992 (large-seeded grasses are Mediterranean); Braidwood's hilly flanks | Adapted: window shapes ours | [L] |
+| Dense wild cereal stands feed foragers up to ×1.5 at their best (`wildCerealForage`); not in the glacial climate | Harlan 1967 (a family could reap a year's wild einkorn in three weeks); the Natufians' reason to settle | Adapted: the multiplier is ours | [L] |
 | Package abundance (winter cereals 1, summer cereals 0.8, tubers 0.75) | Blumler 1992: 32 of the 56 largest-seeded grasses are Mediterranean | Ours, motivated by Blumler; calibrated so the Fertile Crescent is among the first centres on Earth | [L] |
 | Package Köppen envelopes | Ours, from the wild ranges of wheat/barley, millets/rice, taro/yam/potato | Ours | — |
 | Rain-fed yield 650 kg/ha; limit 200 mm (barley), full at 450 | Halstead 1995 (Neolithic yields 400–750); Grigg 1974; FAO | Direct ranges | [L] |
@@ -163,6 +164,34 @@ Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities
 | A century's famine deaths beyond the place's norm (a 500-year running mean) raise war's odds × (1 + 10 × it) and add 3 × it to the collapse rate | Zhang et al. 2007, *PNAS* (war frequency follows harvest shortfalls); Hsiang, Burke & Miguel 2013, *Science* (conflict rises with the climate anomaly); Turchin & Nefedov 2009, *Secular Cycles* | Ours in form and value; the norm keeps usual hardship from breaking every polity | [L] |
 | State = a polity holding towns of the three tiers above the village | Wright & Johnson 1975 (three levels of administrative hierarchy above the village) | Direct definition, read off settlement size | [L] |
 
+## Design sources for the next model (plans/CIV_PLAN.md §9; not yet in code)
+
+Cited in the §9 design. Each moves into its section's table, with fidelity, when its rule enters the code.
+
+| Idea | Source | Checked |
+|---|---|---|
+| Diet breadth: a resource enters the diet as higher-ranked ones grow scarce | MacArthur & Pianka 1966, *American Naturalist*; Kelly 2013, *The Lifeways of Hunter-Gatherers*, ch. 3 (return rates, used for ordering only) | [L] |
+| The broad spectrum revolution | Flannery 1969 | [L] |
+| Population pressure drives intensification | Cohen 1977, *The Food Crisis in Prehistory* | [L] |
+| Domestication as plant–human co-evolution | Rindos 1984, *The Origins of Agriculture* | [L] |
+| Domestication takes ~2000 years of cultivation | Purugganan & Fuller 2009, *Nature*; Fuller 2007, *Annals of Botany*; Allaby et al. 2017 (better than the first for the rate) | [L] |
+| Complex skills need a large enough population to keep; disputed | Henrich 2004, *American Antiquity*; Vaesen et al. 2016, *PNAS* | [L] |
+| Herding through the prey pathway | Zeder 2012, "Pathways to animal domestication" (in Gepts et al., eds, *Biodiversity in Agriculture*) | [L] |
+| The Neolithic demographic transition | Bocquet-Appel 2011, *Science* | [L] |
+| Time-delayed front speed v = 2√(rD)/(1 + rT/2); demic–cultural mix, ~60 % demic in Europe | Fort 2012, *PNAS* | [L] |
+| Farmers entering occupied land as competition | Aoki, Shida & Shigesada 1996, *Theoretical Population Biology* | [L] |
+| The end of the African Humid Period (~5.5 ka) pushes people into the Nile valley (a planned rule: needs orbital forcing) | Kuper & Kröpelin 2006, *Science* | [L] |
+| Agro-climatic yield from the months | FAO 1978 AEZ; GAEZ v4 (Fischer et al. 2021) | in use, see the resource map |
+
+Notes on these sources from the §9 design review (2026-10-22):
+- MacArthur & Pianka add a lower-ranked item when encounters with the higher-ranked ones fall, not when those "can't feed" people. §9.1 now says so.
+- Kelly 2013's return rates are post-encounter rates that leave out search time. Use them for the ordering only, and check the table number.
+- Henrich 2004 models a threshold population by imperfect copying (a Gumbel draw). Our S(N) is our own formula: "adapted", and disputed by Vaesen et al. 2016.
+- Boserup 1965 is about intensifying farming, not hunger taking up a new resource. Cohen 1977 fits that better, so §9 cites Cohen.
+- GAEZ v4 uses a daily water balance and modern cultivars. Our monthly "P ≥ ½ PET" is the FAO 1978 method; compare against GAEZ's low-input yields only.
+- The demic–cultural mix (~60 % demic) is Fort 2012, not Fort, Pujol & Cavalli-Sforza 2004, which is the Palaeolithic wave-of-advance paper (used for that above).
+- The review found these correct as used: Flannery 1969, Rindos 1984, Binford 2001, Blumler 1992 (a dissertation, cited by way of Diamond 1997), Bocquet-Appel 2011.
+
 ## Data for the Earth test (`tuning/civ/`)
 
 | Data | Source | Notes |
@@ -174,4 +203,4 @@ Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities
 | Deposits | USGS MRDS | |
 | LGM ice | Ehlers & Gibbard 2004, roughly, by eye | Boxes by latitude and longitude |
 | Population totals | HYDE 3.2 (Klein Goldewijk et al. 2017) | Validation only |
-| Arrival, centre and farming dates | Listed in `civ-sim.mjs` beside each site | Validation only |
+| Arrival, centre and farming dates | Listed in `civ-sim.mjs` beside each site; centres from Larson et al. 2014 (*PNAS*) and Fuller 2011 | Validation only |
