@@ -665,12 +665,10 @@ Everything is to be tuned together at the end (developer); the measured impact o
 
 ## The crust budget (2026-10-23)
 
-Continental crust grew ×1.14–1.23 over a 1200 Myr history; on Earth additions at arcs (~2.7 km³/yr) and losses
-(~3.2 km³/yr) about balance, and the Phanerozoic's net growth is "effectively nil" (Scholl & von Huene 2009). Measured
-per process and per km of overriding trench (area × `continentCrustKm`, 40 km), arcs maturing onto continents add
-~60–70 km³/Myr per km — Earth's rate (2.5 AU over ~42,000 km of ocean-margin trench ≈ 60) — and seams sealed at welds
-another ~15; erosive margins took ~15, underthrusting ~20–35, and nothing at all went down with the trench's sediment
-(Earth: ~24, ~40 % of the ~60 recycled at ocean margins). So:
+Continental crust grew ×1.14–1.29 over a 1200 Myr history; on Earth additions at arcs (~2.7 km³/yr) and losses
+(~3.2 km³/yr) about balance, and the Phanerozoic's net growth is "effectively nil" (Scholl & von Huene 2009). The
+budget is now measured per process in Earth's units — area × `continentCrustKm` (40 km), per km of overriding trench
+over the run (check-phase13, "the crust budget against Earth's"). What changed:
 - **Sediment subduction** (`step/sediment-subduction.js`, its own ledger stage `sedimentSubduction`). At every active
   continental margin the slab drags the base of the trench's fill down the subduction channel — about
   `accretionSedimentKm` of it, which is why a trench with more than ~1 km of sediment accretes the rest (Clift & Vannucchi
@@ -681,19 +679,22 @@ another ~15; erosive margins took ~15, underthrusting ~20–35, and nothing at a
   `trenchDenudationKmPerMyr` (0.1 km/Myr; river basins by ¹⁰Be: median 0.054, mean 0.218 — Portenga & Bierman 2011) × its
   latitude's erosion, and the fill stands at supply ÷ convergence: slow trenches off wet land fill, fast ones starve —
   the correlation Clift & Vannucchi find. (Was `trenchTerrigenousKm`, a fixed thickness whatever the convergence, sampled
-  around the trench rather than behind its coast: a trench whose coast had retreated starved.)
+  around the trench rather than behind its coast.) The 7c erosion scene's slow trench (~1–2.5 cm/yr) is therefore now
+  mostly accretionary, as Cascadia is.
 - **Erosive margins erode from their first convergence**: the slab-maturity gate (`marginIsleSlabKm`) now holds only the
   fore-arc islands, and a trench cell no longer on a continental margin drops its EROSIVE flag. The 34 % of active coast
-  read erosive was partly young trenches never judged and stale flags; judged by trench length × time
-  (`world.budget.erosiveTrenchKmMyr ÷ marginTrenchKmMyr`), ~50–55 % of continental-margin trench is erosive (Earth ~57 %).
-- **Reports** (check-phase13): the crust's change over 0→500 and 500→1000 Myr against 0 ± 10 %; the erosive share of
-  margin trench; additions, losses, sediment and subduction erosion per km of trench against Scholl & von Huene (2009)
-  and Clift & Vannucchi (2004). The ledger check (check-invariants) holds `sedimentSubduction` to losing land only.
+  the lab read erosive came from coasts read off unjudged and stale trench flags; by trench length × time
+  (`world.budget.erosiveTrenchKmMyr ÷ marginTrenchKmMyr`) 52–56 % of continental-margin trench is erosive (Earth ~57 %).
 
-Still open: only ~35–40 % of the engine's overriding trench lies off a continent (Earth: most of the Pacific rim), so
-sediment subduction stays well below Earth's per km of trench; intra-oceanic fore-arcs (Tonga, the Marianas) do not
-erode, so the arcs that later mature onto continents keep all their crust; and the seams filled at welds add crust no
-Earth process makes.
+What the books say (three seeds, 1200 Myr): **losses are Earth's** — 62–66 km³/Myr per km of trench (Earth ~77, Scholl &
+von Huene 2009): underthrusting ~40, subduction erosion ~13, sediment ~4–5 — but **additions are twice Earth's**: ~120
+against 30–65, of which arcs maturing onto continents ~85, seams of sea filled at welds ~20 and fore-arc islands raised
+from the fore-arc's sea floor ~15. The sediment sink is small because only ~35–40 % of the engine's overriding trench lies
+off a continent (Earth: most of the Pacific rim) and its supply is set by the land, not tuned to Earth's ~24. Still open,
+for the developer to choose: the seams filled at welds and the islands raised from sea floor make crust no Earth process
+makes (the first could be paid for from the underthrust front, the second limited to the sediment a trench scrapes off,
+v × (h − 1 km) — which would leave few islands); arcs mature at `arcContinentKmPerMyr` with no Earth rate behind it; and
+intra-oceanic fore-arcs (Tonga, the Marianas) do not erode, so every arc that reaches a continent arrives whole.
 
 ## Conventions
 
