@@ -719,7 +719,10 @@ growth rate rises with the share of stored, sedentary food, a stand-in for the N
     climate fits, the grasses were never there); the front ~20 % fast inland.
   - The page: the People layer's "Land in use" shows each place's fields and pasture (the economy only).
 - **C2 (optional). Reaction–diffusion movement,** if C1's fronts are the weak point.
-- **D.** Retire the switches once C1 wins.
+- **D. The switches retired** (2026-10-23, at Jackson's word): the economy is the only model. Gone: the `economy`
+  option and the page's `?economy=`; the switches' onset, cultivation, farming fronts and farm capacity; `forageDecline`,
+  `cultivatedYield`, `onsetCrowding`. Before 13 ka the run is the foragers' alone, as before. The economy's runs are
+  byte-identical across the change (three worlds' fingerprints), which are now the baseline.
 
 ### 9.8 Parameters, and what pins them
 

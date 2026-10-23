@@ -6,7 +6,6 @@
 
 import { peopleOf, WAYS, TownFlag, FOODS, byteFood } from '../civ/civ-page.js';
 
-const ECONOMY = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('economy') : null;   // (read at load, before the page rewrites its URL)
 
 export class PeopleService {
     constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; }
@@ -32,10 +31,7 @@ export class PeopleService {
     }
 
     start() {
-        // (the page's ?economy= — 'resources' for the economy, plans/CIV_PLAN.md §9.3 — goes on to the worker)
-        const url = new URL('../civ/civ-worker.js', import.meta.url);
-        if (ECONOMY) url.searchParams.set('economy', ECONOMY);
-        const w = new Worker(url, { type: 'module' });
+        const w = new Worker(new URL('../civ/civ-worker.js', import.meta.url), { type: 'module' });
         w.onmessage = ({ data }) => {
             const j = this.jobs.get(data.id);
             if (!j) return;
@@ -96,7 +92,7 @@ export function peopleColor(P, f, width, lut) {
     };
 }
 
-// ── the Land view (the economy's: plans/CIV_PLAN.md §9.3): how much of each place is in fields, and in pasture ──
+// ── the Land view (plans/CIV_PLAN.md §9.3): how much of each place is in fields, and in pasture ──
 const FIELD_RGB = [250, 205, 60], PASTURE_RGB = [150, 175, 90];
 /** A land byte's share (sim.js packs each 0, or 1–15 on a log scale: 15 all of it, 10 a tenth, 5 a hundredth). */
 const landShare = q => (q ? Math.pow(10, (q - 15) / 5) : 0);
@@ -279,7 +275,7 @@ export function addPeople(P, more) {
     const grow = a => { if (need <= a.length) return a; const b = new Uint8Array(Math.max(need, 2 * a.length)); b.set(a.subarray(0, k * P.cells)); return b; };
     P.frames = grow(P.frames); P.ways = grow(P.ways);
     P.frames.set(more.frames, k * P.cells); P.ways.set(more.ways, k * P.cells);
-    if (P.land && more.land) { P.land = grow(P.land); P.land.set(more.land, k * P.cells); }
+    P.land = grow(P.land); P.land.set(more.land, k * P.cells);
     const join = (a, b) => { const c = new a.constructor(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
     P.bp = join(P.bp, more.bp); P.people = join(P.people, more.people); P.farmers = join(P.farmers, more.farmers);
     P.towns.push(...more.towns); P.polities.push(...more.polities);

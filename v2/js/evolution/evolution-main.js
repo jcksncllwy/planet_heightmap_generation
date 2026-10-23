@@ -142,7 +142,7 @@ $('rebuildBtn').addEventListener('click', () => build());                       
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
 const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
-    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : '') + (url.get('economy') ? `&economy=${encodeURIComponent(url.get('economy'))}` : ''));
+    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
 // interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)
@@ -554,7 +554,7 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P?.land && peopleView.show === 'land', food = P?.food && !land && peopleView.show !== 'people' && peopleView.show !== 'land' ? peopleView.show : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', food = P?.food && !land && peopleView.show !== 'people' ? peopleView.show : null;
     // (the settlements: on the People layer, or over any other with Settlements on — the people worked out on request)
     const S = settlementsShown() ? fin.people : null;
     if (settlementsShown() && !fin.people) runPeople(fin);
@@ -1160,7 +1160,7 @@ function readout(e) {
     if (setting) lines.push(`<span class="hi-label">Setting</span> ${setting}`);
     // the climate, where this moment has one: its Köppen class, temperature and rain
     const C = climateOf(f);
-    if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' && fin.people.land ? landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
+    if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
         : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? foodLines(fin.people, p[0], p[1]) : peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
     else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));

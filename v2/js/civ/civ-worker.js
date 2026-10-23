@@ -27,17 +27,16 @@ async function ensembleRuns(world) {
     }
 }
 
-const economy = new URL(self.location.href).searchParams.get('economy') ?? undefined;   // (the page's ?economy=)
 const KEEP = 2;                 // (runs kept alive to go on with: the latest few moments')
 const runs = new Map();
-const moved = r => [r.frames.buffer, r.ways.buffer, ...(r.land ? [r.land.buffer] : []), r.bp.buffer, r.people.buffer, r.farmers.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)];   // (the rest is small: cloned)
+const moved = r => [r.frames.buffer, r.ways.buffer, r.land.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)];   // (the rest is small: cloned)
 
 self.onmessage = async ({ data }) => {
     const { id } = data;
     try {
         if (data.type === 'people') {
             const { world, width } = data, climate = await ensembleRuns(world);
-            const { state, result } = startPeople({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), climate, { economy });
+            const { state, result } = startPeople({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), climate);
             runs.set(id, state);
             while (runs.size > KEEP) runs.delete(runs.keys().next().value);
             self.postMessage({ type: 'people', id, ...result }, [...moved(result), result.pix.buffer, result.food.buffer]);

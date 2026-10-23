@@ -149,14 +149,12 @@ export const CIV = {
     // ── Phase 2: settling down and domestication (Winterhalder & Kennett 2006: cultivate when it pays better) ──
     packingKm2: 0.091,          // Binford's packing threshold: residential mobility severely constrained (9.1 /100 km²)
     sedentaryWild: 0.4,         // dense, storable wild stands count as a reason to stay (or wetland, coast, lake shore)
-    forageDecline: 0.5,         // foraging returns fall this much from empty land to full (diminishing returns)
-    cultivatedYield: 0.35,      // cultivating wild plants yields this share of domesticated returns, rising to all of it…
-    domesticationYears: 2000,   // …over this long (non-shattering cereals: ~2000 yr of cultivation; Purugganan & Fuller 2009)
+    domesticationYears: 2000,   // cultivation to domestication (non-shattering cereals: ~2000 yr; Purugganan & Fuller 2009)
     wildMin: 0.3,               // stands poorer than this are not cultivated
-    // Someone starting to cultivate is a rare event, likeliest at the best stands: a hazard per km² and year ∝ W^onsetPower
-    // (W, the wild stands' suitability) — so a few regions begin, thousands of years apart, and their farmers' fronts
+    // Someone starting to cultivate is a rare event, likeliest at the best stands, used hardest: a hazard per km² and year
+    // ∝ (W·u)^onsetPower (W, the wild stands' suitability; u, their share of the diet against useShare) — so a few regions begin, thousands of years apart, and their farmers' fronts
     // reach most others before they begin themselves (the record's ~10 centres, 11.5–4 ka)
-    onsetPerKm2Yr: 2e-8,        // at W = 1 and twice the packing density: a 100 000 km² region of the best stands begins within ~500 yr
+    onsetPerKm2Yr: 2e-8,        // at W·u = 1: a 100 000 km² region of the best stands, used to the full, begins within ~500 yr
     onsetPower: 6,
     // …easing, the longer a people has lived settled and packed, to this over this long: population pressure turns people
     // to poorer plants (Cohen 1977; Binford 2001's packing → intensification). The best stands still go first; the
@@ -164,7 +162,6 @@ export const CIV = {
     // America's ~4.5 (Larson et al. 2014)
     onsetPowerLate: 3,
     onsetEaseYears: 3000,
-    onsetCrowding: 1,           // and ∝ (density / packing threshold)^this, at most ×4: the crowded (Natufians) begin first
     chanceSeed: 0,              // the rare events' draws (onsets, landings): another seed, another history of the same world
     centreKm: 400,              // domestication cells of one package this close are one centre
     cultivationFromBP: 13000,   // cultivation began in the late glacial's warm spells (Abu Hureyra ~13 ka; Hillman et al. 2001)
@@ -236,8 +233,7 @@ export const CIV = {
     herdDieOff: 1,              // the share of the animals the year's grazing can't carry that die
     herdRecovery: 0.4,          // the herd's regrowth a year (logistic): from half to ~90 % in ~5 years
 
-    // ── the economy (plans/CIV_PLAN.md §9.3; econ.js), in place of the switches when economy is 'resources' ──
-    economy: 'switches',        // 'switches' (the model through Phase 4) or 'resources'
+    // ── the economy (plans/CIV_PLAN.md §9.3; econ.js) ──
     useShare: 0.2,              // a resource at this share of the diet is in full use: skill and domestication at their full pace
     skillSeed: 0.3,             // the skill of those who first cultivate a wild stand, or keep a wild herd (ours)
     skillYears: 200,            // a skill is learnt over a few generations of full use (ours: the organism is the slow part)…

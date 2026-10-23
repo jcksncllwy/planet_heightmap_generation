@@ -82,9 +82,9 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
 | Settled once density passes 0.091/km² beside wetland, coast, lake or rich wild stands | Binford's packing threshold (9.098 per 100 km²) | Direct threshold; the beside-what condition is adapted | [L] |
-| Cultivation begins as a rare event: hazard ∝ W⁶ × crowding | Ours; meant to give the record's ~10 centres staggered over 11.5–4 ka | Ours; calibrated on Earth | — |
+| *Retired (stage D, 2026-10-23; the economy's onset below):* cultivation begins as a rare event: hazard ∝ W⁶ × crowding | Ours; meant to give the record's ~10 centres staggered over 11.5–4 ka | Ours; calibrated on Earth | — |
 | …the exponent eases from 6 to 3 over a cell's first 3000 years settled and packed: the best stands go first, middling ones late where no farmers came first | Population pressure → intensification (Cohen 1977; Binford 2001); the record's late centres on middling stands (New Guinea ~8.5 ka, Andes ~7, eastern North America ~4.5; Larson et al. 2014). Our W at Yellow River, Mesoamerica, Andes and New Guinea is 0.5–0.8 | Ours. Earth: centres 14 → 24, more of them spurious (11 → 20); known centres within 800 km and ±2 ka 2 → 4 of 10 | [L] |
-| People cultivate when it pays better than foraging, whose returns fall as land fills | Winterhalder & Kennett 2006 (behavioural ecology of adoption) | Adapted: a two-option return comparison | [L] |
+| *Retired (stage D; the economy's allocation below):* people cultivate when it pays better than foraging, whose returns fall as land fills | Winterhalder & Kennett 2006 (behavioural ecology of adoption) | Adapted: a two-option return comparison | [L] |
 | Domestication takes ~2000 years of cultivation | Purugganan & Fuller 2009 | Direct | [L] |
 | Cultivation possible from 13 ka | Hillman et al. 2001 (Abu Hureyra); Richerson, Boyd & Bettinger 2001 (Holocene stability) | Direct date | [L] |
 
@@ -168,10 +168,10 @@ Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities
 | A century's famine deaths beyond the place's norm (a 500-year running mean) raise war's odds × (1 + 10 × it) and add 3 × it to the collapse rate | Zhang et al. 2007, *PNAS* (war frequency follows harvest shortfalls); Hsiang, Burke & Miguel 2013, *Science* (conflict rises with the climate anomaly); Turchin & Nefedov 2009, *Secular Cycles* | Ours in form and value; the norm keeps usual hardship from breaking every polity | [L] |
 | State = a polity holding towns of the three tiers above the village | Wright & Johnson 1975 (three levels of administrative hierarchy above the village) | Direct definition, read off settlement size | [L] |
 
-## The economy (`v2/js/civ/econ.js`; `sim.js` with `economy: 'resources'`; plans/CIV_PLAN.md §9.3, stage C1)
+## The economy (`v2/js/civ/econ.js`, `sim.js`; plans/CIV_PLAN.md §9.3, stages C1 and D)
 
-From the end of the glacial (13 ka) each peopled cell's diet is worked out from what the land feeds; the switches above
-are the default model until this one does better on the checks.
+From the end of the glacial (13 ka) each peopled cell's diet is worked out from what the land feeds. Since stage D
+(2026-10-23) it is the only model: the switches' own onset and cultivation rules above are retired.
 
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
