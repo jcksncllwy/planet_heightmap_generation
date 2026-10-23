@@ -686,15 +686,37 @@ over the run (check-phase13, "the crust budget against Earth's"). What changed:
   the lab read erosive came from coasts read off unjudged and stale trench flags; by trench length × time
   (`world.budget.erosiveTrenchKmMyr ÷ marginTrenchKmMyr`) 52–56 % of continental-margin trench is erosive (Earth ~57 %).
 
-What the books say (three seeds, 1200 Myr): **losses are Earth's** — 62–66 km³/Myr per km of trench (Earth ~77, Scholl &
-von Huene 2009): underthrusting ~40, subduction erosion ~13, sediment ~4–5 — but **additions are twice Earth's**: ~120
-against 30–65, of which arcs maturing onto continents ~85, seams of sea filled at welds ~20 and fore-arc islands raised
-from the fore-arc's sea floor ~15. The sediment sink is small because only ~35–40 % of the engine's overriding trench lies
-off a continent (Earth: most of the Pacific rim) and its supply is set by the land, not tuned to Earth's ~24. Still open,
-for the developer to choose: the seams filled at welds and the islands raised from sea floor make crust no Earth process
-makes (the first could be paid for from the underthrust front, the second limited to the sediment a trench scrapes off,
-v × (h − 1 km) — which would leave few islands); arcs mature at `arcContinentKmPerMyr` with no Earth rate behind it; and
-intra-oceanic fore-arcs (Tonga, the Marianas) do not erode, so every arc that reaches a continent arrives whole.
+Round 2 closed the additions side:
+- **Welds and docks pay for the sea they fill** (`ops/merge-plates.js` `closeSeasBetween`). Every cell of sea a weld
+  fills with continent is paid for by a continental coast cell of the underthrust front (lower-plate and terrane crust
+  first, then the nearest), which goes back to sea; arc fills are paid with arc coast, falling back to continent. A
+  seam nets to exactly zero (invariant "a weld or a dock makes no crust"); before, it made ~20 km³/Myr per km of trench.
+- **Fore-arc islands are the prism's sediment** (`wedgeConservation`). A non-erosive margin cell's trench scrapes off
+  v × (h − `accretionSedimentKm`) × its length each step; the islands raised from the fore-arc's sea floor may hold only
+  that volume over the crust they add (`continentCrustKm` − `oceanCrustKm`), and the rest waits. With the flux-fed trench
+  fill that is ~3 km³/Myr per km, so the islands nearly vanish: seed 12345 at 300 Myr (1M cells) shows 1 standing island
+  and 0.22 Mkm² grown into the mainland, against 5 and 3.44 Mkm² without the rule. No factor was added to bring them back.
+- **Arcs mature at Earth's addition rate.** `arcContinentKmPerMyr` = 1.5: Earth's arc additions, ~2.5–2.7 km³/yr over
+  ~42,000 km of trench (Scholl & von Huene 2009), are ~60 km³/Myr per km, ÷ `continentCrustKm` 40 km = 1.5 km of
+  continental front per Myr. All of it is booked as added; how much lasts is left to the sinks (erosion, sediment,
+  underthrusting), so the losses are not counted twice. (Was 3, with no source.)
+- **The 7c erosion scene is driven**: Driftia turns about a pole set so that its trench converges at ~8 cm/yr in the north
+  (erosive, above Clift & Vannucchi's 6 cm/yr) and ~3 cm/yr in the south (accretionary) — a scene setting, not physics.
+
+What the books say (three seeds, 1200 Myr; check-phase13): continental crust changes −5.2 / −5.7 / −1.0 % over the
+first 500 Myr and +1.4 / +1.3 / −0.8 % over the next (Earth ±10 %; on main ×1.15–1.29 over the run). Additions 63–72
+km³/Myr per km of trench (Earth 30–65): almost all arcs, the islands ~3, the seams 0. Losses 47–57 (Earth 60–95):
+underthrusting ~33, subduction erosion 10–12, sediment 3–4. Erosive share of continental-margin trench 48–57 % (Earth
+~57 %).
+
+Known gaps:
+- **Intra-oceanic fore-arcs do not erode.** Tonga and the Marianas lose their fore-arcs to subduction erosion; here only
+  continental margins erode, so every arc that reaches a continent arrives whole. Earth's ~60 km³/Myr/km of erosion
+  includes them, which is part of why the engine's erosion (10–12) reads low.
+- The sediment sink is ~4 km³/Myr per km against Earth's ~24: only ~35–40 % of the engine's overriding trench lies off a
+  continent (Earth: most of the Pacific rim), and the supply is set by the land behind the coast, not tuned to Earth.
+- Fore-arc islands are now rare (above). Phase 7b's "islands rise off active coasts and grow into the mainland" already
+  failed on main (0 merged); with the prism as their only source it has even less to work with.
 
 ## Conventions
 
