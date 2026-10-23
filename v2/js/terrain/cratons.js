@@ -4,8 +4,8 @@
 // What real cratons do (plans/V2_ROADMAP_PHASES_9_13.md, Phase 10 B, with sources): they are rigid — deformation piles up
 // against them and goes around them — and a thrust front follows a craton's margin at the scale of its promontories
 // and embayments, never finer (Thomas 1977, 2006). A stiff craton bends under a range's weight into a wide, shallow
-// foreland: a foredeep 100–300 km wide filled to a lowland, with a trunk river along the range, then a forebulge only
-// tens of metres high (DeCelles & Giles 1996; Watts 1992). Where a plateau's edge meets the block the front is abrupt
+// foreland: a foredeep 100–300 km wide filled to a lowland, with a trunk river along the range, then a forebulge tens to
+// a few hundred metres high (DeCelles & Giles 1996; Watts 1992). Where a plateau's edge meets the block the front is abrupt
 // (the Longmen Shan against the Sichuan Basin). Shield interiors are calm but not blank: basins and swells 1,000–2,000
 // km apart, saucer-shaped sag basins, a faint grain of granite domes between greenstone keels.
 //

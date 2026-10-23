@@ -141,12 +141,28 @@ section('cratons across a whole planet (600 Myr)');
     // intracratonic subsidence)
     report('spread of craton heights (standard deviation of their medians)', spread, { earth: [0.2, 0.5], unit: ' km', digits: 2, source: 'cratons vary by ~±0.5 km: African swells, Congo sag, low Canadian Shield (Hager 1985; Flament et al. 2013)',
         detail: `the median heights of ${meds.length} cratons: ${meds.map(v => v.toFixed(2)).join(', ')} km` });
-    // relief: the spread of heights within each sim cell and its neighbours (~250 km), well inside cratons, with the
-    // characters and without; and on ordinary lowland (no belt, below 0.6 km)
-    const stdIn = TT => {
-        const ps = new Float64Array(n), ps2 = new Float64Array(n), pn = new Float64Array(n);
-        for (let t = 0; t < tm.numCells; t++) { const c = cellOf(t); if (TT.heightKm[t] <= 0) continue; ps[c] += TT.heightKm[t]; ps2[c] += TT.heightKm[t] ** 2; pn[c]++; }
-        return w => { let S1 = ps[w], S2 = ps2[w], N = pn[w]; for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) { const q = mesh.adjList[k]; S1 += ps[q]; S2 += ps2[q]; N += pn[q]; } return N > 20 ? Math.sqrt(Math.max(0, S2 / N - (S1 / N) ** 2)) : NaN; };
+    // relief: the spread of heights within each sim cell and its neighbours (~250 km) about the plane that fits them, well
+    // inside cratons, with the characters and without; and on ordinary lowland (no belt, below 0.6 km). About the plane:
+    // relief is the ground's amplitude about its regional surface, and a swell or sag is a tilt 1,000–2,000 km across
+    // (the mantle's dynamic topography: Burke 1996; Hager 1985) — over its ~500 km flank it tilts a 250 km window by tens
+    // of metres without roughening it (the raw spread read that tilt as relief: 75 m against lowland's 72 on main)
+    const byCell = Array.from({ length: n }, () => []);
+    for (let t = 0; t < tm.numCells; t++) byCell[cellOf(t)].push(t);
+    const stdIn = TT => w => {
+        const ts = [...byCell[w]]; for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) ts.push(...byCell[mesh.adjList[k]]);
+        const x0 = mesh.xyz[3 * w], y0 = mesh.xyz[3 * w + 1], z0 = mesh.xyz[3 * w + 2], l = Math.hypot(x0, y0) || 1;
+        const ex = -y0 / l, ey = x0 / l, nx = -z0 * ey, ny = z0 * ex, nz = x0 * ey - y0 * ex;      // a tangent frame at w
+        let N = 0, su = 0, sv = 0, sh = 0, suu = 0, svv = 0, suv = 0, suh = 0, svh = 0, shh = 0;
+        for (const t of ts) {
+            const h = TT.heightKm[t]; if (h <= 0) continue;
+            const dx = tm.xyz[3 * t] - x0, dy = tm.xyz[3 * t + 1] - y0, dz = tm.xyz[3 * t + 2] - z0, u = dx * ex + dy * ey, v = dx * nx + dy * ny + dz * nz;
+            N++; su += u; sv += v; sh += h; suu += u * u; svv += v * v; suv += u * v; suh += u * h; svh += v * h; shh += h * h;
+        }
+        if (N <= 20) return NaN;
+        const cuu = suu / N - (su / N) ** 2, cvv = svv / N - (sv / N) ** 2, cuv = suv / N - su * sv / N / N, cuh = suh / N - su * sh / N / N,
+            cvh = svh / N - sv * sh / N / N, chh = shh / N - (sh / N) ** 2, det = cuu * cvv - cuv * cuv;
+        const b = det > 0 ? (cvv * cuh - cuv * cvh) / det : 0, c = det > 0 ? (cuu * cvh - cuv * cuh) / det : 0;
+        return Math.sqrt(Math.max(0, chh - b * cuh - c * cvh));                                  // the residual about the plane
     };
     const sd = stdIn(T), sd0 = stdIn(T0), withC = [], without = [], low = [];
     for (let w = 0; w < n; w++) {
@@ -156,7 +172,7 @@ section('cratons across a whole planet (600 Myr)');
     }
     const rc = median(withC), r0 = median(without), rl = median(low);
     check('cratons are no rougher than ordinary lowland', rc <= rl,
-        `relief within ~250 km, well inside cratons: ${(1000 * rc).toFixed(0)} m (${(1000 * r0).toFixed(0)} m without their characters); on ordinary lowland ${(1000 * rl).toFixed(0)} m`);
+        `relief within ~250 km about its regional plane, well inside cratons: ${(1000 * rc).toFixed(0)} m (${(1000 * r0).toFixed(0)} m without their characters); on ordinary lowland ${(1000 * rl).toFixed(0)} m`);
     report('craton relief ÷ lowland relief', rc / rl, { digits: 2, unit: '×', source: 'shields are low-relief' });
 }
 

@@ -139,8 +139,9 @@ export const TERRAIN = {
                                 // 12(1 − ν²), E 70 GPa, ν 0.25, Δρ mantle − sediment fill 900 kg/m³; Te 60 km → α ≈ 155 km): the foredeep
                                 // ~πα/2 wide beyond the front, the forebulge's crest ~3πα/4 (cratons' Te is 40–100 km: wide, shallow
                                 // forelands — the Ganges basin is ~250–450 km wide; Beaumont 1981, DeCelles & Giles 1996)
-    forebulgeGain: 1,           // the forebulge, this many times the thin elastic plate's (~1.4 % of the bend at the load: tens
-                                // of metres; 3 when the foreland was drawn from the shield's edge rather than bent by its loads)
+    forebulgeGain: 1,           // the forebulge, this many times the thin elastic plate's: a few % of the bend at the front, not
+                                // capped as the sediment-filled foredeep is — under a wedge that bends the plate km down, a swell
+                                // of ~0.1–0.2 km some 3πα/4 out (3 when the foreland was drawn from the shield's edge, not bent)
     forelandByKind: {           // how much a front of each kind loads the shield beside it (0: none)
         [OrogenyType.ANDEAN]: 1, [OrogenyType.HIMALAYAN]: 1, [OrogenyType.URAL]: 1, [OrogenyType.LARAMIDE]: 0.6,
         [OrogenyType.TRANSPRESSION]: 0.5, [OrogenyType.ARC]: 0.3, [OrogenyType.RIFT]: 0,
