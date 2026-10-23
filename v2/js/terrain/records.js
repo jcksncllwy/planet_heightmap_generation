@@ -250,6 +250,61 @@ function fillPockets(simMesh, land, maxKm2) {
 /** Kinds of coast, for shelf / plain / slope widths (terrain-config.js `margins`). */
 export const CoastKind = Object.freeze({ PASSIVE: 0, ACTIVE: 1, TRANSFORM: 2, COLLISION: 3, ARC: 4 });
 const COAST_KEYS = ['passive', 'active', 'transform', 'collision', 'arc'];
+/** How rough a coast is at the large scales, 0…1, by its margin (developer: "the coast lines on an actual world map
+ *  generally appear a lot smoother than what I'm seeing in this sim"): Earth's margins run smooth over hundreds of km —
+ *  a passive margin's sediment wedge and coastal plain, the more the older; an active margin along its coastal range —
+ *  and break up on island arcs. terrain-config.js coastRough*. */
+export function coastRough(cfg, kind, mature) {
+    if (kind === CoastKind.ACTIVE) return cfg.coastRoughActive ?? 1;
+    if (kind === CoastKind.TRANSFORM) return cfg.coastRoughTransform ?? 1;
+    if (kind === CoastKind.COLLISION) return cfg.coastRoughCollision ?? 1;
+    if (kind === CoastKind.ARC) return 1;
+    const young = cfg.coastRoughYoung ?? 1;
+    return young + ((cfg.coastRoughMature ?? 1) - young) * mature;
+}
+/** The coast drawn smooth at the sim's own scale: its signed distance relaxed toward its neighbours' near the coast, a few
+ *  passes — curvature flow, the long work of the waves and the sediment: a one-cell spit drawn in, a one-cell notch
+ *  filled, a straight coast left as it is (the coast read over the sim's cells ran as a chain of lobes a cell across) —
+ *  by how smooth its margin is (coastRough; island arcs not at all). `d` in place; NaN cells (off a plate's raster) kept. */
+function smoothCoast(simMesh, d, kind, mature, cfg) {
+    const passes = cfg.coastSmoothPasses ?? 0, share = cfg.coastSmooth ?? 0;
+    if (!(passes > 0 && share > 0)) return;
+    const { adjOffset, adjList, numCells: n } = simMesh, band = 3 * simMesh.edgeKm, next = new Float32Array(n), a = new Float32Array(n);
+    for (let c = 0; c < n; c++) a[c] = d[c] === d[c] && Math.abs(d[c]) < band ? share * (1 - coastRough(cfg, kind[c], mature[c])) : 0;
+    for (let p = 0; p < passes; p++) {
+        next.set(d);
+        for (let c = 0; c < n; c++) {
+            if (!(a[c] > 0)) continue;
+            let sum = 0, k = 0;
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const v = d[adjList[j]]; if (v === v) { sum += v; k++; } }
+            if (k) next[c] = d[c] + a[c] * (sum / k - d[c]);
+        }
+        // (no strait closed, no isthmus cut: a cell turns from sea to land, or land to sea, only where the cells around it
+        // of what it was are all one — else it would part a sea, or a land, in two; one at a time, each as the last left it)
+        for (let c = 0; c < n; c++) {
+            if (!((next[c] >= 0) !== (d[c] >= 0))) continue;
+            if (splits(simMesh, d, c)) next[c] = d[c] >= 0 ? 0 : -1e-3;
+            else d[c] = next[c];
+        }
+        d.set(next);
+    }
+}
+/** Would turning cell c over part what it is now (sea or land) in two: its neighbours of its own kind (by `d`'s sign)
+ *  not all joined among themselves? (two seas then meet only through c: a strait; two lands, an isthmus) */
+function splits(simMesh, d, c) {
+    const { adjOffset, adjList } = simMesh, own = d[c] >= 0, same = [];
+    for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (d[nb] === d[nb] && (d[nb] >= 0) === own) same.push(nb); }
+    if (same.length < 2) return false;
+    const seen = [same[0]], left = same.slice(1);
+    for (let i = 0; i < seen.length; i++) {
+        for (let j = left.length - 1; j >= 0; j--) {
+            let joined = false;
+            for (let k = adjOffset[seen[i]]; k < adjOffset[seen[i] + 1]; k++) if (adjList[k] === left[j]) { joined = true; break; }
+            if (joined) { seen.push(left[j]); left.splice(j, 1); }
+        }
+    }
+    return left.length > 0;
+}
 /** A margin's shelf and coastal plain (km): its kind's, or for a passive one between the young and the mature widths by
  *  how far it has widened (its maturity on the open ocean) and its maturity (terrain-config.js marginMatureMyr). */
 const shelfOf = (m, mature) => (m.youngShelfKm === undefined ? m.shelfKm : m.youngShelfKm + (m.shelfKm - m.youngShelfKm) * mature);
@@ -350,6 +405,8 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const vary = 1 + cfg.shelfNoise * noise.fbm(x * 9 + 1.7, y * 9 + 4.2, z * 9 + 8.1, 3, 0.5) * 1.6;
         shelfKm[w] = shelfOf(m, widen[w]) * Math.max(0.2, vary); plainKm[w] = plainOf(m, maturity[w]); slopeKm[w] = m.slopeKm;
     }
+    smoothCoast(simMesh, coastKm, coastKind, maturity, cfg);
+    for (const P of coastRaster.values()) smoothCoast(simMesh, P.coast, P.kind, P.maturity, cfg);
     // …and each plate's shelf and coastal plain on its raster, from its kind of coast there (the same noise, read at the
     // raster cell: the crust's own position): the terrain reads them with the coast
     for (const P of coastRaster.values()) {

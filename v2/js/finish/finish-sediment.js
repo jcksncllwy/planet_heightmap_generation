@@ -53,7 +53,7 @@ export function depositSediment(mesh, before, C, sink, cellKm2, F) {
         }
         if (built) deltas++;
     }
-    return { deltas };
+    return { deltas, mouths };
 }
 
 /** Spread a field over about `km` (σ), keeping its sum: a few passes toward the neighbours' mean, as many as the mesh

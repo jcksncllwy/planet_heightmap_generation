@@ -12,7 +12,7 @@
 // (anchor.js), so a range keeps its detail as its plate moves.
 
 import { TERRAIN } from './terrain-config.js';
-import { deriveRecords, kindType, kindSide } from './records.js';
+import { deriveRecords, kindType, kindSide, coastRough } from './records.js';
 import { beltProfile, broadProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
 import { buildStripeKernels, stripeAt, crossAt, beltAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
@@ -338,6 +338,10 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const islandF = R / Math.max(1, cfg.arcIslandKm ?? 140), strait = cfg.arcStraitKm ?? 0;
     const renewedNoise = (u, v, w) => fadeB > 0 ? fadeA * noise.noise3D(u + offA, v + offA, w + offA) + fadeB * noise.noise3D(u + offB, v + offB, w + offB) : noise.noise3D(u + offA, v + offA, w + offA);
     const coastCurve = cfg.coastCurve ?? 0, mountainCurve = cfg.mountainCurve ?? 0, crestFollow = cfg.crestFollow ?? 0;
+    // How rough a coast is at the large scales, by its margin (records.js coastRough). Scales the coast noise and the sim-scale noise, and the
+    // fine detail by a share (coastRoughDetail: the rest the waves' to work, finish-coast.js); blended over the three
+    // corners, so no seam where the kind changes
+    const roughOf = (kind, mature) => coastRough(cfg, kind, mature);
     // (a belt's width, crest height and age blended over its kernels; its envelope's shape from the profile at the point;
     // its crests rising and falling along the strike only — read at the point moved back across the belt onto its front)
     const beltCarry = cfg.beltCarry ?? 0, envelopeCarry = cfg.envelopeCarry ?? 0, crestAlongVar = cfg.crestAlongVar ?? 0, crestAlongF = R / (cfg.crestAlongKm ?? 300);
@@ -363,7 +367,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const noisy = (c, w) => { const r = cell[c]; return w * Math.exp(cfg.blendNoise * noise.fbm(x0 * blendF + (r % 101) * 1.37, y0 * blendF + (r % 89) * 2.11, z0 * blendF + (r % 83) * 0.73, 3, 0.5) * 1.6); };
     let x0 = 0, y0 = 0, z0 = 0;
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastFresh, envShape, rootShape } = rec;
+    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastFresh, envShape, rootShape, coastKind } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -408,7 +412,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 c0 = loc3[0]; c1 = loc3[1]; c2 = loc3[2]; w0 = locw3[0]; w1 = locw3[1]; w2 = locw3[2];
             }
         }
-        let coastR = null, shelfR = 0, plainR = 0, matureR = 0, freshR = 0;
+        let coastR = null, shelfR = 0, plainR = 0, matureR = 0, freshR = 0, roughR = 1;
         if (anchorOn && oc >= 0 && A.moved[oc]) {
             const S = rec.coastRaster.get(oc);
             if (S) {
@@ -421,6 +425,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     plainR = qw3[0] * S.plain[q3[0]] + qw3[1] * S.plain[q3[1]] + qw3[2] * S.plain[q3[2]];
                     matureR = qw3[0] * S.maturity[q3[0]] + qw3[1] * S.maturity[q3[1]] + qw3[2] * S.maturity[q3[2]];
                     freshR = qw3[0] * S.fresh[q3[0]] + qw3[1] * S.fresh[q3[1]] + qw3[2] * S.fresh[q3[2]];
+                    roughR = qw3[0] * roughOf(S.kind[q3[0]], S.maturity[q3[0]]) + qw3[1] * roughOf(S.kind[q3[1]], S.maturity[q3[1]]) + qw3[2] * roughOf(S.kind[q3[2]], S.maturity[q3[2]]);
                 }
             }
         }
@@ -435,13 +440,19 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (coastCurve > 0) coast += coastCurve * curveOf(simMesh, slopes.of(-1, coastKm), coastKm, c0, c1, c2, w0, w1, w2);
         }
         if (parts) parts.dcoastRaw[t] = coast;
-        if (Math.abs(coast) < 600) coast += cfg.coastNoiseKm * renewed(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4) * 1.5;
+        // (the coast's roughness here — its margin's, island arcs fully rough)
+        let rough = 1;
+        if (Math.abs(coast) < 600) {
+            rough = coastR !== null ? roughR : w0 * roughOf(coastKind[c0], maturity[c0]) + w1 * roughOf(coastKind[c1], maturity[c1]) + w2 * roughOf(coastKind[c2], maturity[c2]);
+            rough = Math.max(rough, Math.min(1, (w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]) * (cfg.coastRoughArc ?? 1)));
+            coast += rough * cfg.coastNoiseKm * renewed(x * coastF + 3.3, y * coastF + 1.1, z * coastF + 7.9, 4) * 1.5;
+        }
         if (cellCoastF.length && Math.abs(coast) < cellCoastReach) {
             let sum = 0;
             for (let o = 0; o < cellCoastF.length; o++) { const f = cellCoastF[o]; sum += cellCoastAmp[o] * renewedNoise(x * f + 41.3 + 3.1 * o, y * f + 17.9 + 1.7 * o, z * f + 29.3 + 2.9 * o); }
             // (weaker on a fresh coast — a young rift's two sides still fit, a fresh belt's shape leads — to coastFreshFloor)
             const fr = coastR !== null ? freshR : w0 * coastFresh[c0] + w1 * coastFresh[c1] + w2 * coastFresh[c2];
-            coast += 1.6 * sum * smooth(cellCoastReach, 0.5 * cellCoastReach, Math.abs(coast)) * (1 - (1 - (cfg.coastFreshFloor ?? 1)) * fr);
+            coast += 1.6 * sum * rough * smooth(cellCoastReach, 0.5 * cellCoastReach, Math.abs(coast)) * (1 - (1 - (cfg.coastFreshFloor ?? 1)) * fr);
         }
         // (the fine detail — renewing as the coast noise does — within 400 km of the coast, fading out from 250)
         if (detailF.length && Math.abs(coast) < 400) {
@@ -450,7 +461,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 const f = detailF[o], u = x * f + 11.3 + 1.7 * o, v = y * f + 4.9 + 2.3 * o, w = z * f + 8.1 + 0.9 * o;
                 sum += detailAmp[o] * (fadeB > 0 ? fadeA * noise.noise3D(u + offA, v + offA, w + offA) + fadeB * noise.noise3D(u + offB, v + offB, w + offB) : noise.noise3D(u + offA, v + offA, w + offA));
             }
-            coast += sum * smooth(400, 250, Math.abs(coast));
+            coast += sum * (1 - (cfg.coastRoughDetail ?? 0) * (1 - rough)) * smooth(400, 250, Math.abs(coast));
         }
         // ── island arcs as chains: on arc crust, the coast lowered where the island noise is low — straits between islands ──
         if (strait > 0 && coast > -300 && coast < 400) {

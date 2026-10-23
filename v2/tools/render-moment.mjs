@@ -192,6 +192,17 @@ if (fin.layers?.basin) {
     for (let c = 0; c < n; c++) if (B[c] > 0.05) to[fin.ocean[c] ? 'sea' : lake?.[c] === 1 || lake?.[c] === 2 ? 'lake' : 'land'] += cellKm2;
     console.log(`ice basins (dug > 50 m): ${Object.entries(to).map(([k, v]) => `${k} ${Math.round(v).toLocaleString()} km²`).join(' · ')}`);
 }
+// (the coast: what the waves did — finish-coast.js — and the coastline's length at the mesh's scale, land–sea edges)
+if (fin.stats?.coast) {
+    let edges = 0;
+    for (let c = 0; c < n; c++) if (!fin.ocean[c]) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (fin.ocean[adjList[k]]) edges++;
+    console.log(`coast: ${JSON.stringify(fin.stats.coast)} · coastline ${Math.round(edges * Math.sqrt(cellKm2) * 0.58).toLocaleString()} km at the mesh's scale`);
+    // (--debug: the coastline of the surface before the finish's carving too — what the terrain made, what the finish did)
+    if (fin.layers?.before) {
+        const B = fin.layers.before, km = f => { let e = 0; for (let c = 0; c < n; c++) if (f(c)) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!f(adjList[k])) e++; return Math.round(e * Math.sqrt(cellKm2) * 0.58); };
+        console.log(`coastline by sea level alone: before the finish ${km(c => B[c] >= 0).toLocaleString()} km · after ${km(c => z[c] >= 0).toLocaleString()} km`);
+    }
+}
 if (fin.stats?.water) console.log('hydrology:', JSON.stringify(fin.stats.water).slice(0, 400));
 // (--stats: the land's heights and the mountains' roughness — for comparing the finish's erosion: land height quantiles
 // (km), area above 2 and 4 km, and over the mountains (land above 1 km) the mean local relief — the spread of heights

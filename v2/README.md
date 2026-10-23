@@ -76,7 +76,12 @@ outburst floods: lakes dammed by the ice (water a priority flood holds
 with the ice standing as a wall, and not without it) spill over their sills and burst their dams, each flood scouring a
 swath of braided channels down its way to the sea as wide and deep as the lake's volume (the Channeled Scablands, River
 Warren, tunnel valleys under the ice), its loess stripped and its rock bare on the satellite view, the lakes' floors left
-flat with their silts (a hollow a flood's gorge drains, its pockets cut through with it); and the wind (sand seas with dune ridges at 10M, pans, loess). It runs in its
+flat with their silts (a hollow a flood's gorge drains, its pockets cut through with it); the wind (sand seas with dune ridges at 10M, pans, loess);
+and the coast (finish-coast): the waves of the interglacials' high seas — grown by the climate's winds, storms and all,
+over the open water toward a fully developed sea, carried on as swell, none under the sea ice, and traced in to each coast
+from 16 directions so headlands take them from all round and bays from their mouths — cut the cliffs back (soft rock and
+low coasts fastest) and drift the sand of the cliffs and the rivers along the shore as they meet it slantwise, laying it
+where the drift slows: beaches, barriers and filled bays; the sand below the shoreface lost offshore. It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
 like the live terrain; one moment is kept in detail per history (the one before is let go once the next is done, so a cancel loses nothing). A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
@@ -262,7 +267,7 @@ js/evolution/      the Evolution page: its shell (evolution-main), terrain-playe
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
                    finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),
-                   finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
+                   finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-coast (waves, cliffs, longshore drift), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
                    regimes, lakes), finish-cover (the land's cover and its colours from space)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back),
@@ -610,6 +615,14 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   mesh can show — the same live and in Add detail. On a fresh coast the coast's share falls to `coastFreshFloor` (a young
   rifted margin, by its maturity, or a coast whose belt was active within ~`coastFreshMyr`; records.js `coastFresh`), so a
   young ocean's two sides still fit like puzzle pieces and a fresh range's shape leads.
+- **Coasts as smooth as their margins** (developer: Earth's coastlines "appear a lot smoother than what I'm seeing in
+  this sim"): Earth's margins run smooth over hundreds of km and break up on island arcs. By its margin (records.js
+  `coastRough`: a mature passive margin 0.3, a young one 0.6, an active one 0.5, an island arc 1), the coast noise and the
+  sim-scale noise are scaled down, the fine detail by a share (`coastRoughDetail`), and the coast is drawn smooth at the
+  sim's own scale (`smoothCoast`): its signed distance relaxed toward its neighbours' near the coast — curvature flow,
+  one-cell spits drawn in and one-cell notches filled — never closing a strait or cutting an isthmus. The coastline at the
+  mesh's scale 13–19 % shorter (995795 at 2.5M: 646,000 → 526,000 km); the waves then work the coast that is left
+  (finish-coast.js).
 - **Mountains shaped along their belts** (developer: noise on the mountains "ruined the ridgelines … leading ridges and
   edges"; "make sure they get a realistic shaping"): only the distance across a belt followed its smooth kernels; its
   width, crest height and age, its envelope (the evolved uplift) and its thickened crust were read cell by cell — lobed

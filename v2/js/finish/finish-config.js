@@ -214,6 +214,35 @@ export const FINISH = {
     floodRatio: 2.5,
     farFedAridity: 0.35,
 
+    // ── F5: the coast (finish-coast.js): the waves and their sand, over the interglacials' high seas ──
+    coastYears: 30000,          // years of the sea at about its height (the Holocene's 7,000 and the last interglacials')
+    coastSteps: 6,              // in this many steps (the waves found again each step, on the coast as it is)
+    coastSeaKm2: 1e6,           // the open sea's coasts only: bodies of the sea at least this big (not the hollows below sea level
+                                //   the ice dug inland, dry until the rivers fill them)
+    waveDirs: 16,               // directions the waves are traced from
+    waveStormShare: 1,          // the storms' winds about the months' mean (rain.js: gustiness, Eady rate × size): the waves grow
+                                //   in the gales, not in the mean wind — the westerlies' seas, not the trades'
+    waveSatK: 1e-4,             // a fully developed sea's power, kW/m per (m/s)⁵ (Pierson–Moskowitz: Hs 0.021 U², Te 0.45 U)…
+    waveFetchK: 2.25,           // …reached over this many km per (m/s)² of fetch (JONSWAP: gF/U² ≈ 2.2·10⁴)
+    swellDecayKm: 4000,         // swell's energy fades over this (e-folding; Ardhuin et al. 2009)
+    waveFarKm: 4500,            // the open sea traced this far, on the climate's grid…
+    waveFarStepKm: 150,
+    waveNearKm: 300,            // …and the last of the way on the mesh, its headlands and islands sheltering
+    cliffK: 0.6,                // cliff retreat, m/yr: cliffK · wave power (kW/m) · erodibility / (cliff height + toe, m)
+    cliffToeM: 10,              //   (soft rock under 50 kW/m: ~1 m/yr at a 20 m cliff — Holderness, the Norfolk cliffs)
+    cliffHardRatio: 1e-3,       // erodibility: 1 in the softest rock, this in the hardest (records.js iceSoft)
+    coastMaxShare: 0.5,         // no more than this share of a cell cut back in a step
+    platformKm: -0.01,          // cut down to a wave-cut platform this deep
+    cliffSandShare: 0.5,        // of the rock cut, the sand and gravel the drift moves (the rest is mud, lost offshore)
+    coastRiverSand: 0.1,        // of a river's load at its mouth, the sand the waves take along the shore
+    coastSandKm: 0.001,         // loose sand on the shore at the start (km thick over a cell: ~0.015 km³ per km of coast at
+                                //   2.5M — a beach and shoreface's prism)
+    longshoreK: 2.5e-4,         // longshore drift, km³/yr per kW/m of deep-water power · cos^1.2 α · sin α (CERC 0.39,
+                                //   refraction and breaking: a fifth of the deep water's)
+    driftAlign: 0.2,            // the drift passes to the shore cell most along the shore, at least this aligned
+    beachCrestKm: 0.003,        // sand is laid up to a beach's crest…
+    closureKm: 0.06,            // …where the ground under it is no deeper than this (deeper, the waves cannot hold it: lost offshore)
+
     // ── F4: wind ──
     ergSlope: 0.006,            // sand seas: desert ground flatter than this…
     ergBelowKm: 0.05,           // …and at least about this much lower than its surroundings (sand gathers in basins)

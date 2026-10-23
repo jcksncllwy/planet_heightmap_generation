@@ -33,6 +33,20 @@ export const TERRAIN = {
     coastCellWaveCells: 2.5,    // …in waves of this many sim cells and finer octaves — the lobes a coast read over the cells makes, broken…
     coastFreshFloor: 0.3,       // …down to this share on a fresh coast (a young rift's sides still fit; a fresh belt's shape leads)…
     coastFreshMyr: 60,          // …a belt counting as fresh for about this long after it was last active (a rift: by its margin's maturity)
+    // how rough a coast is at the large scales (the coast noise and the sim-scale noise; the fine detail by a share), by its margin
+    // (synthesize.js roughOf): Earth's margins run smooth over hundreds of km — a passive margin's sediment wedge and
+    // coastal plain the more the older, an active margin along its range — and break up on island arcs
+    coastRoughYoung: 0.6,       // a young passive (rifted) margin…
+    coastRoughMature: 0.3,      // …a mature one (records.js maturity: its age, by the oldest floor beside it)
+    coastRoughActive: 0.5,      // an active margin (a trench offshore, its coastal range)
+    coastRoughTransform: 0.45,
+    coastRoughCollision: 0.7,
+    coastRoughArc: 1.5,         // island-arc crust: fully rough from two-thirds arc up
+    coastRoughDetail: 0.6,      // the fine detail scaled by this share of it (a mature passive coast's coves 0.58 as deep)
+    // …and the coast drawn smooth at the sim's scale by as much (records.js smoothCoast): its signed distance relaxed
+    // toward its neighbours', coastSmoothPasses passes of coastSmooth × (1 − roughness)
+    coastSmooth: 0.9,
+    coastSmoothPasses: 3,
     // mountain shape (developer: "i want to see what we cook up"): the evolved uplift and the platform read with each sim
     // cell's slope, as the coast distance is — curved slopes instead of a flat facet per sim triangle — each corner's
     // reading kept within the range of its cell and its neighbours (no overshoot at a steep front); 1: fully, 0: as before

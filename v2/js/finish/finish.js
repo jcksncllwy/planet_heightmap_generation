@@ -10,6 +10,7 @@ import { closedBasins } from './finish-basins.js';
 import { depositSediment, creepByClimate, dissect } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
+import { coastWork } from './finish-coast.js';
 import { hydrology, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
@@ -38,7 +39,7 @@ export function erosionAt(F, cfg) {
 }
 
 /** The stages, in order, with their rough share of the time (for the progress bar). */
-export const STAGES = [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['ice age', 0.08], ['wind', 0.05], ['sea', 0.02], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]];
+export const STAGES = [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['ice age', 0.08], ['wind', 0.05], ['coast', 0.04], ['sea', 0.02], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]];
 
 /**
  * @param {{frame: Object, simMesh: Object, seed: number, cells: number, pool: import('../terrain/terrain-pool.js').TerrainPool,
@@ -82,6 +83,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
         for (let m = 0; m < 12; m++) { const t = res.months.T[m * G + g] + gamma * href; if (t > warmG[g]) warmG[g] = t; }
     }
     const circ = res.stages.circulation, year = (a, m = -1) => { const o = new Float32Array(G); for (let g = 0; g < G; g++) { if (m >= 0) o[g] = a[m * G + g]; else { let s = 0; for (let k = 0; k < 12; k++) s += a[k * G + g]; o[g] = s / 12; } } return o; };
+    const waveIn = { u: circ.u, v: circ.v, ice: res.stages.temperature?.seaIce ?? null, eady: res.stages.rain?.eady ?? null, anchors: res.anchorMonths };      // (the coast's waves)
     const wind = { year: [year(circ.u), year(circ.v)], jan: [year(circ.u, 0), year(circ.v, 0)], jul: [year(circ.u, 6), year(circ.v, 6)] };
     const climGrid = { w: res.grid.w, h: res.grid.h }, warmSl = new Float32Array(n);
     for (let c = 0; c < n; c++) warmSl[c] = bilinear(climGrid, warmG, lat[c], lon[c]);
@@ -150,7 +152,8 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
 
     // ── F2: sediment, then hillslopes by climate ──
     onStage('sediment');
-    stats.deltas = depositSediment(mesh, before, C, B.sink, cellKm2, F).deltas;
+    const Sed = depositSediment(mesh, before, C, B.sink, cellKm2, F);
+    stats.deltas = Sed.deltas;
     lap('sediment');
     onStage('hillslopes');
     creepByClimate(mesh, C.z, pAnn, tAnn, { ...F, creepKm: E.creepKm });
@@ -173,6 +176,12 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     const W = windWork({ mesh, z: C.z, lat, lon, koppen, grid, wind, climGrid, outwash: I.margin, scoured: I.floods.flood, seed, fade, debug }, F);
     stats.ergKm2 = W.ergKm2; stats.loessKm2 = W.loessKm2;
     lap('wind');
+
+    // ── F5: the coast — the waves cut it back and drift its sand along it ──
+    onStage('coast');
+    const Co = coastWork({ mesh, z: C.z, lat, lon, soft, climGrid, ...waveIn, mouths: Sed.mouths, carveYears: F.carveTimeMyr * 1e6, oceanMask: zz => oceanMask(mesh, zz), cellKm2 }, F);
+    stats.coast = Co.stats;
+    lap('coast');
 
     // ── the sea: water below sea level that the open ocean reaches (fjords, sunk basins); hollows it cannot reach stay land ──
     onStage('sea');
@@ -252,7 +261,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
-        layers: debug ? { ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };
+        layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, terminal: Hy.terminal } : null };
 }
 
 /** The mesh's positions displaced by a smooth noise field (km-sized waves, three octaves): a domain warp of everything read there. */
