@@ -90,7 +90,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     Object.assign(world.config, { crustLedger: true }, overrides);
     const kept = [], arcs = [], largestShares = [];
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
-    const plateCounts = [];
+    const plateCounts = [], bigPlates = [], floorAges = [];
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
@@ -110,6 +110,11 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             frozenFor = largest > FREEZE ? frozenFor + 10 : 0;
             frozenMost = Math.max(frozenMost, frozenFor);
             plateCounts.push([...per.values()].filter(c => c >= 0.01 * n).length);
+            // (the large plates — over 10^7.5 km², the kink in Earth's plate-size distribution — and the sea floor's mean age)
+            bigPlates.push([...per.values()].filter(c => c * cellKm2 >= 10 ** 7.5).length);
+            let ages = 0, nOcean = 0;
+            for (let w = 0; w < n; w++) if (f.owner[w] >= 0 && f.type[w] === CrustType.OCEAN) { ages += f.time - f.formedAt[w]; nOcean++; }
+            floorAges.push(ages / Math.max(1, nOcean));
         }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
@@ -123,7 +128,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             lowland = (lowland ?? 0) + hypsometry(T.heightKm).below400 / 2; lowlandRaw = (lowlandRaw ?? 0) + hypsometry(T.tectonicKm).below400 / 2;
         }
     } });
-    const ev = world.events;
+    const ev = world.events, per100 = k => 100 * ev.filter(e => e.kind === k && e.time >= 100).length / (scene.maxMyr - 100);
     const supers = ev.filter(e => e.kind === EventKind.SUPERCONTINENT).map(e => e.time), broken = ev.filter(e => e.kind === EventKind.DISPERSED).map(e => e.time);
     const rifts = ev.filter(e => e.kind === EventKind.RIFT);
     // the pace: the world's gaps between rifts, and how the start's breakup gets going — rifts within 100 Myr of the first
@@ -147,6 +152,8 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         ledger: world.ledger, budget: world.budget,
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
+        bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges),
+        inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN),
         platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
 }
@@ -251,6 +258,12 @@ report('the largest plate’s share of the planet: most from 100 Myr', rows.map(
     detail: txt(r => `median ${(100 * r.largestMedian).toFixed(0)} %`) });
 check('the lid stays mobile: never fewer than 2 plates holding ≥ 1 % of the planet', rows.every(r => r.platesMin >= 2), txt(r => `at least ${r.platesMin}`));
 report('plates holding ≥ 1 % of the planet: mean', rows.map(r => r.platesMean), { earth: [12, 14], digits: 1, source: 'Morra et al. 2013; Bird 2003 (the mesh resolves fewer small plates)' });
+report('plates over 10^7.5 km² (31.6 Mkm²): mean from 100 Myr', rows.map(r => r.bigMean), { earth: [6, 8], digits: 1, source: '7 today (Pacific, Eurasia, N America, Africa, Antarctica, Australia, S America: Bird 2003); the size kink of Morra et al. 2013' });
+// (the pace of the plates' renewal over a whole cycle, from 100 Myr: new trenches — between plates, at a margin inside one, or
+// across a plate's open ocean (step/subduction-init.js) — the sea floor's age, and back-arc seas opening)
+report('subduction initiations per 100 Myr, from 100 Myr', rows.map(r => r.inits), { earth: [12, 30], digits: 1, source: 'more than a dozen in the Cenozoic, mostly induced: Crameri et al. 2020' });
+report('mean sea-floor age: median over the frames from 100 Myr', rows.map(r => r.floorAge), { earth: [60, 64], unit: ' Myr', digits: 0, source: 'Müller et al. 2008 (≈ 64 Myr today); it varies through a supercontinent cycle' });
+report('back-arc seas opened per 100 Myr, from 100 Myr', rows.map(r => r.backArcs), { earth: [20, 40], digits: 1, source: '~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…)' });
 
 section('the switches');
 {

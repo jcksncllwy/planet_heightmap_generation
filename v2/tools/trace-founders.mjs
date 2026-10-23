@@ -6,7 +6,7 @@ import { labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { EventKind } from '../js/tectonics/model/world.js';
-import { CrustType } from '../js/tectonics/model/crust.js';
+import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args.splice(i, 2)[1] : null; };
 const len = Number(flag('--len') ?? 600), set = flag('--set');
@@ -28,19 +28,42 @@ function caughtSeas(world) {
     return sizes.sort((a, b) => b - a).slice(1).filter(s => s >= 0.5);
 }
 
+// the plates' sizes and the sea floor's age on the frame's world view
+function plateShape(world) {
+    const { owner, ownerCell, plates, time } = world, { numCells, cellAreaKm2, edgeKm } = mesh, area = new Map();
+    let ages = 0, n = 0, trench = 0;
+    for (let w = 0; w < numCells; w++) {
+        const o = owner[w]; if (o < 0) continue;
+        area.set(o, (area.get(o) ?? 0) + cellAreaKm2);
+        const P = plates[o], c = ownerCell[w];
+        if (P.crust.type[c] === CrustType.OCEAN) { ages += time - P.crust.formedAt[c]; n++; if (P.crust.flags[c] & CrustFlag.TRENCH) trench++; }
+    }
+    const total = numCells * cellAreaKm2, sizes = [...area.values()], top = [...area].sort((x, y) => y[1] - x[1])[0][0], T = plates[top];
+    return { land: 100 * T.stats.continentalCells / Math.max(1, T.stats.cells), largest: 100 * Math.max(...sizes) / total, big: sizes.filter(a => a >= 10 ** 7.5).length, age: ages / Math.max(1, n), trenchKm: trench * edgeKm };
+}
+
 for (const seed of seeds) {
     const t0 = performance.now();
     const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
     Object.assign(world.config, { crustLedger: true }, overrides);
-    const seas = [];
-    simulate(world, { untilMyr: len, drive: scene.drive, snapshotEveryMyr: 50, onFrame: f => { if (f.time > 0) seas.push({ t: f.time, s: caughtSeas(world) }); } });
+    world.founderTrace = { between: {}, inside: {} };                  // (subduction-init.js tallies where candidates are lost)
+    const seas = [], shape = [];
+    simulate(world, { untilMyr: len, drive: scene.drive, snapshotEveryMyr: 50, onFrame: f => { if (f.time > 0) { seas.push({ t: f.time, s: caughtSeas(world) }); shape.push({ t: f.time, ...plateShape(world) }); } } });
     const inits = world.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT);
-    const kind = e => e.data.sealed ? 'sealed' : e.data.stress !== undefined ? 'inside' : 'between';
+    const kind = e => e.data.sealed ? 'sealed' : e.data.across ? 'across' : e.data.stress !== undefined ? 'inside' : 'between';
     console.log(`seed ${seed}: ${((performance.now() - t0) / 1000).toFixed(0)} s, ${inits.length} trenches born`);
-    for (const k of ['between', 'inside', 'sealed']) {
+    for (const k of ['between', 'inside', 'across', 'sealed']) {
         const es = inits.filter(e => kind(e) === k);
         console.log(`  ${k.padEnd(8)} ${String(es.length).padStart(3)}  ${es.slice(0, 12).map(e => `${e.time.toFixed(0)}:${e.data.ageMyr.toFixed(0)}My${e.data.stress !== undefined ? `/σ${e.data.stress.toFixed(2)}` : ''}${e.data.areaMkm2 ? `/${e.data.areaMkm2.toFixed(1)}M` : ''}`).join(' ')}`);
     }
+    const q = (xs, p) => { const s = xs.slice().sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN; };
+    for (const [k, t] of Object.entries(world.founderTrace)) {
+        const S = t.samples ?? [], col = i => S.map(x => x[i]), A = t.acrossSamples ?? [];
+        if (A.length) console.log(`    across: age p10/50/90 ${[0.1, 0.5, 0.9].map(p => q(A.map(x => x[0]), p).toFixed(0)).join('/')} Myr · σ p10/50/90 ${[0.1, 0.5, 0.9].map(p => q(A.map(x => x[1]), p).toFixed(2)).join('/')}`);
+        console.log(`  candidates ${k}: ${Object.entries(t).filter(([n]) => !/amples$/.test(n)).map(([n, v]) => `${n} ${typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v}`).join(' · ')}`);
+        if (S.length) console.log(`    age p10/50/90 ${[0.1, 0.5, 0.9].map(p => q(col(0), p).toFixed(0)).join('/')} Myr · squeeze (${k === 'between' ? 'closing cm/yr' : 'σ, − compression'}) p10/50/90 ${[0.1, 0.5, 0.9].map(p => q(col(1), p).toFixed(2)).join('/')} · length p50 ${q(col(2), 0.5).toFixed(0)} km`);
+    }
+    console.log(`  plates every 50 Myr (largest % [its land %] · count ≥ 10^7.5 km² · mean sea-floor age Myr · trench km): ${shape.map(x => `${x.t}:${x.largest.toFixed(0)}[${x.land.toFixed(0)}]/${x.big}/${x.age.toFixed(0)}/${(x.trenchKm / 1000).toFixed(0)}k`).join(' ')}`);
     const rifts = world.events.filter(e => e.kind === EventKind.RIFT);
     console.log(`  rifts ${rifts.length}: ${rifts.map(e => `${e.time.toFixed(0)}:${e.data.cause}/σ${(e.data.stress ?? 0).toFixed(2)}/${((e.data.share ?? 0) * 100).toFixed(0)}%`).join(' ')}`);
     console.log(`  caught seas ≥0.5 Mkm² (Mkm²): ${seas.map(x => `${x.t}:[${x.s.map(v => v.toFixed(1)).join(',')}]`).join(' ')}`);
