@@ -22,8 +22,8 @@ const TUNABLES = [
 ];
 const CHECKLISTS = {
     erosion: [
-        'Driftia’s western coast is active all along. Its trench converges slowly (~1–2.5 cm/yr), so the rivers off the continent keep it filled and most of it is ACCRETIONARY (Margins layer: orange-red); only a few stretches, and only now and then, turn EROSIVE (purple). Lower “A margin converging faster than this erodes” to ~2 cm/yr, or slow “The land draining into a trench wears down at”, to see long erosive stretches.',
-        'Off the accretionary stretches islands rise and grow into the coast (Crust type layer); along an erosive stretch there are none, and the coast retreats at the set rate while its mountain belt keeps forming on the new coast.',
+        'Driftia’s western coast is active all along, but in two kinds of stretches (Margins layer): EROSIVE (purple) in the north, where it converges fast (~8 cm/yr), and ACCRETIONARY (orange-red) in the slower south (~3 cm/yr), where the rivers keep the trench filled.',
+        'Off the accretionary stretches islands rise and grow into the coast (Crust type layer) — only as fast as the trench scrapes sediment off, so they come slowly; along the erosive stretches there are none, and the coast retreats at the set rate while its mountain belt keeps forming on the new coast.',
         'Which is which follows the trench: erosive where it is starved of sediment (little land upstream, dry latitudes, or convergence so fast it carries the fill away as it comes) or the convergence is fast, accretionary where rivers off the land fill it. Cratons are never eaten.',
     ],
     india: [

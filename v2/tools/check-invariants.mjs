@@ -141,10 +141,13 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     const sunk = stages.sedimentSubduction ?? { land: 0, arc: 0 };
     check('…and sediment subduction only loses continental crust, exactly the cells it booked, and touches no arc', sunk.land === -(world.budget.sedimentCells ?? 0) && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) > 0,
         `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}`);
+    const B = world.budget;
+    check('…and a weld or a dock makes no crust: every cell of sea it fills is paid for with a cell of its coast', (B.sealPaidCells ?? 0) === (B.sealedLandCells ?? 0) && (B.arcPaidCells ?? 0) === (B.sealedArcCells ?? 0),
+        `${B.sealedLandCells ?? 0} cells of sea filled with continent at welds and docks, ${B.sealPaidCells ?? 0} of continental coast given back; ${B.sealedArcCells ?? 0} filled with arc, ${B.arcPaidCells ?? 0} of coast given back for them`);
     const per100 = cells => cells * ledgerMesh.cellAreaKm2 / 1e6 / (LEDGER_MYR / 100);
     for (const stage of LAND_STAGES) report(`net continental crust from ${stage}`, per100(stages[stage]?.land ?? 0), { unit: ' Mkm²/100 Myr', digits: 1 });
     report('net continental crust, all sources', per100(booked), { unit: ' Mkm²/100 Myr', digits: 1, source: 'Earth: near zero today — arc additions ≈ losses to subduction erosion and sediment subduction, ~3 km³/yr each (Scholl & von Huene 2009; Dhuime et al. 2012)',
-        detail: `of which underthrust −${per100(world.budget.underthrustCells ?? 0).toFixed(1)}, eroded −${per100(world.budget.erodedCells ?? 0).toFixed(1)}, sediment subducted −${per100(world.budget.sedimentCells ?? 0).toFixed(1)}, sea sealed at welds +${per100(world.budget.sealedCells ?? 0).toFixed(1)}, arcs matured +${per100(world.budget.arcMaturedCells ?? 0).toFixed(1)}` });
+        detail: `of which underthrust −${per100(world.budget.underthrustCells ?? 0).toFixed(1)}, eroded −${per100(world.budget.erodedCells ?? 0).toFixed(1)}, sediment subducted −${per100(world.budget.sedimentCells ?? 0).toFixed(1)}, sea sealed at welds +${per100(world.budget.sealedLandCells ?? 0).toFixed(1)} and paid −${per100(world.budget.sealPaidCells ?? 0).toFixed(1)}, arcs matured +${per100(world.budget.arcMaturedCells ?? 0).toFixed(1)}` });
 }
 
 finish('Invariants');

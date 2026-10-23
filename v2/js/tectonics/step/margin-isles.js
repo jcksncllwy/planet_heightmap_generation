@@ -52,11 +52,14 @@ export function growMarginIsles(world, dt) {
         // Vannucchi 2004's rule is convergence and sediment, nothing else. Was: only trenches past marginIsleSlabKm were
         // judged, and a young one kept whatever flag it had.) A trench cell no longer on a continental margin loses its flag.
         for (const c of m.allTrench) flags[c] &= ~CrustFlag.EROSIVE;
-        let erosiveTrench = 0;
+        let erosiveTrench = 0, wedgeKm3 = 0;
         for (let i = 0; i < trench.length; i++) {
-            const erosive = config.marginErosionKmPerMyr > 0 && (m.conv[i] > config.erosiveConvergenceCmYr || m.terrKm[i] + m.pelKm[i] < config.accretionSedimentKm);
+            const h = m.terrKm[i] + m.pelKm[i];
+            const erosive = config.marginErosionKmPerMyr > 0 && (m.conv[i] > config.erosiveConvergenceCmYr || h < config.accretionSedimentKm);
             if (erosive) { flags[trench[i]] |= CrustFlag.EROSIVE; erosiveTrench++; }
+            else wedgeKm3 += m.conv[i] * CM_PER_YR_TO_KM_PER_MYR * Math.max(0, h - config.accretionSedimentKm) * edgeKm * dt;   // scraped off into the prism
         }
+        world.budget.wedgeKm3 = (world.budget.wedgeKm3 ?? 0) + wedgeKm3;
         // (the margins' length over time, km·Myr — every overriding trench, the continental margins among them, the erosive
         // ones among those: the share of erosive margin and the fluxes per km of trench are read from these)
         const B = world.budget, km = edgeKm * dt;
@@ -101,7 +104,21 @@ export function growMarginIsles(world, dt) {
             if (edge) continue;
             if (rng() < (island ? pGrow : coast ? pCoast : pBorn)) raise.push(c);
         }
+        // (the islands are the accretionary prism risen above the sea, so they are made of what the trench scrapes off —
+        // crust-sink branch: per km of accretionary trench, v × (fill − accretionSedimentKm), the fill the subduction
+        // channel cannot take — and of the fore-arc's own ocean crust beneath, oceanCrustKm of it; a cell of island costs
+        // continentCrustKm − oceanCrustKm of scraped sediment over its area. The prism keeps what it has not yet raised.
+        // Where the islands' rates would raise more than the prism holds, those to rise are drawn at random among them)
+        if (config.wedgeConservation) {
+            plate.wedgeDue = (plate.wedgeDue ?? 0) + wedgeKm3 / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
+            if (raise.length > plate.wedgeDue) {
+                for (let i = raise.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [raise[i], raise[j]] = [raise[j], raise[i]]; }
+                raise.length = Math.floor(plate.wedgeDue);
+            }
+            plate.wedgeDue -= raise.length;
+        }
         if (raise.length) {
+            world.budget.isleRaisedCells = (world.budget.isleRaisedCells ?? 0) + raise.length;
             plate.marginIsleTerrane ??= world.nextTerraneId();
             for (const c of raise) {
                 type[c] = CrustType.ARC; crust.formedAt[c] = time;

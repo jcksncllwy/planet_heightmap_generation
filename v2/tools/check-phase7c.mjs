@@ -34,10 +34,9 @@ section('erosive and accretionary margins');
     for (const f of r.frames) for (let w = 0; w < numCells; w++) if ((f.margin[w] & Margin.TYPE) === Margin.ACTIVE) { if (f.margin[w] & Margin.EROSIVE) erosive++; else accretionary++; }
     const share = erosive / Math.max(1, erosive + accretionary);
     // (a stretch is erosive where its convergence is fast or its trench is starved of sediment — Clift & Vannucchi 2004)
-    // (one margin, converging at ~1–2.5 cm/yr: since the trench's fill is supply ÷ convergence — crust-sink branch — a margin
-    // this slow off a wide continent is kept filled and mostly accretes, as Cascadia or the Makran do; Earth's share is
-    // reported over a whole history below)
-    report('share of active coast that is erosive, this scene', 100 * share, { unit: ' %', digits: 0, source: 'one slow margin: no Earth figure (Earth’s share in the whole history below)', detail: `of active-coast cell-frames (erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment)` });
+    // (one margin, driven fast in the north and slowly in the south — the scene's setting: erosive and accretionary stretches
+    // by design; Earth's share is reported over a whole history below)
+    report('share of active coast that is erosive, this scene', 100 * share, { unit: ' %', digits: 0, source: 'one margin driven to have both kinds: no Earth figure (Earth’s share in the whole history below)', detail: `of active-coast cell-frames (erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment)` });
     // how fast it retreats: the land eaten, per km of erosive TRENCH, per Myr — the length the retreat is set along
     // (world.budget.erosiveTrenchKmMyr, km × Myr; was per km of erosive coast read off the frames, which counted coasts by
     // the flag of whatever trench cell lay offshore) — cut short once a coast lies marginErosionMaxGapKm from its trench,

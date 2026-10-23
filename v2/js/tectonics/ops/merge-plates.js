@@ -156,7 +156,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     }
 
     // ── sea caught between the two plates closes: narrow straits, and small enclosed seas ──
-    const sealed = closeSeasBetween(out, origin, mesh, upper, config, time);
+    const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid } = closeSeasBetween(out, origin, mesh, upper, config, time);
 
     // ── the seam becomes a suture belt ──
     const seam = [];
@@ -189,13 +189,16 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     lower.omega = [0, 0, 0];
     lower.dynamics = null;
     lower.refreshExtent(xyz);
-    return { landLostCells: landBefore - (upper.stats.continentalCells - sealed), maxIndentKm: maxIndent, meanIndentKm: meanIndent, overlapCells: oCount, sealedCells: sealed };
+    return { landLostCells: landBefore - (upper.stats.continentalCells - sealed + sealPaid + arcPaid), maxIndentKm: maxIndent, meanIndentKm: meanIndent, overlapCells: oCount, sealedCells: sealed, sealedLandCells: landSealed, sealPaidCells: sealPaid, sealedArcCells: arcSealed, arcPaidCells: arcPaid };
 }
 
 /**
  * Where the two plates' land comes close, the sea between them is squeezed shut: a strait narrower than
  * 2 × sealStraitKm, and any enclosed sea smaller than inlandSeaMaxKm2. Filled cells become continental
- * crust of the nearer plate, marked origin 3 so the seam runs round them. @returns how many cells closed
+ * crust of the nearer plate, marked origin 3 so the seam runs round them — and every cell filled in is paid for with a
+ * cell of coast of its kind from the land beside it (the lower plate's leading edge first).
+ * @returns {{sealed: number, landSealed: number, paid: number, arcSealed: number, arcPaid: number}} cells closed; of them continent,
+ *   and the continent's coast cells given back for them; of them arc, and the coast cells (arc, else continent) given back for those
  */
 export function closeSeasBetween(out, origin, mesh, upper, config, time) {
     const { numCells, adjOffset, adjList, edgeKm, xyz, index } = mesh;
@@ -240,7 +243,43 @@ export function closeSeasBetween(out, origin, mesh, upper, config, time) {
         out.slabKm[q] = 0;
         origin[q] = 3;
     }
-    return toFill.length;
+    // ── …and the margins pay for it (crust-sink branch). The sea closed because the two coasts converged on it, not
+    // because crust was made there: a seam a cell or two wide is the raster's, the real coasts meeting. So every cell
+    // filled in is taken from the crust of its kind beside it — continent for continent, island arc for arc (continent if
+    // no arc coast is left) — the lower plate's (or the terrane's) leading edge first, the underthrust front, nearest the
+    // seam first; then the upper plate's — as coast given back to the sea. A weld or a dock makes no crust. (Was: ~17 Mkm²
+    // over a 1200 Myr history filled from nothing, most of it arc that later matured into continent.) ──
+    const owedOf = [0, 0, 0, 0];
+    for (const q of toFill) owedOf[out.type[q]]++;
+    const owed = owedOf[CrustType.CONTINENT];
+    let paid = 0, arcPaid = 0;
+    if (owedOf[CrustType.CONTINENT] + owedOf[CrustType.ARC]) {
+        const near = hopsFrom(mesh, toFill, q => out.mask[q] && out.type[q] !== CrustType.OCEAN);
+        const coastOf = { [CrustType.CONTINENT]: [], [CrustType.ARC]: [] };
+        for (let q = 0; q < numCells; q++) {
+            if (!out.mask[q] || origin[q] === 3 || near.dist[q] < 0 || !coastOf[out.type[q]]) continue;
+            let sea = -1;
+            for (let k = adjOffset[q]; k < adjOffset[q + 1]; k++) { const nb = adjList[k]; if (out.mask[nb] && out.type[nb] === CrustType.OCEAN) { sea = nb; break; } }
+            if (sea >= 0) coastOf[out.type[q]].push([q, sea]);
+        }
+        for (const list of Object.values(coastOf)) list.sort(([p], [q]) => (origin[p] === 2 ? 0 : 1) - (origin[q] === 2 ? 0 : 1) || near.dist[p] - near.dist[q] || p - q);
+        const give = (list, n) => {
+            let given = 0;
+            for (const [q, sea] of list) {
+                if (given >= n) break;
+                if (out.type[q] === CrustType.OCEAN) continue;
+                out.create(q, CrustType.OCEAN, out.formedAt[sea]);
+                out.flags[q] = CrustFlag.APRON;
+                origin[q] = 0;
+                given++;
+            }
+            return given;
+        };
+        paid = give(coastOf[CrustType.CONTINENT], owed);
+        arcPaid = give(coastOf[CrustType.ARC], owedOf[CrustType.ARC]);
+        arcPaid += give(coastOf[CrustType.CONTINENT], owedOf[CrustType.ARC] - arcPaid);
+    }
+    return { sealed: toFill.length, landSealed: owed, paid, arcSealed: owedOf[CrustType.ARC], arcPaid };
 }
 
 /** Each craton of the (pre-warp) raster moves as one block by the field at its cells' mean, and is written back cell-for-cell. */

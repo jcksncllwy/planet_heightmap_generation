@@ -210,9 +210,14 @@ export const TECTONICS = {
     arcFarKm: 1200,             // …beyond this from any continent (between: a smooth blend from arcNearKm on). Uncapped,
                                 // a trench consuming 5 cm/yr widened its arc ~1200 km per 100 Myr (developer: "huge unnaturally")
     arcBeltMaxKm: 243,          // the orogeny belt of an island arc reaches at most this far: an arc is a narrow line
-    arcContinentKmPerMyr: 3,    // arc crust welded onto a continent turns continental, its front advancing this fast (a 300 km arc
-    arcContinentAgeMyr: 100,    // in ~100 Myr), once it is this old (step/arc-maturation.js) — how continents grow, and what made
-                                // up for the land collisions and erosive margins take (without it: −26 % over 1200 Myr)
+    arcContinentKmPerMyr: 1.5,  // arc crust welded onto a continent turns continental, its front advancing this fast, once it is
+    arcContinentAgeMyr: 100,    // this old (step/arc-maturation.js) — how continents grow. (crust-sink branch) Derived from Earth's arc
+                                // magmatic addition: ~2.5–2.7 AU (km³/yr) along ~42,000 km of arcs (Scholl & von Huene 2009) is
+                                // ~60 km³/Myr per km of arc; booked as continent continentCrustKm (40 km) thick, that is a front
+                                // advancing 60 ÷ 40 = 1.5 km/Myr along the arc's contact with its continent. All of it is booked
+                                // here as made: which part LASTS is for the sinks to decide (subduction erosion, sediment subduction,
+                                // underthrusting) — taking a lasting share here as well would count the losses twice. (Was 3: "a
+                                // 300 km arc in ~100 Myr", twice Earth's addition)
     arcAccreteThickKm: 17,      // (Phase 7c) arc crust thinner than this arriving at a trench goes down with its slab instead of
                                 // accreting: too little buoyant crust to hold up the lithosphere under it (Cloos 1993: ~15–17 km
                                 // of crust makes young lithosphere unsubductable; Clift & Vannucchi 2004). Was by area: a piece
@@ -333,6 +338,10 @@ export const TECTONICS = {
                                 // thickness, × the land's share × the latitude's erosion, whatever the convergence)
     continentCrustKm: 40,       // continental crust's mean thickness: a volume lost (km³) is booked as this much less area
                                 // (Christensen & Mooney 1995: 41 km; Rudnick & Gao 2003: ~40 km)
+    oceanCrustKm: 7,            // oceanic crust's thickness (White et al. 1992: 7.1 ± 0.8 km): the fore-arc floor an island rises from
+    wedgeConservation: true,    // fore-arc islands are the accretionary prism risen above the sea: they rise only as fast as the trench
+                                // scrapes sediment off — v × (fill − accretionSedimentKm) per km of trench — each cell of island costing
+                                // (continentCrustKm − oceanCrustKm) × its area (step/margin-isles.js; false: at their own rates, as before)
 
     // ── Subduction initiation (Phase 6b, step/subduction-init.js) ──
     subductionInitRatePerMyr: 0.02,   // chance per Myr for a margin at the age threshold and the minimum length

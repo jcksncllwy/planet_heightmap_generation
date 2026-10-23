@@ -186,6 +186,10 @@ export function trackCollisions(world, dt) {
         if (wouldWeld) {
             const result = mergePlates(world, U, L, cells, rec);
             world.budget.sealedCells = (world.budget.sealedCells ?? 0) + result.sealedCells;
+            world.budget.sealedLandCells = (world.budget.sealedLandCells ?? 0) + result.sealedLandCells;
+            world.budget.sealPaidCells = (world.budget.sealPaidCells ?? 0) + result.sealPaidCells;
+            world.budget.sealedArcCells = (world.budget.sealedArcCells ?? 0) + result.sealedArcCells;
+            world.budget.arcPaidCells = (world.budget.arcPaidCells ?? 0) + result.arcPaidCells;
             rec.sutured = true;
             merged = true;
             const why = stacked && !closed ? 'stacked' : !closed ? 'overdue' : rec.stalledMyr >= config.sutureStallMyr ? 'stalled' : rec.shorteningKm < config.sutureShorteningKm ? 'contact' : 'shortening';
@@ -311,6 +315,10 @@ function dockIfTerrane(world, A, B, cells) {
     if (kind === 'island arc' && meanArcThickKm(donor, mass, world.time, config) < config.arcAccreteThickKm) { recycle(world, donor, mass); return true; }   // too thin to float: it goes down (Phase 7c)
     const donorName = donor.name, result = accreteTerrane(world, host, donor, mass, rate);
     world.budget.sealedCells = (world.budget.sealedCells ?? 0) + (result.sealed ?? 0);
+    world.budget.sealedLandCells = (world.budget.sealedLandCells ?? 0) + (result.landSealed ?? 0);
+    world.budget.sealPaidCells = (world.budget.sealPaidCells ?? 0) + (result.sealPaid ?? 0);
+    world.budget.sealedArcCells = (world.budget.sealedArcCells ?? 0) + (result.arcSealed ?? 0);
+    world.budget.arcPaidCells = (world.budget.arcPaidCells ?? 0) + (result.arcPaid ?? 0);
     if (result.scrap) return true;
     world.log(EventKind.DOCK, `${kind} of ${donorName} (${(mass.length * cellAreaKm2 / 1e6).toFixed(2)} Mkm²) accretes to ${host.name}: ${result.cells} cells transferred${result.sealed ? `, ${result.sealed} cells of strait closed` : ''}; subduction jumps to its outboard side${donor.alive ? '' : `; ${donorName} is gone`}`,
         { host: host.id, donor: donor.id, arc: kind === 'island arc', areaMkm2: mass.length * cellAreaKm2 / 1e6, cells: result.cells, sealed: result.sealed, donorGone: !donor.alive });
