@@ -740,3 +740,88 @@ Each gets a ledger row when it enters the code.
 
 **Cost.** The economy runs only in the Holocene (~470 of 2800 steps) and only on peopled cells. Estimate: ~1 minute
 more per world at 160K, ~4× at 640K. Memory: ~8 MB per array set at 160K, ~31 MB at 640K.
+
+## 10. Travel and trade (design, 2026-10-23)
+
+Travel cost decides where farming spreads first, where a town can draw its grain, which towns grow, and how far a polity
+reaches. Today it is fixed: so many km/yr per kind of edge for the fronts, and for towns 40 km of land, a river's km at a
+quarter and a coast's at an eighth. Voyaging is a reach in km by era. None of it knows the wind, the current, the season
+or the tracks people wear.
+
+The plan: one travel graph, in days, by month. Fronts, voyages, towns, trade and polities all read it. Trade is flows
+over it, and the flows wear paths that make it cheaper.
+
+### 10.1 One travel graph, in days, by month
+
+- Every edge of the mesh (land, river, coast, open sea) has a cost in days for a loaded traveller, for each month.
+  Costs are directional: a→b is not b→a (downstream, downwind).
+- **Land.** Walking ~25–30 km a day on the flat, by Tobler's function on slope. Pack animals once they exist (the donkey
+  ~6 ka in NE Africa; the camel later; Bulliet 1975). Frozen or flooded months are closed or slow.
+- **Rivers.** Downstream at the current plus paddling; upstream by towing, slower. Navigable above a discharge, as now.
+- **Sea.** A boat's speed from the wind's angle to its heading (a polar), plus the current as a vector. A paddled craft
+  barely feels the wind; a sail runs fast downwind and slow, or not at all, into it. Its days at sea are limited (water,
+  food), so a crossing must fit a season's winds.
+- **Craft by era.** Paddle and raft first; the sail (the Gulf ~7 ka, the Nile ~5.5 ka); the Austronesian outrigger sail
+  (~3.5 ka). Boat-building spreads like a skill (§9.3), with the people who have it.
+- **Winds and currents come from the planet's own climate.** The finish keeps the winds (the year, January, July). It
+  must also keep the monthly winds, and the ocean stage's currents (annual and monthly), on the civ world.
+- **Size.** 12 months × ~6 edges a cell × 4 bytes: ~46 MB at 160K cells, ~185 MB at 640K. At 640K: half precision, or
+  four seasons in place of twelve months.
+
+### 10.2 Voyaging on the winds
+
+- The sea graph replaces `voyageKm` and `voyageSeaKmYr`. A landing is any coast reachable within the craft's days at sea,
+  in a month whose winds allow it. Voyagers sail when the winds serve, and return when they turn.
+- Upwind exploration falls out of it: sailing into the prevailing wind is slow but the way home is fast and safe, so
+  early voyagers go upwind first (Irwin 1992).
+- Drift carries unintended landings (Avis, Montenegro & Weaver 2007).
+
+### 10.3 Paths and roads
+
+- Each edge carries wear. Trips add to it; it fades slowly when unused (Helbing, Keltsch & Molnár 1997: trails as the
+  walkers' own record). Its cost falls with wear, from open country to a path's.
+- States can build roads: a share of their surplus into their busiest edges. Later.
+- Trips come from the trade flows (10.4), and from movers along the fronts.
+- Effect: traffic concentrates on a few routes. Towns grow at junctions, fords, passes and portages.
+
+### 10.4 Trade: flows between places
+
+- Flows by spatial interaction: S_ij = O_i · W_j^α · exp(−β c_ij) / Σ_k W_k^α · exp(−β c_ik), with c the travel days
+  (Wilson 1971).
+- Towns grow toward what flows to them: dW_j/dt = ε (D_j − κ W_j) (Harris & Wilson 1978). In archaeology this gives the
+  Greek poleis' hierarchy (Rihll & Wilson 1987) and Crete's (Bevan & Wilson 2013). For the economy, it replaces
+  `settle.js`'s "biggest claim first".
+- Goods, in order:
+  1. Grain: the towns' food. It replaces the 40 km import reach.
+  2. Materials missing where they are wanted: stone, obsidian, copper, tin, timber (§5.6 deposits). Demand is the elite's
+     want for what the land lacks (Algaze 2008: the alluvium sells grain and cloth, and buys metal, timber and stone).
+- The Aegean's maritime network is the model for the sea's part (Knappett, Evans & Rivers 2008).
+
+### 10.5 What it changes
+
+- **Fronts.** Each edge's speed from its days (coasts and rivers fast as now, the sea by its winds).
+- **Towns.** Their food's reach in days, and their sizes from the flows.
+- **Polities.** Their reach in days (`polity.js` uses the same network).
+- **Earth.** Earth needs winds and currents too. Either run Orogen's climate on Earth's relief (as the climate checks
+  do), or use observed climatologies (ERA5 winds, OSCAR currents). The first tests the planet's own physics; the second
+  tests the travel rules alone.
+
+### 10.6 Checks
+
+- **Roman travel times by month** against ORBIS (Scheidel 2014): e.g. Rome–Alexandria by sea in summer and winter, within
+  ~30 %.
+- **Old Assyrian caravans:** Assur to Kanesh in ~6 weeks (Veenhof 1972). The distance elasticity of trade, ~2
+  (Barjamovic et al. 2019).
+- **The Pacific:** the order and dates of Remote Oceania's settlement (Montenegro, Callaghan & Fitzpatrick 2016).
+- **The Indian Ocean:** the monsoon's sailing seasons.
+- **Towns:** the rank-size slope (~1) and spacing; the river, coast and inland shares.
+- **The Ur chain, link 6:** trade reaches copper along rivers and coasts first.
+
+### 10.7 Stages
+
+- **T0. The travel graph.** Monthly winds and currents kept on the civ world; edge days by month; a map view of travel
+  time from a clicked place (isochrones), by month. Nothing else reads it yet (the fingerprints stay).
+- **T1. Fronts and voyaging on the graph** (the economy only).
+- **T2. Flows and towns** (Rihll–Wilson), grain first.
+- **T3. Wear and paths;** then states' roads.
+- **T4. Materials,** with the deposits of §5.6.

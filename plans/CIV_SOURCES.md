@@ -205,6 +205,14 @@ with their full references).
 | Farmers entering occupied land as competition | Aoki, Shida & Shigesada 1996, *Theoretical Population Biology* | [L] |
 | The end of the African Humid Period (~5.5 ka) pushes people into the Nile valley (a planned rule: needs orbital forcing) | Kuper & Kröpelin 2006, *Science* | [L] |
 | Agro-climatic yield from the months | FAO 1978 AEZ; GAEZ v4 (Fischer et al. 2021) | in use, see the resource map |
+| Travel and trade (plans/CIV_PLAN.md §10): seasonal travel costs on a network, by month and craft | Scheidel 2014, *Journal of Roman Archaeology* 27 (ORBIS); Casson 1971, *Ships and Seamanship in the Ancient World* (speeds by wind) | [L] |
+| Voyaging: upwind exploration; drift and sailing simulations of the Pacific | Irwin 1992, *The Prehistoric Exploration and Colonisation of the Pacific*; Avis, Montenegro & Weaver 2007, *Journal of Island and Coastal Archaeology*; Montenegro, Callaghan & Fitzpatrick 2016, *PNAS* | [L] |
+| Boats and sails: the Gulf's by the Ubaid; pack animals and the wheel | Carter 2006, *Antiquity*; Bulliet 1975, *The Camel and the Wheel* | [L] |
+| Trails worn by use, fading unused | Helbing, Keltsch & Molnár 1997, *Nature* | [L] |
+| Spatial interaction; towns growing toward their inflow | Wilson 1971, *Environment and Planning*; Harris & Wilson 1978, *Environment and Planning A*; Rihll & Wilson 1987, *Histoire & Mesure*; Bevan & Wilson 2013, *Journal of Archaeological Science* | [L] |
+| Maritime networks of the Aegean Bronze Age | Knappett, Evans & Rivers 2008, *Antiquity* | [L] |
+| Old Assyrian trade: caravan times; distance elasticity ~2 | Veenhof 1972, *Aspects of Old Assyrian Trade*; Barjamovic, Chaney, Coşar & Hortaçsu 2019, *Quarterly Journal of Economics* | [L] |
+| Trade's asymmetry: the alluvium's exports and imports | Algaze 2008, *Ancient Mesopotamia at the Dawn of Civilization* | [L] |
 
 Notes on these sources from the §9 design review (2026-10-22):
 - MacArthur & Pianka add a lower-ranked item when encounters with the higher-ranked ones fall, not when those "can't feed" people. §9.1 now says so.
