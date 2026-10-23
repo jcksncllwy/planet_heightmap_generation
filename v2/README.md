@@ -334,7 +334,8 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    the Altiplano's heights and widen instead of rising on. A belt's reach is spent against the strength of the ground
    it crosses (the thin viscous sheet: a deforming zone widens as the lithosphere weakens): crust a belt has already
    thickened, and island-arc crust, is hot and weak (`beltHotStrength` × an ordinary continent's), so a long-lived margin
-   widens over the crust it thickened, while a belt crosses onto a craton only as a low, thin-skinned fold-thrust belt,
+   widens over the crust it thickened — each column there thickening by that share as much, so the same shortening
+   adds the same crust however wide it spreads (wider, lower) — while a belt crosses onto a craton only as a low, thin-skinned fold-thrust belt,
    `cratonStrainShare` of its relief, each km of the shield costing `cratonStrength` km of the belt's reach, and the
    shield thickening by only 1/`cratonStrength` as much: cratons are strong, not rigid. So orogenies accumulate, and an
    old belt that drifted through the tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`,

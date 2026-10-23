@@ -147,12 +147,17 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         // the thickening: the same share everywhere, with a smooth plateau profile
         // (less as the crust nears crustMaxThickKm above normal, never past it: thicker, it spreads under its own weight instead —
         // each km of thickening closes that share of the room left, so a big step saturates rather than overshoots)
-        const cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]);
-        const thickened = room * (1 - Math.exp(-workKm * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
+        // (each column takes its strength's share: over ground of strength s a step of u spans 1/s as many km, so the same
+        // shortening spread over a belt that much wider thickens each column that much less — the crust the convergence
+        // adds is its own, however wide the weak ground lets it spread (mass: the shortening × the crust's thickness))
+        const cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]), share = rimCell ? 1 : strength(c);
+        const thickened = room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
         crust.thickKm[c] += thickened;
         // heights (records only): the root thickens with the crust; uplift and crests rise toward the belt's shape — the
-        // whole belt at the pace of its front's convergence
-        buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? shieldShare : 1);
+        // whole belt at the pace of its front's convergence. Over weak ground the shape is laid out 1/s as wide, so it
+        // stands s as high: the same convergence lifts the same volume however far it spreads (a wide plateau is low in
+        // relief across its interior — Tibet's, Fielding et al. 1994)
+        buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? shieldShare : share);
     }
     for (const c of reached) { u[c] = Infinity; src[c] = -1; seaKm[c] = 0; }
 }
