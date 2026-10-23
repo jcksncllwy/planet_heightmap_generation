@@ -18,6 +18,16 @@ export class PeopleService {
         });
     }
 
+    /** Go on with a run (`run`: its result's id) to `toBP`, a frame every `every` years: a promise of civ-page.js
+     *  morePeople's frames, to add to the run's (addPeople). */
+    more(run, toBP, every) {
+        const w = this.worker ??= this.start(), id = this.next++;
+        return new Promise((resolve, reject) => {
+            this.jobs.set(id, { resolve, reject });
+            w.postMessage({ type: 'more', id, run, toBP, every });
+        });
+    }
+
     start() {
         const w = new Worker(new URL('../civ/civ-worker.js', import.meta.url), { type: 'module' });
         w.onmessage = ({ data }) => {
@@ -25,7 +35,7 @@ export class PeopleService {
             if (!j) return;
             if (data.type === 'progress') { j.onProgress?.(data.share); return; }
             this.jobs.delete(data.id);
-            if (data.type === 'people') j.resolve(data); else j.reject(new Error(data.message));
+            if (data.type === 'people' || data.type === 'more') j.resolve(data); else j.reject(new Error(data.message));
         };
         w.onerror = e => {
             e.preventDefault?.();
@@ -153,7 +163,19 @@ function polityOf(P, f, id) {
     return null;
 }
 
-export const yearsWords = bp => (bp <= 0 ? 'Now' : `${Math.round(bp).toLocaleString()} years ago`);
+export const yearsWords = bp => { const w = agoWords(bp); return w[0].toUpperCase() + w.slice(1); };
+
+/** Add a run's further frames (PeopleService.more) to its people: the frames' bytes into a buffer that grows by doubling
+ *  (so a long run on stays cheap), the rest replaced or appended. */
+export function addPeople(P, more) {
+    const k = P.bp.length, m = more.bp.length, need = (k + m) * P.cells;
+    if (need > P.frames.length) { const b = new Uint8Array(Math.max(need, 2 * P.frames.length)); b.set(P.frames.subarray(0, k * P.cells)); P.frames = b; }
+    P.frames.set(more.frames, k * P.cells);
+    const join = (a, b) => { const c = new a.constructor(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
+    P.bp = join(P.bp, more.bp); P.people = join(P.people, more.people); P.farmers = join(P.farmers, more.farmers);
+    P.towns.push(...more.towns); P.polities.push(...more.polities);
+    P.centres = more.centres; P.place = more.place;
+}
 const millions = v => (v >= 1e7 ? `${(v / 1e6).toFixed(0)} M` : v >= 1e6 ? `${(v / 1e6).toFixed(1)} M` : `${Math.round(v / 1e3).toLocaleString()} K`);
 const PKG_WORDS = { winterCereal: 'winter-rain cereals', summerCereal: 'summer-rain cereals', tuber: 'roots and tubers' };
 const gradient = ramp => `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(t => `rgb(${ramp(t).map(Math.round).join(',')})`).join(', ')})`;
@@ -173,7 +195,7 @@ ${towns ? `<div class="evo-legend-note">● ${towns.toLocaleString()} towns of 2
 const TIER_WORDS = ['Village', 'Small town', 'Town', 'City'];
 const tierOfPop = pop => (pop >= 15000 ? 3 : pop >= 2500 ? 2 : pop >= 500 ? 1 : 0);
 const k = v => (v >= 1e4 ? `${Math.round(v / 1000)}k` : v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${Math.round(v)}`);
-const agoWords = bp => (bp > 0 ? `${Math.round(bp).toLocaleString()} years ago` : 'now');
+const agoWords = bp => (bp > 0 ? `${Math.round(bp).toLocaleString()} years ago` : bp < 0 ? `${Math.round(-bp).toLocaleString()} years after now` : 'now');
 /** The cell under a place (u, v). */
 const cellAt = (P, u, v) => { const W = P.pixW, H = W >> 1; return P.pix[Math.min(H - 1, Math.floor(v * H)) * W + Math.min(W - 1, Math.floor(u * W))]; };
 const pct = v => `${Math.round(v)} %`;

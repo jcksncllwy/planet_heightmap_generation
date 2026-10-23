@@ -50,7 +50,18 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
  *   disease (default true: disease.js), C }
  * @returns { frames, centres, totals, arrivalBP (Float32, per cell; NaN never), farmBP (per cell) }
  */
-export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, polities = true, famine = true, vary = null, disease = true, C = CIV } = {}) {
+export function runCivSim(w, sub, opts = {}) {
+    const sim = createCivSim(w, sub, opts);
+    sim.advance(opts.endBP ?? 0);
+    return sim.result();
+}
+
+/**
+ * The same run, kept alive: advance(toBP) lives on to that year (past 0 BP into the world's future, as far as asked),
+ * calling onFrame for each new frame; result() reads it as runCivSim returns it, at any point. opts as runCivSim's,
+ * without endBP; frameYears (default C.frameYears) — how often a frame is kept — may be changed between advances.
+ */
+export function createCivSim(w, sub, { origins = null, onFrame = null, polities = true, famine = true, vary = null, disease = true, C = CIV } = {}) {
     const { mesh, z, ocean, lake, koppen } = w, n = mesh.numCells, { adjOffset, adjList } = mesh, len = edgeLengths(mesh);
     const cellKm2 = sub.cellKm2, T0 = C.originBP;
     const tOf = bp => T0 - bp, bpOf = t => T0 - t;
@@ -231,7 +242,7 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
 
     // ── good and bad years: the settled live year by year on their harvests and their store ──
     const V = famine ? (vary ?? climateVariability(w, sub, C)) : null;
-    const modes = V ? modeSeries(Math.ceil(tOf(endBP)) + C.stepYears + 1, C) : null;
+    let modes = V ? modeSeries(Math.ceil(tOf(0)) + C.stepYears + 1, C) : null;   // (grown as the run goes on: the same years, longer)
     const store = new Float32Array(n), famineShare = new Float32Array(n);
     const famineCentury = new Float32Array(n);   // (each cell's famine deaths, summed over the run: a diagnostic)
     const regionNoise = V ? new Float32Array(V.regions * C.stepYears) : null, regionStamp = V ? new Int32Array(V.regions).fill(-1) : null;
@@ -279,7 +290,9 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
         const mR = meanF[3 * c], mI = meanF[3 * c + 1], mW = steady + (1 - steady) * meanF[3 * c + 2];
         let dd = d[c], st = store[c], dead = 0;
         for (let j = 0; j < C.stepYears; j++) {
-            const y = y0 + j, aH = modes[2 * y], aL = modes[2 * y + 1];
+            const y = y0 + j;
+            if (2 * y + 1 >= modes.length) modes = modeSeries(2 * y + 1000, C);
+            const aH = modes[2 * y], aL = modes[2 * y + 1];
             const lnx = modeLn(V.rainLn, h, aH, aL) + cv * regionNoise[r * C.stepYears + j];
             let food = 0;
             if (kR > 0) food += kR * (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / ramp0) / mR;
@@ -299,10 +312,10 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
         if (dead > 0) { famineShare[c] += dead / d[c]; famineCentury[c] += dead / d[c]; d[c] = dd; famineDead += dead * cellKm2; }
     };
 
-    const end = tOf(endBP);
-    let nextFrame = 0, nextPolity = 0, nextVoyage = 0, anyFarmers = false;
+    let nextFrame = 0, nextPolity = 0, nextVoyage = 0, anyFarmers = false, frameYears = C.frameYears, t = 0, step = 0;
     const pol = polities ? new Polities(w, sub, C) : null, Kc = pol ? new Float32Array(n) : null;
-    for (let t = 0, step = 0; t <= end + 1e-9; t += C.stepYears, step++) {
+    /** One generation (C.stepYears) of the run. */
+    const live = () => {
         const bp = bpOf(t), seaKm = schedule(C.seaLevelM, bp) / 1000, holo = bp <= C.holoceneBP;
         const g = rise(-C.glacialToBP[0], -C.glacialToBP[1], -bp);
         const forage = c => (iced(c, bp) ? 0 : KfG[c] + (Kf[c] - KfG[c]) * g);
@@ -379,13 +392,20 @@ export function runCivSim(w, sub, { origins = null, endBP = 0, onFrame = null, p
                 towns: pol && anyFarmers ? pol.packed() : null, polityTable: pol && anyFarmers ? pol.packedPolities() : null, polities: pol && anyFarmers ? pol.counts() : null };
             frames.push(frame);
             if (onFrame) onFrame(frame);
-            nextFrame += C.frameYears;
+            nextFrame += frameYears;
         }
-    }
-    const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN);
-    for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); }
-    return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
-        voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)) };
+    };
+    const advance = (toBP, every = frameYears) => {
+        if (every !== frameYears) { nextFrame = Math.min(nextFrame, t); frameYears = every; }   // (the next generation lived is the first at the new pace)
+        for (const end = tOf(toBP); t <= end + 1e-9; t += C.stepYears, step++) live();
+    };
+    const result = () => {
+        const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN);
+        for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); }
+        return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
+            voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)) };
+    };
+    return { advance, result, get bp() { return bpOf(t - C.stepYears); }, get frames() { return frames; } };
 }
 
 /** Domestication cells, gathered into centres: the same package, within `km` of one another — each with its first date and its middle. */

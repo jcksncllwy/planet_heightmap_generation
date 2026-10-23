@@ -7,7 +7,7 @@
 import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
 import { civSubstrate } from './substrate.js';
-import { runCivSim, byteDensity, Life } from './sim.js';
+import { createCivSim, byteDensity, Life } from './sim.js';
 import { climateVariability, spreadOf } from './climate-var.js';
 import { diseaseLoss } from './disease.js';
 import { PACKAGES } from './substrate.js';
@@ -15,6 +15,8 @@ import { TownFlag } from './polity.js';
 import { CIV } from './civ-config.js';
 
 export const PAGE_CELLS = 160000;
+/** A generation: the step the people's timeline goes on by, past now. */
+export const STEP_YEARS = CIV.stepYears;
 const MESH_SEED = 12345;
 
 /** A frame's byte: 0 nobody; else the way of life (WAYS) in the top two bits, the density in the low six. */
@@ -45,53 +47,80 @@ export function civWorldFromFinish(out) {
 }
 
 /**
- * Run the people on a finished moment's world (civWorldFromFinish). `width`: the picture the page paints (width × width/2), for each pixel's cell.
- * @returns {{cells, frames: Uint8Array (frame-major, cells each), bp: Float32Array, people: Float64Array, farmers: Float64Array,
- *   towns: [Float32Array [lat, lon, people, TownFlag, polity] × each town of 2500+, or null] per frame, centres,
- *   origin: [lat, lon], pix: Int32Array, pixW, ms}}
+ * Run the people on a finished moment's world (civWorldFromFinish), to now. `width`: the picture the page paints (width ×
+ * width/2), for each pixel's cell. The run stays alive in `state`, to go on with (morePeople).
+ * @returns {{state, result: {cells, frames: Uint8Array (frame-major, cells each), bp: Float32Array, people: Float64Array,
+ *   farmers: Float64Array, towns: [Float32Array [lat, lon, people, TownFlag, polity] × each town of 2500+, or null] per frame,
+ *   polities, centres, place, origin: [lat, lon], pix: Int32Array, pixW, ms}}}
  */
-export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
+export function startPeople(w, width, onProgress = () => {}, runs = null) {
     const t0 = performance.now();
     const sub = civSubstrate(w), n = w.mesh.numCells, vary = climateVariability(w, sub, CIV, runs);
-    const count = Math.floor(CIV.originBP / CIV.frameYears) + 1, frames = new Uint8Array(count * n);
-    const bp = new Float32Array(count), people = new Float64Array(count), farmers = new Float64Array(count);
-    let f = 0;
-    const towns = [], polities = [];
-    const res = runCivSim(w, sub, { vary, onFrame: fr => {
-        if (f >= count) return;
-        const o = f * n;
-        for (let c = 0; c < n; c++) if (fr.density[c]) frames[o + c] = peopleByte(byteDensity(fr.density[c]), fr.life[c]);
-        towns.push(fr.towns);                                   // (polity.js packed: its towns of 2500+, or null)
-        polities.push(fr.polityTable);                          // (and their polities: polity.js packedPolities)
-        bp[f] = fr.bp; people[f] = fr.people; farmers[f] = fr.farmers; f++;
-        onProgress(f / count);
-    } });
+    const state = { w, sub, n, onFrame: null, still: null };
+    state.sim = createCivSim(w, sub, { vary, onFrame: fr => state.onFrame?.(fr) });
+    const count = Math.floor(CIV.originBP / CIV.frameYears) + 1;
+    const first = collect(state, () => state.sim.advance(0), k => onProgress(k / count));
     const W = width, H = W >> 1, pix = new Int32Array(W * H);
     for (let y = 0; y < H; y++) {
         const la = (0.5 - (y + 0.5) / H) * Math.PI, cl = Math.cos(la), sl = Math.sin(la);
         for (let x = 0; x < W; x++) { const lo = ((x + 0.5) / W - 0.5) * 2 * Math.PI; pix[y * W + x] = w.mesh.index.nearest(cl * Math.cos(lo), cl * Math.sin(lo), sl); }
     }
-    const o = res.origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
-    return { cells: n, frames: f < count ? frames.slice(0, f * n) : frames, bp: bp.slice(0, f), people: people.slice(0, f), farmers: farmers.slice(0, f),
-        towns, polities, place: placeStats(w, sub, res), packages: PACKAGES.map(p => p.id),
-        centres: res.centres, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D], pix, pixW: W, ms: performance.now() - t0 };
+    const o = state.sim.result().origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
+    return { state, result: { cells: n, ...first, packages: PACKAGES.map(p => p.id), origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D],
+        pix, pixW: W, ms: performance.now() - t0 } };
+}
+
+/** Go on with a run (startPeople's state) to `toBP` (negative: years after now), a frame every `every` years: the new frames,
+ *  and the place, centres as they now stand. */
+export function morePeople(state, toBP, every = STEP_YEARS) {
+    return collect(state, () => state.sim.advance(toBP, every));
+}
+
+/** startPeople's run to now, as one result (for the tools). */
+export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
+    return startPeople(w, width, onProgress, runs).result;
+}
+
+/** The frames a step of the run adds, packed: one byte per cell and frame, each frame's year, people, towns, polities. */
+function collect(state, run, onFrame = () => {}) {
+    const { n } = state, list = [];
+    state.onFrame = fr => {
+        const b = new Uint8Array(n);
+        for (let c = 0; c < n; c++) if (fr.density[c]) b[c] = peopleByte(byteDensity(fr.density[c]), fr.life[c]);
+        list.push({ b, bp: fr.bp, people: fr.people, farmers: fr.farmers, towns: fr.towns, polities: fr.polityTable });
+        onFrame(list.length);
+    };
+    run();
+    state.onFrame = null;
+    const frames = new Uint8Array(list.length * n);
+    list.forEach((x, i) => frames.set(x.b, i * n));
+    const res = state.sim.result();
+    return { frames, bp: Float32Array.from(list, x => x.bp), people: Float64Array.from(list, x => x.people), farmers: Float64Array.from(list, x => x.farmers),
+        towns: list.map(x => x.towns), polities: list.map(x => x.polities), centres: res.centres, place: placeStats(state, res, state.sim.bp) };
 }
 
 /** What the readout and a town's card say about a place, per cell: when people and farming came (years ago; NaN never),
  *  the farming package, its fever (share of settled people lost, 0–255), its famine deaths (share of its people a
  *  century, over its farming years), how much its rain and its river's flood vary from year to year (CV, %). */
-function placeStats(w, sub, res) {
-    const n = w.mesh.numCells, V = res.vary, fever = new Uint8Array(n), famine = new Float32Array(n), rainCV = new Uint8Array(n), floodCV = new Uint8Array(n);
-    for (let c = 0; c < n; c++) {
-        if (w.ocean[c]) continue;
-        if (res.parasites) fever[c] = Math.round(255 * diseaseLoss(w, c, res.parasites, sub.wetland[c] > 0 ? 1 : 0, false, true));
-        const since = res.farmBP[c];
-        if (res.famine && since > 0) famine[c] = res.famine[c] / Math.max(1, since / 100);
-        if (V) {
-            rainCV[c] = Math.min(255, Math.round(100 * spreadOf(V.rainLn, V.rainCV[c], c, 64)));
-            const s = sub.irrigSrc[c];
-            if (s >= 0) floodCV[c] = Math.min(255, Math.round(100 * spreadOf(V.riverLn, V.riverCV[s], s, 64)));
+function placeStats(state, res, nowBP) {
+    const { w, sub, n } = state, V = res.vary, famine = new Float32Array(n);
+    // (what the run does not change, once: fever, the rain's and the flood's spread, where canals could water)
+    state.still ??= (() => {
+        const fever = new Uint8Array(n), rainCV = new Uint8Array(n), floodCV = new Uint8Array(n);
+        for (let c = 0; c < n; c++) {
+            if (w.ocean[c]) continue;
+            if (res.parasites) fever[c] = Math.round(255 * diseaseLoss(w, c, res.parasites, sub.wetland[c] > 0 ? 1 : 0, false, true));
+            if (V) {
+                rainCV[c] = Math.min(255, Math.round(100 * spreadOf(V.rainLn, V.rainCV[c], c, 64)));
+                const s = sub.irrigSrc[c];
+                if (s >= 0) floodCV[c] = Math.min(255, Math.round(100 * spreadOf(V.riverLn, V.riverCV[s], s, 64)));
+            }
         }
+        return { fever, rainCV, floodCV, irrigable: Uint8Array.from(sub.irrig, v => (v > 0 ? 1 : 0)) };
+    })();
+    for (let c = 0; c < n; c++) {
+        const years = res.farmBP[c] - nowBP;
+        if (res.famine && years > 0) famine[c] = res.famine[c] / Math.max(1, years / 100);
     }
-    return { arrivalBP: res.arrivalBP, farmBP: res.farmBP, pkg: res.farmPkg, fever, famine, rainCV, floodCV, irrigable: Uint8Array.from(sub.irrig, v => (v > 0 ? 1 : 0)) };
+    return { arrivalBP: res.arrivalBP, farmBP: res.farmBP, pkg: Int8Array.from(res.farmPkg), famine, ...state.still };
 }

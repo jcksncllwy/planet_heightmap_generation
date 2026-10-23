@@ -187,6 +187,10 @@
 .evo-people-bar input[type=range] { width: min(320px, 50vw); }
 .evo-people-play { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(100,160,255,0.45); background: rgba(50,90,200,0.75); color: #fff; cursor: pointer; font-size: 12px; }
 .evo-people-label { min-width: 9em; font-size: 12px; color: #cde; white-space: nowrap; }
+.evo-people-on { flex: none; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid rgba(100,160,255,0.45); background: rgba(30,50,110,0.6); color: #cde; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.evo-people-on:hover { background: rgba(50,90,200,0.75); color: #fff; }
+.evo-people-on[aria-pressed="true"] { background: rgba(210,160,40,0.85); border-color: rgba(255,210,110,0.9); color: #1a1205; }
+.evo-people-on:disabled { opacity: 0.45; cursor: default; }
 .evo-people-ramp { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #aab; margin-top: 4px; }
 .evo-people-ramp span { width: 5.5em; }
 .evo-people-ramp i { flex: 1; height: 10px; border-radius: 2px; }

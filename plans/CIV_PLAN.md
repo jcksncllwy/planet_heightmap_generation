@@ -316,6 +316,15 @@ rain-fed districts, and the biggest had 22k people. Of those 263:
 - The other 255 are truly rain-fed. 247 are under 5k and the biggest is 10.6k, in line with Wilkinson's few thousand
   (and Tell Leilan/Brak's later peaks).
 
+The run goes on past now, as of 2026-10-22. `createCivSim` keeps the sim alive (`runCivSim` wraps it; advancing in
+chunks gives the same run as one call), and the People worker keeps the latest two runs. The people bar has two buttons:
+- **+25 yr** lives one more generation;
+- **Run on** keeps adding generations, ~13 a second at 160K cells, with the slider following the newest year unless it
+  has been scrubbed back.
+
+Past now a frame is kept every generation, and years read "N years after now". The world's climate and sea level stay as
+they are now.
+
 ### Phase 4, first slice: towns and states (2026-10-21)
 
 `v2/js/civ/settle.js` works on any moment of the sim:

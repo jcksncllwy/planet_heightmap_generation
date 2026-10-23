@@ -23,7 +23,8 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
-import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf } from './people-view.js';
+import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf, addPeople } from './people-view.js';
+import { STEP_YEARS } from '../civ/civ-page.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -186,7 +187,7 @@ const climate = new ClimateService();   // the climate, on request, for the mome
 const finisher = new FinishService();   // the Finish step, on request, for the moment shown (finish-view.js)
 const peopler = new PeopleService();    // the People layer, on request, for the detailed moment (people-view.js)
 // (the People layer's own timeline: the frame shown — years BP every 500 years — and its playback)
-const peopleView = { f: Infinity, playing: false, at: 0 };
+const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false };
 // (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
 // ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
@@ -1023,6 +1024,34 @@ $('climateChipBtn').addEventListener('click', () => (FINISHED_ONLY_LAYERS.has(vi
 // the People layer's timeline: scrub, or play (faster through the long glacial ages, slower through the last 12 000 years)
 $('peopleSlider').addEventListener('input', e => { peopleView.f = Number(e.target.value); setPeoplePlaying(false); dirty = true; lastScrub = performance.now(); });
 $('peoplePlay').addEventListener('click', () => setPeoplePlaying(!peopleView.playing));
+// …and go on past its last year: a generation at a time, or on and on (the slider following the newest year)
+$('peopleStep').addEventListener('click', () => { setPeoplePlaying(false); livePeopleOn(1); });
+$('peopleRun').addEventListener('click', () => setPeopleRunOn(!peopleView.runOn));
+function setPeopleRunOn(on) {
+    peopleView.runOn = on && !!(painted && B?.finishes.get(painted)?.people);
+    $('peopleRun').setAttribute('aria-pressed', String(peopleView.runOn));
+    $('peopleRun').textContent = peopleView.runOn ? 'Running on…' : 'Run on';
+    if (peopleView.runOn) { setPeoplePlaying(false); peopleView.f = Infinity; livePeopleOn(4); }
+}
+/** Live the shown moment's people on, `steps` generations past their last frame. */
+async function livePeopleOn(steps) {
+    const fin = painted && B?.finishes.get(painted), P = fin?.people;
+    if (!P || peopleView.busy) return;
+    peopleView.busy = true; $('peopleStep').disabled = true;
+    const atEnd = peopleFrame(P) >= P.bp.length - 1;
+    try {
+        addPeople(P, await peopler.more(P.id, P.bp[P.bp.length - 1] - steps * STEP_YEARS, STEP_YEARS));
+        if (atEnd) peopleView.f = P.bp.length - 1;                // (following the newest year, unless scrubbed back)
+        dirty = true;
+    } catch (err) {
+        console.warn('[evolution] living on:', err);
+        setPeopleRunOn(false);
+    } finally {
+        peopleView.busy = false; $('peopleStep').disabled = false;
+    }
+    // (running on: again, while the same moment's people are shown)
+    if (peopleView.runOn) { if (painted && B?.finishes.get(painted)?.people === P && settlementsShown()) setTimeout(() => livePeopleOn(4), 0); else setPeopleRunOn(false); }
+}
 function setPeoplePlaying(on) {
     const P = on ? painted && B?.finishes.get(painted)?.people : null;
     if (on && P && peopleFrame(P) >= P.bp.length - 1) peopleView.f = 0;            // (at the end: from the start again)
@@ -1035,7 +1064,7 @@ function setSettlements(on) {
     try { localStorage.setItem(SETTLEMENTS_KEY, on ? '1' : '0'); } catch { /* (remembered only where the browser allows) */ }
     $('settlementsToggle').setAttribute('aria-pressed', String(on));
     $('peopleBar').hidden = !settlementsShown();
-    if (!settlementsShown()) { setPeoplePlaying(false); closeTownCard(); }
+    if (!settlementsShown()) { setPeoplePlaying(false); setPeopleRunOn(false); closeTownCard(); }
     updateClimateUi();
 }
 $('settlementsToggle').addEventListener('click', () => setSettlements(!view.settlements));

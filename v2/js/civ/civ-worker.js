@@ -1,11 +1,13 @@
 // The civ layer's worker on the Evolution page (plans/CIV_PLAN.md): a finished moment's people (civ-page.js), from the
 // world its finish sent (finish/finish-worker.js 'done' civ), so the page stays responsive through the run.
 //
-// Message in:  {type: 'people', id, world (its mesh as arrays), width}
-// Messages out: {type: 'progress', id, share} · {type: 'people', id, ...peopleOfWorld's} · {type: 'error', id, message}
+// Messages in:  {type: 'people', id, world (its mesh as arrays), width} — a run to now, kept to go on with ·
+//               {type: 'more', id, run (the 'people' id), toBP, every} — go on with that run to toBP (past now: negative)
+// Messages out: {type: 'progress', id, share} · {type: 'people', id, ...startPeople's result} ·
+//               {type: 'more', id, ...morePeople's} · {type: 'error', id, message}
 
 import { meshFromArrays } from '../core/sim-mesh.js';
-import { peopleOfWorld } from './civ-page.js';
+import { startPeople, morePeople } from './civ-page.js';
 import { ensembleForcings } from './climate-var.js';
 
 /** The climate ensemble's runs, one worker each, all at once (or null, to run them in turn, where a worker cannot start
@@ -25,13 +27,25 @@ async function ensembleRuns(world) {
     }
 }
 
+const KEEP = 2;                 // (runs kept alive to go on with: the latest few moments')
+const runs = new Map();
+const moved = r => [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)];   // (the rest is small: cloned)
+
 self.onmessage = async ({ data }) => {
-    if (data.type !== 'people') return;
-    const { id, world, width } = data;
+    const { id } = data;
     try {
-        const runs = await ensembleRuns(world);
-        const r = peopleOfWorld({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), runs);
-        self.postMessage({ type: 'people', id, ...r }, [r.frames.buffer, r.bp.buffer, r.people.buffer, r.farmers.buffer, r.pix.buffer, ...r.towns.filter(Boolean).map(t => t.buffer)]);         // (polities and place are small: cloned)
+        if (data.type === 'people') {
+            const { world, width } = data, climate = await ensembleRuns(world);
+            const { state, result } = startPeople({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), climate);
+            runs.set(id, state);
+            while (runs.size > KEEP) runs.delete(runs.keys().next().value);
+            self.postMessage({ type: 'people', id, ...result }, [...moved(result), result.pix.buffer]);
+        } else if (data.type === 'more') {
+            const state = runs.get(data.run);
+            if (!state) throw new Error('that run is no longer kept');
+            const r = morePeople(state, data.toBP, data.every);
+            self.postMessage({ type: 'more', id, ...r }, moved(r));
+        }
     } catch (err) {
         self.postMessage({ type: 'error', id, message: err?.stack ?? String(err) });
     }
