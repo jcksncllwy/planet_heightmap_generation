@@ -174,21 +174,18 @@ export function trackCollisions(world, dt) {
         // (a seam that has stalled long has closed all it will: the pivot has done its work — what is left is a remnant sea)
         const closed = (rec.gapWidestKm ?? Infinity) <= config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
             || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr, overdue = rec.contactMyr >= config.sutureLockMaxMyr;
-        // …and never into a ring: welded round a big sea, one rigid plate would hold it for good — apart, the two can still
-        // close it
         // (so much land stacked on land that the two are one already: they weld now, whatever sea is left — a remnant — or
         // whatever they ring; waiting would only stack them deeper)
         // (stacked: how deep, on average, the one lies on the other — the overlap left after this step's underthrusting over the
         // front's length; an area alone would call a long front's single contact row "stacked")
         const stacked = (cells.length - underNow) * cellAreaKm2 / Math.max(rec.frontKm, edgeKm) >= config.sutureStackKm;
         const wouldWeld = ((ready && (closed || stacked)) || overdue) && rec.frontMaxKm >= config.sutureMinContactKm;
-        if (wouldWeld && (due || rec.ringKm2 === undefined)) rec.ringKm2 = enclosedSeaBetweenKm2(world, U, L);
         if (due) rec.checkedAt = time;
-        if (wouldWeld && rec.ringKm2 > config.ringSeaKm2 && !rec.ringLogged) { rec.ringLogged = true; world.log(EventKind.COLLISION, `${L.name} and ${U.name} stay apart: their land rings a ${(rec.ringKm2 / 1e6).toFixed(1)} Mkm² sea`, { upper: U.id, lower: L.id, ringKm2: rec.ringKm2 }); }
-        // (…but not for ever: locked together sutureLockMaxMyr, they weld round it — the sea is then sealed inside one plate,
-        // and closes from its shores, step/remnant-seas.js; held apart for good, the pair ground on as a collision without end)
-        if (wouldWeld && (rec.ringKm2 <= config.ringSeaKm2 || stacked || overdue)) {
+        // (a weld may close a ring round a sea: the sea is then sealed inside one plate, its floor foundering in time like any
+        // margin's — step/subduction-init.js founderWithinPlates)
+        if (wouldWeld) {
             const result = mergePlates(world, U, L, cells, rec);
+            world.budget.sealedCells = (world.budget.sealedCells ?? 0) + result.sealedCells;
             rec.sutured = true;
             merged = true;
             const why = stacked && !closed ? 'stacked' : !closed ? 'overdue' : rec.stalledMyr >= config.sutureStallMyr ? 'stalled' : rec.shorteningKm < config.sutureShorteningKm ? 'contact' : 'shortening';
@@ -198,33 +195,6 @@ export function trackCollisions(world, dt) {
         }
     }
     return merged;
-}
-
-/**
- * The largest sea cut off from the world ocean that both plates' land borders (km²): what a weld would lock inside
- * one rigid plate.
- */
-function enclosedSeaBetweenKm2(world, U, L) {
-    const { mesh, owner, ownerCell, plates, landClaims } = world, { numCells, adjOffset, adjList, cellAreaKm2 } = mesh;
-    const isSea = w => owner[w] < 0 || (landClaims[w] <= 1 && plates[owner[w]].crust.type[ownerCell[w]] === CrustType.OCEAN);
-    const comp = new Int32Array(numCells).fill(-1), sizes = [];
-    for (let w0 = 0; w0 < numCells; w0++) {
-        if (!isSea(w0) || comp[w0] >= 0) continue;
-        const id = sizes.length, q = [w0]; comp[w0] = id;
-        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (comp[nb] < 0 && isSea(nb)) { comp[nb] = id; q.push(nb); } }
-        sizes.push(q.length);
-    }
-    let world_ = 0;
-    for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[world_]) world_ = i;
-    const bordersU = new Uint8Array(sizes.length), bordersL = new Uint8Array(sizes.length);
-    for (let w = 0; w < numCells; w++) {
-        const o = owner[w];
-        if ((o !== U.id && o !== L.id) || isSea(w)) continue;
-        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const c = comp[adjList[k]]; if (c >= 0) (o === U.id ? bordersU : bordersL)[c] = 1; }
-    }
-    let biggest = 0;
-    for (let i = 0; i < sizes.length; i++) if (i !== world_ && bordersU[i] && bordersL[i]) biggest = Math.max(biggest, sizes[i]);
-    return biggest * cellAreaKm2;
 }
 
 /**
@@ -284,7 +254,7 @@ function accreteArcs(world, A, B, overlap) {
         if (!arriving.length || !donor.alive || !host.alive) continue;
         // a small arc does not accrete: it goes down with its slab (Phase 7c) — what continents gain from arcs is
         // fewer, bigger pieces (Japan, Kohistan), not every islet
-        const seeds = [...new Set(arriving)].filter(c => !recycleSmallArc(world, donor, c));
+        const seeds = [...new Set(arriving)].filter(c => !recycleThinArc(world, donor, c));
         if (!seeds.length) { accreted++; continue; }
         const { moved } = scrapeArc(world, host, donor, seeds);
         accreted += moved;
@@ -327,14 +297,20 @@ function dockIfTerrane(world, A, B, cells) {
     const terraneA = areaA > 0 && (areaA < config.terraneMaxAreaKm2 || mostlyArc(A, massA)), terraneB = areaB > 0 && (areaB < config.terraneMaxAreaKm2 || mostlyArc(B, massB));
     if (!terraneA && !terraneB) return false;
     if (areaA === 0 || areaB === 0) return false;
-    // the host is the plate that carries the continent: when both pieces are terranes, the plate with more land overall
-    const aHosts = !terraneA || (terraneB && A.stats.continentalCells >= B.stats.continentalCells);
+    // the host is the plate that carries the continent: when both pieces are terranes, the one whose piece carries continent
+    // (two island arcs meeting at sea: the larger takes the smaller — not whichever plate has more land elsewhere, which
+    // put an ocean's whole arc onto a speck of the other's, thousands of km from that plate's coast), then the plate with
+    // more land overall
+    const continentIn = (plate, mass) => mass.filter(q => plate.crust.type[q] === CrustType.CONTINENT || plate.crust.type[q] === CrustType.CRATON).length;
+    const cA = continentIn(A, massA), cB = continentIn(B, massB);
+    const aHosts = !terraneA || (terraneB && (cA !== cB ? cA > cB : cA === 0 ? massA.length >= massB.length : A.stats.continentalCells >= B.stats.continentalCells));
     const [host, donor, mass] = aHosts ? [A, B, massB] : [B, A, massA];   // each piece of an arc docks as it arrives
     const o = [donor.omega[0] - host.omega[0], donor.omega[1] - host.omega[1], donor.omega[2] - host.omega[2]];
     const c = centroidOfCells(xyz, cells), rate = Math.hypot(o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0]) / CM_PER_YR_TO_RAD_PER_MYR;
     const kind = mass.filter(q => donor.crust.type[q] === CrustType.ARC).length * 2 > mass.length ? 'island arc' : 'terrane';
-    if (kind === 'island arc' && mass.length * cellAreaKm2 < config.arcAccreteMinKm2) { recycle(world, donor, mass); return true; }   // too small to accrete: it goes down (Phase 7c)
+    if (kind === 'island arc' && meanArcThickKm(donor, mass, world.time, config) < config.arcAccreteThickKm) { recycle(world, donor, mass); return true; }   // too thin to float: it goes down (Phase 7c)
     const donorName = donor.name, result = accreteTerrane(world, host, donor, mass, rate);
+    world.budget.sealedCells = (world.budget.sealedCells ?? 0) + (result.sealed ?? 0);
     if (result.scrap) return true;
     world.log(EventKind.DOCK, `${kind} of ${donorName} (${(mass.length * cellAreaKm2 / 1e6).toFixed(2)} Mkm²) accretes to ${host.name}: ${result.cells} cells transferred${result.sealed ? `, ${result.sealed} cells of strait closed` : ''}; subduction jumps to its outboard side${donor.alive ? '' : `; ${donorName} is gone`}`,
         { host: host.id, donor: donor.id, arc: kind === 'island arc', areaMkm2: mass.length * cellAreaKm2 / 1e6, cells: result.cells, sealed: result.sealed, donorGone: !donor.alive });
@@ -408,20 +384,24 @@ function underthrust(world, U, L, cells, rec, km) {
     return consumed;
 }
 
+/** How thick an island arc's crust is at this age (Myr since it formed), km: it thickens as magma adds to it. */
+export const arcThickKm = (ageMyr, config) => Math.min(config.arcMaxKm, config.arcBirthKm + config.arcThickenKmPerMyr * Math.max(0, ageMyr));
+
+/** The mean crustal thickness of the arc cells among `cells` of `plate` (km; Infinity with none). */
+function meanArcThickKm(plate, cells, time, config) {
+    let sum = 0, n = 0;
+    for (const c of cells) if (plate.crust.type[c] === CrustType.ARC) { sum += arcThickKm(time - plate.crust.formedAt[c], config); n++; }
+    return n ? sum / n : Infinity;
+}
+
 /**
- * If raster cell `cell` of `donor` belongs to a piece of island arc smaller than arcAccreteMinKm2, that whole piece is
- * recycled — it goes down with the slab instead of accreting — and true is returned.
+ * If raster cell `cell` of `donor` is island arc thinner than arcAccreteThickKm, it goes down with the slab instead of
+ * accreting — the arc is consumed as it arrives, where it is young, and its old, thick parts dock — and true is returned.
  */
-function recycleSmallArc(world, donor, cell) {
-    const { mesh, config } = world, { adjOffset, adjList, cellAreaKm2 } = mesh, { mask, type } = donor.crust;
-    if (!mask[cell] || type[cell] !== CrustType.ARC) return false;
-    const piece = [cell], seen = new Set(piece), limit = Math.ceil(config.arcAccreteMinKm2 / cellAreaKm2);
-    for (let i = 0; i < piece.length && piece.length < limit; i++) for (let k = adjOffset[piece[i]]; k < adjOffset[piece[i] + 1]; k++) {
-        const nb = adjList[k];
-        if (!seen.has(nb) && mask[nb] && type[nb] === CrustType.ARC) { seen.add(nb); piece.push(nb); }
-    }
-    if (piece.length >= limit) return false;                    // (the flood stops as soon as the piece is big enough to keep)
-    recycle(world, donor, piece);
+function recycleThinArc(world, donor, cell) {
+    const { config, time } = world, { mask, type, formedAt } = donor.crust;
+    if (!mask[cell] || type[cell] !== CrustType.ARC || arcThickKm(time - formedAt[cell], config) >= config.arcAccreteThickKm) return false;
+    recycle(world, donor, [cell]);
     return true;
 }
 
@@ -431,7 +411,7 @@ function recycle(world, donor, cells) {
     for (const c of cells) donor.crust.remove(c);
     donor.markReshaped();
     world.budget.recycledCells += cells.length;
-    if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `a small island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });
+    if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `an island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting: its crust is too thin to float`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });
     if (donor.crust.count === 0) { donor.alive = false; donor.omega = [0, 0, 0]; donor.dynamics = null; }
 }
 

@@ -15,11 +15,10 @@ const scene = (list, id) => list.find(s => s.id === id);
 export const BUDGET_SCENES = [
     {
         id: 'erosion', label: 'Erosive and accretionary margins', maxMyr: 150, view: [0, -20],
-        about: '“Driftia” is pulled west by the trench along its western coast. Stretches of that margin are EROSIVE: the trench scrapes the fore-arc away and the coast retreats (Margins layer: purple), as the Andes have lost ~250 km of coast since the Jurassic. The stretches between are ACCRETIONARY: islands rise off the coast and grow into it (Crust type layer). Which is which comes from a field fixed in the plate, so a stretch keeps its character as the plate moves.',
+        about: '“Driftia” is pulled west by the trench along its western coast. Stretches of that margin are EROSIVE: the trench scrapes the fore-arc away and the coast retreats (Margins layer: purple), as the Andes have lost ~250 km of coast since the Jurassic. The stretches between are ACCRETIONARY: islands rise off the coast and grow into it (Crust type layer). Which is which comes from the trench: a margin is erosive where the convergence is fast (over ~6 cm/yr) or the trench is starved of sediment (under ~1 km — far from land, or in the dry subtropics), accretionary where rivers off the land fill it (Clift & Vannucchi 2004).',
         build(simMesh, seed) {
             const world = scene(MARGIN_SCENES, 'margins').build(simMesh, seed);
-            Object.assign(world.config, onlyMechanisms('marginIsles', 'marginErosion'), mechanismsOn('marginIsles', 'marginErosion'),
-                { marginErosionPatchKm: 1500, marginErosionRateBias: 0 });   // (shorter stretches, and no tilt by Driftia's slow convergence: one coast shows both kinds)
+            Object.assign(world.config, onlyMechanisms('marginIsles', 'marginErosion'), mechanismsOn('marginIsles', 'marginErosion'));
             return world;
         },
         drive: updatePlateMotion,
@@ -36,7 +35,7 @@ export const BUDGET_SCENES = [
     },
     {
         id: 'arcs', label: 'Small arcs go down, big arcs accrete', maxMyr: 220, view: [0, 0],
-        about: 'Two continents close on each other, each with island arcs on its facing margin (the Phase 5b scene). Where an arc arrives at a continent, a small piece of it — under arcAccreteMinKm2 — is too little to accrete: it goes down with its slab (event log: “arc recycled”). Big arcs still accrete. So continents grow from arcs in fewer, bigger pieces — a Japan, a Kohistan — not a scatter of islets.',
+        about: 'Two continents close on each other, each with island arcs on its facing margin (the Phase 5b scene). Where an arc arrives at a continent, its young parts — crust still thinner than arcAccreteThickKm — are too light to hold up their lithosphere and go down with the slab (event log: “arc recycled”); its old, thick parts accrete. So continents grow from mature arcs — a Japan, a Kohistan — not from every young chain of islets.',
         build(simMesh, seed) {
             const world = scene(EVENT_SCENES, 'arc-collision').build(simMesh, seed);
             Object.assign(world.config, onlyMechanisms('wings', 'arcs', 'arcRecycling'), mechanismsOn('wings', 'arcs', 'arcRecycling'));

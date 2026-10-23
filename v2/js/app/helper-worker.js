@@ -4,7 +4,7 @@
 // same answers. A web worker, or a Node worker thread (the checks).
 //
 // Messages in:  {type: 'mesh', mesh} once · {type: 'rift', jobId, seed, config, crust: {mask, type, flags, terrane, count},
-//               ctx: {cells, exterior, fromCoast}, junctions, pull, needCratonsBothSides} · {type: 'layout', jobId, seed,
+//               ctx: {cells, exterior, rho, mat}, junctions, pull, needCratonsBothSides} · {type: 'layout', jobId, seed,
 //               cfg, attempt}
 // Messages out: {jobId, results} (a rift: each junction's rift or null, in order) · {jobId, tried: [{areaScale, excess}],
 //               fit: {areaScale, land} | null} (a layout attempt) · {jobId, error}

@@ -508,7 +508,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 rimFade = 1 - whole * smooth(cfg.cratonRimInKm, cfg.cratonRimOutKm, crN);
                 // the foreland: deepest just in front of the rim's thrusts, rising to a low forebulge (a stiff plate's flexure)
                 if (cLoad > 0.002) {
-                    const xf = (crN - cfg.forelandFromKm) / cfg.forelandAlphaKm;
+                    const xf = (crN - cfg.forelandFromKm) / flexuralLengthKm(cfg.shieldElasticKm);
                     const f = xf <= 0 ? smooth(-cfg.cratonBlendKm, cfg.forelandFromKm, crN) : Math.exp(-xf) * Math.cos(xf);
                     platform -= whole * cLoad * (f > 0 ? f : cfg.forebulgeGain * f);
                 }
@@ -869,4 +869,10 @@ function selectKth(a, lo, hi, k) {
         if (j < k) lo = i;
         if (k < i) hi = j;
     }
+}
+
+/** The flexural length α (km) of a lithosphere `elasticKm` thick elastically, under a load whose deflection fills with sediment. */
+export function flexuralLengthKm(elasticKm) {
+    const E = 70e9, nu = 0.25, dRho = 900, g = 9.81, te = elasticKm * 1000;
+    return (4 * E * te ** 3 / (12 * (1 - nu * nu)) / (dRho * g)) ** 0.25 / 1000;
 }

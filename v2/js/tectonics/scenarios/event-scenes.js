@@ -9,6 +9,7 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { dot, cross, normalize } from '../../core/sphere-geom.js';
 import { latLonToXyz } from '../step/kinematics.js';
+import { arcSlabKm } from '../step/wings.js';
 import { sceneCanvas, sceneTerrane, addContinent, addApronAndTrench, addOcean, fillBackground } from './scene-kit.js';
 import { FORCE_SCENES } from './force-scenes.js';
 
@@ -142,7 +143,7 @@ function addArcPlate(canvas, plate, { lat, lon, halfWidthDeg, depthDeg }, cfg) {
     plate.arcTerraneId = arcTerrane;
     for (let i = 0; i < numCells; i++) {
         if (row[i] < 0) continue;
-        if (row[i] < rows) plate.crust.armTrench(i, cfg.arcMatureConsumedKm);
+        if (row[i] < rows) plate.crust.armTrench(i, arcSlabKm(cfg));
         else { plate.crust.type[i] = CrustType.ARC; plate.crust.formedAt[i] = -40; plate.crust.terrane[i] = arcTerrane; }
     }
 }

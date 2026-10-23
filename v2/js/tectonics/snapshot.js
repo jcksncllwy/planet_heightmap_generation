@@ -142,7 +142,7 @@ export function captureFrame(world, reuse = null) {
     // the supercontinent cycle (step/supercontinent.js): where the mantle wells up and goes down, how gathered the land is
     const cy = world.cycle;
     f.cycle = cy ? { up: cy.up?.slice() ?? null, down: cy.down?.slice() ?? null, upHeat: cy.upHeat, gather: cy.gather, hold: cy.hold, holdKm: cy.holdKm, share: cy.share, landmasses: cy.landmasses, state: cy.state, since: cy.since,
-        phase: cy.phase, formedAt: cy.formedAt, periodMyr: cy.period, breakupAt: cy.breakupAt, gatherAt: cy.gatherAt } : null;
+        phase: cy.phase, formedAt: cy.formedAt, breakupAt: cy.breakupAt, gatherAt: cy.gatherAt } : null;
     f.plates = plates.map(p => {
         const centre = p.toWorld(p.capCenter[0], p.capCenter[1], p.capCenter[2], [0, 0, 0]);
         return {

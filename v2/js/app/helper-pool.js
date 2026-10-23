@@ -63,7 +63,7 @@ export class HelperPool {
         const { mask, type, flags, terrane, count } = plate.crust;
         // (the rules a rift's search reads — config.rift…, as they stand now: a forced rift may have loosened them)
         const rules = Object.fromEntries(Object.entries(config).filter(([k]) => k.startsWith('rift')));
-        const common = { type: 'rift', seed: world.seed, config: rules, crust: { mask, type, flags, terrane, count }, ctx: { cells: ctx.cells, exterior: ctx.exterior, fromCoast: ctx.fromCoast }, pull, needCratonsBothSides };
+        const common = { type: 'rift', seed: world.seed, config: rules, crust: { mask, type, flags, terrane, count }, ctx: { cells: ctx.cells, exterior: ctx.exterior, rho: ctx.rho, mat: ctx.mat }, pull, needCratonsBothSides };
         const k = Math.min(this.size, junctions.length), per = Math.ceil(junctions.length / k), runs = [];
         for (let i = 0; i < k; i++) runs.push(this.ask(i, { ...common, junctions: junctions.slice(i * per, (i + 1) * per) }));
         return (await Promise.all(runs)).flatMap(r => r.results);

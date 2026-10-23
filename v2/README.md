@@ -286,7 +286,7 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    → **events**, in this order — `updateHotspots` (first: it only stamps records) · `trackCycle` (the supercontinent
    cycle: counts the landmasses, moves the mantle's upwelling and downwelling; reads only) · `trackCollisions` · `growWings`
    · `buildArcs` · `collapseArcs` · `growMarginIsles` · `riftContinents` · `openBackArcs` · `initiateSubduction` ·
-   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock) · `closeRemnantSeas` · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
+   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock; a sea sealed inside one plate founders when it is big enough to be a plate of its own) · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
    `tidyPlates` → if any changed crust: refresh, `resolve` and classify again → `drive` (next velocities: a scene's
    prescribed motion, or `updatePlateMotion`) → `steerBackArcStrips`. `evolveHeights` (erosion of the height records,
    below) runs before `drive`. Steps are adaptive (a plate moves at most a
@@ -303,10 +303,9 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    landmass holding `superShare` of the continental crust for `cycleHoldMyr`) moves the upwelling under itself and the
    downwelling to a new point 90° away (its own seeded stream). Rifts follow old sutures, failed rifts and rifted
    margins about half the time (`riftWeaknessCost`), and otherwise the crust's grain — a smooth field in each plate's
-   own frame (`riftCurve*`, `riftJag*`) that bends a rift and makes it jagged, instead of a straight cut. The cycle's pace is steered (developer: the next supercontinent
-   "shouldnt happen until like 600 [Myr] in"): each supercontinent draws a period (`cyclePeriodMin/MaxMyr`); its pieces
-   disperse — kept apart (`dispersalRepulsion`), the young oceans between them rarely foundering, a landmass that
-   gathers too soon rifting readily — then gather (the pull toward the downwelling, full strength until
+   own frame (`riftCurve*`, `riftJag*`) that bends a rift and makes it jagged, instead of a straight cut. The cycle's pace is the mantle's — no period is drawn: its pieces
+   disperse while the mantle the supercontinent warmed is still hot — kept apart (`dispersalRepulsion`), the young oceans between them rarely foundering, a landmass that
+   gathers too soon rifting readily — then, once that mantle has cooled to `cycleGatherHeat`, gather (the pull toward the downwelling, full strength until
    `mantleInflowPackKm` from it), and the new supercontinent is held together until it first rifts. Landmasses are
    counted with land joined only by a neck under `cycleNeckKm` apart, so a supercontinent is one mass, not a chain.
 6. **Rasters are rigid — except at a suture.** The one time crust is deformed is when two plates weld
@@ -321,12 +320,13 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    the new one.
 9. **Heights evolve with the history** (`step/heights.js`; records only — the history never reads them, and its event
    log is the same with or without them). Each crust cell carries an erodible root (`rootKm`, grown exactly as belts
-   thicken the crust; Airy isostasy), a broad uplift (`upliftKm`, raised toward the belt's cross-section at the pace of
+   thicken the crust — saturating toward `crustMaxThickKm` above normal, past which thickened crust spreads under its own weight; Airy isostasy), a broad uplift (`upliftKm`, raised toward the belt's cross-section at the pace of
    the convergence its front absorbs, never lowered by a newer belt; foreland basins sink below 0), the size of its
    belts' crests (`rugged`, `prevRugged`) and a hotspot volcano's wear (`volcWornKm`). Every step erodes them at the
    latitude the cell is at then (faster where it rains more, and poleward under ice) and smooths the uplift sideways a
-   little, never into the sea nor onto a craton's core (a belt reaches only a craton's rim, `cratonRimKm`: a low,
-   thin-skinned fold-thrust belt over the shield's edge, with no thickening). So orogenies accumulate, and an old belt that drifted through the
+   little, never into the sea (a belt crosses onto a craton as a low, thin-skinned fold-thrust belt, `cratonStrainShare` of
+   its relief, each km of the shield costing `cratonStrength` km of the belt's reach, and the shield thickening by only
+   1/`cratonStrength` as much: cratons are strong, not rigid). So orogenies accumulate, and an old belt that drifted through the
    tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`, `reliefTauMyr`,
    `thickTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`); a world may carry its own in `world.config.heights`.
 
@@ -421,7 +421,8 @@ from one frame to the next nothing moves, while over a few hundred Myr the lands
 ranges pressed against them as real shields do (Phase 10, `terrain/cratons.js`): the craton's edge is a line — the
 signed distance to it on each plate's raster, moved by noise — not the sim cells' staircase; a range's foothills fade
 across its rim; in front of them a foreland bends the shield down under the range's weight (a lowland ~0.1–0.3 km below
-the shield beyond, then a low forebulge), except where a plateau's back meets the block and the front stays steep;
+the shield beyond, then a low forebulge, over the flexural length of the shield's elastic thickness, `shieldElasticKm`),
+shallow where a plateau's back meets the block — the plateau stands on its own root, so only its ranges load it;
 scraps of craton inside a range read as the range; and each craton has a character — a shallow sag basin, a broad swell
 or a flat shield (`cratonCharacter`) — with a faint grain of domes and keels. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
@@ -536,7 +537,7 @@ changes (tried: each plate's edge marks kept while its crust is unchanged; the r
 The whole-planet histories' pace (2026-10-18; plans/V2_PERFORMANCE_PLAN.md, phase 3 — every planet changes): the
 Evolution history and the lab's whole planet (scenarios/terrain-scenes.js `WHOLE_PLANET_PACE`) let two closing plates move 2.25
 cells a step (not 1.5: each flank of a gap grows about a cell) and run the slow rules every 3 Myr with the time since
-(config `slowRulesEveryMyr`: arcs, margin islands, arc collapse, remnant seas, arc maturing, heights — tidying stays every step,
+(config `slowRulesEveryMyr`: arcs, margin islands, arc collapse, arc maturing, heights — tidying stays every step,
 a fragment left a few Myr being a scrap, and the rivers keep their own clock); the scenes of one mechanism keep the finer
 pace. Two exact changes with it: a rift's search works out the outer sea, the coast distances and its crust cells once
 per plate (not per junction tried), the grain once per history, and scores its cuts over the plate's own cells
@@ -589,7 +590,7 @@ Twelve recorded 1200 Myr histories (3 seeds × 20K–160K) showed worlds that fr
 explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a flat start world. In order:
 - **Plate colours** follow the larger partner through welds and rifts (`Plate.hue`; display only). **Erosive margins** retreat
   along the trench's length, not per coast cell (a finer mesh draws a longer coast: it lost twice the land at 160K).
-- **Living plates.** An old passive margin inside a giant plate (one holding `marginFounderMinShare` of the planet) founders
+- **Living plates.** An old passive margin inside a plate founders
   like one between plates: its ocean breaks away as a plate of its own (`founderWithinPlates`). From `backgroundEndMyr` the
   pre-history ocean becomes plates; a plate with more than `oceanSplitAreaKm2` of ocean may split along a new ridge, its
   halves pushed apart as a rift's (`step/ocean-plates.js`); an ocean plate subducted below `oceanPlateCaptureKm2` is captured

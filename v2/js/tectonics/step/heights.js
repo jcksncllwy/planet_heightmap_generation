@@ -41,7 +41,7 @@ export function beltReliefKm(type, reachKm, H) {
 export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickenedKm, config, amp = 1) {
     const H = heightsOf(config);
     crust.rootKm[c] += thickenedKm * (H.rootGain?.[type] ?? 1);
-    // (amp: a craton's rim takes a thin-skinned belt, cratonRimShare of the relief — orogeny.js)
+    // (amp: a craton's rim takes a thin-skinned belt, cratonStrainShare of the relief — orogeny.js)
     const A = amp * beltReliefKm(type, reachKm, H), share = 1 - Math.exp(-workKm / H.upliftBuildKm[type]);
     // (on island-arc crust a subduction belt's broad uplift is mostly the arc's own growth, which its maturity already
     // gives it — records.js platformKm, as for its root: only arcUpliftShare of it, or a Mariana would stand at sea level)

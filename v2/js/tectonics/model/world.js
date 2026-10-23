@@ -72,16 +72,14 @@ export class TectonicWorld {
         this.boundaryKind = new Uint8Array(n);       // BoundaryKind per world cell
         this.convergence = new Float32Array(n);      // cm/yr across the contact, + = closing (diagnostic)
 
-        /** Cumulative crust budget, in cells: ocean created / consumed, and land lost to erosive margins, underthrusting and arc recycling (Phase 7c). */
-        this.budget = { created: 0, consumed: 0, erodedCells: 0, underthrustCells: 0, recycledCells: 0 };
+        /** Cumulative crust budget, in cells: ocean created / consumed, and land lost to erosive margins, underthrusting and arc recycling (Phase 7c), sea filled at welds and arcs matured into continent. */
+        this.budget = { created: 0, consumed: 0, erodedCells: 0, underthrustCells: 0, recycledCells: 0, sealedCells: 0, arcMaturedCells: 0 };
         /** @type {{time:number, kind:string, text:string, data:Object}[]} the history, WBP-style: see log() and EventKind */
         this.events = [];
         /** @type {Map<string, import('../step/collision.js').Collision>} one record per pair of colliding plates, keyed "lo:hi" */
         this.collisions = new Map();
         this.arcScrapes = new Map();                 // "donor:host" → arc crust scraped from one plate onto another so far (step/collision.js)
         this.lastTerraneId = 0;                      // highest terrane id handed out (nextTerraneId)
-        this.erosionNoise = null;                    // the field that makes a margin erosive or accretionary (step/margin-isles.js), made on first use…
-        this.erosionThreshold = 0;                   // …with its threshold, calibrated on the field for marginErosiveShare
     }
 
     /**

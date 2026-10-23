@@ -5,10 +5,12 @@
 //
 // Where: a run of cells along one plate's outer ocean edge, against another plate, with
 //   · no trench of its own already (that edge is doing the job),
-//   · ocean crust older than subductionInitAgeMyr on the side that will go down,
 //   · the two plates not pulling apart there (a spreading edge does not founder).
-// When: a chance per Myr per margin, from the world's seeded stream, rising with the age of the
-// crust that is to sink and with the length of the margin — old, long margins go first.
+// When: a chance per Myr per margin, from the world's seeded stream, set by what pushes the margin down against what
+// holds it up (founderUrge): the weight of the cooling ocean beside it — its lithosphere thickens as √age, and with it
+// its excess weight over the mantle — and the squeeze across it, against the margin's strength. Ocean under no squeeze
+// founders past subductionInitAgeMyr; a margin pressed hard founders younger (induced initiation: the Puysegur and Hjort
+// trenches, the Mussau trench). Longer margins go first.
 // Which side goes down: the OLDER, denser side; against a continent the ocean always does. The
 // trench is armed on the overriding side, and from then on the ordinary rules (polarity.js,
 // boundaries.js) run it like any other trench.
@@ -16,9 +18,21 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { birthOceanPlate, oceanPlateName } from '../ops/birth-ocean-plate.js';
 import { transferCells } from '../ops/tidy-plates.js';
-import { exteriorSea } from '../ops/rift-partition.js';
 import { EventKind } from '../model/world.js';
 import { largestPieceOf } from '../../core/mesh-bfs.js';
+import { netTorques, stressAcross, cutAlong } from './plate-stress.js';
+
+/**
+ * How eagerly a margin founders: q = √(age ÷ subductionInitAgeMyr) + squeeze ÷ founderStrength — the ocean's sinking weight
+ * (√age, half-space cooling), in units of the weight that alone overcomes the margin, plus the compression across it (per
+ * 100 km) in units of the margin's strength. Founders at all once q > 1; the urge is q² − 1 (so, unsqueezed, age ÷ threshold
+ * − 1), capped; ocean younger than oceanNeutralAgeMyr never founders (Cloos 1993: it is still buoyant). @returns {number} 0 when it holds
+ */
+export function founderUrge(ageMyr, squeeze, config) {
+    if (!(ageMyr >= config.oceanNeutralAgeMyr)) return 0;       // (younger, it is too warm and light to sink, however squeezed)
+    const q = Math.sqrt(Math.max(0, ageMyr) / config.subductionInitAgeMyr) + Math.max(0, squeeze) / config.founderStrength;
+    return q > 1 ? Math.min(config.subductionInitAgeCap, q * q - 1) : 0;
+}
 
 /**
  * @param {number} dt Myr
@@ -46,9 +60,10 @@ export function initiateSubduction(world, dt) {
             if (stale(B, cellB) || (B.crust.flags[cellB] & CrustFlag.TRENCH)) continue;          // that edge already subducts
             if (convergence[w] < -config.subductionInitMaxOpeningCmYr) continue;   // pulling apart here: a ridge, not a founder
             const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-            const entry = byPair.get(key) ?? byPair.set(key, { cells: [], ages: 0 }).get(key);
+            const entry = byPair.get(key) ?? byPair.set(key, { cells: [], ages: 0, closing: 0 }).get(key);
             entry.cells.push(w);
             entry.ages += time - Math.min(A.crust.formedAt[cellA], B.crust.formedAt[cellB]);
+            entry.closing += Math.max(0, convergence[w]);
             break;                                                          // one entry per world cell
         }
     }
@@ -58,10 +73,12 @@ export function initiateSubduction(world, dt) {
         const [idA, idB] = key.split(':').map(Number), A = plates[idA], B = plates[idB];
         if (!A?.alive || !B?.alive) continue;
         const lengthKm = entry.cells.length * edgeKm, ageMyr = entry.ages / entry.cells.length;
-        if (lengthKm < config.subductionInitMinLengthKm || ageMyr < config.subductionInitAgeMyr) continue;
-        // chance rises with how far past the threshold the crust is, and with the margin's length
-        const overAge = ageMyr / config.subductionInitAgeMyr - 1;
-        let chance = config.subductionInitRatePerMyr * dt * Math.min(config.subductionInitAgeCap, overAge) * (lengthKm / config.subductionInitMinLengthKm);
+        // (between two plates the squeeze is their closing: a margin pressed together at founderSqueezeCmYr is pressed as
+        // hard as it is strong)
+        const urge = founderUrge(ageMyr, config.founderStrength * entry.closing / entry.cells.length / config.founderSqueezeCmYr, config);
+        if (lengthKm < config.subductionInitMinLengthKm || !(urge > 0)) continue;
+        // chance rises with the urge, and with the margin's length
+        let chance = config.subductionInitRatePerMyr * dt * urge * (lengthKm / config.subductionInitMinLengthKm);
         // (Phase 13, steered: while a supercontinent's pieces disperse, the young oceans that opened between them rarely
         // founder — closing them is how the pieces gather again, and that waits for the cycle's gathering: step/supercontinent.js)
         const cycle = world.cycle;
@@ -91,14 +108,19 @@ export function initiateSubduction(world, dt) {
  * Old passive margins founder INSIDE a plate too (developer, 2026-10-18: the recordings — with no boundary between two
  * plates to found a trench on, a plate holding its continents and its whole ocean never broke up again, and an
  * assembled supercontinent's world froze as one plate for up to 200 Myr, its ocean ageing past 300 Myr). The rule is the
- * one above — a long run of old ocean against a continent's coast, a chance per Myr rising with the age and the length —
- * on one plate's own raster: when it founders, the ocean on that side breaks away as a plate of its own (the ocean nearer
- * this coast than any other coast of the plate, within oceanPlateReachKm) and the coast's apron stays as the trench, on
- * the continent's side. The continent is never split: a supercontinent stays one landmass, ringed by trenches as Pangaea
- * was. Only the outer sea (an enclosed sea closes from its shores: step/remnant-seas.js). Only a plate that has grown to
- * hold marginFounderMinShare of the planet: the rule breaks up giant plates, it does not add trenches everywhere (with it on
- * every plate, the extra trenches raised arcs and ranges enough to grow the land by a quarter and take its lowlands below a
- * third). On the slow clock.
+ * one above — a long run of ocean against a continent's coast, its chance per Myr from founderUrge and the length — on one
+ * plate's own raster: when it founders, the ocean on that side breaks away as a plate of its own (the ocean nearer this
+ * coast than any other coast of the plate, within oceanPlateReachKm) and the coast's apron stays as the trench, on the
+ * continent's side. The squeeze here is the plate's own stress across its coast (step/plate-stress.js): the ocean that
+ * would break away pressed against the continent — by a ridge behind it, or by the rest of the plate dragging the other way
+ * — founders younger; held in tension, it waits for its weight. The continent is never split: a supercontinent stays one
+ * landmass, ringed by trenches as Pangaea was.
+ * A sea sealed inside the plate — ringed by its own land, left by a weld or a docking — founders by the same rule: its
+ * floor breaks away as a plate of its own, under a trench along that shore. It does not close by itself: a plate that is
+ * rigid all round a hole cannot make the hole smaller, so the sea's floor is consumed beneath one shore while new floor
+ * opens at a ridge behind (the Black Sea and the South Caspian basins have stayed open for 100 Myr and more). It closes
+ * once its rim breaks and the pieces converge across it, as any ocean between plates does. No crust is made or lost.
+ * On the slow clock.
  * @param {number} dt Myr since it last ran  @returns {number} margins that began subducting
  */
 export function founderWithinPlates(world, dt) {
@@ -108,7 +130,6 @@ export function founderWithinPlates(world, dt) {
     let started = 0;
     for (const P of [...plates]) {                                          // (a copy: plates are added as it goes)
         if (!P.alive || P.isBackground || P.crust.count === 0 || !(P.stats.continentalCells > 0) || P.stats.cells - P.stats.continentalCells < minCells) continue;
-        if (P.stats.cells < config.marginFounderMinShare * numCells) continue;
         const { mask, type, flags, formedAt } = P.crust;
         const land = c => mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON);
         // the plate's own coast — its ocean beside its continental crust — and the old part of it (no trench there yet)
@@ -118,7 +139,7 @@ export function founderWithinPlates(world, dt) {
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
                 if (!land(adjList[k])) continue;
                 coast[c] = 1;
-                if (!(flags[c] & CrustFlag.TRENCH) && time - formedAt[c] >= config.subductionInitAgeMyr) old.push(c);
+                if (!(flags[c] & CrustFlag.TRENCH) && time - formedAt[c] >= config.oceanNeutralAgeMyr) old.push(c);     // (younger, it floats)
                 break;
             }
         }
@@ -137,12 +158,6 @@ export function founderWithinPlates(world, dt) {
             let ages = 0;
             for (const c of run) ages += time - formedAt[c];
             const ageMyr = ages / run.length;
-            let chance = config.marginFounderRatePerMyr * dt * Math.min(config.subductionInitAgeCap, ageMyr / config.subductionInitAgeMyr - 1) * (lengthKm / config.subductionInitMinLengthKm);
-            const cycle = world.cycle;
-            if (cycle?.phase === 'dispersing' && ageMyr <= time - cycle.breakupAt + 1e-9) chance *= config.disperseFounderFactor;
-            if (world.rngMarginFounder() >= chance) continue;
-            const outer = exteriorSea(mesh, P.crust);
-            if (!run.some(c => outer[c])) continue;
             // the ocean nearer this run than any other coast of the plate, out to the reach: through the plate's ocean only
             const label = new Uint8Array(numCells), mine = runOf[run[0]];
             let ring = [];
@@ -159,6 +174,15 @@ export function founderWithinPlates(world, dt) {
                 ring = next;
             }
             if (take.length < minCells) continue;
+            // the squeeze: the plate's stress across this coast, on the ocean that would break away (compression is negative)
+            const region = take.concat(run), inS = new Uint8Array(numCells), rho = netTorques(world, P);
+            for (const c of region) inS[c] = 1;
+            const sigma = rho ? stressAcross(rho, region, cutAlong(mesh, run, inS, land), mesh.xyz, edgeKm, P.mat) : 0;
+            const urge = founderUrge(ageMyr, -sigma, config);
+            let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitMinLengthKm);
+            const cycle = world.cycle;
+            if (cycle?.phase === 'dispersing' && ageMyr <= time - cycle.breakupAt + 1e-9) chance *= config.disperseFounderFactor;
+            if (!(urge > 0) || world.rngMarginFounder() >= chance) continue;
             const fresh = world.addPlate(oceanPlateName(world));
             fresh.setQuat(P.quat.slice());
             fresh.omega = P.omega.slice();                                   // it starts as it was; the torque balance takes it from there
@@ -171,7 +195,7 @@ export function founderWithinPlates(world, dt) {
             started++;
             world.log(EventKind.PLATE_BORN, `${fresh.name} is born: ${(take.length * cellAreaKm2 / 1e6).toFixed(1)} Mkm² of ${P.name}’s old ocean breaks away`, { plate: fresh.id, areaMkm2: take.length * cellAreaKm2 / 1e6 });
             world.log(EventKind.SUBDUCTION_INIT, `a new trench founders along ${lengthKm.toFixed(0)} km of ${P.name}’s passive margin: ${fresh.name}, ocean ${ageMyr.toFixed(0)} Myr old, begins to go down beneath it`,
-                { upper: P.id, lower: fresh.id, lengthKm, ageMyr });
+                { upper: P.id, lower: fresh.id, lengthKm, ageMyr, stress: sigma });
             break;                                                           // (one a plate at a time: the plate has changed)
         }
     }

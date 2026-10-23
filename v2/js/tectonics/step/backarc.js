@@ -11,8 +11,8 @@
 // on the trench is its motion in the mantle frame.
 // When: by chance (world.rngBackArc), per Myr, more readily on a long trench; a continental margin more
 // rarely than an arc at sea. The strip is everything of the plate within backArcWidthKm of that trench,
-// so its inner edge — the new rift — runs parallel to the trench (no ragged tails), and it is never cut
-// through a craton; a continental strip must hold backArcMinLandKm2 of land in one piece — a coherent
+// so its inner edge — the new rift — runs parallel to the trench (no ragged tails); where that edge runs through a
+// craton it opens cratonStrength times less readily along that share of it; a continental strip must hold backArcMinLandKm2 of land in one piece — a coherent
 // arc of islands, not a sliver (developer).
 //
 // The split itself is the 6a one in spirit: two plates, rifted margins between them, a push that drives
@@ -64,6 +64,8 @@ export function openBackArcs(world, dt) {
         const strip = stripBehind(world, A, segment);
         if (!strip) continue;
         if (strip.continental && world.rngBackArc() >= config.backArcContinentalShare) continue;
+        // (a break line through a craton is cratonStrength times as hard to open, along that share of it)
+        if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (config.cratonStrength - 1) * strip.cratonShare)) continue;
         const fresh = splitStrip(world, A, strip, dir, rollbackCmYr(ages / cells.length, config));
         opened++;
         world.log(EventKind.BACKARC_OPEN, `${A.name}’s trench rolls back from under it (a cold slab, ${(ages / cells.length).toFixed(0)} Myr old): ${strip.continental ? 'a strip of its coast' : 'its island arc'} — ${(lengthKm).toFixed(0)} km of it — rifts away after the trench as ${fresh.name}, and a back-arc sea opens behind`,
@@ -91,7 +93,7 @@ function rejoinFinishedStrips(world) {
         const cells = [];
         for (let c = 0; c < mesh.numCells; c++) if (strip.crust.mask[c]) cells.push(c);
         const name = strip.name;
-        transferCells(world, strip, parent, cells);
+        transferCells(world, strip, parent, cells, 4);
         // the two rasters met along the back-arc ridge, but resampled onto the parent's lattice they can leave a seam of
         // empty cells between them: close it, or the parent is in two pieces and the strip is taken for a fragment
         bridgePieces(parent, mesh, config.backArcSeamKm);
@@ -134,7 +136,7 @@ export function rollbackCmYr(slabAgeMyr, config) {
 
 /**
  * Everything of plate A within backArcWidthKm of the trench segment (world cells), on A's own lattice — or null if
- * the guards refuse it: a craton in the way, a continental strip too small or in pieces, a strip that is most of the
+ * the guards refuse it: a continental strip too small or in pieces, a strip that is most of the
  * plate, or a remainder that would fall apart. @returns {{cells: number[], continental: boolean}|null}
  */
 function stripBehind(world, A, segment) {
@@ -178,7 +180,6 @@ function judgeStrip(world, A, inStrip) {
     let land = 0, arc = 0;
     for (let c = 0; c < numCells; c++) {
         if (!inStrip[c]) continue;
-        if (crust.type[c] === CrustType.CRATON) return null;                        // a craton is never cut
         cells.push(c);
         if (crust.type[c] === CrustType.CONTINENT) land++;
         else if (crust.type[c] === CrustType.ARC) arc++;
@@ -194,7 +195,15 @@ function judgeStrip(world, A, inStrip) {
     const rest = [];
     for (let c = 0; c < numCells; c++) if (crust.mask[c] && !inStrip[c]) rest.push(c);
     if (largestPieceOf(mesh, rest).length < 0.9 * rest.length) return null;
-    return { cells, continental };
+    // the line it breaks along: its cells against the rest of the plate — the share of it through a craton
+    let line = 0, through = 0;
+    for (const c of cells) for (let k = mesh.adjOffset[c]; k < mesh.adjOffset[c + 1]; k++) {
+        const nb = mesh.adjList[k];
+        if (!crust.mask[nb] || inStrip[nb]) continue;
+        line++; if (crust.type[c] === CrustType.CRATON || crust.type[nb] === CrustType.CRATON) through++;
+        break;
+    }
+    return { cells, continental, cratonShare: line ? through / line : 0 };
 }
 
 /** Move the strip to a new plate; rifted margins between the two; the strip pushed toward its trench, the rest away. */

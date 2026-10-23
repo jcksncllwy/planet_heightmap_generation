@@ -524,16 +524,19 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const overprinted = beltLayer(frame, simMesh, cfg, land, coastKm, A, { type: frame.prevType, u: frame.prevU, reach: frame.prevReach, side: frame.prevSide, shear: frame.prevShear, last: frame.prevLast, rugged: frame.prevRugged, layer: 1 });
     const { kind, dKm, reach, reliefKm, shear, across } = current;
 
-    // ── cratons (terrain/cratons.js): what a range beside a shield weighs on it — its height above the lowland, by the
-    // kind of front (a foreland bends into the shield before an Andean range or a collision's lower plate; where a
-    // plateau's back meets the block, the front stays steep) ──
+    // ── cratons (terrain/cratons.js): what a range beside a shield weighs on it, by the kind of front — the height it is
+    // NOT carried at by its own root. A lower plate is thrust under the whole wedge, so the wedge's full height above the
+    // lowland bears on it (the pro-foreland: the Ganges); a plateau's back on an upper plate stands on its own thickened
+    // root (Airy) — its broad rise compensated — so only the ranges' crests on it load the block (the retro-foreland: the
+    // Longmen Shan against the Sichuan Basin — steep, shallow; Naylor & Sinclair 2008) ──
     const loadW = new Float32Array(n);
     for (let w = 0; w < n; w++) {
         if (!land[w] || craton[w] || !kind[w]) continue;
-        const type = kindType(kind[w]), side = kindSide(kind[w]);
-        const weight = (cfg.forelandByKind?.[type] ?? 0) * (type === OrogenyType.HIMALAYAN && side === BeltSide.UPPER ? cfg.forelandUpperPlate : 1);
+        const type = kindType(kind[w]), weight = cfg.forelandByKind?.[type] ?? 0;
         if (!(weight > 0)) continue;
-        loadW[w] = weight * Math.min(cfg.foredeepMaxKm, cfg.foredeepPerKm * Math.max(0, platformKm[w] - cfg.continentKm + frame.upliftKm[w] + 0.5 * reliefKm[w]));
+        const onRoot = type === OrogenyType.HIMALAYAN && kindSide(kind[w]) === BeltSide.UPPER;
+        const heightKm = (onRoot ? 0 : Math.max(0, platformKm[w] - cfg.continentKm) + frame.upliftKm[w]) + 0.5 * reliefKm[w];
+        loadW[w] = weight * Math.min(cfg.foredeepMaxKm, cfg.foredeepPerKm * Math.max(0, heightKm));
     }
     const cratons = plateCratons(simMesh, A, frame, loadW);
     // a scrap of craton (a patch whose deepest point is under ~cratonScrapKm from its edge) reads as its surroundings: it

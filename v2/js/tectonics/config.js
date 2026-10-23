@@ -16,17 +16,20 @@ export const TECTONICS = {
                                 // 1.0 → 1.5 for a third fewer steps — the most crust growth in step/resolve.js allows: it
                                 // looks ~2 cells around a gap; the whole-planet scenes take 2.25 — scenarios/terrain-scenes.js
                                 // WHOLE_PLANET_PACE: a gap of 2.25 cells is ~1.1 for each flank to grow)
-    slowRulesEveryMyr: 0,       // the slow rules — arcs, margin islands, arc collapse, remnant seas, arc maturing, heights —
+    slowRulesEveryMyr: 0,       // the slow rules — arcs, margin islands, arc collapse, arc maturing, heights —
                                 // every this many Myr, with the time since (0: every step; tidying stays every step — a fragment
                                 // left a few Myr is a scrap — and the rivers keep their own clock, heights.riverEveryMyr). Their work
                                 // changes little from step to step; run less often, the world view rebuilt after them is too
     snapshotEveryMyr: 10,
+    crustLedger: false,         // book every stage's change to the continental and arc crust (step/crust-ledger.js; the checks turn it on)
 
     // ── Initial supercontinent [WBP] (init/) ──
     cratonCount: 14,            // [WBP: 8–12] more, smaller cores than that: a supercontinent reads as an assembly of many
                                 // old pieces, and there are more seams for a later rift to choose between (developer)
-    continentalFraction: 0.29,  // continental crust (incl. shelves) as a share of the surface; never > 0.4. HONOURED FIRST:
-                                // if the spacing rules need more room, cratons get smaller, not the land bigger
+    continentalFraction: 0.29,  // the start world's continent (incl. shelves) as a share of the surface; never > 0.4. In effect the
+                                // LAND area: this model's continental crust stands almost all above the sea (0.29 → ~30 % land),
+                                // where Earth's 29 % of land sits on ~41 % of continental crust, its thinned margins drowned
+                                // (Cogley 1984). HONOURED FIRST: if the spacing rules need more room, cratons get smaller, not the land bigger
     cratonShare: 0.24,          // REQUESTED fraction of continental crust that is craton (an upper bound, see above)
     cratonMinAreaScale: 0.3,    // cratons shrink down to this share of their requested area before anything else gives
     cratonSizeRatio: 3.4,       // largest craton diameter ÷ smallest — guarantees a mix of big and small cores
@@ -127,13 +130,17 @@ export const TECTONICS = {
     beltOldSlabMin: 0.75,       // …and to this over a very old, steep slab
     andeanWorkShare: 0.12,      // share of the slab length going down that counts as shortening of the margin above it
     weakCellCost: 0.4,          // an old suture / rift margin carries deformation this far again (reactivation)
-    cratonRimKm: 150,           // a belt reaches this far onto a craton's edge (developer, Phase 10: a thin-skinned fold-thrust
-                                // belt riding over the shield's edge, as the sub-Andean zone and the Canadian Rockies' foothills
-                                // do) — the shield's core stays impassable…
-    cratonRimCost: 2,           // …each km of it counting as this many against the belt's reach…
-    cratonRimShare: 0.35,       // …its uplift and crests this share of the belt's; the shield itself does not thicken
+    cratonStrainShare: 0.35,    // a belt crosses onto a craton as a thin-skinned fold-thrust belt — the cover folds and thrusts over the
+                                // shield's edge, as the sub-Andean zone and the Canadian Rockies' foothills do — with this share of
+                                // the belt's uplift and crests. How far in it gets is not drawn: each km of craton costs the belt's
+                                // reach cratonStrength km (a 1000 km plateau belt gets ~170 km in, an Andean one a few tens), and
+                                // the shield thickens by only 1/cratonStrength as much (Jordan 1978: cratons are strong, not rigid —
+                                // the Laramide uplifts stand inside the Wyoming craton). 0: a craton takes no belt
     beltWorkShare: 0.35,        // share of the convergence at the front that is recorded across the belt (the front cell keeps the full amount)
     thickeningPerWorkKm: 0.05,  // crust thickens by this many km per km of shortening spread over a belt (Tibet: ~2500 km of shortening → ~35 km thicker)
+    crustMaxThickKm: 40,        // …and less as the crust nears this much thicker than normal, none past it: crust thickened ~twice over
+                                // spreads under its own weight instead of thickening more (gravitational collapse — England &
+                                // Houseman 1989; Tibet and the Altiplano ~70 km, ~35–40 above normal, their plateaus widening, not rising)
     sutureShorteningKm: 600,    // convergence absorbed across a collision before the plates weld…
     sutureStallCmYr: 0.4,       // …or the seam has been closing slower than this…
     sutureStallMyr: 12,         // …for this long
@@ -170,13 +177,13 @@ export const TECTONICS = {
     escapeShare: 0.75,          // at suture, how much of the indentation is taken up sideways (escape tectonics) at the ends of the front
     indentGain: 1.5,            // crust ahead of the indenter is pushed this many times the overlap depth (the whole zone deforms, not just the overlap)
     indentFalloffKm: 1500,      // the redraw's displacement decays over this distance behind the front
-    sealStraitKm: 260,          // at suture, sea between the two plates narrower than twice this closes (the plates deform together)
-    inlandSeaMaxKm2: 5e5,       // …and an enclosed sea smaller than this closes too; bigger ones survive as inland seas
-    ringSeaKm2: 1.5e6,          // two plates whose land encloses a sea bigger than this between them do not weld (Phase 11):
-                                // one rigid plate round it, nothing could ever close it (the rings of the old histories)
-    remnantSeaCloseKmPerMyr: 12, // a sea sealed inside one plate closes from its shores at this rate (step/remnant-seas.js)
-    remnantSeaMaxKm2: 3e7,      // …a sea up to this big (Phase 11's largest sealed sea was 25 Mkm²; beyond it, a plate's ocean is
-                                // the world ocean — Phase 13: a plate grown round most of the globe had its ocean closed into land)
+    sealStraitKm: 0,            // at suture, sea between the two plates narrower than twice this is filled with their land (0: only the
+                                // seams a cell wide, which are the raster's). Filling makes land: the ledger books it to collisions. A
+                                // strait between two continents closes by their converging, its floor going down — not by being
+                                // filled — and what the weld leaves open stays a sea sealed in the plate (the Black Sea, the South
+                                // Caspian), until its floor founders or the plate breaks again (was 260 km: 32 Mkm² of land made
+                                // in 1200 Myr, as much as all the arcs that matured into continent)
+    inlandSeaMaxKm2: 0,         // …and an enclosed sea smaller than this is filled too (was 0.5 Mkm²; a taste setting, for the lab)
     cratonLockFactor: 4,        // a craton at the collision front resists (locks) this much harder than ordinary crust
 
     // ── Wings, arcs, terranes (Phase 5b): plates are larger than their land ──
@@ -185,22 +192,30 @@ export const TECTONICS = {
     wingMaxKm: 1500,            // …up to this far past the land
     wingFillKm: 300,            // the old ocean behind a wing, this far toward the plate's body, is captured with it (fore-arc: part of the overriding plate)
     wingBendToMotion: 0.8,      // 0 = straight along strike, 1 = perpendicular to the plate's motion (WBP: arcs sit across the motion, like the Aleutians off Alaska)
-    arcMatureConsumedKm: 1000,  // subducted length needed before arc crust forms behind an ocean–ocean trench (a mature trench starts with slabMatureKm;
-                                // developer: arcs at sea and along wings should be common — 1400 made them too rare)
+    arcSlabDepthKm: 105,        // an arc rises where the slab's top lies this deep — 105 km on average beneath the world's arc volcanoes
+                                // (Syracuse & Abers 2006: 72–173 km) — so it forms once the slab reaches that depth, and that far
+                                // behind the trench (step/wings.js arcSlabKm, arcGapKm). Was: 1000 km of slab swallowed, tuned for
+                                // how common arcs looked; the Izu-Bonin-Mariana arc began 7–8 Myr after its trench (Ishizuka et al.)
+    slabDipDeg: 35,             // …the slab's dip down to that depth (most slabs dip ~30–45° in their top 100 km): the arc forms after
+                                // 105 ÷ sin 35° ≈ 180 km of slab, ~150 km behind its trench (arc–trench gaps 100–300 km: Dickinson 1973)
     arcWidenSlabKm: 500,        // every further this much slab, the arc behind a trench gains a row: a chain of islets → a Philippines → an Indonesia
-    arcNoLandWithinKm: 400,     // a trench with land closer than this is a continental margin: no island arc, an Andean belt instead
+    arcNearKm: 400,             // an arc this close to a continent may grow up to arcNearMaxKm wide (below)
     arcRowWidthKm: 121,         // an island arc is this wide when it forms, and this much wider with every arcWidenSlabKm more slab
     arcNearMaxKm: 360,          // an arc near a continent grows at most this wide (Japan ~250 km, the Philippines ~500)…
     arcFarMaxKm: 240,           // …one out in the open ocean at most this (a chain of islands on a ridge: the Marianas ~150–250 km)…
-    arcFarKm: 1200,             // …beyond this from any continent (between: a smooth blend from arcNoLandWithinKm on). Uncapped,
+    arcFarKm: 1200,             // …beyond this from any continent (between: a smooth blend from arcNearKm on). Uncapped,
                                 // a trench consuming 5 cm/yr widened its arc ~1200 km per 100 Myr (developer: "huge unnaturally")
     arcBeltMaxKm: 243,          // the orogeny belt of an island arc reaches at most this far: an arc is a narrow line
     arcContinentKmPerMyr: 3,    // arc crust welded onto a continent turns continental, its front advancing this fast (a 300 km arc
     arcContinentAgeMyr: 100,    // in ~100 Myr), once it is this old (step/arc-maturation.js) — how continents grow, and what made
                                 // up for the land collisions and erosive margins take (without it: −26 % over 1200 Myr)
-    arcAccreteMinKm2: 3e4,      // (Phase 7c) an arc piece smaller than this arriving at a continent goes down with its slab
-                                // (6e4 → 3e4 after Phase 13: arcs capped in width come in smaller pieces, and sank instead)
-                                // instead of accreting: continents gain from arcs in fewer, bigger pieces (developer)
+    arcAccreteThickKm: 17,      // (Phase 7c) arc crust thinner than this arriving at a trench goes down with its slab instead of
+                                // accreting: too little buoyant crust to hold up the lithosphere under it (Cloos 1993: ~15–17 km
+                                // of crust makes young lithosphere unsubductable; Clift & Vannucchi 2004). Was by area: a piece
+                                // smaller than 3e4 km² went down
+    arcBirthKm: 8,              // …an arc's crust is this thick when it forms (ocean crust and its first volcanoes)…
+    arcThickenKmPerMyr: 0.4,    // …and thickens this fast as magma adds to it (Izu-Bonin-Mariana: 20–35 km after ~50 Myr)…
+    arcMaxKm: 35,               // …up to this (a mature arc's crust: the Aleutians, Izu ~30–35 km)
     arcCollapseKm: 1000,        // an arc chain within this distance of its own plate's continent…
     arcCollapseMinKm2: 1.0e5,   // …and at least this big…
     arcCollapseAgeMyr: 20,      // …and this old collapses onto the coast: the fore-arc closes, subduction jumps in (the plate's front retreats)
@@ -217,7 +232,11 @@ export const TECTONICS = {
     plumeSpacingKm: 1500,       // a new plume does not rise within this of a live one
     plumeLifeMinMyr: 80,        // a plume's tail lasts between these (Hawaii ~80 Myr and still going; Kerguelen ~120)
     plumeLifeMaxMyr: 250,
-    plumeRiftChance: 0.35,      // chance a plume head under a continent big enough to rift (riftMinContinentKm2) splits it
+    plumeRiftChance: 0.35,      // chance a plume head under a continent splits it, when the continent is pulled apart at least
+    plumeRiftTension: 0.35,     // …this hard (its tension: the share of its plate's pulls that cancel; a ringed supercontinent ~0.35)
+                                // — less, a smaller chance: a plume weakens the lithosphere, the pull across it breaks it (Buiter &
+                                // Torsvik 2014: break-up needs far-field tension as well as a plume). Was: any continent bigger than
+                                // riftMinContinentKm2 at plumeRiftChance, a smaller one never
     plumeJunctionKm: 450,       // a head under a craton rifts from the nearest ordinary ground within this
     lipAreaMinMkm2: 0.15,       // a plume head spreads its flood basalt over this many million km²… (log-uniform: many small,
     lipAreaMaxMkm2: 4,          // …a few vast — Columbia River 0.2, Deccan 1.5, Karoo 3, Siberia ~4; developer: not all alike)
@@ -226,10 +245,14 @@ export const TECTONICS = {
     lipEdgeNoise: 0.3,          // …and of the finer noise that bites bays and pushes out tongues (developer: not discs)
     hotspotTrackKm: 110,        // half-width of the track a plume tail stamps on the plate passing over it (on the plate’s own
                                 // lattice, so it is one unbroken ribbon there; snapshot.js shows the cells the world grid misses)
-    hotspotBurstMinMyr: 0.6,    // a tail erupts in BURSTS, each building one volcano, lasting this long…
-    hotspotBurstMaxMyr: 2,
-    hotspotQuietMinMyr: 1.5,    // …separated by quiet spells this long, while the plate carries that volcano off: a chain is
-    hotspotQuietMaxMyr: 5,      // a string of separate islands and seamounts, not a wall of rock (developer)
+    hotspotBurstMinMyr: 0.6,    // a tail erupts in BURSTS, each building one volcano over its shield-building life (Hawaii's
+    hotspotBurstMaxMyr: 2,      // shields grew for ~0.5–1.5 Myr each)…
+    hotspotSpacingAlpha: 2.4,   // …and the next one breaks through only once the plate has carried the last this many flexural
+                                // lengths off: the volcano's weight bends the plate, and the bending squeezes the vents shut in the
+                                // moat around it — magma finds its way up beyond it, near the flexural bulge (~3πα/4; ten Brink
+                                // 1991, Hieronymus & Bercovici 1999). An old, stiff plate spaces its volcanoes wider: α ∝ Te^¾…
+    hotspotContinentTeKm: 40,   // …the elastic thickness under a continent (an ocean plate's grows with its age: the depth of its
+                                // 450 °C isotherm, ~3.4 km × √age in Myr — Watts 2001; Hawaii's ~90 Myr plate: ~30 km)
     hotspotEdificeKm: 70,       // radius of the volcano a burst builds (the swell around it is hotspotTrackKm)
     hotspotBuildKmPerMyr: 8,    // volcanic pile a burst builds per Myr, × its intensity and the plume's strength…
     hotspotMaxKm: 10,           // …up to this: a volcano this tall stops growing up (Mauna Kea stands ~9 km off the sea floor)
@@ -238,8 +261,14 @@ export const TECTONICS = {
     marginReachKm: 600,         // a coast is ACTIVE if its own plate's trench lies within this, seaward (measure.js)
     marginMotionCos: 0.35,      // a coast facing within ~70° of its plate's motion is LEADING, against it TRAILING
     flatSlabMaxAgeMyr: 35,      // a slab younger than this is warm and buoyant…
+    flatSlabCrustKm: 10,        // …and one carrying thick crust — a plateau, an aseismic ridge — is buoyant longer: every this many
+                                // km of crust above normal doubles the square root of that age (the slab's sinking weight grows as
+                                // √age: its crust's buoyancy offsets it). Most of today's flat slabs lie under subducting ridges and
+                                // plateaus (Gutscher et al. 2000: the Nazca Ridge under Peru, the Juan Fernández under Chile)
+    oceanPlateauCrustKm: 15,    // …the crust a plume head's plateau adds at sea (Ontong Java ~30 km against ~7 normal; the Nazca Ridge ~17)
     flatSlabAdvanceCmYr: 2,     // …and if the overriding plate drives at the trench faster than this, it goes in FLAT: a
-                                // Laramide belt reaching far inland, and no volcanic arc above it (step/boundaries.js)
+                                // Laramide belt reaching far inland, and no volcanic arc above it (step/boundaries.js; van Hunen et al.
+                                // 2002: a buoyant slab flattens under an advancing upper plate)
     flatSlabOnShare: 0.5,       // a plate's slab goes flat once more than this share of its feeding trench qualifies…
     flatSlabOffShare: 0.3,      // …and steepens again only below this (hysteresis: a slab does not flip every step)
     rollbackMinAgeMyr: 70,      // a slab older than this is cold and sinks steeply: its hinge rolls back, the trench retreating…
@@ -267,16 +296,27 @@ export const TECTONICS = {
     marginIsleCoastShare: 0.2,  // …and the coast itself creeps seaward at this share of it (the accretionary wedge)
     marginIsleGapKm: 80,        // sea always left in front of the trench
     // …on an ACCRETIONARY margin. An EROSIVE one eats its coast instead (Phase 7c):
-    marginErosiveShare: 0.5,    // about this share of active margins are erosive (developer: start at half, as on Earth)
-    marginErosionPatchKm: 2500, // a margin is erosive or accretionary over stretches about this long
-    marginErosionRateBias: 0.3, // fast convergence tips a stretch toward erosive (the Andes, Japan), slow toward accretionary
-    marginErosionRefCmYr: 3,    // …around this rate (a typical active continental margin in these histories)
+    // Which it is, stretch by stretch (Clift & Vannucchi 2004): a margin accretes where convergence is slower than
+    // erosiveConvergenceCmYr and its trench is filled with at least accretionSedimentKm of sediment; otherwise it erodes.
+    erosiveConvergenceCmYr: 6,  // faster than this, the trench eats its fore-arc whatever the sediment (the Andes, Tonga, Japan)
+    accretionSedimentKm: 1,     // …and with less than this in the trench it does too
+    trenchTerrigenousKm: 2.5,   // a trench's fill from the land around it: this, × the share of land within trenchSedimentReachKm
+                                // (its rivers' reach — a trench off a continent fills; one at sea, a Mariana's, starves), × how
+                                // fast that latitude erodes (terrain-config.js erosionAtLatitude: rain, or ice)
+    trenchSedimentReachKm: 300, // (not the continent's whole breadth: an active margin's range parts the drainage, and the rivers off
+                                // its far side run inland — the Amazon takes the Andes' east flank to the Atlantic; only the seaward
+                                // slope, the divide ~100–300 km in, and the few rivers that breach the range — the Columbia, the
+                                // Fraser — feed the trench)
+    trenchPelagicKmPerMyr: 0.003, // …plus what the incoming ocean floor carries: ~3 m per Myr of its age (0.5 km on 160 Myr floor)
     marginErosionKmPerMyr: 2,   // an erosive margin's coast retreats this fast…
     marginErosionMaxGapKm: 500, // …until it lies this far from its trench (the Andes: ~250 km of coast lost since the Jurassic)
 
     // ── Subduction initiation (Phase 6b, step/subduction-init.js) ──
     subductionInitRatePerMyr: 0.02,   // chance per Myr for a margin at the age threshold and the minimum length
-    subductionInitAgeMyr: 120,        // ocean younger than this is too warm and buoyant to founder
+    subductionInitAgeMyr: 180,        // unsqueezed, ocean founders once it is this old: its weight then overcomes the margin's strength.
+                                      // Earth's oldest passive margins (~180 Myr) have not foundered, and ancient ones lived a mean
+                                      // 181 Myr (Bradley 2008); most trenches are born squeezed (induced: Crameri et al. 2020), so the
+                                      // squeeze (founderUrge) does most of the founding. Was 120
     subductionInitAgeCap: 3,          // the age factor (age ÷ threshold − 1) counts no higher than this
     subductionInitMinLengthKm: 2000,  // a trench is born along a long margin, not a corner
     subductionInitMaxOpeningCmYr: 0.3, // a margin opening faster than this is a ridge, not a founder
@@ -288,7 +328,10 @@ export const TECTONICS = {
     subductionInitSlabKm: 150,        // the slab a new trench starts with: it pulls weakly until it has swallowed more
     marginFounderRatePerMyr: 0.02,    // the same, for a margin INSIDE a plate (its old ocean breaks away as a plate of its own,
                                       // founderWithinPlates): without it a plate that holds its whole ocean never breaks up again
-    marginFounderMinShare: 0.25,      // …only in a plate that holds this much of the planet (it breaks up giant plates)
+    founderStrength: 1.0,             // what holds a margin up, per 100 km (slab pull is 1): a squeeze across it this hard founders it
+                                      // whatever its age (subduction-init.js founderUrge; the stress inside a plate: plate-stress.js)
+    founderSqueezeCmYr: 6,            // two plates closing on a passive margin between them at this rate squeeze it as hard
+    oceanNeutralAgeMyr: 30,           // ocean younger than this is too warm and light to founder however hard it is squeezed
 
     // ── Oceans that break into plates (realism pass, phase 3: step/ocean-plates.js) ──
     backgroundEndMyr: 150,            // from then on, each region of the passive pre-history ocean big enough becomes a plate
@@ -314,6 +357,12 @@ export const TECTONICS = {
                                 // (below; 0.04 before the pace kept each piece's breakups apart: most then rifted only when forced)
     riftSizeCap: 4,             // a supercontinent (8× the minimum) at tension 0.35 rifts within ~20 Myr on average (developer: ~30 Myr);
                                 // a continent of twice the minimum at tension 0.5 waits ~50 Myr beyond its tenure
+    cratonStrength: 6,          // a craton's lithosphere is this many times as hard to break as ordinary continent's, per km: a rift
+                                // path crossing one costs this much (ops/rift-path.js), a back-arc strip whose break line runs through
+                                // one opens that much less readily (step/backarc.js). Its keel is 200–250 km deep and cold, two to
+                                // three times ordinary lithosphere (Jordan 1978), and strength grows faster than thickness: rifts go
+                                // round cratons — but not always (the South Atlantic split the Congo and São Francisco cratons).
+                                // Was: never cut (∞)
     riftWeaknessCost: 0.8,      // a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real
                                 // preference, but a mild one — at 0.45 a continent reopened the very same suture almost
                                 // every time it broke (developer); over a long history about half the length of the rifts
@@ -325,22 +374,19 @@ export const TECTONICS = {
     riftJagAmp: 0.4,            // …plus ± this
     riftJagKm: 350,             // …over this (it is jagged). Uniform ground made every rift a straight cut: rectangular continents
                                 // (developer); at ±0.5 over 1200 km a detour hardly paid for its length — the cuts stayed straight
-    riftAcrossPullBias: 0.6,    // arms that run along the pull (instead of across it) cost up to this much more
     riftMinArmKm: 400,          // an arm must reach the coast at least this far from the junction
     riftMinChordKm: 1500,       // the two ends of a rift must be at least this far apart: a rift crosses a landmass, it does not nick it
     riftTortuosityMax: 1.4,     // the rift's length may be at most this many times the distance between its ends (zig-zag, not meander)
-    riftMinPieceShare: 0.2,     // the smaller piece must hold at least this share of the land: breakups make continents, not slivers
     riftOverhangKm: 182,        // a rift may double back on itself by at most this much (never less than a cell): no promontories that jam as the halves part
     riftArmEndCoastKm: 19400,   // the cheapest coast cells, this much coast of them, are the candidate ends of a rift's arms
-    riftCostSlack: 1.6,         // cuts costing up to this many times the cheapest are considered, for their shape
-    riftElongationBias: 1.5,    // a cut that leaves an elongated piece (long axis ÷ short axis − 1) costs this much more per unit: pieces come out round or square
+    riftCostSlack: 1.6,         // cuts costing up to this many times the cheapest are considered, for the stress across them
+    riftStressFloor: 0.05,      // a cut's stress (per 100 km; slab pull is 1) counts as at least this: where nothing pulls the plate
+                                // apart, the cheapest ground breaks (ops/rift-path.js)
     riftFailedArmKm: 1500,      // a failed arm reaches this far before it dies and stays as an aulacogen
     riftShoulderKm: 260,        // how far the uplifted flank of a rift reaches back from the line it opened along
     riftShoulderWorkKm: 70,     // the "work" recorded across that flank — the measure of how high the shoulders stand
-    riftCoastClearanceKm: 300,  // a rift keeps this far from the coast in between its two ends…
-    riftCoastHugKm: 700,        // …and may hug it for at most this far at a stretch: it CROSSES the land, it does not run
-                                // along the edge of it, which would shave a ribbon off a coast and leave it hanging off the
-                                // piece it cuts — a big landmass with a sliver attached, which is not how continents break (developer)
+    riftFailedShoulderShare: 0.5, // a failed arm's flanks are lifted too, this share as high (it stretched less before it stopped), and
+                                // wear down as a rift's do; the arm itself stays a low trough (the Benue, Reelfoot and Rio Grande rifts)
     riftFailedArms: 2,          // how many arms fail at a junction (they strike out across ordinary ground, seeding NEW weak lines)
     riftPush: 0.6,              // a fresh rift pushes its two sides apart (uplifted rift shoulders), per 100 km of rift…
     riftPushMyr: 60,            // …fading to nothing over this long, by which time the ridge push of the young ocean has taken over
@@ -397,14 +443,14 @@ export const TECTONICS = {
     cycleHoldMyr: 30,           // either must hold this long to count (two continents that touch and part again are not one)
     cycleNeckKm: 800,           // land joined only by a neck narrower than this counts as two landmasses (developer: a
                                 // supercontinent is one cohesive mass, not continents strung together by strips)
-    // The cycle's pace, steered (developer: the supercontinent "really shouldnt happen until like 600 [Myr] in … its ok for us
-    // to put our hand on the scale here"):
-    cyclePeriodMinMyr: 600,     // from one supercontinent to the next: drawn per supercontinent between these (its own stream)
-    cyclePeriodMaxMyr: 720,
-    cycleGatherMyr: 150,        // the pieces gather (the downwelling's pull on) over this long before the period is up…
-    cycleDisperseMinMyr: 150,   // …but not before they have dispersed this long since the breakup began
+    cycleGatherHeat: 0.45,      // the pieces start to GATHER once the mantle the last supercontinent warmed has cooled to this
+                                // (cycle.upHeat, 0–1): while it is hot its upwelling pushes them apart; as it cools the ring of
+                                // downwelling slabs that surrounded it takes over (Gurnis 1988, Zhong et al. 2007: the cycle's
+                                // pace is the mantle's, not a clock — no period is drawn). How long that takes comes from
+                                // mantleInsulateMyr / mantleCoolMyr and from how far the pieces drift; Earth's cycle is ~600 ±
+                                // 100 Myr (Li et al. 2019; check-phase13 reports it)
     cycleRampMyr: 30,           // (the pull comes on over this long)
-    dispersalRepulsion: 0.3,   // until then each continent is pushed away from the others near it, per 10⁴ km² of continent,
+    dispersalRepulsion: 0.3,    // until then each continent is pushed away from the others near it, per 10⁴ km² of continent,
                                 // (0.2 when rifts came in bursts that broke up pieces gathered too soon; with breakups paced —
                                 // riftMinGapMyr — the push keeps them apart instead: the next supercontinent at ~560–730 Myr)
     dispersalRepulsionKm: 2000, // × (1 − distance to the other's edge ÷ this)², × its share of the land (twice, at most 1)
@@ -443,7 +489,7 @@ export const TECTONICS = {
  */
 export const MECHANISMS = Object.freeze({
     wings:          { wingGrowthCmYr: 0 },                                   // trench wings (step/wings.js)
-    arcs:           { arcMatureConsumedKm: 1e9 },                            // island arcs (step/wings.js)
+    arcs:           { arcSlabDepthKm: 1e9 },                                 // island arcs (step/wings.js)
     rifts:          { riftRatePerMyr: 0 },                                   // continental rifting (step/rifting.js)
     plumes:         { plumeRatePerMyr: 0, hotspotInitialCount: 0 },          // mantle plumes, LIPs and tracks (step/hotspots.js)
     subductionInit: { subductionInitRatePerMyr: 0 },                         // passive margins foundering (step/subduction-init.js)
@@ -454,10 +500,9 @@ export const MECHANISMS = Object.freeze({
     flatSlabs:      { flatSlabMaxAgeMyr: 0 },                                // flat slabs → Laramide belts (step/boundaries.js)
     backArcs:       { backArcRatePerMyr: 0 },                                // slab rollback → back-arc seas (step/backarc.js)
     marginIsles:    { marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 },  // fore-arc islands (step/margin-isles.js)
-    marginErosion:  { marginErosiveShare: 0, marginErosionKmPerMyr: 0 },     // erosive margins (step/margin-isles.js)
+    marginErosion:  { marginErosionKmPerMyr: 0 },                            // erosive margins (step/margin-isles.js)
     underthrust:    { underthrustShare: 0 },                                 // continental underthrusting at collisions (step/collision.js)
-    remnantSeas:    { remnantSeaCloseKmPerMyr: 0 },                          // seas sealed inside a plate close (step/remnant-seas.js)
-    arcRecycling:   { arcAccreteMinKm2: 0 },                                 // small arcs go down instead of accreting (step/collision.js)
+    arcRecycling:   { arcAccreteThickKm: 0 },                                // thin (young) arcs go down instead of accreting (step/collision.js)
     arcMaturation:  { arcContinentKmPerMyr: 0 },                             // arcs welded onto a continent become continent (step/arc-maturation.js)
     mantleHeatRifts: { riftHeatGain: 0, riftHeatFloor: 1, dispersalRiftBoost: 1, riftHeatTension: 0 },                  // continents rift readily over mantle they have insulated (step/rifting.js)
     mantleFlow:     { mantleOutflow: 0, mantleInflow: 0, dispersalRepulsion: 0, disperseFounderFactor: 1 }, // the mantle's flow drags continents apart and together again (step/supercontinent.js)

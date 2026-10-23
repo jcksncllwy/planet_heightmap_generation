@@ -144,10 +144,12 @@ export function componentsOf(crust, mesh) {
  * the two overlap — moved land there goes onto the nearest free cell beside it (stacked, as an arc collapse
  * does), or failing that is absorbed: it is the same ground, already land on the host, and left behind it would
  * sit under the host's land for ever as a piece that can never join. Trench flags on moved land are dropped
- * (the polarity rule re-establishes them).
+ * (the polarity rule re-establishes them). `reachHops` > 1 looks further for a free cell, through the host's land, before
+ * absorbing — for a move that only resamples ground that does not overlap the host's (a back-arc strip rejoining its
+ * parent: two of its cells can fall on one of the parent's, and that is the lattice, not a collision).
  * @returns {number} cells written onto `to`
  */
-export function transferCells(world, from, to, cells) {
+export function transferCells(world, from, to, cells, reachHops = 1) {
     const { mesh } = world, { xyz, index, adjOffset, adjList } = mesh, F = from.crust, T = to.crust;
     const P = [0, 0, 0];
     let moved = 0;
@@ -156,7 +158,11 @@ export function transferCells(world, from, to, cells) {
         from.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
         let q = to.cellAt(index, P[0], P[1], P[2]);
         const land = F.type[c] !== CrustType.OCEAN;
-        if (land && isHostLand(q)) q = freeCellBeside(to, mesh, q, P, isHostLand);     // the host's own land is here
+        if (land && isHostLand(q)) {                                                    // the host's own land is here
+            const at = q;
+            q = freeCellBeside(to, mesh, at, P, isHostLand);
+            if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, isHostLand);
+        }
         if (q >= 0 && (land || !T.mask[q])) {
             T.copyFrom(q, F, c);
             if (land) T.flags[q] &= ~CrustFlag.TRENCH;
@@ -184,6 +190,24 @@ export function freeCellBeside(to, mesh, q, P, taken) {
         if (d < bestD) { bestD = d; best = nb; }
     }
     return best;
+}
+
+/** The free cell of `to` nearest `q` in hops through taken cells, at most `hops` away, or −1. */
+function freeCellWithin(to, mesh, q, hops, taken) {
+    const { adjOffset, adjList } = mesh, seen = new Set([q]);
+    let ring = [q];
+    for (let h = 0; h < hops && ring.length; h++) {
+        const next = [];
+        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k];
+            if (seen.has(nb)) continue;
+            seen.add(nb);
+            if (!taken(nb)) return nb;
+            next.push(nb);
+        }
+        ring = next;
+    }
+    return -1;
 }
 
 /** Hand raster cells of `plate` back to the passive ocean (as old ocean at their world positions), pinholes filled. */

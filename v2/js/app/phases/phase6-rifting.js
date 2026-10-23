@@ -20,7 +20,6 @@ const TUNABLES = [
     { id: 'riftPushMyr', label: '…fading over', min: 10, max: 150, step: 5, unit: ' Myr' },
     { id: 'riftTortuosityMax', label: 'Rift length ÷ end-to-end distance, max', min: 1.1, max: 3, step: 0.1 },
     { id: 'riftFailedArmKm', label: 'Failed arm length', min: 0, max: 1500, step: 50, unit: ' km' },
-    { id: 'riftElongationBias', label: 'Preference for round / square pieces', min: 0, max: 3, step: 0.1 },
     { id: 'riftCostSlack', label: '…among cuts costing up to × the cheapest', min: 1, max: 3, step: 0.1 },
     { id: 'sutureStallMinKm', label: 'Shortening before a stalled seam may weld', min: 0, max: 600, step: 25, unit: ' km' },
 ];

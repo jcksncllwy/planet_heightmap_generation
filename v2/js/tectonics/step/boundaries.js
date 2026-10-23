@@ -4,7 +4,7 @@
 // Also maintains the persistent TRENCH flag on the overriding plate's crust and logs how much
 // crust each trench cell has consumed — records only; interpretation comes later.
 
-import { CrustType, CrustFlag } from '../model/crust.js';
+import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { BoundaryKind, EventKind } from '../model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR, CM_PER_YR_TO_KM_PER_MYR } from '../config.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
@@ -86,11 +86,13 @@ export function classifyBoundaries(world, dt) {
                     const slabAge = world.time - B.crust.formedAt[ownerCell[otherW]];
                     f.cells.push(cellA); f.kms.push(km); f.headOn.push(closing / Math.hypot(closing, shear)); f.age.push(slabAge); f.km += km;
                     f.shear.push(obliquityDeg([vx, vy, vz], normal, [x, y, z], closing));
-                    // FLAT SLAB: a young, warm, buoyant slab under a plate that drives at the trench goes in shallow
-                    // (the Laramide, the Andes of Peru today): judged by the slab's age and by how fast the overriding
-                    // plate itself — not the pair — advances on the trench
+                    // FLAT SLAB: a buoyant slab under a plate that drives at the trench goes in shallow (the Laramide, the
+                    // Andes of Peru today): buoyant while its crust's buoyancy outweighs the weight it has cooled into —
+                    // young, or carrying a plateau or a ridge — judged with how fast the overriding plate itself — not the
+                    // pair — advances on the trench
                     const advance = ((A.omega[1] * z - A.omega[2] * y) * normal[0] + (A.omega[2] * x - A.omega[0] * z) * normal[1] + (A.omega[0] * y - A.omega[1] * x) * normal[2]) / CM_PER_YR_TO_RAD_PER_MYR;
-                    if (slabAge < config.flatSlabMaxAgeMyr && advance > config.flatSlabAdvanceCmYr) f.flat++;
+                    const buoyantFor = config.flatSlabMaxAgeMyr * (1 + extraCrustKm(B.crust, ownerCell[otherW], config) / config.flatSlabCrustKm) ** 2;
+                    if (slabAge < buoyantFor && advance > config.flatSlabAdvanceCmYr) f.flat++;
                 }
             }
         }
@@ -196,4 +198,12 @@ function feedTrench(world, w, crust, cell, subductedKm) {
     }
     crust.recordSubduction(cell, subductedKm);
     return subductedKm > 0;
+}
+
+/** Crust above normal ocean crust that a slab cell carries (km): a plume head's plateau, a hotspot track's ridge. */
+function extraCrustKm(crust, c, config) {
+    if (crust.type[c] !== CrustType.OCEAN) return 0;
+    if (crust.volcType[c] === VolcanicType.LIP) return config.oceanPlateauCrustKm;
+    if (crust.volcType[c] === VolcanicType.TRACK) return Math.min(config.oceanPlateauCrustKm, 3 * crust.volcKm[c]);   // (a seamount chain's edifices and the crust beneath them)
+    return 0;
 }

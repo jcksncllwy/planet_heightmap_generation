@@ -11,7 +11,6 @@ import { trackCollisions } from './step/collision.js';
 import { growWings, buildArcs } from './step/wings.js';
 import { collapseArcs } from './ops/collapse-arc.js';
 import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
-import { closeRemnantSeas } from './step/remnant-seas.js';
 import { matureArcs } from './step/arc-maturation.js';
 import { riftContinents, searchJunctions } from './step/rifting.js';
 import { initiateSubduction, founderWithinPlates } from './step/subduction-init.js';
@@ -25,6 +24,7 @@ import { captureFrame } from './snapshot.js';
 import { evolveHeights, seedBaseRelief } from './step/heights.js';
 import { evolveRivers } from './step/rivers.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
+import { crustLedger } from './step/crust-ledger.js';
 
 /**
  * @param {import('./model/world.js').TectonicWorld} world
@@ -87,14 +87,16 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
     // The steps a history takes therefore depend on the world alone — never on how often it is recorded.
     const grid = world.config.stepGridMyr;
     let nextSnapshot = Math.min(world.time + snapshotEveryMyr, untilMyr);
+    const L = crustLedger(world), led = (stage, v) => { L?.book(stage); return v; };   // (the crust ledger: off unless a check asks)
     while (world.time < untilMyr - 1e-9) {
+        L?.open();
         const nextGrid = (Math.floor(world.time / grid + 1e-9) + 1) * grid;
         const dt = Math.min(chooseStep(world), nextGrid - world.time, untilMyr - world.time);
         const cellsMoved = closingRate(world) * dt / world.mesh.edgeRad;
-        advancePlates(world, dt);
+        led('kinematics', advancePlates(world, dt));
         world.lastDt = dt;
-        const tally = resolve(world);
-        classifyBoundaries(world, dt);
+        const tally = led('resolve', resolve(world));
+        led('boundaries', classifyBoundaries(world, dt));
         // (the slow rules every config.slowRulesEveryMyr, with the time since they last ran)
         world.slowMyr += dt;
         const slowDt = world.slowMyr, slow = slowDt >= world.config.slowRulesEveryMyr - 1e-9;
@@ -104,33 +106,32 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             // adds, removes or rewrites a plate's cells marks it reshaped, and later stages skip reshaped plates or read
             // the plate's own raster (README: "Rules for event stages and ops"). Each returns how much it changed.
             let changed = 0;
-            updateHotspots(world, dt);                 // plumes, LIPs, tracks — first, on the fresh view: stamps records only, queues plume rifts
-            trackCycle(world);                         // the supercontinent cycle: count the landmasses, move the mantle's up- and downwelling
-            changed += trackCollisions(world, dt) ? 1 : 0;   // collision records, belts, sutures, docking, arc scraping (merges plates)
-            changed += growWings(world, dt);           // trench wings capture passive ocean
-            if (slow) changed += buildArcs(world);      // island arcs behind mature ocean trenches (cell types only)
-            if (slow) changed += collapseArcs(world);   // an arc near its own coast lands on it
-            if (slow) changed += growMarginIsles(world, slowDt);  // fore-arc islands rise and join the coast (cell types only)
-            changed += yield* riftContinents(world, dt);   // plume and tension rifts (splits plates)
-            changed += openBackArcs(world, dt);        // rolling-back trenches split off strips; finished strips rejoin
-            changed += initiateSubduction(world, dt);  // passive margins founder (may carve an ocean plate)
-            if (slow) changed += founderWithinPlates(world, slowDt);  // …and margins inside a plate: its old ocean breaks away as a plate
-            if (slow) changed += retireBackground(world) + splitOceanPlates(world, slowDt);  // the pre-history ocean becomes plates; big ocean plates split
-            changed += captureMicroplates(world);       // a small ocean plate is captured by its neighbour
-            if (slow) changed += closeRemnantSeas(world, slowDt);  // seas sealed inside a plate close from their shores
-            if (slow) changed += matureArcs(world, slowDt);  // arcs welded onto a continent become continent (cell types only)
-            changed += tidyPlates(world);              // fragments join a neighbour; ocean scraps go to the passive ocean
+            led('hotspots', updateHotspots(world, dt));                // plumes, LIPs, tracks — first, on the fresh view: stamps records only, queues plume rifts
+            led('cycle', trackCycle(world));                      // the supercontinent cycle: count the landmasses, move the mantle's up- and downwelling
+            changed += led('collisions', trackCollisions(world, dt) ? 1 : 0);   // collision records, belts, sutures, docking, arc scraping (merges plates)
+            changed += led('wings', growWings(world, dt));          // trench wings capture passive ocean
+            if (slow) changed += led('arcs', buildArcs(world));     // island arcs behind mature ocean trenches (cell types only)
+            if (slow) changed += led('arcCollapse', collapseArcs(world));  // an arc near its own coast lands on it
+            if (slow) changed += led('marginIsles', growMarginIsles(world, slowDt)); // fore-arc islands rise and join the coast (cell types only)
+            changed += led('rifts', yield* riftContinents(world, dt));  // plume and tension rifts (splits plates)
+            changed += led('backArcs', openBackArcs(world, dt));       // rolling-back trenches split off strips; finished strips rejoin
+            changed += led('subductionInit', initiateSubduction(world, dt)); // passive margins founder (may carve an ocean plate)
+            if (slow) changed += led('marginFounder', founderWithinPlates(world, slowDt)); // …and margins inside a plate, sealed seas too: its old ocean breaks away as a plate
+            if (slow) changed += led('oceanPlates', retireBackground(world) + splitOceanPlates(world, slowDt)); // the pre-history ocean becomes plates; big ocean plates split
+            changed += led('microplates', captureMicroplates(world));      // a small ocean plate is captured by its neighbour
+            if (slow) changed += led('arcMaturation', matureArcs(world, slowDt)); // arcs welded onto a continent become continent (cell types only)
+            changed += led('tidy', tidyPlates(world));             // fragments join a neighbour; ocean scraps go to the passive ocean
             if (changed) {                              // crust changed: the world view must be rebuilt before anything reads it
                 for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz);
-                resolve(world);
-                if (fillPinholes(world)) { for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz); resolve(world); }
-                classifyBoundaries(world, 0);
+                led('resolve', resolve(world));
+                if (led('pinholes', fillPinholes(world))) { for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz); led('resolve', resolve(world)); }
+                led('boundaries', classifyBoundaries(world, 0));
             }
         }
-        if (slow) evolveHeights(world, slowDt);  // heights wear down and spread (records only: nothing below reads them)
-        evolveRivers(world, dt);                            // rivers drain the land and cut into it (records only too; on a clock of their own)
-        drive(world);
-        steerBackArcStrips(world);                          // a back-arc strip follows its retreating trench, whatever drives the rest
+        if (slow) led('heights', evolveHeights(world, slowDt)); // heights wear down and spread (records only: nothing below reads them)
+        led('rivers', evolveRivers(world, dt));                         // rivers drain the land and cut into it (records only too; on a clock of their own)
+        led('drive', drive(world));
+        led('backArcStrips', steerBackArcStrips(world));                          // a back-arc strip follows its retreating trench, whatever drives the rest
         // (each plate's rotation averaged over ~SLOW_ROTATION_MYR: the spreading poles fracture zones are measured about —
         // records only, tectonics/model/segments.js; the rotation itself wobbles a degree or two from step to step)
         for (const p of world.plates) {

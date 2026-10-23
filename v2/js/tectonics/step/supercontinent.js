@@ -18,12 +18,11 @@
 // the ring: the cycle's own seeded stream); when the largest has held no more than dispersedShare as long, it has broken
 // up. (A start world that is one landmass is a supercontinent from the first step.)
 //
-// The cycle's pace is steered (developer: the supercontinent "really shouldnt happen until like 600 [Myr] in … its ok for
-// us to put our hand on the scale here"). Each supercontinent draws a period, cyclePeriodMinMyr–cyclePeriodMaxMyr, from
-// the cycle's stream: its pieces DISPERSE until cycleGatherMyr before it is up (and for at least cycleDisperseMinMyr after
-// the breakup began) — the continents keep apart (dispersalRepulsion: a push away from every other continent near it) —
-// and then GATHER: the downwelling's pull switches on, full strength until mantleInflowPackKm from it, so the pieces press
-// together into one mass rather than stopping at first touch; the next supercontinent can only be counted then.
+// The cycle's pace is the mantle's: no period is drawn. After the breakup the pieces DISPERSE — the upwelling under the
+// old supercontinent pushes them out, and the continents keep apart (dispersalRepulsion: a push away from every other
+// continent near it) — until the mantle it warmed has cooled to cycleGatherHeat; then they GATHER: the downwelling's pull
+// switches on, full strength until mantleInflowPackKm from it, so the pieces press together into one mass rather than
+// stopping at first touch; the next supercontinent can only be counted then.
 
 import { isContinental } from './hotspots.js';
 import { EventKind } from '../model/world.js';
@@ -35,13 +34,12 @@ export function trackCycle(world) {
     const { config, time, events } = world;
     if (!(config.mantleOutflow > 0 || config.mantleInflow > 0 || config.riftHeatGain > 0)) return;
     const cycle = world.cycle ??= { up: null, down: null, upHeat: 0, gather: 0, share: 1, landmasses: 1, state: 'dispersed', since: 0,
-        phase: 'none', formedAt: 0, period: 0, breakupAt: null, gatherAt: Infinity, hold: 0, holdKm: 0, checkedAt: -Infinity, near: null, highSince: null, lowSince: null, seenEvents: 0 };
+        phase: 'none', formedAt: 0, breakupAt: null, gatherAt: Infinity, hold: 0, holdKm: 0, checkedAt: -Infinity, near: null, highSince: null, lowSince: null, seenEvents: 0 };
     // the breakup begins with the first rift since the supercontinent gathered (a rift while it was being counted too)
     for (; cycle.seenEvents < events.length; cycle.seenEvents++) {
         const e = events[cycle.seenEvents];
         if (e.kind !== EventKind.RIFT || !cycle.up || cycle.breakupAt !== null || e.time < cycle.formedAt - config.cycleHoldMyr - 1e-9) continue;
         cycle.breakupAt = e.time;
-        cycle.gatherAt = Math.max(cycle.formedAt + cycle.period - config.cycleGatherMyr, e.time + config.cycleDisperseMinMyr);
     }
     if (time - cycle.checkedAt >= config.cycleCheckMyr - 1e-9 || !cycle.up) {
         cycle.checkedAt = time;
@@ -56,24 +54,25 @@ export function trackCycle(world) {
         const held = since => since !== null && time - since >= config.cycleHoldMyr - 1e-9;
         const may = !cycle.up ? cycle.highSince !== null : cycle.state !== 'assembled' && time >= cycle.gatherAt - 1e-9 && held(cycle.highSince);
         if (may) {
-            // a supercontinent: its centre is the new upwelling; the downwelling somewhere on the ring 90° from it; its period
+            // a supercontinent: its centre is the new upwelling; the downwelling somewhere on the ring 90° from it
             const up = centroid(world.mesh.xyz, largest), [e1, e2] = basisAround(up), a = 2 * Math.PI * world.rngCycle();
             cycle.up = up;
             cycle.down = [Math.cos(a) * e1[0] + Math.sin(a) * e2[0], Math.cos(a) * e1[1] + Math.sin(a) * e2[1], Math.cos(a) * e1[2] + Math.sin(a) * e2[2]];
-            cycle.period = config.cyclePeriodMinMyr + (config.cyclePeriodMaxMyr - config.cyclePeriodMinMyr) * world.rngCycle();
             cycle.formedAt = time; cycle.breakupAt = null; cycle.gatherAt = Infinity;
             cycle.holdKm = Math.sqrt(largest.length * world.mesh.cellAreaKm2 / Math.PI) + config.superHoldMarginKm;   // (its own footprint)
             cycle.near = null;
             cycle.state = 'assembled'; cycle.since = time;
-            world.log(EventKind.SUPERCONTINENT, `a supercontinent: ${(100 * share).toFixed(0)} % of the continental crust in one landmass (${(largest.length * world.mesh.cellAreaKm2 / 1e6).toFixed(0)} Mkm²) — the mantle under it will warm; the next one will gather ~90° away, ~${cycle.period.toFixed(0)} Myr from now`,
-                { share, areaMkm2: largest.length * world.mesh.cellAreaKm2 / 1e6, up: cycle.up, down: cycle.down, periodMyr: cycle.period });
+            world.log(EventKind.SUPERCONTINENT, `a supercontinent: ${(100 * share).toFixed(0)} % of the continental crust in one landmass (${(largest.length * world.mesh.cellAreaKm2 / 1e6).toFixed(0)} Mkm²) — the mantle under it will warm; the next one will gather ~90° away, once that mantle has cooled`,
+                { share, areaMkm2: largest.length * world.mesh.cellAreaKm2 / 1e6, up: cycle.up, down: cycle.down });
         } else if (cycle.state === 'assembled' && held(cycle.lowSince)) {
             cycle.state = 'dispersed'; cycle.since = time;
             world.log(EventKind.DISPERSED, `the supercontinent has broken up: the largest landmass holds ${(100 * share).toFixed(0)} % of the continental crust`, { share, landmasses: count });
         }
     }
     cycle.upHeat = heatNear(world, cycle);
-    // the clock: assembled (whole, heating) → dispersing (from the first rift) → gathering (from gatherAt, until the next is counted)
+    // (the pieces start to gather once the mantle the supercontinent warmed has cooled: its upwelling no longer pushes them out)
+    if (cycle.breakupAt !== null && cycle.gatherAt === Infinity && cycle.upHeat <= config.cycleGatherHeat) cycle.gatherAt = time;
+    // the stages: assembled (whole, heating) → dispersing (from the first rift) → gathering (from gatherAt, until the next is counted)
     cycle.phase = !cycle.up ? 'none' : cycle.breakupAt === null ? 'assembled' : time < cycle.gatherAt ? 'dispersing' : 'gathering';
     cycle.gather = cycle.phase === 'gathering' ? Math.min(1, (time - cycle.gatherAt) / config.cycleRampMyr) : 0;
     // while the pieces disperse, a landmass that has gathered much of the continental crust again too soon: its plates

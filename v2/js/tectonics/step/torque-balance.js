@@ -25,6 +25,7 @@ import { speedCmYrAt } from './kinematics.js';
 export function updatePlateMotion(world) {
     const { plates, config } = world;
     const loads = gatherLoads(world);
+    world.loads = loads;                                                // (step/plate-stress.js reads them between steps)
     const before = plates.map(p => p.omega.slice());
     const blend = 1 - Math.exp(-world.lastDt / config.relaxMyr);        // 0 on the very first call: a world starts from rest
 

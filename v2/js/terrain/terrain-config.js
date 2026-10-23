@@ -110,22 +110,22 @@ export const TERRAIN = {
     cratonScrapKm: 110,         // a craton patch whose deepest point is less than about this from its edge is a scrap: it reads
                                 // as what surrounds it (no flat, stair-edged hole in a range)
     cratonRimInKm: 10,          // a range pressed against a shield fades across its rim, from this far in…
-    cratonRimOutKm: 120,        // …to nothing here (the history's thin-skinned belt: tectonics config cratonRimKm; the
+    cratonRimOutKm: 120,        // …to nothing here (the history's thin-skinned belt: tectonics config cratonStrainShare; the
                                 // sub-Andean zone is 50–100 km wide)
     foredeepPerKm: 0.12,        // the foreland a range bends into a shield: a lowland this much below the shield per km of the
                                 // range's height (flexure is linear in the load; the Ganges plain lies ~0.3 km below the Indian
                                 // shield, the Chaco ~0.5 km below the Brazilian — filled with sediment: a plain, not a trough)…
     foredeepMaxKm: 0.3,         // …at most this…
     forelandFromKm: 100,        // …deepest this far in from the edge line (in front of the rim's thrusts)…
-    forelandAlphaKm: 110,       // …over a stiff plate's flexural length: the foredeep ~πα/2 wide beyond that, the forebulge's
-                                // crest ~3πα/4 (a craton's elastic thickness, 80–90 km, gives wide, shallow forelands)
+    shieldElasticKm: 60,        // …over the flexural length α = (4D / Δρg)^¼ of a shield's lithosphere this thick elastically (D = E Te³ /
+                                // 12(1 − ν²), E 70 GPa, ν 0.25, Δρ mantle − sediment fill 900 kg/m³; Te 60 km → α ≈ 155 km): the foredeep
+                                // ~πα/2 wide beyond the front, the forebulge's crest ~3πα/4 (cratons' Te is 40–100 km: wide, shallow
+                                // forelands — the Ganges basin is ~250–450 km wide; Beaumont 1981, DeCelles & Giles 1996)
     forebulgeGain: 3,           // the forebulge, this many times the thin elastic plate's (tens of metres)
     forelandByKind: {           // how much a front of each kind loads the shield beside it (0: none)
         [OrogenyType.ANDEAN]: 1, [OrogenyType.HIMALAYAN]: 1, [OrogenyType.URAL]: 1, [OrogenyType.LARAMIDE]: 0.6,
         [OrogenyType.TRANSPRESSION]: 0.5, [OrogenyType.ARC]: 0.3, [OrogenyType.RIFT]: 0,
     },
-    forelandUpperPlate: 0.15,   // …× this where a collision's UPPER plate — its plateau's back — meets the block: a steep front
-                                // with little foreland (the Longmen Shan against the Sichuan Basin)
     cratonCharacter: 1,         // how strongly the shields show their characters (developer: "in between"; a lab slider)
     cratonSwellKm: 0.45,        // a swell rises up to this above the shield's edge (× 0.7–1.3 per craton; the Kalahari's
                                 // ~1 km would be bold)…
@@ -475,8 +475,10 @@ export const TERRAIN = {
     // surface synthesized at this detail instead (synthesize.js settleFields). 0: off
     carveSettleCells: 0,
     // …except where ice does the work (developer): glaciers erode fast though little falls, so poleward of the storm
-    // tracks erosion holds near their level — the rate is the larger of rain's and this, by |latitude|
-    glacialErosion: [[45, 0], [52, 0.95], [58, 1.07], [90, 1.0]],
+    // tracks erosion holds near their level — the rate is the larger of rain's and this, by |latitude|. But only where the
+    // ice is temperate, sliding on meltwater: cold polar ice is frozen to its bed, and from Patagonia to the Antarctic
+    // Peninsula glacial erosion falls about a thousandfold (Koppes et al. 2015) — so it fades past ~60° (was 1.0 to the pole)
+    glacialErosion: [[45, 0], [52, 0.95], [58, 1.07], [64, 0.45], [70, 0.15], [90, 0.05]],
 };
 
 /** Estimated mean rainfall (mm/yr) at a latitude (degrees), from cfg.rainByLatitude. */

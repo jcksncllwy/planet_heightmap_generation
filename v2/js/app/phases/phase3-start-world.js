@@ -47,7 +47,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
         initialView: [centre.lat, centre.lon],
         params: [
             { id: 'cratonCount', label: 'Cratons', min: 6, max: 20, step: 1, value: cfg.cratonCount },
-            { id: 'continentalFraction', label: 'Continental crust', min: 0.2, max: 0.36, step: 0.01, value: cfg.continentalFraction, unit: ' of surface' },
+            { id: 'continentalFraction', label: 'Continent (land) area', min: 0.2, max: 0.36, step: 0.01, value: cfg.continentalFraction, unit: ' of surface' },
             { id: 'cratonShare', label: 'Craton share of that crust (at most — shrinks to fit)', min: 0.18, max: 0.4, step: 0.01, value: cfg.cratonShare },
             { id: 'cratonSizeRatio', label: 'Craton size variety (largest ÷ smallest)', min: 1.4, max: 3.2, step: 0.1, value: cfg.cratonSizeRatio, unit: '×' },
             { id: 'cratonMinGapKm', label: 'Min gap between cratons', min: 300, max: 900, step: 50, value: cfg.cratonMinGapKm, unit: ' km' },

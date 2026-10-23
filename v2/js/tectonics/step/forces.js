@@ -48,8 +48,8 @@ const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4;
  * @property {number} torqueMagnitudeSum  Σ |r × F| over the boundary forces — compare with |Σ r × F| to see how much cancels
  * @property {number[]} flowTorque        the mantle flow's share of `torque` (not a boundary force: left out of the tension)
  * @property {number[]} cells             boundary cells contributing, per kind
- * @property {{r:number[], n:number[], other:number, length:number}[]} slabs     where this plate's ocean goes down a trench
- * @property {{r:number[], n:number[], other:number, weight:number}[]} contacts  land-on-land overlap cells (weight > 1 where a craton is
+ * @property {{w:number, r:number[], n:number[], other:number, length:number}[]} slabs     where this plate's ocean goes down a trench
+ * @property {{w:number, r:number[], n:number[], other:number, weight:number}[]} contacts  land-on-land overlap cells (weight > 1 where a craton is
  *                                                                             involved; n: the front's normal there, toward the other plate)
  * @property {{r:number[], other:number, c:number}[]} hinges   where a young rift's halves are still pinned together (stiffness c)
  */
@@ -68,6 +68,11 @@ export function gatherLoads(world) {
     const flowing = world.cycle?.up && (config.mantleOutflow > 0 || config.mantleInflow > 0 || config.dispersalRepulsion > 0), flow = [0, 0, 0];
     const apart = flowing ? dispersalField(world) : null;
     const flowArea = mesh.cellAreaKm2 / 1e4;
+    // (each world cell's share of the driving torque, and whose cell it was: step/plate-stress.js reads the stress a plate
+    // carries inside it from these)
+    if (world.cellTorque?.length !== 3 * numCells) { world.cellTorque = new Float64Array(3 * numCells); world.loadOwner = new Int32Array(numCells); world.loadCell = new Int32Array(numCells); }
+    const cellTorque = world.cellTorque.fill(0);
+    world.loadOwner.set(owner); world.loadCell.set(ownerCell);
 
     for (let w = 0; w < numCells; w++) {
         const a = owner[w];
@@ -82,6 +87,7 @@ export function gatherLoads(world) {
                 const tx = r1 * fz - r2 * fy, ty = r2 * fx - r0 * fz, tz = r0 * fy - r1 * fx;
                 load.torque[0] += tx; load.torque[1] += ty; load.torque[2] += tz;
                 load.flowTorque[0] += tx; load.flowTorque[1] += ty; load.flowTorque[2] += tz;
+                cellTorque[3 * w] += tx; cellTorque[3 * w + 1] += ty; cellTorque[3 * w + 2] += tz;
                 const k = load.byKind[FLOW]; k[0] += tx; k[1] += ty; k[2] += tz;
                 const v = load.forceByKind[FLOW]; v[0] += fx; v[1] += fy; v[2] += fz;
                 load.cells[FLOW]++;
@@ -96,8 +102,8 @@ export function gatherLoads(world) {
             const craton = plates[a].crust.type[ownerCell[w]] === CrustType.CRATON || other.crust.type[otherCell] === CrustType.CRATON;
             const weight = craton ? config.cratonLockFactor : 1;         // cratons never underthrust: the lock hardens
             const nAB = frontNormal(world, w, a, collider[w], r);
-            loadOf[a]?.contacts.push({ r, n: nAB, other: collider[w], weight });
-            loadOf[collider[w]]?.contacts.push({ r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
+            loadOf[a]?.contacts.push({ w, r, n: nAB, other: collider[w], weight });
+            loadOf[collider[w]]?.contacts.push({ w, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
             continue;
         }
         const load = loadOf[a];
@@ -112,7 +118,7 @@ export function gatherLoads(world) {
         let kind = -1, size = 0, rAge;
         if (trenchB && oceanA && !trenchA) {
             kind = PULL; size = config.slabPull * ageFactor(A.formedAt[cellA]) * maturity(B, cellB);
-            load.slabs.push({ r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length });
+            load.slabs.push({ w, r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length });
         } else if (trenchA && oceanB && !trenchB) { kind = SUCTION; size = config.slabSuction * ageFactor(B.formedAt[cellB]) * maturity(A, cellA); }
         else if ((rAge = riftAge(plates[a], A, cellA, plates[owner[across]], B, cellB, time)) < config.riftPushMyr) { kind = RIFT; size = -config.riftPush * (1 - rAge / config.riftPushMyr); }
         else if (oceanA && oceanB && isYoung(A, cellA) && isYoung(B, cellB)) { kind = RIDGE; size = -config.ridgePush; }
@@ -125,6 +131,7 @@ export function gatherLoads(world) {
         const f = size * length, fx = dir[0] * f, fy = dir[1] * f, fz = dir[2] * f;
         const tx = r1 * fz - r2 * fy, ty = r2 * fx - r0 * fz, tz = r0 * fy - r1 * fx;      // r × F
         load.torque[0] += tx; load.torque[1] += ty; load.torque[2] += tz;
+        cellTorque[3 * w] += tx; cellTorque[3 * w + 1] += ty; cellTorque[3 * w + 2] += tz;
         const k = load.byKind[kind]; k[0] += tx; k[1] += ty; k[2] += tz;
         const v = load.forceByKind[kind]; v[0] += fx; v[1] += fy; v[2] += fz;
         load.torqueMagnitudeSum += Math.hypot(tx, ty, tz);

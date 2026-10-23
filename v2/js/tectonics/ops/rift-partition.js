@@ -5,14 +5,13 @@ import { CrustType } from '../model/crust.js';
 import { tangentToward } from '../../core/sphere-geom.js';
 
 /**
- * The two sides of `path`: the share of the plate's land on the smaller side (0 if the path does not divide it),
- * the elongation of the less compact side (long axis ÷ short axis of its land, from second moments; 1 = round), and
- * whether both sides hold craton cells.
+ * The two sides of `path`: every cell's side (partition), the share of the plate's land on the smaller side (0 if the
+ * path does not divide it), and whether both sides hold craton cells.
  */
 export function sidesOf(mesh, crust, path, cells = maskedCells(crust)) {
     const { side, land, cratons } = partition(mesh, crust, path, cells), a = land[1], b = land[2];
-    if (a + b === 0) return { share: 0, elongation: 1, cratonsBothSides: false };
-    return { share: Math.min(a, b) / (a + b), elongation: Math.max(elongationOf(mesh, side, 1, cells), elongationOf(mesh, side, 2, cells)), cratonsBothSides: cratons[1] > 0 && cratons[2] > 0 };
+    if (a + b === 0) return { side, share: 0, cratonsBothSides: false };
+    return { side, share: Math.min(a, b) / (a + b), cratonsBothSides: cratons[1] > 0 && cratons[2] > 0 };
 }
 
 /** The plate's crust cells, in order — what the partition's scans visit (a rift scores many cuts of the same crust). */

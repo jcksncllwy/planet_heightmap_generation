@@ -33,7 +33,6 @@ const TUNABLES = [
     { id: 'collisionSeparateShare', label: 'A contact resists parting at this share (low: it pivots)', min: 0, max: 1, step: 0.05 },
     { id: 'collisionShearShare', label: '…and sliding along the front at this share', min: 0, max: 1, step: 0.05 },
     { id: 'sutureGapWidthKm', label: 'Weld once the sea between is nowhere wider than', min: 0, max: 1000, step: 25, unit: ' km' },
-    { id: 'ringSeaKm2', label: 'Plates ringing a sea larger than this stay apart', min: 2e5, max: 1e7, step: 1e5, unit: ' km²' },
 ];
 
 const SCENES = [
@@ -95,7 +94,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
     return {
         title: 'Phase 5a — Collision events',
         summary: 'The force scenes again, with the event rules on. Convergence at every trench and collision front is recorded as a mountain belt that reaches inland ' +
-            '(width by type, onto a craton only its rim, carried further along old sutures). Colliding plates lock across the front and shorten — but a contact is a pivot, not a clamp: ' +
+            '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates lock across the front and shorten — but a contact is a pivot, not a clamp: ' +
             'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Once the seam has closed, or stopped closing, they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
             'squeezed back and sideways, cratons moved as rigid blocks. ' + scene.about,
         checklist: [...scene.checklist,

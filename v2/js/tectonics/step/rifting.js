@@ -124,7 +124,7 @@ function* forceRift(world, plate, age) {
     return (yield* attempt()) || (yield* withLooseShape(config, attempt));
 }
 /** A forced rift's looser rules of shape (and a plume's that waited), when no cut passes the usual ones. */
-const LOOSE_SHAPE = { riftTortuosityMax: 2, riftMinChordKm: 1000, riftMinPieceShare: 0.12, riftCoastHugKm: 1500 };
+const LOOSE_SHAPE = { riftTortuosityMax: 2, riftMinChordKm: 1000 };
 /** Run the generator gen with the rules of a rift's shape loosened (LOOSE_SHAPE), then put them back. */
 function* withLooseShape(config, gen) {
     const saved = {};
@@ -159,8 +159,12 @@ export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = 
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN, weakKm = rift.path.filter(c => plate.crust.flags[c] & weak).length * mesh.edgeKm;   // (before the split flags the new margins)
     const before = plate.name, ageMyr = world.time - plate.born, fresh = splitPlate(world, plate, rift.path, rift.failedArm, (a, b) => namesAfterSplit(world, a, b, before), rift.across);
     const km = rift.path.length * mesh.edgeKm;
+    // (a craton the rift went through is now on both plates: its terrane id is kept on both halves, recorded here)
+    const cratonsOf = P => { const ids = new Set(); for (let c = 0; c < mesh.numCells; c++) if (P.crust.mask[c] && P.crust.type[c] === CrustType.CRATON) ids.add(P.crust.terrane[c]); return ids; };
+    const onFresh = cratonsOf(fresh), splitCratons = [...cratonsOf(plate)].filter(id => onFresh.has(id));
+    const cratonKm = rift.path.filter(c => plate.crust.mask[c] ? plate.crust.type[c] === CrustType.CRATON : fresh.crust.type[c] === CrustType.CRATON).length * mesh.edgeKm;
     world.log(EventKind.RIFT, `${before} rifts (${cause.text}): ${plate.name} and ${fresh.name} part along ${km.toFixed(0)} km of rift${rift.failedArm.length ? `, a failed arm of ${(rift.failedArm.length * mesh.edgeKm).toFixed(0)} km left behind` : ''}`,
-        { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm, ageMyr });
+        { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm, ageMyr, stress: rift.stress, share: rift.share, cratonKm, splitCratons });
     world.lastRiftAt = world.time;
     return true;
 }

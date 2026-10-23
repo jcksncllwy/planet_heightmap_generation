@@ -11,17 +11,19 @@ import { colorByMargin, colorByCrustType, colorByThickness, colorByOrogeny, colo
 import { describeCell, recordedFrameAt, boundaryLegend, eventRows, latLonOf, SNAPSHOT_MYR } from './phase-kit.js';
 
 const TUNABLES = [
-    { id: 'marginErosiveShare', label: 'Share of active margins that are erosive', min: 0, max: 1, step: 0.05 },
+    { id: 'erosiveConvergenceCmYr', label: 'A margin converging faster than this erodes', min: 2, max: 12, step: 0.5, unit: ' cm/yr' },
+    { id: 'accretionSedimentKm', label: '…as does one with less sediment in its trench than', min: 0, max: 3, step: 0.1, unit: ' km' },
     { id: 'marginErosionKmPerMyr', label: '…their coast retreating at', min: 0, max: 10, step: 0.5, unit: ' km/Myr' },
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
-    { id: 'arcAccreteMinKm2', label: 'An arc piece smaller than this goes down instead of accreting (km²)', min: 0, max: 5e5, step: 1e4 },
+    { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
+    { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast with age', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
     { id: 'marginIsleRatePerMyr', label: 'Fore-arc islands born per 1000 km of accretionary coast per Myr', min: 0, max: 3, step: 0.1 },
 ];
 const CHECKLISTS = {
     erosion: [
         'Driftia’s western coast is active all along, but in two kinds of stretches (Margins layer): EROSIVE (purple) and ACCRETIONARY (orange-red).',
         'Off the accretionary stretches islands rise and grow into the coast (Crust type layer); along the erosive stretches there are none, and the coast retreats — by some 200–300 km over the run — while its mountain belt keeps forming on the new coast.',
-        'A stretch keeps its character as Driftia moves (the field is fixed in the plate). Cratons are never eaten.',
+        'Which is which follows the trench: erosive where it is starved of sediment (little land upstream, dry latitudes) or the convergence is fast, accretionary where rivers off the land fill it. Cratons are never eaten.',
     ],
     india: [
         'India reaches Asia at ~38 Myr. As they converge, India’s land in the overlap is consumed — it slides under Asia — so the land chart falls rather than rises through the collision.',

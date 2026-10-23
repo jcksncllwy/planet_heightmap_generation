@@ -1,5 +1,6 @@
 // Rifting (WBP Part Va): a continent breaks along a zig-zag line that goes AROUND cratons (a craton is
-// never cut — developer requirement) and
+// cratonStrength times as hard to break: cut only where every way round costs more — the Congo and São Francisco
+// cratons were split by the South Atlantic) and
 // REUSES old sutures and failed rifts. Rifts begin at a junction — a plume head, or simply the weakest
 // point deep in the interior — from which three arms run to the coast; the two cheapest become the
 // rift, the third stops short and stays as a failed arm (an aulacogen: a weak line and, later, a
@@ -44,8 +45,9 @@ export function splitPlate(world, plate, path, failedArm, nameFor, across = null
         if (!fresh.crust.mask[c]) continue;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (onPath[adjList[k]]) { fresh.crust.flags[c] |= CrustFlag.RIFT_MARGIN; shoulders[1].push(c); break; }
     }
-    // The arm that FAILED gets no shoulders (developer): an aulacogen is a trough that sagged and filled with
-    // sediment, not a flank that was lifted — it is a weak, low corridor, and later a river’s way to the sea.
+    // The arm that FAILED is itself a trough (developer): an aulacogen sagged and filled with sediment — a weak, low
+    // corridor, and later a river’s way to the sea. Its flanks were lifted while it stretched, less than a rift's
+    // (riftFailedShoulderShare), and wear down from then on as a rift's shoulders do (step/heights.js).
     for (const c of failedArm) { const owner = crust.mask[c] ? crust : fresh.crust.mask[c] ? fresh.crust : null; if (owner) owner.flags[c] |= CrustFlag.FAILED_RIFT; }
     // Stretching makes relief too: the flanks a rift opened along are lifted into shoulders (the East African Rift,
     // the Western Ghats, the Brazilian highlands). Recorded here as a belt like any orogeny, so the terrain stage
@@ -56,6 +58,16 @@ export function splitPlate(world, plate, path, failedArm, nameFor, across = null
     const lifted = [standing(shoulders[0], crust), standing(shoulders[1], fresh.crust)];
     if (lifted[0].length) spreadBelt(plate, mesh, lifted[0], shoulder, config, notFailed(crust));
     if (lifted[1].length) spreadBelt(fresh, mesh, lifted[1], shoulder, config, notFailed(fresh.crust));
+    // the failed arm's flanks: the land beside it, on whichever half it lies
+    const armFlank = { ...shoulder, workKm: config.riftShoulderWorkKm * config.riftFailedShoulderShare };
+    for (const [P, cr] of [[plate, crust], [fresh, fresh.crust]]) {
+        const flank = [];
+        for (const c of failedArm) {
+            if (!cr.mask[c]) continue;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (cr.mask[nb] && cr.type[nb] !== CrustType.OCEAN && !(cr.flags[nb] & CrustFlag.FAILED_RIFT) && !onPath[nb]) flank.push(nb); }
+        }
+        if (flank.length && armFlank.workKm > 0) spreadBelt(P, mesh, [...new Set(flank)], armFlank, config, notFailed(cr));
+    }
     plate.born = time; fresh.born = time;
     if (fresh.crust.count > crust.count) { fresh.hue = plate.hue; plate.hue = fresh.id; }      // (the larger half keeps the colour)
     plate.bornOfRift = fresh.bornOfRift = true;

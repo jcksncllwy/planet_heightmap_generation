@@ -141,8 +141,8 @@ export function isContinental(world, w) {
 
 /**
  * A plume reaches the surface at `xyz` (a mantle-frame position). Its head erupts a LIP; under a continent it may
- * be queued to split it. `rift`: true = it must try (a scene said so), 'chance' = plumeRiftChance if the continent is
- * big enough, false = never.
+ * be queued to split it. `rift`: true = it must try (a scene said so), 'chance' = plumeRiftChance × how hard the continent
+ * is pulled apart (plumeRiftTension), false = never.
  */
 function birth(world, xyz, { head = true, rift = 'chance', riftPlate = -1, riftCell = -1, name, lifeMyr, strength, bornAt = world.time } = {}) {
     const { config, mesh, plates, owner } = world, rng = world.rngHotspot;
@@ -150,8 +150,9 @@ function birth(world, xyz, { head = true, rift = 'chance', riftPlate = -1, riftC
         id: world.hotspots.length, name: name ?? plumeName(world), xyz: normalize(xyz), bornAt, alive: true, lip: null,
         dieAt: bornAt + (lifeMyr ?? config.plumeLifeMinMyr + rng() * (config.plumeLifeMaxMyr - config.plumeLifeMinMyr)),
         strength: strength ?? 0.6 + 0.8 * rng(),
-        // the tail's eruptions (eruptedDuring): bursting or quiet until pulseUntil, at pulseIntensity; drawn on first use
-        pulseUntil: undefined, bursting: false, pulseIntensity: 0,
+        // the tail's eruptions (eruptedDuring): a burst until pulseUntil, at pulseIntensity; then quiet until the plate has
+        // carried the last volcano (vent: its plate and plate-frame position) far enough off
+        pulseUntil: undefined, bursting: false, pulseIntensity: 0, vent: null,
     };
     world.hotspots.push(h);
     const w = mesh.index.nearest(h.xyz[0], h.xyz[1], h.xyz[2]), plate = owner[w] >= 0 ? plates[owner[w]] : null;
@@ -160,8 +161,9 @@ function birth(world, xyz, { head = true, rift = 'chance', riftPlate = -1, riftC
     if (head) eruptLip(world, h, w);
     if (rift !== false && plate && !plate.isBackground) {
         const target = riftPlate >= 0 ? plates[riftPlate] : plate;
-        const bigEnough = target.stats.continentalCells * mesh.cellAreaKm2 >= config.riftMinContinentKm2;
-        if (rift === true || (bigEnough && rng() < config.plumeRiftChance * plumeHeatFactor(world, target))) world.pendingPlumeRifts.push({ plate: target.id, xyz: h.xyz, cell: riftCell, cause: { text: `the ${h.name} plume`, kind: 'plume', hotspot: h.id } });
+        // (the head weakens the lithosphere above it; what breaks it is the pull across it: the plate's tension)
+        const pulled = Math.min(1, (target.dynamics?.tension ?? 0) / config.plumeRiftTension);
+        if (rift === true || (pulled > 0 && rng() < config.plumeRiftChance * pulled * plumeHeatFactor(world, target))) world.pendingPlumeRifts.push({ plate: target.id, xyz: h.xyz, cell: riftCell, cause: { text: `the ${h.name} plume`, kind: 'plume', hotspot: h.id } });
     }
     return h;
 }
@@ -246,8 +248,8 @@ function eruptLip(world, h, w0) {
  * The tail, on whatever plate is passing over the plume now. Everywhere within hotspotTrackKm the plume marks the
  * TRACK — the swell it lifts, and the line its age progression runs along, one unbroken ribbon on the plate's own
  * lattice however that lattice sits against the world's. But it builds VOLCANOES only in bursts (eruptedDuring):
- * a burst piles rock within hotspotEdificeKm of the plume, then the plume goes quiet while the plate carries that
- * volcano off — so the chain is a string of separate islands and seamounts, not a line of land (developer).
+ * a burst piles rock within hotspotEdificeKm of the plume, then the plume goes quiet until the plate has carried that
+ * volcano a flexural spacing off — so the chain is a string of separate islands and seamounts, not a line of land.
  */
 function stampTrack(world, h, dt) {
     const { config, mesh, plates, owner, provisional, time } = world, { adjOffset, adjList, index, xyz } = mesh;
@@ -262,7 +264,7 @@ function stampTrack(world, h, dt) {
         const nb = adjList[k];
         if (!seen.has(nb) && crust.mask[nb] && closeness(nb) >= reach) { seen.add(nb); cells.push(nb); }
     }
-    const build = config.hotspotBuildKmPerMyr * h.strength * eruptedDuring(world, h, time - dt, time);
+    const build = config.hotspotBuildKmPerMyr * h.strength * eruptedDuring(world, h, plate, local, ventSpacingKm(crust, c0, time, config), time - dt, time);
     for (const c of cells) {
         if (crust.volcType[c] !== VolcanicType.LIP) crust.volcType[c] = VolcanicType.TRACK;
         crust.volcAt[c] = time;
@@ -272,24 +274,36 @@ function stampTrack(world, h, dt) {
 }
 
 /**
- * How much the plume erupted between t0 and t1 — the time spent in bursts, × each burst's intensity. A plume
- * alternates bursts (hotspotBurstMin…MaxMyr, intensity 0.5–1.4) with quiet spells (hotspotQuietMin…MaxMyr); a burst
- * shorter than a step still counts in full.
+ * How much the plume erupted between t0 and t1 — the time spent in bursts, × each burst's intensity (0.5–1.4). A burst
+ * builds one volcano for hotspotBurstMin…MaxMyr; then the plume is quiet until the plate it is under has carried that
+ * volcano `spacingKm` away (or a new plate has come over it), and the next burst begins — part-way through a step, as far
+ * as the drift since the last step says. A burst shorter than a step still counts in full.
  */
-function eruptedDuring(world, h, t0, t1) {
+function eruptedDuring(world, h, plate, local, spacingKm, t0, t1) {
     const { config } = world, rv = world.rngVolcano;
-    if (h.pulseUntil === undefined) { h.bursting = false; h.pulseUntil = t0 + rv() * config.hotspotQuietMaxMyr; }
-    let total = 0;
-    for (let t = t0; t < t1;) {
-        const end = Math.min(t1, h.pulseUntil);
-        if (h.bursting) total += h.pulseIntensity * (end - t);
-        if (end < h.pulseUntil) break;
-        // the pulse ends here: switch
-        if (h.bursting) { h.bursting = false; h.pulseUntil = end + config.hotspotQuietMinMyr + rv() * (config.hotspotQuietMaxMyr - config.hotspotQuietMinMyr); }
-        else { h.bursting = true; h.pulseIntensity = 0.5 + 0.9 * rv(); h.pulseUntil = end + config.hotspotBurstMinMyr + rv() * (config.hotspotBurstMaxMyr - config.hotspotBurstMinMyr); }
-        t = end;
+    let total = 0, t = t0;
+    if (!h.bursting) {
+        const v = h.vent, d = v && v.plate === plate.id ? PLANET_RADIUS_KM * Math.acos(Math.min(1, v.at[0] * local[0] + v.at[1] * local[1] + v.at[2] * local[2])) : Infinity;
+        if (d < spacingKm) { if (v) v.km = d; return 0; }
+        // (the burst began when the drift passed the spacing: within this step, in proportion to the drift over it)
+        t = d === Infinity || !(d > v.km) ? t0 : Math.max(t0, t1 - (t1 - t0) * (d - spacingKm) / (d - v.km));
+        h.bursting = true; h.pulseIntensity = 0.5 + 0.9 * rv(); h.pulseUntil = t + config.hotspotBurstMinMyr + rv() * (config.hotspotBurstMaxMyr - config.hotspotBurstMinMyr);
     }
+    const end = Math.min(t1, h.pulseUntil);
+    total += h.pulseIntensity * Math.max(0, end - t);
+    // the burst ends here: the volcano it built stays where the plate has carried it to, and the plume goes quiet
+    if (end >= h.pulseUntil) { h.bursting = false; h.vent = { plate: plate.id, at: [local[0], local[1], local[2]], km: 0 }; }
     return total;
+}
+
+/**
+ * How far apart the plate under the plume at raster cell `c` spaces its volcanoes (km): hotspotSpacingAlpha flexural
+ * lengths of its lithosphere, loaded by a volcano standing in water — an ocean plate's elastic thickness grows with its age.
+ */
+function ventSpacingKm(crust, c, time, config) {
+    const te = crust.type[c] === CrustType.OCEAN ? 3.4 * Math.sqrt(Math.max(1, time - crust.formedAt[c])) : config.hotspotContinentTeKm;
+    const E = 70e9, nu = 0.25, dRho = 3300 - 1030, g = 9.81;
+    return config.hotspotSpacingAlpha * (4 * E * (te * 1000) ** 3 / (12 * (1 - nu * nu)) / (dRho * g)) ** 0.25 / 1000;
 }
 
 // ─────────────────────────────── names and small helpers ───────────────────────────────

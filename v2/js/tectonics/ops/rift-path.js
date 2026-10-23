@@ -1,11 +1,13 @@
-// Finding a rift (WBP Part Va): from a junction, the cheapest arms to the coast — round cratons, along old sutures —
-// and, of the cuts they make, the one that crosses the landmass in the best shape; one arm fails. See ops/rift.js.
+// Finding a rift (WBP Part Va): from a junction, the cheapest arms to the coast — round cratons (cratonStrength: through
+// one only where every way round costs more), along old sutures —
+// and, of the cuts they make, the one the plate's own stress is likeliest to break; one arm fails. See ops/rift.js.
 
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { tangentToward, normalize, cross, dot, cellDistanceKm } from '../../core/sphere-geom.js';
 import { sidesOf, exteriorSea, maskedCells } from './rift-partition.js';
 import { FastNoise } from '../../core/fast-noise.js';
+import { netTorques, stressAcross, cutAlong } from '../step/plate-stress.js';
 
 /**
  * The grain of the crust a rift follows (developer: rifts "on way too straight lines … should curve a bit and be jagged";
@@ -32,19 +34,21 @@ export function grainOf(world) {
 }
 
 /**
- * What a rift search reads of a plate's crust, the same for every junction tried (rifting.js tryRift): its cells in order,
- * the sea its outer coast faces, each land cell's hops from that coast, and the grain.
+ * What a rift search reads of a plate, the same for every junction tried (rifting.js tryRift): its cells in order, the sea
+ * its outer coast faces, the grain, and what it needs to weigh the stress across a cut — each cell's net torque
+ * (step/plate-stress.js; null before the first torque balance) and the plate's rotation matrix.
  */
 export function riftContext(world, plate) {
     const { mesh } = world, crust = plate.crust, exterior = exteriorSea(mesh, crust);
-    return { cells: maskedCells(crust), exterior, fromCoast: coastDistance(mesh, crust, exterior), grain: grainOf(world) };
+    return { cells: maskedCells(crust), exterior, grain: grainOf(world), rho: netTorques(world, plate), mat: Array.from(plate.mat) };
 }
 
 /**
  * Find a rift across `plate`'s landmass through raster cell `junction`.
- * @param {number[]|null} pullAxis   plate-frame unit vector of the tug of war (the rift prefers to run across it); null = no preference
+ * @param {number[]|null} pullAxis   (unused: the stress across each cut decides where the plate breaks)
  * @param {Object} [ctx]   riftContext(world, plate), when several junctions of the same crust are tried
- * @returns {{path: number[], failedArm: number[], arms: number[][], across: number[], value: number}|null}   path = coast to coast through the junction
+ * @returns {{path: number[], failedArm: number[], arms: number[][], across: number[], value: number, stress: number, share: number}|null}   path = coast
+ *          to coast through the junction; stress across it (per 100 km, + tension); share of the land on its smaller side
  */
 export function findRift(world, plate, junction, pullAxis, needCratonsBothSides = true, ctx = null) {
     const { mesh, config } = world, { xyz, adjOffset, adjList, edgeKm } = mesh, crust = plate.crust;
@@ -52,22 +56,20 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     if (!land(junction) || crust.type[junction] === CrustType.CRATON) return null;
     ctx ??= riftContext(world, plate);
 
-    // cheapest paths from the junction across the land: weak lines cost riftWeaknessCost, cratons cannot be entered at all
+    // cheapest paths from the junction across the land: weak lines cost riftWeaknessCost, a craton cratonStrength
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
     const grain = ctx.grain;
-    const { cost, from } = cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * grain(c));
+    const strength = c => crust.type[c] === CrustType.CRATON ? config.cratonStrength : 1;
+    const { cost, from } = cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * strength(c) * grain(c));
     // coastal land cells reached — on the OUTER coast (an inland sea is not a way out), with the direction they lie in
-    const { exterior, fromCoast } = ctx;
+    const { exterior } = ctx;
     const J = pos(xyz, junction), coast = [];
     for (const c of ctx.cells) {
         if (!land(c) || cost[c] === Infinity) continue;
         let isCoast = false;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (exterior[adjList[k]]) { isCoast = true; break; }
         if (!isCoast || cellDistanceKm(xyz, junction, c) < config.riftMinArmKm) continue;
-        const dir = tangentToward(J, J, pos(xyz, c));
-        // a rift prefers to run ACROSS the pull: arms along the pull axis are dearer
-        const along = pullAxis ? Math.abs(dir[0] * pullAxis[0] + dir[1] * pullAxis[1] + dir[2] * pullAxis[2]) : 0;
-        coast.push({ c, dir, score: cost[c] * (1 + config.riftAcrossPullBias * along) });
+        coast.push({ c, dir: tangentToward(J, J, pos(xyz, c)), score: cost[c] });
     }
     if (coast.length < 2) return null;
     coast.sort((a, b) => a.score - b.score);
@@ -86,13 +88,16 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
         pairs.push({ a, b, perKm: (a.score + b.score) / chord });
     }
     pairs.sort((p, q) => p.perKm - q.perKm);
-    // Among the cheap pairs (within riftCostSlack of the cheapest), take the one whose pieces come out most compact
-    // (developer: round or square, not elongated) — a cut across an elongated landmass rather than along it. Only
-    // DISTINCT cuts count: the cheapest pairs are mostly the same two coast spots a cell apart, so a pair whose
-    // ends both lie near an evaluated pair's ends is passed over. Pairs must have no overhangs (the path always
-    // advances along its own line, or a promontory of one half would stick into the other and the halves would
-    // jam as they part) and leave riftMinPieceShare of the land on each side.
-    let chosen = null, chosenPath = null, bestValue = Infinity;
+    // Among the cheap pairs (within riftCostSlack of the cheapest), take the one the plate is likeliest to break along: the
+    // greatest stress across it for the strength of the ground it crosses (its cost per km). The stress is the plate's own
+    // (step/plate-stress.js): the pull the rest of the plate must hold the far side back with, per 100 km of the cut — so a
+    // narrow neck, carrying a big piece's pull on a short line, breaks before a broad body, and a thin strip along a coast,
+    // with little pulling on it, stays on (no rule against ribbons: they are rarely pulled off). Where nothing pulls the
+    // plate apart (a plume's rift, an overdue one), the stress floor riftStressFloor leaves the cheapest ground to break.
+    // Only DISTINCT cuts count: the cheapest pairs are mostly the same two coast spots a cell apart, so a pair whose ends
+    // both lie near an evaluated pair's ends is passed over. Pairs must have no overhangs (the path always advances along
+    // its own line, or a promontory of one half would stick into the other and the halves would jam as they part).
+    let chosen = null, chosenPath = null, bestValue = Infinity, chosenStress = 0, chosenShare = 0;
     const tried = [];
     for (const pair of pairs) {
         if (tried.length >= PAIRS_TRIED || (tried.length && pair.perKm > config.riftCostSlack * pairs[0].perKm)) break;
@@ -101,11 +106,11 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
         tried.push(pair);
         const path = [...trace(pair.a.c).slice(1).reverse(), junction, ...trace(pair.b.c).slice(1)];
         if (!isMonotone(mesh, path, config)) continue;
-        if (!crossesRatherThanHugs(mesh, path, fromCoast, config)) continue;
         const sides = sidesOf(mesh, crust, path, ctx.cells);
-        if (sides.share < config.riftMinPieceShare || (needCratonsBothSides && !sides.cratonsBothSides)) continue;   // a rift divides cratons: each side keeps at least one (a plume may shear a craton-less piece off)
-        const value = pair.perKm * (1 + config.riftElongationBias * (sides.elongation - 1));
-        if (value < bestValue) { bestValue = value; chosen = pair; chosenPath = path; }
+        if (!(sides.share > 0) || (needCratonsBothSides && !sides.cratonsBothSides)) continue;   // a rift divides cratons: each side keeps at least one (a plume may shear a craton-less piece off)
+        const sigma = ctx.rho ? stressOnCut(mesh, ctx, sides.side, path) : 0;
+        const value = pair.perKm / (Math.max(0, sigma) + config.riftStressFloor);
+        if (value < bestValue) { bestValue = value; chosen = pair; chosenPath = path; chosenStress = sigma; chosenShare = sides.share; }
     }
     if (!chosen) return null;
     const arm1 = chosen.a, arm2 = chosen.b;
@@ -113,7 +118,7 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     // The arms that FAIL are traced on a second, plain tree — one that gives old sutures no discount — so an
     // aulacogen strikes out across ordinary ground and leaves a NEW weak line behind it, instead of merely
     // re-tracing a line that was weak already (developer). Each one dies after riftFailedArmKm.
-    const plain = cheapestPaths(mesh, crust, junction, grain);
+    const plain = cheapestPaths(mesh, crust, junction, c => strength(c) * grain(c));
     const plainTrace = end => { const out = []; for (let c = end; c >= 0; c = plain.from[c]) out.push(c); return out.reverse(); };
     const failedArm = [], taken = [arm1, arm2];
     const plainCoast = coast.filter(e => plain.cost[e.c] < Infinity).sort((p, q) => plain.cost[p.c] - plain.cost[q.c]);
@@ -128,46 +133,22 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     const a3 = taken.length > 2 ? plainTrace(taken[2].c) : [];
     const ends = [chosenPath[0], chosenPath.at(-1)];
     // across = normal to the rift's great circle; value = cost per km × the elongation penalty, comparable between junctions
-    return { path: chosenPath, failedArm, arms: [a1, a2, a3], across: normalize(cross(pos(xyz, ends[0]), pos(xyz, ends[1]))), value: bestValue };
-}
-
-/** Hops from the outer coast, over the plate's land (−1 where the land cannot be reached). */
-function coastDistance(mesh, crust, exterior) {
-    const { numCells, adjOffset, adjList } = mesh, dist = new Int16Array(numCells).fill(-1);
-    const land = c => crust.mask[c] && crust.type[c] !== CrustType.OCEAN;
-    let ring = [];
-    for (let c = 0; c < numCells; c++) {
-        if (!land(c)) continue;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (exterior[adjList[k]]) { dist[c] = 0; ring.push(c); break; }
-    }
-    for (let d = 1; ring.length; d++) {
-        const next = [];
-        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (land(nb) && dist[nb] < 0) { dist[nb] = d; next.push(nb); } }
-        ring = next;
-    }
-    return dist;
+    return { path: chosenPath, failedArm, arms: [a1, a2, a3], across: normalize(cross(pos(xyz, ends[0]), pos(xyz, ends[1]))), value: bestValue, stress: chosenStress, share: chosenShare };
 }
 
 /**
- * Does the path CROSS the land rather than run along its edge? Its two ends must reach the coast, so the
- * cells within the clearance of each end are free; in between, the path may come near the coast — an
- * isthmus is a fine place to break — but only for riftCoastHugKm at a stretch. A longer stretch means the
- * rift is running parallel to a coast, which shaves a ribbon off it and leaves that ribbon hanging from
- * whichever piece it joins.
+ * The stress across a cut (step/plate-stress.js): on the side that would part (side 2), from its cells beside the path.
+ * @returns {number} per 100 km of the cut — + tension (the far side pulls away), − compression
  */
-function crossesRatherThanHugs(mesh, path, fromCoast, config) {
-    const { edgeKm } = mesh;
-    const clearance = Math.round(config.riftCoastClearanceKm / edgeKm), maxHug = config.riftCoastHugKm / edgeKm;
-    const endFree = Math.max(1, clearance);
-    let hug = 0;
-    for (let i = endFree; i < path.length - endFree; i++) {
-        const d = fromCoast[path[i]];
-        if (d >= 0 && d < clearance) { if (++hug > maxHug) return false; } else hug = 0;
-    }
-    return true;
+function stressOnCut(mesh, ctx, side, path) {
+    const onPath = new Uint8Array(mesh.numCells), far = [];
+    for (const c of path) onPath[c] = 1;
+    for (const c of ctx.cells) if (side[c] === 2) far.push(c);
+    const inFar = side.map(s => (s === 2 ? 1 : 0));
+    return stressAcross(ctx.rho, far, cutAlong(mesh, far, inFar, nb => onPath[nb]), mesh.xyz, mesh.edgeKm, ctx.mat);
 }
 
-/** Cheapest path from `junction` to every land cell, at `costOf` per cell; cratons cannot be entered. */
+/** Cheapest path from `junction` to every land cell, at `costOf` per cell. */
 function cheapestPaths(mesh, crust, junction, costOf) {
     const { xyz, adjOffset, adjList, numCells, edgeKm } = mesh;
     const cost = new Float64Array(numCells).fill(Infinity), from = new Int32Array(numCells).fill(-1);
@@ -178,7 +159,7 @@ function cheapestPaths(mesh, crust, junction, costOf) {
         const c = heap.pop();
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
-            if (!land(nb) || crust.type[nb] === CrustType.CRATON) continue;
+            if (!land(nb)) continue;
             const next = cost[c] + costOf(nb) * cellDistanceKm(xyz, c, nb) / edgeKm;
             if (next < cost[nb]) { cost[nb] = next; from[nb] = c; heap.push(nb, next); }
         }

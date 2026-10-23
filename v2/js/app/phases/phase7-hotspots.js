@@ -18,10 +18,11 @@ const TUNABLES = [
     { id: 'plumeOceanWeight', label: 'Chance of a plume under cool mantle (1 = no preference for insulated)', min: 0, max: 1, step: 0.05 },
     { id: 'mantleInsulateMyr', label: 'Mantle under a continent warms over', min: 20, max: 400, step: 10, unit: ' Myr' },
     { id: 'mantleCoolMyr', label: '…and cools again over', min: 20, max: 400, step: 10, unit: ' Myr' },
-    { id: 'plumeRiftChance', label: 'Chance a plume head splits a big continent', min: 0, max: 1, step: 0.05 },
+    { id: 'plumeRiftChance', label: 'Chance a plume head splits a continent pulled apart', min: 0, max: 1, step: 0.05 },
+    { id: 'plumeRiftTension', label: '…pulled at least this hard (tension)', min: 0.05, max: 1, step: 0.05 },
     { id: 'lipAreaMaxMkm2', label: 'Largest flood-basalt province', min: 0.5, max: 12, step: 0.25, unit: ' Mkm²' },
     { id: 'hotspotBuildKmPerMyr', label: 'Volcanic pile a burst builds per Myr', min: 1, max: 15, step: 0.5, unit: ' km' },
-    { id: 'hotspotQuietMaxMyr', label: 'Longest quiet spell between bursts', min: 1.5, max: 12, step: 0.5, unit: ' Myr' },
+    { id: 'hotspotSpacingAlpha', label: 'Volcano spacing (flexural lengths)', min: 0.5, max: 5, step: 0.1 },
     { id: 'lipLobes', label: 'How lobed a flood-basalt province is', min: 0, max: 1, step: 0.05 },
 ];
 const CHECKLISTS = {
@@ -29,7 +30,7 @@ const CHECKLISTS = {
         'The plume (marker) stays put while Pacifica slides north over it; a chain trails away from it downstream (Volcanism layer), older the further it has travelled: white-hot over the plume, orange, then red and dark.',
         'The chain is not a line of land: the plume erupts in BURSTS, each building one volcano, and goes quiet while the plate carries it off — separate volcanoes (bold) on the faint swell the plume lifts. Only a fresh, tall one breaks the sea surface (pale island); older ones are worn down and sink with the ageing sea floor into seamounts.',
         'At 45 Myr the plate turns 60° to the west-north-west: from then on the chain comes off the plume in the new direction, and the old part keeps its old direction — a bend, like the Hawaiian–Emperor chain.',
-        'The swell under the chain is continuous — the plume never skips a stretch of plate — while the volcanoes on it are spaced by the quiet spells between bursts.',
+        'The swell under the chain is continuous — the plume never skips a stretch of plate — while the volcanoes on it stand apart: each next one breaks through only once the plate has carried the last beyond the moat its weight bends into the plate — wider apart on an old, stiff plate.',
     ],
     deccan: [
         'At 12 Myr the plume reaches the surface under Indica’s southern half: its head floods a lobed, ragged patch of the continent with basalt at once (Volcanism layer: violet) — the traps (event log). Not a disc: flood basalts spread where the ground lets them.',
