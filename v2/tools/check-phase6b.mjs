@@ -1,7 +1,14 @@
 // Headless acceptance checks for Phase 6b (subduction initiation at old passive margins).
+// Hard checks: a wholly passive scene founders a trench along an old margin — pushed down by the founder law (founderUrge:
+// the ocean's age and the squeeze across it), never on ocean younger than oceanNeutralAgeMyr — the passive ocean going
+// down, the basin closing, the continents colliding, no plate ballooning, continental crust kept; the ablations (rule off;
+// too young unsqueezed) and the founder law's induced branch (squeezed hard, 40–120 Myr ocean founders; under
+// oceanNeutralAgeMyr it never does); determinism; plates carved out of the passive ocean; the segment vote; no gaps.
+// Reported against Earth over the start world's history (per seed): initiation events per 100 Myr, induced and
+// spontaneous; the sea floor's age (mean, share older than 180 and 250 Myr); the plate count.
 // Usage: node v2/tools/check-phase6b.mjs
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, landCount } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, landCount, mean } from './lib/check-kit.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
@@ -9,16 +16,17 @@ import { frameTallies } from '../js/tectonics/measure.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { BoundaryKind, EventKind } from '../js/tectonics/model/world.js';
+import { founderUrge } from '../js/tectonics/step/subduction-init.js';
 
-const SEED = 12345, SNAPSHOT_MYR = 4;
+const SEED = 12345, SNAPSHOT_MYR = 4, MORE_SEEDS = [1, 2];      // (the start world's history is run on a few seeds)
 const mesh = labMesh(), { numCells, xyz } = mesh;
 // continental crust only: island arcs legitimately ADD land as they grow and accrete, so they are counted apart
 const coreCount = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] >= 0 && (f.type[w] === CrustType.CONTINENT || f.type[w] === CrustType.CRATON)) n++; return n; };
 const trenchCells = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.boundary[w] === BoundaryKind.OVERRIDING) n++; return n; };
 const movers = f => f.plates.filter(p => p.alive && !p.isBackground);
 
-function run(id, overrides = {}, untilMyr = null) {
-    const scene = RIFT_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
+function run(id, overrides = {}, untilMyr = null, seed = SEED) {
+    const scene = RIFT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     const { frames, steps } = simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });
     return { scene, world, frames, steps, events: world.events, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6) };
@@ -50,9 +58,14 @@ section('an old passive margin founders');
     check('a trench founders along an old margin', started.length >= 1,
         first ? `${started.length} margin(s) founder; first at ${first.time.toFixed(0)} Myr — ${first.text}` : `none founders in ${r.frames.at(-1).time} Myr`);
     if (first) {
+        // what founders it is the founder law: the ocean's weight (√age) and the squeeze across the margin against its strength.
+        // (An in-plate founder books the plate's stress across the coast; between two plates the event carries no squeeze —
+        // here the scene starts at rest, so the urge is the age's alone, a lower bound.) And no ocean younger than
+        // oceanNeutralAgeMyr founders, however it is squeezed: too warm and light
+        const urgeAt = e => founderUrge(e.data.ageMyr, e.data.stress !== undefined ? -e.data.stress : 0, cfg);
         const { lengthKm, ageMyr } = first.data;
-        check('…long enough, and old enough, to be worth calling a margin', lengthKm >= cfg.subductionInitMinLengthKm && ageMyr >= cfg.subductionInitAgeMyr,
-            `${lengthKm.toFixed(0)} km of ${ageMyr.toFixed(0)} Myr ocean (thresholds ${cfg.subductionInitMinLengthKm} km, ${cfg.subductionInitAgeMyr} Myr)`);
+        check('…pushed down by the founder law, on ocean old enough to sink', urgeAt(first) > 0 && started.every(e => e.data.ageMyr >= cfg.oceanNeutralAgeMyr),
+            `the first: ${lengthKm.toFixed(0)} km of ${ageMyr.toFixed(0)} Myr ocean, urge ${urgeAt(first).toFixed(2)}; youngest founder ${Math.min(...started.map(e => e.data.ageMyr)).toFixed(0)} Myr (none may be under ${cfg.oceanNeutralAgeMyr})`);
         // the passive ocean never becomes the overriding side of a trench: in no frame does it hold trench crust
         const bgId = r.frames[0].plates.find(p => p.isBackground).id;
         const bgTrench = Math.max(...r.frames.map(f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] === bgId && f.trench[w]) n++; return n; }));
@@ -78,26 +91,50 @@ section('it is a rule, not an accident');
     const off = run('founder', { subductionInitRatePerMyr: 0 });
     check('with the rule off, nothing founders and the basin stays open', off.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0 && off.events.every(e => e.kind !== EventKind.SUTURE) && movers(off.frames.at(-1)).every(p => p.speedCmYr < 0.5),
         `0 margins founder, no collision; ${movers(off.frames.at(-1)).map(p => p.speedCmYr.toFixed(2)).join('/')} cm/yr after ${off.frames.at(-1).time} Myr`);
+    // spontaneous: unsqueezed (this scene starts at rest), ocean short of the age threshold never founders
     const young = run('founder', { subductionInitAgeMyr: 10000 });
-    check('crust too young to founder never does', young.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0,
+    check('unsqueezed, crust too young to founder never does', young.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0,
         `age threshold 10000 Myr: ${young.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length} margins founder`);
+    // induced (Stern 2004; it dominates on Earth, Crameri et al. 2020): the founder law itself. Squeezed hard — twice the
+    // margin's strength — ocean of 40–120 Myr founders, though alone it would not; under oceanNeutralAgeMyr it never does,
+    // squeezed however hard (founderUrge > 0 is what lets a margin found, step/subduction-init.js)
+    const cfg = off.world.config, hard = 2 * cfg.founderStrength, crush = 20 * cfg.founderStrength;
+    const induced = [40, 80, 120].map(age => ({ age, squeezed: founderUrge(age, hard, cfg), alone: founderUrge(age, 0, cfg) }));
+    check('squeezed hard, a margin of 40–120 Myr ocean founders, though alone it would not', induced.every(x => x.squeezed > 0 && x.alone === 0),
+        induced.map(x => `${x.age} Myr: urge ${x.squeezed.toFixed(2)} squeezed, ${x.alone.toFixed(2)} alone`).join(' · '));
+    const tooYoung = [5, 15, cfg.oceanNeutralAgeMyr - 1].map(age => ({ age, urge: founderUrge(age, crush, cfg) }));
+    check(`under ${cfg.oceanNeutralAgeMyr} Myr, ocean never founders, however hard it is squeezed`, tooYoung.every(x => x.urge === 0),
+        tooYoung.map(x => `${x.age} Myr at ${crush / cfg.founderStrength}× the margin's strength: urge ${x.urge.toFixed(2)}`).join(' · '));
     const a = run('founder'), b = run('founder');
     check('the same seed replays the same history', a.events.length === b.events.length && a.events.every((e, i) => e.text === b.events[i].text) && a.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${a.events.length} events and the final world, identical`);
 }
 
 section('in a whole history');
+const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {}, null, seed) }));
 {
-    const r = run('breakup');
-    const started = r.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT);
-    check('old margins founder during the start world’s 300 Myr', started.length >= 1,
-        started.length ? started.map(e => `${e.time.toFixed(0)} Myr`).join(', ') : 'none');
+    const cfg = histories[0].world.config, perSeed = fn => histories.map(h => `${h.seed}: ${fn(h)}`).join(' · ');
+    // initiation events — between plates, and at a margin inside one — per 100 Myr; induced where the ocean's age alone would
+    // not have founded it (the squeeze did), spontaneous where it would. Earth: more than a dozen in the last 100 Myr, mostly
+    // induced and next to existing trenches (Crameri et al. 2020)
+    const counts = histories.map(h => {
+        const started = h.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT), per100 = n => n * 100 / h.frames.at(-1).time;
+        const induced = started.filter(e => founderUrge(e.data.ageMyr, 0, cfg) === 0).length;
+        return { all: per100(started.length), induced: per100(induced), spontaneous: per100(started.length - induced), times: started.map(e => e.time.toFixed(0)).join(', ') };
+    });
+    report('subduction initiations per 100 Myr', counts.map(c => c.all), { earth: [12, 30], unit: ' /100 Myr', source: 'more than a dozen, mostly induced: Crameri et al. 2020', digits: 1,
+        detail: `induced · spontaneous: ${counts.map(c => `${c.induced.toFixed(1)} · ${c.spontaneous.toFixed(1)}`).join(' | ')}` });
     // WBP: the sea floor is young — it is recycled. Without subduction initiation the oldest ocean just sits there.
-    const last = r.frames.at(-1);
-    let ocean = 0, old = 0;
-    for (let w = 0; w < numCells; w++) if (last.owner[w] >= 0 && last.type[w] === CrustType.OCEAN) { ocean++; if (last.time - last.formedAt[w] > 250) old++; }
-    check('most of the sea floor is younger than 250 Myr', old < 0.35 * ocean, `${(100 * old / ocean).toFixed(0)} % of ${ocean} ocean cells are older than 250 Myr at ${last.time} Myr`);
-    check('the plate count stays sane and there are no gaps', Math.max(...r.frames.map(f => movers(f).length)) <= r.world.config.reserved.maxPlates && r.frames.every(f => frameTallies(f).gaps === 0),
-        `at most ${Math.max(...r.frames.map(f => movers(f).length))} plates at once`);
+    const ages = histories.map(h => {
+        const last = h.frames.at(-1), a = [];
+        for (let w = 0; w < numCells; w++) if (last.owner[w] >= 0 && last.type[w] === CrustType.OCEAN) a.push(last.time - last.formedAt[w]);
+        return { mean: mean(a), over180: 100 * a.filter(v => v > 180).length / a.length, over250: 100 * a.filter(v => v > 250).length / a.length };
+    });
+    report('mean sea-floor age', ages.map(a => a.mean), { earth: [60, 65], unit: ' Myr', source: 'Müller et al. 2008', digits: 0, detail: 'at the end of each 300 Myr history' });
+    report('sea floor older than 180 Myr', ages.map(a => a.over180), { earth: [0, 1], unit: ' %', source: 'in situ maximum ≈ 180 Ma, Müller et al. 2008', digits: 1 });
+    report('sea floor older than 250 Myr', ages.map(a => a.over250), { earth: [0, 1], unit: ' %', source: 'rare relics to ≈ 340 Myr, Granot 2016', digits: 1 });
+    check('no gaps in any frame', histories.every(h => h.frames.every(f => frameTallies(f).gaps === 0)), 'every frame, every seed');
+    report('plates at the end', histories.map(h => movers(h.frames.at(-1)).length), { earth: [14, 52], source: '14 large plates, 52 in all: Bird 2003 (PB2002)', digits: 0,
+        detail: `at most ${perSeed(h => Math.max(...h.frames.map(f => movers(f).length)))} at once (the engine holds ${cfg.reserved.maxPlates})` });
 }
 
 section('a plate is carved out of the passive ocean');
@@ -149,7 +186,7 @@ section('one polarity per stretch of boundary');
         }
         return { flips, pairs, share: pairs ? flips / pairs : 0 };
     };
-    const on = ragged(run('breakup')), off = ragged(run('breakup', { segmentPolarity: false }));
+    const on = ragged(histories[0]), off = ragged(run('breakup', { segmentPolarity: false }));
     check('the segment vote makes ocean-on-ocean fronts less ragged', on.pairs > 1000 && off.pairs > 1000 && on.share < 0.8 * off.share && on.share < 0.06,
         `role flips between neighbouring ocean boundary cells of one plate: ${(100 * on.share).toFixed(1)} % with the vote (${on.flips}/${on.pairs}), ${(100 * off.share).toFixed(1)} % without (${off.flips}/${off.pairs})`);
 }

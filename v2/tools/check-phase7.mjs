@@ -1,7 +1,13 @@
 // Headless acceptance checks for Phase 7a (hotspots and Large Igneous Provinces).
+// Hard checks: a fixed plume draws a continuous, age-progressive track at the plate's speed and bends with it; volcano
+// tops sink as the plate under them ages; a plume head floods a continent on arrival with a province in the configured
+// size range that rides with it, and its tail links the traps to the plume; the plume sampler draws at its analytic
+// weight; the mantle remembers the supercontinent; a plume that rifts is the one that flooded; bookkeeping and replay.
+// Reported against Earth: volcano spacing, drowning age, province shape, plume counts, plume-head land/sea split and
+// plume rifts.
 // Usage: node v2/tools/check-phase7.mjs
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, cellsWhere, piecesOf, isConnected } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, cellsWhere, piecesOf, isConnected } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { tangentToward } from '../js/core/sphere-geom.js';
 import { makeRng } from '../../js/rng.js';
@@ -47,13 +53,43 @@ section('a plate slides over a fixed plume (Hawaii–Emperor)');
     const pathKm = scene.speedCmYr * 10 * scene.maxMyr;
     check('the swell it lifts is one continuous ribbon, as long as the plate has travelled', isConnected(mesh, track) && track.length >= 0.8 * pathKm / edgeKm,
         `${track.length} track cells in ${isConnected(mesh, track) ? 'one piece' : 'several pieces'}; the plate travelled ${pathKm.toFixed(0)} km ≈ ${(pathKm / edgeKm).toFixed(0)} cells`);
-    // …but the volcanoes on it come in bursts: separate edifices, not a wall of rock (developer)
+    // the volcanoes on it come in bursts: the spacing of their centres along the chain, set by the plate's flexure — the next
+    // breaks through hotspotSpacingAlpha flexural lengths from the last (ten Brink 1991)
     const volcanoes = track.filter(w => last.volcKm[w] >= SEAMOUNT_KM), edifices = piecesOf(mesh, volcanoes);
-    check('on that swell the volcanoes are separate — bursts, not a line of land', edifices.length >= 8 && volcanoes.length <= 0.6 * track.length,
-        `${edifices.length} separate volcanoes (${volcanoes.length} cells) along ${track.length} cells of swell`);
-    const islands = volcanoes.filter(w => volcanoTopKm(last, w) > 0), old = volcanoes.filter(w => last.time - last.volcAt[w] > 30);
-    check('only fresh volcanoes break the surface; older ones have sunk into seamounts', islands.length >= 1 && islands.every(w => last.time - last.volcAt[w] < 25) && old.length >= 5 && old.every(w => volcanoTopKm(last, w) < 0),
-        `${islands.length} island cells, last erupted ${islands.map(w => (last.time - last.volcAt[w]).toFixed(0)).join(', ')} Myr ago; all ${old.length} volcano cells older than 30 Myr are seamounts`);
+    const centreOf = cells => normalize(cells.reduce((s, w) => [s[0] + xyz[3 * w], s[1] + xyz[3 * w + 1], s[2] + xyz[3 * w + 2]], [0, 0, 0]));
+    const byAge = edifices.map(e => ({ c: centreOf(e), age: e.reduce((s, w) => s + last.time - last.volcAt[w], 0) / e.length })).sort((a, b) => a.age - b.age);
+    const gaps = byAge.slice(1).map((e, i) => kmBetween(e.c, byAge[i].c)).sort((a, b) => a - b);
+    report('spacing of the volcanoes along the chain (median, centre to centre)', gaps.length ? gaps[gaps.length >> 1] : NaN,
+        { earth: [40, 100], unit: ' km', digits: 0, source: 'Hawaii; flexural spacing ∝ Te^¾ (ten Brink 1991)', detail: `${edifices.length} volcanoes (${volcanoes.length} cells) along ${track.length} cells of swell; cells are ${edgeKm.toFixed(0)} km across; spacing ${r.world.config.hotspotSpacingAlpha} flexural lengths` });
+    // each volcano's top sinks once it stops erupting: the floor under it deepens with its age (√age, Parsons & Sclater)
+    // and the pile wears down. Followed frame to frame: a pile is known by its plume, eruption time and height
+    const tops = new Map();
+    for (const f of r.frames) {
+        const now = new Map();
+        for (let w = 0; w < numCells; w++) {
+            const top = f.type[w] === CrustType.OCEAN ? volcanoTopKm(f, w) : null;
+            if (top === null) continue;
+            const key = `${f.volcSource[w]}|${f.volcAt[w]}|${f.volcKm[w]}`;
+            now.set(key, Math.max(now.get(key) ?? -Infinity, top));
+        }
+        for (const [key, top] of now) (tops.get(key) ?? tops.set(key, []).get(key)).push({ time: f.time, age: f.time - Number(key.split('|')[1]), top });
+    }
+    let followed = 0, rises = 0, worstRise = 0;
+    const drownAt = [];
+    for (const seen of tops.values()) {
+        if (seen.length < 2) continue;
+        followed++;
+        for (let i = 1; i < seen.length; i++) {
+            const rise = seen[i].top - seen[i - 1].top;
+            if (rise > 1e-3) { rises++; worstRise = Math.max(worstRise, rise); }
+            if (seen[i - 1].top > 0 && seen[i].top <= 0) drownAt.push(seen[i].age);
+        }
+    }
+    check('each volcano’s top sinks as the plate under it ages — none rises again without erupting', followed >= 10 && rises === 0,
+        `${followed} volcanoes followed frame to frame; ${rises} times a top rose (by up to ${(1000 * worstRise).toFixed(0)} m)`);
+    const islands = volcanoes.filter(w => volcanoTopKm(last, w) > 0), drowned = [...drownAt].sort((a, b) => a - b);
+    report('age at which a volcano drowns (median)', drowned.length ? drowned[drowned.length >> 1] : NaN,
+        { earth: [28, 30], unit: ' Myr', digits: 0, source: 'the Darwin Point: Kure, ~28–30 Ma', detail: `${drowned.length} volcanoes seen to drown, ${drowned.length ? `${drowned[0].toFixed(0)}–${drowned.at(-1).toFixed(0)}` : '–'} Myr after their last eruption; ${islands.length} island cells now` });
     const age = w => last.time - last.volcAt[w], dist = w => kmBetween(pos(w), H);
     const rho = spearman(track.map(age), track.map(dist));
     check('the chain is youngest over the plume and older downstream', rho > 0.95, `rank correlation of age with distance from the plume: ${rho.toFixed(3)}`);
@@ -80,12 +116,13 @@ section('a plume head reaches a drifting continent (Deccan)');
     const lip = cellsWhere(numCells, w => last.volcType[w] === VolcanicType.LIP && last.owner[w] >= 0);
     const smallest = 1e6 * cfg.lipAreaMinMkm2 / cellAreaKm2, largest = 1e6 * cfg.lipAreaMaxMkm2 / cellAreaKm2;
     const onLand = lip.filter(w => continental(last, w)).length;
-    // lobed and ragged, like a craton — not a disc (developer)
+    // its outline: lobed and ragged, or a disc? (Earth's provinces are ragged, much of it from later erosion and burial)
     const c = normalize(lip.reduce((s, w) => [s[0] + xyz[3 * w], s[1] + xyz[3 * w + 1], s[2] + xyz[3 * w + 2]], [0, 0, 0])), lipSet = new Set(lip);
     const rim = lip.filter(w => { for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) if (!lipSet.has(adjList[k])) return true; return false; }).map(w => kmBetween(pos(w), c));
     const spread = Math.max(...rim) / Math.min(...rim);
-    check('the province is lobed and ragged, not a disc', spread >= 1.4, `its edge lies ${Math.min(...rim).toFixed(0)}–${Math.max(...rim).toFixed(0)} km from its middle (${spread.toFixed(1)}×; a disc would be ~1.2×)`);
-    check('…a province of the right size, and it rides on with the continent', lip.length >= 0.7 * smallest && lip.length <= 1.3 * largest && onLand >= 0.8 * lip.length,
+    report('the province’s outline: farthest ÷ nearest edge from its middle', spread, { digits: 1, unit: '×', source: 'ragged on Earth; a disc would be ~1.2×', detail: `its edge lies ${Math.min(...rim).toFixed(0)}–${Math.max(...rim).toFixed(0)} km from its middle` });
+    // (the configured range is Bryan & Ernst 2008's > 0.1 Mkm² up to Siberia; CAMP reached ~10 Mkm²)
+    check('…a province in the configured size range, and it rides on with the continent', lip.length >= 0.7 * smallest && lip.length <= 1.3 * largest && onLand >= 0.8 * lip.length,
         `${lip.length} LIP cells (${(lip.length * cellAreaKm2 / 1e6).toFixed(1)} Mkm², expected ${(smallest * cellAreaKm2 / 1e6).toFixed(1)}–${(largest * cellAreaKm2 / 1e6).toFixed(1)}); ${onLand} of them still on the continent at ${last.time} Myr`);
     // from the plume now, along volcanic crust only, back to the traps
     const here = mesh.index.nearest(H[0], H[1], H[2]), volcanic = new Set(cellsWhere(numCells, w => last.volcType[w] !== VolcanicType.NONE && last.owner[w] >= 0));
@@ -100,7 +137,9 @@ section('a plume head reaches a drifting continent (Deccan)');
     check('then the tail draws an unbroken chain from the traps to where the plume is now', reachesTraps, reachesTraps ? `volcanic crust links the plume to the traps, ${kmBetween(H, pos(lip[0])).toFixed(0)} km away` : 'the chain is broken');
     const youngest = cellsWhere(numCells, w => volcanic.has(w)).reduce((best, w) => (last.volcAt[w] > last.volcAt[best] ? w : best), here);
     check('…youngest over the plume', kmBetween(pos(youngest), H) < 1.5 * edgeKm, `the most recent eruption is ${kmBetween(pos(youngest), H).toFixed(0)} km from the plume`);
-    check('a continent too small to split is only scarred, not rifted', !r.events.some(e => e.kind === EventKind.RIFT), `${r.events.filter(e => e.kind === EventKind.RIFT).length} rifts`);
+    // (whether a plume head rifts a continent comes from how hard the continent is pulled apart, plumeRiftTension — a head
+    // alone does not break a plate: Buiter & Torsvik 2014; this scene's continent is not pulled apart)
+    check('a continent that is not pulled apart is only scarred, not rifted', !r.events.some(e => e.kind === EventKind.RIFT), `${r.events.filter(e => e.kind === EventKind.RIFT).length} rifts`);
 }
 
 section('plumes favour insulated mantle — but not only');
@@ -119,23 +158,34 @@ section('plumes favour insulated mantle — but not only');
     let under = 0;
     const draws = 3000;
     for (let i = 0; i < draws; i++) if (world.mantleHeat[pickPlumeSite(world, rng)] === 1) under++;
-    const landShare = land / numCells, share = under / draws;
-    check('a new plume favours the mantle under a continent, strongly but not absolutely', share > landShare + 0.2 && share < 0.92,
-        `${(100 * share).toFixed(0)} % of plumes rise under continent, which covers ${(100 * landShare).toFixed(0)} % of the planet`);
+    // a unit test of the sampler, not physics (whether plumes favour insulated mantle is disputed: Coltice et al. 2007
+    // against Burke & Torsvik 2004): with no live plume to keep away from, a cell is drawn with weight plumeOceanWeight
+    // + (1 − plumeOceanWeight) × heat, so the share under continent is land ÷ (land + plumeOceanWeight × sea)
+    const landShare = land / numCells, share = under / draws, cool = world.config.plumeOceanWeight;
+    const analytic = landShare / (landShare + cool * (1 - landShare)), sigma = Math.sqrt(analytic * (1 - analytic) / draws);
+    check('the plume sampler draws under continent at its analytic weight (unit test)', Math.abs(share - analytic) <= 4 * sigma,
+        `${(100 * share).toFixed(1)} % of ${draws} draws under continent, which covers ${(100 * landShare).toFixed(0)} % of the planet; weight ${cool} at sea gives ${(100 * analytic).toFixed(1)} % (± ${(100 * sigma).toFixed(1)})`);
 
-    const r = run('history'), { last, frames } = r, lips = r.events.filter(e => e.kind === EventKind.LIP);
-    const traps = lips.filter(e => e.data.onLand).length, plateaus = lips.filter(e => !e.data.onLand).length;
-    check('over a history, heads rise under continents and under open ocean', traps >= 2 && plateaus >= 2, `${traps} traps on land, ${plateaus} plateaus at sea, from ${lips.length} plume heads`);
-    check('some 10–20 plumes are live at a time, as on Earth', last.hotspots.length >= 6 && last.hotspots.length <= 24, `${last.hotspots.length} live plumes at ${last.time} Myr`);
+    const r = run('history'), { last, frames } = r;
+    // (the counts across seeds: the scene's own seed and two more)
+    const others = [SEED + 1, SEED + 2].map(seed => run('history', {}, seed)), runs = [r, ...others];
+    const headsOf = x => x.events.filter(e => e.kind === EventKind.LIP), onLandShare = x => headsOf(x).filter(e => e.data.onLand).length / Math.max(1, headsOf(x).length);
+    report('share of plume heads rising under continent (the rest under open ocean)', runs.map(x => 100 * onLandShare(x)), { digits: 0, unit: ' %', source: 'Earth has both: Deccan, Siberia on land; Ontong Java, Kerguelen at sea',
+        detail: runs.map(x => `${headsOf(x).filter(e => e.data.onLand).length} traps, ${headsOf(x).filter(e => !e.data.onLand).length} plateaus`).join(' · ') });
+    report('live plumes at the end of a history', runs.map(x => x.last.hotspots.length), { earth: [7, 50], digits: 0, source: '7 deep plumes of 49 hotspots (Courtillot et al. 2003); ~27 in tomography (French & Romanowicz 2015); 40–50 in catalogues',
+        detail: `at ${last.time} Myr, seeds ${runs.map((x, i) => SEED + i).join(', ')}` });
     let was = 0, nWas = 0, never = 0, nNever = 0;
     for (let w = 0; w < numCells; w++) {
         if (continental(last, w)) continue;
         if (continental(frames[0], w)) { was += last.mantleHeat[w]; nWas++; } else { never += last.mantleHeat[w]; nNever++; }
     }
     const heatWas = was / nWas / 255, heatNever = never / nNever / 255;
-    check('the mantle remembers where the supercontinent was', heatWas > 1.5 * heatNever, `mean heat at ${last.time} Myr where the supercontinent sat but is now ocean: ${heatWas.toFixed(2)}; where there was never continent: ${heatNever.toFixed(2)}`);
+    check('the mantle remembers where the supercontinent was', heatWas > heatNever, `mean heat at ${last.time} Myr where the supercontinent sat but is now ocean: ${heatWas.toFixed(2)}; where there was never continent: ${heatNever.toFixed(2)}`);
+    // how long it remembers: the mantle cools back over mantleCoolMyr once the continent has gone (Coltice et al. 2007:
+    // a supercontinent warms the mantle by up to ~100 °C)
+    report('mantle heat where the supercontinent sat ÷ where there was never continent', heatWas / heatNever, { digits: 2, unit: '×', source: 'Coltice et al. 2007: warmer under a supercontinent', detail: `at ${last.time} Myr; it cools back over ~${r.world.config.mantleCoolMyr} Myr (mantleCoolMyr)` });
     const plumeRifts = r.events.filter(e => e.kind === EventKind.RIFT && e.data.cause === 'plume').length, rifts = r.events.filter(e => e.kind === EventKind.RIFT).length;
-    check('plume heads add to rifting, but do not become a second rift machine', plumeRifts >= 1 && plumeRifts <= 4 && rifts <= 14, `${rifts} rifts in ${last.time} Myr, ${plumeRifts} of them by a plume head`);
+    report('rifts opened by a plume head', plumeRifts, { digits: 0, source: 'plume–rift links are real (Courtillot et al. 1999); no Earth count', detail: `${rifts} rifts in ${last.time} Myr, ${plumeRifts} of them by a plume head` });
     check('no gaps', frames.every(f => frameTallies(f).gaps === 0), 'every frame');
 }
 

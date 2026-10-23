@@ -1,7 +1,16 @@
 // Headless acceptance checks for Phase 7b (margins, flat slabs, slab rollback and back-arc basins).
+// Hard checks: coasts are classified active/leading and passive/trailing; a young slab under a driving plate flattens
+// (a scene of the current trigger), the flat-slab belt reaches further inland than the Andean one and migrates, the
+// slab steepens again; an oblique margin's belt narrows with the margin-normal share of convergence; the belt formula
+// (a unit test); rollback rifts an arc or a coherent strip of coast off, the arc goes with it, a back-arc sea opens at a
+// ridge at the rollback rate, stops, rejoins and keeps its sea and land; in a whole history every strip stops in time and
+// follows its trench, plates keep within the speed caps (continental plates too), plate count, gaps and step count stay
+// sane, every coast kind, fore-arc islands and transpression ridges appear, and the history replays.
+// Reported against Earth: flat-slab and Andean belt reach, back-arc opening rate and duration, strip land area, how
+// often a strip carries craton, back-arcs per 100 Myr, and the land fore-arc islands add.
 // Usage: node v2/tools/check-phase7b.mjs
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { MARGIN_SCENES } from '../js/tectonics/scenarios/margin-scenes.js';
 import { heading, omegaFor } from '../js/tectonics/scenarios/hotspot-scenes.js';
@@ -61,6 +70,8 @@ section('a young slab goes in flat (laramide)');
     const flat = run('laramide'), steep = run('laramide', { flatSlabMaxAgeMyr: 0 });
     const count = (r, type) => { const id = plateNamed(r.last, 'Laurentia').id; return cellsWhere(numCells, w => r.last.owner[w] === id && r.last.oroType[w] === type).length; };
     const lar = count(flat, OrogenyType.LARAMIDE), and = count(flat, OrogenyType.ANDEAN), andSteep = count(steep, OrogenyType.ANDEAN), larSteep = count(steep, OrogenyType.LARAMIDE);
+    // (the trigger is the slab's buoyancy under a plate advancing on it: young, or carrying a plateau or a ridge, whose crust
+    // keeps it buoyant longer — flatSlabCrustKm; Gutscher et al. 2000, van Hunen et al. 2002)
     check('under a plate driving at it, a young slab flattens: the belt is Laramide', flat.events.some(e => e.kind === EventKind.SLAB_FLAT) && lar >= 3 * Math.max(1, and),
         `${lar} Laramide belt cells, ${and} Andean ones; event: ${flat.events.find(e => e.kind === EventKind.SLAB_FLAT)?.text.slice(0, 70) ?? 'none'}…`);
     check('with flat slabs off, the same margin builds an Andean belt', larSteep === 0 && andSteep > 20, `${andSteep} Andean belt cells, ${larSteep} Laramide ones`);
@@ -68,7 +79,9 @@ section('a young slab goes in flat (laramide)');
     // spread along the flanks, not the belt)
     const reach = (r, type) => { const id = plateNamed(r.last, 'Laurentia').id, d = inlandKm(r.last, id), ds = cellsWhere(numCells, w => r.last.owner[w] === id && r.last.oroType[w] === type).map(d).filter(v => v >= 0).sort((x, y) => x - y); return ds.length ? ds[Math.floor(0.5 * (ds.length - 1))] : 0; };
     const rLar = reach(flat, OrogenyType.LARAMIDE), rAnd = reach(steep, OrogenyType.ANDEAN);
-    check('the flat-slab belt reaches far further inland', rLar >= 1.5 * rAnd && rLar >= 400, `the Laramide belt lies typically ${rLar.toFixed(0)} km from the coast; the Andean one ${rAnd.toFixed(0)} km (medians)`);
+    check('the flat-slab belt reaches far further inland than the Andean one', rLar >= 1.5 * rAnd, `the Laramide belt lies typically ${rLar.toFixed(0)} km from the coast; the Andean one ${rAnd.toFixed(0)} km (medians)`);
+    report('how far inland the flat-slab belt lies (median)', rLar, { earth: [800, 1500], unit: ' km', digits: 0, source: 'Laramide uplifts from the trench (Bird 1988; Dickinson & Snyder 1978)', detail: 'measured from the active coast, not the trench' });
+    report('how far inland the Andean belt lies (median)', rAnd, { earth: [200, 700], unit: ' km', digits: 0, source: 'Andean belt width' });
     // the belt grows with the flat slab: it starts near the coast and sweeps inland as more slab goes down flat
     const farthest = (f, type) => { const id = plateNamed(f, 'Laurentia').id, d = inlandKm(f, id), ds = cellsWhere(numCells, w => f.owner[w] === id && f.oroType[w] === type).map(d).filter(v => v >= 0).sort((x, y) => x - y); return ds.length ? ds[Math.floor(0.9 * (ds.length - 1))] : 0; };
     const early = farthest(nearestFrame(flat.frames, 4), OrogenyType.LARAMIDE), late = farthest(nearestFrame(flat.frames, 24), OrogenyType.LARAMIDE);
@@ -86,16 +99,23 @@ section('how the plates meet shapes the belt');
     const steep = { flatSlabMaxAgeMyr: 0, marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 }, headOn = run('laramide', steep, driven(0)), oblique = run('laramide', steep, driven(50));
     const beltCells = r => { const f = nearestFrame(r.frames, 30), id = plateNamed(f, 'Laurentia').id; return cellsWhere(numCells, w => f.owner[w] === id && f.oroType[w] === OrogenyType.ANDEAN).length; };
     const nHead = beltCells(headOn), nObl = beltCells(oblique);
-    check('an oblique margin builds a narrower belt than a head-on one', nObl < 0.8 * nHead && nObl > 0, `${nHead} Andean belt cells head-on, ${nObl} at 50° oblique (at 30 Myr)`);
+    // strain partitioning: only the margin-normal component of convergence shortens the margin (McCaffrey 1992) — so the
+    // belt, on the same length of margin, narrows toward cos 50° = 0.64 of the head-on one
+    const normalShare = Math.cos(50 * Math.PI / 180), ratio = nObl / Math.max(1, nHead);
+    check('an oblique margin builds a belt narrowed by the margin-normal share of convergence', nObl > 0 && ratio < 1 && Math.abs(ratio - normalShare) <= 0.2,
+        `${nHead} Andean belt cells head-on, ${nObl} at 50° oblique (at 30 Myr): × ${ratio.toFixed(2)}; the normal component is × ${normalShare.toFixed(2)}`);
+    // (a unit test of the reach formula, beltShape — not physics: whether young slab widens a belt is mixed on Earth
+    // (Uyeda & Kanamori 1979 against Capitanio et al. 2011); the age effect should come from coupling — pending model rewrite)
     const young = beltShape(1, 5, r0cfg()), old = beltShape(1, 140, r0cfg()), slant = beltShape(Math.cos(60 * Math.PI / 180), 60, r0cfg()), square = beltShape(1, 60, r0cfg());
-    check('a belt reaches further over a young slab (ridge close offshore) than over an old one, and head-on than oblique', young > 1.3 * old && square > 1.8 * slant,
+    check('the belt formula: further over a young slab than an old one, and head-on than oblique (unit test)', young > 1.3 * old && square > 1.8 * slant,
         `reach × ${young.toFixed(2)} over a 5-Myr slab, × ${old.toFixed(2)} over a 140-Myr one; × ${square.toFixed(2)} head-on, × ${slant.toFixed(2)} at 60°`);
 }
 
 section('an arc rifts off its ocean plate (mariana)');
 {
     const r = run('mariana'), cfg = r.cfg, split = r.events.find(e => e.kind === EventKind.BACKARC_OPEN);
-    check('the old slab rolls back and the arc rifts off, early', !!split && split.time < 10 && !split.data.continental && r.last.plates[split.data.parent].name === 'Philippina',
+    // (in time to run its course before the scene ends)
+    check('the old slab rolls back and the arc rifts off', !!split && split.time <= r.scene.maxMyr - cfg.backArcActiveMyr && !split.data.continental && r.last.plates[split.data.parent].name === 'Philippina',
         split ? `${split.time.toFixed(0)} Myr: ${split.text.slice(0, 150)}` : 'no back-arc');
     if (split) {
         const stripName = r.last.plates[split.data.strip].name, f0 = nearestFrame(r.frames, split.time + 2), fOpen = nearestFrame(r.frames, split.time + cfg.backArcActiveMyr - 5);
@@ -105,11 +125,15 @@ section('an arc rifts off its ocean plate (mariana)');
         const young = cellsWhere(numCells, w => fOpen.owner[w] >= 0 && fOpen.type[w] === CrustType.OCEAN && fOpen.formedAt[w] > split.time && (fOpen.owner[w] === strip?.id || fOpen.owner[w] === parent?.id));
         const ridge = cellsWhere(numCells, w => fOpen.boundary[w] === BoundaryKind.RIDGE && (fOpen.owner[w] === strip?.id || fOpen.owner[w] === parent?.id));
         check('a back-arc sea opens behind it, at a spreading ridge', !!strip && young.length >= 40 && ridge.length >= 10, `${young.length} cells of new sea floor between them and ${ridge.length} ridge cells at ${fOpen.time} Myr`);
-        const rel = strip && parent ? relativeCmYr(strip, parent) : 0, expected = rollbackCmYr(150, cfg);
-        check('it opens at the slab’s rollback rate — a few cm/yr, not flung', Math.abs(rel - expected) < 0.35 * expected, `the strip moves ${rel.toFixed(1)} cm/yr against Philippina; an old slab rolls back at ${expected} cm/yr`);
+        // (consistency with the model's own rollback rate. The physics is flagged: rollbackMaxCmYr = 3 is low — Lau opens at up
+        // to ~16 cm/yr — and Schellart et al. 2008 find slab width and edge distance, not slab age, set the rate)
+        const rel = strip && parent ? relativeCmYr(strip, parent) : 0, expected = rollbackCmYr(split.data.slabAgeMyr, cfg);
+        check('it opens at the slab’s rollback rate — not flung', Math.abs(rel - expected) < 0.35 * expected, `the strip moves ${rel.toFixed(1)} cm/yr against Philippina; its ${split.data.slabAgeMyr.toFixed(0)}-Myr slab rolls back at ${expected.toFixed(1)} cm/yr`);
+        report('back-arc opening rate', rel, { earth: [3, 16], unit: ' cm/yr', digits: 1, source: 'Mariana Trough ~3–4, Lau up to ~16 (Bevis et al. 1995)' });
         const stop = r.events.find(e => e.kind === EventKind.BACKARC_CLOSE && e.data.strip === split.data.strip);
-        check('after a few tens of Myr it stops spreading and moves with its plate again', !!stop && stop.data.rejoined && Math.abs(stop.time - split.time - cfg.backArcActiveMyr) < 3 && !plateById(r.last, split.data.strip),
+        check('after its spell (backArcActiveMyr) it stops spreading and moves with its plate again', !!stop && stop.data.rejoined && Math.abs(stop.time - split.time - cfg.backArcActiveMyr) < 3 && !plateById(r.last, split.data.strip),
             stop ? `${stop.time.toFixed(0)} Myr: ${stop.text}` : 'still spreading at the end');
+        if (stop) report('how long the back-arc sea spread', stop.time - split.time, { earth: [5, 20], unit: ' Myr', digits: 0, source: 'Sea of Japan mainly ~23–15 Ma; basins spread ~5–20 Myr', detail: 'set by backArcActiveMyr, not by rollback ending' });
         const keptYoung = cellsWhere(numCells, w => r.last.owner[w] >= 0 && r.last.type[w] === CrustType.OCEAN && r.last.formedAt[w] > split.time && r.last.formedAt[w] < split.time + cfg.backArcActiveMyr);
         check('…and keeps the sea it opened', keptYoung.length >= 40, `${keptYoung.length} cells of the back-arc sea floor are still there at ${r.last.time} Myr`);
     }
@@ -125,10 +149,12 @@ section('a strip of coast rifts off a continent (japan)');
         const stripName = r.last.plates[split.data.strip].name, f0 = nearestFrame(r.frames, split.time + 2), fOpen = nearestFrame(r.frames, split.time + cfg.backArcActiveMyr - 5);
         const strip = plateById(f0, split.data.strip), asia = plateById(f0, split.data.parent);
         const stripLand = cellsWhere(numCells, w => f0.owner[w] === strip.id && isLand(f0, w));
-        check('the strip is a coherent arc of land, not a sliver', stripLand.length * cellAreaKm2 >= cfg.backArcMinLandKm2 && largestPiece(mesh, stripLand) >= 0.9 * stripLand.length,
-            `${stripLand.length} land cells (${(stripLand.length * cellAreaKm2 / 1e6).toFixed(2)} Mkm²), ${largestPiece(mesh, stripLand) === stripLand.length ? 'in one piece' : `largest piece ${largestPiece(mesh, stripLand)}`}`);
-        const cratons = cellsWhere(numCells, w => f0.owner[w] >= 0 && f0.type[w] === CrustType.CRATON);
-        check('no craton goes with it', cratons.length > 0 && cratons.every(w => f0.owner[w] === asia.id), `${cratons.filter(w => f0.owner[w] !== asia.id).length} of ${cratons.length} craton cells off Asiana`);
+        check('the strip is a coherent arc of land, not a sliver', stripLand.length > 0 && largestPiece(mesh, stripLand) >= 0.9 * stripLand.length,
+            `${stripLand.length} land cells, ${largestPiece(mesh, stripLand) === stripLand.length ? 'in one piece' : `largest piece ${largestPiece(mesh, stripLand)}`}`);
+        report('land on the strip', stripLand.length * cellAreaKm2 / 1e6, { unit: ' Mkm²', digits: 2, source: 'Japan’s arc ~0.38 Mkm², one example' });
+        // a craton is not vetoed: a break line through it opens cratonStrength times less readily (step/backarc.js)
+        const cratons = cellsWhere(numCells, w => f0.owner[w] >= 0 && f0.type[w] === CrustType.CRATON), offAsia = cratons.filter(w => f0.owner[w] !== asia.id).length;
+        report('share of the craton that goes with the strip', 100 * offAsia / Math.max(1, cratons.length), { unit: ' %', digits: 0, source: 'cratons are rarely split (Lenardic & Moresi 1999)', detail: `${offAsia} of ${cratons.length} craton cells off Asiana` });
         const young = cellsWhere(numCells, w => fOpen.owner[w] >= 0 && fOpen.type[w] === CrustType.OCEAN && fOpen.formedAt[w] > split.time);
         check('a sea opens between the strip and the mainland', young.length >= 30, `${young.length} cells of new sea floor at ${fOpen.time} Myr`);
         // when it stops spreading the strip joins Asiana again — its land and its sea stay where they are
@@ -146,12 +172,20 @@ section('in a whole history');
 {
     const r = run('history'), cfg = r.cfg;
     const opened = r.events.filter(e => e.kind === EventKind.BACKARC_OPEN), closed = r.events.filter(e => e.kind === EventKind.BACKARC_CLOSE);
-    check('rolling-back trenches open back-arc seas now and then', opened.length >= 1 && opened.length <= 10, `${opened.length} back-arc seas in ${r.last.time} Myr (${opened.map(e => e.time.toFixed(0)).join(', ')} Myr)`);
+    report('back-arc seas opened per 100 Myr', 100 * opened.length / r.last.time, { earth: [20, 40], digits: 1, source: '~10–15 active today; ~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…)',
+        detail: `${opened.length} in ${r.last.time} Myr (${opened.map(e => e.time.toFixed(0)).join(', ')} Myr)` });
+    // how often a continental strip carries craton with it (a break line through craton is strength-weighted, not vetoed)
+    const continentalStrips = opened.filter(e => e.data.continental), withCraton = continentalStrips.filter(e => {
+        const f = nearestFrame(r.frames, e.time + 2);
+        return f.time > e.time && f.type.some((t, w) => t === CrustType.CRATON && f.owner[w] === e.data.strip);
+    });
+    report('continental back-arc strips that carry craton', withCraton.length, { digits: 0, source: 'cratons are rarely split (Lenardic & Moresi 1999)', detail: `of ${continentalStrips.length} continental strips` });
     // every strip is accounted for: it stopped spreading (and rejoined, or carried on alone), is still opening, or was
     // itself swallowed by a collision in the meantime
     const unresolved = opened.filter(o => !closed.some(e => e.data.strip === o.data.strip) && r.last.time - o.time >= cfg.backArcActiveMyr && plateById(r.last, o.data.strip));
     check('each stops spreading in time', unresolved.length === 0, `${closed.length} stopped, ${opened.length - closed.length} still opening or swallowed; unresolved: ${unresolved.map(o => r.last.plates[o.data.strip].name).join(', ') || 'none'}`);
-    // while it opens, a strip follows its trench at the rollback rate — it is not flung by the force balance
+    // while it opens, a strip follows its trench at the rollback rate — it is not flung by the force balance (a consistency
+    // check against the model's own cap; the cap itself, rollbackMaxCmYr, is low for Earth — see the Mariana scene)
     let worst = 0, judged = 0;
     opened.forEach(e => {
         for (const f of r.frames) {
@@ -163,9 +197,15 @@ section('in a whole history');
     check('while a sea opens, its strip follows the trench — not flung', judged >= opened.length && worst <= cfg.rollbackMaxCmYr + 0.5,
         `fastest a strip ever moved against its parent: ${worst.toFixed(1)} cm/yr (rollback at most ${cfg.rollbackMaxCmYr}), over ${judged} frames of ${opened.length} opening seas`);
     const fastest = Math.max(...r.frames.map(f => Math.max(0, ...f.plates.filter(p => p.alive && !p.isBackground).map(p => p.speedCmYr))));
-    check('every plate stays within Worldbuilding Pasta’s speeds', fastest <= cfg.maxSpeedOceanic, `fastest plate in any frame: ${fastest.toFixed(1)} cm/yr (oceanic limit ${cfg.maxSpeedOceanic})`);
+    // the caps follow Zahirovic et al. 2015: plates under half continental reach ~20 cm/yr, those over half stay ≤ ~10 cm/yr
+    check('every plate stays within the oceanic speed cap', fastest <= cfg.maxSpeedOceanic, `fastest plate in any frame: ${fastest.toFixed(1)} cm/yr (oceanic cap ${cfg.maxSpeedOceanic}; Zahirovic et al. 2015)`);
+    const continentalPlate = p => p.landCells > cfg.continentalPlateShare * p.cells;
+    const fastestC = Math.max(0, ...r.frames.map(f => Math.max(0, ...f.plates.filter(p => p.alive && !p.isBackground && continentalPlate(p)).map(p => p.speedCmYr))));
+    check('every continental plate stays within the continental speed cap', fastestC <= cfg.maxSpeedContinental, `fastest continental plate in any frame: ${fastestC.toFixed(1)} cm/yr (cap ${cfg.maxSpeedContinental}; Zahirovic et al. 2015)`);
     const plates = Math.max(...r.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length));
-    check('the plate count stays sane; no gaps; it runs fast', plates <= cfg.reserved.maxPlates && r.frames.every(f => frameTallies(f).gaps === 0) && r.steps < 650, `at most ${plates} plates; ${r.steps} steps`);
+    check('the plate count stays sane', plates <= cfg.reserved.maxPlates, `at most ${plates} plates (room for ${cfg.reserved.maxPlates})`);
+    check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
+    check('it runs in few steps', r.steps < 650, `${r.steps} steps in ${r.last.time} Myr`);
     const kinds = new Set(); for (let w = 0; w < numCells; w++) if (r.last.margin[w]) kinds.add(r.last.margin[w] & Margin.TYPE);
     check('its coasts come in every kind', kinds.has(Margin.ACTIVE) && kinds.has(Margin.PASSIVE) && kinds.has(Margin.TRANSFORM), `margin kinds present at ${r.last.time} Myr: ${[...kinds].sort().join(', ')}`);
     // fore-arc islands: they rise off active coasts and grow into the mainland — land grows, but not without bound
@@ -175,7 +215,8 @@ section('in a whole history');
     const withIsles = run('history', noErosion), bare = run('history', { ...noErosion, ...mechanismsOff('marginIsles') });
     const growth = landAt(withIsles) / landAt(bare);
     check('islands rise off active coasts and grow into the mainland', merges.length >= 3, `${merges.length} islands merged into their mainland; first: ${merges[0]?.text ?? 'none'}`);
-    check('…growing the continents, but not without bound', growth > 1.03 && growth < 1.3, `land at ${r.last.time} Myr: ${landAt(withIsles)} cells with fore-arc islands, ${landAt(bare)} without (× ${growth.toFixed(2)}; erosive margins off in both)`);
+    report('land with fore-arc islands ÷ without', growth, { digits: 2, unit: '×', source: 'arc accretion adds ~1.5–3 km³/yr worldwide (Scholl & von Huene 2007) — a volume, not an area',
+        detail: `land at ${r.last.time} Myr: ${landAt(withIsles)} cells with fore-arc islands, ${landAt(bare)} without (erosive margins off in both)` });
     const transp = cellsWhere(numCells, w => r.last.owner[w] >= 0 && r.last.oroType[w] === OrogenyType.TRANSPRESSION).length;
     check('transforms pressed together raise narrow ridges', transp > 0, `${transp} cells of transpression ridge at ${r.last.time} Myr`);
     const b = run('history');                                                  // (a replay of r)

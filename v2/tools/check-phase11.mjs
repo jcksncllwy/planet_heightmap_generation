@@ -1,17 +1,18 @@
 // Headless acceptance checks for Phase 11 (natural collisions — plans/V2_ROADMAP_PHASES_9_13.md): a contact is a pivot,
 // and two continents weld only once the ocean between them has closed (or stopped closing), so a collision closes the
-// ocean between them like a zipper instead of sealing it inside one plate; plates whose land rings a big sea stay
-// apart; a sea sealed inside one plate closes from its shores; and over whole histories few seas are caught between
-// continents and no continent is a ring or a snake (measured on continental crust — island arcs are counted, not capped:
-// the developer, 2026-09-26: "im more concerned if there is like a snake of continent through the whole world").
+// ocean between them like a zipper instead of sealing it inside one plate. A sea sealed inside one plate makes no
+// continental crust: old and big enough, its floor founders as an ocean plate of its own under a trench along the shore
+// (step/subduction-init.js founderWithinPlates); young and unsqueezed, it stays open. Over whole histories (three seeds)
+// belt records stay consistent and island arcs still stand; the seas caught between continents and the continents'
+// shapes (thinness, elongation — measured on continental crust) are reported against Earth's.
 // Usage: node v2/tools/check-phase11.mjs
 
-import { check, section, finish, labMesh, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, LAB_MESH_SEED } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { COLLISION_SCENES } from '../js/tectonics/scenarios/collision-scenes.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { buildStartWorld } from '../js/tectonics/init/start-world.js';
-import { onlyMechanisms } from '../js/tectonics/config.js';
+import { onlyMechanisms, TECTONICS } from '../js/tectonics/config.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { TectonicWorld, EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
@@ -35,33 +36,67 @@ const zipper = overrides => {
     return { contact, weld, turned: turn(at(weld.time - 2)) - turn(at(contact)), gapMkm2: weld.data.gapKm2 / 1e6, widestKm: weld.data.gapWidestKm, limitKm: world.config.sutureGapWidthKm + mesh.edgeKm };
 };
 {
-    const now = zipper({}), old = zipper({ sutureGapWidthKm: 1e9, sutureGapStallMyr: 0 });
+    const now = zipper({});
     // (Phase 12: a long Borea, so the turn can close the whole margin; the weld waits until the sea between is narrow at
-    // its widest — before, a wedge of it at one end passed as "narrow on average")
-    check('after first contact the lower continent turns about it, closing the gap along the whole margin, before the two weld',
-        now.weld && now.turned >= 20 && now.weld.time - now.contact >= 20 && now.widestKm <= now.limitKm,
-        now.weld ? `first contact at ${now.contact.toFixed(0)} Myr; Austra turns ${now.turned.toFixed(1)}° against Borea before they weld at ${now.weld.time.toFixed(0)} Myr, the sea left between them ${now.widestKm?.toFixed(0)} km across at its widest (${now.gapMkm2.toFixed(2)} Mkm² along the whole margin)` : 'no weld');
-    check('…where welding at first readiness (the old rule) froze them where they touched',
-        old.weld && now.weld && old.turned < now.turned / 2 && old.weld.time < now.weld.time - 15,
-        old.weld ? `welded at ${old.weld.time.toFixed(0)} Myr, ${(old.weld.time - old.contact).toFixed(0)} Myr after contact, having turned ${old.turned.toFixed(1)}°` : 'no weld');
+    // its widest — before, a wedge of it at one end passed as "narrow on average". How far it turns and how long it takes
+    // are the scene's: reported)
+    check('after first contact the two weld only once the sea between them is closed along the whole margin',
+        now.weld && now.weld.time > now.contact && now.widestKm <= now.limitKm,
+        now.weld ? `first contact at ${now.contact.toFixed(0)} Myr, weld at ${now.weld.time.toFixed(0)} Myr; the sea left between them ${now.widestKm?.toFixed(0)} km across at its widest (limit ${now.limitKm.toFixed(0)} km; ${now.gapMkm2.toFixed(2)} Mkm² along the whole margin); welded as ${now.weld.data.why}` : 'no weld');
+    report('the lower continent turns about the contact before the weld', now.weld ? now.turned : NaN, { unit: '°', digits: 1, source: 'no Earth figure: collisions are diachronous (the Tethys zipper)',
+        detail: now.weld ? `over ${(now.weld.time - now.contact).toFixed(0)} Myr` : 'no weld' });
 }
 
-// ── a sea sealed inside one plate closes from its shores ──
+// ── a sea sealed inside one plate: no crust is made; old and big it founders, young it stays open ──
 section('a sea sealed inside one plate');
 {
-    const world = new TectonicWorld(mesh, LAB_MESH_SEED), canvas = sceneCanvas(mesh, world.config);
-    const solo = world.addPlate('Solo');
-    addContinent(canvas, new SimplexNoise(LAB_MESH_SEED), { plate: solo, centre: [10, 20], radiusKm: 2600, cratonKm: 0 });
-    fillBackground(canvas, world, world.config);
-    // a round sea, 500 km in radius, in the middle of the continent
-    const c = [Math.cos(10 * Math.PI / 180) * Math.cos(20 * Math.PI / 180), Math.cos(10 * Math.PI / 180) * Math.sin(20 * Math.PI / 180), Math.sin(10 * Math.PI / 180)];
-    for (let i = 0; i < n; i++) if (solo.crust.mask[i] && Math.acos(Math.min(1, mesh.xyz[3 * i] * c[0] + mesh.xyz[3 * i + 1] * c[1] + mesh.xyz[3 * i + 2] * c[2])) * 6371 < 500) { solo.crust.type[i] = CrustType.OCEAN; solo.crust.formedAt[i] = -150; }
-    Object.assign(world.config, onlyMechanisms('remnantSeas'));
-    const sea = f => { let k = 0; for (let w = 0; w < n; w++) if (f.owner[w] === solo.id && f.type[w] === CrustType.OCEAN) k++; return k * cellKm2; };
-    const { frames } = simulate(world, { untilMyr: 60, drive: updatePlateMotion, snapshotEveryMyr: 10 });
-    const areas = frames.map(sea), sutured = frames.at(-1).flags.reduce((k, fl, w) => k + (frames.at(-1).owner[w] === solo.id && (fl & CrustFlag.SUTURE) ? 1 : 0), 0);
-    check('it closes from its shores over some tens of Myr, as sutured ground', areas[0] > 5e5 && areas[2] > 0 && areas[2] < areas[0] && areas.at(-1) === 0 && sutured > 0,
-        `${areas.map((a, i) => `${frames[i].time} Myr ${(a / 1e6).toFixed(2)}`).join(' · ')} Mkm²; ${sutured} cells of sutured ground where it was`);
+    // a round sea, 700 km in radius, in the middle of a continent; its floor formed `ageMyr` before the run. The sea is made
+    // big enough to be a plate of its own: oceanPlateMinAreaKm2 set below its area (the scene's, at any mesh resolution)
+    const sealed = (ageMyr, untilMyr) => {
+        const world = new TectonicWorld(mesh, LAB_MESH_SEED), canvas = sceneCanvas(mesh, world.config);
+        const solo = world.addPlate('Solo');
+        addContinent(canvas, new SimplexNoise(LAB_MESH_SEED), { plate: solo, centre: [10, 20], radiusKm: 2600, cratonKm: 0 });
+        fillBackground(canvas, world, world.config);
+        const c = [Math.cos(10 * Math.PI / 180) * Math.cos(20 * Math.PI / 180), Math.cos(10 * Math.PI / 180) * Math.sin(20 * Math.PI / 180), Math.sin(10 * Math.PI / 180)];
+        let seaCells = 0;
+        for (let i = 0; i < n; i++) if (solo.crust.mask[i] && Math.acos(Math.min(1, mesh.xyz[3 * i] * c[0] + mesh.xyz[3 * i + 1] * c[1] + mesh.xyz[3 * i + 2] * c[2])) * 6371 < 700) { solo.crust.type[i] = CrustType.OCEAN; solo.crust.formedAt[i] = -ageMyr; seaCells++; }
+        solo.refreshExtent(mesh.xyz);
+        const seaKm2 = seaCells * cellKm2;
+        Object.assign(world.config, onlyMechanisms('marginFounder'), { crustLedger: true, oceanPlateMinAreaKm2: 0.6 * seaKm2 });
+        const { frames } = simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: 5 });
+        const founders = world.events.filter(e => (e.kind === EventKind.SUBDUCTION_INIT && e.data?.upper === solo.id) || (e.kind === EventKind.PLATE_BORN && e.time > 0));
+        const born = founders.find(e => e.kind === EventKind.PLATE_BORN), init = founders.find(e => e.kind === EventKind.SUBDUCTION_INIT);
+        // (the plate's own raster: its continental crust and its ocean, frame by frame)
+        const land = frames.map(f => f.plates[solo.id]?.landCells ?? 0), sea = frames.map(f => { const p = f.plates[solo.id]; return p ? (p.cells - p.landCells) * cellKm2 : 0; });
+        let landRose = 0;
+        for (let i = 1; i < frames.length; i++) if (sea[i - 1] > 0 && land[i] > land[i - 1]) landRose = Math.max(landRose, land[i] - land[i - 1]);
+        // (stages whose process may change the land: collisions, marginIsles, arcMaturation, tidy — none of them a sealed sea's)
+        const MAY = new Set(['collisions', 'marginIsles', 'arcMaturation', 'tidy']);
+        const gained = world.ledger ? Object.entries(world.ledger.stages).filter(([st, b]) => !MAY.has(st) && b.land > 0).map(([st, b]) => `${st} +${b.land}`) : ['no ledger kept'];
+        // after the founder: the new plate's floor, and the trench on the rim plate's shore (its ocean beside its land)
+        const after = born && frames.find(f => f.time >= born.time);
+        let trench = 0, freshKm2 = 0;
+        if (after) {
+            const isLandOf = w => after.owner[w] === solo.id && (after.type[w] === CrustType.CONTINENT || after.type[w] === CrustType.CRATON);
+            for (let w = 0; w < n; w++) {
+                if (after.owner[w] !== solo.id || after.type[w] !== CrustType.OCEAN || !(after.flags[w] & CrustFlag.TRENCH)) continue;
+                for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) if (isLandOf(mesh.adjList[k])) { trench++; break; }
+            }
+            freshKm2 = (after.plates[born.data.plate]?.cells ?? 0) * cellKm2;
+        }
+        return { seaKm2, frames, land, sea, landRose, gained, founders, born, init, trench, freshKm2, minKm2: world.config.oceanPlateMinAreaKm2 };
+    };
+    const old = sealed(300, 120), young = sealed(10, 120);
+    const ok = r => r.landRose === 0 && r.gained.length === 0;
+    check('a sealed sea makes no continental crust: its plate’s land never grows while the sea is there, and no stage books land it may not',
+        ok(old) && ok(young), [['old', old], ['young', young]].map(([k, r]) => `${k}: land ${r.land[0]} → ${r.land.at(-1)} cells (largest rise ${r.landRose}); ${r.gained.length ? r.gained.join(', ') : 'no stage gained'}`).join(' · '));
+    check('an old sealed sea big enough to be a plate founders: its floor breaks away as an ocean plate, under a trench along the shore',
+        old.born && old.init && old.freshKm2 >= 0.5 * old.seaKm2 && old.trench * mesh.edgeKm >= 0.5 * old.init.data.lengthKm,
+        old.born ? `${(old.seaKm2 / 1e6).toFixed(2)} Mkm² sea, 300 Myr old (plates from ${(old.minKm2 / 1e6).toFixed(2)} Mkm²): founders at ${old.born.time.toFixed(0)} Myr; the new plate holds ${(old.freshKm2 / 1e6).toFixed(2)} Mkm²; ${old.trench} cells (${(old.trench * mesh.edgeKm).toFixed(0)} km) of trench along the shore (the founder's run ${old.init.data.lengthKm.toFixed(0)} km)`
+            : `no founder in 120 Myr; the sea ${old.sea.map(a => (a / 1e6).toFixed(2)).join(' ')} Mkm²`);
+    check('a young sealed sea, unsqueezed, stays open: no founder over 120 Myr',
+        young.founders.length === 0 && young.sea.at(-1) >= 0.9 * young.sea[0],
+        `${(young.sea[0] / 1e6).toFixed(2)} → ${(young.sea.at(-1) / 1e6).toFixed(2)} Mkm², its floor 10 Myr old at the start (young below ${TECTONICS.oceanNeutralAgeMyr} Myr, founders unsqueezed from ${TECTONICS.subductionInitAgeMyr} Myr); ${young.founders.length} founder events`);
 }
 
 // ── whole histories: seas between continents, rings and snakes ──
@@ -116,7 +151,7 @@ section('whole histories (600 Myr, three seeds)');
         }
         return stale / Math.max(1, belt);
     };
-    const rows = [], apart = [];
+    const rows = [];
     for (const seed of [12345, 777, 4242]) {
         const { world } = buildStartWorld(mesh, seed), frames = [];
         let staleMax = 0;
@@ -126,25 +161,21 @@ section('whole histories (600 Myr, three seeds)');
         } });
         const m = frames.map(measure);
         rows.push({ seed, staleMax, seasBig: Math.max(...m.map(x => x.seasBig)), seaMax: Math.max(...m.map(x => x.seaMax)), seaAll: Math.max(...m.map(x => x.seaAll)), thinMin: Math.min(...m.map(x => x.thinMin)), ringMin: Math.min(...m.map(x => x.ringMin)), thinMed: median(m.map(x => x.thinMed)), lenMax: Math.max(...m.map(x => x.lenMax)), arcs: Math.max(...m.map(x => x.arcs)) });
-        apart.push(world.events.filter(e => e.kind === EventKind.COLLISION && e.data?.ringKm2).length);
     }
     const txt = key => rows.map(r => `${r.seed}: ${key(r)}`).join(' · ');
-    // (the plan's targets were none over 3 Mkm² and ≤ 5 Mkm² in all; re-baselined with the developer's "minimize it" —
-    // what is left is an ocean ringed by three continents that stay apart to close it (seed 777: 25 Mkm² at 470 Myr, 16.5
-    // at 530), and a collision's sea for the frame before its zipper shuts (seed 4242: 9.4 Mkm² at 500 Myr, 2.4 at 520).
-    // The supercontinent cycle (Phase 13) is where they are put to the test)
-    check('few seas caught between continents: at most 3 over 0.5 Mkm² at a time, none over 25 Mkm²',
-        rows.every(r => r.seasBig <= 3 && r.seaMax <= 25e6),
-        `worst of every 50 Myr: ${txt(r => `${r.seasBig} seas, largest ${(r.seaMax / 1e6).toFixed(1)}, all ${(r.seaAll / 1e6).toFixed(1)} Mkm²`)} of ocean floor (before Phase 11, with arcs bridging a ring: a 62–73 Mkm² sea)`);
-    check('no continent is a ring or a snake: none over 5 Mkm² wrapped thin (< 0.35) round a sea it encloses, the longest at most 3.2× its disc',
-        rows.every(r => r.ringMin >= 0.35 && r.lenMax <= 3.2),
-        `${txt(r => `thinnest round a sea ${r.ringMin < 9 ? r.ringMin.toFixed(2) : 'none'}, thinnest of all ${r.thinMin.toFixed(2)}, longest ${r.lenMax.toFixed(1)}×`)} (before Phase 11: a ring of 184 Mkm² at 0.27; longest 2.8–2.9×. A supercontinent's open embayments thin it too — that is Phase 13's)`);
-    check('…and the big continents are compact on the whole (median thinness ≥ 0.5)', rows.every(r => r.thinMed >= 0.5),
-        txt(r => `median ${r.thinMed.toFixed(2)}`));
+    // (Earth today at this mesh: the Mediterranean ~2.5, the Gulf of Mexico ~1.5, the Black Sea ~0.44 Mkm², the South
+    // Caspian; while a supercontinent gathers, interior oceans close inside it — Murphy & Nance. Worst of every 50 Myr)
+    report('seas caught between continents over 0.5 Mkm² (most at a time)', rows.map(r => r.seasBig), { earth: [2, 4], digits: 0, source: 'Mediterranean, Gulf of Mexico, Black Sea, South Caspian' });
+    report('…the largest of them', rows.map(r => r.seaMax / 1e6), { earth: [0.4, 2.5], unit: ' Mkm²', digits: 1, source: 'the Mediterranean ~2.5 Mkm²', detail: txt(r => `all ${(r.seaAll / 1e6).toFixed(1)} Mkm² at most`) });
+    // (shapes of continents over 5 Mkm², to the continental crust's edge — shelves included: thinness is the deepest point
+    // from the coast ÷ the radius of a disc of its area, elongation its length ÷ that disc's diameter)
+    report('thinnest continent wrapped round a sea it encloses', rows.map(r => r.ringMin < 9 ? r.ringMin : NaN), { source: 'no Earth figure: ribbon continents (Cimmeria) and Pangea’s C existed',
+        detail: txt(r => `thinnest of all ${r.thinMin.toFixed(2)}`) });
+    report('longest continent ÷ its disc', rows.map(r => r.lenMax), { earth: [1.9, 2.1], unit: '×', digits: 1, source: 'the Americas ~2.1×, Afro-Eurasia ~1.9× (estimate)' });
+    report('continents’ median thinness', rows.map(r => r.thinMed), { earth: [0.55, 0.65], source: 'poles of inaccessibility, Garcia-Castellanos & Lombardo 2007' });
     check('belt positions agree within each belt: at most 1 % of belt cells left off by their own belt (every 100 Myr)', rows.every(r => r.staleMax <= 0.01),
         `${txt(r => `worst ${(100 * r.staleMax).toFixed(2)} %`)} (a craton's rim, old weak seams and two belts of one kind meeting are not stale: by design, or a real edge)`);
-    check('island arcs still stand along the trenches (counted, not capped)', rows.every(r => r.arcs > 0),
-        `${txt(r => `up to ${r.arcs} arc pieces`)}; plates kept apart round a sea: ${apart.join(', ')}`);
+    check('island arcs still stand along the trenches (counted, not capped)', rows.every(r => r.arcs > 0), txt(r => `up to ${r.arcs} arc pieces`));
 }
 
 finish('Phase 11');

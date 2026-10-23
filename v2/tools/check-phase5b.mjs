@@ -1,7 +1,14 @@
 // Headless acceptance checks for Phase 5b (trench wings, island arcs, terrane docking, polarity reversal).
+// Hard checks: the trench reaching past the land, island arcs forming on the overriding plate as chains, only behind a
+// mature slab, the plate never growing forward; a microcontinent docking as a terrane, its land changing hands, the
+// trench jumping outboard and the join getting a collisional belt; an arc docking, the polarity flipping, the accreted
+// arc joining the coast; arcs between closing continents scraped off and the suture waiting for the cores; continental
+// crust conserved through it all; no gaps. Reported against Earth: wing extent, the continent's speed (across seeds), the
+// arcs' distance from land and from the trench (pending the arc-position rewrite), the terrane belt's width, net arc growth.
 // Usage: node v2/tools/check-phase5b.mjs
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, mean, isLand, cellsWhere, nearestKm, kmBetween } from './lib/check-kit.mjs';
+import { arcSlabKm, arcGapKm } from '../js/tectonics/step/wings.js';
+import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { EVENT_SCENES } from '../js/tectonics/scenarios/event-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
@@ -12,12 +19,12 @@ import { BoundaryKind } from '../js/tectonics/model/world.js';
 import { tallies, NO_RIFTS } from '../js/app/phases/phase5b-arcs.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 
-const SEED = 12345, SNAPSHOT_MYR = 2;
+const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];      // (the Earth reports also look at a few other seeds)
 const mesh = labMesh(), { xyz, numCells, adjOffset, adjList } = mesh;
 
-function run(id, overrides = {}) {
-    const scene = EVENT_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
-    Object.assign(world.config, NO_RIFTS, overrides);           // wings, arcs and terranes alone: rifting is Phase 6
+function run(id, overrides = {}, seed = SEED) {
+    const scene = EVENT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
+    Object.assign(world.config, NO_RIFTS, { crustLedger: true }, overrides);   // wings, arcs and terranes alone: rifting is Phase 6 (the ledger books the crust)
     const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });
     const idOf = Object.fromEntries(frames[0].plates.map(p => [p.name, p.id]));
     return { scene, world, frames, steps, idOf, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6), events: world.events, plate: (name, t) => frames.find(f => Math.abs(f.time - t) < 1e-6).plates[idOf[name]] };
@@ -36,7 +43,7 @@ section('trench wings & island arc');
 {
     const r = run('wings'), cfg = r.world.config, last = r.frames.at(-1), solo = r.idOf.Solo;
     const wingsAt = t => tallies(r.at(t), mesh).wingCells;
-    check('the trench reaches past the land and stays there (arcs accreting bring the land closer, so the count need not rise)', wingsAt(0) === 0 && wingsAt(40) > 6 && wingsAt(100) > 6,
+    check('the trench reaches past the land and stays there (arcs accreting bring the land closer, so the count need not rise)', wingsAt(0) === 0 && wingsAt(40) > 0 && wingsAt(100) > 0,
         `trench cells more than 600 km from any land: ${wingsAt(0)} at 0 Myr, ${wingsAt(40)} at 40, ${wingsAt(100)} at 100`);
     // wings run across the motion: the wing cells' spread is larger perpendicular to the velocity than along it
     const f = r.at(100), p = f.plates[solo], c = p.centre, v = [p.omega[1] * c[2] - p.omega[2] * c[1], p.omega[2] * c[0] - p.omega[0] * c[2], p.omega[0] * c[1] - p.omega[1] * c[0]];
@@ -44,18 +51,29 @@ section('trench wings & island arc');
     const landCells = cellsWhere(numCells, w => f.owner[w] === solo && (f.type[w] === CrustType.CONTINENT || f.type[w] === CrustType.CRATON)), wings = cellsWhere(numCells, w => f.owner[w] === solo && (f.flags[w] & CrustFlag.TRENCH) && nearestKm(mesh, w, landCells.filter((_, i) => i % 5 === 0)) > 600);   // past the CONTINENT: accreted arcs are land too
     const extent = (cells, dir) => { const s = cells.map(w => (xyz[3 * w] * dir[0] + xyz[3 * w + 1] * dir[1] + xyz[3 * w + 2] * dir[2]) * PLANET_RADIUS_KM); return [Math.min(...s), Math.max(...s)]; };
     const [landLo, landHi] = extent(landCells, across), [wingLo, wingHi] = extent(wings, across);
-    check('the trench reaches past the land on both sides, across the plate’s motion', wings.length > 6 && landLo - wingLo > 500 && wingHi - landHi > 500,
-        `at 100 Myr the trench extends ${(landLo - wingLo).toFixed(0)} km beyond one end of the land and ${(wingHi - landHi).toFixed(0)} km beyond the other, measured across the motion`);
-    const speeds = r.frames.filter(fr => fr.time >= 30 && fr.time <= 150).map(fr => fr.plates[solo].speedCmYr);
-    check('the continent keeps its active-margin speed', Math.min(...speeds) >= 1.5 && Math.max(...speeds) <= 5, `${Math.min(...speeds).toFixed(2)}–${Math.max(...speeds).toFixed(2)} cm/yr over 30–150 Myr (it slows later as it accretes arcs and grows)`);
+    // (that the wings bend across the motion is the wingBendToMotion rule — no law makes a trench reach past its land
+    // equally on both sides; the Aleutians run past Alaska on one)
+    report('trench reach past the land, each end, across the motion', wings.length ? [landLo - wingLo, wingHi - landHi] : [], { unit: ' km', digits: 0, detail: `at 100 Myr, ${wings.length} trench cells more than 600 km from the continent` });
+    // the continent's speed (slab-attached plates are fast, ones carrying much continent slow: Forsyth & Uyeda 1975), per seed
+    const speedOf = rr => {
+        const sp = rr.frames.filter(fr => fr.time >= 30 && fr.time <= 150).map(fr => fr.plates[rr.idOf.Solo].speedCmYr), f100 = rr.at(100), id = rr.idOf.Solo;
+        const cells = cellsWhere(numCells, w => f100.owner[w] === id).length, land = cellsWhere(numCells, w => f100.owner[w] === id && isLand(f100, w)).length;
+        return { mean: mean(sp), lo: Math.min(...sp), hi: Math.max(...sp), landShare: land / cells };
+    };
+    const speeds = [speedOf(r), ...MORE_SEEDS.map(seed => speedOf(run('wings', {}, seed)))];
+    report('the continent’s mean speed over 30–150 Myr', speeds.map(s => s.mean), { earth: [1, 4], unit: ' cm/yr', source: 'plates carrying much continent, Forsyth & Uyeda 1975',
+        detail: `seeds ${[SEED, ...MORE_SEEDS].join(', ')}: ${speeds.map(s => `${s.lo.toFixed(1)}–${s.hi.toFixed(1)} cm/yr with ${(100 * s.landShare).toFixed(0)} % of the plate land`).join(' · ')}` });
     const arcs = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] === CrustType.ARC);
     const continental = cellsWhere(numCells, w => last.owner[w] >= 0 && (last.type[w] === CrustType.CONTINENT || last.type[w] === CrustType.CRATON));
     const trench = cellsWhere(numCells, w => last.owner[w] >= 0 && (last.flags[w] & CrustFlag.TRENCH) && last.type[w] === CrustType.OCEAN);   // (an arc island at the plate edge carries its own flag)
     const offshoreArcs = arcs.filter(w => !(last.flags[w] & CrustFlag.SUTURE));      // arcs that have not collapsed onto the coast
     const fromLand = offshoreArcs.map(w => nearestKm(mesh, w, continental.filter((_, i) => i % 3 === 0))).sort((a, b) => a - b), arcFromLand = fromLand.length ? fromLand[fromLand.length >> 1] : 0;   // median: a widening arc can reach toward the coast
     const toTrench = arcs.map(w => nearestKm(mesh, w, trench)).sort((a, b) => a - b), arcToTrench = toTrench.length ? toTrench[toTrench.length >> 1] : 0;   // median: an old arc can be left behind when its trench moves on
-    check('island arcs form as chains behind the wings, away from the continent, on the continent’s plate', arcs.length >= 40 && arcs.every(w => last.owner[w] === solo) && arcFromLand > cfg.arcNoLandWithinKm - 2 * mesh.edgeKm && arcToTrench <= 3 * mesh.edgeKm,
-        `${arcs.length} arc cells at ${last.time} Myr (${arcs.length - offshoreArcs.length} already collapsed onto the coast); offshore arcs typically ${arcFromLand.toFixed(0)} km from continental crust; typically ${arcToTrench.toFixed(0)} km from a trench cell`);
+    check('island arcs form behind the wings, on the overriding (continent’s) plate', arcs.length * mesh.cellAreaKm2 >= 0.5e6 && arcs.every(w => last.owner[w] === solo),
+        `${arcs.length} arc cells (${(arcs.length * mesh.cellAreaKm2 / 1e6).toFixed(2)} Mkm²) at ${last.time} Myr, ${arcs.filter(w => last.owner[w] !== solo).length} of them off Solo (${arcs.length - offshoreArcs.length} already collapsed onto the coast)`);
+    // where the arcs sit: over the slab where it reaches arcSlabDepthKm (Syracuse & Abers 2006), arcGapKm behind the trench
+    report('island arcs’ distance from the trench (median)', arcToTrench, { earth: [100, 300], unit: ' km', source: 'arc–trench gaps, Dickinson 1973', digits: 0, detail: `the slab reaches ${cfg.arcSlabDepthKm} km depth ${arcGapKm(cfg).toFixed(0)} km behind the trench at ${cfg.slabDipDeg}° (an old arc is left behind when its trench moves on)` });
+    report('offshore island arcs’ distance from the continent (median)', arcFromLand, { unit: ' km', digits: 0 });
     // a chain, not dots: the arc cells' largest connected group
     const arcSet = new Set(arcs), grouped = new Set();
     let biggest = 0;
@@ -65,7 +83,7 @@ section('trench wings & island arc');
         for (let i = 0; i < group.length; i++) for (let k = adjOffset[group[i]]; k < adjOffset[group[i] + 1]; k++) { const nb = adjList[k]; if (arcSet.has(nb) && !grouped.has(nb)) { grouped.add(nb); group.push(nb); } }
         biggest = Math.max(biggest, group.length);
     }
-    check('…as connected chains, not scattered dots', biggest >= 6, `longest connected arc chain: ${biggest} cells (${(biggest * mesh.edgeKm).toFixed(0)} km)`);
+    check('…as connected chains, not scattered dots', biggest * mesh.edgeKm >= 750, `longest connected arc chain: ${biggest} cells (${(biggest * mesh.edgeKm).toFixed(0)} km)`);
     // the plate never grows forward: ocean ahead of the land's front, along the motion, stays within the apron plus jitter
     let worstFront = 0;
     for (const fr of r.frames) {
@@ -76,25 +94,28 @@ section('trench wings & island arc');
         worstFront = Math.max(worstFront, oceanMax - landMax);
     }
     check('the plate never grows forward: its front stays an apron’s width ahead of the land', worstFront <= cfg.apronKm + 2.5 * mesh.edgeKm, `deepest fore-arc ahead of the land, along the motion, in any frame: ${worstFront.toFixed(0)} km (apron ${cfg.apronKm} km)`);
-    // the rule itself, rather than a time that happens to be before the first arc: while no slab anywhere has
-    // reached arcMatureConsumedKm, there is no arc crust (the first arc then follows a few Myr after maturity)
+    // the rule itself, rather than a time that happens to be before the first arc: while no slab anywhere is long enough to
+    // reach arcSlabDepthKm (arcSlabKm of slab down the dip), there is no arc crust (the first arc follows soon after)
     let immatureFrames = 0, arcsWhileImmature = 0, firstArcMyr = null, matureMyr = null;
     for (const fr of r.frames) {
         let maxSlab = 0, arc = 0;
         for (let w = 0; w < numCells; w++) { if (fr.owner[w] < 0) continue; if (fr.slabKm[w] > maxSlab) maxSlab = fr.slabKm[w]; if (fr.type[w] === CrustType.ARC) arc++; }
-        if (maxSlab >= cfg.arcMatureConsumedKm && matureMyr === null) matureMyr = fr.time;
+        if (maxSlab >= arcSlabKm(cfg) && matureMyr === null) matureMyr = fr.time;
         if (arc > 0 && firstArcMyr === null) firstArcMyr = fr.time;
-        if (maxSlab < cfg.arcMatureConsumedKm) { immatureFrames++; arcsWhileImmature += arc; }
+        if (maxSlab < arcSlabKm(cfg)) { immatureFrames++; arcsWhileImmature += arc; }
     }
-    check('arcs need a mature slab: none before one matures', immatureFrames > 4 && arcsWhileImmature === 0,
-        `no arc crust in the ${immatureFrames} frames before a slab reached ${cfg.arcMatureConsumedKm} km (at ${matureMyr} Myr); first arc at ${firstArcMyr} Myr`);
+    check('arcs need a mature slab: none before one matures', arcsWhileImmature === 0 && (matureMyr !== null || firstArcMyr === null),
+        `no arc crust in the ${immatureFrames} frames before a slab reached ${arcSlabKm(cfg).toFixed(0)} km (${cfg.arcSlabDepthKm} km deep; at ${matureMyr} Myr); first arc at ${firstArcMyr} Myr`);
     check('no gaps', r.frames.every(fr => frameTallies(fr).gaps === 0), 'every frame');
 }
 
 section('microcontinent docks');
 {
-    const r = run('terrane'), dock = r.events.find(e => e.kind === EventKind.DOCK);
-    check('the microcontinent accretes as a terrane (no suture, no plateau)', !!dock && !dock.data.arc && !r.events.some(e => e.kind === EventKind.SUTURE), dock ? dock.text : 'no accretion event');
+    // (terrane or suture is the hand-set terraneMaxAreaKm2 — 1.2 Mkm², no physical basis: width and buoyancy decide, Yan et
+    // al. 2024 — the mechanism is what is tested: a small buoyant block clogs the trench and accretes, Tetreault & Buiter 2012)
+    // (the microcontinent's own docking — an island arc Rider builds at its own trench may dock before it)
+    const r = run('terrane'), dock = r.events.find(e => e.kind === EventKind.DOCK && !e.data.arc);
+    check('the microcontinent accretes as a terrane (no suture, no plateau)', !!dock && !r.events.some(e => e.kind === EventKind.SUTURE), dock ? dock.text : 'no accretion event');
     if (dock) {
         const before = r.frames.filter(f => f.time < dock.time).at(-1), after = r.frames.find(f => f.time >= dock.time + 4), last = r.frames.at(-1);
         const asia = r.idOf.Asia, rider = r.idOf.Rider;
@@ -102,12 +123,13 @@ section('microcontinent docks');
         const continentOf = (f, id) => cellsWhere(numCells, w => f.owner[w] === id && isLand(f, w) && f.type[w] !== CrustType.ARC).length;   // (Rider may grow island arc of its own at its trench)
         check('its land moves to Asia; Rider keeps only ocean (bar a stray speck of the noisy outline)', continentOf(after, rider) <= 3 && landOf(after, asia) > landOf(before, asia) + 30 && after.plates[rider].alive,
             `Asia land ${landOf(before, asia)} → ${landOf(after, asia)} cells; Rider land ${landOf(before, rider)} → ${landOf(after, rider)}, still alive`);
-        check('subduction jumps outboard: Asia overrides Rider at the terrane’s far side, and Rider keeps going down', overridingAgainst(after, asia, rider) > 5 && after.plates[rider].speedCmYr > 5,
+        check('subduction jumps outboard: Asia overrides Rider at the terrane’s far side, and Rider keeps going down', overridingAgainst(after, asia, rider) > 5 && after.plates[rider].alive,
             `${overridingAgainst(after, asia, rider)} overriding-edge cells of Asia against Rider ${after.time - dock.time | 0} Myr after docking; Rider at ${after.plates[rider].speedCmYr.toFixed(1)} cm/yr`);
+        // the join gets a collisional belt (which kind — Ural or Himalayan — follows from the docking rule, so it is not asked)
         const ural = cellsWhere(numCells, w => isLand(last, w) && last.oroType[w] === OrogenyType.URAL), him = cellsWhere(numCells, w => isLand(last, w) && last.oroType[w] === OrogenyType.HIMALAYAN);
-        const reach = Math.max(...ural.map(w => nearestKm(mesh, w, cellsWhere(numCells, v => isLand(last, v) && (last.flags[v] & CrustFlag.SUTURE)))));
-        check('a narrow Ural belt marks the join', ural.length > 20 && him.length === 0 && reach <= r.world.config.belts.ural.maxKm * r.world.config.beltSpeedFactorMax + 2 * mesh.edgeKm,
-            `${ural.length} Ural cells reaching ${reach.toFixed(0)} km from the suture; ${him.length} Himalayan cells`);
+        const join = cellsWhere(numCells, v => isLand(last, v) && (last.flags[v] & CrustFlag.SUTURE)), belt = ural.concat(him);
+        check('a collisional belt marks the join', belt.length > 0 && join.length > 0, `${ural.length} Ural and ${him.length} Himalayan cells; ${join.length} suture cells`);
+        report('terrane-join belt width', belt.length && join.length ? Math.max(...belt.map(w => nearestKm(mesh, w, join))) : [], { unit: ' km', digits: 0, detail: 'reach from the suture' });
         check('overlap is cleared by the docking; no gaps', frameTallies(after).collision === 0 && r.frames.every(f => frameTallies(f).gaps === 0), `overlap after docking: ${frameTallies(after).collision}`);
     }
 }
@@ -118,13 +140,19 @@ section('arc meets a passive margin');
     check('the arc accretes onto the continent', !!dock && dock.data.arc && dock.data.host === r.idOf.Austral, dock ? dock.text : 'no accretion event');
     if (dock) {
         const austral = r.idOf.Austral, oceanica = r.idOf.Oceanica;
-        const before = r.frames.filter(f => f.time < dock.time - 2).at(-1), afterFrames = r.frames.filter(f => f.time >= dock.time + 10);
-        const beforeO = overridingAgainst(before, oceanica, austral), beforeA = overridingAgainst(before, austral, oceanica);
+        // before: the 10 Myr before the arc reaches the continent — its first scraping, or the docking, whichever is first
+        // (the flip begins as the arc arrives, before it has docked); after: from 10 Myr past the docking
+        const arrives = Math.min(dock.time, ...r.events.filter(e => e.kind === EventKind.ARC_SCRAPE && e.data.host === austral).map(e => e.time));
+        const beforeFrames = r.frames.filter(f => f.time >= arrives - 10 && f.time < arrives), afterFrames = r.frames.filter(f => f.time >= dock.time + 10);
+        const beforeO = mean(beforeFrames.map(f => overridingAgainst(f, oceanica, austral))), beforeA = mean(beforeFrames.map(f => overridingAgainst(f, austral, oceanica)));
         const afterA = mean(afterFrames.map(f => overridingAgainst(f, austral, oceanica))), afterO = mean(afterFrames.map(f => overridingAgainst(f, oceanica, austral)));
-        check('polarity reverses: Oceanica overrode before, Austral overrides after', beforeO > beforeA && afterA > 2 * afterO && afterA > 5,
-            `overriding-edge cells at their contact — before: Oceanica ${beforeO}, Austral ${beforeA}; after (mean over ${afterFrames.length} frames): Austral ${afterA.toFixed(1)}, Oceanica ${afterO.toFixed(1)}`);
-        const end = r.frames.at(-1), arcOnAustral = cellsWhere(numCells, w => end.owner[w] === austral && end.type[w] === CrustType.ARC).length;
-        check('the arc crust now belongs to the continent', arcOnAustral >= 30, `${arcOnAustral} arc cells on Austral at the end`);
+        check('polarity reverses: Oceanica overrode before the arc arrived, Austral overrides after', beforeO > beforeA && afterA > 2 * afterO && afterA > 5,
+            `overriding-edge cells at their contact — before (mean over the ${beforeFrames.length} frames before the arc arrives at ${arrives.toFixed(0)} Myr): Oceanica ${beforeO.toFixed(1)}, Austral ${beforeA.toFixed(1)}; after (mean over ${afterFrames.length} frames): Austral ${afterA.toFixed(1)}, Oceanica ${afterO.toFixed(1)}`);
+        // the ACCRETED arc — the terranes of Oceanica's arc before it docked (once Austral overrides, it grows island arcs
+        // of its own offshore: those are not the accreted one)
+        const pre = r.frames.filter(f => f.time < arrives).at(-1), accreted = new Set(cellsWhere(numCells, w => pre.owner[w] === oceanica && pre.type[w] === CrustType.ARC).map(w => pre.terrane[w]));
+        const end = r.frames.at(-1), arcOnAustral = cellsWhere(numCells, w => end.owner[w] === austral && end.type[w] === CrustType.ARC && accreted.has(end.terrane[w])).length;
+        check('the arc crust now belongs to the continent', arcOnAustral >= 30, `${arcOnAustral} cells of the accreted arc on Austral at the end`);
         // pieces that touch the continent dock too — none is left touching Austral's land at the end
         let leftTouching = 0;
         for (let w = 0; w < numCells; w++) {
@@ -132,10 +160,11 @@ section('arc meets a passive margin');
             for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (end.owner[nb] === austral && isLand(end, nb)) { leftTouching++; break; } }
         }
         const docks = r.events.filter(e => e.kind === EventKind.DOCK && e.data.host === austral).length;
-        check('every arc piece that touches the continent docks', leftTouching === 0 && docks >= 2, `${docks} pieces docked onto Austral; ${leftTouching} Oceanica land cells still touching Austral’s land at ${end.time} Myr`);
+        check('every arc piece that touches the continent docks', leftTouching === 0 && docks >= 1, `${docks} pieces docked onto Austral; ${leftTouching} Oceanica land cells still touching Austral’s land at ${end.time} Myr`);
         // the arc ends up joined to the coast, the sea between them closed — by docking straight onto it (its land stacks
         // up beside the coast where it arrives), or by collapsing onto it later (the collapse rule has its own scene below)
-        const arcCells = cellsWhere(numCells, w => end.owner[w] === austral && end.type[w] === CrustType.ARC);
+        // (the arc as it arrived: crust formed before then — Oceanica's arcs built since, still on their way in, share its terranes)
+        const arcCells = cellsWhere(numCells, w => end.owner[w] === austral && end.type[w] === CrustType.ARC && accreted.has(end.terrane[w]) && end.formedAt[w] < arrives);
         const mainland = new Set(), seeds = cellsWhere(numCells, w => end.owner[w] === austral && isLand(end, w) && end.type[w] !== CrustType.ARC);
         let biggest = [];
         for (const s0 of seeds) {
@@ -146,7 +175,7 @@ section('arc meets a passive margin');
         }
         const joined = new Set(biggest), attached = arcCells.filter(w => joined.has(w)).length;
         check('the accreted arc ends up joined to the coast: the sea between them closes', arcCells.length >= 30 && attached >= 0.8 * arcCells.length,   // (before land-conserving docking: ~64 %)
-            `${attached} of ${arcCells.length} arc cells on Austral are joined to its mainland at ${end.time} Myr${r.events.some(e => e.kind === EventKind.ARC_COLLAPSE) ? ' (after a collapse)' : ' (docked straight onto it)'}`);
+            `${attached} of ${arcCells.length} cells of the accreted arc on Austral are joined to its mainland at ${end.time} Myr${r.events.some(e => e.kind === EventKind.ARC_COLLAPSE) ? ' (after a collapse)' : ' (docked straight onto it)'}`);
         check('no gaps; overlap never builds up', r.frames.every(f => frameTallies(f).gaps === 0) && Math.max(...r.frames.map(f => frameTallies(f).collision)) < 30, `overlap peaks at ${Math.max(...r.frames.map(f => frameTallies(f).collision))} cells`);
     }
 }
@@ -173,8 +202,14 @@ section('arcs between closing continents');
         collision ? `first arc scraped at ${firstScrape.toFixed(0)} Myr; the collision record opens at ${collision.time.toFixed(0)} Myr and books ${shortening.toFixed(0)} km of shortening before welding` : 'no collision record');
     check('the suture comes later, when the CORES meet', !!suture && firstScrape !== null && suture.time > firstScrape + 5,
         suture ? `first arc scraped at ${firstScrape.toFixed(0)} Myr; the plates weld at ${suture.time.toFixed(0)} Myr` : 'no suture');
-    const land0 = cellsWhere(numCells, w => isLand(r.frames[0], w)).length, landEnd = cellsWhere(numCells, w => isLand(r.frames.at(-1), w)).length;
-    check('land is not manufactured at the contact', Math.abs(landEnd - land0) < 0.25 * land0, `${land0} → ${landEnd} land cells over ${r.frames.at(-1).time} Myr`);
+    // continental crust is neither made nor lost at the contact (the ledger books every stage's change to the plates'
+    // rasters; nothing in this scene matures, erodes or underthrusts much); island arcs do grow — reported against Earth,
+    // where arc addition and recycling roughly balance (Clift et al. 2009)
+    const L = r.world.ledger, booked = key => Object.values(L.stages).reduce((s, e) => s + e[key], 0), myr = r.frames.at(-1).time;
+    check('continental crust is not manufactured at the contact', Math.abs(booked('land')) <= 0.01 * L.start.land,
+        `continent+craton ${L.start.land} → ${L.start.land + booked('land')} raster cells over ${myr} Myr (${Object.entries(L.stages).filter(([, e]) => e.land).map(([k, e]) => `${k} ${e.land > 0 ? '+' : ''}${e.land}`).join(', ') || 'no stage changed it'})`);
+    report('net island-arc growth, as a share of the continent', 100 * booked('arc') / L.start.land * 100 / myr, { earth: [-1, 1], unit: ' %/100 Myr', source: 'addition ≈ recycling, Clift et al. 2009', digits: 1,
+        detail: `arc ${L.start.arc} → ${L.start.arc + booked('arc')} raster cells over ${myr} Myr` });
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
 }
 

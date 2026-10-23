@@ -1,7 +1,13 @@
 // Headless acceptance checks for Phase 3 (the generated start world).
 // Usage: node v2/tools/check-phase3.mjs      — runs every guarantee across many seeds and settings.
+// Hard checks: the generator honours its own parameters (craton count, spacing, land fraction, craton share, apron, rim
+// trench — contracts, whatever the value; several values are taste, marked below), seeds are distinct and repeatable,
+// and the nudge's crust rules (offshore trench of old crust, a wake behind, little new crust at a convergent edge).
+// Reported: the shape of the start world — craton and terrane sizes, craton share, span, rim smoothness, rim trench
+// coverage, suture share — against Earth's figures where there are any. The start is an initial condition: none of
+// these is a law. (The lab section is a software contract: it belongs in a UI/contract suite of its own.)
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
 import { TECTONICS } from '../js/tectonics/config.js';
 import { buildStartWorld } from '../js/tectonics/init/start-world.js';
 import { measureStartWorld } from '../js/tectonics/init/measure-start.js';
@@ -19,34 +25,52 @@ const mesh = labMesh();      // one mesh for all worlds, as in the lab: the seed
 
 section('defaults, many seeds');
 const t0 = performance.now();
-const runs = SEEDS.map(seed => { const { world, start } = buildStartWorld(mesh, seed); return { seed, start, m: measureStartWorld(world, start) }; });
+const runs = SEEDS.map(seed => { const { world, start } = buildStartWorld(mesh, seed); return { seed, world, start, m: measureStartWorld(world, start) }; });
 console.log(`${runs.length} start worlds generated + measured in ${(performance.now() - t0).toFixed(0)} ms; attempts per seed: ${runs.map(r => r.start.attempts).join(' ')}`);
 const all = (test) => runs.filter(r => !test(r)).map(r => r.seed);
-const report = (name, test, detail) => { const bad = all(test); check(name, bad.length === 0, detail + (bad.length ? ` — FAILING SEEDS: ${bad.join(', ')}` : '')); };
+const everySeed = (name, test, detail) => { const bad = all(test); check(name, bad.length === 0, detail + (bad.length ? ` — FAILING SEEDS: ${bad.join(', ')}` : '')); };
+const perSeed = f => runs.map(f);
 const C = TECTONICS;
 
-report('craton count', r => r.m.cratons.length === C.cratonCount && r.m.cratons.every(k => k.areaKm2 > 0), `${C.cratonCount} cratons in every world`);
-report('space between cratons', r => r.m.minGapKm >= C.cratonMinGapKm, `smallest gap per world ${range(runs, r => r.m.minGapKm)} km (required ≥ ${C.cratonMinGapKm})`);
-report('space between cratons and the sea', r => r.m.minCoastKm >= C.cratonMinCoastKm, `smallest distance per world ${range(runs, r => r.m.minCoastKm)} km (required ≥ ${C.cratonMinCoastKm})`);
-report('variety of craton size', r => r.m.cratonSizeRatio >= 2 && r.m.cratons.every(k => k.diameterKm > 650 && k.diameterKm < 4400),
-    `largest ÷ smallest diameter ${range(runs, Object.assign(r => r.m.cratonSizeRatio, { digits: 1 }))}×; diameters ${range(runs, r => Math.min(...r.m.cratons.map(k => k.diameterKm)))} to ${range(runs, r => Math.max(...r.m.cratons.map(k => k.diameterKm)))} km`);
-report('variety of terrane size', r => r.m.terraneSizeRatio >= 1.8, `largest ÷ smallest terrane area ${range(runs, Object.assign(r => r.m.terraneSizeRatio, { digits: 1 }))}×`);
-report('continental fraction', r => Math.abs(r.m.continentalFraction - C.continentalFraction) < 0.015, `${range(runs, Object.assign(r => r.m.continentalFraction * 100, { digits: 1 }))} % of the surface (target ${(C.continentalFraction * 100).toFixed(0)} %)`);
-report('craton share', r => r.m.cratonShare < C.cratonShare + 0.04 && r.m.cratonShare > C.cratonShare * C.cratonMinAreaScale * 0.8,
+everySeed('craton count', r => r.m.cratons.length === C.cratonCount && r.m.cratons.every(k => k.areaKm2 > 0), `${C.cratonCount} cratons in every world`);
+// (the spacing values are taste — "room for a rift", no geophysical basis found; some real cratons do reach a passive margin,
+// e.g. the West African and São Francisco cratons, so 0 km from the sea would be a legal setting too)
+everySeed('space between cratons', r => r.m.minGapKm >= C.cratonMinGapKm, `smallest gap per world ${range(runs, r => r.m.minGapKm)} km (required ≥ ${C.cratonMinGapKm})`);
+everySeed('space between cratons and the sea', r => r.m.minCoastKm >= C.cratonMinCoastKm, `smallest distance per world ${range(runs, r => r.m.minCoastKm)} km (required ≥ ${C.cratonMinCoastKm})`);
+// (the generator's size ladder runs 1 → cratonSizeRatio, each core jittered ±10 % and lobed, the ladder shortened only if the
+// largest would pass cratonMaxDiameterKm: the ratio it gives is within a factor 1.5 of the one asked)
+everySeed('variety of craton size: the generator honours cratonSizeRatio and cratonMaxDiameterKm', r => r.m.cratonSizeRatio >= C.cratonSizeRatio / 1.5 && r.m.cratonSizeRatio <= C.cratonSizeRatio * 1.5 && r.m.cratons.every(k => k.diameterKm <= C.cratonMaxDiameterKm + mesh.edgeKm),
+    `largest ÷ smallest diameter ${range(runs, Object.assign(r => r.m.cratonSizeRatio, { digits: 1 }))}× (asked ${C.cratonSizeRatio}×); widest ${range(runs, r => Math.max(...r.m.cratons.map(k => k.diameterKm)))} km (cap ${C.cratonMaxDiameterKm})`);
+const cratonSizes = 'Earth\'s ~35 large cratons run from Slave ~500 km to Superior >3000 km, plus smaller slivers (Bleeker 2003, Lithos 71)';
+report('craton diameter, smallest in each world', perSeed(r => Math.min(...r.m.cratons.map(k => k.diameterKm))), { earth: [500, 3000], unit: ' km', digits: 0, source: cratonSizes });
+report('craton diameter, largest in each world', perSeed(r => Math.max(...r.m.cratons.map(k => k.diameterKm))), { earth: [500, 3000], unit: ' km', digits: 0, source: cratonSizes });
+report('variety of terrane size: largest ÷ smallest terrane area', perSeed(r => r.m.terraneSizeRatio), { unit: '×', digits: 1 });
+// (the 29 % default is Earth's LAND above sea level; continental crust with its margins covers ~41 % (Cogley 1984) — a
+// contract here, whatever the value)
+everySeed('continental fraction', r => Math.abs(r.m.continentalFraction - C.continentalFraction) < 0.015, `${range(runs, Object.assign(r => r.m.continentalFraction * 100, { digits: 1 }))} % of the surface (target ${(C.continentalFraction * 100).toFixed(0)} %)`);
+everySeed('craton share', r => r.m.cratonShare < C.cratonShare + 0.04 && r.m.cratonShare > C.cratonShare * C.cratonMinAreaScale * 0.8,
     `${range(runs, r => r.m.cratonShare * 100)} % of continental crust (asked ${(C.cratonShare * 100).toFixed(0)} %; craton size factor used: ${range(runs, Object.assign(r => r.start.cratonAreaScale, { digits: 2 }))})`);
-report('one landmass, no inland seas', r => r.m.strayLandCells === 0 && r.m.enclosedSeaCells === 0, 'no stray land cells, no enclosed sea cells');
-report('not more than half-way round', r => r.m.longestAxisDeg <= 172, `longest axis ${range(runs, r => r.m.longestAxisDeg)}°`);
-report('ocean apron', r => r.m.minApronKm >= C.apronKm - mesh.edgeKm, `narrowest apron per world ${range(runs, r => r.m.minApronKm)} km (target ${C.apronKm}, cell size ${mesh.edgeKm.toFixed(0)})`);
-report('trench line is smoother than the coast', r => r.m.rimCells < 0.95 * r.m.coastCells, `rim ÷ coast length ${range(runs, Object.assign(r => r.m.rimCells / r.m.coastCells, { digits: 2 }))}`);
-report('rim trench', r => r.m.trenchOffRim === 0 && Math.abs(r.m.trenchCoverage - C.rimTrenchCoverage) < 0.08, `on ${range(runs, r => r.m.trenchCoverage * 100)} % of the rim (target ${C.rimTrenchCoverage * 100} %), never off the rim`);
+report('craton share of the continental crust', perSeed(r => r.m.cratonShare * 100), { unit: ' %', digits: 0,
+    source: 'no sourced Earth figure: Archean crust is roughly 7–10 % of continental area, far more with Proterozoic shields (unverified); the 24 % default is unsourced' });
+// (a clean single supercontinent is the generator's only mode — it fills enclosed seas and sinks stray land, init/landmass.js
+// — so this is its contract, not Earth-likeness: Pangea had the Tethys embayment and intracontinental basins)
+everySeed('the generator\'s one landmass: no stray land, no enclosed seas', r => r.m.strayLandCells === 0 && r.m.enclosedSeaCells === 0, 'no stray land cells, no enclosed sea cells');
+report('span of the supercontinent: its longest axis', perSeed(r => r.m.longestAxisDeg), { unit: '°', digits: 0, source: 'Pangea reached roughly pole to pole, close to 180°; physics sets no cap' });
+everySeed('ocean apron', r => r.m.minApronKm >= C.apronKm - mesh.edgeKm, `narrowest apron per world ${range(runs, r => r.m.minApronKm)} km (target ${C.apronKm}, cell size ${mesh.edgeKm.toFixed(0)})`);
+report('trench line against the coast: rim ÷ coast length', perSeed(r => r.m.rimCells / r.m.coastCells), { digits: 2, source: 'trenches are long smooth arcs at the 1000s-of-km scale; no quantitative law found' });
+everySeed('rim trench', r => r.m.trenchOffRim === 0 && Math.abs(r.m.trenchCoverage - C.rimTrenchCoverage) < 0.08, `on ${range(runs, r => r.m.trenchCoverage * 100)} % of the rim (target ${C.rimTrenchCoverage * 100} %), never off the rim`);
+report('rim trench coverage (an initial-condition choice)', perSeed(r => r.m.trenchCoverage * 100), { unit: ' %', digits: 0, source: 'Pangea was ringed by circum-Panthalassa subduction (Collins 2003, Geology); the 85 % is a guess' });
+report('suture belts: share of the land', perSeed(r => r.m.sutureShare * 100), { unit: ' %', digits: 0 });
 {
-    const sutures = runs.map(r => r.m.sutureShare * 100);
-    check('suture belts exist', sutures.every(s => s > 3 && s < 30), `${Math.min(...sutures).toFixed(0)}–${Math.max(...sutures).toFixed(0)} % of the land is suture belt`);
     const centres = runs.map(r => r.start.centre);
     let closest = Infinity;
     for (let i = 0; i < centres.length; i++) for (let j = i + 1; j < centres.length; j++)
         closest = Math.min(closest, Math.acos(centres[i][0] * centres[j][0] + centres[i][1] * centres[j][1] + centres[i][2] * centres[j][2]) * 180 / Math.PI);
     check('seeds give different worlds', closest > 1, `closest pair of supercontinent centres is ${closest.toFixed(0)}° apart`);
+    // …and the same seed gives the same world, cell for cell
+    const again = buildStartWorld(mesh, SEEDS[0]).world, first = runs[0].world;
+    const differ = again.plates.length !== first.plates.length ? Infinity : again.plates.reduce((n, p, i) => n + p.crust.mask.reduce((m, v, c) => m + (v !== first.plates[i].crust.mask[c] || p.crust.type[c] !== first.plates[i].crust.type[c] || p.crust.terrane[c] !== first.plates[i].crust.terrane[c] ? 1 : 0), 0), 0);
+    check('the same seed gives the same world', differ === 0, `seed ${SEEDS[0]} built twice: ${differ} cells differ in plate, crust type or terrane`);
 }
 
 section('slider ranges');
@@ -123,17 +147,20 @@ function nudge(seed, overrides) {
     }
     return { frames, landChanged, ahead, behind, trenchOnLand, trenchOnApron, newCrustAtTrench, trenchCellFrames, leadingNew, leadingTrench, gaps: Math.max(...frames.map(f => frameTallies(f).gaps)) };
 }
+const MIN_TRENCH_KM = 4000;      // a leading rim's worth of trench: the trench must be there before "offshore" means anything
 for (const seed of [2, 12345]) {
-    const withApron = nudge(seed, {}), coastHugging = nudge(seed, { apronKm: 0, apronSmoothKm: 0 });
+    const withApron = nudge(seed, {});
     check(`nudge, seed ${seed}: crust rules hold`, withApron.gaps === 0 && withApron.landChanged === 0, `${withApron.gaps} gap cells, ${withApron.landChanged} land cells changed`);
-    check(`nudge, seed ${seed}: the trench is offshore`, withApron.trenchOnApron > 40 && withApron.trenchOnLand <= 0.05 * withApron.trenchOnApron,
-        `overriding-edge cells at ${NUDGE_MAX_MYR} Myr: ${withApron.trenchOnApron} on apron ocean, ${withApron.trenchOnLand} on land`);
+    const trenchKm = cells => cells * mesh.edgeKm * Math.sqrt(3) / 2;     // (a line of cells: one per row spacing)
+    check(`nudge, seed ${seed}: the trench is offshore`, trenchKm(withApron.trenchOnApron) >= MIN_TRENCH_KM && withApron.trenchOnLand <= 0.05 * withApron.trenchOnApron,
+        `overriding edge at ${NUDGE_MAX_MYR} Myr: ${trenchKm(withApron.trenchOnApron).toFixed(0)} km on apron ocean, ${trenchKm(withApron.trenchOnLand).toFixed(0)} km on land (at least ${MIN_TRENCH_KM} km of trench)`);
     check(`nudge, seed ${seed}: the leading trench is made of old crust`, withApron.leadingTrench > 100 && withApron.leadingNew <= 0.06 * withApron.leadingTrench,   // a hook in an irregular coast is locally a trailing edge and sheds a little wake
         `leading-rim trench cells made of newly formed crust: ${withApron.leadingNew} of ${withApron.leadingTrench} cell-frames`);
-    check(`nudge, seed ${seed}: a smooth rim sheds far less new crust than a coast-hugging plate`, withApron.newCrustAtTrench <= 0.9 * coastHugging.newCrustAtTrench && withApron.newCrustAtTrench <= 0.12 * withApron.trenchCellFrames,
-        `new-crust trench cells over the whole rim (flanks included): ${withApron.newCrustAtTrench} of ${withApron.trenchCellFrames} vs ${coastHugging.newCrustAtTrench} of ${coastHugging.trenchCellFrames} coast-hugging`);
+    // (an artifact bound: no new crust forms at a convergent edge, but a raster rim sheds a little wake where it is concave)
+    check(`nudge, seed ${seed}: little new crust at a convergent edge (a raster artifact, bounded)`, withApron.newCrustAtTrench <= 0.12 * withApron.trenchCellFrames,
+        `new-crust trench cells over the whole rim (flanks included): ${withApron.newCrustAtTrench} of ${withApron.trenchCellFrames} cell-frames (${(100 * withApron.newCrustAtTrench / withApron.trenchCellFrames).toFixed(1)} %; limit 12 %)`);
     check(`nudge, seed ${seed}: new crust trails the plate`, withApron.behind > 200 && withApron.ahead <= 0.05 * withApron.behind,
-        `new-ocean cells in the trailing wake: ${withApron.behind}; within ±50° of the heading: ${withApron.ahead} (flank slivers where the rim slides past old ocean; coast-hugging plate: ${coastHugging.ahead})`);
+        `new-ocean cells in the trailing wake: ${withApron.behind}; within ±50° of the heading: ${withApron.ahead} (flank slivers where the rim slides past old ocean)`);
 }
 
 section('lab');

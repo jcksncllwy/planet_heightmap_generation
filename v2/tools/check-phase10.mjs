@@ -1,16 +1,18 @@
-// Headless acceptance checks for Phase 10 (cratons against the ranges, and their look — plans/V2_ROADMAP_PHASES_9_13.md):
-// a belt rides onto a craton's rim but never into its core (history records only: no event changes); a range pressed
-// against a craton from its lower plate bends a lowland into it; a plateau's back against a craton keeps a steep front;
-// craton scraps read as their surroundings; cratons differ from one another and carry some relief, still calm; the
-// same look at every terrain resolution.
+// Headless acceptance checks for Phase 10 (cratons against the ranges, and their look — plans/V2_ROADMAP_PHASES_9_13.md).
+// Hard checks: a collision's belt rides onto a craton's rim, and the rim belts change no event (records only); a range
+// pressed against a craton from its lower plate bends a lowland into it, and the upper plate's shield is bent less than
+// the lower's (retro < pro); each shield stands at the same height at 160K and 640K; craton relief is no more than
+// ordinary lowland's; craton scraps read as their surroundings.
+// Reported: how deep a belt reaches into a craton and how many craton cells thicken, the lower plate's foreland bend,
+// the upper plate's front and bend, how much cratons differ from one another, and craton relief against lowland's.
 // Usage: node v2/tools/check-phase10.mjs
 
-import { check, section, finish, labMesh } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
-import { synthesizeTerrain } from '../js/terrain/synthesize.js';
+import { synthesizeTerrain, flexuralLengthKm } from '../js/terrain/synthesize.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide } from '../js/terrain/records.js';
 import { spreadKm } from '../js/core/min-heap.js';
@@ -64,10 +66,13 @@ const cr = run('cratons'), cfg = cr.world.config;
         most = Math.max(most, rim.length);
         for (const w of rim) deepest = Math.max(deepest, kmTo(w));
     }
-    check('the collision\'s belt rides onto the shield\'s rim — never deeper than the rim — and the shield never thickens',
-        most >= 5 && deepest <= cfg.cratonRimKm + mesh.edgeKm && thick === 0,
-        `up to ${most} craton cells carry a belt before the weld (${weldAt} Myr), the deepest ${deepest.toFixed(0)} km in (the rim is ${cfg.cratonRimKm} km); ${thick} thickened in any frame`);
-    const off = run('cratons', null, { cratonRimKm: 0 }), log = w => w.events.map(e => `${e.time}|${e.kind}|${e.text}`).join('\n');
+    check('the collision\'s belt rides onto the shield\'s rim', most > 0 && deepest > 0, `up to ${most} craton cells carry a belt before the weld (${weldAt} Myr)`);
+    // (how deep, and how much a shield thickens, comes from its strength: each km of craton costs a belt cratonStrength km of
+    // its reach, and it thickens 1/cratonStrength as much. On Earth craton cores rarely deform, but the Laramide reached into
+    // Wyoming and the North China craton was destroyed)
+    report('deepest a belt reaches into a craton before the weld', deepest, { unit: ' km', digits: 0, source: 'cratons resist deformation (Lenardic & Moresi 1999); the sub-Andean zone 50–100 km', detail: `cratonStrength ${cfg.cratonStrength}` });
+    report('craton cells thickened by a belt (summed over frames)', thick, { digits: 0, source: 'craton cores rarely thicken' });
+    const off = run('cratons', null, { cratonStrainShare: 0 }), log = w => w.events.map(e => `${e.time}|${e.kind}|${e.text}`).join('\n');
     check('…and it changes no event of the history: only its records', log(off.world) === log(cr.world), `${cr.world.events.length} events, the same with and without the rim belts`);
 }
 
@@ -89,15 +94,22 @@ const tm640 = terrainMesh(640000);
     // (how far the range bends the shield down: the same ground with no foreland at all, less as it is — the shield's
     // own character, a sag or a swell, cancels out)
     const lowRange = lower(-200, -40), lowFore = lower(80, 200), lowShield = lower(400, 600), lowBent = lowerFlat(80, 200) - lowFore;
+    // (the 0.05 km margins are a smoke test of the foreland: its width is the flexural solution's, α = (4D/Δρg)^¼ for the
+    // shield's elastic thickness (reported below) — and flexure also predicts a forebulge ~3πα/4 out, which the "shield
+    // beyond" here may read)
     check('before the range on the lower plate, a lowland bends into the shield — lower than the shield beyond it',
         lowFore <= lowShield - 0.05 && lowBent >= 0.05 && lowRange > lowShield + 0.3,
         `India's side: the range ${lowRange.toFixed(2)} km (40–200 km outside the shield), the ground 80–200 km in ${lowFore.toFixed(2)} km (bent ${lowBent.toFixed(2)} km down by the range), the shield 400–600 km in ${lowShield.toFixed(2)} km`);
-    // (a plateau's back loads the block at forelandUpperPlate of a range's weight: at most that share of the deepest
-    // foreland — a trace, as the Sichuan Basin lies a little low before the Longmen Shan)
+    // (a plateau's back stands on its own thickened root, so only the crests of its ranges load the block — the Sichuan
+    // Basin lies a little low before the Longmen Shan. Retro-forelands are shallower than pro-forelands (Naylor & Sinclair
+    // 2008): that inequality is the check; the steep front is reported)
     const upBack = upper(-120, -40), upEdge = upper(0, 80), upBent = upperFlat(80, 200) - upper(80, 200), tcfg = terrainConfig();
-    check('where the plateau\'s back meets the upper plate\'s shield, the front is steep, with little lowland before it',
-        upBack - upEdge >= 0.3 && upBent <= tcfg.forelandUpperPlate * tcfg.foredeepMaxKm + 0.005 && upBent < lowBent / 2,
-        `Asia's side: the plateau's back ${upBack.toFixed(2)} km (40–120 km outside), the shield's edge ${upEdge.toFixed(2)} km (0–80 km in); the shield bent ${upBent.toFixed(3)} km down 80–200 km in (India's: ${lowBent.toFixed(2)} km)`);
+    check('the upper plate\'s shield is bent less before the plateau than the lower plate\'s before the range (retro < pro)', upBent < lowBent,
+        `Asia's shield bent ${upBent.toFixed(3)} km down 80–200 km in; India's ${lowBent.toFixed(2)} km`);
+    report('the plateau\'s front: its back above the shield\'s edge', upBack - upEdge, { unit: ' km', digits: 2, source: 'a steep front with little lowland (Longmen Shan)', detail: `the plateau's back ${upBack.toFixed(2)} km (40–120 km outside), the shield's edge ${upEdge.toFixed(2)} km (0–80 km in)` });
+    report('upper plate\'s bend ÷ lower plate\'s', upBent / lowBent, { digits: 2, unit: '×', source: 'retro-forelands shallower than pro-forelands (Naylor & Sinclair 2008)', detail: `the plateau's back loads by its crests only; foredeepMaxKm ${tcfg.foredeepMaxKm} km` });
+    report('the shields\' flexural length', flexuralLengthKm(tcfg.shieldElasticKm), { unit: ' km', digits: 0, earth: [100, 250], source: 'cratonic Te 40–100 km (Watts 2001); the Ganges foredeep ~250–450 km wide ≈ πα/2 + the thrusts',
+        detail: `Te ${tcfg.shieldElasticKm} km: the foredeep ~${(Math.PI / 2 * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km wide beyond ${tcfg.forelandFromKm} km, the forebulge's crest ~${(3 * Math.PI / 4 * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km` });
 
     // ── the same look at every resolution: the shields' median heights at 160K and 640K ──
     const tm160 = terrainMesh(160000), T160 = synthesizeTerrain(F, mesh, tm160, { seed: SEED, carve: true });
@@ -122,8 +134,10 @@ section('cratons across a whole planet (600 Myr)');
     for (let t = 0; t < tm.numCells; t++) { const c = cellOf(t); if (!isC(F, c) || din[c] <= 200 || T.heightKm[t] <= 0) continue; (byT.get(F.terrane[c]) ?? byT.set(F.terrane[c], []).get(F.terrane[c])).push(T.heightKm[t]); }
     const meds = [...byT.values()].filter(a => a.length > 300).map(median), mean = meds.reduce((s, v) => s + v, 0) / meds.length;
     const spread = Math.sqrt(meds.reduce((s, v) => s + (v - mean) ** 2, 0) / meds.length);
-    check('cratons differ from one another: sag basins, swells, flat shields', meds.length >= 4 && spread >= 0.15,
-        `the median heights of ${meds.length} cratons: ${meds.map(v => v.toFixed(2)).join(', ')} km (spread ${spread.toFixed(2)} km)`);
+    // (the differences are random "characters" today, cratonCharacter; the physics would be dynamic topography and
+    // intracratonic subsidence)
+    report('spread of craton heights (standard deviation of their medians)', spread, { earth: [0.2, 0.5], unit: ' km', digits: 2, source: 'cratons vary by ~±0.5 km: African swells, Congo sag, low Canadian Shield (Hager 1985; Flament et al. 2013)',
+        detail: `the median heights of ${meds.length} cratons: ${meds.map(v => v.toFixed(2)).join(', ')} km` });
     // relief: the spread of heights within each sim cell and its neighbours (~250 km), well inside cratons, with the
     // characters and without; and on ordinary lowland (no belt, below 0.6 km)
     const stdIn = TT => {
@@ -138,8 +152,9 @@ section('cratons across a whole planet (600 Myr)');
         else if (!isC(F, w) && !F.oroType[w] && !F.prevType[w]) { const a = sd(w); if (a === a && T.rec.platformKm[w] < 0.6) low.push(a); }
     }
     const rc = median(withC), r0 = median(without), rl = median(low);
-    check('cratons carry some relief — still the calmest ground', rc >= 1.3 * r0 && rc <= 1.3 * rl,
+    check('cratons are no rougher than ordinary lowland', rc <= rl,
         `relief within ~250 km, well inside cratons: ${(1000 * rc).toFixed(0)} m (${(1000 * r0).toFixed(0)} m without their characters); on ordinary lowland ${(1000 * rl).toFixed(0)} m`);
+    report('craton relief ÷ lowland relief', rc / rl, { digits: 2, unit: '×', source: 'shields are low-relief' });
 }
 
 // ── scraps of craton (1–3 sim cells, as a collision leaves them: the India scene, and the whole planet) ──

@@ -1,5 +1,14 @@
 // Shared by every v2/tools/check-phase<N>.mjs: Node set-up for the sim mesh, the PASS/FAIL
 // reporter, and the smoke test that a lab phase module loads and honours the Phase contract.
+//
+// Two kinds of line (the check audit, 2026-10):
+//   · check() — HARD: fails the run. Only for what must always hold: an invariant (conservation, bookkeeping, tiling,
+//     determinism), a numerical property (mesh, step, resolution, speed), or a mechanism doing what its physics says in a
+//     scene built to show it. Never for an outcome Earth merely happens to have.
+//   · report() — an Earth-likeness statistic: the value (one per seed, or one) against Earth's value or range and its
+//     source. A value outside the range is flagged ⚑ for a look; it never fails the run. The model is meant to make an
+//     Earth from the right start, not every start into an Earth: a feature Earth lacks is not an error.
+// With REPORT_JSON=path set, each report is also appended to that file as a line of JSON (tools/run-checks.mjs reads it).
 
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
@@ -10,6 +19,7 @@ import { largestPieceOf, piecesOf } from '../../js/core/mesh-bfs.js';
 import { cellDistanceKm } from '../../js/core/sphere-geom.js';
 import { CrustType } from '../../js/tectonics/model/crust.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../../js/tectonics/config.js';
+import { appendFileSync } from 'node:fs';
 
 setDelaunator(Delaunator);      // the browser gets Delaunator from a <script> tag; Node has to hand it over
 
@@ -17,20 +27,39 @@ setDelaunator(Delaunator);      // the browser gets Delaunator from a <script> t
 export const LAB_MESH_SEED = 12345;
 export function labMesh(cells = TECTONICS.simCells, seed = LAB_MESH_SEED) { return buildSimMesh(cells, seed); }
 
-let failures = 0, total = 0;
+let failures = 0, total = 0, reports = 0, outside = 0, sectionTitle = '';
 
-/** Report one check. `detail` should carry the measured numbers, so a FAIL explains itself. */
+/** One HARD check. `detail` should carry the measured numbers, so a FAIL explains itself. */
 export function check(name, ok, detail = '') {
     total++;
     if (!ok) failures++;
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  —  ${detail}` : ''}`);
 }
 
-export function section(title) { console.log(`\n── ${title} ──`); }
+/**
+ * One Earth-likeness statistic: never fails. `value` is a number or a list of them (one per seed); `earth` Earth's range
+ * [lo, hi] in the same unit (or null: no Earth figure — reported for interest), `source` where Earth's figure comes from.
+ * @param {{earth?: number[]|null, unit?: string, source?: string, digits?: number, detail?: string}} [o]
+ * @returns {boolean} whether every value lies inside Earth's range (true when there is none)
+ */
+export function report(name, value, { earth = null, unit = '', source = '', digits = 2, detail = '' } = {}) {
+    const values = (Array.isArray(value) ? value : [value]).filter(v => v !== undefined && v !== null);
+    const fmt = v => (Number.isFinite(v) ? v.toFixed(digits) : String(v)) + unit;
+    const inside = !earth || values.every(v => Number.isFinite(v) && v >= earth[0] && v <= earth[1]);
+    reports++;
+    if (!inside) outside++;
+    const earthText = earth ? `Earth ${earth[0] === earth[1] ? fmt(earth[0]) : `${fmt(earth[0])}–${fmt(earth[1])}`}${source ? `, ${source}` : ''}` : source ? `(${source})` : '';
+    console.log(`${inside ? 'REPORT' : 'REPORT⚑'}  ${name}: ${values.length ? values.map(fmt).join(' · ') : 'none'}${earthText ? `  (${earthText})` : ''}${detail ? `  —  ${detail}` : ''}`);
+    if (process.env.REPORT_JSON) appendFileSync(process.env.REPORT_JSON, JSON.stringify({ suite: process.argv[1].replace(/.*\//, ''), section: sectionTitle, name, values, earth, unit, source, inside }) + '\n');
+    return inside;
+}
 
-/** Print the verdict and set the process exit code. Call last. */
+export function section(title) { sectionTitle = title; console.log(`\n── ${title} ──`); }
+
+/** Print the verdict and set the process exit code (the hard checks alone decide it). Call last. */
 export function finish(phaseName) {
-    console.log(`\n${failures === 0 ? `${phaseName}: all ${total} checks passed.` : `${phaseName}: ${failures} of ${total} checks FAILED.`}`);
+    const reported = reports ? `; ${reports} reported${outside ? `, ${outside} outside Earth's range (⚑)` : ''}` : '';
+    console.log(`\n${failures === 0 ? `${phaseName}: all ${total} checks passed${reported}.` : `${phaseName}: ${failures} of ${total} checks FAILED${reported}.`}`);
     process.exitCode = failures === 0 ? 0 : 1;
 }
 

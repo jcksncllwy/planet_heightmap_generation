@@ -2,6 +2,8 @@
 // continent keeps its coasts, shapes, ridges and rivers from frame to frame — changing only where the history changes).
 // The developer's measure is a clear gain and an overall feel of stability, not perfection: the checks hold the gain
 // against the world grid (anchorRecords: false) and set floors near what it reached.
+// Every check is hard and numerical — the frame's completeness, resampling invariance, the detail's coherence in time and
+// its renewal clock (detailRenewMyr itself is a matter of taste) — so nothing here is reported against Earth.
 // Usage: node v2/tools/check-phase9.mjs
 
 import { check, section, finish, labMesh } from './lib/check-kit.mjs';

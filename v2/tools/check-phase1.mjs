@@ -1,4 +1,6 @@
-// Headless acceptance checks for Phase 1 (foundations & rigid kinematics).
+// Headless acceptance checks for Phase 1 (foundations & rigid kinematics). Every line is a hard check: mesh and integrator
+// correctness, unit conversion, exact tiling, rigid motion conserving area, and a reversible reconstruct — no Earth
+// statistics here. (The lab section is a software contract, not physics: it belongs in a UI/contract suite of its own.)
 // Usage: node v2/tools/check-phase1.mjs      → prints PASS/FAIL lines, writes PNGs to v2/out/
 
 import fs from 'node:fs';

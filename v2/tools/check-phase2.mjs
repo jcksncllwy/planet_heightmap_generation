@@ -1,4 +1,7 @@
-// Headless acceptance checks for Phase 2 (divergence & convergence rules, prescribed motion).
+// Headless acceptance checks for Phase 2 (divergence & convergence rules, prescribed motion). Every line is a hard check:
+// tiling, crust bookkeeping and resumability, and the spreading, trench and collision rules measured against what the
+// scene's prescribed motion and geometry say they must give (rates, areas, lengths and times in km and Myr) — no Earth
+// statistics here. (The lab section is a software contract, not physics: it belongs in a UI/contract suite of its own.)
 // Usage: node v2/tools/check-phase2.mjs
 
 import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
@@ -9,12 +12,14 @@ import { simulate } from '../js/tectonics/simulate.js';
 import { frameTallies, meanAzimuthDeg, contactBetween } from '../js/tectonics/measure.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
 import { BoundaryKind, Provisional } from '../js/tectonics/model/world.js';
+import { CM_PER_YR_TO_RAD_PER_MYR } from '../js/tectonics/config.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2, FIRST_LEG_MYR = 50;
 const mesh = labMesh();
 const world = buildWilsonWorld(mesh, SEED);
 const landBefore = world.plates.map(p => { p.refreshExtent(mesh.xyz); return p.stats.continentalCells; });
 const landMaskBefore = world.plates.map(p => Uint8Array.from(p.crust.mask, (m, c) => m && p.crust.type[c] !== CrustType.OCEAN ? 1 : 0));
+const rasterCells = w => w.plates.reduce((n, p) => n + p.crust.count, 0), rasterCellsBefore = rasterCells(world);
 
 // Run in two legs, so the plate-frame trench flags at 50 Myr can be compared with the end (and to prove a run can be resumed).
 const plateNamed = name => world.plates.find(p => p.name === name);
@@ -22,12 +27,17 @@ const west = plateNamed('West'), east = plateNamed('East'), far = plateNamed('Fa
 const started = performance.now();
 const firstLeg = simulate(world, { untilMyr: FIRST_LEG_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
 const westLandFlagsAt50 = Uint8Array.from(west.crust.mask, (m, c) => (m && west.crust.type[c] !== CrustType.OCEAN && (west.crust.flags[c] & CrustFlag.TRENCH) ? 1 : 0));
-const secondLeg = simulate(world, { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
-const frames = [...firstLeg.frames, ...secondLeg.frames.slice(1)], stepLog = [...firstLeg.stepLog, ...secondLeg.stepLog], steps = world.step;
+const secondLeg = simulate(world, { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false, resume: true });
+const frames = [...firstLeg.frames, ...secondLeg.frames], stepLog = [...firstLeg.stepLog, ...secondLeg.stepLog], steps = world.step;
 console.log(`${steps} steps → ${frames.length} frames in ${(performance.now() - started).toFixed(0)} ms (${((performance.now() - started) / steps).toFixed(1)} ms/step)`);
 const frameAt = myr => frames.find(f => Math.abs(f.time - myr) < 1e-6);
 const last = frames.at(-1), mid = frameAt(100);      // 100 Myr: a wide interior ocean, the East–Far collision still shallow
-check('a run can be stopped and resumed', frames.every((f, i) => Math.abs(f.time - Math.min(i * SNAPSHOT_MYR, WILSON_MAX_MYR)) < 1e-6), `${frames.length} frames, evenly spaced across the two legs`);
+{   // the resumed run is the unbroken run, cell for cell
+    const unbroken = simulate(buildWilsonWorld(mesh, SEED), { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false }).frames.at(-1), resumed = frames.at(-1);
+    const fields = ['owner', 'type', 'formedAt', 'flags', 'trench', 'slabKm'], differ = fields.map(k => [k, resumed[k].reduce((n, v, w) => n + (v !== unbroken[k][w] ? 1 : 0), 0)]).filter(([, n]) => n);
+    check('a run can be stopped and resumed', differ.length === 0 && frames.every((f, i) => Math.abs(f.time - Math.min(i * SNAPSHOT_MYR, WILSON_MAX_MYR)) < 1e-6),
+        `${frames.length} frames, evenly spaced across the two legs; at ${WILSON_MAX_MYR} Myr ${differ.length ? `differs from an unbroken run in ${differ.map(([k, n]) => `${k} ${n} cells`).join(', ')}` : `identical to an unbroken run in ${fields.join(', ')}`}`);
+}
 
 section('the sphere stays tiled');
 {
@@ -85,8 +95,18 @@ section('crust rules');
         `shrank ${oceanCells[0]} → ${oceanCells.at(-1)} cells, never grew, holds no new crust`);
     const wNew = last.plates[west.id].cells - last.plates[west.id].landCells, eNew = last.plates[east.id].cells - last.plates[east.id].landCells;
     const fNew = last.plates[far.id].cells - last.plates[far.id].landCells;
-    check('new ocean is written into the continents’ plates', wNew > 500 && eNew > 500 && fNew < 0.01 * (wNew + eNew),
-        `West carries ${wNew} ocean cells, East ${eNew}, stationary Far ${fNew} (slivers where East slides past it)`);
+    // Each flank must hold at least half its share of the basin the prescribed motion opens: West and East turn apart about
+    // one pole, so the basin is a lune between the rift's two ends (its angular distances a, b from the pole) — R²·Δφ·(cos a −
+    // cos b), Δφ the angle they have turned apart. (Each plate also makes ocean elsewhere: West's coast after it reverses.)
+    let near = Math.PI, farEnd = 0;
+    for (let c = 0; c < mesh.numCells; c++) if (landMaskBefore[west.id][c] && (west.crust.flags[c] & CrustFlag.RIFT_MARGIN)) {
+        const d = Math.acos(mesh.xyz[3 * c] * WILSON_POLE_XYZ[0] + mesh.xyz[3 * c + 1] * WILSON_POLE_XYZ[1] + mesh.xyz[3 * c + 2] * WILSON_POLE_XYZ[2]);
+        near = Math.min(near, d); farEnd = Math.max(farEnd, d);
+    }
+    const turnedApart = (WEST_CM_YR * WEST_REVERSES_MYR + EAST_CM_YR * WILSON_MAX_MYR - WEST_CM_YR * (WILSON_MAX_MYR - WEST_REVERSES_MYR)) * CM_PER_YR_TO_RAD_PER_MYR;
+    const flankCells = 0.5 * turnedApart * (Math.cos(near) - Math.cos(farEnd)) * mesh.numCells / (4 * Math.PI);
+    check('new ocean is written into the continents’ plates', wNew >= 0.5 * flankCells && eNew >= 0.5 * flankCells && fNew < 0.01 * (wNew + eNew),
+        `West carries ${wNew} ocean cells, East ${eNew} (each flank's half of the basin the motion opens: ${flankCells.toFixed(0)}), stationary Far ${fNew} (slivers where East slides past it)`);
 }
 
 section('spreading');
@@ -162,14 +182,33 @@ section('trenches');
     check('trench flags live on overriding plates only', flagged > 100 && onSubducting === 0, `${flagged} flagged cells, ${onSubducting} on the pre-history ocean`);
     for (const p of world.plates) for (let c = 0; c < mesh.numCells; c++) if (p.crust.mask[c] && (p.crust.flags[c] & CrustFlag.RIFT_MARGIN)) riftCells++;
     check('rifted margins stay passive', onRift === 0, `${onRift} of ${riftCells} rift-margin cells carry a trench flag (the two tips, where the cut meets the outer coast, are exempt)`);
-    const t50 = frameTallies(frameAt(50)), t100 = frameTallies(mid);
-    check('trenches stay live while the margin is active', t50.liveTrench > 60 && t100.liveTrench > 60, `live trench cells: ${t50.liveTrench} at 50 Myr, ${t100.liveTrench} at 100 Myr`);
+    // Trench length (the overriding edge, km) against the length of coast the prescribed motion drives into the old ocean:
+    // West's and East's outer coast cells at the start that face their own motion. (A line of cells: one per row spacing.)
+    const kmOf = cells => cells * mesh.edgeKm * Math.sqrt(3) / 2, converging = { [west.id]: 0, [east.id]: 0 };
+    for (const p of [west, east]) for (let c = 0; c < mesh.numCells; c++) {
+        if (!landMaskBefore[p.id][c]) continue;
+        const r = [mesh.xyz[3 * c], mesh.xyz[3 * c + 1], mesh.xyz[3 * c + 2]], out = [0, 0, 0];
+        for (let k = mesh.adjOffset[c]; k < mesh.adjOffset[c + 1]; k++) { const b = mesh.adjList[k]; if (!landMaskBefore.some(m => m[b])) for (let i = 0; i < 3; i++) out[i] += mesh.xyz[3 * b + i] - r[i]; }
+        const o = p.scene.motion.pole.map(v => v * p.scene.motion.speedCmYr), v = [o[1] * r[2] - o[2] * r[1], o[2] * r[0] - o[0] * r[2], o[0] * r[1] - o[1] * r[0]];
+        if (v[0] * out[0] + v[1] * out[1] + v[2] * out[2] > 0) converging[p.id]++;
+    }
+    const trenchKm = (f, p) => kmOf(f.boundary.reduce((n, b, w) => n + (b === BoundaryKind.OVERRIDING && f.owner[w] === p.id ? 1 : 0), 0));
+    const shares = [frameAt(50), mid].flatMap(f => [west, east].map(p => trenchKm(f, p) / kmOf(converging[p.id])));
+    check('trenches stay live while the margin is active', Math.min(...shares) >= 0.5,
+        `live trench along West / East: ${[frameAt(50), mid].map(f => `${trenchKm(f, west).toFixed(0)} / ${trenchKm(f, east).toFixed(0)} km at ${f.time} Myr`).join(', ')} — of ${kmOf(converging[west.id]).toFixed(0)} / ${kmOf(converging[east.id]).toFixed(0)} km of coast driven into the ocean (at least half must be trench)`);
     let flaggedAt50 = 0, stillFlagged = 0;
     for (let c = 0; c < mesh.numCells; c++) if (westLandFlagsAt50[c]) { flaggedAt50++; if (west.crust.flags[c] & CrustFlag.TRENCH) stillFlagged++; }
     check('a trench flag on land is permanent (same crust cells)', flaggedAt50 > 30 && stillFlagged === flaggedAt50, `${stillFlagged} of the ${flaggedAt50} West land cells flagged at ${FIRST_LEG_MYR} Myr are still flagged at ${last.time} Myr`);
-    let work = 0, n = 0;
-    for (let c = 0; c < mesh.numCells; c++) if (mid.trench[c] === 1 && mid.slabKm[c] > 0) { work += mid.slabKm[c]; n++; }
-    check('trench cells log subducted crust', n > 0 && work / n > 300, `mean ${(work / n).toFixed(0)} km subducted per live trench cell by 100 Myr`);
+    // Slab length = ∫ convergence dt: under the stationary old ocean, a trench cell facing its plate's motion head-on logs the
+    // plate's whole travel there, speed × sin(distance from the pole) × time; an oblique one less, none more.
+    const sinFromPole = w => Math.sqrt(Math.max(0, 1 - (mesh.xyz[3 * w] * WILSON_POLE_XYZ[0] + mesh.xyz[3 * w + 1] * WILSON_POLE_XYZ[1] + mesh.xyz[3 * w + 2] * WILSON_POLE_XYZ[2]) ** 2));
+    const most = { [west.id]: 0, [east.id]: 0 };
+    for (let w = 0; w < mesh.numCells; w++) if (mid.trench[w] === 1 && mid.owner[w] in most) {
+        const travelKm = (mid.owner[w] === west.id ? WEST_CM_YR : EAST_CM_YR) * 10 * sinFromPole(w) * mid.time;
+        most[mid.owner[w]] = Math.max(most[mid.owner[w]], mid.slabKm[w] / travelKm);
+    }
+    check('trench cells log subducted crust: as much as the prescribed convergence brought down', Object.values(most).every(r => r >= 0.8 && r <= 1.2),
+        `by ${mid.time} Myr the most-subducted live trench cell has logged ${(most[west.id] * 100).toFixed(0)} % (West) and ${(most[east.id] * 100).toFixed(0)} % (East) of its plate's travel there (tolerance ±20 %)`);
 }
 
 {   // flags go dormant when a margin stops being active (West reverses)
@@ -190,16 +229,24 @@ section('trenches');
 }
 
 section('budget, collision, step size');
-{   // area budget: created = consumed − land-on-land overlap
-    const t = frameTallies(last);
-    const imbalance = Math.abs(world.budget.created - (world.budget.consumed - t.collision));
-    check('crust budget balances', imbalance / world.budget.created < 0.05,
-        `created ${world.budget.created}, consumed ${world.budget.consumed}, land-on-land ${t.collision} → imbalance ${imbalance} cells`);
+{   // area budget: the plates' rasters grew by exactly what was created less what was consumed
+    const grew = rasterCells(world) - rasterCellsBefore, imbalance = grew - (world.budget.created - world.budget.consumed);
+    check('crust budget balances', imbalance === 0,
+        `created ${world.budget.created}, consumed ${world.budget.consumed}; the plates' rasters grew by ${grew} cells → imbalance ${imbalance} (land-on-land ${frameTallies(last).collision} cells)`);
 }
 
-{   // collision is detected, not resolved
+{   // collision is detected, not resolved — when the geometry says: East's starting land turned about the pole at its
+    // prescribed rate first lands on Far's at `predicted` (stepped by a quarter of a cell's travel)
+    const rate = Math.hypot(...east.omega), axis = east.omega.map(v => v / rate), startLand = [];
+    for (let c = 0; c < mesh.numCells; c++) if (landMaskBefore[east.id][c]) startLand.push(c);
+    const turn = (v, a) => { const co = Math.cos(a), si = Math.sin(a), d = axis[0] * v[0] + axis[1] * v[1] + axis[2] * v[2]; return [0, 1, 2].map(i => v[i] * co + (axis[(i + 1) % 3] * v[(i + 2) % 3] - axis[(i + 2) % 3] * v[(i + 1) % 3]) * si + axis[i] * d * (1 - co)); };
+    let predicted = null;
+    for (let t = 0; t <= WILSON_MAX_MYR && predicted === null; t += 0.25 * mesh.edgeRad / rate) {
+        if (startLand.some(c => { const q = turn([mesh.xyz[3 * c], mesh.xyz[3 * c + 1], mesh.xyz[3 * c + 2]], rate * t); return landMaskBefore[far.id][mesh.index.nearest(q[0], q[1], q[2])]; })) predicted = t;
+    }
     const first = frames.find(f => frameTallies(f).collision > 0);
-    check('East–Far contact is detected', !!first && first.time > 80, first ? `first land-on-land contact at ${first.time} Myr, ${frameTallies(last).collision} cells by ${last.time} Myr` : 'never detected');
+    check('East–Far contact is detected when the geometry says', !!first && predicted !== null && Math.abs(first.time - predicted) <= 2 * SNAPSHOT_MYR,
+        `${first ? `first land-on-land contact at ${first.time} Myr` : 'never detected'}, predicted ${predicted?.toFixed(1) ?? '—'} Myr from East's prescribed rotation (tolerance two snapshots, ${2 * SNAPSHOT_MYR} Myr); ${frameTallies(last).collision} cells by ${last.time} Myr`);
 }
 
 {   // step size: two plates closing head-on never cover more than maxCellsPerStep cells in one step, nor needlessly little

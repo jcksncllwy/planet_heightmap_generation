@@ -2,7 +2,8 @@
 // units — km, km², Myr — and a history must not depend on how often it is recorded. The sim mesh is fixed in the
 // app (the Detail slider never changes it), but a rule written in cells instead of km shows up here at once.
 // Forces converge more slowly (finer outlines, ~5–10 %), so the checks prescribe the motion wherever the force
-// balance is not the point. Usage: node v2/tools/check-scale.mjs
+// balance is not the point. Every line is a hard check (a numerical property of the engine); no Earth statistics here.
+// Usage: node v2/tools/check-scale.mjs
 
 import { check, section, finish, labMesh, nearestFrame, isLand } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
