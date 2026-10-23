@@ -782,9 +782,10 @@ all. Now:
 - A back-arc strip that takes a piece of craton with it books the split (`BACKARC_OPEN data.splitCratons`), as a rift does.
 - Phase 13 reports, over its three 1200 Myr cycles from 100 Myr: initiations per 100 Myr, the sea floor's mean age,
   plates over 10^7.5 km² and back-arc seas opened.
-Measured (3 seeds): initiations 3.5–4.1 → ~6 per 100 Myr (Earth 12–30); plates holding ≥ 1 % of the planet 9.5–11 →
-11–14 (Earth 12–14); the sea floor's median age 107–119 → 96–121 Myr. The supercontinent's own plate still holds up to
-2⁄3 of the planet while it stands. A 600 Myr history at 20K costs ~20 % more: it has more plates.
+Measured (phase 13, 3 seeds): initiations 3.5–4.1 → 5.6–6.3 per 100 Myr (Earth 12–30; the 6b histories 1.3–3 → 4–6.3);
+plates holding ≥ 1 % of the planet 9.5–11.2 → 11.4–13.8 (Earth 12–14); the sea floor's median age 107–119 → 96–121 Myr
+(Earth ~64). Not mended: the plate a supercontinent welds into still holds 66–83 % of the planet at its largest (51–73 %
+before), and plates over 10^7.5 km² stay 4–5 (Earth 7). A 600 Myr history at 20K takes ~20 % longer: it has more plates.
 
 ## Conventions
 
