@@ -439,6 +439,7 @@ Two follow-ups, the same day:
 
 ## 8. Next
 
+0. The resources-and-skills model (§9): first its ensemble runner, then the resource map, then the economy.
 1. Tighten the alluvium: broad-plain irrigation spreads too far on flat desert (one generated world's top cradle is 2.9M km²; Earth's Nile region ~560k km² vs a real valley and delta of ~35k).
 2. Earth: monthly river regimes (from WorldClim's monthly runoff routed down HydroRIVERS), so the Nile's flood counts.
 3. Forager capacity ~2–3× HYDE; a Beringian standstill; Japan/Tasmania crossings by sea level at the time.
@@ -452,3 +453,222 @@ Two follow-ups, the same day:
 6. Phase 4, next: rain-fed intensification (loess, the Yellow River; Erlitou is still a miss); the Indus too early (flood-
    recession farming, not canals?); polities feeding back on people (war deaths, a state's canals); a states count averaged
    over seeds — then trade along settle.js's costs and metallurgy.
+
+## 9. Next model: resources and skills (design, 2026-10-22; revised after review the same day)
+
+The model has outgrown its switches. Today a cell's people are in one of six states: empty, foragers, settled foragers,
+cultivators, farmers, irrigators. Fixed rules move them between states:
+- Binford's packing threshold starts settling;
+- a W⁶ dice roll starts cultivation;
+- three crop packages, each a list of Köppen zones, spread as fronts;
+- a special rule lets farmers voyage.
+
+Each fix in this file has patched a seam between two of those switches.
+
+This design replaces the switches with an economy. Each place has resources, and its people know how to use them. Work
+goes where it returns the most. Know-how grows with use and fades without it. Crops and herds, once domesticated, are
+things carried, like seed and stock. Foragers, farmers, herders and irrigators become labels read off what people eat.
+
+### 9.1 Principles
+
+- **Diet by return.** Resources are ranked by their return per hour of work. A lower-ranked one enters the diet as the
+  higher-ranked ones grow scarcer: the diet-breadth model (MacArthur & Pianka 1966; Kelly 2013, ch. 3). Flannery's (1969)
+  "broad spectrum revolution" is this model under crowding (Cohen 1977, population pressure).
+- **Know-how by use.** Using a resource raises the skill to use it.
+- **Domestication belongs to the organism.** Cultivating a plant or keeping an animal changes the plant or animal; that is
+  Rindos's (1984) co-evolution. It takes ~2000 years of cultivation (Purugganan & Fuller 2009; Fuller 2007). So a
+  domesticated crop is a property of the crop's population, not of the people. It travels as seed and stock, and is lost
+  only after long disuse.
+- **Starting is rare.** Planting begins as a rare event, likeliest at the best wild stands among crowded, settled people.
+  Today's W⁶ hazard with its easing is moved into the new model, not removed. Use and learning set only the ~2000 years
+  after onset. Without this, every crowded place domesticates within two thousand years of the Holocene.
+- **Complex know-how needs people.** Farming, herding and boats are skills a group holds only with enough people to hold
+  them. This is adapted from Henrich (2004), whose model uses a threshold population; our formula is ours, and the claim
+  is disputed (Vaesen et al. 2016). Foraging skills have a floor and don't decay away.
+
+### 9.2 Resources: what the land offers (the resource map)
+
+Each cell gets, for each resource r, a capacity K_r: people per km² of country that r feeds at full skill, using all the
+land suited to it. The set:
+
+| Resource | Class | Capacity from |
+|---|---|---|
+| large game | wild | NPP and openness (grassland, tundra), the forager regression's terrestrial share (Binford 2001) |
+| small game, fowl | wild | NPP |
+| fish, shellfish, sea mammals | wild | coast, lake, big river; the existing aquatic terms |
+| wild grass seeds | wild | large-seeded annual grasses: seasonal drought with a cool wet season (Blumler 1992, a dissertation; by way of Diamond 1997) |
+| wild roots, tubers | wild | seasonal tropics and their highlands |
+| nuts, fruit | wild | temperate and tropical forest |
+| winter cereals | crop | agro-climatic yield from monthly T and P, FAO's 1978 AEZ method; GAEZ v4's low-input yields (Fischer et al. 2021) to check. Wild form: wild grass seeds. |
+| summer cereals | crop | same, warm wet season. Wild form: wild grass seeds. |
+| roots and tubers | crop | same, long humid season. Wild form: wild roots. |
+| tree crops (banana, breadfruit, coconut) | crop | humid tropics. Wild form: nuts and fruit. |
+| flooded fields (rice, taro) | crop | warm alluvium or wet ground with water to hold. Wild form: wild grass seeds, wild roots. |
+| herds (sheep, goats, cattle) | herd | grazing from grass NPP. Wild form: wild sheep, goats and aurochs in uplands and steppe. Herding begins through its own rare onset where wild herd animals are hunted under pressure (Zeder's prey pathway; Zeder 2012), or comes by contact. Heavy hunting alone doesn't train it. |
+
+- **Land budget.** Fields and pasture take land from wild stands and game, so capacities don't stack. A cell's land is
+  shared out: fields (crop share), pasture (herd share), the rest wild. Wild capacity falls with the share taken.
+  Flooded fields and canals both draw on `irrigShare`; they share it.
+- **Irrigation** stays as now: canals multiply a cereal's capacity on irrigable alluvium (§5, Phase 4). Knowing canals
+  becomes a skill of its own, in place of today's per-package `irrigKnown`.
+- **Crop capacity** follows the AEZ logic. From the months:
+  - the length of the growing period, the months where P ≥ ½ PET and T is above the crop's base;
+  - the crop's temperature profile;
+  - frost and heat limits (Ecocrop's).
+- **Wild capacities** come from the forager regression, split by biome. A regression check in stage B makes sure their
+  sum reproduces today's `sub.forager`.
+- **Good and bad years** stay as now, grouped into five response classes:
+  - rain-fed (crops and wild plants, by the rain);
+  - river (flooded and irrigated fields, by the flood);
+  - wild game (by NPP);
+  - water foods (steady);
+  - herds (drought die-off, with a slower recovery).
+
+### 9.3 People: know-how, crops and allocation
+
+**State per cell:**
+- skill s_r ∈ [0, 1] for each resource: know-how, which mixes and fades;
+- domestication D_c ∈ [0, 1] for each crop and herd: how far the organism is domesticated; it travels as seed and stock;
+- each crop's climate adaptation: the Köppen zone or months it is adapted to (below).
+
+**Quantities each generation, with N the cell's people (per km²):**
+- x_r: people fed by r;
+- φ_r = x_r / K_r: how much of r is used up (depletion);
+- w_r = x_r / N: r's share of the diet.
+
+**Return.** ρ_r = ρ⁰_r · g(s_r) · (1 − δ φ_r), where ρ⁰_r is r's base return per hour. Kelly's ethnographic return rates
+give the ordering only: large game highest, seeds lowest. They are post-encounter rates, so they can't give absolute
+values. For a crop, the capacity is its wild form's until D_c ≥ D_dom, and then the crop's own capacity where it grows.
+
+**Allocation: equal marginal return.** Work is spread so that every resource in use returns the same at the margin, the
+"water-filling" solution with one cut-off return, O(R log R) per cell. Low-ranked resources then enter as the high ones
+are depleted, as the diet-breadth model says.
+
+**Learning.** s_r += α_r · w_r · (1 − s_r). Crops: D_c += α_D · w_c, so domestication follows use of the cultivated form
+over ~2000 years.
+
+**Forgetting.**
+- Skill fades, s_r −= β s_r, when unused.
+- Complex skills (crops, herds, canals, boats) are capped at S(N_local), with N_local the people within a contact radius.
+- Wild skills keep a floor s_wild.
+- D_c falls only after long disuse: the crop's seed stock is lost.
+
+**Contact and migration.**
+- Skills move toward neighbours' skills, weighted by people and travel cost (settle.js's costs).
+- Crops and herds take the neighbours' maximum D_c: seed is given, not averaged.
+- Migrants carry both. This needs `frontArrival` to record each cell's source cell.
+
+**Onset.** A rare hashed hazard, as today's (W^k × crowding, k easing from 6 to 3 with years settled). It starts
+cultivating a crop's wild form: its first use, at s_seed. A centre is a cell whose D_c crosses D_dom without having
+received the crop. `clusterCentres` and the Earth centre checks read that event.
+
+**Hunger.** Defined at the generation scale as packing pressure N / K (Binford's packing). It raises the onset hazard
+and lets a known, low-ranked resource enter at a poor return. It is not the yearly store, which would be circular:
+today's famine loop runs only for settled cells, and "settled" is now read off the diet.
+
+**Crops keep their climate.** A crop is adapted to the climate where it was domesticated; today's Köppen `fit` serves.
+Its capacity elsewhere falls with the mismatch (today's `farmClimateFloor`), and its adaptation shifts slowly where it
+is farmed. This keeps the east–west axis effect: wheat doesn't jump latitudes by contact.
+
+**Capacity and growth.** K = Σ_r x_r, within the land budget, less disease. People grow toward K logistically. The
+growth rate rises with the share of stored, sedentary food, a stand-in for the Neolithic demographic transition
+(Bocquet-Appel 2011).
+
+**Labels** are read off the diet, by a fixed mapping onto `Life` (adding HERDER):
+- foragers: wild > ½;
+- settled foragers: wild > ½, and dense, storable foods (aquatic, nuts, wild seeds) with N above packing;
+- farmers: crops > ½;
+- irrigators: farmers on canals;
+- herders: herds > ½;
+- mixed diets go to their largest class.
+
+### 9.4 Movement
+
+- **Where people go** stays `frontArrival`:
+  - the Pleistocene forager front;
+  - in the Holocene, a front per crop, seeded at each centre as today.
+  - Skills and crops ride with the movers (via the source-cell record) and spread by contact.
+- **Reaction–diffusion is deferred.** The review showed that coast and river diffusion (D ≈ 150–1000 km²/yr) makes an
+  explicit step unstable at 160K–640K cells. Its lattice speed also changes with resolution (cells of ~56 km against a
+  front of √(D/r) ≈ 16 km). It may come later (stage C2) with sub-stepping, a density cutoff, and Fort's time-delayed
+  speed v = 2√(rD)/(1 + rT/2). If it does, farmers entering occupied land is a competition (Aoki, Shida & Shigesada
+  1996), not plain Fisher.
+- **Farming spreads by contact as well as by migration** where foragers adopt: Fort's (2012, PNAS) demic–cultural mix,
+  about 60 % demic in Europe.
+- **Voyaging** keeps today's rule, but voyagers carry their launch cells' skills and crops. The Lapita kit needs no
+  special case.
+
+### 9.5 What it replaces, what stays, and what must adapt
+
+- **Replaces:**
+  - the settled, cultivating, farmer and irrigator switches;
+  - PACKAGES as Köppen lists, which become crops with an adapted climate;
+  - per-package `irrigKnown`;
+  - the farmers-only voyaging special case.
+- **Moves, not removed:** the onset hazard.
+- **Stays:**
+  - the Pleistocene front and glacial climate;
+  - famine, disease and climate variability;
+  - towns and polities;
+  - canals.
+- **Must adapt (a compatibility layer, built before the economy):**
+  - `polity.step` and settle.js's `towns` read `Life` (the "< FARMER" free-land test) and `Kc = farmK`. They will get
+    the label mapping and K from crops and herds.
+  - Frames carry `life` and `farmPkg` for the UI. They will carry the label and the dominant crop.
+  - Voyaging's `coastT` and `firstCoast` will be read per crop.
+  - When the sea floods a shelf, its people already move to `home[c]`; their skills and crops must move with them.
+  - `liveYears` needs a herd response class.
+- The old model stays behind an option (`runCivSim(…, { economy: 'switches' })`) until the new one does better on the
+  checks below.
+
+### 9.6 Checks
+
+- **Earth:** today's scores (arrivals, centres, farming arrivals, early cities). New checks:
+  - herders on the Eurasian steppe and in the Sahel after ~6 ka, before farmers there;
+  - Australia stays foragers;
+  - New Guinea's highlands farm roots;
+  - the Pacific farmed with roots and trees;
+  - population within ~1.5× HYDE.
+- **Ensemble (stage A).** Target ranges, set once the baseline is in:
+  - most worlds farm;
+  - some, but not all, form states by 3 ka;
+  - first cities spread over thousands of years, not all at once;
+  - a few worlds stay forager worlds.
+- **Bench (stage A′).** A test strip at 160K and 640K checking:
+  - the farming front's speed (~0.6–1.3 km/yr, Pinhasi et al. 2005);
+  - the time from onset to domestication (~2000 yr);
+  - the onset's rarity (a few centres per continent);
+  - that the summed wild capacities match `sub.forager`.
+
+### 9.7 Stages
+
+- **A. Ensemble runner** (`v2/tools/civ-ensemble.mjs`, built 2026-10-22). It builds worlds as the page does, caches
+  them, prints per-world and summary numbers, and compares two runs (`--compare`). `--set` overrides config values.
+- **A′. Bench:** the test strip above.
+- **B. Resource map** (`substrate.js`): AEZ crop capacities from the months (the finish keeps T12 and P12 for
+  vectorCollector; keep a monthly summary too), herds, and the split wild capacities. Shown as a layer, and checked on
+  Earth against GAEZ by correlation. The regression check on `sub.forager` goes here too.
+- **C0. Compatibility layer:** labels → `Life`, the dominant crop, the source-cell record in `frontArrival`, herd famine.
+- **C1. The economy on today's movement,** behind the option. Compare on Earth, the ensemble and the bench.
+- **C2 (optional). Reaction–diffusion movement,** if C1's fronts are the weak point.
+- **D.** Retire the switches once C1 wins.
+
+### 9.8 Parameters, and what pins them
+
+About 15 new dynamic parameters and ~40 in the resource map.
+
+| Parameter | Pinned by |
+|---|---|
+| AEZ and Ecocrop thermal limits | the literature |
+| growth rate r | the literature |
+| time to domesticate | the literature (~2000 yr) |
+| α_D | derived from the time to domesticate |
+| s_seed | fixed |
+| D_dom | fixed |
+| N₀, ρ⁰ ordering | loose |
+| contact weight, β, δ, onset rate, hunger trigger | tuned on Earth, checked on the ensemble |
+
+Each gets a ledger row when it enters the code.
+
+**Cost.** The economy runs only in the Holocene (~470 of 2800 steps) and only on peopled cells. Estimate: ~1 minute
+more per world at 160K, ~4× at 640K. Memory: ~8 MB per array set at 160K, ~31 MB at 640K.
