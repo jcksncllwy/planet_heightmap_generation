@@ -1,6 +1,6 @@
 // Lab phase 7c — the crust budget. Continents gain area (island arcs, fore-arc islands) and now also lose it: erosive
-// margins eat their coasts, a continent driven into another slides under it, and small arcs go down with their slabs
-// instead of accreting. Each scene isolates one; the last runs them all over a long history.
+// margins eat their coasts, trench sediment goes down the subduction channel, a continent driven into another slides
+// under it, and small arcs go down with their slabs instead of accreting. Each scene isolates one; the last runs them all over a long history.
 
 import { BUDGET_SCENES } from '../../tectonics/scenarios/budget-scenes.js';
 import { simulate } from '../../tectonics/simulate.js';
@@ -37,7 +37,7 @@ const CHECKLISTS = {
     ],
     history: [
         'The start world over 600 Myr with every rule on (building takes a while).',
-        'The land chart rises — arcs and fore-arc islands add crust — but levels off rather than climbing without end: erosive margins, underthrusting and recycled arcs take some back (stats: the budget so far).',
+        'The land chart rises — arcs and fore-arc islands add crust — but levels off rather than climbing without end: erosive margins, sediment carried down the trenches, underthrusting and recycled arcs take some back (stats: the budget so far).',
     ],
 };
 
@@ -55,7 +55,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
 
     return {
         title: 'Phase 7c — Crust budget',
-        summary: 'Continents grow — island arcs and fore-arc islands add crust — and now they also lose it, so they do not grow without bound over a long history. About half of active margins are EROSIVE: the trench eats the fore-arc and the coast retreats. A continent driven into another slides UNDER it, and its area becomes the other’s thickened crust. A small island arc arriving at a continent goes down with its slab instead of accreting, so continents gain from arcs in fewer, bigger pieces. ' + scene.about,
+        summary: 'Continents grow — island arcs and fore-arc islands add crust — and now they also lose it, so they do not grow without bound over a long history. About half of active margins are EROSIVE: the trench eats the fore-arc and the coast retreats. At every active margin, erosive or not, the trench also drags down the sediment the rivers bring it, and the land that sediment came from is lost (the whole-history scene). A continent driven into another slides UNDER it, and its area becomes the other’s thickened crust. A small island arc arriving at a continent goes down with its slab instead of accreting, so continents gain from arcs in fewer, bigger pieces. ' + scene.about,
         checklist: [...CHECKLISTS[scene.id], 'No gaps.'],
         checkCommand: 'node v2/tools/check-phase7c.mjs',
         maxTime: scene.maxMyr,
@@ -93,7 +93,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
             return {
                 cards: [
                     { big: `${land.toFixed(1)} Mkm²`, small: `of land (${land >= land0 ? '+' : ''}${(100 * (land / land0 - 1)).toFixed(1)} % since the start) · ${tally.gaps} gaps` },
-                    { big: km2(b.erodedCells + b.underthrustCells + b.recycledCells), small: `lost so far: ${km2(b.erodedCells)} to erosive margins, ${km2(b.underthrustCells)} underthrust, ${km2(b.recycledCells)} of arcs recycled` },
+                    { big: km2(b.erodedCells + (b.sedimentCells ?? 0) + b.underthrustCells + b.recycledCells), small: `lost so far: ${km2(b.erodedCells)} to erosive margins, ${km2(b.sedimentCells ?? 0)} as sediment down the trenches, ${km2(b.underthrustCells)} underthrust, ${km2(b.recycledCells)} of arcs recycled` },
                 ],
                 head: ['Plate / event', 'cm/yr', 'land cells', ''],
                 rows,

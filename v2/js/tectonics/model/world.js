@@ -28,6 +28,7 @@ export class TectonicWorld {
         this.rngVolcano = makeRng((seed ^ 0x7a1c) >>> 0);   // the details of eruptions: LIP outlines, a tail's pulses
         this.rngBackArc = makeRng((seed ^ 0xbac4) >>> 0);   // when a rolling-back trench opens a basin behind it (step/backarc.js)
         this.rngMarginIsle = makeRng((seed ^ 0x15e1) >>> 0); // where fore-arc islands rise off an active coast (step/margin-isles.js)
+        this.rngSediment = makeRng((seed ^ 0x5ed1) >>> 0);   // which coast cells the sediment going down a trench is taken from (step/sediment-subduction.js)
         this.rngCycle = makeRng((seed ^ 0xc1c1) >>> 0);      // the supercontinent cycle: where the mantle's next downwelling lies (step/supercontinent.js)
         /** Mantle plumes, fixed in the MANTLE (world) frame — plates slide over them (step/hotspots.js). */
         this.hotspots = [];
@@ -72,8 +73,8 @@ export class TectonicWorld {
         this.boundaryKind = new Uint8Array(n);       // BoundaryKind per world cell
         this.convergence = new Float32Array(n);      // cm/yr across the contact, + = closing (diagnostic)
 
-        /** Cumulative crust budget, in cells: ocean created / consumed, and land lost to erosive margins, underthrusting and arc recycling (Phase 7c), sea filled at welds and arcs matured into continent. */
-        this.budget = { created: 0, consumed: 0, erodedCells: 0, underthrustCells: 0, recycledCells: 0, sealedCells: 0, arcMaturedCells: 0 };
+        /** Cumulative crust budget, in cells: ocean created / consumed, and land lost to erosive margins, underthrusting and arc recycling (Phase 7c), sea filled at welds, arcs matured into continent and land lost as sediment down the trenches (step/sediment-subduction.js; with sedimentKm3, its volume, and trenchKmMyr / marginTrenchKmMyr / erosiveTrenchKmMyr, the margins' length over time: step/margin-isles.js). */
+        this.budget = { created: 0, consumed: 0, erodedCells: 0, underthrustCells: 0, recycledCells: 0, sealedCells: 0, arcMaturedCells: 0, sedimentCells: 0 };
         /** @type {{time:number, kind:string, text:string, data:Object}[]} the history, WBP-style: see log() and EventKind */
         this.events = [];
         /** @type {Map<string, import('../step/collision.js').Collision>} one record per pair of colliding plates, keyed "lo:hi" */

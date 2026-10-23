@@ -46,7 +46,7 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {Uint16Array} crustReach     …with 2 per cell: beltReach, prevReach
  * @property {{time:number, kind:string, text:string}[]} events   the world's event log up to this frame
  * @property {FramePlate[]} plates        per-plate summary, indexed by plate id
- * @property {{created:number, consumed:number, erodedCells:number, underthrustCells:number, recycledCells:number}} budget   cumulative, in cells (world.budget)
+ * @property {{created:number, consumed:number, erodedCells:number, underthrustCells:number, recycledCells:number, sedimentCells:number}} budget   cumulative, in cells (world.budget)
  * @property {{up:number[]|null, down:number[]|null, upHeat:number, share:number, landmasses:number, state:string, since:number}|null} cycle
  *                                        the supercontinent cycle (step/supercontinent.js): the mantle's upwelling and downwelling, the
  *                                        heat left at the upwelling, the largest landmass's share of the continental crust, how many

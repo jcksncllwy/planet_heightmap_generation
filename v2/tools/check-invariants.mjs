@@ -23,7 +23,7 @@ const CRATONS_SURVIVE_MYR = 600;         // cratons outlast this on Earth (~35 f
 const BIG_OVERLAP_KM2 = 1e5;       // two plates' land may overlap this much only as long as a collision may wait (Phase 11: config.sutureLockMaxMyr)
 const mesh = labMesh();
 const LEDGER_CELLS = 20000, LEDGER_MYR = 300, LEDGER_SEED = 12345;
-const LAND_STAGES = ['collisions', 'marginIsles', 'arcMaturation', 'tidy'];   // the only stages whose process may make or lose land
+const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'arcMaturation', 'tidy'];   // the only stages whose process may make or lose land
 
 section('the crust raster and the config');
 {
@@ -106,8 +106,9 @@ for (const seed of SEEDS) {
 section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDGER_CELLS / 1000}K cells`);
 {
     // Continental crust (continent + craton) is made and lost only by named processes: collisions (underthrust −, weld
-    // seams and docking +), margin isles (fore-arc islands +, erosive margins −), arc maturation (arc → continent) and tidy
-    // (fragments). Every other stage of every step must leave it exactly as it found it.
+    // seams and docking +), margin isles (fore-arc islands +, erosive margins −), sediment subduction (the land the
+    // trench's sediment came from −), arc maturation (arc → continent) and tidy (fragments). Every other stage of every
+    // step must leave it exactly as it found it.
     const ledgerMesh = labMesh(LEDGER_CELLS), scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
     const world = scene.build(ledgerMesh, LEDGER_SEED, { continentalFraction: 0.3 });
     world.config.crustLedger = true;
@@ -129,7 +130,7 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     });
     const { stages, start } = world.ledger, landAtEnd = landNow(world);
     for (const [stage, e] of Object.entries(stages)) if (e.land !== 0 && !LAND_STAGES.includes(stage) && !offending.has(stage)) offending.set(stage, `${stage} ${e.land > 0 ? '+' : ''}${e.land} cells`);
-    check('the crust ledger: no stage but collisions, margin isles, arc maturation and tidy makes or loses continental crust', offending.size === 0,
+    check('the crust ledger: no stage but collisions, margin isles, sediment subduction, arc maturation and tidy makes or loses continental crust', offending.size === 0,
         offending.size ? [...offending.values()].join('; ') : `${Object.keys(stages).length - LAND_STAGES.length} other stages booked exactly 0 cells of land in every step`);
     const booked = Object.values(stages).reduce((n, e) => n + e.land, 0);
     check('…and its books balance: the stages add up to the change in continental crust', booked === landAtEnd - landAtStart && start.land === landAtStart,
@@ -137,10 +138,13 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     const matured = stages.arcMaturation?.land ?? 0;
     check('…and arc maturation gains exactly the arc cells it turned continental', matured === (world.budget.arcMaturedCells ?? 0),
         `arcMaturation booked ${matured} cells of land; world.budget.arcMaturedCells ${world.budget.arcMaturedCells ?? 0}`);
+    const sunk = stages.sedimentSubduction ?? { land: 0, arc: 0 };
+    check('…and sediment subduction only loses continental crust, exactly the cells it booked, and touches no arc', sunk.land === -(world.budget.sedimentCells ?? 0) && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) > 0,
+        `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}`);
     const per100 = cells => cells * ledgerMesh.cellAreaKm2 / 1e6 / (LEDGER_MYR / 100);
     for (const stage of LAND_STAGES) report(`net continental crust from ${stage}`, per100(stages[stage]?.land ?? 0), { unit: ' Mkm²/100 Myr', digits: 1 });
     report('net continental crust, all sources', per100(booked), { unit: ' Mkm²/100 Myr', digits: 1, source: 'Earth: near zero today — arc additions ≈ losses to subduction erosion and sediment subduction, ~3 km³/yr each (Scholl & von Huene 2009; Dhuime et al. 2012)',
-        detail: `of which underthrust −${per100(world.budget.underthrustCells ?? 0).toFixed(1)}, eroded −${per100(world.budget.erodedCells ?? 0).toFixed(1)}, sea sealed at welds +${per100(world.budget.sealedCells ?? 0).toFixed(1)}, arcs matured +${per100(world.budget.arcMaturedCells ?? 0).toFixed(1)}` });
+        detail: `of which underthrust −${per100(world.budget.underthrustCells ?? 0).toFixed(1)}, eroded −${per100(world.budget.erodedCells ?? 0).toFixed(1)}, sediment subducted −${per100(world.budget.sedimentCells ?? 0).toFixed(1)}, sea sealed at welds +${per100(world.budget.sealedCells ?? 0).toFixed(1)}, arcs matured +${per100(world.budget.arcMaturedCells ?? 0).toFixed(1)}` });
 }
 
 finish('Invariants');

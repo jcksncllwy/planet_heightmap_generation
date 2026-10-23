@@ -89,7 +89,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const world = scene.build(mesh, seed);
     Object.assign(world.config, { crustLedger: true }, overrides);
     const kept = [], arcs = [], largestShares = [];
-    let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
+    let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
     const plateCounts = [];
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
@@ -113,6 +113,8 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
+        if (Math.abs(f.time - 500) < 1e-6) cont500 = cont.reduce((s, v) => s + v, 0);
+        if (Math.abs(f.time - 1000) < 1e-6) cont1000 = cont.reduce((s, v) => s + v, 0);
         if (terrain && (f.time === 0 || Math.abs(f.time - scene.maxMyr) < 1e-6)) { const share = hypsometry(synthesizeTerrain(f, mesh, tm, { seed }).heightKm).landShare; if (f.time === 0) land0 = share; else land1200 = share; }
         if (Math.abs(f.time - 600) < 1e-6) calm = untouched(f);
         // (lowland after the rivers carve it, comparable with Earth's hypsometry; the tectonic surface's alongside)
@@ -141,7 +143,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const fullest = held.reduce((b, k) => (!b || k.share > b.share ? k : b), null);
     const weak = rifts.reduce((s, e) => s + (e.data.weakKm ?? 0), 0) / Math.max(1, rifts.reduce((s, e) => s + e.data.lengthKm, 0));
     return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, gapMin: Math.min(Infinity, ...gaps), gapMedian: median(gaps), early, lowest, clump, reassembled, againAt,
-        fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, land0, land1200, contRatio: cont1200 / Math.max(1, cont0),
+        fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, land0, land1200, contRatio: cont1200 / Math.max(1, cont0), cont0, cont500, cont1000,
         ledger: world.ledger, budget: world.budget,
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
@@ -194,8 +196,40 @@ report('land above sea level: change over 1200 Myr', rows.map(r => 100 * (r.land
     const stages = [...new Set(rows.flatMap(r => Object.keys(r.ledger?.stages ?? {})))].filter(st => rows.some(r => r.ledger?.stages[st]?.land || r.ledger?.stages[st]?.arc));
     for (const st of stages) report(`ledger, ${st}: net continental crust`, rows.map(r => Mkm2(r.ledger?.stages[st]?.land ?? 0)), { unit: ' Mkm²', digits: 2, source: 'no Earth figure per stage',
         detail: txt(r => `arc ${Mkm2(r.ledger?.stages[st]?.arc ?? 0).toFixed(2)} Mkm²`) });
-    for (const [key, what] of [['arcMaturedCells', 'arcs matured into continent'], ['sealedCells', 'sea filled at welds and docks'], ['erodedCells', 'lost to erosive margins'], ['underthrustCells', 'lost underthrusting'], ['recycledCells', 'arc crust recycled']])
+    for (const [key, what] of [['arcMaturedCells', 'arcs matured into continent'], ['sealedCells', 'sea filled at welds and docks'], ['erodedCells', 'lost to erosive margins'], ['sedimentCells', 'lost as sediment down the trenches'], ['underthrustCells', 'lost underthrusting'], ['recycledCells', 'arc crust recycled']])
         report(`budget: ${what}`, rows.map(r => Mkm2(r.budget[key] ?? 0)), { unit: ' Mkm²', digits: 2, source: 'no Earth figure in area' });
+}
+
+section('the crust budget against Earth’s (crust-sink)');
+{
+    // The continental crust's books in Earth's units. Scholl & von Huene (2009): arcs add ~2.7 km³/yr (AU) — 1.5 at
+    // intra-oceanic arcs, 1.0 at continental ones, 0.2 at collisions — and ~3.2 AU is lost: ~60 km³/Myr per km along the
+    // ~42,000 km of ocean-margin subduction zones (≈ 2.5 AU; ~60 % subduction erosion, ~40 % sediment subduction) and
+    // ~0.7 AU where continents collide. Per km of ocean-margin trench: additions ≈ 2.5 AU ÷ 42,000 km ≈ 60 km³/Myr, losses
+    // ≈ 3.2 AU ÷ 42,000 km ≈ 77; Clift & Vannucchi (2004) put what arcs must make to hold the crust steady at > 90. The
+    // engine books area; volume is area × continentCrustKm (40 km), per km of OVERRIDING trench over the run
+    // (world.budget.trenchKmMyr). Its additions are arcs maturing on a continent and sea sealed at welds; its losses
+    // erosive margins, sediment down the trenches, underthrusting at collisions, and fragments tidied away (the ledger).
+    const th = TECTONICS.continentCrustKm, perKm = (r, cells) => cells * cellKm2 * th / Math.max(1, r.budget.trenchKmMyr ?? 0);
+    const st = (r, k) => r.ledger?.stages[k]?.land ?? 0;
+    const added = r => (r.budget.arcMaturedCells ?? 0) + (r.budget.sealedCells ?? 0) + Math.max(0, st(r, 'marginIsles') + (r.budget.erodedCells ?? 0));
+    const lost = r => (r.budget.erodedCells ?? 0) + (r.budget.sedimentCells ?? 0) + (r.budget.underthrustCells ?? 0) - Math.min(0, st(r, 'tidy'));
+    report('continental crust change over 500 Myr: 0 → 500 Myr', rows.map(r => 100 * (r.cont500 / Math.max(1, r.cont0) - 1)), { earth: [-10, 10], unit: ' %', digits: 1,
+        source: 'additions ≈ losses, net Phanerozoic growth "effectively nil" (Scholl & von Huene 2009); 60–80 % of today’s crust by 3 Ga (Dhuime et al. 2012)' });
+    report('…500 → 1000 Myr', rows.map(r => 100 * (r.cont1000 / Math.max(1, r.cont500) - 1)), { earth: [-10, 10], unit: ' %', digits: 1, source: 'as above' });
+    report('erosive share of continental-margin trench (length × time)', rows.map(r => 100 * (r.budget.erosiveTrenchKmMyr ?? 0) / Math.max(1, r.budget.marginTrenchKmMyr ?? 0)), { earth: [50, 60], unit: ' %', digits: 0,
+        source: '~57 % of margins erosive (Clift & Vannucchi 2004; recalled, unconfirmed): convergence > 6 cm/yr or < 1 km of trench sediment',
+        detail: txt(r => `${(100 * (r.budget.marginTrenchKmMyr ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)).toFixed(0)} % of ${((r.budget.trenchKmMyr ?? 0) / scene.maxMyr / 1000).toFixed(1)}k km of overriding trench on a continental margin`) });
+    report('crust added per km of trench', rows.map(r => perKm(r, added(r))), { earth: [30, 65], unit: ' km³/Myr/km', digits: 0,
+        source: 'arc additions ~1.1 AU (Reymer & Schubert 1984) to ~2.7 AU (Scholl & von Huene 2009) over ~42,000 km of trench',
+        detail: txt(r => `arcs matured ${perKm(r, r.budget.arcMaturedCells ?? 0).toFixed(0)}, seams sealed ${perKm(r, r.budget.sealedCells ?? 0).toFixed(0)}, fore-arc islands ${perKm(r, Math.max(0, st(r, 'marginIsles') + (r.budget.erodedCells ?? 0))).toFixed(0)}`) });
+    report('crust lost per km of trench', rows.map(r => perKm(r, lost(r))), { earth: [60, 95], unit: ' km³/Myr/km', digits: 0,
+        source: '~77: 2.5 AU at ocean margins + 0.7 AU at collisions over ~42,000 km (Scholl & von Huene 2009); > 90 (Clift & Vannucchi 2004)',
+        detail: txt(r => `eroded ${perKm(r, r.budget.erodedCells ?? 0).toFixed(0)}, sediment ${perKm(r, r.budget.sedimentCells ?? 0).toFixed(0)}, underthrust ${perKm(r, r.budget.underthrustCells ?? 0).toFixed(0)}, tidied ${perKm(r, -Math.min(0, st(r, 'tidy'))).toFixed(0)}`) });
+    report('…of it, sediment subducted per km of trench', rows.map(r => perKm(r, r.budget.sedimentCells ?? 0)), { earth: [15, 35], unit: ' km³/Myr/km', digits: 0,
+        source: '~40 % of ~60 at ocean margins (Scholl & von Huene 2009)', detail: txt(r => `the trenches' flux ${((r.budget.sedimentKm3 ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)).toFixed(0)} (what found no coast in reach is not booked)`) });
+    report('…of it, subduction erosion per km of trench', rows.map(r => perKm(r, r.budget.erodedCells ?? 0)), { earth: [25, 45], unit: ' km³/Myr/km', digits: 0,
+        source: '~60 % of ~60 at ocean margins (Scholl & von Huene 2009) — intra-oceanic fore-arcs (Tonga, Mariana) included, which the engine does not erode' });
 }
 
 section('living plates (plans/V2_REALISM_PASS_PLAN.md, phase 2)');

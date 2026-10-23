@@ -20,6 +20,7 @@ import { updateHotspots, insulateAtStart } from './step/hotspots.js';
 import { trackCycle } from './step/supercontinent.js';
 import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
 import { growMarginIsles } from './step/margin-isles.js';
+import { subductSediment } from './step/sediment-subduction.js';
 import { captureFrame } from './snapshot.js';
 import { evolveHeights, seedBaseRelief } from './step/heights.js';
 import { evolveRivers } from './step/rivers.js';
@@ -113,6 +114,8 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (slow) changed += led('arcs', buildArcs(world));     // island arcs behind mature ocean trenches (cell types only)
             if (slow) changed += led('arcCollapse', collapseArcs(world));  // an arc near its own coast lands on it
             if (slow) changed += led('marginIsles', growMarginIsles(world, slowDt)); // fore-arc islands rise and join the coast (cell types only)
+            if (slow) changed += led('sedimentSubduction', subductSediment(world, slowDt)); // trench sediment goes down the subduction channel: the land it came from is lost
+            world.foreArcs = null;                                 // (the margins those two shared: rebuilt next time)
             changed += led('rifts', yield* riftContinents(world, dt));  // plume and tension rifts (splits plates)
             changed += led('backArcs', openBackArcs(world, dt));       // rolling-back trenches split off strips; finished strips rejoin
             changed += led('subductionInit', initiateSubduction(world, dt)); // passive margins founder (may carve an ocean plate)
