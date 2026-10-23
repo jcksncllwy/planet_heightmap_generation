@@ -177,7 +177,9 @@ node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance t
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
 node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--rivers [q0]] [--set key=value,…] [--debug]
-                                       # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes and any empty basins
+                                       # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes, any empty basins, its coast's shape
+node v2/tools/coast-shape.mjs --seed 626225 --cont 30 --time 950 [--cells 1000000] [--bands] [--finish]
+                                       # the coastline's divider dimension D and L(50 km)/L(500 km) by kind of margin, against Earth; --bands: by source of its shape
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
 node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)
 node v2/tools/bench-lab.mjs 2500000           # the lab's terrain pipeline piece by piece: timings + output hashes (is a speed-up exact?)
@@ -241,6 +243,8 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
   terrain-mesh     the terrain mesh (cached per size) and sampleOnto: each terrain cell's 3 sim cells + weights,
                    looked up through a smooth noise warp so the sim's cells never show (the warp read from a table
                    precomputed on a cube map — within ~0.3 km of the noise, a fifth of the cost)
+  margin-line      the coast's line: the land/sea raster's smooth contour (a Gaussian of a sim cell), the coast distance
+                   measured exactly to it; gaussianAt (cached kernels) smooths a margin's shelf and plain along it
   records          step 1: the Frame read into per-sim-cell fields — signed coast distance, shelf / plain / slope by
                    kind of coast, sea-floor depth and age, trenches, the isostatic platform, and per belt: kind (type +
                    side of a collision), distance from its front, reach, relief, obliquity, the across-strike direction
@@ -474,8 +478,9 @@ every river bed at least as deep, so rivers follow their historical courses and 
 rivers are routed over a micro-relief of the crust's own, so they ride with their continent between frames.
 **At high terrain detail (Evolution, 2026-09-29; plans/V2_FULL_PLANET_PLAN.md).** The coast distance is read with each
 sim cell's slope (`coastCurve`: Σ wᵢ (dᵢ + ∇dᵢ·(q − pᵢ)) — exact at the cells, seamless along edges), so coastlines
-curve between the sim cells instead of running straight across each triangle; below the coast noise, octaves of coast
-detail down to what the mesh can show (`coastDetailKm`, none at 160K). A second lookup warp works at the sim's own
+curve between the sim cells instead of running straight across each triangle; on a rugged coast (an island arc's, a young
+collision coast's), below the coast noise, octaves of coast detail down to what the mesh can show (`coastDetailKm`, none at
+160K). A second lookup warp works at the sim's own
 scale (`cellWarp`: waves of a few sim cells, in sim cells so 20K gets as much as 80K) — read in the frame of the plate
 under the point everywhere, off the rasters too, so it rides with the crust. The uplift and the platform are read
 with each cell's slope as well, kept within each cell's neighbourhood range (`mountainCurve`), and a belt's crests at
@@ -621,20 +626,24 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   number of segment lengths. **Open-ocean arcs** stand deeper (`arcOceanMatureKm` −1.5 km): a ridge its volcanoes break.
 - **Old ranges in the start supercontinent:** worn Ural-type belts along about half its suture network (`startSuture*`),
   records only — the plate history is unchanged (hash).
-- **Coasts at the sim's own scale:** a coast read over the plates' cells ran as a chain of rounded lobes one cell across
-  (most obvious at 20K–40K). The coast is moved in and out by up to half a sim cell (`coastCellNoise`), in waves of 2.5 sim
-  cells and finer (`coastCellWaveCells`), in sim cells (a coarse mesh's lobes broken as much as a fine one's), down to what the terrain
-  mesh can show — the same live and in Add detail. On a fresh coast the coast's share falls to `coastFreshFloor` (a young
-  rifted margin, by its maturity, or a coast whose belt was active within ~`coastFreshMyr`; records.js `coastFresh`), so a
-  young ocean's two sides still fit like puzzle pieces and a fresh range's shape leads.
-- **Coasts as smooth as their margins** (developer: Earth's coastlines "appear a lot smoother than what I'm seeing in
-  this sim"): Earth's margins run smooth over hundreds of km and break up on island arcs. By its margin (records.js
-  `coastRough`: a mature passive margin 0.3, a young one 0.6, an active one 0.5, an island arc 1), the coast noise and the
-  sim-scale noise are scaled down, the fine detail by a share (`coastRoughDetail`), and the coast is drawn smooth at the
-  sim's own scale (`smoothCoast`): its signed distance relaxed toward its neighbours' near the coast — curvature flow,
-  one-cell spits drawn in and one-cell notches filled — never closing a strait or cutting an isthmus. The coastline at the
-  mesh's scale 13–19 % shorter (995795 at 2.5M: 646,000 → 526,000 km); the waves then work the coast that is left
-  (finish-coast.js).
+- **Coasts drawn to their margins' lines** (developer, 2026-10-23: "I'm still not seeing things like the western coast
+  of India or Africa … they're always squiggly"). Measured first (`tools/coast-shape.mjs --bands`; tools/lib/coast-fractal.mjs:
+  the coastline's divider dimension D over 50–500 km rulers by kind of margin, on the zero contour of the surface): a mature
+  passive coast stood at D ≈ 1.11–1.14 and an active one at 1.15–1.18 (Earth: South Africa 1.02, Richardson 1961 in
+  Mandelbrot 1967; the Andean coast ~1.05). The squiggle lay in the sim-scale coast noise (`coastCellNoise`, the largest
+  share), the lookup warps, the shelf's width jumping from one sim cell to the next with the floor beside it, and the sim
+  raster's own staircase under them all. Now: the coast is the margin's smooth line (`margin-line.js`) — the 0.5 contour of
+  the land/sea raster seen through a Gaussian of `coastLineCells` sim cells (a rift's cell-to-cell steps and the raster's
+  staircase gone, its bends and transform steps kept; a cell turns only on the coast, never erasing an island or a lake,
+  never parting a land or a sea), the coast distance measured exactly to that contour's segments, so the shelf's edge and
+  the coastal plain are true offsets of it. Roughness is where the land at the sea is rough (records.js `rugged`): island
+  arcs, and young collision coasts by their relief (`coastRuggedKm`, while the belt is fresh: `coastFreshMyr`) take the
+  coast noise (`coastNoiseKm`), the fine detail and a sharper line (`coastLineRuggedCells`); a passive or active margin
+  takes none — its roughness is what its rivers' drowned valleys (rias, carve.js), the ice's fjords (finish-ice.js) and the
+  waves (finish-coast.js) cut into it. The sim-scale coast noise is gone, and a margin's shelf, coastal plain and maturity
+  are smoothed along it over its flexural scale (`shelfAlongKm`). D on the tectonic surface at 1M cells, two seeds:
+  mature passive 1.13 → 1.04, young passive 1.08–1.11 → 1.02–1.13 (a few thousand km), active 1.15–1.18 → 1.09–1.11, arcs
+  1.25–1.27 → 1.25 (Earth's island chains 1.15–1.35). Phase 8a reports D by kind against Earth.
 - **Mountains shaped along their belts** (developer: noise on the mountains "ruined the ridgelines … leading ridges and
   edges"; "make sure they get a realistic shaping"): only the distance across a belt followed its smooth kernels; its
   width, crest height and age, its envelope (the evolved uplift) and its thickened crust were read cell by cell — lobed

@@ -46,7 +46,7 @@ export const TERRAIN = {
     // a margin's shelf, coastal plain and maturity are regional: smoothed along the coast over σ = this (records.js). The
     // margin's lithosphere spreads its sediment load and its thermal subsidence over its flexural wavelength, 2πα ≈
     // 400–700 km for the elastic thickness of a passive margin (Te 20–40 km: Watts 2001, Isostasy and Flexure of the
-    // Lithosphere, ch. 7) — a shelf does not widen and narrow from one sim cell to the next with the floor beside it
+    // Lithosphere, ch. 7 — recalled) — a shelf does not widen and narrow from one sim cell to the next with the floor beside it
     shelfAlongKm: 150,
     // mountain shape (developer: "i want to see what we cook up"): the evolved uplift and the platform read with each sim
     // cell's slope, as the coast distance is — curved slopes instead of a flat facet per sim triangle — each corner's

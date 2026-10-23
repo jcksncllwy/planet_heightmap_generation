@@ -4,7 +4,8 @@
 // Richardson (1961) walked dividers of ruler ε along coasts and frontiers: the length L(ε) = N(ε)·ε grows as the ruler
 // shrinks, as ε^(1 − D). Mandelbrot (1967, "How long is the coast of Britain?", Science 156: 636–638) read D from those
 // plots: the coast of South Africa ~1.02 (as smooth as a coast gets), the Australian coast ~1.13, the west coast of
-// Britain ~1.25; Feder (1988, Fractals, ch. 2) measured the Norwegian coast, fjords and skerries, at ~1.52. A smooth
+// Britain ~1.25 (Richardson's measurements; Germany's land frontier 1.15). The Norwegian coast, fjords and skerries, is
+// ~1.52 (Feder 1988, Fractals, ch. 2 — widely quoted; recalled, not checked against the book). A smooth
 // coast's L(50 km) / L(500 km) = 10^(D − 1): ~1.05 for South Africa, ~1.8 for western Britain, ~3.3 for Norway.
 //
 // The coast is the zero contour of the surface (marching triangles over the mesh's Delaunay triangles, the crossing on
@@ -190,7 +191,7 @@ export const EARTH_D = {
     active: { earth: [1.02, 1.15], source: 'recalled: the Andean coast of Peru and N Chile, straight along its coastal range' },
     collision: { earth: [1.1, 1.3], source: 'recalled: Mediterranean and Arabian Sea collision coasts; Germany\'s land frontier 1.15 (Mandelbrot 1967)' },
     arc: { earth: [1.15, 1.35], source: 'recalled: Japan, the Philippines, the Lesser Antilles — island chains' },
-    glacial: { earth: [1.25, 1.55], source: 'west coast of Britain 1.25 (Mandelbrot 1967); Norway 1.52 (Feder 1988)' },
+    glacial: { earth: [1.25, 1.55], source: 'west coast of Britain 1.25 (Richardson 1961, in Mandelbrot 1967); Norway ~1.52 (Feder 1988, recalled)' },
     all: { earth: [1.05, 1.3], source: 'world coastlines 1.1–1.3 by the divider method (recalled: e.g. Jiang & Plotnick 1998 for the US coasts)' },
 };
 /** The kinds' names, in the order kindOf() numbers them. */

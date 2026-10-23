@@ -55,7 +55,7 @@ const TERRAIN_TUNABLES = [
     { id: 'thickTauMyr', label: 'A thickened root rebounds away over (re-runs the history)', min: 30, max: 400, step: 1, unit: ' Myr', evolves: true },
     { id: 'ruggedTauMyr', label: 'Crests and ridges wear away over (re-runs the history)', min: 50, max: 800, step: 1, unit: ' Myr', evolves: true },
     { id: 'collapseKm', label: 'Ground collapses under its own weight above (re-runs the history)', min: 3, max: 8, step: 0.25, unit: ' km', evolves: true },
-    { id: 'coastNoiseKm', label: 'Coastline irregularity', min: 0, max: 120, step: 5, unit: ' km' },
+    { id: 'coastNoiseKm', label: 'Rugged coasts’ irregularity (island arcs, young collision coasts; passive and active margins follow their smooth line)', min: 0, max: 120, step: 5, unit: ' km' },
     { id: 'rainErosionExponent', label: 'Erosion follows rainfall by latitude, 0 = everywhere alike (re-runs the history)', min: 0, max: 1.5, step: 0.1, evolves: true },
 ];
 const CHECKLISTS = {
@@ -92,6 +92,7 @@ const CHECKLISTS = {
         'Go back to the start: the first continents have broad swells with lowlands between them; the rivers gather in the lowlands, and the swells wear down as the history runs.',
         'Heights accumulate: where a new belt overprints an old one the old relief is not erased, and a belt that drifted through the wet tropics is lower than one of the same age at the dry subtropics (Erosion rate layer).',
         'Passive margins have wide shelves, active margins narrow ones; mid-ocean ridges stand ~2.5 km deep, old floor 5–6 km, trenches deeper still.',
+        'Coastlines: a passive or an active margin runs as a smooth line — long straight or gently curved stretches with bends and steps hundreds of km apart (west Africa, west India), never the sim’s cells, its shelf edge parallel to it — and island arcs and young collision coasts are ragged, broken into islands and straits. Phase 8a reports the coastline’s divider dimension by kind of margin against Earth’s.',
         'Switch the terrain resolution: the same planet at every resolution — only finer detail (the parallel ridges appear from 640K up).',
         'Scrub through the history: a drifting continent carries its fine detail with it — its coastline, its shelves, the edges of its belts, its ridges, its volcanoes, the grain of its plains — changing only where the history changes it (Phase 9: the terrain is read on each plate’s own crust), and, slowly, as its fine detail renews: over a few hundred Myr its bays and headlands and the grain of its ridges re-form (the “Fine detail slowly renews” slider; 0 freezes it).',
         'End as (settings): the planet can end as a supercontinent, one breaking up, or continents dispersed — the history runs on past 600 Myr until it is (the chart and the Mantle layer show the supercontinent cycle; see the 1200 Myr scene).',
