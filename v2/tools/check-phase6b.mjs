@@ -62,7 +62,7 @@ section('an old passive margin founders');
         // (An in-plate founder books the plate's stress across the coast; between two plates the event carries no squeeze —
         // here the scene starts at rest, so the urge is the age's alone, a lower bound.) And no ocean younger than
         // oceanNeutralAgeMyr founders, however it is squeezed: too warm and light
-        const urgeAt = e => founderUrge(e.data.ageMyr, e.data.stress !== undefined ? -e.data.stress : 0, cfg);
+        const urgeAt = e => founderUrge(e.data.ageMyr, e.data.stress !== undefined ? -e.data.stress : 0, cfg, e.data.weightMyr);
         const { lengthKm, ageMyr } = first.data;
         check('…pushed down by the founder law, on ocean old enough to sink', urgeAt(first) > 0 && started.every(e => e.data.ageMyr >= cfg.oceanNeutralAgeMyr),
             `the first: ${lengthKm.toFixed(0)} km of ${ageMyr.toFixed(0)} Myr ocean, urge ${urgeAt(first).toFixed(2)}; youngest founder ${Math.min(...started.map(e => e.data.ageMyr)).toFixed(0)} Myr (none may be under ${cfg.oceanNeutralAgeMyr})`);
@@ -118,7 +118,7 @@ const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {
     // induced and next to existing trenches (Crameri et al. 2020)
     const counts = histories.map(h => {
         const started = h.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT), per100 = n => n * 100 / h.frames.at(-1).time;
-        const induced = started.filter(e => founderUrge(e.data.ageMyr, 0, cfg) === 0).length;
+        const induced = started.filter(e => founderUrge(e.data.ageMyr, 0, cfg, e.data.weightMyr) === 0).length;     // (across a plate: the depth step's weight)
         return { all: per100(started.length), induced: per100(induced), spontaneous: per100(started.length - induced), times: started.map(e => e.time.toFixed(0)).join(', ') };
     });
     report('subduction initiations per 100 Myr', counts.map(c => c.all), { earth: [12, 30], unit: ' /100 Myr', source: 'more than a dozen, mostly induced: Crameri et al. 2020', digits: 1,

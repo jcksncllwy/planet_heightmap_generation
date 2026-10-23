@@ -221,7 +221,8 @@ js/tectonics/
                                     submarine fans to the trenches they reach, and along each trench's axis),
                                     rifting (when a continent rifts), backarc (slab rollback, back-arc seas),
                                     subduction-init (when a passive margin founders — between two plates, or inside a giant
-                                    one: its old ocean then breaks away as a plate of its own), ocean-plates (the pre-history
+                                    one: its old ocean then breaks away as a plate of its own; or a plate pressed together
+                                    across its open ocean fails there — from the plates' own stresses, plate-stress), ocean-plates (the pre-history
                                     ocean becomes plates; big ocean plates split along a new ridge)
                      heights:       the evolving height records (root, uplift, crest size, volcano wear) and
                                     their erosion by latitude — records only, the history never reads them
@@ -298,7 +299,7 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    → **events**, in this order — `updateHotspots` (first: it only stamps records) · `trackCycle` (the supercontinent
    cycle: counts the landmasses, moves the mantle's upwelling and downwelling; reads only) · `trackCollisions` · `growWings`
    · `buildArcs` · `collapseArcs` · `growMarginIsles` · `riftContinents` · `openBackArcs` · `initiateSubduction` ·
-   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock; a sea sealed inside one plate founders when it is big enough to be a plate of its own) · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
+   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock; a sea sealed inside one plate founders when it is big enough to be a plate of its own; a plate with no coast to founder at may fail across its open ocean instead) · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
    `tidyPlates` → if any changed crust: refresh, `resolve` and classify again → `drive` (next velocities: a scene's
    prescribed motion, or `updatePlateMotion`) → `steerBackArcStrips`. `evolveHeights` (erosion of the height records,
    below) runs before `drive`. Steps are adaptive (a plate moves at most a
@@ -760,6 +761,30 @@ Known gaps:
   (× latitude), not by relief; mountains shed more.
 - Only fully enclosed seas fill; a remnant sea with a narrow mouth to the world ocean is treated as ocean (its rivers'
   rock goes down their fans).
+
+## Subduction initiation from the plates' stresses (2026-10-23, branch stress-init)
+
+`tools/trace-founders.mjs` now tallies where candidate margins are lost (`world.founderTrace`). On main it found new trenches
+born 1–4 times per 100 Myr, and why: a weak zone was as strong as a whole slab pull (`founderStrength` 1.0) while the
+plates' own stresses across their coasts are ±0.1 of one, so the squeeze barely counted and the floor's age (over
+`subductionInitAgeMyr` 180 Myr) did nearly all the founding; ~80 % of the founders drawn between two plates were then
+thrown away because the pair's contact was in pieces, none long enough; and a plate with no continent had no margin at
+all. Now:
+- **A weak zone's strength** is `founderStrength` 0.08 slab pulls per 100 km: the 2–3 × 10¹² N/m a plate's resistance to
+  bending into a new trench peaks at (Gurnis, Hall & Lavier 2004) against a slab pull of ~3 × 10¹³ N/m. Most trenches are
+  now born pressed together (induced), younger than their weight alone would sink them (Crameri et al. 2020).
+- **Between two plates** each unbroken stretch of contact is a margin of its own, with its own age and closing.
+- **Across a plate** (`founderAcross`): a plate's open ocean is tested on the line it would split along
+  (`ocean-plates.js oceanLine`), with the stress the rest of the plate puts across it (`plate-stress.js`). Pressed together
+  harder than a weak zone holds, the far side breaks away under a new trench, the older floor going down. Its weight is
+  only the step in depth across the line (√age_old − √age_young): uniform floor has nothing to tip it (`founderUrge`'s
+  `weightMyr`). Under tension the line waits for the split. Off-switch: `MECHANISMS.founderAcross`.
+- A back-arc strip that takes a piece of craton with it books the split (`BACKARC_OPEN data.splitCratons`), as a rift does.
+- Phase 13 reports, over its three 1200 Myr cycles from 100 Myr: initiations per 100 Myr, the sea floor's mean age,
+  plates over 10^7.5 km² and back-arc seas opened.
+Measured (3 seeds): initiations 3.5–4.1 → ~6 per 100 Myr (Earth 12–30); plates holding ≥ 1 % of the planet 9.5–11 →
+11–14 (Earth 12–14); the sea floor's median age 107–119 → 96–121 Myr. The supercontinent's own plate still holds up to
+2⁄3 of the planet while it stands. A 600 Myr history at 20K costs ~20 % more: it has more plates.
 
 ## Conventions
 

@@ -109,7 +109,8 @@ section('the start world breaks up');
     const divided = runs.map(rr => {
         let unbooked = 0, firstSeen = null;
         for (const f of rr.frames) {
-            const booked = new Set(rifts(rr).filter(e => e.time <= f.time + 1e-9).flatMap(e => e.data.splitCratons ?? []));
+            // (a rift, or the rift behind a back-arc strip — step/backarc.js, which may cut a craton cratonStrength times less readily)
+            const booked = new Set(rr.events.filter(e => (e.kind === EventKind.RIFT || e.kind === EventKind.BACKARC_OPEN) && e.time <= f.time + 1e-9).flatMap(e => e.data.splitCratons ?? []));
             const holder = new Map(), split = new Set();
             for (let w = 0; w < numCells; w++) { if (f.owner[w] < 0 || f.type[w] !== CrustType.CRATON) continue; const prev = holder.get(f.terrane[w]); if (prev !== undefined && prev !== f.owner[w]) split.add(f.terrane[w]); holder.set(f.terrane[w], f.owner[w]); }
             for (const id of split) if (!booked.has(id)) { unbooked++; firstSeen ??= `terrane ${id} at ${f.time} Myr`; }

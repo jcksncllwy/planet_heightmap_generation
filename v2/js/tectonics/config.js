@@ -367,8 +367,7 @@ export const TECTONICS = {
     subductionInitSlabKm: 150,        // the slab a new trench starts with: it pulls weakly until it has swallowed more
     marginFounderRatePerMyr: 0.02,    // the same, for a margin INSIDE a plate (its old ocean breaks away as a plate of its own,
                                       // founderWithinPlates): without it a plate that holds its whole ocean never breaks up again
-    founderStrength: 1.0,             // what holds a margin up, per 100 km (slab pull is 1): a squeeze across it this hard founders it
-                                      // whatever its age (subduction-init.js founderUrge; the stress inside a plate: plate-stress.js)
+    // (founderStrength: below, in the stress-driven initiation block)
     founderSqueezeCmYr: 6,            // two plates closing on a passive margin between them at this rate squeeze it as hard
     oceanNeutralAgeMyr: 30,           // ocean younger than this is too warm and light to founder however hard it is squeezed
 
@@ -380,6 +379,16 @@ export const TECTONICS = {
     oceanSplitMinAgeMyr: 60,          // …not within this of its birth, a weld, a rift or its last split…
     oceanSplitLandKm: 800,            // …on a line through its open ocean: over this far from its land
     oceanPlateCaptureKm2: 2e6,        // an ocean plate subducted down to less than this is captured by its neighbour (a microplate)
+
+    // ── Stress-driven subduction initiation (branch stress-init: step/subduction-init.js, step/plate-stress.js) ──
+    founderStrength: 0.08,            // what holds a weak zone up against a squeeze across it, per 100 km of line, in units of a full
+                                      // slab pull: a squeeze this hard founders it whatever its age (founderUrge). The resisting force
+                                      // of a plate starting to bend into a new trench peaks at 2–3 × 10¹² N/m (Gurnis, Hall & Lavier
+                                      // 2004, G³ 5), against a slab pull of ~3 × 10¹³ N/m (Turcotte & Schubert 2002): ≈ 0.08. (Was 1.0,
+                                      // a margin as strong as a whole slab pull: the plates' stresses, ±0.1 here, then barely counted
+                                      // and the floor's age did nearly all the founding — tools/trace-founders.mjs)
+    founderAcross: true,              // a plate's open ocean founders ACROSS the plate too, on the line it would split along, when it is
+                                      // pressed together across it (large-plate failure: subduction-init.js founderAcross)
 
 
     // ── Terranes & plate integrity (step/collision.js, ops/accrete-terrane.js, ops/tidy-plates.js) ──
@@ -533,6 +542,7 @@ export const MECHANISMS = Object.freeze({
     plumes:         { plumeRatePerMyr: 0, hotspotInitialCount: 0 },          // mantle plumes, LIPs and tracks (step/hotspots.js)
     subductionInit: { subductionInitRatePerMyr: 0 },                         // passive margins foundering (step/subduction-init.js)
     marginFounder:  { marginFounderRatePerMyr: 0 },                          // margins inside a plate foundering: the ocean breaks away (step/subduction-init.js)
+    founderAcross:  { founderAcross: false },                                // a plate failing across its open ocean under compression (step/subduction-init.js)
     backgroundRetires: { backgroundEndMyr: Infinity },                       // the pre-history ocean becomes plates (step/ocean-plates.js)
     oceanSplits:    { oceanSplitRatePerMyr: 0 },                             // big ocean plates split along a new ridge (step/ocean-plates.js)
     microplates:    { oceanPlateCaptureKm2: 0 },                             // small ocean plates captured by a neighbour (step/ocean-plates.js)

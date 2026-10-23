@@ -88,7 +88,7 @@ export function captureMicroplates(world) {
 export function splitOceanPlates(world, dt) {
     const { config, time, plates, mesh } = world;
     if (!(config.oceanSplitRatePerMyr > 0)) return 0;
-    const { numCells, xyz, adjOffset, adjList, cellAreaKm2, edgeKm } = mesh;
+    const { cellAreaKm2 } = mesh;
     const threshold = config.oceanSplitAreaKm2 / cellAreaKm2, minCells = config.oceanPlateMinAreaKm2 / cellAreaKm2;
     let split = 0;
     for (const P of [...plates]) {                                          // (a copy: plates are added as it goes)
@@ -97,47 +97,9 @@ export function splitOceanPlates(world, dt) {
         if (ocean < threshold) continue;
         const chance = config.oceanSplitRatePerMyr * dt * Math.min(config.oceanSplitAreaCap, ocean / threshold - 1);
         if (world.rngOceanSplit() >= chance) continue;
-        const { mask, type } = P.crust;
-        const land = c => mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON);
-        // its open ocean (over oceanSplitLandKm from its land, on its own raster), and the centres of that and of its land
-        const fromLand = hopDistance(mesh, land, Math.ceil(config.oceanSplitLandKm / edgeKm), c => mask[c] === 1);
-        const O = [0, 0, 0], L = [0, 0, 0];
-        let open = 0, nLand = 0;
-        for (let c = 0; c < numCells; c++) {
-            if (!mask[c]) continue;
-            if (land(c)) { nLand++; L[0] += xyz[3 * c]; L[1] += xyz[3 * c + 1]; L[2] += xyz[3 * c + 2]; }
-            else if (type[c] === CrustType.OCEAN && fromLand[c] < 0) { open++; O[0] += xyz[3 * c]; O[1] += xyz[3 * c + 1]; O[2] += xyz[3 * c + 2]; }
-        }
-        if (open < minCells) continue;
-        const c0 = normalize(O);
-        // the line's normal, tangent at the open ocean's centre: toward the plate's land (the line then runs along its
-        // coast), or along its motion there if it has none
-        let dir;
-        if (nLand) dir = normalize(L);
-        else {
-            const w = P.toWorld(c0[0], c0[1], c0[2], [0, 0, 0]), o = P.omega;
-            const v = [o[1] * w[2] - o[2] * w[1], o[2] * w[0] - o[0] * w[2], o[0] * w[1] - o[1] * w[0]];
-            dir = Math.hypot(...v) > 1e-9 ? P.toPlateFrame(v[0], v[1], v[2], [0, 0, 0]) : [world.rngOceanSplit() - 0.5, world.rngOceanSplit() - 0.5, world.rngOceanSplit() - 0.5];
-            dir = [c0[0] + dir[0], c0[1] + dir[1], c0[2] + dir[2]];
-        }
-        const along = dir[0] * c0[0] + dir[1] * c0[1] + dir[2] * c0[2];
-        const n = normalize([dir[0] - along * c0[0], dir[1] - along * c0[1], dir[2] - along * c0[2]]);
-        // the far side: below the plane through the open ocean's centre — moved away from the land, if land reaches past it
-        const side = c => xyz[3 * c] * n[0] + xyz[3 * c + 1] * n[1] + xyz[3 * c + 2] * n[2];
-        let cut = 0;
-        for (let c = 0; c < numCells; c++) if (land(c)) cut = Math.min(cut, side(c) - edgeKm / 6371);
-        // the largest piece of the far side, joined through the plate's own cells there
-        const far = new Uint8Array(numCells);
-        for (let c = 0; c < numCells; c++) if (mask[c] && side(c) < cut) far[c] = 1;
-        let best = [];
-        const seen = new Uint8Array(numCells);
-        for (let s = 0; s < numCells; s++) {
-            if (!far[s] || seen[s]) continue;
-            const piece = [s];
-            seen[s] = 1;
-            for (let i = 0; i < piece.length; i++) for (let k = adjOffset[piece[i]]; k < adjOffset[piece[i] + 1]; k++) { const nb = adjList[k]; if (far[nb] && !seen[nb]) { seen[nb] = 1; piece.push(nb); } }
-            if (piece.length > best.length) best = piece;
-        }
+        const line = oceanLine(world, P, world.rngOceanSplit);
+        if (!line) continue;
+        const { best, seen, far, n } = line;
         if (best.length < minCells || ocean - best.length < minCells) continue;
         const fresh = world.addPlate(oceanPlateName(world));
         fresh.setQuat(P.quat.slice());
@@ -156,4 +118,60 @@ export function splitOceanPlates(world, dt) {
             { plate: P.id, fresh: fresh.id, areaMkm2: best.length * cellAreaKm2 / 1e6 });
     }
     return split;
+}
+
+/**
+ * The line a big ocean plate would break along: a great circle through its open ocean (over oceanSplitLandKm from its
+ * land), running along its coast — or across its motion if it carries no land — and the far side of it, moved away from
+ * the land if land reaches past it (all its continent stays on the near side). Shared by the split along a new ridge
+ * (splitOceanPlates, under tension) and the founder of a new trench across the plate (subduction-init.js, under
+ * compression). @returns {{best:number[], seen:Uint8Array, far:Uint8Array, n:number[]}|null} best: the largest piece of
+ * the far side (raster cells; far & seen mark every piece of it); n: the line's normal, toward the land; null if the plate
+ * has too little open ocean
+ */
+export function oceanLine(world, P, rng) {
+    const { config, mesh } = world, { numCells, xyz, adjOffset, adjList, cellAreaKm2, edgeKm } = mesh;
+    const minCells = config.oceanPlateMinAreaKm2 / cellAreaKm2;
+    const { mask, type } = P.crust;
+    const land = c => mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON);
+    // its open ocean (over oceanSplitLandKm from its land, on its own raster), and the centres of that and of its land
+    const fromLand = hopDistance(mesh, land, Math.ceil(config.oceanSplitLandKm / edgeKm), c => mask[c] === 1);
+    const O = [0, 0, 0], L = [0, 0, 0];
+    let open = 0, nLand = 0;
+    for (let c = 0; c < numCells; c++) {
+        if (!mask[c]) continue;
+        if (land(c)) { nLand++; L[0] += xyz[3 * c]; L[1] += xyz[3 * c + 1]; L[2] += xyz[3 * c + 2]; }
+        else if (type[c] === CrustType.OCEAN && fromLand[c] < 0) { open++; O[0] += xyz[3 * c]; O[1] += xyz[3 * c + 1]; O[2] += xyz[3 * c + 2]; }
+    }
+    if (open < minCells) return null;
+    const c0 = normalize(O);
+    // the line's normal, tangent at the open ocean's centre: toward the plate's land (the line then runs along its
+    // coast), or along its motion there if it has none
+    let dir;
+    if (nLand) dir = normalize(L);
+    else {
+        const w = P.toWorld(c0[0], c0[1], c0[2], [0, 0, 0]), o = P.omega;
+        const v = [o[1] * w[2] - o[2] * w[1], o[2] * w[0] - o[0] * w[2], o[0] * w[1] - o[1] * w[0]];
+        dir = Math.hypot(...v) > 1e-9 ? P.toPlateFrame(v[0], v[1], v[2], [0, 0, 0]) : [rng() - 0.5, rng() - 0.5, rng() - 0.5];
+        dir = [c0[0] + dir[0], c0[1] + dir[1], c0[2] + dir[2]];
+    }
+    const along = dir[0] * c0[0] + dir[1] * c0[1] + dir[2] * c0[2];
+    const n = normalize([dir[0] - along * c0[0], dir[1] - along * c0[1], dir[2] - along * c0[2]]);
+    // the far side: below the plane through the open ocean's centre — moved away from the land, if land reaches past it
+    const side = c => xyz[3 * c] * n[0] + xyz[3 * c + 1] * n[1] + xyz[3 * c + 2] * n[2];
+    let cut = 0;
+    for (let c = 0; c < numCells; c++) if (land(c)) cut = Math.min(cut, side(c) - edgeKm / 6371);
+    // the largest piece of the far side, joined through the plate's own cells there
+    const far = new Uint8Array(numCells);
+    for (let c = 0; c < numCells; c++) if (mask[c] && side(c) < cut) far[c] = 1;
+    let best = [];
+    const seen = new Uint8Array(numCells);
+    for (let s = 0; s < numCells; s++) {
+        if (!far[s] || seen[s]) continue;
+        const piece = [s];
+        seen[s] = 1;
+        for (let i = 0; i < piece.length; i++) for (let k = adjOffset[piece[i]]; k < adjOffset[piece[i] + 1]; k++) { const nb = adjList[k]; if (far[nb] && !seen[nb]) { seen[nb] = 1; piece.push(nb); } }
+        if (piece.length > best.length) best = piece;
+    }
+    return { best, seen, far, n };
 }
