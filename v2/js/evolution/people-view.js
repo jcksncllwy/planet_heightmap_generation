@@ -30,6 +30,16 @@ export class PeopleService {
         });
     }
 
+    /** The days to travel from (lat, lon) on a run's world (`run`: its result's id), by a craft (routes.js Craft) setting
+     *  out in month m: a promise of civ-page.js travelFrom's {days, from}. */
+    travel(run, craft, month, lat, lon) {
+        const w = this.worker ??= this.start(), id = this.next++;
+        return new Promise((resolve, reject) => {
+            this.jobs.set(id, { resolve, reject });
+            w.postMessage({ type: 'travel', id, run, craft, month, lat, lon });
+        });
+    }
+
     start() {
         const w = new Worker(new URL('../civ/civ-worker.js', import.meta.url), { type: 'module' });
         w.onmessage = ({ data }) => {
@@ -37,7 +47,7 @@ export class PeopleService {
             if (!j) return;
             if (data.type === 'progress') { j.onProgress?.(data.share); return; }
             this.jobs.delete(data.id);
-            if (data.type === 'people' || data.type === 'more') j.resolve(data); else j.reject(new Error(data.message));
+            if (data.type === 'people' || data.type === 'more' || data.type === 'travel') j.resolve(data); else j.reject(new Error(data.message));
         };
         w.onerror = e => {
             e.preventDefault?.();
@@ -126,6 +136,44 @@ export function landLines(P, f, u, v) {
     const b = P.land[f * P.cells + cellAt(P, u, v)], pc = x => (x >= 0.1 ? `${Math.round(100 * x)} %` : x >= 0.01 ? `${(100 * x).toFixed(1)} %` : `${(100 * x).toFixed(2)} %`);
     if (!b) return ['<span class="hi-label">Land</span> no fields or pasture'];
     return [`<span class="hi-label">Land</span> fields ~${pc(landShare(b & 15))} · pasture ~${pc(landShare(b >> 4))} <span style="opacity:.6">of the land</span>`];
+}
+
+// ── the Travel view (plans/CIV_PLAN.md §10.1): the days from a place clicked, on foot, paddled or under sail, by month ──
+export const TRAVEL_SHOWS = { foot: 0, paddle: 1, sail: 2 };
+const TRAVEL_WORDS = ['On foot', 'Paddled boats', 'Under sail'];
+const TRAVEL = rampOf([[255, 245, 190], [250, 180, 70], [215, 90, 55], [130, 40, 95], [45, 20, 65]]);
+const MONTH_WORDS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** Days' place on the ramp: a day or less → a year (log); and a darker line at each doubling. */
+const travelT = d => Math.log2(Math.max(1, d)) / Math.log2(365);
+/** A finish-view.js paintFinished colouring: the days from the place clicked (T: travelFrom's, or null — none yet), bright
+ *  near and dark far, the sea dimmer; past reach, the land grey. */
+export function travelColor(P, T, width, lut) {
+    const L = lut.rgb, k = P.pixW / width, W = P.pixW, pix = P.pix, days = T?.days;
+    return (out, o, x, y, wet, kk, k3, v, lake) => {
+        const d = days ? days[pix[Math.floor(y * k) * W + Math.floor(x * k)]] : Infinity, water = wet || lake === 1 || lake === 2;
+        if (!(d < Infinity)) {
+            if (water) { const s = 0.55 + 0.45 * kk; out[o] = SEA[0] * s; out[o + 1] = SEA[1] * s; out[o + 2] = SEA[2] * s; }
+            else { const g = (0.2 + 0.25 * (L[k3] + L[k3 + 1] + L[k3 + 2]) / 765) * 255 * kk; out[o] = g; out[o + 1] = g; out[o + 2] = g * 0.95; }
+            out[o + 3] = 255;
+            return;
+        }
+        const c = TRAVEL(travelT(d)), l2 = Math.log2(Math.max(1, d)), band = d > 1 && Math.abs((l2 % 1) - 0.5) > 0.46 ? 0.7 : 1, s = (water ? 0.6 : 0.7 + 0.3 * kk) * band;
+        out[o] = c[0] * s; out[o + 1] = c[1] * s; out[o + 2] = c[2] * s; out[o + 3] = 255;
+    };
+}
+/** The Travel view's legend. */
+export function travelLegendHTML(show, month, T, note) {
+    const stops = [0, 0.25, 0.5, 0.75, 1].map(t => `rgb(${TRAVEL(t).map(Math.round).join(',')})`).join(', ');
+    const where = T ? `from ${Math.abs(T.from[0]).toFixed(1)}°${T.from[0] >= 0 ? 'N' : 'S'}, ${Math.abs(T.from[1]).toFixed(1)}°${T.from[1] >= 0 ? 'E' : 'W'}` : 'click a place to set out from';
+    return `<div><b>Days to travel</b> · ${TRAVEL_WORDS[TRAVEL_SHOWS[show]]} · setting out in ${MONTH_WORDS[month]}</div>
+<div class="evo-people-ramp"><span>${where}</span><i style="background:linear-gradient(90deg, ${stops})"></i></div>
+<div class="evo-legend-note">${note ?? 'a day → a year (log scale), a line at each doubling · a loaded traveller: walking by the slope, boats down and up the big rivers, the sea by the month\'s winds and currents · grey: out of reach'}</div>`;
+}
+/** The readout's line for the Travel view. */
+export function travelLines(P, T, u, v) {
+    const d = T?.days[cellAt(P, u, v)];
+    if (d === undefined) return [];
+    return [`<span class="hi-label">Travel</span> ${!(d < Infinity) ? 'out of reach' : d < 1 ? `${Math.max(1, Math.round(d * 24))} hours` : d < 60 ? `${d.toFixed(d < 10 ? 1 : 0)} days` : `${(d / 30.4).toFixed(1)} months`}`];
 }
 
 // ── the Food view (plans/CIV_PLAN.md §9.2): what the land offers, per resource — persons/km² it feeds at full skill ──

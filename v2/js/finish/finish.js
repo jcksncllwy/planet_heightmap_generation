@@ -100,6 +100,10 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const circ = res.stages.circulation, year = (a, m = -1) => { const o = new Float32Array(G); for (let g = 0; g < G; g++) { if (m >= 0) o[g] = a[m * G + g]; else { let s = 0; for (let k = 0; k < 12; k++) s += a[k * G + g]; o[g] = s / 12; } } return o; };
     const waveIn = { u: circ.u, v: circ.v, ice: res.stages.temperature?.seaIce ?? null, eady: res.stages.rain?.eady ?? null, anchors: res.anchorMonths };      // (the coast's waves)
     const wind = { year: [year(circ.u), year(circ.v)], jan: [year(circ.u, 0), year(circ.v, 0)], jul: [year(circ.u, 6), year(circ.v, 6)] };
+    // (for the civ layer's travel, v2/js/civ/routes.js: the winds and the surface currents by month, m/s, on the climate's
+    // grid — the year's currents each month where the ocean has no seasons, calm where it was not run)
+    const oc = res.stages.ocean, curOf = k => oc?.monthly?.[k] ?? (oc?.[k] ? Float32Array.from({ length: 12 * G }, (_, i) => oc[k][i % G]) : new Float32Array(12 * G));
+    const travelFlow = { w: res.grid.w, h: res.grid.h, windU: Float32Array.from(circ.u), windV: Float32Array.from(circ.v), curU: Float32Array.from(curOf('u')), curV: Float32Array.from(curOf('v')) };
     const climGrid = { w: res.grid.w, h: res.grid.h }, warmSl = new Float32Array(n);
     for (let c = 0; c < n; c++) warmSl[c] = bilinear(climGrid, warmG, lat[c], lon[c]);
     // (the months each place's rain passes a share of its evaporation, or it freezes — the rivers' seasons)
@@ -289,7 +293,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
-        civ: { ice: I.ice, loess: W.loess, erg: W.erg, vector: vectors.vector, crops: crops.crops },              // (for the civ layer: v2/js/civ/civ-page.js)
+        civ: { ice: I.ice, loess: W.loess, erg: W.erg, vector: vectors.vector, crops: crops.crops, flow: travelFlow },              // (for the civ layer: v2/js/civ/civ-page.js)
         layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal } : null };
 }
 

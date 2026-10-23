@@ -824,6 +824,20 @@ over it, and the flows wear paths that make it cheaper.
 
 - **T0. The travel graph.** Monthly winds and currents kept on the civ world; edge days by month; a map view of travel
   time from a clicked place (isochrones), by month. Nothing else reads it yet (the fingerprints stay).
+
+  **Done (2026-10-23).** `routes.js` (`travelGraph`, `travelDays`); the finish keeps its monthly winds and currents on
+  the civ world (`w.flow`); the page's People layer has a travel view (on foot, paddled, under sail; click a place,
+  pick a month); `v2/tools/civ-travel.mjs` prints speeds and draws maps. World 6 (300 Myr):
+  - Median km a day: on foot 25; rivers 50 down; paddled 40 on water; sail 59 along coasts and ~155 at sea (~6.5 km/h).
+  - Crow-flight pace on foot over 800–2000 km: 15–18 km a day (the Old Assyrian caravans' ~17–20).
+  - Land within a year of a river mouth: on foot 33 M km², paddled 131, sail 154.
+  - The winds as the climate gives them are monthly means of the vector: 2.7 m/s on average, about half the day's
+    wind. Sail uses the day's wind, √(mean² + 4.5²), and the mean's direction only for its steady share. So the wind's
+    direction matters modestly here: an edge's slow way is ×1.05 its fast way (median), ×1.35 (90th percentile).
+  - Fixed on the way: `travelDays` lost cells to float32 rounding (the heap's key outran the stored time).
+  - Open for T1: paddlers now cross open ocean at 40 km a day. Voyaging needs a limit on days away from land per craft.
+  - Open for the Earth check: whether the trades come out steady enough (Casson: Rome to Alexandria in 2–3 weeks,
+    the way back against the wind in 1–2 months).
 - **T1. Fronts and voyaging on the graph** (the economy only).
 - **T2. Flows and towns** (Rihll–Wilson), grain first.
 - **T3. Wear and paths;** then states' roads.

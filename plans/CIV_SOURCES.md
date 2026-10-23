@@ -192,11 +192,27 @@ From the end of the glacial (13 ka) each peopled cell's diet is worked out from 
 | Pastoralism: once milked, people may follow their herds over all the open land, growing 0.1 of the crops they could and the wild thinned by the grazing — where that feeds more than settled mixed farming, and only where the rain's year-to-year CV (storms' and modes') is 0.33 or more, or no crop grows to farm (the cold) | Ellis & Swift 1988, *Journal of Range Management* 41 (non-equilibrium rangelands: mobility pays where rain's CV > ~33 %); Khazanov 1984, *Nomads and the Outside World* (the dry margins; trade for grain); Dahl & Hjort 1976 (pastoralists live on milk); Marshall & Hildebrand 2002, *Journal of World Prehistory* (herding before crops where rain is unpredictable) | Adapted: the shares ours | [L] |
 | Ways of life read off the diet (lifeOfDiet: the largest class; settled where packed beside storable food, as the switches') | §9.3; Binford 2001 (packing) | Ours | — |
 
+## Travel (`v2/js/civ/routes.js`; plans/CIV_PLAN.md §10.1, stage T0)
+
+A travel graph: each mesh edge's cost in days for a loaded traveller, for each month and craft (on foot, paddled boats,
+sail), directional. The winds and currents are the planet's own climate's, by month (on Earth, to come: ERA5 and OSCAR).
+Only the page's travel-time view reads it so far; the fronts, towns and trade will (T1–T4).
+
+| Rule | Source | Fidelity | Checked |
+|---|---|---|---|
+| Travel costs on a network, by month and craft: the cheapest path in days | Scheidel 2014, *Journal of Roman Archaeology* 27 (ORBIS) | Adapted: ORBIS's form; our speeds | [L] |
+| On foot: 25 km a day on the flat, by Tobler's slope factor; ice sheets closed. Crow-flight pace over 800–2000 km comes out at 15–18 km a day on world 6 | Veenhof 1972, *Aspects of Old Assyrian Trade* (donkey caravans ~25–30 km a day; Assur–Kanesh in ~6 weeks); Tobler 1993 | Adapted | [L] |
+| Navigable rivers (the substrate's navigable flow): down 50 km a day, towed up 15 | Ours, to check against ORBIS's river speeds | Ours | — |
+| Paddled boats: 4 km/h, 10 hours a day | Ours | Ours | — |
+| Sail: through the water at 0.35 × the wind, at most 11 km/h (4–6 knots with a fair wind); no course within 65° of the wind (a square sail), tacking toward a heading into it; 0.85 of a reach's speed dead downwind; under 2 m/s, none. At sea day and night; along a coast or on a lake, by day | Casson 1971, *Ships and Seamanship in the Ancient World* (speeds with fair and foul winds: ~4–6 knots and ~2) | Adapted: the polar's form ours; checked at 7 m/s: 7.5 km/h downwind, 8.8 on a reach, 3.7 made good upwind | [L] |
+| The day's wind from a month's mean vector: speed √(mean² + 4.5²) m/s; it keeps the mean's direction for its steady share (mean ÷ speed) and blows from anywhere the rest | Ours: Earth's seas have mean speed ~7 m/s against a mean vector ~4–5; trade-wind steadiness ~0.8–0.9. To check on Earth's winds | Ours | — |
+| Currents add their component along the heading, at sea (ocean to ocean) | Ours | Direct | — |
+
 ## Design sources for the next model (plans/CIV_PLAN.md §9; not yet in code)
 
 Cited in the §9 design. Each moves into its section's table, with fidelity, when its rule enters the code (C1 moved diet
 breadth, the broad spectrum, Rindos, the domestication rate, Henrich, Zeder and Bocquet-Appel into the economy's table;
-with their full references).
+with their full references; T0 moved ORBIS and Casson into the travel table).
 
 | Idea | Source | Checked |
 |---|---|---|
@@ -205,7 +221,6 @@ with their full references).
 | Farmers entering occupied land as competition | Aoki, Shida & Shigesada 1996, *Theoretical Population Biology* | [L] |
 | The end of the African Humid Period (~5.5 ka) pushes people into the Nile valley (a planned rule: needs orbital forcing) | Kuper & Kröpelin 2006, *Science* | [L] |
 | Agro-climatic yield from the months | FAO 1978 AEZ; GAEZ v4 (Fischer et al. 2021) | in use, see the resource map |
-| Travel and trade (plans/CIV_PLAN.md §10): seasonal travel costs on a network, by month and craft | Scheidel 2014, *Journal of Roman Archaeology* 27 (ORBIS); Casson 1971, *Ships and Seamanship in the Ancient World* (speeds by wind) | [L] |
 | Voyaging: upwind exploration; drift and sailing simulations of the Pacific | Irwin 1992, *The Prehistoric Exploration and Colonisation of the Pacific*; Avis, Montenegro & Weaver 2007, *Journal of Island and Coastal Archaeology*; Montenegro, Callaghan & Fitzpatrick 2016, *PNAS* | [L] |
 | Boats and sails: the Gulf's by the Ubaid; pack animals and the wheel | Carter 2006, *Antiquity*; Bulliet 1975, *The Camel and the Wheel* | [L] |
 | Trails worn by use, fading unused | Helbing, Keltsch & Molnár 1997, *Nature* | [L] |

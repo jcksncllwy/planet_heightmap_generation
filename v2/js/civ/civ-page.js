@@ -12,6 +12,7 @@ import { climateVariability, spreadOf } from './climate-var.js';
 import { diseaseLoss } from './disease.js';
 import { TownFlag } from './polity.js';
 import { CIV } from './civ-config.js';
+import { travelGraph, travelDays } from './routes.js';
 
 export const PAGE_CELLS = 160000;
 /** A generation: the step the people's timeline goes on by, past now. */
@@ -41,7 +42,7 @@ export function civWorldFromFinish(out) {
     // (the rivers copied: the page is sent the moment's own)
     const rivers = { lat: R.lat.slice(), lon: R.lon.slice(), q: R.q.slice(), regime: R.regime?.slice() ?? null, farFed: R.farFed?.slice() ?? null };
     const fine = { mesh: out.mesh, z: out.z, ocean: out.ocean, lake: out.lake, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
-        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null, crops: L.crops ?? null };
+        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null, crops: L.crops ?? null, flow: L.flow ?? null };
     if (out.mesh.numCells <= PAGE_CELLS) return fine;
     const mesh = coarse ??= buildSimMesh(PAGE_CELLS, MESH_SEED), n = mesh.numCells, xyz = mesh.xyz, src = new Int32Array(n);
     for (let c = 0; c < n; c++) src[c] = out.mesh.index.nearest(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]);
@@ -49,7 +50,7 @@ export function civWorldFromFinish(out) {
     return { mesh, z: take(fine.z), ocean: take(fine.ocean), lake: take(fine.lake), koppen: take(fine.koppen), tAnnual: take(fine.tAnnual), pAnnual: take(fine.pAnnual),
         stats: Object.fromEntries(STAT_KEYS.map(k => [k, take(fine.stats[k])])), rivers: fine.rivers, loess: take(fine.loess), erg: take(fine.erg), ice: take(fine.ice),
         vector: fine.vector ? { rain: take(fine.vector.rain), warm: take(fine.vector.warm) } : null,
-        crops: fine.crops ? Object.fromEntries(Object.entries(fine.crops).map(([k, a]) => [k, take(a)])) : null };
+        crops: fine.crops ? Object.fromEntries(Object.entries(fine.crops).map(([k, a]) => [k, take(a)])) : null, flow: fine.flow };
 }
 
 /**
@@ -78,6 +79,15 @@ export function startPeople(w, width, onProgress = () => {}, runs = null) {
     FOODS.forEach((f, i) => { const a = state.sub.food[f]; for (let c = 0; c < n; c++) food[i * n + c] = foodByte(a[c]); });
     return { state, result: { cells: n, ...first, packages: res.packages, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D],
         pix, pixW: W, food, ms: performance.now() - t0 } };
+}
+
+/** Days to travel from (lat, lon) to every cell of a run (startPeople's state) in month m (0 = January), by a craft
+ *  (routes.js Craft): {days (per cell), from: [lat, lon] of the cell set out from}. The craft's graph kept on the state. */
+export function travelFrom(state, craft, m, lat, lon) {
+    const { w } = state, D = Math.PI / 180, graphs = state.graphs ??= [];
+    graphs[craft] ??= travelGraph(w, state.sub, craft);
+    const src = w.mesh.index.nearest(Math.cos(lat * D) * Math.cos(lon * D), Math.cos(lat * D) * Math.sin(lon * D), Math.sin(lat * D)), x = w.mesh.xyz;
+    return { days: travelDays(w.mesh, graphs[craft], src, m), from: [Math.asin(x[3 * src + 2]) / D, Math.atan2(x[3 * src + 1], x[3 * src]) / D] };
 }
 
 /** Go on with a run (startPeople's state) to `toBP` (negative: years after now), a frame every `every` years: the new frames,

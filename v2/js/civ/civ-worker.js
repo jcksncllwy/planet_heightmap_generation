@@ -2,12 +2,13 @@
 // world its finish sent (finish/finish-worker.js 'done' civ), so the page stays responsive through the run.
 //
 // Messages in:  {type: 'people', id, world (its mesh as arrays), width} — a run to now, kept to go on with ·
-//               {type: 'more', id, run (the 'people' id), toBP, every} — go on with that run to toBP (past now: negative)
+//               {type: 'more', id, run (the 'people' id), toBP, every} — go on with that run to toBP (past now: negative) ·
+//               {type: 'travel', id, run, craft, month, lat, lon} — the days to travel from there, on that run's world
 // Messages out: {type: 'progress', id, share} · {type: 'people', id, ...startPeople's result} ·
-//               {type: 'more', id, ...morePeople's} · {type: 'error', id, message}
+//               {type: 'more', id, ...morePeople's} · {type: 'travel', id, ...travelFrom's} · {type: 'error', id, message}
 
 import { meshFromArrays } from '../core/sim-mesh.js';
-import { startPeople, morePeople } from './civ-page.js';
+import { startPeople, morePeople, travelFrom } from './civ-page.js';
 import { ensembleForcings } from './climate-var.js';
 
 /** The climate ensemble's runs, one worker each, all at once (or null, to run them in turn, where a worker cannot start
@@ -45,6 +46,11 @@ self.onmessage = async ({ data }) => {
             if (!state) throw new Error('that run is no longer kept');
             const r = morePeople(state, data.toBP, data.every);
             self.postMessage({ type: 'more', id, ...r }, moved(r));
+        } else if (data.type === 'travel') {
+            const state = runs.get(data.run);
+            if (!state) throw new Error('that run is no longer kept');
+            const r = travelFrom(state, data.craft, data.month, data.lat, data.lon);
+            self.postMessage({ type: 'travel', id, ...r }, [r.days.buffer]);
         }
     } catch (err) {
         self.postMessage({ type: 'error', id, message: err?.stack ?? String(err) });

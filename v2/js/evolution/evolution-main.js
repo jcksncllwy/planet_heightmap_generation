@@ -23,7 +23,7 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
-import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf, addPeople, foodColor, foodLegendHTML, foodLines, landColor, landLegendHTML, landLines } from './people-view.js';
+import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf, addPeople, foodColor, foodLegendHTML, foodLines, landColor, landLegendHTML, landLines, TRAVEL_SHOWS, travelColor, travelLegendHTML, travelLines } from './people-view.js';
 import { STEP_YEARS } from '../civ/civ-page.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
@@ -187,7 +187,7 @@ const climate = new ClimateService();   // the climate, on request, for the mome
 const finisher = new FinishService();   // the Finish step, on request, for the moment shown (finish-view.js)
 const peopler = new PeopleService();    // the People layer, on request, for the detailed moment (people-view.js)
 // (the People layer's own timeline: the frame shown — years BP every 500 years — and its playback)
-const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people' };      // (show: the People layer's view — the people, or a food (people-view.js FOOD_SHOWS))
+const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, a food (people-view.js FOOD_SHOWS) or a craft's days to travel (TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
 // (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
 // ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
@@ -554,7 +554,7 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', food = P?.food && !land && peopleView.show !== 'people' ? peopleView.show : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in TRAVEL_SHOWS, food = P?.food && !land && !trip && peopleView.show !== 'people' ? peopleView.show : null;
     // (the settlements: on the People layer, or over any other with Settlements on — the people worked out on request)
     const S = settlementsShown() ? fin.people : null;
     if (settlementsShown() && !fin.people) runPeople(fin);
@@ -562,7 +562,7 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes: water || view.layer === 'satellite',
-        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? landColor(P, pf, t.width, lut) : food ? foodColor(P, food, t.width, lut) : peopleColor(P, pf, t.width, lut)) : null });
+        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? landColor(P, pf, t.width, lut) : trip ? travelColor(P, travelShown(P), t.width, lut) : food ? foodColor(P, food, t.width, lut) : peopleColor(P, pf, t.width, lut)) : null });
     if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
     t.ctx.putImageData(t.image, 0, 0);
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
@@ -572,8 +572,8 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     drawLines(t, C);
     show(t);
     painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
-    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (land ? `land|${frame.time}|${pf}` : food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
-    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? landLegendHTML(P, pf) : food ? foodLegendHTML(food) : peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
+    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (land ? `land|${frame.time}|${pf}` : trip ? `trip|${frame.time}|${peopleView.show}|${peopleView.month}|${travelShown(P)?.from}|${peopleView.travelNote}` : food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
+    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? landLegendHTML(P, pf) : trip ? travelLegendHTML(peopleView.show, peopleView.month, travelShown(P), peopleView.travelNote) : food ? foodLegendHTML(food) : peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
     if (S) {
         $('peopleSlider').max = S.bp.length - 1; $('peopleSlider').value = pf;
         // (the year, and on another layer than People — whose legend says it — the towns and states then)
@@ -1027,7 +1027,29 @@ $('peoplePlay').addEventListener('click', () => setPeoplePlaying(!peopleView.pla
 // …and go on past its last year: a generation at a time, or on and on (the slider following the newest year)
 $('peopleStep').addEventListener('click', () => { setPeoplePlaying(false); livePeopleOn(1); });
 $('peopleRun').addEventListener('click', () => setPeopleRunOn(!peopleView.runOn));
-$('peopleShow').addEventListener('change', e => { peopleView.show = e.target.value; e.target.classList.toggle('active', peopleView.show !== 'people'); dirty = true; });
+$('peopleShow').addEventListener('change', e => { peopleView.show = e.target.value; e.target.classList.toggle('active', peopleView.show !== 'people'); $('peopleMonth').hidden = !(peopleView.show in TRAVEL_SHOWS); travelTo(); dirty = true; });
+$('peopleMonth').addEventListener('change', e => { peopleView.month = Number(e.target.value); travelTo(); dirty = true; });
+/** The Travel view's days, if they are for the people shown, its craft and month (or null). */
+function travelShown(P) {
+    const T = peopleView.travel;
+    return T && T.P === P && T.show === peopleView.show && T.month === peopleView.month ? T : null;
+}
+/** The Travel view: the days from a place (default: where it last set out from) for the people shown, its craft and
+ *  month, worked out in the people's worker on the run's own world. */
+async function travelTo(lat, lon) {
+    const fin = painted && finishedShown(painted), P = fin?.people, show = peopleView.show, month = peopleView.month;
+    if (!P || !(show in TRAVEL_SHOWS)) return;
+    if (lat === undefined) { if (!peopleView.travel || travelShown(P)) return; [lat, lon] = peopleView.travel.from; }
+    peopleView.travelNote = 'Working out the days…'; dirty = true;
+    try {
+        const r = await peopler.travel(P.id, TRAVEL_SHOWS[show], month, lat, lon);
+        peopleView.travel = { P, show, month, days: r.days, from: r.from }; peopleView.travelNote = null;
+    } catch (err) {
+        peopleView.travelNote = `Could not work out the days: ${String(err.message).split('\n')[0]}`;
+        console.error(err);
+    }
+    dirty = true;
+}
 function setPeopleRunOn(on) {
     peopleView.runOn = on && !!(painted && B?.finishes.get(painted)?.people);
     $('peopleRun').setAttribute('aria-pressed', String(peopleView.runOn));
@@ -1079,6 +1101,11 @@ function pickTown(e) {
     if (i < 0) { closeTownCard(); return; }
     view.town = { lat: S.towns[f][i], lon: S.towns[f][i + 1] };
     dirty = true;
+}
+/** The Travel view: set out from the place clicked. */
+function pickTravel(e) {
+    const p = painted && placeUnder(e);
+    if (p) travelTo(90 - p[1] * 180, p[0] * 360 - 180);
 }
 function closeTownCard() { if (view.town) { view.town = null; dirty = true; } $('townCard').hidden = true; }
 $('townClose').addEventListener('click', closeTownCard);
@@ -1160,7 +1187,8 @@ function readout(e) {
     if (setting) lines.push(`<span class="hi-label">Setting</span> ${setting}`);
     // the climate, where this moment has one: its Köppen class, temperature and rain
     const C = climateOf(f);
-    if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
+    if (settlementsShown() && fin?.people && view.layer === 'people' && peopleView.show in TRAVEL_SHOWS) lines.push(...travelLines(fin.people, travelShown(fin.people), p[0], p[1]));
+    else if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
         : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? foodLines(fin.people, p[0], p[1]) : peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
     else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));
@@ -1177,7 +1205,7 @@ for (const el of [ui.canvas, ui.map]) {
     });
     el.addEventListener('pointerup', e => {
         // (a click or a tap, not a drag: a town under it opens its card)
-        if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) <= 5) pickTown(e);
+        if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) <= 5) { if (view.layer === 'people' && peopleView.show in TRAVEL_SHOWS) pickTravel(e); else pickTown(e); }
         if (e.pointerType !== 'mouse' && down) readout(e);
         down = null;
     });

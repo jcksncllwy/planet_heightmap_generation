@@ -233,6 +233,25 @@ export const CIV = {
     herdDieOff: 1,              // the share of the animals the year's grazing can't carry that die
     herdRecovery: 0.4,          // the herd's regrowth a year (logistic): from half to ~90 % in ~5 years
 
+    // ── travel (plans/CIV_PLAN.md §10.1; routes.js): a day's going for a loaded traveller ──
+    walkKmDay: 25,              // on foot (or with pack donkeys) on the flat: Old Assyrian caravans ~25–30 (Veenhof 1972)
+    riverDownKmDay: 50,         // a navigable river: down with the current… (ours: to check against ORBIS)
+    riverUpKmDay: 15,           // …and towed up it (ours)
+    paddleKmh: 4,               // a loaded canoe or raft, paddled (ours)
+    boatHours: 10,              // a boat's day along a coast or on a lake, or paddled anywhere: by daylight (ours)
+    // sail: through the water at sailSpeed × the wind's speed, at most sailMaxKmh (4–6 knots with a fair wind; Casson 1971),
+    // none in less than sailMinWind (m/s); no course closer than sailNoGo° to the wind (a square sail), tacking toward a
+    // heading into it; slower dead before the wind (sailRun) than on a reach
+    sailSpeed: 0.35,
+    sailMaxKmh: 11,
+    sailMinWind: 2,
+    sailNoGo: 65,
+    sailRun: 0.85,
+    // a month's mean wind is the mean of its vector: the day's wind is stronger, √(mean² + sailWindSd²), and keeps the
+    // mean's direction only for its steady share (mean ÷ speed). Over Earth's seas the mean speed is ~7 m/s and the mean
+    // vector's ~4–5; the trades' steadiness ~0.8–0.9 (ours, to check on the Earth run's own winds)
+    sailWindSd: 4.5,
+
     // ── the economy (plans/CIV_PLAN.md §9.3; econ.js) ──
     useShare: 0.2,              // a resource at this share of the diet is in full use: skill and domestication at their full pace
     skillSeed: 0.3,             // the skill of those who first cultivate a wild stand, or keep a wild herd (ours)
