@@ -136,6 +136,10 @@ export const TECTONICS = {
                                 // reach cratonStrength km (a 1000 km plateau belt gets ~170 km in, an Andean one a few tens), and
                                 // the shield thickens by only 1/cratonStrength as much (Jordan 1978: cratons are strong, not rigid —
                                 // the Laramide uplifts stand inside the Wyoming craton). 0: a craton takes no belt
+    beltHotStrength: 0.5,       // crust a belt has thickened to crustMaxThickKm, and island-arc crust, is this strong against ordinary
+                                // continent (1) for a belt crossing it — hot, its lower crust ductile (Te 10–20 km against 30–50:
+                                // Jordan & Watts 2005, Pérez-Gussinyé et al. 2008) — and a belt reaches over it that much further
+                                // (step/orogeny.js spreadBelt); less thickened crust between. 1: every continent alike
     beltWorkShare: 0.35,        // share of the convergence at the front that is recorded across the belt (the front cell keeps the full amount)
     thickeningPerWorkKm: 0.05,  // crust thickens by this many km per km of shortening spread over a belt (Tibet: ~2500 km of shortening → ~35 km thicker)
     crustMaxThickKm: 40,        // …and less as the crust nears this much thicker than normal, none past it: crust thickened ~twice over

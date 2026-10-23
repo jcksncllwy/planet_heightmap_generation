@@ -126,16 +126,21 @@ export const TERRAIN = {
     cratonRimInKm: 10,          // a range pressed against a shield fades across its rim, from this far in…
     cratonRimOutKm: 120,        // …to nothing here (the history's thin-skinned belt: tectonics config cratonStrainShare; the
                                 // sub-Andean zone is 50–100 km wide)
-    foredeepPerKm: 0.12,        // the foreland a range bends into a shield: a lowland this much below the shield per km of the
-                                // range's height (flexure is linear in the load; the Ganges plain lies ~0.3 km below the Indian
-                                // shield, the Chaco ~0.5 km below the Brazilian — filled with sediment: a plain, not a trough)…
-    foredeepMaxKm: 0.3,         // …at most this…
-    forelandFromKm: 100,        // …deepest this far in from the edge line (in front of the rim's thrusts)…
+    foredeepPerKm: 3,           // the foreland a range bends into a shield: a plate under a load spread wide sinks this much per
+                                // km of the load's height — ρ_crust ÷ (ρ_mantle − ρ_fill), 2700 ÷ 900 kg/m³, the sink filled with
+                                // sediment as it forms (terrain/cratons.js sums it over the loads as the plate bends; the Ganges
+                                // foredeep's floor is 4–6 km down at the Himalayan front)…
+    foredeepMaxKm: 0.3,         // …filled to a plain at most this far below the shield (the Ganges plain lies ~0.3 km below the
+                                // Indian shield, the Chaco ~0.5 km below the Brazilian — a plain, not a trough)…
+    underthrustKm: 250,         // …the lower plate of a collision goes on this far under the upper plate's front (Indian crust is
+                                // imaged ~200 km under southern Tibet, its mantle lithosphere further: Nábělek et al. 2009), so the
+                                // front's whole weight bends it there — the pro-foreland is the deep one (terrain/cratons.js)…
     shieldElasticKm: 60,        // …over the flexural length α = (4D / Δρg)^¼ of a shield's lithosphere this thick elastically (D = E Te³ /
                                 // 12(1 − ν²), E 70 GPa, ν 0.25, Δρ mantle − sediment fill 900 kg/m³; Te 60 km → α ≈ 155 km): the foredeep
                                 // ~πα/2 wide beyond the front, the forebulge's crest ~3πα/4 (cratons' Te is 40–100 km: wide, shallow
                                 // forelands — the Ganges basin is ~250–450 km wide; Beaumont 1981, DeCelles & Giles 1996)
-    forebulgeGain: 3,           // the forebulge, this many times the thin elastic plate's (tens of metres)
+    forebulgeGain: 1,           // the forebulge, this many times the thin elastic plate's (~1.4 % of the bend at the load: tens
+                                // of metres; 3 when the foreland was drawn from the shield's edge rather than bent by its loads)
     forelandByKind: {           // how much a front of each kind loads the shield beside it (0: none)
         [OrogenyType.ANDEAN]: 1, [OrogenyType.HIMALAYAN]: 1, [OrogenyType.URAL]: 1, [OrogenyType.LARAMIDE]: 0.6,
         [OrogenyType.TRANSPRESSION]: 0.5, [OrogenyType.ARC]: 0.3, [OrogenyType.RIFT]: 0,
@@ -146,6 +151,11 @@ export const TERRAIN = {
     cratonSagKm: 0.2,           // …a sag basin's floor lies this much below it (the Congo, Hudson Bay)…
     cratonFlatKm: 0.08,         // …a flat shield only undulates by this
     cratonShapeKm: 900,         // (the scale of the noise that makes a swell or a sag irregular)
+    cratonSwellFlankKm: 500,    // a swell or a sag rises (or sinks) over this far in from the shield's edge: they are the
+                                // mantle's (dynamic topography; Africa's basins and swells 1,000–2,000 km apart, Burke 1996;
+                                // the African superswell, Nyblade & Robinson 1994), so a flank is about a quarter of their
+                                // wavelength — not a share of the shield's own depth (a small shield's swell was a ~200 km
+                                // hill: cratons came out rougher than the lowland around them, 75 m against 71)
     cratonGrainKm: 0.06,        // a grain of domes and keels (granite domes between greenstone belts), this high…
     cratonGrainScaleKm: 90,     // …its domes about this far apart (faded where the mesh cannot show them)
     platformNoiseKm: 0.16,      // broad basins and arches (the Michigan basin, the Ozark dome), 400–2000 km across
@@ -289,6 +299,12 @@ export const TERRAIN = {
     // (a 600 Myr planet: median land 0.71 → 0.87 km, belts quiet 300+ Myr keep ~0.4 km of uplift instead of 0.2; the floor
     // 0.5 → 0.75 after Phase 13, low ground still wearing slower than high: old ranges lingered at 0.4–0.8 km everywhere)
     erosionHeight: { refKm: 2, floor: 0.75, max: 1.8 },
+    collapseKm: 5,              // ground raised past this collapses under its own weight — its lower crust flows out and it
+                                // extends — so a plateau levels off here and widens instead (Tibet ~5 km, the Altiplano ~4 km;
+                                // Molnar & Lyon-Caen 1988, Dewey 1988; tectonics/step/heights.js)…
+    collapseKm2PerMyr: 2000,    // …its uplift and root spreading at this rate (lower-crustal flow built eastern Tibet's
+                                // ~300 km margin over ~10–15 Myr: Clark & Royden 2000 — ~6,000–9,000 km²/Myr; a third of that,
+                                // as the flow is confined to the hottest crust). (Re-runs the history.) 0: none
     diffusionKm2PerMyr: 80,     // hillslope smoothing of the uplift: range edges spread and blend over time (not onto cratons)
     // A belt's crests need room: a scrap of a belt — a few sim cells left of a collision — cannot hold its cross-section
     // (the suture valley, ranges 40–130 km off it), and drawn anyway its valley sank into the uplift around it as a pit

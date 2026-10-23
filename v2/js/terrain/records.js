@@ -12,6 +12,7 @@ import { erosionAtLatitude } from './terrain-config.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 import { buildAnchor } from './anchor.js';
 import { plateCratons } from './cratons.js';
+import { crestProfile } from './profiles.js';
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -581,21 +582,29 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const overprinted = beltLayer(frame, simMesh, cfg, land, coastKm, A, { type: frame.prevType, u: frame.prevU, reach: frame.prevReach, side: frame.prevSide, shear: frame.prevShear, last: frame.prevLast, rugged: frame.prevRugged, layer: 1 });
     const { kind, dKm, reach, reliefKm, shear, across } = current;
 
-    // ── cratons (terrain/cratons.js): what a range beside a shield weighs on it, by the kind of front — the height it is
-    // NOT carried at by its own root. A lower plate is thrust under the whole wedge, so the wedge's full height above the
-    // lowland bears on it (the pro-foreland: the Ganges); a plateau's back on an upper plate stands on its own thickened
-    // root (Airy) — its broad rise compensated — so only the ranges' crests on it load the block (the retro-foreland: the
-    // Longmen Shan against the Sichuan Basin — steep, shallow; Naylor & Sinclair 2008) ──
-    const loadW = new Float32Array(n);
+    // ── cratons (terrain/cratons.js): what each belt cell weighs on its plate — the height it stands at that its own root
+    // does NOT carry — which bends a shield on the same plate into a foreland. A lower plate is thrust under the whole
+    // wedge, so the wedge's full height above the lowland bears on it (the pro-foreland: the Ganges) — the thrusts riding
+    // up onto the shield's rim included, where they stand; a plateau's back on an upper plate stands on its own thickened
+    // root (Airy, over hot, weak lithosphere) — its broad rise compensated — so only the ranges' crests on it load the
+    // block (the retro-foreland: the Longmen Shan against the Sichuan Basin — steep, shallow; Naylor & Sinclair 2008);
+    // and the lower plate, thrust under the upper's front, carries that front's whole weight too (terrain/cratons.js).
+    // The crests by where across the belt the cell lies (profiles.js), not the belt's crest height: the back of a
+    // plateau, where its crests die away, weighs little ──
+    // (loadFull: the same with its whole height — what the cell weighs on a plate thrust under it, which carries it all:
+    // India's lithosphere under the Himalaya and southern Tibet)
+    const loadW = new Float32Array(n), loadFull = new Float32Array(n), loadOver = new Float32Array(n);
     for (let w = 0; w < n; w++) {
-        if (!land[w] || craton[w] || !kind[w]) continue;
-        const type = kindType(kind[w]), weight = cfg.forelandByKind?.[type] ?? 0;
+        if (!land[w] || !kind[w]) continue;
+        const type = kindType(kind[w]), side = kindSide(kind[w]), weight = cfg.forelandByKind?.[type] ?? 0;
         if (!(weight > 0)) continue;
-        const onRoot = type === OrogenyType.HIMALAYAN && kindSide(kind[w]) === BeltSide.UPPER;
-        const heightKm = (onRoot ? 0 : Math.max(0, platformKm[w] - cfg.continentKm) + frame.upliftKm[w]) + 0.5 * reliefKm[w];
-        loadW[w] = weight * Math.min(cfg.foredeepMaxKm, cfg.foredeepPerKm * Math.max(0, heightKm));
+        const onRoot = type === OrogenyType.HIMALAYAN && side === BeltSide.UPPER;
+        const crests = reliefKm[w] * Math.max(0, crestProfile(type, side, dKm[w], reach[w]));
+        const full = Math.max(0, platformKm[w] - (craton[w] ? cfg.cratonKm : cfg.continentKm)) + Math.max(0, frame.upliftKm[w]) + crests;
+        loadW[w] = weight * (onRoot ? crests : full); loadFull[w] = weight * full;
+        if ((type === OrogenyType.HIMALAYAN || type === OrogenyType.URAL) && side === BeltSide.UPPER) loadOver[w] = weight * full;
     }
-    const cratons = plateCratons(simMesh, A, frame, loadW);
+    const cratons = plateCratons(simMesh, A, frame, loadW, loadFull, loadOver, cfg);
     // a scrap of craton (a patch whose deepest point is under ~cratonScrapKm from its edge) reads as its surroundings: it
     // takes the ground around it — the range's thickened crust, its uplift and crests (a shield never thickens, so a
     // scrap inside a plateau would stand as a hole in it) — by the share the terrain reads it as them (terrain/cratons.js)

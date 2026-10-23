@@ -18,7 +18,7 @@ import { buildStripeKernels, stripeAt, crossAt, beltAt, carriedField, carriedStr
 import { lipPieces, dykeAt } from './lips.js';
 import { SEGMENT_KM } from '../tectonics/model/segments.js';
 import { buildVolcanoes, coneAt, volcanoNoise } from './volcanoes.js';
-import { cratonCharacter } from './cratons.js';
+import { cratonCharacter, flexuralLengthKm } from './cratons.js';
 import { BeltSide, CrustType } from '../tectonics/model/crust.js';
 import { sampleOnto, warpField, warpPoint } from './terrain-mesh.js';
 import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
@@ -142,6 +142,22 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
         }
         Object.assign(L0, { envRatio, rootRatio });
         rec.envShape = envShape; rec.rootShape = rootShape;
+        // (each cell's own isostatic lift, and the least and most of it and of the evolved uplift over the cell and its land
+        // neighbours: the range the envelope and the root carried across a belt stay within — surfaceRange)
+        const isoKm = new Float32Array(n);
+        for (let w = 0; w < n; w++) if (rec.land[w]) isoKm[w] = cfg.isoMaxKm * (1 - Math.exp(-frame.rootKm[w] * (frame.type[w] === CrustType.ARC ? 0.25 : 1) / cfg.isoScaleKm));
+        const span = f => {
+            const lo = new Float32Array(n), hi = new Float32Array(n), { adjOffset, adjList } = simMesh;
+            for (let w = 0; w < n; w++) {
+                if (!rec.land[w]) continue;
+                let a = f[w], b = f[w];
+                for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const q = adjList[k]; if (rec.land[q]) { if (f[q] < a) a = f[q]; if (f[q] > b) b = f[q]; } }
+                lo[w] = a; hi[w] = b;
+            }
+            return [lo, hi];
+        };
+        [rec.isoLo, rec.isoHi] = span(isoKm); [rec.upLo, rec.upHi] = span(rec.upliftKm);
+        rec.isoKm = isoKm;
     }
     // where the crust each world cell shows lies this frame (a moved plate's raster cell, turned into the world): the cells'
     // blends below are read there, so they ride with the crust as the records do (Phase 9) — read at the world cells'
@@ -366,8 +382,15 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     // a corner's share, scaled by a noise field of its own (decorrelated per crust cell, continuous across triangles)
     const noisy = (c, w) => { const r = cell[c]; return w * Math.exp(cfg.blendNoise * noise.fbm(x0 * blendF + (r % 101) * 1.37, y0 * blendF + (r % 89) * 2.11, z0 * blendF + (r % 83) * 0.73, 3, 0.5) * 1.6); };
     let x0 = 0, y0 = 0, z0 = 0;
+    // (the least and the most of a field's neighbourhood span over the land corners: [lo, hi])
+    const span2 = [0, 0];
+    const spanOf = (LO, HI, c0, c1, c2, n0, n1, n2) => {
+        span2[0] = Math.min(n0 > 0 ? LO[c0] : Infinity, n1 > 0 ? LO[c1] : Infinity, n2 > 0 ? LO[c2] : Infinity);
+        span2[1] = Math.max(n0 > 0 ? HI[c0] : -Infinity, n1 > 0 ? HI[c1] : -Infinity, n2 > 0 ? HI[c2] : -Infinity);
+        return span2;
+    };
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastFresh, envShape, rootShape, coastKind } = rec;
+    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastFresh, envShape, rootShape, isoKm, coastKind } = rec;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -517,20 +540,21 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 // the shield's platform over the line: the corners' own share of it replaced by the line's
                 platform += (cfg.cratonKm - cfg.continentKm) * (shieldS - cells);
                 rimFade = 1 - whole * smooth(cfg.cratonRimInKm, cfg.cratonRimOutKm, crN);
-                // the foreland: deepest just in front of the rim's thrusts, rising to a low forebulge (a stiff plate's flexure)
-                if (cLoad > 0.002) {
-                    const xf = (crN - cfg.forelandFromKm) / flexuralLengthKm(cfg.shieldElasticKm);
-                    const f = xf <= 0 ? smooth(-cfg.cratonBlendKm, cfg.forelandFromKm, crN) : Math.exp(-xf) * Math.cos(xf);
-                    platform -= whole * cLoad * (f > 0 ? f : cfg.forebulgeGain * f);
-                }
+                // the foreland: the shield bent down under the ranges' weight (terrain/cratons.js: summed over its plate's loads
+                // as a stiff plate bends — deepest before the thrusts on its rim, rising to a low forebulge), across the edge line
+                if (cLoad > 0.002 || cLoad < -0.002) platform -= whole * smooth(-cfg.cratonBlendKm, cfg.cratonBlendKm, crN) * (cLoad > 0 ? cLoad : cfg.forebulgeGain * cLoad);
                 // the shield's character (per craton: a sag basin, a swell, a flat shield) and its grain of domes and keels
                 if (shieldS > 0.01) {
                     let cT = c0, cW = -1;
                     for (let j = 0; j < 3; j++) { const c = j === 0 ? c0 : j === 1 ? c1 : c2, wj = j === 0 ? w0 : j === 1 ? w1 : w2; if (craton[c] && wj > cW) { cW = wj; cT = c; } }
                     const ch = cratonCharacter(CR, seed, terrane[cT]), k = cfg.cratonCharacter * shieldS;
-                    const rho = Math.min(1, Math.max(0, crN / Math.max(1, cPatch)));
                     if (ch.kind !== 0) {
-                        const form = smooth(0.1, 0.8, rho + 0.3 * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 2.3 * ch.salt, z * shapeF + 5.5, 3, 0.5));
+                        // (a swell or a sag is the mantle's — dynamic topography, intracratonic subsidence — and as broad: it
+                        // rises over cratonSwellFlankKm in from the edge, wherever the shield is that deep, its line moved
+                        // by noise as large; a shield narrower than that only takes the start of it. As a share of each
+                        // shield's own depth, a small shield's swell rose over a hundred km or two: hills, not a swell)
+                        const flank = cfg.cratonSwellFlankKm;
+                        const form = smooth(0, flank, crN + 0.43 * flank * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 2.3 * ch.salt, z * shapeF + 5.5, 3, 0.5));
                         platform += k * ch.amp * (ch.kind > 0 ? cfg.cratonSwellKm : -cfg.cratonSagKm) * form;
                     } else platform += k * ch.amp * cfg.cratonFlatKm * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 4.1, z * shapeF + 2.3 * ch.salt, 3, 0.5);
                     if (grainShow > 0) platform += k * cfg.cratonGrainKm * grainShow * smooth(0, 150, crN) * (0.7 - 2 * Math.abs(noise.noise3D(x * grainF + 3.3, y * grainF + 8.8, z * grainF + 1.1)));
@@ -732,12 +756,22 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 : (n0 * upliftKm[c0] + n1 * upliftKm[c1] + n2 * upliftKm[c2]) / lw) : 0;
             // (within a belt, its part of the uplift — as the cells sampled it — replaced by the smooth one: fronts, plateau rims
             // and the far edge on the belt's own lines; older belts' uplift and basins stay as recorded)
-            if (envCover > 0 && lw > 0) uplift += envHere - envCover * (n0 * envShape[c0] + n1 * envShape[c1] + n2 * envShape[c2]) / lw;
+            // (no higher than the history raised any crust about here, nor lower: the envelope's ratios are blended over the
+            // belt's kernels, and where a narrow stretch of belt meets a wide one a point near the narrow one's far edge read
+            // as the wide one's main range — 2.5 km of uplift drawn 4.2 km high, and a peak of 9.5 km)
+            if (envCover > 0 && lw > 0) { const [lo, hi] = spanOf(rec.upLo, rec.upHi, c0, c1, c2, n0, n1, n2); uplift = Math.min(Math.max(uplift, hi), Math.max(Math.min(uplift, lo), uplift + envHere - envCover * (n0 * envShape[c0] + n1 * envShape[c1] + n2 * envShape[c2]) / lw)); }
             uplift *= rimFade;
             // (and the thickened crust's lift likewise, into the ground under the belt: no lobes of it, cell by cell)
             if (rootCover > 0 && lw > 0) {
                 const notShield = (n0 * (craton[c0] ? 0 : 1) + n1 * (craton[c1] ? 0 : 1) + n2 * (craton[c2] ? 0 : 1)) / lw;
-                h += ramp * notShield * (rootHere - rootCover * (n0 * rootShape[c0] + n1 * rootShape[c1] + n2 * rootShape[c2]) / lw);
+                // (Airy: the crust under the point is its corners' crust — the lift carried here stays within what their own
+                // roots float, the least and the most of them. The ratios are blended over the belt's kernels, and where a
+                // narrow stretch of belt meets a wide one the point's place across them is a blend of two belts: a corner
+                // near its belt's far edge, still on a thick root from an older belt, read as the plateau's middle — its lift
+                // counted twice, and a range of ~20 km of root stood 2.8 km higher than any crust under it could float it)
+                const isoMean = (n0 * isoKm[c0] + n1 * isoKm[c1] + n2 * isoKm[c2]) / lw, [lo, hi] = spanOf(rec.isoLo, rec.isoHi, c0, c1, c2, n0, n1, n2);
+                const carried = rootHere - rootCover * (n0 * rootShape[c0] + n1 * rootShape[c1] + n2 * rootShape[c2]) / lw;
+                h += ramp * notShield * Math.min(hi - isoMean, Math.max(lo - isoMean, carried));
             }
             const along = relief !== 0 || uplift !== 0 ? atEdge * (1 + cfg.alongStrikeVar * noise.fbm(x * strikeF + 8.8, y * strikeF + 2.2, z * strikeF + 6.6, 3, 0.5) * 1.5) : 0;
             let lifted = h + uplift * along + stripes;
@@ -882,8 +916,4 @@ function selectKth(a, lo, hi, k) {
     }
 }
 
-/** The flexural length α (km) of a lithosphere `elasticKm` thick elastically, under a load whose deflection fills with sediment. */
-export function flexuralLengthKm(elasticKm) {
-    const E = 70e9, nu = 0.25, dRho = 900, g = 9.81, te = elasticKm * 1000;
-    return (4 * E * te ** 3 / (12 * (1 - nu * nu)) / (dRho * g)) ** 0.25 / 1000;
-}
+export { flexuralLengthKm };

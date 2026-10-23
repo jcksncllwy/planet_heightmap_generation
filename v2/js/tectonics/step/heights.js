@@ -84,7 +84,7 @@ export function evolveHeights(world, dt) {
     const rate = rateTable(H), lift = isoLiftTable(H);
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux;
-    if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells);
+    if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
         const { mask, type, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm } = plate.crust;
@@ -92,6 +92,40 @@ export function evolveHeights(world, dt) {
         // hillslope smoothing of the uplift, within the plate's land — never into the sea, nor onto a craton's core (a
         // shield is rigid and cold: a neighbouring range does not spread onto it), only onto its rim, where a belt rides
         const spreads = c => mask[c] && type[c] !== CrustType.OCEAN && (type[c] !== CrustType.CRATON || oroType[c] !== 0);
+        // Gravitational collapse: crust raised past collapseKm can no longer hold itself up — its hot, thick lower crust
+        // flows out from under it (Clark & Royden 2000) and the high ground extends (Dewey 1988), so plateaus stop rising
+        // at ~4–5 km and widen instead (Tibet, the Altiplano; Molnar & Lyon-Caen 1988). Where a cell stands that high, its
+        // uplift and its thickened root spread to its neighbours at collapseKm2PerMyr — crust moved, not lost: a plateau
+        // levels off and grows outward (sub-stepped where a step is too long for that rate on this mesh)
+        const collapse = H.collapseKm2PerMyr > 0, kc = collapse ? H.collapseKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm) : 0;
+        if (collapse) {
+            let hi = scratch.hi;
+            if (!hi || hi.length !== n) hi = scratch.hi = new Float32Array(n);
+            const sub = Math.max(1, Math.ceil(kc / 0.12)), kSub = kc / sub, isoOf = c => lift[Math.min(LIFT_TABLE - 1, Math.round(rootKm[c] * (type[c] === CrustType.ARC ? 0.25 : 1) * LIFT_PER_KM))];
+            for (let it = 0; it < sub; it++) {
+                let any = false;
+                for (let c = 0; c < n; c++) {
+                    hi[c] = 0;
+                    if (!spreads(c)) continue;
+                    const h = Math.max(0, upliftKm[c]) + baseKm[c] + isoOf(c);
+                    if (h > H.collapseKm - 0.25) { hi[c] = Math.min(1, (h - H.collapseKm + 0.25) / 0.5); any = true; }
+                }
+                if (!any) break;
+                for (let c = 0; c < n; c++) {
+                    flux[c] = 0; scratch.rootFlux[c] = 0;
+                    if (!spreads(c)) continue;
+                    let du = 0, dr = 0;
+                    for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                        const nb = adjList[k];
+                        if (!spreads(nb)) continue;
+                        const f = kSub * Math.max(hi[c], hi[nb]);
+                        if (f > 0) { du += f * (upliftKm[nb] - upliftKm[c]); dr += f * (rootKm[nb] - rootKm[c]); }
+                    }
+                    flux[c] = du; scratch.rootFlux[c] = dr;
+                }
+                for (let c = 0; c < n; c++) if (flux[c] || scratch.rootFlux[c]) { upliftKm[c] += flux[c]; rootKm[c] = Math.max(0, rootKm[c] + scratch.rootFlux[c]); }
+            }
+        }
         for (let c = 0; c < n; c++) {
             flux[c] = 0;
             if (!spreads(c)) continue;
@@ -127,7 +161,7 @@ export function evolveHeights(world, dt) {
 
 // The erosion rate by latitude is a function of z = sin(latitude), tabulated; the root's isostatic lift too.
 const TABLE = 1024, LIFT_TABLE = 1024, LIFT_PER_KM = 4;
-const scratch = { flux: null, tables: null, lift: null };
+const scratch = { flux: null, rootFlux: null, hi: null, tables: null, lift: null };
 /** e^−x for the small x of one step (exact enough, and far cheaper than exp per cell per step). */
 const wear = x => (x < 0.05 ? 1 - x * (1 - x * (0.5 - x / 6)) : Math.exp(-x));
 

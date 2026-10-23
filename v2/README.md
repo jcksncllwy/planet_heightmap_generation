@@ -329,11 +329,17 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    the convergence its front absorbs, never lowered by a newer belt; foreland basins sink below 0), the size of its
    belts' crests (`rugged`, `prevRugged`) and a hotspot volcano's wear (`volcWornKm`). Every step erodes them at the
    latitude the cell is at then (faster where it rains more, and poleward under ice) and smooths the uplift sideways a
-   little, never into the sea (a belt crosses onto a craton as a low, thin-skinned fold-thrust belt, `cratonStrainShare` of
-   its relief, each km of the shield costing `cratonStrength` km of the belt's reach, and the shield thickening by only
-   1/`cratonStrength` as much: cratons are strong, not rigid). So orogenies accumulate, and an old belt that drifted through the
-   tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`, `reliefTauMyr`,
-   `thickTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`); a world may carry its own in `world.config.heights`.
+   little, never into the sea. Ground raised past `collapseKm` (5 km) collapses under its own weight — its uplift and
+   root flow out to its neighbours at `collapseKm2PerMyr`, crust moved, not lost — so plateaus level off at Tibet's and
+   the Altiplano's heights and widen instead of rising on. A belt's reach is spent against the strength of the ground
+   it crosses (the thin viscous sheet: a deforming zone widens as the lithosphere weakens): crust a belt has already
+   thickened, and island-arc crust, is hot and weak (`beltHotStrength` × an ordinary continent's), so a long-lived margin
+   widens over the crust it thickened, while a belt crosses onto a craton only as a low, thin-skinned fold-thrust belt,
+   `cratonStrainShare` of its relief, each km of the shield costing `cratonStrength` km of the belt's reach, and the
+   shield thickening by only 1/`cratonStrength` as much: cratons are strong, not rigid. So orogenies accumulate, and an
+   old belt that drifted through the tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`,
+   `reliefTauMyr`, `thickTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`, `collapseKm`); a world may carry its own in
+   `world.config.heights`.
 
 ### Rules for event stages and ops (break these and histories go subtly wrong)
 
@@ -425,11 +431,16 @@ and the bays and headlands, the ridges' segments and crests and the ridge noise 
 from one frame to the next nothing moves, while over a few hundred Myr the landscape is re-sculpted. Cratons meet the
 ranges pressed against them as real shields do (Phase 10, `terrain/cratons.js`): the craton's edge is a line — the
 signed distance to it on each plate's raster, moved by noise — not the sim cells' staircase; a range's foothills fade
-across its rim; in front of them a foreland bends the shield down under the range's weight (a lowland ~0.1–0.3 km below
-the shield beyond, then a low forebulge, over the flexural length of the shield's elastic thickness, `shieldElasticKm`),
-shallow where a plateau's back meets the block — the plateau stands on its own root, so only its ranges load it;
+across its rim; in front of them a foreland bends the shield down under the ranges' weight — every belt cell on the
+plate a load (its height above what its own root floats), summed as a thin elastic plate bends under point loads
+(Kelvin's −kei, over the flexural length of the shield's elastic thickness, `shieldElasticKm`): a lowland up to
+`foredeepMaxKm` below the shield beyond, then a low forebulge. A lower plate carries the whole wedge — its own thrusts on
+the shield's rim, and the upper plate's front where it is thrust under it (`underthrustKm`) — so its foreland is the deep
+one; a plateau's back on an upper plate stands on its own root, so only its crests load the block, and the front there
+stays steep;
 scraps of craton inside a range read as the range; and each craton has a character — a shallow sag basin, a broad swell
-or a flat shield (`cratonCharacter`) — with a faint grain of domes and keels. Trapped pockets of
+or a flat shield (`cratonCharacter`; a swell or sag is the mantle's, so it rises over `cratonSwellFlankKm` in from the
+edge, not over a share of the shield) — with a faint grain of domes and keels. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
 `coastKindKm` of its coast. **Passive margins mature** (2026-10-15, `marginMatureMyr`): a passive coast's age is the
 oldest ocean floor beside it (the floor that formed as it broke away), or less where its own belt was active since; its
@@ -631,7 +642,10 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   shows, read over the triangles); the envelope's and the thickened crust's shapes come from their profiles at the point,
   times their heights blended the same way (`envelopeCarry`: moved by height × (the profile at the point − the profile as
   the cells sampled it), only where the kernels' and the cells' distances across the belt agree to within about a sim
-  cell, the thickened crust's height capped at `isoMaxKm` and never on a shield); and the crests rise and fall along the
+  cell, the thickened crust's height capped at `isoMaxKm` and never on a shield — and both kept within the least and the
+  most the history left about the point: no ground floats on more root, nor stands on more uplift, than the crust around
+  it holds, so where a narrow stretch of belt meets a wide one the narrow one's far edge is not drawn as the wide one's
+  main range); and the crests rise and fall along the
   strike (`crestAlongVar` 0.4 over `crestAlongKm` 300), read on the belt's front line so nothing moves across the belt.
   ~6 % more synthesis time at 640K; steady detail kept (a half-cell turn: 97.1 % of coasts, land heights 0.91).
 Everything is to be tuned together at the end (developer); the measured impact of each step is in the plan.

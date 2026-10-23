@@ -54,6 +54,7 @@ const TERRAIN_TUNABLES = [
     { id: 'reliefTauMyr', label: 'Uplift wears away over (re-runs the history)', min: 30, max: 400, step: 1, unit: ' Myr', evolves: true },
     { id: 'thickTauMyr', label: 'A thickened root rebounds away over (re-runs the history)', min: 30, max: 400, step: 1, unit: ' Myr', evolves: true },
     { id: 'ruggedTauMyr', label: 'Crests and ridges wear away over (re-runs the history)', min: 50, max: 800, step: 1, unit: ' Myr', evolves: true },
+    { id: 'collapseKm', label: 'Ground collapses under its own weight above (re-runs the history)', min: 3, max: 8, step: 0.25, unit: ' km', evolves: true },
     { id: 'coastNoiseKm', label: 'Coastline irregularity', min: 0, max: 120, step: 5, unit: ' km' },
     { id: 'rainErosionExponent', label: 'Erosion follows rainfall by latitude, 0 = everywhere alike (re-runs the history)', min: 0, max: 1.5, step: 0.1, evolves: true },
 ];
@@ -77,13 +78,14 @@ const CHECKLISTS = {
         'Hillshade: around the province, and on it where it has worn away, a faint grain of dykes radiating from the plume’s centre, out to about twice the province’s radius.',
     ],
     cratons: [
-        'India (the lower plate): the range’s foothills ride a little way onto its shield’s rim (Crust type layer: where the craton is), then a lowland runs along the front, slightly below the shield beyond; the front follows the shield’s large shape, never the sim’s cells.',
-        'Asia (the upper plate): the plateau reaches Asia’s shield and its back meets it in a steep front, with no lowland before it (the Longmen Shan against the Sichuan Basin).',
+        'India (the lower plate): the range’s foothills ride a little way onto its shield’s rim (Crust type layer: where the craton is), then a lowland runs along the front, slightly below the shield beyond, and a faint forebulge past it — India is thrust under Asia’s front, so it carries that weight too; the front follows the shield’s large shape, never the sim’s cells.',
+        'Asia (the upper plate): the plateau reaches Asia’s shield and its back meets it in a steep front, with at most a faint lowland before it — shallower than India’s (the Longmen Shan against the Sichuan Basin: retro-forelands are the shallow ones).',
         'The two shields differ (a sag basin, a swell or a flat shield, with a faint grain of domes and keels); the “Cratons” slider sets how strongly — at 0 both are flat.',
     ],
     rift: ['The new coasts are lifted into shoulders — an escarpment facing the young ocean, sloping gently inland. The arm that failed is a low corridor into the continent. The young ocean has a ridge along its middle.'],
     history: [
-        'Young belts stand high and sharp; old belts are low but keep their grain of parallel ridges; cratons are calm and low; about half the land is lowland.',
+        'Young belts stand high and sharp; old belts are low but keep their grain of parallel ridges; cratons are calm and low; about half the land is lowland. Plateaus level off near 5 km and widen rather than rise on (gravitational collapse; the “collapses above” slider), and no peak stands much past Everest’s 8.8 km.',
+        'Belts widen over weak ground: a long-lived margin or a collision spreads further inland across the crust it has already thickened (and across island-arc crust) than across ordinary continent, and stops short at a craton.',
         'Cratons against the ranges (Phase 10; the Crust type layer shows where the cratons are): a range pressed against a craton follows the craton’s large shape but never its sim cells’ staircase; its foothills ride a little way onto the shield, then a lowland — slightly below the shield beyond — runs along the front; where a plateau’s back meets a craton the front stays steep.',
         'Cratons differ: some are a shallow basin (a low interior plain), some a broad swell (a high shield), some flat — with a faint grain of domes and keels (the “Cratons” slider sets how strongly). No flat, stair-edged holes where a scrap of craton sits inside a range.',
         'Ridges only layer: besides the parallel ridges, long highs and lows drawn out along every range (ridge noise), bending with the belt’s front.',

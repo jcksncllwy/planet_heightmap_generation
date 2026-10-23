@@ -76,6 +76,19 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
     // (scratch arrays shared across calls, reset below for exactly the cells this call touched)
     if (!scratch.u || scratch.u.length !== mask.length) scratch.u = new Float32Array(mask.length).fill(Infinity), scratch.src = new Int32Array(mask.length).fill(-1), scratch.seaKm = new Float32Array(mask.length);
     const { u, src, seaKm } = scratch;
+    // How hard the ground is to deform, per km, against ordinary continent (1): the belt's front spends its convergence
+    // against the strength of the lithosphere it crosses, so it reaches far over weak, hot ground and stops short against
+    // strong, cold ground — the thin viscous sheet's result that a deforming zone widens as the lithosphere's strength
+    // falls against the stresses that build it (its Argand number; England & McKenzie 1982, Houseman & England 1986).
+    // Weak: crust thickened by a belt (its radiogenic lower crust hot and ductile, decoupled from the mantle: Te of
+    // Tibet and the Altiplano–Puna 10–20 km against 30–50 km for ordinary continent; Burov & Diament 1995, Jordan & Watts
+    // 2005, Pérez-Gussinyé et al. 2008) and island-arc crust (young, hot back-arc lithosphere; Hyndman et al. 2005) —
+    // so a long-lived margin's belt widens into a plateau over the crust it has itself thickened; strong: a craton.
+    // (u stays the share of the strength overcome — the belt's cross-section is laid out by it, so over weak ground its
+    // plateau and ranges stand wider apart, over strong ground they crowd together)
+    const hotS = config.beltHotStrength ?? 1, thickFull = config.crustMaxThickKm;
+    const strength = c => type[c] === CrustType.CRATON ? shieldCost
+        : 1 - (1 - hotS) * Math.max(type[c] === CrustType.ARC ? 1 : 0, Math.min(1, crust.thickKm[c] / thickFull));
     const shieldShare = config.cratonStrainShare ?? 0, shieldCost = shieldShare > 0 ? config.cratonStrength : Infinity;
     const seaLimit = config.apronKm * 1.5 + edgeKm;
     const queue = [];                                   // Dijkstra would be exact; costs are ≥ 0 and few-valued, so a
@@ -97,10 +110,10 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
                 u[nb] = 0; src[nb] = src[c]; seaKm[nb] = sea; queue.push(nb);
                 continue;
             }
-            // (a craton is cratonStrength times as hard to deform: half the hop onto it, all of a hop within it)
-            const shield = (type[c] === CrustType.CRATON) + (type[nb] === CrustType.CRATON);
+            // (each cell's strength over half the hop: a craton cratonStrength times as hard to deform — half the hop onto it,
+            // all of a hop within it; an old weak line carries the belt further)
             const hop = cellDistanceKm(xyz, c, nb) * ((flags[nb] & (CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN)) ? config.weakCellCost : 1)
-                * (shield ? 1 + (shieldCost - 1) * shield / 2 : 1);
+                * (shieldCost === Infinity && (type[c] === CrustType.CRATON || type[nb] === CrustType.CRATON) ? Infinity : 0.5 * (strength(c) + strength(nb)));
             const next = atSea ? 0 : here + hop / reach;                         // the coast is the front for a trench at sea
             if (next >= u[nb] || next > 1) continue;
             u[nb] = next; src[nb] = src[c];

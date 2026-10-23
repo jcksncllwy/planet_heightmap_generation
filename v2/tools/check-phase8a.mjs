@@ -166,8 +166,17 @@ const history = run('history');
 section('an Andean margin');
 {
     const { frame } = run('andes'), T = terrain(frame), { rec, heightKm } = T;
-    // (by position across the belt — a young belt is narrow, a mature one wide)
-    const byU = (lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t), u = rec.dKm[c] / Math.max(1, rec.reach[c]); if (kindType(rec.kind[c]) === OrogenyType.ANDEAN && u >= lo && u < hi && heightKm[t] > 0) a.push(heightKm[t]); } return mean(a); };
+    // (by position across the belt — a young belt is narrow, a mature one wide — read at each terrain cell as the terrain
+    // reads it: over its sim corners of the belt, by their weights. Not its nearest corner's: an Andean belt 150–250 km
+    // wide spans one or two sim cells (121 km), so the nearest corner's position jumps from 0 to 0.5 and the main range,
+    // ~70–100 km in, fell between the bands — u 0.2–0.5 held no terrain at all)
+    const uAt = new Float32Array(T.tm.numCells).fill(-1);
+    for (let t = 0; t < T.tm.numCells; t++) {
+        let d = 0, W = 0, ws = 0;
+        for (let j = 0; j < 3; j++) { const c = T.sampler.cells[3 * t + j], w = T.sampler.weights[3 * t + j]; if (kindType(rec.kind[c]) !== OrogenyType.ANDEAN) continue; d += w * rec.dKm[c]; W += w * rec.reach[c]; ws += w; }
+        if (ws >= 0.5) uAt[t] = d / Math.max(1, W);
+    }
+    const byU = (lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const u = uAt[t]; if (u >= lo && u < hi && heightKm[t] > 0) a.push(heightKm[t]); } return mean(a); };
     const coastH = byU(0, 0.08), mainH = byU(0.2, 0.5), farH = byU(0.85, 1.01);
     check('the main range stands behind the coast, higher than the coast and than the belt’s far edge', mainH > coastH + 0.3 && mainH > farH + 0.3,
         `mean height ${coastH.toFixed(2)} km at the coast (u < 0.08), ${mainH.toFixed(2)} km across u 0.2–0.5, ${farH.toFixed(2)} km at the far edge`);

@@ -82,12 +82,15 @@ const tm640 = terrainMesh(640000);
 {
     const F = cr.frame, T = synthesizeTerrain(F, mesh, tm640, { seed: SEED, carve: true });
     const Tflat = synthesizeTerrain(F, mesh, tm640, { seed: SEED, carve: true, cfg: terrainConfig({ foredeepPerKm: 0 }) });     // (no foreland at all)
-    // (India's shield is the one further south; a pressed edge: the belt outside it, of its side)
+    // (India's shield is the one further south; a pressed edge: the belt outside it — on India's, any collision belt: its
+    // own lower side's, or the upper plate's front where that overrides it (since Phase 11's collisions most of India's
+    // lower belt lies hidden under Asia's front, and the world shows Asia's belt against India's shield — the range the
+    // pro-foreland bends under, India being thrust beneath it); on Asia's, its own upper side's)
     const lat = new Map(), cnt = new Map();
     for (let w = 0; w < n; w++) if (isC(F, w)) { lat.set(F.terrane[w], (lat.get(F.terrane[w]) ?? 0) + mesh.xyz[3 * w + 2]); cnt.set(F.terrane[w], (cnt.get(F.terrane[w]) ?? 0) + 1); }
     const [india, asia] = [...lat.keys()].sort((a, b) => lat.get(a) / cnt.get(a) - lat.get(b) / cnt.get(b));
     const kindAt = w => T.rec.belts[0].kind[w];
-    const onLower = w => kindAt(w) && kindType(kindAt(w)) === OrogenyType.HIMALAYAN && kindSide(kindAt(w)) === BeltSide.LOWER;
+    const onLower = w => kindAt(w) && kindType(kindAt(w)) === OrogenyType.HIMALAYAN;
     const onUpper = w => kindAt(w) && kindType(kindAt(w)) === OrogenyType.HIMALAYAN && kindSide(kindAt(w)) === BeltSide.UPPER;
     const lower = crossSection(F, T, tm640, onLower, w => F.terrane[w] === india), upper = crossSection(F, T, tm640, onUpper, w => F.terrane[w] === asia);
     const lowerFlat = crossSection(F, Tflat, tm640, onLower, w => F.terrane[w] === india), upperFlat = crossSection(F, Tflat, tm640, onUpper, w => F.terrane[w] === asia);
@@ -109,7 +112,7 @@ const tm640 = terrainMesh(640000);
     report('the plateau\'s front: its back above the shield\'s edge', upBack - upEdge, { unit: ' km', digits: 2, source: 'a steep front with little lowland (Longmen Shan)', detail: `the plateau's back ${upBack.toFixed(2)} km (40–120 km outside), the shield's edge ${upEdge.toFixed(2)} km (0–80 km in)` });
     report('upper plate\'s bend ÷ lower plate\'s', upBent / lowBent, { digits: 2, unit: '×', source: 'retro-forelands shallower than pro-forelands (Naylor & Sinclair 2008)', detail: `the plateau's back loads by its crests only; foredeepMaxKm ${tcfg.foredeepMaxKm} km` });
     report('the shields\' flexural length', flexuralLengthKm(tcfg.shieldElasticKm), { unit: ' km', digits: 0, earth: [100, 250], source: 'cratonic Te 40–100 km (Watts 2001); the Ganges foredeep ~250–450 km wide ≈ πα/2 + the thrusts',
-        detail: `Te ${tcfg.shieldElasticKm} km: the foredeep ~${(Math.PI / 2 * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km wide beyond ${tcfg.forelandFromKm} km, the forebulge's crest ~${(3 * Math.PI / 4 * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km` });
+        detail: `Te ${tcfg.shieldElasticKm} km: the foredeep ~${(3 * Math.PI / 4 * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km out from its load, the forebulge's crest ~${(Math.PI * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km` });
 
     // ── the same look at every resolution: the shields' median heights at 160K and 640K ──
     const tm160 = terrainMesh(160000), T160 = synthesizeTerrain(F, mesh, tm160, { seed: SEED, carve: true });
