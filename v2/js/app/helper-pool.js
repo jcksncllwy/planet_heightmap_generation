@@ -20,9 +20,9 @@ async function spawn() {
         onCrash: fn => w.addEventListener('error', e => { e.preventDefault?.(); fn(e.message || 'a helper stopped'); }), terminate: () => w.terminate(), hold: () => {} };
 }
 
-/** How many helpers: the cores but one, at most 4 (a rift has 12 junctions; the start world's attempts come a few at a time). */
+/** How many helpers: the cores (in Node, SIM_THREADS if set: the cores a job was granted) but one, at most 4 (a rift has 12 junctions; the start world's attempts come a few at a time). */
 export async function helperCount() {
-    const cores = IS_NODE ? (await import('node:os')).availableParallelism() : (globalThis.navigator?.hardwareConcurrency || 4);
+    const cores = IS_NODE ? (Number(process.env.SIM_THREADS) || (await import('node:os')).availableParallelism()) : (globalThis.navigator?.hardwareConcurrency || 4);
     return Math.max(1, Math.min(4, cores - 1));
 }
 

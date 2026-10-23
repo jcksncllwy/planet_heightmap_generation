@@ -41,7 +41,8 @@ async function spawn(file = './terrain-worker.js') {
 export async function defaultPoolSize() {
     return Math.max(1, Math.min(8, (await coreCount()) - 1));
 }
-async function coreCount() { return IS_NODE ? (await import('node:os')).availableParallelism() : (navigator.hardwareConcurrency || 4); }
+// (In Node, SIM_THREADS — the cores a job was granted on a shared machine, e.g. by sim-slots — stands in for the machine's.)
+async function coreCount() { return IS_NODE ? (Number(process.env.SIM_THREADS) || (await import('node:os')).availableParallelism()) : (navigator.hardwareConcurrency || 4); }
 
 export class TerrainPool {
     /**

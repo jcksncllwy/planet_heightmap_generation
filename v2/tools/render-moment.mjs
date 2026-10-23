@@ -9,6 +9,7 @@
 //        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). Output: v2/out/moments/.
+// On a shared machine, run it through sim-slots (sim-slots run -n 6 --gb 16 -- node …): SIM_THREADS sizes its pool.
 
 import fs from 'node:fs';
 import path from 'node:path';
