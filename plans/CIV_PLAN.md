@@ -653,10 +653,29 @@ growth rate rises with the share of stored, sedentary food, a stand-in for the N
 
 - **A. Ensemble runner** (`v2/tools/civ-ensemble.mjs`, built 2026-10-22). It builds worlds as the page does, caches
   them, prints per-world and summary numbers, and compares two runs (`--compare`). `--set` overrides config values.
-- **A′. Bench:** the test strip above.
+- **A′. Bench:** the test strip above. Built 2026-10-22 (`v2/tools/civ-bench.mjs`): a 39 M km² strip, 25–50° N, a
+  winter-rain climate everywhere. The current model, at 160K / 640K cells:
+  - the inland farming front 1.06 / 0.92 km/yr (record 0.6–1.3), 1.7–1.8 with the coastal route;
+  - onset to domestication exactly 2000 yr (the rule, as built);
+  - 30 / 36 onset cells and 5.4 / 7.2 centres per 10 M km² of ideal land. Earth has ~1 centre per 10 M km² of all land,
+    and one on the Fertile Crescent's ~2 M km²: where all land is ideal, onsets are too common. That is C1's to fix;
+  - across a 4× change of detail: the front ×0.87 inland, onsets per area ×1.18, centres ×1.33 (fewer merge into one
+    at a fixed `centreKm`);
+  - the wild resources sum to the forager density to 1e-9.
 - **B. Resource map** (`substrate.js`): AEZ crop capacities from the months (the finish keeps T12 and P12 for
   vectorCollector; keep a monthly summary too), herds, and the split wild capacities. Shown as a layer, and checked on
   Earth against GAEZ by correlation. The regression check on `sub.forager` goes here too.
+  Built 2026-10-22:
+  - `crops.js`: five crop classes' suitability from the twelve months (temperature trapezoids, AEZ's growing period
+    with a 100 mm soil store, the season's rain), collected in the finish and the Earth world like the disease climate.
+    Against GAEZ v4's low-input rain-fed yields on Earth (`tuning/civ/crop-check.mjs`): Pearson 0.50–0.74, Spearman
+    0.63–0.85 per class. GAEZ also counts soils; ours leaves those to the substrate (leached tropics, loess).
+  - `substrate.js` `food`: twelve resources in persons/km² (the wild of the country; crops of their fields; herds of the
+    country), `canalFood` for watered cereals, `open`, `wildHerd`. Herds come out at 1.5–4.5 /km² in Earth's drylands.
+  - The map: the People layer's Show picker (each resource, all wild food, the best crop), with a readout line.
+  - The old model reads none of it: the 20-world ensemble is unchanged.
+  - Not yet: the land budget (C1 shares the land out), and the wild split's ratios are round figures to tune in C1.
+
 - **C0. Compatibility layer:** labels → `Life`, the dominant crop, the source-cell record in `frontArrival`, herd famine.
 - **C1. The economy on today's movement,** behind the option. Compare on Earth, the ensemble and the bench.
 - **C2 (optional). Reaction–diffusion movement,** if C1's fronts are the weak point.

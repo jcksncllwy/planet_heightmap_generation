@@ -315,6 +315,25 @@
             <button id="peoplePlay" class="evo-people-play" aria-label="Play / pause the people">&#x25B6;</button>
             <input id="peopleSlider" type="range" min="0" max="140" step="1" value="140" aria-label="Years ago">
             <output id="peopleLabel" class="evo-people-label">Now</output>
+            <select id="peopleShow" title="What the map shows: the people, or what the land offers them — each resource's people per km² at full skill">
+                <option value="people">People</option>
+                <optgroup label="Food the land offers">
+                    <option value="wild">All wild food</option>
+                    <option value="crops">Best crop</option>
+                    <option value="largeGame">Large game</option>
+                    <option value="smallGame">Small game, fowl</option>
+                    <option value="aquatic">Fish, shellfish</option>
+                    <option value="wildSeeds">Wild grass seeds</option>
+                    <option value="wildRoots">Wild roots</option>
+                    <option value="nuts">Nuts, fruit</option>
+                    <option value="winterCereal">Winter cereals</option>
+                    <option value="summerCereal">Summer cereals</option>
+                    <option value="roots">Roots, tubers</option>
+                    <option value="tree">Tree crops</option>
+                    <option value="flooded">Flooded fields</option>
+                    <option value="herds">Herds</option>
+                </optgroup>
+            </select>
             <button id="peopleStep" class="evo-people-on" title="Live on one more generation (25 years) past the last">+25 yr</button>
             <button id="peopleRun" class="evo-people-on" aria-pressed="false" title="Keep living on past the last year, adding to the timeline">Run on</button>
         </div>

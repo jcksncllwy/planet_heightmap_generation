@@ -223,7 +223,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     };
 
     const d = new Float32Array(n), life = new Uint8Array(n), progress = new Float32Array(n), farmPkg = new Int8Array(n).fill(-1);
-    const farmT = new Float64Array(n).fill(Infinity), centres = [], frames = [], totals = [], started = new Uint8Array(n);
+    const farmT = new Float64Array(n).fill(Infinity), centres = [], frames = [], totals = [], started = new Uint8Array(n), startT = new Float64Array(n).fill(Infinity);
     // (the longer a people has lived settled and packed, the poorer the stands it will take up: the odds' steepness eases)
     const settledYears = new Float32Array(n);
     const onsetPower = c => C.onsetPower - (C.onsetPower - C.onsetPowerLate) * Math.min(1, settledYears[c] / C.onsetEaseYears);
@@ -339,7 +339,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
                 if (sedentary) settledYears[c] += C.stepYears;
                 // someone starts cultivating: a rare event, likeliest at the best stands
                 if (sedentary && !started[c] && bestWild[c] >= C.wildMin
-                    && chance(c, step) < 1 - Math.exp(-C.onsetPerKm2Yr * cellKm2 * Math.pow(bestWild[c], onsetPower(c)) * Math.min(4, Math.pow(d[c] / C.packingKm2, C.onsetCrowding)) / 2 * C.stepYears)) started[c] = 1;
+                    && chance(c, step) < 1 - Math.exp(-C.onsetPerKm2Yr * cellKm2 * Math.pow(bestWild[c], onsetPower(c)) * Math.min(4, Math.pow(d[c] / C.packingKm2, C.onsetCrowding)) / 2 * C.stepYears)) { started[c] = 1; startT[c] = t; }
                 if (sedentary && started[c]) {
                     // cultivate when it pays better: foraging's returns falling as the land fills, cultivation's rising as
                     // the plants are domesticated
@@ -400,9 +400,9 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         for (const end = tOf(toBP); t <= end + 1e-9; t += C.stepYears, step++) live();
     };
     const result = () => {
-        const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN);
-        for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); }
-        return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
+        const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN), onsetBP = new Float32Array(n).fill(NaN);
+        for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); if (startT[c] < Infinity) onsetBP[c] = bpOf(startT[c]); }
+        return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, onsetBP, centreCells: centres, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
             voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)) };
     };
     return { advance, result, get bp() { return bpOf(t - C.stepYears); }, get frames() { return frames; } };

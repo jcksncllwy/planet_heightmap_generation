@@ -193,6 +193,7 @@
 .evo-people-on:disabled { opacity: 0.45; cursor: default; }
 .evo-people-ramp { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #aab; margin-top: 4px; }
 .evo-people-ramp span { width: 5.5em; }
+.evo-food-ramp span { width: 8.5em; }
 .evo-people-ramp i { flex: 1; height: 10px; border-radius: 2px; }
 .evo-subbar select.active { background: rgba(40,70,150,0.75); color: #8bf; border-color: rgba(100,160,255,0.45); }
 /* Settlements: an overlay on any map, toggled beside the layers */

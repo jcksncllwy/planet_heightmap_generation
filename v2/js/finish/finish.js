@@ -24,6 +24,7 @@ import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
 import { pageClimate } from '../evolution/climate-fields.js';
 import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { vectorCollector } from '../civ/disease.js';
+import { cropCollector } from '../civ/crops.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { worldOcean } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
@@ -253,10 +254,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // mean land height)
     const relief = COVER.fullLapse ? (1 - CORE_DEFAULTS.terrainRelief) * gamma : 0, hLand = gridClimate.surface.meanLandKm, T12c = new Float64Array(12);
     // (and its measures beyond Köppen — cell-stats.js, one byte each — from the climate's own twelve months)
-    const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true }), vectors = vectorCollector(n);
+    const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true }), vectors = vectorCollector(n), crops = cropCollector(n, c => lat[c] * Math.PI / 180);
     const cellsClimate = cellClimate(gridClimate, mesh.xyz, C.z, land, {}, (c, T12, P12) => {
         cellStats.add(c, T12, P12);
         vectors.add(c, T12, P12);
+        crops.add(c, T12, P12);
         let T = T12;
         if (relief) {
             corners(climGrid, lat[c], lon[c], bi, bw);
@@ -287,7 +289,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
-        civ: { ice: I.ice, loess: W.loess, erg: W.erg, vector: vectors.vector },              // (for the civ layer: v2/js/civ/civ-page.js)
+        civ: { ice: I.ice, loess: W.loess, erg: W.erg, vector: vectors.vector, crops: crops.crops },              // (for the civ layer: v2/js/civ/civ-page.js)
         layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal } : null };
 }
 

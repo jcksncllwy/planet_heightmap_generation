@@ -39,7 +39,7 @@ export async function frameOf(seed, { cont, sim, time }) {
 /** The finished moment, reduced to what the civ layer reads, cached. Options: { cont, sim, time, cells }. */
 export async function worldOf(seed, simMesh, opts) {
     const { cont, sim, time, cells } = opts;
-    const dir = path.join(OUT, 'cache'), file = path.join(dir, `world2-${seed}-${cont}-${sim}-${time}-${Math.round(cells / 1000)}k.bin`);
+    const dir = path.join(OUT, 'cache'), file = path.join(dir, `world3-${seed}-${cont}-${sim}-${time}-${Math.round(cells / 1000)}k.bin`);
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
     const frame = await frameOf(seed, opts);
     const pool = await TerrainPool.create(simMesh);
@@ -47,7 +47,8 @@ export async function worldOf(seed, simMesh, opts) {
     const cc = fin.climate.cell, m = fin.mesh;
     const w = { seed, time, frame, mesh: { numCells: m.numCells, xyz: m.xyz, adjOffset: m.adjOffset, adjList: m.adjList },
         z: fin.z, ocean: fin.ocean, lake: fin.lake, lakeLevel: fin.lakeLevel, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
-        stats: cc.stats, cover: cc.cover, rivers: fin.rivers, loess: fin.layers?.loess ?? null, erg: fin.layers?.erg ?? null, ice: fin.layers?.ice ?? null };
+        stats: cc.stats, cover: cc.cover, rivers: fin.rivers, loess: fin.layers?.loess ?? null, erg: fin.layers?.erg ?? null, ice: fin.layers?.ice ?? null,
+        vector: fin.civ?.vector ?? null, crops: fin.civ?.crops ?? null };
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(file, v8.serialize(w));
     w.mesh = meshFromArrays(w.mesh);

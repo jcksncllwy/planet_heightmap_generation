@@ -15,12 +15,19 @@
 //   farmers     the density farming can feed, persons/km² of farmland (rain-fed on the cell, irrigated on its irrigable share)
 //   farmDry, farmWet   the same, rain-fed alone and irrigated alone
 //   river       per cell on a river: its discharge (m³/s), regime and whether it is far-fed
+//   food        per resource (FOODS; plans/CIV_PLAN.md §9.2), the people it feeds at full skill, persons/km²: the wild
+//               ones of the land's own country (they sum to `forager`), the crops and herds of the land suited to them
+//   canalFood   per cereal class (winterCereal, summerCereal), the people it feeds watered by canals, persons/km² of the
+//               irrigable share (irrigShare): its warmth alone, at the irrigated yield, by how much irrigation is worth here
+//   open        how open the country is, 0–1 (grassland, steppe, tundra; not closed forest): game and grazing
+//   wildHerd    how well wild herd animals (sheep, goats, cattle's ancestors) live here, 0–1: open uplands and steppe
 
 import { CIV } from './civ-config.js';
 import { spreadKm } from '../core/min-heap.js';
 import { statValue } from '../climate/cell-stats.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { Regime } from '../finish/finish-hydro.js';
+import { cropClimate } from './crops.js';
 
 const R = 6371;
 const K = Object.fromEntries(KOPPEN_CLASSES.map((k, i) => [k.code, i]));
@@ -44,6 +51,18 @@ export const PACKAGES = [
     { id: 'tuber', name: 'roots and tubers (taro, yams, potatoes)', rainMm: [900, 1400, 6000, 9000], tempC: [8, 14, 28, 31], abundance: 0.75,
         koppen: { Af: 0.7, Am: 0.8, Cwb: 0.9, Cfb: 0.4, Aw: 0.4 }, highlandBonus: true },
 ];
+
+/** The resources (plans/CIV_PLAN.md §9.2), wild, crops and herds. */
+export const FOODS = ['largeGame', 'smallGame', 'aquatic', 'wildSeeds', 'wildRoots', 'nuts', 'winterCereal', 'summerCereal', 'roots', 'tree', 'flooded', 'herds'];
+export const WILD_FOODS = FOODS.slice(0, 6);
+
+// how open each Köppen class's country is — grassland, savanna, steppe, tundra 1; closed forest ~0 (by the biomes' tree
+// cover: Hansen et al. 2013's map, read by eye per class)
+const OPEN = { Af: 0.05, Am: 0.15, Aw: 0.7, BWh: 0.6, BWk: 0.6, BSh: 0.9, BSk: 1, Cfa: 0.3, Cfb: 0.3, Cfc: 0.3, Csa: 0.5, Csb: 0.4, Csc: 0.3,
+    Cwa: 0.5, Cwb: 0.5, Cwc: 0.4, Dfa: 0.5, Dfb: 0.3, Dfc: 0.15, Dfd: 0.15, Dsa: 0.6, Dsb: 0.5, Dsc: 0.3, Dsd: 0.3, Dwa: 0.5, Dwb: 0.4,
+    Dwc: 0.2, Dwd: 0.2, ET: 0.8, EF: 0 };
+// the seasonal tropics and the monsoon's uplands: wild yams and other roots stored through a dry season
+const ROOTY = { Aw: 1, Am: 0.8, Cwa: 0.7, Cwb: 0.7, Af: 0.5, BSh: 0.4, Csa: 0.3, Csb: 0.3 };
 
 /**
  * @param {object} w the finished moment, read: { mesh, z (km), ocean, lake, koppen, tAnnual, pAnnual, stats (cell-stats),
@@ -111,6 +130,15 @@ export function civSubstrate(w, C = CIV) {
     const npp = new Float32Array(n), et = new Float32Array(n), forager = new Float32Array(n), forageGlacial = new Float32Array(n), rainfed = new Float32Array(n);
     const irrig = new Float32Array(n), irrigShare = new Float32Array(n), farmers = new Float32Array(n), farmDry = new Float32Array(n), farmWet = new Float32Array(n), coastal = new Uint8Array(n), lakeside = new Uint8Array(n);
     const wild = Object.fromEntries(PACKAGES.map(p => [p.id, new Float32Array(n)]));
+    const food = Object.fromEntries(FOODS.map(f => [f, new Float32Array(n)])), canalFood = { winterCereal: new Float32Array(n), summerCereal: new Float32Array(n) }, open = new Float32Array(n), wildHerd = new Float32Array(n);
+    const cropSuit = {}, T12 = new Float64Array(12), P12 = new Float64Array(12), cropAt = c => {
+        if (w.crops) { for (const k in w.crops) cropSuit[k] = w.crops[k][c] / 255; return cropSuit; }
+        // (no months kept: the year's mean and its range, a sine through the year — rain by the season's index)
+        const T = tAnnual[c], P = pAnnual[c], r = stat('tRange', c) || 0, si = stat('rainSeason', c) || 0, south = xyz[3 * c + 2] < 0;
+        for (let m = 0; m < 12; m++) { const ph = Math.cos(2 * Math.PI * (m - (south ? 0.5 : 6.5)) / 12); T12[m] = T + r / 2 * ph; P12[m] = Math.max(0, P / 12 * (1 + Math.min(1, si) * 1.5 * ph)); }
+        return cropClimate(T12, P12, Math.asin(xyz[3 * c + 2]), cropSuit);
+    };
+    const perKm2Of = f => f.yieldKg * 100 * (1 - f.fallow) * (1 - 1 / f.seedRatio) / C.grainPerPersonKg;
     const perKm2 = (yieldKg, seedRatio) => yieldKg * 100 * (1 - C.fallow) * (1 - 1 / seedRatio) / C.grainPerPersonKg;
     for (let c = 0; c < n; c++) {
         if (!land(c)) continue;
@@ -136,6 +164,7 @@ export function civSubstrate(w, C = CIV) {
         if (wetland[c]) aqua *= 1 + (C.wetlandAquatic - 1) * wetland[c];
         forageGlacial[c] = Math.min(C.foragerMax, dG * Math.min(C.aquaticMax, aqua));
         forager[c] = Math.min(C.foragerMax, d * Math.min(C.aquaticMax, aqua));
+        const fromLand = d, fromWater = d * (Math.min(C.aquaticMax, aqua) - 1), beforeSeeds = forager[c];
 
         // the wild ancestors of each package
         const hilly = 0.6 + 0.4 * rise(C.reliefKm[0], C.reliefKm[1], relief[c]);
@@ -149,6 +178,22 @@ export function civSubstrate(w, C = CIV) {
         }
 
         forager[c] = Math.min(C.foragerMax, forager[c] * (1 + C.wildCerealForage * Math.max(wild.winterCereal[c], wild.summerCereal[c])));
+
+        // ── the resources (§9.2). The wild: foragers' density, split — the water's share (its bonus), the wild cereal
+        // stands' (theirs), and the land's by Binford's (2001) pattern, plants more as the effective temperature rises
+        // (hunting dominant below ET ~12, gathering above ~15), animals large in open country, small in forest; plants
+        // roots in the seasonal tropics, nuts and fruit in forest ──
+        open[c] = OPEN[code] ?? 0;
+        const scale = beforeSeeds / Math.max(1e-9, fromLand + fromWater), plants = C.wildPlantShare[0] + (C.wildPlantShare[1] - C.wildPlantShare[0]) * rise(10, 18, et[c]);
+        const landFood = fromLand * scale, rootW = ROOTY[code] ?? 0.1, nutW = 0.2 + (1 - open[c]);
+        food.aquatic[c] = fromWater * scale;
+        food.wildSeeds[c] = forager[c] - beforeSeeds;
+        food.largeGame[c] = landFood * (1 - plants) * open[c];
+        food.smallGame[c] = landFood * (1 - plants) * (1 - open[c]);
+        food.wildRoots[c] = landFood * plants * rootW / (rootW + nutW);
+        food.nuts[c] = landFood * plants * nutW / (rootW + nutW);
+        // wild herd animals: open country, best in uplands (wild sheep and goats) — none in ice or closed forest
+        wildHerd[c] = code === 'EF' ? 0 : open[c] * (0.5 + 0.5 * rise(C.reliefKm[0], C.reliefKm[1], relief[c]));
 
         // rain-fed cereals
         const grow = stat('growing', c) || 0;
@@ -171,8 +216,28 @@ export function civSubstrate(w, C = CIV) {
         const dry = perKm2(rainfed[c], C.seedRatioRainfed), wet = irrig[c] > 0 ? Math.max(dry, perKm2(C.irrigatedYield, C.seedRatioIrrigated) * Math.min(1, 2 * irrig[c])) : dry;
         farmers[c] = irrigShare[c] * wet + (1 - irrigShare[c]) * dry;
         farmDry[c] = dry; farmWet[c] = wet;
+
+        // the crops (crops.js's climate, by the crop classes' yields in civ-config CROP_FOOD): the cereals on leached
+        // tropical soils and on loess as rain-fed cereals are; flooded fields by the rain, or by a river or marsh wherever
+        // the land holds water; the herds by the grass (grazing NPP: the open country's share, a sustainable off-take,
+        // TLU per person)
+        if (code !== 'EF' && code !== 'ET') {
+            const s = cropAt(c), CF = C.cropFood, soil = (code === 'Af' || code === 'Am' ? C.tropicalLeach : 1) * (w.loess && w.loess[c] > 0 ? 1 + C.loessBonus * Math.min(1, w.loess[c] / 0.01) : 1);
+            food.winterCereal[c] = s.winterCereal * soil * perKm2Of(CF.winterCereal);
+            food.summerCereal[c] = s.summerCereal * soil * perKm2Of(CF.summerCereal);
+            food.roots[c] = s.roots * perKm2Of(CF.roots);
+            food.tree[c] = s.tree * perKm2Of(CF.tree);
+            const held = Math.max(wetland[c], irrigShare[c]);
+            food.flooded[c] = Math.max(s.paddy, s.paddyWarm * held) * perKm2Of(CF.flooded);
+            if (irrig[c] > 0) {
+                const k = perKm2(C.irrigatedYield, C.seedRatioIrrigated) * Math.min(1, 2 * irrig[c]);
+                canalFood.winterCereal[c] = Math.max(food.winterCereal[c], s.wheatWatered * k);
+                canalFood.summerCereal[c] = Math.max(food.summerCereal[c], s.milletWatered * k);
+            }
+        }
+        food.herds[c] = npp[c] * open[c] * C.grazeUse / C.tluIntakeT / C.tluPerPerson;
     }
-    return { n, cellKm2, edgeKm, npp, et, forager, forageGlacial, wetland, wild, rainfed, irrig, irrigShare, farmDry, farmWet, irrigSrc: src, irrigKm: reach, farmers, relief, coastal, lakeside,
+    return { n, cellKm2, edgeKm, npp, et, forager, forageGlacial, wetland, wild, rainfed, irrig, irrigShare, farmDry, farmWet, irrigSrc: src, irrigKm: reach, farmers, relief, coastal, lakeside, food, canalFood, open, wildHerd,
         river: { q: riverQ, regime: riverRegime, farFed: riverFar } };
 }
 

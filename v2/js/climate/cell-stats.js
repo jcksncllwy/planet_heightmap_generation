@@ -15,27 +15,36 @@ function dayHours(latRad, m) {
     return x <= -1 ? 24 : x >= 1 ? 0 : 24 * Math.acos(x) / Math.PI;
 }
 
+/** Thornthwaite's monthly potential evaporation (mm), with the day-length correction, into `out` (12); returns its heat index I. */
+export function thornthwaite(T12, latRad, out) {
+    let I = 0;
+    for (let m = 0; m < 12; m++) if (T12[m] > 0) I += Math.pow(T12[m] / 5, 1.514);
+    const a = 6.75e-7 * I * I * I - 7.71e-5 * I * I + 1.792e-2 * I + 0.49239;
+    for (let m = 0; m < 12; m++) {
+        const t = T12[m];
+        if (t <= 0) { out[m] = 0; continue; }
+        const raw = t >= 26.5 ? -415.85 + 32.24 * t - 0.43 * t * t : I > 0 ? 16 * Math.pow(10 * t / I, a) : 0;
+        out[m] = raw * (dayHours(latRad, m) / 12) * (30.44 / 30);
+    }
+    return I;
+}
+
+const PET12 = new Float64Array(12);
 /** The four measures of one place (`out`: an object reused between calls). */
 export function monthlyStats(T12, P12, latRad, out = {}) {
-    let tMin = Infinity, tMax = -Infinity, pSum = 0, grow = 0, I = 0;
+    let tMin = Infinity, tMax = -Infinity, pSum = 0, grow = 0;
     for (let m = 0; m < 12; m++) {
         const t = T12[m];
         if (t < tMin) tMin = t;
         if (t > tMax) tMax = t;
         pSum += P12[m];
         if (t > 10) grow++;
-        if (t > 0) I += Math.pow(t / 5, 1.514);
     }
     let si = 0;
     if (pSum > 0) { for (let m = 0; m < 12; m++) si += Math.abs(P12[m] - pSum / 12); si /= pSum; }
-    const a = 6.75e-7 * I * I * I - 7.71e-5 * I * I + 1.792e-2 * I + 0.49239;
+    thornthwaite(T12, latRad, PET12);
     let pet = 0;
-    for (let m = 0; m < 12; m++) {
-        const t = T12[m];
-        if (t <= 0) continue;
-        const raw = t >= 26.5 ? -415.85 + 32.24 * t - 0.43 * t * t : I > 0 ? 16 * Math.pow(10 * t / I, a) : 0;
-        pet += raw * (dayHours(latRad, m) / 12) * (30.44 / 30);
-    }
+    for (let m = 0; m < 12; m++) pet += PET12[m];
     out.tRange = tMax - tMin;
     out.growing = grow;
     out.rainSeason = si;

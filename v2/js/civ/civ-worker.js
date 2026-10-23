@@ -39,7 +39,7 @@ self.onmessage = async ({ data }) => {
             const { state, result } = startPeople({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), climate);
             runs.set(id, state);
             while (runs.size > KEEP) runs.delete(runs.keys().next().value);
-            self.postMessage({ type: 'people', id, ...result }, [...moved(result), result.pix.buffer]);
+            self.postMessage({ type: 'people', id, ...result }, [...moved(result), result.pix.buffer, result.food.buffer]);
         } else if (data.type === 'more') {
             const state = runs.get(data.run);
             if (!state) throw new Error('that run is no longer kept');

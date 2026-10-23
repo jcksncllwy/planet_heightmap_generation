@@ -33,6 +33,19 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Vector-fever climate per cell (from the twelve months: `vector.rain`, `vector.warm`) | See §Disease | | |
 | Irrigation only where the season is long: none under 6 months above 10 °C, full from 8 | Ours: the canal civilisations were all warm (Sumer ~9, Egypt 12, the Indus 10+) | Ours; set to drop the Volga and Ural deltas (~6), which grew states on Earth at [4, 7] | — |
 
+### The resource map (plans/CIV_PLAN.md §9.2; `crops.js`, `substrate.js` food)
+
+| Rule | Source | Fidelity | Checked |
+|---|---|---|---|
+| Crop suitability from the twelve months: a month counts by the crop's temperature trapezoid and its water ((P + a 100 mm soil store)/PET, the growing period's P ≥ ½ PET); the best run of season months, with enough rain over it | FAO 1978 agro-ecological zones; GAEZ v4 (Fischer et al. 2021); thermal limits after FAO Ecocrop | Adapted: monthly means for daily limits, five crop classes, profiles ours | [L] |
+| PET by Thornthwaite with the day-length correction (shared with cell-stats) | Thornthwaite 1948 | Direct | [L] |
+| Crop profiles (winter cereals 2–8–20–27 °C, 3.5–5 months; summer cereals 9–16–30–37, 2–4; roots warm 16–21–31–37, 4–7 or cool 3–9–20–26, 3–4.5; tree crops 15–21–32–38, 6–10; paddy 15–21–32–38 with water ≥ 0.9–1.4 PET) and the always-wet penalty on cereals | Ours, tuned against GAEZ v4 low-input rain-fed yields on Earth (`tuning/civ/crop-check.mjs`): Pearson 0.50–0.74, Spearman 0.63–0.85 per class | Ours, calibrated | [V] (the check) |
+| Crop yields, fallow, seed ratios: roots 1500 kg grain-eq/ha with a 0.7 swidden fallow; tree crops 500, 0.3 shade; paddies 1200, little fallow; millets' seed ratio ~1:20 | Ruthenberg 1980 (*Farming Systems in the Tropics*); Bray 1986 (*The Rice Economies*) | Adapted, round figures | [L] |
+| Watered cereals (canals): the crop's warmth alone, at the irrigated yield | As irrigation above | Adapted | [L] |
+| Herds: grazing NPP × openness × 0.06 ÷ 2.3 t per TLU ÷ 4.5 TLU per person | Sandford 1983 (stocking for the drought years); Dahl & Hjort 1976 (*Having Herds*: TLU per person); Coughenour et al. 1985 (Turkana densities) | Adapted; the off-take set so dryland pastoralists come out at 1–5 /km² | [L] |
+| Openness of the country per Köppen class | Ours, by eye from tree-cover maps (Hansen et al. 2013) | Ours | — |
+| Wild food split: water's share = the aquatic bonus, seeds = the wild-cereal bonus, the land's share split plants/animals by effective temperature (plants 0.15 → 0.7 from ET 10 to 18), animals large/small by openness, plants roots/nuts by climate | Binford 2001 (hunting dominant below ET ~12, gathering above); Kelly 2013 | Adapted: the shares ours; the parts sum to the forager density exactly | [L] |
+
 ## Cradles (`v2/js/civ/cradles.js`)
 
 | Rule | Source | Fidelity | Checked |
@@ -157,6 +170,7 @@ Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities
 | Climate (monthly T, P, elevation, 10′) | WorldClim 2.1 (Fick & Hijmans 2017) | Köppen and cell stats computed as the climate does |
 | Rivers with discharge | HydroRIVERS v1.0 (Lehner & Grill 2013) | No monthly regimes |
 | Sea floor | ETOPO5 (NOAA NGDC 1988) | Glacial shelves |
+| Crop yields to check the crops' climate | GAEZ v4 low-input rain-fed attainable yields, 1981–2010 (Fischer et al. 2021; FAO/IIASA) | Validation only (`crop-check.mjs`) |
 | Deposits | USGS MRDS | |
 | LGM ice | Ehlers & Gibbard 2004, roughly, by eye | Boxes by latitude and longitude |
 | Population totals | HYDE 3.2 (Klein Goldewijk et al. 2017) | Validation only |

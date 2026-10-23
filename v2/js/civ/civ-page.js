@@ -6,7 +6,7 @@
 
 import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
-import { civSubstrate } from './substrate.js';
+import { civSubstrate, FOODS } from './substrate.js';
 import { createCivSim, byteDensity, Life } from './sim.js';
 import { climateVariability, spreadOf } from './climate-var.js';
 import { diseaseLoss } from './disease.js';
@@ -23,6 +23,10 @@ const MESH_SEED = 12345;
 export const WAYS = ['foragers', 'settled foragers', 'farmers', 'irrigation farmers'];
 const wayOf = life => (life >= Life.IRRIGATOR ? 3 : life >= Life.FARMER ? 2 : life >= Life.SEDENTARY ? 1 : 0);
 export const peopleByte = (d, life) => (d > 1e-4 ? (wayOf(life) << 6) | Math.min(63, 1 + Math.round(8 * (Math.log10(d) + 4))) : 0);
+/** A food byte (substrate.js food, persons/km²): 0 none; 1–251 from 0.01 to 1000, 50 steps a decade. */
+export const foodByte = d => (d >= 0.01 ? Math.min(255, 1 + Math.round(50 * (Math.log10(d) + 2))) : 0);
+export const byteFood = b => (b ? Math.pow(10, (b - 1) / 50 - 2) : 0);
+export { FOODS };
 /** A frame byte's density (persons/km²) and way of life (WAYS index), or null for nobody. */
 export function peopleOf(b) { return b ? { d: Math.pow(10, ((b & 63) - 1) / 8 - 4), way: b >> 6 } : null; }
 
@@ -36,14 +40,15 @@ export function civWorldFromFinish(out) {
     // (the rivers copied: the page is sent the moment's own)
     const rivers = { lat: R.lat.slice(), lon: R.lon.slice(), q: R.q.slice(), regime: R.regime?.slice() ?? null, farFed: R.farFed?.slice() ?? null };
     const fine = { mesh: out.mesh, z: out.z, ocean: out.ocean, lake: out.lake, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
-        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null };
+        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null, crops: L.crops ?? null };
     if (out.mesh.numCells <= PAGE_CELLS) return fine;
     const mesh = coarse ??= buildSimMesh(PAGE_CELLS, MESH_SEED), n = mesh.numCells, xyz = mesh.xyz, src = new Int32Array(n);
     for (let c = 0; c < n; c++) src[c] = out.mesh.index.nearest(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]);
     const take = a => { if (!a) return null; const b = new a.constructor(n); for (let c = 0; c < n; c++) b[c] = a[src[c]]; return b; };
     return { mesh, z: take(fine.z), ocean: take(fine.ocean), lake: take(fine.lake), koppen: take(fine.koppen), tAnnual: take(fine.tAnnual), pAnnual: take(fine.pAnnual),
         stats: Object.fromEntries(STAT_KEYS.map(k => [k, take(fine.stats[k])])), rivers: fine.rivers, loess: take(fine.loess), erg: take(fine.erg), ice: take(fine.ice),
-        vector: fine.vector ? { rain: take(fine.vector.rain), warm: take(fine.vector.warm) } : null };
+        vector: fine.vector ? { rain: take(fine.vector.rain), warm: take(fine.vector.warm) } : null,
+        crops: fine.crops ? Object.fromEntries(Object.entries(fine.crops).map(([k, a]) => [k, take(a)])) : null };
 }
 
 /**
@@ -66,8 +71,11 @@ export function startPeople(w, width, onProgress = () => {}, runs = null) {
         for (let x = 0; x < W; x++) { const lo = ((x + 0.5) / W - 0.5) * 2 * Math.PI; pix[y * W + x] = w.mesh.index.nearest(cl * Math.cos(lo), cl * Math.sin(lo), sl); }
     }
     const o = state.sim.result().origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
+    // (what the land offers, per resource: plans/CIV_PLAN.md §9.2 — for the map's Food view)
+    const food = new Uint8Array(FOODS.length * n);
+    FOODS.forEach((f, i) => { const a = state.sub.food[f]; for (let c = 0; c < n; c++) food[i * n + c] = foodByte(a[c]); });
     return { state, result: { cells: n, ...first, packages: PACKAGES.map(p => p.id), origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D],
-        pix, pixW: W, ms: performance.now() - t0 } };
+        pix, pixW: W, food, ms: performance.now() - t0 } };
 }
 
 /** Go on with a run (startPeople's state) to `toBP` (negative: years after now), a frame every `every` years: the new frames,

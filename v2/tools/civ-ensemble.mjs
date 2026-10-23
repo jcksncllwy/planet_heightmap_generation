@@ -22,6 +22,7 @@ import { civWorldFromFinish } from '../js/civ/civ-page.js';
 import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
 import { runCivSim, Life } from '../js/civ/sim.js';
 import { CIV } from '../js/civ/civ-config.js';
+import { CROP_KEYS } from '../js/civ/crops.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SELF = fileURLToPath(import.meta.url), DIR = path.join(OUT, 'ensemble'), CACHE = path.join(OUT, 'cache');
@@ -34,7 +35,7 @@ const overridesOf = s => (s ? Object.fromEntries(s.split(/,(?=[A-Za-z_]+=)/).map
 /** The world as the page has it (civWorldFromFinish), cached. */
 async function pageWorld({ seed, cont, time }) {
     const file = path.join(CACHE, `page-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k.bin`);
-    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
+    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (CROP_KEYS.every(k => w.crops?.[k])) { w.mesh = meshFromArrays(w.mesh); return w; } }   // (an older cache, without the crops' climate: built again)
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
     const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true });
     const w = civWorldFromFinish(fin);

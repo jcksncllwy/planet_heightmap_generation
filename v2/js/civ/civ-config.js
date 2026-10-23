@@ -75,6 +75,29 @@ export const CIV = {
     seedRatioRainfed: 6,
     seedRatioIrrigated: 25,
 
+    // ── the resources (plans/CIV_PLAN.md §9.2; substrate.js food) ──
+    // the wild: the plants' share of the land's food, at low and high effective temperature (Binford 2001: hunting dominant
+    // below ET ~12, gathering above ~15) [L]
+    wildPlantShare: [0.15, 0.7],
+    // the crop classes' yields (grain-equivalent kg/ha, by food energy) at their best with low inputs, their fallow and seed
+    // ratios: Neolithic cereals as rain-fed above; millets' seed ratio high (a small seed, ~1:50); roots and tubers ~6–10
+    // t/ha fresh at ~30 % dry matter, a long swidden fallow (Ruthenberg 1980); tree crops perennial, under a share of shade;
+    // paddies renewed by their water, little fallow (Bray 1986) [L]
+    cropFood: {
+        winterCereal: { yieldKg: 650, fallow: 0.5, seedRatio: 6 },
+        summerCereal: { yieldKg: 600, fallow: 0.5, seedRatio: 20 },
+        roots: { yieldKg: 1500, fallow: 0.7, seedRatio: 8 },
+        tree: { yieldKg: 500, fallow: 0.3, seedRatio: 50 },
+        flooded: { yieldKg: 1200, fallow: 0.3, seedRatio: 25 },
+    },
+    // herds: grass NPP (t dry matter/km²) × the share grazed, held through the drought years (a herd is stocked for the bad
+    // years, not the mean: Sandford 1983) ÷ a tropical livestock unit's intake (250 kg, ~2.3 t/yr) ÷ the TLU a pastoralist
+    // lives on (Dahl & Hjort 1976: ~4–5 a person on milk) — set so the drylands' pastoralists come out at 1–5 /km² (Mongolia
+    // ~1, East Africa's savannas 2–6; Coughenour et al. 1985) [L]
+    grazeUse: 0.06,
+    tluIntakeT: 2.3,
+    tluPerPerson: 4.5,
+
     // ── the clock (years before present, BP; the sim runs on past 0 if asked) ──
     originBP: 70000,            // people set out (Out of Africa ~70–55 ka; Africa itself already peopled)
     holoceneBP: 11700,          // the climate steadies: farming possible from here (Richerson, Boyd & Bettinger 2001)

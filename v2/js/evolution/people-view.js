@@ -3,7 +3,7 @@
 // request (the layer chosen) — and drawn per pixel of the finished picture at the year chosen on the layer's own
 // timeline: foragers in cool colours, farmers in warm ones, by density; the domestication centres ringed.
 
-import { peopleOf, WAYS, TownFlag } from '../civ/civ-page.js';
+import { peopleOf, WAYS, TownFlag, FOODS, byteFood } from '../civ/civ-page.js';
 
 export class PeopleService {
     constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; }
@@ -86,6 +86,69 @@ export function peopleColor(P, f, width, lut) {
         const s = 0.7 + 0.3 * kk;
         out[o] = Math.min(255, BYTE_RGB[3 * b] * s); out[o + 1] = Math.min(255, BYTE_RGB[3 * b + 1] * s); out[o + 2] = Math.min(255, BYTE_RGB[3 * b + 2] * s); out[o + 3] = 255;
     };
+}
+
+// ── the Food view (plans/CIV_PLAN.md §9.2): what the land offers, per resource — persons/km² it feeds at full skill ──
+export const FOOD_WORDS = { largeGame: 'large game', smallGame: 'small game and fowl', aquatic: 'fish and shellfish', wildSeeds: 'wild grass seeds',
+    wildRoots: 'wild roots', nuts: 'nuts and fruit', winterCereal: 'winter cereals', summerCereal: 'summer cereals', roots: 'roots and tubers',
+    tree: 'tree crops', flooded: 'flooded fields', herds: 'herds' };
+const WILD = FOODS.slice(0, 6), CROPS = ['winterCereal', 'summerCereal', 'roots', 'tree', 'flooded'];
+const FOOD_HUE = { largeGame: [200, 120, 60], smallGame: [150, 110, 70], aquatic: [70, 150, 230], wildSeeds: [220, 200, 90], wildRoots: [190, 120, 160],
+    nuts: [110, 170, 70], winterCereal: [240, 210, 80], summerCereal: [240, 140, 50], roots: [200, 90, 170], tree: [70, 200, 110], flooded: [80, 200, 220], herds: [210, 170, 130] };
+/** The Food view's choices: one resource, all the wild ones together, or the best crop. */
+export const FOOD_SHOWS = ['wild', 'crops', ...FOODS];
+const FOOD_RANGE = { wild: [0.01, 3], herds: [0.1, 10] };          // (persons/km²: the wild per km² of country, crops per km² of fields)
+const rangeOf = key => FOOD_RANGE[key] ?? (WILD.includes(key) ? FOOD_RANGE.wild : [1, 300]);
+const foodAt = (P, key, c) => byteFood(P.food[FOODS.indexOf(key) * P.cells + c]);
+/** A place's food for a choice: [persons/km², the resource whose colour it takes]. */
+function foodOfCell(P, key, c) {
+    if (key === 'wild') { let s = 0; for (const f of WILD) s += foodAt(P, f, c); return [s, null]; }
+    if (key === 'crops') { let best = 0, bk = null; for (const f of CROPS) { const v = foodAt(P, f, c); if (v > best) { best = v; bk = f; } } return [best, bk]; }
+    return [foodAt(P, key, c), key];
+}
+const foodT = (key, d) => { const [a, b] = rangeOf(key); return d > 0 ? Math.max(0, Math.min(1, Math.log(d / a) / Math.log(b / a))) : -1; };
+
+/** A finish-view.js paintFinished colouring: the food of a choice (FOOD_SHOWS), per pixel of a texture `width` wide. */
+export function foodColor(P, key, width, lut) {
+    const L = lut.rgb, k = P.pixW / width, W = P.pixW, pix = P.pix;
+    return (out, o, x, y, wet, kk, k3, v, lake) => {
+        if (wet || lake === 1 || lake === 2) {
+            const s = 0.55 + 0.45 * kk;
+            out[o] = SEA[0] * s; out[o + 1] = SEA[1] * s; out[o + 2] = SEA[2] * s; out[o + 3] = 255;
+            return;
+        }
+        const [d, f] = foodOfCell(P, key, pix[Math.floor(y * k) * W + Math.floor(x * k)]), t = foodT(key, d);
+        if (t < 0) {
+            const g = (0.2 + 0.25 * (L[k3] + L[k3 + 1] + L[k3 + 2]) / 765) * 255 * kk;
+            out[o] = g; out[o + 1] = g; out[o + 2] = g * 0.95; out[o + 3] = 255;
+            return;
+        }
+        const s = 0.7 + 0.3 * kk;
+        if (!f) { const c = cool(t); out[o] = c[0] * s; out[o + 1] = c[1] * s; out[o + 2] = c[2] * s; out[o + 3] = 255; return; }
+        const h = FOOD_HUE[f], lo = 0.18 + 0.82 * t;
+        out[o] = Math.min(255, h[0] * lo * s); out[o + 1] = Math.min(255, h[1] * lo * s); out[o + 2] = Math.min(255, h[2] * lo * s); out[o + 3] = 255;
+    };
+}
+
+/** The Food view's legend. */
+export function foodLegendHTML(key) {
+    const [a, b] = rangeOf(key), per = WILD.includes(key) || key === 'wild' || key === 'herds' ? 'per km² of country' : 'per km² of fields';
+    const ramp = f => `linear-gradient(90deg, ${[0, 0.5, 1].map(t => `rgb(${FOOD_HUE[f].map(v => Math.round(v * (0.18 + 0.82 * t))).join(',')})`).join(', ')})`;
+    const rows = key === 'crops' ? CROPS.map(f => `<div class="evo-people-ramp evo-food-ramp"><span>${FOOD_WORDS[f]}</span><i style="background:${ramp(f)}"></i></div>`).join('')
+        : `<div class="evo-people-ramp evo-food-ramp"><span>${key === 'wild' ? 'all wild food' : FOOD_WORDS[key]}</span><i style="background:${key === 'wild' ? gradient(cool) : ramp(key)}"></i></div>`;
+    return `<div><b>Food</b> · ${key === 'crops' ? 'the best crop' : key === 'wild' ? 'the wild' : FOOD_WORDS[key]} · what the land could feed at full skill</div>${rows}
+<div class="evo-legend-note">${a} → ${b} people ${per}${key === 'crops' || CROPS.includes(key) ? ' (once the crop is domesticated and known)' : ''}</div>`;
+}
+
+/** The readout's line for the Food view: the place's richest resources. */
+export function foodLines(P, u, v) {
+    const c = cellAt(P, u, v), fmt = d => (d >= 10 ? d.toFixed(0) : d >= 1 ? d.toFixed(1) : d.toFixed(2));
+    const top = list => list.map(f => [f, foodAt(P, f, c)]).filter(([, d]) => d > 0).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([f, d]) => `${FOOD_WORDS[f]} ${fmt(d)}`).join(' · ');
+    const wild = top(WILD), crops = top(CROPS), herds = foodAt(P, 'herds', c), lines = [];
+    if (wild) lines.push(`<span class="hi-label">Wild</span> ${wild} <span style="opacity:.6">per km²</span>`);
+    if (crops) lines.push(`<span class="hi-label">Fields</span> ${crops} <span style="opacity:.6">per km² farmed</span>`);
+    if (herds > 0) lines.push(`<span class="hi-label">Herds</span> ${fmt(herds)} <span style="opacity:.6">per km²</span>`);
+    return lines;
 }
 
 /** The domestication centres founded by year bp, ringed on a texture's context (scaled by the caller to 2048 × 1024). */
