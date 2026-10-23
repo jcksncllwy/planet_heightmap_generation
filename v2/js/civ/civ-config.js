@@ -92,9 +92,10 @@ export const CIV = {
     },
     // herds: grass NPP (t dry matter/km²) × the share grazed, held through the drought years (a herd is stocked for the bad
     // years, not the mean: Sandford 1983) ÷ a tropical livestock unit's intake (250 kg, ~2.3 t/yr) ÷ the TLU a pastoralist
-    // lives on (Dahl & Hjort 1976: ~4–5 a person on milk) — set so the drylands' pastoralists come out at 1–5 /km² (Mongolia
-    // ~1, East Africa's savannas 2–6; Coughenour et al. 1985) [L]
-    grazeUse: 0.06,
+    // lives on (Dahl & Hjort 1976: ~4–5 a person on milk) — set so the drylands' pastoralists come out at ~0.5–2 /km², as
+    // before modern veterinary care and wells (Mongolia's 1918 census ~0.4; Turkana ~1; East Africa's savannas now 2–6,
+    // Coughenour et al. 1985) [L]
+    grazeUse: 0.03,
     tluIntakeT: 2.3,
     tluPerPerson: 4.5,
 
@@ -164,6 +165,7 @@ export const CIV = {
     onsetPowerLate: 3,
     onsetEaseYears: 3000,
     onsetCrowding: 1,           // and ∝ (density / packing threshold)^this, at most ×4: the crowded (Natufians) begin first
+    chanceSeed: 0,              // the rare events' draws (onsets, landings): another seed, another history of the same world
     centreKm: 400,              // domestication cells of one package this close are one centre
     cultivationFromBP: 13000,   // cultivation began in the late glacial's warm spells (Abu Hureyra ~13 ka; Hillman et al. 2001)
 
@@ -233,6 +235,41 @@ export const CIV = {
     // rebuild in 3–4 years, small stock faster, cattle slower: McCabe 1987, Turkana; Marsabit 2009–11; FAO) [L]
     herdDieOff: 1,              // the share of the animals the year's grazing can't carry that die
     herdRecovery: 0.4,          // the herd's regrowth a year (logistic): from half to ~90 % in ~5 years
+
+    // ── the economy (plans/CIV_PLAN.md §9.3; econ.js), in place of the switches when economy is 'resources' ──
+    economy: 'switches',        // 'switches' (the model through Phase 4) or 'resources'
+    useShare: 0.2,              // a resource at this share of the diet is in full use: skill and domestication at their full pace
+    skillSeed: 0.3,             // the skill of those who first cultivate a wild stand, or keep a wild herd (ours)
+    skillYears: 200,            // a skill is learnt over a few generations of full use (ours: the organism is the slow part)…
+    forgetYears: 500,           // …and fades over this long unused (ours)
+    // complex skills (farming, herding) held at most N / (N + skillPeople), N the people within contactKm: Henrich (2004)'s
+    // threshold population, in our form (disputed: Vaesen et al. 2016)
+    skillPeople: 500,
+    contactKm: 50,
+    contactShare: 0.5,          // a step's mixing toward the skill of the people a cell's came from (ours)
+    cropMinSuit: 0.15,          // a domesticated crop or herd goes only where it grows this well (of its best)
+    // cultivation before domestication spreads from where it began at this share of a farming front's speed, within the
+    // wild form's range (the protracted model: cultivation began at many places, Allaby et al. 2017) [ours]
+    cultivationSpread: 0.25,
+    // the share of the country in fields at full use: early farmers' regional densities, a few per km² (the LBK ~1–5;
+    // Zimmermann et al. 2009) — as the switches' cultivatedShare (2.5 % gave Earth ~25× HYDE at 8 ka)
+    fieldLand: 0.01,
+    // herds: wild ones are managed over their range (Zeder 2008: in the Zagros, managed hunting before the herds changed);
+    // once domesticated, settled people's graze this share of the land (at most the open country): the fallow, the
+    // stubble and the commons — a mixed farm's small herds, bound to its fields (Halstead 1981; Bogaard 2004) [ours]
+    herdNear: 0.05,
+    // pastoralists — once they live on milk (Dahl & Hjort 1976) — follow theirs over all the open country, growing this
+    // share of the crops they could (Khazanov 1984: trading for grain); only where the rain's year-to-year CV reaches
+    // mobileCV, where mobility pays (Ellis & Swift 1988's non-equilibrium rangelands), or where no crop grows (the cold)
+    mobileCrops: 0.1,
+    mobileCV: 0.33,
+    // herds feed on their meat alone at first (this share of a dairy herd's people), and on their milk by use over dairyYears
+    // after domestication: the secondary products (Sherratt 1981; milk residues by ~9 ka in Anatolia, Evershed et al. 2008;
+    // specialised herders on the steppe and in the Sahel ~6–5 ka) [L]
+    herdMeat: 0.25,
+    dairyYears: 3000,
+    treeWild: 0.6,              // the wild tree crops' stands at their best, and wild rice's and taro's (ours; the wild
+    floodedWild: 0.4,           //   cereals' 1 and 0.8, PACKAGES' abundance; at 0.8 every warm marsh was a centre of them)
 
     // ── disease (disease.js): a share of the people a place would hold ──
     filterWarm: 0.5,            // the parasites pass only through country this suited to transmission by its warmth

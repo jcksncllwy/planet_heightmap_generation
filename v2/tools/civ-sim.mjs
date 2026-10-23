@@ -3,7 +3,7 @@
 // reached each region, where and when farming began, when it reached each region.
 //
 //   node --max-old-space-size=16000 v2/tools/civ-sim.mjs --seed 12345 --time 300 [--cells 640000] [--origin lat,lon] [--end 0]
-//   node --max-old-space-size=16000 v2/tools/civ-sim.mjs --earth [--origin 5,36]
+//   node --max-old-space-size=16000 v2/tools/civ-sim.mjs --earth [--origin 5,36] [--set key=value ...] [--name sim-earth-x]
 //
 // Output (v2/out/civ/sim-<name>/): timeline.png (density at eight moments — foragers in cool colours, farmers in warm, the
 // domestication centres ringed), summary.json (centres, totals, the Earth scores).
@@ -22,6 +22,9 @@ const EARTH = process.argv.includes('--earth');
 const CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 300)), CELLS = Number(arg('--cells', 640000));
 const SEED = Number(arg('--seed', 12345)), END = Number(arg('--end', 0));
 const ORIGIN = arg('--origin', EARTH ? '5,36' : null)?.split(',').map(Number) ?? null;
+const sets = process.argv.flatMap((a, i) => (a === '--set' ? [process.argv[i + 1]] : []));
+const C = { ...CIV };
+for (const s of sets) { const i = s.indexOf('='); C[s.slice(0, i)] = JSON.parse(s.slice(i + 1)); }
 const t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(1)} s`;
 const D = Math.PI / 180;
 
@@ -29,9 +32,9 @@ const w = EARTH ? await (await import('../../tuning/civ/lib/earth-world.mjs')).e
     : await worldOf(SEED, buildSimMesh(SIM, MESH_SEED), { cont: CONT, sim: SIM, time: TIME, cells: CELLS });
 const cellAt = (lat, lon) => w.mesh.index.nearest(Math.cos(lat * D) * Math.cos(lon * D), Math.cos(lat * D) * Math.sin(lon * D), Math.sin(lat * D));
 const latOf = c => Math.asin(w.mesh.xyz[3 * c + 2]) / D, lonOf = c => Math.atan2(w.mesh.xyz[3 * c + 1], w.mesh.xyz[3 * c]) / D;
-const sub = civSubstrate(w);
+const sub = civSubstrate(w, C);
 console.log(`world ${EARTH ? 'Earth' : SEED} at ${w.mesh.numCells.toLocaleString()} cells; substrate (${secs()})`);
-const res = runCivSim(w, sub, { origins: ORIGIN ? [cellAt(...ORIGIN)] : null, endBP: END });
+const res = runCivSim(w, sub, { origins: ORIGIN ? [cellAt(...ORIGIN)] : null, endBP: END, C });
 console.log(`ran ${CIV.originBP.toLocaleString()} BP → ${END} BP in ${res.totals.length} steps (${secs()}); origin ${res.origins.map(c => `${latOf(c).toFixed(1)},${lonOf(c).toFixed(1)}`)}`);
 const at = bp => res.totals.reduce((a, b) => (Math.abs(b.bp - bp) < Math.abs(a.bp - bp) ? b : a));
 for (const bp of [50000, 20000, 12000, 10000, 8000, 6000, 4000, 0]) { const x = at(bp); console.log(`  ${String(bp).padStart(6)} BP: ${(x.people / 1e6).toFixed(2)} M people, ${(x.farmers / 1e6).toFixed(2)} M farmers`); }
@@ -103,7 +106,12 @@ if (EARTH) {
         return { label, simKa: c ? +v.toFixed(2) : null, pkg: c?.pkg ?? null, recordKa: [hi, lo], pass };
     });
     const spurious = res.centres.filter(x => !DOM.some(([, lat, lon]) => km(lat, lon, x.lat, x.lon) < 600)).length;
-    console.log(`  ${okC}/${DOM.length} within ±2 ka; ${spurious} of ${res.centres.length} centres far from any known one`);
+    // (regions: centres of any crop or herd within centreKm of one another, as the bench counts them — the record's centres
+    // are regions, each with several crops and animals)
+    const regions = [];
+    for (const x of res.centres) { const g = regions.find(g => g.some(y => km(x.lat, x.lon, y.lat, y.lon) < C.centreKm)); g ? g.push(x) : regions.push([x]); }
+    console.log(`  ${okC}/${DOM.length} within ±2 ka; ${spurious} of ${res.centres.length} centres far from any known one; ${regions.length} regions (the record's ${DOM.length}; up to ~24 with the minor ones, Purugganan & Fuller 2009)`);
+    summary.regions = regions.length;
     summary.farming = score('farming arrives:', FARM, res.farmBP);
     // the first cities: the biggest town within 300 km of each, at each moment (record: the first ≥ 10 000 people, ka BP)
     const CITIES = [['Uruk (Sumer)', 31.3, 45.6, 5.5], ['Memphis (Egypt)', 29.85, 31.25, 5.0], ['Mohenjo-daro (Indus)', 27.3, 68.1, 4.5], ['Erlitou (Yellow R.)', 34.7, 112.7, 3.8]];
@@ -119,7 +127,7 @@ if (EARTH) {
 }
 
 // ── the timeline picture: eight moments ──
-const name = EARTH ? 'sim-earth' : `sim-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`, dir = path.join(OUT, name);
+const name = arg('--name', EARTH ? 'sim-earth' : `sim-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`), dir = path.join(OUT, name);
 fs.mkdirSync(dir, { recursive: true });
 const pick = [60000, 45000, 30000, 15000, 10000, 8000, 6000, END].map(bp => res.frames.reduce((a, b) => (Math.abs(b.bp - bp) < Math.abs(a.bp - bp) ? b : a)));
 const TW = 1024, TH = 512, sheet = new Uint8ClampedArray(2 * TW * 4 * TH * 4), pix = pixelCells(w.mesh, TW), SW = 2 * TW;

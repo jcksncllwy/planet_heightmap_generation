@@ -1,6 +1,6 @@
 // The civ run's fingerprint on cached ensemble worlds (civ-ensemble.mjs builds them): a hash of every frame's density, way
 // of life and package, towns and polities, the totals and the per-cell dates — to show that a refactor leaves a model's
-// runs byte-identical (plans/CIV_PLAN.md §9.7, C0).
+// runs byte-identical (plans/CIV_PLAN.md §9.7, C0). It also warns of a constant CIV names twice.
 //
 //   node --max-old-space-size=8000 v2/tools/civ-fingerprint.mjs [--seeds 1,6,13] [--set key=value,…]
 
@@ -16,6 +16,10 @@ import { CIV } from '../js/civ/civ-config.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const set = arg('--set', ''), C = { ...CIV, ...(set ? Object.fromEntries(set.split(/,(?=[A-Za-z_]+=)/).map(kv => { const i = kv.indexOf('='); return [kv.slice(0, i), JSON.parse(kv.slice(i + 1))]; })) : {}) };
+// (a constant named twice in CIV is silently the second: say so — a new one once took the towns' fieldShare)
+const cfg = fs.readFileSync(new URL('../js/civ/civ-config.js', import.meta.url), 'utf8').split('export const CIV_PRIORS')[0];
+const names = [...cfg.matchAll(/^    ([A-Za-z]\w*):/gm)].map(m => m[1]), twice = names.filter((k, i) => names.indexOf(k) !== i);
+if (twice.length) console.log(`CIV names these twice (the second wins): ${[...new Set(twice)].join(', ')}`);
 const cache = path.join(OUT, 'cache'), files = fs.readdirSync(cache);
 for (const seed of arg('--seeds', '1,6,13').split(',')) {
     const f = files.find(x => x.startsWith(`page-${seed}-`) && x.endsWith('160k.bin'));

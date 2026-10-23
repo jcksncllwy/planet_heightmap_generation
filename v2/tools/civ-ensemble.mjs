@@ -3,7 +3,7 @@
 // through runCivSim; per world a few numbers (where people arose, which landmasses they reached, farming, towns, states),
 // and a summary over all of them — so a change is judged on the spread of worlds, not one.
 //
-//   node --max-old-space-size=8000 v2/tools/civ-ensemble.mjs [--seeds 1-20] [--jobs 4] [--label base] [--set key=value,…]
+//   sim-slots run -n 4 --gb 6 -- node --max-old-space-size=8000 v2/tools/civ-ensemble.mjs [--seeds 1-20] [--jobs N: default SIM_THREADS, else 4] [--label base] [--set key=value,…]
 //   node v2/tools/civ-ensemble.mjs --compare base other
 //
 // --set overrides CIV's values for the run (JSON values: --set onsetPowerLate=2,voyageKm=[[0,100],[5000,900]]).
@@ -131,7 +131,7 @@ if (process.argv.includes('--one')) {
     console.log(`${'metric'.padEnd(26)} ${a.padStart(12)} ${b.padStart(12)}`);
     for (const k of Object.keys(A)) console.log(`${k.padEnd(26)} ${String(A[k]).padStart(12)} ${String(B[k]).padStart(12)}`);
 } else {
-    const seeds = seedsOf(arg('--seeds', '1-20')), jobs = Number(arg('--jobs', 4)), label = arg('--label', 'base'), set = arg('--set', '');
+    const seeds = seedsOf(arg('--seeds', '1-20')), jobs = Number(arg('--jobs', process.env.SIM_THREADS || 4)), label = arg('--label', 'base'), set = arg('--set', '');
     fs.mkdirSync(path.join(DIR, label), { recursive: true });
     if (set) fs.writeFileSync(path.join(DIR, label, 'overrides.json'), JSON.stringify(overridesOf(set)));
     const queue = [...seeds], t0 = performance.now();

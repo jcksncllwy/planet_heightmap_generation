@@ -22,14 +22,15 @@
 // `frameYears`, for the timeline.
 
 import { CIV } from './civ-config.js';
-import { PACKAGES, FOODS } from './substrate.js';
-import { Life, farms, settled } from './life.js';
+import { PACKAGES, FOODS, WILD_FOODS } from './substrate.js';
+import { Life, farms, settled, lifeOfDiet } from './life.js';
 import { edgeLengths, frontArrival, offshoreKm, schedule, toblerFactor } from './travel.js';
 import { spreadKm } from '../core/min-heap.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { Polities } from './polity.js';
 import { climateVariability, modeSeries, modeLn, normal } from './climate-var.js';
 import { parasiteRange, diseaseLoss } from './disease.js';
+import { domesticates, allocate, RANK, skillCap, learn, domesticate, cultivated } from './econ.js';
 
 /** A herd's year (plans/CIV_PLAN.md §9.2, the herd response class): the animals the year's grazing (`g`, against a normal
  *  year's) can't carry die, and the herd grows back slowly — over years, where a harvest comes back the next. */
@@ -53,10 +54,12 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
  * @param opts { origins: [cell] (default: the richest savanna of the biggest landmass), endBP (default 0), onFrame(frame),
  *   polities (default true: towns and polities, polity.js, every polityStepYears once there are farmers),
  *   famine (default true: good and bad years, climate-var.js), vary (climateVariability(w, sub), if already made),
- *   disease (default true: disease.js), C }
+ *   disease (default true: disease.js), economy ('switches', the model through Phase 4, or 'resources', plans/CIV_PLAN.md
+ *   §9.3's economy: econ.js; default C.economy), C }
  * @returns { frames (each: density, life, crop — its dominant crop, a FOODS index or −1 — farmPkg, …), centres, totals,
  *   arrivalBP (Float32, per cell; NaN never), farmBP (per cell), cameFrom (per cell: the cell its people came from; −1
- *   never), farmFrom ({crop: per cell, the cell its farmers came from}), coastBP ({crop: when voyagers took it up}) }
+ *   never), farmFrom ({crop: per cell, the cell its farmers came from}), coastBP ({crop: when voyagers took it up}),
+ *   packages (the ids farmPkg and centres' pkg name: PACKAGES', or the economy's domesticates) }
  */
 export function runCivSim(w, sub, opts = {}) {
     const sim = createCivSim(w, sub, opts);
@@ -69,10 +72,11 @@ export function runCivSim(w, sub, opts = {}) {
  * calling onFrame for each new frame; result() reads it as runCivSim returns it, at any point. opts as runCivSim's,
  * without endBP; frameYears (default C.frameYears) — how often a frame is kept — may be changed between advances.
  */
-export function createCivSim(w, sub, { origins = null, onFrame = null, polities = true, famine = true, vary = null, disease = true, C = CIV } = {}) {
+export function createCivSim(w, sub, { origins = null, onFrame = null, polities = true, famine = true, vary = null, disease = true, economy = null, C = CIV } = {}) {
     const { mesh, z, ocean, lake, koppen } = w, n = mesh.numCells, { adjOffset, adjList } = mesh, len = edgeLengths(mesh);
     const cellKm2 = sub.cellKm2, T0 = C.originBP;
     const tOf = bp => T0 - bp, bpOf = t => T0 - t;
+    const econ = (economy ?? C.economy) === 'resources';
 
     // ── where people can be: land, and the shelves the glacial sea lays bare (fed as the nearest coast is) ──
     const minSeaKm = Math.min(...C.seaLevelM.map(r => r[1])) / 1000;
@@ -171,30 +175,54 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     // ── Phase 2–3 state ──
     const bestPkg = new Int8Array(n).fill(-1), bestWild = new Float32Array(n);
     for (const c of cells) PACKAGES.forEach((p, i) => { const v = sub.wild[p.id][c]; if (v > bestWild[c]) { bestWild[c] = v; bestPkg[c] = i; } });
-    const fit = PACKAGES.map(() => new Float32Array(n));                        // (its climate weight, for the front's speed)
-    const grows = PACKAGES.map((p, i) => {
+    // the crops (and, in the economy, the herds) that fronts carry: the switches' PACKAGES, or the economy's domesticates
+    const DOM = econ ? domesticates(sub, C) : PACKAGES;
+    const fit = DOM.map(() => new Float32Array(n));                             // (its climate weight, for the front's speed)
+    // (the economy: where each one's wild form grows, which its cultivated form may go to before it is domesticated)
+    const wildRange = econ ? DOM.map(() => new Uint8Array(n)) : null;
+    const grows = DOM.map((p, i) => {
         const ok = new Uint8Array(n);
         for (const c of cells) {
-            const h = home[c], code = KOPPEN_CLASSES[koppen[h]]?.code ?? '';
+            const h = home[c];
+            if (econ) {
+                const W = p.wild(h), s = p.suit(h);
+                wildRange[i][c] = W >= C.wildMin ? 1 : 0;
+                // where its own climate grows it, its wild form's range, or (cereals) watered on an alluvium
+                ok[c] = s >= C.cropMinSuit || wildRange[i][c] || (p.cereal && sub.irrig[h] >= 0.1) ? 1 : 0;
+                fit[i][c] = p.cereal && sub.irrig[h] >= 0.1 ? 1 : Math.min(1, Math.max(s, W));
+                continue;
+            }
+            const code = KOPPEN_CLASSES[koppen[h]]?.code ?? '';
             // where its climate grows it, or (cereals) watered on an alluvium in a dry one — Egypt's, Sumer's winter wheat
             ok[c] = ((p.koppen[code] ?? 0) > 0 && (sub.farmDry[h] > 0 || sub.irrig[h] > 0)) || (p.cereal && sub.irrig[h] >= 0.1) ? 1 : 0;
             fit[i][c] = sub.irrig[h] >= 0.1 ? 1 : (p.koppen[code] ?? 0);
         }
         return ok;
     });
-    const farmArrival = PACKAGES.map(() => new Float64Array(n).fill(Infinity)), farmFrom = PACKAGES.map(() => new Int32Array(n).fill(-1));
+    const farmArrival = DOM.map(() => new Float64Array(n).fill(Infinity)), farmFrom = DOM.map(() => new Int32Array(n).fill(-1));
     // each package's farmers know irrigation from this long after its first centre; a desert's alluvium waits for it
-    const irrigKnown = PACKAGES.map(() => Infinity);
-    const farmOpensAt = i => (b, t) => (isWater(b) ? seaOpens(b, t) : sub.farmDry[home[b]] > 0 ? t : Math.max(t, irrigKnown[i]));
-    const farmSpeed = i => (a, b, k, t) => {
+    const irrigKnown = DOM.map(() => Infinity);
+    // (the economy: each domesticate's domestication D and skill per cell; and the fronts of its cultivation before it is
+    // domesticated — from each onset, within its wild form's range — apart from the domesticated crop's, which comes after
+    // and goes on into them: seed is given)
+    const Dm = econ ? DOM.map(() => new Float32Array(n)) : null, Sk = econ ? DOM.map(() => new Float32Array(n)) : null;
+    const cultArrival = econ ? DOM.map(() => new Float64Array(n).fill(Infinity)) : null, cultFrom = econ ? DOM.map(() => new Int32Array(n).fill(-1)) : null;
+    // (a cereal's land with no rain-fed crop: only watered, once canals are known)
+    const needsCanal = (i, h, b) => (econ ? !(DOM[i].suit(h) >= C.cropMinSuit || wildRange[i][b]) : !(sub.farmDry[h] > 0));
+    const farmOpensAt = i => (b, t) => (isWater(b) ? seaOpens(b, t) : needsCanal(i, home[b], b) ? Math.max(t, irrigKnown[i]) : t);
+    const farmSpeed = (i, wildOnly = false) => (a, b, k, t) => {
         if (isWater(b)) return seaSpeed(t);
-        if (!grows[i][b]) return 0;
+        if (!(wildOnly ? wildRange[i][b] : grows[i][b])) return 0;
         if (isWater(a)) return seaSpeed(t);
         let v = C.frontFarmKmYr * slope(a, b, k);
         if (coastG[a] && coastG[b]) v = Math.max(v, C.frontFarmCoastKmYr);
         if (riverQ[a] >= C.frontRiverM3s && riverQ[b] >= C.frontRiverM3s) v = Math.max(v, C.frontFarmRiverKmYr);
-        return v * (C.farmClimateFloor + (1 - C.farmClimateFloor) * fit[i][b]);
+        return v * (C.farmClimateFloor + (1 - C.farmClimateFloor) * fit[i][b]) * (wildOnly ? C.cultivationSpread : 1);
     };
+    // (each front's cells in order of arrival, for what its people carry: made again whenever the front moves)
+    const order = DOM.map(() => null), cultOrder = DOM.map(() => null);
+    const spread = (i, sources) => { frontArrival(mesh, len, farmArrival[i], farmSpeed(i), sources, Infinity, farmOpensAt(i), farmFrom[i]); order[i] = null; };
+    const spreadCult = (i, sources) => { frontArrival(mesh, len, cultArrival[i], farmSpeed(i, true), sources, Infinity, farmOpensAt(i), cultFrom[i]); cultOrder[i] = null; };
     // ── voyaging: from when farmers first farm a coast, crossings grow (C.voyageKm) — the world's voyagers carrying every
     // crop farmed on a coast by then (Lapita's kit: Austronesian voyagers took up New Guinea's taro, yams, bananas and
     // breadfruit on the way; Kirch 2017). They land only on shores no one holds, farm them with the best-fitting of those
@@ -205,7 +233,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         for (let i = 1; i < L.length; i++) if (L[i][1] >= y) { const [x0, y0] = L[i - 1], [x1, y1] = L[i]; return x0 + (x1 - x0) * (y - y0) / (y1 - y0); }
         return Infinity;
     };
-    const coastT = PACKAGES.map(() => Infinity);
+    const coastT = DOM.map(() => Infinity);
     let firstCoast = Infinity, voyage = null, voyageFrom = null, launch = [];
     const atSea = c => isWater(c) || ocean[c];
     const voyageSpeed = (a, b, k, t) => {
@@ -225,16 +253,17 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             launch = [];
             frontArrival(mesh, len, v, voyageSpeed, from, Infinity, voyageOpens, voyageFrom);
         }
-        const landed = [], farmed = PACKAGES.map(() => []);
+        const landed = [], farmed = DOM.map(() => []);
         for (const c of cells) if (!atSea(c) && v[c] <= until && v[c] < arrival[c]) {
             arrival[c] = v[c]; cameFrom[c] = launchOf(c); landed.push(c);
             let bi = -1;
-            for (let i = 0; i < PACKAGES.length; i++) if (coastT[i] <= v[c] && grows[i][c] && (bi < 0 || fit[i][c] > fit[bi][c])) bi = i;
-            // (the crop's front starts again here: its farmers came from the launch, as cameFrom says)
-            if (bi >= 0 && v[c] < farmArrival[bi][c]) { farmArrival[bi][c] = v[c]; farmFrom[bi][c] = c; farmed[bi].push(c); }
+            for (let i = 0; i < DOM.length; i++) if (coastT[i] <= v[c] && grows[i][c] && (!econ || DOM[i].suit(home[c]) >= C.cropMinSuit) && (bi < 0 || fit[i][c] > fit[bi][c])) bi = i;
+            // (the crop's front starts again here: its farmers came from the launch, as cameFrom says — in the economy with
+            // the crop domesticated and their skill)
+            if (bi >= 0 && v[c] < farmArrival[bi][c]) { farmArrival[bi][c] = v[c]; farmFrom[bi][c] = c; farmed[bi].push(c); if (econ) { Dm[bi][c] = 1; Sk[bi][c] = 1; } }
         }
         if (landed.length) frontArrival(mesh, len, arrival, foragerSpeed, landed, Infinity, opensAt, cameFrom);
-        farmed.forEach((F, i) => { if (F.length) frontArrival(mesh, len, farmArrival[i], farmSpeed(i), F, Infinity, farmOpensAt(i), farmFrom[i]); });
+        farmed.forEach((F, i) => { if (F.length) spread(i, F); });
     };
 
     const d = new Float32Array(n), life = new Uint8Array(n), progress = new Float32Array(n), farmPkg = new Int8Array(n).fill(-1);
@@ -243,7 +272,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     const settledYears = new Float32Array(n);
     const onsetPower = c => C.onsetPower - (C.onsetPower - C.onsetPowerLate) * Math.min(1, settledYears[c] / C.onsetEaseYears);
     // a cell's chance in a step: a hash of the two, uniform in [0, 1) — the same each run
-    const chance = (c, step) => { let h = Math.imul(c ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(step + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
+    const chance = (c, step) => { let h = Math.imul(c ^ 0x9e3779b9 ^ C.chanceSeed, 0x85ebca6b) ^ Math.imul(step + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
     const aquaticHome = c => sub.wetland[home[c]] > 0 || sub.coastal[home[c]] || sub.lakeside[home[c]];
     /** What farming feeds here, persons/km² of country: fields on a share of it, irrigated on the alluvium once learnt. */
     let kRain = 0, kIrr = 0;                    // (farmK's two parts: rain-fed, and watered by the river)
@@ -270,11 +299,10 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     /** One step's years for a settled or herding cell: each year's harvest against a normal one — rain-fed fields by the
      *  substrate's own yield ramp, the river's by its flood (the land watered follows it; a flood far above the usual breaks
      *  the banks and the works), the wild by the forager regression's own response to the year's NPP (water foods steady),
-     *  herds by their stock (herdYear: the year's grazing, with the NPP) — its store, its famines. */
-    const liveYears = (c, t, step, farming, wildK, herdK = 0) => {
-        const h = home[c], y0 = Math.round(t), cap = farming ? C.storeYears : C.storeYearsForagers;
-        if (!farming || farmK(c, t) < wildK) { kRain = 0; kIrr = 0; }
-        const kR = kRain, kI = kIrr, kH = herdK, Kw = kR + kI + kH > 0 ? 0 : wildK;
+     *  herds by their stock (herdYear: the year's grazing, with the NPP) — its store, its famines. What it lives on, persons/km²:
+     *  kR rain-fed fields, kI watered ones, kH herds, Kw the wild; cap, the most it stores (years of food). */
+    const liveYears = (c, t, step, cap, kR, kI, kH, Kw) => {
+        const h = home[c], y0 = Math.round(t);
         // (what stays the same all step)
         const P = w.pAnnual[h], r = V.region[h], cv = V.rainCV[h];
         if (regionStamp[r] !== step) { regionStamp[r] = step; for (let k = 0; k < C.stepYears; k++) regionNoise[r * C.stepYears + k] = normal(r, y0 + k); }
@@ -341,25 +369,233 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         store[c] = st;
         if (dead > 0) { famineShare[c] += dead / d[c]; famineCentury[c] += dead / d[c]; d[c] = dd; famineDead += dead * cellKm2; }
     };
+    /** The switches' years: farmers on their fields (the wild where it feeds more), herders on their herds, the rest the wild. */
+    const liveSwitches = (c, t, step, farming, wildK, herdK) => {
+        if (!farming || farmK(c, t) < wildK) { kRain = 0; kIrr = 0; }
+        const kR = kRain, kI = kIrr;
+        liveYears(c, t, step, farming ? C.storeYears : C.storeYearsForagers, kR, kI, herdK, kR + kI + herdK > 0 ? 0 : wildK);
+    };
 
     let nextFrame = 0, nextPolity = 0, nextVoyage = 0, anyFarmers = false, frameYears = C.frameYears, t = 0, step = 0;
     const pol = polities ? new Polities(w, sub, C) : null, Kc = pol ? new Float32Array(n) : null;
     /** A cell's dominant crop (a FOODS index), or −1, as its way of life shows it: its farmers' package, the wild stand its
      *  cultivators tend, herds. (Farmers who arrive this generation are farmers, with their crop, from the next.) */
-    const FOOD_OF = PACKAGES.map(p => FOODS.indexOf(p.food)), HERDS = FOODS.indexOf('herds');
-    const cropOf = c => (farms(life[c]) ? FOOD_OF[farmPkg[c]] : life[c] === Life.CULTIVATING ? FOOD_OF[bestPkg[c]] : life[c] === Life.HERDER ? HERDS : -1);
+    const FOOD_OF = DOM.map(p => FOODS.indexOf(p.food)), HERDS = FOODS.indexOf('herds');
+    const cropOf = c => (econ ? (life[c] >= Life.CULTIVATING && domTop[c] >= 0 ? FOOD_OF[domTop[c]] : -1)
+        : farms(life[c]) ? FOOD_OF[farmPkg[c]] : life[c] === Life.CULTIVATING ? FOOD_OF[bestPkg[c]] : life[c] === Life.HERDER ? HERDS : -1);
+    // ── the economy (plans/CIV_PLAN.md §9.3; econ.js): what each peopled cell eats, from the end of the glacial on ──
+    const NW = WILD_FOODS.length, M = NW + DOM.length, HERD = DOM.findIndex(p => p.herd);
+    const Kx = new Float64Array(M), ax = new Float64Array(M), xx = new Float64Array(M), kRi = new Float64Array(DOM.length), kIi = new Float64Array(DOM.length);
+    const ordX = Array.from({ length: M }, (_, i) => i), wildFood = WILD_FOODS.map(f => sub.food[f]), wildRank = WILD_FOODS.map(f => RANK[f]);
+    const FROM = DOM.map(p => WILD_FOODS.indexOf(p.from)), SAME_FROM = DOM.map(p => DOM.map((q, k) => k).filter(k => DOM[k].from === p.from)), wildK0 = new Float64Array(NW);
+    const canalK = DOM.map(p => sub.canalFood[p.food] ?? null), domRank = DOM.map(p => RANK[p.food]), contactKm2 = Math.PI * C.contactKm * C.contactKm;
+    // (each cell's land in fields and pasture, its diet's share from crops and herds, its fields' capacity, its main domesticate)
+    // (each cell's land as the map shows it: its share in fields, and in pasture — a mobile people's over all they range)
+    const fieldLandOf = econ ? new Float32Array(n) : null, pastureOf = econ ? new Float32Array(n) : null;
+    const taken = econ ? new Float32Array(n) : null, domShare = econ ? new Float32Array(n) : null, cropK = econ ? new Float32Array(n) : null, domTop = econ ? new Int8Array(n).fill(-1) : null;
+    const domRoot = DOM.map(() => new Set());
+    // (where herders may go mobile: where the rain fails too often to stay — its CV, the storms' and the modes' — or no
+    // crop grows well enough to farm by rain, the cold margins; Ellis & Swift 1988)
+    const roam = econ ? new Uint8Array(sub.n) : null, herdLand = econ ? new Float32Array(sub.n) : null;
+    if (econ) for (let h = 0; h < sub.n; h++) {
+        let v = V ? V.rainCV[h] ** 2 : 0;
+        if (V) for (let m = 0; m < 4; m++) v += V.rainLn[4 * h + m] ** 2 / 2;
+        roam[h] = Math.sqrt(v) >= C.mobileCV || DOM.every(p => p.herd || p.suit(h) < C.cropMinSuit) ? 1 : 0;
+        // (the share of the open country settled herds graze)
+        herdLand[h] = sub.open[h] > 0 ? Math.min(1, C.herdNear / sub.open[h]) : 0;
+    }
+    let onsets = [], domesticated = [];
+    /** What each front's people carry, in order of arrival: the crop's domestication (seed is given: the most domesticated
+     *  of the people it came from) and its skill (mixing toward theirs). Where a crop is newly domesticated, its front goes on
+     *  beyond its wild form's range. */
+    const ordered = A => {
+        const list = [];
+        for (let c = 0; c < n; c++) if (A[c] < Infinity) list.push(c);
+        list.sort((a, b) => A[a] - A[b]);
+        return Int32Array.from(list);
+    };
+    const pass = (O, A, F, D, S) => {
+        for (const c of O) {
+            if (A[c] > t) break;
+            const a = F[c];
+            if (a >= 0 && a !== c) { if (D[a] > D[c]) D[c] = D[a]; S[c] += C.contactShare * (S[a] - S[c]); }
+        }
+    };
+    const carry = () => {
+        for (let i = 0; i < DOM.length; i++) {
+            cultOrder[i] ??= ordered(cultArrival[i]);
+            pass(cultOrder[i], cultArrival[i], cultFrom[i], Dm[i], Sk[i]);
+            order[i] ??= ordered(farmArrival[i]);
+            pass(order[i], farmArrival[i], farmFrom[i], Dm[i], Sk[i]);
+            // (the cultivators whose crop is now domesticated: from them, the domesticated crop's front)
+            const src = [], A = farmArrival[i];
+            for (const c of cultOrder[i]) {
+                if (cultArrival[i][c] > t) break;
+                if (Dm[i][c] >= 1 && A[c] > t) { A[c] = t; farmFrom[i][c] = c; src.push(c); }
+            }
+            if (src.length) spread(i, src);
+        }
+    };
+    const has = (i, c) => cultArrival[i][c] <= t || farmArrival[i][c] <= t;
+    /** One cell's generation in the economy: its diet by equal marginal return, its people, its way of life, what it learns,
+     *  whether it starts to cultivate (or keep herds), its good and bad years. */
+    const economyOf = (c, forageK, bp) => {
+        const h = home[c], scale = Kf[c] > 0 ? forageK / Kf[c] : 0, free = 1 - taken[c], share = sub.irrigShare[h];
+        // what each resource feeds, at the skill the people have: the wild on the land not in fields or pasture (the land
+        // budget); the domesticates they have, their cultivated forms yielding less until domesticated
+        for (let j = 0; j < NW; j++) { Kx[j] = wildK0[j] = wildFood[j][h] * scale * free; ax[j] = wildRank[j]; }
+        for (let i = 0; i < DOM.length; i++) {
+            const j = NW + i, p = DOM[i];
+            Kx[j] = 0; ax[j] = 0; kRi[i] = 0; kIi[i] = 0;
+            if (!has(i, c)) continue;
+            const s = Sk[i][c];
+            if (p.herd) kRi[i] = sub.food.herds[h] * (Dm[i][c] < 1 ? 1 : herdLand[h]) * s;   // (wild herds, managed where they range)
+            else {
+                const rain = C.fieldLand * sub.food[p.food][h], known = irrigKnown[i];
+                const irr = p.cereal && sub.irrig[h] > 0 && t >= known
+                    ? share * C.alluviumShare * canalK[i][h] * Math.min(1, Math.max(0.05, (t - known) / C.irrigationRampYears)) : 0;
+                // (flooded fields on a river's or a marsh's water live by its flood)
+                if (p.food === 'flooded' && sub.irrigSrc[h] >= 0) kIi[i] = rain * s;
+                else { kRi[i] = (rain * (1 - share) + (irr ? 0 : rain * share)) * s; kIi[i] = irr * s; }
+            }
+            // (its cultivation takes over its wild form's stands, as far as it pays better: from them to the crop's own
+            // capacity as it is domesticated)
+            // (stands that feed several crops' wild forms — wild seeds: the winter and summer grasses, wild rice — are shared
+            // by how well each grows here)
+            const wf = FROM[i], Wi = p.wild(h);
+            let Wsum = 0;
+            for (const q of SAME_FROM[i]) Wsum += DOM[q].wild(h);
+            const part = Wsum > 0 ? Wi / Wsum : 0, Kw0 = wildK0[wf] * part, full = kRi[i] + kIi[i], k = cultivated(Dm[i][c], Kw0, full, p.herd, C);
+            if (!(k > 0) || !(full > 0)) { kRi[i] = 0; kIi[i] = 0; continue; }
+            kRi[i] *= k / full; kIi[i] *= k / full;
+            Kx[j] = k; Kx[wf] = Math.max(0, Kx[wf] - Kw0); ax[j] = domRank[i] * s;
+        }
+        // or they follow their herds over the whole range (once they live on their milk), growing little and the
+        // wild thinned by the grazing — where that feeds more, where the rain is too fickle or the land too cold to farm
+        // (pastoralism in the dry and cold margins; Khazanov 1984)
+        let Ksum = 0;
+        for (let j = 0; j < M; j++) Ksum += Kx[j];
+        let mobile = false;
+        if (HERD >= 0 && roam[h] && Dm[HERD][c] >= 2 && Kx[NW + HERD] > 0) {
+            let alt = Kx[NW + HERD] / herdLand[h], open = sub.open[h];
+            for (let j = 0; j < NW; j++) alt += Kx[j] > 0 ? wildFood[j][h] * scale * (1 - open) : 0;
+            for (let i = 0; i < DOM.length; i++) if (i !== HERD) alt += Kx[NW + i] * C.mobileCrops;
+            if (alt > Ksum) {
+                mobile = true; Ksum = alt;
+                for (let j = 0; j < NW; j++) if (Kx[j] > 0) Kx[j] = wildFood[j][h] * scale * (1 - open);
+                for (let i = 0; i < DOM.length; i++) { const f = i === HERD ? 1 / herdLand[h] : C.mobileCrops; Kx[NW + i] *= f; kRi[i] *= f; kIi[i] *= f; }
+            }
+        }
+        const hl = health(c, settled(life[c]), life[c] === Life.IRRIGATOR);
+        const K = Ksum * hl;
+        if (d[c] === 0) d[c] = C.seedShare * K;
+        const N = Math.max(1e-12, d[c] / Math.max(1e-9, hl));
+        allocate(Kx, ax, N, xx, M, ordX);
+        // the diet, by class; the land its fields and herds take
+        let wild = 0, cult = 0, crops = 0, herds = 0, canal = 0, best = -1, bx = 0, fields = 0, pasture = 0, fieldK = 0, kR = 0, kI = 0, kH = 0, Kw = 0;
+        for (let j = 0; j < NW; j++) { wild += xx[j]; Kw += Kx[j]; }
+        for (let i = 0; i < DOM.length; i++) {
+            const x = xx[NW + i], k = Kx[NW + i];
+            if (!(k > 0)) continue;
+            const dom = Dm[i][c] >= 1;
+            if (DOM[i].herd) { if (dom) { herds += x; kH += k; } else { wild += x; Kw += k; } pasture += (x / k) * sub.open[h] * (dom && !mobile ? herdLand[h] : 1); }
+            else {
+                if (dom) crops += x; else cult += x;
+                fieldK += k; kR += kRi[i]; kI += kIi[i];
+                fields += (x / k) * (kIi[i] > 0 ? C.alluviumShare * share + C.fieldLand * (1 - share) : C.fieldLand);
+                canal += x * kIi[i] / k;
+            }
+            if (x > bx) { bx = x; best = i; }
+        }
+        taken[c] = mobile ? 0 : Math.min(0.95, fields + pasture);
+        fieldLandOf[c] = Math.min(1, fields); pastureOf[c] = Math.min(1, pasture);
+        const packed = !mobile && d[c] >= C.packingKm2 && (aquaticHome(c) || bestWild[c] >= C.sedentaryWild);
+        life[c] = lifeOfDiet({ wild, cultivated: cult, crops, herds }, canal > 0.5 * crops, packed);
+        domShare[c] = (cult + crops + herds) / N;
+        domTop[c] = best;
+        cropK[c] = fieldK;
+        // the people: toward what the land feeds, faster the more of their food is stored and sown
+        const r = C.rForager + (C.rFarmer - C.rForager) * domShare[c];
+        d[c] = K > 0 ? Math.max(0, d[c] + r * d[c] * (1 - d[c] / K) * C.stepYears) : d[c] * 0.5;
+        // what they learn: each domesticate's skill by use, held only as far as the people within reach can hold it; its
+        // domestication by use of its cultivated form
+        let near = d[c], k = 1;
+        for (let e = adjOffset[c]; e < adjOffset[c + 1]; e++) { const b = adjList[e]; if (home[b] >= 0) { near += d[b]; k++; } }
+        const cap = skillCap(near / k * contactKm2, C);
+        for (let i = 0; i < DOM.length; i++) {
+            if (!has(i, c)) continue;
+            const wi = xx[NW + i] / N;
+            Sk[i][c] = Math.min(cap, learn(Sk[i][c], wi, C));
+            const D0 = Dm[i][c];
+            Dm[i][c] = domesticate(D0, wi, DOM[i].herd, C);
+            if (D0 < 1 && Dm[i][c] >= 1 && farmArrival[i][c] > t) domesticated.push([i, c]);
+        }
+        // someone starts to cultivate a wild stand (or to keep wild herds): a rare event, likeliest at the best stands among
+        // the settled, where they are already gathered (or hunted) hard — where the margin has fallen to them (the broad
+        // spectrum, Flannery 1969; cultivation where it pays, Winterhalder & Kennett 2006; the prey pathway, Zeder 2012)
+        if (packed) {
+            settledYears[c] += C.stepYears;
+            const pw = onsetPower(c);
+            // (one chance a step, as the switches': at the best wild stand of a domesticate it has not got, by how good it is
+            // and how hard it is used — its share of the diet against useShare)
+            let i = -1, W = 0, U = 0;
+            for (let q = 0; q < DOM.length; q++) {
+                if (has(q, c)) continue;
+                const w = DOM[q].wild(h), u = w * Math.min(1, xx[FROM[q]] / N / C.useShare);
+                if (u > U) { U = u; W = w; i = q; }
+            }
+            if (i >= 0 && W >= C.wildMin && chance(c, step) < 1 - Math.exp(-C.onsetPerKm2Yr * cellKm2 * Math.pow(U, pw) * C.stepYears)) {
+                cultArrival[i][c] = t; cultFrom[i][c] = c; Sk[i][c] = Math.max(Sk[i][c], C.skillSeed);
+                startT[c] = Math.min(startT[c], t); started[c] = 1; onsets.push([i, c]);
+            }
+        }
+        // farmers: from when a cell first farms; on a coast, they launch voyages with the crops they grow
+        const f = farms(life[c]);
+        farmPkg[c] = f ? best : -1;
+        if (f && farmT[c] === Infinity) {
+            farmT[c] = t;
+            if (home[c] === c && sub.coastal[c] === 1) {
+                for (let i = 0; i < DOM.length; i++) if (Dm[i][c] >= 1 && xx[NW + i] > 0) coastT[i] = Math.min(coastT[i], t);
+                firstCoast = Math.min(firstCoast, t); launch.push(c);
+            }
+        }
+        // good and bad years, for the settled and the herders: their fields, rain-fed and watered, their herds and the wild
+        if (V && (settled(life[c]) || life[c] === Life.HERDER) && d[c] > 0) liveYears(c, t, step, f || life[c] === Life.HERDER ? C.storeYears : C.storeYearsForagers, kR, kI, kH, Kw);
+    };
+    /** After a generation of the economy: the new centres (a lineage's first domestication, at the cell where it began), the
+     *  fronts of new cultivation. */
+    const econAfter = bp => {
+        for (const [i, c] of domesticated) {
+            let a = c, k = 0;
+            while (cultFrom[i][a] >= 0 && cultFrom[i][a] !== a && k++ < n) a = cultFrom[i][a];
+            if (domRoot[i].has(a)) continue;
+            domRoot[i].add(a);
+            centres.push({ cell: a, pkg: DOM[i].id, bp });
+            if (DOM[i].cereal && irrigKnown[i] === Infinity) irrigKnown[i] = t + C.irrigationDelayYears;
+        }
+        for (let i = 0; i < DOM.length; i++) { const S = onsets.filter(x => x[0] === i).map(x => x[1]); if (S.length) spreadCult(i, S); }
+        onsets = []; domesticated = [];
+    };
+
     /** One generation (C.stepYears) of the run. */
     const live = () => {
         const bp = bpOf(t), seaKm = schedule(C.seaLevelM, bp) / 1000, holo = bp <= C.holoceneBP;
         const g = rise(-C.glacialToBP[0], -C.glacialToBP[1], -bp);
         const forage = c => (iced(c, bp) ? 0 : KfG[c] + (Kf[c] - KfG[c]) * g);
-        const newCentres = [];
+        const newCentres = [], economic = econ && bp <= C.cultivationFromBP;
         let people = 0, farmersPeople = 0;
+        if (economic) carry();
         for (const c of cells) {
             if (arrival[c] > t) continue;
             // the sea over the shelves: their people move to the coast that feeds them (and are its source, if it had none;
             // where it had people, the two mix — the economy's skills will be shared out here, by people)
             if (!dry(c, seaKm)) { if (d[c] > 0) { const h = home[c]; if (!(d[h] > 0)) cameFrom[h] = c; d[h] += d[c]; d[c] = 0; } life[c] = Life.EMPTY; continue; }
+            if (economic) {
+                economyOf(c, forage(c), bp);
+                people += d[c] * cellKm2;
+                if (farmPkg[c] >= 0) farmersPeople += d[c] * cellKm2;
+                continue;
+            }
             const farming = farmPkg[c] >= 0;
             // (what the land feeds, less what its diseases take: by the way of life the cell had)
             const K = (farming ? Math.max(farmK(c, t), forage(c)) : forage(c)) * health(c, settled(life[c]), life[c] === Life.IRRIGATOR);
@@ -390,7 +626,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
                     }
                 }
             }
-            if (V && (settled(life[c]) || life[c] === Life.HERDER) && d[c] > 0) liveYears(c, t, step, farming, forage(c), life[c] === Life.HERDER ? sub.food.herds[home[c]] : 0);
+            if (V && (settled(life[c]) || life[c] === Life.HERDER) && d[c] > 0) liveSwitches(c, t, step, farming, forage(c), life[c] === Life.HERDER ? sub.food.herds[home[c]] : 0);
             people += d[c] * cellKm2;
             if (farming) farmersPeople += d[c] * cellKm2;
         }
@@ -399,8 +635,9 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             if (irrigKnown[i] === Infinity) irrigKnown[i] = t + C.irrigationDelayYears;
             frontArrival(mesh, len, farmArrival[i], farmSpeed(i), newCentres.filter(x => x[0] === i).map(x => x[1]), Infinity, farmOpensAt(i), farmFrom[i]);
         }
+        if (economic) econAfter(bp);
         // farmers arriving: the earliest package wins the cell
-        for (const c of cells) {
+        if (!econ) for (const c of cells) {
             if (farmPkg[c] >= 0 || arrival[c] > t) continue;
             let bi = -1, bt = Infinity;
             for (let i = 0; i < PACKAGES.length; i++) if (farmArrival[i][c] <= t && farmArrival[i][c] < bt) { bt = farmArrival[i][c]; bi = i; }
@@ -414,7 +651,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         famineDead = 0;
         // towns and polities, every polityStepYears once there are farmers
         if (pol && farmersPeople > 0 && t >= nextPolity - 1e-9) {
-            for (const c of cells) Kc[c] = farmPkg[c] >= 0 ? farmK(c, t) : 0;
+            for (const c of cells) Kc[c] = farmPkg[c] >= 0 ? (econ ? cropK[c] : farmK(c, t)) : 0;
             pol.step(d, life, Kc, anyFarmers ? C.polityStepYears : 0, famineShare);
             famineShare.fill(0);
             anyFarmers = true;
@@ -426,7 +663,15 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
                 dens[c] = densityByte(d[c]); way[c] = d[c] > 0 ? (life[c] || Life.FORAGER) : 0;
                 if (d[c] > 0) crop[c] = cropOf(c);
             }
-            const frame = { bp, density: dens, life: way, crop, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000),
+            // (the economy's land in use: a byte a cell, fields' share in the low four bits and pasture's in the high — each
+            // 0 for none, else 1–15 on a log scale, 15 the whole cell, 10 a tenth, 5 a hundredth)
+            let land = null;
+            if (econ) {
+                land = new Uint8Array(n);
+                const q = v => (v < 1e-4 ? 0 : Math.max(1, Math.min(15, Math.round(15 + 5 * Math.log10(v)))));
+                for (const c of cells) if (d[c] > 0) land[c] = q(fieldLandOf[c]) | (q(pastureOf[c]) << 4);
+            }
+            const frame = { bp, density: dens, life: way, crop, land, farmPkg: Int8Array.from(farmPkg), people: Math.round(people), farmers: Math.round(farmersPeople), seaM: Math.round(seaKm * 1000),
                 towns: pol && anyFarmers ? pol.packed() : null, polityTable: pol && anyFarmers ? pol.packedPolities() : null, polities: pol && anyFarmers ? pol.counts() : null };
             frames.push(frame);
             if (onFrame) onFrame(frame);
@@ -449,8 +694,8 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, onsetBP, centreCells: centres, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
             voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)),
             // (per crop: when its farmers first farmed a coast — from then voyagers carry it)
-            coastBP: Object.fromEntries(PACKAGES.map((p, i) => [p.food, coastT[i] < Infinity ? bpOf(coastT[i]) : null])),
-            cameFrom: peopled(cameFrom), farmFrom: Object.fromEntries(PACKAGES.map((p, i) => [p.food, peopled(farmFrom[i])])) };
+            coastBP: Object.fromEntries(DOM.map((p, i) => [p.food, coastT[i] < Infinity ? bpOf(coastT[i]) : null])),
+            cameFrom: peopled(cameFrom), farmFrom: Object.fromEntries(DOM.map((p, i) => [p.food, peopled(farmFrom[i])])), packages: DOM.map(p => p.id) };
     };
     return { advance, result, get bp() { return bpOf(t - C.stepYears); }, get frames() { return frames; } };
 }

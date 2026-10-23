@@ -23,7 +23,7 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
-import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf, addPeople, foodColor, foodLegendHTML, foodLines } from './people-view.js';
+import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf, addPeople, foodColor, foodLegendHTML, foodLines, landColor, landLegendHTML, landLines } from './people-view.js';
 import { STEP_YEARS } from '../civ/civ-page.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
@@ -142,7 +142,7 @@ $('rebuildBtn').addEventListener('click', () => build());                       
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
 const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
-    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : ''));
+    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : '') + (url.get('economy') ? `&economy=${encodeURIComponent(url.get('economy'))}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
 // interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)
@@ -554,7 +554,7 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, food = P?.food && peopleView.show !== 'people' ? peopleView.show : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P?.land && peopleView.show === 'land', food = P?.food && !land && peopleView.show !== 'people' && peopleView.show !== 'land' ? peopleView.show : null;
     // (the settlements: on the People layer, or over any other with Settlements on — the people worked out on request)
     const S = settlementsShown() ? fin.people : null;
     if (settlementsShown() && !fin.people) runPeople(fin);
@@ -562,7 +562,7 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes: water || view.layer === 'satellite',
-        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (food ? foodColor(P, food, t.width, lut) : peopleColor(P, pf, t.width, lut)) : null });
+        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? landColor(P, pf, t.width, lut) : food ? foodColor(P, food, t.width, lut) : peopleColor(P, pf, t.width, lut)) : null });
     if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
     t.ctx.putImageData(t.image, 0, 0);
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
@@ -572,8 +572,8 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     drawLines(t, C);
     show(t);
     painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
-    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
-    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (food ? foodLegendHTML(food) : peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
+    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (land ? `land|${frame.time}|${pf}` : food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
+    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? landLegendHTML(P, pf) : food ? foodLegendHTML(food) : peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
     if (S) {
         $('peopleSlider').max = S.bp.length - 1; $('peopleSlider').value = pf;
         // (the year, and on another layer than People — whose legend says it — the towns and states then)
@@ -1160,7 +1160,8 @@ function readout(e) {
     if (setting) lines.push(`<span class="hi-label">Setting</span> ${setting}`);
     // the climate, where this moment has one: its Köppen class, temperature and rain
     const C = climateOf(f);
-    if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show !== 'people' && fin.people.food ? foodLines(fin.people, p[0], p[1]) : peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
+    if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' && fin.people.land ? landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
+        : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? foodLines(fin.people, p[0], p[1]) : peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
     else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));
     ui.hover.innerHTML = lines.join('<br>');

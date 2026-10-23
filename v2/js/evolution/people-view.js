@@ -6,6 +6,8 @@
 
 import { peopleOf, WAYS, TownFlag, FOODS, byteFood } from '../civ/civ-page.js';
 
+const ECONOMY = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('economy') : null;   // (read at load, before the page rewrites its URL)
+
 export class PeopleService {
     constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; }
 
@@ -30,7 +32,10 @@ export class PeopleService {
     }
 
     start() {
-        const w = new Worker(new URL('../civ/civ-worker.js', import.meta.url), { type: 'module' });
+        // (the page's ?economy= — 'resources' for the economy, plans/CIV_PLAN.md §9.3 — goes on to the worker)
+        const url = new URL('../civ/civ-worker.js', import.meta.url);
+        if (ECONOMY) url.searchParams.set('economy', ECONOMY);
+        const w = new Worker(url, { type: 'module' });
         w.onmessage = ({ data }) => {
             const j = this.jobs.get(data.id);
             if (!j) return;
@@ -89,6 +94,42 @@ export function peopleColor(P, f, width, lut) {
         const s = 0.7 + 0.3 * kk, j = 3 * (((ways[i] & 7) << 6) | b);
         out[o] = Math.min(255, BYTE_RGB[j] * s); out[o + 1] = Math.min(255, BYTE_RGB[j + 1] * s); out[o + 2] = Math.min(255, BYTE_RGB[j + 2] * s); out[o + 3] = 255;
     };
+}
+
+// ── the Land view (the economy's: plans/CIV_PLAN.md §9.3): how much of each place is in fields, and in pasture ──
+const FIELD_RGB = [250, 205, 60], PASTURE_RGB = [150, 175, 90];
+/** A land byte's share (sim.js packs each 0, or 1–15 on a log scale: 15 all of it, 10 a tenth, 5 a hundredth). */
+const landShare = q => (q ? Math.pow(10, (q - 15) / 5) : 0);
+/** A finish-view.js paintFinished colouring: frame f's land in fields (gold) and pasture (green), the brighter the more
+ *  of it, over the land's grey — on the log scale it is packed on, from a thousandth of the land to all of it. */
+export function landColor(P, f, width, lut) {
+    const L = lut.rgb, k = P.pixW / width, W = P.pixW, o0 = f * P.cells, land = P.land, pix = P.pix;
+    return (out, o, x, y, wet, kk, k3, v, lake) => {
+        if (wet || lake === 1 || lake === 2) {
+            const s = 0.55 + 0.45 * kk;
+            out[o] = SEA[0] * s; out[o + 1] = SEA[1] * s; out[o + 2] = SEA[2] * s; out[o + 3] = 255;
+            return;
+        }
+        const b = land[o0 + pix[Math.floor(y * k) * W + Math.floor(x * k)]];
+        const t = q => (q ? 0.15 + 0.85 * q / 15 : 0), tf = t(b & 15), tp = t(b >> 4);
+        const g = (0.2 + 0.25 * (L[k3] + L[k3 + 1] + L[k3 + 2]) / 765) * 255;
+        for (let j = 0; j < 3; j++) { const pv = g + (PASTURE_RGB[j] - g) * tp; out[o + j] = Math.min(255, (pv + (FIELD_RGB[j] - pv) * tf) * kk); }
+        out[o + 3] = 255;
+    };
+}
+/** The Land view's legend. */
+export function landLegendHTML(P, f) {
+    const ramp = rgb => `linear-gradient(90deg, rgb(70,70,68), ${`rgb(${rgb.join(',')})`})`;
+    return `<div><b>Land in use</b> · ${yearsWords(P.bp[f])}</div>
+<div class="evo-people-ramp"><span>Fields</span><i style="background:${ramp(FIELD_RGB)}"></i></div>
+<div class="evo-people-ramp"><span>Pasture</span><i style="background:${ramp(PASTURE_RGB)}"></i></div>
+<div class="evo-legend-note">a thousandth of the land → all of it (log scale) · a herding people's pasture is all the open country it ranges</div>`;
+}
+/** The readout's line for the Land view. */
+export function landLines(P, f, u, v) {
+    const b = P.land[f * P.cells + cellAt(P, u, v)], pc = x => (x >= 0.1 ? `${Math.round(100 * x)} %` : x >= 0.01 ? `${(100 * x).toFixed(1)} %` : `${(100 * x).toFixed(2)} %`);
+    if (!b) return ['<span class="hi-label">Land</span> no fields or pasture'];
+    return [`<span class="hi-label">Land</span> fields ~${pc(landShare(b & 15))} · pasture ~${pc(landShare(b >> 4))} <span style="opacity:.6">of the land</span>`];
 }
 
 // ── the Food view (plans/CIV_PLAN.md §9.2): what the land offers, per resource — persons/km² it feeds at full skill ──
@@ -238,13 +279,14 @@ export function addPeople(P, more) {
     const grow = a => { if (need <= a.length) return a; const b = new Uint8Array(Math.max(need, 2 * a.length)); b.set(a.subarray(0, k * P.cells)); return b; };
     P.frames = grow(P.frames); P.ways = grow(P.ways);
     P.frames.set(more.frames, k * P.cells); P.ways.set(more.ways, k * P.cells);
+    if (P.land && more.land) { P.land = grow(P.land); P.land.set(more.land, k * P.cells); }
     const join = (a, b) => { const c = new a.constructor(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
     P.bp = join(P.bp, more.bp); P.people = join(P.people, more.people); P.farmers = join(P.farmers, more.farmers);
     P.towns.push(...more.towns); P.polities.push(...more.polities);
     P.centres = more.centres; P.place = more.place;
 }
 const millions = v => (v >= 1e7 ? `${(v / 1e6).toFixed(0)} M` : v >= 1e6 ? `${(v / 1e6).toFixed(1)} M` : `${Math.round(v / 1e3).toLocaleString()} K`);
-const PKG_WORDS = { winterCereal: 'winter-rain cereals', summerCereal: 'summer-rain cereals', tuber: 'roots and tubers' };
+const PKG_WORDS = { winterCereal: 'winter-rain cereals', summerCereal: 'summer-rain cereals', tuber: 'roots and tubers', roots: 'roots and tubers', tree: 'tree crops', flooded: 'flooded fields', herds: 'herds' };
 const gradient = ramp => `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(t => `rgb(${ramp(t).map(Math.round).join(',')})`).join(', ')})`;
 
 /** The legend: the year, how many, the ramps (herders' where there are any) and the centres so far. */

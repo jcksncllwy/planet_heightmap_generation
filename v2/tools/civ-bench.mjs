@@ -5,7 +5,8 @@
 //     between (cells 1000–4000 km out), all of them and inland ones (400+ km from the sea: no coastal route); the record
 //     ~0.6–1.3 km/yr (Pinhasi et al. 2005)
 //   - the time from the onset of cultivation to domestication at each centre (the record ~2000 yr; Purugganan & Fuller 2009)
-//   - the onset's rarity: cells where cultivation began, and centres, per 10 M km² (Earth: ~10 centres on ~100 M km²)
+//   - the onset's rarity: cells where cultivation began, centres and regions per 10 M km², and regions per 10 M km² of
+//     ideal land (a crop's wild form ≥ IDEAL_W; Earth 6.5: its 10 centres on its 15.5 M km² of such land)
 //   - that the wild resources sum to the forager density (substrate.js food)
 //
 //   node --max-old-space-size=16000 v2/tools/civ-bench.mjs [--cells 160000,640000] [--set key=value ...]
@@ -21,6 +22,7 @@ import { vectorCollector } from '../js/civ/disease.js';
 import { cropCollector } from '../js/civ/crops.js';
 import { civSubstrate, WILD_FOODS } from '../js/civ/substrate.js';
 import { runCivSim } from '../js/civ/sim.js';
+import { domesticates } from '../js/civ/econ.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { OUT, MESH_SEED } from './lib/civ-world.mjs';
 import { spreadKm } from '../js/core/min-heap.js';
@@ -33,6 +35,10 @@ for (const s of sets) { const [k, v] = s.split('='); C[k] = JSON.parse(v); }
 const D = Math.PI / 180, R = 6371;
 // the strip: 25–50° N, 80° W – 80° E (~14 000 × 2800 km)
 const LAT = [25, 50], LON = [-80, 80];
+// the onset's rarity against Earth's: regions per 10 M km² of ideal land, where some crop's wild form is at least IDEAL_W
+// (the herds' left out: their wild forms cover most of the Old World's open country) — Earth's record (civ-sim.mjs's 10
+// centres) over its own such land (Earth at 160k cells, the economy's wild forms)
+const IDEAL_W = 0.5, EARTH_IDEAL = '6.5: 10 centres on 15.5 M km²; ~15 with the minor ones';
 
 /** The strip world at n cells: as a finished moment gives the civ layer (civWorldFromFinish's fields). */
 function stripWorld(N) {
@@ -59,6 +65,7 @@ function stripWorld(N) {
     return { mesh, z, ocean, lake, koppen, tAnnual, pAnnual, stats: stats.stats, rivers: null, loess: null, erg: null, ice: null, vector: vec.vector, crops: crops.crops };
 }
 
+const ll = x => [Math.cos(x.lat * D) * Math.cos(x.lon * D), Math.cos(x.lat * D) * Math.sin(x.lon * D), Math.sin(x.lat * D)];
 const km = (a, b, xyz) => R * Math.acos(Math.max(-1, Math.min(1, xyz[3 * a] * xyz[3 * b] + xyz[3 * a + 1] * xyz[3 * b + 1] + xyz[3 * a + 2] * xyz[3 * b + 2])));
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : NaN; };
 const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(p * (s.length - 1))] : NaN; };
@@ -66,10 +73,12 @@ const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length ? 
 const rows = [];
 for (const N of SIZES) {
     const t0 = performance.now(), w = stripWorld(N), sub = civSubstrate(w, C), xyz = w.mesh.xyz, n = w.mesh.numCells;
-    let landKm2 = 0, wildErr = 0;
+    let landKm2 = 0, idealKm2 = 0, wildErr = 0;
+    const DOM = domesticates(sub, C);
     for (let c = 0; c < n; c++) {
         if (w.ocean[c]) continue;
         landKm2 += sub.cellKm2;
+        if (DOM.some(p => !p.herd && p.wild(c) >= IDEAL_W)) idealKm2 += sub.cellKm2;
         let s = 0; for (const f of WILD_FOODS) s += sub.food[f][c];
         wildErr = Math.max(wildErr, Math.abs(s - sub.forager[c]));
     }
@@ -92,12 +101,20 @@ for (const N of SIZES) {
     let onsets = 0, farmed = 0;
     for (let c = 0; c < n; c++) { if (res.onsetBP[c] === res.onsetBP[c]) onsets++; if (res.farmBP[c] === res.farmBP[c]) farmed++; }
     const per10M = 1e7 / landKm2;
+    // (regions: centres of any crop or herd within centreKm of one another — Earth's ~10 centres are regions, each with
+    // several crops and animals)
+    const regions = [];
+    for (const x of res.centres) { const near = regions.find(g => g.some(y => km(w.mesh.index.nearest(...ll(y)), w.mesh.index.nearest(...ll(x)), xyz) < C.centreKm)); near ? near.push(x) : regions.push([x]); }
+    const byPkg = {};
+    for (const x of res.centres) byPkg[x.pkg] = (byPkg[x.pkg] ?? 0) + 1;
     const row = {
         cells: n, cellKm: +Math.sqrt(sub.cellKm2).toFixed(1), landMkm2: +(landKm2 / 1e6).toFixed(1),
         frontKmYr: { p25: +q(speeds, 0.25).toFixed(2), median: +median(speeds).toFixed(2), p75: +q(speeds, 0.75).toFixed(2), n: speeds.length },
         inlandKmYr: { p25: +q(inland, 0.25).toFixed(2), median: +median(inland).toFixed(2), p75: +q(inland, 0.75).toFixed(2), n: inland.length },
         onsetToDomYr: { min: Math.round(Math.min(...toDom)), median: Math.round(median(toDom)), max: Math.round(Math.max(...toDom)), n: toDom.length },
-        onsetCellsPer10M: +(onsets * per10M).toFixed(1), centresPer10M: +(res.centres.length * per10M).toFixed(2), centres: res.centres.length,
+        onsetCellsPer10M: +(onsets * per10M).toFixed(1), centresPer10M: +(res.centres.length * per10M).toFixed(2), centres: res.centres.length, byPkg,
+        regions: regions.length, regionsPer10M: +(regions.length * per10M).toFixed(2), idealMkm2: +(idealKm2 / 1e6).toFixed(1),
+        regionsPerIdeal10M: +(regions.length * 1e7 / Math.max(1, idealKm2)).toFixed(2),
         firstCentreBP: res.centres.length ? Math.round(Math.max(...res.centres.map(c => c.bp))) : null,
         farmedShare: +(farmed / (landKm2 / sub.cellKm2)).toFixed(2), wildSumErr: wildErr, secs: +((performance.now() - t0) / 1000).toFixed(1),
     };
@@ -109,6 +126,8 @@ for (const N of SIZES) {
     console.log(`  … inland          ${row.inlandKmYr.p25} / ${row.inlandKmYr.median} / ${row.inlandKmYr.p75} km/yr (400+ km from the sea)`);
     console.log(`  onset → domestic  ${row.onsetToDomYr.min} / ${row.onsetToDomYr.median} / ${row.onsetToDomYr.max} yr over ${row.onsetToDomYr.n} centre cells (record ~2000)`);
     console.log(`  rarity            ${row.onsetCellsPer10M} onset cells, ${row.centresPer10M} centres per 10 M km² (${row.centres} centres; the first ${row.firstCentreBP} BP; Earth ~1 per 10 M km²)`);
+    console.log(`  regions           ${row.regions} (${row.regionsPer10M} per 10 M km²): centres of any crop within ${C.centreKm} km; by crop ${JSON.stringify(byPkg)}`);
+    console.log(`  … per ideal land  ${row.regionsPerIdeal10M} per 10 M km² of ${row.idealMkm2} M km² where a crop's wild form is ≥ ${IDEAL_W} (Earth ${EARTH_IDEAL})`);
     console.log(`  farmed by now     ${row.farmedShare} of the strip;  |Σ wild − forager| ≤ ${row.wildSumErr.toExponential(1)}`);
 }
 if (rows.length === 2) {

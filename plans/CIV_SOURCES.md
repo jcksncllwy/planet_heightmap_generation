@@ -43,9 +43,9 @@ Tuned values are not facts. Where a value was calibrated on the Earth test (`v2/
 | Crop profiles (winter cereals 2–8–20–27 °C, 3.5–5 months; summer cereals 9–16–30–37, 2–4; roots warm 16–21–31–37, 4–7 or cool 3–9–20–26, 3–4.5; tree crops 15–21–32–38, 6–10; paddy 15–21–32–38 with water ≥ 0.9–1.4 PET) and the always-wet penalty on cereals | Ours, tuned against GAEZ v4 low-input rain-fed yields on Earth (`tuning/civ/crop-check.mjs`): Pearson 0.50–0.74, Spearman 0.63–0.85 per class | Ours, calibrated | [V] (the check) |
 | Crop yields, fallow, seed ratios: roots 1500 kg grain-eq/ha with a 0.7 swidden fallow; tree crops 500, 0.3 shade; paddies 1200, little fallow; millets' seed ratio ~1:20 | Ruthenberg 1980 (*Farming Systems in the Tropics*); Bray 1986 (*The Rice Economies*) | Adapted, round figures | [L] |
 | Watered cereals (canals): the crop's warmth alone, at the irrigated yield | As irrigation above | Adapted | [L] |
-| Herds: grazing NPP × openness × 0.06 ÷ 2.3 t per TLU ÷ 4.5 TLU per person | Sandford 1983 (stocking for the drought years); Dahl & Hjort 1976 (*Having Herds*: TLU per person); Coughenour et al. 1985 (Turkana densities) | Adapted; the off-take set so dryland pastoralists come out at 1–5 /km² | [L] |
+| Herds: grazing NPP × openness × 0.03 ÷ 2.3 t per TLU ÷ 4.5 TLU per person | Sandford 1983 (stocking for the drought years); Dahl & Hjort 1976 (*Having Herds*: TLU per person); Mongolia's 1918 census (~0.4 /km²); Coughenour et al. 1985 (Turkana densities; East Africa's savannas now 2–6) | Adapted; the off-take set so dryland pastoralists come out at ~0.5–2 /km², pre-modern densities (C1 halved it from 0.06, which gave modern ones) | [L] |
 | Openness of the country per Köppen class | Ours, by eye from tree-cover maps (Hansen et al. 2013) | Ours | — |
-| Wild food split: water's share = the aquatic bonus, seeds = the wild-cereal bonus, the land's share split plants/animals by effective temperature (plants 0.15 → 0.7 from ET 10 to 18), animals large/small by openness, plants roots/nuts by climate | Binford 2001 (hunting dominant below ET ~12, gathering above); Kelly 2013 | Adapted: the shares ours; the parts sum to the forager density exactly | [L] |
+| Wild food split: water's share = the aquatic bonus, seeds = the wild-cereal bonus, the land's share split plants/animals by effective temperature (plants 0.15 → 0.7 from ET 10 to 18), animals large/small by openness, plants roots/nuts by climate | Binford 2001 (hunting dominant below ET ~12, gathering above); Kelly 2013 | Adapted: the shares ours; the parts sum to the forager density exactly. Checked on Earth (C1): hunted 0.70 of the food at ET 10–12, 0.54 at 12–14; gathered 0.52 at 14–16, 0.67 at 16–18 — Binford's thresholds. Fishing ~15 % in the cool zones, below his coastal groups (the land-wide mean dilutes the coastal strip); not retuned | [L] |
 
 ## Cradles (`v2/js/civ/cradles.js`)
 
@@ -168,20 +168,39 @@ Every `polityStepYears` (100), from each century's towns (`settle.js`). Polities
 | A century's famine deaths beyond the place's norm (a 500-year running mean) raise war's odds × (1 + 10 × it) and add 3 × it to the collapse rate | Zhang et al. 2007, *PNAS* (war frequency follows harvest shortfalls); Hsiang, Burke & Miguel 2013, *Science* (conflict rises with the climate anomaly); Turchin & Nefedov 2009, *Secular Cycles* | Ours in form and value; the norm keeps usual hardship from breaking every polity | [L] |
 | State = a polity holding towns of the three tiers above the village | Wright & Johnson 1975 (three levels of administrative hierarchy above the village) | Direct definition, read off settlement size | [L] |
 
+## The economy (`v2/js/civ/econ.js`; `sim.js` with `economy: 'resources'`; plans/CIV_PLAN.md §9.3, stage C1)
+
+From the end of the glacial (13 ka) each peopled cell's diet is worked out from what the land feeds; the switches above
+are the default model until this one does better on the checks.
+
+| Rule | Source | Fidelity | Checked |
+|---|---|---|---|
+| Allocation by equal marginal return: each resource's return falls linearly with its use, a·(1 − x/K); work goes where it returns most, so low-ranked resources enter the diet as the high-ranked ones are used up (water-filling, exact) | MacArthur & Pianka 1966, *American Naturalist* (diet breadth); Flannery 1969 (the broad spectrum under crowding) | Adapted: the linear depletion and the equal-margin solution ours; the ranking is the model's | [L] |
+| Return ranks: large game 1, aquatic 0.7, herds 0.6, small game 0.5, nuts 0.4, wild roots 0.35, wild seeds 0.3, crops 0.25 (× skill) | Kelly 2013, *The Lifeways of Hunter-Gatherers*, ch. 3 (post-encounter return rates: the order only) | Adapted: the order Kelly's, the values ours | [L] |
+| Land budget: fields (1 % of the land at full use, the alluvium's share where watered; 2.5 % gave Earth ~25× HYDE at 8 ka) and settled people's pasture take land from the wild | Ours (§9.2); the field share from early farmers' densities, the LBK's 1–5 /km² (Zimmermann et al. 2009) | Ours, tuned | [L] |
+| Settled herds: wild ones managed over all their open range until domesticated; then a mixed farm's small herds, on 5 % of the land (fallow, stubble, the commons; at most the open country) | Zeder 2008, *PNAS* (managed hunting in the Zagros before the herds changed); Halstead 1981, "Counting sheep in Neolithic and Bronze Age Greece" (in Hodder et al., eds, *Pattern of the Past*); Bogaard 2004, *Neolithic Farming in Central Europe* (small, field-bound herds) | Adapted: the 5 % ours (60 % of the open land made herders of most farming country on world 6) | [L] |
+| Cultivation takes over a crop's wild stands (cereals and wild rice: wild seeds; roots: wild roots; tree crops: nuts; herds: large game; stands several crops share are split by how well each one's wild form grows); its capacity runs from the stands' to the crop's own as it is domesticated; none where it feeds less than the stands | Rindos 1984, *The Origins of Agriculture* (co-evolution); Winterhalder & Kennett 2006 (cultivate when it pays) | Adapted | [L] |
+| Domestication D by use of the cultivated form: 0 → 1 over 2000 years at ≥ 20 % of the diet, slower below | Purugganan & Fuller 2009, *Nature*; Fuller 2007, *Annals of Botany*; Allaby et al. 2017 (better than the first for the rate) | Adapted: the rate theirs, the use share ours | [L] |
+| Seed is given: along a front each cell takes the most domesticated crop of the people it came from; the domesticated crop has a front of its own that goes on into land still cultivating the wild form. A centre is a lineage domesticating before that front reaches it | §9.3; Allaby et al. 2017 (protracted, many loci) | Ours | — |
+| Cultivation before domestication spreads from its onset at 0.25 of a farming front's speed, within the wild form's range | Ours, set on the bench: none gives 6.4 centres per 10 M km² of ideal land and an inland front of 1.1 km/yr; full speed 2.3 and 45 km/yr; 0.25 gives 3.6 and 1.2 | Ours, tuned | — |
+| Onset: one hazard per settled cell, (W × u)^k (k easing 6 → 3), at the domesticate it lacks with the highest W × u: W its wild form's stands, u the share of the diet already taken from them against 20 % (gathered or hunted hard) — no crowding term. Settled foragers sit near their capacity, so the margin λ itself is ~0 everywhere; how far down the ranks the diet reaches into a stand is what differs | Flannery 1969 (the broad spectrum); Winterhalder & Kennett 2006, *Behavioral Ecology and the Transition to Agriculture* (cultivation where it pays against the margin); Zeder 2012, "Pathways to animal domestication" (in Gepts et al., eds, *Biodiversity in Agriculture*: the prey pathway) | Adapted: the form ours | [L] |
+| Wild flooded crops (rice, taro) at 0.4 × suitability × wetland: at 0.8 every warm marsh was a centre of them | Ours | Ours, tuned | — |
+| Wild forms: tree crops' in closed forest (0.6 × the crop's suitability × closedness); rice's and taro's in marshes and deltas (× wetland; below); herds' the wild herd animals (`wildHerd`) | Ours | Ours | — |
+| Skills of the domesticates: learnt by use (0.3 → 0.9 in ~400 years of full use), fading unused (half in ~350), mixing toward the source's along a front (half a step); held at most N/(N + 500), N the people within 50 km | Henrich 2004, *American Antiquity* (a threshold population; disputed by Vaesen et al. 2016, *PNAS*) | Adapted: the form ours | [L] |
+| Growth rate rises from the foragers' 0.02 to the farmers' 0.03 with the share of food from crops and herds | Bocquet-Appel 2011, *Science* (the Neolithic demographic transition) | Adapted | [L] |
+| Herds feed on their meat alone at domestication (0.25 of a dairy herd's people) and on their milk by use over 3000 years after | Sherratt 1981 (the secondary products revolution); Evershed et al. 2008, *Nature* (milk residues by ~9 ka in NW Anatolia) | Adapted: timing ours | [L] |
+| Pastoralism: once milked, people may follow their herds over all the open land, growing 0.1 of the crops they could and the wild thinned by the grazing — where that feeds more than settled mixed farming, and only where the rain's year-to-year CV (storms' and modes') is 0.33 or more, or no crop grows to farm (the cold) | Ellis & Swift 1988, *Journal of Range Management* 41 (non-equilibrium rangelands: mobility pays where rain's CV > ~33 %); Khazanov 1984, *Nomads and the Outside World* (the dry margins; trade for grain); Dahl & Hjort 1976 (pastoralists live on milk); Marshall & Hildebrand 2002, *Journal of World Prehistory* (herding before crops where rain is unpredictable) | Adapted: the shares ours | [L] |
+| Ways of life read off the diet (lifeOfDiet: the largest class; settled where packed beside storable food, as the switches') | §9.3; Binford 2001 (packing) | Ours | — |
+
 ## Design sources for the next model (plans/CIV_PLAN.md §9; not yet in code)
 
-Cited in the §9 design. Each moves into its section's table, with fidelity, when its rule enters the code.
+Cited in the §9 design. Each moves into its section's table, with fidelity, when its rule enters the code (C1 moved diet
+breadth, the broad spectrum, Rindos, the domestication rate, Henrich, Zeder and Bocquet-Appel into the economy's table;
+with their full references).
 
 | Idea | Source | Checked |
 |---|---|---|
-| Diet breadth: a resource enters the diet as higher-ranked ones grow scarce | MacArthur & Pianka 1966, *American Naturalist*; Kelly 2013, *The Lifeways of Hunter-Gatherers*, ch. 3 (return rates, used for ordering only) | [L] |
-| The broad spectrum revolution | Flannery 1969 | [L] |
 | Population pressure drives intensification | Cohen 1977, *The Food Crisis in Prehistory* | [L] |
-| Domestication as plant–human co-evolution | Rindos 1984, *The Origins of Agriculture* | [L] |
-| Domestication takes ~2000 years of cultivation | Purugganan & Fuller 2009, *Nature*; Fuller 2007, *Annals of Botany*; Allaby et al. 2017 (better than the first for the rate) | [L] |
-| Complex skills need a large enough population to keep; disputed | Henrich 2004, *American Antiquity*; Vaesen et al. 2016, *PNAS* | [L] |
-| Herding through the prey pathway | Zeder 2012, "Pathways to animal domestication" (in Gepts et al., eds, *Biodiversity in Agriculture*) | [L] |
-| The Neolithic demographic transition | Bocquet-Appel 2011, *Science* | [L] |
 | Time-delayed front speed v = 2√(rD)/(1 + rT/2); demic–cultural mix, ~60 % demic in Europe | Fort 2012, *PNAS* | [L] |
 | Farmers entering occupied land as competition | Aoki, Shida & Shigesada 1996, *Theoretical Population Biology* | [L] |
 | The end of the African Humid Period (~5.5 ka) pushes people into the Nile valley (a planned rule: needs orbital forcing) | Kuper & Kröpelin 2006, *Science* | [L] |

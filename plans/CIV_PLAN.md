@@ -695,6 +695,29 @@ growth rate rises with the share of stored, sedentary food, a stand-in for the N
     dates; `v2/tools/civ-fingerprint.mjs`), the 20-world ensemble matches base in every number, and the bench is identical
     (its runs took ~3 s longer, within what timings vary).
 - **C1. The economy on today's movement,** behind the option. Compare on Earth, the ensemble and the bench.
+  Built 2026-10-23 (`econ.js`; `sim.js` with `economy: 'resources'`; the page with `?economy=resources`):
+  - Each peopled cell's diet by equal marginal return over the wild resources and the domesticates it has; its way of
+    life is the largest diet class. Crops and herds take land from the wild (fields 1 % at full use; settled herds 5 %).
+  - Domestication by use (D 0 → 1 in ~2000 yr); herds go on to milk (D 2). Cultivation spreads within the wild range at a
+    quarter of a farming front's speed; the domesticated crop has its own front. Skills are learnt, fade and are capped
+    by the people within 50 km.
+  - Herding: wild herds are managed over their range; domestic ones are bound to the farm. Mobile pastoralism only where
+    the rain's CV reaches 0.33, or no crop grows (Ellis & Swift 1988).
+  - Onset: one hazard per settled cell, at the wild form it lacks, by how good the stands are and how hard they are
+    already used (the broad spectrum; Winterhalder & Kennett 2006). No crowding term.
+  - Bench (160K): the inland front 1.5 km/yr (record 0.6–1.3), onset to domestication 2025 yr, 18 regions on the
+    strip. Regions per 10 M km² of ideal land (a crop's wild form ≥ 0.5): the strip 88, Earth's record 6.5. The strip's
+    wild cereals sit mostly at 0.3–0.5, so this measure turns on the threshold; Earth's own count is the better check.
+  - Earth (two draws, `chanceSeed` 0 and 1): the Fertile Crescent first in both (10.7–10.8 ka); 2 and 5 of 10 centres
+    within ±2 ka; 32 regions (the record's 10, ~24 with the minor ones); farming arrives on time in 3 of 7 places
+    (Britain, Iberia and Scandinavia too early); people 38–56 M at 8 ka (HYDE ~5–10 M), 150 M at 2 ka (HYDE ~188 M).
+    The old model: 18 M at 12 ka, 77 M at 2 ka. One draw is one sample: compare settings on several seeds.
+  - Ensemble (20 worlds): farming on all, towns of 15 K+ and states on 19; the first centre 10.8 ka (base 10.9), the
+    first city 6.0 ka (6.5), the first state 5.5 ka (6.0); 41 centres (19); 151 M people now (100 M).
+  - The old model is unchanged: three worlds' fingerprints are byte-identical.
+  - Open: too many centres still (~3× the record's); the early population 4–8× HYDE; California's wild cereals (the
+    climate fits, the grasses were never there); the front ~20 % fast inland.
+  - The page: the People layer's "Land in use" shows each place's fields and pasture (the economy only).
 - **C2 (optional). Reaction–diffusion movement,** if C1's fronts are the weak point.
 - **D.** Retire the switches once C1 wins.
 

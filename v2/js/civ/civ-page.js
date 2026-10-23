@@ -10,7 +10,6 @@ import { civSubstrate, FOODS } from './substrate.js';
 import { createCivSim, byteDensity, Life } from './sim.js';
 import { climateVariability, spreadOf } from './climate-var.js';
 import { diseaseLoss } from './disease.js';
-import { PACKAGES } from './substrate.js';
 import { TownFlag } from './polity.js';
 import { CIV } from './civ-config.js';
 
@@ -55,17 +54,17 @@ export function civWorldFromFinish(out) {
 
 /**
  * Run the people on a finished moment's world (civWorldFromFinish), to now. `width`: the picture the page paints (width ×
- * width/2), for each pixel's cell. The run stays alive in `state`, to go on with (morePeople).
+ * width/2), for each pixel's cell. `opts`: createCivSim's (economy). The run stays alive in `state`, to go on with (morePeople).
  * @returns {{state, result: {cells, frames: Uint8Array (frame-major, cells each: densityCode), ways: Uint8Array (the same:
  *   wayCode), bp: Float32Array, people: Float64Array,
  *   farmers: Float64Array, towns: [Float32Array [lat, lon, people, TownFlag, polity] × each town of 2500+, or null] per frame,
  *   polities, centres, place, origin: [lat, lon], pix: Int32Array, pixW, ms}}}
  */
-export function startPeople(w, width, onProgress = () => {}, runs = null) {
+export function startPeople(w, width, onProgress = () => {}, runs = null, opts = {}) {
     const t0 = performance.now();
     const sub = civSubstrate(w), n = w.mesh.numCells, vary = climateVariability(w, sub, CIV, runs);
     const state = { w, sub, n, onFrame: null, still: null };
-    state.sim = createCivSim(w, sub, { vary, onFrame: fr => state.onFrame?.(fr) });
+    state.sim = createCivSim(w, sub, { ...opts, vary, onFrame: fr => state.onFrame?.(fr) });
     const count = Math.floor(CIV.originBP / CIV.frameYears) + 1;
     const first = collect(state, () => state.sim.advance(0), k => onProgress(k / count));
     const W = width, H = W >> 1, pix = new Int32Array(W * H);
@@ -73,11 +72,11 @@ export function startPeople(w, width, onProgress = () => {}, runs = null) {
         const la = (0.5 - (y + 0.5) / H) * Math.PI, cl = Math.cos(la), sl = Math.sin(la);
         for (let x = 0; x < W; x++) { const lo = ((x + 0.5) / W - 0.5) * 2 * Math.PI; pix[y * W + x] = w.mesh.index.nearest(cl * Math.cos(lo), cl * Math.sin(lo), sl); }
     }
-    const o = state.sim.result().origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
+    const res = state.sim.result(), o = res.origins[0], D = 180 / Math.PI, xyz = w.mesh.xyz;
     // (what the land offers, per resource: plans/CIV_PLAN.md §9.2 — for the map's Food view)
     const food = new Uint8Array(FOODS.length * n);
     FOODS.forEach((f, i) => { const a = state.sub.food[f]; for (let c = 0; c < n; c++) food[i * n + c] = foodByte(a[c]); });
-    return { state, result: { cells: n, ...first, packages: PACKAGES.map(p => p.id), origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D],
+    return { state, result: { cells: n, ...first, packages: res.packages, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D],
         pix, pixW: W, food, ms: performance.now() - t0 } };
 }
 
@@ -92,21 +91,24 @@ export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
     return startPeople(w, width, onProgress, runs).result;
 }
 
-/** The frames a step of the run adds, packed: two bytes per cell and frame, each frame's year, people, towns, polities. */
+/** The frames a step of the run adds, packed: two bytes per cell and frame (three under the economy: its land in use), each frame's year, people, towns, polities. */
 function collect(state, run, onFrame = () => {}) {
     const { n } = state, list = [];
     state.onFrame = fr => {
         const b = new Uint8Array(n), wb = new Uint8Array(n);
         for (let c = 0; c < n; c++) if ((b[c] = densityCode(byteDensity(fr.density[c])))) wb[c] = wayCode(fr.life[c], fr.crop[c]);
-        list.push({ b, wb, bp: fr.bp, people: fr.people, farmers: fr.farmers, towns: fr.towns, polities: fr.polityTable });
+        list.push({ b, wb, land: fr.land, bp: fr.bp, people: fr.people, farmers: fr.farmers, towns: fr.towns, polities: fr.polityTable });
         onFrame(list.length);
     };
     run();
     state.onFrame = null;
     const frames = new Uint8Array(list.length * n), ways = new Uint8Array(list.length * n);
     list.forEach((x, i) => { frames.set(x.b, i * n); ways.set(x.wb, i * n); });
+    // (the economy's land in use, a byte a cell and frame as sim.js packs it; null under the switches)
+    const land = list.length && list[0].land ? new Uint8Array(list.length * n) : null;
+    if (land) list.forEach((x, i) => land.set(x.land, i * n));
     const res = state.sim.result();
-    return { frames, ways, bp: Float32Array.from(list, x => x.bp), people: Float64Array.from(list, x => x.people), farmers: Float64Array.from(list, x => x.farmers),
+    return { frames, ways, land, bp: Float32Array.from(list, x => x.bp), people: Float64Array.from(list, x => x.people), farmers: Float64Array.from(list, x => x.farmers),
         towns: list.map(x => x.towns), polities: list.map(x => x.polities), centres: res.centres, place: placeStats(state, res, state.sim.bp) };
 }
 
