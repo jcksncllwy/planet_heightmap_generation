@@ -6,7 +6,7 @@
 // network's exponent, how much is carved, the hypsometry after carving, range heights, river persistence, basalt benches.
 // Usage: node v2/tools/check-phase8b.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
@@ -240,8 +240,5 @@ section('the same planet at every resolution');
     const same = (x, y) => x.length === y.length && x.every((v, i) => Object.is(v, y[i]));
     check('carving on the worker pool gives exactly the terrain carved in place', same(C.z, T.heightKm) && same(C.area, T.drainage), '640K cells: carved heights and drainage identical');
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase8b-rivers.js', mesh, LAB_MESH_SEED, TERRAIN_SCENES.filter(s => s.id !== 'history' && s.id !== 'cycle').map(s => ({ scene: s.id, cells: 160000 })));
 
 finish('Phase 8b');

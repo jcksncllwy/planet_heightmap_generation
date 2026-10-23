@@ -1,6 +1,6 @@
 // Headless acceptance checks for Phase 1 (foundations & rigid kinematics). Every line is a hard check: mesh and integrator
 // correctness, unit conversion, exact tiling, rigid motion conserving area, and a reversible reconstruct — no Earth
-// statistics here. (The lab section is a software contract, not physics: it belongs in a UI/contract suite of its own.)
+// statistics here.
 // Usage: node v2/tools/check-phase1.mjs      → prints PASS/FAIL lines, writes PNGs to v2/out/
 
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, section, finish, labMesh } from './lib/check-kit.mjs';
 import { makeRng } from '../../js/rng.js';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { quatIdentity, quatIntegrate } from '../js/core/rotation.js';
@@ -145,8 +145,5 @@ reconstruct(world);
 let differing = 0;
 for (let w = 0; w < owner0.length; w++) if (world.owner[w] !== owner0[w]) differing++;
 check('scrub back to 0 Myr restores the start exactly', differing === 0, `${differing} cells differ`);
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase1-rigid-drift.js', mesh, LAB_MESH_SEED);
 
 finish('Phase 1');

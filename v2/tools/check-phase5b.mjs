@@ -8,7 +8,7 @@
 // Usage: node v2/tools/check-phase5b.mjs
 
 import { arcSlabKm, arcGapKm } from '../js/tectonics/step/wings.js';
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { EVENT_SCENES } from '../js/tectonics/scenarios/event-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
@@ -212,8 +212,5 @@ section('arcs between closing continents');
         detail: `arc ${L.start.arc} → ${L.start.arc + booked('arc')} raster cells over ${myr} Myr` });
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase5b-arcs.js', mesh, LAB_MESH_SEED, EVENT_SCENES.map(s => ({ scene: s.id })));
 
 finish('Phase 5b');

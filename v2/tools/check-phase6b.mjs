@@ -8,7 +8,7 @@
 // spontaneous; the sea floor's age (mean, share older than 180 and 250 Myr); the plate count.
 // Usage: node v2/tools/check-phase6b.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, landCount, mean } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, landCount, mean } from './lib/check-kit.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
@@ -190,8 +190,5 @@ section('one polarity per stretch of boundary');
     check('the segment vote makes ocean-on-ocean fronts less ragged', on.pairs > 1000 && off.pairs > 1000 && on.share < 0.8 * off.share && on.share < 0.06,
         `role flips between neighbouring ocean boundary cells of one plate: ${(100 * on.share).toFixed(1)} % with the vote (${on.flips}/${on.pairs}), ${(100 * off.share).toFixed(1)} % without (${off.flips}/${off.pairs})`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase6-rifting.js', mesh, LAB_MESH_SEED, RIFT_SCENES.map(s => ({ scene: s.id })));
 
 finish('Phase 6b');

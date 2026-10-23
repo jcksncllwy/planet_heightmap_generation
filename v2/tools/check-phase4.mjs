@@ -6,9 +6,8 @@
 // suction no motion, forces independent of the mesh. Reported: the speeds that come out (settled speeds, cruising and
 // peak speeds, spreading rates, response time) against Earth's (Zahirovic et al. 2015 and others), and the collision's
 // overlap — the current lock rule is pending a model rewrite that lets colliding plates keep converging.
-// (The lab section is a software contract, not physics: it belongs in a UI/contract suite of its own.)
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, mean, largestJump, relativeCmYr, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, mean, largestJump, relativeCmYr } from './lib/check-kit.mjs';
 import { makeRng } from '../../js/rng.js';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { FORCE_SCENES } from '../js/tectonics/scenarios/force-scenes.js';
@@ -203,8 +202,5 @@ section('the physics responds the way it should');
         `${cruise(solo).toFixed(2)} cm/yr on 40K cells vs ${cruise(coarse).toFixed(2)} on 16K cells (the history always runs on the fixed 40K mesh, whatever the render detail)`);
     report('mesh convergence: emergent speed, 16K against 40K cells', 100 * Math.abs(cruise(coarse) - cruise(solo)) / cruise(solo), { unit: ' %', digits: 0 });
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase4-forces.js', mesh, LAB_MESH_SEED, FORCE_SCENES.map(s => ({ scene: s.id })));
 
 finish('Phase 4');

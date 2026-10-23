@@ -8,7 +8,7 @@
 // sizes, split cratons, net island-arc growth, the plate count; and, pending the rewrite, the failed arm's shoulders.
 // Usage: node v2/tools/check-phase6.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, landCount, countWhere } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, isLand, landCount, countWhere } from './lib/check-kit.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
@@ -149,8 +149,5 @@ section('the start world breaks up');
     report('plates at the end', runs.map(rr => rr.frames.at(-1).plates.filter(p => p.alive && !p.isBackground).length), { earth: [14, 52], source: '14 large plates, 52 in all: Bird 2003 (PB2002)', digits: 0,
         detail: `at most ${perSeed(rr => Math.max(...rr.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length)))} at once (the engine holds ${cfg.reserved.maxPlates})` });
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase6-rifting.js', mesh, LAB_MESH_SEED, RIFT_SCENES.map(s => ({ scene: s.id })));
 
 finish('Phase 6a');

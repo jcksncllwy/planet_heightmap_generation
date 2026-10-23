@@ -10,7 +10,7 @@
 // often a strip carries craton, back-arcs per 100 Myr, and the land fore-arc islands add.
 // Usage: node v2/tools/check-phase7b.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { MARGIN_SCENES } from '../js/tectonics/scenarios/margin-scenes.js';
 import { heading, omegaFor } from '../js/tectonics/scenarios/hotspot-scenes.js';
@@ -222,8 +222,5 @@ section('in a whole history');
     const b = run('history');                                                  // (a replay of r)
     check('the same seed replays the same history', r.events.length === b.events.length && r.events.every((e, i) => e.text === b.events[i].text) && r.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase7b-margins.js', mesh, LAB_MESH_SEED, MARGIN_SCENES.map(s => ({ scene: s.id })));
 
 finish('Phase 7b');

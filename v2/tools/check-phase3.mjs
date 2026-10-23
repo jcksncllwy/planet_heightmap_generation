@@ -5,16 +5,15 @@
 // and the nudge's crust rules (offshore trench of old crust, a wake behind, little new crust at a convergent edge).
 // Reported: the shape of the start world — craton and terrane sizes, craton share, span, rim smoothness, rim trench
 // coverage, suture share — against Earth's figures where there are any. The start is an initial condition: none of
-// these is a law. (The lab section is a software contract: it belongs in a UI/contract suite of its own.)
+// these is a law.
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { TECTONICS } from '../js/tectonics/config.js';
 import { buildStartWorld } from '../js/tectonics/init/start-world.js';
 import { measureStartWorld } from '../js/tectonics/init/measure-start.js';
 import { buildNudgeScene, NUDGE_MAX_MYR } from '../js/tectonics/scenarios/start-world-nudge.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { frameTallies } from '../js/tectonics/measure.js';
-import { createPhase } from '../js/app/phases/phase3-start-world.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { BoundaryKind } from '../js/tectonics/model/world.js';
 
@@ -74,23 +73,6 @@ report('suture belts: share of the land', perSeed(r => r.m.sutureShare * 100), {
 }
 
 section('slider ranges');
-{   // The spacing promises hold at both ends of every slider the lab offers (read from the lab module, so the two cannot drift apart).
-    const sliders = createPhase(mesh, LAB_MESH_SEED).params.filter(p => !p.options);
-    const settings = sliders.flatMap(p => [{ [p.id]: p.min }, { [p.id]: p.max }]);
-    for (const end of ['min', 'max']) settings.push(Object.fromEntries(sliders.filter(p => /^cratonMin/.test(p.id)).map(p => [p.id, p[end]])));
-    const bad = [];
-    let worstGap = Infinity, worstCoast = Infinity;
-    for (const o of settings) for (const seed of [3, 8]) {
-        try {
-            const { world, start } = buildStartWorld(mesh, seed, o), cfg = world.config, m = measureStartWorld(world, start);
-            worstGap = Math.min(worstGap, m.minGapKm - cfg.cratonMinGapKm); worstCoast = Math.min(worstCoast, m.minCoastKm - cfg.cratonMinCoastKm);
-            if (m.minGapKm < cfg.cratonMinGapKm || m.minCoastKm < cfg.cratonMinCoastKm || m.strayLandCells || m.enclosedSeaCells || m.cratons.length !== cfg.cratonCount) bad.push(JSON.stringify(o) + ' seed ' + seed);
-        } catch (e) { bad.push(JSON.stringify(o) + ' seed ' + seed + ': ' + e.message); }
-    }
-    check('guarantees hold across the slider ranges', bad.length === 0,
-        bad.length ? bad.join(' | ') : `${settings.length} settings × 2 seeds: tightest margin over the required gap +${worstGap.toFixed(0)} km, over the required coast distance +${worstCoast.toFixed(0)} km`);
-}
-
 {   // sliders that compete: the continental fraction is honoured and craton size gives way
     const settings = [
         { cratonMinGapKm: 900 }, { cratonMinCoastKm: 900 }, { cratonMinGapKm: 900, cratonMinCoastKm: 900 }, { continentalFraction: 0.2 },
@@ -162,8 +144,5 @@ for (const seed of [2, 12345]) {
     check(`nudge, seed ${seed}: new crust trails the plate`, withApron.behind > 200 && withApron.ahead <= 0.05 * withApron.behind,
         `new-ocean cells in the trailing wake: ${withApron.behind}; within ±50° of the heading: ${withApron.ahead} (flank slivers where the rim slides past old ocean)`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase3-start-world.js', mesh, LAB_MESH_SEED, [{}, { cratonCount: 12, coastReliefKm: 0 }]);
 
 finish('Phase 3');

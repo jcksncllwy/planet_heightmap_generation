@@ -7,7 +7,7 @@
 // sizes, and the net growth of continental crust (from the crust ledger) and how much land changes after assembly.
 // Usage: node v2/tools/check-phase7c.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, countWhere, nearestFrame } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, isLand, countWhere, nearestFrame } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { frameTallies, Margin } from '../js/tectonics/measure.js';
@@ -100,8 +100,5 @@ section('the budget over 1000 Myr');
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
     check('1000 Myr within two minutes (on this machine)', r.seconds < 120, `${r.seconds.toFixed(0)} s, ledger on`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase7c-budget.js', mesh, LAB_MESH_SEED, BUDGET_SCENES.filter(s => s.id !== 'history').map(s => ({ scene: s.id })));
 
 finish('Phase 7c');

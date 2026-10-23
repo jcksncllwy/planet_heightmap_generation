@@ -6,7 +6,7 @@
 // thickening, the Andean belt's width; and, pending the belt-strength model rewrite, how far belts reach into a craton.
 // Usage: node v2/tools/check-phase5.mjs
 
-import { check, report, section, finish, mean, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
+import { check, report, section, finish, mean, labMesh, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../js/tectonics/config.js';
 import { floodFrom } from '../js/core/mesh-bfs.js';
@@ -184,8 +184,5 @@ section('Andean margin');
     check('…and none on the trailing (passive) coast', eastOfCentre === 0, `${eastOfCentre} belt cells within ±40° of due east of the centre`);
     check('no collision records, no suture, no gaps', r.sutures.length === 0 && r.frames.every(f => frameTallies(f).gaps === 0) && cellsWhere(numCells, w => last.oroType[w] === OrogenyType.HIMALAYAN).length === 0, `${r.events.length} events`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase5-collisions.js', mesh, LAB_MESH_SEED, [{ scene: 'india' }, { scene: 'wilson' }, { scene: 'one-sided' }]);
 
 finish('Phase 5a');

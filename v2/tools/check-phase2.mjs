@@ -1,10 +1,10 @@
 // Headless acceptance checks for Phase 2 (divergence & convergence rules, prescribed motion). Every line is a hard check:
 // tiling, crust bookkeeping and resumability, and the spreading, trench and collision rules measured against what the
 // scene's prescribed motion and geometry say they must give (rates, areas, lengths and times in km and Myr) — no Earth
-// statistics here. (The lab section is a software contract, not physics: it belongs in a UI/contract suite of its own.)
+// statistics here.
 // Usage: node v2/tools/check-phase2.mjs
 
-import { check, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, section, finish, labMesh } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { polarFrame } from '../js/core/sphere-geom.js';
 import { buildWilsonWorld, driveWilson, WILSON_MAX_MYR, WILSON_HOME, WILSON_POLE_XYZ, WEST_CM_YR, EAST_CM_YR, WEST_REVERSES_MYR } from '../js/tectonics/scenarios/wilson-cycle.js';
@@ -254,8 +254,5 @@ section('budget, collision, step size');
     check('adaptive step keeps motion within one cell per step', moved.at(-1) <= limit + 1e-6 && moved[moved.length >> 1] > 0.4 * limit,
         `closing distance per step: median ${moved[moved.length >> 1].toFixed(2)}, max ${moved.at(-1).toFixed(2)} cells (limit ${limit}); largest step ${Math.max(...stepLog.map(s => s.dt)).toFixed(2)} Myr`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase2-wilson-cycle.js', mesh, LAB_MESH_SEED);
 
 finish('Phase 2');

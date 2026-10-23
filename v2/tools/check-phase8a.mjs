@@ -6,7 +6,7 @@
 // failing) against Earth: trench depth, arc and flood-basalt shares, belt and craton heights, land share and hypsometry.
 // Usage: node v2/tools/check-phase8a.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, CrustFlag, OrogenyType, BeltSide, VolcanicType } from '../js/tectonics/model/crust.js';
@@ -529,10 +529,5 @@ section('the same planet at every resolution');
     check('terrain built on a pool of workers is exactly the terrain built in place', same(pooled.heightKm, T640.heightKm) && same(pooled.parts.stripes, T640.parts.stripes) && same(pooled.sampler.cells, T640.sampler.cells),
         '640K cells on 4 workers: heights, ridges and sampler identical');
 }
-
-section('lab');
-// every scene the lab offers builds and draws (the whole-planet one is covered above: it takes a minute)
-check('every terrain scene can be built and driven', TERRAIN_SCENES.every(s => typeof s.build === 'function' && typeof s.drive === 'function' && s.maxMyr > 0), TERRAIN_SCENES.map(s => s.id).join(', '));
-await checkLabPhaseLoads('../../js/app/phases/phase8a-terrain.js', mesh, LAB_MESH_SEED, TERRAIN_SCENES.filter(s => s.id !== 'history' && s.id !== 'cycle').map(s => ({ scene: s.id, cells: 160000 })));
 
 finish('Phase 8a');

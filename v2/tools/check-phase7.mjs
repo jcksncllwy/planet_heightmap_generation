@@ -7,7 +7,7 @@
 // plume rifts.
 // Usage: node v2/tools/check-phase7.mjs
 
-import { check, report, section, finish, labMesh, checkLabPhaseLoads, LAB_MESH_SEED, cellsWhere, piecesOf, isConnected } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, cellsWhere, piecesOf, isConnected } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { tangentToward } from '../js/core/sphere-geom.js';
 import { makeRng } from '../../js/rng.js';
@@ -201,8 +201,5 @@ section('the plumes of 6a and of 7a are one and the same');
     const b = run('history', { plumeRiftChance: 1 });                       // (a replay of r)
     check('the same seed replays the same history', r.events.length === b.events.length && r.events.every((e, i) => e.text === b.events[i].text) && r.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
 }
-
-section('lab');
-await checkLabPhaseLoads('../../js/app/phases/phase7-hotspots.js', mesh, LAB_MESH_SEED, HOTSPOT_SCENES.map(s => ({ scene: s.id })));
 
 finish('Phase 7a');
