@@ -351,13 +351,13 @@ export const TECTONICS = {
                                 // (continentCrustKm − oceanCrustKm) × its area (step/margin-isles.js; false: at their own rates, as before)
 
     // ── Subduction initiation (Phase 6b, step/subduction-init.js) ──
-    subductionInitRatePerMyr: 0.02,   // chance per Myr for a margin at the age threshold and the minimum length
+    subductionInitRatePerMyr: 0.02,   // chance per Myr for a margin at the age threshold, per subductionInitRateLengthKm of it
     subductionInitAgeMyr: 180,        // unsqueezed, ocean founders once it is this old: its weight then overcomes the margin's strength.
                                       // Earth's oldest passive margins (~180 Myr) have not foundered, and ancient ones lived a mean
                                       // 181 Myr (Bradley 2008); most trenches are born squeezed (induced: Crameri et al. 2020), so the
                                       // squeeze (founderUrge) does most of the founding. Was 120
     subductionInitAgeCap: 3,          // the age factor (age ÷ threshold − 1) counts no higher than this
-    subductionInitMinLengthKm: 2000,  // a trench is born along a long margin, not a corner
+    // (subductionInitMinLengthKm: below, in the stress-driven initiation block)
     subductionInitMaxOpeningCmYr: 0.3, // a margin opening faster than this is a ridge, not a founder
     basinOceanAgeMyr: 260,            // (a scene setting) the old basin of scene "founder", left by a rift, ready to founder
     segmentPolarity: true,            // ocean on ocean, which side goes down is settled for a whole stretch of boundary at a time, not cell by cell
@@ -387,6 +387,15 @@ export const TECTONICS = {
                                       // 2004, G³ 5), against a slab pull of ~3 × 10¹³ N/m (Turcotte & Schubert 2002): ≈ 0.08. (Was 1.0,
                                       // a margin as strong as a whole slab pull: the plates' stresses, ±0.1 here, then barely counted
                                       // and the floor's age did nearly all the founding — tools/trace-founders.mjs)
+    subductionInitMinLengthKm: 800,   // a trench is born along a margin at least this long, not at a corner. Earth's youngest
+                                      // trenches, born in the last ~20 Myr, are this long and more: Puysegur ~800 km (Gurnis et al.
+                                      // 2004), Yap–Palau and Manila ~1000 km; they then lengthen along strike (step/wings.js). And a
+                                      // slab sinks as a sheet, its pull not leaking round its ends, once it is several times wider
+                                      // than the lithosphere is thick (~100 km) — 800 km is ~8×. (Was 2000 km, unsourced: it threw
+                                      // out ~98 % of the margins between two plates — tools/trace-founders.mjs)
+    subductionInitRateLengthKm: 2000, // the length of margin subductionInitRatePerMyr and marginFounderRatePerMyr are quoted for: the
+                                      // chance per Myr per km of margin is theirs ÷ this (it was the old minimum length, so the
+                                      // chance per km is as before)
     founderAcross: true,              // a plate's open ocean founders ACROSS the plate too, on the line it would split along, when it is
                                       // pressed together across it (large-plate failure: subduction-init.js founderAcross)
 

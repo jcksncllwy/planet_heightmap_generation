@@ -774,6 +774,12 @@ all. Now:
   bending into a new trench peaks at (Gurnis, Hall & Lavier 2004) against a slab pull of ~3 × 10¹³ N/m. Most trenches are
   now born pressed together (induced), younger than their weight alone would sink them (Crameri et al. 2020).
 - **Between two plates** each unbroken stretch of contact is a margin of its own, with its own age and closing.
+- **The shortest margin a trench is born on** (`subductionInitMinLengthKm`) is 800 km: Earth's youngest trenches start that long
+  — Puysegur ~800 km (Gurnis et al. 2004), Yap–Palau and Manila ~1000 km — and lengthen along strike (wings); a slab ~8× wider
+  than the lithosphere is thick sinks as a sheet. It was 2000 km, unsourced, and threw out ~98 % of the stretches of contact
+  between two plates (now ~87 %). The chance per km of margin is unchanged: the rates are quoted per
+  `subductionInitRateLengthKm` 2000 km. On the 20K 'cycle' histories (`trace-founders`, 3 seeds × 600 Myr) trenches born
+  between two plates go 9 → 36, all initiations 103 → 130.
 - **Across a plate** (`founderAcross`): a plate's open ocean is tested on the line it would split along
   (`ocean-plates.js oceanLine`), with the stress the rest of the plate puts across it (`plate-stress.js`). Pressed together
   harder than a weak zone holds, the far side breaks away under a new trench, the older floor going down. Its weight is

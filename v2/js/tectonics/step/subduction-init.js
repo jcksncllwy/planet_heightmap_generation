@@ -95,7 +95,7 @@ export function initiateSubduction(world, dt) {
             if (why !== 'short') (tr.samples ??= []).push([ageMyr, closing / segment.length, lengthKm, urge]); }
         if (lengthKm < config.subductionInitMinLengthKm || !(urge > 0)) continue;
         // chance rises with the urge, and with the margin's length
-        let chance = config.subductionInitRatePerMyr * dt * urge * (lengthKm / config.subductionInitMinLengthKm);
+        let chance = config.subductionInitRatePerMyr * dt * urge * (lengthKm / config.subductionInitRateLengthKm);
         // (Phase 13, steered: while a supercontinent's pieces disperse, the young oceans that opened between them rarely
         // founder — closing them is how the pieces gather again, and that waits for the cycle's gathering: step/supercontinent.js)
         const cycle = world.cycle;
@@ -206,7 +206,7 @@ export function founderWithinPlates(world, dt) {
             for (const c of region) inS[c] = 1;
             const sigma = rho ? stressAcross(rho, region, cutAlong(mesh, run, inS, land), mesh.xyz, edgeKm, P.mat) : 0;
             const urge = founderUrge(ageMyr, -sigma, config);
-            let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitMinLengthKm);
+            let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitRateLengthKm);
             const cycle = world.cycle;
             if (cycle?.phase === 'dispersing' && ageMyr <= time - cycle.breakupAt + 1e-9) chance *= config.disperseFounderFactor;
             if (tr) { tally(urge > 0 ? 'urged' : 'weak'); tr.expected = (tr.expected ?? 0) + (urge > 0 ? chance : 0); (tr.samples ??= []).push([ageMyr, sigma, lengthKm, urge]); }
@@ -274,7 +274,7 @@ function founderAcross(world, P, dt, tr, tally) {
     // (the weight that tips it: the step in depth across the line — against land, the floor's whole weight)
     const step = Math.max(0, Math.sqrt(ageMyr) - Math.sqrt(upAge)), weightMyr = upLand > 0.5 ? ageMyr : step * step;
     const urge = founderUrge(ageMyr, -sigma, config, weightMyr);
-    let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitMinLengthKm);
+    let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitRateLengthKm);
     const cycle = world.cycle;
     if (cycle?.phase === 'dispersing' && ageMyr <= time - cycle.breakupAt + 1e-9) chance *= config.disperseFounderFactor;
     if (tr) { tally(urge > 0 ? 'acrossUrged' : 'acrossWeak'); tr.expected = (tr.expected ?? 0) + (urge > 0 ? chance : 0); (tr.acrossSamples ??= []).push([ageMyr, sigma, lengthKm, urge]); }
