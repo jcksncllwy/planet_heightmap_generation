@@ -36,9 +36,9 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
     path = throughOcean(mesh, crust, path);
     const { xyz, numCells, adjOffset, adjList } = mesh, side = new Int8Array(numCells), mask = crust.mask, type = crust.type;
     // (scratch kept between calls — a rift search partitions the same plate many times: see partitionScratch)
-    const { onPath, lean, land: isLand, seen, queue } = partitionScratch(numCells), mark = ++seen.stamp === 0xFFFFFFFF ? resetSeen(seen) : seen.stamp;
+    const { onPath, lean, seen, queue } = partitionScratch(numCells), mark = ++seen.stamp === 0xFFFFFFFF ? resetSeen(seen) : seen.stamp;
+    const OCEAN = CrustType.OCEAN, isLand = c => mask[c] === 1 && type[c] !== OCEAN;   // (land: the plate's crust, not ocean)
     for (const c of path) onPath[c] = 1;
-    for (const c of cells) isLand[c] = type[c] !== CrustType.OCEAN ? 1 : 0;           // (land: the plate's crust, not ocean; 0 off the plate)
     // which side of the path each cell next to it lies on (the sign of its offset from the path's local line)
     // (lean: > 0 left, < 0 right, summed over the path cells it touches)
     for (let i = 0; i < path.length; i++) {
@@ -56,18 +56,18 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
     const marks = seen.marks;
     let n = 0, rightFrom = 0, rightTo = 0;
     for (const s0 of cells) {
-        if (!isLand[s0] || onPath[s0] || marks[s0] === mark) continue;
+        if (type[s0] === OCEAN || onPath[s0] || marks[s0] === mark) continue;   // (s0 is the plate's)
         const from = n;
         queue[n++] = s0; marks[s0] = mark;
         let vote = 0;
         for (let i = from; i < n; i++) {
             const c = queue[i];
             vote += lean[c];
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (isLand[nb] && !onPath[nb] && marks[nb] !== mark) { marks[nb] = mark; queue[n++] = nb; } }
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (marks[nb] !== mark && !onPath[nb] && isLand(nb)) { marks[nb] = mark; queue[n++] = nb; } }
         }
         if (vote < 0 && (rightTo === rightFrom || n - from > rightTo - rightFrom)) { rightFrom = from; rightTo = n; }
     }
-    for (const c of cells) if (isLand[c]) side[c] = 1;
+    for (const c of cells) if (type[c] !== OCEAN) side[c] = 1;
     for (let i = rightFrom; i < rightTo; i++) side[queue[i]] = 2;
     // the plate's ocean follows its nearest land (breadth-first from all of it); anything unreached (shouldn't happen) stays
     n = 0;
@@ -79,19 +79,18 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
     const land = [0, 0, 0], cratons = [0, 0, 0], seenCraton = new Set();
     for (const c of cells) {
         if (!side[c]) side[c] = 1;
-        if (!isLand[c]) continue;
+        if (type[c] === OCEAN) continue;
         land[side[c]]++;
         if (type[c] === CrustType.CRATON && !seenCraton.has(crust.terrane[c])) { seenCraton.add(crust.terrane[c]); cratons[side[c]]++; }
     }
     // (the scratch put back as it was: every cell touched was on the path, beside it, or on the plate)
     for (const c of path) { onPath[c] = 0; for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) lean[adjList[k]] = 0; }
-    for (const c of cells) isLand[c] = 0;
     return { side, land, cratons };
 }
 let scratch = null;
 /** Cell-sized scratch for partition, all zero between calls (marks: a fresh stamp per call instead). */
 function partitionScratch(numCells) {
-    if (!scratch || scratch.onPath.length !== numCells) scratch = { onPath: new Uint8Array(numCells), lean: new Float32Array(numCells), land: new Uint8Array(numCells), seen: { marks: new Uint32Array(numCells), stamp: 0 }, queue: new Int32Array(numCells) };
+    if (!scratch || scratch.onPath.length !== numCells) scratch = { onPath: new Uint8Array(numCells), lean: new Float32Array(numCells), seen: { marks: new Uint32Array(numCells), stamp: 0 }, queue: new Int32Array(numCells) };
     return scratch;
 }
 function resetSeen(seen) { seen.marks.fill(0); return (seen.stamp = 1); }

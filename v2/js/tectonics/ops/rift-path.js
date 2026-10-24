@@ -142,12 +142,17 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
  * @returns {number} per 100 km of the cut — + tension (the far side pulls away), − compression
  */
 function stressOnCut(mesh, ctx, side, path) {
-    const onPath = new Uint8Array(mesh.numCells), far = [];
+    // (two cell-sized scratch masks, kept between calls and cleared after: a rift search scores many cuts)
+    if (!cutScratch || cutScratch.onPath.length !== mesh.numCells) cutScratch = { onPath: new Uint8Array(mesh.numCells), inFar: new Uint8Array(mesh.numCells) };
+    const { onPath, inFar } = cutScratch, far = [];
     for (const c of path) onPath[c] = 1;
-    for (const c of ctx.cells) if (side[c] === 2) far.push(c);
-    const inFar = side.map(s => (s === 2 ? 1 : 0));
-    return stressAcross(ctx.rho, far, cutAlong(mesh, far, inFar, nb => onPath[nb]), mesh.xyz, mesh.edgeKm, ctx.mat);
+    for (const c of ctx.cells) if (side[c] === 2) { far.push(c); inFar[c] = 1; }
+    const sigma = stressAcross(ctx.rho, far, cutAlong(mesh, far, inFar, nb => onPath[nb]), mesh.xyz, mesh.edgeKm, ctx.mat);
+    for (const c of path) onPath[c] = 0;
+    for (const c of far) inFar[c] = 0;
+    return sigma;
 }
+let cutScratch = null;
 
 /** Cheapest path from `junction` to every land cell, at `costOf` per cell. */
 function cheapestPaths(mesh, crust, junction, costOf) {
@@ -192,7 +197,7 @@ class MinHeap {
     push(key, val) {
         const k = this.keys, v = this.vals;
         k.push(key); v.push(val);
-        for (let i = k.length - 1; i > 0;) { const p = (i - 1) >> 1; if (v[p] <= v[i]) break; [k[p], k[i]] = [k[i], k[p]]; [v[p], v[i]] = [v[i], v[p]]; i = p; }
+        for (let i = k.length - 1; i > 0;) { const p = (i - 1) >> 1; if (v[p] <= v[i]) break; const tk = k[p], tv = v[p]; k[p] = k[i]; v[p] = v[i]; k[i] = tk; v[i] = tv; i = p; }
     }
     pop() {
         const k = this.keys, v = this.vals, top = k[0], lastK = k.pop(), lastV = v.pop();
@@ -204,7 +209,7 @@ class MinHeap {
                 if (l < k.length && v[l] < v[m]) m = l;
                 if (r < k.length && v[r] < v[m]) m = r;
                 if (m === i) break;
-                [k[m], k[i]] = [k[i], k[m]]; [v[m], v[i]] = [v[i], v[m]]; i = m;
+                const tk = k[m], tv = v[m]; k[m] = k[i]; v[m] = v[i]; k[i] = tk; v[i] = tv; i = m;
             }
         }
         return top;
