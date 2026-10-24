@@ -122,6 +122,14 @@ export function initiateSubduction(world, dt) {
     return started;
 }
 
+// Cell-sized scratch for founderWithinPlates, reused from plate to plate (each cleared where it is taken up: a history
+// asks every few Myr of every plate, and fresh arrays each time only fed the garbage collector)
+let fwScratch = null;
+function founderScratch(numCells) {
+    if (!fwScratch || fwScratch.coast.length !== numCells) fwScratch = { coast: new Uint8Array(numCells), inOld: new Uint8Array(numCells), runOf: new Int32Array(numCells), label: new Int32Array(numCells), inS: new Uint8Array(numCells), seaOf: new Uint8Array(numCells) };
+    return fwScratch;
+}
+
 let sealQueue = new Int32Array(0);
 /**
  * Is the plate's sea at `start` sealed — no way through sea out of it (as rift-partition.js exteriorSea, but only the one
@@ -183,7 +191,8 @@ export function founderWithinPlates(world, dt) {
         const { mask, type, flags, formedAt } = P.crust;
         const land = c => mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON);
         // the plate's own coast — its ocean beside its continental crust — and the old part of it (no trench there yet)
-        const coast = new Uint8Array(numCells), old = [];
+        const sc = founderScratch(numCells), { coast, inOld, runOf } = sc, old = [];
+        coast.fill(0); inOld.fill(0); runOf.fill(-1);
         for (let c = 0; c < numCells; c++) {
             if (!mask[c] || type[c] !== CrustType.OCEAN) continue;
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
@@ -194,7 +203,7 @@ export function founderWithinPlates(world, dt) {
             }
         }
         // the runs of old coast, each joined along the coast
-        const inOld = new Uint8Array(numCells), runOf = new Int32Array(numCells).fill(-1), runs = [];
+        const runs = [];
         for (const c of old) inOld[c] = 1;
         for (const s of old) {
             if (runOf[s] >= 0) continue;
@@ -207,7 +216,7 @@ export function founderWithinPlates(world, dt) {
         // spread from one run against the rest of the coast gives, run by run) — made when the first long run asks for it
         let label = null, takes = null;
         const spread = () => {
-            label = new Int32Array(numCells); takes = runs.map(() => []);
+            label = sc.label.fill(0); takes = runs.map(() => []);
             let ring = [];
             for (let c = 0; c < numCells; c++) if (coast[c]) { label[c] = runOf[c] >= 0 ? runOf[c] + 2 : 1; ring.push(c); }   // (1: coast in no run)
             for (let hop = 0; hop < reachHops && ring.length; hop++) {
@@ -229,7 +238,7 @@ export function founderWithinPlates(world, dt) {
         // sill: Jackson et al. 2002; the Japan Sea's eastern margin: Tamaki & Honza 1985; the Ionian beneath the Calabrian
         // and Hellenic arcs: Faccenna et al. 2014). A young sealed sea (a back-arc basin just closed off) is too light to.
         let seaOf = null;
-        const isSealed = run => (seaOf ??= new Uint8Array(numCells), sealedSea(mesh, P.crust, run[0], seaOf));   // (a run lies in one sea)
+        const isSealed = run => (seaOf ??= sc.seaOf.fill(0), sealedSea(mesh, P.crust, run[0], seaOf));   // (a run lies in one sea)
         const before = started;
         for (const run of runs) {
             const lengthKm = run.length * edgeKm;
@@ -243,9 +252,10 @@ export function founderWithinPlates(world, dt) {
             if (take.length < minCells && !(sealed ??= isSealed(run))) { tally('small'); continue; }
             if (!take.length) { tally('sealedEmpty'); continue; }
             // the squeeze: the plate's stress across this coast, on the ocean that would break away (compression is negative)
-            const region = take.concat(run), inS = new Uint8Array(numCells), rho = netTorques(world, P);
+            const region = take.concat(run), inS = sc.inS, rho = netTorques(world, P);
             for (const c of region) inS[c] = 1;
             const sigma = rho ? stressAcross(rho, region, cutAlong(mesh, run, inS, land), mesh.xyz, edgeKm, P.mat) : 0;
+            for (const c of region) inS[c] = 0;
             const urge = founderUrge(ageMyr, -sigma, config);
             let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitRateLengthKm);
             const cycle = world.cycle;
