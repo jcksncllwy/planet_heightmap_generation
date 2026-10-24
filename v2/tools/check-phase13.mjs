@@ -90,7 +90,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     Object.assign(world.config, { crustLedger: true }, overrides);
     const kept = [], arcs = [], largestShares = [];
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
-    const plateCounts = [], bigPlates = [], floorAges = [];
+    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [];
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
@@ -115,6 +115,12 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             let ages = 0, nOcean = 0;
             for (let w = 0; w < n; w++) if (f.owner[w] >= 0 && f.type[w] === CrustType.OCEAN) { ages += f.time - f.formedAt[w]; nOcean++; }
             floorAges.push(ages / Math.max(1, nOcean));
+            // (sealed seas — sea cut off from the world ocean, the largest body of it — and how much of their floor is older
+            // than Earth's oldest floor still in place)
+            const seas = comps(w => ocean[w] === 1 || f.owner[w] < 0).sort((a, b) => b.length - a.length);
+            let old = 0;
+            for (const c of seas.slice(1)) for (const w of c) if (ocean[w] && f.time - f.formedAt[w] > 340) old++;
+            sealedOld.push(old * cellKm2 / 1e6);
         }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
@@ -152,7 +158,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         ledger: world.ledger, budget: world.budget,
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
-        bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges),
+        bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges), sealedOld: sealedOld.reduce((x, y) => x + y, 0) / Math.max(1, sealedOld.length),
         inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN),
         platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
@@ -263,6 +269,8 @@ report('plates over 10^7.5 km² (31.6 Mkm²): mean from 100 Myr', rows.map(r => 
 // across a plate's open ocean (step/subduction-init.js) — the sea floor's age, and back-arc seas opening)
 report('subduction initiations per 100 Myr, from 100 Myr', rows.map(r => r.inits), { earth: [12, 30], digits: 1, source: 'more than a dozen in the Cenozoic, mostly induced: Crameri et al. 2020' });
 report('mean sea-floor age: median over the frames from 100 Myr', rows.map(r => r.floorAge), { earth: [60, 64], unit: ' Myr', digits: 0, source: 'Müller et al. 2008 (≈ 64 Myr today); it varies through a supercontinent cycle' });
+report('sealed seas’ floor older than 340 Myr: mean over the frames from 100 Myr', rows.map(r => r.sealedOld), { unit: ' Mkm²', digits: 2,
+    source: 'no Earth figure: the oldest ocean floor still in place, the Herodotus Basin’s under the eastern Mediterranean, is ~340 Myr (Granot 2016)' });
 report('back-arc seas opened per 100 Myr, from 100 Myr', rows.map(r => r.backArcs), { earth: [20, 40], digits: 1, source: '~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…)' });
 
 section('the switches');

@@ -27,6 +27,7 @@ import { transferCells } from '../ops/tidy-plates.js';
 import { oceanLine } from './ocean-plates.js';
 import { EventKind } from '../model/world.js';
 import { piecesOf } from '../../core/mesh-bfs.js';
+import { exteriorSea } from '../ops/rift-partition.js';
 import { netTorques, stressAcross, cutAlong } from './plate-stress.js';
 
 /**
@@ -121,6 +122,34 @@ export function initiateSubduction(world, dt) {
     return started;
 }
 
+let sealQueue = new Int32Array(0);
+/**
+ * Is the plate's sea at `start` sealed — no way through sea out of it (as rift-partition.js exteriorSea, but only the one
+ * sea, and stopping as soon as it reaches the plate's edge)? `memo` (per plate: 0 not yet known, 1 open, 2 sealed) keeps
+ * what each walk learns for the plate's other runs.
+ */
+function sealedSea(mesh, crust, start, memo) {
+    if (memo[start]) return memo[start] === 2;
+    const { numCells, adjOffset, adjList } = mesh, { mask, type } = crust;
+    if (crust.count >= numCells) return !exteriorSea(mesh, crust)[start];   // (a plate over the whole globe: its outer sea is its largest)
+    if (sealQueue.length < numCells) sealQueue = new Int32Array(numCells);
+    const q = sealQueue;
+    let n = 0, open = false;
+    q[n++] = start; memo[start] = 3;                                      // (3: on this walk)
+    for (let i = 0; i < n && !open; i++) {
+        const c = q[i];
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k];
+            if (!mask[nb]) { open = true; break; }
+            if (memo[nb] || type[nb] !== CrustType.OCEAN) { if (memo[nb] === 1) { open = true; break; } continue; }
+            memo[nb] = 3; q[n++] = nb;
+        }
+    }
+    const v = open ? 1 : 2;                                               // (all it reached is joined: one sea)
+    for (let i = 0; i < n; i++) memo[q[i]] = v;
+    return !open;
+}
+
 /**
  * Old passive margins founder INSIDE a plate too (developer, 2026-10-18: the recordings — with no boundary between two
  * plates to found a trench on, a plate holding its continents and its whole ocean never broke up again, and an
@@ -148,8 +177,9 @@ export function founderWithinPlates(world, dt) {
     const tr = world.founderTrace?.inside;                               // (diagnostics, tools/trace-founders.mjs: off unless asked)
     const tally = why => { if (tr) tr[why] = (tr[why] ?? 0) + 1; };
     for (const P of [...plates]) {                                          // (a copy: plates are added as it goes)
-        if (!P.alive || P.isBackground || P.crust.count === 0 || P.stats.cells - P.stats.continentalCells < minCells) continue;
-        if (!(P.stats.continentalCells > 0)) { started += founderAcross(world, P, dt, tr, tally); continue; }   // (no coast: only across)
+        // (a plate with little ocean may still hold a sealed sea, which founders whatever its size: below)
+        if (!P.alive || P.isBackground || P.crust.count === 0 || P.stats.cells === P.stats.continentalCells) continue;
+        if (!(P.stats.continentalCells > 0)) { if (P.stats.cells >= minCells) started += founderAcross(world, P, dt, tr, tally); continue; }   // (no coast: only across)
         const { mask, type, flags, formedAt } = P.crust;
         const land = c => mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON);
         // the plate's own coast — its ocean beside its continental crust — and the old part of it (no trench there yet)
@@ -191,16 +221,27 @@ export function founderWithinPlates(world, dt) {
                 ring = next;
             }
         };
+        // A SEALED sea — the plate's ocean that no way through sea leads out of (rift-partition.js exteriorSea) — founders
+        // whatever its size and the length of its shore: the shortest-trench and smallest-plate rules are for a margin
+        // facing open ocean, where a short stretch is a corner of a long coast and a small piece is a sliver. A sealed
+        // sea's floor is all there is, cut off from any ridge: it only ages, and old enough — or squeezed — it goes down
+        // beneath a shore, its chance per km of that shore as on any margin (the South Caspian floor under the Apsheron
+        // sill: Jackson et al. 2002; the Japan Sea's eastern margin: Tamaki & Honza 1985; the Ionian beneath the Calabrian
+        // and Hellenic arcs: Faccenna et al. 2014). A young sealed sea (a back-arc basin just closed off) is too light to.
+        let seaOf = null;
+        const isSealed = run => (seaOf ??= new Uint8Array(numCells), sealedSea(mesh, P.crust, run[0], seaOf));   // (a run lies in one sea)
         const before = started;
         for (const run of runs) {
             const lengthKm = run.length * edgeKm;
-            if (lengthKm < config.subductionInitMinLengthKm) { tally('short'); continue; }
+            let sealed = null;                                                   // (asked only where it matters)
+            if (lengthKm < config.subductionInitMinLengthKm && !(sealed = isSealed(run))) { tally('short'); continue; }
             let ages = 0;
             for (const c of run) ages += time - formedAt[c];
             const ageMyr = ages / run.length;
             if (!label) spread();
             const mine = runOf[run[0]] + 2, take = takes[mine - 2];
-            if (take.length < minCells) { tally('small'); continue; }
+            if (take.length < minCells && !(sealed ??= isSealed(run))) { tally('small'); continue; }
+            if (!take.length) { tally('sealedEmpty'); continue; }
             // the squeeze: the plate's stress across this coast, on the ocean that would break away (compression is negative)
             const region = take.concat(run), inS = new Uint8Array(numCells), rho = netTorques(world, P);
             for (const c of region) inS[c] = 1;
@@ -209,8 +250,9 @@ export function founderWithinPlates(world, dt) {
             let chance = config.marginFounderRatePerMyr * dt * urge * (lengthKm / config.subductionInitRateLengthKm);
             const cycle = world.cycle;
             if (cycle?.phase === 'dispersing' && ageMyr <= time - cycle.breakupAt + 1e-9) chance *= config.disperseFounderFactor;
-            if (tr) { tally(urge > 0 ? 'urged' : 'weak'); tr.expected = (tr.expected ?? 0) + (urge > 0 ? chance : 0); (tr.samples ??= []).push([ageMyr, sigma, lengthKm, urge]); }
+            if (tr) { tally((sealed ? 'sealed' : '') + (urge > 0 ? 'urged' : 'weak')); tr.expected = (tr.expected ?? 0) + (urge > 0 ? chance : 0); (tr.samples ??= []).push([ageMyr, sigma, lengthKm, urge]); }
             if (!(urge > 0) || world.rngMarginFounder() >= chance) continue;
+            sealed ??= isSealed(run);                                            // (for the record; before the floor leaves)
             const fresh = world.addPlate(oceanPlateName(world));
             fresh.setQuat(P.quat.slice());
             fresh.omega = P.omega.slice();                                   // it starts as it was; the torque balance takes it from there
@@ -222,8 +264,8 @@ export function founderWithinPlates(world, dt) {
             P.dirty = true;
             started++;
             world.log(EventKind.PLATE_BORN, `${fresh.name} is born: ${(take.length * cellAreaKm2 / 1e6).toFixed(1)} Mkm² of ${P.name}’s old ocean breaks away`, { plate: fresh.id, areaMkm2: take.length * cellAreaKm2 / 1e6 });
-            world.log(EventKind.SUBDUCTION_INIT, `a new trench founders along ${lengthKm.toFixed(0)} km of ${P.name}’s passive margin: ${fresh.name}, ocean ${ageMyr.toFixed(0)} Myr old, begins to go down beneath it`,
-                { upper: P.id, lower: fresh.id, lengthKm, ageMyr, stress: sigma });
+            world.log(EventKind.SUBDUCTION_INIT, `a new trench founders along ${lengthKm.toFixed(0)} km of ${P.name}’s ${sealed ? 'shore of a sealed sea' : 'passive margin'}: ${fresh.name}, ocean ${ageMyr.toFixed(0)} Myr old, begins to go down beneath it`,
+                { upper: P.id, lower: fresh.id, lengthKm, ageMyr, stress: sigma, ...(sealed ? { sealed: true } : {}) });
             break;                                                           // (one a plate at a time: the plate has changed)
         }
         if (started === before) started += founderAcross(world, P, dt, tr, tally);

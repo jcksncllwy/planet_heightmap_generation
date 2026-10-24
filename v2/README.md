@@ -299,7 +299,7 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    → **events**, in this order — `updateHotspots` (first: it only stamps records) · `trackCycle` (the supercontinent
    cycle: counts the landmasses, moves the mantle's upwelling and downwelling; reads only) · `trackCollisions` · `growWings`
    · `buildArcs` · `collapseArcs` · `growMarginIsles` · `riftContinents` · `openBackArcs` · `initiateSubduction` ·
-   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock; a sea sealed inside one plate founders when it is big enough to be a plate of its own; a plate with no coast to founder at may fail across its open ocean instead) · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
+   `founderWithinPlates` · `retireBackground` · `splitOceanPlates` (these three on the slow clock; a sea sealed inside one plate founders beneath its shore whatever its size, old or squeezed enough; a plate with no coast to founder at may fail across its open ocean instead) · `matureArcs` (arc crust welded onto a continent turns continental: how continents grow) ·
    `tidyPlates` → if any changed crust: refresh, `resolve` and classify again → `drive` (next velocities: a scene's
    prescribed motion, or `updatePlateMotion`) → `steerBackArcStrips`. `evolveHeights` (erosion of the height records,
    below) runs before `drive`. Steps are adaptive (a plate moves at most a
@@ -796,6 +796,29 @@ Time: the extra plates cost ~17 % on the lab's 600 Myr history (40K, seeds 12345
 under the same load). Exact speed-ups in the hot paths (commit "Exact speed-ups in the history's hot paths": the same
 history to the bit, on this branch and on main) take ~9 % off main's own time and leave the branch +4 % wall, +6 % CPU
 over main: 302 s against 290 s for the four histories.
+
+## Sealed seas founder (2026-10-23, branch stress-init)
+
+Seas sealed inside one plate (the "Swiss cheese": a sea whose seam has welded shut) only aged — no ridge feeds them and
+no rule let one go down unless it was as big as a plate and its shore 800 km long. Now:
+- **A sealed sea founders whatever its size** (`founderWithinPlates`): the shortest-margin and smallest-plate rules are
+  for a margin facing open ocean, so a sealed sea (the plate's ocean `exteriorSea` leads no way out of) skips them. Its
+  chance per km of shore and its urge (`founderUrge`: the floor's weight and the squeeze) are those of any margin: old
+  floor goes down, a young back-arc just closed off is too light to. On Earth: the South Caspian floor beneath the Apsheron
+  sill (Jackson et al. 2002), the Japan Sea's eastern margin (Tamaki & Honza 1985), the Ionian under the Calabrian and
+  Hellenic arcs (Faccenna et al. 2014). The event reads "shore of a sealed sea" (`SUBDUCTION_INIT data.sealed`).
+- **An ocean plate going down a trench is not captured** (`captureMicroplates`): a small plate with a subducting edge is
+  pulled by its own slab, not carried by a neighbour, so it goes down to its last cell and then ends ("has gone down its
+  trench"). Once it stops going down it is captured as before.
+- Phase 13 reports the sealed seas' floor older than 340 Myr (the Herodotus Basin, Earth's oldest in-place ocean floor:
+  Granot 2016), over the frames from 100 Myr.
+Measured (20K, 1000 Myr, seeds 626225 / 777 / 12345, enclosed seas ≥ 0.05 Mkm²): floor older than 340 Myr at 1000 Myr
+8.7 / 10.9 / 9.8 → 5.9 / 4.5 / 6.8 Mkm²; its mean over 300–1000 Myr 4.5 / 6.1 / 5.2 → 3.8 / 4.3 / 3.8 Mkm². The number of sealed
+seas and their area do not fall (62 / 64 / 65 → 56 / 68 / 79; 19.9 / 15.1 / 28.3 → 24.3 / 12.1 / 27.5 Mkm²): seas keep
+being sealed as fast, but the old floor in them goes down (100–170 sealed-sea founders per 1000 Myr, the floor's age at
+founding p10 / 50 / 90 ≈ 250–300 / 355–480 / 460–685 Myr; young sealed seas stay). Time: the plates this adds cost ~7.5 % on the lab's 600 Myr history (40K, 4 seeds, run
+beside the commit before and main under the same load): 251 s against 234 s, and +11.5 % wall, +14 % CPU over main's 225 s —
+more gap-growth rivals, rift searches and founder tests; the sealed-sea test itself walks only the one sea (exact).
 
 ## Conventions
 

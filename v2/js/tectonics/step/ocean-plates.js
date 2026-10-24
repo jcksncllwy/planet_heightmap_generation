@@ -16,10 +16,11 @@
 //   microplates captured    an ocean plate subducted down to less than oceanPlateCaptureKm2 (and carrying no land) is
 //                           captured by the plate it shares the most boundary with — as the last of the Farallon plate's
 //                           pieces were by the Pacific: no specks of plate left spinning (a tiny plate's rotation rate is
-//                           unbounded, and the history's step shrinks to the fastest rotation's)
+//                           unbounded, and the history's step shrinks to the fastest rotation's) — unless it is going down
+//                           a trench: then it is pulled by its own slab, and is consumed there (and ends once it is gone)
 
 import { CrustType } from '../model/crust.js';
-import { EventKind } from '../model/world.js';
+import { EventKind, BoundaryKind } from '../model/world.js';
 import { transferCells } from '../ops/tidy-plates.js';
 import { oceanPlateName } from '../ops/birth-ocean-plate.js';
 import { hopDistance } from '../../core/mesh-bfs.js';
@@ -56,28 +57,44 @@ export function retireBackground(world) {
     return born;
 }
 
-/** @returns {number} plates captured */
+/** A plate ends: still, and no longer anyone's rift or split partner. */
+function endPlate(plates, P) {
+    P.alive = false; P.omega = [0, 0, 0]; P.dynamics = null;
+    for (const p of plates) { if (p.riftPartner === P.id) p.riftPartner = -1; if (p.oceanSplitWith === P.id) p.oceanSplitWith = -1; }
+}
+
+/** @returns {number} plates captured (or gone down their trench) */
 export function captureMicroplates(world) {
-    const { config, plates, mesh, owner } = world;
+    const { config, plates, mesh, owner, boundaryKind } = world;
     if (!(config.oceanPlateCaptureKm2 > 0)) return 0;
     const { numCells, adjOffset, adjList, cellAreaKm2 } = mesh, limit = config.oceanPlateCaptureKm2 / cellAreaKm2;
     let captured = 0;
     for (const P of plates) {
+        if (P.alive && !P.isBackground && P.crust.count === 0) {       // gone down its trench to the last cell: it ends
+            endPlate(plates, P); captured++;
+            world.log(EventKind.MICROPLATE, `${P.name} has gone down its trench`, { plate: P.id, host: -1, areaMkm2: 0, consumed: true });
+            continue;
+        }
         if (!P.alive || P.isBackground || P.reshaped || P.crust.count === 0 || P.stats.continentalCells > 0 || P.crust.count >= limit) continue;
-        // the neighbour along the most of its boundary (the world view: P is not reshaped this step)
+        // the neighbour along the most of its boundary (the world view: P is not reshaped this step) — unless P is going down
+        // a trench there: then it is pulled by its own slab, not carried by a neighbour, and is consumed where it goes down
+        // (the last of a sealed sea's floor under its shore: subduction-init.js). A plate that has stopped going down is
+        // captured as before.
         const contact = new Map();
-        for (let w = 0; w < numCells; w++) {
+        let trench = false;
+        for (let w = 0; w < numCells && !trench; w++) {
             if (owner[w] !== P.id) continue;
+            if (boundaryKind[w] === BoundaryKind.SUBDUCTING) { trench = true; break; }
             for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const o = owner[adjList[k]]; if (o >= 0 && o !== P.id && !plates[o].isBackground && plates[o].alive) contact.set(o, (contact.get(o) ?? 0) + 1); }
         }
+        if (trench) continue;
         let host = -1, most = 0;
         for (const [o, c] of contact) if (c > most || (c === most && o < host)) { most = c; host = o; }
         if (host < 0) continue;
         const H = plates[host], cells = [];
         for (let c = 0; c < P.crust.mask.length; c++) if (P.crust.mask[c]) cells.push(c);
         transferCells(world, P, H, cells);
-        P.alive = false; P.omega = [0, 0, 0]; P.dynamics = null;
-        for (const p of plates) { if (p.riftPartner === P.id) p.riftPartner = -1; if (p.oceanSplitWith === P.id) p.oceanSplitWith = -1; }
+        endPlate(plates, P);
         captured++;
         world.log(EventKind.MICROPLATE, `${P.name}, subducted down to ${(cells.length * cellAreaKm2 / 1e6).toFixed(2)} Mkm², is captured by ${H.name}`, { plate: P.id, host: H.id, areaMkm2: cells.length * cellAreaKm2 / 1e6 });
     }
