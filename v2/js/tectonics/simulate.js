@@ -119,7 +119,10 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             changed += led('rifts', yield* riftContinents(world, dt));  // plume and tension rifts (splits plates)
             changed += led('backArcs', openBackArcs(world, dt));       // rolling-back trenches split off strips; finished strips rejoin
             changed += led('subductionInit', initiateSubduction(world, dt)); // passive margins founder (may carve an ocean plate)
-            if (slow) changed += led('marginFounder', founderWithinPlates(world, slowDt)); // …and margins inside a plate, sealed seas too: its old ocean breaks away as a plate
+            // …and margins inside a plate, sealed seas too: its old ocean breaks away as a plate (on a clock of its own: the
+            // test is costly and its chance per Myr small, so it is drawn every marginFounderEveryMyr for the time since)
+            world.founderMyr += dt;
+            if (world.founderMyr >= world.config.marginFounderEveryMyr - 1e-9) { changed += led('marginFounder', founderWithinPlates(world, world.founderMyr)); world.founderMyr = 0; }
             if (slow) changed += led('oceanPlates', retireBackground(world) + splitOceanPlates(world, slowDt)); // the pre-history ocean becomes plates; big ocean plates split
             changed += led('microplates', captureMicroplates(world));      // a small ocean plate is captured by its neighbour
             if (slow) changed += led('arcMaturation', matureArcs(world, slowDt)); // arcs welded onto a continent become continent (cell types only)

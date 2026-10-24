@@ -396,6 +396,10 @@ export const TECTONICS = {
     subductionInitRateLengthKm: 2000, // the length of margin subductionInitRatePerMyr and marginFounderRatePerMyr are quoted for: the
                                       // chance per Myr per km of margin is theirs ÷ this (it was the old minimum length, so the
                                       // chance per km is as before)
+    marginFounderEveryMyr: 4,         // the founder tests inside plates (founderWithinPlates: margins, sealed seas, across) are drawn this
+                                      // often, each for the time since — the same chance per Myr. A trench takes ~10 Myr from the first
+                                      // failure to sinking on its own (Gurnis, Hall & Lavier 2004; Stern 2004), so a draw every 4 Myr is
+                                      // finer than the process it stands for. (It ran every step: ~3 % of a history's time)
     founderAcross: true,              // a plate's open ocean founders ACROSS the plate too, on the line it would split along, when it is
                                       // pressed together across it (large-plate failure: subduction-init.js founderAcross)
 
