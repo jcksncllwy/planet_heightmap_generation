@@ -217,7 +217,8 @@ js/tectonics/
                                     continents allows: a Mariana at sea, a Japan near land), margin-isles
                                     (fore-arc islands on accretionary margins, coast retreat on erosive ones),
                                     sediment-subduction (the trench's sediment down the subduction channel: the
-                                    continent's sink at every active margin),
+                                    continent's sink at every trench), trench-fans (the rivers' rock out down their
+                                    submarine fans to the trenches they reach, and along each trench's axis),
                                     rifting (when a continent rifts), backarc (slab rollback, back-arc seas),
                                     subduction-init (when a passive margin founders — between two plates, or inside a giant
                                     one: its old ocean then breaks away as a plate of its own), ocean-plates (the pre-history
@@ -675,7 +676,8 @@ over the run (check-phase13, "the crust budget against Earth's"). What changed:
   2004; Cloos & Shreve 1988): F = v × min(h, 1 km) × the terrigenous share, km³/Myr per km of trench. It is booked as
   continental area over `continentCrustKm` and taken from the coast facing the trench (`sedimentSubductionShare`: the
   share lost for good, 1; 0 switches it off — mechanism `sedimentSubduction`).
-- **The trench's fill is a flux.** The land within `trenchSedimentReachKm` of the coast wears down at
+- **The trench's fill is a flux.** The land within `trenchSedimentReachKm` of the coast (round 3: whole river basins,
+  below) wears down at
   `trenchDenudationKmPerMyr` (0.1 km/Myr; river basins by ¹⁰Be: median 0.054, mean 0.218 — Portenga & Bierman 2011) × its
   latitude's erosion, and the fill stands at supply ÷ convergence: slow trenches off wet land fill, fast ones starve —
   the correlation Clift & Vannucchi find. (Was `trenchTerrigenousKm`, a fixed thickness whatever the convergence, sampled
@@ -709,14 +711,55 @@ km³/Myr per km of trench (Earth 30–65): almost all arcs, the islands ~3, the 
 underthrusting ~33, subduction erosion 10–12, sediment 3–4. Erosive share of continental-margin trench 48–57 % (Earth
 ~57 %).
 
+Round 3 fed the trenches from whole drainage basins, and the enclosed seas from theirs:
+- **Rivers carry their basins' rock to the sea** (`step/rivers.js`). Every drainage the history routes now also sums
+  its basin's rock — `trenchDenudationKmPerMyr` × each cell's latitude erosion over the basin, kept apart by how much
+  was continental crust — and hands it to the mouth (`world.riverMouths`). (`trenchSedimentReachKm`, the land within
+  300 km of a trench, is gone: every land cell lies in a mapped basin.)
+- **Submarine fans** (`step/trench-fans.js`). A mouth on the world ocean sends its rock across the ocean floor (land in
+  the way stops it) to the nearest overriding trench within `trenchFanReachKm` — 3000 km, the Bengal–Nicobar fan's
+  run from the Ganges–Brahmaputra to the Sumatra–Andaman trench (Curray et al. 2003) — and the trench spreads it along
+  its axis, e-folding over `trenchAxialTransportKm` (700 km: half the ~1000–1400 km the Chile trench is turbidite-filled
+  along its axis from its glacial south, Völker et al. 2013). A trench's supply per km over its convergence is its
+  fill, as before; the prism (fill above `accretionSedimentKm`) raises the islands, unchanged. Intra-oceanic trenches
+  in reach of a fan fill too (the Lesser Antilles off the Orinoco).
+- **Sediment subduction is taken from the basins that sent it** (`step/sediment-subduction.js`): each mouth loses the
+  share of its continental rock the trenches it reaches send down their channels, at the coast within half its basin's
+  breadth of its mouth. Arc and island rock that goes down is counted in Earth's figure but not booked (the engine
+  keeps arc crust apart from continent).
+- **Enclosed seas fill** (`step/sea-fill.js`). A mouth on a sea that is not the world ocean lays its rock on that sea's
+  floor, nearest its mouth first; the floor sinks under the load, ~2.84 km of sediment per km of water (Airy, mantle
+  3.3, water 1.03, compacted fill 2.5 g/cm³: ~17 km fills 6 km — Steckler & Watts 1978; the Black Sea's 14–19 km,
+  Nikishin et al. 2015; the Gulf of Mexico's ~15 km, Salvador 1991). The fill is a crust record (`crust.seaFillKm`,
+  moving with its plate; frames carry it and `crustFill`); the terrain draws it as a shallower floor
+  (`measure.js filledSeaDepthKm`) and a sea filled to sea level as lowland. Its crust stays ocean crust: the rock is the
+  continents' own, moved, so the crust ledger does not change (enclosedSeaFill: false, mechanism `seaFill`, switches it
+  off). Enclosed seas at 1000 Myr (seeds 626225 · 777 · 12345, counted with filled seas as land): 38 · 51 · 50 →
+  8 · 18 · 4, their area 7.4 · 17.4 · 10.4 → 1.8 · 31.0 · 0.8 Mkm² (777's is one 26 Mkm² remnant ocean closing inside
+  its gathering supercontinent); over each history 20–55 enclosed seas → 4–19, and the area on floor older than 340 Myr
+  from 3–8 Mkm² to ~0–1.
+- **The cost**: none measured. The new work (~2 % of a history) is paid for by computing each world cell's rain and
+  erosion by latitude once instead of every drainage (the same numbers); with no rock to route (denudation 0) both
+  versions run the same history in the same time (148 · 146 s against 148 · 144 s), and whole histories with it run
+  −9 % · −3 % · +7 % (seeds 626225 · 777 · 12345) — their histories differ.
+
+What the books say after round 3 (three seeds, 1200 Myr; check-phase13): continental crust changes −2.2 / +0.7 / −0.2 %
+over the first 500 Myr and +3.9 / −1.2 / −2.2 % over the next (Earth ±10 %). Sediment subducted, all the rivers' rock:
+25 km³/Myr per km of trench (Earth 15–35; was ~4 booked); the continents' own share 9 (booked as lost). Erosive share of
+continental-margin trench 45–47 % (Earth ~57 %: thicker fill makes more margins accretionary, as it should). The prisms
+take ~15 km³/Myr per km (was ~3), and the islands come back: seed 12345 at 300 Myr (1M cells) shows 11 standing
+fore-arc islands and 1.53 Mkm² grown into the mainland (round 2: 1 and 0.22). Additions 68–80 km³/Myr per km (Earth
+30–65), losses 49–59 (Earth 60–95).
+
 Known gaps:
 - **Intra-oceanic fore-arcs do not erode.** Tonga and the Marianas lose their fore-arcs to subduction erosion; here only
   continental margins erode, so every arc that reaches a continent arrives whole. Earth's ~60 km³/Myr/km of erosion
   includes them, which is part of why the engine's erosion (10–12) reads low.
-- The sediment sink is ~4 km³/Myr per km against Earth's ~24: only ~35–40 % of the engine's overriding trench lies off a
-  continent (Earth: most of the Pacific rim), and the supply is set by the land behind the coast, not tuned to Earth.
-- Fore-arc islands are now rare (above). Phase 7b's "islands rise off active coasts and grow into the mainland" already
-  failed on main (0 merged); with the prism as their only source it has even less to work with.
+- A filled sea's rock is not taken from the land it came from (thinning is invisible to an area ledger), and the fore-arc
+  islands' rock is not either: both move continental rock, so neither is booked. Denudation is one rate everywhere
+  (× latitude), not by relief; mountains shed more.
+- Only fully enclosed seas fill; a remnant sea with a narrow mouth to the world ocean is treated as ocean (its rivers'
+  rock goes down their fans).
 
 ## Conventions
 

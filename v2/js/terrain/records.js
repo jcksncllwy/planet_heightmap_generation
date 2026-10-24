@@ -5,7 +5,7 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, seaDepthKm } from '../tectonics/measure.js';
+import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp } from '../tectonics/measure.js';
 import { spreadKm } from '../core/min-heap.js';
 import { hopDistance } from '../core/mesh-bfs.js';
 import { erosionAtLatitude } from './terrain-config.js';
@@ -163,7 +163,7 @@ function plateCoasts(simMesh, A, land, dist, coastKind, carried, frame, pocketKm
             // the whole plate, exactly: every crust cell's own type (small sea pockets in its land filled, as on the world
             // grid); a cell no world cell shows takes a shown neighbour's kind of coast
             land01.fill(0);
-            for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; land01[r] = frame.crustType[i] !== CrustType.OCEAN ? 1 : 0; if (!onPlate[r]) { onPlate[r] = 2; kindR[r] = 255; } }
+            for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; land01[r] = frame.crustType[i] !== CrustType.OCEAN || frame.crustFill?.[i] ? 1 : 0; if (!onPlate[r]) { onPlate[r] = 2; kindR[r] = 255; } }
             fillPockets(simMesh, land01, pocketKm2);
             for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; landR[r] = land01[r]; }
             for (let pass = 0; pass < 3; pass++) for (let i = run.start; i < run.end; i++) {
@@ -216,6 +216,9 @@ function plateCoasts(simMesh, A, land, dist, coastKind, carried, frame, pocketKm
     }
     return out;
 }
+
+/** Is world cell w sea floor its rivers have filled to sea level (step/sea-fill.js)? */
+function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
 
 /** The area (km²) of the body of sea each sea cell belongs to (connected non-land cells); 0 on land. */
 function seaAreas(simMesh, land) {
@@ -285,7 +288,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const land = new Uint8Array(n);
     const arc = new Uint8Array(n), craton = new Uint8Array(n);
     for (let w = 0; w < n; w++) {
-        land[w] = frame.owner[w] >= 0 && frame.type[w] !== CrustType.OCEAN ? 1 : 0;
+        land[w] = frame.owner[w] >= 0 && (frame.type[w] !== CrustType.OCEAN || filledUp(frame, w)) ? 1 : 0;   // (an enclosed sea filled to sea level is lowland)
         arc[w] = land[w] && frame.type[w] === CrustType.ARC ? 1 : 0;
         craton[w] = land[w] && frame.type[w] === CrustType.CRATON ? 1 : 0;
     }
@@ -394,7 +397,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const raw = frame.owner[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
         const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
-        depthKm[w] = seaDepthKm(age);
+        depthKm[w] = filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0);    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js)
     }
     // oceanic plateaus (a flood basalt on the sea floor): read from the world view, where at any moment ~15 % of a moving
     // plate's cells show a neighbour's crust, then smoothed over lipSeaSmoothKm and never lowered inside — one broad rise

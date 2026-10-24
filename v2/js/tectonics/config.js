@@ -310,10 +310,8 @@ export const TECTONICS = {
     erosiveConvergenceCmYr: 6,  // faster than this, the trench eats its fore-arc whatever the sediment (the Andes, Tonga, Japan)
     accretionSedimentKm: 1,     // …and with less than this in the trench it does too
                                 // (a trench's fill from the land around it: trenchDenudationKmPerMyr, in the crust-sink block below)
-    trenchSedimentReachKm: 300, // the land within this of a trench drains into it — its rivers' reach (not the continent's whole breadth: an active margin's range parts the drainage, and the rivers off
-                                // its far side run inland — the Amazon takes the Andes' east flank to the Atlantic; only the seaward
-                                // slope, the divide ~100–300 km in, and the few rivers that breach the range — the Columbia, the
-                                // Fraser — feed the trench)
+                                // (trenchSedimentReachKm, the land within 300 km of a trench, is gone: whole river basins feed the
+                                // trenches their fans reach — trenchFanReachKm, in the crust-sink block below)
     trenchPelagicKmPerMyr: 0.003, // …plus what the incoming ocean floor carries: ~3 m per Myr of its age (0.5 km on 160 Myr floor)
     marginErosionKmPerMyr: 2,   // an erosive margin's coast retreats this fast…
     marginErosionMaxGapKm: 500, // …until it lies this far from its trench (the Andes: ~250 km of coast lost since the Jurassic)
@@ -328,14 +326,23 @@ export const TECTONICS = {
     sedimentSubductionShare: 1, // the share of the sediment in the channel that leaves the continent for good (Scholl & von Huene
                                 // count all of it lost; relamination under the arc — Hacker et al. 2011 — would return some: 1 is
                                 // the upper bound, 0 switches the sink off)
-    trenchDenudationKmPerMyr: 0.1, // a trench's terrigenous fill is a FLUX, not a thickness: the land within trenchSedimentReachKm
-                                // wears down this fast (× how fast its latitude erodes: terrain-config.js erosionAtLatitude, rain or
-                                // ice) and its rivers deliver that rock to the trench, which the downgoing plate carries away at the
+    trenchDenudationKmPerMyr: 0.1, // a trench's terrigenous fill is a FLUX, not a thickness: every river basin wears down this fast
+                                // (× how fast its latitude erodes: terrain-config.js erosionAtLatitude, rain or ice; step/rivers.js)
+                                // and its fan delivers that rock to the trenches it reaches, which the downgoing plate carries away at the
                                 // convergence rate — so the fill stands at supply ÷ convergence: a slow trench off wet land fills
                                 // (Cascadia, southern Chile), a fast one starves (Tonga, northern Chile), as Clift & Vannucchi
                                 // (2004) find. River basins worldwide by ¹⁰Be: median 0.054, mean 0.218 km/Myr (Portenga &
                                 // Bierman 2011); an active margin's seaward slope lies between. (Was trenchTerrigenousKm 2.5: a
                                 // thickness, × the land's share × the latitude's erosion, whatever the convergence)
+    trenchFanReachKm: 3000,     // a river's rock runs out across the ocean floor this far, as turbidity currents down its submarine
+                                // fan, to the nearest trench in reach (step/trench-fans.js): the Bengal–Nicobar fan, the longest, runs
+                                // ~3000 km from the Ganges–Brahmaputra mouth to the Sumatra–Andaman trench (Curray et al. 2003).
+                                // Beyond it — or with land in the way — a mouth's rock stays on its own margin
+    trenchAxialTransportKm: 700, // …and along the trench's own axis, e-folding over this: the Chile trench is turbidite-filled from
+                                // its glacial sources at 41–46°S north to the Juan Fernández ridge at ~33°S, ~1000–1400 km, by an axial
+                                // channel (Völker et al. 2013; Laursen & Normark 2002 at its northern end): half that span
+    enclosedSeaFill: true,      // a river running into an enclosed sea lays its rock on that sea's floor, and a sea filled to sea level
+                                // is lowland (step/sea-fill.js; the floor's depth under it: measure.js; false: the rock is lost, as before)
     continentCrustKm: 40,       // continental crust's mean thickness: a volume lost (km³) is booked as this much less area
                                 // (Christensen & Mooney 1995: 41 km; Rudnick & Gao 2003: ~40 km)
     oceanCrustKm: 7,            // oceanic crust's thickness (White et al. 1992: 7.1 ± 0.8 km): the fore-arc floor an island rises from
@@ -533,7 +540,8 @@ export const MECHANISMS = Object.freeze({
     backArcs:       { backArcRatePerMyr: 0 },                                // slab rollback → back-arc seas (step/backarc.js)
     marginIsles:    { marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 },  // fore-arc islands (step/margin-isles.js)
     marginErosion:  { marginErosionKmPerMyr: 0 },                            // erosive margins (step/margin-isles.js)
-    sedimentSubduction: { sedimentSubductionShare: 0 },                      // trench sediment down the subduction channel (step/sediment-subduction.js)
+    sedimentSubduction: { sedimentSubductionShare: 0 },
+    seaFill: { enclosedSeaFill: false },                                       // enclosed seas filled by their rivers (step/sea-fill.js)                      // trench sediment down the subduction channel (step/sediment-subduction.js)
     underthrust:    { underthrustShare: 0 },                                 // continental underthrusting at collisions (step/collision.js)
     arcRecycling:   { arcAccreteThickKm: 0 },                                // thin (young) arcs go down instead of accreting (step/collision.js)
     arcMaturation:  { arcContinentKmPerMyr: 0 },                             // arcs welded onto a continent become continent (step/arc-maturation.js)

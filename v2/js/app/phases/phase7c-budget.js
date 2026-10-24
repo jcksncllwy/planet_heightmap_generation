@@ -14,7 +14,8 @@ const TUNABLES = [
     { id: 'erosiveConvergenceCmYr', label: 'A margin converging faster than this erodes', min: 2, max: 12, step: 0.5, unit: ' cm/yr' },
     { id: 'accretionSedimentKm', label: '…as does one with less sediment in its trench than', min: 0, max: 3, step: 0.1, unit: ' km' },
     { id: 'marginErosionKmPerMyr', label: '…their coast retreating at', min: 0, max: 10, step: 0.5, unit: ' km/Myr' },
-    { id: 'trenchDenudationKmPerMyr', label: 'The land draining into a trench wears down at', min: 0, max: 0.5, step: 0.01, unit: ' km/Myr' },
+    { id: 'trenchDenudationKmPerMyr', label: 'Every river basin wears down at', min: 0, max: 0.5, step: 0.01, unit: ' km/Myr' },
+    { id: 'trenchFanReachKm', label: '…its rock running out down its fan to a trench up to', min: 0, max: 5000, step: 100, unit: ' km' },
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
     { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
     { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast with age', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
@@ -24,7 +25,7 @@ const CHECKLISTS = {
     erosion: [
         'Driftia’s western coast is active all along, but in two kinds of stretches (Margins layer): EROSIVE (purple) in the north, where it converges fast (~8 cm/yr), and ACCRETIONARY (orange-red) in the slower south (~3 cm/yr), where the rivers keep the trench filled.',
         'Off the accretionary stretches islands rise and grow into the coast (Crust type layer) — only as fast as the trench scrapes sediment off, so they come slowly; along the erosive stretches there are none, and the coast retreats at the set rate while its mountain belt keeps forming on the new coast.',
-        'Which is which follows the trench: erosive where it is starved of sediment (little land upstream, dry latitudes, or convergence so fast it carries the fill away as it comes) or the convergence is fast, accretionary where rivers off the land fill it. Cratons are never eaten.',
+        'Which is which follows the trench: erosive where it is starved of sediment (no river’s fan reaches it, dry latitudes, or convergence so fast it carries the fill away as it comes) or the convergence is fast, accretionary where the rivers’ fans fill it — whole drainage basins, and a great river’s fan can feed a trench thousands of km off. Cratons are never eaten.',
     ],
     india: [
         'India reaches Asia at ~38 Myr. As they converge, India’s land in the overlap is consumed — it slides under Asia — so the land chart falls rather than rises through the collision.',
@@ -56,7 +57,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
 
     return {
         title: 'Phase 7c — Crust budget',
-        summary: 'Continents grow — island arcs and fore-arc islands add crust — and now they also lose it, so they do not grow without bound over a long history. About half of active margins are EROSIVE: the trench eats the fore-arc and the coast retreats. At every active margin, erosive or not, the trench also drags down the sediment the rivers bring it, and the land that sediment came from is lost (the whole-history scene). A continent driven into another slides UNDER it, and its area becomes the other’s thickened crust. A small island arc arriving at a continent goes down with its slab instead of accreting, so continents gain from arcs in fewer, bigger pieces. ' + scene.about,
+        summary: 'Continents grow — island arcs and fore-arc islands add crust — and now they also lose it, so they do not grow without bound over a long history. About half of active margins are EROSIVE: the trench eats the fore-arc and the coast retreats. At every trench, erosive or not, the slab also drags down the sediment the rivers bring it — whole basins’ rock, carried out across the sea floor down their submarine fans and along the trench — and the land that sediment came from is lost (the whole-history scene). A river running into an enclosed sea fills it instead, until the sea is a lowland basin. A continent driven into another slides UNDER it, and its area becomes the other’s thickened crust. A small island arc arriving at a continent goes down with its slab instead of accreting, so continents gain from arcs in fewer, bigger pieces. ' + scene.about,
         checklist: [...CHECKLISTS[scene.id], 'No gaps.'],
         checkCommand: 'node v2/tools/check-phase7c.mjs',
         maxTime: scene.maxMyr,

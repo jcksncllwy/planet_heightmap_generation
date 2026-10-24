@@ -228,8 +228,12 @@ section('the crust budget against Earth’s (crust-sink)');
     report('crust lost per km of trench', rows.map(r => perKm(r, lost(r))), { earth: [60, 95], unit: ' km³/Myr/km', digits: 0,
         source: '~77: 2.5 AU at ocean margins + 0.7 AU at collisions over ~42,000 km (Scholl & von Huene 2009); > 90 (Clift & Vannucchi 2004)',
         detail: txt(r => `eroded ${perKm(r, r.budget.erodedCells ?? 0).toFixed(0)}, sediment ${perKm(r, r.budget.sedimentCells ?? 0).toFixed(0)}, underthrust ${perKm(r, r.budget.underthrustCells ?? 0).toFixed(0)}, tidied ${perKm(r, -Math.min(0, st(r, 'tidy'))).toFixed(0)}`) });
-    report('…of it, sediment subducted per km of trench', rows.map(r => perKm(r, r.budget.sedimentCells ?? 0)), { earth: [15, 35], unit: ' km³/Myr/km', digits: 0,
-        source: '~40 % of ~60 at ocean margins (Scholl & von Huene 2009)', detail: txt(r => `the trenches' flux ${((r.budget.sedimentKm3 ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)).toFixed(0)} (what found no coast in reach is not booked)`) });
+    // (sediment subduction two ways: all the rivers' rock that goes down the channels — Earth's figure, which counts arcs'
+    // rock as continental crust — and, booked as the continents' loss above, the share that was the continents' own)
+    report('sediment subducted per km of trench, all the rivers\' rock', rows.map(r => (r.budget.sedimentAllKm3 ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)), { earth: [15, 35], unit: ' km³/Myr/km', digits: 0,
+        source: '~40 % of ~60 at ocean margins (Scholl & von Huene 2009), arc crust counted as continental' });
+    report('…of it, the continents\' own rock (lost above)', rows.map(r => perKm(r, r.budget.sedimentCells ?? 0)), { unit: ' km³/Myr/km', digits: 0,
+        source: 'no Earth figure: the engine keeps arc crust apart from continent', detail: txt(r => `the trenches' flux ${((r.budget.sedimentKm3 ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)).toFixed(0)} (what found no coast around its mouth is not booked)`) });
     report('sediment scraped off into the prisms per km of trench', rows.map(r => (r.budget.wedgeKm3 ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)), { unit: ' km³/Myr/km', digits: 1,
         source: 'no Earth figure in this form: accretionary prisms hold the part of the trench fill the subduction channel cannot take (Clift & Vannucchi 2004)',
         detail: txt(r => `islands raised ${Mkm2(r.budget.isleRaisedCells ?? 0).toFixed(1)} Mkm²`) });

@@ -5,7 +5,7 @@
 import { CrustType, CrustFlag, VolcanicType } from './model/crust.js';
 import { BoundaryKind, Provisional } from './model/world.js';
 import { speedCmYrAt } from './step/kinematics.js';
-import { classifyMargins } from './measure.js';
+import { classifyMargins, seaFilledUp } from './measure.js';
 
 const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge counts as part of the live trench:
                               // the visible edge of a rotated raster jitters by about a cell from step to step
@@ -37,9 +37,11 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {Float32Array} rootKm  @property {Float32Array} upliftKm  @property {Float32Array} baseKm  @property {Float32Array} rugged  @property {Float32Array} prevRugged
  * @property {Float32Array} volcWornKm    the evolving heights (step/heights.js): root, uplift, crest heights, volcano wear
  * @property {Float32Array} riverIncKm    how deep the history's rivers have cut (step/rivers.js)
+ * @property {Float32Array} seaFillKm     sediment laid on the sea floor by the history's rivers (km; step/sea-fill.js)
  * @property {Float32Array} riverKm2      the drainage (km², rain-weighted) the history last routed through each cell
  * @property {Int32Array} crustCells      every plate's crust cells (plate id × numCells + raster cell), plate by plate…
  * @property {Uint8Array} crustType       …and what each is (CrustType): the plates' own outlines, which the world view shows
+ * @property {Uint8Array} crustFill       …and whether it is sea floor filled to sea level (1: lowland; step/sea-fill.js)
  *                                        only in part (a world cell shows the crust cell nearest it)
  * @property {Uint8Array} crustBelt       …and its belts, 6 per cell: oroType, beltSide, beltU, prevType, prevSide, prevU (as the
  *                                        world view carries them)…
@@ -75,7 +77,7 @@ export function captureFrame(world, reuse = null) {
         beltU: new Uint8Array(n), beltReach: new Uint16Array(n), beltSide: new Uint8Array(n), beltShear: new Int8Array(n),
         prevType: new Uint8Array(n), prevLast: new Float32Array(n), prevU: new Uint8Array(n), prevReach: new Uint16Array(n), prevSide: new Uint8Array(n), prevShear: new Int8Array(n),
         rootKm: new Float32Array(n), upliftKm: new Float32Array(n), baseKm: new Float32Array(n), rugged: new Float32Array(n), prevRugged: new Float32Array(n), volcWornKm: new Float32Array(n),
-        riverIncKm: new Float32Array(n), riverKm2: new Float32Array(n),
+        riverIncKm: new Float32Array(n), riverKm2: new Float32Array(n), seaFillKm: new Float32Array(n),
         volcType: new Uint8Array(n), volcAt: new Float32Array(n), volcKm: new Float32Array(n), volcSource: new Uint16Array(n),
         mantleHeat: new Uint8Array(n),                      // 0…255 for 0…1 (a frame need not carry it at full precision)
         margin: new Uint8Array(n),                          // what kind of coast each coastal land cell is (measure.js Margin)
@@ -100,7 +102,7 @@ export function captureFrame(world, reuse = null) {
         f.volcType[w] = 0; f.volcAt[w] = 0; f.volcKm[w] = 0; f.volcSource[w] = 0;
         f.beltU[w] = 0; f.beltReach[w] = 0; f.beltSide[w] = 0; f.beltShear[w] = 0;
         f.prevType[w] = 0; f.prevLast[w] = 0; f.prevU[w] = 0; f.prevReach[w] = 0; f.prevSide[w] = 0; f.prevShear[w] = 0;
-        f.rootKm[w] = 0; f.upliftKm[w] = 0; f.baseKm[w] = 0; f.rugged[w] = 0; f.prevRugged[w] = 0; f.volcWornKm[w] = 0; f.riverIncKm[w] = 0;
+        f.rootKm[w] = 0; f.upliftKm[w] = 0; f.baseKm[w] = 0; f.rugged[w] = 0; f.prevRugged[w] = 0; f.volcWornKm[w] = 0; f.riverIncKm[w] = 0; f.seaFillKm[w] = 0;
         f.riverKm2[w] = world.riverKm2 ? world.riverKm2[w] : 0;
         f.fzU[w] = 0;
         if (owner[w] < 0) { f.type[w] = 0; f.formedAt[w] = 0; f.flags[w] = 0; f.terrane[w] = 0; f.slabKm[w] = 0; f.oroType[w] = 0; f.oroWork[w] = 0; f.oroStart[w] = 0; f.oroLast[w] = 0; f.thickKm[w] = 0; continue; }
@@ -120,7 +122,7 @@ export function captureFrame(world, reuse = null) {
         f.prevType[w] = crust.prevType[c]; f.prevLast[w] = crust.prevLast[c]; f.prevU[w] = Math.round(255 * Math.min(1, crust.prevU[c])); f.prevReach[w] = Math.min(65535, Math.round(crust.prevReach[c]));
         f.prevSide[w] = crust.prevSide[c]; f.prevShear[w] = crust.prevShear[c];
         f.rootKm[w] = crust.rootKm[c]; f.upliftKm[w] = crust.upliftKm[c]; f.rugged[w] = crust.rugged[c]; f.prevRugged[w] = crust.prevRugged[c]; f.volcWornKm[w] = crust.volcWornKm[c];
-        f.riverIncKm[w] = crust.riverIncKm[c]; f.baseKm[w] = crust.baseKm[c];
+        f.riverIncKm[w] = crust.riverIncKm[c]; f.seaFillKm[w] = crust.seaFillKm[c]; f.baseKm[w] = crust.baseKm[c];
         f.volcType[w] = crust.volcType[c]; f.volcAt[w] = crust.volcAt[c]; f.volcKm[w] = crust.volcKm[c]; f.volcSource[w] = crust.volcSource[c];
         // A hotspot track is a THIN record — about a cell wide on the plate's own lattice — and that lattice is rotated
         // against the world's, so some of its cells are nobody's nearest and a nearest-cell gather would show the chain
@@ -158,7 +160,7 @@ export function captureFrame(world, reuse = null) {
     // the terrain measures coasts on the plates' own rasters (terrain/records.js plateCoasts). Records only.
     let crustCount = 0;
     for (const p of plates) if (p.alive) crustCount += p.crust.count;
-    f.crustCells = new Int32Array(crustCount); f.crustType = new Uint8Array(crustCount);
+    f.crustCells = new Int32Array(crustCount); f.crustType = new Uint8Array(crustCount); f.crustFill = new Uint8Array(crustCount);
     f.crustBelt = new Uint8Array(6 * crustCount); f.crustReach = new Uint16Array(2 * crustCount);
     let ci = 0;
     for (const p of plates) {
@@ -167,6 +169,7 @@ export function captureFrame(world, reuse = null) {
         for (let c = 0; c < n; c++) {
             if (!k.mask[c] || ci >= crustCount) continue;
             f.crustCells[ci] = p.id * n + c; f.crustType[ci] = k.type[c];
+            f.crustFill[ci] = k.type[c] === CrustType.OCEAN && seaFilledUp(world.time - k.formedAt[c], k.seaFillKm[c]) ? 1 : 0;   // (an enclosed sea filled to sea level: lowland, step/sea-fill.js)
             // (belts as the world view carries them: the position across 0…255, the reach in whole km)
             const B = 6 * ci;
             f.crustBelt[B] = k.oroType[c]; f.crustBelt[B + 1] = k.beltSide[c]; f.crustBelt[B + 2] = Math.round(255 * Math.min(1, k.beltU[c]));
@@ -175,7 +178,7 @@ export function captureFrame(world, reuse = null) {
             ci++;
         }
     }
-    if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
+    if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustFill = f.crustFill.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
     f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
     f.budget = { ...world.budget };
     f.events = world.events.slice();

@@ -29,7 +29,9 @@ const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
 function run(id, heights = null) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
-    if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these; the history is the same)
+    // (the heights evolve with these; the history is the same — crust-sink branch: the rivers' rock, which feeds the
+    // trenches and so the tectonics, follows the default climate in both, step/rivers.js sedimentHeights)
+    if (heights) { world.config.sedimentHeights = world.config.heights ?? terrainConfig({}); world.config.heights = terrainConfig(heights); }
     const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 });
     return { world, frame: frames.at(-1), first: frames[0], frames };
 }

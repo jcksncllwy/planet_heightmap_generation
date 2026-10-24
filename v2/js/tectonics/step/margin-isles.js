@@ -11,10 +11,11 @@
 // scrapes the base of the fore-arc away and the coast retreats — the Andes have lost ~250 km of coast since the
 // Jurassic. Which a stretch of margin is follows Clift & Vannucchi (2004): it accretes where convergence is slower
 // than erosiveConvergenceCmYr and its trench holds at least accretionSedimentKm of sediment, and erodes otherwise. The
-// sediment comes from the land within reach of the trench, as fast as that land wears down (trenchDenudationKmPerMyr, by
-// latitude: rain, or ice), spread over the floor the convergence brings in — the fill stands at supply ÷ convergence —
-// and from the incoming ocean floor, more the older it is: a slow trench off a continent in wet or icy latitudes fills
-// (Alaska, Cascadia), a fast one, or one off a desert or out at sea, starves (northern Chile, Tonga). Whatever the kind,
+// sediment comes from the river basins whose fans reach the trench, as fast as their land wears down
+// (trenchDenudationKmPerMyr, by latitude: rain, or ice; step/trench-fans.js), spread over the floor the convergence
+// brings in — the fill stands at supply ÷ convergence — and from the incoming ocean floor, more the older it is: a slow
+// trench off wet land or below a great river's fan fills (Alaska, Cascadia, Barbados, the Andaman), a fast one, or one
+// off a desert or far out at sea, starves (northern Chile, Tonga). Whatever the kind,
 // the base of that fill goes down the subduction channel with the slab: step/sediment-subduction.js. An erosive margin
 // raises no islands, and its coast — never a craton — turns to fore-arc sea at marginErosionKmPerMyr, until the coast
 // lies marginErosionMaxGapKm from its trench (it erodes from its first convergence; islands rise only off a mature one). Trench cells carry CrustFlag.EROSIVE so frames can show which margins are which.
@@ -22,10 +23,8 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { BoundaryKind, EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
-import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
-import { erosionAtLatitude } from '../../terrain/terrain-config.js';
-import { heightsOf } from './heights.js';
 import { CM_PER_YR_TO_KM_PER_MYR } from '../config.js';
+import { trenchFans } from './trench-fans.js';
 
 /** @returns {number} cells raised or merged this step */
 export function growMarginIsles(world, dt) {
@@ -187,7 +186,7 @@ export function marginTrenches(world, plate) {
             if (landD[c] < 0) continue;
             let slab = slabKm[c];
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (mask[nb] && (flags[nb] & CrustFlag.TRENCH)) slab = Math.max(slab, slabKm[nb]); }
-            const sed = trenchSediment(world, plate, P, w, landD[c] * edgeKm);
+            const sed = trenchSediment(world, plate.id, w);
             cells.push(c); conv.push(Math.max(0, world.convergence[w])); terrKm.push(sed.terrKm); pelKm.push(sed.pelKm);
             mature.push(slab >= config.marginIsleSlabKm ? 1 : 0);
         }
@@ -198,50 +197,25 @@ export function marginTrenches(world, plate) {
 }
 
 /**
- * How much sediment fills the trench at world position P (world cell w, on `plate`'s side), km: terrigenous — what the
- * land around it delivers (the share of continental crust, any plate's, sampled on rings from its coast — `coastKm` off —
- * out to trenchSedimentReachKm beyond: the rivers cross the fore-arc to the trench down its canyons, so a wide fore-arc
- * sea does not starve a trench whose coast has rivers ×
- * trenchDenudationKmPerMyr × how fast its latitude erodes: `supply`, km³/Myr per km of trench) over the convergence that
- * carries it away — and pelagic, the cover the incoming ocean floor brings, by its age.
+ * How much sediment fills the trench at world cell w (on plate `plateId`'s side), km: terrigenous — what the rivers
+ * deliver to it, the basins whose fans reach it (step/trench-fans.js: `supply`, km³/Myr per km of trench) over the
+ * convergence that carries it away — and pelagic, the cover the incoming ocean floor brings, by its age.
  * @returns {{terrKm: number, pelKm: number, supply: number}}
  */
-export function trenchSediment(world, plate, P, w, coastKm = 0) {
-    const { config, mesh, owner, ownerCell, plates, time } = world, { index, adjOffset, adjList } = mesh;
-    const e1 = normalizeTangent(P), e2 = [P[1] * e1[2] - P[2] * e1[1], P[2] * e1[0] - P[0] * e1[2], P[0] * e1[1] - P[1] * e1[0]];
-    let land = 0, n = 0;
-    for (let ring = 1; ring <= SEDIMENT_RINGS; ring++) {
-        const d = (coastKm + config.trenchSedimentReachKm * ring / SEDIMENT_RINGS) / PLANET_RADIUS_KM, cd = Math.cos(d), sd = Math.sin(d);
-        for (let k = 0; k < SEDIMENT_SPOKES; k++) {
-            const a = 2 * Math.PI * (k + 0.5 * ring) / SEDIMENT_SPOKES, ca = Math.cos(a) * sd, sa = Math.sin(a) * sd;
-            const q = index.nearest(cd * P[0] + ca * e1[0] + sa * e2[0], cd * P[1] + ca * e1[1] + sa * e2[1], cd * P[2] + ca * e1[2] + sa * e2[2]);
-            const o = owner[q];
-            if (o >= 0) { const t = plates[o].crust.type[ownerCell[q]]; if (t === CrustType.CONTINENT || t === CrustType.CRATON) land++; }
-            n++;
-        }
-    }
-    const lat = Math.asin(Math.max(-1, Math.min(1, P[2]))) * 180 / Math.PI;
+export function trenchSediment(world, plateId, w) {
+    const { config, mesh, owner, ownerCell, plates, time } = world, { adjOffset, adjList } = mesh;
     let incomingAge = 0;
     for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
         const nb = adjList[k], o = owner[nb];
-        if (o >= 0 && o !== plate.id && plates[o].crust.type[ownerCell[nb]] === CrustType.OCEAN) incomingAge = Math.max(incomingAge, time - plates[o].crust.formedAt[ownerCell[nb]]);
+        if (o >= 0 && o !== plateId && plates[o].crust.type[ownerCell[nb]] === CrustType.OCEAN) incomingAge = Math.max(incomingAge, time - plates[o].crust.formedAt[ownerCell[nb]]);
     }
-    // (terrigenous: what the land in reach delivers per km of trench — its area per km, the land's share of a strip
-    // trenchSedimentReachKm either side, × how fast it wears down — spread over the floor the convergence brings in: the
-    // fill at supply ÷ convergence; a trench holds at most TRENCH_FILL_MAX_KM)
-    const supply = config.trenchDenudationKmPerMyr * erosionAtLatitude(lat, heightsOf(config)) * (land / n) * 2 * config.trenchSedimentReachKm;   // km³/Myr per km
+    // (terrigenous: the fill at supply ÷ convergence — the floor the convergence brings in each Myr is covered by what
+    // arrives; a trench holds at most TRENCH_FILL_MAX_KM)
+    const supply = trenchFans(world).supply[w];
     const v = Math.max(0, world.convergence[w]) * CM_PER_YR_TO_KM_PER_MYR;
     return { terrKm: supply > 0 ? Math.min(TRENCH_FILL_MAX_KM, supply / Math.max(v, 1e-6)) : 0, pelKm: config.trenchPelagicKmPerMyr * incomingAge, supply };
 }
-const SEDIMENT_RINGS = 3, SEDIMENT_SPOKES = 12;
 const TRENCH_FILL_MAX_KM = 8;      // (a trench is filled to its rim at most: ~8 km of fill in the Makran, Cascadia and Barbados' wedges are ~3–7)
-
-/** A unit vector tangent to the sphere at P. */
-function normalizeTangent(P) {
-    const ref = Math.abs(P[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
-    const t = [P[1] * ref[2] - P[2] * ref[1], P[2] * ref[0] - P[0] * ref[2], P[0] * ref[1] - P[1] * ref[0]], l = Math.hypot(...t);
-    return [t[0] / l, t[1] / l, t[2] / l];
-}
 
 function cellsWhere(n, test) { const out = []; for (let c = 0; c < n; c++) if (test(c)) out.push(c); return out; }
 

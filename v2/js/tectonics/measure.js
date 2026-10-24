@@ -84,6 +84,20 @@ export const ISLAND_EROSION_KM_PER_MYR = 0.15;
 export function seaDepthKm(crustAgeMyr) { return Math.min(6.4, 2.6 + 0.345 * Math.sqrt(Math.max(0, crustAgeMyr))); }
 
 /**
+ * Sediment shallows a sea by less than its own thickness: the floor sinks under the load (Airy). Water of depth d
+ * replaced by sediment s: s = d × (ρm − ρw) ÷ (ρm − ρs) — with mantle 3.3, sea water 1.03 and compacted basin fill
+ * 2.5 g/cm³, s ≈ 2.84 d: ~17 km of sediment fills 6 km of water (Steckler & Watts 1978; the Black Sea's 14–19 km,
+ * Nikishin et al. 2015; the Precaspian's ~20 km; the Gulf of Mexico's ~15 km, Salvador 1991).
+ */
+export const SEDIMENT_LOAD_FACTOR = (3.3 - 1.03) / (3.3 - 2.5);
+
+/** Is a sea floor of this age filled to sea level by `fillKm` of sediment (a lowland now)? */
+export function seaFilledUp(crustAgeMyr, fillKm) { return fillKm > 0 && fillKm >= SEDIMENT_LOAD_FACTOR * seaDepthKm(crustAgeMyr) - 1e-6; }
+
+/** The sea floor's depth (km) under `fillKm` of sediment: what is left of seaDepthKm(age), never below sea level. */
+export function filledSeaDepthKm(crustAgeMyr, fillKm) { return Math.max(0, seaDepthKm(crustAgeMyr) - fillKm / SEDIMENT_LOAD_FACTOR); }
+
+/**
  * Where a hotspot volcano's summit stands relative to sea level now (km; > 0 = an island), or null if there is no
  * volcano here. The pile stands on the sea floor, which deepens as the crust ages; once the volcano stops erupting it
  * is worn down — so volcanoes break the surface near the plume and drown downstream (Hawaii, then the Emperor
