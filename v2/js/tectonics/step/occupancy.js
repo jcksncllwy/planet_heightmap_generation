@@ -37,9 +37,12 @@ export function binIndex(mesh) {
         radius.push(r);
     }
     const reach = Math.max(REACH_KM, REACH_CELLS * mesh.edgeKm) / PLANET_RADIUS_KM, neighbours = [];
+    // (only rows near enough in latitude can hold a neighbour: two bins' centres are at least their difference in
+    // latitude apart — the test below is the same, on every bin of those rows, in order)
+    const maxRadius = Math.max(...radius), span = Math.ceil((2 * maxRadius + reach) / (BIN_DEG * rad)) + 1;
     for (let i = 0; i < centre.length; i++) {
-        const list = [];
-        for (let j = 0; j < centre.length; j++) {
+        const list = [], row = Math.floor(i / cols);
+        for (let r = Math.max(0, row - span); r <= Math.min(rows - 1, row + span); r++) for (let j = r * cols; j < (r + 1) * cols; j++) {
             const d = Math.acos(Math.max(-1, Math.min(1, centre[i][0] * centre[j][0] + centre[i][1] * centre[j][1] + centre[i][2] * centre[j][2])));
             if (d <= radius[i] + radius[j] + reach) list.push(j);
         }
@@ -51,14 +54,28 @@ export function binIndex(mesh) {
 /** Mark that `plate` has crust in `bin` for the pass numbered `stamp`. */
 export function markBin(plate, bin, stamp, count) {
     if (!plate.bins || plate.bins.length !== count) plate.bins = new Uint32Array(count);
-    plate.bins[bin] = stamp;
+    if (plate.bins[bin] !== stamp) { plate.bins[bin] = stamp; plate.reach = null; }      // (a new bin: its reach below is stale)
 }
 
 /** Might `plate` have crust within REACH_KM of a point in `bin`? (False = certainly not.) */
 export function mayHaveCrustNear(plate, bin, stamp, bins) {
-    const marks = plate.bins;
-    if (!marks) return false;
-    const near = bins.neighbours[bin];
-    for (let i = 0; i < near.length; i++) if (marks[near[i]] === stamp) return true;
-    return false;
+    return plate.bins ? reachOf(plate, stamp, bins)[bin] === 1 : false;
+}
+
+/**
+ * Every bin `plate` may have crust near, at once: 1 on each neighbour of each bin it marked this pass — the same answer
+ * as testing a bin's neighbours for a mark (a bin is within reach of another exactly when that one is within reach of
+ * it), found once per plate and pass instead of once per question (the growth step asks millions per history). Kept
+ * until the pass changes or the plate marks a new bin (markBin).
+ */
+function reachOf(plate, stamp, bins) {
+    if (plate.reach?.stamp === stamp) return plate.reach.near;
+    const marks = plate.bins, near = new Uint8Array(bins.count);
+    for (let b = 0; b < marks.length; b++) {
+        if (marks[b] !== stamp) continue;
+        const list = bins.neighbours[b];
+        for (let i = 0; i < list.length; i++) near[list[i]] = 1;
+    }
+    plate.reach = { stamp, near };
+    return near;
 }

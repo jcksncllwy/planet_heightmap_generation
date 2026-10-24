@@ -34,11 +34,13 @@ export function maskedCells(crust) {
  */
 export function partition(mesh, crust, path, cells = maskedCells(crust)) {
     path = throughOcean(mesh, crust, path);
-    const { xyz, numCells, adjOffset, adjList } = mesh, onPath = new Uint8Array(numCells), side = new Int8Array(numCells);
+    const { xyz, numCells, adjOffset, adjList } = mesh, side = new Int8Array(numCells), mask = crust.mask, type = crust.type;
+    // (scratch kept between calls — a rift search partitions the same plate many times: see partitionScratch)
+    const { onPath, lean, land: isLand, seen, queue } = partitionScratch(numCells), mark = ++seen.stamp === 0xFFFFFFFF ? resetSeen(seen) : seen.stamp;
     for (const c of path) onPath[c] = 1;
-    const isLand = c => crust.mask[c] && crust.type[c] !== CrustType.OCEAN;
+    for (const c of cells) isLand[c] = type[c] !== CrustType.OCEAN ? 1 : 0;           // (land: the plate's crust, not ocean; 0 off the plate)
     // which side of the path each cell next to it lies on (the sign of its offset from the path's local line)
-    const lean = new Float32Array(numCells);              // > 0 left, < 0 right, summed over the path cells it touches
+    // (lean: > 0 left, < 0 right, summed over the path cells it touches)
     for (let i = 0; i < path.length; i++) {
         const c = path[i], prev = path[Math.max(0, i - 1)], next = path[Math.min(path.length - 1, i + 1)];
         const P = pos(xyz, c), along = tangentToward(P, pos(xyz, prev), pos(xyz, next));
@@ -49,40 +51,50 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
             lean[nb] += (xyz[3 * nb] - P[0]) * left[0] + (xyz[3 * nb + 1] - P[1]) * left[1] + (xyz[3 * nb + 2] - P[2]) * left[2];
         }
     }
-    // the pieces of land the path leaves, each voting by the cells of it that touch the path
-    const piece = new Int32Array(numCells).fill(-1), pieces = [];
+    // the pieces of land the path leaves, each voting by the cells of it that touch the path (each piece is a run of
+    // `queue`, filled breadth-first; the largest right-hand one is kept as [rightFrom, rightTo))
+    const marks = seen.marks;
+    let n = 0, rightFrom = 0, rightTo = 0;
     for (const s0 of cells) {
-        if (!isLand(s0) || onPath[s0] || piece[s0] >= 0) continue;
-        const id = pieces.length, cells = [s0]; piece[s0] = id;
+        if (!isLand[s0] || onPath[s0] || marks[s0] === mark) continue;
+        const from = n;
+        queue[n++] = s0; marks[s0] = mark;
         let vote = 0;
-        for (let i = 0; i < cells.length; i++) {
-            const c = cells[i];
+        for (let i = from; i < n; i++) {
+            const c = queue[i];
             vote += lean[c];
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (isLand(nb) && !onPath[nb] && piece[nb] < 0) { piece[nb] = id; cells.push(nb); } }
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (isLand[nb] && !onPath[nb] && marks[nb] !== mark) { marks[nb] = mark; queue[n++] = nb; } }
         }
-        pieces.push({ cells, vote });
+        if (vote < 0 && (rightTo === rightFrom || n - from > rightTo - rightFrom)) { rightFrom = from; rightTo = n; }
     }
-    let right = null;
-    for (const p of pieces) if (p.vote < 0 && (!right || p.cells.length > right.cells.length)) right = p;
-    for (const c of cells) if (isLand(c)) side[c] = 1;
-    if (right) for (const c of right.cells) side[c] = 2;
-    // the plate's ocean follows its nearest land; anything unreached (shouldn't happen) stays
-    let frontier = [];
-    for (const c of cells) if (side[c]) frontier.push(c);
-    while (frontier.length) {
-        const next = [];
-        for (const c of frontier) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (crust.mask[nb] && !side[nb]) { side[nb] = side[c]; next.push(nb); } }
-        frontier = next;
+    for (const c of cells) if (isLand[c]) side[c] = 1;
+    for (let i = rightFrom; i < rightTo; i++) side[queue[i]] = 2;
+    // the plate's ocean follows its nearest land (breadth-first from all of it); anything unreached (shouldn't happen) stays
+    n = 0;
+    for (const c of cells) if (side[c]) queue[n++] = c;
+    for (let i = 0; i < n; i++) {
+        const c = queue[i];
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (mask[nb] && !side[nb]) { side[nb] = side[c]; queue[n++] = nb; } }
     }
     const land = [0, 0, 0], cratons = [0, 0, 0], seenCraton = new Set();
     for (const c of cells) {
         if (!side[c]) side[c] = 1;
-        if (!isLand(c)) continue;
+        if (!isLand[c]) continue;
         land[side[c]]++;
-        if (crust.type[c] === CrustType.CRATON && !seenCraton.has(crust.terrane[c])) { seenCraton.add(crust.terrane[c]); cratons[side[c]]++; }
+        if (type[c] === CrustType.CRATON && !seenCraton.has(crust.terrane[c])) { seenCraton.add(crust.terrane[c]); cratons[side[c]]++; }
     }
+    // (the scratch put back as it was: every cell touched was on the path, beside it, or on the plate)
+    for (const c of path) { onPath[c] = 0; for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) lean[adjList[k]] = 0; }
+    for (const c of cells) isLand[c] = 0;
     return { side, land, cratons };
 }
+let scratch = null;
+/** Cell-sized scratch for partition, all zero between calls (marks: a fresh stamp per call instead). */
+function partitionScratch(numCells) {
+    if (!scratch || scratch.onPath.length !== numCells) scratch = { onPath: new Uint8Array(numCells), lean: new Float32Array(numCells), land: new Uint8Array(numCells), seen: { marks: new Uint32Array(numCells), stamp: 0 }, queue: new Int32Array(numCells) };
+    return scratch;
+}
+function resetSeen(seen) { seen.marks.fill(0); return (seen.stamp = 1); }
 
 /** Non-land cells connected to the world beyond the plate: the sea an outer coast faces (an enclosed sea is not). */
 export function exteriorSea(mesh, crust) {

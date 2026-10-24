@@ -7,6 +7,7 @@ import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { tangentToward, normalize, cross, dot, cellDistanceKm } from '../../core/sphere-geom.js';
 import { sidesOf, exteriorSea, maskedCells } from './rift-partition.js';
 import { FastNoise } from '../../core/fast-noise.js';
+import { edgeKmOf } from '../../core/min-heap.js';
 import { netTorques, stressAcross, cutAlong } from '../step/plate-stress.js';
 
 /**
@@ -150,7 +151,7 @@ function stressOnCut(mesh, ctx, side, path) {
 
 /** Cheapest path from `junction` to every land cell, at `costOf` per cell. */
 function cheapestPaths(mesh, crust, junction, costOf) {
-    const { xyz, adjOffset, adjList, numCells, edgeKm } = mesh;
+    const { adjOffset, adjList, numCells, edgeKm } = mesh, edge = edgeKmOf(mesh);       // (edge[k]: cellDistanceKm along adjacency entry k)
     const cost = new Float64Array(numCells).fill(Infinity), from = new Int32Array(numCells).fill(-1);
     const land = c => crust.mask[c] && crust.type[c] !== CrustType.OCEAN;
     const heap = new MinHeap();
@@ -160,7 +161,7 @@ function cheapestPaths(mesh, crust, junction, costOf) {
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
             if (!land(nb)) continue;
-            const next = cost[c] + costOf(nb) * cellDistanceKm(xyz, c, nb) / edgeKm;
+            const next = cost[c] + costOf(nb) * edge[k] / edgeKm;
             if (next < cost[nb]) { cost[nb] = next; from[nb] = c; heap.push(nb, next); }
         }
     }

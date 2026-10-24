@@ -94,10 +94,10 @@ function gatherAndSubduct(world) {
 function growCrustIntoGaps(world, gaps) {
     const growers = world.plates.filter(p => p.alive && !p.isBackground && p.crust.count > 0);
     const everyone = world.plates.filter(p => p.alive && p.crust.count > 0).map(plate => ({ plate, cap: plate.capInWorld(world.mesh) }));
-    const births = [];
+    const births = [], near = nearIndex(everyone, e => e.plate, world.occupancyStamp, binIndex(world.mesh));
     for (const grower of growers) {
         for (const cell of candidateCells(world, grower, gaps)) {
-            const verdict = decideBirth(world, grower, cell, everyone);
+            const verdict = decideBirth(world, grower, cell, everyone, near);
             if (verdict.born) births.push({ plate: grower, cell, trenchParent: verdict.trenchParent });
         }
     }
@@ -153,11 +153,15 @@ export function candidateCells(world, grower, gaps) {
     const bins = binIndex(world.mesh), stamp = world.occupancyStamp;
     // (the cells seen, in the order first seen: marks instead of a Set — the same cells in the same order)
     const seen = seenMarks(numCells), mark = seen.stamp, marks = seen.marks, order = [];
+    // (whether this plate may have crust near each bin, asked once per bin: many gap cells share one)
+    const nearBin = binVerdicts(bins.count);
     let ring = [];
     for (const g of gaps) {
         const x = xyz[3 * g], y = xyz[3 * g + 1], z = xyz[3 * g + 2];
         if (x * cap[0] + y * cap[1] + z * cap[2] < cap[3]) continue;
-        if (!mayHaveCrustNear(grower, bins.binOf[g], stamp, bins)) continue;             // a gap nowhere near this plate: nothing could attach
+        const bin = bins.binOf[g];
+        if (!nearBin[bin]) nearBin[bin] = mayHaveCrustNear(grower, bin, stamp, bins) ? 2 : 1;
+        if (nearBin[bin] === 1) continue;                                                  // a gap nowhere near this plate: nothing could attach
         const c = grower.cellAt(index, x, y, z);
         if (marks[c] !== mark) { marks[c] = mark; order.push(c); ring.push(c); }
     }
@@ -168,6 +172,23 @@ export function candidateCells(world, grower, gaps) {
     }
     return order.filter(c => !mask[c]);
 }
+let verdicts = null;
+/** A cleared per-bin scratch array (0 = not asked yet). */
+function binVerdicts(count) {
+    if (!verdicts || verdicts.length !== count) verdicts = new Uint8Array(count); else verdicts.fill(0);
+    return verdicts;
+}
+
+/**
+ * The entries of `list` whose plate may have crust near a bin (mayHaveCrustNear), in list order — found once per bin and
+ * kept for the rest of the pass (valid while no plate marks a new bin: the births are applied after all are decided).
+ * The same plates, in the same order, as filtering `list` at every cell: only the repeated work is skipped.
+ */
+function nearIndex(list, plateOf, stamp, bins) {
+    const cache = new Array(bins.count);
+    return bin => cache[bin] ??= list.filter(e => mayHaveCrustNear(plateOf(e), bin, stamp, bins));
+}
+
 let seen = null;
 /** A fresh mark on a cell-sized array (no clearing between uses). */
 function seenMarks(numCells) {
@@ -180,36 +201,50 @@ function seenMarks(numCells) {
  * May `grower` create its raster cell `cell` this step?
  * @returns {{born: boolean, why?: string, trenchParent?: number}} `why` names the rule that said no (for debugging)
  */
-export function decideBirth(world, grower, cell, everyone) {
-    const { mesh, config } = world, { xyz, edgeRad } = mesh;
-    const p = grower.toWorld(xyz[3 * cell], xyz[3 * cell + 1], xyz[3 * cell + 2], [0, 0, 0]);
-    const own = nearestCrust(grower, mesh, p);
-    if (own.cell < 0) return { born: false, why: 'not attached to this plate’s crust' };
+export function decideBirth(world, grower, cell, everyone, near = null) {
+    const { mesh, config } = world, { xyz, edgeRad } = mesh, hit = birthScratch.hit;
+    const p = grower.toWorld(xyz[3 * cell], xyz[3 * cell + 1], xyz[3 * cell + 2], birthScratch.p);
+    // (p is the cell's own centre: the cell under it is the cell)
+    if (!nearestCrustInto(grower, mesh, p, cell, hit)) return NOT_ATTACHED;
+    const ownDot = hit.dot, ownCell = hit.cell;
 
     const bins = binIndex(mesh), bin = bins.at(p[0], p[1], p[2]), stamp = world.occupancyStamp;
-    let rivalDot = -2, neighbour = null, neighbourHit = null;
-    for (const { plate, cap } of everyone) {
+    // (`near`: the plates that may have crust near this bin, worked out once per bin — nearIndex; else filtered here)
+    // (a) first, for every rival — the cell under p on its raster — then their nearest crust, only once it is a gap
+    const rivals = birthScratch.rivals, unders = birthScratch.unders;
+    let n = 0;
+    for (const { plate, cap } of near ? near(bin) : everyone) {
         if (plate === grower || p[0] * cap[0] + p[1] * cap[1] + p[2] * cap[2] < cap[3]) continue;
-        if (!mayHaveCrustNear(plate, bin, stamp, bins)) continue;                        // nothing of that plate anywhere near
+        if (!near && !mayHaveCrustNear(plate, bin, stamp, bins)) continue;               // nothing of that plate anywhere near
         const under = plate.cellAt(mesh.index, p[0], p[1], p[2]);
-        if (plate.crust.mask[under]) return { born: false, why: 'not a gap: another plate has crust here' };   // (a)
-        const hit = nearestCrust(plate, mesh, p, under);
-        if (hit.cell < 0) continue;                                         // that plate has nothing nearby
+        if (plate.crust.mask[under]) return NOT_A_GAP;                                   // (a)
+        rivals[n] = plate; unders[n++] = under;
+    }
+    let rivalDot = -2, neighbour = null, neighbourDot = -2, neighbourCell = -1;
+    for (let i = 0; i < n; i++) {
+        const plate = rivals[i];
+        if (!nearestCrustInto(plate, mesh, p, unders[i], hit)) continue;                // that plate has nothing nearby
         if (!plate.isBackground && hit.dot > rivalDot) rivalDot = hit.dot;
-        if (!neighbourHit || hit.dot > neighbourHit.dot) { neighbourHit = hit; neighbour = plate; }
+        if (!neighbour || hit.dot > neighbourDot) { neighbourDot = hit.dot; neighbourCell = hit.cell; neighbour = plate; }
     }
     // (b) on this plate's side of the mid-line, with half a cell to spare
-    if (rivalDot > -2 && Math.acos(Math.min(1, rivalDot)) - Math.acos(Math.min(1, own.dot)) < edgeRad) return { born: false, why: 'too close to the mid-line' };
+    if (rivalDot > -2 && Math.acos(Math.min(1, rivalDot)) - Math.acos(Math.min(1, ownDot)) < edgeRad) return TOO_CLOSE;
     // (c) not where this plate's edge is advancing on the crust in front of it
-    if (neighbour && isAdvancingOn(grower, neighbour, neighbourHit.cell, mesh, p, config.closingCmYr)) return { born: false, why: 'closing boundary' };
+    if (neighbour && isAdvancingOn(grower, neighbour, neighbourCell, mesh, p, config.closingCmYr)) return CLOSING;
 
     // Trench rollback: crust created beside a trench cell carries the trench on, so a trailing trench stays at the
     // plate's edge. On a WING (step/wings.js) only crust beside or ahead of the trench inherits — a gap can open
     // behind a wing's tip as the plate moves on, and what fills it is ordinary ocean.
-    const parentIsTrench = (grower.crust.flags[own.cell] & CrustFlag.TRENCH) && grower.crust.type[own.cell] === CrustType.OCEAN
-        && (grower.crust.wingKm[own.cell] === 0 || !isBehind(grower, own.cell, cell, mesh));
-    return { born: true, trenchParent: parentIsTrench ? own.cell : -1 };
+    const parentIsTrench = (grower.crust.flags[ownCell] & CrustFlag.TRENCH) && grower.crust.type[ownCell] === CrustType.OCEAN
+        && (grower.crust.wingKm[ownCell] === 0 || !isBehind(grower, ownCell, cell, mesh));
+    return { born: true, trenchParent: parentIsTrench ? ownCell : -1 };
 }
+// (the answers no, shared: decideBirth runs millions of times per history, and these need no fresh object)
+const NOT_ATTACHED = Object.freeze({ born: false, why: 'not attached to this plate’s crust' });
+const NOT_A_GAP = Object.freeze({ born: false, why: 'not a gap: another plate has crust here' });
+const TOO_CLOSE = Object.freeze({ born: false, why: 'too close to the mid-line' });
+const CLOSING = Object.freeze({ born: false, why: 'closing boundary' });
+const birthScratch = { p: [0, 0, 0], hit: { dot: -2, cell: -1 }, rivals: [], unders: [] };
 
 /**
  * Gap cells that are still empty need an owner for this step's world view. They are the ridge axis (no
@@ -220,37 +255,38 @@ export function decideBirth(world, grower, cell, everyone) {
 function assignGapOwners(world, gaps) {
     const { mesh, owner, ownerCell, claimCount, provisional, provisionalLike, plates, config } = world, { xyz, index } = mesh;
     const everyone = plates.filter(p => p.alive && p.crust.count > 0), bins = binIndex(mesh), stamp = world.occupancyStamp;
-    const p = [0, 0, 0];
+    const nearOf = nearIndex(everyone, plate => plate, stamp, bins);             // (after the births: they marked their bins)
+    const p = [0, 0, 0], hit = { dot: -2, cell: -1 };
+    // (per gap, for each nearby plate: the raster cell under it, then that plate's nearest crust — in scratch arrays)
+    let under = new Int32Array(16), hitDot = new Float64Array(16), hitCell = new Int32Array(16);
     for (const g of gaps) {
         p[0] = xyz[3 * g]; p[1] = xyz[3 * g + 1]; p[2] = xyz[3 * g + 2];
-        const bin = bins.binOf[g], near = everyone.filter(plate => mayHaveCrustNear(plate, bin, stamp, bins));
-        let best = null, bestHit = null, foreign = null, foreignHit = null;
-        const under = [];
-        for (const plate of near) {
-            const cell = plate.cellAt(index, p[0], p[1], p[2]);
-            under.push(cell);
-            if (plate.crust.mask[cell]) { best = plate; bestHit = { dot: 1, cell, real: true }; break; }     // filled this step
+        const near = nearOf(bins.binOf[g]), n = near.length;
+        if (n > under.length) { under = new Int32Array(2 * n); hitDot = new Float64Array(2 * n); hitCell = new Int32Array(2 * n); }
+        let best = null, bestDot = -2, bestCell = -1, foreign = null, foreignDot = -2, foreignCell = -1, real = false;
+        for (let i = 0; i < n; i++) {
+            const cell = near[i].cellAt(index, p[0], p[1], p[2]);
+            under[i] = cell;
+            if (near[i].crust.mask[cell]) { best = near[i]; bestCell = cell; real = true; break; }     // filled this step
         }
         if (!best) {
             // (each plate's nearest crust found once, for both searches)
-            const hits = near.map((plate, i) => nearestCrust(plate, mesh, p, under[i]));
-            near.forEach((plate, i) => {
-                const hit = hits[i];
-                if (hit.cell < 0) return;
-                if (!plate.isBackground && (!bestHit || hit.dot > bestHit.dot)) { best = plate; bestHit = hit; }
-            });
-            near.forEach((plate, i) => {
-                if (plate === best) return;
-                const hit = hits[i];
-                if (hit.cell >= 0 && (!foreignHit || hit.dot > foreignHit.dot)) { foreign = plate; foreignHit = hit; }
-            });
+            for (let i = 0; i < n; i++) { nearestCrustInto(near[i], mesh, p, under[i], hit); hitDot[i] = hit.dot; hitCell[i] = hit.cell; }
+            for (let i = 0; i < n; i++) {
+                if (hitCell[i] < 0) continue;
+                if (!near[i].isBackground && (!best || hitDot[i] > bestDot)) { best = near[i]; bestDot = hitDot[i]; bestCell = hitCell[i]; }
+            }
+            for (let i = 0; i < n; i++) {
+                if (near[i] === best) continue;
+                if (hitCell[i] >= 0 && (!foreign || hitDot[i] > foreignDot)) { foreign = near[i]; foreignDot = hitDot[i]; foreignCell = hitCell[i]; }
+            }
         }
         if (!best) continue;                               // nothing within reach: stays a gap and is reported as one
-        owner[g] = best.id; ownerCell[g] = bestHit.cell; claimCount[g] = 1;
-        if (bestHit.real) continue;
-        const closing = foreign && isAdvancingOn(best, foreign, foreignHit.cell, mesh, p, config.closingCmYr);
+        owner[g] = best.id; ownerCell[g] = bestCell; claimCount[g] = 1;
+        if (real) continue;
+        const closing = foreign && isAdvancingOn(best, foreign, foreignCell, mesh, p, config.closingCmYr);
         provisional[g] = closing ? Provisional.LIKE_NEIGHBOUR : Provisional.NEWBORN;
-        provisionalLike[g] = bestHit.cell;
+        provisionalLike[g] = bestCell;
     }
 }
 
@@ -291,26 +327,27 @@ function isBehind(plate, edgeCell, cell, mesh) {
 /**
  * Nearest crust in the plate's raster to world position p, searching a few rings around it in the
  * plate's frame: { dot: cosine of the angular distance, cell } — cell = −1 (dot = −2) if none is near.
- * `under`: the plate's raster cell under p if the caller has it already (plate.cellAt — the same lookup).
+ * `under`: the plate's raster cell under p if the caller has it already (plate.cellAt — the same lookup), else −1.
+ * Written into `out` (no fresh object: this runs millions of times per history); returns whether crust was found.
  */
-function nearestCrust(plate, mesh, p, under = -1) {
-    const { xyz, index } = mesh, mask = plate.crust.mask;
-    const l = plate.toPlateFrame(p[0], p[1], p[2], scratch.l);
+function nearestCrustInto(plate, mesh, p, under, out) {
+    const { xyz, index } = mesh, mask = plate.crust.mask, m = plate.mat;
+    const lx = m[0] * p[0] + m[3] * p[1] + m[6] * p[2], ly = m[1] * p[0] + m[4] * p[1] + m[7] * p[2], lz = m[2] * p[0] + m[5] * p[1] + m[8] * p[2];   // (plate.toPlateFrame)
     // Rings are read from a table built once per mesh (this runs millions of times per history): the same cells in
     // the same order as a ring-by-ring search from the nearest cell, so the answer — ties included — is unchanged.
-    const { start, cells, stride } = ringsOf(mesh), base = (under >= 0 ? under : index.nearest(l[0], l[1], l[2])) * stride;
+    const { start, cells, stride } = ringsOf(mesh), base = (under >= 0 ? under : index.nearest(lx, ly, lz)) * stride;
     let best = -2, bestCell = -1;
     for (let r = 0; r <= PROXIMITY_RINGS; r++) {
         for (let i = start[base + r], e = start[base + r + 1]; i < e; i++) {
             const c = cells[i];
             if (mask[c]) {
-                const d = l[0] * xyz[3 * c] + l[1] * xyz[3 * c + 1] + l[2] * xyz[3 * c + 2];
+                const d = lx * xyz[3 * c] + ly * xyz[3 * c + 1] + lz * xyz[3 * c + 2];
                 if (d > best) { best = d; bestCell = c; }
             }
         }
         if (bestCell >= 0 && r >= 1) break;      // one ring past the first hit guarantees the true nearest
     }
-    return { dot: best, cell: bestCell };
+    out.dot = best; out.cell = bestCell;
+    return bestCell >= 0;
 }
-const scratch = { l: [0, 0, 0] };
 

@@ -172,6 +172,25 @@ export function founderWithinPlates(world, dt) {
             for (let i = 0; i < run.length; i++) for (let k = adjOffset[run[i]]; k < adjOffset[run[i] + 1]; k++) { const nb = adjList[k]; if (inOld[nb] && runOf[nb] < 0) { runOf[nb] = runs.length; run.push(nb); } }
             runs.push(run);
         }
+        // the ocean nearer each run than any other coast of the plate, out to the reach, through the plate's ocean only: one
+        // spread from the whole coast at once, each cell taking the label of the coast cell that reaches it first (as a
+        // spread from one run against the rest of the coast gives, run by run) — made when the first long run asks for it
+        let label = null, takes = null;
+        const spread = () => {
+            label = new Int32Array(numCells); takes = runs.map(() => []);
+            let ring = [];
+            for (let c = 0; c < numCells; c++) if (coast[c]) { label[c] = runOf[c] >= 0 ? runOf[c] + 2 : 1; ring.push(c); }   // (1: coast in no run)
+            for (let hop = 0; hop < reachHops && ring.length; hop++) {
+                const next = [];
+                for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                    const nb = adjList[k];
+                    if (label[nb] || !mask[nb] || type[nb] !== CrustType.OCEAN) continue;
+                    label[nb] = label[c]; next.push(nb);
+                    if (label[nb] >= 2) takes[label[nb] - 2].push(nb);
+                }
+                ring = next;
+            }
+        };
         const before = started;
         for (const run of runs) {
             const lengthKm = run.length * edgeKm;
@@ -179,21 +198,8 @@ export function founderWithinPlates(world, dt) {
             let ages = 0;
             for (const c of run) ages += time - formedAt[c];
             const ageMyr = ages / run.length;
-            // the ocean nearer this run than any other coast of the plate, out to the reach: through the plate's ocean only
-            const label = new Uint8Array(numCells), mine = runOf[run[0]];
-            let ring = [];
-            for (let c = 0; c < numCells; c++) if (coast[c]) { label[c] = runOf[c] === mine ? 1 : 2; ring.push(c); }
-            const take = [];
-            for (let hop = 0; hop < reachHops && ring.length; hop++) {
-                const next = [];
-                for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-                    const nb = adjList[k];
-                    if (label[nb] || !mask[nb] || type[nb] !== CrustType.OCEAN) continue;
-                    label[nb] = label[c]; next.push(nb);
-                    if (label[nb] === 1) take.push(nb);
-                }
-                ring = next;
-            }
+            if (!label) spread();
+            const mine = runOf[run[0]] + 2, take = takes[mine - 2];
             if (take.length < minCells) { tally('small'); continue; }
             // the squeeze: the plate's stress across this coast, on the ocean that would break away (compression is negative)
             const region = take.concat(run), inS = new Uint8Array(numCells), rho = netTorques(world, P);
@@ -209,7 +215,7 @@ export function founderWithinPlates(world, dt) {
             fresh.setQuat(P.quat.slice());
             fresh.omega = P.omega.slice();                                   // it starts as it was; the torque balance takes it from there
             fresh.isOceanBorn = true;
-            for (const [tip, dir] of P.wings) if (label[tip] === 1 && !coast[tip]) { fresh.wings.set(tip, dir); P.wings.delete(tip); }   // (wing tips go with their half)
+            for (const [tip, dir] of P.wings) if (label[tip] === mine && !coast[tip]) { fresh.wings.set(tip, dir); P.wings.delete(tip); }   // (wing tips go with their half)
             if (!transferCells(world, P, fresh, take)) { fresh.alive = false; continue; }
             fresh.born = time;
             for (const c of run) P.crust.armTrench(c, config.subductionInitSlabKm);

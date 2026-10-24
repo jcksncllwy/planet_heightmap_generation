@@ -5,6 +5,8 @@
 import { quatIdentity, quatToMat3 } from '../../core/rotation.js';
 import { CrustRaster, CrustType } from './crust.js';
 
+let extentCells = null;       // (refreshExtent's working list, shared by every plate)
+
 export class Plate {
     /**
      * @param {number} id        stable unique id (index into world.plates)
@@ -36,6 +38,7 @@ export class Plate {
         this.capCos = -1;
         this.stats = { cells: 0, continentalCells: 0 };
         this.bins = null;                         // coarse occupancy marks, per resolve pass (step/occupancy.js)
+        this.reach = null;                        // …and the bins within reach of them (occupancy.js reachOf)
         /** Force diagnostics from the last torque balance (step/torque-balance.js), or null. */
         this.dynamics = null;
         // Wings and arcs (step/wings.js)
@@ -105,11 +108,13 @@ export class Plate {
 
     refreshExtent(xyz) {
         const { mask, type } = this.crust;
+        if (!extentCells || extentCells.length !== mask.length) extentCells = new Int32Array(mask.length);
+        const cells = extentCells;                        // (the crust cells, in order, for the second pass)
         let sx = 0, sy = 0, sz = 0, n = 0, nc = 0;
         for (let c = 0; c < mask.length; c++) {
             if (!mask[c]) continue;
             sx += xyz[3 * c]; sy += xyz[3 * c + 1]; sz += xyz[3 * c + 2];
-            n++;
+            cells[n++] = c;
             if (type[c] !== CrustType.OCEAN) nc++;
         }
         this.stats.cells = n;
@@ -121,9 +126,8 @@ export class Plate {
         if (n === 0 || l < 1e-6 * n) { this.capCenter = [0, 0, 1]; this.capCos = -1; return; }
         const cx = sx / l, cy = sy / l, cz = sz / l;
         let minDot = 1;
-        for (let c = 0; c < mask.length; c++) {
-            if (!mask[c]) continue;
-            const d = cx * xyz[3 * c] + cy * xyz[3 * c + 1] + cz * xyz[3 * c + 2];
+        for (let i = 0; i < n; i++) {
+            const c = cells[i], d = cx * xyz[3 * c] + cy * xyz[3 * c + 1] + cz * xyz[3 * c + 2];
             if (d < minDot) minDot = d;
         }
         this.capCenter = [cx, cy, cz];

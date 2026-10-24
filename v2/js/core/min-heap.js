@@ -79,11 +79,12 @@ export function spreadKm(mesh, dist, { canEnter = null, onReach = null, maxKm = 
     return dist;
 }
 
-/** Each adjacency entry's length in km (the arc from the cell to that neighbour), once per mesh — as spreadKm had it. */
+/** Each adjacency entry's length in km (the arc from the cell to that neighbour), once per mesh — as spreadKm had it (and the
+ *  same number cellDistanceKm gives for the pair: the history's searches read it from here). */
 const edgeKms = new WeakMap();
 /** Let go of a mesh's cached edge lengths (the finish's 10M mesh: ~240 MB). */
 export function forgetEdgeKm(mesh) { edgeKms.delete(mesh); }
-function edgeKmOf(mesh) {
+export function edgeKmOf(mesh) {
     let e = edgeKms.get(mesh);
     if (e) return e;
     const { adjOffset, adjList, xyz } = mesh, n = adjOffset.length - 1, R = 6371;

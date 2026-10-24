@@ -95,12 +95,20 @@ function nearEdge(plate, mesh) {
     if (!near || near.marks.length !== numCells) near = plate._nearEdge = { marks: new Uint32Array(numCells), stamp: 0 };
     if (++near.stamp === 0xFFFFFFFF) { near.marks.fill(0); near.stamp = 1; }
     const { marks, stamp } = near;
-    for (let c = 0; c < numCells; c++) {
-        if (!mask[c]) continue;
-        let edge = false;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!mask[adjList[k]]) { edge = true; break; }
-        if (!edge) continue;
-        for (let i = start[c * stride], e = start[c * stride + RING_COUNT + 1]; i < e; i++) marks[cells[i]] = stamp;
+    // (the crust lies within the plate's own cap — plate.refreshExtent — and the cap is taken with the same two cells of
+    // slack forEachClaim relies on (plate.capInWorld); so, as there, blocks of raster cells wholly outside the cap's band of
+    // latitude, in the plate's frame, hold none of it and are passed over)
+    const radius = Math.acos(Math.max(-1, Math.min(1, plate.capCos))) + 2 * mesh.edgeRad, [cx, cy, cz] = plate.capCenter;
+    const blocks = latitudeBlocks(mesh), { zLo, zHi } = capBand(cx, cy, cz, radius >= Math.PI ? -2 : Math.cos(radius));
+    for (let b = 0, c0 = 0; b < blocks.count; b++, c0 += BLOCK) {
+        if (blocks.zMax[b] < zLo || blocks.zMin[b] > zHi) continue;
+        for (let c = c0, end = Math.min(numCells, c0 + BLOCK); c < end; c++) {
+            if (!mask[c]) continue;
+            let edge = false;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!mask[adjList[k]]) { edge = true; break; }
+            if (!edge) continue;
+            for (let i = start[c * stride], e = start[c * stride + RING_COUNT + 1]; i < e; i++) marks[cells[i]] = stamp;
+        }
     }
     return near;
 }

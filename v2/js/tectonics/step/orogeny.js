@@ -8,7 +8,7 @@
 // Himalayan front, along old weak lines). Records only — terrain synthesis interprets them.
 
 import { CrustType, CrustFlag, OrogenyType, BeltSide } from '../model/crust.js';
-import { cellDistanceKm } from '../../core/sphere-geom.js';
+import { edgeKmOf } from '../../core/min-heap.js';
 import { buildHeights } from './heights.js';
 
 /**
@@ -69,7 +69,7 @@ export function beltShape(headOn, slabAgeMyr, config) {
  */
 export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
     if (!sources.length) return;
-    const { adjOffset, adjList, xyz, edgeKm } = mesh, crust = plate.crust;
+    const { adjOffset, adjList, edgeKm } = mesh, crust = plate.crust, edge = edgeKmOf(mesh);     // (edge[k]: the distance along adjacency entry k)
     const { mask, type, flags } = crust;
     const widthOf = i => belt.widths?.[i] ?? belt.widthKm, workOf = i => belt.works?.[i] ?? belt.workKm;
     // u: the share of its reach a cell lies from the front (0 at the front, 1 at the belt's edge); src: which front cell reached it
@@ -105,14 +105,14 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
             if (!mask[nb] || (allow && !allow(nb))) continue;
             if (type[nb] === CrustType.OCEAN) {                                  // sea: only outward from a front at sea, and not far
                 if (!atSea) continue;
-                const sea = seaKm[c] + cellDistanceKm(xyz, c, nb);
+                const sea = seaKm[c] + edge[k];
                 if (sea > seaLimit || u[nb] < Infinity) continue;
                 u[nb] = 0; src[nb] = src[c]; seaKm[nb] = sea; queue.push(nb);
                 continue;
             }
             // (each cell's strength over half the hop: a craton cratonStrength times as hard to deform — half the hop onto it,
             // all of a hop within it; an old weak line carries the belt further)
-            const hop = cellDistanceKm(xyz, c, nb) * ((flags[nb] & (CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN)) ? config.weakCellCost : 1)
+            const hop = edge[k] * ((flags[nb] & (CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN)) ? config.weakCellCost : 1)
                 * (shieldCost === Infinity && (type[c] === CrustType.CRATON || type[nb] === CrustType.CRATON) ? Infinity : 0.5 * (strength(c) + strength(nb)));
             const next = atSea ? 0 : here + hop / reach;                         // the coast is the front for a trench at sea
             if (next >= u[nb] || next > 1) continue;

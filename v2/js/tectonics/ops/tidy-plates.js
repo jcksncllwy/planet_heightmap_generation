@@ -119,22 +119,25 @@ export function bridgePieces(plate, mesh, maxKm) {
     return filled;
 }
 
-let piecesSeen = null;       // (componentsOf's working array, kept between calls)
-
-/** Connected pieces of a plate's crust, in its own raster. */
+let piecesSeen = null, piecesQueue = null;       // (componentsOf's working arrays, kept between calls)
+/** The plate's pieces of crust — joined cell to cell — each its cells (an Int32Array, breadth-first from its first cell) and its count of land cells. */
 export function componentsOf(crust, mesh) {
     const { numCells, adjOffset, adjList } = mesh, { mask, type } = crust;
-    if (!piecesSeen || piecesSeen.length !== numCells) piecesSeen = new Uint8Array(numCells);
-    const seen = piecesSeen.fill(0), pieces = [];
+    if (!piecesSeen || piecesSeen.length !== numCells) { piecesSeen = new Uint8Array(numCells); piecesQueue = new Int32Array(numCells); }
+    const seen = piecesSeen.fill(0), queue = piecesQueue, pieces = [];
+    // (each piece is a run of one shared queue, filled breadth-first; copied out once it is complete)
+    let n = 0;
     for (let s = 0; s < numCells; s++) {
         if (!mask[s] || seen[s]) continue;
-        const cells = [s]; seen[s] = 1;
+        const from = n;
+        queue[n++] = s; seen[s] = 1;
         let land = 0;
-        for (let i = 0; i < cells.length; i++) {
-            if (type[cells[i]] !== CrustType.OCEAN) land++;
-            for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) { const nb = adjList[k]; if (mask[nb] && !seen[nb]) { seen[nb] = 1; cells.push(nb); } }
+        for (let i = from; i < n; i++) {
+            const c = queue[i];
+            if (type[c] !== CrustType.OCEAN) land++;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (mask[nb] && !seen[nb]) { seen[nb] = 1; queue[n++] = nb; } }
         }
-        pieces.push({ cells, land });
+        pieces.push({ cells: queue.slice(from, n), land });
     }
     return pieces;
 }
