@@ -98,9 +98,7 @@ export function evolveRivers(world, dt) {
     // ── drainage (km², rain-weighted), leaves to the sea ──
     area.fill(0); sed.fill(0); sedCont.fill(0); basin.fill(0);
     const denude = world.config.trenchDenudationKmPerMyr ?? 0, mouths = [];
-    // (the rock follows the climate the heights wear down by — unless a check comparing erosion laws on the heights alone
-    // pins the climate the rivers' rock follows, world.config.sedimentHeights, to keep the tectonics the same)
-    const { rain } = latitudeRates(mesh, H), { erode } = latitudeRates(mesh, world.config.sedimentHeights ?? H);
+    const { rain, erode } = latitudeRates(mesh, H);
     for (let i = count - 1; i >= 0; i--) {
         const c = order[i];
         area[c] += cellArea * rain[c] / H.rainRefMm;
