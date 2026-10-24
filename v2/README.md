@@ -791,7 +791,11 @@ all. Now:
 Measured (phase 13, 3 seeds): initiations 3.5–4.1 → 5.6–6.3 per 100 Myr (Earth 12–30; the 6b histories 1.3–3 → 4–6.3);
 plates holding ≥ 1 % of the planet 9.5–11.2 → 11.4–13.8 (Earth 12–14); the sea floor's median age 107–119 → 96–121 Myr
 (Earth ~64). Not mended: the plate a supercontinent welds into still holds 66–83 % of the planet at its largest (51–73 %
-before), and plates over 10^7.5 km² stay 4–5 (Earth 7). A 600 Myr history at 20K takes ~20 % longer: it has more plates.
+before), and plates over 10^7.5 km² stay 4–5 (Earth 7).
+Time: the extra plates cost ~17 % on the lab's 600 Myr history (40K, seeds 12345/777/4242/626225, each run beside main
+under the same load). Exact speed-ups in the hot paths (commit "Exact speed-ups in the history's hot paths": the same
+history to the bit, on this branch and on main) take ~9 % off main's own time and leave the branch +4 % wall, +6 % CPU
+over main: 302 s against 290 s for the four histories.
 
 ## Conventions
 
