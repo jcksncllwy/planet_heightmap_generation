@@ -138,14 +138,18 @@ function describeDynamics(load, target, centre, capped, mesh) {
     };
 }
 
-// Basal drag tensor Σ c (I − r rᵀ) over the plate's crust, rotated into the world frame (M · D_local · Mᵀ).
+// Basal drag tensor Σ c (I − (1 − j) r rᵀ) over the plate's crust, rotated into the world frame (M · D_local · Mᵀ). A cell
+// is a patch, not a point: turning about its own vertical drags its base too — the patch's polar moment, j = a ⁄ 2π of its
+// area a on the unit sphere (a disc's) — so even a plate one cell across has a bounded spin (a point has none: a plate of
+// one or two cells going down its trench spun up to thousands of radians per Myr, its couplings then putting absurd
+// stresses on its neighbours). Over a whole plate it adds ~10⁻⁴ of the drag.
 function dragTensor(plate, mesh, config, areaUnit) {
     const { xyz, numCells } = mesh, { mask, type } = plate.crust, local = new Float64Array(9);
-    const perArea = areaUnit / config.mobility;
+    const perArea = areaUnit / config.mobility, j = cellSpin(mesh);
     const cOcean = config.dragOcean * perArea, cLand = config.dragContinent * perArea, cCraton = config.dragCraton * perArea;
     for (let i = 0; i < numCells; i++) {
         if (!mask[i]) continue;
-        addProjector(local, [xyz[3 * i], xyz[3 * i + 1], xyz[3 * i + 2]], type[i] === CrustType.OCEAN ? cOcean : type[i] === CrustType.CRATON ? cCraton : cLand);
+        addProjector(local, [xyz[3 * i], xyz[3 * i + 1], xyz[3 * i + 2]], type[i] === CrustType.OCEAN ? cOcean : type[i] === CrustType.CRATON ? cCraton : cLand, j);
     }
     const m = plate.mat, tmp = new Float64Array(9), out = new Float64Array(9);
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) tmp[3 * i + j] = m[3 * i] * local[j] + m[3 * i + 1] * local[3 + j] + m[3 * i + 2] * local[6 + j];
@@ -153,10 +157,14 @@ function dragTensor(plate, mesh, config, areaUnit) {
     return out;
 }
 
-/** D += c (I − r rᵀ): viscous resistance to the tangential velocity at unit position r. */
-function addProjector(D, r, c) {
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) D[3 * i + j] += c * ((i === j ? 1 : 0) - r[i] * r[j]);
+/** D += c (I − (1 − spin) r rᵀ): viscous resistance to the tangential velocity at unit position r (and, with spin, to the
+ *  turning of a patch there about its own vertical: dragTensor). */
+function addProjector(D, r, c, spin = 0) {
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) D[3 * i + j] += c * ((i === j ? 1 : 0) - (1 - spin) * r[i] * r[j]);
 }
+
+/** A sim cell's polar moment per unit area, on the unit sphere: a disc of the cell's area a has a ⁄ 2π. */
+export function cellSpin(mesh) { return 4 * Math.PI / mesh.numCells / (2 * Math.PI); }
 
 /** Solve the 3×3 system D x = b by Cramer's rule (D is positive definite for any real plate). D is row-major. */
 export function solve3(D, b) {

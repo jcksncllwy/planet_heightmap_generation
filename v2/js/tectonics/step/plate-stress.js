@@ -12,6 +12,7 @@
 // was); the rotations are the plates' current ones.
 
 import { CrustType } from '../model/crust.js';
+import { cellSpin } from './torque-balance.js';
 
 /**
  * Each raster cell's net torque ρ_c (world frame, 3 per cell; 0 off the plate), at the plate's present rotation — kept on
@@ -42,14 +43,14 @@ export function netTorques(world, plate) {
         couple(w, an, k * (closing ? 1 : config.collisionSeparateShare), other);
         couple(w, cross(r, an), k * config.collisionShearShare, other);
     }
-    // the mantle's drag under each cell: −c (ω − r (r·ω))
-    const perArea = areaUnit / config.mobility, { mask, type } = plate.crust, r = [0, 0, 0];
+    // the mantle's drag under each cell: −c (ω − (1 − j) r (r·ω))
+    const perArea = areaUnit / config.mobility, { mask, type } = plate.crust, r = [0, 0, 0], keep = 1 - cellSpin(mesh);   // (torque-balance.js dragTensor)
     const cOf = { [CrustType.OCEAN]: config.dragOcean * perArea, [CrustType.CRATON]: config.dragCraton * perArea };
     for (let c = 0; c < numCells; c++) {
         if (!mask[c]) continue;
         plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], r);
         const k = cOf[type[c]] ?? config.dragContinent * perArea, rw = r[0] * w0[0] + r[1] * w0[1] + r[2] * w0[2];
-        for (let i = 0; i < 3; i++) rho[3 * c + i] -= k * (w0[i] - r[i] * rw);
+        for (let i = 0; i < 3; i++) rho[3 * c + i] -= k * (w0[i] - keep * r[i] * rw);
     }
     plate.netTorque = { at: world.loads, rho };
     return rho;
