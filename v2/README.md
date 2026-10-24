@@ -812,13 +812,34 @@ no rule let one go down unless it was as big as a plate and its shore 800 km lon
   trench"). Once it stops going down it is captured as before.
 - Phase 13 reports the sealed seas' floor older than 340 Myr (the Herodotus Basin, Earth's oldest in-place ocean floor:
   Granot 2016), over the frames from 100 Myr.
-Measured (20K, 1000 Myr, seeds 626225 / 777 / 12345, enclosed seas ≥ 0.05 Mkm²): floor older than 340 Myr at 1000 Myr
-8.7 / 10.9 / 9.8 → 5.9 / 4.5 / 6.8 Mkm²; its mean over 300–1000 Myr 4.5 / 6.1 / 5.2 → 3.8 / 4.3 / 3.8 Mkm². The number of sealed
-seas and their area do not fall (62 / 64 / 65 → 56 / 68 / 79; 19.9 / 15.1 / 28.3 → 24.3 / 12.1 / 27.5 Mkm²): seas keep
-being sealed as fast, but the old floor in them goes down (100–170 sealed-sea founders per 1000 Myr, the floor's age at
-founding p10 / 50 / 90 ≈ 250–300 / 355–480 / 460–685 Myr; young sealed seas stay). Time: the plates this adds cost ~7.5 % on the lab's 600 Myr history (40K, 4 seeds, run
-beside the commit before and main under the same load): 251 s against 234 s, and +11.5 % wall, +14 % CPU over main's 225 s —
-more gap-growth rivals, rift searches and founder tests; the sealed-sea test itself walks only the one sea (exact).
+Measured before the rebase onto main's sea fill (40K, 1000 Myr, seeds 626225 / 777 / 12345, enclosed seas ≥ 0.05 Mkm²):
+floor older than 340 Myr at 1000 Myr 8.7 / 10.9 / 9.8 → 5.9 / 4.5 / 6.8 Mkm²; its mean over 300–1000 Myr 4.5 / 6.1 / 5.2 →
+3.8 / 4.3 / 3.8 Mkm². The number of sealed seas and their area do not fall: seas keep being sealed as fast, but the old
+floor in them goes down (100–170 sealed-sea founders per 1000 Myr, the floor's age at founding p10 / 50 / 90 ≈ 250–300 /
+355–480 / 460–685 Myr; young sealed seas stay). With main's sea fill, against main
+(the same runs; Mkm² at 1000 Myr, and the mean over 300–1000 Myr): enclosed seas 58 / 45 / 52 → 65 / 80 / 65, their floor
+older than 340 Myr 4.0 / 5.8 / 7.2 → 6.9 / 8.1 / 4.9 (mean 3.1 / 7.1 / 4.8 → 3.6 / 5.7 / 3.1), and of that the floor not yet
+filled to sea level 0.4 / 0.9 / 1.0 → 0.9 / 0.9 / 0.4 (mean 0.50 / 0.41 / 0.41 → 0.45 / 1.17 / 0.44). Not mended: the
+branch's extra plates seal more seas than main does, and 160–280 sealed-sea founders per 1000 Myr only offset that; the
+fill hides most of the old floor on both.
+
+## Branch stress-init: costs and fixes after the rebase (2026-10-23)
+
+- **A cell drags as a patch, not a point** (`torque-balance.js dragTensor`, `plate-stress.js`): turning about its own
+  vertical, a cell drags its base too (a disc's polar moment, a ⁄ 2π of its area on the unit sphere). Without it a plate one
+  or two cells across going down its trench spun up to thousands of rad/Myr, and its couplings put absurd stresses on its
+  neighbours (a founder sample of −42.65 slab pulls per 100 km, on a cut 10,982 km long — not a short cut). Over a whole
+  plate it adds ~10⁻⁴ of the drag; the fastest spin is now ~1 rad/Myr (a one-cell plate's edge then moves ~9 cm/yr).
+- **The founder tests inside plates are drawn every `marginFounderEveryMyr` 4 Myr**, for the time since (they ran every
+  step): the same chance per Myr, and a plate's draw tests all its margins. A trench takes ~10 Myr from first failure to
+  sinking on its own (Gurnis, Hall & Lavier 2004), so a 4 Myr draw is finer than the process. Noise-level.
+- **Rift scoring** (exact: the same history to the bit): the stress on a cut uses scratch masks instead of a fresh
+  cell-sized array and a per-cell map each cut (~2 %), the heap swaps in place, and the partition tests land in place
+  (~0.4 %); the founder tests reuse their scratch (exact, ~0.3 %).
+- Time, on the lab's 600 Myr history (40K, seeds 12345 / 777 / 4242 / 626225, twice each, each run beside main 3cc5283
+  under the same load): 437.6 s against 428.5 s, +2.1 % wall; CPU +5.5 %, nearly all of it the garbage collector's
+  parallel threads (with `--single-threaded-gc`, +1.7 %). The founder clock alone takes ~4 s off a history whose tests
+  ran every step (5.8 s → 1.6 s).
 
 ## Conventions
 
