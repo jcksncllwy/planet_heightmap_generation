@@ -22,14 +22,18 @@ export const TERRAIN = {
     // always squiggly"). Earth's passive and active margins run smooth over hundreds of km — South Africa's coast has a
     // divider dimension D ≈ 1.02 over 20–500 km rulers (Richardson 1961, in Mandelbrot 1967), Norway's fjords 1.52 (Feder
     // 1988) — so a coast's line is the margin's (records.js, margin-line.js): the 0.5 contour of the land/sea raster seen
-    // through a Gaussian of coastLineCells sim cells — the raster's staircase and a rift's cell-to-cell steps gone, its
-    // bends and transform steps kept — down to coastLineRuggedCells where the coast is rugged. Its roughness is the rough
-    // land at the sea, not a blanket noise: an island arc's, and a young collision coast's by its relief (records.js
-    // rugged: full from coastRuggedKm of uplift while the belt is fresh, coastFreshMyr) take the coast noise and the fine
-    // detail below; drowned valleys (carve.js), fjords (finish-ice.js) and the waves (finish-coast.js) roughen every coast
-    // by its own relief and climate. tools/coast-shape.mjs measures D by kind of margin.
-    coastLineCells: 1,
-    coastLineRuggedCells: 0.5,
+    // through a Gaussian of σ = coastLineKm — the scale a rifted margin is straight over: a rift's border faults run in
+    // segments ~50–150 km long, joined at accommodation zones (Rosendahl 1987, Annu. Rev. Earth Planet. Sci. 15: 445–503;
+    // Ebinger 1989, Geol. Soc. Am. Bull. 101: 885–903), and the margin steps at transforms a few hundred km apart — so
+    // the raster's staircase and a rift's cell-to-cell steps go, its bends and transform steps stay. In km, so the same
+    // at every sim mesh, never under one sim cell (below that the raster's staircase would show); coastLineRuggedKm where
+    // the coast is rugged (never under half a cell). Its roughness is the rough land at the sea, not a blanket noise: an
+    // island arc's, and a young collision coast's by its relief (records.js rugged: full from coastRuggedKm of uplift while
+    // the belt is fresh, coastFreshMyr) take the coast noise and the fine detail below; drowned valleys (carve.js), fjords
+    // (finish-ice.js) and the waves (finish-coast.js) roughen every coast by its own relief and climate.
+    // tools/coast-shape.mjs measures D by kind of margin.
+    coastLineKm: 120,
+    coastLineRuggedKm: 60,
     coastRuggedKm: 1.5,
     coastFreshMyr: 60,
     coastNoiseKm: 45,           // a rugged coast moved in and out by up to this, at 200–1500 km scales: bays and headlands

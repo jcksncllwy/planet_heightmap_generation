@@ -8,9 +8,10 @@
 // crust's isostatic surface meets sea level, is a contour of a profile that is smooth along the margin. So the edge is
 // taken as the 0.5 contour of the land/sea raster smoothed over σ (a Gaussian: a straight edge seen through it is
 // Φ(x / σ), whose contour is that edge; a staircase's steps, a cell long, are gone — their amplitude falls as
-// exp(−2π²σ²/λ²)). σ is in sim cells — the raster's own uncertainty of where the edge lies, so a finer sim draws more of
-// its rifts' bends — and smaller where the coast is rugged (island arcs, young collision coasts: records.js rugged — the two smoothings blended by it), whose
-// small pieces must not be smoothed away. A cell changes from land to sea, or back, only on the coast, never as the last
+// exp(−2π²σ²/λ²)). σ is in km — the length a rift's border-fault segments run straight (terrain-config.js coastLineKm),
+// never under a sim cell (the raster's own uncertainty of where the edge lies) — and smaller where the coast is rugged
+// (island arcs, young collision coasts: records.js rugged — the two smoothings blended by it), whose small pieces must
+// not be smoothed away. A cell changes from land to sea, or back, only on the coast, never as the last
 // of its own kind around it (no island or lake erased) and never where it would part a land or a sea in two.
 // The coast distance is then measured to that contour exactly — to its segments, carried outward cell by cell with the
 // nearest segment (not summed edge by edge: those distances' contours, the shelf's edge and the coastal plain's, were

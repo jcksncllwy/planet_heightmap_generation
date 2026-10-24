@@ -53,7 +53,7 @@ if (process.argv.includes('--finish')) {
         const noNoise = { coastNoiseKm: 0, coastDetailKm: 0 };
         variants.push(['−coastNoise', { coastNoiseKm: 0 }], ['−detail', { coastDetailKm: 0 }], ['−arcStraits', { arcStraitKm: 0 }],
             ['−all noise', noNoise], ['−noise −warps', { ...noNoise, warpKm: 0, cellWarp: 0 }], ['−shelfNoise', { shelfNoise: 0 }],
-            ['−shelfAlong', { shelfAlongKm: 0 }], ['line ½ cell', { coastLineCells: 0.5 }], ['line 1½ cells', { coastLineCells: 1.5 }]);
+            ['−shelfAlong', { shelfAlongKm: 0 }], ['line 60 km', { coastLineKm: 60 }], ['line 180 km', { coastLineKm: 180 }]);
     }
     for (const [label, ov] of variants) {
         const cfg = { ...cfg0, ...ov };

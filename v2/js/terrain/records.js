@@ -363,9 +363,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     }
     // the coast drawn to the margin's smooth line (margin-line.js), on the world grid and on each plate's raster; its shelf,
     // coastal plain and maturity smoothed along it (a margin's are regional)
-    // (σ: coastLineCells sim cells on a smooth coast, coastLineRuggedCells on a rugged one — an island arc's, a young
-    // collision coast's: their small pieces are real)
-    const sigS = simMesh.edgeKm * (cfg.coastLineCells ?? 1), sigR = simMesh.edgeKm * (cfg.coastLineRuggedCells ?? 0.5);
+    // (σ: coastLineKm on a smooth coast, coastLineRuggedKm on a rugged one — an island arc's, a young collision coast's:
+    // their small pieces are real — in km, never under a sim cell, half a cell on a rugged coast: the raster's own limit)
+    const sigS = Math.max(simMesh.edgeKm, cfg.coastLineKm ?? 120), sigR = Math.max(0.5 * simMesh.edgeKm, Math.min(sigS, cfg.coastLineRuggedKm ?? 60));
     marginLine(simMesh, coastKm, sigS, sigR, rugged);
     for (const P of coastRaster.values()) marginLine(simMesh, P.coast, sigS, sigR, P.rugged);
     alongMargin(simMesh, coastKm, [shelfKm, plainKm, maturity], cfg);

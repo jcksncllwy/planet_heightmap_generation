@@ -633,12 +633,13 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   Mandelbrot 1967; the Andean coast ~1.05). The squiggle lay in the sim-scale coast noise (`coastCellNoise`, the largest
   share), the lookup warps, the shelf's width jumping from one sim cell to the next with the floor beside it, and the sim
   raster's own staircase under them all. Now: the coast is the margin's smooth line (`margin-line.js`) — the 0.5 contour of
-  the land/sea raster seen through a Gaussian of `coastLineCells` sim cells (a rift's cell-to-cell steps and the raster's
+  the land/sea raster seen through a Gaussian of `coastLineKm` 120 km — the length of a rift's border-fault segments
+  (50–150 km: Rosendahl 1987, Ebinger 1989), never under one sim cell — (a rift's cell-to-cell steps and the raster's
   staircase gone, its bends and transform steps kept; a cell turns only on the coast, never erasing an island or a lake,
   never parting a land or a sea), the coast distance measured exactly to that contour's segments, so the shelf's edge and
   the coastal plain are true offsets of it. Roughness is where the land at the sea is rough (records.js `rugged`): island
   arcs, and young collision coasts by their relief (`coastRuggedKm`, while the belt is fresh: `coastFreshMyr`) take the
-  coast noise (`coastNoiseKm`), the fine detail and a sharper line (`coastLineRuggedCells`); a passive or active margin
+  coast noise (`coastNoiseKm`), the fine detail and a sharper line (`coastLineRuggedKm`, never under half a sim cell); a passive or active margin
   takes none — its roughness is what its rivers' drowned valleys (rias, carve.js), the ice's fjords (finish-ice.js) and the
   waves (finish-coast.js) cut into it. The sim-scale coast noise is gone, and a margin's shelf, coastal plain and maturity
   are smoothed along it over its flexural scale (`shelfAlongKm`). D on the tectonic surface at 1M cells, two seeds:
