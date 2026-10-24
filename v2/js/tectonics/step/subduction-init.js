@@ -266,7 +266,10 @@ export function founderWithinPlates(world, dt) {
             world.log(EventKind.PLATE_BORN, `${fresh.name} is born: ${(take.length * cellAreaKm2 / 1e6).toFixed(1)} Mkm² of ${P.name}’s old ocean breaks away`, { plate: fresh.id, areaMkm2: take.length * cellAreaKm2 / 1e6 });
             world.log(EventKind.SUBDUCTION_INIT, `a new trench founders along ${lengthKm.toFixed(0)} km of ${P.name}’s ${sealed ? 'shore of a sealed sea' : 'passive margin'}: ${fresh.name}, ocean ${ageMyr.toFixed(0)} Myr old, begins to go down beneath it`,
                 { upper: P.id, lower: fresh.id, lengthKm, ageMyr, stress: sigma, ...(sealed ? { sealed: true } : {}) });
-            break;                                                           // (one a plate at a time: the plate has changed)
+            // (the plate's other runs are drawn too, in the same draw: their takes are other cells of the plate, untouched —
+            // drawn every marginFounderEveryMyr, stopping at one would found fewer than drawing every step; which seas are
+            // sealed is asked afresh, the plate's edge having moved)
+            seaOf = null;
         }
         if (started === before) started += founderAcross(world, P, dt, tr, tally);
     }
