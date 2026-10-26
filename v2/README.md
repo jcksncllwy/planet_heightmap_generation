@@ -847,7 +847,7 @@ before → now): 42.2 / 39.7 / 39.5 → 49.4 / 59.6 / 47.8 → 46.8 / 52.3 / 39.
 12.0 → 9.9 / 14.5 / 10.9 Mkm². Arc docking 10.4 / 0.5 / 7.4 → 1.5 / 2.8 / 0.9; the two branch-only paths together 2.6 /
 7.4 / 3.0 → 0.9 / 2.0 / 0.7. Area is main's; the count is still +15 % over the three seeds (most of it "closing" and arc
 collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy): 59 / 46 / 53 → 68 / 81 / 68 → 68 / 82 /
-45.
+45. Time (600 Myr, 40K, four seeds twice beside main 3cc5283): 426.5 s against 429.8 s wall, CPU +2.8 %.
 
 ## Branch stress-init: costs and fixes after the rebase (2026-10-23)
 
