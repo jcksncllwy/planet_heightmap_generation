@@ -111,11 +111,20 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     for (let q = 0; q < numCells; q++) {
         let s = q;
         const dx = disp[3 * q], dy = disp[3 * q + 1], dz = disp[3 * q + 2];
+        // (the redraw deforms the two plates within their own outline: crust pushed back from the front and out at its ends
+        // goes into thickness and into the ground the two already cover — it does not spill past the upper plate's edge into
+        // a third plate, which holds it back. Spilled, a weld shoved a band of land 1–2 cells deep along ~13,000 km of a
+        // neighbour's coast in one step: 2.1 Mkm² of land on land, the invariants' "stacked 965 km deep", seed 592250)
+        if (!U.mask[q] && fromL[q] < 0) continue;
         if (dx * dx + dy * dy + dz * dz > 0) {
             const r = 1 / PLANET_RADIUS_KM;
             moved[0] = xyz[3 * q] - dx * r; moved[1] = xyz[3 * q + 1] - dy * r; moved[2] = xyz[3 * q + 2] - dz * r;
             const l = Math.hypot(moved[0], moved[1], moved[2]);
             s = index.nearest(moved[0] / l, moved[1] / l, moved[2] / l);            // inverse warp: fetch the source
+            // (land squeezed back from the front stays land: shortening thickens a continent, it does not draw the sea in
+            // behind its coast. Fetched as it was, the sideways pull at the front's ends brought the coast's own ocean into
+            // the land behind it — ~1.6 Mkm² of new inland sea per 1000 Myr history, sealed at once, seed 777)
+            if (U.mask[q] && U.type[q] !== CrustType.OCEAN && U.mask[s] && U.type[s] === CrustType.OCEAN) s = q;
         }
         if (!U.mask[s]) continue;
         out.copyFrom(q, U, s);

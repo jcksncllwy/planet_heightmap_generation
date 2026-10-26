@@ -867,6 +867,53 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   parallel threads (with `--single-threaded-gc`, +1.7 %). The founder clock alone takes ~4 s off a history whose tests
   ran every step (5.8 s → 1.6 s).
 
+## Welds, sealed seas and deep stacks (2026-10-26, branch welds)
+
+- **What "closing (no event)" was.** Tick by tick (a probe tagging every enclosed sea's cells in the world view and in
+  each plate's raster), most seas that seal "with no event" are the world view flickering: it resamples the rigid rasters
+  by nearest cell, so a sea's one-cell mouth opens and closes from step to step (1,800–2,400 reseals a history). The seas
+  that are really sealed are ~75 % sealed inside one plate's own raster, and their causes, per 1000 Myr history, are an
+  arc built in place (5–11 seas), welds (8–10), cells gained (~5), the rings arcs make as they dock (3–6), arcs collapsing
+  (2–4) and microplate capture (1–3).
+- **A weld waits while the sea it would seal is still closing** (`collision.js seaWeldWouldSeal`). At the moment a weld
+  fired, about half of the sea it trapped was still closing faster than `sutureStallCmYr`: the stall and gap-stall exits
+  saw a seam that had stopped shortening at the contact, not the sea beside it. The test lays the two rasters together,
+  finds the sea that is open in each plate's own raster but walled in by the pair, and takes the fastest rate at which
+  the lower plate's coast round it closes on the upper's. While that is above the stall rate the weld waits (`stacked`
+  and `overdue` still weld), and the trapped floor keeps going down, as remnant ocean basins close by continued
+  convergence (Ingersoll, Dickinson & Graham 2003, GSA Spec. Pap. 372; the Bay of Bengal and Andaman Sea today).
+  The SUTURE event gives the sea it sealed (`sealKm2`) and how fast it was closing.
+- **Why not a remnant-ocean plate.** Carving the trapped floor off as its own plate inside the welded one does not
+  consume it: with no trench of its own it is captured straight back, and while it lasts its divergent edges fill with
+  new ocean on both flanks (resolve.js), so it keeps its area and only its floor gets younger. A remnant plate is only
+  right once it can start its own trench; that choice is left open.
+- **The redraw stays within the pair's outline** (`merge-plates.js`): it no longer spills past the upper plate's edge
+  into a third plate (a 1–2-cell band over ~13,000 km of another plate's coast, seed 592250), and land squeezed back from
+  the front stays land instead of drawing in sea from behind it (~1.6 Mkm² of new, at-once-sealed inland sea a history).
+- **A weld hands the lower plate's collisions on** (`collision.js inheritCollisions`): its other open collisions become
+  the welded plate's, merged with any it already had. They were dropped, and the overlap they carried was measured again
+  against a new, short front — the deep stacks (16,603 km deep over its front on one seed).
+- **A craton jams the underthrust** (`collision.js underthrust`): the lower plate's land between its own side and a
+  craton in the overlap goes no further under (Cloos 1993; cratons as rigid, Lenardic & Moresi 1999). Consumed round it,
+  a craton was cut off from its plate and deleted with the stranded piece by the tidy step.
+- **`openSeaBetween` saturating at its 1000 km window** is not hiding a seam gap: widened to 8000 km, most welds read the
+  cap, i.e. the rule then measures the world ocean between the plates' far coasts. The sea the weld would seal is the
+  measure that matters, and it is now the one the weld uses.
+- Numbers (40K, 1000 Myr, mean over the frames 300–1000 Myr, seeds 626225 / 777 / 12345 / 4242 / 101 / 202; main → branch):
+  enclosed seas (≥ 0.05 Mkm²) 47.4 → 42.9; floor older than 340 Myr 3.27 → 2.75 Mkm²; seas sealed inside one plate
+  30.3 from 35.2, their area 5.82 → 4.80 Mkm², their old floor 2.07 → 1.61 Mkm²; seas a weld sealed 10.9 → 7.7. The
+  enclosed area alone (13.9 → 16.7 Mkm²) is dominated by whole oceans ringed by land on several plates while their
+  coasts still close (seed 4242: 126 Mkm² at 700 Myr), not by sealed seas. Earth at this resolution has 3–4 enclosed
+  seas floored by oceanic or oceanic-like crust (the Mediterranean with Gibraltar shut, the Black Sea, the South
+  Caspian, perhaps the Red Sea), ~3–3.5 Mkm²: most of the rest is arcs, outside this branch. Deepest stack over 8
+  seeds: 4 of 8 above the 750 km limit → none.
+- Time, on the lab's 600 Myr history (40K, seeds 12345 / 777 / 4242 / 626225 twice each and 101 / 202 / 303 / 404 once,
+  each run beside main 5bab988 under the same load): 987.9 s against 963.8 s, +2.5 % wall; main with an unrelated
+  nudge (plumeSpacingKm 1500 → 1560) ran 953.9 s, −1.0 %. The sea test floods the pair's rasters, so it is taken only
+  when it decides a weld (the seam closed, not stacked or overdue), once per `sutureCheckMyr`: taken at every check it
+  cost ~3 % (not exact: the test then reads the sea a step or two later). The rest is the histories differing (seed
+  12345 rifts a larger plate: +17 %; the other seeds −6 % to +9 %).
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

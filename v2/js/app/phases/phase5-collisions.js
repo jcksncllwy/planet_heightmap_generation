@@ -42,7 +42,7 @@ const SCENES = [
         checklist: [
             'Austra’s long chain of land strikes Borea’s long south coast at an angle, its north-east end first (about 12 Myr); the magenta overlap starts there.',
             'After contact Austra turns about that first contact (Plates layer, scrub 10 → 40 Myr): its west end swings north and the ocean between the two closes like a zipper, westward along the whole margin — the contact neither freezes the two where they first touched nor see-saws (the far end does not swing back out).',
-            'Only once the sea between them is narrow everywhere along the margin (under ~250 km at its widest) — or has stopped closing — do they weld (about 40 Myr); the event log says how much sea was left.',
+            'Only once the sea between them is narrow everywhere along the margin (under ~250 km at its widest) — or has stopped closing — do they weld (about 40 Myr); the event log says how much sea was left. A weld that would seal a sea off between the two coasts waits while that sea is still closing, so its floor goes down first instead of being trapped (the event log gives the sea it sealed and how fast it was closing).',
             'Try the weld slider: set “weld once the sea between is nowhere wider than” to 1000 km and they weld within ~10 Myr of first contact, before Austra has turned (5° instead of ~20°) — the contact itself allows the turn; what froze it was welding too soon.',
         ],
     },
@@ -95,7 +95,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
         title: 'Phase 5a — Collision events',
         summary: 'The force scenes again, with the event rules on. Convergence at every trench and collision front is recorded as a mountain belt that reaches inland ' +
             '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates lock across the front and shorten — but a contact is a pivot, not a clamp: ' +
-            'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Once the seam has closed, or stopped closing, they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
+            'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Once the seam has closed, or stopped closing — and no sea it would seal between the coasts is still closing — they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
             'squeezed back and sideways, cratons moved as rigid blocks. ' + scene.about,
         checklist: [...scene.checklist,
             'The crust rules still hold: no gaps, and land is only ever lost where a collision absorbed it (the event log gives the count).'],
