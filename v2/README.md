@@ -823,6 +823,32 @@ filled to sea level 0.4 / 0.9 / 1.0 → 0.9 / 0.9 / 0.4 (mean 0.50 / 0.41 / 0.41
 branch's extra plates seal more seas than main does, and 160–280 sealed-sea founders per 1000 Myr only offset that; the
 fill hides most of the old floor on both.
 
+### Sealed seas by cause, and a sealed sea's floor going down whole (2026-10-26)
+
+A probe (each step, the cells newly enclosed are tagged on their crust with the event that sealed them: weld exits,
+arc docking, arc collapse, back-arc, rifts, fragments, founders, microplate capture; "closing" when no event touched the
+sea's floor or rim) classified the seas at 1000 Myr and over the frames 300–1000 Myr (40K, seeds 626225 / 777 / 12345).
+Weld exits seal almost nothing on either side (≤ 1 sea on the mean). Against main, the branch's excess came from:
+- **arc docking** (mean 1.8 / 2.6 / 5.5 seas → 10.4 / 0.5 / 7.4; at 1000 Myr 2 → 36 seas on 626225), and two paths only
+  the branch has — **founders inside a sealed sea** (0 → 1.1 / 3.3 / 2.0) and **the plate such a founder made captured
+  back** (0 → 1.5 / 4.1 / 1.0). One cycle (626225, 104.0 Myr): "Thalassa 5 is born: 0.1 Mkm² of AEFGJK's old ocean
+  breaks away · a new trench founders along 1456 km of AEFGJK's shore of a sealed sea"; 105.8 Myr: "Thalassa 5,
+  subducted down to 0.06 Mkm², is captured by AEFGJK". Only the ocean nearest the failing shore went down; the rest of
+  the sea stayed, the sliver came back, and the arc its trench raised ringed the sea into smaller seas.
+- the rest, ~+16 seas over the three seeds on the mean with the round-3 rules switched off, is main's own closing and arc
+  collapse on the branch's extra plates and trenches.
+
+Now **a sealed sea's floor goes down whole** (`founderWithinPlates`): the take is all of the plate's ocean joined to the
+failing shore, not the ocean nearest it — one slab cut off from any ridge, with nothing to hold part of it up (the South
+Caspian under the Apsheron sill: Jackson et al. 2002) — and once a sea has gone down in a draw, its other shores do not
+founder again. **A floor narrower than a starting slab** (`subductionInitSlabKm`, 150 km out from the shore) **has no slab
+to sink** and stays. Sealed-sea founders 160–280 → 34–59 per 1000 Myr. Enclosed seas, mean over 300–1000 Myr (main →
+before → now): 42.2 / 39.7 / 39.5 → 49.4 / 59.6 / 47.8 → 46.8 / 52.3 / 39.4; their area 11.2 / 14.7 / 10.7 → 12.8 / 22.8 /
+12.0 → 9.9 / 14.5 / 10.9 Mkm². Arc docking 10.4 / 0.5 / 7.4 → 1.5 / 2.8 / 0.9; the two branch-only paths together 2.6 /
+7.4 / 3.0 → 0.9 / 2.0 / 0.7. Area is main's; the count is still +15 % over the three seeds (most of it "closing" and arc
+collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy): 59 / 46 / 53 → 68 / 81 / 68 → 68 / 82 /
+45.
+
 ## Branch stress-init: costs and fixes after the rebase (2026-10-23)
 
 - **A cell drags as a patch, not a point** (`torque-balance.js dragTensor`, `plate-stress.js`): turning about its own

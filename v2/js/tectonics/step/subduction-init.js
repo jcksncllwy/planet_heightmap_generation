@@ -126,7 +126,7 @@ export function initiateSubduction(world, dt) {
 // asks every few Myr of every plate, and fresh arrays each time only fed the garbage collector)
 let fwScratch = null;
 function founderScratch(numCells) {
-    if (!fwScratch || fwScratch.coast.length !== numCells) fwScratch = { coast: new Uint8Array(numCells), inOld: new Uint8Array(numCells), runOf: new Int32Array(numCells), label: new Int32Array(numCells), inS: new Uint8Array(numCells), seaOf: new Uint8Array(numCells) };
+    if (!fwScratch || fwScratch.coast.length !== numCells) fwScratch = { coast: new Uint8Array(numCells), inOld: new Uint8Array(numCells), runOf: new Int32Array(numCells), label: new Int32Array(numCells), inS: new Uint8Array(numCells), seaOf: new Uint8Array(numCells), gone: new Uint8Array(numCells), seen: new Uint32Array(numCells), stamp: 0, queue: new Int32Array(numCells) };
     return fwScratch;
 }
 
@@ -237,8 +237,29 @@ export function founderWithinPlates(world, dt) {
         // beneath a shore, its chance per km of that shore as on any margin (the South Caspian floor under the Apsheron
         // sill: Jackson et al. 2002; the Japan Sea's eastern margin: Tamaki & Honza 1985; the Ionian beneath the Calabrian
         // and Hellenic arcs: Faccenna et al. 2014). A young sealed sea (a back-arc basin just closed off) is too light to.
-        let seaOf = null;
+        let seaOf = null, gone = null;
         const isSealed = run => (seaOf ??= sc.seaOf.fill(0), sealedSea(mesh, P.crust, run[0], seaOf));   // (a run lies in one sea)
+        const nextTo = (cells, c) => { for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (sc.gone[adjList[k]]) return true; return false; };
+        // the floor of the sealed sea a run is the shore of: the plate's ocean joined to it, the run itself left on the plate.
+        // Empty if it reaches less than a starting slab's length (subductionInitSlabKm) out from the shore: a floor narrower
+        // than the slab a new trench needs has no slab to sink — nothing goes down, and the sea stays as it is
+        const slabHops = Math.max(1, Math.ceil(config.subductionInitSlabKm / edgeKm));
+        const seaFloor = run => {
+            const mark = ++sc.stamp, out = [], q = sc.queue;
+            let n = 0, ring = 0, end = 0;
+            for (const c of run) sc.seen[c] = mark;
+            for (const c of run) q[n++] = c;
+            end = n;
+            for (let i = 0; i < n; i++) {
+                if (i === end) { ring++; end = n; }
+                for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) {
+                    const nb = adjList[k];
+                    if (sc.seen[nb] === mark || !mask[nb] || type[nb] !== CrustType.OCEAN) continue;
+                    sc.seen[nb] = mark; q[n++] = nb; out.push(nb);
+                }
+            }
+            return ring >= slabHops ? out : [];
+        };
         const before = started;
         for (const run of runs) {
             const lengthKm = run.length * edgeKm;
@@ -248,8 +269,17 @@ export function founderWithinPlates(world, dt) {
             for (const c of run) ages += time - formedAt[c];
             const ageMyr = ages / run.length;
             if (!label) spread();
-            const mine = runOf[run[0]] + 2, take = takes[mine - 2];
+            const mine = runOf[run[0]] + 2;
+            let take = takes[mine - 2];
             if (take.length < minCells && !(sealed ??= isSealed(run))) { tally('small'); continue; }
+            // A sealed sea's floor goes down WHOLE beneath the shore that fails: it is one slab, cut off from any ridge, with
+            // nothing to hold part of it up (the South Caspian's floor under the Apsheron sill). Taking only the ocean nearest
+            // this stretch of its shore left the rest of the sea to the plate: a sliver went down, was captured back, and
+            // the arc its trench raised ringed the sea into smaller seas (README: sealed seas by cause).
+            if (sealed ??= isSealed(run)) {
+                if (gone && run.some(c => nextTo(gone, c))) { tally('sealedGone'); continue; }   // (its sea went down this draw)
+                take = seaFloor(run);
+            }
             if (!take.length) { tally('sealedEmpty'); continue; }
             // the squeeze: the plate's stress across this coast, on the ocean that would break away (compression is negative)
             const region = take.concat(run), inS = sc.inS, rho = netTorques(world, P);
@@ -267,8 +297,11 @@ export function founderWithinPlates(world, dt) {
             fresh.setQuat(P.quat.slice());
             fresh.omega = P.omega.slice();                                   // it starts as it was; the torque balance takes it from there
             fresh.isOceanBorn = true;
-            for (const [tip, dir] of P.wings) if (label[tip] === mine && !coast[tip]) { fresh.wings.set(tip, dir); P.wings.delete(tip); }   // (wing tips go with their half)
+            for (const c of take) sc.inS[c] = 1;
+            for (const [tip, dir] of P.wings) if (sc.inS[tip] && !coast[tip]) { fresh.wings.set(tip, dir); P.wings.delete(tip); }   // (wing tips go with their half)
+            for (const c of take) sc.inS[c] = 0;
             if (!transferCells(world, P, fresh, take)) { fresh.alive = false; continue; }
+            if (sealed) { gone ??= []; for (const c of take) { sc.gone[c] = 1; gone.push(c); } }
             fresh.born = time;
             for (const c of run) P.crust.armTrench(c, config.subductionInitSlabKm);
             P.dirty = true;
@@ -281,6 +314,7 @@ export function founderWithinPlates(world, dt) {
             // sealed is asked afresh, the plate's edge having moved)
             seaOf = null;
         }
+        if (gone) for (const c of gone) sc.gone[c] = 0;
         if (started === before) started += founderAcross(world, P, dt, tr, tally);
     }
     return started;
