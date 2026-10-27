@@ -14,6 +14,7 @@ import { buildAnchor } from './anchor.js';
 import { plateCratons } from './cratons.js';
 import { crestProfile } from './profiles.js';
 import { marginLine, gaussianAt } from './margin-line.js';
+import { marginConstants, riftedMargin, flexuralPlainKm } from './margins.js';
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -236,6 +237,26 @@ function seaAreas(simMesh, land) {
     return area;
 }
 
+/** Each landmass (connected land cells) and its land's area per km of its coast (km): what it has to shed onto each km. */
+function landmasses(simMesh, land) {
+    const { adjOffset, adjList, numCells: n, edgeKm } = simMesh, cellKm2 = 4 * Math.PI * R * R / n;
+    const of = new Int32Array(n).fill(-1), perCoastKm = [], queue = [];
+    for (let s = 0; s < n; s++) {
+        if (!land[s] || of[s] >= 0) continue;
+        const id = perCoastKm.length;
+        let coast = 0;
+        queue.length = 0; queue.push(s); of[s] = id;
+        for (let i = 0; i < queue.length; i++) {
+            const c = queue[i];
+            let shore = false;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!land[nb]) shore = true; else if (of[nb] < 0) { of[nb] = id; queue.push(nb); } }
+            if (shore) coast++;
+        }
+        perCoastKm.push(queue.length * cellKm2 / Math.max(1, coast * edgeKm));
+    }
+    return { of, perCoastKm };
+}
+
 /** Sea pockets smaller than `maxKm2` (connected non-land cells enclosed by land) become land, in place. */
 function fillPockets(simMesh, land, maxKm2) {
     const { adjOffset, adjList, numCells: n } = simMesh, maxCells = maxKm2 / (4 * Math.PI * 6371 * 6371 / n);
@@ -271,7 +292,10 @@ const plainOf = (m, mature) => (m.youngPlainKm === undefined ? m.plainKm : m.you
  * @returns {Object} per-sim-cell fields (typed arrays of length numCells unless noted):
  *   land (1 = non-ocean crust) · arc (1 = island-arc crust) · craton · riverIncKm / riverKm2 (the history's rivers:
  *   how deep they cut, what they drain; tectonics/step/rivers.js) · coastKm (signed distance to the edge of the continental crust, + inland) ·
- *   shelfKm / plainKm / slopeKm (from the nearest coast's kind) · maturity (the nearest coast's, if passive: 0 young … 1
+ *   shelfKm / plainKm / slopeKm (from the nearest coast's kind; shelfKm: the datum shoreline's distance from the crust's
+ *   edge) · breakKm (the shelf break's: 0 at the crust's edge, a rifted margin's far out on its thinned crust) · thinKm /
+ *   riftShare / footKm / openSea (a rifted margin's thinned width, how much of the nearest coast rifted, the sea floor's
+ *   depth at its foot, how open the sea it faces is: margins.js) · maturity (the nearest coast's, if passive: 0 young … 1
  *   mature — its relief buried under the shelf and plain by that share; its shelf widened by it on the open ocean only:
  *   widen) · depthKm (sea floor, ocean cells) · ageMyr and
  *   fabricKm (abyssal-hill wavelength) for ocean cells · trenchKm / trenchDepthKm (distance to, and depth of, the
@@ -300,97 +324,6 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // (the land's share is read at each point from the smooth swell field — synthesize.js — not baked into the platform
     // per cell, where the land's corners would step it at the cell's scale and a low coast would follow the steps)
     const sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1), swellSeaRef = cfg.mantleSwellKm * cfg.mantleSwellSeaRef;
-
-    // ── the coast: signed distance to the edge of the land crust, and what kind of coast is nearest ──
-    const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n), rugged = new Float32Array(n);
-    const kindAtCoast = w => {                                        // w: a land cell on the coast
-        if (frame.type[w] === CrustType.ARC && !(frame.flags[w] & CrustFlag.MARGIN_ISLE)) return CoastKind.ARC;
-        const t = frame.margin[w] & Margin.TYPE;
-        return t === Margin.ACTIVE ? CoastKind.ACTIVE : t === Margin.TRANSFORM ? CoastKind.TRANSFORM : t === Margin.COLLISION ? CoastKind.COLLISION : CoastKind.PASSIVE;
-    };
-    // A margin's kind is a property of a stretch of coast, not of one cell: the coast cells of a bay, or of a headland's
-    // flank, on an active margin are not themselves at the plate boundary — alone they would read passive, and a passive
-    // shelf (150 km) would drown the land behind the coastal range in patches. So the kinds other than passive carry
-    // along the coast (coast cell to coast cell) for coastKindKm; a passive coast cell they reach takes the nearest.
-    const onCoast = new Uint8Array(n), ownKind = new Uint8Array(n), along = new Float32Array(n).fill(Infinity);
-    for (let w = 0; w < n; w++) {
-        if (!land[w]) continue;
-        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) if (!land[adjList[k]]) { onCoast[w] = 1; break; }
-        if (!onCoast[w]) continue;
-        ownKind[w] = kindAtCoast(w);
-        if (ownKind[w] !== CoastKind.PASSIVE && ownKind[w] !== CoastKind.ARC) along[w] = 0;
-    }
-    const carried = ownKind.slice();
-    spreadKm(simMesh, along, { canEnter: (a, b) => onCoast[b] === 1, onReach: (a, b) => { carried[b] = carried[a]; }, maxKm: cfg.coastKindKm });
-    for (let w = 0; w < n; w++) if (onCoast[w] && ownKind[w] === CoastKind.PASSIVE && along[w] <= cfg.coastKindKm) ownKind[w] = carried[w];
-    // a passive coast's maturity (cfg.marginMatureMyr), by its age: the oldest ocean floor beside it — the floor that formed
-    // as it broke away (a pre-history coast's: the pre-history floor's) — or less where its own belt was active since; on
-    // its shelf widening with it on the open ocean only (cfg.marginOpenSeaKm2: by the area of the sea it faces)
-    const seaKm2 = seaAreas(simMesh, land), ownMature = new Float32Array(n), ownWiden = new Float32Array(n);
-    for (let w = 0; w < n; w++) {
-        if (!onCoast[w] || ownKind[w] !== CoastKind.PASSIVE) continue;
-        let age = frame.oroType[w] ? Math.max(0, time - frame.oroLast[w]) : Infinity, floor = -1, sea = 0;
-        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
-            const nb = adjList[k];
-            if (land[nb]) continue;
-            if (seaKm2[nb] > sea) sea = seaKm2[nb];
-            if (frame.owner[nb] >= 0) floor = Math.max(floor, time - frame.formedAt[nb]);
-        }
-        if (floor >= 0) age = Math.min(age, floor);
-        ownMature[w] = age === Infinity ? 1 : 1 - Math.exp(-age / cfg.marginMatureMyr);
-        ownWiden[w] = ownMature[w] * smooth(cfg.marginOpenSeaKm2[0], cfg.marginOpenSeaKm2[1], sea);
-    }
-    // how rugged a coast is (0 smooth … 1): roughness belongs where the land at the sea is rough — an island arc's volcanic
-    // edifices, and a young collision coast's ranges and basins striking into the sea (the Aegean, the Dalmatian coast) —
-    // by the relief its belt stands at (coastRuggedKm: full from there) while the belt is fresh (coastFreshMyr). A passive
-    // margin's coast is a contour of its smooth sediment-draped profile, an active one's runs along its coastal range
-    // (Peru, northern Chile): smooth, their roughness only what their valleys and the ice cut into them (carve.js, finish).
-    const ownRugged = new Float32Array(n);
-    for (let w = 0; w < n; w++) {
-        if (!onCoast[w]) continue;
-        if (ownKind[w] === CoastKind.ARC) { ownRugged[w] = 1; continue; }
-        if (ownKind[w] !== CoastKind.COLLISION || !frame.oroType[w]) continue;
-        ownRugged[w] = Math.exp(-Math.max(0, time - frame.oroLast[w]) / cfg.coastFreshMyr) * smooth(0, cfg.coastRuggedKm ?? 1.5, Math.max(0, frame.upliftKm[w]));
-    }
-    for (let w = 0; w < n; w++) for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
-        const nb = adjList[k];
-        if (land[nb] === land[w]) continue;
-        const half = 0.5 * R * Math.acos(Math.min(1, xyz[3 * w] * xyz[3 * nb] + xyz[3 * w + 1] * xyz[3 * nb + 1] + xyz[3 * w + 2] * xyz[3 * nb + 2]));
-        if (half < dist[w]) { const at = land[w] ? w : nb; dist[w] = half; coastKind[w] = ownKind[at]; maturity[w] = ownMature[at]; widen[w] = ownWiden[at]; rugged[w] = ownRugged[at]; }
-    }
-    spreadKm(simMesh, dist, { canEnter: (a, b) => land[a] === land[b], onReach: (a, b) => { coastKind[b] = coastKind[a]; maturity[b] = maturity[a]; widen[b] = widen[a]; rugged[b] = rugged[a]; }, maxKm: 6000 });
-    // …and measured again on each plate's own raster, which the world grid shows re-sampled a little differently every
-    // step as the plate moves: the coast measured there is fixed in the crust (Phase 9, steady detail)
-    const coastRaster = plateCoasts(simMesh, A, land, dist, coastKind, { maturity, widen, rugged }, frame, cfg.pocketSeaKm2);
-    const coastKm = new Float32Array(n), shelfKm = new Float32Array(n), plainKm = new Float32Array(n), slopeKm = new Float32Array(n);
-    for (let w = 0; w < n; w++) {
-        const d = Math.min(6000, dist[w]);
-        coastKm[w] = land[w] ? d : -d;
-        // (the shelf's width varies by a noise read where the crust is in its plate's frame: it rides with the coast)
-        const m = cfg.margins[COAST_KEYS[coastKind[w]]], rc = A.cell[w], x = xyz[3 * rc], y = xyz[3 * rc + 1], z = xyz[3 * rc + 2];
-        const vary = 1 + cfg.shelfNoise * noise.fbm(x * 9 + 1.7, y * 9 + 4.2, z * 9 + 8.1, 3, 0.5) * 1.6;
-        shelfKm[w] = shelfOf(m, widen[w]) * Math.max(0.2, vary); plainKm[w] = plainOf(m, maturity[w]); slopeKm[w] = m.slopeKm;
-    }
-    // the coast drawn to the margin's smooth line (margin-line.js), on the world grid and on each plate's raster; its shelf,
-    // coastal plain and maturity smoothed along it (a margin's are regional)
-    // (σ: coastLineKm on a smooth coast, coastLineRuggedKm on a rugged one — an island arc's, a young collision coast's:
-    // their small pieces are real — in km, never under a sim cell, half a cell on a rugged coast: the raster's own limit)
-    const sigS = Math.max(simMesh.edgeKm, cfg.coastLineKm ?? 120), sigR = Math.max(0.5 * simMesh.edgeKm, Math.min(sigS, cfg.coastLineRuggedKm ?? 60));
-    marginLine(simMesh, coastKm, sigS, sigR, rugged);
-    for (const P of coastRaster.values()) marginLine(simMesh, P.coast, sigS, sigR, P.rugged);
-    alongMargin(simMesh, coastKm, [shelfKm, plainKm, maturity], cfg);
-    // …and each plate's shelf and coastal plain on its raster, from its kind of coast there (the same noise, read at the
-    // raster cell: the crust's own position): the terrain reads them with the coast
-    for (const P of coastRaster.values()) {
-        P.shelf = new Float32Array(n); P.plain = new Float32Array(n);
-        for (let r = 0; r < n; r++) {
-            if (!(P.coast[r] === P.coast[r])) continue;
-            const m = cfg.margins[COAST_KEYS[P.kind[r]]], x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
-            const vary = 1 + cfg.shelfNoise * noise.fbm(x * 9 + 1.7, y * 9 + 4.2, z * 9 + 8.1, 3, 0.5) * 1.6;
-            P.shelf[r] = shelfOf(m, P.widen[r]) * Math.max(0.2, vary); P.plain[r] = plainOf(m, P.maturity[r]);
-        }
-        alongMargin(simMesh, P.coast, [P.shelf, P.plain, P.maturity], cfg);
-    }
 
     // ── the sea floor: half-space cooling depth; oceanic plateaus; abyssal-hill wavelength from the age gradient ──
     // Ridge segments (plans/V2_REALISM_PASS_PLAN.md, phase 6; tectonics/model/segments.js): each segment's floor (the whole
@@ -430,6 +363,132 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         if (land[w]) continue;
         const g = gradient(simMesh, ageMyr, w, nb => !land[nb], grad);     // Myr per km
         fabricKm[w] = g > 1e-4 ? cfg.fabricPeriodMyr / g : 1e4;
+    }
+
+    // ── the coast: signed distance to the edge of the land crust, and what kind of coast is nearest ──
+    const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n), rugged = new Float32Array(n),
+        rift = new Float32Array(n), thin = new Float32Array(n), sed = new Float32Array(n), foot = new Float32Array(n), open = new Float32Array(n);
+    const kindAtCoast = w => {                                        // w: a land cell on the coast
+        if (frame.type[w] === CrustType.ARC && !(frame.flags[w] & CrustFlag.MARGIN_ISLE)) return CoastKind.ARC;
+        const t = frame.margin[w] & Margin.TYPE;
+        return t === Margin.ACTIVE ? CoastKind.ACTIVE : t === Margin.TRANSFORM ? CoastKind.TRANSFORM : t === Margin.COLLISION ? CoastKind.COLLISION : CoastKind.PASSIVE;
+    };
+    // A margin's kind is a property of a stretch of coast, not of one cell: the coast cells of a bay, or of a headland's
+    // flank, on an active margin are not themselves at the plate boundary — alone they would read passive, and a passive
+    // shelf (150 km) would drown the land behind the coastal range in patches. So the kinds other than passive carry
+    // along the coast (coast cell to coast cell) for coastKindKm; a passive coast cell they reach takes the nearest.
+    const onCoast = new Uint8Array(n), ownKind = new Uint8Array(n), along = new Float32Array(n).fill(Infinity);
+    for (let w = 0; w < n; w++) {
+        if (!land[w]) continue;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) if (!land[adjList[k]]) { onCoast[w] = 1; break; }
+        if (!onCoast[w]) continue;
+        ownKind[w] = kindAtCoast(w);
+        if (ownKind[w] !== CoastKind.PASSIVE && ownKind[w] !== CoastKind.ARC) along[w] = 0;
+    }
+    const carried = ownKind.slice();
+    spreadKm(simMesh, along, { canEnter: (a, b) => onCoast[b] === 1, onReach: (a, b) => { carried[b] = carried[a]; }, maxKm: cfg.coastKindKm });
+    for (let w = 0; w < n; w++) if (onCoast[w] && ownKind[w] === CoastKind.PASSIVE && along[w] <= cfg.coastKindKm) ownKind[w] = carried[w];
+    // a passive coast's maturity (cfg.marginMatureMyr), by its age: the oldest ocean floor beside it — the floor that formed
+    // as it broke away (a pre-history coast's: the pre-history floor's) — or less where its own belt was active since; on
+    // its shelf widening with it on the open ocean only (cfg.marginOpenSeaKm2: by the area of the sea it faces)
+    const seaKm2 = seaAreas(simMesh, land), ownMature = new Float32Array(n), ownWiden = new Float32Array(n);
+    // …and if it rifted (margins.js), its cross-section's inputs: whether it did — its own rift line (CrustFlag.RIFT_MARGIN)
+    // or the start world's (a coast on the pre-history floor) —, how wide its crust thinned (narrower where the rift broke a
+    // craton's lithosphere: by the coast's distance from craton crust), the sediment it has received (its landmass's
+    // denudation shed over its coasts, for its age, faster where it rains more), the sea floor at its foot, and whether it
+    // faces the open ocean (an enclosed sea's rim is filled from it instead: marginOpenSeaKm2)
+    const ownRift = new Float32Array(n), ownThin = new Float32Array(n), ownSed = new Float32Array(n), ownFoot = new Float32Array(n), ownOpen = new Float32Array(n);
+    const toCraton = new Float32Array(n).fill(Infinity), mass = landmasses(simMesh, land);
+    for (let w = 0; w < n; w++) if (craton[w]) toCraton[w] = 0;
+    spreadKm(simMesh, toCraton, { canEnter: (a, b) => land[b] === 1, maxKm: cfg.marginThinKm });
+    for (let w = 0; w < n; w++) {
+        if (!onCoast[w]) continue;
+        let foot = 0, k0 = 0;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (!land[nb]) { foot += depthKm[nb]; k0++; } }
+        ownFoot[w] = k0 ? foot / k0 : -cfg.shelfEdgeKm;
+        ownThin[w] = cfg.marginThinCratonKm + (cfg.marginThinKm - cfg.marginThinCratonKm) * smooth(0, cfg.marginThinKm, toCraton[w]);
+        if (ownKind[w] !== CoastKind.PASSIVE) continue;
+        let age = frame.oroType[w] ? Math.max(0, time - frame.oroLast[w]) : Infinity, floor = -1, sea = 0, rifted = frame.flags[w] & CrustFlag.RIFT_MARGIN;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+            const nb = adjList[k];
+            if (land[nb]) { rifted |= frame.flags[nb] & CrustFlag.RIFT_MARGIN; continue; }
+            if (seaKm2[nb] > sea) sea = seaKm2[nb];
+            if (frame.owner[nb] >= 0) { floor = Math.max(floor, time - frame.formedAt[nb]); if (frame.formedAt[nb] < 0) rifted = 1; }
+        }
+        if (floor >= 0) age = Math.min(age, floor);
+        ownMature[w] = age === Infinity ? 1 : 1 - Math.exp(-age / cfg.marginMatureMyr);
+        ownOpen[w] = smooth(cfg.marginOpenSeaKm2[0], cfg.marginOpenSeaKm2[1], sea);
+        ownWiden[w] = ownMature[w] * ownOpen[w];
+        ownRift[w] = rifted ? 1 : 0;
+        const lat = Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI;
+        ownSed[w] = cfg.denudationKmPerMyr * (cfg.riftCrustRho / cfg.riftSedRho) * mass.perCoastKm[mass.of[w]] * age * erosionAtLatitude(lat, cfg);
+    }
+    // how rugged a coast is (0 smooth … 1): roughness belongs where the land at the sea is rough — an island arc's volcanic
+    // edifices, and a young collision coast's ranges and basins striking into the sea (the Aegean, the Dalmatian coast) —
+    // by the relief its belt stands at (coastRuggedKm: full from there) while the belt is fresh (coastFreshMyr). A passive
+    // margin's coast is a contour of its smooth sediment-draped profile, an active one's runs along its coastal range
+    // (Peru, northern Chile): smooth, their roughness only what their valleys and the ice cut into them (carve.js, finish).
+    const ownRugged = new Float32Array(n);
+    for (let w = 0; w < n; w++) {
+        if (!onCoast[w]) continue;
+        if (ownKind[w] === CoastKind.ARC) { ownRugged[w] = 1; continue; }
+        if (ownKind[w] !== CoastKind.COLLISION || !frame.oroType[w]) continue;
+        ownRugged[w] = Math.exp(-Math.max(0, time - frame.oroLast[w]) / cfg.coastFreshMyr) * smooth(0, cfg.coastRuggedKm ?? 1.5, Math.max(0, frame.upliftKm[w]));
+    }
+    for (let w = 0; w < n; w++) for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+        const nb = adjList[k];
+        if (land[nb] === land[w]) continue;
+        const half = 0.5 * R * Math.acos(Math.min(1, xyz[3 * w] * xyz[3 * nb] + xyz[3 * w + 1] * xyz[3 * nb + 1] + xyz[3 * w + 2] * xyz[3 * nb + 2]));
+        if (half < dist[w]) {
+            const at = land[w] ? w : nb; dist[w] = half; coastKind[w] = ownKind[at]; maturity[w] = ownMature[at]; widen[w] = ownWiden[at]; rugged[w] = ownRugged[at];
+            rift[w] = ownRift[at]; thin[w] = ownThin[at]; sed[w] = ownSed[at]; foot[w] = ownFoot[at]; open[w] = ownOpen[at];
+        }
+    }
+    spreadKm(simMesh, dist, { canEnter: (a, b) => land[a] === land[b], onReach: (a, b) => {
+        coastKind[b] = coastKind[a]; maturity[b] = maturity[a]; widen[b] = widen[a]; rugged[b] = rugged[a];
+        rift[b] = rift[a]; thin[b] = thin[a]; sed[b] = sed[a]; foot[b] = foot[a]; open[b] = open[a];
+    }, maxKm: 6000 });
+    // …and measured again on each plate's own raster, which the world grid shows re-sampled a little differently every
+    // step as the plate moves: the coast measured there is fixed in the crust (Phase 9, steady detail)
+    const coastRaster = plateCoasts(simMesh, A, land, dist, coastKind, { maturity, widen, rugged, rift, thin, sed, foot, open }, frame, cfg.pocketSeaKm2);
+    const coastKm = new Float32Array(n), shelfKm = new Float32Array(n), plainKm = new Float32Array(n), slopeKm = new Float32Array(n), breakKm = new Float32Array(n);
+    // a cell's margin cross-section (records the terrain reads): its shelf (the datum shoreline, km from the crust's
+    // edge), coastal plain, slope, shelf break (0: at the crust's edge) and — a rifted margin's — its thinned width, by
+    // its kind of coast; the width varies by a noise read where the crust is in its plate's frame (it rides with the coast)
+    const MC = marginConstants(cfg), cut = [0, 0];
+    const profile = (k, mature, wide, rifted, thinKm, sedKm2, x, y, z, out, i) => {
+        const m = cfg.margins[COAST_KEYS[k]], vary = Math.max(0.2, 1 + cfg.shelfNoise * noise.fbm(x * 9 + 1.7, y * 9 + 4.2, z * 9 + 8.1, 3, 0.5) * 1.6);
+        let shelf = shelfOf(m, wide) * vary, plain = plainOf(m, mature), brk = 0;
+        if (k === CoastKind.PASSIVE && rifted > 0) {
+            riftedMargin(MC, thinKm * vary, mature, sedKm2, cut);
+            shelf += rifted * (cut[0] - shelf); plain += rifted * (flexuralPlainKm(cfg, mature) - plain); brk = rifted * cut[1];
+        }
+        out.shelf[i] = shelf; out.plain[i] = plain; out.brk[i] = brk; out.thin[i] = thinKm * vary;
+        if (out.slope) out.slope[i] = m.slopeKm;
+    };
+    const thinKm = new Float32Array(n), here = { shelf: shelfKm, plain: plainKm, brk: breakKm, thin: thinKm, slope: slopeKm };
+    for (let w = 0; w < n; w++) {
+        const d = Math.min(6000, dist[w]);
+        coastKm[w] = land[w] ? d : -d;
+        const rc = A.cell[w];
+        profile(coastKind[w], maturity[w], widen[w], rift[w], thin[w], sed[w], xyz[3 * rc], xyz[3 * rc + 1], xyz[3 * rc + 2], here, w);
+    }
+    // the coast drawn to the margin's smooth line (margin-line.js), on the world grid and on each plate's raster; its shelf,
+    // coastal plain and maturity smoothed along it (a margin's are regional)
+    // (σ: coastLineKm on a smooth coast, coastLineRuggedKm on a rugged one — an island arc's, a young collision coast's:
+    // their small pieces are real — in km, never under a sim cell, half a cell on a rugged coast: the raster's own limit)
+    const sigS = Math.max(simMesh.edgeKm, cfg.coastLineKm ?? 120), sigR = Math.max(0.5 * simMesh.edgeKm, Math.min(sigS, cfg.coastLineRuggedKm ?? 60));
+    marginLine(simMesh, coastKm, sigS, sigR, rugged);
+    for (const P of coastRaster.values()) marginLine(simMesh, P.coast, sigS, sigR, P.rugged);
+    alongMargin(simMesh, coastKm, [shelfKm, plainKm, maturity, breakKm, thinKm, rift, foot, open], cfg);
+    // …and each plate's on its raster, from its kind of coast there (the same noise, read at the raster cell: the crust's
+    // own position): the terrain reads them with the coast
+    for (const P of coastRaster.values()) {
+        P.shelf = new Float32Array(n); P.plain = new Float32Array(n); P.brk = new Float32Array(n); const thinR = new Float32Array(n);
+        const there = { shelf: P.shelf, plain: P.plain, brk: P.brk, thin: thinR, slope: null };
+        for (let r = 0; r < n; r++) if (P.coast[r] === P.coast[r]) profile(P.kind[r], P.maturity[r], P.widen[r], P.rift[r], P.thin[r], P.sed[r], xyz[3 * r], xyz[3 * r + 1], xyz[3 * r + 2], there, r);
+        P.thin = thinR;
+        alongMargin(simMesh, P.coast, [P.shelf, P.plain, P.maturity, P.brk, P.thin, P.rift, P.foot, P.open], cfg);
     }
 
     // the fracture zones themselves are drawn where the coordinate, read across the terrain mesh, passes a whole number
@@ -592,7 +651,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         }
     }
 
-    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
+    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
         seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }

@@ -35,6 +35,20 @@ export const EARTH_LAND_RATIO = {
     'early dispersal': { earth: [0.65, 0.8], source: '~30 % of today’s continental area flooded (Worsley et al. 1984; Ronov 1994)' },
 };
 
+/**
+ * The share of the continental crust under the sea (%), by stage (2026-10-28: the shoreline is where the surface crosses
+ * sea level — terrain/margins.js). Today continental crust covers ~41 % of the planet to the foot of its slope and land
+ * ~29 % (Cogley 1984, Rev. Geophys. 22): ~30 % of the crust drowned, its shelves alone (~7.5 % of the planet to the
+ * break) ~20 %. At the Cretaceous highstand ~30 % of today's land was flooded besides (Worsley et al. 1984; Ronov 1994):
+ * 1 − 0.7 × 29/41 ≈ 50 %. Pangaea's sea stood near today's level or below it, its continents little flooded
+ * (Ronov 1994): about today's, its shelves fewer (one long coast for many).
+ */
+export const EARTH_SUBMERGED = {
+    'supercontinent': { earth: [15, 30], source: 'Pangaea: the sea near today’s level or below, little flooded (Haq & Al-Qahtani 2005; Ronov 1994)' },
+    'early dispersal': { earth: [40, 55], source: 'the Cretaceous highstand: ~30 % of today’s land flooded besides the shelves (Worsley et al. 1984; Ronov 1994; Cogley 1984)' },
+    'late dispersal': { earth: [20, 30], source: 'today: crust ~41 % of the planet, land ~29 % (Cogley 1984) — shelves ~20 %, slopes the rest' },
+};
+
 // ── by stage, for any report (the targets rule, 2026-10-27) ──
 // A statistic that changes through the cycle (how many plates and how large, the sea floor's age, enclosed seas, the
 // continents' shapes) is compared with Earth's range over its history, or with Earth at the same stage: the sim gathered

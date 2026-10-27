@@ -92,10 +92,43 @@ export const TERRAIN = {
     canyonAreaKm2: [5000, 60000],
     canyonKm: 260,
     canyonDepthKm: 0.7,
-    shelfEdgeKm: -0.15,         // depth of the shelf break, at the edge of the continental crust
+    shelfEdgeKm: -0.15,         // depth of the shelf break: a shelf is graded to wave base and planed at the lowstands (the
+                                // world's breaks average ~130 m, most 100–200 m: Shepard 1963, Submarine Geology; Kennett 1982)
+    // ── Rifted margins: the thinned crust, and the shoreline on it (2026-10-28; margins.js, records.js) ── a rifted
+    // margin's continental crust thins toward the continent–ocean boundary (the COB: the crust's edge, the history's rift
+    // line) and stands lower by isostasy, at once and then as it cools (McKenzie 1978); its shoreline is where the surface
+    // — the land's own height less that subsidence — crosses the sea, and the shelf the sediment it has received built out
+    // over it. These are McKenzie's own constants:
+    riftCrustKm: 35,            // the crust before it stretched (McKenzie 1978's tc 31.2; continents average 35–40 km:
+                                // Christensen & Mooney 1995)…
+    riftLithKm: 125,            // …the lithosphere (a)…
+    riftMantleRho: 3330, riftCrustRho: 2800, seaRho: 1030,    // …densities (kg/m³)…
+    riftExpansion: 3.28e-5,     // …the thermal expansion (/K)…
+    riftMantleC: 1333,          // …and the asthenosphere's temperature (°C): Si ≈ 4.3 km, E0 ≈ 3.2 km, τ = a²/π²κ ≈ 63 Myr
+    riftSedRho: 2400,           // the shelf's sediment, compacted over a few km (Sclater & Christie 1980, JGR 85: 3711)
+    marginThinKm: 200,          // the thinned crust's width on a rifted margin of ordinary lithosphere (proximal, necking and
+                                // distal domains together: ~150–400 km, Péron-Pinvidic et al. 2013 — recalled)…
+    marginThinCratonKm: 80,     // …and where the rift broke a craton's thick, cold, strong lithosphere: a narrow rift
+                                // (Buck 1991, JGR 96: 20161 — narrow rifts under ~100 km; the narrow Bahia shelf off the São
+                                // Francisco craton against the wide Santos shelf off the Ribeira belt — recalled). By the
+                                // coast's distance from a craton, out to marginThinKm
+    marginNeckCrustKm: 10,      // the necking zone ends where the crust has thinned to this: the shelf break stands over it,
+                                // the distal basin beyond (Péron-Pinvidic et al. 2013)
+    clinoformGradient: 0.05,    // the slope below the break, the sediment prism's front (~3°: continental slopes 2–5°,
+                                // Kennett 1982 — recalled), down to the sea floor beside the margin
+    denudationKmPerMyr: 0.05,   // the continents wear down this fast (Syvitski et al. 2005, Science 308: 376 — ~14 Gt/yr of
+                                // sediment reached the sea before dams, from ~10⁸ km²: 0.05 km/Myr of rock), and each landmass
+                                // sheds it onto its margins: a margin's sediment (km² per km of coast) is that, × the
+                                // landmass's area ÷ its coast's length × the margin's age × how fast it erodes there (rain)
+    marginElasticKm: [5, 30],   // a passive margin's elastic thickness when it rifts and once mature (Watts 2001, Isostasy and
+                                // Flexure of the Lithosphere, ch. 7 — recalled): its coastal plain is the moat the shelf's
+                                // load bends into the land behind it, out to 3πα/4 — ~55 km young, ~210 mature
     // per kind of margin (measure.js Margin): width of the continental shelf, of the low coastal plain behind the
-    // shoreline, and of the slope down to the deep sea (a passive margin's shelf and plain: a mature one's; a young one's
-    // are youngShelfKm and youngPlainKm — marginMatureMyr below)
+    // shoreline, and of the slope down to the deep sea. A rifted margin's shelf and plain come from its thinned crust
+    // (above); these stand for the margins whose cross-section is not derived yet — an active margin's fore-arc, a
+    // transform's sheared edge, a collision's, an arc's flanks, and a passive coast that never rifted (a margin the history
+    // left passive when its trench died: passive's young/mature widths, marginMatureMyr below) — with the crust's edge at
+    // their shelf break
     margins: {
         passive:   { shelfKm: 180, plainKm: 240, slopeKm: 110, youngShelfKm: 40, youngPlainKm: 50 },   // rifted, trailing: wide shelves, low coasts (Argentina, the US east coast)
         active:    { shelfKm: 15,  plainKm: 25,  slopeKm: 45 },    // a trench offshore: narrow shelf, the coastal range rises from the sea
@@ -103,7 +136,8 @@ export const TERRAIN = {
         collision: { shelfKm: 40,  plainKm: 80,  slopeKm: 80 },
         arc:       { shelfKm: 5,   plainKm: 15,  slopeKm: 40 },    // island arcs: steep volcanic flanks
     },
-    shelfNoise: 0.45,           // shelves vary in width by ± this share along the coast
+    shelfNoise: 0.45,           // shelves vary in width by ± this share along the coast (a rifted margin's: its thinned width —
+                                // a rift is segmented, each segment stretched its own way)
     pocketSeaKm2: 50000,        // a pocket of ocean crust trapped in the land smaller than this is a lowland, not a sea (a
                                 // one-cell sliver would otherwise stand as a deep hole ringed by drowned shelf)
     coastKindKm: 250,           // a margin's kind holds along its stretch of coast: a bay or a headland's flank within this

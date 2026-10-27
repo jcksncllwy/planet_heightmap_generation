@@ -26,6 +26,7 @@ import { locate } from '../core/mesh-locate.js';
 import { rainAtLatitude } from './terrain-config.js';
 import { carveTerrain } from './carve.js';
 import { seaOf, liftRefKm } from './sea-level.js';
+import { marginConstants, subsidence } from './margins.js';
 import { terrainMesh } from './terrain-mesh.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 
@@ -380,8 +381,17 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return span2;
     };
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
+    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
+    // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
+    // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
+    // lowland instead: open 0)
+    const MC = marginConstants(cfg), shelfDepth = -cfg.shelfEdgeKm, clinoform = cfg.clinoformGradient ?? 0.05;
+    const sedTop = (x, shelf, brk, open) => {
+        const lift = shelfDepth * (1 - open);
+        if (x >= brk) return Math.min(0.01 + lift, lift + shelfDepth * (x - shelf) / Math.max(1, shelf - brk));
+        return lift - shelfDepth - clinoform * (brk - x);
+    };
     const swellKm = rec.swellKm ?? null;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
@@ -430,7 +440,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 c0 = loc3[0]; c1 = loc3[1]; c2 = loc3[2]; w0 = locw3[0]; w1 = locw3[1]; w2 = locw3[2];
             }
         }
-        let coastR = null, shelfR = 0, plainR = 0, matureR = 0, ruggedR = 0;
+        let coastR = null, shelfR = 0, plainR = 0, matureR = 0, ruggedR = 0, brkR = 0, thinR = 0, riftR = 0, footR = 0, openR = 0;
         if (anchorOn && oc >= 0 && A.moved[oc]) {
             const S = rec.coastRaster.get(oc);
             if (S) {
@@ -443,6 +453,13 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     plainR = qw3[0] * S.plain[q3[0]] + qw3[1] * S.plain[q3[1]] + qw3[2] * S.plain[q3[2]];
                     matureR = qw3[0] * S.maturity[q3[0]] + qw3[1] * S.maturity[q3[1]] + qw3[2] * S.maturity[q3[2]];
                     ruggedR = qw3[0] * S.rugged[q3[0]] + qw3[1] * S.rugged[q3[1]] + qw3[2] * S.rugged[q3[2]];
+                    riftR = qw3[0] * S.rift[q3[0]] + qw3[1] * S.rift[q3[1]] + qw3[2] * S.rift[q3[2]];
+                    if (riftR > 1e-3) {
+                        brkR = qw3[0] * S.brk[q3[0]] + qw3[1] * S.brk[q3[1]] + qw3[2] * S.brk[q3[2]];
+                        thinR = qw3[0] * S.thin[q3[0]] + qw3[1] * S.thin[q3[1]] + qw3[2] * S.thin[q3[2]];
+                        footR = qw3[0] * S.foot[q3[0]] + qw3[1] * S.foot[q3[1]] + qw3[2] * S.foot[q3[2]];
+                        openR = qw3[0] * S.open[q3[0]] + qw3[1] * S.open[q3[1]] + qw3[2] * S.open[q3[2]];
+                    }
                 }
             }
         }
@@ -485,6 +502,20 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 // (a strait is shallow sea: the coast is lowered to the shelf's edge at most, never into the slope below it)
                 const cut = Math.min(1, arcS) * strait * smooth(0.05, -0.45, isl) * smooth(120, 45, coast);
                 coast = Math.max(coast - cut, Math.min(coast, -10));
+            }
+        }
+        // (a rifted margin's cross-section here — records.js, margins.js: how much of the nearest coast rifted, its datum
+        // shoreline and shelf break, its thinned width, the sea floor at its foot, how open the sea it faces is — with the
+        // coast, on its plate's raster where it was read there)
+        let rs = 0, rShelf = 0, brk = 0, thinW = 0, footD = 0, openS = 1;
+        if (Math.abs(coast) < 1500) {
+            if (coastR !== null) { rs = riftR; if (rs > 1e-3) { rShelf = shelfR; brk = brkR; thinW = thinR; footD = footR; openS = openR; } }
+            else {
+                rs = w0 * riftShare[c0] + w1 * riftShare[c1] + w2 * riftShare[c2];
+                if (rs > 1e-3) {
+                    rShelf = w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2]; brk = w0 * breakKm[c0] + w1 * breakKm[c1] + w2 * breakKm[c2];
+                    thinW = w0 * thinKm[c0] + w1 * thinKm[c1] + w2 * thinKm[c2]; footD = w0 * footKm[c0] + w1 * footKm[c1] + w2 * footKm[c2]; openS = w0 * openSea[c0] + w1 * openSea[c1] + w2 * openSea[c2];
+                }
             }
         }
         let h, platform = 0, relief = 0, stripes = 0, lipTop = 0, lipKeep = 0, lipAge = 0, ramp = 0, shieldS = 0, rimFade = 1;
@@ -558,9 +589,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const plain = coastR !== null ? plainR : w0 * plainKm[c0] + w1 * plainKm[c1] + w2 * plainKm[c2];
             ramp = coast < shelf ? 0 : smooth(0, 1, (coast - shelf) / Math.max(1, plain));
             // (a passive margin's relief buried under its shelf and coastal plain, by its maturity: records.js)
-            const buried = (coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2]) * (1 - smooth(shelf, shelf + plain, coast));
+            const mature = coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2];
+            const buried = mature * (1 - smooth(shelf, shelf + plain, coast));
             if (parts) { parts.dcoast[t] = coast; parts.dshelf[t] = shelf; parts.dplain[t] = plain; }
-            h = coast < shelf ? cfg.shelfEdgeKm * (1 - coast / shelf) : platform * ramp;
+            // (a margin's shelf by its kind, from the shoreline down to the break at the crust's edge — on a rifted margin the
+            // land itself, its subsidence and its sediment make the shelf: below)
+            h = coast < shelf ? (1 - rs) * cfg.shelfEdgeKm * (1 - coast / shelf) : platform * ramp;
             // the radiating dykes: coming out from under the lava across its edge (a signed distance — negative inside the
             // province — over the land corners), and within it only where erosion has bared them; never drowning land
             // (a low of the grain stops just above the sea)
@@ -786,6 +820,13 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 for (let o = 0; o < hillsF.length; o++) { const f = hillsF[o]; sum += hillsAmp[o] * renewedNoise(x * f + 31.3 + 2.1 * o, y * f + 7.7 + 1.3 * o, z * f + 19.9 + 0.7 * o); }
                 h += sum * (1 + ((cfg.hillsUplandGain ?? 4) - 1) * smooth(0.1, 1.5, h)) * smooth(0, 0.08, h);
             }
+            // ── a rifted margin (margins.js): the land as it would stand, less its thinned crust's subsidence — in air where it
+            // stays above the sea, water-loaded below it and never deeper than the sea floor at its foot — and over it the
+            // sediment's shelf and slope: the shoreline is where that crosses the sea ──
+            if (rs > 1e-3 && coast < thinW) {
+                const e = h - MC.fAir * subsidence(MC, coast / thinW, mature), b = e >= 0 ? e : Math.max(e / MC.fAir, -footD);
+                h += rs * (Math.max(b, sedTop(coast, rShelf, brk, openS)) - h);
+            }
         } else {
             // ── sea side: the slope from the shelf break down to the floor the ocean corners give ──
             const ow = (land[c0] ? 0 : w0) + (land[c1] ? 0 : w1) + (land[c2] ? 0 : w2);
@@ -793,6 +834,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const floor = ow > 0 ? (oc(c0, w0) * depthKm[c0] + oc(c1, w1) * depthKm[c1] + oc(c2, w2) * depthKm[c2]) / ow : 3;
             const slope = w0 * slopeKm[c0] + w1 * slopeKm[c1] + w2 * slopeKm[c2];
             h = cfg.shelfEdgeKm + (-floor - cfg.shelfEdgeKm) * smooth(0, slope, -coast);
+            // (off a rifted margin the crust's edge is the foot of the slope: the sediment prism's front, if it reaches out
+            // here, down to the floor)
+            if (rs > 1e-3) h += rs * (Math.max(-floor, sedTop(coast, rShelf, brk, openS)) - h);
             // abyssal hills along the isochrons, faded where the mesh cannot show them
             if (ow > 0) {
                 const age = (oc(c0, w0) * ageMyr[c0] + oc(c1, w1) * ageMyr[c1] + oc(c2, w2) * ageMyr[c2]) / ow;

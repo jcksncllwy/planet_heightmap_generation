@@ -20,7 +20,8 @@ import { spreadKm } from '../js/core/min-heap.js';
 import { hopDistance } from '../js/core/mesh-bfs.js';
 import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
-import { stageOf, EARTH_LAND, EARTH_LAND_RATIO, byStage, stageText } from './lib/cycle-stage.mjs';
+import { stageOf, EARTH_LAND, EARTH_LAND_RATIO, EARTH_SUBMERGED, byStage, stageText } from './lib/cycle-stage.mjs';
+import { shelfStats, EARTH_SHELF_KM, EARTH_BREAK_KM } from './lib/shelf-stats.mjs';
 
 const SEEDS = [12345, 777, 4242];
 const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (the window over which the most a landmass held while the pieces dispersed is read)
@@ -139,7 +140,10 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             const T = synthesizeTerrain(f, mesh, tm, { seed }), share = hypsometry(T.heightKm).landShare, inner = [];
             if (f.time === 0) land0 = share; else if (Math.abs(f.time - scene.maxMyr) < 1e-6) land1200 = share;
             for (let t = 0; t < tm.numCells; t++) { const c = T.sampler.cells[3 * t]; if (T.rec.land[c] && T.rec.coastKm[c] > 500) inner.push(T.heightKm[t]); }
-            sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, floorKm: T.rec.sea.ridgeSeaKm, interior: median(inner) });
+            // (the margins: the crust under the sea, the shelves' width by kind, the break's depth — lib/shelf-stats.mjs)
+            const M = shelfStats(tm, T.heightKm, T, mesh, f);
+            sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, floorKm: T.rec.sea.ridgeSeaKm, interior: median(inner),
+                submerged: M.submerged, breakKm: M.breakKm, ...Object.fromEntries(Object.keys(EARTH_SHELF_KM).map(k => [`shelf ${k}`, M.shelfKm[k]])) });
             // (island arcs above the sea, every 200 Myr: those whose slab fed them within ARC_LIVE_MYR, and the silent ones)
             if (f.time % 200 === 0 && f.time > 0) for (let t = 0; t < tm.numCells; t++) {
                 const c = T.sampler.cells[3 * t];
@@ -240,6 +244,13 @@ section('land and sea through the cycle');
         report(`land share: ${stage}`, rows.map(r => 100 * meanOf(r, stage, 'land')), { ...EARTH_LAND[stage], unit: ' %', digits: 1, detail: txt(r => `${count(r, stage)} frames, sea ${(1000 * meanOf(r, stage, 'seaKm')).toFixed(0)} m`) });
     for (const stage of ['supercontinent', 'early dispersal'])
         report(`land share: ${stage} ÷ late dispersal`, rows.map(r => meanOf(r, stage, 'land') / meanOf(r, 'late dispersal', 'land')), { ...EARTH_LAND_RATIO[stage], digits: 2 });
+    for (const stage of ['supercontinent', 'early dispersal', 'late dispersal'])
+        report(`continental crust under the sea: ${stage}`, rows.map(r => 100 * meanOf(r, stage, 'submerged')), { ...EARTH_SUBMERGED[stage], unit: ' %', digits: 1, detail: txt(r => `${count(r, stage)} frames; the sim's crust is ~its land (tectonics continentalFraction), so the slopes' and shelves' share is small`) });
+    // (shelves and the break hold through the cycle: means over all frames from 100 Myr, NaN frames skipped)
+    const meanAll = (r, k) => { const a = r.sea.filter(x => x.time >= 100 && Number.isFinite(x[k])).map(x => x[k]); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; };
+    for (const kind of Object.keys(EARTH_SHELF_KM))
+        report(`shelf width: ${kind} coasts`, rows.map(r => meanAll(r, `shelf ${kind}`)), { ...EARTH_SHELF_KM[kind], unit: ' km', digits: 0, detail: txt(r => `by stage: ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => `${st} ${Math.round(meanOf(r, st, `shelf ${kind}`))}`).join(', ')}`) });
+    report('shelf break depth off passive coasts', rows.map(r => 1000 * meanAll(r, 'breakKm')), { earth: EARTH_BREAK_KM.earth.map(v => 1000 * v), source: EARTH_BREAK_KM.source, unit: ' m', digits: 0 });
     // the first-order swing: the sea's level smoothed over 60 Myr (three frames; Earth's first-order cycle is over 100 Myr
     // long — the shorter cycles are glacial and tectonic noise), its highest less its lowest from 100 Myr
     const swing = (r, k) => { const s = r.sea.filter(x => x.time >= 100).map(x => x[k]), m = s.slice(1, -1).map((v, i) => (s[i] + v + s[i + 2]) / 3); return m.length ? Math.max(...m) - Math.min(...m) : NaN; };
