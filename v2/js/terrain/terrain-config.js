@@ -177,10 +177,25 @@ export const TERRAIN = {
     isoMaxKm: 6,
     isoScaleKm: 30,             // (≈ 0.17 km of height per km of extra crust at first; 35 km → 4.2 km, before the belt's relief)
     thickTauMyr: 70,            // once a belt falls quiet, its root is eroded and rebounds away over this e-folding time
-    swellKm: 0.28,              // broad uplift over mantle hotter than the land's average (the African superswell): × the
-                                // excess of mantleHeat² over its mean under the land (records.js). (Developer, 8b round 6:
-                                // relative and a bit smaller — heat tends to 1 under any continent that sits still, so an
-                                // absolute swell, 0.35 × heat², lifted most land by most of it: land below 400 m 45 % → 24 %.)
+    // the mantle's swell (terrain/sea-level.js): warm mantle under a lid of continent lifts the surface over it, and the
+    // sea answers — its water a fixed volume (records.js; the history's mantleHeat, tectonics/step/hotspots.js)
+    mantleSwellKm: 1.0,         // fully insulated mantle (heat 1) stands this much above fully cooled (heat 0): the African
+                                // superswell, its mantle insulated since Pangaea (heat ≈ 1), stands ~0.5 km above shields
+                                // on an average continent's mantle (heat ≈ mantleSwellLandRef ≈ 0.5; Nyblade & Robinson 1994;
+                                // Lithgow-Bertelloni & Silver 1998): 0.5 / (1 − 0.5) km; supercontinent models give a few
+                                // hundred metres to ~1 km (Gurnis 1988; Zhang et al. 2012)
+    mantleSwellSmoothKm: 400,   // the heat as the surface feels it: smoothed over this σ — a buoyant load at depth lifts the
+                                // surface over a breadth of about its depth (Hager & Richards 1989), the insulated heat lying
+                                // in the upper mantle under the lithosphere (100–660 km)
+    mantleSwellLandRef: 0.53,   // today's datum: the heat a dispersed world's land stands on, on average (its platforms are
+                                // today's heights) — measured over the cycle's dispersed frames, 300–1000 Myr, seeds 626225,
+                                // 777, 12345 (153 frames: 0.516–0.536 by seed; under a supercontinent 0.58–0.64), with the
+                                // insulation law of tectonics/step/hotspots.js (mantleInsulateMyr 100, mantleCoolMyr)
+    mantleSwellSeaRef: 0.26,    // …and its sea floor's (the depth–age law is today's ocean's): 0.246–0.265 by seed (0.18
+                                // under a supercontinent: the ocean's mantle cools while the land keeps its heat)
+    seaDepthRefKm: 4.55,        // …and the sea floor's mean depth (measure.js seaDepthKm, less the sediment of sealed seas):
+                                // 4.45–4.61 by seed (4.60–4.73 under a supercontinent: its ocean is old). The ocean's water
+                                // is the volume that holds the sea at today's datum over a dispersed world's floor
     lipLandKm: 0.75,            // flood basalt on land: this much height per km of basalt (8b round 6: 0.6 → 0.75 — Putorana
                                 // stands ~1.5 km, the Western Ghats 1–1.6)
     lipSeaKm: 1.4,              // an oceanic plateau (Ontong Java) rises this much per km of basalt

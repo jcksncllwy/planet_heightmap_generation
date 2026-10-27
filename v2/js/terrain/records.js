@@ -6,6 +6,7 @@
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
 import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp } from '../tectonics/measure.js';
+import { seaLevel } from './sea-level.js';
 import { spreadKm } from '../core/min-heap.js';
 import { hopDistance } from '../core/mesh-bfs.js';
 import { erosionAtLatitude } from './terrain-config.js';
@@ -293,6 +294,11 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         craton[w] = land[w] && frame.type[w] === CrustType.CRATON ? 1 : 0;
     }
     fillPockets(simMesh, land, cfg.pocketSeaKm2);
+    // the mantle's swell under every cell, the land's and the sea floor's, and the sea's level that answers it and the
+    // sea floor's age (terrain/sea-level.js): absolute — a supercontinent on its own warm mantle stands high as a whole,
+    // and the sea falls against it (developer, 8b round 6, had it relative to the land's mean, so that a continent sitting
+    // still did not lift every height; today's heights are now its datum instead)
+    const sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);
 
     // ── the coast: signed distance to the edge of the land crust, and what kind of coast is nearest ──
     const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n), rugged = new Float32Array(n);
@@ -397,7 +403,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const raw = frame.owner[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
         const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
-        depthKm[w] = filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0);    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js)
+        depthKm[w] = Math.max(0, filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0) - sl.liftKm[w]);    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js; raised or lowered by the mantle's swell)
     }
     // oceanic plateaus (a flood basalt on the sea floor): read from the world view, where at any moment ~15 % of a moving
     // plate's cells show a neighbour's crust, then smoothed over lipSeaSmoothKm and never lowered inside — one broad rise
@@ -460,14 +466,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const erosion = new Float32Array(n);
     for (let w = 0; w < n; w++) erosion[w] = erosionAtLatitude(Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI, cfg);
 
-    // ── the continental platform: crust kind, isostasy of the thickened crust, mantle swell (relative), flood basalts apart ──
+    // ── the continental platform: crust kind, isostasy of the thickened crust, the mantle's swell, flood basalts apart ──
     const platformKm = new Float32Array(n), quietMyr = new Float32Array(n);
     const lipKm = new Float32Array(n), lipWornKm = new Float32Array(n), lipSrc = new Uint16Array(n);
-    // dynamic topography is relative: the land rises where the mantle under it is hotter than under the land on average
-    // (a continent that sat still while the others drifted), and none rises where all of it is as hot (a supercontinent)
-    let heatSum = 0, landCount = 0;
-    for (let w = 0; w < n; w++) if (land[w]) { heatSum += (frame.mantleHeat[w] / 255) ** 2; landCount++; }
-    const heatMean = landCount ? heatSum / landCount : 0;
     // an island arc out in the open ocean stays a submerged ridge its volcanoes break through (the Marianas, Tonga); near a
     // continent it matures into land (Japan) — by its distance from continental crust (developer: far-ocean arcs "just
     // getting huge"; the history also keeps them narrow there, tectonics/step/wings.js)
@@ -492,7 +493,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // the evolved root, by Airy isostasy, and the evolved uplift above it (tectonics/step/heights.js)
         const root = frame.rootKm[w] * (type === CrustType.ARC ? 0.25 : 1);     // (an arc's recorded thickening is mostly its own growth, already in its maturity)
         h += cfg.isoMaxKm * (1 - Math.exp(-root / cfg.isoScaleKm));        // (the evolved uplift is carried separately: upliftKm)
-        h += cfg.swellKm * Math.max(0, (frame.mantleHeat[w] / 255) ** 2 - heatMean);
+        h += sl.liftKm[w];                                                 // (the mantle's swell: sea-level.js, above)
         h += frame.baseKm[w];                                               // (the start world's swells, as worn so far)
         if (frame.volcType[w] === VolcanicType.LIP) {                   // (the pile, and how far it has worn: lips.js)
             lipKm[w] = cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]); lipWornKm[w] = frame.volcWornKm[w]; lipSrc[w] = frame.volcSource[w];
@@ -597,7 +598,8 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     }
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
-        platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time };
+        platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
+        seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, liftKm: sl.liftKm };
 }
 
 /**

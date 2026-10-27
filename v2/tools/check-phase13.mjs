@@ -19,6 +19,7 @@ import { spreadKm } from '../js/core/min-heap.js';
 import { hopDistance } from '../js/core/mesh-bfs.js';
 import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
+import { stageOf, EARTH_LAND, EARTH_LAND_RATIO } from './lib/cycle-stage.mjs';
 
 const SEEDS = [12345, 777, 4242];
 const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (the window over which the most a landmass held while the pieces dispersed is read)
@@ -90,7 +91,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     Object.assign(world.config, { crustLedger: true }, overrides);
     const kept = [], arcs = [], largestShares = [];
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
-    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [];
+    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [];
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
@@ -126,7 +127,14 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - 500) < 1e-6) cont500 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - 1000) < 1e-6) cont1000 = cont.reduce((s, v) => s + v, 0);
-        if (terrain && (f.time === 0 || Math.abs(f.time - scene.maxMyr) < 1e-6)) { const share = hypsometry(synthesizeTerrain(f, mesh, tm, { seed }).heightKm).landShare; if (f.time === 0) land0 = share; else land1200 = share; }
+        // (the land and the sea by the stage of the cycle, every 20 Myr: the land share, the sea's level against today's datum,
+        // and how high the land stands over 500 km from any coast — terrain/sea-level.js)
+        if (terrain && (f.time % 20 === 0 || Math.abs(f.time - scene.maxMyr) < 1e-6)) {
+            const T = synthesizeTerrain(f, mesh, tm, { seed }), share = hypsometry(T.heightKm).landShare, inner = [];
+            if (f.time === 0) land0 = share; else if (Math.abs(f.time - scene.maxMyr) < 1e-6) land1200 = share;
+            for (let t = 0; t < tm.numCells; t++) { const c = T.sampler.cells[3 * t]; if (T.rec.land[c] && T.rec.coastKm[c] > 500) inner.push(T.heightKm[t]); }
+            sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, interior: median(inner) });
+        }
         if (Math.abs(f.time - 600) < 1e-6) calm = untouched(f);
         // (lowland after the rivers carve it, comparable with Earth's hypsometry; the tectonic surface's alongside)
         if (terrain && (Math.abs(f.time - 600) < 1e-6 || Math.abs(f.time - scene.maxMyr) < 1e-6)) {
@@ -159,7 +167,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
         bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges), sealedOld: sealedOld.reduce((x, y) => x + y, 0) / Math.max(1, sealedOld.length),
-        inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN),
+        inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN), sea,
         platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
 }
@@ -196,6 +204,27 @@ report('arc crust over 1500 km from any continent (most, every 200 Myr)', rows.m
 report('the largest open-ocean arc landmass', rows.map(r => r.arcBiggest), { earth: [0, 1], unit: ' Mkm²', digits: 1, source: 'Izu–Bonin–Mariana ~0.6 Mkm²' });
 report('land below 400 m after carving (mean of 600 and 1200 Myr)', rows.map(r => r.lowland === null ? NaN : 100 * r.lowland), { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry',
     detail: txt(r => `${(100 * r.lowlandRaw).toFixed(0)} % before carving`) });
+
+section('land and sea through the cycle');
+{
+    // Earth's land share depends on the stage (tools/lib/cycle-stage.mjs): a lowstand while a supercontinent stands on its
+    // own warm mantle, the Cretaceous highstand after it breaks up, today between. Means over each history's frames from
+    // 100 Myr (the start's placeholder ocean floor gone) in each stage, every 20 Myr
+    const meanOf = (r, stage, k) => { const a = r.sea.filter(x => x.time >= 100 && x.stage === stage).map(x => x[k]); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; };
+    const count = (r, stage) => r.sea.filter(x => x.time >= 100 && x.stage === stage).length;
+    for (const stage of ['supercontinent', 'early dispersal', 'late dispersal'])
+        report(`land share: ${stage}`, rows.map(r => 100 * meanOf(r, stage, 'land')), { ...EARTH_LAND[stage], unit: ' %', digits: 1, detail: txt(r => `${count(r, stage)} frames, sea ${(1000 * meanOf(r, stage, 'seaKm')).toFixed(0)} m`) });
+    for (const stage of ['supercontinent', 'early dispersal'])
+        report(`land share: ${stage} ÷ late dispersal`, rows.map(r => meanOf(r, stage, 'land') / meanOf(r, 'late dispersal', 'land')), { ...EARTH_LAND_RATIO[stage], digits: 2 });
+    // the first-order swing: the sea's level smoothed over 60 Myr (three frames; Earth's first-order cycle is over 100 Myr
+    // long — the shorter cycles are glacial and tectonic noise), its highest less its lowest from 100 Myr
+    const swing = r => { const s = r.sea.filter(x => x.time >= 100).map(x => x.seaKm), m = s.slice(1, -1).map((v, i) => (s[i] + v + s[i + 2]) / 3); return m.length ? Math.max(...m) - Math.min(...m) : NaN; };
+    report('sea level: first-order swing over the cycle', rows.map(swing), { earth: [0.2, 0.3], unit: ' km', digits: 2, source: 'Pangaea’s lowstand to the Cretaceous highstand, ~200–300 m (Haq & Al-Qahtani 2005; Müller et al. 2008)' });
+    // the supercontinent's interior against the dispersed continents' (median height over 500 km from any coast)
+    report('interior height: supercontinent less late dispersal', rows.map(r => meanOf(r, 'supercontinent', 'interior') - meanOf(r, 'late dispersal', 'interior')), { earth: [0.2, 1], unit: ' km', digits: 2,
+        source: 'a supercontinent on its own warm mantle rises a few hundred m to ~1 km (Gurnis 1988); the African superswell, Pangaea’s legacy, ~0.5 km (Nyblade & Robinson 1994)',
+        detail: txt(r => `${meanOf(r, 'supercontinent', 'interior').toFixed(2)} vs ${meanOf(r, 'late dispersal', 'interior').toFixed(2)} km`) });
+}
 
 section('the crust over the history');
 // (the ledger's per-step books are held in check-invariants.mjs; here the history's totals. Earth's continental crust has

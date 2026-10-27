@@ -16,7 +16,7 @@ const TUNABLES = [
     { id: 'plumeRatePerMyr', label: 'New plumes per Myr', min: 0, max: 0.2, step: 0.005 },
     { id: 'hotspotInitialCount', label: 'Plumes already rising at the start', min: 0, max: 20, step: 1 },
     { id: 'plumeOceanWeight', label: 'Chance of a plume under cool mantle (1 = no preference for insulated)', min: 0, max: 1, step: 0.05 },
-    { id: 'mantleInsulateMyr', label: 'Mantle under a continent warms over', min: 20, max: 400, step: 10, unit: ' Myr' },
+    { id: 'mantleInsulateMyr', label: 'Mantle under a continent warms over (warm mantle lifts the ground over it and the sea answers: the Terrain phases)', min: 20, max: 400, step: 10, unit: ' Myr' },
     { id: 'mantleCoolMyr', label: '…and cools again over', min: 20, max: 400, step: 10, unit: ' Myr' },
     { id: 'plumeRiftChance', label: 'Chance a plume head splits a continent pulled apart', min: 0, max: 1, step: 0.05 },
     { id: 'plumeRiftTension', label: '…pulled at least this hard (tension)', min: 0.05, max: 1, step: 0.05 },

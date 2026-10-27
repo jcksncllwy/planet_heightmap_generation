@@ -814,7 +814,10 @@ function updateClimateUi() {
 function stats(T, frame) {
     if (!$('statsDetails').open) return;
     const h = T.hyps, km = v => `${Math.round(v * 1000).toLocaleString()} m`;
+    // (the sea's own level against today's: the mantle's swell and the sea floor's age move it — terrain/sea-level.js)
+    const sea = T.src?.sea, seaM = v => `${v >= 0 ? '+' : '−'}${Math.round(Math.abs(v) * 1000)} m`;
     ui.stats.innerHTML = `<div>${frame.time.toFixed(0)} Myr</div><div>Land: ${(100 * h.landShare).toFixed(1)} % of the planet</div>` +
+        (sea ? `<div title="The ocean's water is a fixed volume: where the mantle under the sea floor is warm, or the floor young, the sea stands higher against the land">Sea level: ${seaM(sea.seaKm)} against today's (mantle ${seaM(sea.swellSeaKm)}, sea floor's age ${seaM(sea.ridgeSeaKm)})</div>` : '') +
         `<div>Below 400 m: ${(100 * h.below400).toFixed(0)} % of the land</div><div>Median land: ${km(h.landKm[2])} · 90 % below ${km(h.landKm[4])}</div>` +
         `<div>Plates: ${frame.plates.filter(p => p.alive && !p.isBackground).length}</div>`;
 }

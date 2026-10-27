@@ -258,6 +258,6 @@ export class TerrainPool {
         await finished;
         mesh.sampler = sampler;
         return { heightKm, parts, carveIn, rec: plan?.rec ?? null, sampler, ms: { records: planMs, pooled: performance.now() - started, workers: W },
-            kernels: counts.kernels, volcanoes: counts.volcanoes };
+            kernels: counts.kernels, volcanoes: counts.volcanoes, sea: counts.sea ?? null };
     }
 }

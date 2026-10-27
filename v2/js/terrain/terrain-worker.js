@@ -5,6 +5,7 @@
 // exactly the single-threaded one. Runs as a browser module worker or a Node worker thread.
 
 import { preparePlan, planToData, planFromData, surfaceRange, carveInputs, surfaceParts } from './synthesize.js';
+import { seaOf } from './sea-level.js';
 import { sampleRange } from './terrain-mesh.js';
 import { meshFromArrays } from '../core/sim-mesh.js';
 
@@ -72,5 +73,5 @@ function runJob({ jobId, cfg, seed, edgeKm, parts: wantParts, carve: wantCarve, 
         const transfer = [heightKm.buffer, ...(parts ? Object.values(parts).map(a => a.buffer) : []), ...(carve ? Object.values(carve).map(a => a.buffer) : []), ...(fresh ? [out.cells.buffer, out.weights.buffer] : [])];
         post(out, transfer);
     }
-    post({ type: 'done', jobId, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count });
+    post({ type: 'done', jobId, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count, sea: seaOf(plan.rec) });
 }

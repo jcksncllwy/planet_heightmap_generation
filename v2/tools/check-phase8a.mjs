@@ -20,6 +20,7 @@ import { TERRAIN, terrainConfig, erosionAtLatitude } from '../js/terrain/terrain
 import { kindType, kindSide, gradient, CoastKind } from '../js/terrain/records.js';
 import { crossAt } from '../js/terrain/stripes.js';
 import { coastLoops, coastFractal, kindOf as coastKindOf, COAST_KINDS, EARTH_D } from './lib/coast-fractal.mjs';
+import { stageOf, EARTH_LAND } from './lib/cycle-stage.mjs';
 
 const SEED = 12345;
 const mesh = labMesh();
@@ -506,8 +507,13 @@ const T640 = terrain(history.frame);
     report('cratons: 90th percentile height', quantile(craton, 0.9), { earth: [0.2, 1.5], unit: ' km', source: 'Kalahari and southern Africa 1–1.5 km on dynamic topography' });
     const hy = hypsometry(heightKm);
     let max = -Infinity, nan = 0; for (const v of heightKm) { if (!Number.isFinite(v)) nan++; else max = Math.max(max, v); }
-    // (the outcome of the start's crust and ocean volume: one seed here — Phase 13 reports it over several)
-    report('land share of the planet', 100 * hy.landShare, { earth: [24, 30], unit: ' %', digits: 1, source: '29 % today, less at highstands (+280 m at 80 Ma; North America >30 % flooded, Gurnis 1990)' });
+    // (the outcome of the start's crust and the ocean's water, against Earth's range for the stage of the cycle the frame
+    // is in — tools/lib/cycle-stage.mjs: one seed here, Phase 13 reports every stage over several)
+    {
+        const stage = stageOf(f), E = EARTH_LAND[stage] ?? EARTH_LAND['late dispersal'];
+        report(`land share of the planet (${stage ?? 'no stage'}: Earth's range for ${stage ? 'it' : 'today'})`, 100 * hy.landShare, { ...E, unit: ' %', digits: 1,
+            detail: `at ${f.time} Myr; the sea ${Math.round(1000 * (T640.rec.seaKm ?? 0))} m against today's datum` });
+    }
     // (before carving: Earth's figure is after erosion, so not directly comparable — 8b reports the carved surface)
     report('land below 400 m before carving', 100 * hy.below400, { unit: ' %', digits: 0, source: 'Earth ~54 % below 500 m after erosion (ETOPO) — not comparable before carving',
         detail: `median land height ${hy.landKm[2].toFixed(2)} km` });

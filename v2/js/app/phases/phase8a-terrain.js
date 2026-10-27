@@ -47,6 +47,7 @@ const TERRAIN_TUNABLES = [
     { id: 'ridgeNoiseShare', label: 'Ridge noise along the ranges: share of the belt’s uplift', min: 0, max: 0.5, step: 0.02 },
     { id: 'ridgeNoiseStretch', label: 'Ridge noise: times longer along the range than across', min: 1, max: 16, step: 1 },
     { id: 'cratonCharacter', label: 'Cratons: how strongly their basins and swells show', min: 0, max: 2, step: 0.1 },
+    { id: 'mantleSwellKm', label: 'Mantle swell: how far fully insulated mantle lifts the ground over fully cooled (the sea answers it)', min: 0, max: 2, step: 0.1, unit: ' km' },
     { id: 'detailRenewMyr', label: 'Fine detail slowly renews over (0 = frozen on the crust)', min: 0, max: 500, step: 10, unit: ' Myr' },
     { id: 'baseReliefKm', label: 'Swells of the first continents (re-runs the history)', min: 0, max: 2, step: 0.1, unit: ' km', evolves: true },
     { id: 'lipWearKmPerMyr', label: 'Flood basalts wear down (re-runs the history)', min: 0, max: 0.02, step: 0.001, unit: ' km/Myr', evolves: true },
@@ -102,6 +103,7 @@ const CHECKLISTS = {
         'The pieces stay apart for a long while (no landmass over ~60 % for more than a moment), then, once the mantle the old supercontinent warmed has cooled (~150–250 Myr after the breakup), gather (markers: “gathering here”) into a new supercontinent — often around 500–650 Myr, set by the mantle, not a clock — ONE mass, not continents strung together by strips (the chart counts land joined only by a neck under 800 km as apart). It holds ~100–200 Myr, then breaks up in its turn.',
         'Mantle layer: warm colours where continents have sat (the heat they kept in); arrows show the mantle’s flow dragging on continents — outward from the upwelling (under the last supercontinent) while the heat there lasts, and toward the downwelling ~90° away, where the next one gathers (markers). The chart’s red line is that heat: it rises under an assembled supercontinent, and the burst comes as it peaks.',
         'The new supercontinent forms around the downwelling marker, not on top of the old one; when it has formed the markers move — its centre is the next upwelling.',
+        'Sea level (the cards under the map): a supercontinent that has sat on its own warm mantle stands high as a whole — a high, dry interior — and the sea stands below today’s (a lowstand: shelves out of the sea). After the breakup the pieces ride onto mantle the ocean has cooled and sink, young ocean floor fills the basins, and the sea rises over today’s: shallow seas spread over coastal plains and low interiors (the Cretaceous highstand), then draw back as the world settles into its dispersal. The “Mantle swell” slider sets how strongly the mantle’s heat lifts the ground (0: no swell; the sea then moves only with the sea floor’s age).',
         'The reassembled supercontinent is compact (not a ring or a snake) and holds no big sea sealed inside it.',
         'Rifts follow old sutures and belts about half the time (Belts layer): the next breakup reopens some old seams and cuts new ones.',
         'End as (settings): pick “A supercontinent”, “A supercontinent breaking up” or “Continents dispersed” — the history runs on past 1200 Myr until the world is in that stage, stops there and shows the end (the hint under the table says when; the chart shows the stage). The history is the same one, only cut elsewhere: an ending it has already run past comes at once.',
@@ -441,6 +443,7 @@ export function terrainPhase(spec) {
 
     const centre = (frames[0].plates.find(p => !p.isBackground) ?? frames[0].plates[0]).centre;
     const km = v => `${Math.round(v * 1000).toLocaleString()} m`;
+    const seaM = v => `${v >= 0 ? '+' : '−'}${Math.round(Math.abs(v) * 1000).toLocaleString()} m`;
     return {
         title: spec.title,
         summary: spec.summary + scene.about,
@@ -498,6 +501,8 @@ export function terrainPhase(spec) {
             return {
                 cards: [
                     { big: `${(100 * hy.landShare).toFixed(1)} %`, small: `of the planet is land (sea level ${view.seaLevelKm >= 0 ? '+' : ''}${view.seaLevelKm} km)` },
+                    // (the sea's own level against today's: the mantle's swell under the sea floor and the floor's age — terrain/sea-level.js)
+                    ...(T.src?.sea ? [{ big: seaM(T.src.sea.seaKm), small: `the sea against today's (${seaM(T.src.sea.swellSeaKm)} from the mantle's swell under the sea floor, ${seaM(T.src.sea.ridgeSeaKm)} from the floor's age) · mantle heat under the land ${T.src.sea.heatLand.toFixed(2)}, under the sea ${T.src.sea.heatSea.toFixed(2)}` }] : []),
                     { big: km(q50), small: `median land height · 90 % below ${km(q90)} · highest ${km(max - view.seaLevelKm)}` },
                     { big: `${(100 * hy.below400).toFixed(0)} %`, small: spec.lowlandNote },
                     { big: `${((T.ms.pooled ?? (T.ms.records + T.ms.surface + (T.ms.sample ?? 0))) / 1000).toFixed(2)} s`, small: `terrain at ${tMesh.numCells.toLocaleString()} cells${T.ms.workers ? ` on ${T.ms.workers} workers` : ''} · ${T.kernels.toLocaleString()} ridge kernels · ${T.volcanoes.toLocaleString()} volcanoes` + (carve ? (T.carved ? ` · rivers carved in ${((T.ms.carve ?? 0) / 1000).toFixed(2)} s` : ' · carving the rivers…') : '') },

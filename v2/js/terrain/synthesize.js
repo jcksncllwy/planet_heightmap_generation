@@ -25,6 +25,7 @@ import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anc
 import { locate } from '../core/mesh-locate.js';
 import { rainAtLatitude } from './terrain-config.js';
 import { carveTerrain } from './carve.js';
+import { seaOf } from './sea-level.js';
 import { terrainMesh } from './terrain-mesh.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 
@@ -54,7 +55,7 @@ export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
     const carveIn = opts.carve ? carveInputs(n) : null;
     surfaceRange(plan, cfg, seed, tMesh.edgeKm, tMesh.xyz, S.cells, S.weights, 0, n, heightKm, parts, carveIn);
     ms.surface = clock() - t0;
-    const out = { heightKm, parts, rec: plan.rec, sampler: S, ms, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count };
+    const out = { heightKm, parts, rec: plan.rec, sampler: S, ms, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count, sea: seaOf(plan.rec) };
     if (!opts.carve) return out;
     t0 = clock();
     const C = carveTerrain(carveLadder(simMesh, tMesh, terrainMesh), { ...carveIn, z: heightKm }, carveSettings(cfg), settleFields(frame, simMesh, tMesh, cfg, seed));
@@ -377,6 +378,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     };
     const { cratons: CR, terrane } = rec;
     const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
+    const seaKm = rec.seaKm ?? 0;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -809,7 +811,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             platform = h;
         }
         const cone = coneAt(V, cn, px, py, pz, h);
-        heightKm[t] = h + cone;
+        heightKm[t] = h + cone - seaKm;                // (heights from the sea, wherever it stands: terrain/sea-level.js)
         if (carve) {
             // the carving's inputs here: rock uplift (active belts rise, by their relief, fading once quiet), how easily
             // it erodes (shields and ridge crests are hard), the rain its drainage brings, the hillslope gradient, and the
