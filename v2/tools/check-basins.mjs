@@ -32,9 +32,10 @@ function chain(N) {
 }
 
 section('the balance against Earth’s closed seas');
-// A basin as a chain of cells, lowest first (its hypsometry does not matter: the area at balance does) — of 100 km² each
+// A basin as a chain of cells, lowest first (its hypsometry does not matter: the area at balance does) — of 10 km² each,
+// fine enough for the Dead Sea's few hundred, room enough (500 000 km²) for the Caspian
 {
-    const N = 40000, mesh = chain(N), z = Float32Array.from({ length: N }, (_, i) => -1 + i / N), A = 100;
+    const N = 50000, mesh = chain(N), z = Float32Array.from({ length: N }, (_, i) => -1 + i / N), A = 10;
     const balance = (km3, tC, rainMm) => lakeBalance(mesh, 0, () => true, z, () => openWater(tC, rainMm) * A * 1e-6, km3).wet.length * A;
     // the Caspian: the Volga's ~250 km³/yr and the other rivers' ~50 (Rodionov 1994), its air ~11–12 °C a year, ~200 mm of
     // rain on it: it stands at ~371 000 km²
@@ -86,8 +87,12 @@ for (const seed of SEEDS) {
         surfaceMedian: median(all('surfaces').filter(v => v < 0)), surfaceLow: Math.min(...all('surfaces')), floorLow: Math.min(...all('floors')) });
 }
 const txt = f => rows.map(r => `${r.seed}: ${f(r)}`).join(' · ');
-report('cut-off seas full to their rim and spilling, of all (300, 600, 950 Myr)', rows.map(r => r.n ? 100 * r.full / r.n : NaN), { earth: [0, 30], unit: ' %', digits: 0,
-    source: 'none today of ~8 closed basins below sea level (Caspian, Dead Sea, Qattara, Turpan, Assal, Death Valley, Karagiye…); in the last glacial the Black Sea lake and the Caspian spilled through the Manych (Yanko-Hombach 2007)',
+// (a hollow whose floor is below sea level, cut off from the ocean, is a cryptodepression: most of Earth's large ones
+// today hold lakes that spill — the floors of Baikal, Tanganyika, Malawi, Superior, Michigan, Ontario, Ladoga, Onega and
+// Great Slave Lake are below sea level — and the Caspian alone of those over 5000 km² is closed. In arid times more are:
+// the Messinian Mediterranean and the Paratethys, the Zechstein and Pangea's interior basins)
+report('cut-off seas full to their rim and spilling, of all (300, 600, 950 Myr)', rows.map(r => r.n ? 100 * r.full / r.n : NaN), { earth: [30, 92], unit: ' %', digits: 0,
+    source: 'today ~11 of 12 cryptodepressions over 5000 km² spill, the Caspian alone closed (Herdendorf 1982); fewer in arid ages — the Messinian (Hsü et al. 1973), the Zechstein (Peryt et al. 2010) — and the Black Sea and the Caspian in the last glacial (Yanko-Hombach 2007)',
     detail: txt(r => `${r.full} of ${r.n}`) });
 report('area below sea level in cut-off seas: mean of the moments', rows.map(r => r.below), { earth: [0.3, 3.5], unit: ' Mkm²', digits: 2,
     source: 'the Caspian depression ~0.6 today; the Zechstein ~0.6 in Pangea (Peryt et al. 2010); the Messinian Mediterranean 2.5 and the Paratethys (Hsü et al. 1973; Krijgsman et al. 1999)',
