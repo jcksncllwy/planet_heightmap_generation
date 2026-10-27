@@ -48,6 +48,7 @@ const TERRAIN_TUNABLES = [
     { id: 'ridgeNoiseStretch', label: 'Ridge noise: times longer along the range than across', min: 1, max: 16, step: 1 },
     { id: 'cratonCharacter', label: 'Cratons: how strongly their basins and swells show', min: 0, max: 2, step: 0.1 },
     { id: 'mantleSwellKm', label: 'Mantle swell: how far fully insulated mantle lifts the ground over fully cooled (the sea answers it)', min: 0, max: 2, step: 0.1, unit: ' km' },
+    { id: 'seaLevelFloorAge', label: 'Sea floor’s age moves the sea too (1 = on; off by default: the history’s sea floor is older than Earth’s, so its volume would swing the sea too far)', min: 0, max: 1, step: 1 },
     { id: 'detailRenewMyr', label: 'Fine detail slowly renews over (0 = frozen on the crust)', min: 0, max: 500, step: 10, unit: ' Myr' },
     { id: 'baseReliefKm', label: 'Swells of the first continents (re-runs the history)', min: 0, max: 2, step: 0.1, unit: ' km', evolves: true },
     { id: 'lipWearKmPerMyr', label: 'Flood basalts wear down (re-runs the history)', min: 0, max: 0.02, step: 0.001, unit: ' km/Myr', evolves: true },
@@ -502,7 +503,7 @@ export function terrainPhase(spec) {
                 cards: [
                     { big: `${(100 * hy.landShare).toFixed(1)} %`, small: `of the planet is land (sea level ${view.seaLevelKm >= 0 ? '+' : ''}${view.seaLevelKm} km)` },
                     // (the sea's own level against today's: the mantle's swell under the sea floor and the floor's age — terrain/sea-level.js)
-                    ...(T.src?.sea ? [{ big: seaM(T.src.sea.seaKm), small: `the sea against today's (${seaM(T.src.sea.swellSeaKm)} from the mantle's swell under the sea floor, ${seaM(T.src.sea.ridgeSeaKm)} from the floor's age) · mantle heat under the land ${T.src.sea.heatLand.toFixed(2)}, under the sea ${T.src.sea.heatSea.toFixed(2)}` }] : []),
+                    ...(T.src?.sea ? [{ big: seaM(T.src.sea.seaKm), small: `the sea against today's: ${seaM(T.src.sea.swellSeaKm)} from the mantle's swell under the sea floor; the floor's age would move it ${seaM(T.src.sea.ridgeSeaKm)} (${cfg.seaLevelFloorAge > 0 ? 'on' : 'off: the slider below'}) · mantle heat under the land ${T.src.sea.heatLand.toFixed(2)}, under the sea ${T.src.sea.heatSea.toFixed(2)}` }] : []),
                     { big: km(q50), small: `median land height · 90 % below ${km(q90)} · highest ${km(max - view.seaLevelKm)}` },
                     { big: `${(100 * hy.below400).toFixed(0)} %`, small: spec.lowlandNote },
                     { big: `${((T.ms.pooled ?? (T.ms.records + T.ms.surface + (T.ms.sample ?? 0))) / 1000).toFixed(2)} s`, small: `terrain at ${tMesh.numCells.toLocaleString()} cells${T.ms.workers ? ` on ${T.ms.workers} workers` : ''} · ${T.kernels.toLocaleString()} ridge kernels · ${T.volcanoes.toLocaleString()} volcanoes` + (carve ? (T.carved ? ` · rivers carved in ${((T.ms.carve ?? 0) / 1000).toFixed(2)} s` : ' · carving the rivers…') : '') },

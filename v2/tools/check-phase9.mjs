@@ -120,7 +120,9 @@ for (const [frames, label] of [[frames150, '140→150 Myr'], [history(300), '290
     let p = -1, turned = 0;
     for (let i = 0; i < B.plates.length; i++) { const a = A.plates[i], b = B.plates[i]; if (!a?.alive || !b?.alive || b.landCells < 200) continue; const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3]))); if (ang > turned) { turned = ang; p = i; } }
     const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9)), c3 = [0, 0, 0], w3 = [0, 0, 0];
-    const TA = synthesizeTerrain(A, mesh, tm, { seed: SEED, carve: true }), TB = synthesizeTerrain(B, mesh, tm, { seed: SEED, carve: true });
+    // (both frames on B's sea: the sea's own level moves with the mantle and the sea floor's age — terrain/sea-level.js,
+    // tens of metres in 10 Myr — and moves low coasts with it; that is the sea's change, not the terrain's)
+    const TB = synthesizeTerrain(B, mesh, tm, { seed: SEED, carve: true }), TA = synthesizeTerrain(A, mesh, tm, { seed: SEED, carve: true, seaKm: TB.rec.seaKm });
     let coastN = 0, coastSame = 0, moved = 0, rivers = 0, kept = 0; const hx = [], hy = [], s3 = [0, 0, 0], sw3 = [0, 0, 0];
     for (let t = 0; t < tm.numCells; t++) {
         const c = TB.sampler.cells[3 * t];

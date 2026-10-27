@@ -12,7 +12,11 @@
 // mantle, the sea falls against the land: Pangaea's era was a first-order lowstand, with a dry, high interior; the
 // dispersal brought the Cretaceous highstand, when shallow seas covered ~30 % of today's land (Worsley et al. 1984; Haq &
 // Al-Qahtani 2005). The age of the sea floor sets the other half of the sea's level: a young ocean, its ridges long and
-// hot, stands shallower and holds less water — the sea rises (Hays & Pitman 1973; Müller et al. 2008).
+// hot, stands shallower and holds less water — the sea rises (Hays & Pitman 1973; Müller et al. 2008). That half is
+// computed but counts only when asked (terrain-config.js seaLevelFloorAge): the history's floor is older than Earth's.
+//
+// The swell is the mantle's, fixed under the world: a continent drifting across it tilts and sinks or rises as it goes
+// (Australia, flooded on its northern side as it drifted north onto the Indonesian downwelling: DiCaprio et al. 2009).
 //
 // All of it is read from the frame (the history's mantleHeat, crust ages and sea fill): the history is unchanged.
 // Heights are calibrated against today's sea — a dispersed world's — so each part is measured from what a dispersed
@@ -50,28 +54,30 @@ export function mantleWarmth(frame, simMesh, cfg) {
 }
 
 /**
- * The swell under each cell against the sea, and the sea's level (km, against today's datum).
- *   · liftKm[w]: mantleSwellKm × (heat − the reference for its side): continental crust against the heat a dispersed
- *     world's continents stand on (its platform is today's), the sea floor — and an island arc on it — against the
- *     dispersed world's sea floor (the depth–age law and the arcs' heights are today's);
+ * The swell under each cell, and the sea's level (km, against today's datum).
+ *   · swellKm[w]: mantleSwellKm × the smoothed heat — a smooth field of the mantle, fixed under the world. What a point
+ *     stands at is read from it there (synthesize.js: interpolated at the point itself, not through the land's corners, so
+ *     the swell has no cell-scale steps), less the reference for its side (liftRefKm): continental crust against the heat
+ *     a dispersed world's continents stand on (its platform is today's), the sea floor — and an island arc on it — against
+ *     the dispersed world's sea floor (the depth–age law and the arcs' heights are today's);
  *   · seaKm: how far the sea stands above today's datum — its water a fixed volume over the ocean's area: the swell's
  *     mean over the sea floor (mantleSwellKm × (the ocean's mean heat − its reference)) and the floor's mean depth's
  *     shortfall from the reference (younger floor: higher sea). Floor the history has not dated yet (the start's
  *     placeholder ocean, tectonics/config.js initialOceanAgeMyr: "uniformly old, soon overwritten") counts at the
- *     reference depth — its ages are unknown, not 150 Myr each.
+ *     reference depth — its ages are unknown, not 150 Myr each. The floor's part counts only with cfg.seaLevelFloorAge
+ *     (terrain-config.js: off — the history's floor is too old, and its age swings too far, for its volume to be Earth's);
+ *     it is reported either way (ridgeSeaKm).
  * The ocean here is the sea floor that holds water: ocean crust not filled to sea level, and any cell no plate covers.
  * @param {(w: number) => boolean} isLand  the land as the records see it (continental crust, filled seas)
- * @returns {{liftKm: Float32Array, seaKm: number, swellSeaKm: number, ridgeSeaKm: number, heatLand: number, heatSea: number, depthKm: number}}
+ * @returns {{swellKm: Float32Array, seaKm: number, swellSeaKm: number, ridgeSeaKm: number, heatLand: number, heatSea: number, depthKm: number}}
  */
 export function seaLevel(frame, simMesh, cfg, isLand) {
     const n = simMesh.numCells, H = mantleWarmth(frame, simMesh, cfg), A = cfg.mantleSwellKm, time = frame.time ?? 0;
-    const liftKm = new Float32Array(n);
+    const swellKm = new Float32Array(n);
     let sea = 0, heatSea = 0, depth = 0, land = 0, heatLand = 0;
     for (let w = 0; w < n; w++) {
-        // (an island arc keeps no heat in — tectonics/step/hotspots.js isContinental — and its heights are today's arcs'
-        // out over the ocean's mantle: it stands against the sea floor's reference)
-        if (isLand(w)) { liftKm[w] = A * (H[w] - (frame.type[w] === CrustType.ARC ? cfg.mantleSwellSeaRef : cfg.mantleSwellLandRef)); heatLand += H[w]; land++; continue; }
-        liftKm[w] = A * (H[w] - cfg.mantleSwellSeaRef);
+        swellKm[w] = A * H[w];
+        if (isLand(w)) { heatLand += H[w]; land++; continue; }
         sea++; heatSea += H[w];
         const o = frame.owner[w];
         depth += o < 0 || frame.type[w] !== CrustType.OCEAN || frame.formedAt[w] < 0 ? cfg.seaDepthRefKm
@@ -79,7 +85,17 @@ export function seaLevel(frame, simMesh, cfg, isLand) {
     }
     heatSea /= Math.max(1, sea); depth /= Math.max(1, sea); heatLand /= Math.max(1, land);
     const swellSeaKm = A * (heatSea - cfg.mantleSwellSeaRef), ridgeSeaKm = cfg.seaDepthRefKm - depth;
-    return { liftKm, seaKm: swellSeaKm + ridgeSeaKm, swellSeaKm, ridgeSeaKm, heatLand, heatSea, depthKm: depth };
+    return { swellKm, seaKm: swellSeaKm + (cfg.seaLevelFloorAge > 0 ? ridgeSeaKm : 0), swellSeaKm, ridgeSeaKm, heatLand, heatSea, depthKm: depth };
+}
+
+/**
+ * The swell's reference (km) for ground with this share of island arc: continental crust stands against the heat under a
+ * dispersed world's continents, an island arc — it keeps no heat in (tectonics/step/hotspots.js isContinental), and its
+ * heights are today's arcs' out over the ocean's mantle — against the sea floor's, as the sea floor itself does.
+ */
+export function liftRefKm(cfg, arcShare) {
+    const a = Math.min(1, Math.max(0, arcShare));
+    return cfg.mantleSwellKm * ((1 - a) * cfg.mantleSwellLandRef + a * cfg.mantleSwellSeaRef);
 }
 
 /** A frame's sea level as its records carry it, small enough to post from a worker (null without records). */

@@ -196,6 +196,12 @@ export const TERRAIN = {
     seaDepthRefKm: 4.55,        // …and the sea floor's mean depth (measure.js seaDepthKm, less the sediment of sealed seas):
                                 // 4.45–4.61 by seed (4.60–4.73 under a supercontinent: its ocean is old). The ocean's water
                                 // is the volume that holds the sea at today's datum over a dispersed world's floor
+    seaLevelFloorAge: 0,        // 1: let the sea floor's age move the sea (the ridges' volume: Hays & Pitman 1973; Müller et al.
+                                // 2008). Off: the history's floor is too old (mean 94–105 Myr over the cycle against Earth's
+                                // ~64, Müller et al. 2008; too few trenches start) and its mean depth swings 4.4–5.0 km, so
+                                // its volume would swing the sea 0.45–0.63 km over a cycle (Earth 0.2–0.3 km: Haq &
+                                // Al-Qahtani 2005) — a lowstand after each breakup, where Earth had its highstand. It is
+                                // computed and shown either way (the lab's sea-level card)
     lipLandKm: 0.75,            // flood basalt on land: this much height per km of basalt (8b round 6: 0.6 → 0.75 — Putorana
                                 // stands ~1.5 km, the Western Ghats 1–1.6)
     lipSeaKm: 1.4,              // an oceanic plateau (Ontong Java) rises this much per km of basalt

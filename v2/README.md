@@ -468,20 +468,25 @@ it warms (the history's `mantleHeat`, `mantleInsulateMyr`), and warm mantle lift
 topography (Gurnis 1988; Lenardic et al. 2005; Coltice et al. 2007; the African superswell, Pangaea's legacy, ~0.5 km
 above the other shields, Nyblade & Robinson 1994). The swell is absolute, under the sea floor as under the land
 (`mantleSwellKm` 1 km from fully cooled to fully insulated mantle, the heat smoothed over `mantleSwellSmoothKm` 400 km),
-and the sea answers it: the ocean's water is a fixed volume, so the sea's level is the swell's mean under the sea floor,
-plus the floor's age — a young ocean, its ridges long and hot, is shallower and holds less, and the sea rises (Hays &
-Pitman 1973; Müller et al. 2008). Heights are today's, so each part is measured from what a dispersed world shows on
-average (`mantleSwellLandRef`, `mantleSwellSeaRef`, `seaDepthRefKm`, measured over three histories' dispersed frames):
-a dispersed world's sea stands at 0 on average, a supercontinent on its own warm mantle stands high as a whole and the
-sea falls against it (a lowstand, a dry, high interior), and after the breakup the pieces ride onto mantle the ocean has
-cooled and sink, young ridges fill the basins and shallow seas spread over the low ground (the Cretaceous highstand).
-The swell lifts the platform (tapering to the coast with it, as every platform height does) and the sea floor; the sea's
+and the sea answers it: the ocean's water is a fixed volume, so the sea's level is the swell's mean under the sea floor.
+Heights are today's, so each part is measured from what a dispersed world shows on average (`mantleSwellLandRef`,
+`mantleSwellSeaRef`, measured over three histories' dispersed frames): a dispersed world's sea stands at 0 on average,
+a supercontinent on its own warm mantle stands high as a whole and the sea falls against it (a lowstand, a dry, high
+interior), and after the breakup the pieces ride onto mantle the ocean has cooled and sink, and shallow seas spread over
+their low ground (Gurnis 1990). The sea floor's age would move the sea too — a young ocean, its ridges long and hot, is
+shallower and holds less (Hays & Pitman 1973; Müller et al. 2008) — and it is computed against a dispersed world's mean
+depth (`seaDepthRefKm`) and shown, but counted only with `seaLevelFloorAge` (off): the history's floor is older than
+Earth's (mean 94–105 Myr against ~64) and its mean depth swings 4.4–5.0 km, so it would swing the sea 0.45–0.63 km over
+a cycle (Earth 0.2–0.3 km), a lowstand after each breakup where Earth had its Cretaceous highstand.
+The swell lifts the platform (tapering to the coast with it, as every platform height does) and the sea floor — read at
+each point from the smooth world-fixed field, not through the land's corners, which would step it at the sim cell's
+scale and drag a low coast along the steps (Phase 9's steady coasts); the sea's
 level moves the whole surface, so the shoreline moves: shelves come out of the sea at a lowstand, coastal plains and
 low interiors go under at a highstand. Before, the swell was relative to the land's own mean heat (developer, 8b round
 6: so that the heat that gathers under any continent sitting still did not lift every height), and a supercontinent,
 all of it as hot, got none. Read from the frame alone: the history is unchanged. The lab's Terrain phases show the
-sea's level and its two parts with the land share (and the Evolution page's statistics); the "Mantle swell" slider
-sets `mantleSwellKm`. Phase 13 reports the land share by stage of the cycle, the sea's first-order swing and the
+sea's level and both parts with the land share (and the Evolution page's statistics); the "Mantle swell" slider sets
+`mantleSwellKm`, and "Sea floor's age moves the sea too" `seaLevelFloorAge`. Phase 13 reports the land share by stage of the cycle, the sea's first-order swing and the
 supercontinent's interior height against the dispersed continents' (`tools/lib/cycle-stage.mjs`).
 
 **Rivers (Phase 8b, `carve.js`).** The tectonic surface is carved by the stream power law, solved analytically in time

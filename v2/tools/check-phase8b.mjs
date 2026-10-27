@@ -160,7 +160,9 @@ section('rivers through the history');
     for (let i = 0; i < B.plates.length; i++) { const a = A.plates[i], b = B.plates[i]; if (!a?.alive || !b?.alive || b.landCells < 200) continue; const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3]))); if (ang > turned) { turned = ang; p = i; } }
     const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
     const holds = cfg => {
-        const TA = synthesizeTerrain(A, mesh, tm, { seed: SEED, carve: true, cfg }), TB = synthesizeTerrain(B, mesh, tm, { seed: SEED, carve: true, cfg }), xs = [], ys = [], c3 = [0, 0, 0], w3 = [0, 0, 0];
+        // (both frames on today's sea: the sea's own level moves with the mantle and the sea floor's age — terrain/sea-level.js
+        // — and drowns or bares low ground with it; that is the sea's change, not the rivers')
+        const TA = synthesizeTerrain(A, mesh, tm, { seed: SEED, carve: true, cfg, seaKm: 0 }), TB = synthesizeTerrain(B, mesh, tm, { seed: SEED, carve: true, cfg, seaKm: 0 }), xs = [], ys = [], c3 = [0, 0, 0], w3 = [0, 0, 0];
         for (let q = 0; q < tm.numCells; q++) {
             if (B.owner[TB.sampler.cells[3 * q]] !== p || TB.tectonicKm[q] <= 0 || TB.drainage[q] < 300 || TB.drainage[q] >= 5e4) continue;
             const x = tm.xyz[3 * q], y = tm.xyz[3 * q + 1], z = tm.xyz[3 * q + 2];

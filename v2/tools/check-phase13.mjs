@@ -133,7 +133,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             const T = synthesizeTerrain(f, mesh, tm, { seed }), share = hypsometry(T.heightKm).landShare, inner = [];
             if (f.time === 0) land0 = share; else if (Math.abs(f.time - scene.maxMyr) < 1e-6) land1200 = share;
             for (let t = 0; t < tm.numCells; t++) { const c = T.sampler.cells[3 * t]; if (T.rec.land[c] && T.rec.coastKm[c] > 500) inner.push(T.heightKm[t]); }
-            sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, interior: median(inner) });
+            sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, floorKm: T.rec.sea.ridgeSeaKm, interior: median(inner) });
         }
         if (Math.abs(f.time - 600) < 1e-6) calm = untouched(f);
         // (lowland after the rivers carve it, comparable with Earth's hypsometry; the tectonic surface's alongside)
@@ -218,8 +218,12 @@ section('land and sea through the cycle');
         report(`land share: ${stage} ÷ late dispersal`, rows.map(r => meanOf(r, stage, 'land') / meanOf(r, 'late dispersal', 'land')), { ...EARTH_LAND_RATIO[stage], digits: 2 });
     // the first-order swing: the sea's level smoothed over 60 Myr (three frames; Earth's first-order cycle is over 100 Myr
     // long — the shorter cycles are glacial and tectonic noise), its highest less its lowest from 100 Myr
-    const swing = r => { const s = r.sea.filter(x => x.time >= 100).map(x => x.seaKm), m = s.slice(1, -1).map((v, i) => (s[i] + v + s[i + 2]) / 3); return m.length ? Math.max(...m) - Math.min(...m) : NaN; };
-    report('sea level: first-order swing over the cycle', rows.map(swing), { earth: [0.2, 0.3], unit: ' km', digits: 2, source: 'Pangaea’s lowstand to the Cretaceous highstand, ~200–300 m (Haq & Al-Qahtani 2005; Müller et al. 2008)' });
+    const swing = (r, k) => { const s = r.sea.filter(x => x.time >= 100).map(x => x[k]), m = s.slice(1, -1).map((v, i) => (s[i] + v + s[i + 2]) / 3); return m.length ? Math.max(...m) - Math.min(...m) : NaN; };
+    report('sea level: first-order swing over the cycle', rows.map(r => swing(r, 'seaKm')), { earth: [0.2, 0.3], unit: ' km', digits: 2, source: 'Pangaea’s lowstand to the Cretaceous highstand, ~200–300 m (Haq & Al-Qahtani 2005; Müller et al. 2008)',
+        detail: txt(r => `by stage ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => `${Math.round(1000 * meanOf(r, st, 'seaKm'))}`).join(' / ')} m`) });
+    // (the sea floor's age, computed but not counted — terrain-config.js seaLevelFloorAge: the history's floor is older than Earth's)
+    report('…the swing the sea floor’s age would add (not counted)', rows.map(r => swing(r, 'floorKm')), { unit: ' km', digits: 2, source: 'Earth’s ridge volume alone ~250 m since the Cretaceous (Müller et al. 2008)',
+        detail: txt(r => `by stage ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => `${Math.round(1000 * meanOf(r, st, 'floorKm'))}`).join(' / ')} m`) });
     // the supercontinent's interior against the dispersed continents' (median height over 500 km from any coast)
     report('interior height: supercontinent less late dispersal', rows.map(r => meanOf(r, 'supercontinent', 'interior') - meanOf(r, 'late dispersal', 'interior')), { earth: [0.2, 1], unit: ' km', digits: 2,
         source: 'a supercontinent on its own warm mantle rises a few hundred m to ~1 km (Gurnis 1988); the African superswell, Pangaea’s legacy, ~0.5 km (Nyblade & Robinson 1994)',

@@ -25,7 +25,7 @@ import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anc
 import { locate } from '../core/mesh-locate.js';
 import { rainAtLatitude } from './terrain-config.js';
 import { carveTerrain } from './carve.js';
-import { seaOf } from './sea-level.js';
+import { seaOf, liftRefKm } from './sea-level.js';
 import { terrainMesh } from './terrain-mesh.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 
@@ -36,10 +36,11 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
  * @param {import('../tectonics/snapshot.js').Frame} frame
  * @param {Object} simMesh      the mesh the frame lives on
  * @param {Object} tMesh        the terrain mesh (terrain-mesh.js)
- * @param {{cfg?: Object, seed?: number, sampler?: Object, parts?: boolean, carve?: boolean}} [opts]
+ * @param {{cfg?: Object, seed?: number, sampler?: Object, parts?: boolean, carve?: boolean, seaKm?: number}} [opts]
  *        sampler: reuse sampleOnto()'s result for this (sim, terrain, seed); parts: also return the components;
  *        carve: let rivers carve it (Phase 8b) — heightKm is then the carved surface, tectonicKm the one before,
- *        drainage the drainage area (km², rain-weighted), receivers where each cell drains (−1 − s: into sea cell s)
+ *        drainage the drainage area (km², rain-weighted), receivers where each cell drains (−1 − s: into sea cell s);
+ *        seaKm: the sea's level against today's datum, in place of the frame's own (terrain/sea-level.js)
  * @returns {{heightKm: Float32Array, parts: Object|null, rec: Object, ms: Object}}
  */
 export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
@@ -47,6 +48,7 @@ export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
     const ms = {}, clock = () => performance.now();
     let t0 = clock();
     const plan = preparePlan(frame, simMesh, cfg, seed, tMesh.edgeKm);
+    if (opts.seaKm !== undefined) plan.rec.seaKm = opts.seaKm;          // (the sea held where asked: the checks compare frames on one sea)
     ms.records = clock() - t0; t0 = clock();
     const S = opts.sampler ?? sampleOnto(simMesh, tMesh, cfg, seed);
     ms.sample = clock() - t0; t0 = clock();
@@ -58,7 +60,7 @@ export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
     const out = { heightKm, parts, rec: plan.rec, sampler: S, ms, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count, sea: seaOf(plan.rec) };
     if (!opts.carve) return out;
     t0 = clock();
-    const C = carveTerrain(carveLadder(simMesh, tMesh, terrainMesh), { ...carveIn, z: heightKm }, carveSettings(cfg), settleFields(frame, simMesh, tMesh, cfg, seed));
+    const C = carveTerrain(carveLadder(simMesh, tMesh, terrainMesh), { ...carveIn, z: heightKm }, carveSettings(cfg), settleFields(frame, simMesh, tMesh, cfg, seed, opts.seaKm));
     ms.carve = clock() - t0;
     return { ...out, heightKm: C.z, tectonicKm: heightKm, drainage: C.area, receivers: C.recv };
 }
@@ -80,10 +82,11 @@ export function carveInputs(n) {
  * would carve — rather than the finer surface averaged onto it (which differs with the detail: a crest sampled or
  * missed, ridges drawn or faded), so the big rivers run the same ways at every terrain detail. null: nothing to give.
  */
-export function settleFields(frame, simMesh, tMesh, cfg, seed) {
+export function settleFields(frame, simMesh, tMesh, cfg, seed, seaKm) {
     const cells = cfg.carveSettleCells ?? 0;
     if (!(cells > 0) || !(tMesh.numCells > 1.5 * cells) || !(cells > 1.5 * simMesh.numCells)) return null;
     const m = terrainMesh(cells), n = m.numCells, S = sampleOnto(simMesh, m, cfg, seed), plan = preparePlan(frame, simMesh, cfg, seed, m.edgeKm);
+    if (seaKm !== undefined) plan.rec.seaKm = seaKm;
     const z = new Float32Array(n), f = carveInputs(n);
     surfaceRange(plan, cfg, seed, m.edgeKm, m.xyz, S.cells, S.weights, 0, n, z, null, f);
     return new Map([[n, { ...f, z }]]);
@@ -379,6 +382,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const { cratons: CR, terrane } = rec;
     const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
+    const swellKm = rec.swellKm ?? null;
     const kinds = [0, 0, 0], wts = [0, 0, 0], nts = [0, 0, 0];
     // carried ridges (cfg.stripeCarry, stripes.js): each belt layer's sums at the corners of the rasters, kept on the plan
     // (a worker's chunks share them); a point's corners on the raster of the plate under it
@@ -388,6 +392,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     for (let t = from; t < to; t++) {
         let c0 = sCells[3 * t], c1 = sCells[3 * t + 1], c2 = sCells[3 * t + 2];
         let w0 = sWeights[3 * t], w1 = sWeights[3 * t + 1], w2 = sWeights[3 * t + 2];
+        // (the mantle's swell — sea-level.js — is the mantle's, fixed under the world, not the crust's: read at the point on
+        // the world grid, linearly — a field smooth over hundreds of km)
+        const swellAt = swellKm ? w0 * swellKm[c0] + w1 * swellKm[c1] + w2 * swellKm[c2] : 0;
         const px = xyz[3 * t], py = xyz[3 * t + 1], pz = xyz[3 * t + 2];
         // (the world cell nearest the point itself: what can reach it — ridge kernels, volcanoes — is listed by it, near-lists.js;
         // a sampling corner can lie two cells off once the lookup is warped and anchored)
@@ -488,6 +495,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const n0 = land[c0] ? e0 : 0, n1 = land[c1] ? e1 : 0, n2 = land[c2] ? e2 : 0, lw = n0 + n1 + n2;
             platform = lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-2, platformKm, true), platformKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
                 : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : cfg.continentKm;
+            // (the mantle's swell under it, against the reference for continental crust — or, on an island arc, the sea floor's:
+            // sea-level.js liftRefKm)
+            if (swellKm) platform += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
             platform += cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
             // ── a flood basalt (lips.js): the pile as it has worn — here the whole plateau, its top lowering a little as it
             // wears and gone once worn through; the carving cuts it up (carve.js stripBasalt: its escarpment retreating

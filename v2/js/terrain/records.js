@@ -298,7 +298,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // sea floor's age (terrain/sea-level.js): absolute — a supercontinent on its own warm mantle stands high as a whole,
     // and the sea falls against it (developer, 8b round 6, had it relative to the land's mean, so that a continent sitting
     // still did not lift every height; today's heights are now its datum instead)
-    const sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);
+    // (the land's share is read at each point from the smooth swell field — synthesize.js — not baked into the platform
+    // per cell, where the land's corners would step it at the cell's scale and a low coast would follow the steps)
+    const sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1), swellSeaRef = cfg.mantleSwellKm * cfg.mantleSwellSeaRef;
 
     // ── the coast: signed distance to the edge of the land crust, and what kind of coast is nearest ──
     const dist = new Float32Array(n).fill(Infinity), coastKind = new Uint8Array(n), maturity = new Float32Array(n), widen = new Float32Array(n), rugged = new Float32Array(n);
@@ -403,7 +405,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const raw = frame.owner[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
         const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
-        depthKm[w] = Math.max(0, filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0) - sl.liftKm[w]);    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js; raised or lowered by the mantle's swell)
+        depthKm[w] = Math.max(0, filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0) - (sl.swellKm[w] - swellSeaRef));    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js; raised or lowered by the mantle's swell)
     }
     // oceanic plateaus (a flood basalt on the sea floor): read from the world view, where at any moment ~15 % of a moving
     // plate's cells show a neighbour's crust, then smoothed over lipSeaSmoothKm and never lowered inside — one broad rise
@@ -493,7 +495,6 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // the evolved root, by Airy isostasy, and the evolved uplift above it (tectonics/step/heights.js)
         const root = frame.rootKm[w] * (type === CrustType.ARC ? 0.25 : 1);     // (an arc's recorded thickening is mostly its own growth, already in its maturity)
         h += cfg.isoMaxKm * (1 - Math.exp(-root / cfg.isoScaleKm));        // (the evolved uplift is carried separately: upliftKm)
-        h += sl.liftKm[w];                                                 // (the mantle's swell: sea-level.js, above)
         h += frame.baseKm[w];                                               // (the start world's swells, as worn so far)
         if (frame.volcType[w] === VolcanicType.LIP) {                   // (the pile, and how far it has worn: lips.js)
             lipKm[w] = cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]); lipWornKm[w] = frame.volcWornKm[w]; lipSrc[w] = frame.volcSource[w];
@@ -599,7 +600,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
-        seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, liftKm: sl.liftKm };
+        seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }
 
 /**
