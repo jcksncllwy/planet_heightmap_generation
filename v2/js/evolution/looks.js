@@ -3,7 +3,7 @@
 // relief, and asked to look at other colour options — the palettes below, beside the relief.)
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../tectonics/model/crust.js';
-import { tintOf } from '../view/terrain-shade.js';
+import { tintOf, cutOffTint } from '../view/terrain-shade.js';
 
 // ── terrain palettes: colour stops by height (km from sea level; the sea and the land apart), shaded by the relief ──
 // Maps. Topographic: Wikipedia's convention for topographic maps (WikiProject Maps) — pale greens, creams, tans, greys to
@@ -148,6 +148,16 @@ function lutOf(id) {
 export const paletteTones = () => Object.fromEntries(Object.entries(PALETTES).map(([id, P]) => [id, { sea: toneFor(P.sea, TONE_SEA), land: toneFor(P.land, TONE_LAND) }]));
 
 /**
+ * A sea cut off from the world ocean (terrain/world-ocean.js), as a timeline frame draws it: the palette's sea at its
+ * depth, turned as terrain-shade.js cutOffTint turns it. Per step below sea level (`zero` steps), 3 each.
+ */
+export function cutOffRgb(rgb, zero) {
+    const out = rgb.slice(0, 3 * zero);
+    for (let i = 0; i < zero; i++) cutOffTint(out, 3 * i);
+    return out;
+}
+
+/**
  * A palette as a height table for SmoothMapRaster.paintHeights (colours every 10 m, −12 … +10 km): 'relief' (the lab's,
  * terrain-shade.js's tintOf), one of PALETTES, or 'heightmap' (V1's: the sea black, the land grey from 0 to 6 km, unshaded).
  */
@@ -164,20 +174,20 @@ export function heightLutOf(id) {
                 rgb[3 * i] = c[0]; rgb[3 * i + 1] = c[1]; rgb[3 * i + 2] = c[2];
             }
         } else rgb = lutOf(id);
-        heightLuts.set(id, { rgb, minM: LUT_MIN_M, stepM: LUT_STEP_M, n: LUT_N, zero: ZERO, shaded: id !== 'heightmap' });
+        heightLuts.set(id, { rgb, minM: LUT_MIN_M, stepM: LUT_STEP_M, n: LUT_N, zero: ZERO, shaded: id !== 'heightmap', cut: id === 'heightmap' ? null : cutOffRgb(rgb, ZERO) });
     }
     return heightLuts.get(id);
 }
 
 /** A palette's colours by height, shaded by the relief as the lab's relief is (terrain-shade.js's paintRelief). */
-export function paintPalette(id, heightKm, shade, out, seaLevelKm = 0) {
-    const L = lutOf(id);
+export function paintPalette(id, heightKm, shade, out, seaLevelKm = 0, cut = null) {
+    const L = lutOf(id), C = cut ? heightLutOf(id).cut : null;
     for (let c = 0; c < heightKm.length; c++) {
         const m = (heightKm[c] - seaLevelKm) * 1000;
         // (the coast exact: a cell just under sea level is sea, one just over it land)
         const j = Math.round((m - LUT_MIN_M) / LUT_STEP_M), i = 3 * (m < 0 ? Math.max(0, Math.min(ZERO - 1, j)) : Math.min(LUT_N - 1, Math.max(ZERO, j)));
-        const k = 0.35 + 0.65 * (shade ? shade[c] : 1);
-        out[3 * c] = Math.min(255, L[i] * k); out[3 * c + 1] = Math.min(255, L[i + 1] * k); out[3 * c + 2] = Math.min(255, L[i + 2] * k);
+        const k = 0.35 + 0.65 * (shade ? shade[c] : 1), S = C && m < 0 && cut[c] ? C : L;
+        out[3 * c] = Math.min(255, S[i] * k); out[3 * c + 1] = Math.min(255, S[i + 1] * k); out[3 * c + 2] = Math.min(255, S[i + 2] * k);
     }
 }
 

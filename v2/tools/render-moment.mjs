@@ -6,7 +6,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). Output: v2/out/moments/.
 // On a shared machine, run it through sim-slots (sim-slots run -n 6 --gb 16 -- node …): SIM_THREADS sizes its pool.
@@ -29,6 +29,12 @@ import { paintFinished } from '../js/evolution/finish-view.js';
 import { heightLutOf } from '../js/evolution/looks.js';
 import { MinHeap } from '../js/core/min-heap.js';
 import { locate } from '../js/core/mesh-locate.js';
+import { terrainMesh } from '../js/terrain/terrain-mesh.js';
+import { terrainConfig } from '../js/terrain/terrain-config.js';
+import { synthesizeTerrain } from '../js/terrain/synthesize.js';
+import { worldOcean } from '../js/terrain/world-ocean.js';
+import { hillshade } from '../js/view/terrain-shade.js';
+import { SmoothMapRaster } from '../js/view/map-raster.js';
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -42,6 +48,24 @@ const R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0
 // ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; cached ──
 const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME });
 console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
+
+// ── --live: the moment as the timeline draws it before any detail (the page's live terrain at --cells, its Terrain
+// Detail: 160K by default), painted as the page paints it — then stop ──
+if (process.argv.includes('--live')) {
+    const simMesh = buildSimMesh(SIM, MESH_SEED), tMesh = terrainMesh(CELLS);
+    const T = synthesizeTerrain(frame, simMesh, tMesh, { cfg: terrainConfig(), seed: SEED, carve: true });
+    const shade = hillshade(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }), raster = new SmoothMapRaster(tMesh, W);
+    const image = new Uint8ClampedArray(W * (W >> 1) * 4), water = worldOcean(tMesh, T.heightKm, 0);
+    // (--plain: as the timeline drew it before cut-off seas were told from the ocean)
+    raster.paintHeights(T.heightKm, shade, heightLutOf(PALETTE), image, 0, process.argv.includes('--plain') ? null : water.cut);
+    const outDir = path.join(ROOT, 'v2', 'out', 'moments');
+    fs.mkdirSync(outDir, { recursive: true });
+    const p = new PNG({ width: W, height: W >> 1 }); p.data = Buffer.from(image.buffer); fs.writeFileSync(path.join(outDir, `${NAME}.png`), PNG.sync.write(p));
+    const cellKm2 = 4 * Math.PI * R * R / tMesh.numCells, sizes = water.bodies.map(b => b.cells * cellKm2).sort((a, b) => b - a);
+    console.log(`live terrain at ${CELLS.toLocaleString()} cells → v2/out/moments/${NAME}.png (${secs()})`);
+    console.log(`bodies below sea level: ${sizes.length}; the world ocean ${(water.oceanCells * cellKm2 / 1e6).toFixed(1)} Mkm²; cut off from it ${sizes.length - 1}, ${(sizes.slice(1).reduce((a, b) => a + b, 0) / 1e6).toFixed(2)} Mkm² (over 10 000 km²: ${sizes.slice(1).filter(s => s >= 1e4).length}; largest ${sizes.slice(1, 6).map(s => (s / 1e3).toFixed(0) + 'K').join(' ')} km²)`);
+    process.exit(0);
+}
 
 // ── the finish, as the page's worker runs it ──
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
@@ -191,6 +215,12 @@ if (fin.stats?.coast) {
     }
 }
 if (fin.stats?.water) console.log('hydrology:', JSON.stringify(fin.stats.water).slice(0, 400));
+// (the seas cut off from the world ocean: each one's basin, floor, rim, and its water's kind and level — finish-hydro.js)
+if (fin.stats?.water?.seas) {
+    const S = fin.stats.water.seas.slice().sort((a, b) => b.km2 - a.km2), kinds = ['dry', 'full (spills)', 'salt lake', 'playa'];
+    console.log(`cut-off seas: ${S.length}; ${S.filter(s => s.spills).length} full to their rim and spilling, ${S.filter(s => !s.spills).length} drawn down; basins ${(S.reduce((a, s) => a + s.km2, 0) / 1e6).toFixed(2)} Mkm² (below sea level ${(S.reduce((a, s) => a + s.belowKm2, 0) / 1e6).toFixed(2)}), water ${(S.reduce((a, s) => a + s.waterKm2, 0) / 1e6).toFixed(2)} Mkm²`);
+    for (const s of S.slice(0, 10)) console.log(`  ${(s.km2 / 1e3).toFixed(0)}K km² · floor ${Math.round(1000 * s.floorKm)} m · rim ${Math.round(1000 * s.sillKm)} m · ${kinds[s.kind]} at ${Math.round(1000 * s.levelKm)} m over ${(s.waterKm2 / 1e3).toFixed(0)}K km² · inflow ${s.inflowKm3} km³/yr`);
+}
 // (--stats: the land's heights and the mountains' roughness — for comparing the finish's erosion: land height quantiles
 // (km), area above 2 and 4 km, and over the mountains (land above 1 km) the mean local relief — the spread of heights
 // within each cell's two rings, ~2.5 cells: valleys cut between ridges raise it, uniform crests and mounds keep it low)

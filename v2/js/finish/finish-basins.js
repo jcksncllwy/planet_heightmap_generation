@@ -2,27 +2,78 @@
 // lake would lose to evaporation: then it stays closed, its lake shrinking to the level where the two balance (the
 // Great Basin, the Caspian, the Dead Sea, a salt pan). Without the water drawn, that lake is a flat floor — a playa —
 // and the rivers of its catchment end there (carve.js: sink, base), instead of being led out over its rim.
+//
+// A sea cut off from the world ocean is such a hollow too (terrain/world-ocean.js): its floor below sea level, its rim —
+// the sill it would spill over — at or above it. Its surface is set by the same balance, not by sea level: the runoff of
+// its catchment and the rain on it against what evaporates off its water, over the area its water covers at that level.
+// The Caspian: the Volga's ~250 km³ a year and the other rivers' ~50 against ~1 m a year of evaporation net of the rain
+// on it hold it at ~370 000 km², its surface at −28 m (Rodionov 1994; Arpe & Leroy 2007). The Dead Sea: the Jordan's
+// ~1.3 km³ a year against ~1.5 m held it at ~1000 km², −390 m, before the river was drawn off (Salameh & El-Naser 1999).
+// The Mediterranean cut off from the Atlantic in the Messinian lost ~0.5–1 m a year net of its rivers and rain: drawn
+// down 1.5–3 km in a few thousand years (Hsü et al. 1973; Blanc 2002; Ryan 2009). Water balance settles in thousands of
+// years — at once on the timeline's timescale — so it is solved for its equilibrium, not run through time. A cut-off sea
+// whose water can rise to its sill spills, and its outlet joins it to the sea below (finish-hydro.js); one that cannot
+// keeps a lake at its own level — a salt lake below sea level — or, where next to nothing flows in, a playa on its floor.
 
 import { MinHeap } from '../core/min-heap.js';
 
 /**
+ * Where a closed lake stands: grown from its basin's lowest point as water rises in it — a priority flood over the
+ * basin's cells by the level at which each goes under (a pocket behind a ridge only once the water tops the ridge) —
+ * until what evaporates off the cells under water outweighs what flows in. The lake's area at each level is the basin's
+ * own hypsometry: the level where inflow and evaporation balance is the equilibrium the water settles to in thousands of
+ * years.
  * @param {Object} mesh
- * @param {Float32Array} z        heights (km); raised in place where a closed basin's floor is levelled
+ * @param {number} seed                 the basin's lowest cell
+ * @param {(c: number) => boolean} inBasin
+ * @param {Float32Array} z
+ * @param {(c: number) => number} evap  what evaporates off cell c as open water, net of the rain on it (the inflow's units)
+ * @param {number} inflow
+ * @returns {{level: number, wet: number[], full: boolean}} level (km): the water's surface; wet: the cells under it, in
+ *   the order they went under (at least the lowest); full: the whole basin went under — it rises to its rim and spills
+ */
+export function lakeBalance(mesh, seed, inBasin, z, evap, inflow) {
+    const { adjOffset, adjList } = mesh, heap = BALANCE_HEAP, wet = [];
+    if (stamps.length !== mesh.numCells) { stamps = new Int32Array(mesh.numCells); stamp = 0; }
+    const mark = ++stamp;
+    stamps[seed] = mark;
+    heap.size = 0;
+    heap.push(z[seed], seed);
+    let sum = 0, level = z[seed];
+    while (heap.size) {
+        const key = heap.peekKey(), c = heap.pop(), e = evap(c);
+        if (wet.length && sum + e > inflow) return { level, wet, full: false };
+        sum += e; wet.push(c); level = Math.max(level, key);
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (stamps[nb] !== mark && inBasin(nb)) { stamps[nb] = mark; heap.push(Math.max(level, z[nb]), nb); } }
+    }
+    return { level, wet, full: true };
+}
+const BALANCE_HEAP = new MinHeap(1 << 12);
+let stamps = new Int32Array(0), stamp = 0;          // (cells seen by the flood: stamped, one array per mesh size)
+
+/**
+ * @param {Object} mesh
+ * @param {Float32Array} z        heights (km); raised in place where a closed basin's floor is levelled (a playa)
  * @param {Float32Array} runoff   runoff per cell (mm/year)
  * @param {Float32Array} pet      potential evaporation (mm/year)
  * @param {Float32Array} rain     rain (mm/year)
  * @param {number} cellKm2
- * @returns {{sink: Uint8Array, base: Float32Array, basins: number, levelled: number}}
+ * @param {Uint8Array} ocean      the world ocean (finish.js oceanMask): the flood starts there, and only there
+ * @returns {{sink: Uint8Array, base: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[]}}
+ *   seas: each sea cut off from the ocean (a basin with ground below sea level, at least basinMinKm2): its area (km²),
+ *   floor and sill (km), its water's level (km) and area (km²), inflow and what it would evaporate full (km³/yr), and
+ *   whether it spills (full) or keeps a lake (wet) or a playa
  */
-export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F) {
+export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {
     const { adjOffset, adjList, numCells: n } = mesh;
-    // ── the priority flood from the sea: each land cell's spill level, and the way it was reached (toward the sea) ──
+    // ── the priority flood from the world ocean: each other cell's spill level, and the way it was reached (toward the
+    // ocean) — a sea cut off from it is crossed as any hollow is, its spill level its sill ──
     const fill = new Float32Array(n), parent = new Int32Array(n).fill(-1), order = new Int32Array(n), done = new Uint8Array(n), heap = new MinHeap(1 << 16);
     let count = 0;
     for (let c = 0; c < n; c++) {
-        if (z[c] > 0) continue;
+        if (!ocean[c]) continue;
         done[c] = 2;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (z[nb] > 0 && parent[nb] < 0) { parent[nb] = c; fill[nb] = z[nb]; heap.push(fill[nb], nb); } }
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!ocean[nb] && parent[nb] < 0) { parent[nb] = c; fill[nb] = Math.max(0, z[nb]); heap.push(fill[nb], nb); } }
     }
     while (heap.size) {
         const c = heap.pop();
@@ -30,7 +81,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F) {
         done[c] = 1; order[count++] = c;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
-            if (done[nb] || !(z[nb] > 0)) continue;
+            if (done[nb] || ocean[nb]) continue;
             const level = Math.max(fill[c], z[nb]);
             if (parent[nb] < 0 || level < fill[nb]) { parent[nb] = c; fill[nb] = level; heap.push(level, nb); }
         }
@@ -60,21 +111,26 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F) {
         first[c] = lake[c] >= 0 ? lake[c] : p >= 0 && done[p] === 1 ? first[p] : -1;
         if (first[c] >= 0) lakes[first[c]].inflow += runoff[c] * cellKm2;
     }
-    // ── closed where the full lake would lose more than it gets; its floor levelled where they balance ──
-    const sink = new Uint8Array(n), base = new Float32Array(n);
+    // ── closed where the full lake would lose more than it gets: its lake where the two balance. What open water loses:
+    // its potential evaporation (F.lakeEvapShare of the land's), less the rain on it (km² · mm / year) ──
+    const evap = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c])) * cellKm2;
+    const sink = new Uint8Array(n), base = new Float32Array(n), seas = [];
     let basins = 0, levelled = 0;
     for (const L of lakes) {
         const area = L.cells.length * cellKm2;
         if (area < F.basinMinKm2) continue;
-        let deficit = 0;
-        for (const c of L.cells) deficit += Math.max(0, pet[c] - rain[c]);
-        deficit /= L.cells.length;                                    // (mm/year a lake here loses, net of the rain on it)
-        if (!(deficit > 0) || L.inflow >= deficit * area) continue;   // (it fills and spills: an open basin — the rivers lead it out)
-        // the lake that balances: the lowest cells, as much area as its inflow can keep wet
-        const keep = Math.max(cellKm2, L.inflow / deficit), cells = L.cells.slice().sort((a, b) => z[a] - z[b]);
-        const k = Math.min(cells.length - 1, Math.max(0, Math.round(keep / cellKm2) - 1)), level = z[cells[k]];
-        for (let i = 0; i <= k; i++) { const c = cells[i]; if (z[c] < level) { z[c] = level; levelled++; } sink[c] = 1; base[c] = level; }
+        let low = L.cells[0];
+        for (const c of L.cells) if (z[c] < z[low]) low = c;
+        const floor = z[low], cutOff = floor < 0, id = lake[low];
+        const { level, wet: under, full } = lakeBalance(mesh, low, c => lake[c] === id, z, evap, L.inflow);
+        const lakeShows = under.length >= 2 && under.length * cellKm2 >= F.lakeMinKm2;
+        if (cutOff) seas.push({ km2: area, floorKm: floor, sillKm: L.level, inflowKm3: L.inflow * 1e-6, full, levelKm: full ? L.level : level, waterKm2: under.length * cellKm2, wet: full || lakeShows });
+        if (full) continue;                                           // (it fills and spills: an open basin — the rivers lead it out)
+        // the lake that balances, its rivers ending at its shore. A sea cut off from the ocean that keeps a lake the map
+        // can show stays as deep as it is under its water; a playa, or a land basin's lake, is a flat floor at the level
+        const keepDeep = cutOff && lakeShows;
+        for (const c of under) { if (!keepDeep && z[c] < level) { z[c] = level; levelled++; } sink[c] = 1; base[c] = level; }
         basins++;
     }
-    return { sink, base, basins, levelled, tectonic };
+    return { sink, base, basins, levelled, tectonic, seas };
 }

@@ -181,7 +181,8 @@ export class TerrainPool {
 
     /**
      * view/terrain-shade.js's hillshade(tMesh, heightKm, opts) on the shading worker: the same shading, bit for bit, off
-     * the caller's thread (heightKm is copied). Queued apart from the surfaces and the carving.
+     * the caller's thread (heightKm is copied). Queued apart from the surfaces and the carving. With it, on the shade's
+     * `water`: terrain/world-ocean.js's cut, bodies and oceanCells at opts.seaLevelKm (the seas cut off from the ocean).
      * @returns {Promise<Float32Array>}
      */
     shade(tMesh, heightKm, opts) {
@@ -209,7 +210,7 @@ export class TerrainPool {
             return await new Promise((resolve, reject) => {
                 pending.set(jobId, msg => {
                     pending.delete(jobId);
-                    if (msg.type === 'error') reject(new Error(`shade worker: ${msg.message}`)); else resolve(msg.shade);
+                    if (msg.type === 'error') reject(new Error(`shade worker: ${msg.message}`)); else { msg.shade.water = msg.water; resolve(msg.shade); }
                 });
                 worker.post({ type: 'shade', jobId, numCells: tMesh.numCells, heightKm, opts });
             });

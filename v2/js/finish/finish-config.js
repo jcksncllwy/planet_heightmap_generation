@@ -135,7 +135,10 @@ export const FINISH = {
     riverWidthPerSqrtQ: 5,      // a river's width (m) per √(m³/s) — hydraulic geometry (Leopold & Maddock)
     bedLossMPerYear: 20,        // what a river's bed loses where it is fully arid (m a year over its width: seepage and
                                 // evaporation — the Nile loses ~10 % over 1800 km of desert)
-    lakeEvapShare: 1.2,         // open water evaporates this much of the land's potential evaporation
+    lakeEvapShare: 1.2,         // open water evaporates this much of the land's potential evaporation (Penman 1948: a grass
+                                // cover transpires 0.6–0.8 of open water's E0, so E0 ≈ 1.25–1.7 × the land's; with petBaseMm,
+                                // petPerC: ~1.1 m a year at the Caspian's 12 °C — it loses ~1 m, Rodionov 1994 — ~2 m at the
+                                // Dead Sea's 25 °C — 1.5–2 m, Salameh & El-Naser 1999). The closed basins' balance too
     lakeMinKm2: 300,            // a hollow is a lake from this size… (150 and 5 m: "too many lakes" — developer)
     lakeMinDepthM: 15,          // …and this depth; and only where it has an origin — scoured by the ice age (lake districts),
                                 // or a hollow of the tectonic surface (rifts, forelands, closed basins: this share of its
@@ -175,25 +178,19 @@ export const FINISH = {
     straitSillM: [3, 30],
     straitKm: [40, 160],
     straitDepthKm: 0.02,        // …the strait cut this far below sea level
-    // a basin below sea level the ocean does not reach is a remnant of the sea: it holds water as its water balance
-    // allows, up to its rim — full, it spills on (a fresh lake whatever its size); short of it, a terminal salt sea where
-    // it is big for its river or an old sea floor this deep (km, from the first fully at the second — the Caspian, the
-    // Dead Sea: developer, 2026-10-15, "allow terminal salt seas"), else a salt pan…
-    saltSeaDeepKm: [0.2, 0.5],
+    // a basin below sea level cut off from the world ocean is a remnant of the sea (finish-basins.js): its surface is set
+    // by its water balance — the runoff of its catchment and the rain on it against what evaporates off its water — not
+    // by sea level. Full to its rim, it spills on (a fresh lake whatever its size); short of it, a salt lake at its own
+    // level, below sea level as the Caspian's and the Dead Sea's are, or — where next to nothing flows in — a playa on its
+    // floor, the basin round it dry ground below sea level (the Qattara; the Messinian Mediterranean). Its floor is the
+    // history's, filled by its rivers while it was cut off (tectonics/step/sea-fill.js). (Until 2026-10-27 it was filled
+    // here as well toward 1 km below its rim, and a playa's toward 120 m; a salt lake needed a big basin for its river or
+    // an old floor 0.2–0.5 km deep — seaFillKm, panDepthKm, panFlatShare, saltSeaDeepKm)
     seaBasinKm2: [5000, 20000], // a remnant of the sea: a body below sea level this big (km², from the first to fully the
     seaBasinDeepKm: [0.05, 0.2],// second) and this deep (km) — a smooth weight, the same at every detail; a smaller or
                                 // shallower pit — a dip the finer mesh finds — is the land's: its rivers cut it through
-    seaFillKm: 1,               // its floor filled with sediment since it was cut off, toward at most about this far below
-                                // its rim (depth d → this × tanh(d / this)): the Caspian's and Black Sea's depths, not an
-                                // ocean's 5–9 km — a salt sea in a bowl, not at the foot of a cliff…
-    panDepthKm: 0.12,           // …and a pocket a salt sea left dry below its water filled further, toward a flat at most about
-                                // this far below it (d → this × tanh(d / this): the Qattara's, Death Valley's scale); a salt
-                                // pan — a hole its river keeps all but dry — filled to a flat just above sea level: never a
-                                // dry hole the size of the sea
-    panFlatShare: 1.5,          // the pan itself: where the basin was deeper than this × panDepthKm (its flat floor)
-    seaSeedKm2: 250000,         // the sea: a body below sea level at least this big, holding deep water (below seaDeepKm) —
-    seaDeepKm: 1,               // the real oceans; a pit on a continent is a basin, not a sea (15 000: rivers "all ending in
-                                // small lakes now instead of going to the ocean" — developer)
+    // (the sea is the world ocean — the water below sea level joined to the largest body of it: finish.js oceanMask; until
+    // 2026-10-27 any body over 250 000 km² holding water below 1 km — seaSeedKm2, seaDeepKm — was sea, full at sea level)
     wetShare: 0.3,              // a month is wet where its rain passes this share of its potential evaporation (or it freezes)
     // each river's year: each month's runoff — rain, and snow kept until it melts (snowMeltMmPerC per °C above freezing, a
     // month) — less a share of the month's potential evaporation (monthEvapShare); a share of it seeps into the ground

@@ -58,10 +58,14 @@ one history, bit for bit; the link records how far — `more=` — and rebuilds 
 Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds; "Blue Marble (by height)" colours by
 height alone), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
-and setting. **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
+and setting. A sea cut off from the world ocean (the largest body of water; `terrain/world-ocean.js`) is drawn on a
+timeline frame in its own grey-teal (`terrain-shade.js cutOffTint`, each palette's sea at its depth turned toward the salt
+lakes' colour), without the glint: its level is its water balance's, which a frame has no climate to set — Add detail
+finds it (a salt lake, a playa, a dry hollow below sea level, or full and spilling); the readout says so, and the Stats
+count such seas over 5 000 km². The same tint on the lab's Terrain layer (Phase 8a, at its Sea level). **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
 calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation), dry basins left closed —
-flat pans where inflow and evaporation balance (the carve's `sink` / `base`) — at the finish's own erosion strength
+flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the finish's own erosion strength
 (`erosionStrength` 0–3, 3; developer, 2026-10-15: "break up SOME of the monotony of the ridges"): the stream power's m
 lowered and k raised so its erosion climbs further up the headwaters (rivers draining 10⁵ km² cutting as before), the
 dissection cut deeper (by drainage area in km², the same at every detail), soil creep shorter and the fold belts' crests
@@ -118,15 +122,26 @@ down; the ice age's hollows are lake districts). A gorge keeps its river's own c
 it, unless a shortcut is enough less work — the rock cut and a little for the length: along its own course a river does
 only `riverDirectness` of the work (0.1), so a bend is cut through only where the way round is over ten times the
 shortcut's (the worst hooks and tangles across drained basins — developer, rivers "that go back and forth", but "some
-windyness is good"; 0 keeps every course, 1 takes the way of least work); no closed basins, no dry land below sea level (a sunk basin's pit is
-filled in to sea level); only the real oceans are sea. **Inland seas** (2026-10-15): a sea behind a low, short barrier
-(sill ≲ 30 m, ≲ 160 km of dry land — a strait narrower than the cells) is opened into the ocean; a remnant of the sea cut
-off in a basin (≳ 5 000–20 000 km² and 50–200 m below sea level) has its floor filled with sediment toward ≤ ~1 km below its
-rim. It is its hole — the basin's cells below sea level — and its water stays in it (developer: lakes over trapped
-seas filled to the basin's sill were "just too enormous"): where its river keeps the hole full, a fresh inland sea to its
-brim, just above sea level, its outflow cut down through the basin's rim to it and the lowland round it draining as land
-does; short of it, it shrinks inside the hole by its water balance — a terminal salt sea where it is big for its river or
-an old sea floor, else a salt pan filled to a flat — never a dry hole, never a lake drowning the lowland round it. A land
+windyness is good"; 0 keeps every course, 1 takes the way of least work); no closed land basins, and no dry land below
+sea level except a cut-off sea's (below). **The world ocean and the seas cut off from it** (2026-10-27,
+`terrain/world-ocean.js`, `finish-basins.js`): the sea is the water below sea level joined to the largest body of it — the
+world ocean; a body below sea level that does not join it has its surface set by its water balance, not by sea level (the
+Caspian at −28 m, the Dead Sea at −430 m; the Mediterranean drawn down 1.5–3 km when the Atlantic was cut off in the
+Messinian). A sea behind a low, short barrier (sill ≲ 30 m, ≲ 160 km of dry land — a strait narrower than the cells) is
+first opened into the ocean. Any other is a closed basin: its lake grown from its lowest point, as water rising in it
+would — a pocket behind a ridge only once the water tops it — until what evaporates off it (open water: 1.2 × the land's
+potential evaporation, Penman 1948, less the rain on it) outweighs what flows in (its catchment's runoff, less what dry
+river beds lose). Water balance settles in thousands of years, at once on the timeline's scale: the finish solves its
+equilibrium. Full to its rim, it spills (its outflow cut down through the rim, a fresh lake just above sea level); short
+of it, a salt lake at its own level — below sea level, or above it in a basin whose rim is higher still — or, where too
+little flows in for a lake the map can show, a playa: a flat on its floor, the basin round it dry ground below sea level
+(the Qattara at −133 m; the Messinian floors 2–3 km down). Its floor is the history's, filled by its rivers while it was
+cut off (`tectonics/step/sea-fill.js`); it is no longer filled here as well (until 2026-10-27: toward ≤ 1 km below its rim,
+a playa toward 120 m, and any body over 250 000 km² with water below 1 km counted as the ocean, full at sea level). The
+rivers carve down its dry slopes to its water — their base level its level, not sea level (the carve's sea is the world
+ocean) — and the fans spread on its dry floor. Checked against Earth (`check-basins.mjs`): the balance gives the
+Caspian's 371 000 km² from the Volga's inflow within ×1.5, the Dead Sea's ~1000 km² before its river was drawn off, and
+the Messinian's drawdown in ~1 000 years; reported over three histories against Earth's closed seas. A land
 basin (or a full trapped sea's lowland) left without water drains whole: every
 pocket in it (a sub-basin behind its own sill, which the gorge from the basin's floor does not reach) gets its own gorge
 out from its lowest point. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
@@ -173,11 +188,13 @@ continental crust, how many landmasses, the heat left under the last supercontin
 node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8a, 8b, 9, 10, 11, 13 — headless acceptance checks, PASS/FAIL, exit code
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
+node v2/tools/check-basins.mjs         # cut-off seas: the water balance against the Caspian, the Dead Sea, the Messinian; three histories finished, reported against Earth
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
-node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--rivers [q0]] [--set key=value,…] [--debug]
-                                       # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes, any empty basins, its coast's shape
+node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--rivers [q0]] [--set key=value,…] [--debug] [--live [--plain]]
+                                       # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes, its cut-off seas, any empty basins, its coast's shape
+                                       # (--live: the timeline's frame before any detail, at --cells, its cut-off seas tinted; --plain: as before they were)
 node v2/tools/coast-shape.mjs --seed 626225 --cont 30 --time 950 [--cells 1000000] [--bands] [--finish]
                                        # the coastline's divider dimension D and L(50 km)/L(500 km) by kind of margin, against Earth; --bands: by source of its shape
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
@@ -263,6 +280,8 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
   near-lists       which point features can reach a sim cell's terrain points
   synthesize       synthesizeTerrain(frame, simMesh, terrainMesh) → heightKm (+ components) = preparePlan (per frame)
                    + surfaceRange (any range of cells); hypsometry()
+  world-ocean      the world ocean (the water below sea level joined to the largest body of it) and the seas cut off
+                   from it — the finish's sea, and the timeline's cut-off tint
   terrain-pool     the same synthesis on worker threads (terrain-worker.js), bit for bit — each frame's plan built
                    once, by the first worker, and handed to the others over message ports; mesh-worker builds a
                    terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread
@@ -274,7 +293,7 @@ js/view/           DOM-free painting: equirect raster (MapRaster for sim cells, 
 js/evolution/      the Evolution page: its shell (evolution-main), terrain-player (per-frame terrain as a history streams in), looks (palettes, heightmap, readout words), climate-view + climate-worker + climate-fields (the climate of a moment, on request or a finished moment's own — the sea's drawn fields come carried across the coast from their own side and smoothly refined — grid.js refineForDrawing — so the sea shows no coastal rims, coarse-cell edges or polar wedges; the Satellite view), finish-view (the Finish step's worker and painting), export (a finished moment's maps as PNG files, or all in a ZIP)
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
-                   finish-basins (closed basins), finish-sediment (fans, floodplains, deltas; creep by climate),
+                   finish-basins (closed basins, cut-off seas: their lakes by water balance), finish-sediment (fans, floodplains, deltas; creep by climate),
                    finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-coast (waves, cliffs, longshore drift), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
                    regimes, lakes), finish-cover (the land's cover and its colours from space)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
@@ -626,7 +645,8 @@ thread — ~2M pixels each blended from three cells through a pixel table (`Smoo
 mesh's triangles are drawn flat onto the texture by the GPU (a render target): a frame sends only each cell's height and
 shade (or colour) as a small data texture; the GPU's own filling of each triangle is the three cells' blend, the palette
 and shading done per pixel in the shader (heights blended, then coloured — the coasts as crisp), the sea mask for the glint
-drawn the same way, and the lines (grid, a climate layer's arrows) blended over in the same pass from a transparent canvas,
+drawn the same way (the world ocean's only: a cut-off sea rides on the shade channel, + 2, and takes the palette's second
+row, its cut-off colours), and the lines (grid, a climate layer's arrows) blended over in the same pass from a transparent canvas,
 sent again only when they change. Against the CPU's painting: under 1 of 255 per channel on average, no gaps; ~1–2 ms at
 4096. So every moment is drawn at 4096 px on a desktop (2048 on phones, twice the CPU's 1024) and no pixel table is built:
 scrubbing at 160K went from 73 frames a second (43 slow frames in 4 s, 47 % of the page's time) to 144 (none, 1 %); at 640K

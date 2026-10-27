@@ -63,7 +63,7 @@ export const createPhase = terrainPhase({
             // have cut (how deep: through the ranges they held their ways across)
             label: 'Rivers through time', paint(frame, out) {
                 const T = terrainOf(frame), { cells: sc, weights: sw } = T.sampler;
-                paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm });
+                paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm, cut: T.water?.cut });
                 for (let t = 0; t < tMesh.numCells; t++) {
                     if (T.heightKm[t] <= view.seaLevelKm) continue;
                     let a = 0, inc = 0;
@@ -98,7 +98,7 @@ export const createPhase = terrainPhase({
             // the river network: blue by drainage area (log), over the shaded terrain
             label: 'Drainage', needsCarving: true, paint(frame, out) {
                 const T = terrainOf(frame);
-                paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm });
+                paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm, cut: T.water?.cut });
                 for (let t = 0; t < tMesh.numCells; t++) {
                     const a = T.drainage[t];
                     if (!(a > 2000) || T.heightKm[t] <= view.seaLevelKm) continue;

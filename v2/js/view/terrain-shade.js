@@ -14,6 +14,18 @@ function ramp(stops, v, out, o) {
     }
 }
 
+/**
+ * A sea cut off from the world ocean (terrain/world-ocean.js), where a view has no climate to set its level by (a timeline
+ * frame; the lab's terrain): its colour (RGB at out[o…o+2], in place) turned toward the salt lakes' teal (finish-view.js
+ * lakeRgb's salt turn) and half greyed — inland water, told apart from the ocean, its level unknown until a finish
+ * balances it (finish-basins.js).
+ */
+export function cutOffTint(out, o = 0) {
+    const r = out[o], g = out[o + 1], b = out[o + 2], grey = (r + g + b) / 3;
+    out[o] = 0.5 * (0.6 * r + 40) + 0.5 * grey; out[o + 1] = 0.5 * (0.75 * g + 55) + 0.5 * grey; out[o + 2] = 0.5 * (0.7 * b + 25) + 0.5 * grey;
+    return out;
+}
+
 /** RGB of a height (km above sea level) on the hypsometric ramp. */
 export function tintOf(km, out = [0, 0, 0], o = 0) { ramp(km < 0 ? SEA_STOPS : LAND_STOPS, km, out, o); return out; }
 
@@ -47,13 +59,15 @@ export function hillshade(mesh, heightKm, { exaggeration = 20, seaLevelKm = 0, s
     return out;
 }
 
-/** Tinted, shaded colours per cell into `out` (3 bytes per cell). `mode`: 'terrain' | 'shade' (grey) | 'tint' (no shading). */
-export function paintRelief(heightKm, shade, out, { seaLevelKm = 0, mode = 'terrain' } = {}) {
+/** Tinted, shaded colours per cell into `out` (3 bytes per cell). `mode`: 'terrain' | 'shade' (grey) | 'tint' (no shading).
+ *  `cut` (optional, 1 per cell): seas cut off from the world ocean, tinted apart (cutOffTint). */
+export function paintRelief(heightKm, shade, out, { seaLevelKm = 0, mode = 'terrain', cut = null } = {}) {
     const rgb = [0, 0, 0];
     for (let c = 0; c < heightKm.length; c++) {
         const s = shade ? shade[c] : 1;
         if (mode === 'shade') { const g = Math.min(255, 150 * s); out[3 * c] = out[3 * c + 1] = out[3 * c + 2] = g; continue; }
         tintOf(heightKm[c] - seaLevelKm, rgb);
+        if (cut && cut[c] && heightKm[c] < seaLevelKm) cutOffTint(rgb);
         const k = mode === 'tint' ? 1 : 0.35 + 0.65 * s;
         out[3 * c] = Math.min(255, rgb[0] * k); out[3 * c + 1] = Math.min(255, rgb[1] * k); out[3 * c + 2] = Math.min(255, rgb[2] * k);
     }

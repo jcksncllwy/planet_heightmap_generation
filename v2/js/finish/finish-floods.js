@@ -141,20 +141,22 @@ export function outburstFloods(ctx, F) {
     return { flood, lakes: big.length, lakeKm2, volumeKm3, largestKm3: big[0].vol, biggest };
 }
 
-/** The ice age's sea: open water below its level (ice-free) in bodies that reach the deep ocean and are big enough. */
+/** The ice age's sea: open water below its level (ice-free) joined to the largest body of it — the world ocean then (as
+ *  finish.js oceanMask; a body cut off from it is a basin, not the sea). */
 function iceAgeSea(mesh, z, ice, cellKm2, F) {
     const { adjOffset, adjList, numCells: n } = mesh, sea = new Uint8Array(n), seen = new Uint8Array(n), wet = c => !ice[c] && z[c] < -F.iceSeaDropKm;
+    let best = null;
     for (let s = 0; s < n; s++) {
         if (seen[s] || !wet(s)) continue;
         const cells = [s];
         seen[s] = 1;
-        let deep = z[s] < -F.seaDeepKm;
         for (let i = 0; i < cells.length; i++) for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) {
             const nb = adjList[k];
-            if (!seen[nb] && wet(nb)) { seen[nb] = 1; cells.push(nb); if (z[nb] < -F.seaDeepKm) deep = true; }
+            if (!seen[nb] && wet(nb)) { seen[nb] = 1; cells.push(nb); }
         }
-        if (deep && cells.length * cellKm2 >= F.seaSeedKm2) for (const c of cells) sea[c] = 1;
+        if (!best || cells.length > best.length) best = cells;
     }
+    if (best) for (const c of best) sea[c] = 1;
     return sea;
 }
 

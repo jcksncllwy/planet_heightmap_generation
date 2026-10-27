@@ -11,6 +11,7 @@ import { TerrainPool } from '../terrain/terrain-pool.js';
 import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
 import { hillshade } from '../view/terrain-shade.js';
+import { worldOcean } from '../terrain/world-ocean.js';
 import { SMALL_DEVICE } from '../core/device.js';
 
 const usePool = typeof window !== 'undefined' && typeof Worker !== 'undefined';
@@ -149,9 +150,12 @@ export class TerrainPlayer {
     fresh(frame) { const s = this.shown.get(frame), full = this.full.get(frame); return !!s && (!full || s.src === full); }
 
     keep(frame, r, shade = hillshade(this.tMesh, r.heightKm, this.shading)) {
-        let hyps = null;
-        const seaLevelKm = this.shading.seaLevelKm;
-        const out = { src: r, heightKm: r.heightKm, shade, sampler: r.sampler ?? this.sampler, get hyps() { return hyps ??= hypsometry(r.heightKm, seaLevelKm); } };
+        let hyps = null, water = null;
+        const seaLevelKm = this.shading.seaLevelKm, tMesh = this.tMesh;
+        // (water: the seas cut off from the world ocean — terrain/world-ocean.js — for drawing them apart: found by the shading
+        // worker with the hillshade, or here where there is none)
+        const out = { src: r, heightKm: r.heightKm, shade, sampler: r.sampler ?? this.sampler, get hyps() { return hyps ??= hypsometry(r.heightKm, seaLevelKm); },
+            get water() { return water ??= shade.water ?? worldOcean(tMesh, r.heightKm, seaLevelKm); } };
         this.shown.set(frame, out);
         if (this.shown.size > 4) this.shown.delete(this.shown.keys().next().value);
         return out;

@@ -61,7 +61,10 @@ function infoOf(mesh) {
 export function carveLevel(mesh, f, route, cfg) {
     const { adjOffset, adjList, numCells: n } = mesh, { dist, area: cellArea } = infoOf(mesh);
     // (closed basins' floors are outlets like the sea, each at its own level: the finish's dry basins)
-    const sink = f.sink ?? null, land = sink ? c => f.z[c] > 0 && !(sink[c] > 0.5) : c => f.z[c] > 0;
+    // (the sea: f.ocean where given — the world ocean, the finish's: a sea cut off from it is land down to its water,
+    // its floor's sink — else the ground below sea level)
+    const sink = f.sink ?? null, wet = f.ocean ? c => f.ocean[c] > 0.5 : c => !(f.z[c] > 0);
+    const land = sink ? c => !wet(c) && !(sink[c] > 0.5) : c => !wet(c);
     const baseOf = sink ? c => (sink[c] > 0.5 ? f.base[c] : 0) : () => 0;
     // ── the priority flood: from the sea inward, lowest spill first ──
     const fill = new Float32Array(n), rank = new Int32Array(n).fill(-1), parent = new Int32Array(n).fill(-1), order = new Int32Array(n);
@@ -291,6 +294,13 @@ function downsample(coarse, fine, f) {
     const M = mapBetween(coarse, fine), n = coarse.numCells, near = M.nearest, count = new Uint32Array(n), sum = new Float64Array(n);
     for (let i = 0; i < fine.numCells; i++) count[near[i]]++;
     const out = {};
+    // (the world ocean, where given: the share of a coarse cell that is ocean)
+    if (f.ocean) {
+        const oc = out.ocean = new Float32Array(n);
+        sum.fill(0);
+        for (let i = 0; i < fine.numCells; i++) sum[near[i]] += f.ocean[i] > 0.5 ? 1 : 0;
+        for (let c = 0; c < n; c++) oc[c] = count[c] ? sum[c] / count[c] : 0;
+    }
     // (closed basins: the share of a coarse cell that is basin floor, and the floor's mean level there)
     if (f.sink) {
         const sk = out.sink = new Float32Array(n), bs = out.base = new Float32Array(n), sb = new Float64Array(n);
@@ -310,6 +320,7 @@ function downsample(coarse, fine, f) {
         const i = fine.index.nearest(coarse.xyz[3 * c], coarse.xyz[3 * c + 1], coarse.xyz[3 * c + 2]);
         for (const key of FIELDS) out[key][c] = f[key][i];
         if (f.sink) { out.sink[c] = f.sink[i]; out.base[c] = f.base[i]; }
+        if (f.ocean) out.ocean[c] = f.ocean[i];
     }
     return out;
 }
@@ -408,7 +419,7 @@ function drownValleys(meshes, F, C, cfg) {
     // the sea floods in from the ocean over what is now below it; a hollow it does not reach is given back its height
     const reached = new Uint8Array(n), queue = new Int32Array(n);
     let tail = 0;
-    for (let c = 0; c < n; c++) if (f.z[c] <= 0) { reached[c] = 1; queue[tail++] = c; }
+    for (let c = 0; c < n; c++) if (f.ocean ? f.ocean[c] > 0.5 : f.z[c] <= 0) { reached[c] = 1; queue[tail++] = c; }
     for (let head = 0; head < tail; head++) {
         const c = queue[head];
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!reached[q] && z[q] < 0) { reached[q] = 1; queue[tail++] = q; } }

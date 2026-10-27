@@ -10,9 +10,12 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
  * @param {Float32Array} before   the surface before the rivers cut it (km)
  * @param {{z: Float32Array, recv: Int32Array, area: Float32Array, order: Int32Array}} C   the carve's result (z changed in place)
  * @param {Uint8Array|null} sink  closed basins' floors (their rivers' loads end there)
+ * @param {Uint8Array|null} ocean  the world ocean (finish.js oceanMask): elsewhere is land the fans spread on — a sea cut
+ *                                 off from it dry below sea level too; without it, the ground above sea level
  */
-export function depositSediment(mesh, before, C, sink, cellKm2, F) {
+export function depositSediment(mesh, before, C, sink, cellKm2, F, ocean = null) {
     const { z, recv, area, order } = C, n = mesh.numCells, { adjOffset, adjList, edgeKm } = mesh;
+    const land = ocean ? c => !ocean[c] : c => z[c] > 0;
     const load = new Float64Array(n), deposit = new Float32Array(n), mouths = new Map();
     // ── down the network, upstream first: each cell adds what was cut from it (the bedload share) and lays down what the
     // reach cannot carry (capacity ∝ drainage × slope) ──
@@ -31,8 +34,8 @@ export function depositSediment(mesh, before, C, sink, cellKm2, F) {
         else deposit[-1 - r] += load[c] / cellKm2 / 4;                   // (a closed basin's floor fills — spread below)
     }
     // ── deposits spread over fans and aprons (mass kept), then laid on the land ──
-    spread(mesh, deposit, z, F.fanSpreadKm);
-    for (let c = 0; c < n; c++) if (deposit[c] > 0 && z[c] > 0) z[c] += deposit[c];
+    spread(mesh, deposit, land, F.fanSpreadKm);
+    for (let c = 0; c < n; c++) if (deposit[c] > 0 && land(c)) z[c] += deposit[c];
     // ── deltas: a river's share of its load built out over the shelf from its mouth, nearest first, to a low plain ──
     let deltas = 0;
     const seen = new Int32Array(n).fill(-1);
@@ -57,8 +60,8 @@ export function depositSediment(mesh, before, C, sink, cellKm2, F) {
 }
 
 /** Spread a field over about `km` (σ), keeping its sum: a few passes toward the neighbours' mean, as many as the mesh
- *  needs to reach that far (none where its cells are wider than that). Cells at or below `floor` (the sea) take none. */
-function spread(mesh, f, z, km) {
+ *  needs to reach that far (none where its cells are wider than that). Cells not on `land` (the sea) take none. */
+function spread(mesh, f, land, km) {
     const { adjOffset, adjList, edgeKm, numCells: n } = mesh;
     // each pass that moves share a of a cell to its neighbours adds about a·edge²/2 to the variance
     const need = 2 * km * km / (edgeKm * edgeKm), passes = Math.min(40, Math.ceil(need / 0.5));
@@ -69,12 +72,12 @@ function spread(mesh, f, z, km) {
         for (let c = 0; c < n; c++) {
             const v = f[c];
             if (!(v > 0)) continue;
-            let land = 0;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (z[adjList[k]] > 0) land++;
-            if (!land) { next[c] += v; continue; }
+            let nl = 0;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (land(adjList[k])) nl++;
+            if (!nl) { next[c] += v; continue; }
             next[c] += v * (1 - a);
-            const each = v * a / land;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (z[adjList[k]] > 0) next[adjList[k]] += each;
+            const each = v * a / nl;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (land(adjList[k])) next[adjList[k]] += each;
         }
         f.set(next);
     }

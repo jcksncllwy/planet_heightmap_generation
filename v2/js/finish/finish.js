@@ -24,6 +24,7 @@ import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
 import { pageClimate } from '../evolution/climate-fields.js';
 import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
+import { worldOcean } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
 
 const R = 6371;
@@ -129,15 +130,23 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, pAnn[c]) / meanP) ** F.wetPower);
     meander(mesh, carveIn.micro, seed, F, fade);
-    const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F);
+    // (the world ocean — the sea joined to the largest body of water — its straits narrower than the mesh's cells opened
+    // first: a sea cut off from it is a closed basin, its level its water balance's — finish-basins.js)
+    let ocean0 = oceanMask(mesh, z);
+    const straits0 = openStraits(mesh, z, ocean0, F);
+    if (straits0.opened) ocean0 = oceanMask(mesh, z);
+    const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F, ocean0);
     stats.closedBasins = B.basins;
+    stats.cutOffSeas = B.seas;
     const before = z.slice();
     // (how cold each coast is — its warmest month at sea level: fjords where it is cold, rias where not; carve.js drownValleys)
     const [warmC, coldC] = cfg.drownColdC ?? [19, 13];
     carveIn.fjord = new Float32Array(n);
     for (let c = 0; c < n; c++) carveIn.fjord[c] = smooth(warmC, coldC, warmSl[c]);
     const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds });
-    const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base }, settings);
+    // (the carve's sea: the world ocean — a cut-off sea's dry floor below sea level is land its rivers cross, down to its
+    // water's level, their base level there)
+    const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base, ocean: ocean0 }, settings);
     // (where flood basalt still caps the ground after the carving — its pile not cut through — for the satellite view)
     const basalt = new Uint8Array(n);
     for (let c = 0; c < n; c++) if (carveIn.lip[c] > 0) basalt[c] = Math.round(255 * carveIn.lip[c] * smooth(0, 0.05, C.z[c] - carveIn.lipBase[c]));
@@ -152,7 +161,7 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
 
     // ── F2: sediment, then hillslopes by climate ──
     onStage('sediment');
-    const Sed = depositSediment(mesh, before, C, B.sink, cellKm2, F);
+    const Sed = depositSediment(mesh, before, C, B.sink, cellKm2, F, ocean0);
     stats.deltas = Sed.deltas;
     lap('sediment');
     onStage('hillslopes');
@@ -183,13 +192,14 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     stats.coast = Co.stats;
     lap('coast');
 
-    // ── the sea: water below sea level that the open ocean reaches (fjords, sunk basins); hollows it cannot reach stay land ──
+    // ── the sea: water below sea level joined to the world ocean (fjords, sunk basins); a sea cut off from it is the
+    // hydrology's, its level its water balance's ──
     onStage('sea');
     let ocean = oceanMask(mesh, C.z);
     // (an inland sea the ocean all but reaches — behind a low, short barrier — is opened into it; one left closed is a
     // remnant of the sea in a basin, for the hydrology: finish-hydro.js)
     const straits = openStraits(mesh, C.z, ocean, F);
-    stats.straits = straits;
+    stats.straits = { opened: straits.opened + straits0.opened, cut: straits.cut + straits0.cut };
     if (straits.opened) ocean = oceanMask(mesh, C.z);
     const seaBasin = fillSeaBasins(mesh, C.z, ocean, F);
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's and the distances' caches for this mesh)
@@ -352,25 +362,11 @@ function bilinear(g, field, lat, lon) {
     return (1 - fx) * (1 - fy) * field[y0 * w + i0] + fx * (1 - fy) * field[y0 * w + i1] + (1 - fx) * fy * field[j1 * w + i0] + fx * fy * field[j1 * w + i1];
 }
 
-/** 1 where the open ocean reaches (from the deep sea, through ground below sea level). */
-export function oceanMask(mesh, z, seaSeedKm2 = FINISH.seaSeedKm2, deepKm = FINISH.seaDeepKm) {
-    // (sea: a body below sea level that holds deep water and is big enough — a small pit on a continent is a basin, not a
-    // sea: developer, "tiny bits of 'sea' surrounded by continent … where rivers end … should NOT be a valid end"; then,
-    // "lets reduce what we consider a valid end sea": the size is the whole body's, not only its deep water's)
-    const { adjOffset, adjList, numCells: n } = mesh, ocean = new Uint8Array(n), seen = new Uint8Array(n), cellKm2 = 4 * Math.PI * R * R / n;
-    for (let s = 0; s < n; s++) {
-        if (!(z[s] < 0) || seen[s]) continue;
-        const cells = [s];
-        seen[s] = 1;
-        let deep = z[s] < -deepKm;
-        for (let i = 0; i < cells.length; i++) for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) {
-            const nb = adjList[k];
-            if (z[nb] < 0 && !seen[nb]) { seen[nb] = 1; cells.push(nb); if (z[nb] < -deepKm) deep = true; }
-        }
-        if (deep && cells.length * cellKm2 >= seaSeedKm2) for (const c of cells) ocean[c] = 1;
-    }
-    return ocean;
-}
+/** 1 on the world ocean: water below sea level joined to the largest body of it (terrain/world-ocean.js). A body below sea
+ *  level cut off from it — a pit on a continent, a Caspian, a Mediterranean closed off — is not the sea: its level is its
+ *  water balance's (finish-basins.js, finish-hydro.js). (Until 2026-10-27 any body over 250 000 km² holding water over
+ *  1 km deep counted as sea: every enclosed ocean remnant in a supercontinent stood full at sea level.) */
+export function oceanMask(mesh, z) { return worldOcean(mesh, z, 0).ocean; }
 
 /**
  * The finished planet as an equirectangular picture of heights: w × w/2 pixels (rows north → south, columns from −180°
