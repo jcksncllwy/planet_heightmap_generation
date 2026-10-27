@@ -58,6 +58,8 @@ const TERRAIN_TUNABLES = [
     { id: 'thickTauMyr', label: 'A thickened root rebounds away over (re-runs the history)', min: 30, max: 400, step: 1, unit: ' Myr', evolves: true },
     { id: 'ruggedTauMyr', label: 'Crests and ridges wear away over (re-runs the history)', min: 50, max: 800, step: 1, unit: ' Myr', evolves: true },
     { id: 'collapseKm', label: 'Ground collapses under its own weight above (re-runs the history)', min: 3, max: 8, step: 0.25, unit: ' km', evolves: true },
+    { id: 'marginThinKm', label: 'Rifted margins: width of the thinned crust before the continent–ocean boundary (its shore and shelf follow from it)', min: 100, max: 400, step: 10, unit: ' km' },
+    { id: 'denudationKmPerMyr', label: 'Rifted margins: the continents’ denudation, the sediment that builds their shelves out', min: 0, max: 0.2, step: 0.01, unit: ' km/Myr' },
     { id: 'coastNoiseKm', label: 'Rugged coasts’ irregularity (island arcs, young collision coasts; passive and active margins follow their smooth line)', min: 0, max: 120, step: 5, unit: ' km' },
     { id: 'rainErosionExponent', label: 'Erosion follows rainfall by latitude, 0 = everywhere alike (re-runs the history)', min: 0, max: 1.5, step: 0.1, evolves: true },
 ];
@@ -85,7 +87,8 @@ const CHECKLISTS = {
         'Asia (the upper plate): the plateau reaches Asia’s shield and its back meets it in a steep front, with at most a faint lowland before it — shallower than India’s (the Longmen Shan against the Sichuan Basin: retro-forelands are the shallow ones).',
         'The two shields differ (a sag basin, a swell or a flat shield, with a faint grain of domes and keels); the “Cratons” slider sets how strongly — at 0 both are flat.',
     ],
-    rift: ['The new coasts are lifted into shoulders — an escarpment facing the young ocean, sloping gently inland. The arm that failed is a low corridor into the continent. The young ocean has a ridge along its middle.'],
+    rift: ['The new coasts are lifted into shoulders — an escarpment facing the young ocean, sloping gently inland. The arm that failed is a low corridor into the continent. The young ocean has a ridge along its middle.',
+        'The shoreline is where the ground meets the sea, not where the continent’s crust ends: the crust thins toward the young ocean and sinks, so beyond a narrow shelf the thinned crust falls away under the sea (Crust type layer: the continent reaches past the shore). As the margin ages, its shelf widens to ~100 km and its shoulders sink behind a low coastal plain.'],
     history: [
         'Young belts stand high and sharp; old belts are low but keep their grain of parallel ridges; cratons are calm and low; about half the land is lowland. Plateaus level off near 5 km and widen rather than rise on (gravitational collapse; the “collapses above” slider), and no peak stands much past Everest’s 8.8 km.',
         'Belts widen over weak ground: a long-lived margin or a collision spreads further inland across the crust it has already thickened (and across island-arc crust) than across ordinary continent, and stops short at a craton.',
@@ -94,7 +97,7 @@ const CHECKLISTS = {
         'Ridges only layer: besides the parallel ridges, long highs and lows drawn out along every range (ridge noise), bending with the belt’s front.',
         'Go back to the start: the first continents have broad swells with lowlands between them; the rivers gather in the lowlands, and the swells wear down as the history runs.',
         'Heights accumulate: where a new belt overprints an old one the old relief is not erased, and a belt that drifted through the wet tropics is lower than one of the same age at the dry subtropics (Erosion rate layer).',
-        'Passive margins have wide shelves, active margins narrow ones; mid-ocean ridges stand ~2.5 km deep, old floor 5–6 km, trenches deeper still.',
+        'Passive margins have wide shelves, active margins narrow ones — a rifted margin’s shelf lies on the continent’s own thinned crust, its break at ~120–150 m over where the crust thinned most, its slope down to the ocean floor; mid-ocean ridges stand ~2.5 km deep, old floor 5–6 km, trenches deeper still.',
         'Coastlines: a passive or an active margin runs as a smooth line — long straight or gently curved stretches with bends and steps hundreds of km apart (west Africa, west India), never the sim’s cells, its shelf edge parallel to it — and island arcs and young collision coasts are ragged, broken into islands and straits. Phase 8a reports the coastline’s divider dimension by kind of margin against Earth’s.',
         'Switch the terrain resolution: the same planet at every resolution — only finer detail (the parallel ridges appear from 640K up).',
         'Scrub through the history: a drifting continent carries its fine detail with it — its coastline, its shelves, the edges of its belts, its ridges, its volcanoes, the grain of its plains — changing only where the history changes it (Phase 9: the terrain is read on each plate’s own crust), and, slowly, as its fine detail renews: over a few hundred Myr its bays and headlands and the grain of its ridges re-form (the “Fine detail slowly renews” slider; 0 freezes it).',

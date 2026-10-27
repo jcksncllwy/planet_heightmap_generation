@@ -270,6 +270,8 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    precomputed on a cube map — within ~0.3 km of the noise, a fifth of the cost)
   margin-line      the coast's line: the land/sea raster's smooth contour (a Gaussian of a sim cell), the coast distance
                    measured exactly to it; gaussianAt (cached kernels) smooths a margin's shelf and plain along it
+  margins          a rifted margin's cross-section from how its crust thinned (McKenzie 1978): the shoreline, the shelf
+                   break the sediment builds out to, the coastal plain's flexural width
   records          step 1: the Frame read into per-sim-cell fields — signed coast distance, shelf / plain / slope by
                    kind of coast, sea-floor depth and age, trenches, the isostatic platform, and per belt: kind (type +
                    side of a collision), distance from its front, reach, relief, obliquity, the across-strike direction
@@ -476,7 +478,7 @@ edge, not over a share of the shield) — with a faint grain of domes and keels.
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
 `coastKindKm` of its coast. **Passive margins mature** (2026-10-15, `marginMatureMyr`): a passive coast's age is the
 oldest ocean floor beside it (the floor that formed as it broke away), or less where its own belt was active since; its
-maturity, 1 − e^(−age / 60 Myr) (a stretched margin's thermal subsidence), widens the shelf from ~40 to ~180 km and the
+maturity, 1 − e^(−age / 60 Myr) (a stretched margin's thermal subsidence), widens the shelf (of a coast that never rifted; a rifted one: below) from ~40 to ~180 km and the
 coastal plain from ~50 to ~240 km, and buries the relief under them by that share — a young rifted margin's shoulders
 stand at the sea (the Red Sea), an old one's lie well inland behind a wide shelf and a low coastal plain (the US east
 coast). A sea enclosed by land under ~1–4 million km² (`marginOpenSeaKm2`) is filled from its rim instead: its rim
@@ -485,6 +487,33 @@ worker) with the new constants; the history itself comes out the same. The lab b
 next to it the way you are moving (five behind) in the background (heights only, within a memory budget), so scrubbing
 and playing near it need no building, and playing waits for a frame still being built; sea level and hillshade only
 re-shade.
+
+**The shoreline is where the surface crosses the sea** (2026-10-28, `terrain/margins.js`), not where the continental
+crust ends. The history keeps a rifted margin's crust at full thickness to its rift line, where the new ocean began: the
+continent–ocean boundary (COB). On Earth that crust thins toward the COB across a zone 150–400 km wide (Péron-Pinvidic
+et al. 2013) and stands lower for it by isostasy — at once as it stretches and more as its heated lithosphere cools after
+(McKenzie 1978; water-loaded, from the crust's and mantle's densities and expansion, `rift*` in terrain-config.js). So on
+a rifted coast (a coast the history marked RIFT_MARGIN, or the start's own coasts) the crust's share of its thickness
+is a smoothstep over `marginThinKm` 200 km from the COB (`marginThinCratonKm` 80 km beside a craton: cold, strong
+lithosphere rifts narrow, Buck 1991), the surface is the land's own height (platform, swell, belts, hills) less that
+subsidence, and the shoreline is where it crosses the frame's sea: a high rift shoulder still stands above it, a low
+platform does not, and the COB lies at the foot of the slope, ~100 km out from a mature margin's shore. The sediment
+the continent sheds (`denudationKmPerMyr` 0.05, Syvitski et al. 2005, over the landmass's area per km of its coast and
+the margin's age) fills the drowned crust to a graded shelf down to the break at `shelfEdgeKm`, building it out toward the
+end of the necking zone (crust thinned to `marginNeckCrustKm` 10 km — the break stands over the necking zone, Péron-Pinvidic
+et al. 2013); below the break the slope is the prism's front (`clinoformGradient`); behind the shore the coastal plain
+is the shelf load's flexural moat, 3πα/4 for an elastic thickness growing from 5 to 30 km with maturity
+(`marginElasticKm`, Watts 2001). So a young margin has a narrow shelf over thinned crust falling away (the Red Sea), a
+mature one a shelf ~100 km wide with its break at ~120–150 m. The other margins — active, transform, collision, arc,
+and passive coasts that never rifted — keep their per-margin profiles (`margins` in terrain-config.js), which stand for
+physics not derived yet: an active margin's forearc and trench slope, a transform margin's sheared edge; their crust
+still ends at the shelf break. What tectonics treats as continental crust is unchanged (the history uses its land for
+erosion, rivers, the sea's fill and the ledger), and the Evolution timeline already draws heights against the sea
+(terrain-player, world-ocean.js), so flooded continental crust shows there as shallow sea; the lab's crust palettes
+stay crust maps. Phase 13 reports the continental crust under the sea by stage of the cycle, the shelves' width by kind
+of margin and the break's depth (`tools/lib/shelf-stats.mjs`). The sim's coasts are mostly active, and its continental
+crust's area was set to Earth's land area (tectonics' `continentalFraction`), so its submerged share stays small (~5–15 %
+against Earth's ~20–30 % today).
 
 **The mantle's swell and the sea level** (2026-10-27, `terrain/sea-level.js`). A continent is a lid: the mantle under
 it warms (the history's `mantleHeat`, `mantleInsulateMyr`), and warm mantle lifts the surface over it — dynamic
