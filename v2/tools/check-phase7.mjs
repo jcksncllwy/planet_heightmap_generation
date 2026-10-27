@@ -172,7 +172,7 @@ section('plumes favour insulated mantle — but not only');
     const headsOf = x => x.events.filter(e => e.kind === EventKind.LIP), onLandShare = x => headsOf(x).filter(e => e.data.onLand).length / Math.max(1, headsOf(x).length);
     report('share of plume heads rising under continent (the rest under open ocean)', runs.map(x => 100 * onLandShare(x)), { digits: 0, unit: ' %', source: 'Earth has both: Deccan, Siberia on land; Ontong Java, Kerguelen at sea',
         detail: runs.map(x => `${headsOf(x).filter(e => e.data.onLand).length} traps, ${headsOf(x).filter(e => !e.data.onLand).length} plateaus`).join(' · ') });
-    report('live plumes at the end of a history', runs.map(x => x.last.hotspots.length), { earth: [7, 50], digits: 0, source: '7 deep plumes of 49 hotspots (Courtillot et al. 2003); ~27 in tomography (French & Romanowicz 2015); 40–50 in catalogues',
+    report('live plumes at the end of a history', runs.map(x => x.last.hotspots.length), { earth: [7, 50], digits: 0, source: 'holds through the cycle: plumes rise from the edges of deep-mantle structures stable for ≥ 200, possibly 540 Myr (Torsvik et al. 2010); 7 deep plumes of 49 hotspots (Courtillot et al. 2003); ~27 in tomography (French & Romanowicz 2015); 40–50 in catalogues',
         detail: `at ${last.time} Myr, seeds ${runs.map((x, i) => SEED + i).join(', ')}` });
     let was = 0, nWas = 0, never = 0, nNever = 0;
     for (let w = 0; w < numCells; w++) {

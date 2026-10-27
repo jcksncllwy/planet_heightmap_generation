@@ -34,3 +34,25 @@ export const EARTH_LAND_RATIO = {
     'supercontinent': { earth: [1.0, 1.15], source: 'Pangaea’s sea at or below today’s (Haq & Al-Qahtani 2005)' },
     'early dispersal': { earth: [0.65, 0.8], source: '~30 % of today’s continental area flooded (Worsley et al. 1984; Ronov 1994)' },
 };
+
+// ── by stage, for any report (the targets rule, 2026-10-27) ──
+// A statistic that changes through the cycle (how many plates and how large, the sea floor's age, enclosed seas, the
+// continents' shapes) is compared with Earth's range over its history, or with Earth at the same stage: the sim gathered
+// into a supercontinent against Pangaea (or Rodinia), the sim in late dispersal against today. One that does not (a
+// coastline's fractal dimension, the rivers' drainage exponent) is compared with today's at any stage, and its source
+// says so ("holds through the cycle").
+
+/** The stages stageOf names, in the cycle's order. */
+export const STAGES = ['supercontinent', 'early dispersal', 'late dispersal'];
+
+/**
+ * Values sorted by the stage they were taken in: `items` [{stage, value}] → {supercontinent: [...], 'early dispersal':
+ * [...], 'late dispersal': [...], between: [...]} (between: stageOf null). `stageText` prints a summary per stage, for a
+ * report's detail (`fmt` of each stage's values; by default how many there are).
+ */
+export function byStage(items) {
+    const out = Object.fromEntries([...STAGES, 'between'].map(s => [s, []]));
+    for (const { stage, value } of items) if (Number.isFinite(value)) out[stage ?? 'between'].push(value);
+    return out;
+}
+export const stageText = (groups, fmt = v => v.length) => Object.keys(groups).filter(s => groups[s].length).map(s => `${s} ${fmt(groups[s])}`).join(', ') || 'no stage';

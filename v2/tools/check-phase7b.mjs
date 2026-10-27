@@ -133,7 +133,7 @@ section('an arc rifts off its ocean plate (mariana)');
         const stop = r.events.find(e => e.kind === EventKind.BACKARC_CLOSE && e.data.strip === split.data.strip);
         check('after its spell (backArcActiveMyr) it stops spreading and moves with its plate again', !!stop && stop.data.rejoined && Math.abs(stop.time - split.time - cfg.backArcActiveMyr) < 3 && !plateById(r.last, split.data.strip),
             stop ? `${stop.time.toFixed(0)} Myr: ${stop.text}` : 'still spreading at the end');
-        if (stop) report('how long the back-arc sea spread', stop.time - split.time, { earth: [5, 20], unit: ' Myr', digits: 0, source: 'Sea of Japan mainly ~23–15 Ma; basins spread ~5–20 Myr', detail: 'set by backArcActiveMyr, not by rollback ending' });
+        if (stop) report('how long the back-arc sea spread', stop.time - split.time, { earth: [5, 20], unit: ' Myr', digits: 0, source: 'a lifetime: Sea of Japan mainly ~23–15 Ma; basins spread ~5–20 Myr; opening takes 5–15 Myr (Morra et al. 2013)', detail: 'set by backArcActiveMyr, not by rollback ending' });
         const keptYoung = cellsWhere(numCells, w => r.last.owner[w] >= 0 && r.last.type[w] === CrustType.OCEAN && r.last.formedAt[w] > split.time && r.last.formedAt[w] < split.time + cfg.backArcActiveMyr);
         check('…and keeps the sea it opened', keptYoung.length >= 40, `${keptYoung.length} cells of the back-arc sea floor are still there at ${r.last.time} Myr`);
     }
@@ -172,7 +172,7 @@ section('in a whole history');
 {
     const r = run('history'), cfg = r.cfg;
     const opened = r.events.filter(e => e.kind === EventKind.BACKARC_OPEN), closed = r.events.filter(e => e.kind === EventKind.BACKARC_CLOSE);
-    report('back-arc seas opened per 100 Myr', 100 * opened.length / r.last.time, { earth: [20, 40], digits: 1, source: '~10–15 active today; ~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…)',
+    report('back-arc seas opened per 100 Myr', 100 * opened.length / r.last.time, { earth: [20, 40], digits: 1, source: 'a rate: ~10–15 active today; ~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…; count recalled, unconfirmed)',
         detail: `${opened.length} in ${r.last.time} Myr (${opened.map(e => e.time.toFixed(0)).join(', ')} Myr)` });
     // how often a continental strip carries craton with it (a break line through craton is strength-weighted, not vetoed)
     const continentalStrips = opened.filter(e => e.data.continental), withCraton = continentalStrips.filter(e => {

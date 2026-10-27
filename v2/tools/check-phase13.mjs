@@ -19,7 +19,7 @@ import { spreadKm } from '../js/core/min-heap.js';
 import { hopDistance } from '../js/core/mesh-bfs.js';
 import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
-import { stageOf, EARTH_LAND, EARTH_LAND_RATIO } from './lib/cycle-stage.mjs';
+import { stageOf, EARTH_LAND, EARTH_LAND_RATIO, byStage, stageText } from './lib/cycle-stage.mjs';
 
 const SEEDS = [12345, 777, 4242];
 const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (the window over which the most a landmass held while the pieces dispersed is read)
@@ -90,8 +90,9 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const world = scene.build(mesh, seed);
     Object.assign(world.config, { crustLedger: true }, overrides);
     const kept = [], arcs = [], largestShares = [];
+    const lowlandStages = [];
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
-    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [];
+    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [], staged = [];
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
@@ -116,6 +117,8 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             let ages = 0, nOcean = 0;
             for (let w = 0; w < n; w++) if (f.owner[w] >= 0 && f.type[w] === CrustType.OCEAN) { ages += f.time - f.formedAt[w]; nOcean++; }
             floorAges.push(ages / Math.max(1, nOcean));
+            // (the same figures by the cycle's stage, for those that change through it: lib/cycle-stage.mjs)
+            staged.push({ stage: stageOf(f), largest, floorAge: ages / Math.max(1, nOcean), big: bigPlates.at(-1), plates: plateCounts.at(-1) });
             // (sealed seas — sea cut off from the world ocean, the largest body of it — and how much of their floor is older
             // than Earth's oldest floor still in place)
             const seas = comps(w => ocean[w] === 1 || f.owner[w] < 0).sort((a, b) => b.length - a.length);
@@ -139,7 +142,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         // (lowland after the rivers carve it, comparable with Earth's hypsometry; the tectonic surface's alongside)
         if (terrain && (Math.abs(f.time - 600) < 1e-6 || Math.abs(f.time - scene.maxMyr) < 1e-6)) {
             const T = synthesizeTerrain(f, mesh, tm, { seed, carve: true });
-            lowland = (lowland ?? 0) + hypsometry(T.heightKm).below400 / 2; lowlandRaw = (lowlandRaw ?? 0) + hypsometry(T.tectonicKm).below400 / 2;
+            lowland = (lowland ?? 0) + hypsometry(T.heightKm).below400 / 2; lowlandStages.push(stageOf(f) ?? 'untracked'); lowlandRaw = (lowlandRaw ?? 0) + hypsometry(T.tectonicKm).below400 / 2;
         }
     } });
     const ev = world.events, per100 = k => 100 * ev.filter(e => e.kind === k && e.time >= 100).length / (scene.maxMyr - 100);
@@ -162,10 +165,11 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const fullest = held.reduce((b, k) => (!b || k.share > b.share ? k : b), null);
     const weak = rifts.reduce((s, e) => s + (e.data.weakKm ?? 0), 0) / Math.max(1, rifts.reduce((s, e) => s + e.data.lengthKm, 0));
     return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, gapMin: Math.min(Infinity, ...gaps), gapMedian: median(gaps), early, lowest, clump, reassembled, againAt,
-        fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, land0, land1200, contRatio: cont1200 / Math.max(1, cont0), cont0, cont500, cont1000,
+        fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, lowlandStages, land0, land1200, contRatio: cont1200 / Math.max(1, cont0), cont0, cont500, cont1000,
         ledger: world.ledger, budget: world.budget,
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
+        staged: k => byStage(staged.map(x => ({ stage: x.stage, value: x[k] }))),
         bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges), sealedOld: sealedOld.reduce((x, y) => x + y, 0) / Math.max(1, sealedOld.length),
         inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN), sea,
         platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
@@ -188,7 +192,7 @@ report(`the most one landmass held for ${CLUMP_MYR} Myr while the pieces dispers
 // held is that the cycle gathers one at all; when, is reported)
 check('the pieces gather again into a new supercontinent within the run (≥ 70 % of the crust, held 30 Myr)', rows.every(r => r.reassembled !== undefined), txt(r => r.reassembled !== undefined ? `at ${r.reassembled.toFixed(0)} Myr` : 'never'));
 report('reassembly: a new supercontinent after the start', rows.map(r => r.reassembled ?? NaN), { earth: [400, 800], unit: ' Myr', digits: 0, source: '~600 ± 100 Myr cycle, Li et al. 2019 (Nuna → Rodinia → Pangea)', detail: 'emergent: gathering waits on the mantle cooling, not a clock' });
-report('…its tenure before it breaks up', rows.map(r => r.againAt !== undefined ? r.againAt - r.reassembled : NaN), { earth: [100, 200], unit: ' Myr', digits: 0, source: 'Pangea held ~120–150 Myr',
+report('…its tenure before it breaks up', rows.map(r => r.againAt !== undefined ? r.againAt - r.reassembled : NaN), { earth: [100, 200], unit: ' Myr', digits: 0, source: 'stage-matched: Pangea held ~120–150 Myr (recalled); Rodinia ~150 — assembled by ~900 Ma, broken up from ~750 Ma (Li et al. 2008; abstract checked)',
     detail: txt(r => r.againAt !== undefined ? `broken up at ${r.againAt.toFixed(0)} Myr` : 'not by 1200 Myr') });
 report('rift length along old sutures, failed rifts and rifted margins', rows.map(r => 100 * r.weak), { unit: ' %', digits: 0, source: 'no Earth figure: inheritance is common, not universal (Buiter & Torsvik 2014)' });
 report('the new supercontinent at its fullest: share of the crust, necks under 800 km not counted', rows.map(r => r.fullest ? 100 * r.fullest.share : NaN), { earth: [85, 95], unit: ' %', digits: 0, source: 'Pangea, the China blocks and Cimmerian terranes outside',
@@ -200,10 +204,10 @@ report('untouched land at 600 Myr', rows.map(r => r.calm ? 100 * r.calm.share : 
 report('…its largest patch', rows.map(r => r.calm?.patchMkm2 ?? NaN), { unit: ' Mkm²', digits: 1, source: 'the Canadian Shield ~8 Mkm²' });
 
 section('island arcs and lowlands');
-report('arc crust over 1500 km from any continent (most, every 200 Myr)', rows.map(r => r.arcFar), { earth: [2.5, 4], unit: ' Mkm²', digits: 1, source: '~17,000 km of intra-oceanic trench × 150–250 km, Leat & Larter 2003' });
-report('the largest open-ocean arc landmass', rows.map(r => r.arcBiggest), { earth: [0, 1], unit: ' Mkm²', digits: 1, source: 'Izu–Bonin–Mariana ~0.6 Mkm²' });
-report('land below 400 m after carving (mean of 600 and 1200 Myr)', rows.map(r => r.lowland === null ? NaN : 100 * r.lowland), { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry',
-    detail: txt(r => `${(100 * r.lowlandRaw).toFixed(0)} % before carving`) });
+report('arc crust over 1500 km from any continent (most, every 200 Myr)', rows.map(r => r.arcFar), { earth: [2.5, 4], unit: ' Mkm²', digits: 1, source: '~17,000 km of intra-oceanic trench × 150–250 km, Leat & Larter 2003 — today only: no history of it found' });
+report('the largest open-ocean arc landmass', rows.map(r => r.arcBiggest), { earth: [0, 1], unit: ' Mkm²', digits: 1, source: 'Izu–Bonin–Mariana ~0.6 Mkm² — today only: no history of it found' });
+report('land below 400 m after carving (mean of 600 and 1200 Myr)', rows.map(r => r.lowland === null ? NaN : 100 * r.lowland), { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry — today only: an icehouse lowstand with the continents dispersed; no history of hypsometry found (sea level ~+170 m in the Late Cretaceous, Müller et al. 2008, would drown much of it)',
+    detail: txt(r => `${(100 * r.lowlandRaw).toFixed(0)} % before carving; the frames in the ${r.lowlandStages.join(' and ')} stages`) });
 
 section('land and sea through the cycle');
 {
@@ -266,7 +270,7 @@ section('the crust budget against Earth’s (crust-sink)');
         source: 'additions ≈ losses, net Phanerozoic growth "effectively nil" (Scholl & von Huene 2009); 60–80 % of today’s crust by 3 Ga (Dhuime et al. 2012)' });
     report('…500 → 1000 Myr', rows.map(r => 100 * (r.cont1000 / Math.max(1, r.cont500) - 1)), { earth: [-10, 10], unit: ' %', digits: 1, source: 'as above' });
     report('erosive share of continental-margin trench (length × time)', rows.map(r => 100 * (r.budget.erosiveTrenchKmMyr ?? 0) / Math.max(1, r.budget.marginTrenchKmMyr ?? 0)), { earth: [50, 60], unit: ' %', digits: 0,
-        source: '~57 % of margins erosive (Clift & Vannucchi 2004; recalled, unconfirmed): convergence > 6 cm/yr or < 1 km of trench sediment',
+        source: '"57 % of the global active margins seem to be of the erosive type" (Clift & Vannucchi 2004, Rev. Geophys. 42; checked) — today\'s margins: convergence > 6 cm/yr or < 1 km of trench sediment',
         detail: txt(r => `${(100 * (r.budget.marginTrenchKmMyr ?? 0) / Math.max(1, r.budget.trenchKmMyr ?? 0)).toFixed(0)} % of ${((r.budget.trenchKmMyr ?? 0) / scene.maxMyr / 1000).toFixed(1)}k km of overriding trench on a continental margin`) });
     report('crust added per km of trench', rows.map(r => perKm(r, added(r))), { earth: [30, 65], unit: ' km³/Myr/km', digits: 0,
         source: 'arc additions ~1.1 AU (Reymer & Schubert 1984) to ~2.7 AU (Scholl & von Huene 2009) over ~42,000 km of trench',
@@ -293,18 +297,24 @@ section('living plates (plans/V2_REALISM_PASS_PLAN.md, phase 2)');
 // single plate for 200 Myr; old margins inside a plate now founder too: step/subduction-init.js founderWithinPlates)
 check(`no plate freezes the planet: none holds over ${100 * FREEZE} % of it for over ${FREEZE_MYR} Myr (from 100 Myr on)`,
     rows.every(r => r.frozenMost <= FREEZE_MYR), txt(r => `longest over ${100 * FREEZE} %: ${r.frozenMost} Myr`));
-report('the largest plate’s share of the planet: most from 100 Myr', rows.map(r => 100 * r.largestPlate), { earth: [15, 30], unit: ' %', digits: 0, source: 'the Pacific ~20 % today; ~8 large plates always (Morra et al. 2013)',
-    detail: txt(r => `median ${(100 * r.largestMedian).toFixed(0)} %`) });
+report('the largest plate’s share of the planet: most from 100 Myr', rows.map(r => 100 * r.largestPlate), { earth: [15, 30], unit: ' %', digits: 0, source: 'the Pacific ~20 % today — a snapshot: the Izanagi plate was the largest until ~100 Ma (Morra et al. 2013, EPSL 373; checked), and no share through time is found, so today\'s range stands',
+    detail: txt(r => `median ${(100 * r.largestMedian).toFixed(0)} %; most by stage ${stageText(r.staged('largest'), v => `${(100 * Math.max(...v)).toFixed(0)} %`)}`) });
 check('the lid stays mobile: never fewer than 2 plates holding ≥ 1 % of the planet', rows.every(r => r.platesMin >= 2), txt(r => `at least ${r.platesMin}`));
-report('plates holding ≥ 1 % of the planet: mean', rows.map(r => r.platesMean), { earth: [12, 14], digits: 1, source: 'Morra et al. 2013; Bird 2003 (the mesh resolves fewer small plates)' });
-report('plates over 10^7.5 km² (31.6 Mkm²): mean from 100 Myr', rows.map(r => r.bigMean), { earth: [6, 8], digits: 1, source: '7 today (Pacific, Eurasia, N America, Africa, Antarctica, Australia, S America: Bird 2003); the size kink of Morra et al. 2013' });
+// (stage-matched: today's count is a dispersed world's — Earth had 10 plates in all at 200 Ma, 31 today in the Seton 2012
+// reconstruction, Morra et al. 2013 — so the frames in late dispersal, as Earth today, are the ones compared)
+report('plates holding ≥ 1 % of the planet: mean in late dispersal', rows.map(r => { const d = r.staged('plates')['late dispersal']; return d.length ? d.reduce((x, y) => x + y, 0) / d.length : NaN; }), { earth: [12, 14], digits: 1,
+    source: 'today (late dispersal): Bird 2003 (the mesh resolves fewer small plates); through time 10 plates in all at 200 Ma → 31 today (Morra et al. 2013)',
+    detail: txt(r => `over every frame from 100 Myr ${r.platesMean.toFixed(1)}; by stage ${stageText(r.staged('plates'), v => `${(v.reduce((x, y) => x + y, 0) / v.length).toFixed(1)} (${v.length} frames)`)}`) });
+report('plates over 10^7.5 km² (31.6 Mkm²): mean from 100 Myr', rows.map(r => r.bigMean), { earth: [6, 8], digits: 1, source: '7 today (Pacific, Eurasia, N America, Africa, Antarctica, Australia, S America: Bird 2003); holds through the cycle: the size kink at 10^7.5 km² with ~8 plates above it at every step back to 200 Ma (Morra et al. 2013; checked)' });
 // (the pace of the plates' renewal over a whole cycle, from 100 Myr: new trenches — between plates, at a margin inside one, or
 // across a plate's open ocean (step/subduction-init.js) — the sea floor's age, and back-arc seas opening)
-report('subduction initiations per 100 Myr, from 100 Myr', rows.map(r => r.inits), { earth: [12, 30], digits: 1, source: 'more than a dozen in the Cenozoic, mostly induced: Crameri et al. 2020' });
-report('mean sea-floor age: median over the frames from 100 Myr', rows.map(r => r.floorAge), { earth: [60, 64], unit: ' Myr', digits: 0, source: 'Müller et al. 2008 (≈ 64 Myr today); it varies through a supercontinent cycle' });
+report('subduction initiations per 100 Myr, from 100 Myr', rows.map(r => r.inits), { earth: [12, 30], digits: 1, source: 'a rate: 13 initiations since ~105 Ma, mostly induced (Crameri et al. 2020, Nat. Commun. 11; checked) — the database is a floor, and the window is the dispersal stage' });
+report('mean sea-floor age: median over the frames from 100 Myr', rows.map(r => r.floorAge), { earth: [35, 65], unit: ' Myr', digits: 0,
+    source: 'Earth over the last 200 Myr: ~35–40 in the Early Cretaceous to ~62–64 today (Müller et al. 2008; Seton et al. 2020: 64.2; the swings, −15 then +25 Myr, Williams et al. 2021, Geosci. Front. 12; van der Meer et al. 2017 < 40 in the Cretaceous)',
+    detail: txt(r => `by stage ${stageText(r.staged('floorAge'), v => `${median(v).toFixed(0)} Myr`)} (Earth in late dispersal, today: ~62–64)`) });
 report('sealed seas’ floor older than 340 Myr: mean over the frames from 100 Myr', rows.map(r => r.sealedOld), { unit: ' Mkm²', digits: 2,
     source: 'no Earth figure: the oldest ocean floor still in place, the Herodotus Basin’s under the eastern Mediterranean, is ~340 Myr (Granot 2016)' });
-report('back-arc seas opened per 100 Myr, from 100 Myr', rows.map(r => r.backArcs), { earth: [20, 40], digits: 1, source: '~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…)' });
+report('back-arc seas opened per 100 Myr, from 100 Myr', rows.map(r => r.backArcs), { earth: [20, 40], digits: 1, source: 'a rate: ~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…; count recalled, unconfirmed)' });
 
 section('the switches');
 {

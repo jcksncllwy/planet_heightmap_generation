@@ -8,6 +8,10 @@
 //   · report() — an Earth-likeness statistic: the value (one per seed, or one) against Earth's value or range and its
 //     source. A value outside the range is flagged ⚑ for a look; it never fails the run. The model is meant to make an
 //     Earth from the right start, not every start into an Earth: a feature Earth lacks is not an error.
+//     Earth's figure is geophysical, not today's snapshot (2026-10-27): a statistic that changes through the supercontinent
+//     cycle is compared with Earth's range over its history, or with Earth at the sim's stage (lib/cycle-stage.mjs:
+//     dispersed against today, a supercontinent against Pangaea or Rodinia); better, a rate, lifetime or fate. A today-only
+//     figure is used only where the quantity does not depend on the cycle, and its source says so ("holds through the cycle").
 // With REPORT_JSON=path set, each report is also appended to that file as a line of JSON (tools/run-checks.mjs reads it).
 
 import Delaunator from 'delaunator';

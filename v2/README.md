@@ -1007,6 +1007,29 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   each run beside main fe78ce2 under the same load): 1106.1 s against 1113.4 s, −0.6 % wall. Collisions that run on
   cost nothing measurable: the seam is measured every `sutureCheckMyr` either way.
 
+## Earth targets through the cycle (2026-10-27, branch targets)
+
+The checks' Earth figures are geophysical, not today's snapshot: Earth today is one moment of its supercontinent cycle
+(dispersed, ~200 Myr after Pangaea's breakup, in an icehouse). Every `report()` target was sorted three ways:
+- **Holds through the cycle** — kept, and its source says so: coastline D by kind of margin, the drainage exponent,
+  craton sizes, plume numbers (deep-mantle sources stable ≥ 200 Myr, Torsvik et al. 2010), plate speeds (over 200 Myr,
+  Zahirovic et al. 2015), active and quiet belt heights, old sea floor (none much older than ~200 Myr survives in place),
+  the ~8 plates above the 10^7.5 km² size kink (at every step back to 200 Ma, Morra et al. 2013).
+- **A stage's figure** — restated as Earth's range over its history, or compared at the matching stage, read with the
+  shared `tools/lib/cycle-stage.mjs` (`stageOf`: supercontinent, early or late dispersal, from the cycle state every
+  frame carries; `byStage` / `stageText` group any report's values by it). Mean sea-floor age over the whole cycle:
+  ~35–65 Myr over the last 200 Myr (Williams et al. 2021; Seton et al. 2020), today's ~62–64 kept for Phase 6b's end, a
+  world ~240 Myr after its breakup. Plates in all: 10 at 200 Ma to 31 today in reconstructions (Morra et al. 2013), 52
+  resolved today (Bird 2003). Plates ≥ 1 % of the planet, enclosed seas and the continents' shapes (Phase 11, 13) are
+  compared over the late-dispersal frames only, every frame's figure in the detail. Supercontinent tenure adds Rodinia
+  (Li et al. 2008). Where no history was found (the largest plate's share, hypsometry, open-ocean arcs, polar erosion in
+  an icehouse) today's range stays, marked "today only". (The land share by stage is the insulation branch's.)
+- **Better as a rate or a fate** — enclosed seas are counted less and their ends reported (Phase 11): floors gone down
+  whole (`SUBDUCTION_INIT data.sealed`) per 100 Myr and their age then (Earth: the Ionian's ~220–230 Myr floor under
+  Calabria; the Herodotus Basin's ~340 Myr still in place), and the share of their floor the rivers have filled to sea
+  level. Drying is not modelled; a sea's lifetime is not tracked (a sea has no identity from frame to frame — a seal id
+  and time on its floor cells, carried by the crust, would give it).
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

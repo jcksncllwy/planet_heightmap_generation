@@ -186,13 +186,13 @@ export function coastFractal(loops, kindAt, { kinds, minRunKm = 300, rulers = RU
 
 /** Earth's coasts, for the reports: D over ~20–500 km rulers, by kind of margin, and where the figure comes from. */
 export const EARTH_D = {
-    'passive mature': { earth: [1.0, 1.1], source: 'South Africa 1.02 (Richardson 1961, in Mandelbrot 1967); Australia 1.13 is a mix of margins' },
+    'passive mature': { earth: [1.0, 1.1], source: 'South Africa 1.02 (Richardson 1961, in Mandelbrot 1967); Australia 1.13 is a mix of margins (checked against Mandelbrot 1967)' },
     'passive young': { earth: [1.0, 1.15], source: 'recalled: Red Sea and Gulf of Aden coasts, straight rift segments with transform steps' },
     active: { earth: [1.02, 1.15], source: 'recalled: the Andean coast of Peru and N Chile, straight along its coastal range' },
     collision: { earth: [1.1, 1.3], source: 'recalled: Mediterranean and Arabian Sea collision coasts; Germany\'s land frontier 1.15 (Mandelbrot 1967)' },
     arc: { earth: [1.15, 1.35], source: 'recalled: Japan, the Philippines, the Lesser Antilles — island chains' },
-    glacial: { earth: [1.25, 1.55], source: 'west coast of Britain 1.25 (Richardson 1961, in Mandelbrot 1967); Norway ~1.52 (Feder 1988, recalled)' },
-    all: { earth: [1.05, 1.3], source: 'world coastlines 1.1–1.3 by the divider method (recalled: e.g. Jiang & Plotnick 1998 for the US coasts)' },
+    glacial: { earth: [1.25, 1.55], source: 'west coast of Britain 1.25 (Richardson 1961, in Mandelbrot 1967; checked); Norway ~1.52 (Feder 1988, recalled)' },
+    all: { earth: [1.05, 1.3], source: 'world coastlines 1.1–1.3 by the divider method (recalled: e.g. Jiang & Plotnick 1998, Math. Geol. 30, for the US coasts — the paper is real, its range unconfirmed)' },
 };
 /** The kinds' names, in the order kindOf() numbers them. */
 export const COAST_KINDS = ['passive mature', 'passive young', 'active', 'collision', 'arc', 'glacial'];

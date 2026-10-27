@@ -98,7 +98,7 @@ for (const r of Object.values(runs)) {
 }
 // (Worldbuilding Pasta's bands per situation were a blog's; Earth's figures: Zahirovic et al. 2015, EPSL 418 — median RMS
 // plate speed ~4 cm/yr over 200 Myr, plates > 25 % craton ~2.8, slab-attached oceanic plates 2–3× faster than continental)
-report('settled speed, continental plates (mean per scene)', settled.continental.map(s => s.v), { earth: [1, 4], unit: ' cm/yr', source: 'Zahirovic et al. 2015, EPSL 418',
+report('settled speed, continental plates (mean per scene)', settled.continental.map(s => s.v), { earth: [1, 4], unit: ' cm/yr', source: 'Zahirovic et al. 2015, EPSL 418 — holds through the cycle: speeds over the last 200 Myr',
     detail: settled.continental.map(s => `${s.id} ${s.v.toFixed(2)} (${s.n} plate-frames)`).join(', ') });
 report('settled speed, oceanic plates (mean per scene)', settled.oceanic.map(s => s.v), { earth: [5, 10], unit: ' cm/yr', source: 'slab-attached plates, Zahirovic et al. 2015; Forsyth & Uyeda 1975',
     detail: settled.oceanic.map(s => `${s.id} ${s.v.toFixed(2)} (${s.n} plate-frames)`).join(', ') || 'no oceanic plate settles in these scenes' });

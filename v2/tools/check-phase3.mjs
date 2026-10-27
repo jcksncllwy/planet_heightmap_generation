@@ -40,7 +40,7 @@ everySeed('space between cratons and the sea', r => r.m.minCoastKm >= C.cratonMi
 // largest would pass cratonMaxDiameterKm: the ratio it gives is within a factor 1.5 of the one asked)
 everySeed('variety of craton size: the generator honours cratonSizeRatio and cratonMaxDiameterKm', r => r.m.cratonSizeRatio >= C.cratonSizeRatio / 1.5 && r.m.cratonSizeRatio <= C.cratonSizeRatio * 1.5 && r.m.cratons.every(k => k.diameterKm <= C.cratonMaxDiameterKm + mesh.edgeKm),
     `largest ÷ smallest diameter ${range(runs, Object.assign(r => r.m.cratonSizeRatio, { digits: 1 }))}× (asked ${C.cratonSizeRatio}×); widest ${range(runs, r => Math.max(...r.m.cratons.map(k => k.diameterKm)))} km (cap ${C.cratonMaxDiameterKm})`);
-const cratonSizes = 'Earth\'s ~35 large cratons run from Slave ~500 km to Superior >3000 km, plus smaller slivers (Bleeker 2003, Lithos 71)';
+const cratonSizes = 'Earth\'s ~35 large cratons run from Slave ~500 km to Superior >3000 km, plus smaller slivers (Bleeker 2003, Lithos 71); holds through the cycle: cratons outlast it';
 report('craton diameter, smallest in each world', perSeed(r => Math.min(...r.m.cratons.map(k => k.diameterKm))), { earth: [500, 3000], unit: ' km', digits: 0, source: cratonSizes });
 report('craton diameter, largest in each world', perSeed(r => Math.max(...r.m.cratons.map(k => k.diameterKm))), { earth: [500, 3000], unit: ' km', digits: 0, source: cratonSizes });
 report('variety of terrane size: largest ÷ smallest terrane area', perSeed(r => r.m.terraneSizeRatio), { unit: '×', digits: 1 });

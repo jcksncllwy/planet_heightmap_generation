@@ -19,6 +19,8 @@ import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
 import { sceneCanvas, addContinent, fillBackground } from '../js/tectonics/scenarios/scene-kit.js';
 import { spreadKm } from '../js/core/min-heap.js';
 import { SimplexNoise } from '../../js/simplex-noise.js';
+import { seaFilledUp } from '../js/tectonics/measure.js';
+import { stageOf, byStage, stageText } from './lib/cycle-stage.mjs';
 
 const mesh = labMesh(), n = mesh.numCells, cellKm2 = mesh.cellAreaKm2;
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
@@ -113,6 +115,8 @@ section('whole histories (600 Myr, three seeds)');
         const oceanKm2 = c => c.reduce((s, w) => s + (f.type[w] === CrustType.OCEAN ? cellKm2 : 0), 0);
         const seaComps = comps(w => !cont(w)).sort((a, b) => b.length - a.length).slice(1).map(c => ({ c, km2: oceanKm2(c) })).filter(x => x.km2 >= 5e4);
         const seas = seaComps.map(x => x.km2).sort((a, b) => b - a);
+        // (how much of the enclosed seas' floor the rivers have filled to sea level — one of a sea's ends: step/sea-fill.js)
+        let filled = 0; for (const x of seaComps) for (const w of x.c) if (f.type[w] === CrustType.OCEAN && seaFilledUp(f.time - f.formedAt[w], f.seaFillKm[w])) filled += cellKm2;
         const inland = new Float32Array(n); for (let w = 0; w < n; w++) inland[w] = cont(w) ? Infinity : 0;
         spreadKm(mesh, inland, {});
         // (a ring: thin land wrapped round a sea it encloses — a supercontinent's open embayments make it thin too, and
@@ -124,7 +128,7 @@ section('whole histories (600 Myr, three seeds)');
             return { thin: deep / Math.sqrt(A / Math.PI), len: lengthKm(c) / (2 * Math.sqrt(A / Math.PI)), rings };
         });
         const arcs = comps(w => f.owner[w] >= 0 && f.type[w] === CrustType.ARC).length;
-        return { seasBig: seas.filter(a => a >= 5e5).length, seaMax: seas[0] ?? 0, seaAll: seas.reduce((s, a) => s + a, 0), thinMin: Math.min(...big.map(b => b.thin), 9),
+        return { stage: stageOf(f), seaFilled: filled, seasBig: seas.filter(a => a >= 5e5).length, seaMax: seas[0] ?? 0, seaAll: seas.reduce((s, a) => s + a, 0), thinMin: Math.min(...big.map(b => b.thin), 9),
             ringMin: Math.min(...big.filter(b => b.rings).map(b => b.thin), 9), thinMed: median(big.map(b => b.thin)), lenMax: Math.max(...big.map(b => b.len), 0), arcs };
     };
     // belt positions within one belt: a belt cell whose distance across its belt (u × reach) is more than 1.3 cell
@@ -160,19 +164,45 @@ section('whole histories (600 Myr, three seeds)');
             if (f.time > 0 && f.time % 100 === 0) staleMax = Math.max(staleMax, staleShare(world));
         } });
         const m = frames.map(measure);
-        rows.push({ seed, staleMax, seasBig: Math.max(...m.map(x => x.seasBig)), seaMax: Math.max(...m.map(x => x.seaMax)), seaAll: Math.max(...m.map(x => x.seaAll)), thinMin: Math.min(...m.map(x => x.thinMin)), ringMin: Math.min(...m.map(x => x.ringMin)), thinMed: median(m.map(x => x.thinMed)), lenMax: Math.max(...m.map(x => x.lenMax)), arcs: Math.max(...m.map(x => x.arcs)) });
+        // (the stage-dependent figures twice: over every frame, and over the frames in the stage Earth is in today — late
+        // dispersal (lib/cycle-stage.mjs) — which is the only stage today's figures speak for)
+        const dispersed = m.filter(x => x.stage === 'late dispersal'), most = (xs, k) => xs.length ? Math.max(...xs.map(x => x[k])) : NaN;
+        // the seas' ends, from the event log: a sealed sea's floor going down whole under a trench along its shore
+        // (step/subduction-init.js founderWithinPlates, SUBDUCTION_INIT data.sealed), and the age of that floor; seas a
+        // weld sealed (SUTURE data.sealKm2), for how seas begin
+        const sunk = world.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT && e.data.sealed), welded = world.events.filter(e => e.kind === EventKind.SUTURE && e.data.sealKm2 > 0);
+        rows.push({ seed, staleMax, stages: byStage(m.map(x => ({ stage: x.stage, value: 1 }))), seasBig: Math.max(...m.map(x => x.seasBig)), seaMax: Math.max(...m.map(x => x.seaMax)), seaAll: Math.max(...m.map(x => x.seaAll)), thinMin: Math.min(...m.map(x => x.thinMin)), ringMin: Math.min(...m.map(x => x.ringMin)), thinMed: median(m.map(x => x.thinMed)), lenMax: Math.max(...m.map(x => x.lenMax)), arcs: Math.max(...m.map(x => x.arcs)),
+            dispersedFrames: dispersed.length, seasBigD: most(dispersed, 'seasBig'), seaMaxD: most(dispersed, 'seaMax'), lenMaxD: most(dispersed, 'lenMax'), thinMedD: dispersed.length ? median(dispersed.map(x => x.thinMed)) : NaN,
+            sunkPer100: 100 * sunk.length / 600, sunkAge: median(sunk.map(e => e.data.ageMyr)), weldedPer100: 100 * welded.length / 600,
+            filledShare: m.reduce((s, x) => s + x.seaFilled, 0) / Math.max(1, m.reduce((s, x) => s + x.seaAll, 0)) });
     }
     const txt = key => rows.map(r => `${r.seed}: ${key(r)}`).join(' · ');
     // (Earth today at this mesh: the Mediterranean ~2.5, the Gulf of Mexico ~1.5, the Black Sea ~0.44 Mkm², the South
-    // Caspian; while a supercontinent gathers, interior oceans close inside it — Murphy & Nance. Worst of every 50 Myr)
-    report('seas caught between continents over 0.5 Mkm² (most at a time)', rows.map(r => r.seasBig), { earth: [2, 4], digits: 0, source: 'Mediterranean, Gulf of Mexico, Black Sea, South Caspian' });
-    report('…the largest of them', rows.map(r => r.seaMax / 1e6), { earth: [0.4, 2.5], unit: ' Mkm²', digits: 1, source: 'the Mediterranean ~2.5 Mkm²', detail: txt(r => `all ${(r.seaAll / 1e6).toFixed(1)} Mkm² at most`) });
+    // Caspian; while a supercontinent gathers, interior oceans close inside it — Murphy & Nance. Worst of every 50 Myr.
+    // A count at one moment is a snapshot of the cycle: it is compared only over the frames in late dispersal
+    // (over 150 Myr after a breakup began), as Earth is today; the seas' ends — how they go — are reported after it, from the event log)
+    const stagesTxt = txt(r => stageText(r.stages));
+    report('seas caught between continents over 0.5 Mkm² (most at a time, in late dispersal)', rows.map(r => r.seasBigD), { earth: [2, 4], digits: 0, source: 'today (late dispersal): Mediterranean, Gulf of Mexico, Black Sea, South Caspian — a snapshot, no count through time found',
+        detail: `over every frame ${txt(r => r.seasBig)}; frames by stage ${stagesTxt}` });
+    report('…the largest of them', rows.map(r => r.seaMaxD / 1e6), { earth: [0.4, 2.5], unit: ' Mkm²', digits: 1, source: 'today (late dispersal): the Mediterranean ~2.5 Mkm²', detail: txt(r => `over every frame ${(r.seaMax / 1e6).toFixed(1)}, all ${(r.seaAll / 1e6).toFixed(1)} Mkm² at most`) });
+    // how enclosed seas end. Sunk: a sealed sea's floor goes down whole under a trench along its shore — on Earth the
+    // Ionian's ~220–230 Myr floor under Calabria (Speranza et al. 2012), while the Herodotus Basin's ~340 Myr floor is
+    // still in place (Granot 2016). Filled: the rivers fill it to sea level (the Precaspian; the Black Sea's ≤ 14 km and
+    // the Gulf of Mexico's ≤ ~13 km of fill). Dried: not modelled (the Messinian Mediterranean, 5.96–5.33 Ma: Krijgsman
+    // et al. 1999). How long a sea lasts is not tracked: a sea carries no identity from frame to frame
+    report('enclosed seas sunk: sealed-sea floors gone down whole, per 100 Myr', rows.map(r => r.sunkPer100), { digits: 1, source: 'no Earth figure: the Ionian\'s floor is going down beneath Calabria today (Faccenna et al. 2014)',
+        detail: txt(r => `${r.weldedPer100.toFixed(1)} seas sealed by welds per 100 Myr`) });
+    report('…the age of their floor when it went down (median)', rows.map(r => r.sunkAge), { unit: ' Myr', digits: 0, source: 'no Earth range: the Ionian\'s floor ~220–230 Myr old as it goes down (Speranza et al. 2012, JGR 117; recalled from the abstract), the Herodotus Basin\'s ~340 Myr and still in place (Granot 2016, Nat. Geosci. 9; checked)' });
+    report('enclosed seas filled: share of their floor filled to sea level (over the frames)', rows.map(r => 100 * r.filledShare), { unit: ' %', digits: 0, source: 'no Earth figure: the Precaspian is filled; the Black Sea (≤ 14 km of fill, Nikishin et al. 2015) and the Gulf of Mexico (≤ ~13 km) are not' });
     // (shapes of continents over 5 Mkm², to the continental crust's edge — shelves included: thinness is the deepest point
     // from the coast ÷ the radius of a disc of its area, elongation its length ÷ that disc's diameter)
     report('thinnest continent wrapped round a sea it encloses', rows.map(r => r.ringMin < 9 ? r.ringMin : NaN), { source: 'no Earth figure: ribbon continents (Cimmeria) and Pangea’s C existed',
         detail: txt(r => `thinnest of all ${r.thinMin.toFixed(2)}`) });
-    report('longest continent ÷ its disc', rows.map(r => r.lenMax), { earth: [1.9, 2.1], unit: '×', digits: 1, source: 'the Americas ~2.1×, Afro-Eurasia ~1.9× (estimate)' });
-    report('continents’ median thinness', rows.map(r => r.thinMed), { earth: [0.55, 0.65], source: 'poles of inaccessibility, Garcia-Castellanos & Lombardo 2007' });
+    // (shapes are a stage's: Pangaea was one C round the Tethys — compared over the frames in late dispersal, as Earth is today)
+    report('longest continent ÷ its disc (in late dispersal)', rows.map(r => r.lenMaxD), { earth: [1.9, 2.1], unit: '×', digits: 1, source: 'today (late dispersal): the Americas ~2.1×, Afro-Eurasia ~1.9× (estimate)',
+        detail: txt(r => `over every frame ${r.lenMax.toFixed(1)}×`) });
+    report('continents’ median thinness (in late dispersal)', rows.map(r => r.thinMedD), { earth: [0.55, 0.65], source: 'today (late dispersal): poles of inaccessibility, Garcia-Castellanos & Lombardo 2007',
+        detail: txt(r => `over every frame ${r.thinMed.toFixed(2)}`) });
     check('belt positions agree within each belt: at most 1 % of belt cells left off by their own belt (every 100 Myr)', rows.every(r => r.staleMax <= 0.01),
         `${txt(r => `worst ${(100 * r.staleMax).toFixed(2)} %`)} (a craton's rim, old weak seams and two belts of one kind meeting are not stale: by design, or a real edge)`);
     check('island arcs still stand along the trenches (counted, not capped)', rows.every(r => r.arcs > 0), txt(r => `up to ${r.arcs} arc pieces`));

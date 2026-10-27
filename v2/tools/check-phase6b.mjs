@@ -9,6 +9,7 @@
 // Usage: node v2/tools/check-phase6b.mjs
 
 import { check, report, section, finish, labMesh, landCount, mean } from './lib/check-kit.mjs';
+import { stageOf } from './lib/cycle-stage.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
@@ -126,7 +127,7 @@ const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {
         const induced = started.filter(e => founderUrge(e.data.ageMyr, 0, cfg, e.data.weightMyr) === 0).length;     // (across a plate: the depth step's weight)
         return { all: per100(started.length), induced: per100(induced), spontaneous: per100(started.length - induced), times: started.map(e => e.time.toFixed(0)).join(', ') };
     });
-    report('subduction initiations per 100 Myr', counts.map(c => c.all), { earth: [12, 30], unit: ' /100 Myr', source: 'more than a dozen, mostly induced: Crameri et al. 2020', digits: 1,
+    report('subduction initiations per 100 Myr', counts.map(c => c.all), { earth: [12, 30], unit: ' /100 Myr', source: 'a rate: 13 initiations since ~105 Ma, mostly induced (Crameri et al. 2020, Nat. Commun. 11; checked) — the database is a floor, and the window is the dispersal stage', digits: 1,
         detail: `induced · spontaneous: ${counts.map(c => `${c.induced.toFixed(1)} · ${c.spontaneous.toFixed(1)}`).join(' | ')}` });
     // WBP: the sea floor is young — it is recycled. Without subduction initiation the oldest ocean just sits there.
     const ages = histories.map(h => {
@@ -134,11 +135,12 @@ const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {
         for (let w = 0; w < numCells; w++) if (last.owner[w] >= 0 && last.type[w] === CrustType.OCEAN) a.push(last.time - last.formedAt[w]);
         return { mean: mean(a), over180: 100 * a.filter(v => v > 180).length / a.length, over250: 100 * a.filter(v => v > 250).length / a.length };
     });
-    report('mean sea-floor age', ages.map(a => a.mean), { earth: [60, 65], unit: ' Myr', source: 'Müller et al. 2008', digits: 0, detail: 'at the end of each 300 Myr history' });
-    report('sea floor older than 180 Myr', ages.map(a => a.over180), { earth: [0, 1], unit: ' %', source: 'in situ maximum ≈ 180 Ma, Müller et al. 2008', digits: 1 });
-    report('sea floor older than 250 Myr', ages.map(a => a.over250), { earth: [0, 1], unit: ' %', source: 'rare relics to ≈ 340 Myr, Granot 2016', digits: 1 });
+    report('mean sea-floor age', ages.map(a => a.mean), { earth: [60, 65], unit: ' Myr', source: 'stage-matched — today, ~200 Myr after Pangaea\'s breakup, as at the end of this 300 Myr breakup history: ~62 (Müller et al. 2008), 64.2 (Seton et al. 2020); over the last 200 Myr it ranged ~35–65, lowest in the Early Cretaceous (Williams et al. 2021, Geosci. Front. 12; van der Meer et al. 2017)', digits: 0,
+        detail: `at the end of each 300 Myr history, in the cycle\'s ${histories.map(h => stageOf(h.frames.at(-1)) ?? 'no').join(' · ')} stage` });
+    report('sea floor older than 180 Myr', ages.map(a => a.over180), { earth: [0, 1], unit: ' %', source: 'in situ maximum ≈ 180 Ma, Müller et al. 2008; holds through the cycle: in the reconstructions since Pangaea no in-situ floor much older than ~200 Myr survives, relics aside (Karlsen et al. 2020)', digits: 1 });
+    report('sea floor older than 250 Myr', ages.map(a => a.over250), { earth: [0, 1], unit: ' %', source: 'rare relics to ≈ 340 Myr, Granot 2016 (Nat. Geosci. 9; abstract checked); holds through the cycle', digits: 1 });
     check('no gaps in any frame', histories.every(h => h.frames.every(f => frameTallies(f).gaps === 0)), 'every frame, every seed');
-    report('plates at the end', histories.map(h => movers(h.frames.at(-1)).length), { earth: [14, 52], source: '14 large plates, 52 in all: Bird 2003 (PB2002)', digits: 0,
+    report('plates at the end', histories.map(h => movers(h.frames.at(-1)).length), { earth: [10, 52], source: 'through time: 10 at 200 Ma rising to 31 today in the Seton 2012 reconstruction, 18–31 through the Cenozoic (Morra et al. 2013, EPSL 373; checked) — reconstructions miss small plates; 52 resolved today, 14 large (Bird 2003, PB2002)', digits: 0,
         detail: `at most ${perSeed(h => Math.max(...h.frames.map(f => movers(f).length)))} at once (the engine holds ${cfg.reserved.maxPlates})` });
 }
 

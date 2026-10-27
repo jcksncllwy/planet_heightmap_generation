@@ -100,7 +100,7 @@ section('the budget over 1000 Myr');
     check('land never runs away: under 60 % of the planet', r.frames.every(f => land(f) < 0.6 * numCells), `the most: ${(100 * Math.max(...r.frames.map(land)) / numCells).toFixed(1)} % of the planet`);
     const b = r.budget;
     report('share of continental-margin trench that is erosive (length × time)', 100 * (b.erosiveTrenchKmMyr ?? 0) / Math.max(1, b.marginTrenchKmMyr ?? 0), { earth: [50, 60], unit: ' %', digits: 0,
-        source: '~57 % of margins (Clift & Vannucchi 2004; recalled, unconfirmed)', detail: `erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment` });
+        source: '~57 % of margins (Clift & Vannucchi 2004, Rev. Geophys. 42: "57 % of the global active margins seem to be of the erosive type"; checked) — today\'s margins', detail: `erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment` });
     check('all three sinks are at work in a whole history', b.erodedCells > 0 && b.underthrustCells > 0 && b.recycledCells > 0,
         `eroded ${Mkm2(b.erodedCells).toFixed(1)}, underthrust ${Mkm2(b.underthrustCells).toFixed(1)}, arcs recycled ${Mkm2(b.recycledCells).toFixed(1)} Mkm²`);
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');

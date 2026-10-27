@@ -71,7 +71,7 @@ section('the river network');
     const beta = -Math.log(share(hi) / share(lo)) / Math.log(hi / lo);
     // (a wide band: β ≈ 0.43 holds for fluvial networks almost everywhere — outside 0.3–0.65 the network is broken)
     check('the network branches like a tree: drainage areas follow a power law', beta >= 0.3 && beta <= 0.65, `P(A ≥ a) ∝ a^−${beta.toFixed(2)} between ${lo.toFixed(0)} and ${hi.toFixed(0)} km²`);
-    report('drainage-area exponent β', beta, { earth: [0.40, 0.46], source: '0.43 ± 0.03, Rodríguez-Iturbe et al. 1992; Rigon et al. 1996' });
+    report('drainage-area exponent β', beta, { earth: [0.40, 0.46], source: 'holds through the cycle: ~0.45 for river networks (Rodríguez-Iturbe et al. 1992, abstract checked); 0.43 ± 0.03 (Rigon et al. 1996, recalled, unconfirmed)' });
 }
 
 // ── what the carving does to the land ──
@@ -91,7 +91,7 @@ section('carving');
     const before = hypsometry(T.tectonicKm), after = hypsometry(T.heightKm);
     check('the carving lowers the land’s median and raises none of it into the uplands', after.landKm[2] < before.landKm[2] && after.below400 >= before.below400,
         `median ${before.landKm[2].toFixed(2)} → ${after.landKm[2].toFixed(2)} km; below 400 m ${(100 * before.below400).toFixed(0)} % → ${(100 * after.below400).toFixed(0)} % of land`);
-    report('land below 400 m after carving', 100 * after.below400, { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry',
+    report('land below 400 m after carving', 100 * after.below400, { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry — today only: an icehouse lowstand with the continents dispersed; no history of hypsometry found (sea level ~+170 m in the Late Cretaceous, Müller et al. 2008, would drown much of it)',
         detail: `${(100 * before.below400).toFixed(0)} % before carving` });
     check('land stays land: the coastline is not moved', Math.abs(after.landShare - before.landShare) < 0.002, `${(100 * before.landShare).toFixed(2)} % → ${(100 * after.landShare).toFixed(2)} % of the planet`);
     // big rivers are graded to lowlands
@@ -109,7 +109,7 @@ section('carving');
     }
     // (a 2 km floor: the carving has not cut active ranges down — how high they stand is the history's)
     check('active ranges keep their peaks (95th percentile ≥ 2 km)', quantile(pooled, 0.95) >= 2, `95th percentile ${quantile(pooled, 0.95).toFixed(2)} km over ${pooled.length} cells of active belts at 400, 500 and 600 Myr (${active.length} at 600)`);
-    report('active ranges after carving: 95th percentile height', quantile(pooled, 0.95), { earth: [4, 5], unit: ' km', source: 'Tibet and the Altiplano 4–5 km, Alpine peaks ~4.8 km' });
+    report('active ranges after carving: 95th percentile height', quantile(pooled, 0.95), { earth: [4, 5], unit: ' km', source: 'Tibet and the Altiplano 4–5 km, Alpine peaks ~4.8 km; holds through the cycle wherever a range is active: plateau height is capped by the crust\'s strength (Molnar & Lyon-Caen 1988)' });
     check('carving at 640K cells within 2 s', T.ms.carve / 1000 < 2, `${(T.ms.carve / 1000).toFixed(2)} s (the surface took ${((T.ms.records + T.ms.sample + T.ms.surface) / 1000).toFixed(2)} s)`);
 }
 

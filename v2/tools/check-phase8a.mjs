@@ -313,7 +313,7 @@ section('erosion by rainfall');
     const e = l => erosionAtLatitude(l, TERRAIN);
     check('erosion follows rainfall by latitude: wettest at the equator, driest in the subtropics, wetter in the storm tracks', e(0) > e(10) && e(25) < 1 && e(25) < e(0) && e(50) > e(25),
         `×${e(0).toFixed(2)} at the equator, ×${e(10).toFixed(2)} at 10°, ×${e(25).toFixed(2)} at 25°, ×${e(50).toFixed(2)} at 50°`);
-    report('polar erosion against the storm tracks (80° ÷ 50°)', e(80) / e(50), { earth: [0.001, 0.01], digits: 3, source: 'polar glaciers erode 2–3 orders of magnitude less than temperate ones, Koppes et al. 2015',
+    report('polar erosion against the storm tracks (80° ÷ 50°)', e(80) / e(50), { earth: [0.001, 0.01], digits: 3, source: 'polar glaciers erode 2–3 orders of magnitude less than temperate ones, Koppes et al. 2015 — today only: an icehouse; Earth\'s poles were ice-free through much of its history (the Cretaceous–Eocene), and no figure is found for then',
         detail: `×${e(80).toFixed(2)} at 80°, ×${e(50).toFixed(2)} at 50°` });
     // (belts quiet 40–250 Myr: after Phase 13's quicker erosion a belt quiet 100+ Myr is worn to ~0.15 km wherever it stood)
     // and it shows: old belts are worn lower in the wet tropics, and kept higher in the dry subtropics, than in the same
@@ -501,8 +501,8 @@ const T640 = terrain(history.frame);
     }
     // (a 2 km floor: that convergence raises ranges at all — how high is the history's)
     check('active belts are raised into ranges (95th percentile ≥ 2 km)', quantile(pooled, 0.95) >= 2, `95th percentile ${quantile(pooled, 0.95).toFixed(2)} km over ${pooled.length} cells at 400, 500 and 600 Myr (${active.length} at 600)`);
-    report('active belts: 95th percentile height', quantile(pooled, 0.95), { earth: [4, 5], unit: ' km', source: 'Tibet and the Altiplano 4–5 km, Alpine peaks ~4.8 km' });
-    report('belts quiet over 250 Myr: 95th percentile height', quantile(old, 0.95), { earth: [1.5, 2.5], unit: ' km', source: 'Appalachians ~2.0 km at most, Urals ~1.9 km', detail: `${old.length} cells` });
+    report('active belts: 95th percentile height', quantile(pooled, 0.95), { earth: [4, 5], unit: ' km', source: 'Tibet and the Altiplano 4–5 km, Alpine peaks ~4.8 km; holds through the cycle wherever a range is active: plateau height is capped by the crust\'s strength (Molnar & Lyon-Caen 1988)' });
+    report('belts quiet over 250 Myr: 95th percentile height', quantile(old, 0.95), { earth: [1.5, 2.5], unit: ' km', source: 'Appalachians ~2.0 km at most, Urals ~1.9 km; holds through the cycle: set by the time since, not the stage', detail: `${old.length} cells` });
     report('cratons: median height', median(craton), { earth: [0.2, 0.6], unit: ' km', source: 'most shields 0.2–0.6 km' });
     report('cratons: 90th percentile height', quantile(craton, 0.9), { earth: [0.2, 1.5], unit: ' km', source: 'Kalahari and southern Africa 1–1.5 km on dynamic topography' });
     const hy = hypsometry(heightKm);
@@ -523,7 +523,7 @@ const T640 = terrain(history.frame);
         let wD = 0, w = 0, km = 0;
         for (const F of coastShapes) { const f = F[k]; if (f && f.D === f.D) { wD += f.D * f.km; w += f.km; km += f.km; } }
         if (!(w > 0)) continue;
-        report(`coastline divider dimension D: ${k}`, wD / w, { earth: EARTH_D[k].earth, digits: 3, source: EARTH_D[k].source, detail: `${Math.round(km).toLocaleString()} km of coast at 640K cells, tectonic surface` });
+        report(`coastline divider dimension D: ${k}`, wD / w, { earth: EARTH_D[k].earth, digits: 3, source: `${EARTH_D[k].source}${k === 'all' ? ' — each kind\'s D holds through the cycle; the mix of kinds in all is today\'s' : '; holds through the cycle'}`, detail: `${Math.round(km).toLocaleString()} km of coast at 640K cells, tectonic surface` });
     }
     check('no height is missing, none absurd', nan === 0 && max <= 9.5, `${nan} NaN; highest ${max.toFixed(2)} km`);
     check('terrain at 640K cells within 3 s', T640.seconds < 3, `${T640.seconds.toFixed(2)} s (records ${T640.ms.records.toFixed(0)} ms, sampling ${T640.ms.sample.toFixed(0)} ms, surface ${T640.ms.surface.toFixed(0)} ms)`);

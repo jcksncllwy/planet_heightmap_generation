@@ -91,7 +91,7 @@ section('the start world breaks up');
     const firsts = runs.map(firstOf);
     check('the old supercontinent rifts', firsts.every(Boolean), perSeed(rr => rifts(rr).length ? `${rifts(rr).length} rifts, the first at ${rifts(rr)[0].time.toFixed(0)} Myr` : 'no rift'));
     // (Pangaea stood ~80–120 Myr between its assembly and its break-up; the rift's ageMyr is the piece's, since its last rift or weld)
-    report('the supercontinent’s tenure before its first rift', firsts.map(x => x?.first.data.ageMyr), { earth: [80, 120], unit: ' Myr', source: 'Pangaea', digits: 0,
+    report('the supercontinent’s tenure before its first rift', firsts.map(x => x?.first.data.ageMyr), { earth: [75, 120], unit: ' Myr', source: 'stage-matched: Pangaea ~80–120 (recalled); Rodinia ~75 — assembled by ~900 Ma, rifting from ~825 Ma (Li et al. 2008, Precambrian Res. 160; abstract checked)', digits: 0,
         detail: `first rift at ${firsts.map(x => x ? `${x.first.time.toFixed(0)} Myr` : '—').join(' · ')} (seeds ${runs.map(rr => rr.seed).join(', ')})` });
     // the pieces' sizes are emergent (the cut is the weakest line under the stress): Laurasia and Gondwana were comparable, but
     // rifts also calve slivers (Madagascar, the Seychelles, Jan Mayen) — no Earth range
@@ -147,7 +147,7 @@ section('the start world breaks up');
         perSeed((rr, i = runs.indexOf(rr)) => `${bounded[i].lasting.length} contacts lasted 20 Myr or more${bounded[i].speeding.length ? `; closing at the end at or above their mean: ${bounded[i].speeding.map(rec => `${rr.world.plates[rec.lower].name} into ${rr.world.plates[rec.upper].name} ${rec.closingCmYr.toFixed(2)} vs mean ${rec.meanRateCmYr.toFixed(2)} cm/yr${rec.sutured ? '' : ' (unwelded)'}`).join(' | ')}` : ', each closing slower at the end than on average'}`));
     check('no gaps in any frame', runs.every(rr => rr.frames.every(f => frameTallies(f).gaps === 0)), 'every frame, every seed');
     check('it runs fast', runs.every(rr => rr.steps < 600), perSeed(rr => `${rr.steps} steps`));
-    report('plates at the end', runs.map(rr => rr.frames.at(-1).plates.filter(p => p.alive && !p.isBackground).length), { earth: [14, 52], source: '14 large plates, 52 in all: Bird 2003 (PB2002)', digits: 0,
+    report('plates at the end', runs.map(rr => rr.frames.at(-1).plates.filter(p => p.alive && !p.isBackground).length), { earth: [10, 52], source: 'through time: 10 at 200 Ma rising to 31 today in the Seton 2012 reconstruction, 18–31 through the Cenozoic (Morra et al. 2013, EPSL 373; checked) — reconstructions miss small plates; 52 resolved today, 14 large (Bird 2003, PB2002)', digits: 0,
         detail: `at most ${perSeed(rr => Math.max(...rr.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length)))} at once (the engine holds ${cfg.reserved.maxPlates})` });
 }
 
