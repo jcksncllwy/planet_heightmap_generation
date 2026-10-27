@@ -155,13 +155,18 @@ export function trackCollisions(world, dt) {
         const underNow = underthrust(world, U, L, cells, rec, km);
 
         // weld?
-        // enough convergence absorbed, or the seam has stalled, or they have simply been locked together long enough
-        const ready = rec.shorteningKm >= config.sutureShorteningKm
-            || (rec.stalledMyr >= config.sutureStallMyr && rec.shorteningKm >= config.sutureStallMinKm)
-            || rec.contactMyr >= config.sutureContactMyr
-            || cells.length * cellAreaKm2 >= config.sutureOverlapKm2;     // so much land stacked on land: they are one already
+        // once the seam has stalled: the two have stopped converging, and only then are they one plate. Nothing else ends a
+        // collision — no set shortening, contact time or overlap: after the cores meet the pair keeps converging for as long
+        // as the forces on the two drive it against the collision's resistance (torque-balance.js), slowing as that grows
+        // (India has run 2400–3200 km into Asia since ~50 Ma and still converges at ~4 cm/yr: Molnar & Stock 2009, van
+        // Hinsbergen et al. 2012) — the overlap meanwhile taken up as belt, thickening and underthrust crust
+        // (…once one lies on the other at least sutureStallMinKm deep: by the shortening this pair has absorbed, or by the
+        // overlap itself — area over front — where the land stacked came otherwise: a third plate driving the two together, a
+        // collision handed on at a weld. Stalled, stacked that deep, they are one; merely touching, they are not)
+        const depthKm = cells.length * cellAreaKm2 / Math.max(rec.frontKm, edgeKm);
+        const ready = rec.stalledMyr >= config.sutureStallMyr && Math.max(rec.shorteningKm, depthKm) >= config.sutureStallMinKm;
         // …and the seam has closed (Phase 11): welded with ocean still open between the two, that ocean would be sealed
-        // inside one plate for good — or they have been locked together so long that it never will
+        // inside one plate for good — or it has stalled so long that it never will
         // (both measures flood the sea: taken at most every sutureCheckMyr while a pair waits — a seam closes over Myr)
         rec.frontMaxKm = Math.max(rec.frontMaxKm ?? 0, rec.frontKm);          // (a collision's front wanders; once long, it is a collision)
         const due = ready && rec.frontMaxKm >= config.sutureMinContactKm && !(time - (rec.checkedAt ?? -Infinity) < config.sutureCheckMyr);
@@ -173,24 +178,25 @@ export function trackCollisions(world, dt) {
         rec.gapKm2 ??= Infinity;
         // (a seam that has stalled long has closed all it will: the pivot has done its work — what is left is a remnant sea)
         const closed = (rec.gapWidestKm ?? Infinity) <= config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
-            || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr, overdue = rec.contactMyr >= config.sutureLockMaxMyr;
+            || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr;
         // (so much land stacked on land that the two are one already: they weld now, whatever sea is left — a remnant — or
         // whatever they ring; waiting would only stack them deeper)
         // (stacked: how deep, on average, the one lies on the other — the overlap left after this step's underthrusting over the
         // front's length; an area alone would call a long front's single contact row "stacked")
         const stacked = (cells.length - underNow) * cellAreaKm2 / Math.max(rec.frontKm, edgeKm) >= config.sutureStackKm;
         // (…but not while the two are still closing a sea the weld would seal: it waits for that sea's floor to go down)
-        // (taken only when it decides the weld — the seam closed, not stacked or overdue — once per sutureCheckMyr: a flood of
+        // (taken only when it decides the weld — the seam closed, not stacked — once per sutureCheckMyr: a flood of
         // the pair's rasters, ~3 % of a history were it taken at every check)
         let sealing = false;
-        if (ready && closed && !stacked && !overdue && rec.frontMaxKm >= config.sutureMinContactKm) {
+        if (ready && closed && !stacked && rec.frontMaxKm >= config.sutureMinContactKm) {
             if (due || !(rec.trapAt >= (rec.checkedAt ?? -Infinity))) {
                 ({ km2: rec.trapKm2, closingCmYr: rec.trapClosingCmYr } = seaWeldWouldSeal(world, U, L));
                 rec.trapAt = time;
             }
             sealing = rec.trapKm2 > 0 && rec.trapClosingCmYr > config.sutureStallCmYr;
         } else rec.trapKm2 = rec.trapClosingCmYr = rec.trapAt = undefined;
-        const wouldWeld = ((ready && ((closed && !sealing) || stacked)) || overdue) && rec.frontMaxKm >= config.sutureMinContactKm;
+        // (stacked this deep, they are one already, converging or not)
+        const wouldWeld = ((ready && closed && !sealing) || stacked) && rec.frontMaxKm >= config.sutureMinContactKm;
         if (due) rec.checkedAt = time;
         // (a weld may close a ring round a sea: the sea is then sealed inside one plate, its floor foundering in time like any
         // margin's — step/subduction-init.js founderWithinPlates)
@@ -204,9 +210,9 @@ export function trackCollisions(world, dt) {
             rec.sutured = true;
             merged = true;
             inheritCollisions(collisions, U.id, L.id);
-            const why = stacked && !closed ? 'stacked' : !closed ? 'overdue' : rec.stalledMyr >= config.sutureStallMyr ? 'stalled' : rec.shorteningKm < config.sutureShorteningKm ? 'contact' : 'shortening';
+            const why = stacked && !(ready && closed) ? 'stacked' : 'stalled';
             world.log(EventKind.SUTURE, `${L.name} sutured to ${U.name} after ${(time - rec.startedAt).toFixed(0)} Myr: ${rec.frontKm.toFixed(0)} km front, ${rec.shorteningKm.toFixed(0)} km of shortening, ` +
-                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${!closed ? ` — locked together ${rec.contactMyr.toFixed(0)} Myr with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : rec.stalledMyr >= config.sutureStallMyr ? ' — the seam had stalled' : rec.shorteningKm < config.sutureShorteningKm ? ` — they had been locked together ${rec.contactMyr.toFixed(0)} Myr` : ''}`,
+                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${why === 'stacked' ? ` — stacked one on the other, with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : ' — the seam had stalled'}`,
                 { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, gapWidestKm: rec.gapWidestKm, sealKm2: rec.trapKm2 ?? 0, sealClosingCmYr: rec.trapClosingCmYr ?? null, why });
         }
     }

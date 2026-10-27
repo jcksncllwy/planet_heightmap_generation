@@ -47,7 +47,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
         title: 'Phase 4 — Plate driving forces',
         summary: 'Nothing is told how to move any more. Every step, each plate’s rotation is solved from a balance of torques: ' +
             'slab pull on a subducting plate (held back by the mantle’s resistance to the sinking slab), slab suction on the plate ' +
-            'that carries a trench, ridge push at young ridges, a viscous lock where land meets land — all against basal drag, ' +
+            'that carries a trench, ridge push at young ridges, a viscous resistance where land meets land (it slows the two, it does not clamp them: colliding plates keep converging) — all against basal drag, ' +
             'which is heavier under continents and cratons. The pre-history ocean never moves. ' + scene.about,
         checklist: [...scene.checklist, ...SHARED_CHECKLIST],
         checkCommand: 'node v2/tools/check-phase4.mjs',

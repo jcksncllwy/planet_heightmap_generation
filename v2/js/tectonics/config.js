@@ -145,19 +145,17 @@ export const TECTONICS = {
     crustMaxThickKm: 40,        // …and less as the crust nears this much thicker than normal, none past it: crust thickened ~twice over
                                 // spreads under its own weight instead of thickening more (gravitational collapse — England &
                                 // Houseman 1989; Tibet and the Altiplano ~70 km, ~35–40 above normal, their plateaus widening, not rising)
-    sutureShorteningKm: 600,    // convergence absorbed across a collision before the plates weld…
-    sutureStallCmYr: 0.4,       // …or the seam has been closing slower than this…
-    sutureStallMyr: 12,         // …for this long
+    sutureStallCmYr: 0.4,       // two colliding plates weld once the seam between them has been closing slower than this…
+    sutureStallMyr: 12,         // …for this long — and only then: no set shortening, contact time or overlap ends a collision.
+                                // After the cores meet, the pair keeps converging as long as the forces on the two drive it
+                                // against the collision's resistance (step/torque-balance.js), slowing as that grows over tens
+                                // of Myr: India has run 2400–3200 km into Asia since ~50 Ma and still converges at ~4 cm/yr
+                                // (Molnar & Stock 2009; van Hinsbergen et al. 2012). (Were: weld after 600 km of shortening, 40
+                                // Myr of contact or 0.4 Mkm² of overlap, and at 120 Myr whatever sea was left — hand-set lock times)
     sutureStallMinKm: 200,      // …and only once at least this much has been absorbed (two plates merely touching do not weld)
-    sutureContactMyr: 40,       // …or the two have simply been in contact this long: continents that grind together for tens of
-                                // Myr weld, however slowly they converge — otherwise a slow collision never welds and, since land
-                                // cannot subduct, the indenter ploughs on into the other plate for ever (developer)
-    sutureOverlapKm2: 4e5,      // …or so much land already overlaps land that the two are locked into one (a big overlap can build
-                                // fast when a third plate drives two plates together)
     overlapCapKm: 250,          // (Phase 11) land stacked deeper than this on average (overlap ÷ front) goes under the upper plate
                                 // while the pair waits for its seam to close…
-    sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, whatever sea is left (the old
-                                // sutureOverlapKm2 over a sutureMinContactKm front)
+    sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, converging or not, whatever sea is left
     sutureMinContactKm: 800,    // a collision front shorter than this is a terrane docking (Phase 5b), not a suture
     sutureGapKm: 1000,          // …and a weld waits for the seam to close (Phase 11): the sea between the two continents'
                                 // coasts, up to this wide…
@@ -165,7 +163,6 @@ export const TECTONICS = {
                                 // them still open, it would be sealed inside one plate for good. (Phase 12, developer on the
                                 // zipper: "the western lobe never meets the coast" — judged by its width on average along the
                                 // front, a wedge of sea at one end let the pair weld before it had closed)
-    sutureLockMaxMyr: 120,      // …unless the two have been locked together this long (a seam that will not close)
     sutureCheckMyr: 4,          // (how often a waiting pair measures its seam and what its land rings)
     sutureStallGiveUpMyr: 24,   // …and a seam that has stalled this long has closed all it will: it welds with what sea is left…
     sutureGapStallMyr: 40,      // …as does one whose gap has not shrunk by a tenth in this long (a zipper closes in fits and starts)

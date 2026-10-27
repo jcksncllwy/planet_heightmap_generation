@@ -5,7 +5,7 @@
 // itself apart, collision slows the plates, slab-attached ocean outruns a continent, more drag or resistance slows, no
 // suction no motion, forces independent of the mesh. Reported: the speeds that come out (settled speeds, cruising and
 // peak speeds, spreading rates, response time) against Earth's (Zahirovic et al. 2015 and others), and the collision's
-// overlap — the current lock rule is pending a model rewrite that lets colliding plates keep converging.
+// overlap, which with forces alone nothing takes up (colliding plates keep converging; the budget in km² is Phase 5's).
 
 import { check, report, section, finish, labMesh, mean, largestJump, relativeCmYr } from './lib/check-kit.mjs';
 import { makeRng } from '../../js/rng.js';
@@ -141,10 +141,10 @@ section('self-driven Wilson cycle');
     report('young ocean: full spreading rate between the halves (40 Myr)', apart, { earth: [2, 4], unit: ' cm/yr', source: 'the young Atlantic opened at ~2–4 cm/yr full rate', detail: `West ${west.toFixed(2)}, East ${east.toFixed(2)} cm/yr` });
     const track = r.track('East'), before = mean(track.slice(frameIndex(contact) - 6, frameIndex(contact))), after = mean(track.slice(frameIndex(contact) + 10, frameIndex(contact) + 25));
     check('collision slows the plate', contact > 0 && after < 0.75 * before, `East meets Far at ${contact} Myr: ${before.toFixed(2)} → ${after.toFixed(2)} cm/yr`);
-    // (pending model rewrite: colliding plates will keep converging, the overlap taken up as belt — then this becomes a mass
-    // budget in km². Until then the lock's overlap is only reported.)
+    // (colliding plates keep converging; with the event rules on, the overlap is taken up as belt and welded, and that budget
+    // in km² is checked in Phase 5. Here, forces alone, nothing takes it up: it is only reported.)
     const late = r.collision.slice(-15), peak = Math.max(...r.collision), mkm2 = cells => cells * mesh.cellAreaKm2 / 1e6;
-    report('collision: land-on-land overlap at its peak', mkm2(peak), { unit: ' Mkm²', detail: `pending model rewrite; ${mkm2(r.collision.at(-1)).toFixed(2)} Mkm² at the end, ${r.scene.maxMyr - contact} Myr after contact; the last 15 frames vary by ${mkm2(Math.max(...late) - Math.min(...late)).toFixed(2)} Mkm²` });
+    report('collision: land-on-land overlap at its peak', mkm2(peak), { unit: ' Mkm²', detail: `forces alone, nothing takes it up (the km² budget: Phase 5); ${mkm2(r.collision.at(-1)).toFixed(2)} Mkm² at the end, ${r.scene.maxMyr - contact} Myr after contact; the last 15 frames vary by ${mkm2(Math.max(...late) - Math.min(...late)).toFixed(2)} Mkm²` });
     // judged at the seam: locked plates may still pivot about it, so their centres can differ in speed
     const last = r.frames.at(-1), oE = last.plates[r.idOf.East].omega, oF = last.plates[r.idOf.Far].omega, d = [oE[0] - oF[0], oE[1] - oF[1], oE[2] - oF[2]];
     let slip = 0, seam = 0;
@@ -167,8 +167,8 @@ section('India');
     report('subducting ocean plate: peak speed', peak, { earth: [5, 10], unit: ' cm/yr', digits: 1, source: 'typical slab-attached plates (Zahirovic et al. 2015); India\'s ~18 cm/yr was exceptional (Kumar et al. 2007)' });
     const after = mean(india.slice(frameIndex(contact) + 8));
     check('it slows sharply on contact', contact > 0 && after < 0.65 * peak, `contact at ${contact} Myr: ${peak.toFixed(1)} → ${after.toFixed(1)} cm/yr (the real India: 20 → 6)`);
-    // (pending model rewrite: the overlap must be turned into belt within a set time, as a budget in km²)
-    report('India: land-on-land overlap at its peak', Math.max(...r.collision) * mesh.cellAreaKm2 / 1e6, { unit: ' Mkm²', detail: 'pending model rewrite' });
+    // (the overlap turned into belt, as a budget in km²: Phase 5, with the event rules on)
+    report('India: land-on-land overlap at its peak', Math.max(...r.collision) * mesh.cellAreaKm2 / 1e6, { unit: ' Mkm²', detail: 'forces alone, nothing takes it up (the km² budget: Phase 5)' });
     const stiff = run('india', { slabResistance: 2 * r.world.config.slabResistance }), stiffPeak = Math.max(...stiff.track('India'));
     check('its speed is set by slab pull against the mantle’s resistance', stiffPeak < 0.75 * peak, `doubling the slab resistance: peak ${peak.toFixed(1)} → ${stiffPeak.toFixed(1)} cm/yr (×${(stiffPeak / peak).toFixed(2)}; ×0.5 if the resistance were all of it, v ∝ F/η)`);
 }

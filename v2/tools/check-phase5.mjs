@@ -1,8 +1,9 @@
 // Headless acceptance checks for Phase 5a (collision events: orogeny belts, shortening, suturing with redraw).
 // Hard checks: the event order, the weld and the redraw's bookkeeping (shortening booked = the landmasses' real closing,
-// land and cratons kept, one body), the overlap staying a seam, a jammed seam slowing before it welds, the belts and
+// land and cratons kept, one body), the overlap staying a seam, the pair converging on after contact and slowing over
+// tens of Myr, the km² it converged taken up as overlap and absorbed at the weld, a jammed seam slowing before it welds, the belts and
 // thickening being made at all (under the gravitational ceiling), the Andean belt growing with time and with the upper
-// plate's trench-ward advance, the ablation. Reported against Earth: indentation (seeds and scenes), belt widths, peak
+// plate's trench-ward advance, the ablation. Reported against Earth: India's shortening after contact, indentation (seeds and scenes), belt widths, peak
 // thickening, the Andean belt's width; and, pending the belt-strength model rewrite, how far belts reach into a craton.
 // Usage: node v2/tools/check-phase5.mjs
 
@@ -19,6 +20,8 @@ import { NO_WINGS } from '../js/app/phases/phase5-collisions.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];       // (the Earth reports also look at a few other seeds)
+// (India meets Asia at ~50 Myr and keeps converging until the seam stalls, ~55 Myr later: the scene runs on past that)
+const INDIA_MYR = 130;
 const mesh = labMesh(), { xyz, numCells } = mesh;
 
 function run(id, untilMyr, overrides = {}, events = true, seed = SEED) {
@@ -27,14 +30,14 @@ function run(id, untilMyr, overrides = {}, events = true, seed = SEED) {
     // what each collision record had booked at each snapshot (its shortening so far, and its closing rate across the seam)
     const booked = [];
     const { frames, steps } = simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events,
-        stopAt: w => { booked.push([w.time, new Map([...w.collisions.values()].map(c => [`${c.upper}:${c.lower}`, { km: c.shorteningKm, closing: c.closingCmYr }]))]); return false; } });
+        stopAt: w => { booked.push([w.time, new Map([...w.collisions.values()].map(c => [`${c.upper}:${c.lower}`, { km: c.shorteningKm, closing: c.closingCmYr, frontKm: c.frontKm }]))]); return false; } });
     const at = t => frames.find(f => Math.abs(f.time - t) < 1e-6);
     const bookedAt = (t, rec) => booked.find(([bt]) => Math.abs(bt - t) < 1e-6)?.[1].get(`${rec.upper}:${rec.lower}`);
     return { world, frames, steps, at, bookedAt, events: world.events, sutures: world.events.filter(e => e.kind === EventKind.SUTURE), collision: frames.map(f => frameTallies(f).collision) };
 }
 
 section('India meets Asia');
-const india = run('india', 100), cfg = india.world.config, indents = [];      // (how far each weld's indenter pushed into the upper plate)
+const india = run('india', INDIA_MYR), cfg = india.world.config, indents = [];      // (how far each weld's indenter pushed into the upper plate)
 india: {
     const contact = india.events.find(e => e.kind === EventKind.COLLISION), suture = india.sutures[0];
     check('collision and suture events are logged in order', contact && suture && suture.time > contact.time,
@@ -64,6 +67,24 @@ india: {
     check('the recorded shortening matches how far the two landmasses really closed', Math.abs(approached - bookedKm) < 0.3 * bookedKm + mesh.edgeKm,
         `land centroids closed ${approached.toFixed(0)} km between ${atContact.time} and ${before.time} Myr; the record booked ${bookedKm.toFixed(0)} km of shortening over those frames (${rec.shorteningKm.toFixed(0)} km by the weld)`);
 
+    // after the cores meet, the two keep converging — slowing as the collision's resistance grows, not locked at contact
+    // (India–Asia: 2400–3200 km since ~50 Ma, still ~4 cm/yr; Molnar & Stock 2009, van Hinsbergen et al. 2012) — and every
+    // km² they converge is taken up: with the event rules alone (no underthrusting yet, Phase 7c) as overlap, which the
+    // weld then absorbs into the belt. The budget, in km²: the convergence swept across the front (shortening × front,
+    // step by step) against the overlap the weld found
+    const series = india.frames.filter(f => f.time >= atContact.time && f.time < suture.time).map(f => [f.time, india.bookedAt(f.time, rec)]).filter(([, b]) => b);
+    let sweptKm2 = 0;
+    for (let i = 1; i < series.length; i++) sweptKm2 += (series[i][1].km - series[i - 1][1].km) * (series[i][1].frontKm + series[i - 1][1].frontKm) / 2;
+    const overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2, closingSeries = series.map(([, b]) => b.closing);
+    const peakClosing = Math.max(...closingSeries), converging = series.filter(([, b]) => b.closing > cfg.sutureStallCmYr).map(([t]) => t);
+    const convergingMyr = converging.length ? converging.at(-1) - atContact.time : 0;
+    check('after the cores meet the two keep converging, slowing over tens of Myr — not locked at contact', convergingMyr >= 20 && closingSeries.at(-1) < 0.25 * peakClosing,
+        `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${closingSeries.at(-1).toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr`);
+    check('…and what they converge is taken up: the area swept across the front matches the overlap the weld absorbs (km²)', Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
+        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (shortening × front, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² of overlap before the weld`);
+    report('India: shortening across the seam after contact', rec.shorteningKm, { earth: [2400, 3200], unit: ' km', digits: 0, source: 'India into Asia since ~50 Ma (van Hinsbergen et al. 2012; Molnar & Stock 2009)',
+        detail: `until the seam stalled and welded, ${(suture.time - contact.time).toFixed(0)} Myr after contact; India here peaks at ${Math.max(...india.frames.map(f => f.plates.find(p => p.name === 'India')?.speedCmYr ?? 0)).toFixed(1)} cm/yr (the real one ~15–18)` });
+
     // the redraw. Land as seen on the map (the overlap counted once) barely changes: the overlap is absorbed and crust
     // squeezed sideways bulges the coast. What the event reports is the two plates' land summed, minus the merged land.
     const landBefore = cellsWhere(numCells, w => isLand(before, w)).length, landAfter = cellsWhere(numCells, w => isLand(after, w)).length;
@@ -76,7 +97,7 @@ india: {
     check('cratons survive the redraw as rigid blocks', Math.abs(cratonCells(after) - cratonCells(atContact)) <= 0.05 * cratonCells(atContact),      // (the world view samples a rotated raster: counts wobble ±2 % frame to frame)
         `${cratonCells(atContact)} craton cells at contact, ${cratonCells(after)} after the suture`);
     // how far the indenter pushed into the upper plate: across seeds, and in the Wilson cycle's collision below
-    indents.push(suture.data.maxIndentKm, ...MORE_SEEDS.map(seed => run('india', 100, {}, true, seed).sutures[0]?.data.maxIndentKm));
+    indents.push(suture.data.maxIndentKm, ...MORE_SEEDS.map(seed => run('india', INDIA_MYR, {}, true, seed).sutures[0]?.data.maxIndentKm));
     // the merged land is one body with no holes that are not sea — on the merged plate's own raster, the crust itself (the
     // world view samples a moving plate's raster, and where it skips the cell that joins a narrow neck of coast to the
     // rest, the neck's tip shows as a one-cell island that comes and goes: Phase 11, at 56, 60, 68 and 100 Myr)
@@ -124,15 +145,16 @@ india: {
     check('thickening spreads across the belt as a plateau, not a spike at the front', plateau / inBelt > 0.3, `${(100 * plateau / inBelt).toFixed(0)} % of collision-belt cells are at least 40 % as thick as the thickest`);
     check('no gaps in any frame', india.frames.every(f => frameTallies(f).gaps === 0), 'checked every frame');
 
-    const off = run('india', 100, {}, false);
-    check('with the event rules off, the Phase 4 behaviour is unchanged (overlap persists, no suture)', off.sutures.length === 0 && off.collision.at(-1) > 0, `overlap at 100 Myr: ${off.collision.at(-1)} cells, ${off.events.length} events`);
+    const off = run('india', INDIA_MYR, {}, false);
+    check('with the event rules off, the Phase 4 behaviour is unchanged (overlap persists, no suture)', off.sutures.length === 0 && off.collision.at(-1) > 0, `overlap at ${INDIA_MYR} Myr: ${off.collision.at(-1)} cells, ${off.events.length} events`);
 }
 
 section('self-driven Wilson cycle');
 {
-    const r = run('wilson', 160), suture = r.sutures[0];
+    // (East keeps closing on Far at ~0.5 cm/yr for ~100 Myr, pressed by its own trench, before the seam stalls)
+    const r = run('wilson', 200), suture = r.sutures[0];
     // buoyant continent does not go down, so once the two jam the seam its convergence falls away (Cloos 1993) — and then
-    // the seam welds. (Which of the weld's rules fired — shortening, stall, time — is the model's closure, not tested.)
+    // the seam welds — once it has stalled: nothing else ends a collision.
     const contact = suture && r.events.find(e => e.kind === EventKind.COLLISION && e.data.upper === suture.data.upper && e.data.lower === suture.data.lower);
     const closing = contact ? r.frames.filter(f => f.time >= contact.time && f.time < suture.time).map(f => r.bookedAt(f.time, suture.data)?.closing).filter(Number.isFinite) : [];
     check('a seam jammed by buoyant continent stalls — its convergence falls away — and then welds', closing.length > 2 && Math.min(...closing) < 0.5 * closing[0],

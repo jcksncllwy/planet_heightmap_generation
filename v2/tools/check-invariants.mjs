@@ -20,7 +20,7 @@ const MAX_LAND_DROP_PER_STEP = 0.01;     // land is never deleted: a step may lo
 const MAX_TERRANE_IDS_PER_MYR = 3.3;     // id churn, scaled to the history's length (was 2000 ids over 600 Myr)
 const CRATONS_SURVIVE_MYR = 600;         // cratons outlast this on Earth (~35 from ≥2.5 Ga, Bleeker 2003); a longer history may lose
                                          // one (the North China Craton was partly destroyed), so beyond it their survival is reported
-const BIG_OVERLAP_KM2 = 1e5;       // two plates' land may overlap this much only as long as a collision may wait (Phase 11: config.sutureLockMaxMyr)
+const BIG_OVERLAP_KM2 = 1e5;       // two plates' land may overlap this much only while the two still converge (a stalled seam welds)
 const mesh = labMesh();
 const LEDGER_CELLS = 20000, LEDGER_MYR = 300, LEDGER_SEED = 12345;
 const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'arcMaturation', 'tidy'];   // the only stages whose process may make or lose land
@@ -48,7 +48,8 @@ for (const seed of SEEDS) {
     for (const p of world.plates) { const { mask, terrane } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && terrane[c] > firstTerrane) firstTerrane = terrane[c]; }
     let prevLand = landOf(world), worstDrop = 0, worstAt = 0, deadWithCrust = [], maxTerrane = 0, lostCratonAt = null;
     const overlapSince = new Map();          // plate pair → since when its land has overlapped by more than BIG_OVERLAP_KM2
-    let biggestOverlap = { cells: 0 }, longestOverlap = { myr: 0 };
+    let biggestOverlap = { cells: 0 }, longestOverlap = { myr: 0 }, longestStall = { myr: 0 };
+    const waitedAt = new Map();              // plate pair → when its stalled seam last waited for the sea between to close
     simulate(world, {
         untilMyr: HISTORY_MYR, snapshotEveryMyr: 50,
         drive: w => {
@@ -75,7 +76,17 @@ for (const seed of SEEDS) {
                 // (a plate rifted off this very step, from a pair in collision, carries part of the overlap before its own record opens)
                 if (!rec && k.split(':').some(i => w.plates[+i].born >= w.time - w.lastDt - 1e-9)) continue;
                 if (depth > (biggestOverlap.depth ?? 0)) biggestOverlap = { cells: n, depth, at: w.time, pair: k };
-                if (n * mesh.cellAreaKm2 >= BIG_OVERLAP_KM2) { if (!overlapSince.has(k)) overlapSince.set(k, w.time); }
+                if (n * mesh.cellAreaKm2 >= BIG_OVERLAP_KM2) {
+                    if (!overlapSince.has(k)) overlapSince.set(k, w.time);
+                    // (how long its seam has been stalled — a collision waiting, besides, for a sea it would seal to close is
+                    // still converging across that sea: Phase 11's wait, not a stall)
+                    const waits = rec && rec.trapKm2 > 0 && rec.trapClosingCmYr > w.config.sutureStallCmYr;
+                    // (nor is a pair parting: its overlap is coming undone)
+                    if (waits || (rec && rec.closingCmYr < -w.config.sutureStallCmYr)) waitedAt.set(k, w.time);
+                    const stall = rec ? Math.min(rec.stalledMyr, w.time - (waitedAt.get(k) ?? -Infinity)) : 0;
+                    // (a seam overlap shallower than sutureStallMinKm — the two touching along a long front — need not weld)
+                    if (rec && !rec.sutured && !waits && depth >= w.config.sutureStallMinKm && stall > longestStall.myr) longestStall = { myr: stall, pair: k, at: w.time };
+                }
             }
             for (const [k, since] of overlapSince) {
                 if (!pairs.has(k) || pairs.get(k) * mesh.cellAreaKm2 < BIG_OVERLAP_KM2) { overlapSince.delete(k); continue; }
@@ -97,8 +108,13 @@ for (const seed of SEEDS) {
         `${maxTerrane - firstTerrane} ids handed out over ${HISTORY_MYR} Myr (${firstTerrane} at the start): ${idsPerMyr.toFixed(2)} a Myr (limit ${MAX_TERRANE_IDS_PER_MYR})`);
     check('no two plates stack land on land deeper than the weld threshold', (biggestOverlap.depth ?? 0) <= 1.5 * world.config.sutureStackKm,
         `deepest overlap ${(biggestOverlap.depth ?? 0).toFixed(0)} km over its front (${((biggestOverlap.cells ?? 0) * mesh.cellAreaKm2 / 1e6).toFixed(2)} Mkm², ${biggestOverlap.pair ?? '—'} at ${biggestOverlap.at?.toFixed(0) ?? '—'} Myr; weld at ${world.config.sutureStackKm} km)`);
-    // (Phase 11, re-baselined: a collision now waits for its seam to close, so an overlap may last as long as a pair may wait)
-    check('…and no big overlap lasts longer than a collision may wait', longestOverlap.myr <= world.config.sutureLockMaxMyr, `longest overlap over ${BIG_OVERLAP_KM2 / 1e3}k km²: ${longestOverlap.myr.toFixed(0)} Myr${longestOverlap.pair ? ` (${longestOverlap.pair} from ${longestOverlap.since.toFixed(0)} Myr)` : ''}`);
+    // (a collision lasts as long as its plates converge — India–Asia has for ~50 Myr — so how long an overlap lasts is
+    // reported; what must hold is that a stalled one welds — unless a sea the weld would seal is still closing — within the
+    // weld rule's own wait: stalled sutureStallGiveUpMyr, measured at most sutureCheckMyr apart, a step's slack)
+    check('…and a big overlap lasts only while the two still converge: a stalled seam welds', longestStall.myr <= world.config.sutureStallGiveUpMyr + world.config.sutureCheckMyr + 2,
+        `longest stall under an overlap over ${BIG_OVERLAP_KM2 / 1e3}k km²: ${longestStall.myr.toFixed(0)} Myr${longestStall.pair ? ` (${longestStall.pair} at ${longestStall.at.toFixed(0)} Myr)` : ''}; limit ${world.config.sutureStallGiveUpMyr + world.config.sutureCheckMyr + 2} Myr`);
+    report('the longest a big overlap lasted', longestOverlap.myr, { unit: ' Myr', digits: 0, source: 'no Earth figure: India–Asia, in contact since ~50 Ma, still converges (Molnar & Stock 2009)',
+        detail: `over ${BIG_OVERLAP_KM2 / 1e3}k km²${longestOverlap.pair ? `: ${longestOverlap.pair} from ${longestOverlap.since.toFixed(0)} Myr` : ''}` });
     if (HISTORY_MYR <= CRATONS_SURVIVE_MYR) check('every craton survives the whole history, with its letter', cratonIds.length > 0 && lostCratonAt === null, lostCratonAt ?? `${cratonIds.length} cratons, all present at ${world.time.toFixed(0)} Myr`);
     else report('cratons lost over the history', lostCratonAt ? lostCratonAt.split(' at ')[0].split(', ').length : 0, { earth: [0, 1], digits: 0, source: 'Archean cratons are durable, ~35 survive from ≥2.5 Ga; partial decratonization is rare (Bleeker 2003, Lithos 71; North China Craton)', detail: lostCratonAt ?? `${cratonIds.length} cratons, all present` });
 }

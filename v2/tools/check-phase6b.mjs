@@ -79,9 +79,14 @@ section('an old passive margin founders');
     check('and the two continents finally collide', !!suture, suture ? suture.text.slice(0, 110) : 'no suture within the run');
     // the plates tile the planet: neither may balloon (the symptom of a plate with no real neighbour)
     const apart = r.frames.filter(f => separationKm(f, ids) !== null);        // only while they are still two plates (the survivor of a suture holds everything)
+    // (as a rate: how long they stay two plates is the collision's outcome — a pair welds once its seam stalls — so a total
+    // over that window would grade the collision's length, not the plates. 30 % per 100 Myr: the bound this check always set,
+    // over the ~100 Myr the two once stayed apart)
+    const apartMyr = Math.max(...apart.map(f => f.time)) || 1;
     const grew = ids.map(id => Math.max(...apart.map(f => plateCells(f, id))) / plateCells(r.frames[0], id));
-    check('neither plate balloons: they only trade crust across their shared margin', grew.every(g => g < 1.3),
-        `largest plate-area growth: ${grew.map(g => (100 * (g - 1)).toFixed(0) + ' %').join(' / ')}`);
+    const perCentury = grew.map(g => 100 * (g - 1) * 100 / apartMyr);
+    check('neither plate balloons: they only trade crust across their shared margin', perCentury.every(g => g < 30),
+        `largest plate-area growth: ${grew.map(g => (100 * (g - 1)).toFixed(0) + ' %').join(' / ')} over the ${apartMyr} Myr they stay two plates — ${perCentury.map(g => g.toFixed(0) + ' %').join(' / ')} per 100 Myr`);
     check('no gaps; continental crust is neither created nor destroyed', r.frames.every(f => frameTallies(f).gaps === 0) && Math.abs(coreCount(r.frames.at(-1)) - coreCount(r.frames[0])) < 0.1 * coreCount(r.frames[0]),
         `continent+craton ${coreCount(r.frames[0])} \u2192 ${coreCount(r.frames.at(-1))} cells (with island arcs: ${landCount(r.frames[0])} \u2192 ${landCount(r.frames.at(-1))}); no gaps in any frame`);
 }

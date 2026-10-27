@@ -34,7 +34,7 @@ export const BUDGET_SCENES = [
         },
     },
     {
-        id: 'india', label: 'A continent slides under another', maxMyr: 90, view: [5, 72],
+        id: 'india', label: 'A continent slides under another', maxMyr: 130, view: [5, 72],
         about: '“India” reaches “Asia”. Continental crust is too buoyant to subduct as a slab, but the leading edge of the lower continent slides UNDER the upper one: as the two converge, India’s land in the overlap is consumed and Asia’s crust above it thickens (Thickness layer) — the area becomes a plateau, as Tibet swallowed ~2000 km of Greater India. The continents weld when the collision is spent.',
         build(simMesh, seed) {
             const world = scene(FORCE_SCENES, 'india').build(simMesh, seed);

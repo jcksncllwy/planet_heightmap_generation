@@ -18,8 +18,8 @@ const REDRAW_SHOWN_MYR = 6;             // the before/after overlay stays up thi
 /** These scenes isolate collisions: trench wings and island arcs (Phase 5b) and rifting (Phase 6) stay off. */
 export const NO_WINGS = onlyMechanisms();          // collisions alone: no wings, no arcs, and nothing of Phases 6–7
 const TUNABLES = [
-    { id: 'sutureShorteningKm', label: 'Shortening before plates weld', min: 200, max: 1500, step: 50, unit: ' km' },
-    { id: 'sutureStallMyr', label: '…or the seam stalled for', min: 4, max: 40, step: 1, unit: ' Myr' },
+    { id: 'sutureStallCmYr', label: 'Plates weld once their seam closes slower than', min: 0.1, max: 3, step: 0.1, unit: ' cm/yr' },
+    { id: 'sutureStallMyr', label: '…for', min: 4, max: 40, step: 1, unit: ' Myr' },
     { id: 'escapeShare', label: 'Escape (sideways share of the indent at the ends)', min: 0, max: 1, step: 0.05 },
     { id: 'indentGain', label: 'Push ahead of the indenter (× overlap depth)', min: 0.5, max: 3, step: 0.1 },
     { id: 'indentFalloffKm', label: 'Indent reaches this far behind the front', min: 200, max: 3000, step: 50, unit: ' km' },
@@ -47,21 +47,22 @@ const SCENES = [
         ],
     },
     {
-        id: 'india', base: 'india', label: 'India meets Asia', maxMyr: 100,
+        id: 'india', base: 'india', label: 'India meets Asia', maxMyr: 130,
         about: '“India” arrives at subducting-ocean speed and hits “Asia”. Watch the Orogeny layer: an Andean belt first grows along Asia’s active coast; on contact a collision belt spreads inland, then the two weld and the map is redrawn.',
         checklist: [
             'Before contact, an Andean belt (orange) sits along Asia’s trench-bearing coast — on land, inland of the coast, nowhere else.',
             'On contact the collision belt (purple, black while active) spreads from the front into Asia, wider the more shortening it absorbs and the faster India comes in, and stops at the craton — it wraps it, never enters it. A narrower foreland belt appears on India.',
+            'India does not stop at contact: it keeps converging, ever slower as the overlap builds (~9 cm/yr at contact, ~2 cm/yr 10 Myr later, below 0.4 cm/yr after ~40 Myr), ~1000 km of shortening in all. Only once the seam has stalled — about 60 Myr after contact — do the two weld (the real India has gone 2400–3200 km into Asia since ~50 Ma, and still converges).',
             'At the suture the outlines are redrawn: Asia’s coast is indented around India’s nose, the flanks are squeezed outward, India sits in the notch, and narrow sea caught between the two closes (a large enclosed sea would survive). The before/after overlay (red = land gone, green = land gained) shows the change for a few Myr.',
             'After the suture there is one plate, no magenta overlap, a suture belt (Weakness layer) along the closed seam, and the merged plate moves as one.',
-            'The event log below reads like WBP’s: “India meets Asia”, then “sutured … km front, … km of shortening”.',
+            'The event log below reads like WBP’s: “India meets Asia”, then “sutured … km front, … km of shortening … — the seam had stalled”.',
         ],
     },
     {
-        id: 'wilson', base: 'wilson', label: 'Self-driven Wilson cycle', maxMyr: 160,
+        id: 'wilson', base: 'wilson', label: 'Self-driven Wilson cycle', maxMyr: 200,
         about: 'The self-driven cycle from Phase 4. East reaches Far, the lock slows the seam until it stalls, and the stalled seam welds: the two continents become one plate with a belt between them, then the new plate goes on under its own forces.',
         checklist: [
-            'East slows on contact; the seam stalls; after a few tens of Myr the stalled seam welds (event log says so) instead of overlapping forever.',
+            'East slows on contact but keeps closing on Far, pressed by its own trench, for ~100 Myr at ~0.5 cm/yr; only once the seam stalls does it weld (event log says so), instead of overlapping forever.',
             'The merged East+Far plate is one body with a collision belt along the old seam; its outline was redrawn where the two met.',
             'West is untouched: it carries only its Andean belt.',
         ],
@@ -94,8 +95,8 @@ export function createPhase(simMesh, seed, overrides = {}) {
     return {
         title: 'Phase 5a — Collision events',
         summary: 'The force scenes again, with the event rules on. Convergence at every trench and collision front is recorded as a mountain belt that reaches inland ' +
-            '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates lock across the front and shorten — but a contact is a pivot, not a clamp: ' +
-            'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Once the seam has closed, or stopped closing — and no sea it would seal between the coasts is still closing — they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
+            '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates resist each other across the front and shorten — they keep converging, slower as the overlap builds, and a contact is a pivot, not a clamp: ' +
+            'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Only once the seam has stalled — no set shortening or time ends a collision — and the sea between has closed or stopped closing, and no sea it would seal between the coasts is still closing, do they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
             'squeezed back and sideways, cratons moved as rigid blocks. ' + scene.about,
         checklist: [...scene.checklist,
             'The crust rules still hold: no gaps, and land is only ever lost where a collision absorbed it (the event log gives the count).'],

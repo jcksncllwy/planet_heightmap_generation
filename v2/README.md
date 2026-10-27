@@ -880,7 +880,7 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   saw a seam that had stopped shortening at the contact, not the sea beside it. The test lays the two rasters together,
   finds the sea that is open in each plate's own raster but walled in by the pair, and takes the fastest rate at which
   the lower plate's coast round it closes on the upper's. While that is above the stall rate the weld waits (`stacked`
-  and `overdue` still weld), and the trapped floor keeps going down, as remnant ocean basins close by continued
+  still welds; so did `overdue`, removed in round 2 below), and the trapped floor keeps going down, as remnant ocean basins close by continued
   convergence (Ingersoll, Dickinson & Graham 2003, GSA Spec. Pap. 372; the Bay of Bengal and Andaman Sea today).
   The SUTURE event gives the sea it sealed (`sealKm2`) and how fast it was closing.
 - **Why not a remnant-ocean plate.** Carving the trapped floor off as its own plate inside the welded one does not
@@ -910,9 +910,56 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
 - Time, on the lab's 600 Myr history (40K, seeds 12345 / 777 / 4242 / 626225 twice each and 101 / 202 / 303 / 404 once,
   each run beside main 5bab988 under the same load): 987.9 s against 963.8 s, +2.5 % wall; main with an unrelated
   nudge (plumeSpacingKm 1500 → 1560) ran 953.9 s, −1.0 %. The sea test floods the pair's rasters, so it is taken only
-  when it decides a weld (the seam closed, not stacked or overdue), once per `sutureCheckMyr`: taken at every check it
+  when it decides a weld (the seam closed, not stacked), once per `sutureCheckMyr`: taken at every check it
   cost ~3 % (not exact: the test then reads the sea a step or two later). The rest is the histories differing (seed
   12345 rifts a larger plate: +17 %; the other seeds −6 % to +9 %).
+
+## Collisions run on until the seam stalls (2026-10-27, branch welds, round 2)
+
+- **No set time or shortening ends a collision** (`collision.js`, `config.js`). Two colliding plates weld only once the
+  seam between them has been closing slower than `sutureStallCmYr` (0.4 cm/yr) for `sutureStallMyr` (12 Myr), with at
+  least `sutureStallMinKm` (200 km) taken up. The 200 km counts either the shortening this pair absorbed or the overlap's
+  depth (area over front), whichever is more: land stacked by a third plate or handed on at a weld counts too. Removed:
+  welds after 600 km of shortening (`sutureShorteningKm`), after 40 Myr of contact (`sutureContactMyr`), at 0.4 Mkm² of
+  overlap (`sutureOverlapKm2`), and the `overdue` weld after 120 Myr locked (`sutureLockMaxMyr`). Those were hand-set
+  lock times. After the cores meet, the torque balance alone sets how fast the pair slows: the forces driving the two
+  against the collision's viscous resistance. India has run 2400–3200 km into Asia since ~50 Ma and still converges
+  (Molnar & Stock 2009; van Hinsbergen et al. 2012). Kept: the stack weld (`sutureStackKm`, 500 km deep), the stall
+  give-up (`sutureStallGiveUpMyr`) and the gap stall (`sutureGapStallMyr`).
+- **India** (Phase 5): contact at 50 Myr. Closing slows from 8.7 to ~2 cm/yr within ~12 Myr, then falls below the
+  stall rate. The weld comes ~60 Myr after contact, after 1,050 km of shortening (main welded it at the 600 km lock). The upper plate's indentation at the weld is 946 / 736 / 631 km in Phase 5's scenes, inside Earth's 600–1,100 km (was 736 / 420 / 736). The
+  area swept across the front matches the overlap the weld absorbs (1.46 against 1.22 Mkm²). Shortening stays short
+  of Earth's 2,400–3,200 km because Phase 5's scenes leave the underthrust off (`onlyMechanisms`): the overlap stacks,
+  and the stack's resistance stops the pair. A weaker `collisionResistance` (25 or 50 instead of 100) makes it weld
+  stacked at ~1,200 km, so the lock's strength is not what limits it. With the underthrust on (Phase 7c's India), the
+  crust reaches the 40 km thickening cap.
+- **Phase 11's zipper now passes.** Main's failure (607 km of sea left at the weld) came from the 24 Myr stall
+  give-up, not from `overdue`. With stall-only welds the zipper closes before it welds, so `overdue` is not needed and
+  is gone.
+- **Tried and rejected:** a plateau push (thickened crust's gravitational potential energy pushing the pair apart) stopped the zipper's
+  turn and left 607 km of sea, on every nudge. Dropping the stall give-up welded the zipper with 971 km of sea, and
+  India never welded. A gap-closing-rate rule was fooled by `openSeaBetween`'s 1,000 km window: cells on the opening
+  side leave the window, so a constant gap read as ~1 cm/yr of closing.
+- **Checks.** Phase 5 adds two checks: the pair keeps converging for ≥ 20 Myr after contact, slowing to under a
+  quarter of its peak; and the km² swept across the front matches the overlap. It also reports India's shortening
+  against Earth. India's scenes run 130 Myr and Wilson's 200 Myr. The invariants now check that a big overlap lasts only
+  while the two still converge: a stalled seam welds within `sutureStallGiveUpMyr` + `sutureCheckMyr` + 2 Myr. Pairs
+  that are parting, pairs waiting on a closing sea, and overlaps shallower than `sutureStallMinKm` are left out. The
+  check that capped how long a big overlap lasts is now a report (121–231 Myr). Phase 6b's "neither plate balloons"
+  now bounds the growth rate (30 % per 100 Myr) rather than the total. On main and here, the two plates grow
+  identically frame by frame (Westland ~0.25 %/Myr, taking the passive ocean); they just stay two plates 20 Myr longer
+  (weld at 128 Myr, not 108), so a total over that window measured the collision's length.
+- Numbers (main fe78ce2 → branch). Largest plate's share, Phase 13, three seeds: 76 / 68 / 74 % → 44 / 59 / 48 %.
+  600 Myr histories over 4 seeds: peak share 44 / 46 / 51 / 59 → 31 / 50 / 38 / 37 %; mean 24.5 → 21.6 %. All welds now
+  come on a stall, 82–117 Myr after contact on average (was 41–74). Peak thickening in the histories is unchanged
+  (p95 ~20 km, max 40 km). Active belts' 95th-percentile height: 3.83 → 3.62 km (8a), and after carving 3.69 → 3.47 km
+  (8b); Earth 4–5 km. That is no measurable change: an unrelated nudge (plumeSpacingKm 1500 → 1560) gives 3.92 / 3.75 km
+  on main and 4.29 / 4.14 km here. Thickening keeps its ratio, ~0.014 km of crust per km of shortening, about Tibet's.
+  The belts fall short because the shortening is short (above) and the cap holds (`crustMaxThickKm`).
+  `beltHotStrength` and the volume it conserves are untouched (`orogeny.js` unchanged).
+- Time, on the lab's 600 Myr history (40K; seeds 12345 / 777 / 4242 / 626225 twice each, 101 / 202 / 303 / 404 once;
+  each run beside main fe78ce2 under the same load): 1106.1 s against 1113.4 s, −0.6 % wall. Collisions that run on
+  cost nothing measurable: the seam is measured every `sutureCheckMyr` either way.
 
 ## Conventions
 

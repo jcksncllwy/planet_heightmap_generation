@@ -132,7 +132,7 @@ section('the start world breaks up');
     check('the same seed replays the same history', replay.events.length === r.events.length && replay.events.every((e, i) => e.text === r.events[i].text) && replay.frames.at(-1).owner.every((o, w) => o === r.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
     // Land cannot subduct far (Cloos 1993), so a collision stays bounded — the overlap stays a seam a few cells deep (its
     // area over its front) — and the convergence across a lasting contact falls away. (India has pressed on Asia for ~50 Myr
-    // without welding: when a pair welds is the model's closure — sutureLockMaxMyr — and is not tested.) How far each weld's
+    // without welding: a pair welds once its seam stalls, so when is the forces' outcome and is not tested.) How far each weld's
     // indenter pushed is reported against Earth.
     const bounded = runs.map(rr => {
         const deepest = Math.max(0, ...rr.stacked.values()), sutures = rr.events.filter(e => e.kind === EventKind.SUTURE);
