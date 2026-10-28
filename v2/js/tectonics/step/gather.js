@@ -48,7 +48,7 @@ export function forEachClaim(world, onClaim) {
                     const px = m[0] * x + m[3] * y + m[6] * z, py = m[1] * x + m[4] * y + m[7] * z, pz = m[2] * x + m[5] * y + m[8] * z;
                     const guess = cell === -1 ? index.start(px, py, pz) : -2 - cell;
                     near ??= nearEdge(plate, mesh);
-                    if (!mask[guess] && near.marks[guess] !== near.stamp) { map[w] = -2 - guess; continue; }
+                    if (!mask[guess] && !near.count[guess]) { map[w] = -2 - guess; continue; }
                     cell = map[w] = index.walk(guess, px, py, pz);
                 }
                 if (mask[cell]) onClaim(w, plate, cell);
@@ -85,33 +85,52 @@ function claimMap(plate, numCells) {
 }
 
 /**
- * Marks (`marks[cell] === stamp`) on every raster cell of `plate` within RING_COUNT rings of the edge of its crust — a
- * crust cell with a non-crust neighbour. With the crust itself, that covers every cell the nearest-cell search can end
- * on from a first guess that is not marked. Rebuilt per gather (crust changes every step); only edge cells are expanded.
+ * Which raster cells of `plate` lie within RING_COUNT rings of the edge of its crust — a crust cell with a non-crust
+ * neighbour: `count[cell] > 0`, the number of edge cells within those rings of it. With the crust itself, that covers
+ * every cell the nearest-cell search can end on from a first guess that is not counted.
+ * Kept up to date rather than rebuilt (the mask in the raster's own frame: the plate's turning does not touch it): each
+ * call finds the cells whose mask changed since the last — a few hundred of a raster's cells, from step to step — and
+ * recounts the edge cells only around them. The same cells as counting afresh.
  */
 function nearEdge(plate, mesh) {
     const { numCells, adjOffset, adjList } = mesh, mask = plate.crust.mask, { start, cells, stride } = ringsOf(mesh);
     let near = plate._nearEdge;
-    if (!near || near.marks.length !== numCells) near = plate._nearEdge = { marks: new Uint32Array(numCells), stamp: 0 };
-    if (++near.stamp === 0xFFFFFFFF) { near.marks.fill(0); near.stamp = 1; }
-    const { marks, stamp } = near;
-    // (the crust lies within the plate's own cap — plate.refreshExtent — and the cap is taken with the same two cells of
-    // slack forEachClaim relies on (plate.capInWorld); so, as there, blocks of raster cells wholly outside the cap's band of
-    // latitude, in the plate's frame, hold none of it and are passed over)
-    const radius = Math.acos(Math.max(-1, Math.min(1, plate.capCos))) + 2 * mesh.edgeRad, [cx, cy, cz] = plate.capCenter;
-    const blocks = latitudeBlocks(mesh), { zLo, zHi } = capBand(cx, cy, cz, radius >= Math.PI ? -2 : Math.cos(radius));
-    for (let b = 0, c0 = 0; b < blocks.count; b++, c0 += BLOCK) {
-        if (blocks.zMax[b] < zLo || blocks.zMin[b] > zHi) continue;
-        for (let c = c0, end = Math.min(numCells, c0 + BLOCK); c < end; c++) {
-            if (!mask[c]) continue;
-            let edge = false;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!mask[adjList[k]]) { edge = true; break; }
-            if (!edge) continue;
-            for (let i = start[c * stride], e = start[c * stride + RING_COUNT + 1]; i < e; i++) marks[cells[i]] = stamp;
-        }
+    if (!near || near.seen.length !== numCells) near = plate._nearEdge = { seen: new Uint8Array(numCells), edge: new Uint8Array(numCells), count: new Uint8Array(numCells), touched: new Uint32Array(numCells), stamp: 0, list: [] };
+    const { seen, edge, count, touched, list } = near;
+    // (the cells whose mask changed: compared four at a time — nearly every word is the same)
+    list.length = 0;
+    const words = numCells >> 2, aligned = !(mask.byteOffset & 3);
+    let from = 0;
+    if (aligned) {
+        const a = view32(seen), b = view32(mask);
+        for (let i = 0; i < words; i++) if (a[i] !== b[i]) for (let c = 4 * i; c < 4 * i + 4; c++) if (seen[c] !== mask[c]) list.push(c);
+        from = 4 * words;
+    }
+    for (let c = from; c < numCells; c++) if (seen[c] !== mask[c]) list.push(c);
+    if (!list.length) return near;
+    for (const c of list) seen[c] = mask[c];
+    // (a cell is an edge cell by its own mask and its neighbours': only the changed cells and their neighbours can have
+    // become one or stopped being one — each recounted once)
+    if (++near.stamp === 0xFFFFFFFF) { touched.fill(0); near.stamp = 1; }
+    const stamp = near.stamp;
+    const recount = c => {
+        if (touched[c] === stamp) return;
+        touched[c] = stamp;
+        let isEdge = 0;
+        if (mask[c]) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!mask[adjList[k]]) { isEdge = 1; break; }
+        if (isEdge === edge[c]) return;
+        edge[c] = isEdge;
+        const d = isEdge ? 1 : -1;
+        for (let i = start[c * stride], e = start[c * stride + RING_COUNT + 1]; i < e; i++) count[cells[i]] += d;
+    };
+    for (const c of list) {
+        recount(c);
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) recount(adjList[k]);
     }
     return near;
 }
+const views = new WeakMap();
+function view32(a) { let v = views.get(a); if (!v) views.set(a, v = new Uint32Array(a.buffer, a.byteOffset, a.length >> 2)); return v; }
 
 const isIdentity = m => m[0] === 1 && m[4] === 1 && m[8] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 0 && m[5] === 0 && m[6] === 0 && m[7] === 0;
 
