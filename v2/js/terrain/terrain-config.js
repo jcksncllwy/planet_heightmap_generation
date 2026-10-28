@@ -7,6 +7,10 @@ import { OrogenyType } from '../tectonics/model/crust.js';
 export const TERRAIN = {
     // ── Carrying the sim's records onto a finer mesh ──
     warpKm: 70,                 // lookup positions are displaced by up to this (smooth noise), so the sim's 121 km cells never show
+    // a passive margin's coast straightened against the warp by the share its sediment has buried (its maturity): waves
+    // drive sand along a sediment coast and smooth it within ~10⁵ yr at these scales (coastline diffusion, Ashton & Murray
+    // 2006, JGR 111) — 1 on, 0 off (for measuring: coast-shape.mjs --set sedimentCoastSmooth=0)
+    sedimentCoastSmooth: 1,
     warpScale: 4,               // noise frequency of that warp on the unit sphere (≈ 1500 km features, plus finer octaves)
     // a second warp at the sim's own scale (developer: "its also very common on the grids where mountains form and sort of
     // 'take up' the whole grid cell … more flexibility and noise at that scale"): waves of cellWarpCells sim cells (and

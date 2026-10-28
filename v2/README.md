@@ -760,6 +760,14 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   are smoothed along it over its flexural scale (`shelfAlongKm`). D on the tectonic surface at 1M cells, two seeds:
   mature passive 1.13 → 1.04, young passive 1.08–1.11 → 1.02–1.13 (a few thousand km), active 1.15–1.18 → 1.09–1.11, arcs
   1.25–1.27 → 1.25 (Earth's island chains 1.15–1.35). Phase 8a reports D by kind against Earth.
+  Round 2 (2026-10-28): the lookup warp (`warpKm`) still moved a passive coast by up to 70 km. A sediment coast is
+  smooth because waves drive sand along it and straighten it within ~10⁵ yr at these scales (coastline diffusion: Ashton &
+  Murray 2006). So on a passive margin, in proportion to the share its sediment has buried (its maturity), the coast is now
+  read where the point is, not where the warp moved it. The coast field's gradient over the raster triangle is dotted with
+  the warp's displacement, and that displacement is taken back (`sedimentCoastSmooth`, 1). A young, sediment-starved rift
+  coast and an active one keep the warp. Measured A/B at 1M cells, three seeds × 300–1200 Myr: mature passive D changes by
+  −0.02 to +0.02 on the longer coasts (5–17k km). So the warp was not what kept these coasts squiggly. On short coasts
+  (2–3k km) D moves by up to ±0.05, which is noise.
 - **Mountains shaped along their belts** (developer: noise on the mountains "ruined the ridgelines … leading ridges and
   edges"; "make sure they get a realistic shaping"): only the distance across a belt followed its smooth kernels; its
   width, crest height and age, its envelope (the evolved uplift) and its thickened crust were read cell by cell — lobed

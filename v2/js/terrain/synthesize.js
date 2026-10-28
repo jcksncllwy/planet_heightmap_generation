@@ -32,6 +32,22 @@ import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-i
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/** A linear field's change (its values s0…s2 at the triangle q's corners, unit vectors in xyz) from point a to point b
+ *  (unit vectors near the triangle): its gradient over the triangle's plane dotted with b − a — R × (unit-sphere units). */
+function warpShift(xyz, q, s0, s1, s2, a, b) {
+    const i0 = 3 * q[0], i1 = 3 * q[1], i2 = 3 * q[2];
+    const e1x = xyz[i1] - xyz[i0], e1y = xyz[i1 + 1] - xyz[i0 + 1], e1z = xyz[i1 + 2] - xyz[i0 + 2];
+    const e2x = xyz[i2] - xyz[i0], e2y = xyz[i2 + 1] - xyz[i0 + 1], e2z = xyz[i2 + 2] - xyz[i0 + 2];
+    const nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x, nn = nx * nx + ny * ny + nz * nz;
+    if (!(nn > 1e-18)) return 0;
+    // (the gradient: Σ sᵢ ∇λᵢ, ∇λᵢ = n × (the edge opposite corner i) / |n|²)
+    const ax = xyz[i2] - xyz[i1], ay = xyz[i2 + 1] - xyz[i1 + 1], az = xyz[i2 + 2] - xyz[i1 + 2];
+    const bx = xyz[i0] - xyz[i2], by = xyz[i0 + 1] - xyz[i2 + 1], bz = xyz[i0 + 2] - xyz[i2 + 2];
+    const gx = (s0 * (ny * az - nz * ay) + s1 * (ny * bz - nz * by) + s2 * (ny * e1z - nz * e1y)) / nn;
+    const gy = (s0 * (nz * ax - nx * az) + s1 * (nz * bx - nx * bz) + s2 * (nz * e1x - nx * e1z)) / nn;
+    const gz = (s0 * (nx * ay - ny * ax) + s1 * (nx * by - ny * bx) + s2 * (nx * e1y - ny * e1x)) / nn;
+    return gx * (b[0] - a[0]) + gy * (b[1] - a[1]) + gz * (b[2] - a[2]);
+}
 
 /**
  * @param {import('../tectonics/snapshot.js').Frame} frame
@@ -386,6 +402,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
     // lowland instead: open 0)
+    const smoothCoast = cfg.sedimentCoastSmooth ?? 1;
     const MC = marginConstants(cfg), shelfDepth = -cfg.shelfEdgeKm, clinoform = cfg.clinoformGradient ?? 0.05;
     const sedTop = (x, shelf, brk, open) => {
         const lift = shelfDepth * (1 - open);
@@ -452,6 +469,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     shelfR = qw3[0] * S.shelf[q3[0]] + qw3[1] * S.shelf[q3[1]] + qw3[2] * S.shelf[q3[2]];
                     plainR = qw3[0] * S.plain[q3[0]] + qw3[1] * S.plain[q3[1]] + qw3[2] * S.plain[q3[2]];
                     matureR = qw3[0] * S.maturity[q3[0]] + qw3[1] * S.maturity[q3[1]] + qw3[2] * S.maturity[q3[2]];
+                    // (a sediment-draped coast is smooth: waves drive sand along it and straighten its shore within ~10⁵ yr
+                    // at the scales the lookup warp moves it — coastline diffusion, Ashton & Murray 2006 — so on a passive
+                    // margin, by the share its sediment has buried — its maturity, records.js — the coast is read where the
+                    // point is, not where the warp moved it: the coast field's gradient across the raster triangle times
+                    // the warp's displacement taken back. A young, sediment-starved rift coast and an active one keep it)
+                    if (smoothCoast > 0 && matureR > 0.01 && Math.abs(coastR) < 400) coastR -= smoothCoast * matureR * warpShift(simMesh.xyz, q3, s0, s1, s2, local, warped);
                     ruggedR = qw3[0] * S.rugged[q3[0]] + qw3[1] * S.rugged[q3[1]] + qw3[2] * S.rugged[q3[2]];
                     riftR = qw3[0] * S.rift[q3[0]] + qw3[1] * S.rift[q3[1]] + qw3[2] * S.rift[q3[2]];
                     if (riftR > 1e-3) {
