@@ -5,6 +5,8 @@
 //         turns it off (every history is built, nothing is kept). GEO_SIM_HISTORY_CACHE_GB caps it (default 4 GB): past
 //         the cap the entries used longest ago go first.
 // Key:    app/history-key.js — the history code's hash (below), the start world walked whole, the drive, the event rules.
+//         The engine's maths are in it too (history-key.js: the page's Chromium and Node differ in the last bit of
+//         sin, exp…, and their histories drift apart), so the page's histories and Node's are filed apart.
 //         Two checkouts whose history code is the same share their entries; terrain and finish code are not in it (they
 //         read frames, they never change them).
 // Entry:  <key>/ holds one file per frame (t<milli-Myr>.frame), meta.json (what it is: seed, scene, settings, who wrote
@@ -32,7 +34,7 @@ import { Worker } from 'node:worker_threads';
 import { simulate } from '../../js/tectonics/simulate.js';
 import { packFrame, unpack } from '../../js/tectonics/frame-pack.js';
 import { frameBytes, readFrameBytes } from '../../js/app/frame-wire.js';
-import { historyKey } from '../../js/app/history-key.js';
+import { historyKey, mathFingerprint } from '../../js/app/history-key.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..', '..', '..');
@@ -322,7 +324,7 @@ export function simulateCached(world, opts, { drive = opts.drive, spec = null } 
         writesDone();
         const ms = performance.now() - t0;
         stats.built++; stats.builtMs += ms;
-        writeMeta(key, { code: codeHash(), spec: spec ?? { seed: world.seed, cells: world.mesh.numCells }, steps: { ...stepsAt, [milli(world.time)]: r.steps }, builtBy: suite, builtAt: new Date().toISOString() });
+        writeMeta(key, { code: codeHash(), math: mathFingerprint(), engine: `node ${process.version}`, spec: spec ?? { seed: world.seed, cells: world.mesh.numCells }, steps: { ...stepsAt, [milli(world.time)]: r.steps }, builtBy: suite, builtAt: new Date().toISOString() });
         logEvent({ event: 'build', key, untilMyr, every, rec, kept, ms: Math.round(ms) });
         return { frames, steps: r.steps, stepLog: r.stepLog, stopped: r.stopped, cached: false, key };
     } finally {

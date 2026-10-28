@@ -22,11 +22,16 @@ export function pageWorld({ seed, cont, sim }) {
 
 /**
  * The frame at `time` Myr (a multiple of 10: the page's moments) of the page's history for these settings — the fields
- * the terrain reads (FRAME_FIELDS) and each plate's rotation. `{ full: true }`: the whole frame.
+ * the terrain reads (FRAME_FIELDS) and each plate's rotation. `{ full: true }`: the whole frame; `{ key }`: read that
+ * entry's frame first (the page's history, as the user saw it).
  */
-export async function momentFrame(root, { seed, cont, sim, time, full = false }) {
-    const { scene, world, key } = pageWorld({ seed, cont, sim });
+export async function momentFrame(root, { seed, cont, sim, time, full = false, key: theirs = null }) {
+    // (key: an entry to read first — the page's own, from latest.json: built by the browser's engine, whose maths differ
+    // from Node's in the last bit, so Node's key for the same settings is another entry: history-key.js)
     const pick = f => { if (full) return f; const out = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); out.plates = f.plates.map(p => p && { quat: p.quat }); return out; };
+    const fromPage = theirs && getFrame(theirs, time);
+    if (fromPage) return pick(fromPage);
+    const { scene, world, key } = pageWorld({ seed, cont, sim });
     const cached = key && getFrame(key, time);
     if (cached) return pick(cached);
     if (Math.abs(time / 10 - Math.round(time / 10)) > 1e-9) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);

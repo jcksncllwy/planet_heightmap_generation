@@ -8,7 +8,11 @@
 //     overrides (lab sliders, --set, the crust ledger, the evolving heights' constants), the seed, the plumes a scene
 //     schedules… — so two spellings of one start (a scene's default and the same value set by hand, two scenes that share
 //     a start world) share an entry, and anything that changes the start changes the key with no list to keep up;
-//   · the drive (its name and source) and whether the event rules run.
+//   · the drive (its name and source) and whether the event rules run;
+//   · the JavaScript engine's maths: a hash of what its Math functions answer (mathFingerprint). Engines differ in the
+//     last bit of sin, exp, pow…: Chromium 149 and Node 23 (V8 12.9) do (2026-10-27), and a history run on each drifts
+//     apart from the first steps (a plate's ω differs by ~1e-16 at 10 Myr, ~1e-10 by 300). So the page's histories and
+//     Node's are filed apart — each is exactly what its engine builds — and an engine whose maths match shares them.
 // What the walk cannot see is a closure's state: the world's random streams (model/world.js). They are seeded from the
 // seed, which is in the key, and no start-world builder draws from them — so a fresh world's streams are the seed's (a
 // world that has already run, world.time > 0, is never keyed).
@@ -86,11 +90,24 @@ export function worldFingerprint(world) {
     return H.hex();
 }
 
+let mathMemo = null;
+/** What this engine's Math functions answer, hashed (every transcendental function, on a fixed spread of arguments). */
+export function mathFingerprint() {
+    if (mathMemo) return mathMemo;
+    const H = new Hash128(), one = ['sin', 'cos', 'tan', 'exp', 'expm1', 'log', 'log1p', 'log2', 'log10', 'sqrt', 'cbrt', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh'];
+    for (let i = 1; i <= 64; i++) {
+        const x = Math.SQRT2 * i / 7 - 4.3, u = (i / 65) * 1.98 - 0.99, y = 3.1 - i / 9;
+        for (const f of one) H.num(Math[f](f === 'acosh' ? 1 + Math.abs(x) : f === 'asin' || f === 'acos' || f === 'atanh' ? u : f.startsWith('log') || f === 'sqrt' ? Math.abs(x) + 1e-3 : x));
+        H.num(Math.pow(Math.abs(x) + 0.1, y)); H.num(Math.atan2(x, y)); H.num(Math.hypot(x, y, u));
+    }
+    return (mathMemo = H.hex().slice(0, 12));
+}
+
 /** A drive's identity: its name and its source (what it does with the world is in the code hash). */
 export function driveId(drive) { const H = new Hash128(); H.str(drive?.name ?? ''); H.str(String(drive)); return `${drive?.name || 'drive'}:${H.hex().slice(0, 12)}`; }
 
 /**
- * The key of a history: the code, the start world, the drive, the event rules. Null for a world that is not at its
+ * The key of a history: the code, the start world, the drive, the event rules, the engine's maths. Null for a world that is not at its
  * start (a resumed world's random streams are past the seed's).
  * @param {string} codeHash   tools/lib/history-cache.mjs historyCodeHash (in the page: app/history-code.js, as served)
  * @returns {string|null} 32 hex digits
@@ -98,6 +115,6 @@ export function driveId(drive) { const H = new Hash128(); H.str(drive?.name ?? '
 export function historyKey(codeHash, world, drive, events = true) {
     if (!codeHash || world.time !== 0 || world.step !== 0) return null;
     const H = new Hash128();
-    H.str('geo-sim history v1'); H.str(codeHash); H.str(worldFingerprint(world)); H.str(driveId(drive)); H.word(events ? 1 : 0);
+    H.str('geo-sim history v1'); H.str(codeHash); H.str(worldFingerprint(world)); H.str(driveId(drive)); H.word(events ? 1 : 0); H.str(mathFingerprint());
     return H.hex();
 }

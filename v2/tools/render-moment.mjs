@@ -54,7 +54,7 @@ const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`)
 const R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
 
 // ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; through the cache ──
-const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME });
+const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME, key: LATEST && Number(LATEST.timeMyr) === TIME ? LATEST.key : null });     // (--latest: the page's very frame)
 console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 
 // ── --live: the moment as the timeline draws it before any detail (the page's live terrain at --cells, its Terrain
