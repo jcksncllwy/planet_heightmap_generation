@@ -7,7 +7,7 @@
 // Usage: node v2/tools/check-phase8a.mjs
 
 import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
-import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, CrustFlag, OrogenyType, BeltSide, VolcanicType } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
@@ -31,7 +31,7 @@ const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 function run(id, heights = null) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these; the history is the same)
-    const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 });
+    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     return { world, frame: frames.at(-1), first: frames[0], frames };
 }
 function terrainWith(frame, cells, overrides) {
@@ -330,7 +330,7 @@ section('erosion by rainfall');
 section('fine detail moves with the crust');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'history'), world = scene.build(mesh, SEED);
-    const { frames } = simulate(world, { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
+    const { frames } = simulateCached(world, { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
     const A = frames.at(-2), B = frames.at(-1), tm = terrainMesh(640000);
     // the plate that turned the most in those 10 Myr, among those with plenty of land in both frames
     let p = -1, turned = 0;
@@ -400,7 +400,7 @@ section('fine detail moves with the crust');
 section('flood basalts through time');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'traps'), world = scene.build(mesh, SEED);
-    const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
+    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
     const lipCells = f => { const a = []; for (let w = 0; w < mesh.numCells; w++) if (f.owner[w] >= 0 && f.type[w] !== CrustType.OCEAN && f.volcType[w] === VolcanicType.LIP) a.push(w); return a; };
     const erupted = frames.find(f => lipCells(f).length > 0).time, at = age => frames.find(f => f.time >= erupted + age - 1e-6);
     // over the province (0.25 km of pile or more), away from the coast: where its cap (its top tier) still stands, and how that

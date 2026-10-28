@@ -11,7 +11,7 @@
 import { check, report, section, finish, labMesh, landCount, mean } from './lib/check-kit.mjs';
 import { stageOf } from './lib/cycle-stage.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
-import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { frameTallies } from '../js/tectonics/measure.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
@@ -29,8 +29,9 @@ const movers = f => f.plates.filter(p => p.alive && !p.isBackground);
 function run(id, overrides = {}, untilMyr = null, seed = SEED) {
     const scene = RIFT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
-    const { frames, steps } = simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });
-    return { scene, world, frames, steps, events: world.events, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6) };
+    const { frames, steps } = simulateCached(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });     // (the history cache: tools/lib/history-cache.mjs)
+    // (events: the last frame's — the world is not run when the history comes from the cache)
+    return { scene, world, frames, steps, events: frames.at(-1).events, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6) };
 }
 
 // How far apart the two continents' land is, and how big each plate is: a margin that founders must make

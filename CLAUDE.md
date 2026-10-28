@@ -88,3 +88,10 @@ After any code change that adds, removes, or modifies slider controls, update th
 - The `RADICES` array (the count values in right-to-left order)
 - The `encodePlanetCode` and `decodePlanetCode` functions (packing/unpacking order)
 - The corresponding slider wiring in `js/main.js` (the `map` objects in the `generate-done` handler, `applyCode`, and hash-loading code)
+
+## Seeing what the user sees (agents)
+
+When the user has the Evolution page open from the local dev server, it saves its history to the machine's history
+cache and notes the moment on screen. `node v2/tools/history.mjs latest` says what they are looking at;
+`node v2/tools/history.mjs frame --latest --out f.bin` writes that exact frame; `render-moment.mjs --latest` renders it
+(see "The history cache" in `v2/README.md`). Check suites and tools read and fill the same cache.

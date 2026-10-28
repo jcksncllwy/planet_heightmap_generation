@@ -200,6 +200,9 @@ node v2/tools/coast-shape.mjs --seed 626225 --cont 30 --time 950 [--cells 100000
 node v2/tools/shoot-lab.mjs 4 56 http://localhost:8123 scene=india   # screenshots + page smoke test (needs the server)
 node v2/tools/probe-play.mjs 8b history 40     # presses Play headlessly: frames painted, the page's long tasks (EXTRA=cells=2500000)
 node v2/tools/bench-lab.mjs 2500000           # the lab's terrain pipeline piece by piece: timings + output hashes (is a speed-up exact?)
+node v2/tools/history.mjs latest              # the history cache: what the user is looking at in the Evolution page (see "The history cache")
+node v2/tools/history.mjs frame --latest --out f.bin   # …that very frame; also frame --seed … --time …, ls, gc, code
+node v2/tools/check-history-cache.mjs         # the cache: frames bit for bit, the key, concurrent writers, damaged files
 ```
 
 After an engine change run `check-invariants.mjs`, `check-scale.mjs` and the check scripts of the phases the change
@@ -1073,6 +1076,59 @@ Before → after, the four diagnosis seeds (831576, 626225, 777, 12345) at 300/6
 - land share of the planet: 34.1 → 30.6 % (the arcs that drowned)
 - time: the history +1.9 % (two seeds × two rounds at 40K, 1200 Myr; about +3–4 % a step, offset by ~2 % fewer steps);
   the terrain −15 % at 160K (the distance-to-continent search gone from records.js)
+
+## The history cache (2026-10-27, branch history-cache)
+
+Every history built on this machine — by a check suite, a tool, an agent or the Evolution page — is kept in one store
+outside any checkout, `~/.cache/geo-sim/histories/` (`tools/lib/history-cache.mjs`), so the same history is built once.
+
+- **Key** (`js/app/history-key.js`): a hash of (1) the history code — every file the history's entry points import
+  (`app/history-worker.js`, `app/history-runner.js`, every scene list in `tectonics/scenarios/`), followed through
+  imports, re-exports, dynamic imports and worker URLs, so the list cannot go stale (83 files: the steps, the model,
+  config, the start world, the helpers, `terrain-config.js` for the evolving heights, `js/rng.js` …; terrain synthesis
+  and the finish are not in it — they read frames, never change them); (2) the start world itself, walked whole just
+  before the run — the mesh, every plate's raster, the seed, and the config with any override (a lab slider, `--set`,
+  the crust ledger, the heights' constants), so two spellings of one start share an entry and anything that changes it
+  changes the key; (3) the drive and the event rules; (4) the engine's maths (below). Worktrees whose history code is
+  the same share entries. The history's **length and ending are not in it**: a history is causal and an ending never
+  steers it, so an entry holds one history's frames at whatever times were recorded, and a 600 Myr request is served
+  from a 2200 Myr run (frames on the step grid only: the world there is the same however long the run).
+- **The engine's maths.** Node 23 (V8 12.9) and the page's Chromium (149) answer `Math.sin`, `exp`, `pow`, `atan2`…
+  differently in the last bit, so the same code, seed and settings give histories that differ from the first steps (a
+  plate's ω by ~1e-16 at 10 Myr, ~1e-10 by 300 Myr, float32 fields such as `seaFillKm` here and there). The key carries a
+  hash of what the engine's Math functions answer: the page's histories and Node's are filed apart, each exactly what
+  its engine builds, and engines that agree share.
+- **Entry**: one file per frame (the packed frame, `tectonics/frame-pack.js`, in `app/frame-wire.js`'s format,
+  deflated, with its SHA-256), `meta.json` (what it is, who built it, the steps to each frame), and `build.lock` while a
+  process builds it. Writes go to a temporary file and are renamed into place; a process that wants frames another is
+  building waits for them; a file cut short or damaged is deleted and its history built again, never trusted. ~0.5 MB a
+  frame at 40K cells (~0.4 MB early, more as belts and events accumulate): a 1200 Myr history at the page's 10 Myr
+  cadence is ~60–70 MB. The world itself is not kept, so a history asked for further than its entry reaches is built
+  again from its start.
+- **Settings**: `GEO_SIM_HISTORY_CACHE_DIR` (where), `GEO_SIM_HISTORY_CACHE_GB` (the cap, default 4: past it the entries
+  used longest ago go, after a build, at most once a minute; or `history.mjs gc`), `GEO_SIM_HISTORY_CACHE=0` (off),
+  `GEO_SIM_HISTORY_LOG=file` (one line per hit, build, wait, damaged file).
+- **Tools**: `simulateCached(world, opts, { drive: scene.drive })` is `simulate()` through the cache, for callers that
+  want only frames (on a hit the world is not run; the events and budget are the last frame's). The terrain suites
+  (8a, 8b, 9, 10), 6b, 7b (the scenes' own drives), basins and phase13's long run go through it, and `momentFrame` (so
+  `render-moment.mjs`, `coast-shape.mjs`). The old `v2/out/frames/` cache, keyed without the code, is gone.
+- **The Evolution page saves by default** when the dev server (`tuning/dev-server.mjs`) serves it: the server serves
+  `js/app/history-code.js` with the hash of the history code it is serving written in, and the history worker imports
+  it when it starts — so a history is filed under the code the worker actually loaded (a stale tab whose worker starts
+  after an edit runs, and files under, the new code; every module is served `no-cache`). The worker hands each packed
+  frame to `fetch()` as it builds (`app/history-upload.js`, ~3 ms a frame: 0.08 s of a 41 s history); the server
+  compresses and keeps it. Once a second the page reports the moment shown (`evolution/history-view.js`) and the
+  server writes `latest.json`: the key, the moment, the link, the settings, the time. `?save=0` turns saving off.
+  Anywhere else (GitHub Pages) `history-code.js` holds `null` and the page sends nothing.
+
+**What the user is looking at**, for an agent:
+
+```
+node v2/tools/history.mjs latest                         # the history, the moment (timeMyr), the page's link, when
+node v2/tools/history.mjs frame --latest --out f.bin     # that very frame: v8.deserialize(fs.readFileSync('f.bin')).frame
+sim-slots run -n 6 --gb 16 -- node --max-old-space-size=16000 v2/tools/render-moment.mjs --latest   # …rendered
+node v2/tools/history.mjs ls                             # every entry; frame --key <key> --time T for any of them
+```
 
 ## Conventions
 

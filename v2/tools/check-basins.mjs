@@ -11,7 +11,8 @@
 
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
-import { runHistory } from '../js/app/history-runner.js';
+import { simulateCached } from './lib/history-cache.mjs';
+import { pageWorld } from './lib/moment-frame.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { FRAME_FIELDS, TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
@@ -67,9 +68,11 @@ section('cut-off seas through the history (finished at 160K cells)');
 const simMesh = buildSimMesh(SIM, MESH_SEED), scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), rows = [];
 for (const seed of SEEDS) {
     const frames = new Map();
-    await runHistory({ list: 'terrain', scene, ending: 'none', start: { continentalFraction: 0.3 }, lengthMyr: Math.max(...MOMENTS) + 10, keep: false }, simMesh, seed, 10, () => {}, f => {
+    // (the page's history for these settings, through the history cache — tools/lib/history-cache.mjs: the page's own, if it built it)
+    const { world } = pageWorld({ seed, cont: 30, sim: SIM });
+    simulateCached(world, { untilMyr: Math.max(...MOMENTS) + 10, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         if (MOMENTS.some(t => Math.abs(f.time - t) < 1e-6)) { const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); frames.set(Math.round(f.time), fr); }
-    });
+    } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont: 30, sim: SIM, by: 'check-basins' } });
     const per = [];
     for (const t of MOMENTS) {
         const pool = await TerrainPool.create(simMesh);

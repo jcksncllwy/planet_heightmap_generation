@@ -10,6 +10,7 @@
 
 import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag, VolcanicType } from '../js/tectonics/model/crust.js';
@@ -347,8 +348,9 @@ section('choose your ending');
 {
     // one history run on as far as a history may (1200 + endingExtraMyr): where each ending would stop it
     const seed = 12345, world = scene.build(mesh, seed), light = [];
-    simulate(world, { untilMyr: scene.maxMyr + TECTONICS.endingExtraMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10,
-        onFrame: f => light.push({ time: f.time, cycle: f.cycle, events: f.events, owner: f.owner }) });
+    // (through the history cache, tools/lib/history-cache.mjs: the run with the ending below is built afresh, and must agree)
+    simulateCached(world, { untilMyr: scene.maxMyr + TECTONICS.endingExtraMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false,
+        onFrame: f => light.push({ time: f.time, cycle: f.cycle, events: f.events, owner: f.owner }) }, { drive: scene.drive });
     const ends = ENDINGS.filter(e => e.id !== 'none').map(e => ({ ...e, frames: framesEnding(light, scene.maxMyr, e.id, TECTONICS) }));
     // (the cycle's pace is the mantle's, so a stage need not come round within endingExtraMyr: an ending not reached is
     // reported, and the history then ends where it got to — ending.js. What is held: at least one is reached, and every

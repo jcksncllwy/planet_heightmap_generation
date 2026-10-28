@@ -7,7 +7,7 @@
 // Usage: node v2/tools/check-phase9.mjs
 
 import { check, section, finish, labMesh } from './lib/check-kit.mjs';
-import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
@@ -21,7 +21,7 @@ const SEED = 12345;
 const mesh = labMesh(), n = mesh.numCells;
 const corr = (xs, ys) => { const mx = xs.reduce((s, v) => s + v, 0) / xs.length, my = ys.reduce((s, v) => s + v, 0) / ys.length; let a = 0, b = 0, c = 0; for (let i = 0; i < xs.length; i++) { a += (xs[i] - mx) * (ys[i] - my); b += (xs[i] - mx) ** 2; c += (ys[i] - my) ** 2; } return a / Math.sqrt(b * c); };
 const scene = TERRAIN_SCENES.find(s => s.id === 'history');
-const history = until => { const world = scene.build(mesh, SEED); return simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }).frames; };
+const history = until => { const world = scene.build(mesh, SEED); return simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames; };     // (the history cache: tools/lib/history-cache.mjs)
 
 // ── the frame carries every plate's crust ──
 section('each plate\'s crust in the frame');

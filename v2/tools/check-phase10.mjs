@@ -8,7 +8,7 @@
 // Usage: node v2/tools/check-phase10.mjs
 
 import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
-import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
@@ -24,8 +24,9 @@ const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).
 const run = (id, until, overrides = null) => {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     if (overrides) Object.assign(world.config, overrides);
-    const { frames } = simulate(world, { untilMyr: until ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
-    return { world, frames, frame: frames.at(-1) };
+    const { frames } = simulateCached(world, { untilMyr: until ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
+    // (events: the last frame's — the world is not run when the history comes from the cache)
+    return { world, frames, frame: frames.at(-1), events: frames.at(-1).events };
 };
 const isC = (F, w) => F.owner[w] >= 0 && F.type[w] === CrustType.CRATON, isLand = (F, w) => F.owner[w] >= 0 && F.type[w] !== CrustType.OCEAN;
 
@@ -55,7 +56,7 @@ const cr = run('cratons'), cfg = cr.world.config;
     // 344 km at most on the plate's own raster, 165 km in the India scene (Phase 11): the weld's belt is spread from the
     // seam as the redraw left it, and a path enters a craton half a cell before it counts. It does not show: the terrain
     // fades a belt's relief across the rim by the distance from the shield's edge line (terrain/cratons.js), not by records)
-    const weldAt = cr.world.events.find(e => e.kind === 'suture')?.time ?? Infinity;
+    const weldAt = cr.events.find(e => e.kind === 'suture')?.time ?? Infinity;
     let most = 0, deepest = 0, thick = 0;
     for (const F of cr.frames) {
         const notC = [], rim = [];
@@ -73,7 +74,7 @@ const cr = run('cratons'), cfg = cr.world.config;
     report('deepest a belt reaches into a craton before the weld', deepest, { unit: ' km', digits: 0, source: 'cratons resist deformation (Lenardic & Moresi 1999); the sub-Andean zone 50–100 km', detail: `cratonStrength ${cfg.cratonStrength}` });
     report('craton cells thickened by a belt (summed over frames)', thick, { digits: 0, source: 'craton cores rarely thicken' });
     const off = run('cratons', null, { cratonStrainShare: 0 }), log = w => w.events.map(e => `${e.time}|${e.kind}|${e.text}`).join('\n');
-    check('…and it changes no event of the history: only its records', log(off.world) === log(cr.world), `${cr.world.events.length} events, the same with and without the rim belts`);
+    check('…and it changes no event of the history: only its records', log(off) === log(cr), `${cr.events.length} events, the same with and without the rim belts`);
 }
 
 // ── the lower plate's shield: a foreland; the upper plate's: a steep front ──

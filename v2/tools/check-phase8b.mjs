@@ -7,7 +7,7 @@
 // Usage: node v2/tools/check-phase8b.mjs
 
 import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
-import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
@@ -27,7 +27,7 @@ const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
 function run(id) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
-    const { frames } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 });
+    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     return { world, frame: frames.at(-1), frames };
 }
 function carved(frame, cells = 640000) {
@@ -134,7 +134,7 @@ section('a collision plateau');
 section('rivers through the history');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'history'), world = scene.build(mesh, SEED);
-    const { frames } = simulate(world, { untilMyr: 150, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
+    const { frames } = simulateCached(world, { untilMyr: 150, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
     // big rivers keep their courses: as crust identities (plate, raster cell), still a big river — or beside one — 10 Myr on
     const riverSet = fr => { const A = buildAnchor(fr, mesh), s = new Set(); for (let w = 0; w < mesh.numCells; w++) if (fr.riverKm2[w] >= 5e4) s.add(fr.owner[w] * 1e6 + A.cell[w]); return s; };
     let kept = 0, total = 0;
@@ -199,7 +199,7 @@ section('rivers through the history');
 section('flood basalt');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'traps'), world = scene.build(mesh, SEED);
-    const { frames } = simulate(world, { untilMyr: 112, drive: w => scene.drive(w), snapshotEveryMyr: 10 }), f = frames.at(-1), tm = terrainMesh(640000);
+    const { frames } = simulateCached(world, { untilMyr: 112, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }), f = frames.at(-1), tm = terrainMesh(640000);
     const A = synthesizeTerrain(f, mesh, tm, { seed: SEED, carve: true, parts: true }), B = synthesizeTerrain(f, mesh, tm, { seed: SEED, carve: true, cfg: { ...TERRAIN, lipStepKm: 0 } });
     // where the stair acted (in the basalt, where it is cut into): cells nearly level (within 20 m) with a neighbour —
     // the treads — measured above the ground under the pile (which has its own swells and grain); with and without the

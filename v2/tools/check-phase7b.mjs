@@ -17,6 +17,7 @@ import { heading, omegaFor } from '../js/tectonics/scenarios/hotspot-scenes.js';
 import { latLonToXyz } from '../js/tectonics/step/kinematics.js';
 import { beltShape } from '../js/tectonics/step/orogeny.js';
 import { simulate } from '../js/tectonics/simulate.js';
+import { simulateCached } from './lib/history-cache.mjs';
 import { frameTallies, Margin } from '../js/tectonics/measure.js';
 import { rollbackCmYr } from '../js/tectonics/step/backarc.js';
 import { CrustType, OrogenyType } from '../js/tectonics/model/crust.js';
@@ -32,8 +33,11 @@ const pos = w => [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]];
 function run(id, overrides = {}, drive = null) {
     const scene = MARGIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     Object.assign(world.config, overrides);
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: drive ?? (w => scene.drive(w)), snapshotEveryMyr: SNAPSHOT_MYR });
-    return { scene, world, frames, steps, events: world.events, last: frames.at(-1), cfg: world.config };
+    // (the history cache — tools/lib/history-cache.mjs — for the scene's own drive; a drive made here is a closure the key cannot see into)
+    const opts = { untilMyr: scene.maxMyr, drive: drive ?? (w => scene.drive(w)), snapshotEveryMyr: SNAPSHOT_MYR };
+    const { frames, steps } = drive ? simulate(world, opts) : simulateCached(world, opts, { drive: scene.drive });
+    // (events: the last frame's — the world is not run when the history comes from the cache)
+    return { scene, world, frames, steps, events: frames.at(-1).events, last: frames.at(-1), cfg: world.config };
 }
 
 /** Hops over land from the active coast, as km, for every land cell of a plate. */
