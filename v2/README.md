@@ -513,7 +513,10 @@ erosion, rivers, the sea's fill and the ledger), and the Evolution timeline alre
 stay crust maps. Phase 13 reports the continental crust under the sea by stage of the cycle, the shelves' width by kind
 of margin and the break's depth (`tools/lib/shelf-stats.mjs`). The sim's coasts are mostly active, and its continental
 crust's area was set to Earth's land area (tectonics' `continentalFraction`), so its submerged share stays small (~5–15 %
-against Earth's ~20–30 % today).
+against Earth's ~20–30 % today). Crust whose platform lies below the shelf break — a submerged arc ridge, a drowned plateau — has no shelf graded up to
+the sea at its edge (wave base never planed it): its edge falls from its own depth, with no rim of islets at sea level
+around it or its holes (Kyushu–Palau, West Mariana and Lau ridges, Karig 1972; before, every hole in a submerged arc
+field drew as a ring of islands).
 
 **The mantle's swell and the sea level** (2026-10-27, `terrain/sea-level.js`). A continent is a lid: the mantle under
 it warms (the history's `mantleHeat`, `mantleInsulateMyr`), and warm mantle lifts the surface over it — dynamic
