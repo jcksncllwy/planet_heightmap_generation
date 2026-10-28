@@ -162,7 +162,11 @@ export function evolveHeights(world, dt) {
             const col = colOf(c);
             let height = Math.max(0, up) + baseKm[c] + Math.max(0, col);
             if (arc && !(flags[c] & CrustFlag.MARGIN_ISLE)) height += Math.max(0, arcSurfaceKm(arcCrustKm(crust, c, time, config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0));
-            const e = rate[bin] * dt * erosionAtHeight(height, H), keep = wear(e / H.reliefTauMyr);
+            // (a shield's crystalline basement wears slower than the cover and the young rock of a range, by the carving's
+            // own hardness of it: terrain-config.js carveCratonHardness — bedrock erodibility spans orders of magnitude by
+            // lithology, crystalline the least: Stock & Montgomery 1999; cratons 1–10 m/Myr, Bierman & Caffee 2001)
+            const hard = type[c] === CrustType.CRATON ? 1 - (H.carveCratonHardness ?? 0) : 1;
+            const e = rate[bin] * dt * hard * erosionAtHeight(height, H), keep = wear(e / H.reliefTauMyr);
             upliftKm[c] = up * (up < 0 ? wear(rate[bin] * dt / H.reliefTauMyr) : rift ? wear(e / H.riftReliefTauMyr) : keep);     // (a basin fills back toward 0 as a range wears down to it)
             if (col > 0) rootKm[c] -= col * (1 - keep) / (arc ? C.slope[1] * ARC_ROOT_SHARE : C.slope[type[c]]);
             rugged[c] *= wear(e / (rift ? H.riftReliefTauMyr : H.ruggedTauMyr));
