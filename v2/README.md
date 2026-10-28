@@ -58,11 +58,19 @@ one history, bit for bit; the link records how far — `more=` — and rebuilds 
 Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds; "Blue Marble (by height)" colours by
 height alone), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
-and setting. A sea cut off from the world ocean (the largest body of water; `terrain/world-ocean.js`) is drawn on a
-timeline frame in its own grey-teal (`terrain-shade.js cutOffTint`, each palette's sea at its depth turned toward the salt
-lakes' colour), without the glint: its level is its water balance's, which a frame has no climate to set — Add detail
-finds it (a salt lake, a playa, a dry hollow below sea level, or full and spilling); the readout says so, and the Stats
-count such seas over 5 000 km². The same tint on the lab's Terrain layer (Phase 8a, at its Sea level). **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
+and setting. A sea cut off from the world ocean (the largest body of water; `terrain/world-ocean.js`) has its level set
+by its water balance, not by sea level, and a timeline frame has no climate — so it is balanced on the zonal climate the
+history erodes by (2026-10-28, `terrain/basin-estimate.js`): the rain by latitude (`rainByLatitude`, falling off inland
+over `rainInlandKm`), the temperature by latitude less the lapse rate with height (`tempByLatitude`), and Add detail's own
+potential evaporation and Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
+catchment's runoff against what its water loses at each level). One that fills is drawn as a lake at its spill level
+(the ground of its hollow above sea level drowned too), one that keeps a lake as that lake, at its level, in its own
+grey-teal (`terrain-shade.js cutOffTint`, without the glint), and its dry ground as lowland (a playa or a salt flat).
+Against Add detail at 640K over three seeds × four moments (`tools/basin-agree.mjs`): the same sign — water standing or
+not — on 345 of 386 seas (89 %; 99 % by area); where they differ the zonal estimate is wet and the finish's climate
+(rain shadows, monsoons) dry. ~40 ms a frame at 160K in the shading worker, only when a cut-off body is as large as the
+finish balances (`basinMinKm2`). The readout and the Stats say it is an estimate. The same on the lab's Terrain layer
+(Phase 8a, at its Sea level). **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
 calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation), dry basins left closed —
 flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the finish's own erosion strength
@@ -288,6 +296,7 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    + surfaceRange (any range of cells); hypsometry()
   world-ocean      the world ocean (the water below sea level joined to the largest body of it) and the seas cut off
                    from it — the finish's sea, and the timeline's cut-off tint
+  basin-estimate   the timeline's cut-off seas balanced on the zonal climate (Add detail's own balance): lake or dry
   terrain-pool     the same synthesis on worker threads (terrain-worker.js), bit for bit — each frame's plan built
                    once, by the first worker, and handed to the others over message ports; mesh-worker builds a
                    terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread

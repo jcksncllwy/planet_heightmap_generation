@@ -18,6 +18,7 @@ import { kindType, deriveRecords } from '../../terrain/records.js';
 import { locate } from '../../core/mesh-locate.js';
 import { hillshade, paintRelief, tintOf, cutOffTint } from '../../view/terrain-shade.js';
 import { worldOcean } from '../../terrain/world-ocean.js';
+import { estimateCutOff } from '../../terrain/basin-estimate.js';
 import { colorByCrustType, colorByOrogeny, colorByMantleHeat, OROGENY_RGB, css } from '../../view/palettes.js';
 import { EventKind } from '../../tectonics/model/world.js';
 import { TECTONICS } from '../../tectonics/config.js';
@@ -40,7 +41,7 @@ const SIM_RESOLUTIONS = [
 // display settings (no re-synthesis) and terrain constants (terrain-config.js) the lab can change
 const VIEW_TUNABLES = [
     { id: 'exaggeration', label: 'Hillshade: slope exaggeration (display only)', min: 5, max: 60, step: 5, value: 20 },
-    { id: 'seaLevelKm', label: 'Sea level (a sea cut off from the world ocean — the largest body of water — is tinted grey-teal: its level is its water balance’s)', min: -0.6, max: 0.6, step: 0.05, unit: ' km', value: 0 },
+    { id: 'seaLevelKm', label: 'Sea level (a sea cut off from the world ocean — the largest body of water — is balanced on the zonal climate: a lake, grey-teal, or dry lowland)', min: -0.6, max: 0.6, step: 0.05, unit: ' km', value: 0 },
 ];
 const TERRAIN_TUNABLES = [
     { id: 'stripeShare', label: 'Parallel ridges: share of the belt’s own uplift', min: 0, max: 0.5, step: 0.02 },
@@ -273,7 +274,7 @@ export function terrainPhase(spec) {
             tectonicKm: r.tectonicKm ?? null, drainage: r.drainage ?? null, carved: !carve || r.carved !== false, tally: null,
             shade, get hyps() { return hyps ??= hypsometry(r.heightKm, view.seaLevelKm); }, get rec() { return rec ??= deriveRecords(frame, simMesh, cfg, seed); },
             // (the world ocean and the seas cut off from it at this sea level — terrain/world-ocean.js — drawn apart)
-            get water() { return water ??= shade.water ?? worldOcean(tMesh, r.heightKm, view.seaLevelKm); } };
+            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, view.seaLevelKm), cfg, view.seaLevelKm); } };
         shown.set(frame, out);
         if (shown.size > 4) shown.delete(shown.keys().next().value);
         return out;
@@ -406,7 +407,7 @@ export function terrainPhase(spec) {
     const cycle = cycleView(frames);
 
     const layers = [
-        { label: 'Terrain', paint(frame, out) { const T = terrainOf(frame); paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm, cut: T.water.cut }); } },
+        { label: 'Terrain', paint(frame, out) { const T = terrainOf(frame); paintRelief(T.water.paintKm ?? T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm, cut: T.water.cut }); } },
         { label: 'Hillshade', paint(frame, out) { const T = terrainOf(frame); paintRelief(T.heightKm, T.shade, out, { mode: 'shade' }); } },
         {
             label: 'Belts', paint: simLayer(colorByOrogeny),
@@ -474,7 +475,7 @@ export function terrainPhase(spec) {
         legend: [
             ...[[-6, 'abyssal plain (−6 km)'], [-2.5, 'mid-ocean ridge (−2.5 km)'], [-0.1, 'continental shelf'], [0.15, 'lowland'], [1, 'upland (1 km)'], [2.5, 'mountains (2.5 km)'], [4, 'high mountains / plateau (4 km)'], [6, 'peaks (6 km)']]
                 .map(([h, label]) => ({ color: css(tintOf(h)), label })),
-            { color: css(cutOffTint(tintOf(-0.5))), label: 'a sea cut off from the world ocean (its level its water balance’s: Add detail on the Evolution page)' },
+            { color: css(cutOffTint(tintOf(-0.5))), label: 'a lake in a sea cut off from the world ocean, at its level estimated on the zonal climate (dry ground of one: lowland; Add detail on the Evolution page balances it on its own climate)' },
             ...orogenyLegend(undefined, ' (Belts layer; ticks: ridge direction)'),
             ...[[0.9, 'erosion ×0.9 — dry subtropics (Erosion rate layer)'], [1.05, 'erosion ×1.05 — storm tracks, and ice toward the poles'], [1.28, 'erosion ×1.3 — the wet equator']]
                 .map(([e, label]) => ({ color: css(erosionRgb(e)), label })),
@@ -527,7 +528,7 @@ export function terrainPhase(spec) {
 
         describeCell(frame, t) {
             const T = terrainOf(frame), h = T.heightKm[t] - view.seaLevelKm, w = T.sampler.cells[3 * t];
-            const where = h >= 0 ? `${km(h)} above sea level` : T.water.cut[t] ? `${km(-h)} below sea level, in a sea cut off from the ocean (its level its water balance's: the Evolution page's Add detail)` : `${km(-h)} deep`;
+            const where = h >= 0 ? `${km(h)} above sea level` : T.water.dry?.[t] ? `${km(-h)} below sea level, a dry basin cut off from the ocean (estimated: too little rain to fill it)` : T.water.cut[t] ? `${km(-h)} below sea level, in a sea cut off from the ocean (a lake at its level estimated on the zonal climate; the Evolution page's Add detail balances it)` : `${km(-h)} deep`;
             return `${where} · ${describeCell(frame, w)}`;
         },
 

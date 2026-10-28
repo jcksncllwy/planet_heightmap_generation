@@ -485,6 +485,16 @@ export const TERRAIN = {
     // Heights erode at the latitude the crust is at, step by step (tectonics/step/heights.js).
     rainByLatitude: [[0, 2000], [10, 1600], [20, 950], [30, 850], [40, 1050], [50, 1100], [60, 800], [70, 400], [80, 200], [90, 120]],
     rainRefMm: 1000,
+    // zonal annual mean surface air temperature at sea level (°C; both hemispheres' mean, today's climate: e.g. Hartmann
+    // 2016, Global Physical Climatology, fig. 1.x — recalled), and the standard atmosphere's lapse rate (6.5 °C/km, ICAO):
+    // with rainByLatitude, the zonal climate the timeline balances its cut-off seas by (basin-estimate.js)
+    tempByLatitude: [[0, 26.5], [10, 26], [20, 24], [30, 18.5], [40, 12], [50, 5], [60, -2], [70, -10], [80, -20], [90, -25]],
+    lapseRateCPerKm: 6.5,
+    // the rain the sea's moisture brings, falling off inland as it rains out: × e^(−d / this), d the distance from the
+    // ocean — the length over which moisture evaporated from the sea is rained out over land, ~1000–2000 km (van der Ent &
+    // Savenije 2011, Atmos. Chem. Phys. 11: the local length scale of evaporation recycling — recalled); the timeline's
+    // cut-off seas only (basin-estimate.js)
+    rainInlandKm: 1500,
     rainErosionExponent: 0.6,   // 0 = erosion everywhere alike
     wetErosionShare: 0.6,       // (equator: 2000 mm → ×1.28, the subtropics' 850 mm → ×0.91)
 

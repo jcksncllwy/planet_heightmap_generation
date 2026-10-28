@@ -12,6 +12,8 @@ import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
 import { hillshade } from '../view/terrain-shade.js';
 import { worldOcean } from '../terrain/world-ocean.js';
+import { estimateCutOff } from '../terrain/basin-estimate.js';
+import { TERRAIN } from '../terrain/terrain-config.js';
 import { SMALL_DEVICE } from '../core/device.js';
 
 const usePool = typeof window !== 'undefined' && typeof Worker !== 'undefined';
@@ -155,7 +157,9 @@ export class TerrainPlayer {
         // (water: the seas cut off from the world ocean — terrain/world-ocean.js — for drawing them apart: found by the shading
         // worker with the hillshade, or here where there is none)
         const out = { src: r, heightKm: r.heightKm, shade, sampler: r.sampler ?? this.sampler, get hyps() { return hyps ??= hypsometry(r.heightKm, seaLevelKm); },
-            get water() { return water ??= shade.water ?? worldOcean(tMesh, r.heightKm, seaLevelKm); } };
+            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, seaLevelKm), TERRAIN, seaLevelKm); },
+            // (the heights to paint by: a cut-off sea's lake at its own level, its dry ground as lowland — basin-estimate.js)
+            get paintKm() { return this.water.paintKm ?? r.heightKm; } };
         this.shown.set(frame, out);
         if (this.shown.size > 4) this.shown.delete(this.shown.keys().next().value);
         return out;

@@ -124,7 +124,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {
         const floor = z[low], cutOff = floor < 0, id = lake[low];
         const { level, wet: under, full } = lakeBalance(mesh, low, c => lake[c] === id, z, evap, L.inflow);
         const lakeShows = under.length >= 2 && under.length * cellKm2 >= F.lakeMinKm2;
-        if (cutOff) seas.push({ km2: area, floorKm: floor, sillKm: L.level, inflowKm3: L.inflow * 1e-6, full, levelKm: full ? L.level : level, waterKm2: under.length * cellKm2, wet: full || lakeShows });
+        if (cutOff) seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: L.inflow * 1e-6, full, levelKm: full ? L.level : level, waterKm2: under.length * cellKm2, wet: full || lakeShows });
         if (full) continue;                                           // (it fills and spills: an open basin — the rivers lead it out)
         // the lake that balances, its rivers ending at its shore. A sea cut off from the ocean that keeps a lake the map
         // can show stays as deep as it is under its water; a playa, or a land basin's lake, is a flat floor at the level
@@ -132,5 +132,5 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {
         for (const c of under) { if (!keepDeep && z[c] < level) { z[c] = level; levelled++; } sink[c] = 1; base[c] = level; }
         basins++;
     }
-    return { sink, base, basins, levelled, tectonic, seas };
+    return { sink, base, basins, levelled, tectonic, seas, lakes };
 }

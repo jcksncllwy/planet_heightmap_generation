@@ -452,8 +452,8 @@ function paint(frame, sharpTable = null, sharp = !!sharpTable) {
     else if (CLIMATE_LAYERS.has(view.layer)) {
         // the climate of this moment, if it has been calculated; else the terrain greyed (and the chip offers it)
         const C = FINISHED_ONLY_LAYERS.has(view.layer) ? null : climateOf(frame);
-        if (C) paintClimate(view.layer, view.season, C, T, B.tMesh, out, o => tint(T.heightKm, T.shade, o, T.water.cut));
-        else { tint(T.heightKm, T.shade, out, T.water.cut); paintUnavailable(out, B.tMesh.numCells); }
+        if (C) paintClimate(view.layer, view.season, C, T, B.tMesh, out, o => tint(T.paintKm ?? T.heightKm, T.shade, o, T.water.cut));
+        else { tint(T.paintKm ?? T.heightKm, T.shade, out, T.water.cut); paintUnavailable(out, B.tMesh.numCells); }
     } else byHeight = heightLutOf(view.palette);
     const C = CLIMATE_LAYERS.has(view.layer) && !FINISHED_ONLY_LAYERS.has(view.layer) ? climateOf(frame) : null;
     // the sun glints off the sea on the Terrain view (V1's water shows there only) — the world ocean's: a sea cut off from
@@ -464,18 +464,18 @@ function paint(frame, sharpTable = null, sharp = !!sharpTable) {
         glint(view.layer === 'terrain', gpu.seaTexture);
         gpu.setMesh(B.tMesh);
         layLines(C);
-        if (byHeight) gpu.drawHeights(T.heightKm, T.shade, byHeight, SHADING.seaLevelKm, glinting, cut);
-        else gpu.drawCells(out, T.heightKm, SHADING.seaLevelKm, glinting, cut);
+        if (byHeight) gpu.drawHeights(T.paintKm ?? T.heightKm, T.shade, byHeight, SHADING.seaLevelKm, glinting, cut);
+        else gpu.drawCells(out, T.paintKm ?? T.heightKm, SHADING.seaLevelKm, glinting, cut);
         show(gpu.texture);
     } else {
         glint(view.layer === 'terrain');
         if (glinting) {
-            B.raster.paintSea(T.heightKm, seaMask.image.data, SHADING.seaLevelKm, cut);
+            B.raster.paintSea(T.paintKm ?? T.heightKm, seaMask.image.data, SHADING.seaLevelKm, cut);
             seaMask.ctx.putImageData(seaMask.image, 0, 0);
             globe.seaMaskChanged();
         }
         const table = sharpTable ?? B.raster, t = sharpTable ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
-        if (byHeight) table.paintHeights(T.heightKm, T.shade, byHeight, t.image.data, SHADING.seaLevelKm, cut);
+        if (byHeight) table.paintHeights(T.paintKm ?? T.heightKm, T.shade, byHeight, t.image.data, SHADING.seaLevelKm, cut);
         else table.paint(out, t.image.data);
         t.ctx.putImageData(t.image, 0, 0);
         drawLines(t, C);
@@ -830,7 +830,10 @@ function cutOffLine(T) {
     const W = T.water, cellKm2 = 4 * Math.PI * 6371 ** 2 / T.heightKm.length, big = W.bodies.slice(1).filter(b => b.cells * cellKm2 >= FINISH.seaBasinKm2[0]);
     if (!big.length) return '';
     const km2 = big.reduce((s, b) => s + b.cells, 0) * cellKm2;
-    return `<div>Seas cut off from the ocean: ${big.length} · ${(km2 / 1e6).toFixed(2)} M km² (their level set by their water balance: Add detail)</div>`;
+    // (the estimate on the zonal climate — basin-estimate.js — of which hold water)
+    const S = (W.seas ?? []).filter(x => x.km2 >= FINISH.seaBasinKm2[0]), wet = S.filter(x => x.wet).length;
+    const est = S.length ? `; estimated: ${wet} hold water, ${S.length - wet} dry — Add detail balances them on its own climate` : ' (their level set by their water balance: Add detail)';
+    return `<div>Seas cut off from the ocean: ${big.length} · ${(km2 / 1e6).toFixed(2)} M km²${est}</div>`;
 }
 function stats(T, frame) {
     if (!$('statsDetails').open) return;
@@ -994,7 +997,9 @@ function readout(e) {
     if (plate >= 0) lines.push(`<span style="color:${oceanic ? '#4af' : '#6b3'}">●</span> <b>${CRUST_WORDS[type] ?? 'Crust'}</b> · plate ${plate}`);
     lines.push(`<span class="hi-label">Elev</span> ${Math.round(at ? at.heightM : h * 1000).toLocaleString()} m`);
     // (a sea cut off from the world ocean, on the live terrain: its level is its water balance's — Add detail finds it)
-    if (!at && h < 0 && paintedT.water?.cut[t]) lines.push(`<span style="color:#7aa">●</span> <b>Cut off from the ocean</b> · level set by its water balance (Add detail)`);
+    // (estimated on the zonal climate — basin-estimate.js; Add detail balances it on its own)
+    if (!at && paintedT.water?.cut[t] && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, estimated (Add detail balances it)`);
+    else if (!at && paintedT.water?.dry?.[t]) lines.push(`<span style="color:#b9a27a">●</span> <b>Dry basin below sea level</b> · too little rain to fill it, estimated (Add detail balances it)`);
     if (at && view.water && (view.layer === 'terrain' || view.layer === 'satellite')) {
         if (at.water && !at.ocean) lines.push(`<span style="color:#5ae">●</span> <b>${['', 'Fresh lake', 'Salt lake', 'Salt pan'][at.water]}</b>`);
         const rv = fin.rivers && !at.ocean ? riverAt(fin, view.riverQ, p[0], p[1]) : null;
