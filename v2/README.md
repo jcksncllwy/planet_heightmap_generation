@@ -230,8 +230,9 @@ js/tectonics/
                      events:        hotspots (plumes, LIPs, tracks, the mantle's heat), supercontinent (the cycle:
                                     landmasses counted, the mantle's upwelling and downwelling, its flow), collision
                                     (records, suture / docking), orogeny
-                                    (belt spreading, underthrusting), wings (trench wings, island arcs — as wide as their distance from
-                                    continents allows: a Mariana at sea, a Japan near land), margin-isles
+                                    (belt spreading, underthrusting; an arc's crust thickening while its slab feeds it), wings (trench wings,
+                                    island arcs — as wide as their distance from continents allows: a Mariana at sea, a
+                                    Japan near land), margin-isles
                                     (fore-arc islands on accretionary margins, coast retreat on erosive ones),
                                     sediment-subduction (the trench's sediment down the subduction channel: the
                                     continent's sink at every trench), trench-fans (the rivers' rock out down their
@@ -674,6 +675,7 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   records its distance from the two plates' spreading pole (`Crust.fzU`, `model/segments.js`; averaged rotations): the
   segments' floor reads a little older or younger and the ridge and isochrons step; troughs mark where it passes a whole
   number of segment lengths. **Open-ocean arcs** stand deeper (`arcOceanMatureKm` −1.5 km): a ridge its volcanoes break.
+  (Since replaced: an arc stands on the crust its slab fed it — "Island arcs live by their slab", below.)
 - **Old ranges in the start supercontinent:** worn Ural-type belts along about half its suture network (`startSuture*`),
   records only — the plate history is unchanged (hash).
 - **Coasts drawn to their margins' lines** (developer, 2026-10-23: "I'm still not seeing things like the western coast
@@ -1029,6 +1031,45 @@ The checks' Earth figures are geophysical, not today's snapshot: Earth today is 
   Calabria; the Herodotus Basin's ~340 Myr still in place), and the share of their floor the rivers have filled to sea
   level. Drying is not modelled; a sea's lifetime is not tracked (a sea has no identity from frame to frame — a seal id
   and time on its floor cells, carried by the crust, would give it).
+
+## Island arcs live by their slab (2026-10-28, branch arcs)
+
+At 1200 Myr (seed 831576) closed rings of thin islands stood round deep basins: arcs stranded far from any trench stood as
+high as live ones, never sank, and were never consumed. The arc's life is now its slab's:
+- **An arc's crust is recorded** (`Crust.arcKm`, `Crust.arcAt`; on the frame too): 8 km at birth (`arcBirthKm`),
+  thickening `arcThickenKmPerMyr` (0.4 km/Myr) up to `arcMaxKm` (35 km) — but only the rows standing above a LIVE trench's
+  slab, as `buildArcs` walks from each overriding trench cell across its fore-arc to its arc (`step/wings.js`; the arc
+  that feeds itself at a plate's edge too). Rows left behind as the arc widened, or a strip split off, get nothing more
+  (Izu-Bonin-Mariana 20–35 km after ~50 Myr, Kodaira et al. 2007; Calvert 2011).
+- **It stands on that crust** (`measure.js arcSurfaceKm`, read by `terrain/records.js` and the history's rivers): Airy
+  isostasy of the crust beyond the ocean's 7 km (arc crust 2.97 g/cm³, mean Vp ~6.8 km/s, Calvert 2011, by Nafe–Drake,
+  Brocher 2005; Turcotte & Schubert 2002), on a ridge's hot floor while live (the mantle wedge; Hyndman et al. 2005), then
+  cooling and sinking by the half-space curve from the moment it fell silent (`seaDepthKm`; Parsons & Sclater 1977; Stein
+  & Stein 1992), what stood above the sea worn at the dead-island rate (`ISLAND_EROSION_KM_PER_MYR`) down to the waves and
+  no further. 8 km: 2.4 km down; 20 km: 0.7 km down (the Marianas: a ridge its volcanoes break); 35 km: ~1 km up (Japan);
+  20 km 25 Myr silent: 2.4 km down (the Kyushu–Palau Ridge, 2–3 km down ~25 Myr after the Shikoku Basin split it off,
+  Ishizuka et al. 2011). The distance-to-continent rule (`arcOceanMatureKm`, `arcCoastKm`, `arcOceanKm`), `arcYoungKm`,
+  `arcMatureKm` and `arcMatureMyr` are gone; arc cones grow with the crust (`measure.js arcGrowth`).
+- **A thin arc subducts** (`step/polarity.js floats`): arc crust under `arcAccreteThickKm` (17 km; Cloos 1993) is no longer
+  land to the polarity rule — it goes down a trench like ocean, under ocean, arc or continent — and the docking and
+  scraping rules judge an arc by its recorded crust, not its age (`collision.js arcCrustKm`), so a remnant left silent
+  stays thin and goes down at the next trench it meets. (A scene's hand-laid arc, never grown, still floats and is read by
+  its age.)
+- **A plate pulling away from its trench splits at its arc** (`backarc.js pullArcsAfterTrenches`): the history grew new
+  floor at the trench itself as the plate retreated (`resolve.js`), stranding the arc and building another in front of it.
+  Those births are now reported (`world.rollbackBirths`), and a run of them `backArcMinLengthKm` long splits off its arc
+  and fore-arc as a back-arc strip at once (Karig 1971; Taylor & Karner 1983): the strip follows its trench at the faster
+  of the slab's rollback and the plate's retreat, and the sea opens behind the arc, the far side left as a remnant arc.
+  A plate that split lately (`backArcTenureMyr`) still grows at its trench, as before.
+
+Before → after, the four diagnosis seeds (831576, 626225, 777, 12345) at 300/600/900/1200 Myr, 40K sim cells
+(scratch measure script; rings by the diagnosis's ring finder):
+- rings of arc ≥ 1000 km round a basin: 81 → 33 (600–1000 km: 75 → 37)
+- island-arc crust: 24–43 Mkm² (mean 34) → 17–25 (mean 21); Earth ~3–8 (`check-phase13` reports it)
+- arcs above the sea: live 32 → 19 %, silent 39 → 7 % (Earth's remnant arcs nearly all drowned)
+- back-arc openings per 100 Myr: 1.2 → 2.0 (Earth 20–40: still far below)
+- enclosed seas ≥ 0.05 Mkm², mean 300–1200 Myr: 44 → 26 (12.4 → 6.0 Mkm²)
+- land share of the planet: 34.1 → 29.3 % (the arcs that drowned)
 
 ## Conventions
 
