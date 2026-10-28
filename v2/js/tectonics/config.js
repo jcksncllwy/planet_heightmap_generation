@@ -400,6 +400,28 @@ export const TECTONICS = {
     founderAcross: true,              // a plate's open ocean founders ACROSS the plate too, on the line it would split along, when it is
                                       // pressed together across it (large-plate failure: subduction-init.js founderAcross)
 
+    // ── Trenches that nucleate on a segment and propagate (branch founders: step/subduction-init.js) ──
+    founderNucleusKm: 300,            // a new trench nucleates along this much of the margin that fails — its weakest, most pressed
+                                      // stretch — not along the whole margin at once: Puysegur, induced ~11 Ma, is still only ~150 km
+                                      // wide (Stern & Gerya 2018, Tectonophysics 746 §6.3.1); a slab sinks as a sheet once a few times
+                                      // wider than the plate is thick (~100 km). The ocean behind it breaks away as a strip that
+                                      // wide (a microplate bounded by the trench and a transform at each end), and widens as the
+                                      // trench lengthens
+    founderPropagationCmYr: 10,       // how fast a trench end runs along a margin that keeps failing ahead of it, at full urge (urge ≥ 1;
+                                      // slower in proportion below): ~100 mm/yr along the 3000 km Bitlis–Zagros ophiolite belt
+                                      // (Stern & Gerya 2018, Fig. 8G, after Moghadam et al. 2013); ~17 cm/yr in 3-D models of a
+                                      // trench propagating onto a weak passive margin (Zhou et al. 2020, Sci. Adv. 6, eaaz1048)
+    founderSlabLoad: 0.42,            // the pull a mature slab beside a trench end puts on the margin just ahead of it, in units of the
+                                      // margin's strength (× the slab's maturity): next to a mature slab a weak margin propagates on
+                                      // floor ≥ 60 Myr old, but not on younger (the Scotia arc's Atlantic: Zhou et al. 2020), so
+                                      // √(60 ÷ subductionInitAgeMyr) + load = 1 in founderUrge: load = 1 − √(60/180) ≈ 0.42
+    founderSlabMyr: 10,               // a plate born at a new trench is not captured as a microplate this long while it faces that trench:
+                                      // it hangs from a young slab that pulls it, by the trench's state, before it moves fast enough to
+                                      // count as going down. A new trench takes ~10 Myr from failure to sinking on its own (Gurnis, Hall &
+                                      // Lavier 2004; Stern & Gerya 2018: 6–8 Myr for Izu–Bonin–Mariana) — past that, one still not going
+                                      // down has failed (Zhou et al. 2020's aborted initiation) and is captured as before
+    founderPropagate: true,           // trench ends propagate along strike, and invade a passive margin they abut (false: no propagation)
+
 
     // ── Terranes & plate integrity (step/collision.js, ops/accrete-terrane.js, ops/tidy-plates.js) ──
     arcScrapeLogKm2: 1.5e5,     // an arc being scraped onto a continent is reported once this much of it has arrived
@@ -553,6 +575,7 @@ export const MECHANISMS = Object.freeze({
     subductionInit: { subductionInitRatePerMyr: 0 },                         // passive margins foundering (step/subduction-init.js)
     marginFounder:  { marginFounderRatePerMyr: 0 },                          // margins inside a plate foundering: the ocean breaks away (step/subduction-init.js)
     founderAcross:  { founderAcross: false },                                // a plate failing across its open ocean under compression (step/subduction-init.js)
+    trenchPropagation: { founderPropagate: false },                          // trench ends running along strike, invading passive margins (step/subduction-init.js)
     backgroundRetires: { backgroundEndMyr: Infinity },                       // the pre-history ocean becomes plates (step/ocean-plates.js)
     oceanSplits:    { oceanSplitRatePerMyr: 0 },                             // big ocean plates split along a new ridge (step/ocean-plates.js)
     microplates:    { oceanPlateCaptureKm2: 0 },                             // small ocean plates captured by a neighbour (step/ocean-plates.js)

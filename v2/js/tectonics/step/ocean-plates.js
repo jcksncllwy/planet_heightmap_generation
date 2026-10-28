@@ -19,7 +19,7 @@
 //                           unbounded, and the history's step shrinks to the fastest rotation's) — unless it is going down
 //                           a trench: then it is pulled by its own slab, and is consumed there (and ends once it is gone)
 
-import { CrustType } from '../model/crust.js';
+import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind, BoundaryKind } from '../model/world.js';
 import { transferCells } from '../ops/tidy-plates.js';
 import { oceanPlateName } from '../ops/birth-ocean-plate.js';
@@ -65,7 +65,7 @@ function endPlate(plates, P) {
 
 /** @returns {number} plates captured (or gone down their trench) */
 export function captureMicroplates(world) {
-    const { config, plates, mesh, owner, boundaryKind } = world;
+    const { config, plates, mesh, owner, ownerCell, boundaryKind, time } = world;
     if (!(config.oceanPlateCaptureKm2 > 0)) return 0;
     const { numCells, adjOffset, adjList, cellAreaKm2 } = mesh, limit = config.oceanPlateCaptureKm2 / cellAreaKm2;
     let captured = 0;
@@ -82,10 +82,17 @@ export function captureMicroplates(world) {
         // captured as before.
         const contact = new Map();
         let trench = false;
+        // (or faces a trench armed against it: a new trench's microplate hangs from its young slab, which pulls it by the
+        // trench's state — step/forces.js — before it is moving fast enough to count as going down: subduction-init.js)
         for (let w = 0; w < numCells && !trench; w++) {
             if (owner[w] !== P.id) continue;
             if (boundaryKind[w] === BoundaryKind.SUBDUCTING) { trench = true; break; }
-            for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const o = owner[adjList[k]]; if (o >= 0 && o !== P.id && !plates[o].isBackground && plates[o].alive) contact.set(o, (contact.get(o) ?? 0) + 1); }
+            for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+                const nb = adjList[k], o = owner[nb];
+                if (o < 0 || o === P.id || plates[o].isBackground || !plates[o].alive) continue;
+                if (P.isOceanBorn && time - P.born < config.founderSlabMyr && (plates[o].crust.flags[ownerCell[nb]] & CrustFlag.TRENCH)) { trench = true; break; }
+                contact.set(o, (contact.get(o) ?? 0) + 1);
+            }
         }
         if (trench) continue;
         let host = -1, most = 0;

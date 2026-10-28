@@ -12,7 +12,7 @@ import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
-import { EventKind } from '../js/tectonics/model/world.js';
+import { EventKind, BoundaryKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag, VolcanicType, OrogenyType } from '../js/tectonics/model/crust.js';
 import { MECHANISMS, TECTONICS } from '../js/tectonics/config.js';
 import { ENDINGS, inStage, historyEnding, framesEnding } from '../js/tectonics/ending.js';
@@ -91,6 +91,20 @@ function arcsOf(f) {
 const tm = terrainMesh(160000);
 const ARC_LIVE_MYR = 10;             // (an arc its slab fed within this long counts as live: the frames are 10 Myr apart)
 
+/** A frame's trenches: their total length, the longest unbroken line of one plate's, and the floor older than 2 × its mean age. */
+function trenchLines(f, meanAge) {
+    const { adjOffset, adjList, edgeKm } = mesh, seen = new Uint8Array(n), over = w => f.boundary[w] === BoundaryKind.OVERRIDING;
+    let all = 0, longest = 0, old = 0, ocean = 0;
+    for (let s = 0; s < n; s++) {
+        if (f.owner[s] >= 0 && f.type[s] === CrustType.OCEAN) { ocean++; if (f.time - f.formedAt[s] > 2 * meanAge) old++; }
+        if (seen[s] || !over(s)) continue;
+        const q = [s]; seen[s] = 1;
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (!seen[nb] && over(nb) && f.owner[nb] === f.owner[s]) { seen[nb] = 1; q.push(nb); } }
+        all += q.length; longest = Math.max(longest, q.length);
+    }
+    return { totalKm: all * edgeKm, longestKm: longest * edgeKm, old2: 100 * old / Math.max(1, ocean), stage: stageOf(f) };
+}
+
 function run(seed, overrides = {}, { terrain = true } = {}) {
     const world = scene.build(mesh, seed);
     Object.assign(world.config, { crustLedger: true }, overrides);
@@ -98,7 +112,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const lowlandStages = [];
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
     const arcLand = { live: { n: 0, up: 0 }, dead: { n: 0, up: 0 } };
-    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [], staged = [];
+    const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [], staged = [], trenches = [];
     const heights = [], decay = new Map();       // (branch unified: the land's heights and crust, and old belts as they wear)
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
@@ -124,6 +138,9 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             let ages = 0, nOcean = 0;
             for (let w = 0; w < n; w++) if (f.owner[w] >= 0 && f.type[w] === CrustType.OCEAN) { ages += f.time - f.formedAt[w]; nOcean++; }
             floorAges.push(ages / Math.max(1, nOcean));
+            // (the trenches — overriding boundary cells, a cell of edge each — in all, the longest unbroken line of one plate's;
+            // and the sea floor's area-age shape: its share older than twice its mean age)
+            trenches.push(trenchLines(f, ages / Math.max(1, nOcean)));
             // (the same figures by the cycle's stage, for those that change through it: lib/cycle-stage.mjs)
             staged.push({ stage: stageOf(f), largest, floorAge: ages / Math.max(1, nOcean), big: bigPlates.at(-1), plates: plateCounts.at(-1) });
             // (sealed seas — sea cut off from the world ocean, the largest body of it — and how much of their floor is older
@@ -221,7 +238,9 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
         staged: k => byStage(staged.map(x => ({ stage: x.stage, value: x[k] }))),
         bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges), sealedOld: sealedOld.reduce((x, y) => x + y, 0) / Math.max(1, sealedOld.length),
-        heights, decay, inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN), sea,
+        heights, decay, inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN), sea, trenches,
+        born: ev.filter(e => e.kind === EventKind.PLATE_BORN && e.time >= 100 && !/pre-history/.test(e.text)).map(e => e.data.areaMkm2),
+        propagation: (world.budget.propagatedKm ?? 0) / Math.max(1e-9, world.budget.propagatingTipMyr ?? 0) / 10,
         platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
 }
@@ -416,13 +435,30 @@ report('plates holding ≥ 1 % of the planet: mean in late dispersal', rows.map(
 report('plates over 10^7.5 km² (31.6 Mkm²): mean from 100 Myr', rows.map(r => r.bigMean), { earth: [6, 8], digits: 1, source: '7 today (Pacific, Eurasia, N America, Africa, Antarctica, Australia, S America: Bird 2003); holds through the cycle: the size kink at 10^7.5 km² with ~8 plates above it at every step back to 200 Ma (Morra et al. 2013; checked)' });
 // (the pace of the plates' renewal over a whole cycle, from 100 Myr: new trenches — between plates, at a margin inside one, or
 // across a plate's open ocean (step/subduction-init.js) — the sea floor's age, and back-arc seas opening)
-report('subduction initiations per 100 Myr, from 100 Myr', rows.map(r => r.inits), { earth: [12, 30], digits: 1, source: 'a rate: 13 initiations since ~105 Ma, mostly induced (Crameri et al. 2020, Nat. Commun. 11; checked) — the database is a floor, and the window is the dispersal stage' });
+report('subduction initiations per 100 Myr, from 100 Myr', rows.map(r => r.inits), { earth: [12, 40], digits: 1, source: 'a rate: 13 initiations since ~105 Ma, mostly induced (Crameri et al. 2020, Nat. Commun. 11; checked) — the database is a floor, and the window is the dispersal stage; the ceiling: "nearly half of all active subduction zones initiated during the Cenozoic" (Gurnis, Hall & Lavier 2004, G³ 5): ~half of ~55,000 km of trench (Stern 2002) in 66 Myr, ≳1000 km each once grown (Puysegur ~150 to Izu–Bonin–Mariana ~2500 km: Stern & Gerya 2018) — ≲40 per 100 Myr. A trench running along strike is no new one (Crameri et al. 2020, Box 1)' });
 report('mean sea-floor age: median over the frames from 100 Myr', rows.map(r => r.floorAge), { earth: [35, 65], unit: ' Myr', digits: 0,
     source: 'Earth over the last 200 Myr: ~35–40 in the Early Cretaceous to ~62–64 today (Müller et al. 2008; Seton et al. 2020: 64.2; the swings, −15 then +25 Myr, Williams et al. 2021, Geosci. Front. 12; van der Meer et al. 2017 < 40 in the Cretaceous)',
     detail: txt(r => `by stage ${stageText(r.staged('floorAge'), v => `${median(v).toFixed(0)} Myr`)} (Earth in late dispersal, today: ~62–64)`) });
 report('sealed seas’ floor older than 340 Myr: mean over the frames from 100 Myr', rows.map(r => r.sealedOld), { unit: ' Mkm²', digits: 2,
     source: 'no Earth figure: the oldest ocean floor still in place, the Herodotus Basin’s under the eastern Mediterranean, is ~340 Myr (Granot 2016)' });
 report('back-arc seas opened per 100 Myr, from 100 Myr', rows.map(r => r.backArcs), { earth: [20, 40], digits: 1, source: 'a rate: ~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…; count recalled, unconfirmed)' });
+// (branch founders: a new trench nucleates on a few hundred km and propagates — step/subduction-init.js — so its length, the
+// plates it peels off and the sea floor's age are measured over the cycle, from 100 Myr)
+const late = r => r.trenches.filter(t => t.stage === 'late dispersal'), q50 = xs => median(xs);
+report('the longest trench, unbroken: median of the frames in late dispersal', rows.map(r => q50(late(r).map(t => t.longestKm))), { earth: [4000, 8000], unit: ' km', digits: 0,
+    source: 'today (late dispersal): Peru–Chile ~5,900 km, the longest single trench; the Kuril–Japan–Izu–Bonin–Mariana line, joined at triple junctions, ~7,000–8,000 (estimate)',
+    detail: txt(r => `most from 100 Myr ${(Math.max(0, ...r.trenches.map(t => t.longestKm)) / 1000).toFixed(1)}k km; by stage ${stageText(byStage(r.trenches.map(t => ({ stage: t.stage, value: t.longestKm }))), v => `${(median(v) / 1000).toFixed(1)}k`)}`) });
+report('total trench length: median of the frames from 100 Myr', rows.map(r => q50(r.trenches.map(t => t.totalKm))), { earth: [40000, 60000], unit: ' km', digits: 0,
+    source: '55,000 km of convergent margin (Stern 2002, Rev. Geophys. 40), ~42,000 km of trench (Scholl & von Huene 2009), ~40,000 (Kincaid 1995, Rev. Geophys. 33) — today only: no history of it found',
+    detail: txt(r => `by stage ${stageText(byStage(r.trenches.map(t => ({ stage: t.stage, value: t.totalKm }))), v => `${(median(v) / 1000).toFixed(0)}k`)}`) });
+report('trench ends running along strike, while the margin ahead fails', rows.map(r => r.propagation), { earth: [5, 17], unit: ' cm/yr', digits: 1,
+    source: '~10 cm/yr along the 3000 km Bitlis–Zagros ophiolite belt (Stern & Gerya 2018, Tectonophysics 746, Fig. 8G); ~17 cm/yr modelled onto a weak passive margin (Zhou et al. 2020, Sci. Adv. 6); Puysegur has hardly lengthened in 11 Myr (Stern & Gerya 2018)' });
+report('plates born at a new trench, from 100 Myr: median area', rows.map(r => median(r.born)), { unit: ' Mkm²', digits: 2,
+    source: 'no Earth figure: a new trench births no plate whole — the ocean it takes widens with the trench (STEP faults at its ends: Govers & Wortel 2005); was 26–35 Mkm² at once (seed 831576, 88–92 Myr)',
+    detail: txt(r => { const b = r.born.slice().sort((x, y) => x - y); return `${b.length} born; p90 ${(b[Math.floor(0.9 * b.length)] ?? 0).toFixed(1)}, largest ${(b.at(-1) ?? 0).toFixed(1)} Mkm²`; }) });
+report('sea floor older than twice its mean age: median of the frames from 100 Myr', rows.map(r => q50(r.trenches.map(t => t.old2))), { earth: [8, 15], unit: ' %', digits: 1,
+    source: 'the area-age law: area per Myr of age falls off linearly to nothing at tm ≈ 180 Myr (Parsons 1982, JGR 87; Cogné & Humler 2004, EPSL 227: tm = 180 ± 10 Myr) — a triangle, mean tm/3, 1/9 ≈ 11 % older than twice the mean whatever tm, so through the cycle; floor consumed regardless of age (an exponential) would leave 13.5 %',
+    detail: txt(r => `by stage ${stageText(byStage(r.trenches.map(t => ({ stage: t.stage, value: t.old2 }))), v => `${median(v).toFixed(0)} %`)}`) });
 
 section('the switches');
 {

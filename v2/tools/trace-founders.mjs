@@ -5,7 +5,7 @@
 import { labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
-import { EventKind } from '../js/tectonics/model/world.js';
+import { EventKind, BoundaryKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args.splice(i, 2)[1] : null; };
@@ -28,18 +28,30 @@ function caughtSeas(world) {
     return sizes.sort((a, b) => b - a).slice(1).filter(s => s >= 0.5);
 }
 
-// the plates' sizes and the sea floor's age on the frame's world view
+// the plates' sizes and the sea floor's age on the frame's world view; the trenches (overriding boundary cells), their
+// total length and the longest unbroken one
 function plateShape(world) {
-    const { owner, ownerCell, plates, time } = world, { numCells, cellAreaKm2, edgeKm } = mesh, area = new Map();
+    const { owner, ownerCell, plates, time, boundaryKind } = world, { numCells, cellAreaKm2, edgeKm, adjOffset, adjList } = mesh, area = new Map();
+    const ageList = [];
     let ages = 0, n = 0, trench = 0;
     for (let w = 0; w < numCells; w++) {
         const o = owner[w]; if (o < 0) continue;
         area.set(o, (area.get(o) ?? 0) + cellAreaKm2);
         const P = plates[o], c = ownerCell[w];
-        if (P.crust.type[c] === CrustType.OCEAN) { ages += time - P.crust.formedAt[c]; n++; if (P.crust.flags[c] & CrustFlag.TRENCH) trench++; }
+        if (P.crust.type[c] === CrustType.OCEAN) { const a = time - P.crust.formedAt[c]; ages += a; n++; ageList.push(a); }
+        if (boundaryKind[w] === BoundaryKind.OVERRIDING) trench++;
     }
+    const seen = new Uint8Array(numCells);
+    let longest = 0;
+    for (let s = 0; s < numCells; s++) {
+        if (seen[s] || boundaryKind[s] !== BoundaryKind.OVERRIDING) continue;
+        const q = [s]; seen[s] = 1;
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (!seen[nb] && boundaryKind[nb] === BoundaryKind.OVERRIDING && owner[nb] === owner[s]) { seen[nb] = 1; q.push(nb); } }
+        longest = Math.max(longest, q.length);
+    }
+    const mean = ages / Math.max(1, n), old2 = ageList.filter(a => a > 2 * mean).length / Math.max(1, n);
     const total = numCells * cellAreaKm2, sizes = [...area.values()], top = [...area].sort((x, y) => y[1] - x[1])[0][0], T = plates[top];
-    return { land: 100 * T.stats.continentalCells / Math.max(1, T.stats.cells), largest: 100 * Math.max(...sizes) / total, big: sizes.filter(a => a >= 10 ** 7.5).length, age: ages / Math.max(1, n), trenchKm: trench * edgeKm };
+    return { land: 100 * T.stats.continentalCells / Math.max(1, T.stats.cells), largest: 100 * Math.max(...sizes) / total, big: sizes.filter(a => a >= 10 ** 7.5).length, age: mean, old2: 100 * old2, trenchKm: trench * edgeKm, longestKm: longest * edgeKm };
 }
 
 for (const seed of seeds) {
@@ -63,7 +75,12 @@ for (const seed of seeds) {
         console.log(`  candidates ${k}: ${Object.entries(t).filter(([n]) => !/amples$/.test(n)).map(([n, v]) => `${n} ${typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v}`).join(' · ')}`);
         if (S.length) console.log(`    age p10/50/90 ${[0.1, 0.5, 0.9].map(p => q(col(0), p).toFixed(0)).join('/')} Myr · squeeze (${k === 'between' ? 'closing cm/yr' : 'σ, − compression'}) p10/50/90 ${[0.1, 0.5, 0.9].map(p => q(col(1), p).toFixed(2)).join('/')} · length p50 ${q(col(2), 0.5).toFixed(0)} km`);
     }
-    console.log(`  plates every 50 Myr (largest % [its land %] · count ≥ 10^7.5 km² · mean sea-floor age Myr · trench km): ${shape.map(x => `${x.t}:${x.largest.toFixed(0)}[${x.land.toFixed(0)}]/${x.big}/${x.age.toFixed(0)}/${(x.trenchKm / 1000).toFixed(0)}k`).join(' ')}`);
+    console.log(`  plates every 50 Myr (largest % [its land %] · count ≥ 10^7.5 km² · mean sea-floor age Myr [% older than twice it] · trench km [longest]): ${shape.map(x => `${x.t}:${x.largest.toFixed(0)}[${x.land.toFixed(0)}]/${x.big}/${x.age.toFixed(0)}[${x.old2.toFixed(0)}]/${(x.trenchKm / 1000).toFixed(0)}k[${(x.longestKm / 1000).toFixed(1)}k]`).join(' ')}`);
+    const born = world.events.filter(e => e.kind === EventKind.PLATE_BORN && !/pre-history/.test(e.text)).map(e => e.data.areaMkm2).sort((a, b) => a - b);
+    const bigBirths = world.events.filter(e => e.kind === EventKind.PLATE_BORN && !/pre-history/.test(e.text) && e.data.areaMkm2 > 5).map(e => { const i = inits.find(x => x.time === e.time && x.data.lower === e.data.plate || x.data.upper === e.data.plate && x.time === e.time); return `${e.time.toFixed(0)}:${e.data.areaMkm2.toFixed(1)}M/${e.data.invasion ? 'invasion' : i ? kind(i) : 'birth'}/${i ? i.data.lengthKm.toFixed(0) + 'km' : ''}`; });
+    console.log(`  plates born over 5 Mkm²: ${bigBirths.join(' ') || 'none'}`);
+    const lens = inits.map(e => e.data.lengthKm).sort((a, b) => a - b), B = world.budget;
+    console.log(`  plates born ${born.length} (Mkm² p10/50/90/max): ${[0.1, 0.5, 0.9].map(p => q(born, p).toFixed(1)).join('/')}/${(born.at(-1) ?? 0).toFixed(1)} · invasions ${world.events.filter(e => e.kind === EventKind.PLATE_BORN && e.data.invasion).length} · nucleus km p50/max ${q(lens, 0.5).toFixed(0)}/${(lens.at(-1) ?? 0).toFixed(0)} · propagated ${((B.propagatedKm ?? 0) / 1000).toFixed(0)}k km at ${((B.propagatedKm ?? 0) / Math.max(1e-9, B.propagatingTipMyr ?? 0) / 10).toFixed(1)} cm/yr while urged`);
     const rifts = world.events.filter(e => e.kind === EventKind.RIFT);
     console.log(`  rifts ${rifts.length}: ${rifts.map(e => `${e.time.toFixed(0)}:${e.data.cause}/σ${(e.data.stress ?? 0).toFixed(2)}/${((e.data.share ?? 0) * 100).toFixed(0)}%`).join(' ')}`);
     console.log(`  caught seas ≥0.5 Mkm² (Mkm²): ${seas.map(x => `${x.t}:[${x.s.map(v => v.toFixed(1)).join(',')}]`).join(' ')}`);

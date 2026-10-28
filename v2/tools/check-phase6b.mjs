@@ -128,7 +128,7 @@ const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {
         const induced = started.filter(e => founderUrge(e.data.ageMyr, 0, cfg, e.data.weightMyr) === 0).length;     // (across a plate: the depth step's weight)
         return { all: per100(started.length), induced: per100(induced), spontaneous: per100(started.length - induced), times: started.map(e => e.time.toFixed(0)).join(', ') };
     });
-    report('subduction initiations per 100 Myr', counts.map(c => c.all), { earth: [12, 30], unit: ' /100 Myr', source: 'a rate: 13 initiations since ~105 Ma, mostly induced (Crameri et al. 2020, Nat. Commun. 11; checked) — the database is a floor, and the window is the dispersal stage', digits: 1,
+    report('subduction initiations per 100 Myr', counts.map(c => c.all), { earth: [12, 40], unit: ' /100 Myr', source: 'a rate: 13 initiations since ~105 Ma, mostly induced (Crameri et al. 2020, Nat. Commun. 11; checked) — the database is a floor, and the window is the dispersal stage; the ceiling: "nearly half of all active subduction zones initiated during the Cenozoic" (Gurnis, Hall & Lavier 2004, G³ 5): ~half of ~55,000 km of trench (Stern 2002) in 66 Myr, ≳1000 km each once grown (Puysegur ~150 to Izu–Bonin–Mariana ~2500 km: Stern & Gerya 2018) — ≲40 per 100 Myr. A trench running along strike is no new one (Crameri et al. 2020, Box 1)', digits: 1,
         detail: `induced · spontaneous: ${counts.map(c => `${c.induced.toFixed(1)} · ${c.spontaneous.toFixed(1)}`).join(' | ')}` });
     // WBP: the sea floor is young — it is recycled. Without subduction initiation the oldest ocean just sits there.
     const ages = histories.map(h => {
