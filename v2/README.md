@@ -130,7 +130,7 @@ down; the ice age's hollows are lake districts). A gorge keeps its river's own c
 it, unless a shortcut is enough less work — the rock cut and a little for the length: along its own course a river does
 only `riverDirectness` of the work (0.1), so a bend is cut through only where the way round is over ten times the
 shortcut's (the worst hooks and tangles across drained basins — developer, rivers "that go back and forth", but "some
-windyness is good"; 0 keeps every course, 1 takes the way of least work); no closed land basins, and no dry land below
+windyness is good"; 0 keeps every course, 1 takes the way of least work); a land basin closed only where its rivers cannot fill it (see *Closed basins at any height*), and no dry land below
 sea level except a cut-off sea's (below). **The world ocean and the seas cut off from it** (2026-10-27,
 `terrain/world-ocean.js`, `finish-basins.js`): the sea is the water below sea level joined to the largest body of it — the
 world ocean; a body below sea level that does not join it has its surface set by its water balance, not by sea level (the

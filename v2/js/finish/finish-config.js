@@ -54,7 +54,8 @@ export const FINISH = {
 
     // ── F2: closed basins — a basin whose inflow cannot make up what its lake would lose to evaporation stays closed:
     // a flat salt pan or playa at the level where the two balance, the rivers of its catchment ending there ──
-    basinMinKm2: 3000,          // (smaller hollows are left to the rivers)
+    basinMinKm2: 3000,          // (smaller hollows are left to the rivers — a hollow's sub-basin too: no lake of its own, filled
+                                // by what its rivers bring, its water passing on; finish-basins.js hollowLakes)
     // ── F2: sediment — what the rivers cut, carried down and laid where they slow: fans at the mountain front,
     // floodplains, deltas at the sea ──
     sedimentShare: 0.35,        // the share of the eroded rock that travels as bedload (the rest is fine and reaches the sea)
@@ -150,7 +151,7 @@ export const FINISH = {
     glacialBreachQ: [500, 5000], // a big river breaks through its lakes, a small one keeps its lake district
     // which lakes stay (developer: "every river needs to end at ocean not lake"): a lake on a river is cut through to its
     // floor unless its river fills it and it is at least lakeKeepKm2 × √(inflow / 1000 m³/s) big (the ice age's lakes
-    // glacialKeepShare of that) — no closed basins
+    // glacialKeepShare of that). A basin its rivers cannot fill stays closed, at any height (2026-10-28)
     lakeKeepKm2: 5000,
     glacialKeepShare: 0.5,
     // a hollow the ice dug in soft rock (its basin, finish-ice) is a lake where at least basinLakeShare of its cells were dug

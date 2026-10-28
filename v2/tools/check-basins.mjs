@@ -17,7 +17,7 @@ import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { FRAME_FIELDS, TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
-import { lakeBalance } from '../js/finish/finish-basins.js';
+import { lakeBalance, hollowLakes } from '../js/finish/finish-basins.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { Water } from '../js/finish/finish-hydro.js';
 
@@ -55,6 +55,25 @@ section('the balance against Earth’s closed seas');
         med < 2.5e6 / 3 && years > 1e3 && years < 1e4, `balance ${Math.round(med / 1e3)}K km²; net loss full ${Math.round(loss)} km³/yr → 1.5 km (×0.7 for its narrowing) in ${Math.round(years).toLocaleString()} years`);
 }
 
+section('a hollow’s sub-basins, inside out');
+// A hollow of two sub-basins behind a sill (finish-basins.js hollowLakes): the Caspian full to its sill spills its surplus
+// into Kara-Bogaz-Gol beside it, which has no river of its own and stands at its own, lower level — its area its
+// overflow over what it loses; and a basin with no water reaching it is a playa, whatever is beside it
+{
+    const N = 2000, mesh = chain(N), A = 10, z = new Float32Array(N);
+    // (cells 0–1499: the big basin, its floor −1 km; cell 1500: the sill at −0.05 km; 1501–1999: the small one, floor −0.3 km)
+    for (let i = 0; i < N; i++) z[i] = i < 1500 ? -1 + 0.9 * Math.abs(i - 750) / 750 : i === 1500 ? -0.05 : -0.3 + 0.2 * Math.abs(i - 1750) / 250;
+    const cells = Array.from({ length: N }, (_, i) => i), e = 1e-3 * A;          // (1 m a year off each 10 km² cell: km³)
+    const solve = km3 => hollowLakes(mesh, cells, z, c => (c === 750 ? km3 : 0), () => e, 1, 0);
+    const S = solve(1500 * e + 3), big = S.lakes.find(L => L.cells.includes(750)), small = S.lakes.find(L => L.cells.includes(1750));
+    check('a full sub-basin spills into the one beside it, which balances at its own lower level on the overflow alone',
+        !S.full && big?.full && Math.abs(big.level + 0.05) < 1e-6 && small && !small.full && small.level < -0.05 && Math.abs(small.cells.length * e - 3) <= e && S.fate(750) === S.lakes.indexOf(small),
+        `upper lake ${big?.full ? 'full' : 'not full'} at ${Math.round(1000 * (big?.level ?? NaN))} m spilling ${big?.outflow?.toFixed(2)} km³/yr; the lower at ${Math.round(1000 * (small?.level ?? NaN))} m, ${small?.cells.length * A} km² (3 km³ over 1 m: 3000 km²)`);
+    const D = solve(100 * e), dry = D.lakes.find(L => L.cells.includes(1750));
+    check('…and short of its sill the upper lake keeps its water: the lower is a playa', !D.full && dry && dry.cells.length === 1 && D.lakes.find(L => L.cells.includes(750))?.cells.length === 100,
+        `the lower ${dry?.cells.length} cell(s) wet; the upper ${D.lakes.find(L => L.cells.includes(750))?.cells.length} cells`);
+}
+
 section('the world ocean is the largest body of water');
 {
     // two bodies on a chain: the larger is the ocean, the smaller is cut off
@@ -65,7 +84,7 @@ section('the world ocean is the largest body of water');
 }
 
 section('cut-off seas through the history (finished at 160K cells)');
-const simMesh = buildSimMesh(SIM, MESH_SEED), scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), rows = [];
+const simMesh = buildSimMesh(SIM, MESH_SEED), scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), rows = [], closedRows = [];
 for (const seed of SEEDS) {
     const frames = new Map();
     // (the page's history for these settings, through the history cache — tools/lib/history-cache.mjs: the page's own, if it built it)
@@ -80,6 +99,7 @@ for (const seed of SEEDS) {
         // (the seas the finish counts as remnants of the sea: finish-config.js seaBasinKm2)
         const seas = (fin.stats.water.seas ?? []).filter(s => s.belowKm2 >= F.seaBasinKm2[0]);
         const down = seas.filter(s => !s.spills), wetDown = down.filter(s => s.kind === Water.SALT), dry = down.filter(s => s.kind !== Water.SALT);
+        closedRows.push({ seed, t, endo: fin.stats.water.endorheicShare ?? NaN, closed: fin.stats.water.closed ?? [] });
         per.push({ t, n: seas.length, full: seas.length - down.length, belowKm2: seas.reduce((a, s) => a + s.belowKm2, 0), waterKm2: seas.reduce((a, s) => a + s.waterKm2, 0),
             surfaces: wetDown.map(s => s.levelKm), floors: dry.map(s => s.levelKm), ms: Object.values(fin.ms).reduce((a, b) => a + b, 0) });
         console.log(`    seed ${seed} at ${t} Myr: ${seas.length} cut-off seas, ${seas.length - down.length} full and spilling; below sea level ${(per.at(-1).belowKm2 / 1e6).toFixed(2)} Mkm², water ${(per.at(-1).waterKm2 / 1e6).toFixed(2)} Mkm²; salt lakes at ${wetDown.map(s => Math.round(1000 * s.levelKm)).join(', ') || '—'} m; playas at ${dry.map(s => Math.round(1000 * s.levelKm)).join(', ') || '—'} m (${(per.at(-1).ms / 1000).toFixed(0)} s)`);
@@ -105,6 +125,31 @@ report('a drawn-down sea’s water surface: median', rows.map(r => r.surfaceMedi
 report('…the lowest', rows.map(r => r.surfaceLow), { earth: [-3, -0.028], unit: ' km', digits: 3, source: 'the Dead Sea −430 m today; the Messinian Mediterranean drawn down 1.5–3 km (Hsü et al. 1973; Blanc 2002; Ryan 2009)' });
 report('a dried sea’s floor (a playa below sea level): the lowest', rows.map(r => r.floorLow), { earth: [-3, -0.086], unit: ' km', digits: 3,
     source: 'Death Valley −86 m, Karagiye −132 m, the Qattara −133 m; the Messinian Mediterranean’s floors dry 2–3 km down (Hsü et al. 1973)' });
+
+section('closed basins on land (finished at 160K cells, the same moments)');
+// A basin is closed where its rivers cannot fill it to its rim, at any height (finish-hydro.js, finish-basins.js
+// hollowLakes): its catchment's runoff against what its lakes lose. Earth today: about a fifth of the land drains to
+// none of the oceans — dry, and in the lee of ranges; a supercontinent's dry interior more (Pangea's: not measured).
+{
+    const bySeed = SEEDS.map(seed => closedRows.filter(r => r.seed === seed));
+    report('land draining to closed basins: mean of the moments', bySeed.map(R => 100 * R.reduce((a, r) => a + r.endo, 0) / Math.max(1, R.length)), { earth: [15, 35], unit: ' %', digits: 1,
+        source: '~20 % of the continents today (Wang et al. 2018, Nat. Geosci. 11: 926); more in a supercontinent’s dry interior (no figure found)',
+        detail: SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r.endo).toFixed(1)}`).join(', ')}`).join(' · ') });
+    // (a closed lake's size against its catchment: what the catchment's runoff can hold against the lake's evaporation —
+    // its aridity in one number, Bracht-Flyr et al. 2013; over 10 000 km² of catchment, the map's)
+    const median = a => { const v = [...a].sort((x, y) => x - y); return v.length ? v[v.length >> 1] : NaN; };
+    const withLake = bySeed.map(R => R.flatMap(r => r.closed.filter(b => b.catchKm2 >= 1e4 && b.lakeKm2 > 0)));
+    report('a closed lake’s area ÷ its catchment’s: median', withLake.map(B => 100 * median(B.map(b => b.lakeKm2 / b.catchKm2))), { earth: [1, 12], unit: ' %', digits: 1,
+        source: 'the Caspian 0.37 of 3.5 Mkm² (11 %), the Aral before 1960 68 000 of 1.5 Mkm² (4 %), Balkhash 16 000 of 0.4 Mkm² (4 %), the Great Salt Lake ~4 400 of 55 000 km² (8 %), Chad ≤ 25 000 of 2.4 Mkm² (≤ 1 %); the ratio follows aridity (Bracht-Flyr et al. 2013, J. Hydrol.)',
+        detail: withLake.map((B, i) => `${SEEDS[i]}: ${B.length} lakes`).join(' · ') });
+    // (playa or lake by the catchment's aridity, rain ÷ potential evaporation: UNEP's classes — hyper-arid and arid under
+    // 0.2, semi-arid 0.2–0.5 (Middleton & Thomas 1997))
+    const playaShare = (lo, hi) => bySeed.map(R => { const B = R.flatMap(r => r.closed.filter(b => b.catchKm2 >= 1e4 && b.aridity >= lo && b.aridity < hi)); return B.length ? 100 * B.filter(b => !(b.lakeKm2 > 0)).length / B.length : NaN; });
+    report('closed basins ending in a playa: arid catchments (P/PET under 0.2)', playaShare(0, 0.2), { unit: ' %', digits: 0,
+        source: 'no count found: the hyper-arid and arid basins end in playas and salt flats — Lake Eyre, the Chotts, Lop Nur, the Great Basin’s — save those fed from wet mountains (the Aral, Balkhash)' });
+    report('…semi-arid and wetter (P/PET 0.2 and over)', playaShare(0.2, Infinity), { unit: ' %', digits: 0,
+        source: 'no count found: semi-arid closed basins mostly hold lakes — the Caspian, Urmia, Van, Turkana, Great Salt Lake' });
+}
 
 finish('Basins');
 process.exit();

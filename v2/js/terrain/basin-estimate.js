@@ -101,8 +101,10 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH) 
         let low = -1;
         for (const c of B.lakes[id].cells) {
             if (low < 0 || zz[c] < zz[low]) low = c;
-            const wet = S.full ? true : S.wet && B.sink[c] && zz[c] < level;
-            if (wet) { cut[c] = 1; paintKm[c] = seaLevelKm + Math.min(-0.001, zz[c] - level); }
+            // (water: the whole hollow when it fills to its sill; else each of its lakes at its own level — finish-basins.js
+            // hollowLakes: a sub-basin behind a sill stands at its own balance)
+            const lv = S.full ? level : B.water[c], wet = S.full ? zz[c] < lv : lv === lv;
+            if (wet) { cut[c] = 1; paintKm[c] = seaLevelKm + Math.min(-0.001, zz[c] - lv); }
             else if (zz[c] < 0) { dry[c] = 1; paintKm[c] = seaLevelKm + 0.002; }
         }
         seas.push({ km2: S.km2, floorKm: S.floorKm, sillKm: S.sillKm, levelKm: level, full: S.full, wet: S.wet, low });

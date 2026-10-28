@@ -843,7 +843,14 @@ function stats(T, frame) {
     ui.stats.innerHTML = `<div>${frame.time.toFixed(0)} Myr</div><div>Land: ${(100 * h.landShare).toFixed(1)} % of the planet</div>` +
         (sea ? `<div title="The ocean's water is a fixed volume: where the mantle under the sea floor is warm, or the floor young, the sea stands higher against the land">Sea level: ${seaM(sea.seaKm)} against today's (the mantle's swell; the sea floor's age, not counted, would add ${seaM(sea.ridgeSeaKm)})</div>` : '') +
         `<div>Below 400 m: ${(100 * h.below400).toFixed(0)} % of the land</div><div>Median land: ${km(h.landKm[2])} · 90 % below ${km(h.landKm[4])}</div>` +
-        `<div>Plates: ${frame.plates.filter(p => p.alive && !p.isBackground).length}</div>` + cutOffLine(T);
+        `<div>Plates: ${frame.plates.filter(p => p.alive && !p.isBackground).length}</div>` + cutOffLine(T) + closedLine(frame);
+}
+/** A finished moment's closed basins, for the stats panel: the share of its land whose rivers end in one, and their water
+ *  (finish-hydro.js: closed at any height where their rivers cannot fill them; Earth's ~20 %, Wang et al. 2018). */
+function closedLine(frame) {
+    const W = B?.finishes.get(frame)?.stats?.water;
+    if (!W || !(W.endorheicShare >= 0)) return '';
+    return `<div title="Basins whose rivers cannot fill them to their rim keep their water: it evaporates there, at a salt lake or a playa. Earth: about a fifth of the land (Wang et al. 2018)">Detailed: ${(100 * W.endorheicShare).toFixed(1)} % of the land drains to closed basins · ${W.saltLakes} salt lakes, ${W.pans} playas</div>`;
 }
 
 function tick(now) {
