@@ -1053,7 +1053,8 @@ high as live ones, never sank, and were never consumed. The arc's life is now it
 - **A thin arc subducts** (`step/polarity.js floats`): arc crust under `arcAccreteThickKm` (17 km; Cloos 1993) is no longer
   land to the polarity rule — it goes down a trench like ocean, under ocean, arc or continent — and the docking and
   scraping rules judge an arc by its recorded crust, not its age (`collision.js arcCrustKm`), so a remnant left silent
-  stays thin and goes down at the next trench it meets. (A scene's hand-laid arc, never grown, still floats and is read by
+  stays thin and goes down at the next trench it meets — the arc cells at the contact going down as they arrive, not
+  the whole arc at once. (A scene's hand-laid arc, never grown, still floats and is read by
   its age.)
 - **A plate pulling away from its trench splits at its arc** (`backarc.js pullArcsAfterTrenches`): the history grew new
   floor at the trench itself as the plate retreated (`resolve.js`), stranding the arc and building another in front of it.
@@ -1064,12 +1065,14 @@ high as live ones, never sank, and were never consumed. The arc's life is now it
 
 Before → after, the four diagnosis seeds (831576, 626225, 777, 12345) at 300/600/900/1200 Myr, 40K sim cells
 (scratch measure script; rings by the diagnosis's ring finder):
-- rings of arc ≥ 1000 km round a basin: 81 → 33 (600–1000 km: 75 → 37)
-- island-arc crust: 24–43 Mkm² (mean 34) → 17–25 (mean 21); Earth ~3–8 (`check-phase13` reports it)
-- arcs above the sea: live 32 → 19 %, silent 39 → 7 % (Earth's remnant arcs nearly all drowned)
-- back-arc openings per 100 Myr: 1.2 → 2.0 (Earth 20–40: still far below)
-- enclosed seas ≥ 0.05 Mkm², mean 300–1200 Myr: 44 → 26 (12.4 → 6.0 Mkm²)
-- land share of the planet: 34.1 → 29.3 % (the arcs that drowned)
+- rings of arc ≥ 1000 km round a basin: 81 → 38 (600–1000 km: 75 → 51)
+- island-arc crust: 24–43 Mkm² (mean 34) → 17–25 (mean 22); Earth ~3–8 (`check-phase13` reports it)
+- arcs above the sea: live 32 → 18 %, silent 39 → 8 % (Earth's remnant arcs nearly all drowned)
+- back-arc openings per 100 Myr: 1.2 → 1.75 (Earth 20–40: still far below)
+- enclosed seas ≥ 0.05 Mkm², mean 300–1200 Myr: 44 → 30 (12.4 → 8.1 Mkm²)
+- land share of the planet: 34.1 → 30.6 % (the arcs that drowned)
+- time: the history +1.9 % (two seeds × two rounds at 40K, 1200 Myr; about +3–4 % a step, offset by ~2 % fewer steps);
+  the terrain −15 % at 160K (the distance-to-continent search gone from records.js)
 
 ## Conventions
 
