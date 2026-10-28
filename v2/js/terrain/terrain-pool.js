@@ -10,13 +10,29 @@ import { preparePlan, carveLadder, carveSettings, carveInputs, surfaceParts } fr
 import { terrainMeshAsync } from './terrain-mesh.js';
 
 const IS_NODE = typeof window === 'undefined' && typeof process !== 'undefined' && !!process.versions?.node;
-const CHUNKS_PER_WORKER = 8;          // more chunks than workers, dealt round-robin: land and sea even out between workers
+const CHUNKS_PER_WORKER = 8;
+const WAVES_NEAR_MAX_CELLS = 3e6;     // the coast's waves near the shore on the workers up to this many cells (wavesOpen)          // more chunks than workers, dealt round-robin: land and sea even out between workers
 // the Frame fields terrain synthesis reads (a worker is sent only these)
 // (every frame field the terrain reads — records.js, volcanoes.js — including the evolved heights; plus each plate's
 // rotation, below)
 export const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'terrane', 'formedAt', 'boundary', 'margin', 'mantleHeat', 'oroType', 'oroLast', 'thickKm',
     'beltU', 'beltReach', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide', 'prevShear', 'volcType', 'volcAt', 'volcKm', 'volcSource',
     'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'riverKm2', 'seaFillKm', 'fzU', 'arcKm', 'arcAt'];
+
+/** n synthesis workers, each sent the sim mesh; the first plans each frame and hands the plan to each other worker over a
+ *  port of their own. */
+async function synthesisWorkers(simMesh, n) {
+    const workers = await Promise.all(Array.from({ length: n }, () => spawn()));
+    const arrays = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
+    for (const w of workers) w.post({ type: 'sim', mesh: arrays });
+    const Channel = IS_NODE ? (await import('node:worker_threads')).MessageChannel : MessageChannel;
+    for (let i = 1; i < n; i++) {
+        const { port1, port2 } = new Channel();
+        workers[0].post({ type: 'peer', port: port1 }, [port1]);
+        workers[i].post({ type: 'planner', port: port2 }, [port2]);
+    }
+    return workers;
+}
 
 async function spawn(file = './terrain-worker.js') {
     const url = new URL(file, import.meta.url);
@@ -53,19 +69,27 @@ export class TerrainPool {
      */
     static async create(simMesh, size = null, { carvers = null } = {}) {
         const n = size ?? await defaultPoolSize();
-        const workers = await Promise.all(Array.from({ length: n }, spawn));
-        const arrays = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
-        for (const w of workers) w.post({ type: 'sim', mesh: arrays });
-        // the first worker plans each frame and hands the plan to each other worker over a port of their own
-        const Channel = IS_NODE ? (await import('node:worker_threads')).MessageChannel : MessageChannel;
-        for (let i = 1; i < n; i++) {
-            const { port1, port2 } = new Channel();
-            workers[0].post({ type: 'peer', port: port1 }, [port1]);
-            workers[i].post({ type: 'planner', port: port2 }, [port2]);
-        }
-        const pool = new TerrainPool(workers, simMesh);
+        const pool = new TerrainPool(await synthesisWorkers(simMesh, n), simMesh);
         pool.carverCount = carvers ?? ((await coreCount()) >= 8 ? 2 : 1);
         return pool;
+    }
+
+    /**
+     * The same pool with fresh workers, n of them (as many as before unless asked): the old ones go, and with them all they kept (chunks, samplers, plans —
+     * the memory a worker's heap holds on to after its work is done, ~150 MB each at 640K cells). The finish restarts its
+     * pool after the surface: the heavy stages that follow run with the memory back, and the coast's waves on the fresh
+     * workers (finish-coast.js).
+     */
+    async restart(n = this.workers.length) {
+        this.open();
+        this.failAll('the terrain pool was restarted');
+        for (const w of this.workers) w.terminate();
+        for (const c of this.carvers) c?.worker.terminate();
+        this.carvers = [];
+        this.shader?.worker.terminate(); this.shader = null;
+        this.meshes.clear();
+        this.workers = await synthesisWorkers(this.sim, n);
+        this.listen(this.workers);
     }
 
     constructor(workers, simMesh) {
@@ -80,8 +104,10 @@ export class TerrainPool {
         this.broken = false;                 // a worker died: every job is failed and the pool must be replaced (onBroken)
         this.onBroken = null;
         this.closed = false;                 // terminated: its jobs failed, and any asked of it after
-        workers.forEach(w => { w.listen(msg => this.pending.get(msg.jobId)?.(msg)); w.onCrash(m => this.crashed(m)); });
+        this.listen(workers);
     }
+
+    listen(workers) { workers.forEach(w => { w.listen(msg => this.pending.get(msg.jobId)?.(msg)); w.onCrash(m => this.crashed(m)); }); }
 
     /** A worker died without answering: fail every job waiting on any of the pool's workers, so nothing waits forever. */
     crashed(message) {
@@ -215,6 +241,63 @@ export class TerrainPool {
                 worker.post({ type: 'shade', jobId, numCells: tMesh.numCells, heightKm, opts });
             });
         } finally { worker.hold(false); }
+    }
+
+    // ── the coast's waves (finish-coast.js waveTracer), traced on the pool's workers: every grid cell's far field and
+    // every coast cell's waves are each their own, so they are dealt out in runs and come back exactly as traced in one
+    // place. A worker is sent the tracer's grid arrays once (~50 MB), and — up to WAVES_NEAR_MAX_CELLS — the terrain mesh
+    // (its positions, its neighbours: ~40 bytes a cell) and each cell's latitude and longitude for the waves near the coast;
+    // finer than that the copies would cost more memory than the time they save is worth, and the coast is traced here ──
+
+    /** Open the waves' tracer on every worker. @returns {{far: number, near: number}} the workers that trace each part */
+    wavesOpen(T, mesh, lat, lon) {
+        if (this.closed || this.broken || !this.workers.length) return { far: 0, near: 0 };
+        const near = mesh.numCells <= WAVES_NEAR_MAX_CELLS;
+        const m = near ? { xyz: mesh.xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList } : null;
+        for (const w of this.workers) w.post({ type: 'waves-open', T: { ...T, far: null }, mesh: m, lat: near ? lat : null, lon: near ? lon : null });
+        return { far: this.workers.length, near: near ? this.workers.length : 0 };
+    }
+
+    /** Each grid cell's seas (finish-coast.js seaRange) for the grid cells in `runs`, dealt among the workers.
+     *  @returns {Promise<Array<{from, to, gen5, genU}>>} each 4 seasons × (to − from) × D */
+    wavesSeas(seas, runs) {
+        return this.wavesAsk(runs, () => ({ type: 'waves-seas', seas })).then(r => r.flatMap(m => m.parts));
+    }
+
+    /** The far field of grid cells in `runs` ([from, to) each), dealt among the workers. @returns {Promise<Array<{from, to, out}>>}
+     *  out: 4 seasons × (to − from) × D */
+    wavesFar(runs) {
+        return this.wavesAsk(runs, () => ({ type: 'waves-far' })).then(r => r.flatMap(m => m.parts));
+    }
+
+    /** Every worker's copy of the far field, once traced (the waves near the coast read it). */
+    wavesFarDone(far) { for (const w of this.workers) w.post({ type: 'waves-far-set', far }); }
+
+    /** The waves at cells[from … to) of `runs`, on the coast as it stands (z), dealt among the workers.
+     *  @returns {Promise<Array<{from, to, out}>>} out: (to − from) × D */
+    wavesNear(z, cells, runs) {
+        return this.wavesAsk(runs, () => ({ type: 'waves-near', z, cells })).then(r => r.flatMap(m => m.parts));
+    }
+
+    /** The workers let go of the waves' tracer. */
+    wavesClose() { if (!this.closed) for (const w of this.workers) w.post({ type: 'waves-close' }); }
+
+    wavesAsk(runs, msgOf) {
+        this.open();
+        const W = this.workers.length, mine = Array.from({ length: W }, () => []);
+        runs.forEach((r, i) => mine[i % W].push(r));
+        return Promise.all(this.workers.map((w, wi) => {
+            if (!mine[wi].length) return { parts: [] };
+            const jobId = this.nextJob++;
+            w.hold(true);
+            return new Promise((resolve, reject) => {
+                this.pending.set(jobId, msg => {
+                    this.pending.delete(jobId);
+                    if (msg.type === 'error') reject(new Error(`terrain worker: ${msg.message}`)); else resolve(msg);
+                });
+                w.post({ ...msgOf(), jobId, runs: mine[wi] });
+            }).finally(() => w.hold(false));
+        }));
     }
 
     async runHeld(frame, tMesh, { cfg, seed, wantParts, records, carveInputs: wantCarve }, started, W, n) {

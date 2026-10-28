@@ -11,7 +11,7 @@ import { meshFromArrays } from '../core/sim-mesh.js';
 
 // chunks: chunk id → { xyz, cells, weights, samplerKey }; peers: the ports this worker hands plans on; jobs / plans: a
 // job and its plan, whichever arrives first waiting for the other
-const state = { sim: null, chunks: new Map(), peers: [], jobs: new Map(), plans: new Map() };
+const state = { sim: null, chunks: new Map(), peers: [], jobs: new Map(), plans: new Map(), waves: Promise.resolve(), tracer: null };
 const IS_NODE = typeof self === 'undefined';
 let post;
 if (IS_NODE) {                                             // Node worker thread
@@ -37,6 +37,7 @@ function handle(msg) {
             for (const p of state.peers) p.postMessage({ jobId: msg.jobId, plan: data });
             runJob(msg, plan);
         } else if (msg.type === 'job') { state.jobs.set(msg.jobId, msg); ready(msg.jobId); }
+        else if (msg.type.startsWith('waves-')) state.waves = state.waves.then(() => waves(msg));
     } catch (err) {
         post({ type: 'error', jobId: msg.jobId, message: err.stack ?? String(err) });
     }
@@ -74,4 +75,45 @@ function runJob({ jobId, cfg, seed, edgeKm, parts: wantParts, carve: wantCarve, 
         post(out, transfer);
     }
     post({ type: 'done', jobId, kernels: plan.Ks[0].count + plan.Ks[1].count, volcanoes: plan.V.count, sea: seaOf(plan.rec) });
+}
+
+/** The finish's coast (terrain-pool.js wavesOpen …): its waves traced over the runs this worker is dealt (finish-coast.js). */
+async function waves(msg) {
+    try {
+        if (msg.type === 'waves-seas') {
+            const { seaRange } = await import('../finish/finish-coast.js');
+            const D = msg.seas.D, parts = [];
+            for (const [from, to] of msg.runs) {
+                const gen5 = new Float32Array(4 * (to - from) * D), genU = new Float32Array(4 * (to - from) * D);
+                seaRange(msg.seas, from, to, gen5, genU, from, to - from);
+                parts.push({ from, to, gen5, genU });
+            }
+            post({ type: 'waves', jobId: msg.jobId, parts }, parts.flatMap(p => [p.gen5.buffer, p.genU.buffer]));
+        } else if (msg.type === 'waves-open') {
+            const { waveTracer } = await import('../finish/finish-coast.js');
+            const T = msg.T;
+            state.tracer = { T, trace: waveTracer(T, msg.mesh, msg.lat, msg.lon), near: null };
+        } else if (msg.type === 'waves-far-set') state.tracer.T.far = msg.far;
+        else if (msg.type === 'waves-close') state.tracer = null;
+        else if (msg.type === 'waves-far') {
+            const { T, trace } = state.tracer, D = T.D, parts = [];
+            for (const [from, to] of msg.runs) {
+                const out = new Float32Array(4 * (to - from) * D);
+                trace.farRange(from, to, out, from, to - from);
+                parts.push({ from, to, out });
+            }
+            post({ type: 'waves', jobId: msg.jobId, parts }, parts.map(p => p.out.buffer));
+        } else if (msg.type === 'waves-near') {
+            const { T, trace } = state.tracer, D = T.D, parts = [];
+            const all = state.tracer.near?.length >= msg.cells.length * D ? state.tracer.near : (state.tracer.near = new Float32Array(msg.cells.length * D));
+            for (const [from, to] of msg.runs) {
+                trace.near(msg.z, msg.cells, from, to, all);
+                parts.push({ from, to, out: all.slice(from * D, to * D) });
+            }
+            post({ type: 'waves', jobId: msg.jobId, parts }, parts.map(p => p.out.buffer));
+        }
+    } catch (err) {
+        if (msg.jobId) post({ type: 'error', jobId: msg.jobId, message: err.stack ?? String(err) });
+        else state.tracer = null;                                 // (a failed open: the jobs that follow report it)
+    }
 }

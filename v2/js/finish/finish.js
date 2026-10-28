@@ -28,6 +28,10 @@ import { worldOcean } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
 
 const R = 6371;
+// The coast's waves are traced on at most this many of the pool's workers besides this thread (finish-coast.js): each
+// holds a copy of the waves' grids and of the mesh, ~100 MB at 640K cells; three more hands than one cut the waves to a
+// third (640K, 2026-10-28)
+const COAST_WORKERS = 3;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** The finish's erosion at F.erosionStrength (finish-config.js erosionLevels, linear between the levels): the stream power's
@@ -47,7 +51,12 @@ export const STAGES = [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['ri
  *          onStage?: (name: string) => void, F?: Object, cfg?: Object}} o
  * @returns {Promise<{mesh: Object, z: Float32Array, ocean: Uint8Array, ms: Object, stats: Object}>}
  */
-export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {} }) {
+export async function finishPlanet(o) {
+    // (a pool the finish was handed to close is closed whatever happens: it stays open past the surface, for the coast)
+    try { return await finishStages(o); } finally { if (o.closePool && !o.pool.closed) o.pool.terminate(); }
+}
+
+async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {} }) {
     const ms = {}, stats = {};
     let t0 = performance.now();
     const lap = name => { const t = performance.now(); ms[name] = t - t0; t0 = t; };
@@ -63,8 +72,8 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
     // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
     const E = erosionAt(F, cfg);
     let surf = await pool.synthesize(frame, warped, { cfg: { ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness }, seed, records: false, carveInputs: true });
-    if (closePool) pool.terminate();                                  // (its workers' memory back before the heavy stages)
-    pool.forget?.(warped);
+    // (its workers' memory back before the heavy stages: a few fresh workers, idle until the coast's waves, gone after them)
+    if (closePool) await pool.restart(Math.min(pool.size, COAST_WORKERS)); else pool.forget?.(warped);
     let carveIn = surf.carveIn;
     const z = surf.heightKm, fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / mesh.edgeKm);
     surf = null; warped = null;
@@ -188,7 +197,9 @@ export async function finishPlanet({ frame, simMesh, seed, cells, pool, closePoo
 
     // ── F5: the coast — the waves cut it back and drift its sand along it ──
     onStage('coast');
-    const Co = coastWork({ mesh, z: C.z, lat, lon, soft, climGrid, ...waveIn, mouths: Sed.mouths, carveYears: F.carveTimeMyr * 1e6, oceanMask: zz => oceanMask(mesh, zz), cellKm2 }, F);
+    const Co = await coastWork({ mesh, z: C.z, lat, lon, soft, climGrid, ...waveIn, mouths: Sed.mouths, carveYears: F.carveTimeMyr * 1e6, oceanMask: zz => oceanMask(mesh, zz), cellKm2,
+        pool: pool.closed || pool.broken ? null : pool }, F);
+    if (closePool) pool.terminate();
     stats.coast = Co.stats;
     lap('coast');
 

@@ -43,10 +43,11 @@ const pow5 = (mu, sig) => {
  *                        iceSoft), climGrid {w, h}, u, v (12 × the climate grid: the winds, m/s, east and north), ice
  *                        (12 × grid: sea-ice cover 0–1, or null), eady, anchors (the rain stage's storm growth per row,
  *                        1/day, at its anchor months — the storms' winds), mouths (Map: sea cell → the river's load, km³ over the
- *                        carve's time), carveYears, oceanMask (z → Uint8Array), cellKm2 }
+ *                        carve's time), carveYears, oceanMask (z → Uint8Array), cellKm2, pool (a terrain pool to trace the
+ *                        waves on, or null: the same waves) }
  * @returns {{wave: Float32Array (kW/m at the coast's cells), change: Float32Array (km), stats: Object}}
  */
-export function coastWork(ctx, F) {
+export async function coastWork(ctx, F) {
     const { mesh, z, soft, climGrid, cellKm2 } = ctx, n = mesh.numCells, { adjOffset, adjList, edgeKm, xyz } = mesh;
     const wave = new Float32Array(n), change = new Float32Array(n);
     const stats = { years: F.coastYears, erodedKm3: 0, sandKm3: 0, riverKm3: 0, landLostKm2: 0, landGainedKm2: 0, lostKm3: 0, meanWaveKw: 0 };
@@ -78,124 +79,54 @@ export function coastWork(ctx, F) {
         }
         ss.push(rows);
     }
-    const step = 180 / climGrid.h, gridOf = (la, lo) => {
-        const i = Math.min(climGrid.w - 1, Math.max(0, Math.floor((lo + 180) / step))), j = Math.min(climGrid.h - 1, Math.max(0, Math.floor((90 - la) / step)));
-        return j * climGrid.w + i;
-    };
     // (the sea's waves: grown toward a fully developed sea by the wind along the way, carried on as swell, fading; none
     // under the ice. P: what arrives over a step of km toward the coast, travelling toward direction d)
     // (each grid cell's seas toward each direction, by season: the fifth power of the wind along it, storms and all)
+    // (with the terrain pool's workers where the finish has one: runs of the work dealt round-robin, every (K)th to this
+    // thread and the rest to the workers — asked first, so they work while this thread does its own; every grid cell's
+    // seas and far field and every coast cell's waves are each their own, so the waves are the same however dealt)
+    const pool = ctx.pool ?? null, hands = pool ? pool.size : 0;
+    const deal = (count, k) => { const runs = shares(count, k + 1); return [runs.filter((_, i) => i % (k + 1) === k), runs.filter((_, i) => i % (k + 1) !== k)]; };
+    const seas = { D, w: climGrid.w, h: climGrid.h, su: new Float32Array(4 * G), sv: new Float32Array(4 * G), ss: new Float32Array(4 * climGrid.h) };
+    for (let s = 0; s < 4; s++) { seas.su.set(su[s], s * G); seas.sv.set(sv[s], s * G); seas.ss.set(ss[s], s * climGrid.h); }
     const gen5 = new Float32Array(4 * G * D), genU = new Float32Array(4 * G * D);
-    for (let s = 0; s < 4; s++) for (let g = 0; g < G; g++) {
-        const sig = ss[s][Math.floor(g / climGrid.w)];
-        for (let d = 0; d < D; d++) {
-            const b = d * 2 * Math.PI / D, U5 = pow5(su[s][g] * Math.sin(b) + sv[s][g] * Math.cos(b), sig), o = (s * G + g) * D + d;
-            gen5[o] = U5; genU[o] = U5 ** 0.2;
+    {
+        const [mine, theirs] = deal(G, hands), asked = hands ? pool.wavesSeas(seas, theirs) : null;
+        for (const [from, to] of mine) seaRange(seas, from, to, gen5, genU);
+        if (asked) for (const { from, to, gen5: a, genU: b } of await asked) for (let s = 0; s < 4; s++) {
+            gen5.set(a.subarray(s * (to - from) * D, (s + 1) * (to - from) * D), (s * G + from) * D);
+            genU.set(b.subarray(s * (to - from) * D, (s + 1) * (to - from) * D), (s * G + from) * D);
         }
     }
-    const dirOf = (te, tn) => { let d = Math.round(Math.atan2(te, tn) / (2 * Math.PI / D)); return ((d % D) + D) % D; };
-    const grow = (P, g, s, d, km) => {
-        const open = 1 - si[s][g], o = (s * G + g) * D + d, U = genU[o];
-        P *= Math.exp(-km / F.swellDecayKm) * open;
-        const sat = F.waveSatK * gen5[o] * open;
-        if (P < sat && U > 0.5) P += (sat - P) * (1 - Math.exp(-km / (F.waveFetchK * U * U)));
-        return P;
-    };
-    // a direction of travel (bearing from north, clockwise) at a point: the tangent vector
-    const bearings = Float64Array.from({ length: D }, (_, d) => d * 2 * Math.PI / D);
-    const frame = (x, y, w) => {                                        // east, north at a unit vector
-        const h = Math.hypot(x, y) || 1e-12;
-        return [-y / h, x / h, 0, -w * x / h, -w * y / h, h];
-    };
+    // (the grid's land: a cell most of whose mesh cells stand above the sea — the far field stops there)
+    const landG = new Float32Array(G), cntG = new Float32Array(G), landMask = new Uint8Array(G), step = 180 / climGrid.h;
+    for (let c = 0; c < n; c++) { const g = gridCell(climGrid, step, ctx.lat[c], ctx.lon[c]); cntG[g]++; if (z[c] >= 0) landG[g]++; }
+    for (let g = 0; g < G; g++) landMask[g] = cntG[g] > 0 && landG[g] > 0.5 * cntG[g] ? 1 : 0;
+    const siAll = new Float32Array(4 * G);
+    for (let s = 0; s < 4; s++) siAll.set(si[s], s * G);
+    const T = { D, w: climGrid.w, h: climGrid.h, gen5, genU, si: siAll, landMask, far: null, swellDecayKm: F.swellDecayKm, waveSatK: F.waveSatK, waveFetchK: F.waveFetchK,
+        farStep: F.waveFarStepKm, farSteps: Math.round(F.waveFarKm / F.waveFarStepKm), nearStep: 1.5 * edgeKm, nearSteps: Math.floor(F.waveNearKm / (1.5 * edgeKm)) };
+    const tracer = waveTracer(T, mesh, ctx.lat, ctx.lon), helpers = pool ? pool.wavesOpen(T, mesh, ctx.lat, ctx.lon) : { far: 0, near: 0 };
     // ── far field: on the climate grid, the waves arriving at each sea cell from each direction, by season ──
-    const landG = new Float32Array(G), cntG = new Float32Array(G);
-    for (let c = 0; c < n; c++) { const g = gridOf(ctx.lat[c], ctx.lon[c]); cntG[g]++; if (z[c] >= 0) landG[g]++; }
-    const isLandG = g => cntG[g] > 0 && landG[g] > 0.5 * cntG[g];
-    const far = new Float32Array(4 * G * D), farStep = F.waveFarStepKm, farSteps = Math.round(F.waveFarKm / farStep), dl = farStep / R;
-    const pathG = new Int32Array(farSteps + 1), pathD = new Uint8Array(farSteps + 1);
-    for (let g = 0; g < G; g++) {
-        if (isLandG(g)) continue;
-        const j = Math.floor(g / climGrid.w), i = g - j * climGrid.w, la = (90 - (j + 0.5) * step) * D2R, lo = (-180 + (i + 0.5) * step) * D2R;
-        const px0 = Math.cos(la) * Math.cos(lo), py0 = Math.cos(la) * Math.sin(lo), pz0 = Math.sin(la);
-        for (let d = 0; d < D; d++) {
-            // march up-wave (against the travel), from the cell out to the open sea or the first land
-            const [ex, ey, ez, nx, ny, nz] = frame(px0, py0, pz0), b = bearings[d] + Math.PI;
-            let px = px0, py = py0, pz = pz0, dx = Math.cos(b) * nx + Math.sin(b) * ex, dy = Math.cos(b) * ny + Math.sin(b) * ey, dz = Math.cos(b) * nz + Math.sin(b) * ez;
-            let k = 0;
-            pathG[0] = g; pathD[0] = d;
-            for (let s = 1; s <= farSteps; s++) {
-                const c1 = Math.cos(dl), s1 = Math.sin(dl);
-                const qx = c1 * px + s1 * dx, qy = c1 * py + s1 * dy, qz = c1 * pz + s1 * dz;
-                dx = -s1 * px + c1 * dx; dy = -s1 * py + c1 * dy; dz = -s1 * pz + c1 * dz; px = qx; py = qy; pz = qz;
-                const gg = gridOf(Math.asin(Math.max(-1, Math.min(1, pz))) / D2R, Math.atan2(py, px) / D2R);
-                if (isLandG(gg)) break;
-                const f = frame(px, py, pz);
-                pathG[s] = gg; pathD[s] = dirOf(-(dx * f[0] + dy * f[1] + dz * f[2]), -(dx * f[3] + dy * f[4] + dz * f[5])); k = s;
-            }
-            for (let s = 0; s < 4; s++) {
-                let P = 0;
-                for (let q = k; q >= 0; q--) P = grow(P, pathG[q], s, pathD[q], farStep);
-                far[(s * G + g) * D + d] = P;
-            }
-        }
+    const far = new Float32Array(4 * G * D);
+    {
+        const [mine, theirs] = deal(G, helpers.far), asked = helpers.far ? pool.wavesFar(theirs) : null;
+        for (const [from, to] of mine) tracer.farRange(from, to, far);
+        if (asked) for (const { from, to, out } of await asked) for (let s = 0; s < 4; s++) far.set(out.subarray(s * (to - from) * D, (s + 1) * (to - from) * D), (s * G + from) * D);
+        T.far = far;
+        if (helpers.near) pool.wavesFarDone(far);
     }
-    // (the far field at a point, from the sea's cells around it only)
-    const farAt = (la, lo, s, d) => {
-        const x = (lo + 180) / step - 0.5, y = Math.max(0, Math.min(climGrid.h - 1, (90 - la) / step - 0.5)), x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
-        let sum = 0, wsum = 0;
-        for (const [ii, jj, w] of [[x0, y0, (1 - fx) * (1 - fy)], [x0 + 1, y0, fx * (1 - fy)], [x0, y0 + 1, (1 - fx) * fy], [x0 + 1, y0 + 1, fx * fy]]) {
-            const g = Math.min(climGrid.h - 1, jj) * climGrid.w + ((ii % climGrid.w) + climGrid.w) % climGrid.w;
-            if (isLandG(g) || !(w > 0)) continue;
-            sum += w * far[(s * G + g) * D + d]; wsum += w;
-        }
-        return wsum > 0 ? sum / wsum : 0;
-    };
-    // ── near field, on the mesh: from each coast cell, up-wave to the first land or out to waveNearKm, then the far field ──
-    const nearStep = 1.5 * edgeKm, nearSteps = Math.floor(F.waveNearKm / nearStep), dn = nearStep / R;
-    const walk = (c, px, py, pz) => {
-        let best = xyz[3 * c] * px + xyz[3 * c + 1] * py + xyz[3 * c + 2] * pz;
-        for (;;) {
-            let next = -1;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-                const nb = adjList[k], d = xyz[3 * nb] * px + xyz[3 * nb + 1] * py + xyz[3 * nb + 2] * pz;
-                if (d > best) { best = d; next = nb; }
-            }
-            if (next < 0) return c;
-            c = next;
-        }
-    };
-    const nG = new Int32Array(nearSteps + 1), nD = new Uint8Array(nearSteps + 1);
-    /** The waves arriving at cell c from each direction (kW/m), the seasons' mean, into out[o … o + D). */
-    const waves = (c, out, o) => {
-        const px0 = xyz[3 * c], py0 = xyz[3 * c + 1], pz0 = xyz[3 * c + 2], [ex, ey, ez, nx, ny, nz] = frame(px0, py0, pz0);
-        for (let d = 0; d < D; d++) {
-            const b = bearings[d] + Math.PI;
-            let px = px0, py = py0, pz = pz0, dx = Math.cos(b) * nx + Math.sin(b) * ex, dy = Math.cos(b) * ny + Math.sin(b) * ey, dz = Math.cos(b) * nz + Math.sin(b) * ez;
-            let cell = c, k = 0, blocked = false;
-            nG[0] = gridOf(ctx.lat[c], ctx.lon[c]); nD[0] = d;
-            for (let s = 1; s <= nearSteps; s++) {
-                const c1 = Math.cos(dn), s1 = Math.sin(dn);
-                const qx = c1 * px + s1 * dx, qy = c1 * py + s1 * dy, qz = c1 * pz + s1 * dz;
-                dx = -s1 * px + c1 * dx; dy = -s1 * py + c1 * dy; dz = -s1 * pz + c1 * dz; px = qx; py = qy; pz = qz;
-                cell = walk(cell, px, py, pz);
-                if (z[cell] >= 0) { blocked = true; break; }
-                const f = frame(px, py, pz);
-                nG[s] = gridOf(ctx.lat[cell], ctx.lon[cell]); nD[s] = dirOf(-(dx * f[0] + dy * f[1] + dz * f[2]), -(dx * f[3] + dy * f[4] + dz * f[5])); k = s;
-            }
-            // (a ray that met land at once — the land's side of the coast — brings nothing)
-            if (blocked && k === 0) { out[o + d] = 0; continue; }
-            const la = Math.asin(Math.max(-1, Math.min(1, pz))) / D2R, lo = Math.atan2(py, px) / D2R;
-            let sum = 0;
-            for (let s = 0; s < 4; s++) {
-                let P = blocked ? 0 : farAt(la, lo, s, d);
-                for (let q = k; q >= 1; q--) P = grow(P, nG[q], s, nD[q], nearStep);
-                sum += P;
-            }
-            out[o + d] = sum / 4;
-        }
+    /** The waves arriving at each of `cells` from each direction (kW/m), the seasons' mean, into out[i·D … i·D + D). */
+    const wavesAt = async (cells, out) => {
+        const [mine, theirs] = deal(cells.length, helpers.near), asked = helpers.near ? pool.wavesNear(z, cells, theirs) : null;
+        for (const [from, to] of mine) tracer.near(z, cells, from, to, out);
+        if (asked) for (const { from, out: o } of await asked) out.set(o, from * D);
     };
     // ── the coast worked over coastYears, in coastSteps: the waves at the coast, the cliffs cut, the sand moved ──
     const steps = F.coastSteps, dt = F.coastYears / steps;
+    // (a direction of travel — bearing d from north, clockwise — as east and north parts, once)
+    const COS_B = new Float64Array(D), SIN_B = new Float64Array(D);
+    for (let d = 0; d < D; d++) { const b = d * 2 * Math.PI / D; COS_B[d] = Math.cos(b); SIN_B[d] = Math.sin(b); }
     const sandH = new Float32Array(n);                                  // (km of loose sand on the sea's shore cells)
     const riverRate = new Map();
     for (const [mouth, load] of ctx.mouths ?? []) riverRate.set(mouth, F.coastRiverSand * load / ctx.carveYears);
@@ -217,7 +148,8 @@ export function coastWork(ctx, F) {
             if (isCoastLand[c] || isShore[c]) coast.push(c);
         }
         const Pd = new Float32Array(coast.length * D), at = new Int32Array(n).fill(-1);
-        coast.forEach((c, i) => { at[c] = i; waves(c, Pd, i * D); });
+        coast.forEach((c, i) => { at[c] = i; });
+        await wavesAt(Int32Array.from(coast), Pd);
         if (firstSand) { for (const c of coast) if (isShore[c]) sandH[c] = F.coastSandKm; firstSand = false; }
         avail.fill(0);
         // (the cliffs: cut back toward a wave-cut platform; their rock's sand to the shore below)
@@ -263,12 +195,12 @@ export function coastWork(ctx, F) {
             if (!(al > 1e-6)) return;
             ax /= al; ay /= al; az /= al;                                // landward normal
             const tx = py * az - pz * ay, ty = pz * ax - px * az, tz = px * ay - py * ax;   // along the shore
-            const [ex, ey, ez, nx, ny, nz] = frame(px, py, pz);
+            const h = Math.hypot(px, py) || 1e-12, ex = -py / h, ey = px / h, ez = 0, nx = -pz * px / h, ny = -pz * py / h, nz = h;   // (east, north)
             let q = 0;
             for (let d = 0; d < D; d++) {
                 const P = Pd[at[s] * D + d];
                 if (!(P > 0)) continue;
-                const b = bearings[d], ux = Math.cos(b) * nx + Math.sin(b) * ex, uy = Math.cos(b) * ny + Math.sin(b) * ey, uz = Math.cos(b) * nz + Math.sin(b) * ez;
+                const cb = COS_B[d], sb = SIN_B[d], ux = cb * nx + sb * ex, uy = cb * ny + sb * ey, uz = cb * nz + sb * ez;
                 const cosA = ux * ax + uy * ay + uz * az, sinA = ux * tx + uy * ty + uz * tz;
                 if (cosA > 0) q += P * cosA ** 1.2 * sinA;
             }
@@ -307,6 +239,7 @@ export function coastWork(ctx, F) {
         for (let q = 0; q < queue.length; q++) pass(queue[q]);
         for (const s of shoreList) if (!done[idx[s]]) pass(s);
     }
+    if (helpers.far) pool.wavesClose();
     for (let c = 0; c < n; c++) {
         change[c] = z[c] - start[c];
         if (start[c] >= 0 && z[c] < 0) stats.landLostKm2 += cellKm2;
@@ -328,4 +261,163 @@ function openSea(mesh, ocean, minCells) {
         if (cells.length >= minCells) for (const c of cells) out[c] = 1;
     }
     return out;
+}
+
+/**
+ * Each grid cell's seas toward each direction, by season — the fifth power of the wind along it, storms and all — for
+ * grid cells [from, to), into gen5 and genU (its fifth root; 4 seasons × grid × D, at their own places — or, given base
+ * and span, 4 seasons × span × D from grid cell base on). seas: { D, w, h,
+ * su, sv (4 × grid: the seasons' winds, east and north), ss (4 × rows: the storms' spread) }.
+ */
+export function seaRange(seas, from, to, gen5, genU, base = 0, span = seas.w * seas.h) {
+    const { D, w, h, su, sv, ss } = seas, G = w * h, SIN = new Float64Array(D), COS = new Float64Array(D);
+    for (let d = 0; d < D; d++) { const b = d * 2 * Math.PI / D; SIN[d] = Math.sin(b); COS[d] = Math.cos(b); }
+    for (let s = 0; s < 4; s++) for (let g = from; g < to; g++) {
+        const sig = ss[s * h + Math.floor(g / w)], u = su[s * G + g], v = sv[s * G + g];
+        for (let d = 0; d < D; d++) {
+            const U5 = pow5(u * SIN[d] + v * COS[d], sig), o = (s * span + g - base) * D + d;
+            gen5[o] = U5; genU[o] = U5 ** 0.2;
+        }
+    }
+}
+
+/** The climate grid's cell at (lat, lon), degrees. */
+function gridCell(grid, step, la, lo) {
+    const i = Math.min(grid.w - 1, Math.max(0, Math.floor((lo + 180) / step))), j = Math.min(grid.h - 1, Math.max(0, Math.floor((90 - la) / step)));
+    return j * grid.w + i;
+}
+
+/** [0, n) cut into 4·k runs, to deal round-robin among k hands (the grid's rows and the coast differ along their length). */
+function shares(n, k) {
+    const count = 4 * k, out = [];
+    for (let i = 0; i < count; i++) out.push([Math.floor(i * n / count), Math.floor((i + 1) * n / count)]);
+    return out;
+}
+
+/**
+ * The waves' tracer, built from plain arrays (a worker of the terrain pool builds the same one from a copy of them —
+ * terrain-worker.js): T = { D, w, h (the climate grid), gen5, genU (4 seasons × grid × D: the fifth power of the wind
+ * toward each direction, and its fifth root), si (4 × grid: the sea ice), landMask (grid: its land), far (4 × grid × D,
+ * once traced: the far field), swellDecayKm, waveSatK, waveFetchK, farStep, farSteps, nearStep, nearSteps }; the mesh
+ * (xyz, adjOffset, adjList) and each cell's lat, lon (degrees).
+ *   farRange(from, to, out, base, span): the far field of grid cells [from, to) into out (4 × grid × D, at their own
+ *     places — or 4 × span × D from grid cell base on);
+ *   near(z, cells, from, to, out): the waves at cells[from … to), each direction, into out[i·D …] (i the index in cells).
+ */
+export function waveTracer(T, mesh, lat, lon) {
+    const { D, w: gw, h: gh, gen5, genU, si, landMask } = T, G = gw * gh, step = 180 / gh;
+    const { xyz, adjOffset, adjList } = mesh ?? {};
+    const gridOf = (la, lo) => gridCell(T, step, la, lo);
+    const dirOf = (te, tn) => { let d = Math.round(Math.atan2(te, tn) / (2 * Math.PI / D)); return ((d % D) + D) % D; };
+    // (what arrives over a step of km — farStep or nearStep: its swell's fading once — toward the coast, travelling toward d)
+    const fadeFar = Math.exp(-T.farStep / T.swellDecayKm), fadeNear = Math.exp(-T.nearStep / T.swellDecayKm);
+    const grow = (P, g, s, d, km, fade) => {
+        const open = 1 - si[s * G + g], o = (s * G + g) * D + d, U = genU[o];
+        P *= fade * open;
+        const sat = T.waveSatK * gen5[o] * open;
+        if (P < sat && U > 0.5) P += (sat - P) * (1 - Math.exp(-km / (T.waveFetchK * U * U)));
+        return P;
+    };
+    // (up-wave — against the travel — along bearing d: its east and north parts, once)
+    const COS_UP = new Float64Array(D), SIN_UP = new Float64Array(D);
+    for (let d = 0; d < D; d++) { const b = d * 2 * Math.PI / D + Math.PI; COS_UP[d] = Math.cos(b); SIN_UP[d] = Math.sin(b); }
+    // (a step along a great circle: its angle's cosine and sine, once)
+    const dl = T.farStep / R, cFar = Math.cos(dl), sFar = Math.sin(dl), dn = T.nearStep / R, cNear = Math.cos(dn), sNear = Math.sin(dn);
+    const farSteps = T.farSteps, nearSteps = T.nearSteps, farStep = T.farStep, nearStep = T.nearStep;
+    const pathG = new Int32Array(farSteps + 1), pathD = new Uint8Array(farSteps + 1);
+    function farRange(from, to, out, base = 0, span = G) {
+        for (let g = from; g < to; g++) {
+            if (landMask[g]) continue;
+            const j = Math.floor(g / gw), i = g - j * gw, la = (90 - (j + 0.5) * step) * D2R, lo = (-180 + (i + 0.5) * step) * D2R;
+            const px0 = Math.cos(la) * Math.cos(lo), py0 = Math.cos(la) * Math.sin(lo), pz0 = Math.sin(la);
+            // (east and north at the cell)
+            const h0 = Math.hypot(px0, py0) || 1e-12, ex = -py0 / h0, ey = px0 / h0, ez = 0, nx = -pz0 * px0 / h0, ny = -pz0 * py0 / h0, nz = h0;
+            for (let d = 0; d < D; d++) {
+                // march up-wave (against the travel), from the cell out to the open sea or the first land
+                const cb = COS_UP[d], sb = SIN_UP[d];
+                let px = px0, py = py0, pz = pz0, dx = cb * nx + sb * ex, dy = cb * ny + sb * ey, dz = cb * nz + sb * ez;
+                let k = 0;
+                pathG[0] = g; pathD[0] = d;
+                for (let s = 1; s <= farSteps; s++) {
+                    const qx = cFar * px + sFar * dx, qy = cFar * py + sFar * dy, qz = cFar * pz + sFar * dz;
+                    dx = -sFar * px + cFar * dx; dy = -sFar * py + cFar * dy; dz = -sFar * pz + cFar * dz; px = qx; py = qy; pz = qz;
+                    const gg = gridOf(Math.asin(Math.max(-1, Math.min(1, pz))) / D2R, Math.atan2(py, px) / D2R);
+                    if (landMask[gg]) break;
+                    const h = Math.hypot(px, py) || 1e-12;
+                    pathG[s] = gg; pathD[s] = dirOf(-(dx * (-py / h) + dy * (px / h) + dz * 0), -(dx * (-pz * px / h) + dy * (-pz * py / h) + dz * h)); k = s;
+                }
+                for (let s = 0; s < 4; s++) {
+                    let P = 0;
+                    for (let q = k; q >= 0; q--) P = grow(P, pathG[q], s, pathD[q], farStep, fadeFar);
+                    out[(s * span + g - base) * D + d] = P;
+                }
+            }
+        }
+    }
+    // (the far field at a point, from the sea's cells around it only: the four grid points around it and their weights)
+    const cg = new Int32Array(4), cw = new Float64Array(4);
+    const corners = (la, lo) => {
+        const x = (lo + 180) / step - 0.5, y = Math.max(0, Math.min(gh - 1, (90 - la) / step - 0.5)), x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+        cg[0] = Math.min(gh - 1, y0) * gw + ((x0 % gw) + gw) % gw; cw[0] = (1 - fx) * (1 - fy);
+        cg[1] = Math.min(gh - 1, y0) * gw + (((x0 + 1) % gw) + gw) % gw; cw[1] = fx * (1 - fy);
+        cg[2] = Math.min(gh - 1, y0 + 1) * gw + ((x0 % gw) + gw) % gw; cw[2] = (1 - fx) * fy;
+        cg[3] = Math.min(gh - 1, y0 + 1) * gw + (((x0 + 1) % gw) + gw) % gw; cw[3] = fx * fy;
+    };
+    const farAt = (s, d) => {
+        const far = T.far;
+        let sum = 0, wsum = 0;
+        for (let q = 0; q < 4; q++) {
+            const g = cg[q], wq = cw[q];
+            if (landMask[g] || !(wq > 0)) continue;
+            sum += wq * far[(s * G + g) * D + d]; wsum += wq;
+        }
+        return wsum > 0 ? sum / wsum : 0;
+    };
+    // ── near field, on the mesh: from each coast cell, up-wave to the first land or out to waveNearKm, then the far field ──
+    const walk = (c, px, py, pz) => {
+        let best = xyz[3 * c] * px + xyz[3 * c + 1] * py + xyz[3 * c + 2] * pz;
+        for (;;) {
+            let next = -1;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k], d = xyz[3 * nb] * px + xyz[3 * nb + 1] * py + xyz[3 * nb + 2] * pz;
+                if (d > best) { best = d; next = nb; }
+            }
+            if (next < 0) return c;
+            c = next;
+        }
+    };
+    const nG = new Int32Array(nearSteps + 1), nD = new Uint8Array(nearSteps + 1);
+    function near(z, cells, from, to, out) {
+        for (let i = from; i < to; i++) {
+            const c = cells[i], o = i * D;
+            const px0 = xyz[3 * c], py0 = xyz[3 * c + 1], pz0 = xyz[3 * c + 2];
+            const h0 = Math.hypot(px0, py0) || 1e-12, ex = -py0 / h0, ey = px0 / h0, ez = 0, nx = -pz0 * px0 / h0, ny = -pz0 * py0 / h0, nz = h0;
+            const g0 = gridOf(lat[c], lon[c]);
+            for (let d = 0; d < D; d++) {
+                const cb = COS_UP[d], sb = SIN_UP[d];
+                let px = px0, py = py0, pz = pz0, dx = cb * nx + sb * ex, dy = cb * ny + sb * ey, dz = cb * nz + sb * ez;
+                let cell = c, k = 0, blocked = false;
+                nG[0] = g0; nD[0] = d;
+                for (let s = 1; s <= nearSteps; s++) {
+                    const qx = cNear * px + sNear * dx, qy = cNear * py + sNear * dy, qz = cNear * pz + sNear * dz;
+                    dx = -sNear * px + cNear * dx; dy = -sNear * py + cNear * dy; dz = -sNear * pz + cNear * dz; px = qx; py = qy; pz = qz;
+                    cell = walk(cell, px, py, pz);
+                    if (z[cell] >= 0) { blocked = true; break; }
+                    const h = Math.hypot(px, py) || 1e-12;
+                    nG[s] = gridOf(lat[cell], lon[cell]); nD[s] = dirOf(-(dx * (-py / h) + dy * (px / h) + dz * 0), -(dx * (-pz * px / h) + dy * (-pz * py / h) + dz * h)); k = s;
+                }
+                // (a ray that met land at once — the land's side of the coast — brings nothing)
+                if (blocked && k === 0) { out[o + d] = 0; continue; }
+                if (!blocked) corners(Math.asin(Math.max(-1, Math.min(1, pz))) / D2R, Math.atan2(py, px) / D2R);
+                let sum = 0;
+                for (let s = 0; s < 4; s++) {
+                    let P = blocked ? 0 : farAt(s, d);
+                    for (let q = k; q >= 1; q--) P = grow(P, nG[q], s, nD[q], nearStep, fadeNear);
+                    sum += P;
+                }
+                out[o + d] = sum / 4;
+            }
+        }
+    }
+    return { farRange, near };
 }
