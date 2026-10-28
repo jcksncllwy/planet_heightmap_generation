@@ -23,7 +23,8 @@
 import { CIV } from './civ-config.js';
 import { PACKAGES, FOODS, WILD_FOODS } from './substrate.js';
 import { Life, farms, settled, lifeOfDiet } from './life.js';
-import { edgeLengths, frontArrival, offshoreKm, schedule, toblerFactor } from './travel.js';
+import { edgeLengths, frontArrival, offshoreKm, schedule, seaGate, toblerFactor } from './travel.js';
+import { travelGraph, Craft } from './routes.js';
 import { spreadKm } from '../core/min-heap.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { Polities } from './polity.js';
@@ -95,18 +96,21 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     const coastG = new Uint8Array(n);
     for (const c of cells) if (dry(c, frontSeaKm)) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (isWater(adjList[k])) { coastG[c] = 1; break; }
     const riverQ = sub.river.q;
-    const crossingAt = t => schedule(C.crossingKm, bpOf(t)), seaSpeed = t => schedule(C.frontSeaKmYr, bpOf(t));
-    // the earliest time ≥ t a front may put out over water cell b (crossings only lengthen): a front waits at the shore
-    const seaOpens = (b, t) => {
-        const need = 2 * offshore[b];
-        if (crossingAt(t) >= need) return t;
-        const K = C.crossingKm;
+    const seaSpeed = t => schedule(C.frontSeaKmYr, bpOf(t));
+    // the crossings (plans/CIV_PLAN.md §10.2): a water leg's days from the shore, paddled, by the month set out in, on the
+    // planet's winds and currents (routes.js) — within the era's reach (C.crossingDays), or the front waits at the shore
+    // until the reach grows (crossings only lengthen)
+    const paddle = travelGraph(w, sub, Craft.PADDLE, C);
+    const crossingOpens = (need, t) => {
+        if (schedule(C.crossingDays, bpOf(t)) >= need) return t;
+        const K = C.crossingDays;
         for (let i = 1; i < K.length; i++) if (K[i][1] >= need) {
             const [b0, k0] = K[i - 1], [b1, k1] = K[i];
             return Math.max(t, tOf(b0 + (b1 - b0) * (need - k0) / (k1 - k0)));
         }
         return Infinity;
     };
+    const crossing = seaGate(paddle, isWater, crossingOpens, mesh);
     const slope = (a, b, k) => toblerFactor((Math.max(0, z[b]) - Math.max(0, z[a])) / len[k]);
     const foragerSpeed = (a, b, k, t) => {
         if (isWater(a) || isWater(b)) return seaSpeed(t);
@@ -156,17 +160,17 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     const lastCold = C.coldOpensBP[C.coldOpensBP.length - 1];
     const coldOpens = x => (x >= lastCold[0] ? lastCold[1] : schedule(C.coldOpensBP.map(([k, bp]) => [-k, bp]), -x));
     const opensAt = (b, t) => {
-        if (isWater(b)) return seaOpens(b, t);
+        if (isWater(b)) return t;
         let o = t;
         if (ice && ice[b]) o = Math.max(o, tOf(C.iceUntilBP));
         if (coldBy(b) > 0) o = Math.max(o, tOf(coldOpens(coldBy(b))));
         return o;
     };
-    frontArrival(mesh, len, arrival, foragerSpeed, null, Infinity, opensAt, cameFrom);
+    frontArrival(mesh, len, arrival, foragerSpeed, null, Infinity, opensAt, cameFrom, crossing);
 
     // ── disease: where the parasites reached with people (the cold filter), and what each way of life loses ──
     const range = disease ? parasiteRange(w, origins,
-        (a, b) => (home[b] >= 0 && dry(b, minSeaKm)) || (isWater(b) && 2 * offshore[b] <= schedule(C.crossingKm, C.holoceneBP)), C, c => (isWater(c) ? -1 : home[c])) : null;
+        (a, b) => (home[b] >= 0 && dry(b, minSeaKm)) || (isWater(b) && 2 * offshore[b] <= schedule(C.crossingDays, C.holoceneBP) * C.paddleKmh * C.boatHours), C, c => (isWater(c) ? -1 : home[c])) : null;
     const health = (c, settled, irrigating) => (range ? 1 - diseaseLoss(w, home[c], range, sub.wetland[home[c]] > 0 || irrigating ? 1 : 0, irrigating, settled, C) : 1);
 
     // ── Phase 2–3 state ──
@@ -199,7 +203,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     const cultArrival = DOM.map(() => new Float64Array(n).fill(Infinity)), cultFrom = DOM.map(() => new Int32Array(n).fill(-1));
     // (a cereal's land with no rain-fed crop: only watered, once canals are known)
     const needsCanal = (i, h, b) => !(DOM[i].suit(h) >= C.cropMinSuit || wildRange[i][b]);
-    const farmOpensAt = i => (b, t) => (isWater(b) ? seaOpens(b, t) : needsCanal(i, home[b], b) ? Math.max(t, irrigKnown[i]) : t);
+    const farmOpensAt = i => (b, t) => (isWater(b) ? t : needsCanal(i, home[b], b) ? Math.max(t, irrigKnown[i]) : t);
     const farmSpeed = (i, wildOnly = false) => (a, b, k, t) => {
         if (isWater(b)) return seaSpeed(t);
         if (!(wildOnly ? wildRange[i][b] : grows[i][b])) return 0;
@@ -211,9 +215,9 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     };
     // (each front's cells in order of arrival, for what its people carry: made again whenever the front moves)
     const order = DOM.map(() => null), cultOrder = DOM.map(() => null);
-    const spread = (i, sources) => { frontArrival(mesh, len, farmArrival[i], farmSpeed(i), sources, Infinity, farmOpensAt(i), farmFrom[i]); order[i] = null; };
-    const spreadCult = (i, sources) => { frontArrival(mesh, len, cultArrival[i], farmSpeed(i, true), sources, Infinity, farmOpensAt(i), cultFrom[i]); cultOrder[i] = null; };
-    // ── voyaging: from when farmers first farm a coast, crossings grow (C.voyageKm) — the world's voyagers carrying every
+    const spread = (i, sources) => { frontArrival(mesh, len, farmArrival[i], farmSpeed(i), sources, Infinity, farmOpensAt(i), farmFrom[i], crossing); order[i] = null; };
+    const spreadCult = (i, sources) => { frontArrival(mesh, len, cultArrival[i], farmSpeed(i, true), sources, Infinity, farmOpensAt(i), cultFrom[i], crossing); cultOrder[i] = null; };
+    // ── voyaging: from when farmers first farm a coast, crossings grow (C.voyageDays) — the world's voyagers carrying every
     // crop farmed on a coast by then (Lapita's kit: Austronesian voyagers took up New Guinea's taro, yams, bananas and
     // breadfruit on the way; Kirch 2017). They land only on shores no one holds, farm them with the best-fitting of those
     // crops (or forage, where none grows), and people spread from there as on any other land ──
@@ -231,17 +235,31 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         // (ashore: only from the sea, onto land no one holds, that people can live on — open of ice and cold)
         return atSea(a) && arrival[b] > t && Kf[b] >= C.habitableKm2[0] && opensAt(b, t) <= t ? ladderAt(C.voyageSeaKmYr, t - firstCoast) : 0;
     };
-    const voyageOpens = (b, t) => (isWater(b) ? Math.max(t, firstCoast + ladderReaches(C.voyageKm, 2 * offshore[b])) : t);
+    // (their crossings: paddled until the sail comes, voyageSailYears after the first farmed coast — days at sea by the
+    // month set out in, within C.voyageDays then, or waiting until the ladder reaches them)
+    const voyageOpens = (need, t) => Math.max(t, firstCoast + ladderReaches(C.voyageDays, need));
+    let voyagePaddle = null, voyageSail = null, lastGate = null;
+    const launched = [];
+    const sailOpens = (need, t) => Math.max(voyageOpens(need, t), firstCoast + C.voyageSailYears);
+    const voyageGate = t => (t - firstCoast >= C.voyageSailYears ? (voyageSail ??= seaGate(travelGraph(w, sub, Craft.SAIL, C), atSea, sailOpens, mesh))
+        : (voyagePaddle ??= seaGate(paddle, atSea, voyageOpens, mesh)));
     /** The voyage's launch cell for a landing at c: back along its course to the coast it set out from. */
-    const launchOf = c => { let a = voyageFrom[c]; while (a >= 0 && voyageFrom[a] !== a) a = voyageFrom[a]; return a; };
+    const launchOf = c => { let a = voyageFrom[c]; for (let k = 0; a >= 0 && voyageFrom[a] !== a && k < n; k++) a = voyageFrom[a]; return a; };
     /** The voyages from the coasts newly farmed, and the landings due by `until` (each with the crops known by then). */
     const sail = until => {
-        const v = voyage ??= new Float64Array(n).fill(Infinity), from = launch;
+        const v = voyage ??= new Float64Array(n).fill(Infinity), gate = voyageGate(until);
         voyageFrom ??= new Int32Array(n).fill(-1);
+        // (the new coasts; and when the sail comes, every coast again: their voyages were planned paddling)
+        for (const c of launch) launched.push(c);
+        const from = gate !== lastGate ? launched : launch;
+        // (the paddlers' plans are dropped: their times at sea would bar the sail's longer legs — and the landings made
+        // keep their arrivals)
+        if (gate !== lastGate && lastGate) { v.fill(Infinity); voyageFrom.fill(-1); }
+        lastGate = gate;
         if (from.length) {
             for (const c of from) { v[c] = Math.min(v[c], farmT[c]); if (v[c] === farmT[c]) voyageFrom[c] = c; }
             launch = [];
-            frontArrival(mesh, len, v, voyageSpeed, from, Infinity, voyageOpens, voyageFrom);
+            frontArrival(mesh, len, v, voyageSpeed, from, Infinity, null, voyageFrom, gate);
         }
         const landed = [], farmed = DOM.map(() => []);
         for (const c of cells) if (!atSea(c) && v[c] <= until && v[c] < arrival[c]) {
@@ -252,7 +270,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             // domesticated and their skill)
             if (bi >= 0 && v[c] < farmArrival[bi][c]) { farmArrival[bi][c] = v[c]; farmFrom[bi][c] = c; farmed[bi].push(c); Dm[bi][c] = 1; Sk[bi][c] = 1; }
         }
-        if (landed.length) frontArrival(mesh, len, arrival, foragerSpeed, landed, Infinity, opensAt, cameFrom);
+        if (landed.length) frontArrival(mesh, len, arrival, foragerSpeed, landed, Infinity, opensAt, cameFrom, crossing);
         farmed.forEach((F, i) => { if (F.length) spread(i, F); });
     };
 

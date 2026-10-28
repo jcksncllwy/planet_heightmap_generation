@@ -5,6 +5,7 @@
 //     (no flood-season bonus on Earth); far-fed from the land's own aridity, as finish-hydro.js decides it
 //   USGS MRDS (2011): mapped mineral deposits, in place of the tectonic record's ores
 //   ETOPO5 (NOAA NGDC 1988; 5′): the sea floor's depth — the shelves the glacial sea lays bare (Beringia, Sahul, Sunda)
+//   NCEP/NCAR R1 winds and GODAS currents, by month (tuning/civ/fetch-flow.mjs): the travel graph's (w.flow), if fetched
 // The Köppen class and the cell-stats measures are computed from the twelve months exactly as the climate does.
 // Run tuning/civ/fetch-earth.sh first. Cached in tuning/civ/data/earth-<N>.bin.
 
@@ -80,11 +81,17 @@ async function earthDeposits() {
 }
 
 /** The Earth world at N cells: { mesh, z, ocean, lake, koppen, tAnnual, pAnnual, stats, rivers, loess, erg, deposits }. */
+/** Earth's monthly winds and currents (tuning/civ/fetch-flow.mjs), or null if not fetched. */
+export function earthFlow() {
+    const f = path.join(DIR, 'earth-flow.bin');
+    return fs.existsSync(f) ? v8.deserialize(fs.readFileSync(f)) : null;
+}
+
 export async function earthWorld(N = 640000) {
     const cache = path.join(DIR, `earth-${Math.round(N / 1000)}k.bin`);
     if (fs.existsSync(cache)) {
         const w = v8.deserialize(fs.readFileSync(cache));
-        if (CROP_KEYS.every(k => w.crops?.[k])) { w.mesh = meshFromArrays(w.mesh); return w; }             // (an older cache, without the crops' climate: built again)
+        if (CROP_KEYS.every(k => w.crops?.[k])) { w.mesh = meshFromArrays(w.mesh); w.flow = earthFlow(); return w; }   // (an older cache, without the crops' climate: built again)
     }
     const mesh = buildSimMesh(N, 12345), n = mesh.numCells, xyz = mesh.xyz;
     const wc = f => readTif(path.join(RAW, 'wc', f));
@@ -134,7 +141,7 @@ export async function earthWorld(N = 640000) {
     const w = { seed: 'earth', ice, mesh: { numCells: n, xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList }, z, ocean, lake, koppen, tAnnual, pAnnual,
         stats: col.stats, rivers: { lat: Rv.lat, lon: Rv.lon, q: Rv.q, regime: null, farFed }, loess: null, erg: null, vector: vectors.vector, crops: crops.crops, deposits: await earthDeposits() };
     fs.writeFileSync(cache, v8.serialize(w));
-    w.mesh = meshFromArrays(w.mesh);
+    w.mesh = meshFromArrays(w.mesh); w.flow = earthFlow();
     return w;
 }
 

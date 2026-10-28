@@ -6,7 +6,7 @@
 //   sim-slots run -n 4 --gb 6 -- node --max-old-space-size=8000 v2/tools/civ-ensemble.mjs [--seeds 1-20] [--jobs N: default SIM_THREADS, else 4] [--label base] [--set key=value,…]
 //   node v2/tools/civ-ensemble.mjs --compare base other
 //
-// --set overrides CIV's values for the run (JSON values: --set onsetPowerLate=2,voyageKm=[[0,100],[5000,900]]).
+// --set overrides CIV's values for the run (JSON values: --set onsetPowerLate=2,voyageDays=[[0,2.5],[5000,9]]).
 // Output: v2/out/civ/ensemble/<label>/<seed>.json and summary.json.
 
 import fs from 'node:fs';
@@ -35,7 +35,7 @@ const overridesOf = s => (s ? Object.fromEntries(s.split(/,(?=[A-Za-z_]+=)/).map
 /** The world as the page has it (civWorldFromFinish), cached. */
 async function pageWorld({ seed, cont, time }) {
     const file = path.join(CACHE, `page-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k.bin`);
-    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (CROP_KEYS.every(k => w.crops?.[k])) { w.mesh = meshFromArrays(w.mesh); return w; } }   // (an older cache, without the crops' climate: built again)
+    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (CROP_KEYS.every(k => w.crops?.[k]) && w.flow) { w.mesh = meshFromArrays(w.mesh); return w; } }   // (an older cache, without the crops' climate or the winds: built again)
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
     const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true });
     const w = civWorldFromFinish(fin);

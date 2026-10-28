@@ -839,6 +839,36 @@ over it, and the flows wear paths that make it cheaper.
   - Open for the Earth check: whether the trades come out steady enough (Casson: Rome to Alexandria in 2–3 weeks,
     the way back against the wind in 1–2 months).
 - **T1. Fronts and voyaging on the graph** (the economy only).
+
+  **Done (2026-10-27).** Fronts cross water on the travel graph (`seaGate` in `travel.js`):
+  - A water leg keeps its days from shore for each month it could have set out in. It goes on while its best
+    month's days are within the era's reach; else it waits for the reach to grow. So crossings are directional
+    and seasonal. The fronts' pace in km a year is unchanged.
+  - A leg counts days away from land. By any shore, ice-covered ones included, it is at most the days in from
+    there (the coastal route past the ice).
+  - Foragers and farm fronts paddle: `crossingDays` 0.75 days, then 2.5 from 60 ka.
+  - Voyages paddle until `voyageSailYears` (7000 yr after the first farmed coast), then sail: `voyageDays`
+    2.5 → 5 → 9 → 20 days. When the sail comes, every launched coast plans its voyages again.
+  - Earth winds and currents: NCEP/NCAR R1 and GODAS through `tuning/civ/fetch-flow.mjs` (run it once; the
+    data is gitignored).
+  - New arrival rows: Cyprus, Cuba, Samoa, Tahiti, Marquesas, Hawaii, Rapa Nui.
+
+  Earth (seed 0), against the code before T1: 12/20 dates within ±2 ka (10/17 before). Fiji 3.4 ka, Samoa 3.3,
+  Madagascar 3.4, Hawaii 3.0 (was 2.0), Rapa Nui 2.0 (was never). Monte Verde 15.5 ka. 170 M people at 0 BP
+  (174 before). Farming on time in 4 of 7 places (3 before).
+
+  Ensemble (20 worlds, `t1base` → `t1`): to come (queued behind other sims).
+
+  Open:
+  - No Long Pause. East Polynesia comes ~2 kyr early (Tahiti 3.0 ka against 1–0.85). Caps of 10–30 days all give
+    ~3.0 ka: on the real trades a sail makes 150–230 km a day, and the chains east of Samoa have no long leg. The
+    record's cause is debated (ENSO westerly spells, the canoe itself).
+    Pause-shaped ladders don't make one either. 10 days to 9500 yr then 25 days moves only Rapa Nui (2.0 → 1.2 ka);
+    12 then 25 also loses Hawaii. Tahiti and the Marquesas stay at ~3.0 ka: their hops fit in 10 days. The default
+    ladder stays (the km ladder at 40 and ~100 km a day; not fitted to one island).
+  - Cuba at 43.7 ka (record 7–6): the Florida Current carries paddlers across the glacial strait.
+  - Beringia still 33.6 ka (record 20–14); New Zealand 3.3 ka (record 0.8–0.7).
+  - Drift landings are not modelled.
 - **T2. Flows and towns** (Rihll–Wilson), grain first.
 - **T3. Wear and paths;** then states' roads.
 - **T4. Materials,** with the deposits of §5.6.

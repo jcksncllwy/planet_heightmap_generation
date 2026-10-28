@@ -72,7 +72,8 @@ if (EARTH) {
     const ARRIVE = [['Levant (Skhul / Manot)', 32.5, 35.3, [55, 50]], ['South Asia', 22, 78, [70, 50]], ['Sahul (Madjedbebe)', -12.5, 132.9, [65, 47]],
         ['Europe (Bacho Kiro)', 43, 25.4, [47, 43]], ['China (Fuyan)', 25.5, 111, [80, 40]], ['Japan', 35, 137, [38, 35]], ['Siberia (Yana)', 70.7, 135.4, [32, 28]],
         ['Beringia / Alaska', 65, -150, [20, 14]], ['Monte Verde (Chile)', -41.5, -73, [18.5, 14.5]], ['Tasmania', -42, 147, [41, 35]],
-        ['Fiji (Lapita)', -17.8, 178, [3.1, 2.8]], ['Madagascar', -19, 47, [2.5, 1]], ['New Zealand', -41, 174, [0.8, 0.7]]];
+        ['Fiji (Lapita)', -17.8, 178, [3.1, 2.8]], ['Madagascar', -19, 47, [2.5, 1]], ['New Zealand', -41, 174, [0.8, 0.7]],
+        ['Cyprus', 35, 33, [12.5, 10.5]], ['Cuba', 22, -79.5, [7, 6]], ['Samoa', -13.8, -172, [2.9, 2.7]], ['Tahiti', -17.6, -149.5, [1, 0.85]], ['Marquesas', -9, -140, [1, 0.85]], ['Hawaii', 19.6, -155.5, [1, 0.8]], ['Rapa Nui', -27.1, -109.4, [0.9, 0.75]]];
     // domestication centres (ka BP of the first domesticates; Larson et al. 2014, Fuller 2011)
     const DOM = [['Fertile Crescent', 36, 39, [11.5, 10]], ['Yangtze (rice)', 30, 113, [9, 7]], ['Yellow River (millet)', 35.5, 111, [10, 8]],
         ['New Guinea highlands', -5.8, 144.3, [10, 7]], ['Mesoamerica', 18, -98, [10, 8]], ['Andes', -13, -72, [8, 6]], ['Eastern N. America', 37, -87, [5, 4]],

@@ -123,19 +123,23 @@ export const CIV = {
     frontCoastKmYr: 4,          // the coastal route: to Sahul in a few kyr (Macaulay et al. 2005), down the Americas' coast fast
     frontRiverKmYr: 1.0,        // along big rivers
     frontRiverM3s: 100,
-    // across water, where the crossing is short enough — by era (years BP → km/yr, km; each never falling): ≤ 20–30 km
-    // before ~60 ka, then ~100 (Sahul; Bird et al. 2019; Okinawa's ~35 ka, Cyprus's ~12 ka are no wider). No forager went
+    // across water, where the crossing is short enough — by era (years BP → km/yr; days at sea, paddled on the month's
+    // winds and currents: routes.js; each never falling): ≤ 20–30 km before ~60 ka, then ~100 (Sahul; Bird et al. 2019;
+    // Okinawa's ~35 ka, Cyprus's ~12 ka are no wider) — at a calm sea's 40 km a day, 0.75 and 2.5 days. No forager went
     // further: the open ocean is the voyagers' (below)
     frontSeaKmYr: [[70000, 1.5]],
-    crossingKm: [[70000, 30], [60000, 100]],
+    crossingDays: [[70000, 0.75], [60000, 2.5]],
     // Voyaging: open-ocean crossings were farmers' — the outrigger and the sail, crops and animals carried to plant an
     // empty shore (the Austronesians: rice and millet farmers on the south China coast by ~7 ka, Taiwan ~5 ka, Lapita's
     // ~850 km gaps from ~3.3 ka, Remote Polynesia's 2000+ km legs by ~1 ka; Kirch 2017, Bellwood 2017). It came slowly:
     // the first farmers held a coast by ~10.5 ka (the Levant), and for ~7000 years after, crossings stayed short — ~100–200
     // km (Cyprus, Cuba ~7 ka) — until Lapita's leap past the ~350 km of open sea into Remote Oceania, ~850 km within a
-    // few centuries. So from when farmers first farm a coast, voyagers learn to cross further — years since → km — and
-    // then sail at Lapita's pace, carrying every crop farmed on a coast by then…
-    voyageKm: [[0, 100], [7000, 200], [7300, 900], [9500, 2000]],
+    // few centuries. So from when farmers first farm a coast, voyagers learn to cross further — years since → days at sea
+    // (paddled, then under sail from voyageSailYears: Lapita's outrigger sail; on the month's winds and currents) — and
+    // then sail at Lapita's pace, carrying every crop farmed on a coast by then. The days: the former km ladder (100, 200,
+    // 900, 2000 km) at a calm sea's paddle (40 km a day) and sail (~100: routes.js in a wind of no steady direction)…
+    voyageDays: [[0, 2.5], [7000, 5], [7300, 9], [9500, 20]],
+    voyageSailYears: 7000,
     voyageSeaKmYr: [[0, 1.5], [7000, 1.5], [7300, 10]],
     // …and settle only land no one holds yet (with the best-fitting of their crops; where none grows they forage, as the
     // Maori's moa-hunters did beyond the kūmara's range)
