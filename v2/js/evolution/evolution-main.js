@@ -30,6 +30,7 @@ import { FINISH } from '../finish/finish-config.js';
 import { exportTypes, exportWidths, exportFileName, exportMap, exportAll, EXPORT_MAX, EXPORT_MAX_TOUCH } from './export.js';
 import { downloadBlob } from '../view/png.js';
 import { SMALL_DEVICE } from '../core/device.js';
+import { watchView } from './history-view.js';
 
 setDelaunator(Delaunator);
 
@@ -46,6 +47,10 @@ const SHADING = { exaggeration: 20, seaLevelKm: 0 };
 // terrain workers: on a phone a few (each holds its own copy of the meshes: memory), elsewhere one per core but one
 const WORKERS = Number(new URLSearchParams(location.search).get('workers')) || (IS_TOUCH ? 3 : null);
 const SCENE = TERRAIN_SCENES.find(s => s.id === 'cycle');      // the start world, every rule on — its length and ending set here
+// Served by the local dev server, each history is saved to the machine's history cache as it builds (app/history-upload.js),
+// and the moment shown is noted (history-view.js), so agents can load exactly what is on screen; ?save=0 turns it off.
+// Anywhere else (the public site) neither does anything.
+const SAVE_HISTORY = new URLSearchParams(location.search).get('save') !== '0';
 
 const $ = id => document.getElementById(id);
 const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
@@ -211,6 +216,9 @@ const simMeshOf = n => { if (!simMeshes.has(n)) simMeshes.set(n, buildSimMesh(n,
 // ── one build: the history streaming in, its terrain, the timeline ──
 let B = null;                           // { controller, player, frames, simMesh, tMesh, raster, live, started, endMyr, error }
 let playing = false, playTime = 0, lastTick = 0, preparing = null, painted = null, paintedT = null, paintedMesh = null, paintedSharp = false, dirty = true, cellRgb = null, simRgb = null;
+// (the moment on screen, for the history cache's latest.json — only once this history is being saved: history-view.js)
+watchView(() => (B?.cache && painted ? { key: B.cache.key, code: B.cache.code, timeMyr: painted.time, url: location.href, seed: B.seed, cont: B.cache.cont, sim: B.simCells,
+    lengthMyr: B.lengthMyr, ending: B.cache.ending, builtToMyr: builtTo(), building: B.live } : null));
 
 async function build() {
     if (B?.finishJob) finisher.cancel();
@@ -241,7 +249,8 @@ async function build() {
     try {
         b.simMesh = simMeshOf(simCells);
         const meshReady = terrainMeshAsync(terrainCells);
-        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, lengthMyr: len, keep: true }, b.simMesh, seed, SNAPSHOT_MYR,
+        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, lengthMyr: len, keep: true,
+            save: SAVE_HISTORY, saveSpec: { cont: Math.round(cont * 100), sim: simCells, meshSeed: MESH_SEED, lengthMyr: len, ending, url: location.href }, onCache: c => { b.cache = { ...c, cont: Math.round(cont * 100), ending }; } }, b.simMesh, seed, SNAPSHOT_MYR,
             t => { if (B === b) progress(b, t); },
             frame => { if (B !== b) return; if (!b.frames.length) console.info(`[evolution] first frame simulated at ${((performance.now() - b.started) / 1000).toFixed(1)} s`); b.frames.push(frame); b.player?.addFrame(frame); if (frame.time > Number(ui.time.max)) setScale(frame.time); rail(); },
             b.controller.signal);
@@ -258,7 +267,7 @@ async function build() {
         setScale(b.endMyr); rail();
         b.player.finish();
         const secs = (performance.now() - b.started) / 1000, stop = ENDINGS.find(e => e.id === ending);
-        console.info(`[evolution] history: ${(done.ms / 1000).toFixed(1)} s in the worker, of which packing frames ${(done.packMs / 1000).toFixed(1)} s`);
+        console.info(`[evolution] history: ${(done.ms / 1000).toFixed(1)} s in the worker, of which packing frames ${(done.packMs / 1000).toFixed(1)} s` + (b.cache ? `, handing them to the history cache ${(done.uploadMs / 1000).toFixed(2)} s` : ''));
         b.doneText = `${b.endMyr.toFixed(0)} Myr of history in ${secs.toFixed(0)} s · ${done.steps} steps` + (ending === 'none' ? '' : done.stopped ? ` — ends as ${stop.phrase}` : ` — did not reach ${stop.phrase} in time`);
         if (!b.retexturing) status(b.doneText, 1);
         dirty = true;

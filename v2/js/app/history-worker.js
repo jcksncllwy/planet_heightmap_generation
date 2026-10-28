@@ -12,6 +12,9 @@ import { terrainConfig } from '../terrain/terrain-config.js';
 import { packFrame } from '../tectonics/frame-pack.js';
 import { historyEnding } from '../tectonics/ending.js';
 import { HelperPool } from './helper-pool.js';
+import { HISTORY_CODE } from './history-code.js';
+import { historyKey, mathFingerprint } from './history-key.js';
+import { HistoryUpload } from './history-upload.js';
 
 const SCENE_LISTS = { terrain: TERRAIN_SCENES };
 
@@ -19,8 +22,16 @@ let kept = null;                  // { world, scene, snapshotEveryMyr }: the his
 let packMs = 0;
 let helpers = null;               // the helper pool, once made (null where a worker cannot start workers of its own)
 let small = false;                // a phone or small device (the page's core/device.js): the helpers go once a run is done
+// the history saved to the machine's history cache as it is built (app/history-upload.js): only when the dev server served
+// the page (HISTORY_CODE: the hash of the code this worker loaded) and the page asks for it; frames on the step grid
+let upload = null, grid = 2;
 // (packed: a whole history's frames are mostly zeros — tectonics/frame-pack.js)
-const send = frame => { const t = performance.now(), { packed, transfer } = packFrame(frame); packMs += performance.now() - t; self.postMessage({ type: 'frame', frame: packed }, transfer); };
+const send = frame => {
+    const t = performance.now(), { packed, transfer } = packFrame(frame);
+    packMs += performance.now() - t;
+    if (upload && Math.abs(frame.time / grid - Math.round(frame.time / grid)) < 1e-6) upload.frame(packed);    // (before the arrays go)
+    self.postMessage({ type: 'frame', frame: packed }, transfer);
+};
 // (with helpers, or right here — the same history either way)
 const run = (world, opts) => (helpers ? simulateAsync(world, opts, helpers) : simulate(world, opts));
 
@@ -40,7 +51,8 @@ self.onmessage = async ({ data }) => {
             await helpersFor(world.mesh);
             const { steps } = await run(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
             restHelpers();
-            self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started });
+            upload?.done({ time: world.time, steps, stopped: false });
+            self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started, uploadMs: upload?.ms ?? 0 });
             return;
         }
         const { list, sceneId, seed, mesh, snapshotEveryMyr, heights = {}, ending = 'none', start = {}, lengthMyr = null } = data;
@@ -51,13 +63,18 @@ self.onmessage = async ({ data }) => {
         const world = helpers && scene.buildAsync ? await scene.buildAsync(simMesh, seed, start, helpers) : scene.build(simMesh, seed, start);
         world.config.heights = terrainConfig(heights);                 // (the heights evolve with these; the history itself ignores them)
         const { untilMyr, stopAt } = historyEnding(lengthMyr ?? scene.maxMyr, ending, world.config);      // (a chosen ending: it may run on)
+        const key = data.save && HISTORY_CODE ? historyKey(HISTORY_CODE, world, scene.drive) : null;      // (the start world, as it will run)
+        upload = key ? new HistoryUpload(key, { scene: sceneId, list, seed, start, heights, cells: simMesh.numCells, code: HISTORY_CODE, math: mathFingerprint(), engine: self.navigator?.userAgent ?? null, ...data.saveSpec }) : null;
+        grid = world.config.stepGridMyr;
+        if (key) self.postMessage({ type: 'cache', key, code: HISTORY_CODE });
         packMs = 0;
         const started = performance.now();
         const { steps, stopped } = await run(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
         kept = { world, scene, snapshotEveryMyr };
         const helperCount = helpers?.size ?? 0;
         restHelpers();
-        self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started, packMs, helpers: helperCount });
+        upload?.done({ time: world.time, steps, stopped });
+        self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started, packMs, uploadMs: upload?.ms ?? 0, helpers: helperCount });
     } catch (err) {
         self.postMessage({ type: 'error', message: err.stack ?? String(err) });
     }

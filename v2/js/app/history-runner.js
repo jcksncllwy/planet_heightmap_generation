@@ -14,13 +14,15 @@ import { SMALL_DEVICE } from '../core/device.js';
  *        until it is), start-world tunables for a scene that takes them, and a length other than the scene's; keep: the
  *        history can be run on afterwards — the result then has `more(untilMyr)` (a promise: runs it on to untilMyr, a
  *        multiple of the step grid, its frames through onFrame as before — the same history as one long run) and
- *        `close()` (lets its worker go)
+ *        `close()` (lets its worker go); save: the worker saves the history to the machine's history cache as it builds it,
+ *        where the dev server served the page (app/history-upload.js; ignored elsewhere), with `saveSpec` noted beside it,
+ *        and `onCache({key, code})` is told its key
  * @param {(frame, index: number) => void} [onFrame]   each frame as it arrives (the Evolution page shows the planet as it builds)
  * @param {AbortSignal} [signal]   aborts the run (its worker is stopped; the promise rejects with an AbortError)
  * @returns {Promise<{frames: Object[], steps: number, stopped: boolean, complete: boolean}>}  stopped: it reached its
  *          ending; complete: it ran as far as a history may (so a longer run would not find more)
  */
-export function runHistory({ list, scene, heights = {}, ending = 'none', start = {}, lengthMyr = null, keep = false }, simMesh, seed, snapshotEveryMyr, onProgress = () => {}, onFrame = null, signal = null) {
+export function runHistory({ list, scene, heights = {}, ending = 'none', start = {}, lengthMyr = null, keep = false, save = false, saveSpec = null, onCache = null }, simMesh, seed, snapshotEveryMyr, onProgress = () => {}, onFrame = null, signal = null) {
     if (typeof Worker === 'undefined') {
         const world = scene.build(simMesh, seed, start);
         world.config.heights = terrainConfig(heights);
@@ -42,19 +44,20 @@ export function runHistory({ list, scene, heights = {}, ending = 'none', start =
         worker.onmessage = ({ data }) => {
             if (data.type === 'frame') { const frame = new PackedFrame(data.frame); frames.push(frame); onProgress(frame.time); onFrame?.(frame, frames.length - 1); }
             else if (data.type === 'done') {
-                const out = { frames, steps: data.steps, stopped: data.stopped, complete: !data.stopped && ending !== 'none', time: data.time, ms: data.ms, packMs: data.packMs };
+                const out = { frames, steps: data.steps, stopped: data.stopped, complete: !data.stopped && ending !== 'none', time: data.time, ms: data.ms, packMs: data.packMs, uploadMs: data.uploadMs };
                 if (!keep) worker.terminate();
                 else {
                     out.more = untilMyr => dead ? Promise.reject(dead) : new Promise((res, rej) => { moreJob = { resolve: res, reject: rej }; worker.postMessage({ type: 'more', untilMyr }); });
                     out.close = () => worker.terminate();
                 }
                 resolve(out);
-            } else if (data.type === 'more-done') { const job = moreJob; moreJob = null; job?.resolve({ steps: data.steps, time: data.time, ms: data.ms }); }
+            } else if (data.type === 'cache') onCache?.({ key: data.key, code: data.code });
+            else if (data.type === 'more-done') { const job = moreJob; moreJob = null; job?.resolve({ steps: data.steps, time: data.time, ms: data.ms }); }
             else fail(new Error(`history worker: ${data.message}`));
         };
         worker.onerror = e => fail(new Error(`history worker: ${e.message}`));
         signal?.addEventListener('abort', () => fail(new DOMException('The history was stopped', 'AbortError')), { once: true });
-        worker.postMessage({ list, sceneId: scene.id, seed, snapshotEveryMyr, heights, ending, start, lengthMyr, small: SMALL_DEVICE,
+        worker.postMessage({ list, sceneId: scene.id, seed, snapshotEveryMyr, heights, ending, start, lengthMyr, small: SMALL_DEVICE, save, saveSpec,
             mesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList } });
     });
 }
