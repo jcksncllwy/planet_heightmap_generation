@@ -519,8 +519,14 @@ is the shelf load's flexural moat, 3πα/4 for an elastic thickness growing from
 (`marginElasticKm`, Watts 2001). So a young margin has a narrow shelf over thinned crust falling away (the Red Sea), a
 mature one a shelf ~100 km wide with its break at ~120–150 m. The other margins — active, transform, collision, arc,
 and passive coasts that never rifted — keep their per-margin profiles (`margins` in terrain-config.js), which stand for
-physics not derived yet: an active margin's forearc and trench slope, a transform margin's sheared edge; their crust
-still ends at the shelf break. What tectonics treats as continental crust is unchanged (the history uses its land for
+physics not derived yet. A transform margin has a sheared edge, but the history records no shear or age for it. A
+collision coast faces no ocean COB, and an arc's heights come from its slab (records.js); their crust still ends at the
+shelf break. An active margin with the history's trench within 450 km of its coast is derived (round 2, 2026-10-28).
+Its forearc, the wedge on the overriding plate's crust, slopes at one surface slope from the shelf break down to the
+trench's axis. That slope is the wedge's critical taper (Davis, Suppe & Dahlen 1983; forearcs slope ~1–8°, Lallemand et
+al. 1994). There is no abyssal floor between, so the crust's edge, the COB, lies at the trench. Seed 626225 at 300 Myr,
+640K cells, mean depth 25–50 / 50–75 / 100–125 km off such coasts: −4.18 / −4.92 / −5.08 km before, −3.83 / −4.26 /
+−4.55 km now. Many coasts the history calls active have no trench within reach, and they keep the profile. What tectonics treats as continental crust is unchanged (the history uses its land for
 erosion, rivers, the sea's fill and the ledger), and the Evolution timeline already draws heights against the sea
 (terrain-player, world-ocean.js), so flooded continental crust shows there as shallow sea; the lab's crust palettes
 stay crust maps. Phase 13 reports the continental crust under the sea by stage of the cycle, the shelves' width by kind

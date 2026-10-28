@@ -12,7 +12,7 @@
 // (anchor.js), so a range keeps its detail as its plate moves.
 
 import { TERRAIN } from './terrain-config.js';
-import { deriveRecords, kindType, kindSide } from './records.js';
+import { deriveRecords, kindType, kindSide, CoastKind } from './records.js';
 import { beltProfile, broadProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
 import { buildStripeKernels, stripeAt, crossAt, beltAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
@@ -397,7 +397,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return span2;
     };
     const { cratons: CR, terrane } = rec;
-    const { coastKm, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
+    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
@@ -872,6 +872,17 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 if (landP < cfg.shelfEdgeKm) top = Math.max(landP, -floor);
             }
             h = top + (-floor - top) * smooth(0, slope, -coast);
+            // (off an active margin the crust's edge is the trench: the forearc — the accretionary or eroding wedge on the
+            // overriding plate's crust — slopes down from the shelf break to the trench's axis at one surface slope, the
+            // wedge's critical taper (Davis, Suppe & Dahlen 1983; forearc slopes ~1–8°, Lallemand et al. 1994), with no
+            // abyssal floor between: the history's own trench, where one lies within reach of the coast)
+            const act = (coastKind[c0] === CoastKind.ACTIVE ? w0 : 0) + (coastKind[c1] === CoastKind.ACTIVE ? w1 : 0) + (coastKind[c2] === CoastKind.ACTIVE ? w2 : 0);
+            if (act > 0.01) {
+                // (only between the coast and the trench: on the overriding plate, which the outer rise's distance — spread
+                // over the plate going down only, records.js — does not reach)
+                const tk = w0 * trenchKm[c0] + w1 * trenchKm[c1] + w2 * trenchKm[c2], rk = w0 * riseKm[c0] + w1 * riseKm[c1] + w2 * riseKm[c2];
+                if (tk < 450 && rk > tk + 60) { const fa = top + (-floor - top) * (-coast) / Math.max(1, -coast + tk); h += act * (Math.max(h, fa) - h); }
+            }
             // (off a rifted margin the crust's edge is the foot of the slope: the sediment prism's front, if it reaches out
             // here, down to the floor)
             if (rs > 1e-3) {
