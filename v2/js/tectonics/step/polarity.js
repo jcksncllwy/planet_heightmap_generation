@@ -4,15 +4,28 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 
 /**
+ * Is this crust too buoyant to subduct? Continental crust always; island-arc crust once its volcanoes have built it
+ * floatKm thick (config.arcAccreteThickKm) — thinner, a young arc or a remnant left silent, it is little more than ocean
+ * crust and goes down a trench like it (Cloos 1993: ~15–17 km of crust holds young lithosphere up; the remnant arcs of
+ * the Pacific's back-arc basins go down where they meet a trench). An arc the history never grew (arcKm 0: a scene's)
+ * floats as before.
+ */
+function floats(crust, cell, floatKm) {
+    const t = crust.type[cell];
+    if (t === CrustType.OCEAN) return false;
+    return t !== CrustType.ARC || !(crust.arcKm[cell] > 0) || crust.arcKm[cell] >= floatKm || (crust.flags[cell] & CrustFlag.MARGIN_ISLE) !== 0;
+}
+
+/**
  * Does crust (plateA, cellA) override crust (plateB, cellB)?
  * Returns true / false, or null when neither can subduct (land against land = collision).
  * `decided` is the id of the plate that overrides along this stretch of boundary, from the
  * segment-wise vote in boundaries.js (−1 = no decision yet); it settles ocean against ocean, where
  * the per-cell rules below would otherwise interleave and leave the front ragged.
  */
-export function overrides(plateA, cellA, plateB, cellB, decided = -1) {
+export function overrides(plateA, cellA, plateB, cellB, decided = -1, floatKm = 0) {
     const a = plateA.crust, b = plateB.crust;
-    const landA = a.type[cellA] !== CrustType.OCEAN, landB = b.type[cellB] !== CrustType.OCEAN;
+    const landA = floats(a, cellA, floatKm), landB = floats(b, cellB, floatKm);
     if (landA && landB) return null;              // continental crust never subducts
     if (landA !== landB) return landA;            // ocean always goes under land
 

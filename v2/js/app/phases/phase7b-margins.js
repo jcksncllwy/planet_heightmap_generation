@@ -66,7 +66,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
     return {
         title: 'Phase 7b — Margins & back-arcs',
         summary: 'What each coast is, and what old and young slabs do. A coast is ACTIVE where its plate’s trench lies offshore, PASSIVE where there is none, and LEADING or TRAILING by the plate’s motion — Phase 8 turns this into narrow or wide shelves and coastal ranges. ' +
-            'A YOUNG slab under a plate that drives at it goes in flat: the belt becomes Laramide and reaches far inland, and the arc falls silent. An OLD slab sinks steeply and rolls back; where its trench retreats faster than the overriding plate follows, that plate is stretched until the strip behind the trench — an arc at sea, or a coherent strip of a continent — rifts away after it and a back-arc sea opens behind, for a few tens of Myr. ' + scene.about,
+            'A YOUNG slab under a plate that drives at it goes in flat: the belt becomes Laramide and reaches far inland, and the arc falls silent. An OLD slab sinks steeply and rolls back; where its trench retreats faster than the overriding plate follows, that plate is stretched until the strip behind the trench — an arc at sea, or a coherent strip of a continent — rifts away after it and a back-arc sea opens behind, for a few tens of Myr. A plate that pulls away from its own trench outright splits the same way, every time: the arc stays with the trench and the sea opens behind it, leaving a remnant arc that falls silent and sinks. ' + scene.about,
         checklist: [...CHECKLISTS[scene.id], 'No gaps; a strip that rifts off never takes a craton with it.'],
         checkCommand: 'node v2/tools/check-phase7b.mjs',
         maxTime: scene.maxMyr,

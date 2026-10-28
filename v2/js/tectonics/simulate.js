@@ -91,6 +91,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
     const L = crustLedger(world), led = (stage, v) => { L?.book(stage); return v; };   // (the crust ledger: off unless a check asks)
     while (world.time < untilMyr - 1e-9) {
         L?.open();
+        world.rollbackBirths = null;                    // (this step's births at retreating trenches: resolve.js → step/backarc.js)
         const nextGrid = (Math.floor(world.time / grid + 1e-9) + 1) * grid;
         const dt = Math.min(chooseStep(world), nextGrid - world.time, untilMyr - world.time);
         const cellsMoved = closingRate(world) * dt / world.mesh.edgeRad;
@@ -111,7 +112,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             led('cycle', trackCycle(world));                      // the supercontinent cycle: count the landmasses, move the mantle's up- and downwelling
             changed += led('collisions', trackCollisions(world, dt) ? 1 : 0);   // collision records, belts, sutures, docking, arc scraping (merges plates)
             changed += led('wings', growWings(world, dt));          // trench wings capture passive ocean
-            if (slow) changed += led('arcs', buildArcs(world));     // island arcs behind mature ocean trenches (cell types only)
+            if (slow) changed += led('arcs', buildArcs(world, slowDt));     // island arcs behind mature ocean trenches (cell types only); live arcs thicken
             if (slow) changed += led('arcCollapse', collapseArcs(world));  // an arc near its own coast lands on it
             if (slow) changed += led('marginIsles', growMarginIsles(world, slowDt)); // fore-arc islands rise and join the coast (cell types only)
             if (slow) changed += led('sedimentSubduction', subductSediment(world, slowDt)); // trench sediment goes down the subduction channel: the land it came from is lost

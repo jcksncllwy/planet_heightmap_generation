@@ -30,7 +30,7 @@ import { largestPieceOf } from '../../core/mesh-bfs.js';
 export function openBackArcs(world, dt) {
     const { mesh, plates, owner, ownerCell, boundaryKind, config, time } = world;
     const rejoined = rejoinFinishedStrips(world);
-    if (config.backArcRatePerMyr <= 0) return rejoined;
+    if (config.backArcRatePerMyr <= 0) { world.rollbackBirths = null; return rejoined; }
     const { numCells, xyz, edgeKm } = mesh;
 
     // 1. trench cells where the slab rolls back, grouped by overriding and subducting plate
@@ -55,7 +55,7 @@ export function openBackArcs(world, dt) {
         e.dir[0] += normal[0]; e.dir[1] += normal[1]; e.dir[2] += normal[2];
     }
 
-    let opened = 0;
+    let opened = pullArcsAfterTrenches(world);
     for (const { A, cells, dir, ages } of byPair.values()) {
         if (!A.alive || A.reshaped || time - A.lastBackArcAt < config.backArcTenureMyr) continue;   // (a plate that just took part in one waits)
         const segment = largestPieceOf(mesh, cells), lengthKm = segment.length * edgeKm;
@@ -75,6 +75,71 @@ export function openBackArcs(world, dt) {
             { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: ages / cells.length, lengthKm, splitCratons });
     }
     return opened + rejoined;
+}
+
+/**
+ * A plate backing away from its own trench (2026-10-28, branch arcs). Where the overriding plate moves off its trench
+ * faster than the slab can roll back, it is not the trench that comes away from the plate — the slab, hanging deep in
+ * the mantle, holds the trench — but the plate that is stretched behind it, and it breaks where it is weakest: along
+ * the arc, its lithosphere thinned and heated by the magma (Karig 1971; Taylor & Karner 1983; Hyndman et al. 2005). The
+ * arc's trench-side half and its fore-arc go with the trench, the sea opens behind them, and the far half is left
+ * standing as a remnant arc (the Mariana Trough and the West Mariana Ridge; the Lau Basin and the Lau Ridge). The history
+ * used to grow new sea floor at the trench itself (resolve.js), leaving the whole arc behind on the plate and building a
+ * new one in front of it; resolve.js now reports those births (world.rollbackBirths), and here every trench run of them
+ * backArcMinLengthKm long splits off its strip, as a slab's rollback does (stripBehind, splitStrip) — no chance about
+ * it: the plate is already pulling away. The strip follows its trench at the faster of the slab's rollback and the
+ * plate's retreat from it, so its trench keeps its slab. Where a strip cannot split (a plate that split lately, a strip
+ * the guards refuse) the growth at the trench stands, as before. @returns {number} strips split off
+ */
+function pullArcsAfterTrenches(world) {
+    const births = world.rollbackBirths;
+    world.rollbackBirths = null;
+    if (!births?.length) return 0;
+    const { mesh, plates, owner, ownerCell, config, time } = world, { xyz, edgeKm } = mesh, normal = [0, 0, 0, 0];
+    const byPair = new Map(), seen = new Set();
+    for (let i = 0; i < births.length; i += 2) {
+        const A = plates[births[i]], w = births[i + 1];
+        if (seen.has(w) || owner[w] !== A.id || !A.alive || A.isBackground || A.reshaped || !(A.crust.flags[ownerCell[w]] & CrustFlag.TRENCH)) continue;
+        seen.add(w);
+        const otherW = contactAt(world, w, normal);
+        if (otherW < 0) continue;
+        const B = plates[owner[otherW]], cellB = ownerCell[otherW];
+        if (!B?.alive || B.reshaped || B.isBackground || B.crust.type[cellB] !== CrustType.OCEAN) continue;     // (the passive ocean is no slab)
+        const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2], ox = A.omega[0] - B.omega[0], oy = A.omega[1] - B.omega[1], oz = A.omega[2] - B.omega[2];
+        const opening = -((oy * z - oz * y) * normal[0] + (oz * x - ox * z) * normal[1] + (ox * y - oy * x) * normal[2]) / CM_PER_YR_TO_RAD_PER_MYR;
+        if (!(opening > 0)) continue;
+        const key = `${A.id}:${B.id}`;
+        const e = byPair.get(key) ?? byPair.set(key, { A, cells: [], dir: [0, 0, 0], ages: 0, opening: 0 }).get(key);
+        e.cells.push(w); e.ages += time - B.crust.formedAt[cellB]; e.opening += opening;
+        e.dir[0] += normal[0]; e.dir[1] += normal[1]; e.dir[2] += normal[2];
+    }
+    let opened = 0;
+    for (const { A, cells, dir, ages, opening } of byPair.values()) {
+        if (!A.alive || A.reshaped || time - A.lastBackArcAt < config.backArcTenureMyr) continue;
+        // (the run of trench pulled at this step, with the overriding trench beside it: the whole stretch the slab holds)
+        const run = trenchRunOf(world, A, cells), segment = largestPieceOf(mesh, run), lengthKm = segment.length * edgeKm;
+        if (lengthKm < config.backArcMinLengthKm) continue;
+        const strip = stripBehind(world, A, segment);
+        if (!strip) continue;
+        if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (config.cratonStrength - 1) * strip.cratonShare)) continue;
+        const slabAge = ages / cells.length, rate = Math.max(rollbackCmYr(slabAge, config), opening / cells.length);
+        const fresh = splitStrip(world, A, strip, dir, rate);
+        opened++;
+        world.log(EventKind.BACKARC_OPEN, `${A.name} pulls away from its own trench (${(opening / cells.length).toFixed(1)} cm/yr; the slab, ${slabAge.toFixed(0)} Myr old, holds it): ${strip.continental ? 'a strip of its coast' : 'its island arc'} — ${lengthKm.toFixed(0)} km of it — stays with the trench as ${fresh.name}, and a back-arc sea opens behind`,
+            { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: slabAge, lengthKm, pulled: true, splitCratons: [] });
+    }
+    return opened;
+}
+
+/** The world cells of A's live trench joined to `cells`: those cells, and A's trench-flagged edge cells overriding beside them. */
+function trenchRunOf(world, A, cells) {
+    const { mesh, owner, ownerCell, boundaryKind } = world, { adjOffset, adjList } = mesh, inRun = new Set(cells), queue = [...cells];
+    for (let i = 0; i < queue.length; i++) for (let k = adjOffset[queue[i]]; k < adjOffset[queue[i] + 1]; k++) {
+        const nb = adjList[k];
+        if (inRun.has(nb) || owner[nb] !== A.id || boundaryKind[nb] !== BoundaryKind.OVERRIDING || !(A.crust.flags[ownerCell[nb]] & CrustFlag.TRENCH)) continue;
+        inRun.add(nb); queue.push(nb);
+    }
+    return queue;
 }
 
 /**

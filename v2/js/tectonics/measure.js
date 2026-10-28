@@ -83,6 +83,31 @@ export const ISLAND_EROSION_KM_PER_MYR = 0.15;
 /** Depth of ocean floor of a given age (km), by half-space cooling (Parsons & Sclater), flattening out on old floor. */
 export function seaDepthKm(crustAgeMyr) { return Math.min(6.4, 2.6 + 0.345 * Math.sqrt(Math.max(0, crustAgeMyr))); }
 
+// ── An island arc's crest, from its crust (2026-10-28, branch arcs). An arc is ocean lithosphere with crust added to it by
+// its volcanoes while its slab feeds them — 8 km at birth, 0.4 km/Myr while active, up to ~35 km (tectonics/config.js
+// arcBirthKm…arcMaxKm; Izu-Bonin-Mariana 20–35 km after ~50 Myr, Kodaira et al. 2007; Calvert 2011) — and it stands by
+// Airy isostasy on that crust: each km of crust more than the ocean's 7 km (White et al. 1992) lifts it
+// (ρm − ρarc) ÷ (ρm − ρw) km under water, (ρm − ρarc) ÷ ρm km above it (Turcotte & Schubert 2002, §2.2). Arc crust is
+// more mafic than continental crust — mean Vp ~6.8 km/s (Calvert 2011) — so denser: 2.97 g/cm³ by the Nafe–Drake curve
+// (Brocher 2005); mantle 3.3, sea water 1.03. While active the mantle wedge keeps the arc's lithosphere hot (Hyndman et
+// al. 2005): it stands on a ridge's floor (seaDepthKm(0)). Once it falls silent it cools and sinks like sea floor of that
+// age (half-space, seaDepthKm(quiet): Parsons & Sclater 1977; Stein & Stein 1992), and what stood above the sea is worn
+// down at the rate a dead volcanic island is (ISLAND_EROSION_KM_PER_MYR) — down to the sea, never below: the waves
+// plane it, and then it sinks. So a young arc is a submerged ridge its volcanoes break (8–20 km: 2.4–0.7 km deep, the
+// Marianas), a long-lived one is land (35 km: ~1 km up, Japan), and a remnant arc drowns — 20 km of crust 25 Myr after
+// it fell silent lies 2.6 km down (the Kyushu–Palau Ridge, 2–3 km down ~25 Myr after the Shikoku Basin split it off:
+// Ishizuka et al. 2011).
+const OCEAN_CRUST_KM = 7, ARC_RHO = 2.97, MANTLE_RHO = 3.3, WATER_RHO = 1.03;
+const ARC_LIFT_WET = (MANTLE_RHO - ARC_RHO) / (MANTLE_RHO - WATER_RHO), ARC_DRY_SHARE = (MANTLE_RHO - WATER_RHO) / MANTLE_RHO;
+const arcStandKm = (crustKm, coolMyr) => { const e = (crustKm - OCEAN_CRUST_KM) * ARC_LIFT_WET - seaDepthKm(coolMyr); return e > 0 ? e * ARC_DRY_SHARE : e; };
+/** How far an island arc's crust has grown, 0 at birth (8 km) … 1 at its fullest (35 km; tectonics/config.js arcBirthKm, arcMaxKm). */
+export const arcGrowth = crustKm => Math.min(1, Math.max(0, (crustKm - 8) / (35 - 8)));
+/** Where an island arc's surface stands against the sea (km; < 0 under water), from its crust (km) and how long it has been silent (Myr). */
+export function arcSurfaceKm(crustKm, quietMyr) {
+    const q = Math.max(0, quietMyr), up = arcStandKm(crustKm, 0);
+    return arcStandKm(crustKm, q) - Math.min(ISLAND_EROSION_KM_PER_MYR * q, Math.max(0, up));
+}
+
 /**
  * Sediment shallows a sea by less than its own thickness: the floor sinks under the load (Airy). Water of depth d
  * replaced by sediment s: s = d × (ρm − ρw) ÷ (ρm − ρs) — with mantle 3.3, sea water 1.03 and compacted basin fill

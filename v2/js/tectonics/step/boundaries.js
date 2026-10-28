@@ -67,7 +67,7 @@ export function classifyBoundaries(world, dt) {
             }
         }
         else if (motion === Motion.CLOSING) {
-            const aOverrides = overrides(A, cellA, B, ownerCell[otherW], oceanOverrider[w]);
+            const aOverrides = overrides(A, cellA, B, ownerCell[otherW], oceanOverrider[w], config.arcAccreteThickKm);
             if (A.crust.type[cellA] === CrustType.OCEAN && B.crust.type[ownerCell[otherW]] === CrustType.OCEAN) {
                 // remember it for the vote below: which way this one cell leans, on the physical rules alone
                 const lower = A.id < B.id ? A : B, upper = A.id < B.id ? B : A;

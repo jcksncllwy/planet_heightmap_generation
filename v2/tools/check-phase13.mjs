@@ -79,12 +79,13 @@ function untouched(f) {
 function arcsOf(f) {
     const arc = w => f.owner[w] >= 0 && f.type[w] === CrustType.ARC;
     const d = hopDistance(mesh, w => f.owner[w] >= 0 && (f.type[w] === CrustType.CONTINENT || f.type[w] === CrustType.CRATON)), km = w => d[w] < 0 ? 1e4 : d[w] * mesh.edgeKm;
-    let far = 0; for (let w = 0; w < n; w++) if (arc(w) && km(w) > 1500) far++;
+    let far = 0, all = 0; for (let w = 0; w < n; w++) if (arc(w)) { all++; if (km(w) > 1500) far++; }
     const open = comps(arc).filter(c => c.reduce((s, w) => s + km(w), 0) / c.length > 1000);
-    return { largest: Math.max(0, ...open.map(c => c.length)) * cellKm2 / 1e6, far: far * cellKm2 / 1e6 };
+    return { largest: Math.max(0, ...open.map(c => c.length)) * cellKm2 / 1e6, far: far * cellKm2 / 1e6, all: all * cellKm2 / 1e6 };
 }
 
 const tm = terrainMesh(160000);
+const ARC_LIVE_MYR = 10;             // (an arc its slab fed within this long counts as live: the frames are 10 Myr apart)
 
 function run(seed, overrides = {}, { terrain = true } = {}) {
     const world = scene.build(mesh, seed);
@@ -92,6 +93,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const kept = [], arcs = [], largestShares = [];
     const lowlandStages = [];
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
+    const arcLand = { live: { n: 0, up: 0 }, dead: { n: 0, up: 0 } };
     const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [], staged = [];
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
@@ -137,6 +139,13 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             if (f.time === 0) land0 = share; else if (Math.abs(f.time - scene.maxMyr) < 1e-6) land1200 = share;
             for (let t = 0; t < tm.numCells; t++) { const c = T.sampler.cells[3 * t]; if (T.rec.land[c] && T.rec.coastKm[c] > 500) inner.push(T.heightKm[t]); }
             sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, floorKm: T.rec.sea.ridgeSeaKm, interior: median(inner) });
+            // (island arcs above the sea, every 200 Myr: those whose slab fed them within ARC_LIVE_MYR, and the silent ones)
+            if (f.time % 200 === 0 && f.time > 0) for (let t = 0; t < tm.numCells; t++) {
+                const c = T.sampler.cells[3 * t];
+                if (f.owner[c] < 0 || f.type[c] !== CrustType.ARC || (f.flags[c] & CrustFlag.MARGIN_ISLE)) continue;
+                const k = f.time - f.arcAt[c] <= ARC_LIVE_MYR ? arcLand.live : arcLand.dead;
+                k.n++; if (T.heightKm[t] > 0) k.up++;
+            }
         }
         if (Math.abs(f.time - 600) < 1e-6) calm = untouched(f);
         // (lowland after the rivers carve it, comparable with Earth's hypsometry; the tectonic surface's alongside)
@@ -167,7 +176,8 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, gapMin: Math.min(Infinity, ...gaps), gapMedian: median(gaps), early, lowest, clump, reassembled, againAt,
         fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, lowlandStages, land0, land1200, contRatio: cont1200 / Math.max(1, cont0), cont0, cont500, cont1000,
         ledger: world.ledger, budget: world.budget,
-        arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)),
+        arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)), arcAll: arcs.reduce((x, a) => x + a.all, 0) / Math.max(1, arcs.length),
+        arcLiveLand: arcLand.live.up / Math.max(1, arcLand.live.n), arcDeadLand: arcLand.dead.up / Math.max(1, arcLand.dead.n), arcDeadShare: arcLand.dead.n / Math.max(1, arcLand.live.n + arcLand.dead.n),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
         staged: k => byStage(staged.map(x => ({ stage: x.stage, value: x[k] }))),
         bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges), sealedOld: sealedOld.reduce((x, y) => x + y, 0) / Math.max(1, sealedOld.length),
@@ -205,6 +215,15 @@ report('…its largest patch', rows.map(r => r.calm?.patchMkm2 ?? NaN), { unit: 
 
 section('island arcs and lowlands');
 report('arc crust over 1500 km from any continent (most, every 200 Myr)', rows.map(r => r.arcFar), { earth: [2.5, 4], unit: ' Mkm²', digits: 1, source: '~17,000 km of intra-oceanic trench × 150–250 km, Leat & Larter 2003 — today only: no history of it found' });
+// (branch arcs, 2026-10-28) all the island-arc crust: Earth's ~17,000 km of intra-oceanic arc (Leat & Larter 2003) × the
+// 150–250 km an arc massif spans ≈ 2.5–4.3 Mkm², with the remnant arcs left behind back-arc basins (the Kyushu–Palau,
+// West Mariana, Lau–Colville, Aves and Third ridges, ~8,000 km × 100–150 km ≈ 1 Mkm²) and the arcs along continental
+// margins not yet part of their continent (Japan, the Philippines, the Aleutians' Alaskan end, ~1–2 Mkm²): ~3–8 Mkm² —
+// today's; the length of the world's trenches changes over the cycle less than their place (no history found)
+report('island-arc crust, all of it (mean of the frames every 200 Myr)', rows.map(r => r.arcAll), { earth: [3, 8], unit: ' Mkm²', digits: 1, source: '~17,000 km of intra-oceanic arc × 150–250 km (Leat & Larter 2003), remnant arcs ~1 Mkm², margin arcs ~1–2 Mkm² — today only' });
+report('…of it, arcs silent for over 10 Myr', rows.map(r => 100 * r.arcDeadShare), { unit: ' %', digits: 0, source: 'no Earth figure: remnant arcs ~1 of ~3–8 Mkm²' });
+report('live island arcs above the sea', rows.map(r => 100 * r.arcLiveLand), { unit: ' %', digits: 0, source: 'no Earth figure: the Marianas and the Aleutians a few %, Japan most of it' });
+report('silent island arcs above the sea', rows.map(r => 100 * r.arcDeadLand), { earth: [0, 10], unit: ' %', digits: 0, source: 'remnant arcs drown: the Kyushu–Palau Ridge 2–3 km down after ~25 Myr (Ishizuka et al. 2011); the West Mariana, Lau and Colville ridges nearly all under water' });
 report('the largest open-ocean arc landmass', rows.map(r => r.arcBiggest), { earth: [0, 1], unit: ' Mkm²', digits: 1, source: 'Izu–Bonin–Mariana ~0.6 Mkm² — today only: no history of it found' });
 report('land below 400 m after carving (mean of 600 and 1200 Myr)', rows.map(r => r.lowland === null ? NaN : 100 * r.lowland), { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry — today only: an icehouse lowstand with the continents dispersed; no history of hypsometry found (sea level ~+170 m in the Late Cretaceous, Müller et al. 2008, would drown much of it)',
     detail: txt(r => `${(100 * r.lowlandRaw).toFixed(0)} % before carving; the frames in the ${r.lowlandStages.join(' and ')} stages`) });

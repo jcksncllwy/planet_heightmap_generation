@@ -25,6 +25,8 @@ import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { MinHeap } from '../../core/min-heap.js';
 import { heightsOf } from './heights.js';
 import { fillEnclosedSeas } from './sea-fill.js';
+import { arcCrustKm } from './collision.js';
+import { arcSurfaceKm } from '../measure.js';
 import { rainAtLatitude, erosionAtLatitude } from '../../terrain/terrain-config.js';
 
 const R = 6371;
@@ -53,7 +55,7 @@ export function evolveRivers(world, dt) {
         let b;
         if (type === CrustType.CRATON) b = H.cratonKm;
         else if (type === CrustType.ARC) b = (crust.flags[c] & CrustFlag.MARGIN_ISLE) ? H.foreArcIsleKm
-            : H.arcYoungKm + (H.arcMatureKm - H.arcYoungKm) * Math.min(1, Math.max(0, (time - crust.formedAt[c]) / H.arcMatureMyr)) ** 0.7;
+            : arcSurfaceKm(arcCrustKm(crust, c, time, world.config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0);     // (as the terrain stands it: records.js)
         else b = H.continentKm;
         const l = Math.max(0, H.isoMaxKm * (1 - Math.exp(-crust.rootKm[c] * (type === CrustType.ARC ? 0.25 : 1) / H.isoScaleKm)) + crust.upliftKm[c] + crust.baseKm[c]
             + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0));

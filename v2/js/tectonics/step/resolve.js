@@ -48,7 +48,7 @@ function gatherAndSubduct(world) {
     const { owner, ownerCell, claimCount, landClaims, consumedAt, collider, plates } = world;
     let consumed = 0;
     const subduct = (plate, cell, w) => { plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++; };
-    const bins = binIndex(world.mesh), stamp = world.occupancyStamp;
+    const bins = binIndex(world.mesh), stamp = world.occupancyStamp, floatKm = world.config.arcAccreteThickKm;
     clearWorldView(world);
 
     forEachClaim(world, (w, plate, cell) => {
@@ -61,14 +61,14 @@ function gatherAndSubduct(world) {
             claimCount[w] = 1; landClaims[w] = land ? 1 : 0;
             return;
         }
-        const wins = overrides(plate, cell, holder, ownerCell[w], world.oceanOverrider[w]);
+        const wins = overrides(plate, cell, holder, ownerCell[w], world.oceanOverrider[w], floatKm);
         if (wins === null) {                            // land on land — unresolved collision
             claimCount[w]++; landClaims[w]++;
             if (collider[w] < 0) collider[w] = plate.id;
         } else if (wins) {                              // the holder's crust goes down
             subduct(holder, ownerCell[w], w);
             owner[w] = plate.id; ownerCell[w] = cell;
-            if (land) landClaims[w] = 1;
+            landClaims[w] = land ? 1 : 0;              // (a thin arc can go down under ocean now: polarity.js)
         } else subduct(plate, cell, w);                 // this plate's crust goes down
     });
 
@@ -110,8 +110,14 @@ function growCrustIntoGaps(world, gaps) {
         markBin(plate, bins.at(P[0], P[1], P[2]), world.occupancyStamp, bins.count);       // so the owner search below sees it
         // Trench rollback, in its simplest form: when a plate backs away from its own trench, the trench is
         // not left behind inside the plate — it stays at the plate's edge, on the new crust that forms
-        // there, and keeps its slab (WBP's trailing-edge margin; arcs and back-arc basins come later).
-        if (trenchParent >= 0) { crust.armTrench(cell, crust.slabKm[trenchParent]); crust.flags[cell] |= CrustFlag.APRON; }
+        // there, and keeps its slab (WBP's trailing-edge margin). That is the plate being stretched behind a slab
+        // that will not let go: where it can, the arc splits off after its trench and the sea opens behind the arc,
+        // not in front of it (step/backarc.js, which reads these births: world.rollbackBirths) — this growth is only
+        // the fallback, for a plate that cannot split just now
+        if (trenchParent >= 0) {
+            crust.armTrench(cell, crust.slabKm[trenchParent]); crust.flags[cell] |= CrustFlag.APRON;
+            (world.rollbackBirths ??= []).push(plate.id, world.mesh.index.nearest(P[0], P[1], P[2]));
+        }
         plate.dirty = true;
     }
     return births.length;

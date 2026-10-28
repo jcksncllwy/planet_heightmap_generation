@@ -18,7 +18,7 @@ const TUNABLES = [
     { id: 'trenchFanReachKm', label: '…its rock running out down its fan to a trench up to', min: 0, max: 5000, step: 100, unit: ' km' },
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
     { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
-    { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast with age', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
+    { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast while its slab feeds it', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
     { id: 'marginIsleRatePerMyr', label: 'Fore-arc islands born per 1000 km of accretionary coast per Myr', min: 0, max: 3, step: 0.1 },
 ];
 const CHECKLISTS = {
@@ -34,7 +34,7 @@ const CHECKLISTS = {
     ],
     arcs: [
         'The two continents close, each with island arcs on its facing margin; the arcs meet first.',
-        'Small arc pieces that reach a continent go DOWN with their slab instead of accreting (event log: “arc recycled”); big arcs still accrete. What the continents keep from arcs comes in fewer, bigger pieces.',
+        'Thin arc pieces that reach a continent go DOWN with their slab instead of accreting (event log: “arc recycled”): an arc’s crust thickens only while its own trench feeds it, so a young arc, or a remnant left silent behind a back-arc sea, is thin; long-fed arcs still accrete. What the continents keep from arcs comes in fewer, bigger pieces.',
         'Set the arc threshold to 0 to see every scrap accrete instead.',
     ],
     history: [

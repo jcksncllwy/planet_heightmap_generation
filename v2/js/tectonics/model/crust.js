@@ -50,7 +50,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU']);
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -102,6 +102,11 @@ export class CrustRaster {
         this.volcKm = new Float32Array(numCells);      // thickness of the volcanic pile (km): flood basalt, or a volcano's edifice
         this.volcSource = new Uint16Array(numCells);   // the plume that built it: hotspot id + 1 (0 = none)
         this.fzU = new Float32Array(numCells);         // where along its ridge ocean floor formed, in segment lengths (model/segments.js; records only: fracture zones)
+        // Island-arc crust (step/wings.js buildArcs): how thick its crust is (km; 0 = never an arc's — a scene's
+        // hand-laid arc, read by its age instead: step/collision.js arcCrustKm) and when its volcanoes last fed it. It
+        // thickens only while its trench feeds it, so an arc split off and left silent stays as thin as it was
+        this.arcKm = new Float32Array(numCells);
+        this.arcAt = new Float32Array(numCells);
         this.count = 0;                                // number of masked cells
         this.fields = CELL_FIELDS.map(name => this[name]);
     }

@@ -123,8 +123,11 @@ function growWingsOnce(world, plate, background, rimSteps) {
     return grown;
 }
 
-/** Build arc crust behind mature ocean–ocean trenches. @returns cells turned into arc */
-export function buildArcs(world) {
+/**
+ * Build arc crust behind mature ocean–ocean trenches, and thicken the arcs live trenches feed by `dt` Myr of magma.
+ * @returns cells turned into arc
+ */
+export function buildArcs(world, dt = 0) {
     const { mesh, plates, config, time, boundaryKind } = world, { xyz, adjOffset, adjList, edgeKm, index } = mesh;
     const P = [0, 0, 0];
     const needKm = arcSlabKm(config), gapHops = Math.max(1, Math.round(arcGapKm(config) / edgeKm));
@@ -137,12 +140,21 @@ export function buildArcs(world) {
         return config.arcFarMaxKm + (config.arcNearMaxKm - config.arcFarMaxKm) * t * t * (3 - 2 * t);      // (smoothstep)
     };
     let built = 0, plate = null;
+    const rows = [];
     for (plate of plates) {
         if (!plate.alive || plate.isBackground || plate.crust.count === 0) continue;
         const { mask, type, flags, slabKm } = plate.crust;
-        const born = [];
+        const born = [], fed = new Set();
         for (let c = 0; c < mask.length; c++) {
-            if (!mask[c] || type[c] !== CrustType.OCEAN || !(flags[c] & CrustFlag.TRENCH)) continue;
+            if (!mask[c] || !(flags[c] & CrustFlag.TRENCH)) continue;
+            if (type[c] === CrustType.ARC) {                // (an arc trench cell — the arc itself at its plate's edge, its fore-arc gone — feeds itself)
+                if (dt > 0 && !(flags[c] & CrustFlag.MARGIN_ISLE)) {
+                    plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
+                    if (boundaryKind[index.nearest(P[0], P[1], P[2])] === BoundaryKind.OVERRIDING) fed.add(c);
+                }
+                continue;
+            }
+            if (type[c] !== CrustType.OCEAN) continue;
             let slab = slabKm[c];
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (mask[nb] && (flags[nb] & CrustFlag.TRENCH) && slabKm[nb] > slab) slab = slabKm[nb]; }
             if (slab < needKm) continue;
@@ -156,13 +168,23 @@ export function buildArcs(world) {
             if (!edge) continue;
             // the arc's place: gapHops cells behind the trench (the fore-arc between), then its rows
             const allowedKm = Math.min(widthCapKm(c), config.arcRowWidthKm * (1 + Math.floor((slab - needKm) / config.arcWidenSlabKm)));
-            const next = arcCellBehind(plate, mesh, c, nx, ny, nz, gapHops, Math.max(1, Math.round(allowedKm / edgeKm)));
+            rows.length = 0;
+            const next = arcCellBehind(plate, mesh, c, nx, ny, nz, gapHops, Math.max(1, Math.round(allowedKm / edgeKm)), dt > 0 ? rows : null);
+            if (next.cell < 0 && !rows.length) continue;
+            plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
+            const live = boundaryKind[index.nearest(P[0], P[1], P[2])] === BoundaryKind.OVERRIDING;        // an active trench, not a dormant flag
+            // the arc this trench feeds: the rows standing above its slab, where the slab sheds its water and the mantle
+            // wedge melts (the volcanic front and the rear arc behind it, 100–300 km from the trench: arcGapKm and the
+            // rows) — its magma thickens their crust while the trench consumes (measure.js arcSurfaceKm stands the arc on
+            // it); rows further back, left behind as the arc widened or stranded by the plate's moves, get none
+            if (live) for (const r of rows) fed.add(r);
             if (next.cell < 0) continue;
-            if (!next.widening) {                                                     // a new arc: only behind an active trench
-                plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
-                if (boundaryKind[index.nearest(P[0], P[1], P[2])] !== BoundaryKind.OVERRIDING) continue;    // an active trench, not a dormant flag
-            }
+            if (!next.widening && !live) continue;                                    // a new arc: only behind an active trench
             born.push(next.cell);
+        }
+        if (dt > 0) {
+            const { arcKm, arcAt } = plate.crust;
+            for (const c of fed) { arcKm[c] = Math.min(config.arcMaxKm, Math.max(arcKm[c], config.arcBirthKm) + config.arcThickenKmPerMyr * dt); arcAt[c] = time; }
         }
         if (!born.length) continue;
         plate.arcTerraneId ??= world.nextTerraneId();
@@ -170,6 +192,7 @@ export function buildArcs(world) {
             if (type[c] !== CrustType.OCEAN) continue;
             const { formedAt } = plate.crust;
             type[c] = CrustType.ARC; formedAt[c] = time; plate.crust.terrane[c] = plate.arcTerraneId;
+            plate.crust.arcKm[c] = config.arcBirthKm; plate.crust.arcAt[c] = time;      // (its crust grows while its trench feeds it: above)
             flags[c] &= ~CrustFlag.APRON;
             plate.crust.recordOrogeny(c, OrogenyType.ARC, 0, time, config.orogenyQuietMyr);
             built++;
@@ -231,7 +254,7 @@ export const arcGapKm = config => config.arcSlabDepthKm / Math.tan(config.slabDi
  * `rows`. @returns {{cell: number, widening: boolean}} the next cell to turn to arc (−1: none — continental ground at or
  * before the arc's place, the plate's edge, or the arc already as wide as it may be); widening: arc rows lie before it
  */
-function arcCellBehind(plate, mesh, t, nx, ny, nz, gapHops, rows) {
+function arcCellBehind(plate, mesh, t, nx, ny, nz, gapHops, rows, passed = null) {
     const { xyz, adjOffset, adjList } = mesh, { mask, type, flags } = plate.crust;
     let cur = t, arcRows = 0;
     for (let step = 1; step < gapHops + rows; step++) {
@@ -244,7 +267,7 @@ function arcCellBehind(plate, mesh, t, nx, ny, nz, gapHops, rows) {
         }
         if (best < 0 || type[best] === CrustType.CONTINENT || type[best] === CrustType.CRATON) return { cell: -1, widening: false };
         cur = best;
-        if (type[cur] === CrustType.ARC) { arcRows++; continue; }
+        if (type[cur] === CrustType.ARC) { arcRows++; passed?.push(cur); continue; }
         if (step >= gapHops) return { cell: cur, widening: arcRows > 0 };            // sea at the arc's place, or just behind its rows
     }
     return { cell: -1, widening: false };

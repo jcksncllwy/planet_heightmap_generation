@@ -260,12 +260,7 @@ export const TERRAIN = {
     iceSoftNoiseKm: 600,        // …over about this
 
     // ── Island arcs ──
-    arcYoungKm: -2.0,           // the ridge an arc stands on, when young: under water, only its volcanoes break the surface
-    arcMatureKm: 0.3,           // …and when mature: continuous land (Japan) — near a continent (within arcCoastKm);
-    arcOceanMatureKm: -1.5,     // out in the open ocean (arcOceanKm or more from any continent) it stays a submerged ridge its
-    arcCoastKm: 300,            // volcanoes break through (the Marianas, Tonga); between, a smooth blend
-    arcOceanKm: 1000,
-    arcMatureMyr: 150,          // (a Mariana, ~50 Myr old, is still mostly under water: islands on a submarine ridge)
+    // (an island arc's ridge stands on its crust, by isostasy: tectonics/measure.js arcSurfaceKm — no setting here)
     arcUpliftShare: 0.25,       // a subduction belt's broad uplift counts this much on arc crust (its maturity gives the rest)
     foreArcIsleKm: 0.2,         // a fore-arc island (step/margin-isles.js): low
 

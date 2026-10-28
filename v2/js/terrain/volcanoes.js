@@ -16,7 +16,7 @@
 // of the crust cell it stands on and sits where that crust is now (anchor.js), so it keeps its shape as its plate moves.
 
 import { CrustType, CrustFlag, VolcanicType, OrogenyType } from '../tectonics/model/crust.js';
-import { ISLAND_EROSION_KM_PER_MYR, SEAMOUNT_KM, seaDepthKm } from '../tectonics/measure.js';
+import { ISLAND_EROSION_KM_PER_MYR, SEAMOUNT_KM, seaDepthKm, arcGrowth } from '../tectonics/measure.js';
 import { kindType } from './records.js';
 import { nearLists } from './near-lists.js';
 import { cellRng, crustSites } from './anchor.js';
@@ -126,7 +126,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
         // (its belt reads ARC, or ANDEAN where the arc itself overrides the trench: either way an arc's volcanic front)
         const onArc = type === CrustType.ARC && !(frame.flags[w] & CrustFlag.MARGIN_ISLE);
         if (onArc && (frame.oroType[w] === OrogenyType.ARC || frame.oroType[w] === OrogenyType.ANDEAN) && rec.quietMyr[w] < cfg.arcActiveMyr && rec.dKm[w] <= cfg.arcFrontKm) {
-            const rng = cellRng(seed, rc, SALT.arc), m = Math.min(1, Math.max(0, (time - frame.formedAt[w]) / cfg.arcMatureMyr));
+            const rng = cellRng(seed, rc, SALT.arc), m = arcGrowth(frame.arcKm[w]);     // (by how much crust its volcanoes have added)
             if (rng() < cfg.arcConeShare) {
                 const h = (cfg.coneKm.young + (cfg.coneKm.mature - cfg.coneKm.young) * m) * (0.75 + 0.5 * rng());
                 const r = (cfg.coneRadiusKm.young + (cfg.coneRadiusKm.mature - cfg.coneRadiusKm.young) * m) * (0.85 + 0.3 * rng());

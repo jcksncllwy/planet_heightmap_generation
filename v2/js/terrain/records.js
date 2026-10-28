@@ -5,10 +5,9 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp } from '../tectonics/measure.js';
+import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm } from '../tectonics/measure.js';
 import { seaLevel } from './sea-level.js';
 import { spreadKm } from '../core/min-heap.js';
-import { hopDistance } from '../core/mesh-bfs.js';
 import { erosionAtLatitude } from './terrain-config.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 import { buildAnchor } from './anchor.js';
@@ -471,16 +470,6 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // ── the continental platform: crust kind, isostasy of the thickened crust, the mantle's swell, flood basalts apart ──
     const platformKm = new Float32Array(n), quietMyr = new Float32Array(n);
     const lipKm = new Float32Array(n), lipWornKm = new Float32Array(n), lipSrc = new Uint16Array(n);
-    // an island arc out in the open ocean stays a submerged ridge its volcanoes break through (the Marianas, Tonga); near a
-    // continent it matures into land (Japan) — by its distance from continental crust (developer: far-ocean arcs "just
-    // getting huge"; the history also keeps them narrow there, tectonics/step/wings.js)
-    const farHops = Math.ceil(cfg.arcOceanKm / simMesh.edgeKm);
-    const contHops = hopDistance(simMesh, w => frame.owner[w] >= 0 && (frame.type[w] === CrustType.CONTINENT || frame.type[w] === CrustType.CRATON), farHops);
-    const arcMatureAt = w => {
-        const km = contHops[w] < 0 ? Infinity : contHops[w] * simMesh.edgeKm;
-        const t = Math.min(1, Math.max(0, (cfg.arcOceanKm - km) / (cfg.arcOceanKm - cfg.arcCoastKm)));
-        return cfg.arcOceanMatureKm + (cfg.arcMatureKm - cfg.arcOceanMatureKm) * t * t * (3 - 2 * t);
-    };
     for (let w = 0; w < n; w++) {
         if (!land[w]) continue;
         const type = frame.type[w], flags = frame.flags[w];
@@ -490,7 +479,12 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         if (type === CrustType.CRATON) h = cfg.cratonKm;
         else if (type === CrustType.ARC) {
             if (flags & CrustFlag.MARGIN_ISLE) h = cfg.foreArcIsleKm;
-            else { const m = Math.min(1, Math.max(0, (time - frame.formedAt[w]) / cfg.arcMatureMyr)); h = cfg.arcYoungKm + (arcMatureAt(w) - cfg.arcYoungKm) * m ** 0.7; }
+            // an island arc stands on the crust its volcanoes added while its slab fed them, by isostasy, hot while
+            // active and cooling, sinking and worn down once silent (tectonics/measure.js arcSurfaceKm): a young arc a
+            // submerged ridge its volcanoes break (the Marianas, Tonga), a long-fed one land (Japan), a remnant arc a
+            // drowned ridge (the Kyushu–Palau Ridge). (Was by its age, and by its distance from a continent: an arc
+            // stranded far from its trench stood as high as a live one — rings of land round the basins behind them)
+            else h = arcSurfaceKm(frame.arcKm[w], time - frame.arcAt[w]);
         } else h = cfg.continentKm;
         // the evolved root, by Airy isostasy, and the evolved uplift above it (tectonics/step/heights.js)
         const root = frame.rootKm[w] * (type === CrustType.ARC ? 0.25 : 1);     // (an arc's recorded thickening is mostly its own growth, already in its maturity)

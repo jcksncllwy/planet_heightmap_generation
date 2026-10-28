@@ -510,20 +510,28 @@ function underthrust(world, U, L, cells, rec, km) {
 /** How thick an island arc's crust is at this age (Myr since it formed), km: it thickens as magma adds to it. */
 export const arcThickKm = (ageMyr, config) => Math.min(config.arcMaxKm, config.arcBirthKm + config.arcThickenKmPerMyr * Math.max(0, ageMyr));
 
+/**
+ * How thick island-arc crust at raster cell `c` is (km): what its volcanoes added while its trench fed them (crust.arcKm,
+ * step/wings.js buildArcs) — so an arc split off its trench and left silent, a remnant arc, stays thin and goes down at the next
+ * trench it meets (Phase 7c; Cloos 1993) — or, for arc crust the history never grew (a scene's hand-laid arc), by its age.
+ */
+export const arcCrustKm = (crust, c, time, config) => crust.arcKm[c] > 0 ? crust.arcKm[c] : arcThickKm(time - crust.formedAt[c], config);
+
 /** The mean crustal thickness of the arc cells among `cells` of `plate` (km; Infinity with none). */
 function meanArcThickKm(plate, cells, time, config) {
     let sum = 0, n = 0;
-    for (const c of cells) if (plate.crust.type[c] === CrustType.ARC) { sum += arcThickKm(time - plate.crust.formedAt[c], config); n++; }
+    for (const c of cells) if (plate.crust.type[c] === CrustType.ARC) { sum += arcCrustKm(plate.crust, c, time, config); n++; }
     return n ? sum / n : Infinity;
 }
 
 /**
  * If raster cell `cell` of `donor` is island arc thinner than arcAccreteThickKm, it goes down with the slab instead of
- * accreting — the arc is consumed as it arrives, where it is young, and its old, thick parts dock — and true is returned.
+ * accreting — the arc is consumed as it arrives where it is thin (young, or a remnant left silent), and its long-fed, thick
+ * parts dock — and true is returned.
  */
 function recycleThinArc(world, donor, cell) {
-    const { config, time } = world, { mask, type, formedAt } = donor.crust;
-    if (!mask[cell] || type[cell] !== CrustType.ARC || arcThickKm(time - formedAt[cell], config) >= config.arcAccreteThickKm) return false;
+    const { config, time } = world, { mask, type } = donor.crust;
+    if (!mask[cell] || type[cell] !== CrustType.ARC || arcCrustKm(donor.crust, cell, time, config) >= config.arcAccreteThickKm) return false;
     recycle(world, donor, [cell]);
     return true;
 }
