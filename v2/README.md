@@ -660,6 +660,21 @@ is painted as before (`?gpu=0` forces it, for comparison). The map view is the s
 renderer, letterboxed under the `#mapCanvas` frame. Zoom is V1's (`app/globe-view.js`): a wheel's notch is 14 % nearer
 (OrbitControls' own was 5 %, and stepped), a pinch the fingers' ratio, and the camera eases to it.
 
+A speed pass (2026-10-27; every output the same — whole histories compared frame by frame, every field, on two seeds over
+1200 Myr at 40K, and Add detail's heights, ocean, lakes, waves, coast, climate and stats at 640K). Add detail at 640K (4
+workers, desktop) 23.3–24.0 s → 18.5 s at the same CPU time (~37–38 s): the coast's swell traced on three of the terrain
+pool's workers, with its rays' frames worked out inline and its tables flat (nothing allocated per step) — the coast
+6.2 → 2.4 s; and the surface's plan begun on the pool's first worker while the terrain mesh is built and warped (the plan
+needs only the cells' size) — the surface 4.2–4.4 → 3.2 s. The crust ledger (on in the checks) counts four cells at a
+time: a 1200 Myr ledger history at 40K 167 → 144 s (instructions −18 %). The gather keeps each plate's crust-edge counts
+up to date instead of marking them afresh (its share of a history's samples 3.4 → 1.3 %; a whole history within noise:
+1200 Myr at 40K 139.5 → 138.4 s). Tried and not kept: the step's second resolve reusing the first one's growth verdicts
+where nothing they read has changed (exact, but only a third qualify — the first resolve's births change the crust right
+beside the ridge gaps the second asks about — and finding them cost more than it saved: +8 %); contacts kept across
+resolves while their cells' owners stand (as dear to check as to work out); the checks' terrains built on a terrain pool
+(8a, 13: the same terrains, bit for bit, but CPU +10 % and +67 % and no sooner on the shared machine). Not tried: the rift
+search on helpers in the Node checks — each check holds one core under sim-slots, so it would add CPU, not save time.
+
 ## The realism pass (2026-10-18; plans/V2_REALISM_PASS_PLAN.md)
 
 Twelve recorded 1200 Myr histories (3 seeds × 20K–160K) showed worlds that froze into one plate, oceans twice Earth's age,
