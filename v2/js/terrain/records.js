@@ -5,7 +5,7 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE } from '../tectonics/measure.js';
+import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { seaLevel } from './sea-level.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
@@ -169,6 +169,8 @@ function plateCoasts(simMesh, A, land, dist, coastKind, carried, frame, pocketKm
             // grid); a cell no world cell shows takes a shown neighbour's kind of coast
             land01.fill(0);
             for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; land01[r] = frame.crustType[i] !== CrustType.OCEAN || frame.crustFill?.[i] ? 1 : 0; if (!onPlate[r]) { onPlate[r] = 2; kindR[r] = 255; } }
+            // (and a filled sea the world grid shows lifted dry by the mantle's swell: deriveRecords)
+            for (const w of cells) if (land[w] && frame.type[w] === CrustType.OCEAN) land01[A.cell[w]] = 1;
             fillPockets(simMesh, land01, pocketKm2);
             for (let i = run.start; i < run.end; i++) { const r = frame.crustCells[i] - o * n; landR[r] = land01[r]; }
             for (let pass = 0; pass < 3; pass++) for (let i = run.start; i < run.end; i++) {
@@ -327,7 +329,20 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // still did not lift every height; today's heights are now its datum instead)
     // (the land's share is read at each point from the smooth swell field — synthesize.js — not baked into the platform
     // per cell, where the land's corners would step it at the cell's scale and a low coast would follow the steps)
-    const sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1), swellSeaRef = cfg.mantleSwellKm * cfg.mantleSwellSeaRef;
+    let sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);
+    const swellSeaRef = cfg.mantleSwellKm * cfg.mantleSwellSeaRef;
+    // a sediment-filled sea whose floor the mantle's swell has lifted above the sea: dry land — a lowland plain — though its
+    // fill fell short of the room the history gives it (step/sea-fill.js: it reckons the floor's subsidence, not the
+    // swell). Read as sea, its floor stood above the sea inside its own coast, and the margin's shelf and slope drawn down
+    // from that coast left a moat round it (branch unified)
+    const lifted = w => frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && !land[w] && frame.seaFillKm?.[w] > 0 && frame.formedAt[w] >= 0
+        && sl.swellKm[w] - swellSeaRef - (seaDepthKm(time - frame.formedAt[w]) - frame.seaFillKm[w] / SEDIMENT_LOAD_FACTOR) >= sl.seaKm;
+    let raised = 0;
+    for (let w = 0; w < n; w++) if (lifted(w)) { land[w] = 1; raised++; }
+    if (raised) sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);         // (the sea's level, with them as land)
+    // the sea's own deposits on land (a sea filled or lifted dry: ocean crust under the land): a graded plain, not bedrock
+    const fillLand = new Uint8Array(n);
+    for (let w = 0; w < n; w++) fillLand[w] = land[w] && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 ? 1 : 0;
 
     // ── the sea floor: half-space cooling depth; oceanic plateaus; abyssal-hill wavelength from the age gradient ──
     // Ridge segments (plans/V2_REALISM_PASS_PLAN.md, phase 6; tectonics/model/segments.js): each segment's floor (the whole
@@ -553,9 +568,21 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
             liftKm[w] = CM.slope[1] * ARC_ROOT_SHARE * Math.max(0, frame.rootKm[w]);
         } else liftKm[w] = CM.slope[type] * frame.rootKm[w];          // (a continent's or a craton's column: its kind as formed, CM.ref, and its crust thickened or thinned since)
         liftKm[w] += frame.baseKm[w];                                       // (the start world's swells, as worn so far)
-        // (the evolved uplift is carried separately: upliftKm. A sea its rivers filled to sea level — ocean crust under the
-        // land — stands as a lowland platform, an ordinary continent's column as formed, as it always has)
+        // (the evolved uplift is carried separately: upliftKm. A sea closed off too small to keep — ocean crust under the
+        // land, unfilled — stands as a lowland platform, an ordinary continent's column as formed)
         h = (type === CrustType.ARC ? h : CM.ref[type === CrustType.OCEAN ? CrustType.CONTINENT : type]) + liftKm[w];
+        // a sea its rivers filled (or the swell lifted dry): no crust column of its own but the sediment's surface — a
+        // delta and alluvial plain its rivers grade, rising inland from its shore at plainGrade (the lower Mississippi's
+        // valley and delta plain fall ~1e-4: Saucier 1994; alluvial and delta plains 1e-4–1e-3: Paola et al. 1992,
+        // Parker et al. 1998). Sediment laid in water builds to the water's level and no higher: where the swell holds the
+        // floor up, the history's fill (step/sea-fill.js reckons the floor's subsidence, not the swell: terrain/sea-level.js)
+        // overshoots it, and the plain is still drawn as graded — the excess is not drawn. Against the land's swell
+        // reference, as the terrain adds the swell to every platform (synthesize.js); from the sea's level, or the datum
+        // shoreline the terrain draws its coasts at where the sea stands below it
+        if (fillLand[w]) {
+            liftKm[w] = 0;
+            h = Math.max(0, sl.seaKm) + cfg.plainGrade * Math.max(0, coastKm[w]) - (sl.swellKm[w] - cfg.mantleSwellKm * cfg.mantleSwellLandRef);
+        }
         if (frame.volcType[w] === VolcanicType.LIP) {                   // (the pile, and how far it has worn: lips.js)
             lipKm[w] = cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]); lipWornKm[w] = frame.volcWornKm[w]; lipSrc[w] = frame.volcSource[w];
         }
@@ -670,7 +697,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     }
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
-        platformKm, shieldKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
+        platformKm, shieldKm, fillLand, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
         seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }
 

@@ -150,6 +150,11 @@ export const TERRAIN = {
                                 // a rift is segmented, each segment stretched its own way)
     pocketSeaKm2: 50000,        // a pocket of ocean crust trapped in the land smaller than this is a lowland, not a sea (a
                                 // one-cell sliver would otherwise stand as a deep hole ringed by drowned shelf)
+    plainGrade: 1e-4,           // a sea its rivers filled is a delta and alluvial plain they grade: it rises inland from its
+                                // shore at this gradient (km/km; the lower Mississippi's valley and delta plain ~1e-4: Saucier
+                                // 1994; alluvial and delta plains 1e-4–1e-3: Paola et al. 1992, Parker et al. 1998), fresh
+                                // sediment over the buried floor — no shelf at its shore but its delta front, no bedrock
+                                // relief on it (records.js fillLand; synthesize.js; branch unified)
     coastKindKm: 250,           // a margin's kind holds along its stretch of coast: a bay or a headland's flank within this
                                 // many km (along the coast) of an active / transform / collision coast is one too
     // Passive margins flatten and widen as they age (developer, 2026-10-15: "after a while of no tectonic activity they

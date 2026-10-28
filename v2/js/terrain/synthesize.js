@@ -400,7 +400,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return span2;
     };
     const { cratons: CR, terrane } = rec;
-    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
+    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
@@ -557,7 +557,10 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // (the mantle's swell under it, against the reference for continental crust — or, on an island arc, the sea floor's:
             // sea-level.js liftRefKm)
             if (swellKm) platform += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
-            platform += cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
+            // (how much of the ground here is a filled sea's sediment — records.js fillLand: a graded plain, kilometres of fresh
+            // sediment over the buried floor, with no bedrock basins and arches on it and no shelf at its shore but the delta front)
+            const dep = lw > 0 ? (n0 * fillLand[c0] + n1 * fillLand[c1] + n2 * fillLand[c2]) / lw : 0;
+            platform += (1 - dep) * cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
             // ── a flood basalt (lips.js): the pile as it has worn — here the whole plateau, its top lowering a little as it
             // wears and gone once worn through; the carving cuts it up (carve.js stripBasalt: its escarpment retreating
             // from the province's edge, its rivers' valleys widening — mesas left on the divides between them) ──
@@ -613,9 +616,10 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 if (platform < 0.04 && before >= 0.04) platform = 0.04;            // (a sag or a foredeep is lowland, not sea)
             }
             // (the shelf and the coastal plain: with the coast, on its plate's raster where it was read there)
-            const shelf = coastR !== null ? shelfR : w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2];
+            const shelf = (1 - dep) * (coastR !== null ? shelfR : w0 * shelfKm[c0] + w1 * shelfKm[c1] + w2 * shelfKm[c2]);
             const plain = coastR !== null ? plainR : w0 * plainKm[c0] + w1 * plainKm[c1] + w2 * plainKm[c2];
             ramp = coast < shelf ? 0 : smooth(0, 1, (coast - shelf) / Math.max(1, plain));
+            ramp += dep * (1 - ramp);                       // (a graded plain is already graded to its shore: records.js)
             // (a passive margin's relief buried under its shelf and coastal plain, by its maturity: records.js)
             const mature = coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2];
             const buried = mature * (1 - smooth(shelf, shelf + plain, coast));
@@ -876,6 +880,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 if (swellKm) landP += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
                 if (landP < cfg.shelfEdgeKm) top = Math.max(landP, -floor);
             }
+            // (and never below the floor it falls to: a sea shallower than a shelf break — nearly filled, its floor lifted by
+            // the mantle's swell — has no slope down from its coast, which stood as a trough round it; branch unified)
+            top = Math.max(top, -floor);
             h = top + (-floor - top) * smooth(0, slope, -coast);
             // (off an active margin the crust's edge is the trench: the forearc — the accretionary or eroding wedge on the
             // overriding plate's crust — slopes down from the shelf break to the trench's axis at one surface slope, the
