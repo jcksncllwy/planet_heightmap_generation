@@ -829,8 +829,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // ── a rifted margin (margins.js): the land as it would stand, less its thinned crust's subsidence — in air where it
             // stays above the sea, water-loaded below it and never deeper than the sea floor at its foot — and over it the
             // sediment's shelf and slope: the shoreline is where that crosses the sea ──
-            if (rs > 1e-3 && coast < thinW) {
-                const e = h - MC.fAir * subsidence(MC, coast / thinW, mature), b = e >= 0 ? e : Math.max(e / MC.fAir, -footD);
+            if (rs > 1e-3 && coast < (1 - MC.uEdge) * thinW) {
+                const e = h - MC.fAir * subsidence(MC, coast / thinW + MC.uEdge, mature), b = e >= 0 ? e : Math.max(e / MC.fAir, -footD);
                 h += rs * (Math.max(b, sedTop(coast, rShelf, brk, openS)) - h);
             }
         } else {
@@ -851,7 +851,14 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             h = top + (-floor - top) * smooth(0, slope, -coast);
             // (off a rifted margin the crust's edge is the foot of the slope: the sediment prism's front, if it reaches out
             // here, down to the floor)
-            if (rs > 1e-3) h += rs * (Math.max(-floor, sedTop(coast, rShelf, brk, openS)) - h);
+            if (rs > 1e-3) {
+                // (the thinned crust reaches past the history's crust edge, to the true COB: a lowland platform less its
+                // subsidence, water-loaded, under the sediment)
+                const u = coast / Math.max(1, thinW) + MC.uEdge;
+                const e = u > 0 ? cfg.continentKm - MC.fAir * subsidence(MC, u, coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2]) : -Infinity;
+                const bed = e >= 0 ? e : Math.max(-floor, e / MC.fAir);
+                h += rs * (Math.max(-floor, bed, sedTop(coast, rShelf, brk, openS)) - h);
+            }
             // abyssal hills along the isochrons, faded where the mesh cannot show them
             if (ow > 0) {
                 const age = (oc(c0, w0) * ageMyr[c0] + oc(c1, w1) * ageMyr[c1] + oc(c2, w2) * ageMyr[c2]) / ow;

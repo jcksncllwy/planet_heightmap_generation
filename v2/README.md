@@ -495,9 +495,13 @@ et al. 2013) and stands lower for it by isostasy — at once as it stretches and
 (McKenzie 1978; water-loaded, from the crust's and mantle's densities and expansion, `rift*` in terrain-config.js). So on
 a rifted coast (a coast the history marked RIFT_MARGIN, or the start's own coasts) the crust's share of its thickness
 is a smoothstep over `marginThinKm` 200 km from the COB (`marginThinCratonKm` 80 km beside a craton: cold, strong
-lithosphere rifts narrow, Buck 1991), the surface is the land's own height (platform, swell, belts, hills) less that
-subsidence, and the shoreline is where it crosses the frame's sea: a high rift shoulder still stands above it, a low
-platform does not, and the COB lies at the foot of the slope, ~100 km out from a mature margin's shore. The sediment
+lithosphere rifts narrow, Buck 1991). The history keeps a continent's area, not its thickness, so its crust edge is where
+the zone's crust would end gathered to full thickness against the hinge: half way across the zone (∫ 1/β = ½, crust
+volume kept through the stretching; margins.js `uEdge`) — the thinned crust reaches as far again beyond it, under the
+sea, to the true COB, and the hinge lies as far inland (2026-10-28, round 2: before, the whole zone lay inside the
+history's edge, and drowned the rift shoulders the history builds there). The surface is the land's own height
+(platform, swell, belts, hills) less that subsidence, and the shoreline is where it crosses the frame's sea: a high rift
+shoulder still stands above it, a low platform does not, and the COB lies at the foot of the slope. The sediment
 the continent sheds (`denudationKmPerMyr` 0.05, Syvitski et al. 2005, over the landmass's area per km of its coast and
 the margin's age) fills the drowned crust to a graded shelf down to the break at `shelfEdgeKm`, building it out toward the
 end of the necking zone (crust thinned to `marginNeckCrustKm` 10 km — the break stands over the necking zone, Péron-Pinvidic

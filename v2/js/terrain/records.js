@@ -461,6 +461,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         let shelf = shelfOf(m, wide) * vary, plain = plainOf(m, mature), brk = 0;
         if (k === CoastKind.PASSIVE && rifted > 0) {
             riftedMargin(MC, thinKm * vary, mature, sedKm2, cut);
+            cut[0] -= MC.uEdge * thinKm * vary; cut[1] -= MC.uEdge * thinKm * vary;     // (from the history's crust edge)
             shelf += rifted * (cut[0] - shelf); plain += rifted * (flexuralPlainKm(cfg, mature) - plain); brk = rifted * cut[1];
         }
         out.shelf[i] = shelf; out.plain[i] = plain; out.brk[i] = brk; out.thin[i] = thinKm * vary;

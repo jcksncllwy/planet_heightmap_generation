@@ -46,7 +46,13 @@ export function marginConstants(cfg) {
     // the end of the necking zone: the crust thinned to marginNeckCrustKm
     let uNeck = 0;
     for (let i = 0, d = cfg.marginNeckCrustKm / tc; i <= 1000; i++) if (smooth01(i / 1000) >= d) { uNeck = i / 1000; break; }
-    const C = { key, Si, E0, fAir, kSed, uNeck, uShore: new Float64Array(M_STEPS + 1), fill: [] };
+    // where the history's crust edge lies across the zone (u): the history keeps a continent's area, not its thickness, so
+    // its edge is where the crust would end at full thickness — the zone's crust, ∫ 1/β du, gathered against its hinge
+    // (u = 1); the true COB lies that far beyond it, under the sea (crust volume kept through the stretching)
+    let held = 0;
+    for (let i = 0; i < 1000; i++) held += smooth01((i + 0.5) / 1000) / 1000;
+    const uEdge = 1 - held;
+    const C = { key, Si, E0, fAir, kSed, uNeck, uEdge, uShore: new Float64Array(M_STEPS + 1), fill: [] };
     // per maturity: the datum shoreline of a lowland platform (cfg.continentKm), and the sediment it takes (per km of
     // margin, ÷ W: km) to fill the shelf from it seaward to each u, down to the necking zone's end
     const P = cfg.continentKm, db = -cfg.shelfEdgeKm;
@@ -78,6 +84,7 @@ export function subsidence(C, u, m) {
  * (km), maturity m and the sediment it has received (km² per km of margin; Infinity: all it can hold).
  */
 export function riftedMargin(C, W, m, sedKm2, out) {
+    // (km from the COB; the caller moves them to the history's crust edge, C.uEdge × W landward of it)
     const fi = Math.min(M_STEPS, Math.max(0, m * M_STEPS)), i0 = Math.floor(fi), i1 = Math.min(M_STEPS, i0 + 1), f = fi - i0;
     const uS = C.uShore[i0] + f * (C.uShore[i1] - C.uShore[i0]);
     // how far the prism has built out: the u where the fill it takes reaches the sediment it has (both maturities' tables)
