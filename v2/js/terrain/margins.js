@@ -27,6 +27,8 @@
 // are built once per set of constants.
 
 import { flexuralLengthKm } from './cratons.js';
+import { columnModel } from '../tectonics/measure.js';
+import { CrustType } from '../tectonics/model/crust.js';
 
 const smooth01 = u => { const t = u <= 0 ? 0 : u >= 1 ? 1 : u; return t * t * (3 - 2 * t); };
 const M_STEPS = 20, U_STEPS = 200;
@@ -34,7 +36,7 @@ let cache = null;
 
 /** The constants of the model (km), from the densities and temperatures in cfg. */
 export function marginConstants(cfg) {
-    const key = [cfg.riftCrustKm, cfg.riftLithKm, cfg.riftMantleRho, cfg.riftCrustRho, cfg.riftSedRho, cfg.seaRho, cfg.riftExpansion, cfg.riftMantleC, cfg.marginNeckCrustKm, cfg.continentKm, cfg.shelfEdgeKm].join();
+    const key = [cfg.riftCrustKm, cfg.riftLithKm, cfg.riftMantleRho, cfg.riftCrustRho, cfg.riftSedRho, cfg.seaRho, cfg.riftExpansion, cfg.riftMantleC, cfg.marginNeckCrustKm, cfg.oceanCrustRho, cfg.shelfEdgeKm].join();
     if (cache?.key === key) return cache;
     const rm = cfg.riftMantleRho, rc = cfg.riftCrustRho, rw = cfg.seaRho, rs = cfg.riftSedRho, aT = cfg.riftExpansion * cfg.riftMantleC, tc = cfg.riftCrustKm, a = cfg.riftLithKm;
     // McKenzie (1978): the initial subsidence at β → ∞ and the thermal subsidence's scale, water-loaded (km)
@@ -53,9 +55,10 @@ export function marginConstants(cfg) {
     for (let i = 0; i < 1000; i++) held += smooth01((i + 0.5) / 1000) / 1000;
     const uEdge = 1 - held;
     const C = { key, Si, E0, fAir, kSed, uNeck, uEdge, uShore: new Float64Array(M_STEPS + 1), fill: [] };
-    // per maturity: the datum shoreline of a lowland platform (cfg.continentKm), and the sediment it takes (per km of
+    // per maturity: the datum shoreline of a lowland platform (an ordinary continent's column as formed — the same
+    // crust, lithosphere and densities: tectonics/measure.js columnModel), and the sediment it takes (per km of
     // margin, ÷ W: km) to fill the shelf from it seaward to each u, down to the necking zone's end
-    const P = cfg.continentKm, db = -cfg.shelfEdgeKm;
+    const P = columnModel(cfg).ref[CrustType.CONTINENT], db = -cfg.shelfEdgeKm;
     for (let i = 0; i <= M_STEPS; i++) {
         const m = i / M_STEPS;
         let uS = 1;

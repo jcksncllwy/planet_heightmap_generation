@@ -20,6 +20,7 @@
 // raises no islands, and its coast — never a craton — turns to fore-arc sea at marginErosionKmPerMyr, until the coast
 // lies marginErosionMaxGapKm from its trench (it erodes from its first convergence; islands rise only off a mature one). Trench cells carry CrustFlag.EROSIVE so frames can show which margins are which.
 
+import { arcToContinentRootKm } from './heights.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { BoundaryKind, EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
@@ -148,7 +149,7 @@ function mergeIntoMainland(world, plate) {
             else if (!seen[nb] && type[nb] === CrustType.ARC && (flags[nb] & CrustFlag.MARGIN_ISLE)) { seen[nb] = 1; piece.push(nb); }
         }
         if (!touches) continue;
-        for (const c of piece) type[c] = CrustType.CONTINENT;
+        for (const c of piece) { crust.rootKm[c] = arcToContinentRootKm(crust, c, world.time, config); type[c] = CrustType.CONTINENT; }     // (its crust a continent's: heights.js)
         merged += piece.length;
         if (piece.length * cellAreaKm2 >= config.terraneMinAreaKm2) world.log(EventKind.ISLE_MERGE, `an island off ${plate.name}’s coast (${(piece.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) has grown into the mainland`, { plate: plate.id, areaKm2: piece.length * cellAreaKm2 });
     }

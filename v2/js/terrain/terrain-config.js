@@ -102,11 +102,17 @@ export const TERRAIN = {
     // margin's continental crust thins toward the continent–ocean boundary (the COB: the crust's edge, the history's rift
     // line) and stands lower by isostasy, at once and then as it cools (McKenzie 1978); its shoreline is where the surface
     // — the land's own height less that subsidence — crosses the sea, and the shelf the sediment it has received built out
-    // over it. These are McKenzie's own constants:
-    riftCrustKm: 35,            // the crust before it stretched (McKenzie 1978's tc 31.2; continents average 35–40 km:
-                                // Christensen & Mooney 1995)…
+    // over it. These are McKenzie's own constants — and every continental column's (tectonics/measure.js columnModel: a
+    // continent's height is its crust's and its lithosphere's isostasy, against the ridge; branch unified, 2026-10-28):
+    riftCrustKm: 35,            // ordinary continental crust as it forms, before it stretched or thickened (McKenzie 1978's tc
+                                // 31.2; extended crust averages 30.5 km, the continents 41.1 km with their orogens' 46.3:
+                                // Christensen & Mooney 1995, JGR 100: 9761)…
     riftLithKm: 125,            // …the lithosphere (a)…
-    riftMantleRho: 3330, riftCrustRho: 2800, seaRho: 1030,    // …densities (kg/m³)…
+    riftMantleRho: 3330, seaRho: 1030,    // …densities (kg/m³): the mantle at 0 °C (McKenzie 1978), sea water…
+    riftCrustRho: 2830,         // …continental crust: its mean density, 2.83 g/cm³ (Christensen & Mooney 1995 — recalled; McKenzie
+                                // took 2.8) — with it a 35 km crust stands 0.22 km above the sea, Earth's mean ~39 km 0.84 km…
+    oceanCrustRho: 2900,        // …and the ridge's ocean crust, which with seaDepthKm(0) sets the asthenosphere's own level
+                                // (Lachenbruch & Morgan 1990: H0 ≈ 2.4 km below the sea; Turcotte & Schubert 2002, 2.9 g/cm³)
     riftExpansion: 3.28e-5,     // …the thermal expansion (/K)…
     riftMantleC: 1333,          // …and the asthenosphere's temperature (°C): Si ≈ 4.3 km, E0 ≈ 3.2 km, τ = a²/π²κ ≈ 63 Myr
     riftSedRho: 2400,           // the shelf's sediment, compacted over a few km (Sclater & Christie 1980, JGR 85: 3711)
@@ -158,9 +164,16 @@ export const TERRAIN = {
                                 // (km²; fully open from the second) fills with sediment from its rim (the North Caspian's
                                 // shelf builds out into it) — its rim matures into a lowland, but no shelf drowns it
 
-    // ── Continental platform ──
-    continentKm: 0.12,          // unthickened continental crust: lowland platforms and plains
-    cratonKm: 0.28,             // shields: low, flat, stable
+    // ── Continental platform ── no height per kind of crust: a continent stands by its column (tectonics/measure.js
+    // columnModel; riftCrustKm… above). A craton's column (Archean–Proterozoic shields):
+    cratonCrustKm: 40,          // its crust as formed (shields and platforms ~40–43 km, about the continents' mean: Christensen &
+                                // Mooney 1995; Archean crust somewhat thinner, Durrheim & Mooney 1991 — recalled)…
+    cratonLithKm: 220,          // …its lithosphere, cold and thick (Archean–Proterozoic roots 200–220 km: Artemieva & Mooney 2001,
+                                // as Kaban et al. 2003 take them)…
+    cratonDepletion: 0.011,     // …its mantle less dense than fertile mantle at the same temperature by this share — melt
+                                // depletion: 1.1–1.5 % on average over the root, 1.7–2.5 % at most in its Archean cores (Kaban et
+                                // al. 2003, EPSL 209: 53–69; the root's cold outweighs it a little): the low end, their mean
+                                // over whole cratons. A shield so built stands ~0.9 km as formed, and wears down from there
     // ── Cratons against the ranges, and their look (Phase 10; terrain/cratons.js — the research is in the roadmap) ──
     cratonBlendKm: 60,          // a shield's platform blends into its neighbours over ± this across its edge line…
     cratonEdgeNoiseKm: 70,      // …the line moved in and out by up to about this (the shield's own bays and promontories)
@@ -209,12 +222,8 @@ export const TERRAIN = {
     // later starts flat. (Changing these re-runs the history in the lab.)
     baseReliefKm: 0.8,          // the swells stand up to this high at the start…
     baseReliefScaleKm: 2500,    // …the largest this many km across (then halves and quarters of it)…
-    baseReliefTauMyr: 200,      // …and wear away over this e-folding time (at erosionHeight.refKm, like the uplift)
+                                // (they are crust — a broad swell is a thicker crust, Airy — and wear down with the whole land)
     baseReliefCraton: 0.5,      // a shield rises this share as high (cold, thick and stiff: the flattest ground there is)
-    // Airy isostasy: thickened crust floats higher, with diminishing returns (a 35 km thicker crust stands ~5 km: Tibet)
-    isoMaxKm: 6,
-    isoScaleKm: 30,             // (≈ 0.17 km of height per km of extra crust at first; 35 km → 4.2 km, before the belt's relief)
-    thickTauMyr: 70,            // once a belt falls quiet, its root is eroded and rebounds away over this e-folding time
     // the mantle's swell (terrain/sea-level.js): warm mantle under a lid of continent lifts the surface over it, and the
     // sea answers — its water a fixed volume (records.js; the history's mantleHeat, tectonics/step/hotspots.js)
     mantleSwellKm: 1.0,         // fully insulated mantle (heat 1) stands this much above fully cooled (heat 0): the African
@@ -344,7 +353,11 @@ export const TERRAIN = {
     // (tectonics/config.js belts): 32–41 % below 400 m before rivers carve — the rivers take it toward the developer's
     // "like 40% usually is a sweeter spot" (130 / 100 with round 3's balanced crust budget: 28–37 %; with the old budget 90 / 60
     // wore India's young plateau to 0.6 km above its foreland — now, with less underthrusting, 100 / 70 leaves it 0.9 km)
-    reliefTauMyr: 100,          // uplift wears away over this e-folding time (at erosionHeight.refKm)…
+    // (branch unified, 2026-10-28: one clock for the whole height — the column, the belts' relief, the swells — with the
+    // rebound in it: the rock worn off thins the crust (tectonics/step/heights.js), and the ground comes down by the
+    // column's slope of it, ~1/6. Relief standing 1–2 km e-folds over 100–200 Myr (old orogens, with isostasy: Baldwin et
+    // al. 2003, JGR 108)
+    reliefTauMyr: 100,          // the land's height wears away over this e-folding time (at erosionHeight.refKm)…
     riftReliefTauMyr: 450,      // …except a rifted margin's shoulders: the great escarpment retreats rather than wears down
                                 // (the Drakensberg ~180 Myr, the Brazilian highlands ~130 Myr, the Western Ghats ~90 Myr)
     ruggedTauMyr: 368,          // the crests and ridges of a belt wear away more slowly: an old belt keeps its grain (the Appalachians)
@@ -354,11 +367,15 @@ export const TERRAIN = {
     // High ground wears fast, low ground slowly (developer: "wear down higher places faster — really slower on lower
     // places"): denudation rises with relief (Ahnert 1970; Montgomery & Brandon 2002), which is also why old ranges
     // persist as low hills for hundreds of Myr (Baldwin et al. 2003). Every clock above runs × (H / refKm) below refKm
-    // (never under floor) and × (H / refKm)^0.5 above it (at most max) — H: the belt's height above its plain
-    // (evolved uplift + the root's isostatic lift).
+    // (never under floor) and × (H / refKm)^0.5 above it (at most max) — H: the land's whole height above the sea (its
+    // column, the belts' relief, the swells: branch unified; was the belt's height above a fixed plain).
     // (a 600 Myr planet: median land 0.71 → 0.87 km, belts quiet 300+ Myr keep ~0.4 km of uplift instead of 0.2; the floor
-    // 0.5 → 0.75 after Phase 13, low ground still wearing slower than high: old ranges lingered at 0.4–0.8 km everywhere)
-    erosionHeight: { refKm: 2, floor: 0.75, max: 1.8 },
+    // 0.5 → 0.75 after Phase 13, low ground still wearing slower than high: old ranges lingered at 0.4–0.8 km everywhere.)
+    // With the whole height wearing (branch unified), no floor: the clock × H / refKm on low ground — the rock worn off a
+    // surface H high goes as H² (relief grows with height; Montgomery & Brandon 2002, EPSL 201), which sets the rates Earth
+    // shows: a shield 0.5 km up loses ~8 m of rock a Myr (cratons 1–10 m/Myr, cosmogenic: Bierman & Caffee 2001 — recalled),
+    // an old range 1 km up ~30 (the Appalachians ~20–30: Matmon et al. 2003 — recalled), an active one 4 km up ~400
+    erosionHeight: { refKm: 2, floor: 0, max: 1.8 },
     collapseKm: 5,              // ground raised past this collapses under its own weight — its lower crust flows out and it
                                 // extends — so a plateau levels off here and widens instead (Tibet ~5 km, the Altiplano ~4 km;
                                 // Molnar & Lyon-Caen 1988, Dewey 1988; tectonics/step/heights.js)…

@@ -13,6 +13,7 @@
 
 import { TERRAIN } from './terrain-config.js';
 import { deriveRecords, kindType, kindSide, CoastKind } from './records.js';
+import { columnModel, ARC_ROOT_SHARE } from '../tectonics/measure.js';
 import { beltProfile, broadProfile, crestProfile, stripeZone, beltEdge } from './profiles.js';
 import { buildStripeKernels, stripeAt, crossAt, beltAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
@@ -132,6 +133,9 @@ export function carveSettings(cfg) {
  * worker builds it from the frame and hands it to the others (planToData).
  */
 const BLEND = 11;
+/** The lift (km) of a cell's crust thickened past its kind's as formed (tectonics/measure.js; an arc's: the share of its
+ *  thickening that is not its own growth) — the part of its column a belt's cross-section shapes. */
+const thickLiftKm = (cfg, type, rootKm) => (type === CrustType.ARC ? columnModel(cfg).slope[CrustType.CONTINENT] * ARC_ROOT_SHARE : columnModel(cfg).slope[type]) * Math.max(0, rootKm);
 export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
     const A = buildAnchor(frame, simMesh), rec = deriveRecords(frame, simMesh, cfg, seed, A);
     // The current belt's envelope (the evolved uplift) and its thickened crust (the isostatic part of the platform) as each
@@ -156,17 +160,16 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
             if (frame.type[w] === CrustType.CRATON) continue;          // (a shield never thickens)
             const u = L0.dKm[w] / Math.max(40, L0.reach[w]), t = 1 - u * u;
             rootShape[w] = Math.max(0, t) * (1 - smooth(0.85, 1.05, u));
-            if (t > 0.3) {
-                const root = frame.rootKm[w] * (frame.type[w] === CrustType.ARC ? 0.25 : 1), iso = cfg.isoMaxKm * (1 - Math.exp(-root / cfg.isoScaleKm));
-                rootRatio[w] = Math.min(cfg.isoMaxKm, iso / t);
-            }
+            // (the thickened crust's lift, by its column's slope — tectonics/measure.js; at most what a column stands before
+            // it collapses: terrain-config.js collapseKm)
+            if (t > 0.3) rootRatio[w] = Math.min(cfg.collapseKm, thickLiftKm(cfg, frame.type[w], frame.rootKm[w]) / t);
         }
         Object.assign(L0, { envRatio, rootRatio });
         rec.envShape = envShape; rec.rootShape = rootShape;
         // (each cell's own isostatic lift, and the least and most of it and of the evolved uplift over the cell and its land
         // neighbours: the range the envelope and the root carried across a belt stay within — surfaceRange)
         const isoKm = new Float32Array(n);
-        for (let w = 0; w < n; w++) if (rec.land[w]) isoKm[w] = cfg.isoMaxKm * (1 - Math.exp(-frame.rootKm[w] * (frame.type[w] === CrustType.ARC ? 0.25 : 1) / cfg.isoScaleKm));
+        for (let w = 0; w < n; w++) if (rec.land[w]) isoKm[w] = thickLiftKm(cfg, frame.type[w], frame.rootKm[w]);
         const span = f => {
             const lo = new Float32Array(n), hi = new Float32Array(n), { adjOffset, adjList } = simMesh;
             for (let w = 0; w < n; w++) {
@@ -397,12 +400,14 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return span2;
     };
     const { cratons: CR, terrane } = rec;
-    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
+    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
     // lowland instead: open 0)
     const smoothCoast = cfg.sedimentCoastSmooth ?? 1;
+    // (an ordinary continent's column as formed, and a shield's step above it: tectonics/measure.js, records.js)
+    const refKm = columnModel(cfg).ref[CrustType.CONTINENT];
     const MC = marginConstants(cfg), shelfDepth = -cfg.shelfEdgeKm, clinoform = cfg.clinoformGradient ?? 0.05;
     const sedTop = (x, shelf, brk, open) => {
         const lift = shelfDepth * (1 - open);
@@ -548,7 +553,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const e0 = noisy(c0, w0), e1 = noisy(c1, w1), e2 = noisy(c2, w2);          // (each corner's noisy share, computed once)
             const n0 = land[c0] ? e0 : 0, n1 = land[c1] ? e1 : 0, n2 = land[c2] ? e2 : 0, lw = n0 + n1 + n2;
             platform = lw > 0 ? (mountainCurve > 0 ? curvedRead(simMesh, slopes.of(-2, platformKm, true), platformKm, c0, c1, c2, n0, n1, n2, w0, w1, w2, mountainCurve)
-                : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : cfg.continentKm;
+                : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : refKm;
             // (the mantle's swell under it, against the reference for continental crust — or, on an island arc, the sea floor's:
             // sea-level.js liftRefKm)
             if (swellKm) platform += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
@@ -584,7 +589,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 const before = platform;
                 shieldS = smooth(-cfg.cratonBlendKm, cfg.cratonBlendKm, crN) * whole;
                 // the shield's platform over the line: the corners' own share of it replaced by the line's
-                platform += (cfg.cratonKm - cfg.continentKm) * (shieldS - cells);
+                platform += (w0 * shieldKm[c0] + w1 * shieldKm[c1] + w2 * shieldKm[c2]) * (shieldS - cells);
                 rimFade = 1 - whole * smooth(cfg.cratonRimInKm, cfg.cratonRimOutKm, crN);
                 // the foreland: the shield bent down under the ranges' weight (terrain/cratons.js: summed over its plate's loads
                 // as a stiff plate bends — deepest before the thrusts on its rim, rising to a low forebulge), across the edge line
@@ -889,7 +894,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 // (the thinned crust reaches past the history's crust edge, to the true COB: a lowland platform less its
                 // subsidence, water-loaded, under the sediment)
                 const u = coast / Math.max(1, thinW) + MC.uEdge;
-                const e = u > 0 ? cfg.continentKm - MC.fAir * subsidence(MC, u, coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2]) : -Infinity;
+                const e = u > 0 ? refKm - MC.fAir * subsidence(MC, u, coastR !== null ? matureR : w0 * maturity[c0] + w1 * maturity[c1] + w2 * maturity[c2]) : -Infinity;
                 const bed = e >= 0 ? e : Math.max(-floor, e / MC.fAir);
                 h += rs * (Math.max(-floor, bed, sedTop(coast, rShelf, brk, openS)) - h);
             }

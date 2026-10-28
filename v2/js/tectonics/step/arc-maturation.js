@@ -7,6 +7,7 @@
 // (developer: "the overall landmass … seems like we are decreasing over time").
 
 import { CrustType, CrustFlag } from '../model/crust.js';
+import { arcToContinentRootKm } from './heights.js';
 
 /** @returns {number} plates whose crust changed (cell types only) */
 export function matureArcs(world, dt) {
@@ -30,7 +31,10 @@ export function matureArcs(world, dt) {
             }
         }
         if (!ring.length) continue;
-        for (const c of ring) type[c] = CrustType.CONTINENT;          // (its terrane, its age, its belts and its volcanoes stay)
+        // (its terrane, its age, its belts and its volcanoes stay; its crust — the arc's own, and its share of what belts
+        // thickened it by — is continental crust now, reworked to at least an ordinary continent's thickness: the step's
+        // premise, welded arcs thickened and intruded into continental crust (branch unified: the column stands on it))
+        for (const c of ring) { plate.crust.rootKm[c] = arcToContinentRootKm(plate.crust, c, time, config); type[c] = CrustType.CONTINENT; }
         world.budget.arcMaturedCells = (world.budget.arcMaturedCells ?? 0) + ring.length;
         plate.dirty = true;
         changed++;

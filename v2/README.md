@@ -389,7 +389,8 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    `cratonStrainShare` of its relief, each km of the shield costing `cratonStrength` km of the belt's reach, and the
    shield thickening by only 1/`cratonStrength` as much: cratons are strong, not rigid. So orogenies accumulate, and an
    old belt that drifted through the tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`,
-   `reliefTauMyr`, `thickTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`, `collapseKm`); a world may carry its own in
+   `reliefTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`, `collapseKm`; the columns' `riftCrustKm`…, `cratonCrustKm`…: see
+   "One height from the crust" below); a world may carry its own in
    `world.config.heights`.
 
 ### Rules for event stages and ops (break these and histories go subtly wrong)
@@ -790,7 +791,7 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   shows, read over the triangles); the envelope's and the thickened crust's shapes come from their profiles at the point,
   times their heights blended the same way (`envelopeCarry`: moved by height × (the profile at the point − the profile as
   the cells sampled it), only where the kernels' and the cells' distances across the belt agree to within about a sim
-  cell, the thickened crust's height capped at `isoMaxKm` and never on a shield — and both kept within the least and the
+  cell, the thickened crust's height capped at `collapseKm` and never on a shield — and both kept within the least and the
   most the history left about the point: no ground floats on more root, nor stands on more uplift, than the crust around
   it holds, so where a narrow stretch of belt meets a wide one the narrow one's far edge is not drawn as the wide one's
   main range); and the crests rise and fall along the

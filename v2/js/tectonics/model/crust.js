@@ -88,7 +88,7 @@ export class CrustRaster {
         this.prevSide = new Uint8Array(numCells);
         this.prevShear = new Int8Array(numCells);
         // Heights as evolving state (step/heights.js; Phase 8): records only, the history never reads them
-        this.rootKm = new Float32Array(numCells);      // thickened crust that can still wear away (km); heights by Airy isostasy
+        this.rootKm = new Float32Array(numCells);      // the crust's thickness less its kind's as formed (km; < 0 thinned by erosion): its column stands on it (measure.js columnModel)
         this.upliftKm = new Float32Array(numCells);    // broad relief built by belts and worn by erosion (km)
         this.baseKm = new Float32Array(numCells);      // the start world's own swells, worn by erosion (km)
         this.rugged = new Float32Array(numCells);      // how high the current belt's crests stand (km)

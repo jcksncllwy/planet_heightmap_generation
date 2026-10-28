@@ -5,7 +5,7 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm } from '../tectonics/measure.js';
+import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE } from '../tectonics/measure.js';
 import { seaLevel } from './sea-level.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
@@ -18,6 +18,10 @@ import { marginConstants, riftedMargin, flexuralPlainKm } from './margins.js';
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+/** How much higher a craton's column stands than an ordinary continent's, both as formed and thickened or thinned alike
+ *  (tectonics/measure.js): the step the terrain draws along a shield's edge line (synthesize.js) in place of the cells'. */
+export const shieldStepKm = cfg => { const C = columnModel(cfg); return C.ref[CrustType.CRATON] - C.ref[CrustType.CONTINENT]; };
 
 /** A belt KIND: its orogeny type and its side of a collision (the profile depends on both). 0 = no belt. */
 export const kindOf = (type, side) => type * 3 + side;
@@ -527,8 +531,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const erosion = new Float32Array(n);
     for (let w = 0; w < n; w++) erosion[w] = erosionAtLatitude(Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI, cfg);
 
-    // ── the continental platform: crust kind, isostasy of the thickened crust, the mantle's swell, flood basalts apart ──
-    const platformKm = new Float32Array(n), quietMyr = new Float32Array(n);
+    // ── the continental platform: the column its crust and lithosphere stand at (tectonics/measure.js columnModel — no
+    // height per kind of crust: branch unified), the start world's swells; the mantle's swell, flood basalts apart ──
+    const platformKm = new Float32Array(n), quietMyr = new Float32Array(n), liftKm = new Float32Array(n), CM = columnModel(cfg);
     const lipKm = new Float32Array(n), lipWornKm = new Float32Array(n), lipSrc = new Uint16Array(n);
     for (let w = 0; w < n; w++) {
         if (!land[w]) continue;
@@ -536,8 +541,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const quiet = frame.oroType[w] ? Math.max(0, time - frame.oroLast[w]) : time;
         quietMyr[w] = quiet;
         let h;
-        if (type === CrustType.CRATON) h = cfg.cratonKm;
-        else if (type === CrustType.ARC) {
+        if (type === CrustType.ARC) {
             if (flags & CrustFlag.MARGIN_ISLE) h = cfg.foreArcIsleKm;
             // an island arc stands on the crust its volcanoes added while its slab fed them, by isostasy, hot while
             // active and cooling, sinking and worn down once silent (tectonics/measure.js arcSurfaceKm): a young arc a
@@ -545,11 +549,13 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
             // drowned ridge (the Kyushu–Palau Ridge). (Was by its age, and by its distance from a continent: an arc
             // stranded far from its trench stood as high as a live one — rings of land round the basins behind them)
             else h = arcSurfaceKm(frame.arcKm[w], time - frame.arcAt[w]);
-        } else h = cfg.continentKm;
-        // the evolved root, by Airy isostasy, and the evolved uplift above it (tectonics/step/heights.js)
-        const root = frame.rootKm[w] * (type === CrustType.ARC ? 0.25 : 1);     // (an arc's recorded thickening is mostly its own growth, already in its maturity)
-        h += cfg.isoMaxKm * (1 - Math.exp(-root / cfg.isoScaleKm));        // (the evolved uplift is carried separately: upliftKm)
-        h += frame.baseKm[w];                                               // (the start world's swells, as worn so far)
+            // (its thickening by belts: an arc's recorded thickening is mostly its own growth, already in its crust)
+            liftKm[w] = CM.slope[1] * ARC_ROOT_SHARE * Math.max(0, frame.rootKm[w]);
+        } else liftKm[w] = CM.slope[type] * frame.rootKm[w];          // (a continent's or a craton's column: its kind as formed, CM.ref, and its crust thickened or thinned since)
+        liftKm[w] += frame.baseKm[w];                                       // (the start world's swells, as worn so far)
+        // (the evolved uplift is carried separately: upliftKm. A sea its rivers filled to sea level — ocean crust under the
+        // land — stands as a lowland platform, an ordinary continent's column as formed, as it always has)
+        h = (type === CrustType.ARC ? h : CM.ref[type === CrustType.OCEAN ? CrustType.CONTINENT : type]) + liftKm[w];
         if (frame.volcType[w] === VolcanicType.LIP) {                   // (the pile, and how far it has worn: lips.js)
             lipKm[w] = cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]); lipWornKm[w] = frame.volcWornKm[w]; lipSrc[w] = frame.volcSource[w];
         }
@@ -621,11 +627,22 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         if (!(weight > 0)) continue;
         const onRoot = type === OrogenyType.HIMALAYAN && side === BeltSide.UPPER;
         const crests = reliefKm[w] * Math.max(0, crestProfile(type, side, dKm[w], reach[w]));
-        const full = Math.max(0, platformKm[w] - (craton[w] ? cfg.cratonKm : cfg.continentKm)) + Math.max(0, frame.upliftKm[w]) + crests;
+        const full = Math.max(0, liftKm[w]) + Math.max(0, frame.upliftKm[w]) + crests;
         loadW[w] = weight * (onRoot ? crests : full); loadFull[w] = weight * full;
         if ((type === OrogenyType.HIMALAYAN || type === OrogenyType.URAL) && side === BeltSide.UPPER) loadOver[w] = weight * full;
     }
     const cratons = plateCratons(simMesh, A, frame, loadW, loadFull, loadOver, cfg);
+    // the step a shield's edge stands at (the terrain draws it along the edge's line, not the cells': synthesize.js): its
+    // column against its neighbours' across the edge, as each stands now — a shield as formed stands shieldStepKm above
+    // an ordinary continent, and wears faster, being higher (tectonics/step/heights.js), so the step shrinks as both age;
+    // away from an edge, the step as formed
+    const shieldKm = new Float32Array(n).fill(shieldStepKm(cfg));
+    for (let w = 0; w < n; w++) {
+        if (!land[w]) continue;
+        let sum = 0, k = 0;
+        for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const nb = adjList[j]; if (land[nb] && craton[nb] !== craton[w]) { sum += craton[w] ? platformKm[w] - platformKm[nb] : platformKm[nb] - platformKm[w]; k++; } }
+        if (k) shieldKm[w] = sum / k;
+    }
     // a scrap of craton (a patch whose deepest point is under ~cratonScrapKm from its edge) reads as its surroundings: it
     // takes the ground around it — the range's thickened crust, its uplift and crests (a shield never thickens, so a
     // scrap inside a plateau would stand as a hole in it) — by the share the terrain reads it as them (terrain/cratons.js)
@@ -646,14 +663,14 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         for (const w of members) {
             const s = Math.min(1, Math.max(0, (cratons.patchW[w] - 0.5 * cfg.cratonScrapKm) / cfg.cratonScrapKm)), f = 1 - s * s * (3 - 2 * s);
             // (the platform keeps the shield's own offset: the terrain takes it off by the same share)
-            platformKm[w] += f * (pl / m + cfg.cratonKm - cfg.continentKm - platformKm[w]);
+            platformKm[w] += f * (pl / m + shieldKm[w] - platformKm[w]);
             upliftKm[w] += f * (up / m - upliftKm[w]);
             reliefKm[w] = Math.max(reliefKm[w], f * r0 / m); overprinted.reliefKm[w] = Math.max(overprinted.reliefKm[w], f * r1 / m);
         }
     }
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
-        platformKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
+        platformKm, shieldKm, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
         seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }
 

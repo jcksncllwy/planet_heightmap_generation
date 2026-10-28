@@ -13,7 +13,7 @@ import { simulate } from '../js/tectonics/simulate.js';
 import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { EventKind } from '../js/tectonics/model/world.js';
-import { CrustType, CrustFlag, VolcanicType } from '../js/tectonics/model/crust.js';
+import { CrustType, CrustFlag, VolcanicType, OrogenyType } from '../js/tectonics/model/crust.js';
 import { MECHANISMS, TECTONICS } from '../js/tectonics/config.js';
 import { ENDINGS, inStage, historyEnding, framesEnding } from '../js/tectonics/ending.js';
 import { spreadKm } from '../js/core/min-heap.js';
@@ -22,6 +22,8 @@ import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { stageOf, EARTH_LAND, EARTH_LAND_RATIO, EARTH_SUBMERGED, byStage, stageText } from './lib/cycle-stage.mjs';
 import { shelfStats, EARTH_SHELF_KM, EARTH_BREAK_KM } from './lib/shelf-stats.mjs';
+import { columnKm, crustThicknessKm, columnModel } from '../js/tectonics/measure.js';
+import { TERRAIN } from '../js/terrain/terrain-config.js';
 
 const SEEDS = [12345, 777, 4242];
 const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (the window over which the most a landmass held while the pieces dispersed is read)
@@ -97,6 +99,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     let calm = null, lowland = null, lowlandRaw = null, land0 = null, land1200 = null, cont0 = 0, cont500 = 0, cont1000 = 0, cont1200 = 0, frozenFor = 0, frozenMost = 0;
     const arcLand = { live: { n: 0, up: 0 }, dead: { n: 0, up: 0 } };
     const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [], staged = [];
+    const heights = [], decay = new Map();       // (branch unified: the land's heights and crust, and old belts as they wear)
     const started = performance.now();
     simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
@@ -130,6 +133,24 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             for (const c of seas.slice(1)) for (const w of c) if (ocean[w] && f.time - f.formedAt[w] > 340) old++;
             sealedOld.push(old * cellKm2 / 1e6);
         }
+        // (branch unified) the crust's thickness (tectonics/measure.js crustThicknessKm) over the continents and the
+        // cratons; and the belts as they wear: each continental belt cell's height as the history stands it (its column, its
+        // uplift and swells, above an ordinary continent's column as formed), by how long its belt has been quiet — pooled
+        // over the frames from 100 Myr (the start's ranges are pre-history)
+        {
+            const all = [], cra = [];
+            for (let w = 0; w < n; w++) {
+                if (!cont[w]) continue;
+                const k = crustThicknessKm(TERRAIN, f.type[w], f.rootKm[w], f.upliftKm[w], f.baseKm[w]);
+                all.push(k); if (f.type[w] === CrustType.CRATON) cra.push(k);
+                if (f.time >= 100 && f.oroType[w] && f.oroType[w] !== OrogenyType.ARC && f.oroType[w] !== OrogenyType.RIFT) {
+                    const q = Math.floor((f.time - f.oroLast[w]) / 25), h = columnKm(TERRAIN, f.type[w], f.rootKm[w]) + Math.max(0, f.upliftKm[w]) + f.baseKm[w] - columnModel(TERRAIN).ref[CrustType.CONTINENT];
+                    const b = decay.get(q) ?? decay.set(q, { s: 0, n: 0 }).get(q); b.s += h; b.n++;
+                }
+            }
+            all.sort((a, b) => a - b);
+            heights.push({ time: f.time, stage: stageOf(f), crust: all.reduce((x, y) => x + y, 0) / Math.max(1, all.length), crustCraton: cra.reduce((x, y) => x + y, 0) / Math.max(1, cra.length), crustTop: all[Math.floor(0.999 * (all.length - 1))] ?? NaN });
+        }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - 500) < 1e-6) cont500 = cont.reduce((s, v) => s + v, 0);
@@ -142,6 +163,17 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             for (let t = 0; t < tm.numCells; t++) { const c = T.sampler.cells[3 * t]; if (T.rec.land[c] && T.rec.coastKm[c] > 500) inner.push(T.heightKm[t]); }
             // (the margins: the crust under the sea, the shelves' width by kind, the break's depth — lib/shelf-stats.mjs)
             const M = shelfStats(tm, T.heightKm, T, mesh, f);
+            // (branch unified: the land's mean height and the shields' median above the sea; the continental crust's mean
+            // height, under the sea or above it — its freeboard)
+            {
+                let sl = 0, nl = 0, sc = 0, nc = 0; const shield = [];
+                for (let t = 0; t < tm.numCells; t++) {
+                    const c = T.sampler.cells[3 * t], h = T.heightKm[t];
+                    if (h > 0) { sl += h; nl++; }
+                    if (cont[c]) { sc += h; nc++; if (f.type[c] === CrustType.CRATON && h > 0) shield.push(h); }
+                }
+                const H = heights.at(-1); H.land = sl / Math.max(1, nl); H.freeboard = sc / Math.max(1, nc); H.craton = median(shield);
+            }
             sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, floorKm: T.rec.sea.ridgeSeaKm, interior: median(inner),
                 submerged: M.submerged, breakKm: M.breakKm, ...Object.fromEntries(Object.keys(EARTH_SHELF_KM).map(k => [`shelf ${k}`, M.shelfKm[k]])) });
             // (island arcs above the sea, every 200 Myr: those whose slab fed them within ARC_LIVE_MYR, and the silent ones)
@@ -186,7 +218,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
         staged: k => byStage(staged.map(x => ({ stage: x.stage, value: x[k] }))),
         bigMean: bigPlates.reduce((x, y) => x + y, 0) / Math.max(1, bigPlates.length), floorAge: median(floorAges), sealedOld: sealedOld.reduce((x, y) => x + y, 0) / Math.max(1, sealedOld.length),
-        inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN), sea,
+        heights, decay, inits: per100(EventKind.SUBDUCTION_INIT), backArcs: per100(EventKind.BACKARC_OPEN), sea,
         platesMean: plateCounts.reduce((x, y) => x + y, 0) / Math.max(1, plateCounts.length), platesMin: Math.min(...plateCounts),
         shares: kept.filter(k => k.time % 100 === 0).map(k => Math.round(100 * k.share)) };
 }
@@ -263,6 +295,42 @@ section('land and sea through the cycle');
     report('interior height: supercontinent less late dispersal', rows.map(r => meanOf(r, 'supercontinent', 'interior') - meanOf(r, 'late dispersal', 'interior')), { earth: [0.2, 1], unit: ' km', digits: 2,
         source: 'a supercontinent on its own warm mantle rises a few hundred m to ~1 km (Gurnis 1988); the African superswell, Pangaea’s legacy, ~0.5 km (Nyblade & Robinson 1994)',
         detail: txt(r => `${meanOf(r, 'supercontinent', 'interior').toFixed(2)} vs ${meanOf(r, 'late dispersal', 'interior').toFixed(2)} km`) });
+}
+
+section('heights from the crust (branch unified)');
+{
+    // One physical height (tectonics/measure.js columnModel): each continental cell stands by isostasy on its crust and
+    // lithosphere, and erosion takes the whole height down, thinning the crust (tectonics/step/heights.js). What comes out:
+    const H = (r, k, from = 300) => r.heights.filter(x => x.time >= from && Number.isFinite(x[k]));
+    const meanH = (r, k, stage, from) => { const a = H(r, k, from).filter(x => !stage || x.stage === stage).map(x => x[k]); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; };
+    report('land: mean height above the sea, late dispersal', rows.map(r => meanH(r, 'land', 'late dispersal', 100)), { earth: [0.75, 0.95], unit: ' km', digits: 2,
+        source: 'Earth\'s land ~840 m on average (ETOPO hypsometry; Cogley 1984 — recalled) — today only: the late-dispersal frames',
+        detail: txt(r => `by stage ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => meanH(r, 'land', st, 100).toFixed(2)).join(' / ')} km`) });
+    report('cratons: median height above the sea', rows.map(r => meanH(r, 'craton', null, 300)), { earth: [0.4, 0.6], unit: ' km', digits: 2,
+        source: 'shields stand ~400–600 m (their freeboard: a thick crust on a cold, depleted root — Jordan 1978; Kaban et al. 2003) — holds through the cycle; frames from 300 Myr' });
+    report('continental crust: mean thickness', rows.map(r => meanH(r, 'crust', null, 300)), { earth: [38, 42], unit: ' km', digits: 1,
+        source: '41.1 km weighted over the continents, extended crust 30.5, orogens 46.3 (Christensen & Mooney 1995, JGR 100); ~39 with the shelves — holds through the cycle; frames from 300 Myr' });
+    report('cratons: mean crustal thickness', rows.map(r => meanH(r, 'crustCraton', null, 300)), { earth: [40, 45], unit: ' km', digits: 1,
+        source: 'shields and platforms ~40–43 km, about the continents\' mean (Christensen & Mooney 1995) — frames from 300 Myr' });
+    report('the thickest crust (99.9th percentile, most over the frames)', rows.map(r => Math.max(...H(r, 'crustTop', 100).map(x => x.crustTop))), { earth: [60, 75], unit: ' km', digits: 0,
+        source: 'Tibet ~70 km, about twice normal (Owens & Zandt 1997); the Altiplano ~70 km' });
+    // old belts wear down: the e-folding of their height above an ordinary continent's column as formed, fitted (log-linear,
+    // weighted by cells) over 25–300 Myr after their belt fell quiet
+    const efold = r => {
+        let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (const [q, b] of r.decay) { const t = 25 * (q + 0.5), m = b.s / b.n; if (q < 1 || t > 300 || !(m > 0.02) || b.n < 20) continue; const y = Math.log(m); sw += b.n; sx += b.n * t; sy += b.n * y; sxx += b.n * t * t; sxy += b.n * t * y; }
+        const slope = (sw * sxy - sx * sy) / (sw * sxx - sx * sx);
+        return slope < 0 ? -1 / slope : NaN;
+    };
+    report('old orogens: their height e-folds over', rows.map(efold), { earth: [100, 200], unit: ' Myr', digits: 0,
+        source: 'post-orogenic decay with isostatic rebound, ~100–200 Myr (Baldwin et al. 2003, JGR 108: the Appalachians and the Urals still stand ~1–2 km after 250+ Myr) — a fate, through the cycle',
+        detail: txt(r => [1, 4, 8, 12].map(q => r.decay.get(q)).map((b, i) => b ? `${[1, 4, 8, 12][i] * 25} Myr ${(b.s / b.n).toFixed(2)}` : '').filter(Boolean).join(', ') + ' km') });
+    // freeboard: the continental crust's mean height (under the sea or above it) late in the run against earlier — Earth's
+    // continents have kept their freeboard within ~±200 m since the late Archean (Flament et al. 2008, EPSL 275: thermal
+    // models with hypsometry; the "constant freeboard" of Wise 1974)
+    report('freeboard: the continents\' mean height, 900–1200 Myr less 300–600 Myr', rows.map(r => { const a = H(r, 'freeboard', 300).filter(x => x.time <= 600), b = H(r, 'freeboard', 900); const m = v => v.reduce((x, y) => x + y.freeboard, 0) / Math.max(1, v.length); return m(b) - m(a); }),
+        { earth: [-0.2, 0.2], unit: ' km', digits: 2, source: 'continental freeboard constant within ~±200 m since the late Archean (Flament et al. 2008, EPSL 275; Wise 1974)',
+            detail: txt(r => `${H(r, 'freeboard', 300).filter((x, i) => i % 15 === 0).map(x => `${x.time}: ${x.freeboard.toFixed(2)}`).join(', ')} km`) });
 }
 
 section('the crust over the history');

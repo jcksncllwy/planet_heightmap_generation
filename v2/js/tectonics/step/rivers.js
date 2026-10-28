@@ -26,14 +26,14 @@ import { MinHeap } from '../../core/min-heap.js';
 import { heightsOf } from './heights.js';
 import { fillEnclosedSeas } from './sea-fill.js';
 import { arcCrustKm } from './collision.js';
-import { arcSurfaceKm } from '../measure.js';
+import { arcSurfaceKm, columnModel, ARC_ROOT_SHARE } from '../measure.js';
 import { rainAtLatitude, erosionAtLatitude } from '../../terrain/terrain-config.js';
 
 const R = 6371;
 
 /** Drain the land and let the rivers cut, every riverEveryMyr. @returns {number} 0 (it never changes crust) */
 export function evolveRivers(world, dt) {
-    const H = heightsOf(world.config);
+    const H = heightsOf(world.config), C = columnModel(H);
     world.riverClock = (world.riverClock ?? 0) + dt;
     if (world.riverClock < H.riverEveryMyr - 1e-9) return 0;
     const span = world.riverClock;
@@ -52,13 +52,18 @@ export function evolveRivers(world, dt) {
         const crust = plates[o].crust, c = ownerCell[w], type = crust.type[c];
         if (type === CrustType.OCEAN) continue;
         land[w] = 1;
-        let b;
-        if (type === CrustType.CRATON) b = H.cratonKm;
-        else if (type === CrustType.ARC) b = (crust.flags[c] & CrustFlag.MARGIN_ISLE) ? H.foreArcIsleKm
-            : arcSurfaceKm(arcCrustKm(crust, c, time, world.config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0);     // (as the terrain stands it: records.js)
-        else b = H.continentKm;
-        const l = Math.max(0, H.isoMaxKm * (1 - Math.exp(-crust.rootKm[c] * (type === CrustType.ARC ? 0.25 : 1) / H.isoScaleKm)) + crust.upliftKm[c] + crust.baseKm[c]
-            + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0));
+        // (the column as formed — a continent's and a craton's by their crust, tectonics/measure.js; an arc's its own
+        // crest — is the base; the relief is the rest, above it: the crust thickened, the belts' uplift, the swells, the
+        // basalt. A crust eroded thinner than formed stands lower than its base: no relief there)
+        let b, full;
+        if (type === CrustType.ARC) {
+            b = (crust.flags[c] & CrustFlag.MARGIN_ISLE) ? H.foreArcIsleKm
+                : arcSurfaceKm(arcCrustKm(crust, c, time, world.config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0);     // (as the terrain stands it: records.js)
+            full = b + C.slope[1] * ARC_ROOT_SHARE * Math.max(0, crust.rootKm[c]);
+        } else { b = C.ref[type]; full = b + C.slope[type] * crust.rootKm[c]; }
+        full += crust.upliftKm[c] + crust.baseKm[c] + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0);
+        b = Math.min(b, full);
+        const l = Math.max(0, full - b);
         base[w] = b; lift[w] = l; cutNow[w] = Math.min(crust.riverIncKm[c], l + H.riverPlainKm);
         // (a belt still rising keeps pace with its rivers: they cut less there — shaping it, not trenching it)
         hold[w] = 1 - H.riverActiveHold * (crust.oroType[c] ? Math.exp(-Math.max(0, time - crust.oroLast[c]) / H.carveActiveMyr) : 0);

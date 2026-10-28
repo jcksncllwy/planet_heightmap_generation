@@ -108,6 +108,53 @@ export function arcSurfaceKm(crustKm, quietMyr) {
     return arcStandKm(crustKm, q) - Math.min(ISLAND_EROSION_KM_PER_MYR * q, Math.max(0, up));
 }
 
+// ── A continent's surface, from its crust and its lithosphere (2026-10-28, branch unified) ── one isostatic column for
+// every continental cell, in place of a fixed height per kind of crust. A column is its crust (thickness Hc, density ρc)
+// and the mantle lithosphere under it down to its base a, both cooler toward the top along a linear geotherm from 0 °C to
+// the asthenosphere's Tm (McKenzie 1978's lithosphere, the one terrain/margins.js stretches), floating on asthenosphere of
+// density ρa = ρm (1 − α Tm). Against a column of asthenosphere alone it stands a − M ÷ ρa higher (M: its mass per area);
+// and a column of asthenosphere alone stands H0 below the sea — read off the mid-ocean ridge, which is that column with
+// 7 km of ocean crust on it under seaDepthKm(0) of water: H0 ≈ −2.4 km (Lachenbruch & Morgan 1990, Tectonophysics 174:
+// 39–62 — their rule of thumb). Nothing here is set to a height: densities and temperatures (terrain-config.js, the
+// same constants terrain/margins.js stretches) and the ridge. With continental crust's mean density, 2.83 g/cm³
+// (Christensen & Mooney 1995), a 35 km crust on 125 km of lithosphere stands 0.22 km above the sea and Earth's mean
+// crust, ~39 km, 0.84 km — Earth's mean land height. Each km of crust more lifts it (ρm − ρc)(1 − α Tm Hc / a) ÷ ρa ≈
+// 0.155 km — so a km of rock worn off the top lowers the ground by only ~1/6 of it: the rest comes back as rebound (Airy;
+// Molnar & England 1990, Nature 346: 29–34).
+// A craton is a thicker crust (cratonCrustKm) on a thick, cold root (cratonLithKm, 200–220 km: Artemieva & Mooney
+// 2001) that is chemically depleted — less dense than fertile mantle at the same temperature by cratonDepletion
+// (1.1–1.5 % on average, Kaban et al. 2003, EPSL 209: 53–69; Jordan 1978's isopycnic hypothesis would have it cancel the
+// root's cold, Kaban et al. find the cold wins a little). Its cold weighs it down, its depletion buoys it up: what is left
+// is its freeboard.
+// The record a cell carries (crust.rootKm) is its crust's thickness less its kind's as formed (riftCrustKm, cratonCrustKm):
+// thickened by belts, thinned by erosion. The belts' broad relief (crust.upliftKm) and the start world's swells
+// (crust.baseKm) are crust too — thickness counted in the height it lifts (÷ the column's slope gives its km) — kept
+// apart only because the belts shape it (terrain/profiles.js). An island arc stands by its own column (arcSurfaceKm).
+const columns = new WeakMap();
+/** The share of an island arc's recorded thickening by belts that lifts it (the rest is its own growth, in its crust: arcSurfaceKm). */
+export const ARC_ROOT_SHARE = 0.25;
+/** The column's constants for a set of terrain constants: { H0, ref[type] (km above the sea, as formed), slope[type] (km per km of crust), crust[type] (km) }. */
+export function columnModel(H) {
+    let C = columns.get(H);
+    if (C) return C;
+    const rm = H.riftMantleRho / 1000, rc = H.riftCrustRho / 1000, rw = H.seaRho / 1000, aT = H.riftExpansion * H.riftMantleC, ra = rm * (1 - aT);
+    const H0 = -seaDepthKm(0) * (ra - rw) / ra - OCEAN_CRUST_KM * (1 - H.oceanCrustRho / 1000 / ra);
+    // (the mass of a column per area, its crust and its mantle lithosphere each at its mean temperature along the geotherm)
+    const stand = (hc, a, dep) => a + H0 - (rc * (hc - aT * hc * hc / (2 * a)) + rm * (1 - dep) * ((a - hc) - aT * (a * a - hc * hc) / (2 * a))) / ra;
+    const slope = (hc, a, dep) => (rm * (1 - dep) - rc) * (1 - aT * hc / a) / ra;
+    const ord = [H.riftCrustKm, H.riftLithKm, 0], cra = [H.cratonCrustKm, H.cratonLithKm, H.cratonDepletion];
+    C = { H0, ref: [0, stand(...ord), stand(...cra), stand(...ord)], slope: [0, slope(...ord), slope(...cra), slope(...ord)], crust: [OCEAN_CRUST_KM, H.riftCrustKm, H.cratonCrustKm, H.riftCrustKm] };
+    columns.set(H, C);
+    return C;
+}
+/** Where a continental column stands against the sea (km; mantle swell aside): its kind as formed, and its crust `rootKm` thicker (< 0: thinner). */
+export function columnKm(H, type, rootKm) { const C = columnModel(H); return C.ref[type] + C.slope[type] * rootKm; }
+/** A continental cell's crust (km): as formed, its thickening or thinning, and the crust its belts' relief and its swells stand for. */
+export function crustThicknessKm(H, type, rootKm, upliftKm = 0, baseKm = 0) {
+    const C = columnModel(H);
+    return C.crust[type] + rootKm + (Math.max(0, upliftKm) + baseKm) / C.slope[type];
+}
+
 /**
  * Sediment shallows a sea by less than its own thickness: the floor sinks under the load (Airy). Water of depth d
  * replaced by sediment s: s = d × (ρm − ρw) ÷ (ρm − ρs) — with mantle 3.3, sea water 1.03 and compacted basin fill

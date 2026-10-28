@@ -36,7 +36,7 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {Float32Array} prevLast      (prevLast), position across it (prevU, 0…255), reach (prevReach, km), side and obliquity
  * @property {Uint8Array} prevU  @property {Uint16Array} prevReach  @property {Uint8Array} prevSide  @property {Int8Array} prevShear
  * @property {Float32Array} rootKm  @property {Float32Array} upliftKm  @property {Float32Array} baseKm  @property {Float32Array} rugged  @property {Float32Array} prevRugged
- * @property {Float32Array} volcWornKm    the evolving heights (step/heights.js): root, uplift, crest heights, volcano wear
+ * @property {Float32Array} volcWornKm    the evolving heights (step/heights.js): the crust's thickness against its kind's as formed (rootKm), uplift, crest heights, volcano wear
  * @property {Float32Array} riverIncKm    how deep the history's rivers have cut (step/rivers.js)
  * @property {Float32Array} seaFillKm     sediment laid on the sea floor by the history's rivers (km; step/sea-fill.js)
  * @property {Float32Array} arcKm         an island arc's crust (km; 0 off arcs): what its volcanoes added while its slab fed them
