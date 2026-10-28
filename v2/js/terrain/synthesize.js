@@ -595,6 +595,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // (a margin's shelf by its kind, from the shoreline down to the break at the crust's edge — on a rifted margin the
             // land itself, its subsidence and its sediment make the shelf: below)
             h = coast < shelf ? (1 - rs) * cfg.shelfEdgeKm * (1 - coast / shelf) : platform * ramp;
+            // (crust whose platform lies below the shelf break — a submerged arc ridge, a drowned plateau — has no shelf graded
+            // up to the sea at its edge and no coastal plain: wave base never planed it, so its edge falls from its own depth,
+            // with no rim at sea level around it or around its holes; Kyushu–Palau, West Mariana and Lau ridges, Karig 1972.
+            // Between the sea and the break it blends)
+            const drown = smooth(0, 1, -platform / shelfDepth);
+            if (drown > 0) h += drown * (platform - h);
             // the radiating dykes: coming out from under the lava across its edge (a signed distance — negative inside the
             // province — over the land corners), and within it only where erosion has bared them; never drowning land
             // (a low of the grain stops just above the sea)
@@ -833,7 +839,16 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const oc = (c, w) => (land[c] ? 0 : w);
             const floor = ow > 0 ? (oc(c0, w0) * depthKm[c0] + oc(c1, w1) * depthKm[c1] + oc(c2, w2) * depthKm[c2]) / ow : 3;
             const slope = w0 * slopeKm[c0] + w1 * slopeKm[c1] + w2 * slopeKm[c2];
-            h = cfg.shelfEdgeKm + (-floor - cfg.shelfEdgeKm) * smooth(0, slope, -coast);
+            // (the slope starts at the shelf break, or at the crust's own platform where that lies deeper: a submerged ridge's
+            // flank falls from its own depth — the land corners' platform, as the land side reads it)
+            let top = cfg.shelfEdgeKm;
+            const lwS = (land[c0] ? w0 : 0) + (land[c1] ? w1 : 0) + (land[c2] ? w2 : 0);
+            if (lwS > 0) {
+                let landP = ((land[c0] ? w0 * platformKm[c0] : 0) + (land[c1] ? w1 * platformKm[c1] : 0) + (land[c2] ? w2 * platformKm[c2] : 0)) / lwS;
+                if (swellKm) landP += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
+                if (landP < cfg.shelfEdgeKm) top = Math.max(landP, -floor);
+            }
+            h = top + (-floor - top) * smooth(0, slope, -coast);
             // (off a rifted margin the crust's edge is the foot of the slope: the sediment prism's front, if it reaches out
             // here, down to the floor)
             if (rs > 1e-3) h += rs * (Math.max(-floor, sedTop(coast, rShelf, brk, openS)) - h);
