@@ -126,7 +126,7 @@ function pullArcsAfterTrenches(world) {
         const fresh = splitStrip(world, A, strip, dir, rate);
         opened++;
         world.log(EventKind.BACKARC_OPEN, `${A.name} pulls away from its own trench (${(opening / cells.length).toFixed(1)} cm/yr; the slab, ${slabAge.toFixed(0)} Myr old, holds it): ${strip.continental ? 'a strip of its coast' : 'its island arc'} — ${lengthKm.toFixed(0)} km of it — stays with the trench as ${fresh.name}, and a back-arc sea opens behind`,
-            { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: slabAge, lengthKm, pulled: true, splitCratons: [] });
+            { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: slabAge, lengthKm, pulled: true, rateCmYr: rate, splitCratons: [] });
     }
     return opened;
 }

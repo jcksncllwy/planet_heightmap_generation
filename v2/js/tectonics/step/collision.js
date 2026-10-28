@@ -417,7 +417,14 @@ function dockIfTerrane(world, A, B, cells) {
     const o = [donor.omega[0] - host.omega[0], donor.omega[1] - host.omega[1], donor.omega[2] - host.omega[2]];
     const c = centroidOfCells(xyz, cells), rate = Math.hypot(o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0]) / CM_PER_YR_TO_RAD_PER_MYR;
     const kind = mass.filter(q => donor.crust.type[q] === CrustType.ARC).length * 2 > mass.length ? 'island arc' : 'terrane';
-    if (kind === 'island arc' && meanArcThickKm(donor, mass, world.time, config) < config.arcAccreteThickKm) { recycle(world, donor, mass); return true; }   // too thin to float: it goes down (Phase 7c)
+    // too thin to float: it goes down (Phase 7c) — as it arrives, its front first: the arc at the contact goes down now
+    // (a thicker patch in a thin chain dragged down with it), the rest as the convergence brings it (polarity.js lets thin
+    // arc crust go down a trench). (Was the whole arc at once: with arcs judged by the crust they grew, remnant chains of
+    // 1–2 % of the world's land vanished in a step)
+    if (kind === 'island arc' && meanArcThickKm(donor, mass, world.time, config) < config.arcAccreteThickKm) {
+        const front = uniq(under(donor)).filter(q => donor.crust.mask[q] && donor.crust.type[q] === CrustType.ARC);
+        if (front.length) { recycle(world, donor, front); return true; }
+    }
     const donorName = donor.name, result = accreteTerrane(world, host, donor, mass, rate);
     world.budget.sealedCells = (world.budget.sealedCells ?? 0) + (result.sealed ?? 0);
     world.budget.sealedLandCells = (world.budget.sealedLandCells ?? 0) + (result.landSealed ?? 0);

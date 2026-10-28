@@ -185,17 +185,22 @@ section('in a whole history');
     const unresolved = opened.filter(o => !closed.some(e => e.data.strip === o.data.strip) && r.last.time - o.time >= cfg.backArcActiveMyr && plateById(r.last, o.data.strip));
     check('each stops spreading in time', unresolved.length === 0, `${closed.length} stopped, ${opened.length - closed.length} still opening or swallowed; unresolved: ${unresolved.map(o => r.last.plates[o.data.strip].name).join(', ') || 'none'}`);
     // while it opens, a strip follows its trench at the rollback rate — it is not flung by the force balance (a consistency
-    // check against the model's own cap; the cap itself, rollbackMaxCmYr, is low for Earth — see the Mariana scene)
-    let worst = 0, judged = 0;
+    // check against the model's own cap; the cap itself, rollbackMaxCmYr, is low for Earth — see the Mariana scene). A strip
+    // split off a plate that pulled away from its own trench (step/backarc.js pullArcsAfterTrenches, branch arcs) follows the
+    // trench at that plate's retreat instead, which may be faster (Earth's back-arcs open at up to ~9–16 cm/yr, the Lau
+    // Basin's north: Bevis et al. 1995): each strip is held to its own rate
+    let worst = 0, worstOver = -Infinity, judged = 0, pulled = 0;
     opened.forEach(e => {
+        const allowed = Math.max(cfg.rollbackMaxCmYr, e.data.rateCmYr ?? 0);
+        if (e.data.pulled) pulled++;
         for (const f of r.frames) {
             if (f.time < e.time + 2 || f.time > e.time + cfg.backArcActiveMyr - 2) continue;
             const s = plateById(f, e.data.strip), p = plateById(f, e.data.parent);
-            if (s && p) { worst = Math.max(worst, relativeCmYr(s, p)); judged++; }
+            if (s && p) { const v = relativeCmYr(s, p); worst = Math.max(worst, v); worstOver = Math.max(worstOver, v - allowed); judged++; }
         }
     });
-    check('while a sea opens, its strip follows the trench — not flung', judged >= opened.length && worst <= cfg.rollbackMaxCmYr + 0.5,
-        `fastest a strip ever moved against its parent: ${worst.toFixed(1)} cm/yr (rollback at most ${cfg.rollbackMaxCmYr}), over ${judged} frames of ${opened.length} opening seas`);
+    check('while a sea opens, its strip follows the trench — not flung', judged >= opened.length && worstOver <= 0.5,
+        `fastest a strip ever moved against its parent: ${worst.toFixed(1)} cm/yr, at most ${Math.max(0, worstOver).toFixed(1)} cm/yr over its own rate (rollback at most ${cfg.rollbackMaxCmYr}; ${pulled} strips pulled at their plate's retreat), over ${judged} frames of ${opened.length} opening seas`);
     const fastest = Math.max(...r.frames.map(f => Math.max(0, ...f.plates.filter(p => p.alive && !p.isBackground).map(p => p.speedCmYr))));
     // the caps follow Zahirovic et al. 2015: plates under half continental reach ~20 cm/yr, those over half stay ≤ ~10 cm/yr
     check('every plate stays within the oceanic speed cap', fastest <= cfg.maxSpeedOceanic, `fastest plate in any frame: ${fastest.toFixed(1)} cm/yr (oceanic cap ${cfg.maxSpeedOceanic}; Zahirovic et al. 2015)`);

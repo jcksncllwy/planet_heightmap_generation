@@ -47,7 +47,11 @@ export function resolve(world) {
 function gatherAndSubduct(world) {
     const { owner, ownerCell, claimCount, landClaims, consumedAt, collider, plates } = world;
     let consumed = 0;
-    const subduct = (plate, cell, w) => { plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++; };
+    const budget = world.budget;
+    const subduct = (plate, cell, w) => {
+        if (plate.crust.type[cell] === CrustType.ARC) budget.recycledCells++;           // (thin arc crust going down a trench: polarity.js)
+        plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++;
+    };
     const bins = binIndex(world.mesh), stamp = world.occupancyStamp, floatKm = world.config.arcAccreteThickKm;
     clearWorldView(world);
 
