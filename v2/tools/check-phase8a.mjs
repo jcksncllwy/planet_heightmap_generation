@@ -6,7 +6,7 @@
 // failing) against Earth: trench depth, arc and flood-basalt shares, belt and craton heights, land share and hypsometry.
 // Usage: node v2/tools/check-phase8a.mjs
 
-import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
+import { check, checkAcross, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, CrustFlag, OrogenyType, BeltSide, VolcanicType } from '../js/tectonics/model/crust.js';
@@ -28,9 +28,10 @@ const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).
 const quantile = (a, p) => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
-function run(id, heights = null) {
+function run(id, heights = null, overrides = null) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
-    if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these; the history is the same)
+    if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these — and, through the rivers' sediment, so does the history: below)
+    if (overrides) Object.assign(world.config, overrides);
     const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     return { world, frame: frames.at(-1), first: frames[0], frames };
 }
@@ -317,62 +318,100 @@ section('erosion by rainfall');
         detail: `×${e(80).toFixed(2)} at 80°, ×${e(50).toFixed(2)} at 50°` });
     // (belts quiet 40–250 Myr: after Phase 13's quicker erosion a belt quiet 100+ Myr is worn to ~0.15 km wherever it stood)
     // and it shows: old belts are worn lower in the wet tropics, and kept higher in the dry subtropics, than in the same
-    // history evolved with erosion alike everywhere (heights evolve through the history: it has to be run again)
-    const alike = run('history', { rainErosionExponent: 0 });
-    const on = terrain(history.frame, 160000), off = terrainWith(alike.frame, 160000, { rainErosionExponent: 0 });
+    // history evolved with erosion alike everywhere (heights evolve through the history: it has to be run again). Like for
+    // like: the evolving heights are records the history never reads but for one path — the rock its rivers wear off the
+    // land, by the latitude's erosion, goes to the trenches (step/rivers.js → trench-fans.js: sediment subduction, erosive
+    // margins, filled seas) — so the two runs diverge from ~50 Myr (a third of the cells differ by 100 Myr, all by 200).
+    // Both are run with no terrigenous fill reaching the trenches (trenchDenudationKmPerMyr 0) — then the two are one
+    // history, cell for cell and event for event (checked below), and differ only in how their heights wore
+    const decoupled = { trenchDenudationKmPerMyr: 0 }, rainy = run('history', null, decoupled), alike = run('history', { rainErosionExponent: 0 }, decoupled);
+    const sameHistory = rainy.frames.every((f, i) => f.owner.every((o, w) => o === alike.frames[i].owner[w] && f.type[w] === alike.frames[i].type[w])) && rainy.frame.events.length === alike.frame.events.length;
+    check('…the two histories compared are one: only the heights\' erosion differs', sameHistory, `${rainy.frames.length} frames to ${rainy.frame.time} Myr, every cell's plate and crust the same; ${rainy.frame.events.length} events in each (no terrigenous trench fill in either)`);
+    const on = terrain(rainy.frame, 160000), off = terrainWith(alike.frame, 160000, { rainErosionExponent: 0 });
+    // Like for like in climate too: a belt quiet 40–250 Myr has drifted while it wore — a belt in the subtropics today may
+    // have spent its quiet life under the equator's rain — so each terrain cell is judged by the climate its crust lived
+    // in: the mean erosion factor at its latitude in the frames since it went quiet (carried back on its plate's rotation;
+    // the frames 50 Myr apart). Same cell, same history, the two runs paired: worn lower where its path was wetter than
+    // the reference (factor > 1), kept higher where drier (< 1). Today's latitude bands are listed as before
+    const F = rainy.frame, R = new Float64Array(9), Rt = new Float64Array(9), eAt = l => erosionAtLatitude(l, TERRAIN);
+    const pathE = (t, c) => {
+        const pl = F.owner[c]; if (pl < 0 || !F.plates[pl]?.alive) return NaN;
+        quatToMat3(F.plates[pl].quat, R);
+        const x = on.tm.xyz[3 * t], y = on.tm.xyz[3 * t + 1], z = on.tm.xyz[3 * t + 2], lx = R[0] * x + R[3] * y + R[6] * z, ly = R[1] * x + R[4] * y + R[7] * z, lz = R[2] * x + R[5] * y + R[8] * z;
+        let sum = 0, k = 0;
+        for (const f of rainy.frames) {
+            if (f.time < F.time - on.rec.quietMyr[c] - 1e-6 || !f.plates[pl]?.alive) continue;
+            quatToMat3(f.plates[pl].quat, Rt);
+            const zz = Rt[6] * lx + Rt[7] * ly + Rt[8] * lz;
+            sum += eAt(Math.asin(Math.max(-1, Math.min(1, zz))) * 180 / Math.PI); k++;
+        }
+        return k ? sum / k : NaN;
+    };
+    const wetD = [], dryD = [];
+    for (let t = 0; t < on.tm.numCells; t++) {
+        const c = corner(on, t);
+        if (!on.rec.kind[c] || !(on.rec.quietMyr[c] > 40 && on.rec.quietMyr[c] < 250) || !(on.heightKm[t] > 0 && off.heightKm[t] > 0)) continue;
+        const e = pathE(t, c); if (!(e === e)) continue;
+        (e > 1 ? wetD : dryD).push(on.parts.relief[t] - off.parts.relief[t]);
+    }
     const band = (T, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t), lat = Math.abs(Math.asin(T.tm.xyz[3 * t + 2])) * 180 / Math.PI; if (lat >= lo && lat < hi && T.rec.kind[c] && T.rec.quietMyr[c] > 40 && T.rec.quietMyr[c] < 250 && T.heightKm[t] > 0) a.push(T.parts.relief[t]); } return mean(a); };
     const wetOn = band(on, 0, 12), wetOff = band(off, 0, 12), dryOn = band(on, 20, 32), dryOff = band(off, 20, 32);
-    check('old belts are lower in the wet tropics and higher in the dry subtropics than with erosion alike everywhere', wetOn < wetOff && dryOn > dryOff,
-        `mean relief of belts quiet over 100 Myr: tropics ${wetOn.toFixed(2)} km (${wetOff.toFixed(2)} without), subtropics ${dryOn.toFixed(2)} km (${dryOff.toFixed(2)} without)`);
+    check('old belts are lower in the wet tropics and higher in the dry subtropics than with erosion alike everywhere', wetD.length > 0 && dryD.length > 0 && mean(wetD) < 0 && mean(dryD) > 0,
+        `relief of belts quiet 40–250 Myr, the same cell with rain's erosion less with erosion alike: ${(1000 * mean(wetD)).toFixed(0)} m where their path was wetter than the reference (${wetD.length} cells), ${(1000 * mean(dryD)).toFixed(0)} m where drier (${dryD.length}); by today's latitude: tropics ${wetOn.toFixed(2)} km (${wetOff.toFixed(2)} without), subtropics ${dryOn.toFixed(2)} km (${dryOff.toFixed(2)} without)`);
 }
 
 // ── the fine detail belongs to the crust (anchor.js): a moving plate carries its detail with it ──
 section('fine detail moves with the crust');
 {
-    const scene = TERRAIN_SCENES.find(s => s.id === 'history'), world = scene.build(mesh, SEED);
-    const { frames } = simulateCached(world, { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
-    const A = frames.at(-2), B = frames.at(-1), tm = terrainMesh(640000);
-    // the plate that turned the most in those 10 Myr, among those with plenty of land in both frames
-    let p = -1, turned = 0;
-    for (let i = 0; i < B.plates.length; i++) {
-        const a = A.plates[i], b = B.plates[i];
-        if (!a?.alive || !b?.alive || b.landCells < 200) continue;
-        const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3])));
-        if (ang > turned) { turned = ang; p = i; }
-    }
-    const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
-    const moveBtoA = (x, y, z) => {                  // a world point of frame B → where the same crust was in frame A
-        const lx = MB[0] * x + MB[3] * y + MB[6] * z, ly = MB[1] * x + MB[4] * y + MB[7] * z, lz = MB[2] * x + MB[5] * y + MB[8] * z;
-        return [MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz];
-    };
-    // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
-    // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
-    // (the smooth part: the same platform with its noise off — the terrain samples a moving plate on its own raster)
-    const detail = f => {
-        const T = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true }), r = new Float32Array(tm.numCells).fill(NaN);
-        const U = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true, cfg: terrainConfig({ platformNoiseKm: 0, blendNoise: 0 }) });
-        for (let t = 0; t < tm.numCells; t++) {
-            let ok = true, smoothPart = U.parts.platform[t];
-            for (let i = 0; i < 3; i++) { const c = T.sampler.cells[3 * t + i]; ok &&= T.rec.land[c] && T.rec.coastKm[c] > 400 && !T.rec.kind[c] && !T.rec.belts[1].kind[c] && !T.rec.lipKm[c]; }
-            if (ok) r[t] = T.parts.platform[t] - smoothPart;
+    const scene = TERRAIN_SCENES.find(s => s.id === 'history'), tm = terrainMesh(640000);
+    const framesOf = seed => simulateCached(scene.build(mesh, seed), { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames;
+    const carriedDetail = (seed, A, B) => {
+        // the plate that turned the most in those 10 Myr, among those with plenty of land in both frames
+        let p = -1, turned = 0;
+        for (let i = 0; i < B.plates.length; i++) {
+            const a = A.plates[i], b = B.plates[i];
+            if (!a?.alive || !b?.alive || b.landCells < 200) continue;
+            const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3])));
+            if (ang > turned) { turned = ang; p = i; }
         }
-        return { T, r };
+        const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
+        const moveBtoA = (x, y, z) => {                  // a world point of frame B → where the same crust was in frame A
+            const lx = MB[0] * x + MB[3] * y + MB[6] * z, ly = MB[1] * x + MB[4] * y + MB[7] * z, lz = MB[2] * x + MB[5] * y + MB[8] * z;
+            return [MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz];
+        };
+        // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
+        // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
+        // (the smooth part: the same platform with its noise off — the terrain samples a moving plate on its own raster)
+        const detail = f => {
+            const T = synthesizeTerrain(f, mesh, tm, { seed, parts: true }), r = new Float32Array(tm.numCells).fill(NaN);
+            const U = synthesizeTerrain(f, mesh, tm, { seed, parts: true, cfg: terrainConfig({ platformNoiseKm: 0, blendNoise: 0 }) });
+            for (let t = 0; t < tm.numCells; t++) {
+                let ok = true, smoothPart = U.parts.platform[t];
+                for (let i = 0; i < 3; i++) { const c = T.sampler.cells[3 * t + i]; ok &&= T.rec.land[c] && T.rec.coastKm[c] > 400 && !T.rec.kind[c] && !T.rec.belts[1].kind[c] && !T.rec.lipKm[c]; }
+                if (ok) r[t] = T.parts.platform[t] - smoothPart;
+            }
+            return { T, r };
+        };
+        const DA = detail(A), DB = detail(B), xs = [], ys = [], c3 = [0, 0, 0], w3 = [0, 0, 0];
+        for (let t = 0; t < tm.numCells; t++) {
+            if (Number.isNaN(DB.r[t]) || B.owner[DB.T.sampler.cells[3 * t]] !== p) continue;
+            const q = moveBtoA(tm.xyz[3 * t], tm.xyz[3 * t + 1], tm.xyz[3 * t + 2]);
+            locate(tm, q[0], q[1], q[2], c3, w3);
+            const va = w3[0] * DA.r[c3[0]] + w3[1] * DA.r[c3[1]] + w3[2] * DA.r[c3[2]];
+            if (!Number.isNaN(va)) { xs.push(va); ys.push(DB.r[t]); }
+        }
+        const mx = mean(xs), my = mean(ys);
+        let sxy = 0, sxx = 0, syy = 0;
+        for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+        const corr = sxy / Math.sqrt(sxx * syy);
+        return { label: seed, formed: xs.length > 2000, ok: corr >= 0.9, text: `plate ${p} turned ${(turned * 180 / Math.PI).toFixed(1)}° in 10 Myr: the detail of ${xs.length} interior cells correlates ${corr.toFixed(2)} with the same crust 10 Myr before` };
     };
-    const DA = detail(A), DB = detail(B), xs = [], ys = [], c3 = [0, 0, 0], w3 = [0, 0, 0];
-    for (let t = 0; t < tm.numCells; t++) {
-        if (Number.isNaN(DB.r[t]) || B.owner[DB.T.sampler.cells[3 * t]] !== p) continue;
-        const q = moveBtoA(tm.xyz[3 * t], tm.xyz[3 * t + 1], tm.xyz[3 * t + 2]);
-        locate(tm, q[0], q[1], q[2], c3, w3);
-        const va = w3[0] * DA.r[c3[0]] + w3[1] * DA.r[c3[1]] + w3[2] * DA.r[c3[2]];
-        if (!Number.isNaN(va)) { xs.push(va); ys.push(DB.r[t]); }
-    }
-    const mx = mean(xs), my = mean(ys);
-    let sxy = 0, sxx = 0, syy = 0;
-    for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
-    const corr = sxy / Math.sqrt(sxx * syy);
-    // (with the noise fixed to the world, as before: 0.3–0.6 here — only because the platform noise is broad)
-    check('a moving continent carries its fine detail with it', xs.length > 2000 && corr >= 0.9,
-        `plate ${p} turned ${(turned * 180 / Math.PI).toFixed(1)}° in 10 Myr: the detail of ${xs.length} interior cells correlates ${corr.toFixed(2)} with the same crust 10 Myr before`);
+    // (with the noise fixed to the world, as before: 0.3–0.6 here — only because the platform noise is broad. On three
+    // histories, the ones of phases 9 and 10: whether the plate that turned most has 2,000 interior cells is the history's
+    // chance — a seed where it has not is the scene not forming)
+    const frames = framesOf(SEED), A = frames.at(-2), B = frames.at(-1);
+    checkAcross('a moving continent carries its fine detail with it', [carriedDetail(SEED, A, B), ...[777, 4242].map(seed => { const f = framesOf(seed); return carriedDetail(seed, f.at(-2), f.at(-1)); })],
+        { scene: 'a moving continent with 2,000 interior cells', detail: '100→110 Myr' });
     // volcanoes: the same crust cell gives the same volcano — the same shape, carried exactly with its plate
     const key = (V, k) => `${V.plate[k]}|${V.crust[k]}`, firstOf = V => { const m = new Map(); for (let k = V.count - 1; k >= 0; k--) m.set(key(V, k), k); return m; };
     const VA = preparePlan(A, mesh, TERRAIN, SEED, 30).V, VB = preparePlan(B, mesh, TERRAIN, SEED, 30).V, inA = firstOf(VA);

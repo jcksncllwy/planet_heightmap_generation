@@ -58,6 +58,36 @@ export function report(name, value, { earth = null, unit = '', source = '', digi
     return inside;
 }
 
+// ── checks over a distribution of histories (the checks lane, 2026-10-28) ──
+// A history is chaotic: a ~4 % nudge of a parameter that has nothing to do with a check (plumeSpacingKm, mantleCoolMyr)
+// sends it down another path, and a statistic read off ONE history then lands either side of its threshold by chance —
+// the check judged the history, not the physics. A check on an outcome of a whole history (or of a scene that leaves room
+// for chance) is judged over several seeds instead: the median against the threshold, or the share of the seeds that pass.
+// And a scene that did not form on a seed (no collision, no shield where it was looked for) is not a physics failure: that
+// seed is counted and reported, and the check fails only when the scene formed on half the seeds or fewer.
+
+/** The median of a list (NaN when empty; non-finite values left out). */
+export function medianOf(xs) {
+    const s = xs.filter(Number.isFinite).sort((a, b) => a - b);
+    return s.length ? (s.length % 2 ? s[s.length >> 1] : 0.5 * (s[(s.length >> 1) - 1] + s[s.length >> 1])) : NaN;
+}
+
+/**
+ * One HARD check judged over several histories. `samples`: one per seed (or history), {label, ok, formed?, text?} —
+ * formed: false when the scene the check looks at did not form there (counted, never judged). It passes when the scene
+ * formed on more than half the samples and more than half of those pass. With `scene` set, how many samples the scene
+ * did not form on is also reported (a count, never a failure).
+ * @returns {boolean}
+ */
+export function checkAcross(name, samples, { detail = '', scene = null } = {}) {
+    const formed = samples.filter(s => s.formed !== false), passed = formed.filter(s => s.ok), missing = samples.length - formed.length;
+    const ok = formed.length > samples.length / 2 && passed.length > formed.length / 2;
+    const each = samples.map(s => `${s.label}: ${s.formed === false ? 'did not form' : s.ok ? 'pass' : 'fail'}${s.text ? ` (${s.text})` : ''}`).join(' · ');
+    check(name, ok, `${passed.length} of ${formed.length} histories pass${missing ? `; the scene did not form in ${missing} of ${samples.length}` : ''}${detail ? `; ${detail}` : ''} — ${each}`);
+    if (scene) report(`${scene}: histories where it did not form`, missing, { digits: 0, source: 'a scene that does not form is the history\'s chance, not a physics failure: counted, never failed (unless on most seeds)', detail: `of ${samples.length}` });
+    return ok;
+}
+
 export function section(title) { sectionTitle = title; console.log(`\n── ${title} ──`); }
 
 /** Print the verdict and set the process exit code (the hard checks alone decide it). Call last. */

@@ -10,7 +10,7 @@
 // often a strip carries craton, back-arcs per 100 Myr, and the land fore-arc islands add.
 // Usage: node v2/tools/check-phase7b.mjs
 
-import { check, report, section, finish, labMesh, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr, medianOf } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { MARGIN_SCENES } from '../js/tectonics/scenarios/margin-scenes.js';
 import { heading, omegaFor } from '../js/tectonics/scenarios/hotspot-scenes.js';
@@ -25,13 +25,13 @@ import { BoundaryKind, EventKind } from '../js/tectonics/model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR, TECTONICS } from '../js/tectonics/config.js';
 import { mechanismsOff } from '../js/tectonics/config.js';
 
-const SEED = 12345, SNAPSHOT_MYR = 2;
+const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];      // (the whole history's outcomes are judged over a few seeds)
 const r0cfg = () => TECTONICS;
 const mesh = labMesh(), { numCells, xyz, adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
 const pos = w => [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]];
 
-function run(id, overrides = {}, drive = null) {
-    const scene = MARGIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
+function run(id, overrides = {}, drive = null, seed = SEED) {
+    const scene = MARGIN_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     // (the history cache — tools/lib/history-cache.mjs — for the scene's own drive; a drive made here is a closure the key cannot see into)
     const opts = { untilMyr: scene.maxMyr, drive: drive ?? (w => scene.drive(w)), snapshotEveryMyr: SNAPSHOT_MYR };
@@ -223,7 +223,11 @@ section('in a whole history');
     const landAt = x => cellsWhere(numCells, w => isLand(x.last, w)).length, noErosion = mechanismsOff('marginErosion');
     const withIsles = run('history', noErosion), bare = run('history', { ...noErosion, ...mechanismsOff('marginIsles') });
     const growth = landAt(withIsles) / landAt(bare);
-    check('islands rise off active coasts and grow into the mainland', merges.length >= 3, `${merges.length} islands merged into their mainland; first: ${merges[0]?.text ?? 'none'}`);
+    // (how many islands reach their mainland in 300 Myr is the history's chance — 0 to 4 on seed 12345 under ~4 % nudges
+    // of unrelated parameters: judged over three histories, the median against the floor)
+    const mergeCounts = [merges.length, ...MORE_SEEDS.map(seed => run('history', {}, null, seed).events.filter(e => e.kind === EventKind.ISLE_MERGE).length)];
+    check('islands rise off active coasts and grow into the mainland', medianOf(mergeCounts) >= 3,
+        `median ${medianOf(mergeCounts)} islands merged into their mainland over ${r.last.time} Myr (seeds ${[SEED, ...MORE_SEEDS].join(', ')}: ${mergeCounts.join(', ')}); first on ${SEED}: ${merges[0]?.text ?? 'none'}`);
     report('land with fore-arc islands ÷ without', growth, { digits: 2, unit: '×', source: 'arc accretion adds ~1.5–3 km³/yr worldwide (Scholl & von Huene 2007) — a volume, not an area',
         detail: `land at ${r.last.time} Myr: ${landAt(withIsles)} cells with fore-arc islands, ${landAt(bare)} without (erosive margins off in both)` });
     const transp = cellsWhere(numCells, w => r.last.owner[w] >= 0 && r.last.oroType[w] === OrogenyType.TRANSPRESSION).length;

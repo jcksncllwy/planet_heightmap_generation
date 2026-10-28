@@ -66,8 +66,11 @@ section('a plume splits a continent');
         const f80 = r.at(80), ridge = countWhere(numCells, w => f80.boundary[w] === BoundaryKind.RIDGE);
         const fresh = countWhere(numCells, w => f80.owner[w] >= 0 && !f80.plates[f80.owner[w]].isBackground && f80.type[w] === CrustType.OCEAN && f80.formedAt[w] > 20);
         check('a ridge opens between the halves and they drift apart', ridge > 20 && fresh > 100 && !r.events.some(e => e.kind === EventKind.SUTURE), `${ridge} ridge cells and ${fresh} cells of new ocean on the plates at 80 Myr; sutures: ${r.events.filter(e => e.kind === EventKind.SUTURE).length}`);
-        const speeds = continental(last).map(p => p.speedCmYr);
-        check('each half moves under its own trench', speeds.length === 2 && speeds.every(v => v > 0.5), `${continental(last).map(p => `${p.name} ${p.speedCmYr.toFixed(2)}`).join(' / ')} cm/yr at ${last.time} Myr`);
+        // (the two halves as the rift left them, followed by id: a half that rifts again later keeps its id on its larger piece
+        // — later rifts are the history's, not this one's (the plume scene runs on to 160 Myr with rifting on))
+        const halves = continental(after).map(p => last.plates[p.id]), speeds = halves.map(p => (p?.alive ? p.speedCmYr : NaN));
+        check('each half moves under its own trench', speeds.length === 2 && speeds.every(v => v > 0.5),
+            `${halves.map((p, i) => `${p?.name ?? '—'} ${Number.isFinite(speeds[i]) ? speeds[i].toFixed(2) : 'gone'}`).join(' / ')} cm/yr at ${last.time} Myr (all continental plates then: ${continental(last).map(p => `${p.name} ${p.speedCmYr.toFixed(2)}`).join(' / ')})`);
         check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
     }
     const scheduledOnly = run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60);
@@ -136,15 +139,20 @@ section('the start world breaks up');
     // indenter pushed is reported against Earth.
     const bounded = runs.map(rr => {
         const deepest = Math.max(0, ...rr.stacked.values()), sutures = rr.events.filter(e => e.kind === EventKind.SUTURE);
-        const lasting = [...rr.world.collisions.values()].filter(rec => rec.contactMyr >= 20), speeding = lasting.filter(rec => !(rec.closingCmYr < rec.meanRateCmYr));
-        return { deepest, sutures, lasting, speeding };
+        // (a collision is judged by its fate: one the history welded ran its course, and its closing at the weld is its end; one
+        // still open when the run stops is cut off mid-course — its rate "at the end" is the run's end, not the collision's — and
+        // is listed, not judged. On Earth convergence across a lasting contact decays: India–Asia from ~18 to ~4 cm/yr)
+        const lasting = [...rr.world.collisions.values()].filter(rec => rec.contactMyr >= 20), welded = lasting.filter(rec => rec.sutured);
+        const speeding = welded.filter(rec => !(rec.closingCmYr < rec.meanRateCmYr)), open = lasting.filter(rec => !rec.sutured && !(rec.closingCmYr < rec.meanRateCmYr));
+        return { deepest, sutures, lasting, welded, speeding, open };
     });
     check('collisions stay bounded: the overlap stays a seam', bounded.every(b => b.deepest < 6 * mesh.edgeKm),
         perSeed((rr, i = runs.indexOf(rr)) => `at most ${bounded[i].deepest.toFixed(0)} km deep`) + ` (cell ${mesh.edgeKm.toFixed(0)} km)`);
     report('indentation of the upper plate at each weld', bounded.flatMap(b => b.sutures.map(e => e.data.maxIndentKm)), { earth: [600, 1100], unit: ' km', source: 'India into Asia, van Hinsbergen et al. 2011', digits: 0,
         detail: perSeed((rr, i = runs.indexOf(rr)) => `${bounded[i].sutures.length} welds`) });
+    const contact = (rr, rec) => `${rr.world.plates[rec.lower].name} into ${rr.world.plates[rec.upper].name} ${rec.closingCmYr.toFixed(2)} vs mean ${rec.meanRateCmYr.toFixed(2)} cm/yr`;
     check('convergence across a lasting continent–continent contact falls away', bounded.every(b => b.speeding.length === 0),
-        perSeed((rr, i = runs.indexOf(rr)) => `${bounded[i].lasting.length} contacts lasted 20 Myr or more${bounded[i].speeding.length ? `; closing at the end at or above their mean: ${bounded[i].speeding.map(rec => `${rr.world.plates[rec.lower].name} into ${rr.world.plates[rec.upper].name} ${rec.closingCmYr.toFixed(2)} vs mean ${rec.meanRateCmYr.toFixed(2)} cm/yr${rec.sutured ? '' : ' (unwelded)'}`).join(' | ')}` : ', each closing slower at the end than on average'}`));
+        perSeed((rr, i = runs.indexOf(rr)) => `${bounded[i].welded.length} of ${bounded[i].lasting.length} contacts lasting 20 Myr or more welded${bounded[i].speeding.length ? `; closing at the weld at or above their mean: ${bounded[i].speeding.map(rec => contact(rr, rec)).join(' | ')}` : ', each closing slower at the weld than on average'}${bounded[i].open.length ? ` (still open at the end, not judged, closing at or above their mean: ${bounded[i].open.map(rec => contact(rr, rec)).join(' | ')})` : ''}`));
     check('no gaps in any frame', runs.every(rr => rr.frames.every(f => frameTallies(f).gaps === 0)), 'every frame, every seed');
     check('it runs fast', runs.every(rr => rr.steps < 600), perSeed(rr => `${rr.steps} steps`));
     report('plates at the end', runs.map(rr => rr.frames.at(-1).plates.filter(p => p.alive && !p.isBackground).length), { earth: [10, 52], source: 'through time: 10 at 200 Ma rising to 31 today in the Seton 2012 reconstruction, 18–31 through the Cenozoic (Morra et al. 2013, EPSL 373; checked) — reconstructions miss small plates; 52 resolved today, 14 large (Bird 2003, PB2002)', digits: 0,

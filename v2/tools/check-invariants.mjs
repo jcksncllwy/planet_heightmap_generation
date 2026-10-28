@@ -46,7 +46,7 @@ for (const seed of SEEDS) {
     const cratonIds = Object.keys(world.terraneLetters ?? {}).map(Number);
     let firstTerrane = 0;          // (the start world's own terranes: ids up to here are not churn)
     for (const p of world.plates) { const { mask, terrane } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && terrane[c] > firstTerrane) firstTerrane = terrane[c]; }
-    let prevLand = landOf(world), worstDrop = 0, worstAt = 0, deadWithCrust = [], maxTerrane = 0, lostCratonAt = null;
+    let prevLand = landOf(world), worstDrop = 0, worstAt = 0, worstAbsorbed = 0, seenEvents = world.events.length, deadWithCrust = [], maxTerrane = 0, lostCratonAt = null;
     const overlapSince = new Map();          // plate pair → since when its land has overlapped by more than BIG_OVERLAP_KM2
     let biggestOverlap = { cells: 0 }, longestOverlap = { myr: 0 }, longestStall = { myr: 0 };
     const waitedAt = new Map();              // plate pair → when its stalled seam last waited for the sea between to close
@@ -55,8 +55,12 @@ for (const seed of SEEDS) {
         drive: w => {
             scene.drive(w);
             // after the previous step's events and view rebuild:
-            const land = landOf(w), drop = (prevLand - land) / prevLand;
-            if (drop > worstDrop) { worstDrop = drop; worstAt = w.time; }
+            // (less the land the step's welds booked as absorbed into their belts — the overlap the redraw folds into
+            // thickness, SUTURE data.landLostCells (ops/merge-plates.js): booked crust, not land that vanished)
+            let absorbed = 0;
+            for (; seenEvents < w.events.length; seenEvents++) { const e = w.events[seenEvents]; if (e.kind === 'suture') absorbed += Math.max(0, e.data?.landLostCells ?? 0); }
+            const land = landOf(w), drop = (prevLand - land - absorbed) / prevLand;
+            if (drop > worstDrop) { worstDrop = drop; worstAt = w.time; worstAbsorbed = absorbed; }
             prevLand = land;
             for (const p of w.plates) if (!p.alive && p.crust.count > 0 && !deadWithCrust.includes(p.name)) deadWithCrust.push(`${p.name} (${p.crust.count} cells at ${w.time.toFixed(0)} Myr)`);
             maxTerrane = Math.max(maxTerrane, w.lastTerraneId);
@@ -100,8 +104,8 @@ for (const seed of SEEDS) {
             }
         },
     });
-    check('land never vanishes: no step loses more than a sliver of it', worstDrop <= MAX_LAND_DROP_PER_STEP,
-        `worst step: ${(100 * worstDrop).toFixed(2)} % of the land at ${worstAt.toFixed(1)} Myr (limit ${100 * MAX_LAND_DROP_PER_STEP} %); ${landOf(world)} land cells at the end`);
+    check('land never vanishes: no step loses more than a sliver of it beyond what its welds absorb', worstDrop <= MAX_LAND_DROP_PER_STEP,
+        `worst step: ${(100 * worstDrop).toFixed(2)} % of the land at ${worstAt.toFixed(1)} Myr, beyond ${worstAbsorbed} cells its welds booked as absorbed (limit ${100 * MAX_LAND_DROP_PER_STEP} %); ${landOf(world)} land cells at the end`);
     check('a plate that is gone holds no crust (nothing was welded onto a dead plate)', deadWithCrust.length === 0, deadWithCrust.join('; ') || `${world.plates.filter(p => !p.alive).length} plates gone, all empty`);
     const idsPerMyr = (maxTerrane - firstTerrane) / HISTORY_MYR;
     check('terrane ids stay few: crust keeps its id whichever plate carries it', idsPerMyr <= MAX_TERRANE_IDS_PER_MYR,

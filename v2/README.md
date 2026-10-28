@@ -217,6 +217,14 @@ After an engine change run `check-invariants.mjs`, `check-scale.mjs` and the che
 touches; run all of them before calling a piece of work done. They need `npm install` (delaunator, pngjs; puppeteer
 only for `shoot-lab`).
 
+A history is chaotic: a ~4 % nudge of a parameter that has nothing to do with a check (`plumeSpacingKm` 1500→1560,
+`mantleCoolMyr` 150→156) sends it down another path. A hard check on an outcome of one history judged that history, not
+the physics, so those checks (phases 5, 7b, 8a, 9, 10) are judged over several (`lib/check-kit.mjs`: `checkAcross`,
+`medianOf`). The scenes run on seeds 12345 · 1 · 2, and the whole planets on 12345 · 777 · 4242, the histories phase 13
+reads too, built once in the history cache. The median goes against the threshold, or most of the seeds must pass. A
+scene that did not form on a seed (no weld, no shield where one is looked for, no continent big enough to judge) is
+counted and reported, not failed, unless that happens on most seeds.
+
 ## Layout
 
 ```
