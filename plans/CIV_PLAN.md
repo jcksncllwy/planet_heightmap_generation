@@ -857,7 +857,9 @@ over it, and the flows wear paths that make it cheaper.
   Madagascar 3.4, Hawaii 3.0 (was 2.0), Rapa Nui 2.0 (was never). Monte Verde 15.5 ka. 170 M people at 0 BP
   (174 before). Farming on time in 4 of 7 places (3 before).
 
-  Ensemble (20 worlds, `t1base` → `t1`): to come (queued behind other sims).
+  Ensemble (20 worlds, `t1base` → `t1`): all big landmasses peopled on 20 of 20 worlds (19 before); centres 45
+  (43); first city 6.5 ka (same); first state 5.5 ka (6.0); 137 M people at 0 BP (134.5); farmed share 0.46
+  (0.45). T1 changes little away from the far islands.
 
   Open:
   - No Long Pause. East Polynesia comes ~2 kyr early (Tahiti 3.0 ka against 1–0.85). Caps of 10–30 days all give
