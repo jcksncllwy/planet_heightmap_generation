@@ -19,6 +19,13 @@ export const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'terrane', 'forme
     'beltU', 'beltReach', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide', 'prevShear', 'volcType', 'volcAt', 'volcKm', 'volcSource',
     'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'riverKm2', 'seaFillKm', 'fzU', 'arcKm', 'arcAt'];
 
+/** The Frame fields terrain synthesis reads, and the plates' rotations (detail is anchored to the crust): what the planner is sent. */
+function slimFrame(frame) {
+    const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
+    slim.plates = frame.plates.map(p => p && { quat: p.quat });
+    return slim;
+}
+
 /** n synthesis workers, each sent the sim mesh; the first plans each frame and hands the plan to each other worker over a
  *  port of their own. */
 async function synthesisWorkers(simMesh, n) {
@@ -144,17 +151,32 @@ export class TerrainPool {
      * sampler, kernels, volcanoes), bit for bit. `records: false` leaves out the records (rec null): heights only, and
      * nothing of the job runs on the caller's thread.
      */
+    /**
+     * Start a frame's plan ahead of its surface — on the first worker, at once (not queued), while the caller is busy
+     * (the finish builds its terrain mesh meanwhile): the plan depends on the frame, the settings, the seed and the
+     * terrain mesh's cell size alone. Hand the result to synthesize as `planned`, with the same frame, cfg and seed; a
+     * terrain mesh of another cell size plans afresh. @returns {{jobId: number, edgeKm: number}}
+     */
+    plan(frame, { cfg, seed = 0, edgeKm }) {
+        this.open();
+        const jobId = this.nextJob++;
+        this.workers[0].post({ type: 'plan', jobId, frame: slimFrame(frame), cfg, seed, edgeKm });
+        return { jobId, edgeKm };
+    }
+
     synthesize(frame, tMesh, opts) {
         const run = this.queue.then(() => this.run(frame, tMesh, opts));
         this.queue = run.catch(() => {});
         return run;
     }
 
-    async run(frame, tMesh, { cfg, seed = 0, parts: wantParts = false, records = true, carveInputs = false }) {
+    async run(frame, tMesh, { cfg, seed = 0, parts: wantParts = false, records = true, carveInputs = false, planned = null }) {
         this.open();
         const started = performance.now(), W = this.workers.length, n = tMesh.numCells;
+        // (a plan made ahead for another cell size is not this mesh's: the workers drop it, and plan again)
+        if (planned && planned.edgeKm !== tMesh.edgeKm) { for (const w of this.workers) w.post({ type: 'drop', jobId: planned.jobId }); planned = null; }
         for (const w of this.workers) w.hold(true);
-        try { return await this.runHeld(frame, tMesh, { cfg, seed, wantParts, records, carveInputs }, started, W, n); } finally { for (const w of this.workers) w.hold(false); }
+        try { return await this.runHeld(frame, tMesh, { cfg, seed, wantParts, records, carveInputs, planned }, started, W, n); } finally { for (const w of this.workers) w.hold(false); }
     }
 
     /**
@@ -300,7 +322,7 @@ export class TerrainPool {
         }));
     }
 
-    async runHeld(frame, tMesh, { cfg, seed, wantParts, records, carveInputs: wantCarve }, started, W, n) {
+    async runHeld(frame, tMesh, { cfg, seed, wantParts, records, carveInputs: wantCarve, planned }, started, W, n) {
         let mesh = this.meshes.get(tMesh);
         if (!mesh) {                              // first time on this mesh: deal out its chunks, and each worker's positions
             const count = W * CHUNKS_PER_WORKER, chunks = [];
@@ -318,8 +340,8 @@ export class TerrainPool {
         const parts = wantParts ? surfaceParts(n) : null;
         const carveIn = wantCarve ? carveInputs(n) : null;
         const byId = new Map(mesh.chunks.map(c => [c.id, c]));
-        const jobId = this.nextJob++, slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));      // (to the planner only)
-        slim.plates = frame.plates.map(p => p && { quat: p.quat });           // (the plates' rotations: detail is anchored to the crust)
+        // (the frame to the planner only — none if its plan was started ahead: plan())
+        const jobId = planned ? planned.jobId : this.nextJob++, slim = planned ? null : slimFrame(frame);
 
         let counts = null;
         const finished = new Promise((resolve, reject) => {
@@ -334,7 +356,7 @@ export class TerrainPool {
                 if (msg.cells) { sampler.cells.set(msg.cells, 3 * c.from); sampler.weights.set(msg.weights, 3 * c.from); }
             });
         });
-        this.workers.forEach((w, wi) => w.post({ type: 'job', jobId, frame: wi === 0 ? slim : null, cfg, seed, edgeKm: tMesh.edgeKm, parts: wantParts, carve: wantCarve, samplerKey,
+        this.workers.forEach((w, wi) => w.post({ type: 'job', jobId, frame: wi === 0 ? slim : null, planned: wi === 0 && !!planned, cfg, seed, edgeKm: tMesh.edgeKm, parts: wantParts, carve: wantCarve, samplerKey,
             chunkIds: mesh.chunks.filter((_, i) => i % W === wi).map(c => c.id) }));
         // meanwhile, the plan here too: the caller reads the records (ridge directions, belt kinds) as well as the heights
         // (unless it asked for heights only — a frame built ahead, in the background, keeps the page's thread free)

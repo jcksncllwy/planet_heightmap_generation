@@ -2,7 +2,7 @@
 // records onto it. Heights are built here, not on the sim mesh: a mountain range is only 3–10 sim cells across, so
 // its ridges and valleys all live below the sim's resolution.
 
-import { buildSimMesh, meshFromArrays } from '../core/sim-mesh.js';
+import { buildSimMesh, meshFromArrays, meshEdgeKm } from '../core/sim-mesh.js';
 import { locate } from '../core/mesh-locate.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 
@@ -21,6 +21,9 @@ export function terrainMesh(numCells) {
     if (!meshes.has(numCells)) meshes.set(numCells, buildSimMesh(numCells, TERRAIN_MESH_SEED));
     return meshes.get(numCells);
 }
+
+/** The cell size (km) of terrainMesh(numCells), without building it (the sphere's builder adds a cell at the pole). */
+export function terrainEdgeKm(numCells) { return meshes.get(numCells)?.edgeKm ?? meshEdgeKm(numCells + 1); }
 
 /**
  * terrainMesh, built in a worker where the page has workers (terrain/mesh-worker.js) — the page stays responsive, and

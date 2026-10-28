@@ -40,6 +40,9 @@ export function buildSimMesh(numCells, seed) {
     };
 }
 
+/** A mesh of n cells' mean edge (km), as its builders reckon it (buildSimMesh, meshFromArrays). */
+export function meshEdgeKm(n) { return Math.sqrt(8 * Math.PI / (Math.sqrt(3) * n)) * PLANET_RADIUS_KM; }
+
 /**
  * The nearest-cell index's start table: 2 texels per cell across on sim-sized meshes (step/gather.js counts on its
  * guesses being within 2 hops), 1 on huge terrain meshes — 4× less to build; a lookup still ends at the true nearest.

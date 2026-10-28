@@ -11,7 +11,7 @@ import { meshFromArrays } from '../core/sim-mesh.js';
 
 // chunks: chunk id → { xyz, cells, weights, samplerKey }; peers: the ports this worker hands plans on; jobs / plans: a
 // job and its plan, whichever arrives first waiting for the other
-const state = { sim: null, chunks: new Map(), peers: [], jobs: new Map(), plans: new Map(), waves: Promise.resolve(), tracer: null };
+const state = { sim: null, chunks: new Map(), peers: [], jobs: new Map(), plans: new Map(), waves: Promise.resolve(), tracer: null, ahead: new Map() };
 const IS_NODE = typeof self === 'undefined';
 let post;
 if (IS_NODE) {                                             // Node worker thread
@@ -29,18 +29,29 @@ function handle(msg) {
         else if (msg.type === 'chunks') for (const c of msg.chunks) state.chunks.set(c.id, { xyz: c.xyz, cells: null, weights: null, samplerKey: null });
         else if (msg.type === 'peer') state.peers.push(msg.port);
         else if (msg.type === 'planner') listen(msg.port, got => { state.plans.set(got.jobId, got); ready(got.jobId); });
-        else if (msg.type === 'job' && msg.frame) {
-            // the planner: build the plan, hand it on, then do this worker's chunks
-            let plan;
-            try { plan = preparePlan(msg.frame, state.sim, msg.cfg, msg.seed, msg.edgeKm); } catch (err) { for (const p of state.peers) p.postMessage({ jobId: msg.jobId, failed: true }); throw err; }
-            const data = planToData(plan);
-            for (const p of state.peers) p.postMessage({ jobId: msg.jobId, plan: data });
-            runJob(msg, plan);
-        } else if (msg.type === 'job') { state.jobs.set(msg.jobId, msg); ready(msg.jobId); }
+        else if (msg.type === 'job' && msg.frame) runJob(msg, planAndHand(msg));     // the planner: plan, hand it on, then its own chunks
+        else if (msg.type === 'plan') {
+            // the planner, ahead of the job (terrain-pool.js plan): the plan kept here until the job comes
+            try { state.ahead.set(msg.jobId, { plan: planAndHand(msg) }); } catch (err) { state.ahead.set(msg.jobId, { err }); }
+        } else if (msg.type === 'job' && msg.planned) {
+            const got = state.ahead.get(msg.jobId);
+            state.ahead.delete(msg.jobId);
+            if (got.err) throw got.err;
+            runJob(msg, got.plan);
+        } else if (msg.type === 'drop') { state.ahead.delete(msg.jobId); state.plans.delete(msg.jobId); } else if (msg.type === 'job') { state.jobs.set(msg.jobId, msg); ready(msg.jobId); }
         else if (msg.type.startsWith('waves-')) state.waves = state.waves.then(() => waves(msg));
     } catch (err) {
         post({ type: 'error', jobId: msg.jobId, message: err.stack ?? String(err) });
     }
+}
+
+/** The planner's part: the frame's plan, handed on to every other worker (a failure is handed on too: they drop the job). */
+function planAndHand(msg) {
+    let plan;
+    try { plan = preparePlan(msg.frame, state.sim, msg.cfg, msg.seed, msg.edgeKm); } catch (err) { for (const p of state.peers) p.postMessage({ jobId: msg.jobId, failed: true }); throw err; }
+    const data = planToData(plan);
+    for (const p of state.peers) p.postMessage({ jobId: msg.jobId, plan: data });
+    return plan;
 }
 
 function listen(port, fn) {

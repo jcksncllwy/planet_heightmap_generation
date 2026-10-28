@@ -14,7 +14,7 @@ import { coastWork } from './finish-coast.js';
 import { hydrology, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
-import { terrainMesh } from '../terrain/terrain-mesh.js';
+import { terrainMesh, terrainEdgeKm } from '../terrain/terrain-mesh.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { carveLadder, carveSettings } from '../terrain/synthesize.js';
 import { carveTerrain, forgetMesh } from '../terrain/carve.js';
@@ -61,6 +61,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     let t0 = performance.now();
     const lap = name => { const t = performance.now(); ms[name] = t - t0; t0 = t; };
     onStage('mesh');
+    // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
+    const E = erosionAt(F, cfg), surfCfg = { ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness };
+    // (the surface's plan, begun on the pool's first worker while the mesh is built and warped here: it needs only the
+    // mesh's cell size)
+    const planned = pool.plan(frame, { cfg: surfCfg, seed, edgeKm: terrainEdgeKm(cells) });
     const mesh = terrainMesh(cells), n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n;
     lap('mesh');
 
@@ -69,9 +74,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (memory: at 10M cells every array is 40 MB or more — each let go as soon as it is done with, the warped positions
     // and the sampler with the surface, the carving's inputs and caches with the carve)
     let warped = { numCells: n, xyz: warpPositions(mesh, seed, F), edgeKm: mesh.edgeKm };
-    // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
-    const E = erosionAt(F, cfg);
-    let surf = await pool.synthesize(frame, warped, { cfg: { ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness }, seed, records: false, carveInputs: true });
+    let surf = await pool.synthesize(frame, warped, { cfg: surfCfg, seed, records: false, carveInputs: true, planned });
     // (its workers' memory back before the heavy stages: a few fresh workers, idle until the coast's waves, gone after them)
     if (closePool) await pool.restart(Math.min(pool.size, COAST_WORKERS)); else pool.forget?.(warped);
     let carveIn = surf.carveIn;
