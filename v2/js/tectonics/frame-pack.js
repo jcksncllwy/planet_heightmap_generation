@@ -71,7 +71,8 @@ export function packedBytes({ fields }) {
     return b;
 }
 
-function unpack(f) {
+/** One packed field, as its array again (tools/lib/history-cache.mjs reads the cache's frames whole with it). */
+export function unpack(f) {
     if (f.steps) {
         const out = new Int32Array(f.length), { steps, far } = f;
         out[0] = f.first;

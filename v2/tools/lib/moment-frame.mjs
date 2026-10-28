@@ -1,30 +1,38 @@
-// A moment's frame — the history as the Evolution page builds it (scene 'cycle', ending none), to the moment — cached in
-// v2/out/frames/ (shared by render-moment.mjs and coast-shape.mjs). The cache is keyed by seed, continental share, sim
-// cells and time only: delete it after a change to the history.
+// A moment's frame — the history as the Evolution page builds it (scene 'cycle', ending none, the page's sim mesh and its
+// worker's evolving heights), to the moment — through the history cache (history-cache.mjs; shared by render-moment.mjs,
+// coast-shape.mjs, history.mjs and the page itself): read from it when the history has been built to the moment by
+// anyone — the page in the browser included — else built and kept. The cache is keyed by the history code's hash, so a
+// change to the history is never answered with frames the old code built.
 
-import fs from 'node:fs';
-import path from 'node:path';
-import v8 from 'node:v8';
 import { buildSimMesh } from '../../js/core/sim-mesh.js';
-import { runHistory } from '../../js/app/history-runner.js';
 import { TERRAIN_SCENES } from '../../js/tectonics/scenarios/terrain-scenes.js';
 import { FRAME_FIELDS } from '../../js/terrain/terrain-pool.js';
+import { terrainConfig } from '../../js/terrain/terrain-config.js';
+import { keyOf, getFrame, simulateCached } from './history-cache.mjs';
 
 export const MESH_SEED = 12345;                       // (the page's: every planet's sim mesh is the same; the seed shapes the world)
+export const PAGE_SCENE = 'cycle';
 
-export async function momentFrame(root, { seed, cont, sim, time }) {
-    const frameDir = path.join(root, 'v2', 'out', 'frames');
-    const frameFile = path.join(frameDir, `frame-${seed}-${cont}-${sim}-${time}.bin`);
-    if (fs.existsSync(frameFile)) return v8.deserialize(fs.readFileSync(frameFile)).frame;
+/** The start world the page's worker runs for these settings (app/history-worker.js), and its cache key. */
+export function pageWorld({ seed, cont, sim }) {
+    const scene = TERRAIN_SCENES.find(s => s.id === PAGE_SCENE), world = scene.build(buildSimMesh(sim, MESH_SEED), seed, { continentalFraction: cont / 100 });
+    world.config.heights = terrainConfig({});        // (as the worker sets them: the page has no overrides)
+    return { scene, world, key: keyOf(world, scene.drive) };
+}
+
+/**
+ * The frame at `time` Myr (a multiple of 10: the page's moments) of the page's history for these settings — the fields
+ * the terrain reads (FRAME_FIELDS) and each plate's rotation. `{ full: true }`: the whole frame.
+ */
+export async function momentFrame(root, { seed, cont, sim, time, full = false }) {
+    const { scene, world, key } = pageWorld({ seed, cont, sim });
+    const pick = f => { if (full) return f; const out = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); out.plates = f.plates.map(p => p && { quat: p.quat }); return out; };
+    const cached = key && getFrame(key, time);
+    if (cached) return pick(cached);
+    if (Math.abs(time / 10 - Math.round(time / 10)) > 1e-9) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
     let frame;
-    const scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
-    // (the history is causal — Keep going runs on to the same history — so running to just past the moment gives it)
-    await runHistory({ list: 'terrain', scene, ending: 'none', start: { continentalFraction: cont / 100 }, lengthMyr: Math.ceil((time + 10) / 10) * 10, keep: false },
-        buildSimMesh(sim, MESH_SEED), seed, 10, () => {}, f => {
-            if (Math.abs(f.time - time) < 1e-6) { frame = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); frame.plates = f.plates.map(p => p && { quat: p.quat }); }
-        });
+    simulateCached(world, { untilMyr: time, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.abs(f.time - time) < 1e-6) frame = f; } },
+        { drive: scene.drive, spec: { scene: PAGE_SCENE, seed, cont, sim, meshSeed: MESH_SEED, heights: {}, by: 'momentFrame' } });
     if (!frame) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
-    fs.mkdirSync(frameDir, { recursive: true });
-    fs.writeFileSync(frameFile, v8.serialize({ frame }));
-    return frame;
+    return pick(frame);
 }

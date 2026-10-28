@@ -1,5 +1,6 @@
 // A detailed moment — the Evolution page's "Add detail" — rendered headlessly, for before/after comparisons of the finish:
-// the history built to the moment (as the page builds it; cached in v2/out/frames/), the finish at the detail asked for,
+// the history built to the moment (as the page builds it; read from the machine's history cache when anyone — the page
+// included — has built it: lib/history-cache.mjs), the finish at the detail asked for,
 // and the page's own painting of it (evolution/finish-view.js paintFinished: the palette, hillshade, lakes) written as
 // PNGs — the planet and, optionally, a crop. Then the water the finish left, and any dry hollow: every dry cell's depth
 // below the level water would stand at (a priority flood from the sea over the finished surface, lakes as water) — the
@@ -8,7 +9,8 @@
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
 //        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]]
 //
-// The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). Output: v2/out/moments/.
+// The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). --latest: the moment the
+// user is looking at in the Evolution page (the history cache's latest.json: node v2/tools/history.mjs latest). Output: v2/out/moments/.
 // On a shared machine, run it through sim-slots (sim-slots run -n 6 --gb 16 -- node …): SIM_THREADS sizes its pool.
 
 import fs from 'node:fs';
@@ -20,6 +22,7 @@ import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { readLatest } from './lib/history-cache.mjs';
 import { coastLoops, coastFractal, kindOf, COAST_KINDS } from './lib/coast-fractal.mjs';
 import { deriveRecords } from '../js/terrain/records.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
@@ -39,13 +42,18 @@ import { SmoothMapRaster } from '../js/view/map-raster.js';
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const SEED = Number(arg('--seed', 12345)), CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 300));
+// (--latest: the settings and the moment of what the user is viewing)
+const LATEST = process.argv.includes('--latest') ? readLatest() : null;
+if (process.argv.includes('--latest') && !LATEST) throw new Error('--latest: nothing viewed yet (the history cache has no latest.json)');
+const fromLatest = { '--seed': LATEST?.seed, '--cont': LATEST?.cont, '--sim': LATEST?.sim, '--time': LATEST?.timeMyr };
+const argOrLatest = (k, d) => arg(k, fromLatest[k] ?? d);
+const SEED = Number(argOrLatest('--seed', 12345)), CONT = Number(argOrLatest('--cont', 30)), SIM = Number(argOrLatest('--sim', 40000)), TIME = Number(argOrLatest('--time', 300));
 const CELLS = Number(arg('--cells', 2500000)), W = Number(arg('--width', 4096)), PALETTE = arg('--palette', 'relief');
 const CROP = arg('--crop', null)?.split(',').map(Number) ?? null;
 const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`);
 const R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
 
-// ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; cached ──
+// ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; through the cache ──
 const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME });
 console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 
