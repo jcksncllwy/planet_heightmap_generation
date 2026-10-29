@@ -337,7 +337,7 @@ js/civ/            the civ layer (plans/CIV_PLAN.md): civ-config (its constants,
                    climate-var (good and bad years: the climate re-run under its modes; rivers routed) + climate-run-worker,
                    disease (vector fever and snail fever from the months, standing water and the cold filter),
                    civ-page + civ-worker (the Evolution page's People layer: a finish's world resampled to 160K cells, run in a
-                   worker, one byte per cell and frame)
+                   worker, one byte per cell and frame), civ-finish (what the finish gathers for it, only when asked)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back),
                    helper-pool / helper-worker (a few workers the history's worker starts: the start world's layout
@@ -1561,6 +1561,39 @@ paths, and no cheap change gave identical results.
 Not done: **step 5**, a founder between a plate and the passive-ocean background. The background never takes crust, so a
 strip peeled there swells instead of opening. It needs a design change to the background. **Option C** (a weld rule on
 other grounds) waits for Jackson.
+
+## People: the civ layer, behind a switch (2026-10-29, branch civ)
+
+The civ layer (`js/civ/`, plans/CIV_PLAN.md) puts people on a detailed moment: the first humans spreading from 70 000
+years ago, farming, towns and states. On the Evolution page it is **off by default**.
+
+- **The switch**: View → **People (beta)**, remembered in the browser (`orogen.evolution.civ`). Off, the People tab,
+  Settlements and the phone's People view are hidden, and none of the civ layer is loaded.
+- **Off, Add detail does no civ work.** `finishPlanet({ civ })` defaults to false: the finish then loads nothing from
+  `js/civ/`, gathers no disease or crop climates and copies no winds or currents, and returns `civ: null`. The finish
+  worker builds no civ world. The civ code is reached only by dynamic imports: `civ/civ-finish.js` from the finish,
+  `civ/civ-page.js` from the worker, `evolution/people-view.js` and `civ-page.js` from the page.
+- **On**, Add detail gathers the civ fields and the worker hands the page a 160K-cell world; the People tab works its
+  people out on request, as before. Turned on over a moment detailed with it off, the chip says so and offers **Add
+  detail again** (the finish's fine fields are gone by then, so the civ world cannot be built afterwards).
+- **The Node civ tools** that run the finish (`civ-sim` and `civ-cradles` through `worldOf`, `civ-ensemble`,
+  `civ-travel`) pass `civ: true` themselves. Their cached worlds are keyed by the history and finish code (`worldCode()` in `tools/lib/civ-world.mjs`,
+  through `historyCodeHash(root, entries)`), and their frames come from the history cache.
+
+The cost, measured headless as the finish worker runs it (finishPlanet, the civ world, finishRaster; seed 13, 30%
+continent, 500 Myr; Node, local, 3 rounds interleaved main → civ off → civ on; median and range, seconds):
+
+| Cells | main 5f45475 | civ off | civ on | the civ world |
+|---|---|---|---|---|
+| 2.5M | 63.8 (59.6–70.7) | 61.2 (54.1–70.8) | 63.4 (59.4–67.8) | 0.3 |
+| 10M | 310 (217–393) | 228 (205–238) | 330 (292–411) | 0.6 |
+
+Civ off against main, paired by round: +0.1, −2.6, −5.5 s at 2.5M; +22, −82, −188 s at 10M (a shared machine near its
+memory: main alone ranged 217–393 s) — no cost beyond the noise. Civ on costs ~2 s at 2.5M (3 %). At 10M it was slower
+in every round, more than its own work explains: the civ collectors take ~4.7 µs a land cell (measured alone, so ~10–15
+s at 10M), and the civ world 0.3–0.7 s; the rest is the machine's noise. Heights, lakes, rivers,
+climate, the picture and the stats are bit-identical between main, civ off and civ on at every size measured: civ on
+only adds its own fields.
 
 ## Conventions
 
