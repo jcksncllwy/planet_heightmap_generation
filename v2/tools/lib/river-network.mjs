@@ -116,13 +116,49 @@ export function networkShape(net, o = {}) {
     }
     const sinuosity = { median: quantile(sinAll, 0.5), p90: quantile(sinAll, 0.9), n: sinAll.length, plainMedian: quantile(sinPlain, 0.5), plainP90: quantile(sinPlain, 0.9), plainN: sinPlain.length, reachKm };
     const plainGrade = { median: quantile(grade, 0.5), p10: quantile(grade, 0.1), p90: quantile(grade, 0.9), n: grade.length, flat: grade.filter(g => g < 1e-6).length / Math.max(1, grade.length) };
-    return { hack, horton, junction, sinuosity, plainGrade, edgeKm, cells: count };
+    // ── the "broom" (lane rivers2, 2026-10-29): channels drawn dead straight and unbranched across low ground, converging
+    // on one junction — the way rivers cross a surface with no relief of its own, where any rule that breaks the ties
+    // draws straight lines. Read at any height (a basin's floor at 400 m is as level as a coastal plain), on low-gradient
+    // ground: the reach's own fall under lowGrade. Two measures:
+    //   · reaches dead flat: of the reachKm reaches on low ground, the share that falls under 1e-6 — no alluvial river
+    //     does over 200 km (the flattest great rivers fall ~1e-5: the lower Amazon, ~2e-5);
+    //   · dead-straight unbranched runs: the channel length on low ground in links (source or confluence to the next
+    //     confluence) of at least linkKm (200 km) whose sinuosity is under straightMax. Straight reaches are rare on Earth even
+    //     over ten channel widths (Leopold & Wolman 1957); a link hundreds of km long that neither bends nor gathers a
+    //     tributary is the broom's bristle. At the mesh's scale a path down an even slope steps cell to cell and reads
+    //     ~1.03–1.08, so straightMax is 1.05 ──
+    const lowGrade = o.lowGrade ?? 2e-4, linkKm = Math.max(o.linkKm ?? 200, 6 * edgeKm), straightMax = o.straightMax ?? 1.05;
+    let lowReaches = 0, flatReaches = 0, riseReaches = 0;
+    for (let c = 0; c < n; c++) {
+        if (!chan(c)) continue;
+        let x = c, along = 0, steps = 0, wet = false;
+        while (along < reachKm && next[x] >= 0 && steps < 10000) { along += stepKm[x]; x = next[x]; steps++; if (lake && lake[x]) wet = true; }
+        // (a reach through a lake is not counted: the water's surface is level on Earth too, and drawn as water)
+        if (along < reachKm || steps < 3 || wet) continue;
+        const g = (z[c] - z[x]) / along;
+        // (a reach that rises — routed across a dry hollow at its spill level — is the routing's, not a level plain's)
+        if (g < lowGrade) { lowReaches++; if (g < -1e-6) riseReaches++; else if (g < 1e-6) flatReaches++; }
+    }
+    const chanDonors = new Uint8Array(n);
+    for (let c = 0; c < n; c++) if (chan(c) && next[c] >= 0 && chan(next[c]) && chanDonors[next[c]] < 255) chanDonors[next[c]]++;
+    let lowKm = 0, straightKm = 0, links = 0;
+    for (let c = 0; c < n; c++) {
+        if (!chan(c) || chanDonors[c] === 1) continue;               // (a link starts at a source or a confluence)
+        let x = c, along = 0, steps = 0;
+        while (next[x] >= 0 && chan(next[x]) && steps < 100000) { along += stepKm[x]; x = next[x]; steps++; if (chanDonors[x] >= 2) break; }
+        if (along < linkKm || steps < 4 || (z[c] - z[x]) / along > lowGrade) continue;
+        links++; lowKm += along;
+        if (along / Math.max(1e-9, arcKm(xyz, c, x)) < straightMax) straightKm += along;
+    }
+    const broom = { flatShare: flatReaches / Math.max(1, lowReaches), riseShare: riseReaches / Math.max(1, lowReaches), lowReaches, straightShare: straightKm / Math.max(1e-9, lowKm), links, linkKm };
+    return { hack, horton, junction, sinuosity, plainGrade, broom, edgeKm, cells: count };
 }
 
 /** A one-line summary of networkShape's result. */
 export function describe(S) {
     const g = v => (Number.isFinite(v) ? v.toExponential(1) : '—');
-    return `Hack h ${S.hack.h.toFixed(2)} · Horton R_B ${S.horton.rb.toFixed(2)} (${S.horton.counts.join('/')}) · junctions ${S.junction.medianDeg.toFixed(0)}° (n ${S.junction.n}; arid ${S.junction.aridDeg?.toFixed?.(0)}° humid ${S.junction.humidDeg?.toFixed?.(0)}°) · sinuosity ${S.sinuosity.median.toFixed(2)} (p90 ${S.sinuosity.p90.toFixed(2)}; plains ${S.sinuosity.plainMedian.toFixed(2)}, p90 ${S.sinuosity.plainP90.toFixed(2)}, n ${S.sinuosity.plainN}) over ${S.sinuosity.reachKm.toFixed(0)} km · plain gradient ${g(S.plainGrade.median)} (flat ${(100 * S.plainGrade.flat).toFixed(0)} %, p10 ${g(S.plainGrade.p10)}, p90 ${g(S.plainGrade.p90)}, n ${S.plainGrade.n})`;
+    return `Hack h ${S.hack.h.toFixed(2)} · Horton R_B ${S.horton.rb.toFixed(2)} (${S.horton.counts.join('/')}) · junctions ${S.junction.medianDeg.toFixed(0)}° (n ${S.junction.n}; arid ${S.junction.aridDeg?.toFixed?.(0)}° humid ${S.junction.humidDeg?.toFixed?.(0)}°) · sinuosity ${S.sinuosity.median.toFixed(2)} (p90 ${S.sinuosity.p90.toFixed(2)}; plains ${S.sinuosity.plainMedian.toFixed(2)}, p90 ${S.sinuosity.plainP90.toFixed(2)}, n ${S.sinuosity.plainN}) over ${S.sinuosity.reachKm.toFixed(0)} km · plain gradient ${g(S.plainGrade.median)} (flat ${(100 * S.plainGrade.flat).toFixed(0)} %, p10 ${g(S.plainGrade.p10)}, p90 ${g(S.plainGrade.p90)}, n ${S.plainGrade.n})` +
+        ` · low ground: reaches dead flat ${(100 * S.broom.flatShare).toFixed(0)} % (rising ${(100 * S.broom.riseShare).toFixed(0)} %, n ${S.broom.lowReaches}), dead-straight unbranched runs ${(100 * S.broom.straightShare).toFixed(0)} % (${S.broom.links} links ≥ ${S.broom.linkKm.toFixed(0)} km)`;
 }
 
 function climb(c, cells, up) { let x = c; for (let i = 1; i < cells; i++) { const u = up(x); if (u < 0) break; x = u; } return x; }
