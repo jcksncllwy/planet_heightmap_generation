@@ -1401,6 +1401,10 @@ Follow-ups to "One height from the crust".
   not before (a Laramide belt had reached 2,880 km inland).
 - **The Mantle swell slider** (Phase 8a) now re-runs the history.
 
+Late dispersal, three seeds, c7ab6ae → this branch: craton crust 37.8 → 39.7 km, craton median 0.67–0.74 → 0.62–0.66
+km (Earth 0.3–0.6), dry-land mean 1.20–1.24 → 1.10–1.18 km (Earth 0.80–0.84). Time: history and terrain as before,
+within the noise of paired runs (seed 12345, no cache, run side by side).
+
 Still high: the land. Half the late-dispersal land had a belt within 100 Myr, and 72 % of the continental crust was
 deformed within 240 Myr against Earth's ~33 % (Müller et al. 2019; a new Phase 13 report): the land is high because too
 much of it is a belt, not because a column stands too high — how many margins and collisions a continent meets.
