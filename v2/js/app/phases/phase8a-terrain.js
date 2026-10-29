@@ -49,7 +49,7 @@ const TERRAIN_TUNABLES = [
     { id: 'ridgeNoiseShare', label: 'Ridge noise along the ranges: share of the belt’s uplift', min: 0, max: 0.5, step: 0.02 },
     { id: 'ridgeNoiseStretch', label: 'Ridge noise: times longer along the range than across', min: 1, max: 16, step: 1 },
     { id: 'cratonCharacter', label: 'Cratons: how strongly their basins and swells show', min: 0, max: 2, step: 0.1 },
-    { id: 'mantleSwellKm', label: 'Mantle swell: how far fully insulated mantle lifts the ground over fully cooled (the sea answers it)', min: 0, max: 2, step: 0.1, unit: ' km' },
+    { id: 'mantleSwellKm', label: 'Mantle swell: how far fully insulated mantle lifts the ground over fully cooled (the sea answers it; re-runs the history: its rivers and the seas they fill stand on it)', min: 0, max: 2, step: 0.1, unit: ' km', evolves: true },
     { id: 'seaLevelFloorAge', label: 'Sea floor’s age moves the sea too (1 = on; off by default: the history’s sea floor is older than Earth’s, so its volume would swing the sea too far)', min: 0, max: 1, step: 1 },
     { id: 'detailRenewMyr', label: 'Fine detail slowly renews over (0 = frozen on the crust)', min: 0, max: 500, step: 10, unit: ' Myr' },
     { id: 'baseReliefKm', label: 'Swells of the first continents (re-runs the history)', min: 0, max: 2, step: 0.1, unit: ' km', evolves: true },

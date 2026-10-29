@@ -45,7 +45,9 @@ export function trenchFans(world) {
     const landed = new Map();          // trench cell → the mouths landing there
     for (const m of mouths) {
         const plate = plates[m.plate];
-        if (m.enclosed || !plate?.alive || !plate.crust.mask[m.cell] || plate.crust.type[m.cell] === CrustType.OCEAN) continue;
+        // (a mouth on a filled sea's plain — ocean crust under it, land to the rivers since branch unified-swell — sends its
+        // rock on as a coast's does)
+        if (m.enclosed || !plate?.alive || !plate.crust.mask[m.cell] || (plate.crust.type[m.cell] === CrustType.OCEAN && !(plate.crust.seaFillKm[m.cell] > 0))) continue;
         plate.toWorld(xyz[3 * m.cell], xyz[3 * m.cell + 1], xyz[3 * m.cell + 2], P);
         const w = index.nearest(P[0], P[1], P[2]);
         let best = -1, bestD = Infinity;

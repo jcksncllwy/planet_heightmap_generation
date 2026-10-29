@@ -26,7 +26,8 @@ import { MinHeap } from '../../core/min-heap.js';
 import { heightsOf } from './heights.js';
 import { fillEnclosedSeas } from './sea-fill.js';
 import { arcCrustKm } from './collision.js';
-import { arcSurfaceKm, columnModel, ARC_ROOT_SHARE } from '../measure.js';
+import { arcSurfaceKm, columnModel, ARC_ROOT_SHARE, seaFilledUp } from '../measure.js';
+import { landAndSea } from '../../terrain/sea-level.js';
 import { rainAtLatitude, erosionAtLatitude } from '../../terrain/terrain-config.js';
 
 const R = 6371;
@@ -41,17 +42,33 @@ export function evolveRivers(world, dt) {
     const { mesh, plates, owner, ownerCell, time } = world, { adjOffset, adjList, xyz, numCells: n } = mesh;
     const { dist } = meshInfo(mesh), cellArea = 4 * Math.PI * R * R / n;
     const s = scratchFor(n);
-    const { land, base, lift, height, fill, rank, order, recv, recvKm, area, cutNow, hold, sed, sedCont, basin, seaOf } = s;
+    const { land, base, lift, height, fill, rank, order, recv, recvKm, area, cutNow, hold, sed, sedCont, basin, seaOf, view } = s;
     world.riverKm2 ??= new Float32Array(n);
-    // ── the land: its evolved height (as records.js draws the platform: crust kind, the root's isostatic lift, the
-    // uplift) less what rivers have cut; `base` is what it stands on without the relief belts gave it ──
+    // ── the land and the sea as the terrain stands them (branch unified-swell): continental crust and island arcs, seas
+    // filled up — and a filled sea the mantle's swell holds up above the sea — on the world's own view of the crust and its
+    // mantle (terrain/sea-level.js landAndSea; records.js deriveRecords reads a frame the same way: the mantle's heat as a
+    // frame keeps it, 0–255) ──
+    view.time = time; view.owner = owner;
     for (let w = 0; w < n; w++) {
         const o = owner[w];
+        view.mantleHeat[w] = Math.round(255 * world.mantleHeat[w]);
         land[w] = 0;
-        if (o < 0) continue;
+        if (o < 0) { view.type[w] = CrustType.OCEAN; view.formedAt[w] = -1; view.seaFillKm[w] = 0; continue; }
         const crust = plates[o].crust, c = ownerCell[w], type = crust.type[c];
-        if (type === CrustType.OCEAN) continue;
-        land[w] = 1;
+        view.type[w] = type; view.formedAt[w] = crust.formedAt[c]; view.seaFillKm[w] = crust.seaFillKm[c];
+        if (type !== CrustType.OCEAN || (crust.seaFillKm[c] > 0 && seaFilledUp(time - crust.formedAt[c], crust.seaFillKm[c]))) land[w] = 1;
+    }
+    const sl = landAndSea(view, mesh, H, land, s.swellKm), swellKm = sl.swellKm, seaKm = sl.seaKm;
+    const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
+    // ── the land's height against the sea: its evolved height (as records.js draws the platform: the column of its crust,
+    // the uplift; the mantle's swell under it, against its side's reference; the sea's level) less what rivers have cut;
+    // `base` is what it stands on without the relief belts gave it ──
+    for (let w = 0; w < n; w++) {
+        if (!land[w]) continue;
+        const crust = plates[owner[w]].crust, c = ownerCell[w], type = crust.type[c];
+        // a sea filled (or lifted dry): the plain its rivers grade, from the sea's level or the datum shoreline the terrain
+        // draws above it (records.js) — sediment laid down there, not rock worn: no relief to cut, no rock of its own
+        if (type === CrustType.OCEAN) { base[w] = Math.max(0, seaKm) - seaKm; lift[w] = 0; cutNow[w] = 0; hold[w] = 0; height[w] = base[w]; continue; }
         // (the column as formed — a continent's and a craton's by their crust, tectonics/measure.js; an arc's its own
         // crest — is the base; the relief is the rest, above it: the crust thickened, the belts' uplift, the swells, the
         // basalt. A crust eroded thinner than formed stands lower than its base: no relief there)
@@ -64,6 +81,8 @@ export function evolveRivers(world, dt) {
         full += crust.upliftKm[c] + crust.baseKm[c] + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0);
         b = Math.min(b, full);
         const l = Math.max(0, full - b);
+        // (the swell is the mantle's, broad: it tilts the land and its rivers with it, not the relief they cut into)
+        b += swellKm[w] - (type === CrustType.ARC ? seaRef : landRef) - seaKm;
         base[w] = b; lift[w] = l; cutNow[w] = Math.min(crust.riverIncKm[c], l + H.riverPlainKm);
         // (a belt still rising keeps pace with its rivers: they cut less there — shaping it, not trenching it)
         hold[w] = 1 - H.riverActiveHold * (crust.oroType[c] ? Math.exp(-Math.max(0, time - crust.oroLast[c]) / H.carveActiveMyr) : 0);
@@ -111,14 +130,14 @@ export function evolveRivers(world, dt) {
         area[c] += cellArea * rain[c] / H.rainRefMm;
         // (the basin's rock, km³/Myr: every cell of it wearing down at its latitude's rate; the continent's share kept
         // apart — an arc's or an island's rock was never continental crust)
-        const rock = denude > 0 ? cellArea * denude * erode[c] : 0, crust = plates[owner[c]].crust, t = crust.type[ownerCell[c]];
+        const crust = plates[owner[c]].crust, t = crust.type[ownerCell[c]], rock = denude > 0 && t !== CrustType.OCEAN ? cellArea * denude * erode[c] : 0;
         sed[c] += rock; basin[c] += cellArea;
         if (t === CrustType.CONTINENT || t === CrustType.CRATON) sedCont[c] += rock;
         if (recv[c] >= 0) { area[recv[c]] += area[c]; sed[recv[c]] += sed[c]; sedCont[recv[c]] += sedCont[c]; basin[recv[c]] += basin[c]; }
         else if (sed[c] > 0) mouths.push({ plate: owner[c], cell: ownerCell[c], km3: sed[c], contKm3: sedCont[c], basinKm2: basin[c], sea: seaOf[c] });
     }
     world.riverMouths = mouths;
-    fillEnclosedSeas(world, mouths, span, land);       // (a mouth on an enclosed sea fills it; the rest go down their fans)
+    fillEnclosedSeas(world, mouths, span, land, sl);   // (a mouth on an enclosed sea fills it, to the sea's level; the rest go down their fans)
     for (let w = 0; w < n; w++) world.riverKm2[w] = land[w] ? area[w] : 0;
     // ── the cut: E = k A^m S over the span, downstream first; never below the reach below, and only toward the river's
     // share of the relief ──
@@ -173,6 +192,7 @@ let scratch = null;
 function scratchFor(n) {
     if (scratch?.n === n) return scratch;
     scratch = { n, land: new Uint8Array(n), base: new Float32Array(n), lift: new Float32Array(n), cutNow: new Float32Array(n), hold: new Float32Array(n), height: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
-        order: new Int32Array(n), recv: new Int32Array(n), recvKm: new Float32Array(n), area: new Float32Array(n), sed: new Float64Array(n), sedCont: new Float64Array(n), basin: new Float64Array(n), seaOf: new Int32Array(n), heap: new MinHeap(1 << 14) };
+        order: new Int32Array(n), recv: new Int32Array(n), recvKm: new Float32Array(n), area: new Float32Array(n), sed: new Float64Array(n), sedCont: new Float64Array(n), basin: new Float64Array(n), seaOf: new Int32Array(n), heap: new MinHeap(1 << 14),
+        swellKm: new Float32Array(n), view: { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n) } };
     return scratch;
 }

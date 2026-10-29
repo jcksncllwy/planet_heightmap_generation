@@ -3,7 +3,9 @@
 // a sea a weld sealed — lays its rock on that sea's floor, and the sea fills: the Precaspian holds ~20 km of sediment,
 // the Black Sea 14–19 km (Nikishin et al. 2015), the Gulf of Mexico ~15 km (Salvador 1991). The floor sinks under the
 // load, so ~17 km of sediment fills 6 km of water (Airy: measure.js SEDIMENT_LOAD_FACTOR; Steckler & Watts 1978); a sea
-// filled to sea level is a lowland basin. Each mouth's rock fills the sea nearest its mouth first — its delta builds
+// filled to sea level is a lowland basin — to the sea's level as it stands over the mantle's swell (branch unified-swell,
+// 2026-10-29: terrain/sea-level.js; a floor the warm mantle holds up fills sooner, one over cooled mantle later, and a
+// floor the swell has lifted to the sea is land to the history's rivers as it is to the terrain: rivers.js). Each mouth's rock fills the sea nearest its mouth first — its delta builds
 // out, and the sea shrinks from its shores — at the rate its basin wears down (step/rivers.js), so a sea with a catchment
 // ~5× its own area fills in ~70 Myr. The fill is a record on the crust (crust.seaFillKm: it moves with its plate): the
 // terrain reads it as a shallower floor, and a sea filled to sea level as lowland (terrain/records.js; measure.js
@@ -14,13 +16,19 @@
 
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { heightsOf } from './heights.js';
+
+/** Sediment builds a delta to the water's surface and its top plain this far above it (km): ~the high-water mark, a
+ *  tidal range over mean sea (microtidal coasts < 2 m: Davies 1964) — so a sea filled up is land, not a film of water. */
+const DELTA_TOP_KM = 0.001;
 
 /**
  * Lay each enclosed-sea river's rock on its sea's floor (from step/rivers.js, after it drains the land): `mouths` with
  * their sea cell (world), `span` Myr of their basins' rock. Marks each mouth `enclosed` (true: its rock stays in its
- * sea, not down a fan). A sea is enclosed if it is not the world ocean, the largest body of water.
+ * sea, not down a fan). A sea is enclosed if it is not the world ocean, the largest body of water. `land` and `sea`
+ * (the swell under each cell and the sea's level: terrain/sea-level.js landAndSea) are the rivers'.
  */
-export function fillEnclosedSeas(world, mouths, span, land) {
+export function fillEnclosedSeas(world, mouths, span, land, sea) {
     const { mesh, plates, owner, ownerCell, time, config } = world, { adjOffset, adjList, numCells: n } = mesh;
     for (const m of mouths) m.enclosed = false;
     if (!config.enclosedSeaFill || !mouths.length) return;
@@ -36,13 +44,17 @@ export function fillEnclosedSeas(world, mouths, span, land) {
         if (len > biggest) { biggest = len; ocean = id; }
         id++;
     }
-    // each mouth on an enclosed sea fills it nearest its mouth first
+    // each mouth on an enclosed sea fills it nearest its mouth first, up to the sea's level: the water over the floor —
+    // its depth by age, raised or lowered by the mantle's swell against the sea floor's reference, under the sea's level
+    // against today's datum — filled by SEDIMENT_LOAD_FACTOR times as much sediment (the floor sinks under it: Airy)
+    const H = heightsOf(config), ref = H.mantleSwellKm * H.mantleSwellSeaRef;
     const room = w => {
         const o = owner[w];
         if (o < 0) return 0;
         const crust = plates[o].crust, c = ownerCell[w];
         if (crust.type[c] !== CrustType.OCEAN || (crust.flags[c] & CrustFlag.TRENCH)) return 0;
-        return Math.max(0, SEDIMENT_LOAD_FACTOR * seaDepthKm(time - crust.formedAt[c]) - crust.seaFillKm[c]);
+        const water = seaDepthKm(time - crust.formedAt[c]) - (sea.swellKm[w] - ref) + sea.seaKm + DELTA_TOP_KM;
+        return Math.max(0, SEDIMENT_LOAD_FACTOR * water - crust.seaFillKm[c]);
     };
     let mark = s.mark;
     for (const m of mouths) {

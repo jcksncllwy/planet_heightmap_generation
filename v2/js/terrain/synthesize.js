@@ -400,6 +400,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         return span2;
     };
     const { cratons: CR, terrane } = rec;
+    // (each shield's mantle: the swell under its craton cells, on average, against the land's reference — +1 over fully
+    // insulated mantle, −1 over fully cooled, 0 without a swell; the same in every chunk: read from the records)
+    const shieldMantle = shieldMantleOf(rec, cfg);
     const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
@@ -605,15 +608,22 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     let cT = c0, cW = -1;
                     for (let j = 0; j < 3; j++) { const c = j === 0 ? c0 : j === 1 ? c1 : c2, wj = j === 0 ? w0 : j === 1 ? w1 : w2; if (craton[c] && wj > cW) { cW = wj; cT = c; } }
                     const ch = cratonCharacter(CR, seed, terrane[cT]), k = cfg.cratonCharacter * shieldS;
-                    if (ch.kind !== 0) {
-                        // (a swell or a sag is the mantle's — dynamic topography, intracratonic subsidence — and as broad: it
-                        // rises over cratonSwellFlankKm in from the edge, wherever the shield is that deep, its line moved
-                        // by noise as large; a shield narrower than that only takes the start of it. As a share of each
-                        // shield's own depth, a small shield's swell rose over a hundred km or two: hills, not a swell)
+                    // (a swell or a sag is the mantle's — dynamic topography — so which, and how strongly, is the mantle's
+                    // under the shield (branch unified-swell; it was drawn at random): over mantle warmer than a dispersed
+                    // world's continents stand on, a swell (the Kalahari on the African superswell: Nyblade & Robinson
+                    // 1994), over cooler a sag (the Congo basin over a downwelling: Downey & Gurnis 2009; Crosby et al.
+                    // 2010), in full over fully insulated or fully cooled mantle and a flat shield in between; the craton's
+                    // own draw sets its strength × 0.7–1.3 and its shape)
+                    const mk = shieldMantle(terrane[cT]), flat = 1 - Math.abs(mk);
+                    if (mk !== 0) {
+                        // (and as broad: it rises over cratonSwellFlankKm in from the edge, wherever the shield is that deep,
+                        // its line moved by noise as large; a shield narrower than that only takes the start of it. As a share
+                        // of each shield's own depth, a small shield's swell rose over a hundred km or two: hills, not a swell)
                         const flank = cfg.cratonSwellFlankKm;
                         const form = smooth(0, flank, crN + 0.43 * flank * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 2.3 * ch.salt, z * shapeF + 5.5, 3, 0.5));
-                        platform += k * ch.amp * (ch.kind > 0 ? cfg.cratonSwellKm : -cfg.cratonSagKm) * form;
-                    } else platform += k * ch.amp * cfg.cratonFlatKm * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 4.1, z * shapeF + 2.3 * ch.salt, 3, 0.5);
+                        platform += k * ch.amp * mk * (mk > 0 ? cfg.cratonSwellKm : cfg.cratonSagKm) * form;
+                    }
+                    if (flat > 0) platform += k * ch.amp * flat * cfg.cratonFlatKm * 1.6 * noise.fbm(x * shapeF + ch.salt, y * shapeF + 4.1, z * shapeF + 2.3 * ch.salt, 3, 0.5);
                     if (grainShow > 0) platform += k * cfg.cratonGrainKm * grainShow * smooth(0, 150, crN) * (0.7 - 2 * Math.abs(noise.noise3D(x * grainF + 3.3, y * grainF + 8.8, z * grainF + 1.1)));
                 }
                 if (platform < 0.04 && before >= 0.04) platform = 0.04;            // (a sag or a foredeep is lowland, not sea)
@@ -1024,3 +1034,25 @@ function selectKth(a, lo, hi, k) {
 }
 
 export { flexuralLengthKm };
+
+/** Each shield's mantle under it (synthesize: a craton's swell or sag), by terrane: −1 (fully cooled) … +1 (fully insulated). */
+const shieldMantles = new WeakMap();
+function shieldMantleOf(rec, cfg) {
+    const A = cfg.mantleSwellKm, ref = cfg.mantleSwellLandRef, sw = rec.swellKm;
+    if (!sw || !(A > 0)) return () => 0;
+    let byKey = shieldMantles.get(sw);
+    const key = `${A}|${ref}`;
+    if (!byKey || byKey.key !== key) {
+        const sum = new Map(), { craton, terrane } = rec;
+        for (let w = 0; w < sw.length; w++) {
+            if (!craton[w]) continue;
+            const e = sum.get(terrane[w]) ?? sum.set(terrane[w], [0, 0]).get(terrane[w]);
+            e[0] += sw[w] / A - ref; e[1]++;
+        }
+        const out = new Map();
+        for (const [t, [s, n]] of sum) { const a = s / n; out.set(t, Math.max(-1, Math.min(1, a > 0 ? a / (1 - ref) : a / ref))); }
+        byKey = { key, out };
+        shieldMantles.set(sw, byKey);
+    }
+    return t => byKey.out.get(t) ?? 0;
+}
