@@ -98,7 +98,7 @@ export const TECTONICS = {
     // ── Speed limits, cm/yr [WBP] — a backstop only: check-phase4 asserts the force balance never reaches them ──
     maxSpeedOceanic: 25,
     maxSpeedContinental: 10,
-    continentalPlateShare: 0.15, // a plate with more than this share of land is held to the continental limit
+    continentalPlateShare: 0.15, // a plate with more than this share of continental keel (continent and craton, not island arc: torque-balance.js keeled) is held to the continental limit
     continentalSoftCmYr: 7,     // …and its speed saturates smoothly: v → v ÷ √(1 + (v ÷ this)²) (0: off) — a third slower near the limit
     oceanicSoftCmYr: 12,        // an oceanic plate's likewise (20 cm/yr → 10; Earth's fastest, the Pacific, ~10)
 

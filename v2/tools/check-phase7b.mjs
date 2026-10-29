@@ -208,7 +208,8 @@ section('in a whole history');
     const fastest = Math.max(...r.frames.map(f => Math.max(0, ...f.plates.filter(p => p.alive && !p.isBackground).map(p => p.speedCmYr))));
     // the caps follow Zahirovic et al. 2015: plates under half continental reach ~20 cm/yr, those over half stay ≤ ~10 cm/yr
     check('every plate stays within the oceanic speed cap', fastest <= cfg.maxSpeedOceanic, `fastest plate in any frame: ${fastest.toFixed(1)} cm/yr (oceanic cap ${cfg.maxSpeedOceanic}; Zahirovic et al. 2015)`);
-    const continentalPlate = p => p.landCells > cfg.continentalPlateShare * p.cells;
+    // (continental: its keels, continent and craton — island arc has none: step/torque-balance.js keeled)
+    const continentalPlate = p => (p.keelCells ?? p.landCells) > cfg.continentalPlateShare * p.cells;
     const fastestC = Math.max(0, ...r.frames.map(f => Math.max(0, ...f.plates.filter(p => p.alive && !p.isBackground && continentalPlate(p)).map(p => p.speedCmYr))));
     check('every continental plate stays within the continental speed cap', fastestC <= cfg.maxSpeedContinental, `fastest continental plate in any frame: ${fastestC.toFixed(1)} cm/yr (cap ${cfg.maxSpeedContinental}; Zahirovic et al. 2015)`);
     const plates = Math.max(...r.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length));

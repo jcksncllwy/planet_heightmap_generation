@@ -91,7 +91,7 @@ for (const r of Object.values(runs)) {
         if (p.isBackground || f.time < SPIN_UP_MYR) continue;
         const kind = situationOf(p.dynamics), expected = r.scene.expect[p.name] ?? r.scene.expect['*'];
         if (!expected.includes(kind)) surprises.push(`${p.name} is “${kind}” at ${f.time} Myr`);
-        if (isSteady(p)) speeds[p.landCells > r.world.config.continentalPlateShare * p.cells ? 'continental' : 'oceanic'].push(p.speedCmYr);
+        if (isSteady(p)) speeds[(p.keelCells ?? p.landCells) > r.world.config.continentalPlateShare * p.cells ? 'continental' : 'oceanic'].push(p.speedCmYr);
     }
     check(`${id}: plates are in the situations the scene sets up`, surprises.length === 0, surprises.length ? surprises.slice(0, 4).join('; ') : Object.entries(r.scene.expect).map(([n, k]) => `${n}: ${k.join(' → ')}`).join(' · '));
     for (const k of ['continental', 'oceanic']) if (speeds[k].length) settled[k].push({ id, v: mean(speeds[k]), n: speeds[k].length });

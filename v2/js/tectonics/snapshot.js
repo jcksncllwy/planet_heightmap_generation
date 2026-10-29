@@ -60,7 +60,7 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @typedef {Object} FramePlate
  * @property {number} id  @property {string} name  @property {boolean} alive  @property {boolean} isBackground
  * @property {number[]} omega  @property {number[]} quat  @property {number[]} centre   world position of its centre of area
- * @property {number} cells  @property {number} landCells  @property {number} speedCmYr  speed at `centre`
+ * @property {number} cells  @property {number} landCells  @property {number} keelCells  continental and craton cells (not island arc) @property {number} speedCmYr  speed at `centre`
  * @property {Object|null} dynamics     force diagnostics (step/torque-balance.js), when the force model drives the world
  */
 
@@ -156,7 +156,7 @@ export function captureFrame(world, reuse = null) {
         return {
             id: p.id, name: p.name, alive: p.alive, isBackground: p.isBackground,
             omega: p.omega.slice(), quat: p.quat.slice(), centre, hue: p.hue,
-            cells: p.stats.cells, landCells: p.stats.continentalCells,
+            cells: p.stats.cells, landCells: p.stats.continentalCells, keelCells: p.stats.keelCells,
             speedCmYr: speedCmYrAt(p.omega, centre[0], centre[1], centre[2]),
             dynamics: p.dynamics ? JSON.parse(JSON.stringify(p.dynamics)) : null,
         };

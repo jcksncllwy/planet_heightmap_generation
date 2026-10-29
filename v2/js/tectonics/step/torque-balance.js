@@ -98,7 +98,7 @@ export function fastestSpeed(omega, plate, centre) {
 function softenSpeed(omega, plate, centre, config) {
     // (an oceanic plate as well, at oceanicSoftCmYr: the plates oceans now break into ran at 15–20 cm/yr under slab pull —
     // Earth's fastest run ~10 — and halved every step of the history)
-    const continental = plate.stats.continentalCells > config.continentalPlateShare * plate.stats.cells;
+    const continental = keeled(plate, config);
     const S = (continental ? config.continentalSoftCmYr : config.oceanicSoftCmYr) * CM_PER_YR_TO_RAD_PER_MYR;
     if (!(S > 0)) return;
     const v = fastestSpeed(omega, plate, centre);
@@ -110,6 +110,14 @@ function softenSpeed(omega, plate, centre, config) {
 }
 
 /**
+ * Is this plate held to the continental limits? Its share of continental and craton crust — the keels whose drag at the
+ * base slows a plate (Forsyth & Uyeda 1975; Zahirovic et al. 2015: plates under half continental reach ~20 cm/yr, over
+ * half ≤ ~10) — not island arc, which is crust added to ocean lithosphere with no keel under it (branch unified-swell:
+ * an intra-oceanic arc strip counted as continental, and the cap it was held to was one it never had to be)
+ */
+export function keeled(plate, config) { return plate.stats.keelCells > config.continentalPlateShare * plate.stats.cells; }
+
+/**
  * Backstop only — the force balance should keep plates inside these limits by itself, and the Phase 4
  * checks assert that it does. Scales `omega` down in place if the fastest point of the plate would
  * exceed the limit. @returns {boolean} whether it had to
@@ -117,7 +125,7 @@ function softenSpeed(omega, plate, centre, config) {
 function clampSpeed(omega, plate, centre, config) {
     const fastest = fastestSpeed(omega, plate, centre);
     if (fastest < 1e-12) return false;
-    const continental = plate.stats.continentalCells > config.continentalPlateShare * plate.stats.cells;
+    const continental = keeled(plate, config);
     const limit = (continental ? config.maxSpeedContinental : config.maxSpeedOceanic) * CM_PER_YR_TO_RAD_PER_MYR;
     if (fastest <= limit) return false;
     for (let i = 0; i < 3; i++) omega[i] *= limit / fastest;

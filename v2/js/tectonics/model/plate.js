@@ -36,7 +36,7 @@ export class Plate {
         // Bounding cap in the plate frame (for culling in the gather pass).
         this.capCenter = [0, 0, 1];
         this.capCos = -1;
-        this.stats = { cells: 0, continentalCells: 0 };
+        this.stats = { cells: 0, continentalCells: 0, keelCells: 0 };
         this.bins = null;                         // coarse occupancy marks, per resolve pass (step/occupancy.js)
         this.reach = null;                        // …and the bins within reach of them (occupancy.js reachOf)
         /** Force diagnostics from the last torque balance (step/torque-balance.js), or null. */
@@ -110,15 +110,17 @@ export class Plate {
         const { mask, type } = this.crust;
         if (!extentCells || extentCells.length !== mask.length) extentCells = new Int32Array(mask.length);
         const cells = extentCells;                        // (the crust cells, in order, for the second pass)
-        let sx = 0, sy = 0, sz = 0, n = 0, nc = 0;
+        let sx = 0, sy = 0, sz = 0, n = 0, nc = 0, nk = 0;
         for (let c = 0; c < mask.length; c++) {
             if (!mask[c]) continue;
             sx += xyz[3 * c]; sy += xyz[3 * c + 1]; sz += xyz[3 * c + 2];
             cells[n++] = c;
             if (type[c] !== CrustType.OCEAN) nc++;
+            if (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON) nk++;      // (a continental keel: not island arc)
         }
         this.stats.cells = n;
         this.stats.continentalCells = nc;
+        this.stats.keelCells = nk;
         this.crust.count = n;
         this.dirty = false;
         const l = Math.hypot(sx, sy, sz);
