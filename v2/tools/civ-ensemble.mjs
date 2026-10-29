@@ -14,7 +14,7 @@ import path from 'node:path';
 import v8 from 'node:v8';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { OUT, MESH_SEED, frameOf } from './lib/civ-world.mjs';
+import { OUT, MESH_SEED, frameOf, worldCode } from './lib/civ-world.mjs';
 import { buildSimMesh, meshFromArrays } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
@@ -34,7 +34,7 @@ const overridesOf = s => (s ? Object.fromEntries(s.split(/,(?=[A-Za-z_]+=)/).map
 
 /** The world as the page has it (civWorldFromFinish), cached. */
 async function pageWorld({ seed, cont, time }) {
-    const file = path.join(CACHE, `page-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k.bin`);
+    const file = path.join(CACHE, `page-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k-${worldCode()}.bin`);
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (CROP_KEYS.every(k => w.crops?.[k]) && w.flow) { w.mesh = meshFromArrays(w.mesh); return w; } }   // (an older cache, without the crops' climate or the winds: built again)
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
     const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true });

@@ -68,12 +68,13 @@ function scan(abs) {
 }
 
 /**
- * The hash of the code that makes a history, in the checkout at `root`, and the files it covers.
+ * The hash of the code that makes a history, in the checkout at `root`, and the files it covers (`entries`: other entry
+ * points to follow besides the history's, for a tool's own caches of what it builds from a history).
  * @returns {{hash: string, files: string[]}}  hash: 16 hex digits
  */
-export function historyCodeHash(root = REPO_ROOT) {
+export function historyCodeHash(root = REPO_ROOT, entries = HISTORY_ENTRIES) {
     const files = new Map(), queue = [];
-    for (const e of HISTORY_ENTRIES) {
+    for (const e of entries) {
         const abs = path.join(root, e);
         if (fs.statSync(abs).isDirectory()) { for (const f of fs.readdirSync(abs).sort()) if (f.endsWith('.js')) queue.push(path.join(abs, f)); }
         else queue.push(abs);

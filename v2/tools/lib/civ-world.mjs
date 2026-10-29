@@ -1,6 +1,6 @@
 // Shared by the civ layer's tools (civ-cradles.mjs, civ-sim.mjs): a finished moment as the civ layer reads it (built as
-// render-moment.mjs builds it — the frame cached in v2/out/frames/, the finished moment in v2/out/civ/cache/), and the
-// little painting the tools need (equirect pixel → cell, ramps, PNG, numbers).
+// render-moment.mjs builds it — the frame from the history cache, the finished moment in v2/out/civ/cache/ under the
+// code's hash), and the little painting the tools need (equirect pixel → cell, ramps, PNG, numbers).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,36 +10,29 @@ import Delaunator from 'delaunator';
 import { PNG } from 'pngjs';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
 import { buildSimMesh, meshFromArrays } from '../../js/core/sim-mesh.js';
-import { runHistory } from '../../js/app/history-runner.js';
-import { TERRAIN_SCENES } from '../../js/tectonics/scenarios/terrain-scenes.js';
-import { TerrainPool, FRAME_FIELDS } from '../../js/terrain/terrain-pool.js';
+import { TerrainPool } from '../../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../../js/finish/finish.js';
+import { momentFrame } from './moment-frame.mjs';
+import { historyCodeHash, HISTORY_ENTRIES } from './history-cache.mjs';
 
 setDelaunator(Delaunator);
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 export const OUT = path.join(ROOT, 'v2', 'out', 'civ');
 export const MESH_SEED = 12345;                       // (the page's: every planet's sim mesh is the same; the seed shapes the world)
 
-/** The moment's frame, as the page builds it (scene 'cycle'), cached — render-moment.mjs's cache. */
-export async function frameOf(seed, { cont, sim, time }) {
-    const dir = path.join(ROOT, 'v2', 'out', 'frames'), file = path.join(dir, `frame-${seed}-${cont}-${sim}-${time}.bin`);
-    if (fs.existsSync(file)) return v8.deserialize(fs.readFileSync(file)).frame;
-    let frame;
-    const scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
-    await runHistory({ list: 'terrain', scene, ending: 'none', start: { continentalFraction: cont / 100 }, lengthMyr: Math.ceil((time + 10) / 10) * 10, keep: false },
-        buildSimMesh(sim, MESH_SEED), seed, 10, () => {}, f => {
-            if (Math.abs(f.time - time) < 1e-6) { frame = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); frame.plates = f.plates.map(p => p && { quat: p.quat }); }
-        });
-    if (!frame) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, v8.serialize({ frame }));
-    return frame;
-}
+/** The moment's frame, as the page builds it (scene 'cycle'), through the history cache (moment-frame.mjs). */
+export const frameOf = (seed, { cont, sim, time }) => momentFrame(ROOT, { seed, cont, sim, time });
+
+let codeMemo = null;
+/** The hash of the code a cached world is built by: the history's and the finish's. In each cache file's name, so a
+ *  change to either builds the worlds again. (The civ layer's reading of a finished moment, civ-page.js, is left out:
+ *  it imports the whole sim. A cache missing a field it now keeps is built again by its reader's own check.) */
+export const worldCode = () => (codeMemo ??= historyCodeHash(ROOT, [...HISTORY_ENTRIES, 'v2/js/finish/finish.js']).hash);
 
 /** The finished moment, reduced to what the civ layer reads, cached. Options: { cont, sim, time, cells }. */
 export async function worldOf(seed, simMesh, opts) {
     const { cont, sim, time, cells } = opts;
-    const dir = path.join(OUT, 'cache'), file = path.join(dir, `world3-${seed}-${cont}-${sim}-${time}-${Math.round(cells / 1000)}k.bin`);
+    const dir = path.join(OUT, 'cache'), file = path.join(dir, `world3-${seed}-${cont}-${sim}-${time}-${Math.round(cells / 1000)}k-${worldCode()}.bin`);
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
     const frame = await frameOf(seed, opts);
     const pool = await TerrainPool.create(simMesh);

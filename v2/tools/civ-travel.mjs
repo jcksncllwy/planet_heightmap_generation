@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
-import { OUT, MESH_SEED, frameOf, writePng, pixelCells, ramp, drawText } from './lib/civ-world.mjs';
+import { OUT, MESH_SEED, frameOf, worldCode, writePng, pixelCells, ramp, drawText } from './lib/civ-world.mjs';
 import { buildSimMesh, meshFromArrays } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
@@ -24,7 +24,7 @@ const D = Math.PI / 180;
 
 /** The world as the page has it, with its winds and currents, cached. */
 async function travelWorld({ seed, cont, time }) {
-    const file = path.join(OUT, 'cache', `travel-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k.bin`);
+    const file = path.join(OUT, 'cache', `travel-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k-${worldCode()}.bin`);
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
     const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true });

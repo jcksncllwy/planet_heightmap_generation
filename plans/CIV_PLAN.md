@@ -861,6 +861,12 @@ over it, and the flows wear paths that make it cheaper.
   (43); first city 6.5 ka (same); first state 5.5 ka (6.0); 137 M people at 0 BP (134.5); farmed share 0.46
   (0.45). T1 changes little away from the far islands.
 
+  Rebased onto main 5f45475 (2026-10-29: cratons, unified heights, island arcs, closed basins, rivers). The civ
+  tools' caches are now keyed by the history and finish code (`worldCode`, lib/civ-world.mjs); their frames come
+  from the history cache. Earth is unchanged. The ensemble on the new worlds (`t1` → `t1r`, the new baseline):
+  people at 0 BP 103 M (137); centres 36 (45); farmed share 0.38 (0.46); first city 6.0 ka (6.5), first state 5.0 ka
+  (5.5); towns of 15 K+ on 19 of 20 worlds, states on 17, all big landmasses peopled on 17 (all 20).
+
   Open:
   - No Long Pause. East Polynesia comes ~2 kyr early (Tahiti 3.0 ka against 1–0.85). Caps of 10–30 days all give
     ~3.0 ka: on the real trades a sail makes 150–230 km a day, and the chains east of Samoa have no long leg. The

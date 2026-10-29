@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
 import crypto from 'node:crypto';
-import { OUT } from './lib/civ-world.mjs';
+import { OUT, worldCode } from './lib/civ-world.mjs';
 import { meshFromArrays } from '../js/core/sim-mesh.js';
 import { civSubstrate } from '../js/civ/substrate.js';
 import { runCivSim } from '../js/civ/sim.js';
@@ -22,7 +22,7 @@ const names = [...cfg.matchAll(/^    ([A-Za-z]\w*):/gm)].map(m => m[1]), twice =
 if (twice.length) console.log(`CIV names these twice (the second wins): ${[...new Set(twice)].join(', ')}`);
 const cache = path.join(OUT, 'cache'), files = fs.readdirSync(cache);
 for (const seed of arg('--seeds', '1,6,13').split(',')) {
-    const f = files.find(x => x.startsWith(`page-${seed}-`) && x.endsWith('160k.bin'));
+    const f = files.find(x => x.startsWith(`page-${seed}-`) && x.endsWith(`160k-${worldCode()}.bin`));
     if (!f) { console.log(seed, 'no cached world: run civ-ensemble.mjs first'); continue; }
     const w = v8.deserialize(fs.readFileSync(path.join(cache, f)));
     w.mesh = meshFromArrays(w.mesh);
