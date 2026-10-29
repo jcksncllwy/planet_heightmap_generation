@@ -488,7 +488,19 @@ export function founderWithinPlates(world, dt) {
                 if (!n) continue;
                 const fromSet = new Set(from), walk = run.filter(c => fromSet.has(c) || !sinking.has(c));
                 const ahead = layersAlong(mesh, walk, from, n - 1).flat(), { cells: strip, depth } = stripOf(ahead);
-                if (!strip.length) continue;
+                if (!strip.length) {
+                    // (no floor of the plate's own behind it: the floor ahead went down with the plate below already — a
+                    // sealed sea's, which leaves whole, the trench along its shore growing from a nucleus — and the trench
+                    // runs on along the shore it faces)
+                    if (!anchors.length) continue;
+                    const L = plates[[...lowers].sort((x, y) => y[1] - x[1] || x[0] - y[0])[0][0]];
+                    const facing = ahead.filter(c => { const w = worldOf(c); for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (owner[nb] === L.id && L.crust.type[ownerCell[nb]] === CrustType.OCEAN) return true; } return false; });
+                    if (!facing.length) continue;
+                    for (const c of facing) P.crust.armTrench(c, config.subductionInitSlabKm);
+                    P.dirty = true; propagated = true; grown += n;
+                    world.budget.propagatedKm = (world.budget.propagatedKm ?? 0) + ends * n * edgeKm;
+                    continue;
+                }
                 // (an invading trench's first stretch is a plate of its own: like a nucleus, it needs floor deep enough
                 // behind it to hang a slab from — else the tear waits for more of the margin to go)
                 if (!anchors.length && depth < slabHops) { tally('invasionNarrow'); continue; }
@@ -557,6 +569,9 @@ export function founderWithinPlates(world, dt) {
                 if (gone && run.some(c => nextTo(gone, c))) { tally('sealedGone'); continue; }   // (its sea went down this draw)
                 take = seaFloor(run);
                 if (!take.length) { tally('sealedEmpty'); continue; }
+                // (the floor leaves whole, but its trench is born on a stretch of the shore as any other's, and runs on
+                // along the shore from there: PROPAGATION above)
+                if (config.founderPropagate) nucleus = nucleusOf(mesh, run, c => Math.sqrt(Math.max(0, time - formedAt[c])), config.founderNucleusKm);
             } else {
                 if (!Number.isFinite(config.oceanPlateMinAreaKm2)) { tally('noBirths'); continue; }   // (a scene's: no plate may be born)
                 nucleus = nucleusOf(mesh, run, c => Math.sqrt(Math.max(0, time - formedAt[c])), config.founderNucleusKm);
@@ -576,7 +591,7 @@ export function founderWithinPlates(world, dt) {
             if (!transferCells(world, P, fresh, take)) { fresh.alive = false; continue; }
             if (sealed) { gone ??= []; for (const c of take) { sc.gone[c] = 1; gone.push(c); } }
             fresh.born = time;
-            const armed = sealed ? run : nucleus.cells, armedKm = sealed ? lengthKm : nucleus.km;
+            const armed = nucleus ? nucleus.cells : run, armedKm = nucleus ? nucleus.km : lengthKm;
             for (const c of armed) P.crust.armTrench(c, config.subductionInitSlabKm);
             P.dirty = true;
             started++;

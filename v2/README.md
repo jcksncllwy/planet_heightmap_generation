@@ -1434,7 +1434,8 @@ at once. On Earth a trench starts on a segment and grows along strike (Puysegur 
   strands goes with it. The strip is protected from microplate capture for `founderSlabMyr` (10 Myr: the time for a
   young slab to become self-sustaining; Gurnis et al. 2004; Stern & Gerya 2018 6–8 Myr), or else an aborted strip
   is captured straight back and refounders every 4 Myr. A front across a plate is kept on the plate
-  (`P.acrossFronts`) and grows the same way. Sealed seas still go down whole, as before.
+  (`P.acrossFronts`) and grows the same way. Sealed seas still go down whole, as before (round 2: their trench
+  nucleates and propagates too; see 'Founders, round 2').
 - The between-plate case on the immobile background ocean keeps the old reach carve (a 6b check, "newborn not a
   runaway", failed when the background was peeled by strips). `founderPropagate: false` (the `trenchPropagation`
   mechanism switch) turns all of this off, and a scene's `oceanPlateMinAreaKm2 = Infinity` still turns off in-plate
@@ -1446,9 +1447,9 @@ at once. On Earth a trench starts on a segment and grows along strike (Puysegur 
   stretch needs floor as deep as a nucleus's (`subductionInitSlabKm`) to hang a slab from. A small ocean plate showing
   nowhere in the world view lies wholly beneath its neighbours: its crust is consumed and it ends
   (`ocean-plates.js captureMicroplates`). Without these, the 7b history held 42 plates (room for 28); with them, 24–28 before the rebase onto
-  unified heights and 33–36 after, which still fails 7b's plate-count check: most of them are 1–19 Mkm² ocean plates,
-  each with its own trench and arc. Earth has 52 (Bird 2003), but `reserved.maxPlates` (28) has no source; whether to
-  raise it is left open.
+  unified heights and 33–36 after. Most of them are 1–19 Mkm² ocean plates, each with its own trench and arc. The
+  check against `reserved.maxPlates` (28, unsourced) is gone in round 2: plate count is now a report against Earth's
+  10–52 (see 'Founders, round 2').
 
 Before → after (seed 831576 at 88–96 Myr): births of 26 and 34.9 Mkm² with 10–24k km trenches → strips of 0.05–0.57
 Mkm² on ~364 km nuclei. Over 600 Myr, 20K, seeds 12345 and 831576 (`tools/trace-founders.mjs`):

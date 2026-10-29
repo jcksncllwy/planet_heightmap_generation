@@ -40,6 +40,7 @@ const CHECKLISTS = {
         'Further rifts and sutures follow over 300 Myr: the first history the generator produces by itself. The event log reads like WBP’s.',
         'Old passive margins founder into new trenches as the history runs (event log: “a new trench founders…”), so oceans that opened begin to close again — most of them pressed together by the plates’ own forces, younger than the floor’s weight alone would sink.',
         'A new trench is born short — a few hundred km of the margin, its weakest stretch — and runs along the coast from there over the next Myr while the margin ahead keeps failing. Where the ocean must first become a plate of its own, only a strip behind the new trench breaks away (a few Mkm², not a whole ocean), and it widens as the trench lengthens.',
+        'A sea sealed inside a plate goes down as one floor, but its trench too is born on a stretch of its shore and runs along the shore from there. A scrap of ocean floor cut off from its plate joins the plate beside it (Plates layer), keeping its age; it is not left behind in the passive ocean.',
         'A trench whose end meets a passive coast can run on into it (event log: “a trench invades … passive margin”): the Lesser Antilles into the Atlantic.',
         'A big plate pressed together across its open ocean fails there: its far side breaks away under a new trench, the older floor going down (event log: “… fails across its ocean under compression”).',
     ],
