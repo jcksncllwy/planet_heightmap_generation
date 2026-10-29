@@ -579,7 +579,7 @@ export function hydrology(ctx, F) {
     });
     const landKm2 = count * cellKm2;
     return {
-        lake: lakeKind, lakeLevel, q, area,
+        lake: lakeKind, lakeLevel, q, area, ...(ctx.debug ? { recv } : {}),       // (the network itself: for checks only)
         rivers: { start: Int32Array.from(L.start), lat: Float32Array.from(L.lat), lon: Float32Array.from(L.lon), q: Float32Array.from(L.q), season: Float32Array.from(L.season),
             ...(regimes ?? {}) },
         terminal: ctx.debug ? hollows.filter(h => h.kind && h.kind !== Water.FRESH).sort((a, b) => b.inflow - a.inflow).slice(0, 12).map(h => {

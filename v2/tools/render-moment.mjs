@@ -7,7 +7,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]] [--network]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). --latest: the moment the
 // user is looking at in the Evolution page (the history cache's latest.json: node v2/tools/history.mjs latest). Output: v2/out/moments/.
@@ -38,6 +38,7 @@ import { synthesizeTerrain } from '../js/terrain/synthesize.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { hillshade } from '../js/view/terrain-shade.js';
 import { SmoothMapRaster } from '../js/view/map-raster.js';
+import { networkShape, describe } from './lib/river-network.mjs';
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -51,7 +52,7 @@ const SEED = Number(argOrLatest('--seed', 12345)), CONT = Number(argOrLatest('--
 const CELLS = Number(arg('--cells', 2500000)), W = Number(arg('--width', 4096)), PALETTE = arg('--palette', 'relief');
 const CROP = arg('--crop', null)?.split(',').map(Number) ?? null;
 const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`);
-const R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
+const NETWORK = process.argv.includes('--network'), R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
 
 // ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; through the cache ──
 const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME, key: LATEST && Number(LATEST.timeMyr) === TIME ? LATEST.key : null });     // (--latest: the page's very frame)
@@ -71,18 +72,26 @@ if (process.argv.includes('--live')) {
     const p = new PNG({ width: W, height: W >> 1 }); p.data = Buffer.from(image.buffer); fs.writeFileSync(path.join(outDir, `${NAME}.png`), PNG.sync.write(p));
     const cellKm2 = 4 * Math.PI * R * R / tMesh.numCells, sizes = water.bodies.map(b => b.cells * cellKm2).sort((a, b) => b - a);
     console.log(`live terrain at ${CELLS.toLocaleString()} cells → v2/out/moments/${NAME}.png (${secs()})`);
+    // (--network: the carved rivers' shape against Earth's — tools/lib/river-network.mjs)
+    if (NETWORK) console.log('network (the timeline\'s carve): ' + describe(networkShape({ mesh: tMesh, recv: T.receivers, land: c => T.tectonicKm[c] > 0, z: T.heightKm })));
     console.log(`bodies below sea level: ${sizes.length}; the world ocean ${(water.oceanCells * cellKm2 / 1e6).toFixed(1)} Mkm²; cut off from it ${sizes.length - 1}, ${(sizes.slice(1).reduce((a, b) => a + b, 0) / 1e6).toFixed(2)} Mkm² (over 10 000 km²: ${sizes.slice(1).filter(s => s >= 1e4).length}; largest ${sizes.slice(1, 6).map(s => (s / 1e3).toFixed(0) + 'K').join(' ')} km²)`);
     process.exit(0);
 }
 
 // ── the finish, as the page's worker runs it ──
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
-const DEBUG = process.argv.includes('--debug');
+const DEBUG = process.argv.includes('--debug') || NETWORK;
 // (--set key=value[,key=value]: the finish's constants changed for this run — finish-config.js; numbers, or JSON)
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
 console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages ms: ${Object.entries(fin.ms).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}`);
+// (--network: the finished rivers' shape against Earth's — tools/lib/river-network.mjs; arid where rain is under half the
+// potential evaporation)
+if (NETWORK) {
+    const { tAnnual, pAnnual } = fin.climate.cell, pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+    console.log('network (the finished rivers): ' + describe(networkShape({ mesh: fin.mesh, recv: fin.layers.recv, land: c => !fin.ocean[c], z: fin.z, lake: fin.lake, arid: c => pAnnual[c] < 0.5 * pet(c) })));
+}
 
 // ── the picture, painted as the page paints it ──
 const raster = finishRaster(fin.mesh, fin.z, fin.ocean, W, null, fin.lake, fin.lakeLevel, null);

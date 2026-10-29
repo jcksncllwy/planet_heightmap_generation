@@ -3,7 +3,8 @@
 // leaves the sea floor and coast alone, starts from 8a's surface exactly, lowers the median), what rivers do where (graded
 // lowlands, gorges into plateaus and rising belts, swells steering them), small rivers riding with the crust against the
 // same terrain read on the fixed world grid, and resolution, worker and speed properties. Reported against Earth: the
-// network's exponent, how much is carved, the hypsometry after carving, range heights, river persistence, basalt benches.
+// network's exponent and shape (Hack, Horton, junction angles, sinuosity, the plains' gradient — the timeline's carve and a
+// finished moment's rivers), how much is carved, the hypsometry after carving, range heights, river persistence, basalt benches.
 // Usage: node v2/tools/check-phase8b.mjs
 
 import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
@@ -18,6 +19,9 @@ import { kindType, kindSide } from '../js/terrain/records.js';
 import { buildAnchor } from '../js/terrain/anchor.js';
 import { locate } from '../js/core/mesh-locate.js';
 import { quatToMat3 } from '../js/core/rotation.js';
+import { finishPlanet } from '../js/finish/finish.js';
+import { FINISH } from '../js/finish/finish-config.js';
+import { networkShape } from './lib/river-network.mjs';
 
 const SEED = 12345;
 const mesh = labMesh();
@@ -241,6 +245,33 @@ section('the same planet at every resolution');
     pool.terminate();
     const same = (x, y) => x.length === y.length && x.every((v, i) => Object.is(v, y[i]));
     check('carving on the worker pool gives exactly the terrain carved in place', same(C.z, T.heightKm) && same(C.area, T.drainage), '640K cells: carved heights and drainage identical');
+}
+
+// ── the network's shape against Earth's (lane rivers, 2026-10-29): the timeline's carve and Add detail's rivers ──
+section('the network’s shape');
+{
+    // (Add detail at 640K cells on the same frame: its rivers — finish-hydro.js hydrology — the flow map the page draws)
+    const pool = await TerrainPool.create(mesh), started = performance.now();
+    const fin = await finishPlanet({ frame: history.frame, simMesh: mesh, seed: SEED, cells: 640000, pool, closePool: true, debug: true });
+    const finSeconds = (performance.now() - started) / 1000, F = FINISH, { tAnnual, pAnnual } = fin.climate.cell;
+    const nets = [
+        ['the timeline’s carve (640K)', networkShape({ mesh: T.tm, recv: T.receivers, land, z: T.heightKm })],
+        ['Add detail’s rivers (640K)', networkShape({ mesh: fin.mesh, recv: fin.layers.recv, land: c => !fin.ocean[c], z: fin.z, lake: fin.lake,
+            arid: c => pAnnual[c] < 0.5 * Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]) })],
+    ];
+    for (const [name, S] of nets) {
+        report(`${name}: Hack's exponent h (main stream length ∝ area^h)`, S.hack.h, { earth: [0.5, 0.6], source: 'holds through the cycle (a network\'s geometry, not a snapshot): h ≈ 0.6 (Hack 1957); 0.57 ± 0.03 (Rigon et al. 1996, recalled); toward 0.5 for the largest basins (Mueller 1973, recalled)',
+            detail: `fit over ${S.hack.bins} bins of 10⁴–10⁶ km²` });
+        report(`${name}: Horton's bifurcation ratio R_B`, S.horton.rb, { earth: [3, 5], source: 'Horton 1945; Strahler 1957; a weak test: almost any random branching tree gives 3–5 too (Kirchner 1993)',
+            detail: `streams by Strahler order over 10⁴ km²: ${S.horton.counts.join(' / ')}` });
+        report(`${name}: junction angle, median`, S.junction.medianDeg, { earth: [45, 72], unit: '°', digits: 0, source: '~45° in arid climates to ~72° in humid ones (Seybold, Rothman & Kirchner 2017, GRL 44: 2272)',
+            detail: `${S.junction.n} confluences of channels over 10⁴ km², each branch read 4 cells up its main stem${S.junction.aridN ? `; arid (rain < ½ potential evaporation) ${S.junction.aridDeg.toFixed(0)}° over ${S.junction.aridN}, humid ${S.junction.humidDeg.toFixed(0)}° over ${S.junction.humidN}` : ''}` });
+        report(`${name}: rivers' sinuosity across the plains (below 300 m), 90th percentile`, S.sinuosity.plainP90, { earth: [1, 1.5], source: 'a river traced at ~8 km rarely winds more than 1.5 (the meandering threshold, Leopold & Wolman 1957; lane brief, no measured distribution found); its windings below the mesh\'s cells are not drawn',
+            detail: `median ${S.sinuosity.plainMedian.toFixed(2)} over ${S.sinuosity.plainN} reaches of ${S.sinuosity.reachKm.toFixed(0)} km; everywhere median ${S.sinuosity.median.toFixed(2)}, 90th percentile ${S.sinuosity.p90.toFixed(2)}` });
+        report(`${name}: rivers' gradient across the plains, median`, 1e5 * S.plainGrade.median, { earth: [1, 10], unit: ' ×10⁻⁵', digits: 1, source: 'alluvial plains 1e-5–1e-4: the lower Mississippi ~1e-4 (Saucier 1994), the lower Amazon ~2e-5 (recalled)',
+            detail: `10th–90th percentile ${S.plainGrade.p10.toExponential(1)}–${S.plainGrade.p90.toExponential(1)} over ${S.plainGrade.n} reaches of ${S.sinuosity.reachKm.toFixed(0)} km; dead flat (under 1e-6) ${(100 * S.plainGrade.flat).toFixed(0)} %` });
+    }
+    report('Add detail at 640K cells (for the network above)', finSeconds, { unit: ' s', digits: 1, source: 'no Earth figure: the time the finish takes headlessly' });
 }
 
 finish('Phase 8b');
