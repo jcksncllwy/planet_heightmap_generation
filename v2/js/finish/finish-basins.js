@@ -319,12 +319,13 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {
         const S = hollowLakes(mesh, L.cells, z, c => q[c], evap, minCells, L.level);
         L.inflow = S.inflow;
         const shows = W => W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;
-        // (the lake over the hollow's lowest point: the cut-off sea's own, for the timeline's estimate to agree with)
-        const atLow = S.lakes.find(W => W.cells.includes(low)) ?? null;
-        let wetKm2 = 0;
-        for (const W of S.lakes) wetKm2 += W.cells.length * cellKm2;
-        if (cutOff) seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: S.inflow * 1e-6, full: S.full, levelKm: S.full ? L.level : atLow ? atLow.level : floor,
-            waterKm2: S.full ? area : wetKm2, wet: S.full || (!!atLow && shows(atLow)) });
+        // (the cut-off sea's own lake, for the timeline's estimate to agree with: the one over its lowest point if the map
+        // shows it, else its largest — water stands in the sea if any of its sub-basins keeps a lake the map can show; which
+        // sub-basin holds it turns on the resolution of its divides, whether water stands in it on its whole balance)
+        let main = S.lakes.find(W => W.cells.includes(low)) ?? null, wetKm2 = 0;
+        for (const W of S.lakes) { wetKm2 += W.cells.length * cellKm2; if (!(main && shows(main)) && (!main || W.cells.length > main.cells.length)) main = W; }
+        if (cutOff) seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: S.inflow * 1e-6, full: S.full, levelKm: S.full ? L.level : main ? main.level : floor,
+            waterKm2: S.full ? area : wetKm2, wet: S.full || (!!main && shows(main)) });
         if (S.full) return S.outflow;                                 // (it fills and spills: an open basin — the rivers lead it out)
         // Closed: the whole hollow is its rivers' end — what reaches it stays in it — and its floor is not cut: what the
         // rivers bring there is laid down, not carried away. A river entering it is graded to the ground where it enters

@@ -69,9 +69,9 @@ section('a hollow’s sub-basins, inside out');
     check('a full sub-basin spills into the one beside it, which balances at its own lower level on the overflow alone',
         !S.full && big?.full && Math.abs(big.level + 0.05) < 1e-6 && small && !small.full && small.level < -0.05 && Math.abs(small.cells.length * e - 3) <= e && S.fate(750) === S.lakes.indexOf(small),
         `upper lake ${big?.full ? 'full' : 'not full'} at ${Math.round(1000 * (big?.level ?? NaN))} m spilling ${big?.outflow?.toFixed(2)} km³/yr; the lower at ${Math.round(1000 * (small?.level ?? NaN))} m, ${small?.cells.length * A} km² (3 km³ over 1 m: 3000 km²)`);
-    const D = solve(100 * e), dry = D.lakes.find(L => L.cells.includes(1750));
+    const D = solve(100.5 * e), dry = D.lakes.find(L => L.cells.includes(1750));
     check('…and short of its sill the upper lake keeps its water: the lower is a playa', !D.full && dry && dry.cells.length === 1 && D.lakes.find(L => L.cells.includes(750))?.cells.length === 100,
-        `the lower ${dry?.cells.length} cell(s) wet; the upper ${D.lakes.find(L => L.cells.includes(750))?.cells.length} cells`);
+        `the lower ${dry?.cells.length} cell(s) wet; the upper ${D.lakes.find(L => L.cells.includes(750))?.cells.length} cells (water for 100.5)`);
 }
 
 section('the world ocean is the largest body of water');
