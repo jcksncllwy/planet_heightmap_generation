@@ -170,6 +170,25 @@ export const FINISH = {
     // course as it was, 1 takes the way of least work
     riverDirectness: 0.1,
     gorgeLengthKm: 0.02,
+    // Breach the pits, fill the hollows (lane rivers2, 2026-10-29; Jackson: the hybrid of Lindsay 2016, Hydrol. Processes
+    // 30: 846). Until now every hollow the rivers drained, and every pocket in it, got a gorge from its floor, level at
+    // the floor's height until it reached lower ground: trenches up to a km deep and thousands of km long, and drained
+    // floors the rivers crossed dead straight. Now only an artifact pit is breached — one the coarse-to-fine surface makes
+    // and real ground lacks: no deeper than pitDepthKm and drained by a channel no longer than pitBreachKm. Any other
+    // hollow fills and spills: water by its balance (a lake at its rim, a salt lake, a playa), or, where its river's
+    // load fills it first, sediment graded down to its outlet.
+    pitDepthKm: 0.015,          // a pit the synthesis makes on a plain: the ground's fall across one sim cell (~100 km at
+                                // the default 40K: π·6371/√40000), at a plain's steeper gradient 1e-4 (Saucier 1994), 10 m;
+                                // and lakeMinDepthM — a hollow shallower than that is no lake the map shows
+    pitBreachKm: 100,           // …and its channel out no longer than one sim cell's width: a pit lies within one
+    gorgeMinGrade: 1e-5,        // a channel cut through falls at least this (km/km): the flattest great rivers, the lower
+                                // Amazon ~2e-5 (recalled) — never level, so the rivers in it never run on a flat
+    breachReachKm: 100,         // an outlet cuts its sill down (breachKm, by its overflow) no lower than the ground its outflow
+                                // reaches within this: the sill is lowered by a knickpoint working back from that ground, and
+                                // knickpoints retreat tens of km in 10⁴–10⁵ yr (Crosby & Whipple 2006, recalled) — until now a
+                                // breach could run its gorge thousands of km to find lower ground
+    fillGrade: 5e-5,            // a hollow filled by its river's load rises from its outlet at this: a delta plain's topset
+                                // (the lower Mississippi's ~1e-4, Saucier 1994; the Amazon's 2e-5) — never dead level
     seaCutKm: 0,                // a basin below sea level opens into the ocean if its cut through dry land is at most this long
                                 // (0: never — developer: a small trapped sea is "NOT a valid end it should go out to the real sea")…
     seaCutFloorKm: 0.003,       // …else its gorge stops this little above sea level (no arm of the sea winding inland); the
