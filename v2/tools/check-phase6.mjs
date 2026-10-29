@@ -156,7 +156,7 @@ section('the start world breaks up');
     check('no gaps in any frame', runs.every(rr => rr.frames.every(f => frameTallies(f).gaps === 0)), 'every frame, every seed');
     check('it runs fast', runs.every(rr => rr.steps < 600), perSeed(rr => `${rr.steps} steps`));
     report('plates at the end', runs.map(rr => rr.frames.at(-1).plates.filter(p => p.alive && !p.isBackground).length), { earth: [10, 52], source: 'through time: 10 at 200 Ma rising to 31 today in the Seton 2012 reconstruction, 18–31 through the Cenozoic (Morra et al. 2013, EPSL 373; checked) — reconstructions miss small plates; 52 resolved today, 14 large (Bird 2003, PB2002)', digits: 0,
-        detail: `at most ${perSeed(rr => Math.max(...rr.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length)))} at once (the engine holds ${cfg.reserved.maxPlates})` });
+        detail: `at most ${perSeed(rr => Math.max(...rr.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length)))} at once` });
 }
 
 finish('Phase 6a');

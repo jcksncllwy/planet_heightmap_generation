@@ -212,8 +212,17 @@ section('in a whole history');
     const continentalPlate = p => (p.keelCells ?? p.landCells) > cfg.continentalPlateShare * p.cells;
     const fastestC = Math.max(0, ...r.frames.map(f => Math.max(0, ...f.plates.filter(p => p.alive && !p.isBackground && continentalPlate(p)).map(p => p.speedCmYr))));
     check('every continental plate stays within the continental speed cap', fastestC <= cfg.maxSpeedContinental, `fastest continental plate in any frame: ${fastestC.toFixed(1)} cm/yr (cap ${cfg.maxSpeedContinental}; Zahirovic et al. 2015)`);
-    const plates = Math.max(...r.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length));
-    check('the plate count stays sane', plates <= cfg.reserved.maxPlates, `at most ${plates} plates (room for ${cfg.reserved.maxPlates})`);
+    // Plate count is an Earth target only as a report: Earth's has ranged from ~10 at 200 Ma (Pangaea) to 31 today in the
+    // reconstructions, which miss small plates, and 52 are resolved today, 38 of them small (Bird 2003). This history
+    // starts from a supercontinent and breaks it up over 300 Myr, so it should climb through that range.
+    const counts = r.frames.map(f => f.plates.filter(p => p.alive && !p.isBackground).length), plates = Math.max(...counts);
+    report('plates: the most at once, and at the end', [plates, counts.at(-1)], { earth: [10, 52], digits: 0,
+        source: 'stage-aware: from a supercontinent (~10 at 200 Ma) through dispersal (31 today) in the Seton 2012 reconstruction (Morra et al. 2013, EPSL 373; checked) — reconstructions miss small plates; 52 resolved today, 14 large (Bird 2003, PB2002)',
+        detail: `over ${r.last.time} Myr from a supercontinent; ${counts[0]} at the start` });
+    // A BUG GUARD, not an Earth target: runaway fragmentation (plates made faster than they end, e.g. a strip re-founded
+    // every step). 150 is ~3× the 52 that Earth resolves today, which already counts microplates down to ~10⁴ km²
+    // (Bird 2003). No physical history reaches it; a count past it is a loop, not a world.
+    check('no runaway fragmentation (a bug guard)', plates <= 150, `at most ${plates} plates at once (guard 150, ~3× Earth's 52 resolved today)`);
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
     check('it runs in few steps', r.steps < 650, `${r.steps} steps in ${r.last.time} Myr`);
     const kinds = new Set(); for (let w = 0; w < numCells; w++) if (r.last.margin[w]) kinds.add(r.last.margin[w] & Margin.TYPE);

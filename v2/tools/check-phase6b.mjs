@@ -142,7 +142,7 @@ const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {
     report('sea floor older than 250 Myr', ages.map(a => a.over250), { earth: [0, 1], unit: ' %', source: 'rare relics to ≈ 340 Myr, Granot 2016 (Nat. Geosci. 9; abstract checked); holds through the cycle', digits: 1 });
     check('no gaps in any frame', histories.every(h => h.frames.every(f => frameTallies(f).gaps === 0)), 'every frame, every seed');
     report('plates at the end', histories.map(h => movers(h.frames.at(-1)).length), { earth: [10, 52], source: 'through time: 10 at 200 Ma rising to 31 today in the Seton 2012 reconstruction, 18–31 through the Cenozoic (Morra et al. 2013, EPSL 373; checked) — reconstructions miss small plates; 52 resolved today, 14 large (Bird 2003, PB2002)', digits: 0,
-        detail: `at most ${perSeed(h => Math.max(...h.frames.map(f => movers(f).length)))} at once (the engine holds ${cfg.reserved.maxPlates})` });
+        detail: `at most ${perSeed(h => Math.max(...h.frames.map(f => movers(f).length)))} at once` });
 }
 
 section('a plate is carved out of the passive ocean');

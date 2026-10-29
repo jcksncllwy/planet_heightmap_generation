@@ -554,9 +554,10 @@ export const TECTONICS = {
     endingBreakupMyr: [15, 60], // "breaking up": the first rift since it formed is this old (young seas, the pieces still close)
     endingDispersedShare: 0.45, // "dispersed": broken up, the largest landmass holding no more than this of the continental crust
 
-    // ── Reserved for later phases: not read by the engine; kept so the numbers from the research survive (the checks use maxPlates) ──
+    // ── Reserved for later phases: not read by the engine; kept so the numbers from the research survive ──
+    // (maxPlates: 28 is gone, 2026-10-29: it had no source and the engine never read it. Plate count is a report against
+    // Earth's range through time — check-phase6, 6b, 7b — with only a loose bug guard in 7b)
     reserved: {
-        maxPlates: 28,
         minPlateAreaKm2: 1.5e5,           // smaller plates are absorbed by a neighbour
         historyMyr: 600,                  // [WBP] 500–1000 Myr covers nearly all surviving geology
     },
