@@ -12,9 +12,11 @@
 //                                                            plate is captured by its neighbour, as the Farallon plate's
 //                                                            last pieces were by the Pacific: Stock & Lee 1994)
 //   · ocean only, at a convergent seam (a cell of it beneath another plate, or closing on its neighbour faster than a
-//     locked contact, boundaryActiveCmYr), or touching no plate → is given to the passive ocean, its age kept, to be
-//     overridden or subducted in time (captured across a closing seam, slivers kept the India–Asia sea from reading
-//     closed — India never sutured — and hung a young apron off the 'laramide' trench at 40K only)
+//     locked contact, boundaryActiveCmYr) → is given to the passive ocean as before, to be overridden (captured across
+//     a closing seam, pieces kept the India–Asia sea from reading closed — India never sutured — and hung a young apron
+//     off the 'laramide' trench at 40K only)
+//   · ocean only, touching no plate, or a sliver of the lattice (LATTICE_SLIVER_CELLS) → to the passive ocean, its
+//     floor's age kept
 //   · with land, near another plate (fragmentJoinKm)      → joins that plate (a terrane docking, in effect)
 //   · with land, far from every other plate               → stays as it is: land is never deleted
 // Scraps of land (under terraneMinAreaKm2) join quietly, without an event. A plate that has just received a piece is
@@ -24,6 +26,8 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { oceanPlateName } from './birth-ocean-plate.js';      // (a cycle of imports: used only once both have loaded)
+
+const LATTICE_SLIVER_CELLS = 3;      // (a hop count meant as one: lattice jitter, measured 1–3 cells at 40K and at 80K)
 
 /** @returns {number} pieces dealt with */
 export function tidyPlates(world) {
@@ -42,6 +46,10 @@ export function tidyPlates(world) {
         pieces.sort((a, b) => rank(b) - rank(a) || b.cells.length - a.cells.length || b.land - a.land);
         for (const piece of pieces.slice(1)) {
             handled++;
+            // (a sliver of a few cells is the lattice's, not the floor's: two rasters resampled onto one mesh leave them
+            // along every moving edge, at any mesh — to the passive ocean, as ever, but as the floor it is: stamped
+            // pre-history old, these slivers held the sea floor's mean age 10–20 Myr high in the cycle scene)
+            if (piece.land === 0 && piece.cells.length <= LATTICE_SLIVER_CELLS) { giveToBackground(world, plate, background, piece.cells, true); continue; }
             if (piece.land === 0) {
                 if (piece.cells.length * cellAreaKm2 >= config.oceanPlateMinAreaKm2) {
                     const fresh = world.addPlate(oceanPlateName(world));
@@ -54,10 +62,11 @@ export function tidyPlates(world) {
                 }
                 const host = touching(world, plate, piece.cells);
                 if (host === GOING_DOWN) {
-                    // (a sliver at a convergent seam is overridden where it lies: to the passive ocean, as before, which
-                    // keeps the world view whole until the plate above has taken its place — removed outright, the cells
-                    // it showed were a gap for a step — but as the floor it is, not stamped pre-history old)
-                    giveToBackground(world, plate, background, piece.cells, true);
+                    // (a piece at a convergent seam is overridden where it lies: to the passive ocean, exactly as before,
+                    // which keeps the world view whole until the plate above has taken its place — removed outright, the
+                    // cells it showed were a gap for a step. Kept at its own young age there, the 'laramide' slab read
+                    // young and stayed flat 3–5 Myr longer at 80K than at 40K: scale invariance failed)
+                    giveToBackground(world, plate, background, piece.cells);
                     world.budget.scrapsDownCells = (world.budget.scrapsDownCells ?? 0) + piece.cells.length;
                 } else if (host) {
                     // (floor that lands on the host's own crust has gone beneath it: consumed, as at a trench)
