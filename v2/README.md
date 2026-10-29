@@ -1295,6 +1295,84 @@ Still open:
 - In wetter climates 78–81 % of closed basins end in a playa. Most of these are one-cell hollows.
 - Not done: land lakes keeping their depth, and a salt budget.
 
+## Rivers on the plains (2026-10-29, branch rivers)
+
+In the user's 10M frame (seed 831576 at 310 Myr) Add detail's rivers wound across the plains in tangled "termite
+trails". The network is now measured against Earth's, and the finish's causes are fixed.
+
+**Measured** (`tools/lib/river-network.mjs`; `check-phase8b.mjs` 'the network's shape', for the timeline's carve and Add
+detail's rivers at 640K; `render-moment.mjs --network` for any moment and detail). Drainage areas are the land's own
+(km²), so every detail is measured alike:
+- Hack's exponent h, main-stream length ∝ area^h over 10⁴–10⁶ km² (Earth 0.5–0.6: Hack 1957; Rigon et al. 1996);
+- Horton's bifurcation ratio over Strahler orders of channels draining 10⁴ km² (Earth 3–5; Horton 1945, Strahler 1957).
+  A weak test: almost any random branching tree gives 3–5 (Kirchner 1993);
+- the junction angle, each branch read 4 cells up its main stem (Earth ~45° arid to ~72° humid: Seybold, Rothman &
+  Kirchner 2017);
+- sinuosity across the plains (below 300 m), along ÷ straight over 200 km reaches (Earth ≲ 1.5 traced at ~8 km);
+- the rivers' gradient across the plains (Earth 1e-5–1e-4).
+
+**What made the mazes** (seed 831576 at 310 Myr, 640K). 18 % of the low land drained to a cell exactly as high as
+itself. Most of these flats (71 %) were the hydrology's (`finish-hydro.js`): every small hollow the finish itself made
+(a fan damming a valley, a dissected floor, a pit the carve left) was cut through at one level, its floor, and its
+rivers followed the priority flood's ties across the level its water would stand at. On a flat those ties spread
+breadth-first from the outlet, so the rivers were drawn as right-angled mazes and loops round the hollow's rim.
+
+**Now:**
+- **A gorge falls.** It is cut evenly from its start down to the ground it comes out on, never level at its floor. It
+  never goes below that ground and never raises a cell.
+- **A drained hollow is routed down its cut ground.** Its rivers take the steepest way down the ground as it now is, in
+  a priority flood from its outlet, not the way across its old water level. Its cells take its old places in the
+  flood's order, so discharge still gathers upstream first.
+- **Ties on a flat go the short way out.** Every flood in the hydrology breaks ties on a flat by the steps in from the
+  flat's edge. The rivers that cross a playa or a lake basin's dry floor then run toward its outlet (Barnes, Lehman &
+  Mulla 2014). Only the order changes; the levels are as before.
+- **Plains are graded by their load** (`finish-sediment.js`). A reach carries `capacityK` · drainage · slope. Where more
+  comes in, it drops the rest until its bed's slope carries the load: S = Qs / (capacityK · A). That is steep on a fan
+  below the mountains, where the load is heavy and the water little, and gentle down a great river's plain, which
+  gathers the plain's water but little rock. The load comes in `gradeRounds` (2) shares, the water re-routed between
+  them (a priority flood): a river that has built its bed up leaves it for the lower ground beside it (avulsion). The
+  hollows it reaches are filled rather than cut through, and ground already steeper than its load needs is left alone.
+  A closed basin's floor takes all that reaches it; before, a quarter, so mass was not kept. Until now a reach dropped
+  what it could not carry at its own height (at most 0.25 km at once), spread over `fanSpreadKm`. A plain kept the
+  slope, the flats and the hollows it had.
+- **The meander noise is held to the ground's slope** (`finish.js meander`). At full strength (±30 m over ~30 km) it is
+  ~1e-3 steep, ten times a plain's. It now steepens no cell more than the ground itself does, so on a plain it only
+  breaks ties. It acts only at 2.5M and above (its waves are faded below that).
+
+Before → after (main c7ab6ae → this branch). Seed 831576 at 310 Myr, Add detail's rivers:
+
+| Measure (Earth) | 2.5M | 10M |
+|---|---|---|
+| Hack h (0.5–0.6) | 0.59 → 0.58 | 0.59 → 0.56 |
+| Horton R_B (3–5) | 4.66 → 4.91 | 4.50 → 4.62 |
+| junction angle, median (45–72°) | 86° → 80° | 87° → 78° |
+| plains sinuosity, median · 90th percentile (≲ 1.5) | 1.33 · 2.03 → 1.23 · 1.67 | 1.45 · 2.41 → 1.25 · 1.77 |
+| plains gradient, median (1e-5–1e-4) | 1.1e-4 → 1.7e-4 | 5.9e-5 → 1.4e-4 |
+| plains reaches dead flat (< 1e-6) | 37 % → 22 % | 43 % → 22 % |
+
+Phase 8b's history (seed 12345, 600 Myr) at 640K: junctions 83° → 78°, plains gradient 0 → 9.1e-5 (dead flat 12 %),
+sinuosity p90 1.74 → 1.83, R_B 4.87 → 5.57. The timeline's carve is unchanged: h 0.60, R_B 4.46, 71°, p90 1.41,
+6.4e-5. Time: Add detail at 2.5M 57 → 52 s, and at 10M 204 → 208 s (sediment +1.0 s / +4.5 s, the water stage
++0.3 s / −2.4 s; single runs on a shared machine). The history is untouched.
+
+Not changed: the timeline's carve (`carve.js`), whose network was already within Earth's ranges, and the history's
+filled seas (`records.js`), which still rise inland at `plainGrade` 1e-4. Deriving their slope from the sediment as well
+needs each sea's supply in the frame (`sea-fill.js` has it as it runs, but does not record it) and a transport rate
+coefficient with a source. The finish's `capacityK` was set by hand for a load counted per carve, not per Myr.
+
+Still open:
+- The finish's junctions stand at ~78–85°, against the carve's 71° and Earth's 45–72°. Its rivers are routed down the
+  finished heights, where a stream's channel is narrower than a cell. Following the carve's own receivers where they
+  still run downhill did not help: on the finished surface they seldom do.
+- Plains sinuosity stays above 1.5 at the 90th percentile in Add detail (~1.8). The plains keep the tectonic surface's
+  hills, tens of metres high, on ground that falls ~10 m per 100 km, and the plains' little load does not bury them.
+- `check-basins.mjs`: a drawn-down cut-off sea's median water surface at 600 Myr is −1.82 km, against −1.13 km on main
+  (Earth −1.5 to −0.03 km; 300 and 950 Myr −0.85 and −0.38 km, against −0.57 and −0.45). Not traced yet. The likely
+  cause is a closed basin's floor now taking all the load that reaches it, which changes the hypsometry its balance
+  reads.
+- The plains' gradient in Add detail is 1.4–1.7e-4, a little above Earth's 1e-4 (`capacityK` sets it, and it was set by
+  hand).
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
