@@ -1271,8 +1271,9 @@ floor lay below the sea; one above it was breached or filled.
 - **The timeline's estimate** (`terrain/basin-estimate.js`) paints each sub-basin's lake at its own level, as the finish
   does. A cut-off sea counts as wet if any of its sub-basins keeps a lake the map shows. Which sub-basin holds the water
   depends on the mesh's divides; whether there is water at all depends on the sea's whole balance. `basin-agree.mjs`
-  (3 seeds × 4 moments) agrees in sign on 353 of 390 matched seas: 91 % by count and 99 % by area, against 89 % and
-  99 % before.
+  (3 seeds × 4 moments) agrees in sign on 353 of 390 matched seas before the rebase onto `unified`: 91 % by count and
+  99 % by area, against 89 % and 99 % on b71c9a5. After the rebase it agrees on 239 of 284: 84 % by count and 96 % by
+  area, against 84 % and 97 % on main 2c77da7.
 
 | Seed (640K cells) | Land draining to closed basins, 1200 Myr | 600 Myr |
 |---|---|---|
@@ -1287,9 +1288,10 @@ against its catchment's (median 7–9 %; Earth 1–12 %), and the share ending i
 two-sub-basin chain test, 'a hollow's sub-basins, inside out'. The finish costs no extra time: the water stage takes
 0.9–1.3 s, against 1.1–1.9 s before.
 
+The table was measured before the rebase onto `unified`. After it, the suite's endorheic share is 23–31 % across the
+three seeds, within Earth's range. Before the rebase it was 34–41 %.
+
 Still open:
-- At the suite's 160K cells the endorheic share is 34–41 % across the three seeds, above Earth's range. Basins on the
-  supercontinents' dry interiors carry most of it.
 - In wetter climates 78–81 % of closed basins end in a playa. Most of these are one-cell hollows.
 - Not done: land lakes keeping their depth, and a salt budget.
 
