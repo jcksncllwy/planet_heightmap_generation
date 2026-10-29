@@ -1213,6 +1213,40 @@ sim-slots run -n 6 --gb 16 -- node --max-old-space-size=16000 v2/tools/render-mo
 node v2/tools/history.mjs ls                             # every entry; frame --key <key> --time T for any of them
 ```
 
+## One height from the crust (2026-10-28, branch unified)
+
+A continent's height was a fixed number for its kind of crust (`continentKm`, `cratonKm`) plus a saturating lift for
+its thickened root (`isoMaxKm`, `isoScaleKm`), worn on clocks of its own (`thickTauMyr`, `baseReliefTauMyr`). Now every
+continental cell stands where its column floats (`tectonics/measure.js columnModel`, `columnKm`, `crustThicknessKm`):
+- **The column.** Crust of density ρc(1−αT) over a lithosphere whose geotherm runs linearly to the mantle's temperature
+  at its base (McKenzie 1978), on the asthenosphere; anchored on the ridge (Lachenbruch & Morgan 1990), the same column
+  the rifted margins stretch (`margins.js`). Ordinary continent: 35 km crust (`riftCrustKm`, ρ 2.83, Christensen & Mooney
+  1995) on 125 km of lithosphere — 0.22 km; at 39 km, Earth's mean, 0.84 km (Earth's mean land height). Craton: 40 km
+  (`cratonCrustKm`) on a cold 220 km root (`cratonLithKm`), its mantle depleted by `cratonDepletion` 1.1 % (Jordan's
+  isopycnic root; Kaban et al. 2003: 1.1–1.5 %) — 0.86 km. Each km of crust gained or lost moves the ground 0.155 km
+  (0.144 on a craton): the Airy rebound, ~5/6 of the rock worn away given back (Molnar & England 1990).
+- **The record.** `Crust.rootKm` is the crust's departure from its kind's thickness as formed (negative once worn or
+  thinned); the belts' uplift and the start world's swells count as crust by the same slope. Island arcs keep their own
+  isostasy (`arcSurfaceKm`), their belt thickening at a quarter share; an arc welded to a continent, or a margin isle
+  merged into it, is reworked to at least an ordinary continent's 35 km (`heights.js arcToContinentRootKm`).
+- **One clock.** The whole height — column, belts, swells — wears together: `reliefTauMyr` at 2 km × the latitude's rain,
+  slower as H/2 km below that (no floor now: the rock worn off a surface H high goes as H², Montgomery & Brandon 2002),
+  and the column's share thins the crust (÷ its slope). A shield's basement wears `carveCratonHardness` slower (the
+  carving's own constant; crystalline rock is the least erodible, Stock & Montgomery 1999). The shield's step at its edge
+  line is the local difference of the two columns (`records.js shieldKm`), not a fixed offset.
+- **Filled seas.** A sea its rivers filled — or whose last tens of metres the mantle's swell lifted above the sea — is
+  land drawn as the delta and alluvial plain its rivers grade (`plainGrade` 1e-4: the lower Mississippi, Saucier 1994;
+  Paola et al. 1992; Parker et al. 1998): rising inland from the shore, no bedrock relief on it, no shelf but its delta
+  front. A sea read as sea while its floor stood above the sea had drawn a shelf and slope down from its coast: a moat
+  round an island (seed 831576, 310 Myr, 2°S 43°W, −38/−87 m; now land at 95–166 m), and islets across a channel
+  (41–50°N, 95–112°E; now a plain at 50–150 m).
+
+Probe (seed 12345, cycle scene, 1200 Myr; main → this branch): land share 28–30 % both; mean land height 1.12–1.56 →
+0.85–1.38 km; craton median 0.39–0.79 → 0.58–0.87 km from 400 Myr; crust mean 38 → 40–43 km; craton crust 41 → 37–38 km;
+thickest crust 55–86 km. History 190 → 188 s, terrain 26.9 → 26.7 s over 13 frames. New Phase 13 reports ("heights from
+the crust (branch unified)"): late-dispersal land mean, craton median, crust means and the thickest, old orogens'
+e-folding, freeboard's change through the cycle.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

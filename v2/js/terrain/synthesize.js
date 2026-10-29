@@ -592,7 +592,10 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 const before = platform;
                 shieldS = smooth(-cfg.cratonBlendKm, cfg.cratonBlendKm, crN) * whole;
                 // the shield's platform over the line: the corners' own share of it replaced by the line's
-                platform += (w0 * shieldKm[c0] + w1 * shieldKm[c1] + w2 * shieldKm[c2]) * (shieldS - cells);
+                // (each craton corner's own step taken off by its own share — its neighbours' steps are measured from the
+                // other side of the edge, records.js shieldKm — and the line's added where it runs)
+                const ownStep = lw > 0 ? (n0 * craton[c0] * shieldKm[c0] + n1 * craton[c1] * shieldKm[c1] + n2 * craton[c2] * shieldKm[c2]) / lw : 0;
+                platform += (w0 * shieldKm[c0] + w1 * shieldKm[c1] + w2 * shieldKm[c2]) * shieldS - ownStep;
                 rimFade = 1 - whole * smooth(cfg.cratonRimInKm, cfg.cratonRimOutKm, crN);
                 // the foreland: the shield bent down under the ranges' weight (terrain/cratons.js: summed over its plate's loads
                 // as a stiff plate bends — deepest before the thrusts on its rim, rising to a low forebulge), across the edge line
