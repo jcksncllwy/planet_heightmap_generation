@@ -147,7 +147,9 @@ section('cratons across a whole planet (600 Myr)');
     // (the drift of phase 9 renews the fine detail in 150) — nine samples against the 10 %, the frames from the same history)
     const planet = (seed, t) => {
         const { frames } = run('history', 600, null, seed), F = nearestFrame(frames, t), tm = tm640;
-        const T = synthesizeTerrain(F, mesh, tm, { seed, carve: true }), T0 = synthesizeTerrain(F, mesh, tm, { seed, carve: true, cfg: terrainConfig({ cratonCharacter: 0 }) });
+        const T = synthesizeTerrain(F, mesh, tm, { seed, carve: true });
+        // (without the cratons' characters: only at 600 Myr, for the listing — the check reads T)
+        const T0 = t === 600 ? synthesizeTerrain(F, mesh, tm, { seed, carve: true, cfg: terrainConfig({ cratonCharacter: 0 }) }) : null;
         const cellOf = t => T.sampler.cells[3 * t];
         // depth into the craton on the sim grid (for "well inside")
         const din = new Float32Array(n).fill(Infinity);
@@ -182,10 +184,10 @@ section('cratons across a whole planet (600 Myr)');
             const b = det > 0 ? (cvv * cuh - cuv * cvh) / det : 0, c = det > 0 ? (cuu * cvh - cuv * cuh) / det : 0;
             return Math.sqrt(Math.max(0, chh - b * cuh - c * cvh));                                  // the residual about the plane
         };
-        const sd = stdIn(T), sd0 = stdIn(T0), withC = [], without = [], low = [];
+        const sd = stdIn(T), sd0 = T0 ? stdIn(T0) : () => NaN, withC = [], without = [], low = [];
         for (let w = 0; w < n; w++) {
             if (!isLand(F, w)) continue;
-            if (isC(F, w) && din[w] > 200) { const a = sd(w), b = sd0(w); if (a === a && b === b) { withC.push(a); without.push(b); } }
+            if (isC(F, w) && din[w] > 200) { const a = sd(w); if (a === a) { withC.push(a); if (T0) { const b = sd0(w); if (b === b) without.push(b); } } }
             else if (!isC(F, w) && !F.oroType[w] && !F.prevType[w]) { const a = sd(w); if (a === a && T.rec.platformKm[w] < 0.6) low.push(a); }
         }
         return { seed, t, rc: median(withC), r0: median(without), rl: median(low), spread, meds };
@@ -200,7 +202,7 @@ section('cratons across a whole planet (600 Myr)');
     // a metre either way (58 vs 57 m) is the noise of which cells fall in the sample, not a difference in the ground
     const ratio = medianOf(samples.map(x => x.rc / x.rl));
     check('cratons are no rougher than ordinary lowland (within 10 %)', ratio <= 1.1,
-        `craton relief ÷ lowland relief ${ratio.toFixed(2)}× (median of ${samples.length}: ${PLANET_SEEDS.length} planets at 400, 500, 600 Myr) — relief within ~250 km about its regional plane, well inside cratons (without their characters) against ordinary lowland: ${eachT(x => `${(1000 * x.rc).toFixed(0)} m (${(1000 * x.r0).toFixed(0)} m) against ${(1000 * x.rl).toFixed(0)} m`)}`);
+        `craton relief ÷ lowland relief ${ratio.toFixed(2)}× (median of ${samples.length}: ${PLANET_SEEDS.length} planets at 400, 500, 600 Myr) — relief within ~250 km about its regional plane, well inside cratons (at 600 Myr also without their characters) against ordinary lowland: ${eachT(x => `${(1000 * x.rc).toFixed(0)} m${x.t === 600 ? ` (${(1000 * x.r0).toFixed(0)} m)` : ''} against ${(1000 * x.rl).toFixed(0)} m`)}`);
     report('craton relief ÷ lowland relief (400 · 500 · 600 Myr per planet)', samples.map(x => x.rc / x.rl), { digits: 2, unit: '×', source: 'shields are low-relief' });
 }
 
