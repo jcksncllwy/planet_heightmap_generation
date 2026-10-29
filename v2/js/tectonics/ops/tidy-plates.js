@@ -5,9 +5,6 @@
 // there is no land); every other piece
 //   · ocean only, a plate's worth (oceanPlateMinAreaKm2)  → becomes a plate of its own, moving on as it was (it used to go
 //                                                            to the passive ocean and come back as a plate when that retired)
-//   · ocean only, going down at its own trench            → is consumed: a sliver of the slab cut off there has gone down
-//                                                            (given to the overriding plate, it hung a young apron off its
-//                                                            trench and steepened the 'laramide' slab early at 40K only)
 //   · ocean only, touching another plate                  → joins the plate it touches most, its floor's age kept (branch
 //                                                            founders, 2026-10-29: handed to the passive ocean, which never
 //                                                            moves, it only aged — no trench could reach it — and was
@@ -98,20 +95,24 @@ export function tidyPlates(world) {
 
 /**
  * The live plate (not the passive ocean) that a piece of `plate` borders along the most world cells — the one its
- * cells lie against, so the piece joins it as one piece — or null if it borders none.
+ * cells lie against, so the piece joins it as one piece — or null if it borders none; GOING_DOWN if the piece is
+ * going down: a cell of it shown at a trench where it subducts or caught in a collision, or none of it shown at all (it
+ * lies beneath its neighbours, as a microplate gone down does: ocean-plates.js)
  */
 const GOING_DOWN = Symbol('going down');
 function touching(world, plate, cells) {
     const { mesh, plates, owner, boundaryKind } = world, { adjOffset, adjList, xyz, index } = mesh, P = [0, 0, 0], contact = new Map();
+    let shown = false;
     for (const c of cells) {
         plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
         const w = index.nearest(P[0], P[1], P[2]);
-        if (owner[w] === plate.id && boundaryKind[w] === BoundaryKind.SUBDUCTING) return GOING_DOWN;
+        if (owner[w] === plate.id) { shown = true; if (boundaryKind[w] === BoundaryKind.SUBDUCTING || boundaryKind[w] === BoundaryKind.COLLISION) return GOING_DOWN; }
         for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
             const o = owner[adjList[k]];
             if (o >= 0 && o !== plate.id && plates[o].alive && !plates[o].isBackground) contact.set(o, (contact.get(o) ?? 0) + 1);
         }
     }
+    if (!shown) return GOING_DOWN;
     let host = -1, most = 0;
     for (const [o, n] of contact) if (n > most || (n === most && o < host)) { most = n; host = o; }
     return host >= 0 ? plates[host] : null;
