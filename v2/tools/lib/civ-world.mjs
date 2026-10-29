@@ -36,7 +36,7 @@ export async function worldOf(seed, simMesh, opts) {
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
     const frame = await frameOf(seed, opts);
     const pool = await TerrainPool.create(simMesh);
-    const fin = await finishPlanet({ frame, simMesh, seed, cells, pool, closePool: true, debug: true, onStage: () => {} });
+    const fin = await finishPlanet({ frame, simMesh, seed, cells, pool, closePool: true, debug: true, onStage: () => {}, civ: true });
     const cc = fin.climate.cell, m = fin.mesh;
     const w = { seed, time, frame, mesh: { numCells: m.numCells, xyz: m.xyz, adjOffset: m.adjOffset, adjList: m.adjList },
         z: fin.z, ocean: fin.ocean, lake: fin.lake, lakeLevel: fin.lakeLevel, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,

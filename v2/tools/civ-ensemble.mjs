@@ -37,7 +37,7 @@ async function pageWorld({ seed, cont, time }) {
     const file = path.join(CACHE, `page-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k-${worldCode()}.bin`);
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (CROP_KEYS.every(k => w.crops?.[k]) && w.flow) { w.mesh = meshFromArrays(w.mesh); return w; } }   // (an older cache, without the crops' climate or the winds: built again)
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
-    const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true });
+    const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true, civ: true });
     const w = civWorldFromFinish(fin);
     const { mesh } = w;
     fs.mkdirSync(CACHE, { recursive: true });

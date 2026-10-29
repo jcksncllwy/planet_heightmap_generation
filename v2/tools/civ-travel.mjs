@@ -27,7 +27,7 @@ async function travelWorld({ seed, cont, time }) {
     const file = path.join(OUT, 'cache', `travel-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k-${worldCode()}.bin`);
     if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
-    const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true });
+    const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true, civ: true });
     const w = civWorldFromFinish(fin), { mesh } = w;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, v8.serialize({ ...w, mesh: { numCells: mesh.numCells, xyz: mesh.xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList } }));

@@ -23,8 +23,6 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
-import { PeopleService, peopleColor, drawCentres, drawTowns, peopleLegendHTML, peopleLines, yearsWords, townUnder, townAt, townCardHTML, latLonOf, addPeople, foodColor, foodLegendHTML, foodLines, landColor, landLegendHTML, landLines, TRAVEL_SHOWS, travelColor, travelLegendHTML, travelLines } from './people-view.js';
-import { STEP_YEARS } from '../civ/civ-page.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -176,18 +174,25 @@ let glinting = false, glintFrom = null;
 let lines = null, linesKey = null;      // the GPU's overlay: the grid and a climate layer's arrows, drawn again only when they change
 const PALETTE_KEY = 'orogen.evolution.palette';
 const storedPalette = (() => { try { return localStorage.getItem(PALETTE_KEY); } catch { return null; } })();
-const SETTLEMENTS_KEY = 'orogen.evolution.settlements';
+const SETTLEMENTS_KEY = 'orogen.evolution.settlements', CIV_KEY = 'orogen.evolution.civ';
 const view = { layer: 'terrain', palette: PALETTES[storedPalette] ? storedPalette : 'relief', mode: 'globe', grid: true, gridStep: 15, centerLon: 0, season: 'year', finished: true,
-    water: true, riverQ: 40, byRegime: false,
+    water: true, riverQ: 40, byRegime: false,                         // (rivers and lakes on finished moments: the density's threshold, m³/s; coloured by regime)
+    civ: (() => { try { return localStorage.getItem(CIV_KEY) === '1'; } catch { return false; } })(),               // (the People switch: off by default)
     settlements: (() => { try { return localStorage.getItem(SETTLEMENTS_KEY) === '1'; } catch { return false; } })(),   // (the towns over any map)
     town: null };                                                     // (the town clicked: {lat, lon}, followed through the people's frames)
-/** Whether the people's towns and timeline are shown: on the People layer, or Settlements on over another. */
-const settlementsShown = () => view.layer === 'people' || (view.settlements && view.layer !== 'plates');                      // (rivers and lakes on finished moments: the density's threshold, m³/s; coloured by regime)
+/** Whether the people's towns and timeline are shown: People on, and on the People layer or Settlements on over another. */
+const settlementsShown = () => view.civ && (view.layer === 'people' || (view.settlements && view.layer !== 'plates'));
 const climate = new ClimateService();   // the climate, on request, for the moment shown (climate-view.js)
 const finisher = new FinishService();   // the Finish step, on request, for the moment shown (finish-view.js)
-const peopler = new PeopleService();    // the People layer, on request, for the detailed moment (people-view.js)
+// The People layer (the civ layer, v2/js/civ/): off unless the View panel's People switch is on. Its code is loaded when
+// it is turned on, and Add detail builds its world only then (finish.js's civ option).
+let PV = null, peopler = null, civLoading = null;   // (people-view.js and civ-page.js's STEP_YEARS; its worker, on request)
+const loadCiv = () => (civLoading ??= Promise.all([import('./people-view.js'), import('../civ/civ-page.js')]).then(([pv, cp]) => {
+    PV = { ...pv, STEP_YEARS: cp.STEP_YEARS }; peopler = new pv.PeopleService();
+}));
+const peopleOption = $('mobileViewSwitch').querySelector('option[value="people"]');     // (taken out of the phone's list while People is off)
 // (the People layer's own timeline: the frame shown — years BP every 500 years — and its playback)
-const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, a food (people-view.js FOOD_SHOWS) or a craft's days to travel (TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
+const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, a food (people-view.js FOOD_SHOWS) or a craft's days to travel (PV.TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
 // (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
 // ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
@@ -554,7 +559,7 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in TRAVEL_SHOWS, food = P?.food && !land && !trip && peopleView.show !== 'people' ? peopleView.show : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in PV.TRAVEL_SHOWS, food = P?.food && !land && !trip && peopleView.show !== 'people' ? peopleView.show : null;
     // (the settlements: on the People layer, or over any other with Settlements on — the people worked out on request)
     const S = settlementsShown() ? fin.people : null;
     if (settlementsShown() && !fin.people) runPeople(fin);
@@ -562,25 +567,25 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes: water || view.layer === 'satellite',
-        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? landColor(P, pf, t.width, lut) : trip ? travelColor(P, travelShown(P), t.width, lut) : food ? foodColor(P, food, t.width, lut) : peopleColor(P, pf, t.width, lut)) : null });
+        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? PV.landColor(P, pf, t.width, lut) : trip ? PV.travelColor(P, travelShown(P), t.width, lut) : food ? PV.foodColor(P, food, t.width, lut) : PV.peopleColor(P, pf, t.width, lut)) : null });
     if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
     t.ctx.putImageData(t.image, 0, 0);
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
     // (the rivers' lines on the Terrain view; from space they are ground, not lines — the Satellite view draws none)
     if (water && view.layer === 'terrain' && fin.rivers) { const k = t.width / MAP_WIDTH * (MAP_WIDTH / 2048); t.ctx.save(); t.ctx.scale(k, k); drawRivers(t.ctx, riverPaths(fin, view.riverQ), view.byRegime); t.ctx.restore(); }
-    if (S) { const k = t.width / 2048; t.ctx.save(); t.ctx.scale(k, k); drawCentres(t.ctx, S, S.bp[pf]); drawTowns(t.ctx, S, pf, view.town); t.ctx.restore(); }
+    if (S) { const k = t.width / 2048; t.ctx.save(); t.ctx.scale(k, k); PV.drawCentres(t.ctx, S, S.bp[pf]); PV.drawTowns(t.ctx, S, pf, view.town); t.ctx.restore(); }
     drawLines(t, C);
     show(t);
     painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
     const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (land ? `land|${frame.time}|${pf}` : trip ? `trip|${frame.time}|${peopleView.show}|${peopleView.month}|${travelShown(P)?.from}|${peopleView.travelNote}` : food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
-    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? landLegendHTML(P, pf) : trip ? travelLegendHTML(peopleView.show, peopleView.month, travelShown(P), peopleView.travelNote) : food ? foodLegendHTML(food) : peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
+    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? PV.landLegendHTML(P, pf) : trip ? PV.travelLegendHTML(peopleView.show, peopleView.month, travelShown(P), peopleView.travelNote) : food ? PV.foodLegendHTML(food) : PV.peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
     if (S) {
         $('peopleSlider').max = S.bp.length - 1; $('peopleSlider').value = pf;
         // (the year, and on another layer than People — whose legend says it — the towns and states then)
         let towns = 0, states = 0;
         const T = S.towns[pf];
         if (T) for (let i = 0; i < T.length; i += 5) { towns++; if (T[i + 3] & 4) states++; }
-        $('peopleLabel').textContent = yearsWords(S.bp[pf]) + (P || !T ? '' : ` · ${towns.toLocaleString()} towns${states ? ` · ${states} state${states > 1 ? 's' : ''}` : ''}`);
+        $('peopleLabel').textContent = PV.yearsWords(S.bp[pf]) + (P || !T ? '' : ` · ${towns.toLocaleString()} towns${states ? ` · ${states} state${states > 1 ? 's' : ''}` : ''}`);
     } else if (settlementsShown()) $('peopleLabel').textContent = fin.peopleJob ? `Working out the people… ${Math.round(100 * fin.peopleJob.share)}%` : fin.peopleNote ?? '';
     showTownCard(S, pf);
     updateClimateUi();
@@ -616,7 +621,7 @@ async function finishMoment(again = null) {
         // holds its copies of the meshes, and a phone closes a tab at well under 2 GB — and the finishing worker let go after
         // unless its mesh takes long to build again)
         if (SMALL_DEVICE) b.player?.rest();
-        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions(), poolSize: SMALL_DEVICE ? 3 : null },
+        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions(), poolSize: SMALL_DEVICE ? 3 : null, civ: view.civ },
             { onStage, onProgress, keep: !SMALL_DEVICE && cells >= 2.5e6 });
         if (B !== b) return;
         const secs = (performance.now() - started) / 1000;
@@ -657,6 +662,7 @@ async function runPeople(fin) {
     fin.peopleJob = { share: 0 };
     updateClimateUi();
     try {
+        await loadCiv();
         fin.people = await peopler.run(fin.civ, MAP_WIDTH, share => { if (fin.peopleJob) { fin.peopleJob.share = share; updateClimateUi(); } });
         console.info(`[evolution] people: ${(fin.people.ms / 1000).toFixed(1)} s in the worker on ${fin.people.cells.toLocaleString()} cells, ${((performance.now() - started) / 1000).toFixed(1)} s in all; ${fin.people.centres.length} domestication centres`);
     } catch (err) {
@@ -737,7 +743,7 @@ function updateCard() {
     const peopleOk = !!(frame && b?.finishes.get(frame)?.civ);
     document.querySelector('#mapTabs [data-layer="people"]').classList.toggle('locked', !peopleOk);
     $('settlementsToggle').classList.toggle('locked', !peopleOk);
-    $('mobileViewSwitch').querySelector('option[value="people"]').textContent = peopleOk ? 'People' : 'People 🔒';
+    peopleOption.textContent = peopleOk ? 'People' : 'People 🔒';
     const legend = $('regimeLegend');
     legend.hidden = !(view.byRegime && view.water && view.layer === 'terrain' && isDet);
     if (!legend.childElementCount) legend.innerHTML = REGIME_STYLE.map(s => `<span><i style="background:${s.rgb}"></i>${s.name}</span>`).join('');
@@ -867,7 +873,7 @@ function updateClimateUi() {
     } else if (frame && settlementsShown() && !fin?.people) {
         const fjob = b.finishJob, what = view.layer === 'people' ? 'People come' : 'Settlements come';
         if (!fin) { text = fjob ? `Adding detail to ${fjob.frame.time.toFixed(0)} Myr…` : `${what} with detail — add detail to ${t} Myr to see its ${view.layer === 'people' ? 'people' : 'towns'}`; act = fjob ? null : 'Add detail'; }
-        else if (!fin.civ) text = 'This detailed moment has no world for people — add detail to it again';
+        else if (!fin.civ) { text = `This moment was detailed with People off — add detail to it again to see its ${view.layer === 'people' ? 'people' : 'towns'}`; act = b.finishJob ? null : 'Add detail again'; }
         else if (fin.peopleNote) text = fin.peopleNote;
         else {
             text = `Working out its people, 70 000 years of them… ${Math.round(100 * (fin.peopleJob?.share ?? 0))}%`;
@@ -1027,7 +1033,7 @@ $('peoplePlay').addEventListener('click', () => setPeoplePlaying(!peopleView.pla
 // …and go on past its last year: a generation at a time, or on and on (the slider following the newest year)
 $('peopleStep').addEventListener('click', () => { setPeoplePlaying(false); livePeopleOn(1); });
 $('peopleRun').addEventListener('click', () => setPeopleRunOn(!peopleView.runOn));
-$('peopleShow').addEventListener('change', e => { peopleView.show = e.target.value; e.target.classList.toggle('active', peopleView.show !== 'people'); $('peopleMonth').hidden = !(peopleView.show in TRAVEL_SHOWS); travelTo(); dirty = true; });
+$('peopleShow').addEventListener('change', e => { peopleView.show = e.target.value; e.target.classList.toggle('active', peopleView.show !== 'people'); $('peopleMonth').hidden = !(peopleView.show in PV.TRAVEL_SHOWS); travelTo(); dirty = true; });
 $('peopleMonth').addEventListener('change', e => { peopleView.month = Number(e.target.value); travelTo(); dirty = true; });
 /** The Travel view's days, if they are for the people shown, its craft and month (or null). */
 function travelShown(P) {
@@ -1038,11 +1044,11 @@ function travelShown(P) {
  *  month, worked out in the people's worker on the run's own world. */
 async function travelTo(lat, lon) {
     const fin = painted && finishedShown(painted), P = fin?.people, show = peopleView.show, month = peopleView.month;
-    if (!P || !(show in TRAVEL_SHOWS)) return;
+    if (!P || !(show in PV.TRAVEL_SHOWS)) return;
     if (lat === undefined) { if (!peopleView.travel || travelShown(P)) return; [lat, lon] = peopleView.travel.from; }
     peopleView.travelNote = 'Working out the days…'; dirty = true;
     try {
-        const r = await peopler.travel(P.id, TRAVEL_SHOWS[show], month, lat, lon);
+        const r = await peopler.travel(P.id, PV.TRAVEL_SHOWS[show], month, lat, lon);
         peopleView.travel = { P, show, month, days: r.days, from: r.from }; peopleView.travelNote = null;
     } catch (err) {
         peopleView.travelNote = `Could not work out the days: ${String(err.message).split('\n')[0]}`;
@@ -1063,7 +1069,7 @@ async function livePeopleOn(steps) {
     peopleView.busy = true; $('peopleStep').disabled = true;
     const atEnd = peopleFrame(P) >= P.bp.length - 1;
     try {
-        addPeople(P, await peopler.more(P.id, P.bp[P.bp.length - 1] - steps * STEP_YEARS, STEP_YEARS));
+        PV.addPeople(P, await peopler.more(P.id, P.bp[P.bp.length - 1] - steps * PV.STEP_YEARS, PV.STEP_YEARS));
         if (atEnd) peopleView.f = P.bp.length - 1;                // (following the newest year, unless scrubbed back)
         dirty = true;
     } catch (err) {
@@ -1093,11 +1099,28 @@ function setSettlements(on) {
 $('settlementsToggle').addEventListener('click', () => setSettlements(!view.settlements));
 $('settlementsToggle').setAttribute('aria-pressed', String(view.settlements));
 $('peopleBar').hidden = !settlementsShown();
+// ── the People switch (View panel): the civ layer on or off. Off, Add detail builds no world for people and the People
+// tab, Settlements and the people's timeline are hidden; turned on over a moment detailed without it, the moment is
+// detailed again on request (the chip says so) ──
+function setCiv(on) {
+    view.civ = on; dirty = true;
+    try { localStorage.setItem(CIV_KEY, on ? '1' : '0'); } catch { /* (remembered only where the browser allows) */ }
+    $('chkCiv').checked = on;
+    document.querySelector('#mapTabs [data-layer="people"]').hidden = $('settlementsToggle').hidden = !on;
+    if (on) $('mobileViewSwitch').querySelector('option[value="plates"]').after(peopleOption); else peopleOption.remove();
+    if (!on && view.layer === 'people') setLayer('terrain');
+    if (on) loadCiv().then(() => { dirty = true; updateClimateUi(); });
+    $('peopleBar').hidden = !settlementsShown();
+    if (!settlementsShown()) { setPeoplePlaying(false); setPeopleRunOn(false); closeTownCard(); }
+    updateClimateUi();
+}
+$('chkCiv').addEventListener('change', e => setCiv(e.target.checked));
+setCiv(view.civ);
 /** The town under a click, if the settlements are shown: its card, followed through the frames. */
 function pickTown(e) {
     const fin = painted && finishedShown(painted), S = settlementsShown() ? fin?.people : null, p = S ? placeUnder(e) : null;
     if (!p) return;
-    const f = peopleFrame(S), i = townUnder(S, f, p[0], p[1], 5);
+    const f = peopleFrame(S), i = PV.townUnder(S, f, p[0], p[1], 5);
     if (i < 0) { closeTownCard(); return; }
     view.town = { lat: S.towns[f][i], lon: S.towns[f][i + 1] };
     dirty = true;
@@ -1112,9 +1135,9 @@ $('townClose').addEventListener('click', closeTownCard);
 /** The card of the town clicked, at frame f: the town standing nearest where it was (within 40 km) — or what became of it. */
 function showTownCard(S, f) {
     if (!view.town || !S) { $('townCard').hidden = true; return; }
-    const i = townAt(S, f, view.town.lat, view.town.lon, 40), key = `${f}|${i}`;
+    const i = PV.townAt(S, f, view.town.lat, view.town.lon, 40), key = `${f}|${i}`;
     if ($('townBody').dataset.key !== key) {
-        $('townBody').innerHTML = i >= 0 ? townCardHTML(S, f, i) : `<div class="evo-town-head"><b>No town here</b></div><div class="evo-town-sub">${yearsWords(S.bp[f])} — none of 2,500 people or more within 40 km</div>`;
+        $('townBody').innerHTML = i >= 0 ? PV.townCardHTML(S, f, i) : `<div class="evo-town-head"><b>No town here</b></div><div class="evo-town-sub">${PV.yearsWords(S.bp[f])} — none of 2,500 people or more within 40 km</div>`;
         $('townBody').dataset.key = key;
     }
     $('townCard').hidden = false;
@@ -1187,9 +1210,9 @@ function readout(e) {
     if (setting) lines.push(`<span class="hi-label">Setting</span> ${setting}`);
     // the climate, where this moment has one: its Köppen class, temperature and rain
     const C = climateOf(f);
-    if (settlementsShown() && fin?.people && view.layer === 'people' && peopleView.show in TRAVEL_SHOWS) lines.push(...travelLines(fin.people, travelShown(fin.people), p[0], p[1]));
-    else if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
-        : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? foodLines(fin.people, p[0], p[1]) : peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
+    if (settlementsShown() && fin?.people && view.layer === 'people' && peopleView.show in PV.TRAVEL_SHOWS) lines.push(...travelLines(fin.people, travelShown(fin.people), p[0], p[1]));
+    else if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? PV.landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
+        : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? PV.foodLines(fin.people, p[0], p[1]) : PV.peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
     else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));
     ui.hover.innerHTML = lines.join('<br>');
@@ -1205,7 +1228,7 @@ for (const el of [ui.canvas, ui.map]) {
     });
     el.addEventListener('pointerup', e => {
         // (a click or a tap, not a drag: a town under it opens its card)
-        if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) <= 5) { if (view.layer === 'people' && peopleView.show in TRAVEL_SHOWS) pickTravel(e); else pickTown(e); }
+        if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) <= 5) { if (view.layer === 'people' && peopleView.show in PV.TRAVEL_SHOWS) pickTravel(e); else pickTown(e); }
         if (e.pointerType !== 'mouse' && down) readout(e);
         down = null;
     });

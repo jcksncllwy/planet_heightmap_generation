@@ -9,7 +9,8 @@
 //              {w, h, heightM, ocean, water}, rivers (finish-hydro.js), climate (the moment's own, at its detail: the
 //              grid's fields, climate-fields.js, and raster {w, h, koppen, tAnnual (°C × 100), pAnnual (mm), stats} — the land's
 //              climate, at most 4096 px wide), stats, ms} · {type: 'error', id, message}
-// With 'done' also goes civ: the moment's world for the civ layer (v2/js/civ/civ-page.js; small, on its own coarser mesh).
+// civ (in, optional): the People switch. With it on, 'done' also carries civ: the moment's world for the civ layer
+// (v2/js/civ/civ-page.js; small, on its own coarser mesh); off, none of the civ layer is loaded or run.
 
 import { finishPlanet, finishRaster } from './finish.js';
 import { climateTransfers } from '../evolution/climate-fields.js';
@@ -17,23 +18,22 @@ import { TerrainPool } from '../terrain/terrain-pool.js';
 import { keepOnlyTerrainMesh } from '../terrain/terrain-mesh.js';
 import { meshFromArrays } from '../core/sim-mesh.js';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
-import { civWorldFromFinish } from '../civ/civ-page.js';
 
 let sim = null, simCells = 0, delaunatorSet = false;
 
 self.onmessage = async ({ data }) => {
     if (data.type !== 'finish') return;
-    const { id, frame, seed, cells, width, poolSize = null, climateOptions = {} } = data;
+    const { id, frame, seed, cells, width, poolSize = null, climateOptions = {}, civ: wantCiv = false } = data;
     try {
         if (!delaunatorSet) { setDelaunator((await import(data.delaunatorUrl)).default); delaunatorSet = true; }
         if (!sim || simCells !== data.simMesh.numCells) { sim = meshFromArrays(data.simMesh); simCells = data.simMesh.numCells; }
         keepOnlyTerrainMesh(cells);                                   // (another detail's mesh goes: one fine mesh at a time)
         const pool = await TerrainPool.create(sim, poolSize);
-        const out = await finishPlanet({ frame, simMesh: sim, seed, cells, pool, closePool: true, climateOptions, onStage: stage => self.postMessage({ type: 'stage', id, stage }) });
+        const out = await finishPlanet({ frame, simMesh: sim, seed, cells, pool, closePool: true, climateOptions, civ: wantCiv, onStage: stage => self.postMessage({ type: 'stage', id, stage }) });
         self.postMessage({ type: 'stage', id, stage: 'picture' });
         const t0 = performance.now();
         let civ = null;
-        try { const w = civWorldFromFinish(out); civ = { ...w, mesh: { numCells: w.mesh.numCells, xyz: w.mesh.xyz, adjOffset: w.mesh.adjOffset, adjList: w.mesh.adjList } }; }
+        if (wantCiv) try { const w = (await import('../civ/civ-page.js')).civWorldFromFinish(out); civ = { ...w, mesh: { numCells: w.mesh.numCells, xyz: w.mesh.xyz, adjOffset: w.mesh.adjOffset, adjList: w.mesh.adjList } }; }
         catch (err) { console.warn('[finish] no world for the civ layer:', err); }
         const raster = finishRaster(out.mesh, out.z, out.ocean, width, share => self.postMessage({ type: 'progress', id, share }), out.lake, out.lakeLevel, out.climate.cell);
         out.ms.picture = performance.now() - t0;
@@ -48,4 +48,3 @@ self.onmessage = async ({ data }) => {
         self.postMessage({ type: 'error', id, message: err?.stack ?? String(err) });
     }
 };
-

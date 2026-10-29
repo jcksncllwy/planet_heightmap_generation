@@ -23,8 +23,6 @@ import { planetClimate } from '../climate/climate.js';
 import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
 import { pageClimate } from '../evolution/climate-fields.js';
 import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
-import { vectorCollector } from '../civ/disease.js';
-import { cropCollector } from '../civ/crops.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { worldOcean } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
@@ -58,7 +56,7 @@ export async function finishPlanet(o) {
     try { return await finishStages(o); } finally { if (o.closePool && !o.pool.closed) o.pool.terminate(); }
 }
 
-async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {} }) {
+async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {}, civ = false }) {
     const ms = {}, stats = {};
     let t0 = performance.now();
     const lap = name => { const t = performance.now(); ms[name] = t - t0; t0 = t; };
@@ -100,10 +98,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const circ = res.stages.circulation, year = (a, m = -1) => { const o = new Float32Array(G); for (let g = 0; g < G; g++) { if (m >= 0) o[g] = a[m * G + g]; else { let s = 0; for (let k = 0; k < 12; k++) s += a[k * G + g]; o[g] = s / 12; } } return o; };
     const waveIn = { u: circ.u, v: circ.v, ice: res.stages.temperature?.seaIce ?? null, eady: res.stages.rain?.eady ?? null, anchors: res.anchorMonths };      // (the coast's waves)
     const wind = { year: [year(circ.u), year(circ.v)], jan: [year(circ.u, 0), year(circ.v, 0)], jul: [year(circ.u, 6), year(circ.v, 6)] };
-    // (for the civ layer's travel, v2/js/civ/routes.js: the winds and the surface currents by month, m/s, on the climate's
-    // grid — the year's currents each month where the ocean has no seasons, calm where it was not run)
-    const oc = res.stages.ocean, curOf = k => oc?.monthly?.[k] ?? (oc?.[k] ? Float32Array.from({ length: 12 * G }, (_, i) => oc[k][i % G]) : new Float32Array(12 * G));
-    const travelFlow = { w: res.grid.w, h: res.grid.h, windU: Float32Array.from(circ.u), windV: Float32Array.from(circ.v), curU: Float32Array.from(curOf('u')), curV: Float32Array.from(curOf('v')) };
+    // (civ: the civ layer's own fields gathered too — v2/js/civ/civ-finish.js, loaded only then; the People switch)
+    const CF = civ ? await import('../civ/civ-finish.js') : null, travelFlow = CF?.travelFlow(res.grid, circ, res.stages.ocean);
     const climGrid = { w: res.grid.w, h: res.grid.h }, warmSl = new Float32Array(n);
     for (let c = 0; c < n; c++) warmSl[c] = bilinear(climGrid, warmG, lat[c], lon[c]);
     // (the months each place's rain passes a share of its evaporation, or it freezes — the rivers' seasons)
@@ -258,11 +254,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // mean land height)
     const relief = COVER.fullLapse ? (1 - CORE_DEFAULTS.terrainRelief) * gamma : 0, hLand = gridClimate.surface.meanLandKm, T12c = new Float64Array(12);
     // (and its measures beyond Köppen — cell-stats.js, one byte each — from the climate's own twelve months)
-    const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true }), vectors = vectorCollector(n), crops = cropCollector(n, c => lat[c] * Math.PI / 180);
+    const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true });
+    const civCells = CF?.civCollector(n, c => lat[c] * Math.PI / 180);
     const cellsClimate = cellClimate(gridClimate, mesh.xyz, C.z, land, {}, (c, T12, P12) => {
         cellStats.add(c, T12, P12);
-        vectors.add(c, T12, P12);
-        crops.add(c, T12, P12);
+        civCells?.add(c, T12, P12);
         let T = T12;
         if (relief) {
             corners(climGrid, lat[c], lon[c], bi, bw);
@@ -293,7 +289,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
-        civ: { ice: I.ice, loess: W.loess, erg: W.erg, vector: vectors.vector, crops: crops.crops, flow: travelFlow },              // (for the civ layer: v2/js/civ/civ-page.js)
+        civ: civ ? { ice: I.ice, loess: W.loess, erg: W.erg, ...civCells.fields, flow: travelFlow } : null,              // (for the civ layer: v2/js/civ/civ-page.js)
         layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal } : null };
 }
 
