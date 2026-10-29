@@ -456,12 +456,17 @@ export function founderWithinPlates(world, dt) {
                         const t = adjList[k];
                         if (!mask[t] || !coast[t] || type[t] !== CrustType.OCEAN || !(flags[t] & CrustFlag.TRENCH)) continue;
                         const wt = worldOf(t);
-                        if (owner[wt] !== P.id || boundaryKind[wt] !== BoundaryKind.OVERRIDING) continue;     // (a live trench: its slab pulls)
+                        // (a live trench: its slab pulls — or one armed lately against the young plate it peeled off, whose
+                        // slab is still getting going and which converges too slowly yet to read as overriding: the same
+                        // founderSlabMyr that keeps that plate from capture, ocean-plates.js)
+                        if (owner[wt] !== P.id) continue;
+                        const live = boundaryKind[wt] === BoundaryKind.OVERRIDING;
                         for (let j = adjOffset[wt]; j < adjOffset[wt + 1]; j++) {
                             const nb = adjList[j], o = owner[nb];
                             if (o < 0 || o === P.id) continue;
                             const L = plates[o];
                             if (!L.alive || L.isBackground || L.reshaped || L.crust.type[ownerCell[nb]] !== CrustType.OCEAN) continue;
+                            if (!live && !(L.isOceanBorn && time - L.born < config.founderSlabMyr)) continue;
                             lowers.set(o, (lowers.get(o) ?? 0) + 1); hit = true;
                         }
                         if (hit) mature = Math.max(mature, Math.min(1, P.crust.slabKm[t] / config.slabMatureKm));
@@ -482,8 +487,11 @@ export function founderWithinPlates(world, dt) {
                 const n = stepsAhead(config, edgeKm, urge, dt, world.rngMarginFounder);
                 if (!n) continue;
                 const fromSet = new Set(from), walk = run.filter(c => fromSet.has(c) || !sinking.has(c));
-                const ahead = layersAlong(mesh, walk, from, n - 1).flat(), strip = stripOf(ahead).cells;
+                const ahead = layersAlong(mesh, walk, from, n - 1).flat(), { cells: strip, depth } = stripOf(ahead);
                 if (!strip.length) continue;
+                // (an invading trench's first stretch is a plate of its own: like a nucleus, it needs floor deep enough
+                // behind it to hang a slab from — else the tear waits for more of the margin to go)
+                if (!anchors.length && depth < slabHops) { tally('invasionNarrow'); continue; }
                 const take = withStranded(world, P, strip);
                 if (!anchors.length && !Number.isFinite(config.oceanPlateMinAreaKm2)) continue;   // (a scene's: no plate may be born)
                 let L = null;

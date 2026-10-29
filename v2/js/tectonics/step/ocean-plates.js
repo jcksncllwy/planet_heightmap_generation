@@ -76,6 +76,19 @@ export function captureMicroplates(world) {
             continue;
         }
         if (!P.alive || P.isBackground || P.reshaped || P.crust.count === 0 || P.stats.continentalCells > 0 || P.crust.count >= limit) continue;
+        // (a small ocean plate showing nowhere in the world view lies wholly beneath its neighbours: it has gone down,
+        // and no neighbour touches it to capture it — it ends, as one gone down to the last cell; ocean only)
+        let shown = false;
+        for (let w = 0; w < numCells && !shown; w++) if (owner[w] === P.id) shown = true;
+        if (!shown) {                                                  // (continentalCells counts every crust but ocean: 0 here)
+            let gone = 0;
+            for (let c = 0; c < P.crust.mask.length; c++) if (P.crust.mask[c]) { P.crust.remove(c); gone++; }
+            world.budget.consumed += gone;                             // (consumed, as at a trench: resolve.js)
+            P.dirty = true;
+            endPlate(plates, P); captured++;
+            world.log(EventKind.MICROPLATE, `${P.name} has gone down beneath its neighbours`, { plate: P.id, host: -1, areaMkm2: 0, consumed: true });
+            continue;
+        }
         // the neighbour along the most of its boundary (the world view: P is not reshaped this step) — unless P is going down
         // a trench there: then it is pulled by its own slab, not carried by a neighbour, and is consumed where it goes down
         // (the last of a sealed sea's floor under its shore: subduction-init.js). A plate that has stopped going down is
