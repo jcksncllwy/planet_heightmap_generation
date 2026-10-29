@@ -237,7 +237,7 @@ function treeScratch(n, m) {
 
 /**
  * @param {Object} mesh
- * @param {Float32Array} z        heights (km); raised in place where a closed basin's floor is levelled (a playa)
+ * @param {Float32Array} z        heights (km)
  * @param {Float32Array} runoff   runoff per cell (mm/year)
  * @param {Float32Array} pet      potential evaporation (mm/year)
  * @param {Float32Array} rain     rain (mm/year)
@@ -332,16 +332,12 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {
         // (base), never cut below it, and one reaching a lake to the lake's level: rivers ending in a closed basin aggrade
         // toward its lake (the Basin and Range's valleys hold kilometres of their rivers' fill: Saltus & Jachens 1995). Until
         // 2026-10-28 they were graded to the floor of the one lake drawn, and the carve took dry plains round it 300 m below
-        // sea level. Each lake's water where its balance holds it: a terminal lake's floor levelled at its level
-        // (a playa, a salt lake — a sea cut off from the ocean that keeps a lake the map can show stays as deep as it is
-        // under it); a lake full to its sill, spilling on into the sub-basin below, keeps its floor
+        // sea level. Each lake's water where its balance holds it, over its floor as it is (lane rivers2, 2026-10-29: until
+        // then a terminal lake's floor was levelled at its level, z = the lake's, exactly at its balance — the hydrology's
+        // own balance on the finished surface, a hair different, then often found it full, breached it, and left the dead
+        // level floor dry: rivers crossed it in straight lines converging on its outlet; the hydrology draws the water)
         for (const c of L.cells) { sink[c] = 1; base[c] = z[c]; tectonic[c] = 1; }
-        for (const W of S.lakes) {
-            let deep = Infinity;
-            for (const c of W.cells) if (z[c] < deep) deep = z[c];
-            const keepDeep = W.full || (deep < 0 && shows(W));
-            for (const c of W.cells) { if (!keepDeep && z[c] < W.level) { z[c] = W.level; levelled++; } base[c] = W.level; water[c] = W.level; }
-        }
+        for (const W of S.lakes) for (const c of W.cells) { base[c] = W.level; water[c] = W.level; }
         basins++;
         return 0;
     }
