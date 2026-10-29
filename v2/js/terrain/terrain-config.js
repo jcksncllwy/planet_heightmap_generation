@@ -173,8 +173,11 @@ export const TERRAIN = {
     // columnModel; riftCrustKm… above). A craton's column (Archean–Proterozoic shields):
     cratonCrustKm: 40,          // its crust as formed (shields and platforms ~40–43 km, about the continents' mean: Christensen &
                                 // Mooney 1995; Archean crust somewhat thinner, Durrheim & Mooney 1991 — recalled)…
-    cratonLithKm: 220,          // …its lithosphere, cold and thick (Archean–Proterozoic roots 200–220 km: Artemieva & Mooney 2001,
-                                // as Kaban et al. 2003 take them)…
+    cratonLithKm: 250,          // …its lithosphere, cold and thick: Archean roots 200–220 km under the southern cratons, 250–350
+                                // under Baltica, Siberia and the Canadian shield (Artemieva & Mooney 2001, JGR 106: 16387) —
+                                // their middle (branch unified-swell: 220, the southern figure Kaban et al. 2003 take, stood a
+                                // 40 km shield 0.86 km high, Earth's ~0.4–0.6 with 40–45 km of crust; the cold root's weight is
+                                // what holds a thick crust low: Zoback & Mooney 2003, Int. Geol. Rev. 45: 95)…
     cratonDepletion: 0.011,     // …its mantle less dense than fertile mantle at the same temperature by this share — melt
                                 // depletion: 1.1–1.5 % on average over the root, 1.7–2.5 % at most in its Archean cores (Kaban et
                                 // al. 2003, EPSL 209: 53–69; the root's cold outweighs it a little): the low end, their mean

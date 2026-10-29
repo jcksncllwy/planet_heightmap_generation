@@ -19,7 +19,9 @@ import { buildHeights } from './heights.js';
 export function beltWidthKm(kind, workKm, rateCmYr, config) {
     const b = config.belts[kind];
     const speed = Math.min(config.beltSpeedFactorMax, Math.max(config.beltSpeedFactorMin, (Math.max(0, rateCmYr) / config.beltSpeedRefCmYr) ** config.beltSpeedExponent));
-    return Math.min(b.maxKm, b.baseKm + b.perKm * workKm) * speed;
+    // (the cap is the widest belt of its kind on Earth: fast convergence widens a belt toward it, never past it — applied
+    // before the speed factor, a Laramide belt reached 2,880 km inland, the Laramide's ~1,000–1,500: branch unified-swell)
+    return Math.min(b.maxKm, (b.baseKm + b.perKm * workKm) * speed);
 }
 
 /**

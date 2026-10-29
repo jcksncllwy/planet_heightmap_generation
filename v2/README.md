@@ -491,8 +491,9 @@ the shield's rim, and the upper plate's front where it is thrust under it (`unde
 one; a plateau's back on an upper plate stands on its own root, so only its crests load the block, and the front there
 stays steep;
 scraps of craton inside a range read as the range; and each craton has a character — a shallow sag basin, a broad swell
-or a flat shield (`cratonCharacter`; a swell or sag is the mantle's, so it rises over `cratonSwellFlankKm` in from the
-edge, not over a share of the shield) — with a faint grain of domes and keels. Trapped pockets of
+or a flat shield (`cratonCharacter`; a swell or sag is the mantle's — which, and how strong, follows the mantle's heat
+under the shield since branch unified-swell — so it rises over `cratonSwellFlankKm` in from the edge, not over a share of
+the shield) — with a faint grain of domes and keels. Trapped pockets of
 ocean crust smaller than `pocketSeaKm2` are lowland, and a margin's kind (so its shelf width) holds along
 `coastKindKm` of its coast. **Passive margins mature** (2026-10-15, `marginMatureMyr`): a passive coast's age is the
 oldest ocean floor beside it (the floor that formed as it broke away), or less where its own belt was active since; its
@@ -1222,8 +1223,8 @@ continental cell stands where its column floats (`tectonics/measure.js columnMod
   at its base (McKenzie 1978), on the asthenosphere; anchored on the ridge (Lachenbruch & Morgan 1990), the same column
   the rifted margins stretch (`margins.js`). Ordinary continent: 35 km crust (`riftCrustKm`, ρ 2.83, Christensen & Mooney
   1995) on 125 km of lithosphere — 0.22 km; at 39 km, Earth's mean, 0.84 km (Earth's mean land height). Craton: 40 km
-  (`cratonCrustKm`) on a cold 220 km root (`cratonLithKm`), its mantle depleted by `cratonDepletion` 1.1 % (Jordan's
-  isopycnic root; Kaban et al. 2003: 1.1–1.5 %) — 0.86 km. Each km of crust gained or lost moves the ground 0.155 km
+  (`cratonCrustKm`) on a cold 250 km root (`cratonLithKm`; 220 until branch unified-swell), its mantle depleted by
+  `cratonDepletion` 1.1 % (Jordan's isopycnic root; Kaban et al. 2003: 1.1–1.5 %) — 0.51 km. Each km of crust gained or lost moves the ground 0.155 km
   (0.144 on a craton): the Airy rebound, ~5/6 of the rock worn away given back (Molnar & England 1990).
 - **The record.** `Crust.rootKm` is the crust's departure from its kind's thickness as formed (negative once worn or
   thinned); the belts' uplift and the start world's swells count as crust by the same slope. Island arcs keep their own
@@ -1372,6 +1373,37 @@ Still open:
   reads.
 - The plains' gradient in Add detail is 1.4–1.7e-4, a little above Earth's 1e-4 (`capacityK` sets it, and it was set by
   hand).
+
+## The history's land stands on the mantle's swell (2026-10-29, branch unified-swell)
+
+Follow-ups to "One height from the crust".
+- **One land, history and terrain.** The history's rivers decided land and filled seas without the mantle's swell, the
+  terrain with it, so they disagreed on what was land (unified's choices 6–8). Now `step/rivers.js` asks
+  `terrain/sea-level.js landAndSea` on the world's own view of the crust: continental crust and arcs, seas filled up,
+  and a filled sea the swell holds above the sea are land, and the sea's level is reckoned with them, as
+  `records.js deriveRecords` does for a frame. The rivers route over heights against the sea with the swell in (it
+  tilts the land and its rivers: DiCaprio et al. 2009), and cross filled plains to the real shore; a plain is
+  sediment, so it is neither cut nor counted as rock worn. An enclosed sea fills to the sea's level over the swell and
+  a delta top 1 m above it (`step/sea-fill.js`), so a filled sea is land to both. Sediment standing above the sea once
+  the swell counts, late dispersal: 3.3–5.3 → 1.4–2.9 Mkm³ (the rest is floor the swell lifted after it filled).
+- **The swell, smoothed cheaply.** `smoothHeat` gathers the heat onto clusters ~250 km apart (Wendland's C2 kernel,
+  Shepard-normalised), smooths their graph and carries the field back the same way: within ~5 m rms of an exact
+  Gaussian, as the mesh's own passes are, at 4 ms (40K) and 17 ms (160K) a call against 29 ms and 0.4 s. The terrain
+  uses it too.
+- **Cratons by their mantle.** A craton's swell or sag follows the heat under it (warm: a swell, as the Kalahari on the
+  African superswell; cool: a sag, as the Congo basin over a downwelling), no longer drawn at random; with no swell
+  (`mantleSwellKm` 0) shields are flat. Their roots are 250 km (Artemieva & Mooney 2001: 200–350 km): a cold, thick
+  root is what holds a thick crust low (Zoback & Mooney 2003).
+- **Speed caps count keels.** A plate is held to the continental caps by its continental and craton crust
+  (`keelCells`), not island arc: an intra-oceanic arc strip had counted continental and broke the cap at its oceanic
+  parent's speed (`steerBackArcStrips`).
+- **Belts within Earth's widest.** A belt's width is capped at its kind's widest after the convergence-speed factor,
+  not before (a Laramide belt had reached 2,880 km inland).
+- **The Mantle swell slider** (Phase 8a) now re-runs the history.
+
+Still high: the land. Half the late-dispersal land had a belt within 100 Myr, and 72 % of the continental crust was
+deformed within 240 Myr against Earth's ~33 % (Müller et al. 2019; a new Phase 13 report): the land is high because too
+much of it is a belt, not because a column stands too high — how many margins and collisions a continent meets.
 
 ## Conventions
 

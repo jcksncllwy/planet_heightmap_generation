@@ -121,7 +121,7 @@ export function arcSurfaceKm(crustKm, quietMyr) {
 // crust, ~39 km, 0.84 km — Earth's mean land height. Each km of crust more lifts it (ρm − ρc)(1 − α Tm Hc / a) ÷ ρa ≈
 // 0.155 km — so a km of rock worn off the top lowers the ground by only ~1/6 of it: the rest comes back as rebound (Airy;
 // Molnar & England 1990, Nature 346: 29–34).
-// A craton is a thicker crust (cratonCrustKm) on a thick, cold root (cratonLithKm, 200–220 km: Artemieva & Mooney
+// A craton is a thicker crust (cratonCrustKm) on a thick, cold root (cratonLithKm, 200–350 km: Artemieva & Mooney
 // 2001) that is chemically depleted — less dense than fertile mantle at the same temperature by cratonDepletion
 // (1.1–1.5 % on average, Kaban et al. 2003, EPSL 209: 53–69; Jordan 1978's isopycnic hypothesis would have it cancel the
 // root's cold, Kaban et al. find the cold wins a little). Its cold weighs it down, its depletion buoys it up: what is left

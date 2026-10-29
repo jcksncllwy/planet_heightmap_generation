@@ -139,8 +139,10 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         // over the frames from 100 Myr (the start's ranges are pre-history)
         {
             const all = [], cra = [];
+            let deformed = 0, compressed = 0;           // (branch unified-swell: crust a belt or a rift worked within 240 Myr)
             for (let w = 0; w < n; w++) {
                 if (!cont[w]) continue;
+                if (f.oroType[w] && f.time - f.oroLast[w] < 240) { deformed++; if (f.oroType[w] !== OrogenyType.RIFT) compressed++; }
                 const k = crustThicknessKm(TERRAIN, f.type[w], f.rootKm[w], f.upliftKm[w], f.baseKm[w]);
                 all.push(k); if (f.type[w] === CrustType.CRATON) cra.push(k);
                 if (f.time >= 100 && f.oroType[w] && f.oroType[w] !== OrogenyType.ARC && f.oroType[w] !== OrogenyType.RIFT) {
@@ -149,7 +151,8 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
                 }
             }
             all.sort((a, b) => a - b);
-            heights.push({ time: f.time, stage: stageOf(f), crust: all.reduce((x, y) => x + y, 0) / Math.max(1, all.length), crustCraton: cra.reduce((x, y) => x + y, 0) / Math.max(1, cra.length), crustTop: all[Math.floor(0.999 * (all.length - 1))] ?? NaN });
+            heights.push({ time: f.time, stage: stageOf(f), crust: all.reduce((x, y) => x + y, 0) / Math.max(1, all.length), crustCraton: cra.reduce((x, y) => x + y, 0) / Math.max(1, cra.length), crustTop: all[Math.floor(0.999 * (all.length - 1))] ?? NaN,
+                deformed: deformed / Math.max(1, all.length), compressed: compressed / Math.max(1, all.length) });
         }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
@@ -304,7 +307,7 @@ section('heights from the crust (branch unified)');
     const H = (r, k, from = 300) => r.heights.filter(x => x.time >= from && Number.isFinite(x[k]));
     const meanH = (r, k, stage, from) => { const a = H(r, k, from).filter(x => !stage || x.stage === stage).map(x => x[k]); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; };
     report('land: mean height above the sea, late dispersal', rows.map(r => meanH(r, 'land', 'late dispersal', 100)), { earth: [0.75, 0.95], unit: ' km', digits: 2,
-        source: 'Earth\'s land ~840 m on average (ETOPO hypsometry; Cogley 1984 — recalled) — today only: the late-dispersal frames',
+        source: 'Earth\'s land 797 m on average (ETOPO-era, 2012), 840 m in Kossinna\'s 1921 hypsometry (the compilation in arXiv 1810.08658, on the mass of the atmosphere) — today only: the late-dispersal frames',
         detail: txt(r => `by stage ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => meanH(r, 'land', st, 100).toFixed(2)).join(' / ')} km`) });
     report('cratons: median height above the sea', rows.map(r => meanH(r, 'craton', null, 300)), { earth: [0.4, 0.6], unit: ' km', digits: 2,
         source: 'shields stand ~400–600 m (their freeboard: a thick crust on a cold, depleted root — Jordan 1978; Kaban et al. 2003) — holds through the cycle; frames from 300 Myr' });
@@ -331,6 +334,12 @@ section('heights from the crust (branch unified)');
     report('freeboard: the continents\' mean height, 900–1200 Myr less 300–600 Myr', rows.map(r => { const a = H(r, 'freeboard', 300).filter(x => x.time <= 600), b = H(r, 'freeboard', 900); const m = v => v.reduce((x, y) => x + y.freeboard, 0) / Math.max(1, v.length); return m(b) - m(a); }),
         { earth: [-0.2, 0.2], unit: ' km', digits: 2, source: 'continental freeboard constant within ~±200 m since the late Archean (Flament et al. 2008, EPSL 275; Wise 1974)',
             detail: txt(r => `${H(r, 'freeboard', 300).filter((x, i) => i % 15 === 0).map(x => `${x.time}: ${x.freeboard.toFixed(2)}`).join(', ')} km`) });
+    // (branch unified-swell) how much of the continents the belts and rifts work: the share of continental crust deformed
+    // within the last 240 Myr — a rate, through the cycle; most of the land's height above Earth's is the belts' (half the
+    // late-dispersal land had a belt within 100 Myr)
+    report('continental crust deformed within 240 Myr (belts and rifts)', rows.map(r => 100 * meanH(r, 'deformed', null, 300)), { earth: [25, 40], unit: ' %', digits: 0,
+        source: 'about a third of the continental crust deformed since 240 Ma, ~65 % of it by extension (Müller et al. 2019, Tectonics 38: 1884, a deformable plate model) — frames from 300 Myr',
+        detail: txt(r => `of it compression (belts): ${(100 * meanH(r, 'compressed', null, 300)).toFixed(0)} % of the crust (Earth ~12 %)`) });
 }
 
 section('the crust over the history');
