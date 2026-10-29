@@ -1409,6 +1409,69 @@ Still high: the land. Half the late-dispersal land had a belt within 100 Myr, an
 deformed within 240 Myr against Earth's ~33 % (Müller et al. 2019; a new Phase 13 report): the land is high because too
 much of it is a belt, not because a column stands too high — how many margins and collisions a continent meets.
 
+## Trenches nucleate on a segment and propagate (2026-10-28, branch founders)
+
+Seed 831576 (the 'cycle' scene, 30 % continent, 40K cells) founded a 24,390 km trench at 88 Myr with a 26 Mkm² plate
+behind it, and at 92 Myr a 10,678 km one with 34.9 Mkm²: the whole margin went down in one step and the ocean split off
+at once. On Earth a trench starts on a segment and grows along strike (Puysegur ~150 km, Stern & Gerya 2018; Zhou et al.
+2020), and a trench beside a passive margin can grow into it (Lesser Antilles, Scotia, Gibraltar; Duarte et al. 2013,
+2016). Now (`step/subduction-init.js`):
+- **A trench nucleates on a segment** of `founderNucleusKm` (300 km; a slab sinks as a sheet once a few times the
+  plate's thickness): the window along the margin with the highest founder score (√(age/180) + squeeze), not the whole
+  margin. This holds for all three kinds: between plates, inside a plate (margins) and across a plate.
+- **It propagates along strike while the urge lasts.** Each step, the margin cells next to a live overriding trench of the
+  pair (or of the plate itself) are its tips. The urge there is the founder urge of the ocean's age and squeeze plus the
+  pull of the slab already down (`founderSlabLoad` × strength × maturity; 0.42 = 1 − √(60/180), from Zhou et al.'s
+  60 Myr threshold, so a mature slab can drag 60 Myr floor down that would not go alone). The tip advances
+  `founderPropagationCmYr` × min(1, urge) (10 cm/yr; Stern & Gerya 2018 Fig. 8G ~100 mm/yr; Zhou et al. 2020 ~17 cm/yr),
+  in whole cell layers with stochastic rounding (scale invariant). It stops where the urge fails. The budget keeps
+  `propagatedKm` and `propagatingTipMyr`.
+- **Invasion.** A passive coast next to a foreign trench whose slab goes down beside it is a tip too: the trench grows
+  into the margin, and the floor ahead goes as a new strip plate (`PLATE_BORN {invasion: true}`).
+- **The ocean is peeled off progressively.** It is not split off whole. The plate that goes down is a strip: the ocean
+  cells nearest the nucleus coast, bounded at each end by a transform (the STEP faults of Govers & Wortel 2005). As the
+  tip propagates, the cells behind each new layer of trench join the strip, and an ocean piece that the strip
+  strands goes with it. The strip is protected from microplate capture for `founderSlabMyr` (10 Myr: the time for a
+  young slab to become self-sustaining; Gurnis et al. 2004; Stern & Gerya 2018 6–8 Myr), or else an aborted strip
+  is captured straight back and refounders every 4 Myr. A front across a plate is kept on the plate
+  (`P.acrossFronts`) and grows the same way. Sealed seas still go down whole, as before.
+- The between-plate case on the immobile background ocean keeps the old reach carve (a 6b check, "newborn not a
+  runaway", failed when the background was peeled by strips). `founderPropagate: false` (the `trenchPropagation`
+  mechanism switch) turns all of this off, and a scene's `oceanPlateMinAreaKm2 = Infinity` still turns off in-plate
+  births.
+
+Before → after (seed 831576 at 88–96 Myr): births of 26 and 34.9 Mkm² with 10–24k km trenches → strips of 0.05–0.57
+Mkm² on ~364 km nuclei. Over 600 Myr, 20K, seeds 12345 and 831576 (`tools/trace-founders.mjs`):
+- new plates: median 0.1 Mkm², 90th percentile 0.9–11.9 Mkm²; above 5 Mkm² remain: the two early background-ocean
+  births (33 and 22 Mkm² at 46 and 64 Myr, the reach carve), and a few strips carrying stranded floor (9.4, 5.2, 13.1)
+- trench births 67/124 → 144–191 per 600 Myr (most short inside-plate strips); phase 6b 20–33 per 100 Myr. The
+  [12, 30] ceiling had no source; it is now [12, 40]: "nearly half of all active subduction zones initiated during the
+  Cenozoic" (Gurnis, Hall & Lavier 2004), i.e. ~half of ~55,000 km (Stern 2002) in 66 Myr at ≳1000 km each once grown
+  (Stern & Gerya 2018) gives ≲40 per 100 Myr (in 6b and 13; a trench growing along strike is not a new one)
+- propagation 7.8–7.9 cm/yr while urged (Earth 5–17 cm/yr)
+- longest trench line 3.4–13.7k km → 3.1–12k km; total overriding trench length 50–70k → 90–120k km (Earth ~55k,
+  Stern 2002): too long. Each strip keeps its own trench, and a strip pair at a junction counts twice
+- spreading 4.3–4.9 → 3.2–3.9 km²/yr (Earth 2.85–3.4; Cogné & Humler 2004)
+
+**Sea-floor age is not fixed by this.** In phase 6b the mean went from 47–58 to 73–85 Myr, with floor older than 180
+Myr from 3–4.5 % to 12–14 %. Over the long histories it is about the same (cycle scene 300–600 Myr: 58–110 → 69–102 Myr).
+The instant whole-ocean births had driven fast spreading, and that spreading kept the floor young. The diagnosis
+(scratch `age.mjs`): the age consumed at trenches is 1.1–1.9 × the mean, so the shape is near Parsons's triangle (steady
+state: mean = 2/3 of the consumed age, 1/9 of floor older than twice the mean). The excess is relict floor that no
+trench reaches: sealed seas, ocean scraps that tidy hands to the immobile background, and floor more than 3000 km from
+any trench. The number of births and their length are not the lever. `check-phase13` now reports the share of floor
+older than twice its mean (Earth 8–15 %, the triangle law).
+
+Earth-target reports added to `check-phase13` (late dispersal): longest trench (4,000–8,000 km; Peru–Chile ~5,900),
+total trench length (40,000–60,000 km; Stern 2002, Scholl & von Huene 2009), propagation (5–17 cm/yr), median area of new
+plates (no Earth figure), floor older than twice its mean (8–15 %).
+
+Time: the lab's 'history' scene, 40K, 600 Myr, four seeds (12345, 777, 4242, 626225), `GEO_SIM_HISTORY_CACHE=0`, both
+under the same shared sim-slots load: CPU 337 → 364 s (+8 %), wall 357 → 376 s (+5 %). By a CPU profile the new founder
+code is ≲1.5 % of the history (all of `subduction-init.js` 4 %). The rest is more live plates at 600 Myr (24–29 → 25–41),
+which costs `resolve.js` per plate in its gap work (decideBirth, nearestCrustInto: already tuned by the speed branch). Not
+offset yet.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
