@@ -1246,6 +1246,51 @@ Probe (seed 12345, cycle scene, 1200 Myr; main → this branch): land share 28�
 thickest crust 55–86 km. History 190 → 188 s, terrain 26.9 → 26.7 s over 13 frames. New Phase 13 reports ("heights from
 the crust (branch unified)"): late-dispersal land mean, craton median, crust means and the thickest, old orogens'
 e-folding, freeboard's change through the cycle.
+## Closed basins at any height (2026-10-28, branch lakes)
+
+A basin is closed where its rivers cannot fill it to its rim, whatever its height: above sea level or below it, the
+same water balance decides (`finish/finish-basins.js` `hollowLakes`). Until now a land hollow was closed only when its
+floor lay below the sea; one above it was breached or filled.
+
+- **Inside out.** A hollow's sub-basins form a tree: the cells sorted by height, joined by union–find, each join a sill
+  (the depression hierarchy of Barnes et al. 2020, ESurf 8: 431; fill–spill–merge, Barnes, Callaghan & Wickert 2021,
+  ESurf 9: 105). Each sub-basin keeps the water that reaches its own cells. A sub-basin whose inflow Q is at least its
+  open-water loss E when full fills to its sill and spills its surplus Q − E into the sub-basin it spills into. One
+  with Q < E stands at the level where the two balance: a terminal lake, or a playa when that lake is too small to
+  show. So Kara-Bogaz-Gol stands lower than the Caspian on the Caspian's overflow alone, and the Bonneville/Lahontan
+  chains fill in turn. A sub-basin under `basinMinKm2` passes its water on. A hollow that fills right to its rim is open,
+  and its rivers carry its surplus downstream (`finish-hydro.js`).
+- **Exactly the balanced lakes are drawn.** Each sub-basin's lake is the set of cells its balance wets, at its own level.
+  The rest of a closed hollow stays dry: a playa or a salt flat.
+- **Base level.** Rivers never cut below their base level. That is the sea, a lake's balanced level, or, in a closed
+  basin, the ground where the river enters it. The carve clamps at base + 2 m. A closed basin is a depositional sink:
+  its rivers aggrade toward its lake. Until now the carve graded such rivers to the floor of the one lake drawn. In
+  the user's history (seed 831576 at 310 Myr, 44–47°N, 97–101°E) that took 29 500 km² of dry plain to −723 m, and the
+  world ocean flooded it as sea fingers. Now none of that box is below sea level, and 12 000 km² of it holds lakes.
+- **The timeline's estimate** (`terrain/basin-estimate.js`) paints each sub-basin's lake at its own level, as the finish
+  does. A cut-off sea counts as wet if any of its sub-basins keeps a lake the map shows. Which sub-basin holds the water
+  depends on the mesh's divides; whether there is water at all depends on the sea's whole balance. `basin-agree.mjs`
+  (3 seeds × 4 moments) agrees in sign on 353 of 390 matched seas: 91 % by count and 99 % by area, against 89 % and
+  99 % before.
+
+| Seed (640K cells) | Land draining to closed basins, 1200 Myr | 600 Myr |
+|---|---|---|
+| 831576 | 12.2 % → 23.6 % | 8.8 % → 24.4 % |
+| 626225 | 9.4 % → 29.0 % | 21.3 % → 41.0 % |
+| 799224 | 3.5 % → 16.2 % | — → 25.0 % |
+
+Earth: ~20 % of the continents today (Wang et al. 2018, Nat. Geosci. 11: 926).
+
+`check-basins.mjs` has a new section, 'closed basins on land'. It reports the endorheic share, a closed lake's area
+against its catchment's (median 7–9 %; Earth 1–12 %), and the share ending in a playa, split by aridity. It also has a
+two-sub-basin chain test, 'a hollow's sub-basins, inside out'. The finish costs no extra time: the water stage takes
+0.9–1.3 s, against 1.1–1.9 s before.
+
+Still open:
+- At the suite's 160K cells the endorheic share is 34–41 % across the three seeds, above Earth's range. Basins on the
+  supercontinents' dry interiors carry most of it.
+- In wetter climates 78–81 % of closed basins end in a playa. Most of these are one-cell hollows.
+- Not done: land lakes keeping their depth, and a salt budget.
 
 ## Conventions
 
