@@ -1440,21 +1440,31 @@ at once. On Earth a trench starts on a segment and grows along strike (Puysegur 
   mechanism switch) turns all of this off, and a scene's `oceanPlateMinAreaKm2 = Infinity` still turns off in-plate
   births.
 
+- **A young strip grows from its trench, and small hidden plates end.** A trench armed lately against the strip it
+  peeled off converges too slowly at first to read as overriding. For `founderSlabMyr` it still counts as a live tip for
+  that strip, so the strip grows rather than the margin founding a new plate at every draw. An invading trench's first
+  stretch needs floor as deep as a nucleus's (`subductionInitSlabKm`) to hang a slab from. A small ocean plate showing
+  nowhere in the world view lies wholly beneath its neighbours: its crust is consumed and it ends
+  (`ocean-plates.js captureMicroplates`). Without these, the 7b history held 42 plates (room for 28); with them, 24–28.
+
 Before → after (seed 831576 at 88–96 Myr): births of 26 and 34.9 Mkm² with 10–24k km trenches → strips of 0.05–0.57
 Mkm² on ~364 km nuclei. Over 600 Myr, 20K, seeds 12345 and 831576 (`tools/trace-founders.mjs`):
-- new plates: median 0.1 Mkm², 90th percentile 0.9–11.9 Mkm²; above 5 Mkm² remain: the two early background-ocean
-  births (33 and 22 Mkm² at 46 and 64 Myr, the reach carve), and a few strips carrying stranded floor (9.4, 5.2, 13.1)
-- trench births 67/124 → 144–191 per 600 Myr (most short inside-plate strips); phase 6b 20–33 per 100 Myr. The
-  [12, 30] ceiling had no source; it is now [12, 40]: "nearly half of all active subduction zones initiated during the
-  Cenozoic" (Gurnis, Hall & Lavier 2004), i.e. ~half of ~55,000 km (Stern 2002) in 66 Myr at ≳1000 km each once grown
-  (Stern & Gerya 2018) gives ≲40 per 100 Myr (in 6b and 13; a trench growing along strike is not a new one)
-- propagation 7.8–7.9 cm/yr while urged (Earth 5–17 cm/yr)
-- longest trench line 3.4–13.7k km → 3.1–12k km; total overriding trench length 50–70k → 90–120k km (Earth ~55k,
-  Stern 2002): too long. Each strip keeps its own trench, and a strip pair at a junction counts twice
+- new plates: 212–231 (63–70 of them invasions), median 0.1 Mkm², 90th percentile 1.1–1.6 Mkm². Births above 5 Mkm²
+  remain: the two early background-ocean births on 831576 (33 and 22 Mkm² at 46 and 64 Myr, the reach carve), and
+  strips carrying their full width of floor or stranded pieces (5–18 Mkm², mostly invasions)
+- subduction initiations 67/124 → 152/163 per 600 Myr (most of them short inside-plate strips); phase 6b 20–33 per
+  100 Myr. The [12, 30] ceiling had no source; it is now [12, 40]: "nearly half of all active subduction zones
+  initiated during the Cenozoic" (Gurnis, Hall & Lavier 2004), i.e. ~half of ~55,000 km (Stern 2002) in 66 Myr at
+  ≳1000 km each once grown (Stern & Gerya 2018) gives ≲40 per 100 Myr (in 6b and 13; a trench growing along strike is
+  not a new one)
+- propagation 7.7–7.8 cm/yr while urged (Earth 5–17 cm/yr)
+- longest trench line after 100 Myr 2.9–6.7k km (Peru–Chile ~5,900); total overriding trench length 38–78k →
+  72–115k km (Earth ~55k, Stern 2002): too long. Each strip keeps its own trench, and a strip pair at a
+  junction counts twice
 - spreading 4.3–4.9 → 3.2–3.9 km²/yr (Earth 2.85–3.4; Cogné & Humler 2004)
 
 **Sea-floor age is not fixed by this.** In phase 6b the mean went from 47–58 to 73–85 Myr, with floor older than 180
-Myr from 3–4.5 % to 12–14 %. Over the long histories it is about the same (cycle scene 300–600 Myr: 58–110 → 69–102 Myr).
+Myr from 3–4.5 % to 12–14 %. Over the long histories it is about the same (cycle scene 300–600 Myr: 58–110 → 70–112 Myr).
 The instant whole-ocean births had driven fast spreading, and that spreading kept the floor young. The diagnosis
 (scratch `age.mjs`): the age consumed at trenches is 1.1–1.9 × the mean, so the shape is near Parsons's triangle (steady
 state: mean = 2/3 of the consumed age, 1/9 of floor older than twice the mean). The excess is relict floor that no
@@ -1466,11 +1476,11 @@ Earth-target reports added to `check-phase13` (late dispersal): longest trench (
 total trench length (40,000–60,000 km; Stern 2002, Scholl & von Huene 2009), propagation (5–17 cm/yr), median area of new
 plates (no Earth figure), floor older than twice its mean (8–15 %).
 
-Time: the lab's 'history' scene, 40K, 600 Myr, four seeds (12345, 777, 4242, 626225), `GEO_SIM_HISTORY_CACHE=0`, both
-under the same shared sim-slots load: CPU 337 → 364 s (+8 %), wall 357 → 376 s (+5 %). By a CPU profile the new founder
-code is ≲1.5 % of the history (all of `subduction-init.js` 4 %). The rest is more live plates at 600 Myr (24–29 → 25–41),
-which costs `resolve.js` per plate in its gap work (decideBirth, nearestCrustInto: already tuned by the speed branch). Not
-offset yet.
+Time: the lab's 'history' scene, 40K, 600 Myr, four seeds (12345, 777, 4242, 626225), `GEO_SIM_HISTORY_CACHE=0`, main
+and branch interleaved seed by seed under the same shared load: CPU 447 → 487 s (+9 %); wall 441 → 430 s (the load's
+noise). By a CPU profile the founder code is ≲1.5 % of the history (all of `subduction-init.js` 4 %). The rest is more
+steps (546–585 → 576–601: small fast strips shorten the step) and more live plates, which cost `resolve.js` per plate
+in its gap work (decideBirth, nearestCrustInto: already tuned by the speed branch). Not offset yet.
 
 ## Conventions
 
