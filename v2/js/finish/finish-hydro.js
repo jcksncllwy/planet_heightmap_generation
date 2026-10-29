@@ -18,6 +18,9 @@ import { MinHeap } from '../core/min-heap.js';
 import { hollowLakes } from './finish-basins.js';
 
 const SEC_PER_YEAR = 3.156e7, R = 6371;
+// (a flood's key on a flat: its level plus this × the cells across the flat from where the flood came onto it — the
+// mesh's cells near enough one size — 1 mm per 10⁵ cells, an order only: no level differs by it)
+const FLAT_KEY = 1e-11;
 /** The distance (km) between two neighbouring cells (the chord: the same to well under a metre at a cell's size). */
 const edgeKmOf = (xyz, a, b) => R * Math.hypot(xyz[3 * a] - xyz[3 * b], xyz[3 * a + 1] - xyz[3 * b + 1], xyz[3 * a + 2] - xyz[3 * b + 2]);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -144,6 +147,10 @@ export function hydrology(ctx, F) {
         rank[c] = -2;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!ocean[nb] && parent[nb] === -1) { parent[nb] = c; fill[nb] = Math.max(0, z[nb]); heap.push(fill[nb], nb); } }
     }
+    // (on a flat — a hollow filled to its spill level — the cells come off nearest the way in first: the flood's way across
+    // it, which its rivers take, is the short way toward its outlet, not the heap's ties — a maze — lane rivers, 2026-10-29;
+    // Barnes, Lehman & Mulla 2014. Only the order: the levels are as they were)
+    const flatSteps = new Float32Array(n);     // (cells, not km)
     while (heap.size) {
         const c = heap.pop();
         if (rank[c] !== -1) continue;
@@ -152,7 +159,11 @@ export function hydrology(ctx, F) {
             const nb = adjList[k];
             if (rank[nb] !== -1 || ocean[nb]) continue;
             const level = Math.max(fill[c], z[nb]);
-            if (parent[nb] === -1 || level < fill[nb]) { parent[nb] = c; fill[nb] = level; heap.push(level, nb); }
+            if (parent[nb] === -1 || level < fill[nb]) {
+                parent[nb] = c; fill[nb] = level;
+                flatSteps[nb] = level === fill[c] ? flatSteps[c] + 1 : 0;
+                heap.push(level + FLAT_KEY * flatSteps[nb], nb);
+            }
         }
     }
     // ── receivers: the steepest way down the filled surface to a cell reached before (or the sea); on a flat, the flood's way ──
@@ -227,6 +238,24 @@ export function hydrology(ctx, F) {
     // (and where each gorge ran, at what level: a lake further down that a gorge cut through below its rim drains by it)
     const cutAt = new Float32Array(n).fill(Infinity);
     const lower = (y, level) => { if (z[y] > level) { const d = z[y] - level; cutCells++; cutKm3 += d * cellKm2; if (d > cutMaxKm) cutMaxKm = d; z[y] = level; if (level < cutAt[y]) cutAt[y] = level; } };
+    // (a gorge falls along its way, from `level` where it starts to the ground it comes out on, evenly by distance — not
+    // level at its floor: a level gorge is a flat the rivers cross by the flood's ties, a maze (lane rivers, 2026-10-29;
+    // flat routing toward the outlet, Barnes, Lehman & Mulla 2014). Never below that ground, never raising a cell, and each
+    // cell no higher than the one before it)
+    const gorgePath = [];
+    const gradeGorge = (path, level, endZ) => {
+        if (!path.length) return;
+        let total = 0;
+        for (let i = 0; i < path.length; i++) total += stepKm[path[i]];
+        const fall = Math.max(0, level - endZ);
+        let along = 0, prev = Infinity;
+        for (let i = 0; i < path.length; i++) {
+            const y = path[i], at = fall > 0 && total > 0 ? level - fall * along / total : level;
+            lower(y, Math.max(endZ, Math.min(at, prev)));
+            prev = z[y];
+            along += stepKm[y];
+        }
+    };
     const cut = (x, level, ground = groundZ, exitAt = null) => {
         // (below sea level only to open a small trapped sea into the ocean nearby — its cut through dry land at most
         // seaCutKm long; further, the sea would wind inland down the gorge: then the gorge stops at sea level)
@@ -241,18 +270,24 @@ export function hydrology(ctx, F) {
             }
             if (!(open && km <= F.seaCutKm)) level = Math.max(level, F.seaCutFloorKm);
         }
-        const own = hollow[x];
+        // (the gorge's cells, in order, and the ground it comes out on: where its water runs on lower without it)
+        const own = hollow[x], path = gorgePath;
+        path.length = 0;
+        let endZ = level;
         if (own >= 0 && x !== hollows[own].outlet && keepCourse > 0) {
             const out = hollows[own].outlet, way = gorgeWay(x, own, out, level, ground, exitAt);
-            if (way.length) { for (const y of way) lower(y, level); x = way[way.length - 1]; }
-            if (x !== out) return level;                            // (it ended where its water runs out anyway)
+            if (way.length) { for (const y of way) path.push(y); x = way[way.length - 1]; }
+            if (x !== out) { gradeGorge(path, level, Math.min(level, ground(x))); return level; }      // (it ended where its water runs out anyway)
+            path.pop();
         }
         for (let guard = 0; x >= 0 && rank[x] >= 0 && guard < 100000; guard++) {
-            lower(x, level);
+            path.push(x);
             const r = recv[x];
-            if (r < 0 || rank[r] < 0 || (z[r] < level && !(own >= 0 && hollow[r] === own))) break;
+            if (r < 0 || rank[r] < 0) { endZ = Math.min(level, 0); break; }
+            if (z[r] < level && !(own >= 0 && hollow[r] === own)) { endZ = z[r]; break; }
             x = r;
         }
+        gradeGorge(path, level, endZ);
         return level;
     };
     // ── hollows: connected cells under their spill level, one spill level each (one lake, if it were full) ──
@@ -325,9 +360,48 @@ export function hydrology(ctx, F) {
             if (!any) break;
         }
     };
+    // (a hollow drained by its gorges: its rivers run down the ground as it now is, not the flood's way across the level its
+    // water stood at — the steepest way down to a cell reached before, in a priority flood over its cells from its outlet,
+    // on a flat the flood's way (lane rivers, 2026-10-29: until then the flood's ties across the full hollow's level, which
+    // on the finish's many small hollows drew the plains' rivers as mazes). Its cells take the places in the flood's order
+    // its cells had, in the new order — every one of them came off the flood at the hollow's level, before any cell
+    // around it, so the cells that drain into it still come after)
+    const rr = { order: [], slots: [], heap: new MinHeap(256), fill: new Float32Array(n), stamp: new Int32Array(n), from: new Int32Array(n), id: 0 }, rflat = new Float32Array(n);
+    const reroute = h => {
+        const { order: lo, slots, heap: hp, fill: lf, stamp, from } = rr, out = h.outlet, mine = hollow[out];
+        rr.id++; lo.length = 0; slots.length = 0;
+        stamp[out] = rr.id; lf[out] = z[out]; from[out] = -1; rflat[out] = 0; hp.push(z[out], out);
+        while (hp.size) {
+            const c = hp.pop();
+            if (stamp[c] === -rr.id) continue;
+            stamp[c] = -rr.id; lo.push(c);
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k];
+                if (hollow[nb] !== mine || stamp[nb] === -rr.id) continue;
+                const level = Math.max(lf[c], z[nb]);
+                if (stamp[nb] !== rr.id || level < lf[nb]) { stamp[nb] = rr.id; lf[nb] = level; from[nb] = c; rflat[nb] = level === lf[c] ? rflat[c] + 1 : 0; hp.push(level + FLAT_KEY * rflat[nb], nb); }
+            }
+        }
+        if (lo.length !== h.cells.length) return;                     // (a hollow the flood did not reach whole: left as it was)
+        for (const c of lo) slots.push(rank[c]);
+        slots.sort((a, b) => a - b);
+        for (let i = 0; i < lo.length; i++) { order[slots[i]] = lo[i]; rank[lo[i]] = slots[i]; }
+        for (let i = 1; i < lo.length; i++) {
+            const c = lo[i];
+            let pick = -1, steepest = 0;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k];
+                if (hollow[nb] !== mine || stamp[nb] !== -rr.id || rank[nb] >= rank[c]) continue;
+                const s = (lf[c] - lf[nb]) / edgeKmOf(xyz, c, nb);
+                if (s > steepest) { steepest = s; pick = nb; }
+            }
+            if (pick < 0) pick = from[c];
+            recv[c] = pick; stepKm[c] = edgeKmOf(xyz, c, pick);
+        }
+    };
     // (the finishing's hollows cut through once every hollow is found — a cell cut below the flood's surface mid-search
     // read as a hollow of its own: spurious lakes the size of plains — each drained whole, its pockets too)
-    for (const id of laterCuts) { const h = hollows[id]; cut(h.deepCell, h.floor); cutPockets(h, id, h.outlet); }
+    for (const id of laterCuts) { const h = hollows[id]; cut(h.deepCell, h.floor); cutPockets(h, id, h.outlet); reroute(h); }
     const lakeDeficit = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c]));     // (mm/yr off open water)
     const lakeLoss = c => lakeDeficit(c) * cellKm2 * 1e3 / SEC_PER_YEAR;                         // (m³/s off a cell of open water)
     // (a sub-basin smaller than a closed hollow's least — finish-config.js basinMinKm2 — is no lake of its own: hollowLakes)
@@ -478,7 +552,7 @@ export function hydrology(ctx, F) {
     // water does not cover the basin — a lake shrunk to its balance, a basin breached and drained — the rivers still
     // cross the dry ground: down to the shore (a priority flood from the water over the basin's dry cells), or, with
     // no water left, down to the gorge the basin drains by (from its outlet) ──
-    const lr = new Int32Array(n).fill(-1), lp = new Int32Array(n).fill(-1), lfill = new Float32Array(n), lorder = [];
+    const lr = new Int32Array(n).fill(-1), lp = new Int32Array(n).fill(-1), lfill = new Float32Array(n), lflat = new Float32Array(n), lorder = [];
     for (const h of hollows) {
         if (!h.lake) continue;
         const cells = h.cells, dry = c => hollow[c] === hollow[h.outlet] && !lakeKind[c] && (h.closed || c !== h.outlet);
@@ -489,7 +563,7 @@ export function hydrology(ctx, F) {
         for (const s of seeds) {
             lr[s] = -2;
             const w = lakeKind[s] ? lakeLevel[s] : z[s];
-            for (let k = adjOffset[s]; k < adjOffset[s + 1]; k++) { const nb = adjList[k]; if (dry(nb) && lp[nb] === -1) { lp[nb] = s; lfill[nb] = Math.max(w, z[nb]); hp.push(lfill[nb], nb); } }
+            for (let k = adjOffset[s]; k < adjOffset[s + 1]; k++) { const nb = adjList[k]; if (dry(nb) && lp[nb] === -1) { lp[nb] = s; lfill[nb] = Math.max(w, z[nb]); lflat[nb] = 0; hp.push(lfill[nb], nb); } }
         }
         while (hp.size) {
             const c = hp.pop();
@@ -499,7 +573,7 @@ export function hydrology(ctx, F) {
                 const nb = adjList[k];
                 if (lr[nb] !== -1 || !dry(nb)) continue;
                 const level = Math.max(lfill[c], z[nb]);
-                if (lp[nb] === -1 || level < lfill[nb]) { lp[nb] = c; lfill[nb] = level; hp.push(level, nb); }
+                if (lp[nb] === -1 || level < lfill[nb]) { lp[nb] = c; lfill[nb] = level; lflat[nb] = level === lfill[c] ? lflat[c] + 1 : 0; hp.push(level + FLAT_KEY * lflat[nb], nb); }
             }
         }
         // (each dry cell drains the steepest way down to a cell reached before — or the water, or the outlet; on a flat, the

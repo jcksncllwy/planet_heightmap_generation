@@ -59,6 +59,8 @@ export const FINISH = {
     // ── F2: sediment — what the rivers cut, carried down and laid where they slow: fans at the mountain front,
     // floodplains, deltas at the sea ──
     sedimentShare: 0.35,        // the share of the eroded rock that travels as bedload (the rest is fine and reaches the sea)
+    gradeRounds: 2,             // the load comes in this many shares, the water finding its way again after each (avulsion:
+                                // a river leaves the bed it has built up for the lower ground beside it) — finish-sediment.js
     capacityK: 15,              // bedload a reach can carry: capacityK · drainage (km²) · slope — a river carries what it cut
                                 // down its mountain slopes and drops it where it slows (below a slope of ~0.002)
     fanSpreadKm: 20,            // deposits spread over about this (fans and aprons, not ridges along the channel)

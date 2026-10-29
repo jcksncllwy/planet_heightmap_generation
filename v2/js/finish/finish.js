@@ -141,7 +141,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const meanR = landN ? sumR / landN : 1, meanP = landN ? sumP / landN : 1, meanW = landN ? oldW / landN : 1;
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, pAnn[c]) / meanP) ** F.wetPower);
-    meander(mesh, carveIn.micro, seed, F, fade);
+    meander(mesh, carveIn.micro, z, seed, F, fade);
     // (the world ocean — the sea joined to the largest body of water — its straits narrower than the mesh's cells opened
     // first: a sea cut off from it is a closed basin, its level its water balance's — finish-basins.js)
     let ocean0 = oceanMask(mesh, z);
@@ -302,15 +302,26 @@ function warpPositions(mesh, seed, F) {
 }
 
 /** The rivers' fine routing relief (added to the carve's micro-relief, which shapes the routing only): octaves from
- *  F.meanderFromKm down to what the mesh can show — channels wander instead of running straight down smooth slopes. */
-function meander(mesh, micro, seed, F, fade) {
-    const { xyz, numCells: n } = mesh, noise = new FastNoise((seed | 0) * 37 + 29), oct = [];
+ *  F.meanderFromKm down to what the mesh can show — channels wander instead of running straight down smooth slopes. Held
+ *  at each place to the ground's own slope (lane rivers, 2026-10-29): its job is to break ties where the ground is nearly
+ *  level, not to make the way down. At its full ±30 m over ~30 km it is ~1e-3 steep, ten times a plain's 1e-5–1e-4, and
+ *  rivers on the plains threaded its hollows instead of the plain's fall — the "termite trails" (developer); now on a
+ *  plain it is as steep as the plain at most, and on steeper ground as before. Both slopes are each cell's mean step to
+ *  its neighbours. */
+function meander(mesh, micro, z, seed, F, fade) {
+    const { xyz, numCells: n, adjOffset, adjList } = mesh, noise = new FastNoise((seed | 0) * 37 + 29), oct = [];
     for (let lam = F.meanderFromKm, a = 1; lam > 1 && oct.length < 5; lam /= 2, a *= 0.6) { const s = a * fade(lam); if (s > 0.02) oct.push([R / lam, s]); }
     if (!oct.length) return;
+    const v = new Float32Array(n);
     for (let c = 0; c < n; c++) {
-        let v = 0;
-        for (let o = 0; o < oct.length; o++) { const [f, s] = oct[o]; v += s * noise.noise3D(xyz[3 * c] * f + 7.7 * o, xyz[3 * c + 1] * f + 2.2, xyz[3 * c + 2] * f + 4.4 * o); }
-        micro[c] += F.meanderKm * v;
+        let w = 0;
+        for (let o = 0; o < oct.length; o++) { const [f, s] = oct[o]; w += s * noise.noise3D(xyz[3 * c] * f + 7.7 * o, xyz[3 * c + 1] * f + 2.2, xyz[3 * c + 2] * f + 4.4 * o); }
+        v[c] = F.meanderKm * w;
+    }
+    for (let c = 0; c < n; c++) {
+        let g = 0, m = 0;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; g += Math.abs(z[nb] - z[c]); m += Math.abs(v[nb] - v[c]); }
+        micro[c] += m > g ? v[c] * g / m : v[c];
     }
 }
 
