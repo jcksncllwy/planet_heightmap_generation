@@ -1445,7 +1445,10 @@ at once. On Earth a trench starts on a segment and grows along strike (Puysegur 
   that strip, so the strip grows rather than the margin founding a new plate at every draw. An invading trench's first
   stretch needs floor as deep as a nucleus's (`subductionInitSlabKm`) to hang a slab from. A small ocean plate showing
   nowhere in the world view lies wholly beneath its neighbours: its crust is consumed and it ends
-  (`ocean-plates.js captureMicroplates`). Without these, the 7b history held 42 plates (room for 28); with them, 24–28.
+  (`ocean-plates.js captureMicroplates`). Without these, the 7b history held 42 plates (room for 28); with them, 24–28 before the rebase onto
+  unified heights and 33–36 after, which still fails 7b's plate-count check: most of them are 1–19 Mkm² ocean plates,
+  each with its own trench and arc. Earth has 52 (Bird 2003), but `reserved.maxPlates` (28) has no source; whether to
+  raise it is left open.
 
 Before → after (seed 831576 at 88–96 Myr): births of 26 and 34.9 Mkm² with 10–24k km trenches → strips of 0.05–0.57
 Mkm² on ~364 km nuclei. Over 600 Myr, 20K, seeds 12345 and 831576 (`tools/trace-founders.mjs`):
