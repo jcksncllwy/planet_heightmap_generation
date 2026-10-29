@@ -3,20 +3,13 @@
 // scrap of land adrift. Left alone those pieces keep the old plate's motion and drift about looking
 // like swiss cheese. Every step, each plate keeps only its main piece (the one with the most land; by area when
 // there is no land); every other piece
-//   · ocean only, a plate's worth (oceanPlateMinAreaKm2)  → becomes a plate of its own, moving on as it was (it used to go
-//                                                            to the passive ocean and come back as a plate when that retired)
-//   · ocean only, touching another plate                  → joins the plate it touches most, its floor's age kept (branch
-//                                                            founders, 2026-10-29: handed to the passive ocean, which never
-//                                                            moves, it only aged — no trench could reach it — and was
-//                                                            stamped pre-history old; a scrap of floor cut off from its
-//                                                            plate is captured by its neighbour, as the Farallon plate's
-//                                                            last pieces were by the Pacific: Stock & Lee 1994)
-//   · ocean only, at a convergent seam (a cell of it beneath another plate, or closing on its neighbour faster than a
-//     locked contact, boundaryActiveCmYr) → is given to the passive ocean as before, to be overridden (captured across
-//     a closing seam, pieces kept the India–Asia sea from reading closed — India never sutured — and hung a young apron
-//     off the 'laramide' trench at 40K only)
-//   · ocean only, touching no plate, or a sliver of the lattice (LATTICE_SLIVER_CELLS) → to the passive ocean, its
-//     floor's age kept
+//   · ocean only                                          → is given to the passive ocean, to be subducted in time — as the
+//                                                            floor it is (branch founders, 2026-10-29: it was stamped
+//                                                            pre-history old, an artifact of the hand-over that held the
+//                                                            sea floor's age up), unless it lies at a convergent seam,
+//                                                            where it is overridden at once and goes as before (kept young
+//                                                            there, the 'laramide' slab read young and stayed flat 3–5 Myr
+//                                                            longer at 80K than at 40K)
 //   · with land, near another plate (fragmentJoinKm)      → joins that plate (a terrane docking, in effect)
 //   · with land, far from every other plate               → stays as it is: land is never deleted
 // Scraps of land (under terraneMinAreaKm2) join quietly, without an event. A plate that has just received a piece is
@@ -25,9 +18,6 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
-import { oceanPlateName } from './birth-ocean-plate.js';      // (a cycle of imports: used only once both have loaded)
-
-const LATTICE_SLIVER_CELLS = 3;      // (a hop count meant as one: lattice jitter, measured 1–3 cells at 40K and at 80K)
 
 /** @returns {number} pieces dealt with */
 export function tidyPlates(world) {
@@ -39,45 +29,10 @@ export function tidyPlates(world) {
         if (!plate.alive || plate.isBackground || plate.crust.count === 0 || received.has(plate)) continue;
         const pieces = componentsOf(plate.crust, mesh);
         if (pieces.length < 2) continue;
-        // (the main piece: the most land — but only land enough to be a terrane counts: an ocean plate broken in two keeps
-        // its larger half, not the speck that holds two cells of arc, which left its whole body to join a neighbour as a
-        // "scrap"; branch founders, 2026-10-29)
-        const terrane = Math.ceil(config.terraneMinAreaKm2 / cellAreaKm2), rank = p => (p.land >= terrane ? p.land : 0);
-        pieces.sort((a, b) => rank(b) - rank(a) || b.cells.length - a.cells.length || b.land - a.land);
+        pieces.sort((a, b) => b.land - a.land || b.cells.length - a.cells.length);
         for (const piece of pieces.slice(1)) {
             handled++;
-            // (a sliver of a few cells is the lattice's, not the floor's: two rasters resampled onto one mesh leave them
-            // along every moving edge, at any mesh — to the passive ocean, as ever, but as the floor it is: stamped
-            // pre-history old, these slivers held the sea floor's mean age 10–20 Myr high in the cycle scene)
-            if (piece.land === 0 && piece.cells.length <= LATTICE_SLIVER_CELLS) { giveToBackground(world, plate, background, piece.cells, true); continue; }
-            if (piece.land === 0) {
-                if (piece.cells.length * cellAreaKm2 >= config.oceanPlateMinAreaKm2) {
-                    const fresh = world.addPlate(oceanPlateName(world));
-                    fresh.setQuat(plate.quat.slice()); fresh.omega = plate.omega.slice(); fresh.isOceanBorn = true;
-                    if (!transferCells(world, plate, fresh, piece.cells)) { fresh.alive = false; continue; }
-                    fresh.born = world.time; received.add(fresh);
-                    world.log(EventKind.PLATE_BORN, `${fresh.name} is born: ${(piece.cells.length * cellAreaKm2 / 1e6).toFixed(1)} Mkm² of ${plate.name}’s ocean, cut off from the rest of it, moves on as a plate of its own`,
-                        { plate: fresh.id, areaMkm2: piece.cells.length * cellAreaKm2 / 1e6, cutOff: true });
-                    continue;
-                }
-                const host = touching(world, plate, piece.cells);
-                if (host === GOING_DOWN) {
-                    // (a piece at a convergent seam is overridden where it lies: to the passive ocean, exactly as before,
-                    // which keeps the world view whole until the plate above has taken its place — removed outright, the
-                    // cells it showed were a gap for a step. Kept at its own young age there, the 'laramide' slab read
-                    // young and stayed flat 3–5 Myr longer at 80K than at 40K: scale invariance failed)
-                    giveToBackground(world, plate, background, piece.cells);
-                    world.budget.scrapsDownCells = (world.budget.scrapsDownCells ?? 0) + piece.cells.length;
-                } else if (host) {
-                    // (floor that lands on the host's own crust has gone beneath it: consumed, as at a trench)
-                    const moved = transferCells(world, plate, host, piece.cells);
-                    world.budget.consumed += piece.cells.length - moved;
-                    received.add(host);
-                    world.budget.scrapsJoinedCells = (world.budget.scrapsJoinedCells ?? 0) + piece.cells.length;
-                }
-                else { giveToBackground(world, plate, background, piece.cells, true); world.budget.scrapsToBackgroundCells = (world.budget.scrapsToBackgroundCells ?? 0) + piece.cells.length; }
-                continue;
-            }
+            if (piece.land === 0) { giveToBackground(world, plate, background, piece.cells, !atSeam(world, plate, piece.cells)); continue; }
             // which plate is it nearest to? (other plates' crust within a few world cells of it, nearer counting more)
             const contact = new Map(), P = [0, 0, 0], seen = new Set();
             let ring = [];
@@ -103,31 +58,6 @@ export function tidyPlates(world) {
         if (plate.crust.count === 0) { plate.alive = false; plate.omega = [0, 0, 0]; plate.dynamics = null; }
     }
     return handled;
-}
-
-/**
- * The live plate (not the passive ocean) that a piece of `plate` borders along the most world cells — the one its
- * cells lie against, so the piece joins it as one piece — or null if it borders none; GOING_DOWN if it lies at a
- * convergent seam: a cell of it beneath another plate, or closing on its neighbour (world.convergence) faster than a
- * locked contact — there it is overridden or goes down, it is not captured
- */
-const GOING_DOWN = Symbol('going down');
-function touching(world, plate, cells) {
-    const { mesh, plates, owner, convergence } = world, { adjOffset, adjList, xyz, index } = mesh, P = [0, 0, 0], contact = new Map();
-    for (const c of cells) {
-        plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
-        const w = index.nearest(P[0], P[1], P[2]);
-        // (a cell beneath another plate, or one closing on its neighbour, is going down — or being gone under — at a
-        // convergent seam: the piece is not captured there)
-        if (owner[w] !== plate.id || convergence[w] > world.config.boundaryActiveCmYr) return GOING_DOWN;
-        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
-            const o = owner[adjList[k]];
-            if (o >= 0 && o !== plate.id && plates[o].alive && !plates[o].isBackground) contact.set(o, (contact.get(o) ?? 0) + 1);
-        }
-    }
-    let host = -1, most = 0;
-    for (const [o, n] of contact) if (n > most || (n === most && o < host)) { most = n; host = o; }
-    return host >= 0 ? plates[host] : null;
 }
 
 /**
@@ -291,7 +221,7 @@ function freeCellWithin(to, mesh, q, hops, taken) {
 
 /**
  * Hand raster cells of `plate` back to the passive ocean (as old ocean at their world positions — or, `keepAge`, as the
- * floor they are: a sliver going down at a trench is not pre-history floor), pinholes filled.
+ * floor they are), pinholes filled.
  */
 export function giveToBackground(world, plate, background, cells, keepAge = false) {
     const { xyz, index, adjOffset, adjList } = world.mesh, { owner } = world, P = [0, 0, 0];
@@ -310,3 +240,14 @@ export function giveToBackground(world, plate, background, cells, keepAge = fals
     plate.refreshExtent(xyz);
 }
 
+
+/** Does a piece of `plate` lie at a convergent seam — a cell of it beneath another plate, or closing on its neighbour faster than a locked contact? */
+function atSeam(world, plate, cells) {
+    const { mesh, owner, convergence, config } = world, { xyz, index } = mesh, P = [0, 0, 0];
+    for (const c of cells) {
+        plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
+        const w = index.nearest(P[0], P[1], P[2]);
+        if (owner[w] !== plate.id || convergence[w] > config.boundaryActiveCmYr) return true;
+    }
+    return false;
+}

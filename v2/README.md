@@ -1486,6 +1486,47 @@ noise). By a CPU profile the founder code is ≲1.5 % of the history (all of `su
 steps (546–585 → 576–601: small fast strips shorten the step) and more live plates, which cost `resolve.js` per plate
 in its gap work (decideBirth, nearestCrustInto: already tuned by the speed branch). Not offset yet.
 
+## Founders, round 2 (2026-10-29, branch founders)
+
+- **Plate count is a report, not a hard check** (Jackson, 2026-10-29). `reserved.maxPlates` (28) had no source and the
+  engine never read it. Phase 7b reports the most plates at once and at the end against Earth's 10–52: ~10 at 200 Ma
+  rising to 31 today in the Seton 2012 reconstruction (Morra et al. 2013), 52 resolved today, 38 of them small (Bird
+  2003). It keeps one hard check, 'no runaway fragmentation (a bug guard)', at 150 plates (~3× Earth's 52): a guard
+  against a loop that makes plates faster than they end, not an Earth target.
+- **Strips do not weld to a co-moving neighbour: they never co-move.** Measured on the 7b history (seed 12345, every 2
+  Myr), a strip at least 10 Myr old moves against the plates it touches at a median of 8.6 cm/yr (p10 4 cm/yr). None of
+  2,568 pair-frames came under the engine's locked-contact speed (`boundaryActiveCmYr`, 0.3 cm/yr), and 26 came under 2
+  cm/yr. A small plate with a trench is fast (Forsyth & Uyeda 1975). No weld rule was added. The 7b excess over main is
+  short-lived microplates: per frame, ocean-born plates under 0.5 Mkm² go from 1.1 to 5.2 and those of 0.5–2 Mkm² from 0.9
+  to 2.4. They live a median 4–8 Myr, then are consumed or captured.
+- **Trench length is main's open problem, not this branch's.** Total overriding trench, cycle scene, 20K, from 150 Myr:
+  main c7ab6ae 91–149k km, this branch 65–110k. 7b history: main 104–119k, branch 97–108k. Earth is 40–60k (Stern 2002).
+  Round 1's 'main 50–70k' was measured before the rebase onto `unified`.
+- **A sealed sea's trench nucleates and propagates** (`step/subduction-init.js`). Its floor still leaves whole, as one
+  slab cut off from any ridge. But the trench is armed on `founderNucleusKm` of the shore, where the floor is heaviest,
+  and runs along the shore from there. Propagation now arms the shore ahead where the floor behind it has already left
+  with the plate below. Cycle scene: sealed seas' trenches nucleate on 172 km of shores up to 7,400 km long. Their floors
+  (0.03–1.6 Mkm²) go down their trench in 2–40 Myr; a minority are captured back.
+- **Tidy no longer parks real ocean pieces in the passive ocean** (`ops/tidy-plates.js`). An ocean-only piece cut off
+  from its plate used to go to the immobile passive ocean, stamped pre-history old, where no trench could reach it.
+  Now:
+  - a plate's worth (`oceanPlateMinAreaKm2`) moves on as a plate of its own;
+  - a piece touching another plate joins it, keeping its age (microplate capture: Stock & Lee 1994);
+  - a piece at a convergent seam goes as before: a cell of it lies beneath another plate, or closes on its neighbour
+    faster than `boundaryActiveCmYr`. Captured across a closing seam, such pieces kept India from suturing (7c, 8a) and
+    steepened the 'laramide' slab early at 40K only (scale);
+  - slivers of 1–3 cells, the lattice's jitter, go to the passive ocean as ever, but keep their own age.
+
+  The main piece is ranked by land only where the land is a terrane's worth (`terraneMinAreaKm2`). Before, an ocean
+  plate broken in two could keep a speck with two cells of arc, and its 6,500-cell body joined a neighbour as a 'scrap'
+  (the 6b runaway).
+
+Sea-floor age, cycle scene, 20K, 300–600 Myr, every 50 Myr (Myr): seed 12345 71–114 (round 1) → 64–81. Seed 831576
+89–111 → 58–103, ending 58–63. FINAL_NUMBERS
+
+Time: the lab's 'history' scene, 40K, 600 Myr, seeds 12345, 777, 4242 and 626225, `SIM_REMOTE=0`,
+`GEO_SIM_HISTORY_CACHE=0`, main 5f45475 and branch run in pairs under the same load. TIMING
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
