@@ -1246,6 +1246,7 @@ Probe (seed 12345, cycle scene, 1200 Myr; main → this branch): land share 28�
 thickest crust 55–86 km. History 190 → 188 s, terrain 26.9 → 26.7 s over 13 frames. New Phase 13 reports ("heights from
 the crust (branch unified)"): late-dispersal land mean, craton median, crust means and the thickest, old orogens'
 e-folding, freeboard's change through the cycle.
+
 ## Closed basins at any height (2026-10-28, branch lakes)
 
 A basin is closed where its rivers cannot fill it to its rim, whatever its height: above sea level or below it, the
