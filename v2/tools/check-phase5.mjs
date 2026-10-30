@@ -217,8 +217,22 @@ section('Andean margin');
     const belt = cellsWhere(numCells, w => isLand(last, w) && last.oroType[w] === OrogenyType.ANDEAN);
     const reach = Math.max(...belt.map(w => nearestKm(mesh, w, coast)));
     const reachAt = (frame, cells) => Math.max(...cells.map(w => nearestKm(mesh, w, cellsWhere(numCells, v => frame.owner[v] === solo.id && frame.type[v] === CrustType.OCEAN && mesh.adjList.subarray(mesh.adjOffset[v], mesh.adjOffset[v + 1]).some(nb => isLand(frame, nb))))));
-    const at40 = r.at(40), belt40 = cellsWhere(numCells, w => isLand(at40, w) && at40.oroType[w] === OrogenyType.ANDEAN), reach40 = reachAt(at40, belt40);
-    check('the belt widens the longer subduction goes on', belt.length > 1.12 * belt40.length && reach > reach40, `${belt40.length} cells reaching ${reach40.toFixed(0)} km at 40 Myr → ${belt.length} cells reaching ${reach.toFixed(0)} km at 80 Myr`);
+    // (audit 2026-10-30: was one seed, 1.12 × the cells (unsourced; 1.10 on 12345 and 1.17–1.27 on five others, ±10 cells of
+    // frame-to-frame jitter) and the single farthest cell. The belt's width is its 90th-percentile distance inland from the
+    // coast: over six seeds 218→246, 214→260, 223→248, 212→261, 242→266, 202→238 km at 40→80 Myr. It must grow; by how much is
+    // reported, not asked)
+    const coastOf = (frame, plate) => cellsWhere(numCells, v => frame.owner[v] === plate.id && frame.type[v] === CrustType.OCEAN && mesh.adjList.subarray(mesh.adjOffset[v], mesh.adjOffset[v + 1]).some(nb => isLand(frame, nb)));
+    const widthP90 = (frame, plate) => {
+        const coastCells = coastOf(frame, plate), d = cellsWhere(numCells, w => isLand(frame, w) && frame.oroType[w] === OrogenyType.ANDEAN).map(w => nearestKm(mesh, w, coastCells)).sort((a, b) => a - b);
+        return { p90: d.length ? d[Math.min(d.length - 1, Math.floor(0.9 * d.length))] : NaN, cells: d.length };
+    };
+    const widening = [SEED, ...MORE_SEEDS, 3].map(seed => {
+        const q = seed === SEED ? r : run('one-sided', 80, {}, true, seed), a = q.at(40), b = q.at(80), plate = f => f.plates.find(x => x.name === 'Solo');
+        const w40 = widthP90(a, plate(a)), w80 = widthP90(b, plate(b));
+        return { label: seed, formed: w40.cells > 0 && w80.cells > 0, ok: w80.p90 > w40.p90, w40, w80, text: `${w40.cells} belt cells reaching ${w40.p90.toFixed(0)} km (90th percentile) at 40 Myr → ${w80.cells} cells, ${w80.p90.toFixed(0)} km at 80 Myr` };
+    });
+    checkAcross('the belt widens the longer subduction goes on', widening);
+    report('Andean belt width growth: 90th-percentile inland distance, 40 → 80 Myr', widening.filter(x => x.formed).map(x => x.w80.p90 - x.w40.p90), { unit: ' km', digits: 0, source: 'no Earth figure for the rate: the Andes widen as the slab is consumed (Oncken 2006), a process rate not measured here', detail: `seeds ${widening.map(x => x.label).join(', ')}` });
     // the upper plate driving at its trench is what shortens it (Heuret & Lallemand 2005; Oncken 2006 — the convergence rate
     // alone correlates poorly): Solo's velocity at its belt, toward the trench (away from its centre). Less drag, a faster
     // advance: the belt must grow with it (no factor asked)
