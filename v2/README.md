@@ -1507,25 +1507,41 @@ in its gap work (decideBirth, nearestCrustInto: already tuned by the speed branc
   and runs along the shore from there. Propagation now arms the shore ahead where the floor behind it has already left
   with the plate below. Cycle scene: sealed seas' trenches nucleate on 172 km of shores up to 7,400 km long. Their floors
   (0.03–1.6 Mkm²) go down their trench in 2–40 Myr; a minority are captured back.
-- **Tidy no longer parks real ocean pieces in the passive ocean** (`ops/tidy-plates.js`). An ocean-only piece cut off
-  from its plate used to go to the immobile passive ocean, stamped pre-history old, where no trench could reach it.
-  Now:
-  - a plate's worth (`oceanPlateMinAreaKm2`) moves on as a plate of its own;
-  - a piece touching another plate joins it, keeping its age (microplate capture: Stock & Lee 1994);
-  - a piece at a convergent seam goes as before: a cell of it lies beneath another plate, or closes on its neighbour
-    faster than `boundaryActiveCmYr`. Captured across a closing seam, such pieces kept India from suturing (7c, 8a) and
-    steepened the 'laramide' slab early at 40K only (scale);
-  - slivers of 1–3 cells, the lattice's jitter, go to the passive ocean as ever, but keep their own age.
+- **A scrap of ocean cut off from its plate keeps its age** (`ops/tidy-plates.js`, the one file outside round 1's;
+  a few lines). Tidy still hands such a piece to the passive ocean, as on main, but used to stamp it pre-history old
+  (`formedAt` ≤ −1). That made old-looking floor out of young scraps and skewed every sea-floor age report. Now a scrap
+  keeps the age it had. The exception is a scrap at a convergent seam: one with a cell beneath another plate, or closing
+  on its neighbour faster than `boundaryActiveCmYr`. It is stamped as before. Young floor kept at such seams made the
+  'laramide' slab steepen 5 Myr apart across meshes (the scale check).
 
-  The main piece is ranked by land only where the land is a terrane's worth (`terraneMinAreaKm2`). Before, an ocean
-  plate broken in two could keep a speck with two cells of arc, and its 6,500-cell body joined a neighbour as a 'scrap'
-  (the 6b runaway).
+  The wider change was tried first and reverted: ocean scraps joining a plate they touch (microplate capture), a plate's
+  worth moving on as a plate, and the main piece ranked by terranes. Each part broke a hard check. Slivers captured
+  across a closing seam kept India from suturing (7c, 8a) and steepened the 'laramide' slab early at 40K (scale). Slivers
+  consumed outright left gaps. The zipper weld gap grew to 607–728 km (limit 371). Land stacked to 6,410 km at 456 Myr
+  (invariants). Phase 10's scene did not form, and the 7b plate peak reached 42. Rerouting scraps needs its own design;
+  it is left open.
 
-Sea-floor age, cycle scene, 20K, 300–600 Myr, every 50 Myr (Myr): seed 12345 71–114 (round 1) → 64–81. Seed 831576
-89–111 → 58–103, ending 58–63. FINAL_NUMBERS
+Results at the head, with main 5f45475 where it has the same figure:
+
+- Sea-floor age, 6b, mean: 59.8 / 60.7 / 68.5 Myr (main 66.1 / 59.5 / 81.4). Floor older than 180 Myr: 5.9–8.2 %.
+- Phase 13, mean sea-floor age: 74.3 / 72.4 / 80.6 Myr (main c7ab6ae 81.9 / 74.4 / 68.9; round 1 79.6 / 88.2 / 82.2).
+  Floor older than twice its mean: 11.5–12.3 %. Propagation: 7.75–7.94 cm/yr. Longest trench: 3,760–3,880 km. Total
+  trench: 118–124k km.
+- Plates (7b): 34 at most, 33 at the end. 6/6b at the end: 30 / 32 / 28.
+- The phase 11 zipper ('weld only once the sea between them is closed', 607 km against 371) fails here as on most
+  meshes for main too. Main passes on 1 of 6 mesh seeds (12345), this branch on 1 of 6 (seed 1). It is a knife-edge
+  check, not a change in rate.
 
 Time: the lab's 'history' scene, 40K, 600 Myr, seeds 12345, 777, 4242 and 626225, `SIM_REMOTE=0`,
-`GEO_SIM_HISTORY_CACHE=0`, main 5f45475 and branch run in pairs under the same load. TIMING
+`GEO_SIM_HISTORY_CACHE=0`, main 5f45475 and the branch run in pairs under the same load (measured at c614a5f; the head
+differs only in tidy's age stamp). CPU 309.5 → 333.4 s (+7.7 %), wall 236.6 → 253.4 s (+7.1 %). Steps 2,255 → 2,335
+(+3.5 %), likely the extra microplates' short steps (not measured). Profile: `resolve.js` takes 21.7 % (`decideBirth` 7.7 %,
+`nearestCrustInto` 3.4 %) and `subduction-init.js` 3.3 %. No offset was found. The speed lane had already tuned these
+paths, and no cheap change gave identical results.
+
+Not done: **step 5**, a founder between a plate and the passive-ocean background. The background never takes crust, so a
+strip peeled there swells instead of opening. It needs a design change to the background. **Option C** (a weld rule on
+other grounds) waits for Jackson.
 
 ## Conventions
 
