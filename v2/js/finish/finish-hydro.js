@@ -138,16 +138,11 @@ export function fillSeaBasins(mesh, z, ocean, F) {
 export function hydrology(ctx, F) {
     const { mesh, z, ocean, runoff, pet, rain, wetMonths } = ctx, n = mesh.numCells, { adjOffset, adjList, xyz } = mesh;
     const cellKm2 = 4 * Math.PI * R * R / n, EPS = 1e-4;
-    // (a height that is not a number — the ice age's, a handful of cells deep in trapped seas; reported to its lane — is
-    // taken as its lowest neighbour's: one NaN in a priority flood's heap breaks its order for every cell after it, the
-    // rivers routed up sills thousands of cells away)
+    // (heights that are not a number, counted: one NaN in a priority flood's heap breaks its order for every cell after it
+    // — the rivers routed up sills thousands of cells away. A bug upstream, not smoothed over here: check-phase8b.mjs
+    // fails on any (the ice age's basin blur left 13 on its world until floods' 02c8940)
     let nanHeights = 0;
-    for (let c = 0; c < n; c++) {
-        if (!Number.isNaN(z[c])) continue;
-        let low = Infinity;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const v = z[adjList[k]]; if (v < low) low = v; }
-        z[c] = low < Infinity ? low : 0; nanHeights++;
-    }
+    for (let c = 0; c < n; c++) if (Number.isNaN(z[c])) nanHeights++;
     // ── the priority flood from the sea: each land cell's spill level (fill), its order, the way it was reached ──
     const fill = new Float32Array(n), rank = new Int32Array(n).fill(-1), parent = new Int32Array(n).fill(-1), order = new Int32Array(n);
     const heap = new MinHeap(1 << 16);
@@ -863,9 +858,16 @@ export function hydrology(ctx, F) {
     // against what its open water would lose), else filled by its river's load, graded from its edges to where it spills
     // (fillGraded). Here, on the final surface, not before it: chosen on the first routing's surface, the ones a later
     // gorge or fill left — a fill across a gorge, a pocket a cut opened — were missed, and crossed at their spill level ──
+    // (again until none is left, at most four rounds: a fill rises inland from its outlet, and where it rises past the
+    // sill of a hollow that spilled onto it, that hollow is left below its new outlet and fills in turn — aggradation
+    // raising its tributaries' base level. On phase 8b's world 2711 hollows, then 85, 18, 5)
     {
         const seenH = new Uint8Array(n), inH = new Uint8Array(n);
         let ponds = 0, pondFills = 0;
+        keptPockets.lateRounds = [];
+        for (let round = 0; round < 4; round++) {
+        let made = 0;
+        seenH.fill(0);
         for (let i0 = 0; i0 < count; i0++) {
             const s0 = order[i0];
             if (seenH[s0] || sink[s0] || lakeKind[s0] || !(fl[s0] > z[s0] + EPS)) continue;
@@ -885,9 +887,13 @@ export function hydrology(ctx, F) {
                 ponds++;
             } else { fillGraded(cells, spill.length ? spill : [cells[0]], L); pondFills++; }
             for (const x of cells) inH[x] = 0;
+            made++;
+        }
+        keptPockets.lateRounds.push(made);
+        if (!made) break;
+        count = finalFlood();
         }
         keptPockets.lateLakes = ponds; keptPockets.lateFills = pondFills;
-        if (ponds + pondFills) count = finalFlood();
     }
     // (each cell's way: the steepest fall per km down the flood's surface to a cell reached before it, or the sea; on a
     // flat — a lake's surface — the flood's way, toward its way out (Barnes, Lehman & Mulla 2014). A sink's: none)

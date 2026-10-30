@@ -254,6 +254,8 @@ section('the network’s shape');
     const pool = await TerrainPool.create(mesh), started = performance.now();
     const fin = await finishPlanet({ frame: history.frame, simMesh: mesh, seed: SEED, cells: 640000, pool, closePool: true, debug: true });
     const finSeconds = (performance.now() - started) / 1000, F = FINISH, { tAnnual, pAnnual } = fin.climate.cell;
+    // (a bug guard, lane rivers3: a NaN height breaks the water's priority floods for every cell after it)
+    check('the water stage gets no height that is not a number', fin.stats.water.nanHeights === 0, `${fin.stats.water.nanHeights} NaN heights`);
     const nets = [
         ['the timeline’s carve (640K)', networkShape({ mesh: T.tm, recv: T.receivers, land, z: T.heightKm })],
         ['Add detail’s rivers (640K)', networkShape({ mesh: fin.mesh, recv: fin.layers.recv, land: c => !fin.ocean[c], z: fin.z, lake: fin.lake,
