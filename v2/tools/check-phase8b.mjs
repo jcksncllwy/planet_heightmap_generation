@@ -270,6 +270,10 @@ section('the network’s shape');
             detail: `median ${S.sinuosity.plainMedian.toFixed(2)} over ${S.sinuosity.plainN} reaches of ${S.sinuosity.reachKm.toFixed(0)} km; everywhere median ${S.sinuosity.median.toFixed(2)}, 90th percentile ${S.sinuosity.p90.toFixed(2)}` });
         report(`${name}: rivers' gradient across the plains, median`, 1e5 * S.plainGrade.median, { earth: [1, 10], unit: ' ×10⁻⁵', digits: 1, source: 'alluvial plains 1e-5–1e-4: the lower Mississippi ~1e-4 (Saucier 1994), the lower Amazon ~2e-5 (recalled)',
             detail: `10th–90th percentile ${S.plainGrade.p10.toExponential(1)}–${S.plainGrade.p90.toExponential(1)} over ${S.plainGrade.n} reaches of ${S.sinuosity.reachKm.toFixed(0)} km; dead flat (under 1e-6) ${(100 * S.plainGrade.flat).toFixed(0)} %` });
+        // (lane rivers2, 2026-10-29: the straight converging channels — rivers across ground the finish left dead level, at
+        // any height; tools/lib/river-network.mjs broom)
+        report(`${name}: low-ground reaches dead level (fall under 1e-6 over ${S.sinuosity.reachKm.toFixed(0)} km)`, 100 * S.broom.flatShare, { earth: [0, 2], unit: ' %', digits: 0, source: 'no alluvial river is level over 200 km: the flattest great rivers fall ~1e-5 (the lower Amazon ~2e-5, recalled); holds through the cycle',
+            detail: `of ${S.broom.lowReaches} reaches on ground falling under 2e-4, any height, none through a lake; rising (routed across a dry hollow) ${(100 * S.broom.riseShare).toFixed(0)} %; dead-straight unbranched runs (links ≥ ${S.broom.linkKm.toFixed(0)} km, sinuosity < 1.05) ${(100 * S.broom.straightShare).toFixed(0)} % of ${S.broom.links} links' length` });
     }
     report('Add detail at 640K cells (for the network above)', finSeconds, { unit: ' s', digits: 1, source: 'no Earth figure: the time the finish takes headlessly' });
 }
