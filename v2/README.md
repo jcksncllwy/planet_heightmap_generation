@@ -1629,6 +1629,46 @@ only adds its own fields.
 node v2/tools/check-floods.mjs         # ice-dammed lakes: held by ice across their outlet, filled by their water; reported against the last glacial's
 ```
 
+## Speed: resolve and boundaries (2026-10-30, branch speed-resolve)
+
+Pays back the founders' +7.7 % whole-history CPU (b26455c over 5f45475). Every change is exact: frames are bit-identical.
+
+- **Nearest-crust searches start at the nearest crust's ring.** `nearEdge` (gather.js) now keeps edge counts for rings
+  1 and 2 as well as 3, updated incrementally. For a cell with no crust, the nearest crust lies on the ring of its nearest
+  edge cell, so `decideBirth`'s search starts there. Cells with no edge within ring 3 are dropped from the gap candidates
+  before any walk. `PROXIMITY_RINGS` must equal `RING_COUNT` (resolve.js throws otherwise).
+- **The counts are brought up to date from the cells resolve changed**, not from a full mask diff. `CrustRaster.version`
+  (crust.js, the version lines only) is bumped on every mask flip. `nearEdge` returns early when the version is unchanged.
+  A changed-cell hint is used only when its length equals the version delta.
+- **A gap cell's raster cell is read from the gather's claim map** (`currentClaimMap`, `rasterCellUnder`), not looked up
+  again. `decideBirth` runs its gap test before its own nearest-crust search. It asks the last rival found with crust under
+  a candidate first, because neighbouring candidates mostly share it. Deep-crust NOT_A_GAP verdicts need no walk.
+- **Gaps and collisions are found in the post-gather pass.** Per-plate `lost[]` lists replace a rescan. `candidateCells`
+  works on typed scratch arrays. The per-bin rival cache is a packed array. `fractureAt` reuses scratch instead of
+  allocating a Set and a Map per birth.
+- **Boundaries and contacts.** Interior cells (every neighbour on the same plate) are answered by an inline test without
+  the contact cache (classifyBoundaries, contactAt). `voteSegments` marks its segments in stamped scratch arrays, keyed by a
+  numeric plate pair. The trench flag is cleared only where it is set. The ocean-contact key is numeric.
+- **Outside the three files:** `Plate.refreshExtent` skips mask words with no crust (plate.js). `spreadBelt` dedupes the
+  cells it reaches by a mark, not a Set (orogeny.js). There is a small helper in contact.js.
+- **Exactness.** Frames are hashed with sha256 over every field and the event log. Full 600 Myr histories are identical
+  to b26455c's on seeds 12345, 777 and 626225 at 40K and at 20K (61 frames each). The cycle scene is identical on 777 for
+  1200 Myr at 40K (121 frames). The check failures are the same set as main's, with the same numbers.
+- **Time.** History scene, 40K, 600 Myr, seeds 12345/777/4242/626225, `SIM_REMOTE=0 GEO_SIM_HISTORY_CACHE=0`. Each round
+  runs 5f45475, b26455c and the branch side by side, summed over the 4 seeds:
+
+  | Round | 5f45475 CPU | b26455c CPU | Branch CPU | Branch vs 5f45475 | Branch vs b26455c |
+  |---|---|---|---|---|---|
+  | 1 | 328 s | 361 s | 334 s | +1.8 % | −7.5 % |
+  | 2 | 317 s | 343 s | 316 s | −0.3 % | −7.9 % |
+
+  Earlier heads measured −7.2 %, −7.6 % and −8.1 % against b26455c. Wall time is 3–6 % below 5f45475's. Resolve's share of
+  the history fell from 37 % to about 31 %. classifyBoundaries fell from 5.5 to 3.6 ms per call.
+- **Tried and dropped** (exact but no faster): edge-pass interior detection in contacts (reverted, e3f3068); sector culling
+  in the gather; a certain-texel table for the sphere index; incremental resolve, because births sit beside the gaps;
+  edge counts packed in one word per cell.
+- **Open.** Parity with 5f45475 is within noise, not clearly below it.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
