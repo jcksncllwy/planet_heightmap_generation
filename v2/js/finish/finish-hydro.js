@@ -667,6 +667,7 @@ export function hydrology(ctx, F) {
     // cross the dry ground: down to the shore (a priority flood from the water over the basin's dry cells), or, with
     // no water left, down to the gorge the basin drains by (from its outlet) ──
     const lr = new Int32Array(n).fill(-1), lp = new Int32Array(n).fill(-1), lfill = new Float32Array(n), lflat = new Float32Array(n), lorder = [];
+    const endsHere = new Uint8Array(n);                               // (a closed basin's dry hollow where a river's water ends)
     for (const h of hollows) {
         if (!h.lake) continue;
         const cells = h.cells, dry = c => hollow[c] === hollow[h.outlet] && !lakeKind[c] && (h.closed || c !== h.outlet);
@@ -703,12 +704,32 @@ export function hydrology(ctx, F) {
             }
             recv[c] = pick >= 0 ? pick : lp[c];
         }
+        // (a closed basin's dry floor — Jackson, 2026-10-29: a river entering a dry closed basin ends there, at its playa or
+        // sink, never crossing it at the level water would stand: each dry cell drains the steepest way down its own ground
+        // to a lower cell or the water; one with none is where the river's water ends — it soaks in and evaporates, and
+        // what reached it is not passed on. Until then the floor was crossed by the flood's way at its spill level, the
+        // drawn rivers climbing out of its hollows. Upstream first: by height)
+        if (h.closed) {
+            lorder.sort((a, b) => z[a] - z[b]);
+            for (let i = 0; i < lorder.length; i++) {
+                const c = lorder[i];
+                let pick = -1, steepest = 0;
+                for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                    const nb = adjList[k];
+                    if (!(lr[nb] === -2 || lr[nb] >= 0)) continue;
+                    const s = (z[c] - (lr[nb] === -2 && lakeKind[nb] ? lakeLevel[nb] : z[nb])) / edgeKmOf(xyz, c, nb);
+                    if (s > steepest) { steepest = s; pick = nb; }
+                }
+                if (pick < 0) endsHere[c] = 1;
+                else recv[c] = pick;
+            }
+        }
         // (a lake full to its sill in a closed basin spills into the sub-basin below: its overflow a river from where it
         // lands, down the dry ground to the water — kept steady by the lake)
         if (h.spills) for (const sp of h.spills) if (lr[sp.cell] >= 0) { q[sp.cell] += sp.q; qw[sp.cell] += 12 * sp.q; }
         for (let i = lorder.length - 1; i >= 0; i--) {
             const c = lorder[i], r = recv[c];
-            if (lr[r] >= 0) { q[r] += q[c]; qw[r] += qw[c]; area[r] += area[c]; }
+            if (lr[r] >= 0 && !endsHere[c]) { q[r] += q[c]; qw[r] += qw[c]; area[r] += area[c]; }
         }
         h.dryOrder = Int32Array.from(lorder);                       // (kept: the monthly pass routes the same way)
         for (const c of lorder) lr[c] = -1;
@@ -716,10 +737,54 @@ export function hydrology(ctx, F) {
         for (const c of cells) lp[c] = -1;
     }
 
+    // ── what is left of the hollows a river passes through (lane rivers2, 2026-10-29 — Jackson: a hollow fills and
+    // spills; a river never crosses one at the level water would stand, drawn climbing out of it): over the finished
+    // ground, its lakes at their surface and a closed basin an end, every hollow still left that its water passes on from
+    // is a lake at its rim where the map shows one, else filled by the river's load, graded down to where it spills ──
+    {
+        const fl = new Float32Array(n).fill(Infinity), done = new Uint8Array(n), popped = new Int32Array(n), hp = new MinHeap(1 << 16);
+        const surface = c => (lakeKind[c] === Water.FRESH || lakeKind[c] === Water.SALT ? Math.max(z[c], lakeLevel[c]) : z[c]);
+        const ends = c => rank[c] === -2 || endsHere[c] || (hollow[c] >= 0 && hollows[hollow[c]].closed);
+        for (let c = 0; c < n; c++) if (ends(c)) { fl[c] = rank[c] === -2 ? Math.min(0, z[c]) : surface(c); hp.push(fl[c], c); }
+        let np = 0;
+        while (hp.size) {
+            const c = hp.pop();
+            if (done[c]) continue;
+            done[c] = 1; popped[np++] = c;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k];
+                if (done[nb] || ends(nb)) continue;
+                const v = Math.max(fl[c], surface(nb));
+                if (v < fl[nb]) { fl[nb] = v; hp.push(v, nb); }
+            }
+        }
+        const seenH = new Uint8Array(n);
+        let ponds = 0, pondFills = 0;
+        for (let i0 = 0; i0 < np; i0++) {
+            const s0 = popped[i0];
+            if (seenH[s0] || lakeKind[s0] || !(fl[s0] > surface(s0) + 1e-6) || !(q[s0] >= F.riverMinM3s)) continue;
+            const L = fl[s0], cells = [s0];
+            seenH[s0] = 1;
+            let floor = z[s0];
+            for (let i = 0; i < cells.length; i++) for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) {
+                const nb = adjList[k];
+                if (!seenH[nb] && !lakeKind[nb] && !ends(nb) && fl[nb] > surface(nb) + 1e-6 && Math.abs(fl[nb] - L) < 1e-6) { seenH[nb] = 1; cells.push(nb); if (z[nb] < floor) floor = z[nb]; }
+            }
+            // (where it spills: its cells beside ground no higher than its level that is no part of it)
+            const spill = [];
+            for (const x of cells) for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) { const nb = adjList[k]; if (!seenH[nb] && surface(nb) <= L + 1e-6) { spill.push(x); break; } }
+            if (cells.length >= 2 && cells.length * cellKm2 >= F.lakeMinKm2 && (L - floor) * 1000 >= F.lakeMinDepthM) {
+                for (const x of cells) { lakeKind[x] = Water.FRESH; lakeLevel[x] = L + 1e-5; }
+                ponds++;
+            } else { fillGraded(cells, spill.length ? spill : [cells[0]], L); pondFills++; }
+        }
+        keptPockets.lateLakes = ponds; keptPockets.lateFills = pondFills;
+    }
+
     // ── the rivers: reaches carrying at least riverMinM3s, not on lakes, not on ice caps ──
     const on = c => rank[c] >= 0 && q[c] >= F.riverMinM3s && !lakeKind[c] && !(ctx.ice && ctx.ice[c]);
     const upCount = new Uint8Array(n);
-    for (let i = 0; i < count; i++) { const c = order[i]; if (on(c) && recv[c] >= 0 && on(recv[c])) upCount[recv[c]] = Math.min(255, upCount[recv[c]] + 1); }
+    for (let i = 0; i < count; i++) { const c = order[i]; if (on(c) && recv[c] >= 0 && !endsHere[c] && on(recv[c])) upCount[recv[c]] = Math.min(255, upCount[recv[c]] + 1); }
     const lat = ctx.lat, lon = ctx.lon, L = { start: [], lat: [], lon: [], q: [], season: [], cell: [] };
     // (a point: where, its discharge, and the cell whose year it has — a mouth's point, the river's last cell's)
     const pushPoint = (c, qq, ss, from = c) => {
@@ -737,7 +802,7 @@ export function hydrology(ctx, F) {
             pushPoint(c, q[c], q[c] > 0 ? qw[c] / q[c] : 0);
             if (q[c] > biggest) biggest = q[c];
             const r = recv[c];
-            if (r < 0) break;
+            if (r < 0 || endsHere[c]) break;                   // (where its water ends, in a closed basin's dry hollow)
             // (the mouth: into the sea, a lake, or another river's confluence — its point ends this reach)
             if (rank[r] === -2 || lakeKind[r] || !on(r) || upCount[r] !== 1) { if (rank[r] === -2 || lakeKind[r] || on(r)) pushPoint(r, q[c], q[c] > 0 ? qw[c] / q[c] : 0, c); break; }
             c = r;
@@ -745,7 +810,7 @@ export function hydrology(ctx, F) {
         reaches++;
     }
     // ── each river's year (ctx.months: the monthly shares of each place's runoff, on the climate's grid) ──
-    const regimes = ctx.months ? riverYears(ctx, F, { n, count, order, hollow, hollows, recv, rank, lakeKind, stepKm, own, cells: Int32Array.from(L.cell) }) : null;
+    const regimes = ctx.months ? riverYears(ctx, F, { n, count, order, hollow, hollows, recv, rank, lakeKind, stepKm, own, endsHere, cells: Int32Array.from(L.cell) }) : null;
     let lakes = 0, salt = 0, pans = 0, lakeKm2 = 0;
     const byOrigin = { glacialFresh: 0, tectonicFresh: 0, salt: 0, pan: 0 }, sizes = [];
     // (each body of water: a closed basin's each lake, salt, full or playa; another hollow's one)
@@ -766,6 +831,7 @@ export function hydrology(ctx, F) {
             waterKm2: Math.round(wet * cellKm2), inflowKm3: +(h.inflow * SEC_PER_YEAR / 1e9).toFixed(1), spills: h.outflow > 0 };
     });
     const landKm2 = count * cellKm2;
+    for (let c = 0; c < n; c++) if (endsHere[c]) recv[c] = -1;      // (the rivers that end in a closed basin's dry hollow end there)
     return {
         lake: lakeKind, lakeLevel, q, area, ...(ctx.debug ? { recv } : {}),       // (the network itself: for checks only)
         rivers: { start: Int32Array.from(L.start), lat: Float32Array.from(L.lat), lon: Float32Array.from(L.lon), q: Float32Array.from(L.q), season: Float32Array.from(L.season),
@@ -835,7 +901,7 @@ function riverYears(ctx, F, G) {
             if (h.spills) for (const sp of h.spills) if (dryMark[sp.cell] === id) for (let j = 0; j < M; j++) acc[j][sp.cell] += sp.q * (h.inflow > 0 ? (1 - F.lakeRegulation) * h.inM[j] / h.inflow + F.lakeRegulation : 1);
             for (let i = ord.length - 1; i >= 0; i--) {
                 const c = ord[i], r = recv[c];
-                if (dryMark[r] === id) for (let j = 0; j < M; j++) acc[j][r] += acc[j][c];
+                if (dryMark[r] === id && !G.endsHere?.[c]) for (let j = 0; j < M; j++) acc[j][r] += acc[j][c];
             }
         }
         for (let p = 0; p < P; p++) for (let j = 0; j < M; j++) qm[12 * p + m0 + j] = acc[j][cells[p]];
