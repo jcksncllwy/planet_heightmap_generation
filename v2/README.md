@@ -1918,6 +1918,16 @@ no longer cover the channels the measures read. Water stage at 10M 27.6 → 24.6
 - Closed lakes keep their speckle at 10M: ~1,800 of the 2,100 are under 1,000 km², 0.37 Mkm² in all. `lakeMinKm2` is one cell
   at 640K (two are asked: ~1,600 km²) and ~6 at 10M, unchanged here.
 
+## Surface checks revised (2026-10-30, branch checkfix)
+
+The surface audit (`audit-surface`, main 34abaab) found five failing checks of which none was a clean model failure. What changed:
+
+- **Sea floor** (8b): the check predates submarine canyons. It now builds the carve a second time with `canyonKm: 0`: that sea must be exactly the tectonic surface; the canyons may only lower the cells under the sea, by at most `canyonDepthKm`, and move nothing above it. Still hard.
+- **Rivers run downhill** (8b): drowned valley floors (cells the carve left below the sea) are counted apart, not as rivers. Behind it a small model fix: `drownValleys` lowers each cell by its own drainage and relief, which could leave a river climbing; a cell still above the sea now stands no lower than its receiver where the drowning broke a downhill run (16 cells at 640K, at most 59 m; nothing else moves). Still hard.
+- **Moving continent carries its fine detail** (8a): `basinCover` (terrain/records.js) divided by `platformNoiseKm`, so with the noise off, as the check builds its noise-free surface, ~60 % of the interior was NaN. It is now 0 when there is no noise (bit-identical otherwise). The check picks the plate that turned most among those with at least 2,000 interior cells, counted on the terrain.
+- **Swells steer rivers** (8b): divides exclude filled plains (they have none), and the ratio is the median over five histories (12345, 1, 2, 777, 4242), bound 0.6 unchanged and labelled as a picked mechanism bound.
+- **Big rivers run through lowlands** (8b): now a `report()` against ETOPO5 measured the same way (0.21-0.24 km), plus a hard guard that there are big rivers to measure. The model's lack of lowland (12-30 % of land below 400 m against Earth's 46-50 %) is a land-height question for the belt work.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
