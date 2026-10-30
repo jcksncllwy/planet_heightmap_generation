@@ -1835,7 +1835,7 @@ lakes covered 4–11 % of the land, against Earth's 1.8 % (HydroLAKES, Messager 
 - 12345: 13.4 → 3.0 % at 300 Myr, 14.9 → 3.7 % at 600 and 4.5 → 2.4 % at 950.
 - `check-basins` (626225, 777, 12345; mean of 300, 600 and 950 Myr): lakes on land 3.1, 2.4 and 3.0 % (Earth
   1.8–3.7 %). Largest lake 0.52–0.93 Mkm² (Earth ≤ 0.45), deepest 0.85–2.2 km (Earth ≤ 1.7). Endorheic share
-  20–29 % (Earth ~20 %, Wang et al. 2018).
+  29–35 % (Earth ~20 % today, Wang et al. 2018; the report's range 15–35 %).
 - History, 831576 to 900 Myr: land below its spill fell from 18–28 % of land to 11–17 %, and hollow volume from
   2–12 to 0.4–1.5 Mkm³. The largest hollow fell from 2–14 to 0.2–1.1 Mkm². About 1,000 Mkm³ was trapped over 900 Myr
   (~1.1 km³ a year, beside Earth's ~7 km³ a year of river load).
