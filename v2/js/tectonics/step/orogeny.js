@@ -122,8 +122,13 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
             queue.push(nb);
         }
     }
-    // the cells reached, in index order (every one was queued at least once)
-    const reached = Int32Array.from(new Set(queue)).sort();
+    // the cells reached, in index order (every one was queued at least once; each taken once by a mark, not a Set)
+    if (!scratch.mark || scratch.mark.length !== mask.length) scratch.mark = new Uint32Array(mask.length), scratch.list = new Int32Array(mask.length), scratch.stamp = 0;
+    if (++scratch.stamp === 0xFFFFFFFF) { scratch.mark.fill(0); scratch.stamp = 1; }
+    const { mark, list } = scratch, stamp = scratch.stamp;
+    let n = 0;
+    for (const c of queue) if (mark[c] !== stamp) { mark[c] = stamp; list[n++] = c; }
+    const reached = list.subarray(0, n).sort();
     for (const c of reached) {
         if (u[c] === Infinity || type[c] === CrustType.OCEAN) continue;
         // (a craton, a front cell on one included: thin-skinned — the cover folds and thrusts, the shield barely
@@ -165,7 +170,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
 }
 
 export { OrogenyType, BeltSide };
-const scratch = { u: null, src: null, seaKm: null };
+const scratch = { u: null, src: null, seaKm: null, mark: null, list: null, stamp: 0 };
 
 /**
  * The obliquity (degrees) of a convergence: the angle between the relative velocity `v` of one side against the other
