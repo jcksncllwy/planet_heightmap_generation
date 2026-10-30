@@ -26,7 +26,7 @@ function classifyMotion(closing, shear, activeSpeed, obliqueLimit) {
 /** @param {number} dt  length of the step just taken (Myr) — how long the current closing rates have applied */
 export function classifyBoundaries(world, dt) {
     const { mesh, owner, ownerCell, plates, boundaryKind, convergence, landClaims, provisional, config } = world;
-    const { xyz, numCells } = mesh;
+    const { xyz, numCells, adjOffset, adjList } = mesh;
     const activeSpeed = config.boundaryActiveCmYr * CM_PER_YR_TO_RAD_PER_MYR;
     const normal = [0, 0, 0, 0];
     boundaryKind.fill(BoundaryKind.NONE);
@@ -40,7 +40,10 @@ export function classifyBoundaries(world, dt) {
         if (a < 0) continue;
         if (landClaims[w] > 1) { boundaryKind[w] = BoundaryKind.COLLISION; continue; }
         const A = plates[a], cellA = ownerCell[w], real = !provisional[w];
-        const otherW = contactAt(world, w, normal);
+        // (an interior cell — no neighbour of another plate, contact.js's own test — known here without asking for its contact)
+        let touches = false;
+        for (let k = adjOffset[w], e = adjOffset[w + 1]; k < e; k++) { const b = owner[adjList[k]]; if (b >= 0 && b !== a) { touches = true; break; } }
+        const otherW = touches ? contactAt(world, w, normal) : -1;
         if (otherW < 0) {                              // interior cell
             // A trench flag only means something on ocean crust while that crust is a plate edge;
             // on land it stays as the record of a former active margin.

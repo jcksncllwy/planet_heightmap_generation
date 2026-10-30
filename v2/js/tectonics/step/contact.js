@@ -11,6 +11,11 @@
  *        if `w` is an interior cell
  */
 export function contactAt(world, w, out) {
+    // (an interior cell — no neighbour of another plate — is answered at once, as contactUncached would: most cells are)
+    const { owner, mesh: { adjOffset, adjList } } = world, a = owner[w];
+    let touches = false;
+    for (let k = adjOffset[w], e = adjOffset[w + 1]; k < e; k++) { const b = owner[adjList[k]]; if (b >= 0 && b !== a) { touches = true; break; } }
+    if (!touches) return -1;
     // The answer depends on the world view alone, which only a resolve changes (each bumps occupancyStamp): boundary
     // classification and the force model ask for the same cells between resolves, so answers are kept until the next.
     let cache = world._contact;
