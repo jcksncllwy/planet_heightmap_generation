@@ -22,10 +22,39 @@ export function contactAt(world, w, out) {
         return across;
     }
     cache.done[w] = version;
+    // (a cell with no neighbour of another plate is interior: known for every cell at once, from one pass over the mesh's
+    // edges — each edge read once, not twice)
+    if (!bordersOf(world, version)[w]) { cache.across[w] = -1; return -1; }
     const across = contactUncached(world, w, out);
     cache.across[w] = across;
     if (across >= 0) { cache.normal[4 * w] = out[0]; cache.normal[4 * w + 1] = out[1]; cache.normal[4 * w + 2] = out[2]; cache.normal[4 * w + 3] = out[3]; }
     return across;
+}
+
+/**
+ * 1 for each cell with a neighbour that belongs to another plate (owner ≥ 0 and not its own) — contactUncached's own test
+ * for a contact — for the world view numbered `version`.
+ */
+function bordersOf(world, version) {
+    const { owner, mesh } = world, { adjOffset, adjList, numCells } = mesh;
+    let b = world._borders;
+    if (!b || b.mark.length !== numCells) b = world._borders = { mark: new Uint8Array(numCells), version: 0 };
+    if (b.version === version) return b.mark;
+    b.version = version;
+    const mark = b.mark;
+    mark.fill(0);
+    for (let w = 0; w < numCells; w++) {
+        const a = owner[w];
+        for (let k = adjOffset[w], e = adjOffset[w + 1]; k < e; k++) {
+            const nb = adjList[k];
+            if (nb < w) continue;                     // (each edge from its lower end: the mesh's adjacency is symmetric)
+            const o = owner[nb];
+            if (o === a) continue;
+            if (o >= 0) mark[w] = 1;
+            if (a >= 0) mark[nb] = 1;
+        }
+    }
+    return mark;
 }
 
 function contactUncached(world, w, out) {
