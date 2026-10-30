@@ -1794,6 +1794,48 @@ routing it drops and receivers compared without a square root (identical ways) p
   stand as giant lakes (pending the gs-basins lane).
 - The decisions (lake, salt, pan, cut) are still the first routing's; a closed basin that the final routing would feed
   more is not re-judged.
+## The land's hollows fill with their rivers' load (2026-10-29, branch basins)
+
+**What was wrong.** The history's rivers crossed every hollow at its spill level and sent all their load to the sea, so
+hollows only grew. At 40K cells, cont 30, the land below its spill went from 17 % at 100 Myr to 27 % at 300 Myr
+(seed 831576). The largest hollows were 2–17 Mkm² and 0.2–1 km deep, on old continental and craton crust, with
+swells, base swells, columns and cuts making their rims. In the finish they became lakes. With rivers2's hydrology,
+lakes covered 4–11 % of the land, against Earth's 1.8 % (HydroLAKES, Messager et al. 2016) to 3.7 % (Verpoorter et al.
+2014). The largest was 4 Mkm², against the Caspian's 0.37 Mkm² and Mega-Chad's 0.36 Mkm².
+
+**What changed.**
+- **Hollows trap sediment** (`tectonics/step/rivers.js`). Each hollow, the cells below one spill joined side to
+  side, is one lake; whatever sediment leaves it goes out through its outlet. A hollow is closed when its brimful lake
+  would lose more water to evaporation than flows in (`lakeEvaporationMm` 1300: ~98 W/m² of surface net radiation,
+  Trenberth et al. 2009, over water's latent heat). A closed hollow keeps all its load. A hollow a river flows through
+  keeps Brune's (1953) share, 1 − 0.05/√τ, as Vörösmarty et al. 2003 fit it. Here τ is the hollow's volume below
+  the spill divided by its inflow: rain over the catchment times `basinRunoffShare` 0.35 (Trenberth et al. 2007).
+  The trapped sediment is laid from the bottom up. It fills the rivers' cuts first, then builds a plain at the
+  spill level that rises from the outlet at `plainGrade`, so the floor is gentle and slopes to its outlet.
+- **Rivers stop at a lake's surface.** A river no longer cuts below the surface of the lake it runs into. The old
+  cuts had been deepening hollows.
+- **The fill is a crust record**, `crust.basinFillKm`, like `seaFillKm`. It moves with its plate and loads it by Airy
+  isostasy (`LAND_SEDIMENT_LOAD_FACTOR` = ρm/(ρm − ρs) ≈ 4.1, so ~4 km of sediment fills a 1 km hollow). It wears as
+  its land does (`step/heights.js`). `records.js` draws it, and it buries the platform's bedrock basins and arches
+  (`basinCover` in `synthesize.js`). The sediment is the continents' own rock, moved, so the crust ledger does not
+  change. What a hollow keeps no longer reaches the sea, the trenches' fans or an enclosed sea.
+- **Tools.** `tools/trace-basins.mjs` reports the history's hollows through time and the finish's lakes, including
+  how much of each lake lies over a history hollow and the crust under it. `tools/lib/land-water.mjs` holds the shared
+  measurement. `check-basins` has a new section: trap efficiency against measured reservoirs, plus reports on the
+  land's lakes, the largest and deepest, the land below its spill, the land's mean height and the fill held.
+
+**Results** (40K, cont 30; rivers2 → basins, lakes on land as a share of land):
+- 626225: 9.4 → 3.8 % at 300 Myr, 4.0 → 3.6 % at 600, 7.3 → 3.6 % at 950.
+- 831576: 10.9 → 5.7 % at 310 Myr (640K cells), with the largest lake 4.09 → 0.43 Mkm²; 4.3 → 3.8 % at 600.
+- History, 831576 at 300 Myr: hollow volume 6.2 → 1.0 Mkm³ and the largest hollow 5.5 → 0.9 Mkm², with ~370 Mkm³
+  trapped over 300 Myr (~1.2 km³ a year).
+
+**What is left.** Only ~10 % of the remaining lakes lie over a history hollow. Most sit in belts: closed basins the
+terrain draws between ranges, 0.2–0.9 Mkm² and 0.2–0.8 km deep (Earth's Altiplano and Tibetan lakes are far smaller).
+Zeroing the terrain's own craton sags and foredeeps (`cratonSagKm`, `foredeepMaxKm`) left the lake area unchanged,
+3.7–4.3 % against 3.6–3.8 %, so those depressions are not where the extra lakes come from. A few km-deep bodies lie
+on island-arc crust: back-arc basins closed off by their arcs. `land-water.mjs` now counts a body as sea when a
+quarter of it lies on open sea floor.
 
 ## Conventions
 
