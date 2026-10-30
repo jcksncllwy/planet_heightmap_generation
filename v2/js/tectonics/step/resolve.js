@@ -152,17 +152,23 @@ function fractureAt(world, grower, cell, P) {
     const { index, adjOffset, adjList } = world.mesh, { owner, plates } = world, w = index.nearest(P[0], P[1], P[2]);
     // (across the gap, ring by ring through the gap's own cells, to the first ring that meets another plate: a gap is often
     // wider than a cell, and the grower alone around a cell would measure about its own rotation, not the ridge's)
-    let partner = -1, most = 0, ring = [w];
-    const seen = new Set(ring), count = new Map();
-    for (let hop = 0; hop < 8 && ring.length && partner < 0; hop++) {
-        const next = [];
-        for (const q of ring) for (let k = adjOffset[q] - 1; k < adjOffset[q + 1]; k++) {
-            const r = k < adjOffset[q] ? q : adjList[k], o = owner[r];
-            if (o >= 0 && o !== grower.id) { const c = (count.get(o) ?? 0) + 1; count.set(o, c); if (c > most) { most = c; partner = o; } }
-            else if (o < 0 && !seen.has(r)) { seen.add(r); next.push(r); }
+    // (marks and counts in scratch arrays, not a Set and a Map: the same cells in the same order, the same counts)
+    const f = fractureScratch(owner.length, plates.length), seen = f.seen, mark = f.mark, count = f.count, counted = f.counted;
+    let partner = -1, most = 0, ring = f.ringA, next = f.ringB, n = 1, nCounted = 0;
+    ring[0] = w; seen[w] = mark;
+    for (let hop = 0; hop < 8 && n && partner < 0; hop++) {
+        let m = 0;
+        for (let i = 0; i < n; i++) {
+            const q = ring[i];
+            for (let k = adjOffset[q] - 1; k < adjOffset[q + 1]; k++) {
+                const r = k < adjOffset[q] ? q : adjList[k], o = owner[r];
+                if (o >= 0 && o !== grower.id) { if (count[o] === 0) counted[nCounted++] = o; const c = ++count[o]; if (c > most) { most = c; partner = o; } }
+                else if (o < 0 && seen[r] !== mark) { seen[r] = mark; next[m++] = r; }
+            }
         }
-        ring = next;
+        [ring, next] = [next, ring]; n = m;
     }
+    for (let i = 0; i < nCounted; i++) count[counted[i]] = 0;
     // (their rotations averaged over ~20 Myr — simulate.js: the steady spreading pole, not the step's wobble)
     const other = partner >= 0 && !plates[partner].isBackground ? plates[partner].omegaSlow ?? plates[partner].omega : [0, 0, 0], g = grower.omegaSlow ?? grower.omega;
     // (oriented by plate id, so both flanks of a ridge measure about the same pole)
@@ -171,6 +177,15 @@ function fractureAt(world, grower, cell, P) {
     // about a steady relative pole the coordinate of new floor then stays the same along each strip)
     const { xyz } = world.mesh, a = grower.toPlateFrame(rel[0], rel[1], rel[2], [0, 0, 0]);
     return fractureCoordinate(xyz[3 * cell], xyz[3 * cell + 1], xyz[3 * cell + 2], a);
+}
+
+let fracture = null;
+/** fractureAt's scratch: a fresh mark on a cell-sized array, two ring lists, and per-plate counts (left at zero after use). */
+function fractureScratch(numCells, numPlates) {
+    if (!fracture || fracture.seen.length !== numCells) fracture = { seen: new Uint32Array(numCells), mark: 0, ringA: new Int32Array(numCells), ringB: new Int32Array(numCells), count: new Int32Array(0), counted: new Int32Array(0) };
+    if (fracture.count.length < numPlates) { fracture.count = new Int32Array(2 * numPlates); fracture.counted = new Int32Array(2 * numPlates); }
+    if (++fracture.mark === 0xFFFFFFFF) { fracture.seen.fill(0); fracture.mark = 1; }
+    return fracture;
 }
 
 /** Raster cells of `grower` that stand under a gap cell, plus a small neighbourhood of them. (Exported, like decideBirth, so a debugging script can ask why a cell was or was not born.) */
