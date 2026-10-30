@@ -217,10 +217,10 @@ function seenMarks(numCells) {
  */
 export function decideBirth(world, grower, cell, everyone, near = null) {
     const { mesh, config } = world, { xyz, edgeRad } = mesh, hit = birthScratch.hit;
+    // (attached: any crust of its own within PROXIMITY_RINGS — its edge counts say so at once; where the nearest is comes
+    // after the gap test below, which turns most candidates away without it)
+    if (!grower.crust.mask[cell] && !nearEdge(grower, mesh).count[cell]) return NOT_ATTACHED;
     const p = grower.toWorld(xyz[3 * cell], xyz[3 * cell + 1], xyz[3 * cell + 2], birthScratch.p);
-    // (p is the cell's own centre: the cell under it is the cell)
-    if (!nearestCrustInto(grower, mesh, p, cell, hit)) return NOT_ATTACHED;
-    const ownDot = hit.dot, ownCell = hit.cell;
 
     const bins = binIndex(mesh), bin = bins.at(p[0], p[1], p[2]), stamp = world.occupancyStamp;
     // (`near`: the plates that may have crust near this bin, worked out once per bin — nearIndex; else filtered here)
@@ -234,6 +234,9 @@ export function decideBirth(world, grower, cell, everyone, near = null) {
         if (plate.crust.mask[under]) return NOT_A_GAP;                                   // (a)
         rivals[n] = plate; unders[n++] = under;
     }
+    // (p is the cell's own centre: the cell under it is the cell)
+    nearestCrustInto(grower, mesh, p, cell, hit);
+    const ownDot = hit.dot, ownCell = hit.cell;
     let rivalDot = -2, neighbour = null, neighbourDot = -2, neighbourCell = -1;
     for (let i = 0; i < n; i++) {
         const plate = rivals[i];
