@@ -1612,6 +1612,18 @@ only adds its own fields.
   dry one; ice above a closed hollow dams none; on seven finished moments every ice-dammed lake has ice across its way
   out, and the ice age leaves every height a number (bug guards). Reported against the last glacial (Agassiz, Missoula,
   the Baltic Ice Lake, the West Siberian lakes): the count, their area, the largest's water and area, the lowest latitude.
+- **Before → after** (renders in `v2/out/moments/floods-{before,after}-*`): 831576 at 310 Myr, 640K: 142 lakes, 35.9 Mkm²,
+  4.42 M km³, the largest 878 000 km³ → 20 lakes, 0.44 Mkm², 0.43 M km³, the largest 114 000 km³, all but two small ones
+  poleward of 50°. 777 at 300 Myr (a glacial world that should flood): 37 lakes, 4.15 Mkm² → 36, 3.99 Mkm², the same
+  great lakes, a little lower (the hydraulic head). 831576 at 310, 2.5M: the NaN did not arise there; 24 lakes either way,
+  0.45 → 0.42 M km³. The mutation test: with the NaN fix reverted, both bug guards fail on 5 of check-floods' 7 moments.
+- **Time:** the added work is a few passes over the cells; a 150 km pet blur in the first cut (~100 ms at 640K, measured)
+  was replaced by each lake's own evaporation for its bared-shelf cells (identical results). The ice-age stage, three
+  rounds interleaved with main b26455c's (`SIM_REMOTE=0`, 831576 at 310, 640K): 1430/1972/1685 ms → 1524/1423/1531 ms;
+  the whole Add detail 75/41/37 s → 36/32/31 s (main's NaN made its floods far bigger). 2.5M: 3656 → 3437 ms. No slowdown.
+- **Open:** on glacial worlds a few lakes are still several times Earth's largest (to 3.7 M km³, 3.8 Mkm²): ice-free polar
+  lowlands ringed by ice whose sills sit under 1–2 km of it, with ample runoff — the West Siberian lakes' setting, at 4–5×
+  their size. Whether ice should flow into such lowlands (finish-ice's extent) is a design choice left open.
 
 ```
 node v2/tools/check-floods.mjs         # ice-dammed lakes: held by ice across their outlet, filled by their water; reported against the last glacial's
