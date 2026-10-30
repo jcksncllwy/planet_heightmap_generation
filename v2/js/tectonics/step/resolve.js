@@ -261,20 +261,25 @@ export function decideBirth(world, grower, cell, everyone, near = null) {
     const bins = binIndex(mesh), bin = bins.at(p[0], p[1], p[2]), stamp = world.occupancyStamp;
     // (`near`: the plates that may have crust near this bin, worked out once per bin — nearIndex; else filtered here)
     // (a) first, for every rival — the cell under p on its raster — then their nearest crust, only once it is a gap
-    const rivals = birthScratch.rivals, unders = birthScratch.unders;
+    const rivals = birthScratch.rivals, unders = birthScratch.unders, list = near ? near(bin) : everyone;
+    // (the plate that last had crust under a candidate is asked first: the next candidate is usually beside it, and any one
+    // rival with crust under p is the answer. If it has none, its cell under p is kept for the pass below, in list order)
+    let hinted = -1, hintedUnder = -1;
+    const hint = birthScratch.culprit;
+    if (hint) for (let i = 0; i < list.length; i++) {
+        if (list[i].plate !== hint) continue;
+        if (hint === grower || !mayHaveRivalAt(list[i], p, near, bin, stamp, bins)) break;
+        const under = underOrCrust(hint, mesh, p);
+        if (under < 0) return NOT_A_GAP;                                                 // (a)
+        hinted = i; hintedUnder = under;
+        break;
+    }
     let n = 0;
-    for (const { plate, cap } of near ? near(bin) : everyone) {
-        if (plate === grower || p[0] * cap[0] + p[1] * cap[1] + p[2] * cap[2] < cap[3]) continue;
-        if (!near && !mayHaveCrustNear(plate, bin, stamp, bins)) continue;               // nothing of that plate anywhere near
-        // (plate.cellAt, in its two halves: the index's first guess, then the walk from it. The true nearest cell is within
-        // 2 hops of the guess (core/sphere-index.js; step/gather.js relies on it too): a guess of crust with no edge of it
-        // within a ring has crust all round for 2 hops, so the cell under p is crust without walking there)
-        const m = plate.mat, mask = plate.crust.mask;
-        const qx = m[0] * p[0] + m[3] * p[1] + m[6] * p[2], qy = m[1] * p[0] + m[4] * p[1] + m[7] * p[2], qz = m[2] * p[0] + m[5] * p[1] + m[8] * p[2];
-        const guess = mesh.index.start(qx, qy, qz);
-        if (mask[guess] && !plate._nearEdge.within1[guess]) return NOT_A_GAP;            // (a)
-        const under = mesh.index.walk(guess, qx, qy, qz);
-        if (mask[under]) return NOT_A_GAP;                                               // (a)
+    for (let i = 0; i < list.length; i++) {
+        const entry = list[i], plate = entry.plate;
+        if (plate === grower || !mayHaveRivalAt(entry, p, near, bin, stamp, bins)) continue;
+        const under = i === hinted ? hintedUnder : underOrCrust(plate, mesh, p);
+        if (under < 0) { birthScratch.culprit = plate; return NOT_A_GAP; }               // (a)
         rivals[n] = plate; unders[n++] = under;
     }
     // (p is the cell's own centre: the cell under it is the cell)
@@ -299,12 +304,34 @@ export function decideBirth(world, grower, cell, everyone, near = null) {
         && (grower.crust.wingKm[ownCell] === 0 || !isBehind(grower, ownCell, cell, mesh));
     return { born: true, trenchParent: parentIsTrench ? ownCell : -1 };
 }
+/** Is `entry`'s plate (with its cap) one decideBirth asks about at p: p within its cap, and (no `near`) crust near the bin? */
+function mayHaveRivalAt(entry, p, near, bin, stamp, bins) {
+    const cap = entry.cap;
+    if (p[0] * cap[0] + p[1] * cap[1] + p[2] * cap[2] < cap[3]) return false;
+    return near || mayHaveCrustNear(entry.plate, bin, stamp, bins);                  // (else nothing of that plate anywhere near)
+}
+
+/**
+ * The plate's raster cell under world point p, or −1 if it is crust (plate.cellAt in its two halves: the index's first
+ * guess, then the walk from it). The true nearest cell is within 2 hops of the guess (core/sphere-index.js; step/gather.js
+ * relies on it too): a guess of crust with no edge of it within a ring has crust all round for 2 hops, so the cell under
+ * p is crust without walking there. Needs the plate's edge counts up to date (growCrustIntoGaps).
+ */
+function underOrCrust(plate, mesh, p) {
+    const m = plate.mat, mask = plate.crust.mask, index = mesh.index;
+    const qx = m[0] * p[0] + m[3] * p[1] + m[6] * p[2], qy = m[1] * p[0] + m[4] * p[1] + m[7] * p[2], qz = m[2] * p[0] + m[5] * p[1] + m[8] * p[2];
+    const guess = index.start(qx, qy, qz);
+    if (mask[guess] && !plate._nearEdge.within1[guess]) return -1;
+    const under = index.walk(guess, qx, qy, qz);
+    return mask[under] ? -1 : under;
+}
+
 // (the answers no, shared: decideBirth runs millions of times per history, and these need no fresh object)
 const NOT_ATTACHED = Object.freeze({ born: false, why: 'not attached to this plate’s crust' });
 const NOT_A_GAP = Object.freeze({ born: false, why: 'not a gap: another plate has crust here' });
 const TOO_CLOSE = Object.freeze({ born: false, why: 'too close to the mid-line' });
 const CLOSING = Object.freeze({ born: false, why: 'closing boundary' });
-const birthScratch = { p: [0, 0, 0], hit: { dot: -2, cell: -1 }, rivals: [], unders: [] };
+const birthScratch = { p: [0, 0, 0], hit: { dot: -2, cell: -1 }, rivals: [], unders: [], culprit: null };
 
 /**
  * Gap cells that are still empty need an owner for this step's world view. They are the ridge axis (no
