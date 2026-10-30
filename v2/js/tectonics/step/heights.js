@@ -174,9 +174,9 @@ export function evolveHeights(world, dt) {
             prevRugged[c] *= wear(e / H.ruggedTauMyr);
             riverIncKm[c] *= wear(e / H.ruggedTauMyr);              // (a gorge's walls wear back like the belt's crests)
             if (baseKm[c] > 0) baseKm[c] *= keep;
-            // (a hollow's fill wears with the land it lies in — hardly at all while it lies low; lifted, it is stripped as
-            // the rest is: the rock is soft, but no softer here — erosionAtHeight sets the pace)
-            if (basinFillKm[c] > 0) basinFillKm[c] *= keep;
+            // (a hollow's fill wears with the land it lies in — hardly at all while it lies low (erosionAtHeight sets the
+            // pace); it is sediment, so a shield's hardness does not hold it: it wears as the cover does)
+            if (basinFillKm[c] > 0) basinFillKm[c] *= hard < 1 ? wear(rate[bin] * dt * erosionAtHeight(height, H) / H.reliefTauMyr) : keep;
         }
     }
     return 0;

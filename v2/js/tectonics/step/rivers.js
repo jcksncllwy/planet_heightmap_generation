@@ -84,11 +84,13 @@ export function evolveRivers(world, dt) {
         const l = Math.max(0, full - b);
         // (the swell is the mantle's, broad: it tilts the land and its rivers with it, not the relief they cut into)
         b += swellKm[w] - (type === CrustType.ARC ? seaRef : landRef) - seaKm;
-        base[w] = b; lift[w] = l; cutNow[w] = Math.min(crust.riverIncKm[c], l + H.riverPlainKm);
+        // (and the sediment its rivers have laid in it, if it lay in a hollow — below: relief too, the softest there is,
+        // which its rivers cut into as soon as its outlet lies lower)
+        const laid = crust.basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
+        base[w] = b; lift[w] = l + laid; cutNow[w] = Math.min(crust.riverIncKm[c], l + laid + H.riverPlainKm);
         // (a belt still rising keeps pace with its rivers: they cut less there — shaping it, not trenching it)
         hold[w] = 1 - H.riverActiveHold * (crust.oroType[c] ? Math.exp(-Math.max(0, time - crust.oroLast[c]) / H.carveActiveMyr) : 0);
-        // (and the sediment its rivers have laid in it, if it lies in a hollow: below)
-        height[w] = b + l - cutNow[w] + crust.basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
+        height[w] = b + l + laid - cutNow[w];
     }
     // ── the priority flood from the sea, lowest spill first; each cell's receiver its steepest way down ──
     const heap = s.heap;
