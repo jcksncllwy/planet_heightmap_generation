@@ -813,35 +813,42 @@ export function hydrology(ctx, F) {
     // cells' water, is not a sink for the river, which would fill it and run on. Leaving one costs that climb)
     const sink = new Uint8Array(n), closedAt = c => (hollow[c] >= 0 && hollows[hollow[c]].closed ? hollow[c] : -1);
     for (let c = 0; c < n; c++) if (rank[c] >= 0 && (lakeKind[c] === Water.SALT || (closedAt(c) >= 0 && (endsHere[c] || lakeKind[c] === Water.PAN)))) sink[c] = 1;
-    const rimOf = c => (closedAt(c) >= 0 ? hollows[hollow[c]].level : lakeKind[c] === Water.SALT ? surfaceOf(c) : -Infinity);
-    const outOf = (c, nb) => closedAt(c) !== closedAt(nb) || (lakeKind[c] === Water.SALT && lakeKind[nb] !== Water.SALT);
-    const fl = fill, from = parent;
+    // (per cell, for the floods: its rim, and the closed basin it is part of — every salt lake outside one counted as one
+    // region; -1 none)
+    const rimAt = new Float32Array(n).fill(-Infinity), region = new Int32Array(n).fill(-1);
+    for (let c = 0; c < n; c++) {
+        if (closedAt(c) >= 0) { rimAt[c] = hollows[hollow[c]].level; region[c] = hollow[c]; }
+        else if (lakeKind[c] === Water.SALT) { rimAt[c] = surfaceOf(c); region[c] = -3; }
+    }
+    const rimOf = c => rimAt[c], outOf = (c, nb) => region[c] !== region[nb];
+    // (the land beside the sea, once: where the flood starts from the sea)
+    const coast = [], coastFrom = [];
+    for (let c = 0; c < n; c++) if (rank[c] === -2) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (rank[nb] !== -2) { coast.push(nb); coastFrom.push(c); } }
+    const fl = fill, from = parent, surf = new Float32Array(n);
     const finalFlood = () => {
         heap.size = 0;
         let k0 = 0;
         for (let c = 0; c < n; c++) {
             if (rank[c] === -2) continue;
-            rank[c] = -1; from[c] = -1;
+            rank[c] = -1; from[c] = -1; surf[c] = surfaceOf(c);
             if (sink[c]) { fl[c] = z[c]; flatSteps[c] = 0; heap.push(fl[c], c); }
         }
-        for (let c = 0; c < n; c++) {
-            if (rank[c] !== -2) continue;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-                const nb = adjList[k];
-                if (rank[nb] === -2 || sink[nb]) continue;
-                const v = Math.max(0, surfaceOf(nb));
-                if (from[nb] === -1 || v < fl[nb]) { from[nb] = c; fl[nb] = v; flatSteps[nb] = 0; heap.push(v, nb); }
-            }
+        for (let i = 0; i < coast.length; i++) {
+            const nb = coast[i];
+            if (sink[nb]) continue;
+            const v = Math.max(0, surf[nb]);
+            if (from[nb] === -1 || v < fl[nb]) { from[nb] = coastFrom[i]; fl[nb] = v; flatSteps[nb] = 0; heap.push(v, nb); }
         }
         while (heap.size) {
             const c = heap.pop();
             if (rank[c] !== -1) continue;
             rank[c] = k0; order[k0++] = c;
+            const fc = fl[c], rim = rimAt[c], rc = region[c];
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
                 const nb = adjList[k];
                 if (rank[nb] !== -1 || sink[nb]) continue;
-                let level = Math.max(fl[c], surfaceOf(nb));
-                if (level < rimOf(c) && outOf(c, nb)) level = rimOf(c);
+                let level = fc > surf[nb] ? fc : surf[nb];
+                if (level < rim && rc !== region[nb]) level = rim;
                 if (from[nb] === -1 || level < fl[nb]) {
                     from[nb] = c; fl[nb] = level;
                     flatSteps[nb] = level === fl[c] ? flatSteps[c] + 1 : 0;
@@ -858,14 +865,16 @@ export function hydrology(ctx, F) {
     // against what its open water would lose), else filled by its river's load, graded from its edges to where it spills
     // (fillGraded). Here, on the final surface, not before it: chosen on the first routing's surface, the ones a later
     // gorge or fill left — a fill across a gorge, a pocket a cut opened — were missed, and crossed at their spill level ──
-    // (again until none is left, at most four rounds: a fill rises inland from its outlet, and where it rises past the
-    // sill of a hollow that spilled onto it, that hollow is left below its new outlet and fills in turn — aggradation
-    // raising its tributaries' base level. On phase 8b's world 2711 hollows, then 85, 18, 5)
+    // (and once more: a fill rises inland from its outlet, and where it rises past the sill of a hollow that spilled onto
+    // it, that hollow is left below its new outlet and fills in turn — aggradation raising its tributaries' base level.
+    // On phase 8b's world 1823 hollows, then 57; a third round would find a handful — a whole flood each, left. The last
+    // round's fills are not flooded again: each is routed down itself — its cells by height, each strictly above the one
+    // fillGraded drained it to, take the places in the order its cells had, and drain down that order)
     {
-        const seenH = new Uint8Array(n), inH = new Uint8Array(n);
+        const seenH = new Uint8Array(n), inH = new Uint8Array(n), slots = [], ROUNDS = 2;
         let ponds = 0, pondFills = 0;
         keptPockets.lateRounds = [];
-        for (let round = 0; round < 4; round++) {
+        for (let round = 0; round < ROUNDS; round++) {
         let made = 0;
         seenH.fill(0);
         for (let i0 = 0; i0 < count; i0++) {
@@ -885,12 +894,20 @@ export function hydrology(ctx, F) {
             if (cells.length >= 2 && cells.length * cellKm2 >= F.lakeMinKm2 && (L - floor) * 1000 >= F.lakeMinDepthM && qin >= loss) {
                 for (const x of cells) { lakeKind[x] = Water.FRESH; lakeLevel[x] = L + 1e-5; }
                 ponds++;
-            } else { fillGraded(cells, spill.length ? spill : [cells[0]], L); pondFills++; }
+            } else {
+                fillGraded(cells, spill.length ? spill : [cells[0]], L); pondFills++;
+                if (round === ROUNDS - 1) {
+                    slots.length = 0;
+                    for (const x of cells) { slots.push(rank[x]); fl[x] = z[x]; }
+                    slots.sort((a, b) => a - b); cells.sort((a, b) => z[a] - z[b]);
+                    for (let i = 0; i < cells.length; i++) { order[slots[i]] = cells[i]; rank[cells[i]] = slots[i]; }
+                }
+            }
             for (const x of cells) inH[x] = 0;
             made++;
         }
         keptPockets.lateRounds.push(made);
-        if (!made) break;
+        if (!made || round === ROUNDS - 1) break;
         count = finalFlood();
         }
         keptPockets.lateLakes = ponds; keptPockets.lateFills = pondFills;
