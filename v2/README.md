@@ -1668,6 +1668,71 @@ Pays back the founders' +7.7 % whole-history CPU (b26455c over 5f45475). Every c
   in the gather; a certain-texel table for the sphere index; incremental resolve, because births sit beside the gaps;
   edge counts packed in one word per cell.
 - **Open.** Parity with 5f45475 is within noise, not clearly below it.
+## Straight channels on level ground: pits breached, hollows filled (2026-10-29, branch rivers2)
+
+In the user's frame (seed 831576 at 310 Myr) Add detail drew straight channels converging across low ground near 0.8°N
+128.4°E: a "broom". **Measured** (`river-network.mjs`, the `broom` measure; `check-phase8b.mjs` reports it): the share of
+low reaches (falling under 2e-4 over 200 km, at any height, a reach through a lake not counted) that are dead level (a
+fall under 1e-6 over 200 km — no alluvial river is that flat: the lower Amazon falls ~2e-5) or that rise, and the share
+of low channel length in links of 200 km or more that never bend (sinuosity under 1.05).
+
+**What made it** (toggled one at a time, 640K and 2.5M): dead-level ground, not the routing. `closedBasins` levelled a
+terminal lake's floor to its balance level, so a dry closed basin's floor was a plain hundreds of km across at one
+height (374 m under the broom); and a hollow's pockets were cut from their floors level until lower ground, gorges a
+km deep and thousands of km long (the item-B trench at 34.1°N 122.1°E: a pocket gorge level at −112 m for ~1,800 km,
+drawn but dark in it). Flat routing, the sediment grading and the meander cap were not the cause.
+
+**Now** (Lindsay 2016's hybrid, the user's ruling):
+- **A closed basin keeps its floor** (`finish-basins.js`, one line: the lakes lane's file). Its water stands over it.
+- **Only an artifact pit is breached**: no deeper than `pitDepthKm` (15 m), its channel out no longer than
+  `pitBreachKm` (100 km), and that channel falls (`gorgeMinGrade` 1e-5).
+- **An outlet cuts its sill down only so far**: to the ground its outflow reaches within `breachReachKm` (100 km, a
+  knickpoint's retreat; Crosby & Whipple 2006, recalled), never to its floor.
+- **Any other hollow fills and spills**: by its own water balance a fresh lake spilling on, a salt lake or a pan; one
+  too small to show is filled with its river's load, graded up from where it spills at `fillGrade` (5e-5) and sagged by
+  `fillSag` (0.25: a muddy fill compacts) of its thickness, each cell above the one it was reached from. A fill is held
+  below only the ground that drains into it (until this lane every lower neighbour, a gorge or a lake bed, planed fills
+  level at their spill height: 53 % of the low reaches dead level on phase 8b's world).
+- **A river into a dry closed basin ends there**, at its playa or sink; into a wet one, at its lake. It is never routed
+  across at the level the water would stand.
+- **What is left of the hollows a river crosses** — after the water is known — becomes a lake at its rim where the map
+  shows one, else a graded fill.
+- **A finishing hollow a gorge has since opened** (ground beside it lower than its level) is cut through as before.
+
+Before → after (main 5f45475 → this branch), Add detail's rivers:
+
+| Measure (Earth) | user's frame 640K | user's frame 2.5M | phase 8b world 640K |
+|---|---|---|---|
+| low reaches dead level (0–2 %) | 27 → 16 % | 23 → 12 % | 9 → 13 % |
+| low reaches rising | 1 → 3 % | 1 → 3 % | 3 → 4 % |
+| dead-straight runs | 6 → 4 % | 2 → 0 % | 4 → 14 % |
+| Hack h (0.5–0.6) | 0.60 → 0.60 | 0.58 → 0.58 | 0.62 → 0.76 |
+| Horton R_B (3–5) | 4.86 → 7.74 | 4.64 → 8.94 | 6.11 → 7.46 |
+| junction angle (45–72°) | 79 → 80° | 81 → 85° | 77 → 75° |
+| plains sinuosity p90 (≤ 1.5) | 1.58 → 1.67 | 1.62 → 2.22 | 2.56 → 3.11 |
+| plain gradient, median (1e-5–1e-4) | 1.9e-4 → 2.5e-4 | 1.9e-4 → 2.6e-4 | 2.4e-4 → 2.0e-5 |
+
+**Pending the gs-basins lane — not tuned here.** With floors kept and hollows no longer cut through, the land's
+hollows hold water: at 2.5M fresh lakes 1.7 → 16.4 Mkm², salt 0.57 → 2.19, pans 0.08 → 0.11. The broom itself is now
+under a 1.63 Mkm² fresh lake (water 463 m over a 67 m floor), item B under one of 1.27 Mkm² (833 m), one of 1.68 Mkm²
+at 40°N 108°E. These are the history's sinking land basins left unfilled (sediment, the gs-basins lane). Basins check
+(300/600/950 Myr, main → this branch): land draining to closed basins 23.7/30.3/32.1 → 28.7/34.6/38.2 % (Earth
+15–35 %); cut-off seas spilling 67.8/54.8/33.3 → 61.8/54.8/32.1 %. Item A (19.5°N 96.1°E): a tectonic closed hollow
+main cut a gorge >100 m deep into (a lake below sea level at 10M); now a fresh lake at its rim (289 m over 288 m).
+
+**Time.** The water stage at 640K: 1.3 → 1.8–2.4 s (paired dumps; the machine shared). At 2.5M, branch then main back
+to back: water 12.7 vs 10.4 s, but every stage the branch does not touch ran 15–50 % slower in its run too; not
+resolved under the load, and 10M not run.
+
+**Open:**
+- **Straight runs on phase 8b's world (14 % vs 4 %)**: pockets in the hollows cut through before the water is known are
+  still filled from where they spill, cones whose rivers run as spokes. Left unfilled instead, their rivers climbed out
+  over sills beside a lower way out (15 % rising): `reroute` floods a cut hollow from its old outlet, and an exit onto
+  ground later in the flood's order breaks the upstream-first discharge. The fix is routing after all cuts, then the
+  discharge — a restructure.
+- The trapped seas' `seaFull` 3 m gorges are as before; flood silt and scour flats (`finish-floods.js`) unmeasured here.
+- A closed pocket's lake does not reduce the discharge below it.
+- Sinuosity p90 and Horton rise, the junction count falls: lakes cover channels, and the measure skips them.
 
 ## Conventions
 
