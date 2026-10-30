@@ -120,8 +120,11 @@ export function rasterCellUnder(map, plate, mesh, w) {
  * Kept up to date rather than rebuilt (the mask in the raster's own frame: the plate's turning does not touch it): each
  * call finds the cells whose mask changed since the last — a few hundred of a raster's cells, from step to step — and
  * recounts the edge cells only around them. The same cells as counting afresh.
+ * `changed` (optional): cells the caller has just changed. Used instead of comparing the whole mask when they account for
+ * every change since the last call — each change of a mask cell bumps the raster's version once, so when as many of them
+ * differ from the last call's mask as the version has moved, nothing else changed — else the mask is compared as before.
  */
-export function nearEdge(plate, mesh) {
+export function nearEdge(plate, mesh, changed = null) {
     const { numCells, adjOffset, adjList } = mesh, mask = plate.crust.mask, { start, cells, stride } = ringsOf(mesh);
     let near = plate._nearEdge;
     if (!near || near.seen.length !== numCells) near = plate._nearEdge = { seen: new Uint8Array(numCells), edge: new Uint8Array(numCells), count: new Uint8Array(numCells),
@@ -129,19 +132,28 @@ export function nearEdge(plate, mesh) {
     const { seen, edge, count, within1, within2, touched, list } = near;
     // (nothing to do while it is the same raster and no cell of its mask has changed since: model/crust.js `version`)
     if (near.raster === plate.crust && near.version === plate.crust.version) return near;
+    const moved = near.raster === plate.crust ? plate.crust.version - near.version : -1;
     near.raster = plate.crust; near.version = plate.crust.version;
-    // (the cells whose mask changed: compared four at a time — nearly every word is the same)
     list.length = 0;
-    const words = numCells >> 2, aligned = !(mask.byteOffset & 3);
-    let from = 0;
-    if (aligned) {
-        const a = view32(seen), b = view32(mask);
-        for (let i = 0; i < words; i++) if (a[i] !== b[i]) for (let c = 4 * i; c < 4 * i + 4; c++) if (seen[c] !== mask[c]) list.push(c);
-        from = 4 * words;
+    // (the caller's cells first — each taken once: its last-seen mask is brought up to date as it is taken; if they are not
+    // every change, put back and compare the whole mask)
+    if (changed && moved > 0) {
+        for (const c of changed) if (seen[c] !== mask[c]) { seen[c] = mask[c]; if (list.push(c) > moved) break; }
+        if (list.length !== moved) { for (const c of list) seen[c] ^= 1; list.length = 0; }
     }
-    for (let c = from; c < numCells; c++) if (seen[c] !== mask[c]) list.push(c);
-    if (!list.length) return near;
-    for (const c of list) seen[c] = mask[c];
+    if (!list.length) {
+        // (the cells whose mask changed: compared four at a time — nearly every word is the same)
+        const words = numCells >> 2, aligned = !(mask.byteOffset & 3);
+        let from = 0;
+        if (aligned) {
+            const a = view32(seen), b = view32(mask);
+            for (let i = 0; i < words; i++) if (a[i] !== b[i]) for (let c = 4 * i; c < 4 * i + 4; c++) if (seen[c] !== mask[c]) list.push(c);
+            from = 4 * words;
+        }
+        for (let c = from; c < numCells; c++) if (seen[c] !== mask[c]) list.push(c);
+        if (!list.length) return near;
+        for (const c of list) seen[c] = mask[c];
+    }
     // (a cell is an edge cell by its own mask and its neighbours': only the changed cells and their neighbours can have
     // become one or stopped being one — each recounted once)
     if (++near.stamp === 0xFFFFFFFF) { touched.fill(0); near.stamp = 1; }

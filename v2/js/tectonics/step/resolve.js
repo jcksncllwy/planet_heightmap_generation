@@ -26,11 +26,14 @@ if (PROXIMITY_RINGS !== RING_COUNT) throw new Error('the growth step looks exact
 /** @returns {{created:number, consumed:number, collisionCells:number}} this step's tallies, in cells */
 export function resolve(world) {
     world.occupancyStamp++;                            // this pass's mark in the coarse occupancy bins (step/occupancy.js)
-    const consumed = gatherAndSubduct(world);
+    // (the cells this pass takes away and creates, per plate: gather.js nearEdge brings each plate's edge counts up to date
+    // from them instead of comparing its whole mask)
+    const removed = new Map(), born = new Map();
+    const consumed = gatherAndSubduct(world, removed);
     const gaps = [];
     for (let w = 0; w < world.owner.length; w++) if (world.owner[w] < 0) gaps.push(w);
-    const created = gaps.length ? growCrustIntoGaps(world, gaps) : 0;
-    if (gaps.length) assignGapOwners(world, gaps);
+    const created = gaps.length ? growCrustIntoGaps(world, gaps, removed, born) : 0;
+    if (gaps.length) assignGapOwners(world, gaps, born);
     world.budget.created += created;
     world.budget.consumed += consumed;
 
@@ -45,13 +48,14 @@ export function resolve(world) {
 
 // ─────────────────────────────── convergence ───────────────────────────────
 
-function gatherAndSubduct(world) {
+function gatherAndSubduct(world, removed) {
     const { owner, ownerCell, claimCount, landClaims, consumedAt, collider, plates } = world;
     let consumed = 0;
     const budget = world.budget;
     const subduct = (plate, cell, w) => {
         if (plate.crust.type[cell] === CrustType.ARC) budget.recycledCells++;           // (thin arc crust going down a trench: polarity.js)
         plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++;
+        (removed.get(plate) ?? removed.set(plate, []).get(plate)).push(cell);
     };
     const bins = binIndex(world.mesh), stamp = world.occupancyStamp, floatKm = world.config.arcAccreteThickKm;
     clearWorldView(world);
@@ -96,11 +100,11 @@ function gatherAndSubduct(world) {
 // All tests use the crust as it was before this step, so plate order cannot matter. The passive
 // background never grows: beside it, the moving plate takes the whole gap.
 
-function growCrustIntoGaps(world, gaps) {
+function growCrustIntoGaps(world, gaps, removed, born) {
     const growers = world.plates.filter(p => p.alive && !p.isBackground && p.crust.count > 0);
     const everyone = world.plates.filter(p => p.alive && p.crust.count > 0).map(plate => ({ plate, cap: plate.capInWorld(world.mesh) }));
     const births = [], near = nearIndex(everyone, e => e.plate, world.occupancyStamp, binIndex(world.mesh));
-    for (const { plate } of everyone) nearEdge(plate, world.mesh);        // (each plate's edge counts, for the crust as the births will find it)
+    for (const { plate } of everyone) nearEdge(plate, world.mesh, removed.get(plate));   // (each plate's edge counts, for the crust as the births will find it)
     for (const grower of growers) {
         for (const cell of candidateCells(world, grower, gaps)) {
             const verdict = decideBirth(world, grower, cell, everyone, near);
@@ -111,6 +115,7 @@ function growCrustIntoGaps(world, gaps) {
     for (const { plate, cell, trenchParent } of births) {
         const crust = plate.crust;
         crust.create(cell, CrustType.OCEAN, world.time);
+        (born.get(plate) ?? born.set(plate, []).get(plate)).push(cell);
         plate.toWorld(world.mesh.xyz[3 * cell], world.mesh.xyz[3 * cell + 1], world.mesh.xyz[3 * cell + 2], P);
         crust.fzU[cell] = fractureAt(world, plate, cell, P);
         markBin(plate, bins.at(P[0], P[1], P[2]), world.occupancyStamp, bins.count);       // so the owner search below sees it
@@ -270,10 +275,10 @@ const birthScratch = { p: [0, 0, 0], hit: { dot: -2, cell: -1 }, rivals: [], und
  * to the nearest plate that may grow, points at that plate's nearest REAL crust cell, and is marked
  * provisional so that views can draw it and nothing mistakes it for crust.
  */
-function assignGapOwners(world, gaps) {
+function assignGapOwners(world, gaps, born) {
     const { mesh, owner, ownerCell, claimCount, provisional, provisionalLike, plates, config } = world, { xyz, index } = mesh;
     const everyone = plates.filter(p => p.alive && p.crust.count > 0), bins = binIndex(mesh), stamp = world.occupancyStamp;
-    for (const plate of everyone) nearEdge(plate, mesh);                  // (each plate's edge counts, after the births)
+    for (const plate of everyone) nearEdge(plate, mesh, born.get(plate));  // (each plate's edge counts, after the births)
     const claimMaps = new Map(everyone.map(plate => [plate, currentClaimMap(plate)]));   // (the gather's lookups: cellAt for a world cell)
     const nearOf = nearIndex(everyone, plate => plate, stamp, bins);             // (after the births: they marked their bins)
     const p = [0, 0, 0], hit = { dot: -2, cell: -1 };
