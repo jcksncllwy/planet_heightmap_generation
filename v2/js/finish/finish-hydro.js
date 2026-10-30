@@ -408,8 +408,7 @@ export function hydrology(ctx, F) {
         for (const c of cells) if (rank[c] < rank[outlet]) outlet = c;
         // (a lake needs a hollow the map can show, with a origin: scoured by the ice age (lake districts), or a hollow of the
         // tectonic surface itself (rifts, forelands, closed basins). The finishing's own hollows — a fan or loess damming a
-        // valley, a dissected floor — the rivers cut through: a channel from the hollow's floor out through its rim
-        // (developer: rivers "shouldn't 'elevate' a ton of the land, it should just carve through" — they were filled))
+        // valley, a dissected floor — are breached if pits, else filled: lakeStands, for a pocket and a late hollow alike)
         let glacial = 0, tect = 0, dug = 0;
         for (const c of cells) { if (ctx.glaciated?.[c]) glacial++; if (ctx.tectonic?.[c]) tect++; if (ctx.basin?.[c] > F.basinLakeKm) dug++; }
         // (a basin the ice dug in soft rock — the Great Lakes — is a lake district's whole hollow, its rim often past the
@@ -430,6 +429,7 @@ export function hydrology(ctx, F) {
     // (with the water, the area each place drains — km², whatever the rain: the satellite view's flow texture)
     const area = new Float32Array(n);
     const q = new Float32Array(n), qw = new Float32Array(n), lakeKind = new Uint8Array(n), lakeLevel = new Float32Array(n).fill(NaN), seen = new Int32Array(n);
+    const lakeSrc = ctx.debug ? new Uint8Array(n) : null;
     const own = c => Math.max(0, runoff[c]) * cellKm2 * 1e3 / SEC_PER_YEAR;         // (mm × km² → m³/s)
     // (a hollow that drains whole — a land hollow left without water, the lowland round a trapped sea that spills — has no
     // closed basin left in it (developer: no closed basins, no holes): every pocket in it, a sub-basin behind its own sill
@@ -439,6 +439,23 @@ export function hydrology(ctx, F) {
     const pocketSeen = new Int32Array(n);
     const ground = x => (lakeKind[x] === Water.FRESH || lakeKind[x] === Water.SALT ? Math.max(z[x], lakeLevel[x]) : z[x]);
     const drainsAt = (y, level) => innerStamp[y] === innerId && innerFill[y] <= level;
+    // (does a lake that spills stand here, or is its hollow filled? Lane lakes, 2026-10-30. It needs an origin: scoured by the
+    // ice age, or a hollow of the tectonic surface; the finishing's own hollows have none. It must be big for its river, as
+    // ever (lakeKeepKm2). And one the ice did not dig must outlast its river's load: a river that runs through a lake leaves
+    // its load there, so a hollow with no ice to have dug it lately fills in its volume ÷ (inflow × lakeLoadShare), and the
+    // finish's rivers have run carveTimeMyr. That is its water's residence time over the load's share of the water, in
+    // km³ and m³/s, so the same lake stands at every detail; until now hollows 1 Mkm² wide and 65 m deep with 37 000 m³/s
+    // through them stood, and the lakes' share grew with the detail)
+    const lakeStands = (cells, level, inflow) => {
+        let glacial = 0, tect = 0, dug = 0, km3 = 0;
+        for (const x of cells) { if (ctx.glaciated?.[x]) glacial++; if (ctx.tectonic?.[x]) tect++; if (ctx.basin?.[x] > F.basinLakeKm) dug++; if (z[x] < level) km3 += (level - z[x]) * cellKm2; }
+        const scoured = dug >= F.basinLakeShare * cells.length, young = scoured || glacial >= 0.5 * cells.length;
+        if (!young && ctx.tectonic && tect < F.lakeTectonicShare * cells.length) return false;
+        if (cells.length * cellKm2 < F.lakeKeepKm2 * Math.sqrt(Math.max(1, inflow) / 1000) * (scoured ? F.basinKeepShare : young ? F.glacialKeepShare : 1)) return false;
+        return young || km3 >= F.carveTimeMyr * 1e6 * F.lakeLoadShare * inflow * SEC_PER_YEAR * 1e-9;
+    };
+    // (what runs through a lake full to its sill: what it spills, and what its open water loses on the way)
+    const spilled = W => { let e = 0; for (const x of W.cells) e += lakeLoss(x); return W.outflow + e; };
     const keepPocket = (cells, L, balance) => {
         const spill = [];
         // (where it spills: its cells beside ground the water leaves by — no higher than its level, and no pocket's)
@@ -450,7 +467,7 @@ export function hydrology(ctx, F) {
         const S = hollowLakes(mesh, cells, z, x => q[x] + pocketIn[x], lakeLoss, minCells, L);
         for (const W of S.lakes) {
             const shows = W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;
-            if (shows && W.full) {
+            if (shows && W.full && lakeStands(W.cells, W.level, spilled(W))) {
                 // (full, it spills, and its outflow cuts its sill down — as a basin's does, below — never to its floor, and
                 // no lower than the ground its outflow reaches within breachKmOf's reach)
                 let floor = Infinity, at = spill[0];
@@ -461,10 +478,10 @@ export function hydrology(ctx, F) {
                     lev = breachLevel(at, Math.max(floor + F.pitDepthKm, W.level - B), y => innerFrom[y] >= 0 ? innerFrom[y] : -1);
                     if (lev < W.level && breachKmOf(at, lev, ground, drainsAt) <= F.breachReachKm) cut(at, lev, ground, drainsAt); else lev = W.level;
                 }
-                for (const x of W.cells) if (z[x] < lev) { lakeKind[x] = Water.FRESH; lakeLevel[x] = lev + 1e-5; }
+                for (const x of W.cells) if (z[x] < lev) { lakeKind[x] = Water.FRESH; lakeLevel[x] = lev + 1e-5; if (lakeSrc) lakeSrc[x] = 5; }
                 keptPockets.fresh++;
             }
-            else if (shows) { for (const x of W.cells) { lakeKind[x] = Water.SALT; lakeLevel[x] = W.level + 1e-5; } keptPockets.salt++; }
+            else if (shows && !W.full) { for (const x of W.cells) { lakeKind[x] = Water.SALT; lakeLevel[x] = W.level + 1e-5; if (lakeSrc) lakeSrc[x] = 6; } keptPockets.salt++; }
             else if (W.full) { const mine = new Set(W.cells), at = spill.filter(x => mine.has(x)); fillGraded(W.cells, at.length ? at : [W.cells[0]], W.level); keptPockets.fill++; }
             else { for (const x of W.cells) { if (z[x] < W.level) z[x] = W.level; lakeKind[x] = Water.PAN; lakeLevel[x] = W.level + 1e-3; } keptPockets.pan++; }
         }
@@ -623,13 +640,13 @@ export function hydrology(ctx, F) {
                 h.closed = true; h.spills = []; h.pans = []; h.drawn = [];
                 let salt = false;
                 for (const W of S.lakes) {
-                    const shows = W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;
+                    const shows = W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2 && !(W.full && !lakeStands(W.cells, W.level, spilled(W)));
                     if (W.full && W.into >= 0) h.spills.push({ cell: W.into, q: W.outflow });
                     if (!shows && W.full) continue;
                     if (!shows) { h.pans.push(W); h.drawn.push({ kind: Water.PAN, cells: W.cells }); continue; }
                     const k = W.full ? Water.FRESH : Water.SALT;
                     if (k === Water.SALT) salt = true;
-                    for (const x of W.cells) { lakeKind[x] = k; lakeLevel[x] = W.level + 1e-5; }
+                    for (const x of W.cells) { lakeKind[x] = k; lakeLevel[x] = W.level + 1e-5; if (lakeSrc) lakeSrc[x] = k === Water.SALT ? 1 : 2; }
                     h.drawn.push({ kind: k, cells: W.cells });
                 }
                 const end = S.fate(h.deepCell);
@@ -644,7 +661,7 @@ export function hydrology(ctx, F) {
                 // full, it rises to its rim and spills: its outflow has cut its way down to it (a gorge just above sea
                 // level), and the lowland round it drains as land does (below)
                 level = cut(h.deepCell, F.seaCutFloorKm); from = h.deepCell;
-            } else if (drained || areaKm2 < keepKm2) {
+            } else if (drained || areaKm2 < keepKm2 || (!h.glacial && !lakeStands(h.cells, h.level, h.inflow))) {
                 // (drained by a gorge through it — a flood's, a river's from upstream — its pockets drain by it as well:
                 // not pits along the gorge)
                 // (lane rivers2, 2026-10-29 — Jackson: breach only a pit. A basin a gorge from upstream crosses below its rim
@@ -692,7 +709,7 @@ export function hydrology(ctx, F) {
                 else fillGraded(water, [from], level);
                 water.length = 0;
             }
-            for (const x of water) { lakeKind[x] = kind; lakeLevel[x] = level; }
+            for (const x of water) { lakeKind[x] = kind; lakeLevel[x] = level; if (lakeSrc) lakeSrc[x] = h.sea ? 3 : 4; }
             if (h.sea ? kind === Water.FRESH : !water.length) cutPockets(h, id, c);
             h.kind = water.length ? kind : h.pan ? Water.PAN : Water.NONE; h.levelNow = level; h.outflow = outflow; h.fullEvap = full; h.outletIn = h.inflow;
             q[c] = outflow; qw[c] = h.seasonW; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;
@@ -860,8 +877,8 @@ export function hydrology(ctx, F) {
     count = finalFlood();
     // ── what is left of the hollows (lane rivers2, 2026-10-29 — Jackson: a hollow fills and spills; a river never crosses
     // one at the level water would stand, drawn climbing out of it): on the finished ground, every dry hollow still left
-    // is a fresh lake at its rim where the map shows one and its water fills it (what reached it on the first routing,
-    // against what its open water would lose), else filled by its river's load, graded from its edges to where it spills
+    // is a fresh lake at its rim where the map shows one, its water fills it (what reached it on the first routing,
+    // against what its open water would lose) and it stands (lakeStands: its origin, its size, its river's load), else filled by its river's load, graded from its edges to where it spills
     // (fillGraded). Here, on the final surface, not before it: chosen on the first routing's surface, the ones a later
     // gorge or fill left — a fill across a gorge, a pocket a cut opened — were missed, and crossed at their spill level ──
     // (and once more: a fill rises inland from its outlet, and where it rises past the sill of a hollow that spilled onto
@@ -890,8 +907,8 @@ export function hydrology(ctx, F) {
             // (where it spills: its cells the flood came onto it by)
             const spill = [];
             for (const x of cells) if (!(from[x] >= 0 && inH[from[x]])) spill.push(x);
-            if (cells.length >= 2 && cells.length * cellKm2 >= F.lakeMinKm2 && (L - floor) * 1000 >= F.lakeMinDepthM && qin >= loss) {
-                for (const x of cells) { lakeKind[x] = Water.FRESH; lakeLevel[x] = L + 1e-5; }
+            if (lakeStands(cells, L, qin) && cells.length >= 2 && cells.length * cellKm2 >= F.lakeMinKm2 && (L - floor) * 1000 >= F.lakeMinDepthM && qin >= loss) {
+                for (const x of cells) { lakeKind[x] = Water.FRESH; lakeLevel[x] = L + 1e-5; if (lakeSrc) lakeSrc[x] = 7; }
                 ponds++;
             } else {
                 fillGraded(cells, spill.length ? spill : [cells[0]], L); pondFills++;
@@ -1038,7 +1055,7 @@ export function hydrology(ctx, F) {
     const landKm2 = count * cellKm2;
     for (let c = 0; c < n; c++) if (endsHere[c]) recv[c] = -1;      // (the rivers that end in a closed basin's dry hollow end there)
     return {
-        lake: lakeKind, lakeLevel, q, area, ...(ctx.debug ? { recv } : {}),       // (the network itself: for checks only)
+        lake: lakeKind, lakeLevel, q, area, ...(ctx.debug ? { recv, lakeSrc, hollow, hollowInfo: hollows.map(h => ({ km2: h.cells.length * cellKm2, level: h.level, floor: h.floor, lake: h.lake, sea: h.sea, old: h.old, glacial: h.glacial, closed: !!h.closed, levelNow: h.levelNow, inflow: h.inflow })) } : {}),       // (the network itself: for checks only)
         rivers: { start: Int32Array.from(L.start), lat: Float32Array.from(L.lat), lon: Float32Array.from(L.lon), q: Float32Array.from(L.q), season: Float32Array.from(L.season),
             ...(regimes ?? {}) },
         terminal: ctx.debug ? hollows.filter(h => h.kind && h.kind !== Water.FRESH).sort((a, b) => b.inflow - a.inflow).slice(0, 12).map(h => {

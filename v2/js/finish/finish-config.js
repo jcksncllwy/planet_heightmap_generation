@@ -147,6 +147,14 @@ export const FINISH = {
                                 // or a hollow of the tectonic surface (rifts, forelands, closed basins: this share of its
     lakeTectonicShare: 0.25,    // cells, the tectonic surface's hollows at least tectonicHollowKm deep); the finishing's own
     tectonicHollowKm: 0.1,      // hollows (fans, loess and dunes damming valleys) are filled: flat valley floors
+    lakeLoadShare: 1e-4,        // a river's load by volume of its water, ~150 mg/L at ~1.5 t/m³: a lake catchment's. The Selenga
+                                // brings Baikal ~2.5 Mt a year (Selenga delta, PIAHS 375: 19, 2017) in ~30 km³ (recalled), ~83 mg/L;
+                                // the world's mean, 19 Gt (Beusen et al. 2005) in ~36 000 km³, ~530 mg/L, is its mountain rivers'.
+                                // A spilling lake the ice did not dig outlasts carveTimeMyr of that, or its hollow is filled
+                                // (finish-hydro.js lakeStands): it stands if its water's residence time passes ~100 years, as
+                                // Baikal's (~390), Tanganyika's, Malawi's (~290) do, Victoria's and Titicaca's (~110) barely. At
+                                // the world's mean, Malawi and Titicaca would fill. A closed lake is not held to it: fill lifts
+                                // its floor, its area stays what evaporation balances
     breachKm: 0.6,              // an old basin that overflows has cut a gorge this deep through its rim (at most)…
     breachQ: [10, 1000],        // …by what spills over (m³/s): none below the first, full from the second…
     glacialBreachShare: 0.5,    // …half as deep in the ice age's own (young) hollows, and only by big rivers (glacialBreachQ, m³/s):
