@@ -64,13 +64,22 @@ export function outburstFloods(ctx, F) {
     // its rain out. A lake that loses more than comes in never reaches its dam: no flood ──
     const W = ctx.water;
     if (W) {
-        const into = new Int32Array(n).fill(-1), inflow = new Float64Array(lakes.length), loss = new Float64Array(lakes.length);
+        const m = lakes.length, into = new Int32Array(n).fill(-1), inflow = new Float64Array(m), loss = new Float64Array(m);
         for (const c of dam.order) into[c] = lakeOf[c] >= 0 ? lakeOf[c] : dam.parent[c] >= 0 ? into[dam.parent[c]] : -1;
+        // (a lake's cells on the shelf the sea left bare had no land climate at the moment: they take the mean of its cells
+        // that had — the lake's, else its catchment's, air — so pet: [lake sum, lake cells, catchment sum, catchment cells])
+        const pet = new Float64Array(4 * m);
         for (let c = 0; c < n; c++) {
             const L = into[c];
             if (L < 0) continue;
-            if (lakeOf[c] === L) loss[L] += Math.max(0, F.lakeEvapShare * W.pet[c] - W.rain[c]);
-            else inflow[L] += W.runoff[c];
+            const o = 4 * L + (lakeOf[c] === L ? 0 : 2);
+            if (W.pet[c] === W.pet[c]) { pet[o] += W.pet[c]; pet[o + 1]++; }
+            if (lakeOf[c] !== L) inflow[L] += W.runoff[c];
+        }
+        const petOf = L => pet[4 * L + 1] ? pet[4 * L] / pet[4 * L + 1] : pet[4 * L + 3] ? pet[4 * L + 2] / pet[4 * L + 3] : F.petMinMm;
+        for (let L = 0; L < m; L++) {
+            const E = petOf(L);
+            for (const c of lakes[L].cells) loss[L] += Math.max(0, F.lakeEvapShare * (W.pet[c] === W.pet[c] ? W.pet[c] : E) - W.rain[c]);
         }
         for (let i = 0; i < lakes.length; i++) { lakes[i].inKm3 = inflow[i] * cellKm2 * 1e-6; lakes[i].outKm3 = loss[i] * cellKm2 * 1e-6; }
     }

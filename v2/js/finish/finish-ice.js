@@ -33,8 +33,6 @@ export function lastIceAge(ctx, F) {
     // runoff only where the summer thaws, the open water's evaporation cooled with the air, by the finish's own potential
     // evaporation per °C)
     const water = ctx.runoff && ctx.pet ? { runoff: new Float32Array(n), rain: new Float32Array(n), pet: new Float32Array(n) } : null;
-    // (the shelves the sea leaves bare had no land climate at the moment: the land's, blurred, as for the rain)
-    const petG = water && grid.blur(grid.average(lat, ctx.lon, ctx.pet, c => ctx.pet[c] > 0), 150);
     for (let c = 0; c < n; c++) {
         const a = Math.abs(lat[c]) / 90, cold = F.iceColdEqC + (F.iceColdPoleC - F.iceColdEqC) * a ** 1.5;
         const P = (ctx.rain[c] === ctx.rain[c] ? ctx.rain[c] : grid.at(rainG, lat[c], ctx.lon[c])) * (1 - F.iceDrier * a);
@@ -47,8 +45,9 @@ export function lastIceAge(ctx, F) {
             // its ablation zone, the Laurentide's southern margin that fed Agassiz)
             water.runoff[c] = ctx.runoff[c] === ctx.runoff[c] && tS[c] > 0 ? ctx.runoff[c] * dry : 0;
             water.rain[c] = P === P ? P : 0;
-            const E0 = ctx.pet[c] > 0 ? ctx.pet[c] : grid.at(petG, lat[c], ctx.lon[c]);
-            water.pet[c] = Math.max(F.petMinMm, (E0 === E0 ? E0 : F.petMinMm) - F.petPerC * cold);
+            // (the shelves the sea leaves bare had no land climate at the moment: NaN — finish-floods.js gives them their
+            // lake's own)
+            water.pet[c] = ctx.pet[c] > 0 ? Math.max(F.petMinMm, ctx.pet[c] - F.petPerC * cold) : NaN;
         }
         if (z[c] > -F.iceSeaDropKm && P > 80 && tS[c] < elaTemp(P)) acc[c] = 1;
     }
