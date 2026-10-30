@@ -328,34 +328,71 @@ export function hydrology(ctx, F) {
         }
         return Math.max(want, low);
     };
-    // (a hollow its river's load fills: sediment from where it spills up, rising at fillGrade — a delta plain's topset, so
-    // never dead level, and the rivers across it run down to its outlet. Never lowers a cell. Dijkstra by km from `from`)
-    // (and sagged by fillSag of its thickness over the floor it buries: that floor's relief draped on it — but each cell
-    // above the one it was reached from by gorgeMinGrade at least, so the sag leaves no hollow and the fill no level ground)
-    const fillHeap = new MinHeap(1 << 12), fillD = new Float64Array(n), fillStamp = new Int32Array(n), fillIn = new Int32Array(n), fillFrom = new Int32Array(n);
+    // (a hollow its river's load fills — lane rivers3, 2026-10-30: Barnes, Lehman & Mulla 2014's two gradients, as
+    // elevation. A fill is built from where its load comes in: the ground above its level round it, which drains onto it —
+    // fans and deltas building out from every side — and it is graded down to where it spills. So its surface falls away
+    // from the higher ground round it and toward its outlet, each at fillGrade (a delta plain's topset), never dead level:
+    // its rivers run from its edges in to a trunk along its middle and down that to the outlet, gathering as they go.
+    // Until then it rose from the outlet alone — a cone, its rivers straight spokes to that one point (dead-straight runs
+    // 4 → 14 % on phase 8b's world, lane rivers2). Then sagged by fillSag of its thickness over the floor it buries (a muddy
+    // fill compacts: that floor's relief draped on it), and each cell above the one it drains to by gorgeMinGrade at least
+    // — a priority flood from its outlet over the graded surface — so the sag leaves no hollow and the fill no level ground.
+    // Never lowers a cell)
+    const fillHeap = new MinHeap(1 << 12), fillD = new Float64Array(n), fillH = new Float64Array(n), fillTop = new Float64Array(n), fillStamp = new Int32Array(n), fillIn = new Int32Array(n);
     let fillId = 0, filledCells = 0;
-    const fillGraded = (cells, from, level) => {
+    // (km from `seeds` across the fill's cells, into `dist`)
+    const fillDist = (seeds, dist) => {
         fillId++;
-        for (const x of cells) fillIn[x] = fillId;
-        for (const x of from) { fillD[x] = 0; fillStamp[x] = fillId; fillFrom[x] = -1; fillHeap.push(0, x); }
+        for (const x of seeds) { dist[x] = 0; fillStamp[x] = fillId; fillHeap.push(0, x); }
         while (fillHeap.size) {
-            const a = fillHeap.pop(), da = fillD[a];
+            const a = fillHeap.pop(), da = dist[a];
             if (fillStamp[a] === -fillId) continue;
             fillStamp[a] = -fillId;
-            const plane = level + F.fillGrade * da, p = fillFrom[a];
-            let top = z[a] < plane ? plane - (F.fillSag ?? 0) * (plane - z[a]) : plane;
-            if (p >= 0) top = Math.max(top, z[p] + F.gorgeMinGrade * edgeKmOf(xyz, p, a));
-            // (no higher than the ground round it that drains in: the rivers coming onto the fill still run down. Only ground
-            // above its level drains in — ground at or below it, a gorge cut beside it or a lake's bed, is where it drains
-            // out; held to that, the fill was planed dead level at its spill height: plains the size of countries, the
-            // broom again — lane rivers2, 2026-10-29)
-            if (fillIn[a] === fillId) for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) { const b = adjList[k]; if (fillIn[b] !== fillId && rank[b] !== -2 && z[b] > level && z[b] - 1e-6 < top) top = Math.max(level, z[b] - 1e-6); }
-            if (fillIn[a] === fillId && z[a] < top) { z[a] = top; filledCells++; }
             for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
                 const b = adjList[k];
-                if (fillIn[b] !== fillId || fillStamp[b] === -fillId) continue;
+                if (fillIn[b] !== fillMark || fillStamp[b] === -fillId) continue;
                 const db = da + edgeKmOf(xyz, a, b);
-                if (fillStamp[b] !== fillId || db < fillD[b]) { fillStamp[b] = fillId; fillD[b] = db; fillFrom[b] = a; fillHeap.push(db, b); }
+                if (fillStamp[b] !== fillId || db < dist[b]) { fillStamp[b] = fillId; dist[b] = db; fillHeap.push(db, b); }
+            }
+        }
+    };
+    let fillMark = 0;
+    const fillGraded = (cells, from, level) => {
+        const mark = ++fillMark;
+        for (const x of cells) fillIn[x] = mark;
+        // (where its load comes in: its cells beside ground above its level that drains onto it — not the sea, not ground
+        // at or below its level: a gorge beside it, a lake's bed, is where it drains out)
+        const edge = [], rim = [];
+        for (const x of cells) {
+            let high = Infinity;
+            for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) { const b = adjList[k]; if (fillIn[b] !== mark && rank[b] !== -2 && z[b] > level && z[b] < high) high = z[b]; }
+            if (high < Infinity) { edge.push(x); rim.push(high); }
+        }
+        fillDist(from, fillD);
+        let farH = 0;
+        if (edge.length) fillDist(edge, fillH);
+        for (const x of cells) { if (!edge.length || fillStamp[x] !== -fillId) fillH[x] = 0; if (fillH[x] > farH) farH = fillH[x]; }
+        // (its graded surface, sagged; no higher than the ground round it that drains in, so the rivers coming onto it
+        // still run down — lane rivers2: held also to ground at or below its level, it was planed dead level)
+        for (const x of cells) {
+            const plane = level + F.fillGrade * (fillD[x] + farH - fillH[x]);
+            fillTop[x] = z[x] < plane ? plane - (F.fillSag ?? 0) * (plane - z[x]) : plane;
+        }
+        for (let i = 0; i < edge.length; i++) if (fillTop[edge[i]] > rim[i] - 1e-6) fillTop[edge[i]] = Math.max(level, rim[i] - 1e-6);
+        // (and every cell drains: a priority flood from the outlet over that surface, each cell at least gorgeMinGrade above
+        // the one it was reached from)
+        fillId++;
+        for (const x of from) { const t = Math.max(level, fillTop[x]); fillD[x] = t; fillStamp[x] = fillId; fillHeap.push(t, x); }
+        while (fillHeap.size) {
+            const a = fillHeap.pop(), ta = fillD[a];
+            if (fillStamp[a] === -fillId) continue;
+            fillStamp[a] = -fillId;
+            if (z[a] < ta) { z[a] = ta; filledCells++; }
+            for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
+                const b = adjList[k];
+                if (fillIn[b] !== mark || fillStamp[b] === -fillId) continue;
+                const tb = Math.max(fillTop[b], ta + F.gorgeMinGrade * edgeKmOf(xyz, a, b));
+                if (fillStamp[b] !== fillId || tb < fillD[b]) { fillStamp[b] = fillId; fillD[b] = tb; fillHeap.push(tb, b); }
             }
         }
     };
@@ -762,55 +799,165 @@ export function hydrology(ctx, F) {
             const c = lorder[i], r = recv[c];
             if (lr[r] >= 0 && !endsHere[c]) { q[r] += q[c]; qw[r] += qw[c]; area[r] += area[c]; }
         }
-        h.dryOrder = Int32Array.from(lorder);                       // (kept: the monthly pass routes the same way)
         for (const c of lorder) lr[c] = -1;
         for (const s of seeds) lr[s] = -1;
         for (const c of cells) lp[c] = -1;
     }
 
-    // ── what is left of the hollows a river passes through (lane rivers2, 2026-10-29 — Jackson: a hollow fills and
-    // spills; a river never crosses one at the level water would stand, drawn climbing out of it): over the finished
-    // ground, its lakes at their surface and a closed basin an end, every hollow still left that its water passes on from
-    // is a lake at its rim where the map shows one, else filled by the river's load, graded down to where it spills ──
-    {
-        const fl = new Float32Array(n).fill(Infinity), done = new Uint8Array(n), popped = new Int32Array(n), hp = new MinHeap(1 << 16);
-        const surface = c => (lakeKind[c] === Water.FRESH || lakeKind[c] === Water.SALT ? Math.max(z[c], lakeLevel[c]) : z[c]);
-        const ends = c => rank[c] === -2 || endsHere[c] || (hollow[c] >= 0 && hollows[hollow[c]].closed);
-        for (let c = 0; c < n; c++) if (ends(c)) { fl[c] = rank[c] === -2 ? Math.min(0, z[c]) : surface(c); hp.push(fl[c], c); }
-        let np = 0;
-        while (hp.size) {
-            const c = hp.pop();
-            if (done[c]) continue;
-            done[c] = 1; popped[np++] = c;
+    // ── the final routing, once every breach, cut and fill is made (lane rivers3, 2026-10-30): the ways down, the order
+    // and the discharge, all again, on the finished ground — its lakes at their surface. Until then they were the first
+    // flood's, patched hollow by hollow as each was cut or filled: a hollow's river was sent out over its old rim where a
+    // gorge cut since had opened a lower way (drawn climbing a sill), and the water was gathered in the first flood's
+    // order, which a later exit broke (lane rivers2's open problem). The decisions above (which hollow is a lake, salt or
+    // a pan, which is cut) were made on that first routing's water, and stand. A priority flood from the sea and from
+    // every place where water ends — a salt lake, a closed basin's playa or dry sink: it neither spills nor drains on; at
+    // its bed, so whatever reaches it ends there — over the finished surface ──
+    const surfaceOf = c => (lakeKind[c] === Water.FRESH || lakeKind[c] === Water.SALT ? Math.max(z[c], lakeLevel[c]) : z[c]);
+    // (where water ends: a salt lake; a closed basin's playa and its dry sinks. A closed basin is reached from outside it
+    // only over its rim — its level, as the first flood had it full: a pit beside a big river, closed by its own few
+    // cells' water, is not a sink for the river, which would fill it and run on. Leaving one costs that climb)
+    const sink = new Uint8Array(n), closedAt = c => (hollow[c] >= 0 && hollows[hollow[c]].closed ? hollow[c] : -1);
+    for (let c = 0; c < n; c++) if (rank[c] >= 0 && (lakeKind[c] === Water.SALT || (closedAt(c) >= 0 && (endsHere[c] || lakeKind[c] === Water.PAN)))) sink[c] = 1;
+    const rimOf = c => (closedAt(c) >= 0 ? hollows[hollow[c]].level : lakeKind[c] === Water.SALT ? surfaceOf(c) : -Infinity);
+    const outOf = (c, nb) => closedAt(c) !== closedAt(nb) || (lakeKind[c] === Water.SALT && lakeKind[nb] !== Water.SALT);
+    const fl = fill, from = parent;
+    const finalFlood = () => {
+        heap.size = 0;
+        let k0 = 0;
+        for (let c = 0; c < n; c++) {
+            if (rank[c] === -2) continue;
+            rank[c] = -1; from[c] = -1;
+            if (sink[c]) { fl[c] = z[c]; flatSteps[c] = 0; heap.push(fl[c], c); }
+        }
+        for (let c = 0; c < n; c++) {
+            if (rank[c] !== -2) continue;
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
                 const nb = adjList[k];
-                if (done[nb] || ends(nb)) continue;
-                const v = Math.max(fl[c], surface(nb));
-                if (v < fl[nb]) { fl[nb] = v; hp.push(v, nb); }
+                if (rank[nb] === -2 || sink[nb]) continue;
+                const v = Math.max(0, surfaceOf(nb));
+                if (from[nb] === -1 || v < fl[nb]) { from[nb] = c; fl[nb] = v; flatSteps[nb] = 0; heap.push(v, nb); }
             }
         }
-        const seenH = new Uint8Array(n);
+        while (heap.size) {
+            const c = heap.pop();
+            if (rank[c] !== -1) continue;
+            rank[c] = k0; order[k0++] = c;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k];
+                if (rank[nb] !== -1 || sink[nb]) continue;
+                let level = Math.max(fl[c], surfaceOf(nb));
+                if (level < rimOf(c) && outOf(c, nb)) level = rimOf(c);
+                if (from[nb] === -1 || level < fl[nb]) {
+                    from[nb] = c; fl[nb] = level;
+                    flatSteps[nb] = level === fl[c] ? flatSteps[c] + 1 : 0;
+                    heap.push(level + FLAT_KEY * flatSteps[nb], nb);
+                }
+            }
+        }
+        return k0;
+    };
+    count = finalFlood();
+    // ── what is left of the hollows (lane rivers2, 2026-10-29 — Jackson: a hollow fills and spills; a river never crosses
+    // one at the level water would stand, drawn climbing out of it): on the finished ground, every dry hollow still left
+    // is a fresh lake at its rim where the map shows one and its water fills it (what reached it on the first routing,
+    // against what its open water would lose), else filled by its river's load, graded from its edges to where it spills
+    // (fillGraded). Here, on the final surface, not before it: chosen on the first routing's surface, the ones a later
+    // gorge or fill left — a fill across a gorge, a pocket a cut opened — were missed, and crossed at their spill level ──
+    {
+        const seenH = new Uint8Array(n), inH = new Uint8Array(n);
         let ponds = 0, pondFills = 0;
-        for (let i0 = 0; i0 < np; i0++) {
-            const s0 = popped[i0];
-            if (seenH[s0] || lakeKind[s0] || !(fl[s0] > surface(s0) + 1e-6) || !(q[s0] >= F.riverMinM3s)) continue;
+        for (let i0 = 0; i0 < count; i0++) {
+            const s0 = order[i0];
+            if (seenH[s0] || sink[s0] || lakeKind[s0] || !(fl[s0] > z[s0] + EPS)) continue;
             const L = fl[s0], cells = [s0];
             seenH[s0] = 1;
-            let floor = z[s0];
+            let floor = z[s0], qin = 0, loss = 0;
             for (let i = 0; i < cells.length; i++) for (let k = adjOffset[cells[i]]; k < adjOffset[cells[i] + 1]; k++) {
                 const nb = adjList[k];
-                if (!seenH[nb] && !lakeKind[nb] && !ends(nb) && fl[nb] > surface(nb) + 1e-6 && Math.abs(fl[nb] - L) < 1e-6) { seenH[nb] = 1; cells.push(nb); if (z[nb] < floor) floor = z[nb]; }
+                if (!seenH[nb] && rank[nb] >= 0 && !sink[nb] && !lakeKind[nb] && fl[nb] > z[nb] + EPS && Math.abs(fl[nb] - L) < 1e-6) { seenH[nb] = 1; cells.push(nb); if (z[nb] < floor) floor = z[nb]; }
             }
-            // (where it spills: its cells beside ground no higher than its level that is no part of it)
+            for (const x of cells) { inH[x] = 1; if (q[x] > qin) qin = q[x]; loss += lakeLoss(x); }
+            // (where it spills: its cells the flood came onto it by)
             const spill = [];
-            for (const x of cells) for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) { const nb = adjList[k]; if (!seenH[nb] && surface(nb) <= L + 1e-6) { spill.push(x); break; } }
-            if (cells.length >= 2 && cells.length * cellKm2 >= F.lakeMinKm2 && (L - floor) * 1000 >= F.lakeMinDepthM) {
+            for (const x of cells) if (!(from[x] >= 0 && inH[from[x]])) spill.push(x);
+            if (cells.length >= 2 && cells.length * cellKm2 >= F.lakeMinKm2 && (L - floor) * 1000 >= F.lakeMinDepthM && qin >= loss) {
                 for (const x of cells) { lakeKind[x] = Water.FRESH; lakeLevel[x] = L + 1e-5; }
                 ponds++;
             } else { fillGraded(cells, spill.length ? spill : [cells[0]], L); pondFills++; }
+            for (const x of cells) inH[x] = 0;
         }
         keptPockets.lateLakes = ponds; keptPockets.lateFills = pondFills;
+        if (ponds + pondFills) count = finalFlood();
     }
+    // (each cell's way: the steepest fall per km down the flood's surface to a cell reached before it, or the sea; on a
+    // flat — a lake's surface — the flood's way, toward its way out (Barnes, Lehman & Mulla 2014). A sink's: none)
+    let unresolved = 0;
+    for (let i = 0; i < count; i++) {
+        const c = order[i];
+        if (sink[c]) { recv[c] = -1; stepKm[c] = 0; continue; }
+        let pick = -1, steepest = 0;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k];
+            if (!(rank[nb] === -2 || (rank[nb] >= 0 && rank[nb] < i))) continue;
+            const at = rank[nb] === -2 ? Math.min(0, z[nb]) : outOf(nb, c) ? Math.max(fl[nb], rimOf(nb)) : fl[nb];
+            const s = (fl[c] - at) / edgeKmOf(xyz, c, nb);
+            if (s > steepest) { steepest = s; pick = nb; }
+        }
+        if (pick < 0) pick = from[c];
+        recv[c] = pick; stepKm[c] = edgeKmOf(xyz, c, pick);
+        if (!lakeKind[c] && fl[c] > z[c] + EPS) unresolved++;       // (a dry cell still under the flood's surface: none should be)
+    }
+    keptPockets.unresolved = unresolved;
+    // (each fresh lake: its cells, one level — what its open water loses a year, m³/s, taken from what it passes on)
+    const body = new Int32Array(n).fill(-1), bodyLoss = [];
+    for (let s = 0; s < n; s++) {
+        if (lakeKind[s] !== Water.FRESH || body[s] >= 0 || rank[s] < 0) continue;
+        const id = bodyLoss.length, st = [s];
+        body[s] = id;
+        let loss = 0;
+        while (st.length) {
+            const x = st.pop();
+            loss += lakeLoss(x);
+            for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) { const y = adjList[k]; if (body[y] < 0 && lakeKind[y] === Water.FRESH && Math.abs(lakeLevel[y] - lakeLevel[s]) < 1e-6) { body[y] = id; st.push(y); } }
+        }
+        bodyLoss.push(loss);
+    }
+    // (the discharge, upstream first: every cell comes after the cell it drains into. Where a lake drains out — a lake
+    // cell whose way leaves it — it passes on what reached it less its loss; its year's months evened out: riverYears)
+    const lakeIn = new Float32Array(n).fill(-1), lakeOut = new Float32Array(n);
+    q.fill(0); qw.fill(0); area.fill(0);
+    toSea = 0; lost = 0;
+    let toSinks = 0, closedEvap = 0;
+    for (let i = count - 1; i >= 0; i--) {
+        const c = order[i], r0 = own(c);
+        q[c] += r0; qw[c] += r0 * (wetMonths[c] ?? 12); area[c] += cellKm2;
+        if (sink[c]) { toSinks += q[c]; continue; }
+        const r = recv[c], b = body[c];
+        if (b >= 0) {
+            if (r >= 0 && body[r] === b) { q[r] += q[c]; qw[r] += qw[c]; area[r] += area[c]; continue; }
+            // (where it drains out)
+            const take = Math.min(q[c], bodyLoss[b]);
+            bodyLoss[b] -= take;
+            if (hollow[c] >= 0 && hollows[hollow[c]].closed) closedEvap += take;
+            lakeIn[c] = q[c]; lakeOut[c] = q[c] - take;
+            qw[c] *= q[c] > 0 ? lakeOut[c] / q[c] : 0; q[c] = lakeOut[c];
+        } else {
+            let out = q[c];
+            const arid = pet[c] > 0 ? smooth(0, 1, (pet[c] - Math.max(0, rain[c])) / pet[c]) : 0;
+            if (arid > 0 && out > 0) {
+                const widthM = F.riverWidthPerSqrtQ * Math.sqrt(out), loss = F.bedLossMPerYear * arid * widthM * stepKm[c] * 1000 / SEC_PER_YEAR;
+                const kept = Math.max(0, out - loss);
+                lost += out - kept;
+                qw[c] *= kept / out; out = kept;
+            }
+            q[c] = out;
+        }
+        if (r >= 0 && rank[r] >= 0) { q[r] += q[c]; qw[r] += qw[c]; area[r] += area[c]; }
+        else toSea += q[c];
+    }
+    // (water into closed basins: what ends in them, and what their spilling lakes lose on the way)
+    toBasins = toSinks + closedEvap;
+    for (let c = 0; c < n; c++) if (sink[c]) endsHere[c] = 1;
 
     // ── the rivers: reaches carrying at least riverMinM3s, not on lakes, not on ice caps ──
     const on = c => rank[c] >= 0 && q[c] >= F.riverMinM3s && !lakeKind[c] && !(ctx.ice && ctx.ice[c]);
@@ -841,7 +988,7 @@ export function hydrology(ctx, F) {
         reaches++;
     }
     // ── each river's year (ctx.months: the monthly shares of each place's runoff, on the climate's grid) ──
-    const regimes = ctx.months ? riverYears(ctx, F, { n, count, order, hollow, hollows, recv, rank, lakeKind, stepKm, own, endsHere, cells: Int32Array.from(L.cell) }) : null;
+    const regimes = ctx.months ? riverYears(ctx, F, { n, count, order, recv, rank, lakeKind, stepKm, own, sink, body, lakeIn, lakeOut, cells: Int32Array.from(L.cell) }) : null;
     let lakes = 0, salt = 0, pans = 0, lakeKm2 = 0;
     const byOrigin = { glacialFresh: 0, tectonicFresh: 0, salt: 0, pan: 0 }, sizes = [];
     // (each body of water: a closed basin's each lake, salt, full or playa; another hollow's one)
@@ -894,46 +1041,31 @@ export const Regime = Object.freeze({ STEADY: 0, FLOOD: 1, SEASONAL: 2, EPHEMERA
  * (around the peak, the months within 60 % of it), and whether it is fed from afar (permanent where the land is dry).
  */
 function riverYears(ctx, F, G) {
-    const { n, count, order, hollow, hollows, recv, rank, lakeKind, stepKm, own, cells } = G, { pet, rain } = ctx, monthsAt = ctx.months.at;
+    const { n, count, order, recv, rank, stepKm, own, sink, body, lakeIn, lakeOut, cells } = G, { pet, rain } = ctx, monthsAt = ctx.months.at;
     const P = cells.length, qm = new Float32Array(12 * P), M = 4, acc = Array.from({ length: M }, () => new Float32Array(n)), sh = new Float32Array(M), ar = new Float32Array(M);
-    const dryMark = new Int32Array(n);
-    hollows.forEach((h, i) => { if (h.dryOrder) for (const c of h.dryOrder) dryMark[c] = i + 1; });
+    const lam = F.lakeRegulation;
     for (let m0 = 0; m0 < 12; m0 += M) {
         for (const a of acc) a.fill(0);
-        for (const h of hollows) h.inM = h.lake ? new Float64Array(M) : null;
+        // (down the year's network, upstream first — hydrology's final routing)
         for (let i = count - 1; i >= 0; i--) {
-            const c = order[i], h = hollow[c] >= 0 ? hollows[hollow[c]] : null, r0 = 12 * own(c);
+            const c = order[i], r0 = 12 * own(c);
             monthsAt(c, m0, M, sh, ar);
             for (let j = 0; j < M; j++) acc[j][c] += r0 * sh[j];
-            if (h && h.lake) {
-                for (let j = 0; j < M; j++) h.inM[j] += acc[j][c];
-                if (c !== h.outlet) continue;
+            if (sink[c]) continue;                                    // (where the water ends: a salt lake, a pan, a dry sink)
+            const r = recv[c], pass = r >= 0 && rank[r] >= 0, b = body[c];
+            if (b >= 0) {
+                if (pass && body[r] === b) { for (let j = 0; j < M; j++) acc[j][r] += acc[j][c]; continue; }
                 // (a lake passes on its year's outflow, shaped by its inflow's months — evened out by its storage)
-                const lam = F.lakeRegulation;
-                if (h.closed) continue;                               // (a closed basin's outlet: a dry cell, routed below)
-                for (let j = 0; j < M; j++) acc[j][c] = h.outflow > 0 && h.inflow > 0 ? h.outflow * ((1 - lam) * h.inM[j] / h.inflow + lam) : 0;
-                if (!(h.outflow > 0)) continue;
+                const qin = lakeIn[c], qout = lakeOut[c];
+                for (let j = 0; j < M; j++) acc[j][c] = qout > 0 && qin > 0 ? qout * ((1 - lam) * acc[j][c] / qin + lam) : 0;
+            } else {
+                // (the bed loses water by the month's own dryness: most in the dry season, none while frozen)
+                for (let j = 0; j < M; j++) {
+                    const out = acc[j][c];
+                    if (ar[j] > 0 && out > 0) acc[j][c] = Math.max(0, out - F.bedLossMPerYear * ar[j] * F.riverWidthPerSqrtQ * Math.sqrt(out) * stepKm[c] * 1000 / SEC_PER_YEAR);
+                }
             }
-            // (the bed loses water by the month's own dryness: most in the dry season, none while frozen)
-            const r = recv[c], pass = r >= 0 && rank[r] >= 0;
-            for (let j = 0; j < M; j++) {
-                let out = acc[j][c];
-                if (ar[j] > 0 && out > 0) out = Math.max(0, out - F.bedLossMPerYear * ar[j] * F.riverWidthPerSqrtQ * Math.sqrt(out) * stepKm[c] * 1000 / SEC_PER_YEAR);
-                acc[j][c] = out;
-                if (pass) acc[j][r] += out;
-            }
-        }
-        // (a basin's dry ground, down to its water or its gorge — as the year's routing)
-        for (const h of hollows) {
-            const ord = h.dryOrder;
-            if (!ord) continue;
-            const id = hollow[h.outlet] + 1;
-            // (a full lake's overflow in a closed basin, from where it lands: its inflow's months, evened out by the lake)
-            if (h.spills) for (const sp of h.spills) if (dryMark[sp.cell] === id) for (let j = 0; j < M; j++) acc[j][sp.cell] += sp.q * (h.inflow > 0 ? (1 - F.lakeRegulation) * h.inM[j] / h.inflow + F.lakeRegulation : 1);
-            for (let i = ord.length - 1; i >= 0; i--) {
-                const c = ord[i], r = recv[c];
-                if (dryMark[r] === id && !G.endsHere?.[c]) for (let j = 0; j < M; j++) acc[j][r] += acc[j][c];
-            }
+            if (pass) for (let j = 0; j < M; j++) acc[j][r] += acc[j][c];
         }
         for (let p = 0; p < P; p++) for (let j = 0; j < M; j++) qm[12 * p + m0 + j] = acc[j][cells[p]];
     }
