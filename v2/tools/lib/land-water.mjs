@@ -36,7 +36,9 @@ export function landWater(fin, simMesh, frame, histDepth = null) {
             if (histDepth?.[w] > 0.01) under++;
             if (frame.owner[w] < 0 || (frame.type[w] === CrustType.OCEAN && !seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]))) onSea++;
         }
-        lakes.push({ sea: onSea >= 0.25 * q.length, overKm2: under * cellKm2, km2: q.length * cellKm2, kind: lake[c0] === Water.SALT ? 'salt' : 'fresh', depthKm: fin.lakeLevel[deep] - z[deep], levelKm: fin.lakeLevel[deep], at: latLon(xyz, deep), histDepthKm: histDepth?.[s] ?? NaN, histShare: under / q.length,
+        // (or one whose floor lies deeper than any lake's on the land: Baikal's, the deepest, is at −1.19 km — Herdendorf 1982)
+        const floorKm = z[deep];
+        lakes.push({ sea: onSea >= 0.25 * q.length || floorKm < -1.5, overKm2: under * cellKm2, km2: q.length * cellKm2, kind: lake[c0] === Water.SALT ? 'salt' : 'fresh', depthKm: fin.lakeLevel[deep] - z[deep], levelKm: fin.lakeLevel[deep], at: latLon(xyz, deep), histDepthKm: histDepth?.[s] ?? NaN, histShare: under / q.length,
             crust: frame.owner[s] < 0 ? 'none' : `type ${frame.type[s]}, ${Math.round(frame.time - frame.formedAt[s])} Myr, oro ${frame.oroType[s]} ${frame.oroType[s] ? Math.round(frame.time - frame.oroLast[s]) + ' Myr ago' : ''}, up ${frame.upliftKm[s].toFixed(2)} base ${frame.baseKm[s].toFixed(2)} sea fill ${frame.seaFillKm[s].toFixed(2)} km` });
     }
     lakes.sort((a, b) => b.km2 - a.km2);

@@ -67,8 +67,9 @@ export function evolveRivers(world, dt) {
         if (!land[w]) continue;
         const crust = plates[owner[w]].crust, c = ownerCell[w], type = crust.type[c];
         // a sea filled (or lifted dry): the plain its rivers grade, from the sea's level or the datum shoreline the terrain
-        // draws above it (records.js) — sediment laid down there, not rock worn: no relief to cut, no rock of its own
-        if (type === CrustType.OCEAN) { base[w] = Math.max(0, seaKm) - seaKm; lift[w] = 0; cutNow[w] = 0; hold[w] = 0; height[w] = base[w]; continue; }
+        // draws above it (records.js) — sediment laid down there, not rock worn: no relief to cut, no rock of its own; and
+        // if the land around it has risen and closed it in, a hollow that fills on (below)
+        if (type === CrustType.OCEAN) { base[w] = Math.max(0, seaKm) - seaKm; lift[w] = 0; cutNow[w] = 0; hold[w] = 0; height[w] = base[w] + crust.basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR; continue; }
         // (the column as formed — a continent's and a craton's by their crust, tectonics/measure.js; an arc's its own
         // crest — is the base; the relief is the rest, above it: the crust thickened, the belts' uplift, the swells, the
         // basalt. A crust eroded thinner than formed stands lower than its base: no relief there)
@@ -229,9 +230,9 @@ function meshInfo(mesh) {
  *  that outlet across the hollow (s.holKm). */
 function hollows(s, count, plates, owner, ownerCell, adjOffset, adjList, dist) {
     const { order, fill, height, hol, holKm, land, holCells } = s;
-    // (below its spill and above the sea's: land open to the sea below 0 is a drowned shelf, the sea's; and crust that
-    // can take a fill — a filled sea's plain is drawn graded from its own shore: records.js)
-    const deep = c => land[c] && fill[c] > 1e-6 && fill[c] - height[c] >= 1e-4 && plates[owner[c]].crust.type[ownerCell[c]] !== CrustType.OCEAN;
+    // (below its spill and above the sea's: land open to the sea below 0 is a drowned shelf, the sea's. A filled sea's
+    // plain closed in by the land risen around it is a hollow like any other)
+    const deep = c => land[c] && fill[c] > 1e-6 && fill[c] - height[c] >= 1e-4;
     for (let i = 0; i < count; i++) hol[order[i]] = -1;
     let k = 0, at = 0;
     for (let i = 0; i < count; i++) {

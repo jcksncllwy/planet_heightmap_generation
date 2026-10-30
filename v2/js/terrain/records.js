@@ -578,7 +578,6 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         h = (type === CrustType.ARC ? h : CM.ref[type === CrustType.OCEAN ? CrustType.CONTINENT : type]) + liftKm[w];
         // (the sediment the history's rivers laid in a hollow of the land, raising its floor by its Airy share: tectonics/
         // step/rivers.js; not a load on the shield beside it — that is the ranges')
-        h += (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;
         // a sea its rivers filled (or the swell lifted dry): no crust column of its own but the sediment's surface — a
         // delta and alluvial plain its rivers grade, rising inland from its shore at plainGrade (the lower Mississippi's
         // valley and delta plain fall ~1e-4: Saucier 1994; alluvial and delta plains 1e-4–1e-3: Paola et al. 1992,
@@ -591,6 +590,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
             liftKm[w] = 0;
             h = Math.max(0, sl.seaKm) + cfg.plainGrade * Math.max(0, coastKm[w]) - (sl.swellKm[w] - cfg.mantleSwellKm * cfg.mantleSwellLandRef);
         }
+        // (the sediment the history's rivers laid in a hollow of the land — a filled sea's plain closed in too — raising its
+        // floor by its Airy share: tectonics/step/rivers.js; not a load on the shield beside it — that is the ranges')
+        h += (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;
         if (frame.volcType[w] === VolcanicType.LIP) {                   // (the pile, and how far it has worn: lips.js)
             lipKm[w] = cfg.lipLandKm * Math.min(cfg.lipMaxKm, frame.volcKm[w]); lipWornKm[w] = frame.volcWornKm[w]; lipSrc[w] = frame.volcSource[w];
         }
