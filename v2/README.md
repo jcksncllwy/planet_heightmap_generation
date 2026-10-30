@@ -1734,6 +1734,67 @@ resolved under the load, and 10M not run.
 - A closed pocket's lake does not reduce the discharge below it.
 - Sinuosity p90 and Horton rise, the junction count falls: lakes cover channels, and the measure skips them.
 
+## Rivers routed on the finished ground (2026-10-30, branch rivers2, lane rivers3)
+
+Rivers2 left phase 8b's world with dead-straight runs at 14 % and the plains' gradient at 2e-5, and blamed the
+pockets of cut hollows filled as cones from one spill point. **Measured** (`river-network.mjs`, as rivers2): most of
+it was a NaN. The ice age's basin blur left 13 heights NaN deep in trapped seas (floods' 02c8940 fixes it), and one
+NaN key in a priority flood's heap breaks its order for every cell after it. With the NaN gone, c22a381's straight
+runs on that world are 1 %, and its plains' gradient is 3.8e-4 — the terrain's, above Earth's 1e-5–1e-4 on main too
+(heim: that target dropped). `check-phase8b.mjs` now fails on any NaN height reaching the water (`stats.water.nanHeights`).
+
+**Now** (`finish-hydro.js`):
+- **The final routing is the finished ground's.** After every breach, cut and fill, one priority flood from the sea
+  and from every place water ends — a salt lake, a closed basin's playa or dry sink, at its bed — gives each cell its
+  way down; then the discharge is gathered upstream first. Until then the ways were the first flood's, patched hollow
+  by hollow, and the water was gathered in that flood's order: rivers sent over an old rim where a gorge had since
+  opened a lower way.
+- **A closed basin is reached from outside only over its rim** (its level, as the first flood had it full; the basin
+  and its salt lakes one region): a pit of a few cells beside a big river, closed by its own water, is no sink for the
+  river (without it 120,000 m³/s ended in five cells).
+- **A fresh lake passes on what reaches it, less its open water's loss** (until then all of it). The months
+  (`riverYears`) run down the same tree.
+- **Every dry hollow left under the flood** is a fresh lake at its rim (if the map shows it and its water fills it)
+  or filled by its river's load, then the flood runs again for a second round — a fill rising inland from its outlet
+  buries the sill of a hollow that spilled onto it, which fills in turn (1823 then 57 hollows on phase 8b's world). The
+  second round's fills are routed down themselves, not flooded again. This replaces the late pass, which chose on the
+  first routing.
+- **A fill is graded from its edges** (`fillGrade` both ways; Barnes, Lehman & Mulla 2014's two gradients as
+  elevation): down away from the higher ground round it that drains in — fans and deltas building out from every
+  side — and down toward its outlet. Its rivers run in from its edges to a trunk and down that, gathering as they go;
+  until then it rose from the outlet alone, a cone, its rivers spokes.
+
+Before → after, Add detail's rivers, all with floods' NaN fix (c22a381 + 02c8940 → this branch + 02c8940; main
+dd71d40 in brackets — another history, for scale):
+
+| Measure (Earth) | phase 8b world 640K | user's frame 640K | user's frame 2.5M |
+|---|---|---|---|
+| low reaches dead level (0–2 %) | 6 → 3 % [21] | 10 → 9 % [22] | 12 → 10 % |
+| low reaches rising | 2 → 0 % [3] | 3 → 1 % [1] | 3 → 1 % |
+| dead-straight runs | 1 → 4 % [6] | 4 → 4 % [8] | 0 → 0 % |
+| Hack h (0.5–0.6) | 0.59 → 0.61 [0.60] | 0.60 → 0.61 [0.60] | 0.58 → 0.58 |
+| Horton R_B (3–5) | 8.05 → 7.29 [4.90] | 7.25 → 7.04 [5.02] | 8.94 → 7.93 |
+| junction angle (45–72°) | 80 → 80° [79] | 80 → 81° [79] | 86 → 86° |
+| plains sinuosity p90 (≤ 1.5) | 6.15 → 1.49 [1.54] | 1.79 → 1.51 [1.52] | 2.20 → 1.57 |
+| plain gradient, median (1e-5–1e-4) | 3.8e-4 → 3.8e-4 [1.6e-4] | 2.2e-4 → 2.2e-4 [1.9e-4] | 2.6e-4 → 2.5e-4 |
+
+The straight runs on phase 8b's world are a few links of its 82 (c22a381's 1 % a few of 77): within the noise of
+that count; main's are 6 %. The dead-level reaches left on the user's frame are on ground the water stage does not touch, and the
+below-sea-level land it raises to `seaCutFloorKm` (3 m) — a flat (unchanged here). Hard checks (phase 8a, 8b, basins,
+with 02c8940): the branch's failure set as before; the new NaN guard passes.
+
+**Time** (the water stage, c22a381 + 02c8940 vs this branch + 02c8940, interleaved, load 3.4–5.5 on 8 cores): at
+640K 1.01–1.12 vs 1.08–1.15 s (+0.05 s, ~0.3 % of Add detail's 16 s); at 2.5M 4.51–4.58 vs 4.68–4.71 s (+0.14 s,
+~0.3 % of its 44 s). The final flood costs two floods more; the late pass it replaces, the hollow-by-hollow monthly
+routing it drops and receivers compared without a square root (identical ways) pay for most of it. 10M not run.
+
+**Open:**
+- The below-sea-level land raised to 3 m is a dead-level flat (part of the user's frame's dead-level reaches).
+- Lakes evaporate now: at 2.5M the water reaching the sea falls from 0.96 to 0.81 while the history's sinking basins
+  stand as giant lakes (pending the gs-basins lane).
+- The decisions (lake, salt, pan, cut) are still the first routing's; a closed basin that the final routing would feed
+  more is not re-judged.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
