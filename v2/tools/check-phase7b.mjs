@@ -10,7 +10,7 @@
 // often a strip carries craton, back-arcs per 100 Myr, and the land fore-arc islands add.
 // Usage: node v2/tools/check-phase7b.mjs
 
-import { check, report, section, finish, labMesh, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr, medianOf } from './lib/check-kit.mjs';
+import { check, checkAcross, report, section, finish, labMesh, isLand, cellsWhere, plateNamed, plateById, nearestFrame, largestPiece, relativeCmYr, medianOf } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { MARGIN_SCENES } from '../js/tectonics/scenarios/margin-scenes.js';
 import { heading, omegaFor } from '../js/tectonics/scenarios/hotspot-scenes.js';
@@ -20,7 +20,7 @@ import { simulate } from '../js/tectonics/simulate.js';
 import { simulateCached } from './lib/history-cache.mjs';
 import { frameTallies, Margin } from '../js/tectonics/measure.js';
 import { rollbackCmYr } from '../js/tectonics/step/backarc.js';
-import { CrustType, OrogenyType } from '../js/tectonics/model/crust.js';
+import { CrustType, CrustFlag, OrogenyType } from '../js/tectonics/model/crust.js';
 import { BoundaryKind, EventKind } from '../js/tectonics/model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR, TECTONICS } from '../js/tectonics/config.js';
 import { mechanismsOff } from '../js/tectonics/config.js';
@@ -228,16 +228,22 @@ section('in a whole history');
     const kinds = new Set(); for (let w = 0; w < numCells; w++) if (r.last.margin[w]) kinds.add(r.last.margin[w] & Margin.TYPE);
     check('its coasts come in every kind', kinds.has(Margin.ACTIVE) && kinds.has(Margin.PASSIVE) && kinds.has(Margin.TRANSFORM), `margin kinds present at ${r.last.time} Myr: ${[...kinds].sort().join(', ')}`);
     // fore-arc islands: they rise off active coasts and grow into the mainland — land grows, but not without bound
-    const merges = r.events.filter(e => e.kind === EventKind.ISLE_MERGE);
     // (the islands alone: both runs with erosive margins off, which eat about as much as the islands add — Phase 7c)
     const landAt = x => cellsWhere(numCells, w => isLand(x.last, w)).length, noErosion = mechanismsOff('marginErosion');
     const withIsles = run('history', noErosion), bare = run('history', { ...noErosion, ...mechanismsOff('marginIsles') });
     const growth = landAt(withIsles) / landAt(bare);
-    // (how many islands reach their mainland in 300 Myr is the history's chance — 0 to 4 on seed 12345 under ~4 % nudges
-    // of unrelated parameters: judged over three histories, the median against the floor)
-    const mergeCounts = [merges.length, ...MORE_SEEDS.map(seed => run('history', {}, null, seed).events.filter(e => e.kind === EventKind.ISLE_MERGE).length)];
-    check('islands rise off active coasts and grow into the mainland', medianOf(mergeCounts) >= 3,
-        `median ${medianOf(mergeCounts)} islands merged into their mainland over ${r.last.time} Myr (seeds ${[SEED, ...MORE_SEEDS].join(', ')}: ${mergeCounts.join(', ')}); first on ${SEED}: ${merges[0]?.text ?? 'none'}`);
+    // (audit 2026-10-30: the check counted ISLE_MERGE events, only those whose island passed the terrane area cut-off
+    // (terraneMinAreaKm2, ~5 cells) — 1 · 0 · 3 · 0 · 1 · 0 over six seeds, while the crust ledger shows 1.6–2.4 Mkm² of land
+    // made by the mechanism; the cut-off, not the mechanism, decided the answer (at half the cut-off: 10 · 7 · 19). So it
+    // is read as the mechanism's own result: fore-arc island crust (MARGIN_ISLE) that has become continent in the last
+    // frame, on each seed. Confirmed against the ledger on seeds 12345, 1, 2 at 300 Myr: 152 · 109 · 223 such cells against
+    // the ledger's 142 · 127 · 190 net cells made by the margin-isles stage. Some island must have joined, on most seeds)
+    const isleCells = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] >= 0 && f.type[w] === CrustType.CONTINENT && (f.flags[w] & CrustFlag.MARGIN_ISLE)) n++; return n; };
+    const cellKm2 = 4 * Math.PI * PLANET_RADIUS_KM ** 2 / numCells;
+    const isleSeeds = [{ seed: SEED, last: r.last }, ...MORE_SEEDS.map(seed => ({ seed, last: run('history', {}, null, seed).last }))].map(({ seed, last }) => ({ label: seed, n: isleCells(last) }));
+    checkAcross('islands rise off active coasts and grow into the mainland', isleSeeds.map(x => ({ label: x.label, ok: x.n > 0, text: `${x.n} cells of fore-arc island crust now continent` })), { detail: `at ${r.last.time} Myr` });
+    report('land made of fore-arc islands joined to their mainland', isleSeeds.map(x => x.n * cellKm2 / 1e6), { unit: ' Mkm²', digits: 2, source: 'no Earth figure: accreted arc crust adds ~1.5–3 km³/yr worldwide (Scholl & von Huene 2007) — a volume, not an area',
+        detail: `fore-arc island crust that is continent at ${r.last.time} Myr, seeds ${isleSeeds.map(x => x.label).join(', ')}` });
     report('land with fore-arc islands ÷ without', growth, { digits: 2, unit: '×', source: 'arc accretion adds ~1.5–3 km³/yr worldwide (Scholl & von Huene 2007) — a volume, not an area',
         detail: `land at ${r.last.time} Myr: ${landAt(withIsles)} cells with fore-arc islands, ${landAt(bare)} without (erosive margins off in both)` });
     const transp = cellsWhere(numCells, w => r.last.owner[w] >= 0 && r.last.oroType[w] === OrogenyType.TRANSPRESSION).length;

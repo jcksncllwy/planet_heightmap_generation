@@ -3,7 +3,7 @@
 //
 // Two kinds of line (the check audit, 2026-10):
 //   · check() — HARD: fails the run. Only for what must always hold: an invariant (conservation, bookkeeping, tiling,
-//     determinism), a numerical property (mesh, step, resolution, speed), or a mechanism doing what its physics says in a
+//     determinism), a numerical property (mesh, step, resolution — not wall-clock speed, which depends on the machine's load: report it, with a deterministic step count), or a mechanism doing what its physics says in a
 //     scene built to show it. Never for an outcome Earth merely happens to have.
 //   · report() — an Earth-likeness statistic: the value (one per seed, or one) against Earth's value or range and its
 //     source. A value outside the range is flagged ⚑ for a look; it never fails the run. The model is meant to make an
