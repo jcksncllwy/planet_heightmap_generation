@@ -44,7 +44,7 @@ export function classifyBoundaries(world, dt) {
         if (otherW < 0) {                              // interior cell
             // A trench flag only means something on ocean crust while that crust is a plate edge;
             // on land it stays as the record of a former active margin.
-            if (real && A.crust.type[cellA] === CrustType.OCEAN) A.crust.flags[cellA] &= ~CrustFlag.TRENCH;
+            if (real && (A.crust.flags[cellA] & CrustFlag.TRENCH) && A.crust.type[cellA] === CrustType.OCEAN) A.crust.flags[cellA] &= ~CrustFlag.TRENCH;
             continue;
         }
         const B = plates[owner[otherW]], x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
@@ -73,7 +73,7 @@ export function classifyBoundaries(world, dt) {
                 const lower = A.id < B.id ? A : B, upper = A.id < B.id ? B : A;
                 const lowerCell = A.id < B.id ? cellA : ownerCell[otherW], upperCell = A.id < B.id ? ownerCell[otherW] : cellA;
                 const trenched = (A.crust.flags[cellA] & CrustFlag.TRENCH) || (B.crust.flags[ownerCell[otherW]] & CrustFlag.TRENCH);
-                oceanContacts.push({ w, key: `${lower.id}:${upper.id}`, lowerId: lower.id, upperId: upper.id,
+                oceanContacts.push({ w, key: lower.id * 65536 + upper.id, lowerId: lower.id, upperId: upper.id,      // (a number: ids stay far below 65536)
                     prefersLower: overrides(lower, lowerCell, upper, upperCell) === true, weight: trenched ? config.segmentTrenchWeight : 1 });
             }
             boundaryKind[w] = aOverrides === null ? BoundaryKind.COLLISION : aOverrides ? BoundaryKind.OVERRIDING : BoundaryKind.SUBDUCTING;

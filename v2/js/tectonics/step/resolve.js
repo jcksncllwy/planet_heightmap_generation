@@ -251,8 +251,15 @@ export function decideBirth(world, grower, cell, everyone, near = null) {
     for (const { plate, cap } of near ? near(bin) : everyone) {
         if (plate === grower || p[0] * cap[0] + p[1] * cap[1] + p[2] * cap[2] < cap[3]) continue;
         if (!near && !mayHaveCrustNear(plate, bin, stamp, bins)) continue;               // nothing of that plate anywhere near
-        const under = plate.cellAt(mesh.index, p[0], p[1], p[2]);
-        if (plate.crust.mask[under]) return NOT_A_GAP;                                   // (a)
+        // (plate.cellAt, in its two halves: the index's first guess, then the walk from it. The true nearest cell is within
+        // 2 hops of the guess (core/sphere-index.js; step/gather.js relies on it too): a guess of crust with no edge of it
+        // within a ring has crust all round for 2 hops, so the cell under p is crust without walking there)
+        const m = plate.mat, mask = plate.crust.mask;
+        const qx = m[0] * p[0] + m[3] * p[1] + m[6] * p[2], qy = m[1] * p[0] + m[4] * p[1] + m[7] * p[2], qz = m[2] * p[0] + m[5] * p[1] + m[8] * p[2];
+        const guess = mesh.index.start(qx, qy, qz);
+        if (mask[guess] && !plate._nearEdge.within1[guess]) return NOT_A_GAP;            // (a)
+        const under = mesh.index.walk(guess, qx, qy, qz);
+        if (mask[under]) return NOT_A_GAP;                                               // (a)
         rivals[n] = plate; unders[n++] = under;
     }
     // (p is the cell's own centre: the cell under it is the cell)
@@ -294,7 +301,8 @@ function assignGapOwners(world, gaps, born) {
     const { mesh, owner, ownerCell, claimCount, provisional, provisionalLike, plates, config } = world, { xyz, index } = mesh;
     const everyone = plates.filter(p => p.alive && p.crust.count > 0), bins = binIndex(mesh), stamp = world.occupancyStamp;
     for (const plate of everyone) nearEdge(plate, mesh, born.get(plate));  // (each plate's edge counts, after the births)
-    const claimMaps = new Map(everyone.map(plate => [plate, currentClaimMap(plate)]));   // (the gather's lookups: cellAt for a world cell)
+    const claimMaps = new Array(plates.length).fill(null);                // (the gather's lookups: cellAt for a world cell)
+    for (const plate of everyone) claimMaps[plate.id] = currentClaimMap(plate);
     const nearOf = nearIndex(everyone, plate => plate, stamp, bins);             // (after the births: they marked their bins)
     const p = [0, 0, 0], hit = { dot: -2, cell: -1 };
     // (per gap, for each nearby plate: the raster cell under it, then that plate's nearest crust — in scratch arrays)
@@ -305,7 +313,7 @@ function assignGapOwners(world, gaps, born) {
         if (n > under.length) { under = new Int32Array(2 * n); hitDot = new Float64Array(2 * n); hitCell = new Int32Array(2 * n); }
         let best = null, bestDot = -2, bestCell = -1, foreign = null, foreignDot = -2, foreignCell = -1, real = false;
         for (let i = 0; i < n; i++) {
-            const claims = claimMaps.get(near[i]);
+            const claims = claimMaps[near[i].id];
             const cell = claims ? rasterCellUnder(claims, near[i], mesh, g) : near[i].cellAt(index, p[0], p[1], p[2]);
             under[i] = cell;
             if (near[i].crust.mask[cell]) { best = near[i]; bestCell = cell; real = true; break; }     // filled this step
