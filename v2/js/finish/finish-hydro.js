@@ -138,6 +138,16 @@ export function fillSeaBasins(mesh, z, ocean, F) {
 export function hydrology(ctx, F) {
     const { mesh, z, ocean, runoff, pet, rain, wetMonths } = ctx, n = mesh.numCells, { adjOffset, adjList, xyz } = mesh;
     const cellKm2 = 4 * Math.PI * R * R / n, EPS = 1e-4;
+    // (a height that is not a number — the ice age's, a handful of cells deep in trapped seas; reported to its lane — is
+    // taken as its lowest neighbour's: one NaN in a priority flood's heap breaks its order for every cell after it, the
+    // rivers routed up sills thousands of cells away)
+    let nanHeights = 0;
+    for (let c = 0; c < n; c++) {
+        if (!Number.isNaN(z[c])) continue;
+        let low = Infinity;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const v = z[adjList[k]]; if (v < low) low = v; }
+        z[c] = low < Infinity ? low : 0; nanHeights++;
+    }
     // ── the priority flood from the sea: each land cell's spill level (fill), its order, the way it was reached ──
     const fill = new Float32Array(n), rank = new Int32Array(n).fill(-1), parent = new Int32Array(n).fill(-1), order = new Int32Array(n);
     const heap = new MinHeap(1 << 16);
@@ -863,7 +873,7 @@ export function hydrology(ctx, F) {
         }) : null,
         stats: { runoffMm: total * SEC_PER_YEAR / 1e3 / Math.max(1, landKm2), toSeaShare: toSea / Math.max(1e-9, total), toBasinsShare: toBasins / Math.max(1e-9, total),
             lostShare: lost / Math.max(1e-9, total), byOriginShare: Object.fromEntries(Object.entries(byOrigin).map(([k, v]) => [k, +(100 * v / Math.max(1, count * cellKm2)).toFixed(2)])),
-            biggestLakesKm2: sizes.slice(0, 6).map(Math.round), cutCells, cutMaxKm: +cutMaxKm.toFixed(3), cutMeanM: Math.round(1000 * cutKm3 / Math.max(1, cutCells) / cellKm2), keptPockets, filledCells, reaches, points: L.lat.length, biggestM3s: biggest, freshLakes: lakes, saltLakes: salt, pans, lakeShare: lakeKm2 / Math.max(1, landKm2), seas,
+            biggestLakesKm2: sizes.slice(0, 6).map(Math.round), nanHeights, cutCells, cutMaxKm: +cutMaxKm.toFixed(3), cutMeanM: Math.round(1000 * cutKm3 / Math.max(1, cutCells) / cellKm2), keptPockets, filledCells, reaches, points: L.lat.length, biggestM3s: biggest, freshLakes: lakes, saltLakes: salt, pans, lakeShare: lakeKm2 / Math.max(1, landKm2), seas,
             // (the land whose water ends in a closed basin — endorheic — and each closed basin: its catchment (km²), its
             // lakes' water and its playas (km²), its catchment's aridity (rain ÷ potential evaporation))
             endorheicShare: endoKm2 / Math.max(1, landKm2),
