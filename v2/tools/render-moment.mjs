@@ -7,7 +7,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]] [--network]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]] [--network] [--key <history-cache key>]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). --latest: the moment the
 // user is looking at in the Evolution page (the history cache's latest.json: node v2/tools/history.mjs latest). Output: v2/out/moments/.
@@ -55,7 +55,7 @@ const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`)
 const NETWORK = process.argv.includes('--network'), R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
 
 // ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; through the cache ──
-const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME, key: LATEST && Number(LATEST.timeMyr) === TIME ? LATEST.key : null });     // (--latest: the page's very frame)
+const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME, key: arg('--key', null) ?? (LATEST && Number(LATEST.timeMyr) === TIME ? LATEST.key : null) });     // (--latest: the page's very frame; --key: a history-cache entry's, the page's frame once viewed)
 console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 
 // ── --live: the moment as the timeline draws it before any detail (the page's live terrain at --cells, its Terrain
