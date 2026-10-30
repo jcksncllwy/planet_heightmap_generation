@@ -8,7 +8,7 @@
 // Usage: node v2/tools/check-phase5b.mjs
 
 import { arcSlabKm, arcGapKm } from '../js/tectonics/step/wings.js';
-import { check, report, section, finish, labMesh, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
+import { check, checkAcross, report, section, finish, labMesh, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { EVENT_SCENES } from '../js/tectonics/scenarios/event-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
@@ -161,23 +161,48 @@ section('arc meets a passive margin');
         }
         const docks = r.events.filter(e => e.kind === EventKind.DOCK && e.data.host === austral).length;
         check('every arc piece that touches the continent docks', leftTouching === 0 && docks >= 1, `${docks} pieces docked onto Austral; ${leftTouching} Oceanica land cells still touching Austral’s land at ${end.time} Myr`);
-        // the arc ends up joined to the coast, the sea between them closed — by docking straight onto it (its land stacks
-        // up beside the coast where it arrives), or by collapsing onto it later (the collapse rule has its own scene below)
-        // (the arc as it arrived: crust formed before then — Oceanica's arcs built since, still on their way in, share its terranes)
-        const arcCells = cellsWhere(numCells, w => end.owner[w] === austral && end.type[w] === CrustType.ARC && accreted.has(end.terrane[w]) && end.formedAt[w] < arrives);
-        const mainland = new Set(), seeds = cellsWhere(numCells, w => end.owner[w] === austral && isLand(end, w) && end.type[w] !== CrustType.ARC);
-        let biggest = [];
-        for (const s0 of seeds) {
-            if (mainland.has(s0)) continue;
-            const piece = [s0]; mainland.add(s0);
-            for (let i = 0; i < piece.length; i++) for (let k = adjOffset[piece[i]]; k < adjOffset[piece[i] + 1]; k++) { const nb = adjList[k]; if (!mainland.has(nb) && end.owner[nb] === austral && isLand(end, nb)) { mainland.add(nb); piece.push(nb); } }
-            if (piece.length > biggest.length) biggest = piece;
-        }
-        const joined = new Set(biggest), attached = arcCells.filter(w => joined.has(w)).length;
-        check('the accreted arc ends up joined to the coast: the sea between them closes', arcCells.length >= 30 && attached >= 0.8 * arcCells.length,   // (before land-conserving docking: ~64 %)
-            `${attached} of ${arcCells.length} cells of the accreted arc on Austral are joined to its mainland at ${end.time} Myr${r.events.some(e => e.kind === EventKind.ARC_COLLAPSE) ? ' (after a collapse)' : ' (docked straight onto it)'}`);
+        // the arc ends up joined to the coast, the sea between them closed — judged over six histories below ('arc meets a passive
+        // margin: joined'), on the arc cells that have a coast to close on
         check('no gaps; overlap never builds up', r.frames.every(f => frameTallies(f).gaps === 0) && Math.max(...r.frames.map(f => frameTallies(f).collision)) < 30, `overlap peaks at ${Math.max(...r.frames.map(f => frameTallies(f).collision))} cells`);
     }
+}
+
+// ── the accreted arc ends up joined to the coast (audit 2026-10-30) ──
+// Was one seed, 80 % of every cell of the accreted arc, and the 0.8 unsourced (before the land-conserving docking: ~64 %). The
+// misses are not a strait left open: they are the chain's ends, up to ~2800 km out past the continent, where there is no coast
+// to close on (a 300 km tolerance changed nothing). So the population is the arc cells within arcCollapseKm of the mainland, the
+// range at which the collapse rule itself takes an arc onto its continent; that share was 79 · 73 · 70 · 94 · 91 · 94 % over six
+// histories at 90 Myr (all cells: 56 · 46 · 50 · 94 · 55 · 75). It still moves frame to frame (4242: 64 → 72 → 99 %), so the
+// floor is a mechanism test — an arc that joins nowhere is the bug — and not an Earth figure: 0.5, a floor of the lane's own
+// (ruled by Jackson 2026-10-30), to be tightened if the process is ever measured.
+const JOINED_FLOOR = 0.5;
+section('the accreted arc is joined to the coast');
+{
+    const joinedShare = (r, seed) => {
+        // (the arc reaches the continent by docking, or by scraping it and collapsing onto it later: the first of those marks its arrival)
+        const austral = r.idOf.Austral, oceanica = r.idOf.Oceanica, end = r.frames.at(-1);
+        const arrives = Math.min(...r.events.filter(e => (e.kind === EventKind.DOCK && e.data.arc || e.kind === EventKind.ARC_SCRAPE || e.kind === EventKind.ARC_COLLAPSE) && e.data.host === austral).map(e => e.time));
+        if (!Number.isFinite(arrives)) return { label: seed, formed: false, text: 'the arc never reached the continent' };
+        const pre = r.frames.filter(f => f.time < arrives).at(-1), accreted = new Set(cellsWhere(numCells, w => pre.owner[w] === oceanica && pre.type[w] === CrustType.ARC).map(w => pre.terrane[w]));
+        // (the arc as it arrived: crust formed before then — Oceanica's arcs built since, still on their way in, share its terranes)
+        const arcAll = cellsWhere(numCells, w => end.owner[w] === austral && end.type[w] === CrustType.ARC && accreted.has(end.terrane[w]) && end.formedAt[w] < arrives);
+        const seen = new Set(), lands = cellsWhere(numCells, w => end.owner[w] === austral && isLand(end, w) && end.type[w] !== CrustType.ARC);
+        let biggest = [];
+        for (const s0 of lands) {
+            if (seen.has(s0)) continue;
+            const piece = [s0]; seen.add(s0);
+            for (let i = 0; i < piece.length; i++) for (let k = adjOffset[piece[i]]; k < adjOffset[piece[i] + 1]; k++) { const nb = adjList[k]; if (!seen.has(nb) && end.owner[nb] === austral && isLand(end, nb)) { seen.add(nb); piece.push(nb); } }
+            if (piece.length > biggest.length) biggest = piece;
+        }
+        const joined = new Set(biggest), reach = r.world.config.arcCollapseKm, near = arcAll.filter(w => nearestKm(mesh, w, biggest) <= reach), attached = near.filter(w => joined.has(w)).length;
+        const share = near.length ? attached / near.length : NaN;
+        return { label: seed, formed: near.length >= 30, ok: share >= JOINED_FLOOR, share, all: arcAll.length ? arcAll.filter(w => joined.has(w)).length / arcAll.length : NaN,
+            text: `${attached} of ${near.length} arc cells within ${reach} km of the mainland joined to it at ${end.time} Myr (${(100 * share).toFixed(0)} %; of all ${arcAll.length} cells ${(100 * (arcAll.filter(w => joined.has(w)).length / Math.max(1, arcAll.length))).toFixed(0)} %)` };
+    };
+    const seeds = [SEED, 1, 2, 3, 4, 5], samples = seeds.map(seed => joinedShare(run('arc', {}, seed), seed));
+    checkAcross(`the accreted arc ends up joined to the coast: at least ${100 * JOINED_FLOOR} % of the arc within reach of it`, samples, { detail: 'the floor is a mechanism test, not an Earth figure' });
+    report('accreted arc joined to the mainland (arc cells within arcCollapseKm of it)', samples.filter(x => x.formed).map(x => 100 * x.share), { unit: ' %', digits: 0, source: 'no Earth figure: a process the sim\'s own collapse rule governs',
+        detail: `seeds ${seeds.join(', ')} at the end of the scene` });
 }
 
 section('arcs between closing continents');

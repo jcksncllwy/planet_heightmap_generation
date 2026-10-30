@@ -1928,6 +1928,14 @@ The surface audit (`audit-surface`, main 34abaab) found five failing checks of w
 - **Swells steer rivers** (8b): divides exclude filled plains (they have none), and the ratio is the median over five histories (12345, 1, 2, 777, 4242), bound 0.6 unchanged and labelled as a picked mechanism bound.
 - **Big rivers run through lowlands** (8b): now a `report()` against ETOPO5 measured the same way (0.21-0.24 km), plus a hard guard that there are big rivers to measure. The model's lack of lowland (12-30 % of land below 400 m against Earth's 46-50 %) is a land-height question for the belt work.
 
+Round 2 (the tectonics checks, from `audit-tecton`):
+
+- **5a belt widens**: the belt's 90th-percentile distance inland from the coast must grow from 40 to 80 Myr, on four seeds (`checkAcross`); the 1.12× cell ratio and the farthest-cell reach are gone (neither sourced; the cell ratio's jitter is ±10 cells). The growth in km is reported.
+- **5b arc joined to the coast**: the share of the accreted arc within `arcCollapseKm` of the mainland that is joined to it, over six seeds, floor 0.5 (`JOINED_FLOOR`). The floor is a mechanism test (an arc that never joins is the bug), not an Earth figure; ruled by Jackson 2026-10-30. The misses of the old check were the chain's far ends, which have no coast to close on. The two arc-collision checks are not touched (that scene needs a closing drive that can't die).
+- **7b fore-arc islands**: read as the mechanism's result (fore-arc island crust now continent, per seed), not as ISLE_MERGE events past a terrane area cut-off; the count tracks the crust ledger (152 · 109 · 223 cells against its 142 · 127 · 190). The area is reported.
+- **7c**: the 1000 Myr two-minute check is no longer hard (a wall clock on a shared machine, of a run no user makes). The time at the whole-planet pace and the deterministic step count are reported. `check-kit.mjs` no longer lists speed as a hard check.
+- **11 zipper**: the weld must come after first contact and as the seam stalling, on four seeds; the remnant sea's area is reported against the Black Sea to the Mediterranean (widest gap as detail only: it swings 121-849 km while the area holds 0.4-0.55 Mkm²).
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
