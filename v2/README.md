@@ -1819,18 +1819,44 @@ lakes covered 4–11 % of the land, against Earth's 1.8 % (HydroLAKES, Messager 
   its land does (`step/heights.js`). `records.js` draws it, and it buries the platform's bedrock basins and arches
   (`basinCover` in `synthesize.js`). The sediment is the continents' own rock, moved, so the crust ledger does not
   change. What a hollow keeps no longer reaches the sea, the trenches' fans or an enclosed sea.
+- **A filled sea closed in is a hollow too.** An enclosed sea fills to the sea's level (`step/sea-fill.js`). Where
+  the land around it later rose and closed it in, the terrain drew it as a hollow: 4.4 Mkm² and 1.1 km deep on 626225
+  at 600 Myr. It now traps like any other hollow. Rivers may cut into basin fill once its outlet lies lower, and fill
+  on a shield wears at the soft cover's rate, not the crystalline basement's.
 - **Tools.** `tools/trace-basins.mjs` reports the history's hollows through time and the finish's lakes, including
   how much of each lake lies over a history hollow and the crust under it. `tools/lib/land-water.mjs` holds the shared
   measurement. `check-basins` has a new section: trap efficiency against measured reservoirs, plus reports on the
   land's lakes, the largest and deepest, the land below its spill, the land's mean height and the fill held.
 
-**Results** (40K, cont 30; rivers2 → basins, lakes on land as a share of land):
-- 626225: 9.4 → 3.8 % at 300 Myr, 4.0 → 3.6 % at 600, 7.3 → 3.6 % at 950.
-- 831576: 10.9 → 5.7 % at 310 Myr (640K cells), with the largest lake 4.09 → 0.43 Mkm²; 4.3 → 3.8 % at 600.
-- History, 831576 at 300 Myr: hollow volume 6.2 → 1.0 Mkm³ and the largest hollow 5.5 → 0.9 Mkm², with ~370 Mkm³
-  trapped over 300 Myr (~1.2 km³ a year).
+**Results** (40K, cont 30; rivers2 on main → basins, lakes on land as a share of land):
+- 831576 (Jackson's seed): 9.5 → 5.6 % at 310 Myr (640K cells) and 7.5 → 2.2 % at 600.
+- 626225: 9.4 → 4.3 % at 300 Myr, 4.0 → 3.8 % at 600 and 7.3 → 2.9 % at 950. The largest lake there fell from
+  1.9 Mkm² to 0.85–0.90 Mkm², and the deepest from 4–5 km to 0.9–1.7 km.
+- 12345: 13.4 → 3.0 % at 300 Myr, 14.9 → 3.7 % at 600 and 4.5 → 2.4 % at 950.
+- `check-basins` (626225, 777, 12345; mean of 300, 600 and 950 Myr): lakes on land 3.1, 2.4 and 3.0 % (Earth
+  1.8–3.7 %). Largest lake 0.52–0.93 Mkm² (Earth ≤ 0.45), deepest 0.85–2.2 km (Earth ≤ 1.7). Endorheic share
+  20–29 % (Earth ~20 %, Wang et al. 2018).
+- History, 831576 to 900 Myr: land below its spill fell from 18–28 % of land to 11–17 %, and hollow volume from
+  2–12 to 0.4–1.5 Mkm³. The largest hollow fell from 2–14 to 0.2–1.1 Mkm². About 1,000 Mkm³ was trapped over 900 Myr
+  (~1.1 km³ a year, beside Earth's ~7 km³ a year of river load).
+- Time: no cost per step. Hollow labelling and trapping take 0.09 s of a 77 s history, and all of the rivers step
+  2.1 s. Whole histories, interleaved against the base (seed 12345, no cache): 219 s against 228 s on average,
+  within the noise of runs that take different paths.
 
-**What is left.** Only ~10 % of the remaining lakes lie over a history hollow. Most sit in belts: closed basins the
+**Checks** against rivers2 on main: invariants pass all 26. The Phase 9 near-miss (290 → 300 Myr rivers) now
+passes. Two Phase 8b checks newly fail: "big rivers run through lowlands" (below) and "the first continents' swells
+steer the history's rivers" (0.12 km of swell under big rivers against 0.19 at the divides: 0.63, where ≤ 0.6 is
+asked). The rest match the base's set, or are timings or histories that took another path.
+
+**The trade-off: big rivers stand higher.** In Phase 8b, "big rivers run through lowlands" (median under 0.40 km)
+went from a pass on the base to 0.54–0.73 km. Land below 400 m went from 18 % to 11 %. On one frame, drawn with and
+without its fill, the fill raises the big rivers' median from 0.40 to 0.66 km, and 79 % of big-river cells sit on
+fill. Before, many big rivers ran along the floors of hollows that the finish then filled with lakes. Now those
+floors are filled plains at their spill levels, and the spills stand high because the land does: the finished land
+averages 0.84–1.05 km against Earth's 0.80–0.84 (Phase 13's land excess comes from its belts).
+
+**What is left.** Only ~10 % of the remaining lake area lies over a history hollow. The largest left on 831576 at
+310 Myr is 2.97 Mkm² and 0.86 km deep, on old continental crust with no history hollow under it. Most sit in belts: closed basins the
 terrain draws between ranges, 0.2–0.9 Mkm² and 0.2–0.8 km deep (Earth's Altiplano and Tibetan lakes are far smaller).
 Zeroing the terrain's own craton sags and foredeeps (`cratonSagKm`, `foredeepMaxKm`) left the lake area unchanged,
 3.7–4.3 % against 3.6–3.8 %, so those depressions are not where the extra lakes come from. A few km-deep bodies lie
