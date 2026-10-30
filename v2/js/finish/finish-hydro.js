@@ -320,25 +320,32 @@ export function hydrology(ctx, F) {
     };
     // (a hollow its river's load fills: sediment from where it spills up, rising at fillGrade — a delta plain's topset, so
     // never dead level, and the rivers across it run down to its outlet. Never lowers a cell. Dijkstra by km from `from`)
-    const fillHeap = new MinHeap(1 << 12), fillD = new Float64Array(n), fillStamp = new Int32Array(n), fillIn = new Int32Array(n);
+    // (and sagged by fillSag of its thickness over the floor it buries: that floor's relief draped on it — but each cell
+    // above the one it was reached from by gorgeMinGrade at least, so the sag leaves no hollow and the fill no level ground)
+    const fillHeap = new MinHeap(1 << 12), fillD = new Float64Array(n), fillStamp = new Int32Array(n), fillIn = new Int32Array(n), fillFrom = new Int32Array(n);
     let fillId = 0, filledCells = 0;
     const fillGraded = (cells, from, level) => {
         fillId++;
         for (const x of cells) fillIn[x] = fillId;
-        for (const x of from) { fillD[x] = 0; fillStamp[x] = fillId; fillHeap.push(0, x); }
+        for (const x of from) { fillD[x] = 0; fillStamp[x] = fillId; fillFrom[x] = -1; fillHeap.push(0, x); }
         while (fillHeap.size) {
             const a = fillHeap.pop(), da = fillD[a];
             if (fillStamp[a] === -fillId) continue;
             fillStamp[a] = -fillId;
-            let top = level + F.fillGrade * da;
-            // (no higher than the ground round it that drains in: the rivers coming onto the fill still run down)
-            if (fillIn[a] === fillId) for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) { const b = adjList[k]; if (fillIn[b] !== fillId && rank[b] !== -2 && z[b] - 1e-6 < top) top = Math.max(level, z[b] - 1e-6); }
+            const plane = level + F.fillGrade * da, p = fillFrom[a];
+            let top = z[a] < plane ? plane - (F.fillSag ?? 0) * (plane - z[a]) : plane;
+            if (p >= 0) top = Math.max(top, z[p] + F.gorgeMinGrade * edgeKmOf(xyz, p, a));
+            // (no higher than the ground round it that drains in: the rivers coming onto the fill still run down. Only ground
+            // above its level drains in — ground at or below it, a gorge cut beside it or a lake's bed, is where it drains
+            // out; held to that, the fill was planed dead level at its spill height: plains the size of countries, the
+            // broom again — lane rivers2, 2026-10-29)
+            if (fillIn[a] === fillId) for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) { const b = adjList[k]; if (fillIn[b] !== fillId && rank[b] !== -2 && z[b] > level && z[b] - 1e-6 < top) top = Math.max(level, z[b] - 1e-6); }
             if (fillIn[a] === fillId && z[a] < top) { z[a] = top; filledCells++; }
             for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
                 const b = adjList[k];
                 if (fillIn[b] !== fillId || fillStamp[b] === -fillId) continue;
                 const db = da + edgeKmOf(xyz, a, b);
-                if (fillStamp[b] !== fillId || db < fillD[b]) { fillStamp[b] = fillId; fillD[b] = db; fillHeap.push(db, b); }
+                if (fillStamp[b] !== fillId || db < fillD[b]) { fillStamp[b] = fillId; fillD[b] = db; fillFrom[b] = a; fillHeap.push(db, b); }
             }
         }
     };
@@ -499,12 +506,26 @@ export function hydrology(ctx, F) {
     };
     // (the finishing's hollows cut through once every hollow is found — a cell cut below the flood's surface mid-search
     // read as a hollow of its own: spurious lakes the size of plains — each drained whole, its pockets too)
-    // (Jackson, 2026-10-29: a pit breached, any other filled — these are the finishing's own hollows, a fan or loess
-    // damming a valley: what the river brings fills behind the dam, graded down to where it spills; until then cut through)
-        for (const id of laterCuts) {
+    // (Jackson, 2026-10-29: a pit breached, any other kept — these are the finishing's own hollows, a fan or loess
+    // damming a valley; until then cut through. One kept is left as it is here: water fills it and spills, and the pass
+    // over what is left of the hollows, below, makes it a lake where the map shows one, else fills it with the river's
+    // load. Filled here whatever its size, a hollow hundreds of m deep became a plain graded from its outlet alone: a cone,
+    // its rivers straight spokes to that point, 29 % of the low channels dead straight on phase 8b's world against main's
+    // 4 % — lane rivers2)
+    // (and one that a gorge cut since it was found has opened — ground beside it, outside it, now lower than its level,
+    // which no hollow fresh off the flood has — drains by that lower way out, as a lake a gorge crossed below its rim does
+    // (below: drained): cut through to it. Kept, its outlet stale, its river was sent over the old rim — 2 km up)
+    const opened = h => {
+        for (const c of h.cells) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const y = adjList[k];
+            if (hollow[y] !== hollow[c] && (rank[y] === -2 ? Math.min(0, z[y]) : z[y]) < h.level - EPS) return true;
+        }
+        return false;
+    };
+    for (const id of laterCuts) {
         const h = hollows[id];
-        if (isPit(h.level - h.floor, h.deepCell, h.floor)) { cut(h.deepCell, h.floor); cutPockets(h, id, h.outlet, false); }
-        else fillGraded(h.cells, [h.outlet], h.level);
+        if (!opened(h) && !isPit(h.level - h.floor, h.deepCell, h.floor)) { reroute(h); continue; }
+        cut(h.deepCell, h.floor); cutPockets(h, id, h.outlet, false);
         reroute(h);
     }
     const lakeDeficit = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c]));     // (mm/yr off open water)

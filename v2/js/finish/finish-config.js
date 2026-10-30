@@ -189,6 +189,11 @@ export const FINISH = {
                                 // breach could run its gorge thousands of km to find lower ground
     fillGrade: 5e-5,            // a hollow filled by its river's load rises from its outlet at this: a delta plain's topset
                                 // (the lower Mississippi's ~1e-4, Saucier 1994; the Amazon's 2e-5) — never dead level
+    fillSag: 0.25,              // …and sags by this share of its own thickness: a muddy fill compacts — porosity ~0.6–0.7 laid
+                                // down, ~0.4 a few hundred m down (Athy 1930; Baldwin & Butler 1985, recalled) — so a buried
+                                // valley shows through as a swale its river follows, a buried ridge as a rise: the floor's relief
+                                // draped on the fill, not planed off (a fill graded from one point alone is a cone, its rivers
+                                // straight spokes to its outlet: the broom — lane rivers2, 2026-10-29)
     seaCutKm: 0,                // a basin below sea level opens into the ocean if its cut through dry land is at most this long
                                 // (0: never — developer: a small trapped sea is "NOT a valid end it should go out to the real sea")…
     seaCutFloorKm: 0.003,       // …else its gorge stops this little above sea level (no arm of the sea winding inland); the
