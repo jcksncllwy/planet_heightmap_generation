@@ -163,15 +163,21 @@ function voteSegments(world, contacts) {
     if (!contacts.length) return;
     const byPair = new Map();
     for (const c of contacts) (byPair.get(c.key) ?? byPair.set(c.key, []).get(c.key)).push(c);
+    // (each group's cells marked in scratch arrays — its contact at a cell, whether seen — rather than a Map and a Set:
+    // the same runs, found in the same order, summed in the same order)
+    const n = world.owner.length;
+    if (!vote || vote.at.length !== n) vote = { at: new Int32Array(n), atMark: new Uint32Array(n), seenMark: new Uint32Array(n), stamp: 0, run: [] };
+    const { at, atMark, seenMark, run } = vote;
     for (const group of byPair.values()) {
-        const at = new Map(group.map(c => [c.w, c]));
-        const seen = new Set();
+        if (++vote.stamp === 0xFFFFFFFF) { atMark.fill(0); seenMark.fill(0); vote.stamp = 1; }
+        const mark = vote.stamp;
+        for (let i = 0; i < group.length; i++) { const w = group[i].w; atMark[w] = mark; at[w] = i; }
         for (const start of group) {
-            if (seen.has(start.w)) continue;
-            const run = [start]; seen.add(start.w);
+            if (seenMark[start.w] === mark) continue;
+            run.length = 0; run.push(start); seenMark[start.w] = mark;
             for (let i = 0; i < run.length; i++) for (let k = adjOffset[run[i].w]; k < adjOffset[run[i].w + 1]; k++) {
-                const nb = at.get(adjList[k]);
-                if (nb && !seen.has(nb.w)) { seen.add(nb.w); run.push(nb); }
+                const q = adjList[k];
+                if (atMark[q] === mark && seenMark[q] !== mark) { seenMark[q] = mark; run.push(group[at[q]]); }
             }
             let score = 0;
             for (const c of run) score += c.prefersLower ? c.weight : -c.weight;
@@ -180,6 +186,7 @@ function voteSegments(world, contacts) {
         }
     }
 }
+let vote = null;
 
 // An ocean trench cell counts as a continental margin if land — arc crust included — is within the apron's reach of it.
 function nearLand(plate, mesh, cell, config) {
