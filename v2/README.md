@@ -1595,6 +1595,28 @@ s at 10M), and the civ world 0.3–0.7 s; the rest is the machine's noise. Heigh
 climate, the picture and the stats are bit-identical between main, civ off and civ on at every size measured: civ on
 only adds its own fields.
 
+## Ice-dammed lakes held by their ice (2026-10-29, branch floods)
+
+- **A NaN under shelf ice.** The ice-dug basins' lowland term (`finish-ice.js`: the land's height averaged over 150 km)
+  read NaN on ice grounded on a shelf with no land within the blur. The NaN height went into the outburst floods' two
+  priority floods, broke their heap's order, and lakes were booked as ice-dammed planet-wide: on 831576 at 310 Myr, 142
+  lakes, 35.9 Mkm², 4.4 M km³, 4.4 Mkm² ones at 3.6°N and 20.6°N, flood scour down ordinary rivers near the equator.
+  No land within the blur now reads as the sea's floor (lowland). Latent since the floods landed (501cd4b).
+- **The ice holds water as high as its hydraulic head** — the bed plus ρi/ρw of the ice over it (Shreve 1972) — the
+  level a lake floats its dam at (Thorarinsson 1939; Nye 1976), not the ice's surface.
+- **A lake fills only if its water can.** Its catchment (every cell whose way down the walled ground runs into it) sends
+  its ice-age runoff — dried as the snow is, and only where the summer thaws — against its surface's open-water
+  evaporation (cooled with the ice age's air) net of its rain. A lake that loses more than comes in never reaches its dam
+  and does not burst. `finish.js` passes the moment's `runoff` and `pet` to `lastIceAge`.
+- **Checks:** `check-floods.mjs` (new). Hard: a valley dammed across its outlet holds a lake, in a wet climate and not a
+  dry one; ice above a closed hollow dams none; on seven finished moments every ice-dammed lake has ice across its way
+  out, and the ice age leaves every height a number (bug guards). Reported against the last glacial (Agassiz, Missoula,
+  the Baltic Ice Lake, the West Siberian lakes): the count, their area, the largest's water and area, the lowest latitude.
+
+```
+node v2/tools/check-floods.mjs         # ice-dammed lakes: held by ice across their outlet, filled by their water; reported against the last glacial's
+```
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

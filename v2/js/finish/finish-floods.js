@@ -8,31 +8,39 @@
 // valley, Agassiz's bed).
 //
 // Found on the ice age's surface, before the ice melts: two priority floods from the ice age's sea, one over the ground
-// with the ice standing on it as a wall (its surface's height), one over the bare ground. Water the first holds and the
-// second does not is held by the ice: an ice-dammed lake. Each big enough floods twice — down the way the ice-walled
+// with the ice standing on it as a wall, one over the bare ground. The wall is as high as the ice holds water back: water
+// under a glacier flows by its hydraulic head, the bed's height plus ρi/ρw of the ice over it (Shreve 1972), and a lake
+// deeper than that at its dam floats the dam and drains beneath it (Thorarinsson 1939; Nye 1976). Water the first flood
+// holds and the second does not is held by the ice: an ice-dammed lake — if its water reaches the dam. A lake fills only
+// while its catchment's runoff outweighs what its surface evaporates net of the rain on it (the ice age's: drier, colder;
+// as finish-basins.js balances a closed basin): a dry hollow whose sill the ice tops is not filled by it. Each big enough floods twice — down the way the ice-walled
 // ground spills (its spillway), and down the way the bare ground drains (its dam failing) — each swath as wide and as
 // deep as the lake's volume (Clague & Mathews: a flood's peak grows as the lake's volume to ~⅔), fading with distance.
 
 import { MinHeap } from '../core/min-heap.js';
 import { FastNoise } from '../core/fast-noise.js';
 
-const R = 6371;
+const R = 6371, RHO_ICE_WATER = 917 / 1000;      // (glacier ice over fresh water: Paterson 1994)
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
  * @param {Object} ctx  { mesh, z (km, changed in place), ice (Uint8Array: under the ice age's ice), S (the ice's surface,
- *                        km; where ice), cellKm2, seed }
- * @returns {{flood: Uint8Array, lakes: number, lakeKm2: number, volumeKm3: number, largestKm3: number}}
- *          flood: how hard each cell was scoured (0–255)
+ *                        km; where ice), cellKm2, seed, water ({runoff, rain, pet} mm/year, the ice
+ *                        age's; null: every dammed lake fills) }
+ * @returns {{flood: Uint8Array, lakes: number, lakeKm2: number, volumeKm3: number, largestKm3: number, unheld: number, lats: number[]}}
+ *          flood: how hard each cell was scoured (0–255); unheld: lakes with no ice across their way out (a fault: 0);
+ *          lats: each lake's latitude (°), largest first
  */
 export function outburstFloods(ctx, F) {
     const { mesh, z, ice, S, cellKm2 } = ctx, n = mesh.numCells, { adjOffset, adjList, xyz, edgeKm } = mesh;
-    const flood = new Uint8Array(n), none = { flood, lakes: 0, lakeKm2: 0, volumeKm3: 0, largestKm3: 0 };
+    const flood = new Uint8Array(n), none = { flood, lakes: 0, lakeKm2: 0, volumeKm3: 0, largestKm3: 0, unheld: 0, lats: [] };
     if (!(F.floodCutKm > 0) || !ice.includes(1)) return none;
     const sea = iceAgeSea(mesh, z, ice, cellKm2, F);
     // ── the two floods from the sea: the ice as a wall, and the bare ground ──
     const walled = new Float32Array(n);
-    for (let c = 0; c < n; c++) walled[c] = ice[c] ? Math.max(z[c], S[c]) : z[c];
+    // (the ice's wall: its hydraulic head, the bed plus ρi/ρw of the ice — the level a lake floats it at; the head's ice is
+    // its thickness over the cell's own bed, the surface less the bed)
+    for (let c = 0; c < n; c++) walled[c] = ice[c] ? z[c] + RHO_ICE_WATER * Math.max(0, S[c] - z[c]) : z[c];
     const dam = spill(mesh, walled, sea, -F.iceSeaDropKm), bare = spill(mesh, z, sea, -F.iceSeaDropKm);
     // ── the lakes the ice holds: water above where the bare ground would hold it, in connected bodies ──
     const EPS = 0.001, held = c => !ice[c] && !sea[c] && dam.fill[c] > Math.max(z[c], bare.fill[c]) + EPS;
@@ -51,8 +59,35 @@ export function outburstFloods(ctx, F) {
         }
         lakes.push({ cells, vol, deepest, outlet, km2: cells.length * cellKm2 });
     }
-    const big = lakes.filter(L => L.km2 >= F.floodLakeMinKm2 && L.vol >= F.floodVolumeKm3[0]).sort((a, b) => b.vol - a.vol);
+    // ── each lake's water: its catchment — every cell whose way down the walled ground runs into it (the flood's tree,
+    // read in the order it was built: a cell's way joins its parent's) — its runoff in, its surface's evaporation net of
+    // its rain out. A lake that loses more than comes in never reaches its dam: no flood ──
+    const W = ctx.water;
+    if (W) {
+        const into = new Int32Array(n).fill(-1), inflow = new Float64Array(lakes.length), loss = new Float64Array(lakes.length);
+        for (const c of dam.order) into[c] = lakeOf[c] >= 0 ? lakeOf[c] : dam.parent[c] >= 0 ? into[dam.parent[c]] : -1;
+        for (let c = 0; c < n; c++) {
+            const L = into[c];
+            if (L < 0) continue;
+            if (lakeOf[c] === L) loss[L] += Math.max(0, F.lakeEvapShare * W.pet[c] - W.rain[c]);
+            else inflow[L] += W.runoff[c];
+        }
+        for (let i = 0; i < lakes.length; i++) { lakes[i].inKm3 = inflow[i] * cellKm2 * 1e-6; lakes[i].outKm3 = loss[i] * cellKm2 * 1e-6; }
+    }
+    const fills = L => !W || L.inKm3 >= L.outKm3;
+    const big = lakes.filter(L => L.km2 >= F.floodLakeMinKm2 && L.vol >= F.floodVolumeKm3[0] && fills(L)).sort((a, b) => b.vol - a.vol);
     if (!big.length) return none;
+    // (a bug guard, for the checks: a lake the ice holds has ice across its way out — down the bare ground's way to the sea,
+    // the first ground standing as high as the lake is ice. Its floods agree when sound; a lake with none is held by a
+    // fault in them — a NaN height broke their heap's order on 2026-10-29, and closed basins half a world from any ice were
+    // booked as dammed, 36 Mkm² of them)
+    let unheld = 0;
+    for (const L of big) {
+        const level = dam.fill[L.deepest] - EPS;
+        let c = L.deepest, held = false;
+        for (let guard = 0; c >= 0 && !sea[c] && guard < n; guard++, c = bare.parent[c]) if (walled[c] >= level) { held = ice[c] === 1; break; }
+        if (!held) unheld++;
+    }
     // ── the drained lakes' floors: a plain of their silts, the deeper water the more ──
     for (const L of big) for (const c of L.cells) z[c] += Math.min(F.lakeSiltMaxKm, F.lakeSiltShare * (dam.fill[c] - z[c]));
     // ── each flood's way: the spillway (down the walled ground from the lake's deepest point, out over its sill) and the
@@ -138,7 +173,7 @@ export function outburstFloods(ctx, F) {
     // (the biggest, with where they stood and how far their floods ran: for the stats)
     const at = c => [Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2]))) * 180 / Math.PI, Math.atan2(xyz[3 * c + 1], xyz[3 * c]) * 180 / Math.PI].map(v => Math.round(v * 10) / 10);
     const biggest = big.slice(0, 6).map((L, i) => ({ km2: Math.round(L.km2), km3: Math.round(L.vol), at: at(L.deepest), spillKm: Math.round(paths[2 * i].km.at(-1) ?? 0), breachKm: Math.round(paths[2 * i + 1].km.at(-1) ?? 0) }));
-    return { flood, lakes: big.length, lakeKm2, volumeKm3, largestKm3: big[0].vol, biggest };
+    return { flood, lakes: big.length, lakeKm2, volumeKm3, largestKm3: big[0].vol, biggest, unheld, lats: big.map(L => at(L.deepest)[0]) };
 }
 
 /** The ice age's sea: open water below its level (ice-free) joined to the largest body of it — the world ocean then (as
@@ -160,10 +195,13 @@ function iceAgeSea(mesh, z, ice, cellKm2, F) {
     return sea;
 }
 
-/** A priority flood from the sea (its water at `level`) over the ground g: each cell's spill level, and the cell it was
- *  reached from — the way its water goes to the sea. */
+/** A priority flood from the sea (its water at `level`) over the ground g: each cell's spill level, the cell it was
+ *  reached from — the way its water goes to the sea — and the land's cells in the order they were reached (each after
+ *  the cell it was reached from). */
 function spill(mesh, g, sea, level) {
     const { adjOffset, adjList, numCells: n } = mesh, fill = new Float32Array(n), parent = new Int32Array(n).fill(-1), done = new Uint8Array(n), heap = new MinHeap(1 << 16);
+    const order = new Int32Array(n);
+    let reached = 0;
     for (let c = 0; c < n; c++) {
         if (!sea[c]) continue;
         done[c] = 1; fill[c] = level;
@@ -172,7 +210,7 @@ function spill(mesh, g, sea, level) {
     while (heap.size) {
         const c = heap.pop();
         if (done[c]) continue;
-        done[c] = 1;
+        done[c] = 1; order[reached++] = c;
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
             if (done[nb]) continue;
@@ -182,5 +220,5 @@ function spill(mesh, g, sea, level) {
     }
     // (ground the sea never reaches — none on a planet with an ocean — holds no water)
     for (let c = 0; c < n; c++) if (!done[c]) fill[c] = g[c];
-    return { fill, parent };
+    return { fill, parent, order: order.subarray(0, reached) };
 }

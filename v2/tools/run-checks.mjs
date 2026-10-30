@@ -17,7 +17,7 @@ const jobs = jobsAt >= 0 ? Number(args.splice(jobsAt, 2)[1]) : 4;
 const all = readdirSync(here).filter(f => /^check-.*\.mjs$/.test(f)).map(f => f.slice(6, -4));
 const suites = args.length ? args : all;
 const slots = !process.env.SIM_THREADS && spawnSync('sh', ['-c', 'command -v sim-slots'], { encoding: 'utf8' }).stdout.trim();
-const TERRAIN_SLOTS = 4, terrainSuites = new Set(['phase8a', 'phase8b', 'lab', 'basins']);
+const TERRAIN_SLOTS = 4, terrainSuites = new Set(['phase8a', 'phase8b', 'lab', 'basins', 'floods']);
 const reportFile = join(tmpdir(), `orogen-reports-${process.pid}.jsonl`);
 writeFileSync(reportFile, '');
 

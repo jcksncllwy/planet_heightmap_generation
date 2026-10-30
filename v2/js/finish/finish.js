@@ -185,13 +185,14 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft }, F);
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff, pet }, F);
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;
     let basinKm2 = 0, basinMaxKm = 0;
     for (let c = 0; c < n; c++) { if (I.basin[c] > 0.05) basinKm2 += cellKm2; if (I.basin[c] > basinMaxKm) basinMaxKm = I.basin[c]; }
     stats.iceBasins = { km2: Math.round(basinKm2), maxKm: Math.round(basinMaxKm * 1000) / 1000 };
     stats.floods = { lakes: I.floods.lakes, lakeKm2: Math.round(I.floods.lakeKm2), volumeKm3: Math.round(I.floods.volumeKm3), largestKm3: Math.round(I.floods.largestKm3), biggest: I.floods.biggest ?? [] };
+    stats.floods.guard = { unheld: I.floods.unheld ?? 0, lats: I.floods.lats ?? [] };            // (finish-floods.js: for check-floods)
     lap('ice age');
 
     // ── F4: the wind ──

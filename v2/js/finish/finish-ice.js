@@ -18,7 +18,8 @@ const elaTemp = P => (-296 + Math.sqrt(Math.max(0, 296 * 296 - 36 * (645 - P))))
 
 /**
  * @param {Object} ctx  { mesh, z (km, changed in place), lat, lon (degrees), warmSl (warmest month at sea level, °C),
- *                        rain (mm/year; NaN at sea), grid (LatLonGrid), cellKm2, seed }
+ *                        rain (mm/year; NaN at sea), grid (LatLonGrid), cellKm2, seed, soft, runoff, pet (mm/year; the
+ *                        moment's — for the dammed lakes' water balance; without them every dammed lake fills) }
  * @returns {{ice: Uint8Array, margin: Uint8Array, iceKm2: number, sheets: number, basin: Float32Array, floods: Object}}
  *          basin: how deep (km) the ice dug each cell's basin; floods: finish-floods.js
  */
@@ -28,11 +29,27 @@ export function lastIceAge(ctx, F) {
     const rainG = grid.blur(grid.average(lat, ctx.lon, ctx.rain, c => ctx.rain[c] === ctx.rain[c]), 150);
     // ── the ice age's summer and snow, and where snow outlasts summer ──
     const tS = new Float32Array(n), snow = new Float32Array(n), acc = new Uint8Array(n);
+    // (and the ice age's water, for the lakes the ice dams — finish-floods.js: the runoff and rain dried as the snow is, the
+    // runoff only where the summer thaws, the open water's evaporation cooled with the air, by the finish's own potential
+    // evaporation per °C)
+    const water = ctx.runoff && ctx.pet ? { runoff: new Float32Array(n), rain: new Float32Array(n), pet: new Float32Array(n) } : null;
+    // (the shelves the sea leaves bare had no land climate at the moment: the land's, blurred, as for the rain)
+    const petG = water && grid.blur(grid.average(lat, ctx.lon, ctx.pet, c => ctx.pet[c] > 0), 150);
     for (let c = 0; c < n; c++) {
         const a = Math.abs(lat[c]) / 90, cold = F.iceColdEqC + (F.iceColdPoleC - F.iceColdEqC) * a ** 1.5;
         const P = (ctx.rain[c] === ctx.rain[c] ? ctx.rain[c] : grid.at(rainG, lat[c], ctx.lon[c])) * (1 - F.iceDrier * a);
         tS[c] = warmSl[c] - cold - LAPSE * Math.max(0, z[c]);
         snow[c] = P;
+        if (water) {
+            const dry = 1 - F.iceDrier * a;
+            // (water runs off only where the summer thaws: snow on ground whose summer stays below freezing — under the ice
+            // or on the cold dry ground between its lobes — stays snow and ice, or sublimes; a sheet's meltwater comes from
+            // its ablation zone, the Laurentide's southern margin that fed Agassiz)
+            water.runoff[c] = ctx.runoff[c] === ctx.runoff[c] && tS[c] > 0 ? ctx.runoff[c] * dry : 0;
+            water.rain[c] = P === P ? P : 0;
+            const E0 = ctx.pet[c] > 0 ? ctx.pet[c] : grid.at(petG, lat[c], ctx.lon[c]);
+            water.pet[c] = Math.max(F.petMinMm, (E0 === E0 ? E0 : F.petMinMm) - F.petPerC * cold);
+        }
         if (z[c] > -F.iceSeaDropKm && P > 80 && tS[c] < elaTemp(P)) acc[c] = 1;
     }
     // ── snowfields, and how far past its snowline each one's ice flows (by its size) ──
@@ -57,7 +74,7 @@ export function lastIceAge(ctx, F) {
     }
     let iceCells = 0;
     for (let c = 0; c < n; c++) iceCells += ice[c];
-    if (!iceCells) return { ice, margin: new Uint8Array(n), iceKm2: 0, sheets: 0, basin: new Float32Array(n), floods: outburstFloods({ mesh, z, ice, S: null, cellKm2, seed: ctx.seed }, F) };
+    if (!iceCells) return { ice, margin: new Uint8Array(n), iceKm2: 0, sheets: 0, basin: new Float32Array(n), floods: outburstFloods({ mesh, z, ice, S: null, cellKm2, seed: ctx.seed, water }, F) };
     // ── thickness from the distance to the margin; the surface over the bed smoothed ──
     const toEdge = new Float32Array(n).fill(Infinity);
     for (let c = 0; c < n; c++) if (ice[c]) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!ice[adjList[k]]) { toEdge[c] = 0.5 * edgeKm; break; }
@@ -115,10 +132,15 @@ export function lastIceAge(ctx, F) {
         // (on the lowlands the lobes spread over — the region's ground, not a valley floor in a range: the mountains' ice
         // carves troughs, above)
         const low = grid.blur(grid.average(lat, ctx.lon, z, c => z[c] > 0), F.basinLowBlurKm);
+        // (no land within the blur — ice grounded on a shelf far out from any coast, the Barents Sea's — reads no average,
+        // NaN: there the region's ground is the sea's floor, as low as lowland gets. A NaN let through poisons the cell's
+        // height, and the outburst floods' priority floods with it: a NaN key breaks their heap's order, and lakes are
+        // found held by no ice at all, half a world away)
+        const lowAt = c => { const v = grid.at(low, lat[c], ctx.lon[c]); return v === v ? v : 0; };
         for (const c of iceList) {
             const L = grid.at(lobe, lat[c], ctx.lon[c]);
             if (!(L > 0)) continue;
-            basin[c] = F.basinKm * smooth(lb1, lb2, Math.log(L)) * smooth(F.basinWithinKm[0], F.basinWithinKm[1], toEdge[c]) * smooth(F.basinLipKm[0], F.basinLipKm[1], toEdge[c]) * smooth(F.basinLowKm[0], F.basinLowKm[1], grid.at(low, lat[c], ctx.lon[c])) * (F.basinRim + (1 - F.basinRim) * soft[c] ** F.basinSoftPower);
+            basin[c] = F.basinKm * smooth(lb1, lb2, Math.log(L)) * smooth(F.basinWithinKm[0], F.basinWithinKm[1], toEdge[c]) * smooth(F.basinLipKm[0], F.basinLipKm[1], toEdge[c]) * smooth(F.basinLowKm[0], F.basinLowKm[1], lowAt(c)) * (F.basinRim + (1 - F.basinRim) * soft[c] ** F.basinSoftPower);
         }
         // (an overdeepening is deep against its outlet, not against the land around: the ice dug below the lowest point of
         // the basin's rim, whichever way the land slopes — or the basins of a sheet's margin, on land falling toward its
@@ -188,7 +210,7 @@ export function lastIceAge(ctx, F) {
     const loadG = grid.blur(grid.average(lat, ctx.lon, load), F.reboundKm);
     for (let c = 0; c < n; c++) { const L = grid.at(loadG, lat[c], ctx.lon[c]); if (L > 0) z[c] -= F.reboundLeft * L; }
     // the lakes the ice dammed, and their floods (finish-floods.js): on the ground as the ice left it, the ice still standing
-    const floods = outburstFloods({ mesh, z, ice, S, cellKm2, seed: ctx.seed }, F);
+    const floods = outburstFloods({ mesh, z, ice, S, cellKm2, seed: ctx.seed, water }, F);
     let sheets = 0;
     for (const a of sizes) if (a >= F.iceSheetKm2[1] * 0.3) sheets++;
     return { ice, margin, iceKm2: iceCells * cellKm2, sheets, basin, floods };
