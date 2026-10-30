@@ -820,7 +820,6 @@ export function hydrology(ctx, F) {
         if (closedAt(c) >= 0) { rimAt[c] = hollows[hollow[c]].level; region[c] = hollow[c]; }
         else if (lakeKind[c] === Water.SALT) { rimAt[c] = surfaceOf(c); region[c] = -3; }
     }
-    const rimOf = c => rimAt[c], outOf = (c, nb) => region[c] !== region[nb];
     // (the land beside the sea, once: where the flood starts from the sea)
     const coast = [], coastFrom = [];
     for (let c = 0; c < n; c++) if (rank[c] === -2) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (rank[nb] !== -2) { coast.push(nb); coastFrom.push(c); } }
@@ -918,12 +917,17 @@ export function hydrology(ctx, F) {
     for (let i = 0; i < count; i++) {
         const c = order[i];
         if (sink[c]) { recv[c] = -1; stepKm[c] = 0; continue; }
+        // (the steepest fall per km: compared squared, as fall² ÷ chord², only falls competing — no square root per edge)
         let pick = -1, steepest = 0;
+        const fc = fl[c], rc = region[c], cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-            const nb = adjList[k];
-            if (!(rank[nb] === -2 || (rank[nb] >= 0 && rank[nb] < i))) continue;
-            const at = rank[nb] === -2 ? Math.min(0, z[nb]) : outOf(nb, c) ? Math.max(fl[nb], rimOf(nb)) : fl[nb];
-            const s = (fl[c] - at) / edgeKmOf(xyz, c, nb);
+            const nb = adjList[k], rn = rank[nb];
+            if (!(rn === -2 || (rn >= 0 && rn < i))) continue;
+            let at = rn === -2 ? Math.min(0, z[nb]) : fl[nb];
+            if (rn !== -2 && region[nb] !== rc && rimAt[nb] > at) at = rimAt[nb];
+            const d = fc - at;
+            if (!(d > 0)) continue;
+            const dx = xyz[3 * nb] - cx, dy = xyz[3 * nb + 1] - cy, dz = xyz[3 * nb + 2] - cz, s = d * d / (dx * dx + dy * dy + dz * dz);
             if (s > steepest) { steepest = s; pick = nb; }
         }
         if (pick < 0) pick = from[c];
