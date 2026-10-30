@@ -26,6 +26,7 @@ const CHECKLISTS = {
         'Drainage layer: the river network (not drawn on the terrain by default). Carving depth: how deep the rivers cut.',
         'Rivers through time: the history’s own rivers — drained every few Myr as the land evolved, cutting as they go. Scrub: big rivers hold their courses, and where land rose under one it cut a gorge through (red); the terrain’s rivers follow these courses and cut at least as deep.',
         'Scrub through the history: every frame is carved; big rivers hold their courses as their continent drifts (small streams may shift), and move where the land beneath them changes.',
+        'The land’s hollows fill with what their rivers bring as the history runs: a closed one keeps all of it, one a river runs through keeps most (by how long its water stays). A filled hollow is a broad plain sloping gently to its outlet; a lake stays only where the ground sinks faster than it is filled — a young rift, a foreland in front of a rising range.',
         'Switch the terrain resolution: the same big valleys at every resolution; finer meshes add smaller ones.',
     ],
     cycle: [
@@ -55,6 +56,7 @@ export const createPhase = terrainPhase({
         { id: 'carveUpliftPerKm', label: 'Active ranges keep steep rivers (uplift per km of relief)', min: 0, max: 1, step: 0.05, unit: ' km/Myr' },
         { id: 'lipStepKm', label: 'Flood basalts: height of the steps they are cut into (0 = none)', min: 0, max: 0.6, step: 0.02, unit: ' km' },
         { id: 'riverCutK', label: 'The history’s rivers: how fast they cut (re-runs the history)', min: 0, max: 2, step: 0.05, evolves: true },
+        { id: 'basinRunoffShare', label: 'The history’s hollows: share of the rain that runs off, setting how long a lake’s water stays and so how much load it traps (0 = they trap none; re-runs the history)', min: 0, max: 1, step: 0.05, evolves: true },
         { id: 'riverHalfKm2', label: 'The history’s rivers: drainage that cuts half through a range (re-runs the history)', min: 10000, max: 1000000, step: 10000, unit: ' km²', evolves: true },
     ],
     extraLayers: ({ terrainOf, tMesh, view }) => [

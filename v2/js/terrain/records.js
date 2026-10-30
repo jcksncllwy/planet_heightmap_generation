@@ -5,7 +5,7 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
+import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, SEDIMENT_LOAD_FACTOR, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { seaLevel } from './sea-level.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
@@ -343,6 +343,11 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // the sea's own deposits on land (a sea filled or lifted dry: ocean crust under the land): a graded plain, not bedrock
     const fillLand = new Uint8Array(n);
     for (let w = 0; w < n; w++) fillLand[w] = land[w] && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 ? 1 : 0;
+    // the sediment the history's rivers laid in the land's hollows (tectonics/step/rivers.js): how much of the bedrock's own
+    // broad basins and arches it buries — all of them once its surface stands their relief (platformNoiseKm, drawn ±1.5×)
+    // above the floor it filled: the Congo's and the Tarim's plains hide their basement
+    const basinCover = new Float32Array(n);
+    for (let w = 0; w < n; w++) basinCover[w] = land[w] ? Math.min(1, (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR / (1.5 * cfg.platformNoiseKm)) : 0;
 
     // ── the sea floor: half-space cooling depth; oceanic plateaus; abyssal-hill wavelength from the age gradient ──
     // Ridge segments (plans/V2_REALISM_PASS_PLAN.md, phase 6; tectonics/model/segments.js): each segment's floor (the whole
@@ -571,6 +576,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // (the evolved uplift is carried separately: upliftKm. A sea closed off too small to keep — ocean crust under the
         // land, unfilled — stands as a lowland platform, an ordinary continent's column as formed)
         h = (type === CrustType.ARC ? h : CM.ref[type === CrustType.OCEAN ? CrustType.CONTINENT : type]) + liftKm[w];
+        // (the sediment the history's rivers laid in a hollow of the land, raising its floor by its Airy share: tectonics/
+        // step/rivers.js; not a load on the shield beside it — that is the ranges')
+        h += (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;
         // a sea its rivers filled (or the swell lifted dry): no crust column of its own but the sediment's surface — a
         // delta and alluvial plain its rivers grade, rising inland from its shore at plainGrade (the lower Mississippi's
         // valley and delta plain fall ~1e-4: Saucier 1994; alluvial and delta plains 1e-4–1e-3: Paola et al. 1992,
@@ -697,7 +705,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     }
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
-        platformKm, shieldKm, fillLand, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
+        platformKm, shieldKm, fillLand, basinCover, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
         seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }
 

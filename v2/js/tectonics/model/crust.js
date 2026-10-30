@@ -50,7 +50,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt']);
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -96,6 +96,7 @@ export class CrustRaster {
         this.volcWornKm = new Float32Array(numCells);  // how far a hotspot volcano has worn down since it last erupted (km)
         this.riverIncKm = new Float32Array(numCells);  // how deep the history's rivers have cut into this crust (km; step/rivers.js)
         this.seaFillKm = new Float32Array(numCells);   // sediment the rivers have laid on this sea floor, an enclosed sea's (km; step/sea-fill.js)
+        this.basinFillKm = new Float32Array(numCells); // sediment the rivers have laid in a hollow of the land, below its spill (km; step/rivers.js)
         // Volcanic record (step/hotspots.js): what a plume built here, when it last erupted here, and which plume it was.
         this.volcType = new Uint8Array(numCells);      // VolcanicType
         this.volcAt = new Float32Array(numCells);      // sim time of the last eruption here (a track's age progression lives in this)

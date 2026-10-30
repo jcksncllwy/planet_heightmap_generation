@@ -163,6 +163,15 @@ export function crustThicknessKm(H, type, rootKm, upliftKm = 0, baseKm = 0) {
  */
 export const SEDIMENT_LOAD_FACTOR = (3.3 - 1.03) / (3.3 - 2.5);
 
+/**
+ * …and a hollow of the land by less still: sediment s laid in a dry hollow d deep (air over it, no water) raises its floor
+ * by s × (ρm − ρs) ÷ ρm, so s = d × ρm ÷ (ρm − ρs) ≈ 4.1 d — the same mantle and compacted fill (Airy, as above; a basin
+ * wider than the lithosphere's flexural wavelength, ~200–400 km for a continent's, subsides near-locally: Watts 2001).
+ * The history's heights carry no water: a hollow holding a lake fills a little sooner (× SEDIMENT_LOAD_FACTOR for the
+ * water's part), which is not reckoned. Step/rivers.js lays it (crust.basinFillKm).
+ */
+export const LAND_SEDIMENT_LOAD_FACTOR = 3.3 / (3.3 - 2.5);
+
 /** Is a sea floor of this age filled to sea level by `fillKm` of sediment (a lowland now)? */
 export function seaFilledUp(crustAgeMyr, fillKm) { return fillKm > 0 && fillKm >= SEDIMENT_LOAD_FACTOR * seaDepthKm(crustAgeMyr) - 1e-6; }
 

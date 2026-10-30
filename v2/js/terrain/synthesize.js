@@ -403,7 +403,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     // (each shield's mantle: the swell under its craton cells, on average, against the land's reference — +1 over fully
     // insulated mantle, −1 over fully cooled, 0 without a swell; the same in every chunk: read from the records)
     const shieldMantle = shieldMantleOf(rec, cfg);
-    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
+    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, basinCover, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
@@ -563,7 +563,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // (how much of the ground here is a filled sea's sediment — records.js fillLand: a graded plain, kilometres of fresh
             // sediment over the buried floor, with no bedrock basins and arches on it and no shelf at its shore but the delta front)
             const dep = lw > 0 ? (n0 * fillLand[c0] + n1 * fillLand[c1] + n2 * fillLand[c2]) / lw : 0;
-            platform += (1 - dep) * cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
+            // (and a hollow the history's rivers filled buries them too, as deep as its fill: records.js basinCover)
+            const cover = basinCover && lw > 0 ? Math.max(dep, (n0 * basinCover[c0] + n1 * basinCover[c1] + n2 * basinCover[c2]) / lw) : dep;
+            platform += (1 - cover) * cfg.platformNoiseKm * noise.fbm(x * platF + 5.1, y * platF + 9.2, z * platF + 2.4, 4, 0.5) * 1.5;
             // ── a flood basalt (lips.js): the pile as it has worn — here the whole plateau, its top lowering a little as it
             // wears and gone once worn through; the carving cuts it up (carve.js stripBasalt: its escarpment retreating
             // from the province's edge, its rivers' valleys widening — mesas left on the divides between them) ──

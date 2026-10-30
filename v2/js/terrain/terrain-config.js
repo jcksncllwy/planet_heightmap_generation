@@ -589,6 +589,16 @@ export const TERRAIN = {
                                 // great river (10⁶ km²) cuts ~75 % of the way through the range…
     riverActiveHold: 0.45,       // …less by this share where the belt is still active (it rises as fast as they cut)…
     riverPlainKm: 0.08,         // …plus a valley of its own even on flat land (a great river's floodplain below its bluffs)
+    // (lane basins, 2026-10-29: the land's hollows trap their rivers' load — tectonics/step/rivers.js. How much of a
+    // hollow's inflow it keeps goes by how long its water stays: its volume below the spill ÷ the river's discharge, the
+    // discharge the rain over its catchment times this share of it that runs off — the continents' ~40 000 km³ a year of
+    // ~115 000 that falls (Trenberth et al. 2007, J. Hydrometeorol. 8: 758), not reckoned by climate)
+    basinRunoffShare: 0.35,
+    // (a hollow whose lake, brimful to its spill, would lose to the air more than flows in never spills: it is closed and
+    // keeps all its load. Open water evaporates what the sun nets it: the surface's net radiation, ~98 W/m² (161 absorbed
+    // less 63 net longwave, Trenberth, Fasullo & Kiehl 2009, BAMS 90: 311), over water's latent heat 2.45 MJ/kg — ~1.3 m
+    // a year; Earth's lakes run 0.5–2 m, colder less, not reckoned by latitude)
+    lakeEvaporationMm: 1300,
     carveMicroKm: 0.1,          // the crust's micro-relief (± km): steers the small rivers' ways down, and rides with the
     carveMicroScaleKm: 150,     // crust, so they hold their courses between frames (it shapes the routing only, not the
                                 // heights; small-river drainage between frames 10 Myr apart correlates 0.30, from 0.12)

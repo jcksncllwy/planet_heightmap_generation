@@ -20,7 +20,7 @@
 // live with the terrain's (terrain-config.js); a world may carry its own in world.config.heights.
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../model/crust.js';
-import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE } from '../measure.js';
+import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { arcCrustKm } from './collision.js';
 import { TERRAIN, erosionAtLatitude, erosionAtHeight } from '../../terrain/terrain-config.js';
 import { broadProfile } from '../../terrain/profiles.js';
@@ -91,7 +91,7 @@ export function evolveHeights(world, dt) {
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm } = crust;
+        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm, basinFillKm } = crust;
         const m = plate.mat, n = mask.length;
         // the column a cell stands on (km above the sea, the mantle's swell aside: tectonics/measure.js): a continent's
         // and a craton's from their crust; an island arc's thickening only — its own crust stands by arcSurfaceKm, which
@@ -160,7 +160,8 @@ export function evolveHeights(world, dt) {
             // rift's shoulders are an escarpment that retreats at its own pace, whatever its height.
             const rift = oroType[c] === OrogenyType.RIFT, up = upliftKm[c] + flux[c], arc = type[c] === CrustType.ARC;
             const col = colOf(c);
-            let height = Math.max(0, up) + baseKm[c] + Math.max(0, col);
+            // (with the sediment laid in its hollow, as the rivers stand it: step/rivers.js)
+            let height = Math.max(0, up) + baseKm[c] + Math.max(0, col) + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
             if (arc && !(flags[c] & CrustFlag.MARGIN_ISLE)) height += Math.max(0, arcSurfaceKm(arcCrustKm(crust, c, time, config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0));
             // (a shield's crystalline basement wears slower than the cover and the young rock of a range, by the carving's
             // own hardness of it: terrain-config.js carveCratonHardness — bedrock erodibility spans orders of magnitude by
@@ -173,6 +174,9 @@ export function evolveHeights(world, dt) {
             prevRugged[c] *= wear(e / H.ruggedTauMyr);
             riverIncKm[c] *= wear(e / H.ruggedTauMyr);              // (a gorge's walls wear back like the belt's crests)
             if (baseKm[c] > 0) baseKm[c] *= keep;
+            // (a hollow's fill wears with the land it lies in — hardly at all while it lies low; lifted, it is stripped as
+            // the rest is: the rock is soft, but no softer here — erosionAtHeight sets the pace)
+            if (basinFillKm[c] > 0) basinFillKm[c] *= keep;
         }
     }
     return 0;

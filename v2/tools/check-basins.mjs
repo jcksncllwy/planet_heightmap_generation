@@ -20,6 +20,8 @@ import { FINISH } from '../js/finish/finish-config.js';
 import { lakeBalance, hollowLakes } from '../js/finish/finish-basins.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { Water } from '../js/finish/finish-hydro.js';
+import { landWater } from './lib/land-water.mjs';
+import { trapEfficiency } from '../js/tectonics/step/rivers.js';
 
 const SEEDS = [626225, 777, 12345], MOMENTS = [300, 600, 950], SIM = 40000, MESH_SEED = 12345, CELLS = 160000;
 const F = FINISH, pet = tC => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tC);      // (finish.js: the land's potential evaporation, mm/yr)
@@ -84,7 +86,7 @@ section('the world ocean is the largest body of water');
 }
 
 section('cut-off seas through the history (finished at 160K cells)');
-const simMesh = buildSimMesh(SIM, MESH_SEED), scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), rows = [], closedRows = [];
+const simMesh = buildSimMesh(SIM, MESH_SEED), scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), rows = [], closedRows = [], landRows = [];
 for (const seed of SEEDS) {
     const frames = new Map();
     // (the page's history for these settings, through the history cache — tools/lib/history-cache.mjs: the page's own, if it built it)
@@ -100,6 +102,10 @@ for (const seed of SEEDS) {
         const seas = (fin.stats.water.seas ?? []).filter(s => s.belowKm2 >= F.seaBasinKm2[0]);
         const down = seas.filter(s => !s.spills), wetDown = down.filter(s => s.kind === Water.SALT), dry = down.filter(s => s.kind !== Water.SALT);
         closedRows.push({ seed, t, endo: fin.stats.water.endorheicShare ?? NaN, closed: fin.stats.water.closed ?? [] });
+        // (the land's water and hollows, and the sediment the history's hollows hold — crust records, km of it per sim cell)
+        const fr = frames.get(t), simKm2 = 4 * Math.PI * 6371 ** 2 / simMesh.numCells;
+        let fillKm3 = 0; for (let w = 0; w < simMesh.numCells; w++) if (fr.owner[w] >= 0) fillKm3 += (fr.basinFillKm?.[w] ?? 0) * simKm2;
+        landRows.push({ seed, t, W: landWater(fin, simMesh, fr), fillKm3 });
         per.push({ t, n: seas.length, full: seas.length - down.length, belowKm2: seas.reduce((a, s) => a + s.belowKm2, 0), waterKm2: seas.reduce((a, s) => a + s.waterKm2, 0),
             surfaces: wetDown.map(s => s.levelKm), floors: dry.map(s => s.levelKm), ms: Object.values(fin.ms).reduce((a, b) => a + b, 0) });
         console.log(`    seed ${seed} at ${t} Myr: ${seas.length} cut-off seas, ${seas.length - down.length} full and spilling; below sea level ${(per.at(-1).belowKm2 / 1e6).toFixed(2)} Mkm², water ${(per.at(-1).waterKm2 / 1e6).toFixed(2)} Mkm²; salt lakes at ${wetDown.map(s => Math.round(1000 * s.levelKm)).join(', ') || '—'} m; playas at ${dry.map(s => Math.round(1000 * s.levelKm)).join(', ') || '—'} m (${(per.at(-1).ms / 1000).toFixed(0)} s)`);
@@ -149,6 +155,39 @@ section('closed basins on land (finished at 160K cells, the same moments)');
         source: 'no count found: the hyper-arid and arid basins end in playas and salt flats — Lake Eyre, the Chotts, Lop Nur, the Great Basin’s — save those fed from wet mountains (the Aral, Balkhash)' });
     report('…semi-arid and wetter (P/PET 0.2 and over)', playaShare(0.2, Infinity), { unit: ' %', digits: 0,
         source: 'no count found: semi-arid closed basins mostly hold lakes — the Caspian, Urmia, Van, Turkana, Great Salt Lake' });
+}
+
+section('the land’s hollows fill with their rivers’ load (lane basins; the same finishes)');
+// A hollow on the land fills with what its rivers bring (tectonics/step/rivers.js): a closed one keeps all its load, one
+// a river flows through keeps it by how long its water stays — Brune's (1953) curve, as Vörösmarty et al. 2003 fit it,
+// 1 − 0.05/√τ, τ the hollow's volume over its inflow (years). Hard: the curve against measured reservoirs. Reported: the
+// land's lakes against Earth's, its largest, the land below its spill, and the land's mean height (the fill raises it)
+{
+    // measured reservoirs, τ their capacity over their river's yearly flow: Lake Nasser 162 km³ on the Nile's ~84 km³/yr
+    // (τ ≈ 1.9 yr) keeps ~98 % of the Nile's load (Vörösmarty et al. 2003); the Three Gorges 39 km³ on the Yangtze's
+    // ~450 km³/yr (τ ≈ 0.09 yr) kept ~75 % its first decade (Yang et al. 2014, Earth-Sci. Rev. 138: 469)
+    const nasser = trapEfficiency(162 / 84), gorges = trapEfficiency(39 / 450);
+    check('trap efficiency against measured reservoirs: Lake Nasser (τ 1.9 yr) over 95 %, the Three Gorges (τ 0.09 yr) 65–92 %',
+        nasser > 0.95 && gorges > 0.65 && gorges < 0.92, `Nasser ${(100 * nasser).toFixed(0)} % (Earth ~98), Three Gorges ${(100 * gorges).toFixed(0)} % (Earth ~75)`);
+    const bySeed = SEEDS.map(seed => landRows.filter(r => r.seed === seed)), meanOf = (R, f) => R.reduce((a, r) => a + f(r), 0) / Math.max(1, R.length);
+    const detail = f => SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} ${f(r)}`).join(', ')}`).join(' · ');
+    report('lakes on the land, of its area: mean of the moments', bySeed.map(R => meanOf(R, r => 100 * r.W.onLandKm2 / r.W.landKm2)), { earth: [1.8, 3.7], unit: ' %', digits: 1,
+        source: '1.8 % in lakes over 10 ha (HydroLAKES: Messager et al. 2016, Nat. Commun. 7: 13603) to 3.7 % with the smallest (Verpoorter et al. 2014, GRL 41: 6396) — a glaciated land’s, today; the Caspian, a cut-off sea, not counted',
+        detail: detail(r => `${(100 * r.W.onLandKm2 / r.W.landKm2).toFixed(1)}`) });
+    report('the largest lake on the land, through the moments', bySeed.map(R => Math.max(...R.map(r => r.W.onLand[0]?.km2 ?? 0)) / 1e6), { earth: [0.07, 0.45], unit: ' Mkm²', digits: 2,
+        source: 'Superior 0.082 Mkm² today; Mega-Chad 0.36 in the Holocene (Drake & Bristow 2006, The Holocene 16: 901) and Agassiz ~0.44 at its largest (Teller & Leverington 2004, GSA Bull. 116: 729)',
+        detail: detail(r => `${((r.W.onLand[0]?.km2 ?? 0) / 1e6).toFixed(2)} Mkm² ${Math.round(1000 * (r.W.onLand[0]?.depthKm ?? 0))} m deep`) });
+    report('the deepest lake on the land, through the moments', bySeed.map(R => Math.max(...R.flatMap(r => r.W.onLand.map(L => L.depthKm)), 0)), { earth: [0.4, 1.7], unit: ' km', digits: 2,
+        source: 'Baikal 1.64 km, Tanganyika 1.47 (rifts: they sink faster than they fill); Superior 0.41 (Herdendorf 1982, J. Great Lakes Res. 8: 379)' });
+    report('land below its spill (the finished ground, a lake’s floor not its water): mean of the moments', bySeed.map(R => meanOf(R, r => 100 * r.W.belowKm2 / r.W.landKm2)), { unit: ' %', digits: 1,
+        source: 'no global figure found: closed depressions are the lakes’ floors and the dry basins’ — the Caspian’s, the Tarim’s, Eyre’s, Chad’s',
+        detail: detail(r => `${(100 * r.W.belowKm2 / r.W.landKm2).toFixed(1)}`) });
+    report('land: mean height above the sea (the finish)', bySeed.map(R => meanOf(R, r => r.W.meanKm)), { earth: [0.75, 0.95], unit: ' km', digits: 2,
+        source: 'Earth’s land 797 m on average (ETOPO-era, 2012), 840 m in Kossinna’s 1921 hypsometry (the compilation in arXiv 1810.08658) — today’s land, glaciated',
+        detail: detail(r => `${Math.round(1000 * r.W.meanKm)} m`) });
+    report('sediment the history’s hollows hold (crust records): mean of the moments', bySeed.map(R => meanOf(R, r => r.fillKm3 / 1e6)), { unit: ' Mkm³', digits: 1,
+        source: 'Earth’s continental basins hold ~10⁸ km³ of sediment and sedimentary rock (the continents’ ~1.8 km mean cover over ~150 Mkm²: Ronov 1980; the Congo’s alone ~9 km thick, Kadima et al. 2011)',
+        detail: detail(r => `${(r.fillKm3 / 1e6).toFixed(1)}`) });
 }
 
 finish('Basins');
