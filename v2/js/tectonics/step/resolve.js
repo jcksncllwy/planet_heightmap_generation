@@ -9,7 +9,7 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { Provisional } from '../model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
-import { forEachClaim, clearWorldView, nearEdge } from './gather.js';
+import { forEachClaim, clearWorldView, nearEdge, currentClaimMap, rasterCellUnder } from './gather.js';
 import { overrides } from './polarity.js';
 import { binIndex, markBin, mayHaveCrustNear } from './occupancy.js';
 import { ringsOf, RING_COUNT } from '../../core/mesh-rings.js';
@@ -167,6 +167,7 @@ export function candidateCells(world, grower, gaps) {
     const seen = seenMarks(numCells), mark = seen.stamp, marks = seen.marks, order = [];
     // (whether this plate may have crust near each bin, asked once per bin: many gap cells share one)
     const nearBin = binVerdicts(bins.count);
+    const claims = currentClaimMap(grower);                                                // (the gather's lookups: cellAt for a world cell)
     let ring = [];
     for (const g of gaps) {
         const x = xyz[3 * g], y = xyz[3 * g + 1], z = xyz[3 * g + 2];
@@ -174,7 +175,7 @@ export function candidateCells(world, grower, gaps) {
         const bin = bins.binOf[g];
         if (!nearBin[bin]) nearBin[bin] = mayHaveCrustNear(grower, bin, stamp, bins) ? 2 : 1;
         if (nearBin[bin] === 1) continue;                                                  // a gap nowhere near this plate: nothing could attach
-        const c = grower.cellAt(index, x, y, z);
+        const c = claims ? rasterCellUnder(claims, grower, world.mesh, g) : grower.cellAt(index, x, y, z);
         if (marks[c] !== mark) { marks[c] = mark; order.push(c); ring.push(c); }
     }
     for (let r = 0; r < REACH_RINGS; r++) {
@@ -273,6 +274,7 @@ function assignGapOwners(world, gaps) {
     const { mesh, owner, ownerCell, claimCount, provisional, provisionalLike, plates, config } = world, { xyz, index } = mesh;
     const everyone = plates.filter(p => p.alive && p.crust.count > 0), bins = binIndex(mesh), stamp = world.occupancyStamp;
     for (const plate of everyone) nearEdge(plate, mesh);                  // (each plate's edge counts, after the births)
+    const claimMaps = new Map(everyone.map(plate => [plate, currentClaimMap(plate)]));   // (the gather's lookups: cellAt for a world cell)
     const nearOf = nearIndex(everyone, plate => plate, stamp, bins);             // (after the births: they marked their bins)
     const p = [0, 0, 0], hit = { dot: -2, cell: -1 };
     // (per gap, for each nearby plate: the raster cell under it, then that plate's nearest crust — in scratch arrays)
@@ -283,7 +285,8 @@ function assignGapOwners(world, gaps) {
         if (n > under.length) { under = new Int32Array(2 * n); hitDot = new Float64Array(2 * n); hitCell = new Int32Array(2 * n); }
         let best = null, bestDot = -2, bestCell = -1, foreign = null, foreignDot = -2, foreignCell = -1, real = false;
         for (let i = 0; i < n; i++) {
-            const cell = near[i].cellAt(index, p[0], p[1], p[2]);
+            const claims = claimMaps.get(near[i]);
+            const cell = claims ? rasterCellUnder(claims, near[i], mesh, g) : near[i].cellAt(index, p[0], p[1], p[2]);
             under[i] = cell;
             if (near[i].crust.mask[cell]) { best = near[i]; bestCell = cell; real = true; break; }     // filled this step
         }

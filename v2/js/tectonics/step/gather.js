@@ -85,6 +85,31 @@ function claimMap(plate, numCells) {
 }
 
 /**
+ * The plate's world cell → raster cell map (see forEachClaim) if it is for the plate's rotation of the moment, else null.
+ * Between a gather and the next turn of the plates (a resolve's growth and gap owners) it answers plate.cellAt for a world
+ * cell's position: rasterCellUnder.
+ */
+export function currentClaimMap(plate) {
+    const c = plate._claimMap, m = plate.mat;
+    if (!c) return null;
+    for (let i = 0; i < 9; i++) if (c.mat[i] !== m[i]) return null;
+    return c.map;
+}
+
+/**
+ * plate.cellAt(index, world cell w's position), from `map` = currentClaimMap(plate): the gather's answer where it looked
+ * w up, else the same walk from the same first guess (kept, for the next gather and asker) — the same rotated position,
+ * so the same cell, ties included.
+ */
+export function rasterCellUnder(map, plate, mesh, w) {
+    let cell = map[w];
+    if (cell >= 0) return cell;
+    const { xyz, index } = mesh, m = plate.mat, x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
+    const px = m[0] * x + m[3] * y + m[6] * z, py = m[1] * x + m[4] * y + m[7] * z, pz = m[2] * x + m[5] * y + m[8] * z;
+    return (map[w] = index.walk(cell === -1 ? index.start(px, py, pz) : -2 - cell, px, py, pz));
+}
+
+/**
  * Which raster cells of `plate` lie within RING_COUNT rings of the edge of its crust — a crust cell with a non-crust
  * neighbour: `count[cell] > 0`, the number of edge cells within those rings of it. With the crust itself, that covers
  * every cell the nearest-cell search can end on from a first guess that is not counted.
