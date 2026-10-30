@@ -108,12 +108,13 @@ export class CrustRaster {
         this.arcKm = new Float32Array(numCells);
         this.arcAt = new Float32Array(numCells);
         this.count = 0;                                // number of masked cells
+        this.version = 0;                              // bumped whenever a cell of the mask changes (step/gather.js nearEdge: unchanged since last asked?)
         this.fields = CELL_FIELDS.map(name => this[name]);
     }
 
     /** Create fresh crust at `cell`. */
     create(cell, type, formedAt, terrane = 0) {
-        if (!this.mask[cell]) this.count++;
+        if (!this.mask[cell]) { this.count++; this.version++; }
         this.mask[cell] = 1;
         for (const f of this.fields) f[cell] = 0;
         this.type[cell] = type;
@@ -123,7 +124,7 @@ export class CrustRaster {
 
     /** Copy every field of `cell` from another raster's `from` cell. */
     copyFrom(cell, other, from) {
-        if (!this.mask[cell]) this.count++;
+        if (!this.mask[cell]) { this.count++; this.version++; }
         this.mask[cell] = 1;
         const mine = this.fields, theirs = other.fields;
         for (let i = 0; i < mine.length; i++) mine[i][cell] = theirs[i][from];
@@ -134,13 +135,13 @@ export class CrustRaster {
 
     /** Put back a snapshot() at `cell` (masking it). */
     restore(cell, values) {
-        if (!this.mask[cell]) this.count++;
+        if (!this.mask[cell]) { this.count++; this.version++; }
         this.mask[cell] = 1;
         this.fields.forEach((f, i) => { f[cell] = values[i]; });
     }
 
     remove(cell) {
-        if (this.mask[cell]) { this.mask[cell] = 0; this.count--; }
+        if (this.mask[cell]) { this.mask[cell] = 0; this.count--; this.version++; }
     }
 
     /** Mark `cell` as the overriding edge of a subduction zone that already has `slabKm` of slab. */

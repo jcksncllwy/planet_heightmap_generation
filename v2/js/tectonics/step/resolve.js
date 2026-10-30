@@ -9,7 +9,7 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { Provisional } from '../model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
-import { forEachClaim, clearWorldView } from './gather.js';
+import { forEachClaim, clearWorldView, nearEdge } from './gather.js';
 import { overrides } from './polarity.js';
 import { binIndex, markBin, mayHaveCrustNear } from './occupancy.js';
 import { ringsOf, RING_COUNT } from '../../core/mesh-rings.js';
@@ -20,7 +20,8 @@ import { fractureCoordinate } from '../model/segments.js';
 const REACH_RINGS = 2;        // rings of raster cells around a gap cell that are considered for growth
 const AHEAD_CONE = 0.5;        // cos 60°: crust counts as "ahead" of a moving edge if it lies within 60° of the motion
 const PROXIMITY_RINGS = 3;    // how far from existing crust a new cell may be, and how far "nearby" crust is sought
-if (PROXIMITY_RINGS > RING_COUNT) throw new Error('core/mesh-rings.js keeps too few rings for the growth step');
+// (=: nearestCrustInto reads how far the nearest crust is from the plate's edge counts, which reach RING_COUNT rings)
+if (PROXIMITY_RINGS !== RING_COUNT) throw new Error('the growth step looks exactly as far as core/mesh-rings.js keeps rings');
 
 /** @returns {{created:number, consumed:number, collisionCells:number}} this step's tallies, in cells */
 export function resolve(world) {
@@ -99,6 +100,7 @@ function growCrustIntoGaps(world, gaps) {
     const growers = world.plates.filter(p => p.alive && !p.isBackground && p.crust.count > 0);
     const everyone = world.plates.filter(p => p.alive && p.crust.count > 0).map(plate => ({ plate, cap: plate.capInWorld(world.mesh) }));
     const births = [], near = nearIndex(everyone, e => e.plate, world.occupancyStamp, binIndex(world.mesh));
+    for (const { plate } of everyone) nearEdge(plate, world.mesh);        // (each plate's edge counts, for the crust as the births will find it)
     for (const grower of growers) {
         for (const cell of candidateCells(world, grower, gaps)) {
             const verdict = decideBirth(world, grower, cell, everyone, near);
@@ -180,7 +182,9 @@ export function candidateCells(world, grower, gaps) {
         for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (marks[nb] !== mark) { marks[nb] = mark; order.push(nb); next.push(nb); } }
         ring = next;
     }
-    return order.filter(c => !mask[c]);
+    // (and not a cell with no crust within PROXIMITY_RINGS of it: decideBirth would find it not attached)
+    const reach = nearEdge(grower, world.mesh).count;
+    return order.filter(c => !mask[c] && reach[c]);
 }
 let verdicts = null;
 /** A cleared per-bin scratch array (0 = not asked yet). */
@@ -265,6 +269,7 @@ const birthScratch = { p: [0, 0, 0], hit: { dot: -2, cell: -1 }, rivals: [], und
 function assignGapOwners(world, gaps) {
     const { mesh, owner, ownerCell, claimCount, provisional, provisionalLike, plates, config } = world, { xyz, index } = mesh;
     const everyone = plates.filter(p => p.alive && p.crust.count > 0), bins = binIndex(mesh), stamp = world.occupancyStamp;
+    for (const plate of everyone) nearEdge(plate, mesh);                  // (each plate's edge counts, after the births)
     const nearOf = nearIndex(everyone, plate => plate, stamp, bins);             // (after the births: they marked their bins)
     const p = [0, 0, 0], hit = { dot: -2, cell: -1 };
     // (per gap, for each nearby plate: the raster cell under it, then that plate's nearest crust — in scratch arrays)
@@ -339,15 +344,21 @@ function isBehind(plate, edgeCell, cell, mesh) {
  * plate's frame: { dot: cosine of the angular distance, cell } — cell = −1 (dot = −2) if none is near.
  * `under`: the plate's raster cell under p if the caller has it already (plate.cellAt — the same lookup), else −1.
  * Written into `out` (no fresh object: this runs millions of times per history); returns whether crust was found.
+ * Reads the plate's edge counts (gather.js nearEdge), which must be up to date with its crust: the rings nearer than the
+ * nearest crust hold none, so the search starts at that ring, and a search with no crust in reach is not made — the same
+ * cells in the same order from there, so the same answer.
  */
 function nearestCrustInto(plate, mesh, p, under, out) {
     const { xyz, index } = mesh, mask = plate.crust.mask, m = plate.mat;
     const lx = m[0] * p[0] + m[3] * p[1] + m[6] * p[2], ly = m[1] * p[0] + m[4] * p[1] + m[7] * p[2], lz = m[2] * p[0] + m[5] * p[1] + m[8] * p[2];   // (plate.toPlateFrame)
     // Rings are read from a table built once per mesh (this runs millions of times per history): the same cells in
     // the same order as a ring-by-ring search from the nearest cell, so the answer — ties included — is unchanged.
-    const { start, cells, stride } = ringsOf(mesh), base = (under >= 0 ? under : index.nearest(lx, ly, lz)) * stride;
+    const { start, cells, stride } = ringsOf(mesh), u = under >= 0 ? under : index.nearest(lx, ly, lz), base = u * stride;
+    const edges = plate._nearEdge;
+    const first = mask[u] ? 0 : edges.within1[u] ? 1 : edges.within2[u] ? 2 : edges.count[u] ? 3 : -1;
     let best = -2, bestCell = -1;
-    for (let r = 0; r <= PROXIMITY_RINGS; r++) {
+    if (first < 0) { out.dot = best; out.cell = bestCell; return false; }
+    for (let r = first; r <= PROXIMITY_RINGS; r++) {
         for (let i = start[base + r], e = start[base + r + 1]; i < e; i++) {
             const c = cells[i];
             if (mask[c]) {

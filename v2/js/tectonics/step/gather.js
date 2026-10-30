@@ -88,15 +88,23 @@ function claimMap(plate, numCells) {
  * Which raster cells of `plate` lie within RING_COUNT rings of the edge of its crust — a crust cell with a non-crust
  * neighbour: `count[cell] > 0`, the number of edge cells within those rings of it. With the crust itself, that covers
  * every cell the nearest-cell search can end on from a first guess that is not counted.
+ * `within1` and `within2` count the same within 1 and 2 rings. For a cell that is not crust, the nearest crust lies
+ * exactly as many rings away as the nearest edge cell (the first crust cell on a shortest path to crust is an edge
+ * cell): so the three counts say how far away the nearest crust is — 1, 2, 3 rings, or further (step/resolve.js
+ * nearestCrustInto starts its search there and skips a search that would find nothing).
  * Kept up to date rather than rebuilt (the mask in the raster's own frame: the plate's turning does not touch it): each
  * call finds the cells whose mask changed since the last — a few hundred of a raster's cells, from step to step — and
  * recounts the edge cells only around them. The same cells as counting afresh.
  */
-function nearEdge(plate, mesh) {
+export function nearEdge(plate, mesh) {
     const { numCells, adjOffset, adjList } = mesh, mask = plate.crust.mask, { start, cells, stride } = ringsOf(mesh);
     let near = plate._nearEdge;
-    if (!near || near.seen.length !== numCells) near = plate._nearEdge = { seen: new Uint8Array(numCells), edge: new Uint8Array(numCells), count: new Uint8Array(numCells), touched: new Uint32Array(numCells), stamp: 0, list: [] };
-    const { seen, edge, count, touched, list } = near;
+    if (!near || near.seen.length !== numCells) near = plate._nearEdge = { seen: new Uint8Array(numCells), edge: new Uint8Array(numCells), count: new Uint8Array(numCells),
+        within1: new Uint8Array(numCells), within2: new Uint8Array(numCells), touched: new Uint32Array(numCells), stamp: 0, list: [], raster: null, version: -1 };
+    const { seen, edge, count, within1, within2, touched, list } = near;
+    // (nothing to do while it is the same raster and no cell of its mask has changed since: model/crust.js `version`)
+    if (near.raster === plate.crust && near.version === plate.crust.version) return near;
+    near.raster = plate.crust; near.version = plate.crust.version;
     // (the cells whose mask changed: compared four at a time — nearly every word is the same)
     list.length = 0;
     const words = numCells >> 2, aligned = !(mask.byteOffset & 3);
@@ -120,8 +128,11 @@ function nearEdge(plate, mesh) {
         if (mask[c]) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!mask[adjList[k]]) { isEdge = 1; break; }
         if (isEdge === edge[c]) return;
         edge[c] = isEdge;
-        const d = isEdge ? 1 : -1;
-        for (let i = start[c * stride], e = start[c * stride + RING_COUNT + 1]; i < e; i++) count[cells[i]] += d;
+        const d = isEdge ? 1 : -1, b = c * stride, e1 = start[b + 2], e2 = start[b + 3];
+        let i = start[b];
+        for (; i < e1; i++) { const x = cells[i]; within1[x] += d; within2[x] += d; count[x] += d; }
+        for (; i < e2; i++) { const x = cells[i]; within2[x] += d; count[x] += d; }
+        for (const e = start[b + RING_COUNT + 1]; i < e; i++) count[cells[i]] += d;
     };
     for (const c of list) {
         recount(c);
