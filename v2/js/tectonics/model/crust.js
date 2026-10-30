@@ -22,6 +22,9 @@ export const OrogenyType = Object.freeze({
     TRANSPRESSION: 7, // a narrow ridge along a transform whose sides are also pressed together (the Southern Alps, the Transverse Ranges)
 });
 
+// The orogenies that shorten crust and rank by how much: what an event may escalate to (CrustRaster.recordOrogeny).
+const COMPRESSIVE = Object.freeze({ [OrogenyType.ANDEAN]: true, [OrogenyType.LARAMIDE]: true, [OrogenyType.URAL]: true, [OrogenyType.HIMALAYAN]: true });
+
 // What a mantle plume left on the crust (Phase 7a, step/hotspots.js). Records only: Phase 8 turns them into relief.
 export const VolcanicType = Object.freeze({
     NONE: 0,
@@ -164,8 +167,11 @@ export class CrustRaster {
             this.oroStart[cell] = time;
             this.oroWork[cell] = 0;
             this.oroType[cell] = oroType;
-        } else if (oroType > this.oroType[cell] && oroType !== OrogenyType.ARC && oroType !== OrogenyType.TRANSPRESSION) {
-            this.oroType[cell] = oroType;   // escalate (e.g. Andean → Himalayan), never downgrade
+        } else if (this.oroType[cell] === OrogenyType.RIFT ? COMPRESSIVE[oroType] : COMPRESSIVE[oroType] && oroType > this.oroType[cell]) {
+            // escalate (e.g. Andean → Himalayan), never downgrade. A rift is no rung on that ladder: stretching does not turn
+            // a belt into a rift's shoulder (its uplift would go on wearing on riftReliefTauMyr, step/heights.js), and
+            // shortening takes a rift's record over — a rifted margin turned active is a belt from then on
+            this.oroType[cell] = oroType;
         }
         this.oroWork[cell] += workKm;
         this.oroLast[cell] = time;
