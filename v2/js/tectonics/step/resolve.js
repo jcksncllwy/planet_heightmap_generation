@@ -29,16 +29,14 @@ export function resolve(world) {
     // (the cells this pass takes away and creates, per plate: gather.js nearEdge brings each plate's edge counts up to date
     // from them instead of comparing its whole mask)
     const removed = new Map(), born = new Map();
-    const consumed = gatherAndSubduct(world, removed);
-    const gaps = [];
-    for (let w = 0; w < world.owner.length; w++) if (world.owner[w] < 0) gaps.push(w);
+    const gaps = [], tally = { consumed: 0, collisionCells: 0 };
+    gatherAndSubduct(world, removed, gaps, tally);
+    const { consumed, collisionCells } = tally;
     const created = gaps.length ? growCrustIntoGaps(world, gaps, removed, born) : 0;
     if (gaps.length) assignGapOwners(world, gaps, born);
     world.budget.created += created;
     world.budget.consumed += consumed;
 
-    let collisionCells = 0;
-    for (let w = 0; w < world.landClaims.length; w++) if (world.landClaims[w] > 1) collisionCells++;
     for (const p of world.plates) {
         if (p.alive && p.dirty) p.refreshExtent(world.mesh.xyz);
         p.reshaped = false;                            // the world view is current again for every plate
@@ -48,7 +46,8 @@ export function resolve(world) {
 
 // ─────────────────────────────── convergence ───────────────────────────────
 
-function gatherAndSubduct(world, removed) {
+/** Writes the world cells left without an owner into `gaps` and the tallies into `tally` (consumed, collisionCells). */
+function gatherAndSubduct(world, removed, gaps, tally) {
     const { owner, ownerCell, claimCount, landClaims, consumedAt, collider, plates } = world;
     let consumed = 0;
     const budget = world.budget;
@@ -82,10 +81,20 @@ function gatherAndSubduct(world, removed) {
     });
 
     // A raster cell can be the nearest one for two world cells; if it was subducted through one of them,
-    // the other must not keep pointing at it.
-    for (let w = 0; w < owner.length; w++) if (owner[w] >= 0 && !plates[owner[w]].crust.mask[ownerCell[w]]) { owner[w] = -1; claimCount[w] = 0; landClaims[w] = 0; }
-    return consumed;
+    // the other must not keep pointing at it. (Only a plate that lost cells can have lost that one.) In the same pass: the
+    // cells left as gaps, and the collisions — land claimed twice; neither growth nor the gaps' owners change landClaims.
+    const lost = lostScratch.length >= plates.length ? lostScratch.fill(0) : (lostScratch = new Uint8Array(2 * plates.length));
+    for (const plate of removed.keys()) lost[plate.id] = 1;
+    let collisionCells = 0;
+    for (let w = 0; w < owner.length; w++) {
+        const o = owner[w];
+        if (o >= 0 && lost[o] && !plates[o].crust.mask[ownerCell[w]]) { owner[w] = -1; claimCount[w] = 0; landClaims[w] = 0; }
+        if (owner[w] < 0) gaps.push(w);
+        else if (landClaims[w] > 1) collisionCells++;
+    }
+    tally.consumed = consumed; tally.collisionCells = collisionCells;
 }
+let lostScratch = new Uint8Array(0);
 
 // ─────────────────────────────── divergence ───────────────────────────────
 // Symmetric spreading: each flank takes the half of a gap on its side of the mid-line, so the ridge
@@ -169,11 +178,14 @@ export function candidateCells(world, grower, gaps) {
     const { xyz, index, adjOffset, adjList, numCells } = world.mesh, cap = grower.capInWorld(world.mesh), mask = grower.crust.mask;
     const bins = binIndex(world.mesh), stamp = world.occupancyStamp;
     // (the cells seen, in the order first seen: marks instead of a Set — the same cells in the same order)
-    const seen = seenMarks(numCells), mark = seen.stamp, marks = seen.marks, order = [];
+    const seen = seenMarks(numCells), mark = seen.stamp, marks = seen.marks;
+    // (the cells in a scratch list, each ring a stretch of it: a cell is listed at most once)
+    if (candidateScratch.length < numCells) candidateScratch = new Int32Array(numCells);
+    const order = candidateScratch;
+    let n = 0;
     // (whether this plate may have crust near each bin, asked once per bin: many gap cells share one)
     const nearBin = binVerdicts(bins.count);
     const claims = currentClaimMap(grower);                                                // (the gather's lookups: cellAt for a world cell)
-    let ring = [];
     for (const g of gaps) {
         const x = xyz[3 * g], y = xyz[3 * g + 1], z = xyz[3 * g + 2];
         if (x * cap[0] + y * cap[1] + z * cap[2] < cap[3]) continue;
@@ -181,17 +193,20 @@ export function candidateCells(world, grower, gaps) {
         if (!nearBin[bin]) nearBin[bin] = mayHaveCrustNear(grower, bin, stamp, bins) ? 2 : 1;
         if (nearBin[bin] === 1) continue;                                                  // a gap nowhere near this plate: nothing could attach
         const c = claims ? rasterCellUnder(claims, grower, world.mesh, g) : grower.cellAt(index, x, y, z);
-        if (marks[c] !== mark) { marks[c] = mark; order.push(c); ring.push(c); }
+        if (marks[c] !== mark) { marks[c] = mark; order[n++] = c; }
     }
-    for (let r = 0; r < REACH_RINGS; r++) {
-        const next = [];
-        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (marks[nb] !== mark) { marks[nb] = mark; order.push(nb); next.push(nb); } }
-        ring = next;
+    for (let r = 0, from = 0; r < REACH_RINGS; r++) {
+        const to = n;
+        for (let i = from; i < to; i++) { const c = order[i]; for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (marks[nb] !== mark) { marks[nb] = mark; order[n++] = nb; } } }
+        from = to;
     }
     // (and not a cell with no crust within PROXIMITY_RINGS of it: decideBirth would find it not attached)
     const reach = nearEdge(grower, world.mesh).count;
-    return order.filter(c => !mask[c] && reach[c]);
+    let kept = 0;
+    for (let i = 0; i < n; i++) { const c = order[i]; if (!mask[c] && reach[c]) order[kept++] = c; }
+    return order.subarray(0, kept);          // (a view of the scratch list: read it before the next call)
 }
+let candidateScratch = new Int32Array(0);
 let verdicts = null;
 /** A cleared per-bin scratch array (0 = not asked yet). */
 function binVerdicts(count) {
@@ -205,8 +220,8 @@ function binVerdicts(count) {
  * The same plates, in the same order, as filtering `list` at every cell: only the repeated work is skipped.
  */
 function nearIndex(list, plateOf, stamp, bins) {
-    const cache = new Array(bins.count);
-    return bin => cache[bin] ??= list.filter(e => mayHaveCrustNear(plateOf(e), bin, stamp, bins));
+    const cache = new Array(bins.count).fill(null);          // (filled: a packed array, not one of holes)
+    return bin => cache[bin] ?? (cache[bin] = list.filter(e => mayHaveCrustNear(plateOf(e), bin, stamp, bins)));
 }
 
 let seen = null;
