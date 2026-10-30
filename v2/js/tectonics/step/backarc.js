@@ -68,9 +68,7 @@ export function openBackArcs(world, dt) {
         if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (config.cratonStrength - 1) * strip.cratonShare)) continue;
         const fresh = splitStrip(world, A, strip, dir, rollbackCmYr(ages / cells.length, config));
         opened++;
-        // (a craton the new rift behind the strip went through is now on both plates, as a rift's is: booked here — rifting.js)
-        const cratonsOf = P => { const ids = new Set(); for (let c = 0; c < numCells; c++) if (P.crust.mask[c] && P.crust.type[c] === CrustType.CRATON) ids.add(P.crust.terrane[c]); return ids; };
-        const onStrip = cratonsOf(fresh), splitCratons = onStrip.size ? [...cratonsOf(A)].filter(id => onStrip.has(id)) : [];
+        const splitCratons = cratonsSplitBy(A, fresh, numCells);
         world.log(EventKind.BACKARC_OPEN, `${A.name}’s trench rolls back from under it (a cold slab, ${(ages / cells.length).toFixed(0)} Myr old): ${strip.continental ? 'a strip of its coast' : 'its island arc'} — ${(lengthKm).toFixed(0)} km of it — rifts away after the trench as ${fresh.name}, and a back-arc sea opens behind`,
             { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: ages / cells.length, lengthKm, splitCratons });
     }
@@ -126,9 +124,16 @@ function pullArcsAfterTrenches(world) {
         const fresh = splitStrip(world, A, strip, dir, rate);
         opened++;
         world.log(EventKind.BACKARC_OPEN, `${A.name} pulls away from its own trench (${(opening / cells.length).toFixed(1)} cm/yr; the slab, ${slabAge.toFixed(0)} Myr old, holds it): ${strip.continental ? 'a strip of its coast' : 'its island arc'} — ${lengthKm.toFixed(0)} km of it — stays with the trench as ${fresh.name}, and a back-arc sea opens behind`,
-            { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: slabAge, lengthKm, pulled: true, rateCmYr: rate, splitCratons: [] });
+            { parent: A.id, strip: fresh.id, continental: strip.continental, slabAgeMyr: slabAge, lengthKm, pulled: true, rateCmYr: rate, splitCratons: cratonsSplitBy(A, fresh, mesh.numCells) });
     }
     return opened;
+}
+
+/** The cratons a strip's rift went through: on both plates now, as a rift's are, and booked in the event's log (rifting.js). */
+function cratonsSplitBy(A, strip, numCells) {
+    const cratonsOf = P => { const ids = new Set(); for (let c = 0; c < numCells; c++) if (P.crust.mask[c] && P.crust.type[c] === CrustType.CRATON) ids.add(P.crust.terrane[c]); return ids; };
+    const onStrip = cratonsOf(strip);
+    return onStrip.size ? [...cratonsOf(A)].filter(id => onStrip.has(id)) : [];
 }
 
 /** The world cells of A's live trench joined to `cells`: those cells, and A's trench-flagged edge cells overriding beside them. */
