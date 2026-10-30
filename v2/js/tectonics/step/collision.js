@@ -5,7 +5,7 @@
 // sides (step/orogeny.js), and once enough has been absorbed — or the seam has stalled — the two
 // plates weld into one (ops/merge-plates.js redraws the outlines as it does so).
 //
-//   upper plate  the one whose margin was active (trench flags at the front); a plateau side
+//   upper plate  the one whose margin was active (the longest slab at the front); a plateau side
 //   lower plate  the one whose ocean went down that trench; its edge indents the upper plate
 //
 // Island-arc crust is not a continent (developer): an arc that meets another plate's land is thin and
@@ -437,24 +437,34 @@ function dockIfTerrane(world, A, B, cells) {
     return true;
 }
 
-/** The upper plate is the one whose land at the front carries the active-margin (trench) flags; failing that, the larger continent. */
+/**
+ * Who rides up: the plate that owned the subduction zone at this front, the one with the longest slab hanging from its
+ * trench here. The ocean between the two went down beneath it, the continent arrives on the plate going down — buoyant
+ * crust jams a trench from the downgoing side (Cloos 1993) — and the dip of that slab sets the collision's polarity: the
+ * Himalaya's over the Neotethys' (a flip of polarity, Taiwan's or the Solomons', is a further event, and rarer; none is
+ * modelled here). Slab and not a count of flags: by the time land touches land the trench's ocean cells have mostly
+ * gone, and the last of it was overridden by the arriving continent, whose coast then carries fresh flags of its own
+ * (feedTrench), while its slab is only the few hundred km of that apron — against the thousands the true margin has
+ * swallowed. Read on both plates' rasters, ocean and land, within two aprons of the contact: the old trench stood an
+ * apron off its coast, and either plate's may be the one. The greatest and not the sum, which would grow with the mesh.
+ * With no slab on either side — or one the same on both — the larger continent rides up.
+ */
 function chooseSides(world, A, B, cells) {
-    const { xyz, index, adjOffset, adjList } = world.mesh;
-    const flagged = plate => {
-        let n = 0;
-        const seen = new Set();
-        for (const w of cells) for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
-            const nb = adjList[k];
-            if (seen.has(nb)) continue;
-            seen.add(nb);
-            const c = plate.cellAt(index, xyz[3 * nb], xyz[3 * nb + 1], xyz[3 * nb + 2]);
-            if (plate.crust.mask[c] && plate.crust.type[c] !== CrustType.OCEAN && (plate.crust.flags[c] & CrustFlag.TRENCH)) n++;
+    const { mesh, config } = world, { xyz, index, numCells, edgeKm } = mesh;
+    const { dist } = hopsFrom(mesh, cells, null, Math.max(1, Math.round(2 * config.apronKm / edgeKm)));
+    const slabAtFront = plate => {
+        const { mask, flags, slabKm } = plate.crust;
+        let most = 0;
+        for (let w = 0; w < numCells; w++) {
+            if (dist[w] < 0) continue;
+            const c = plate.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
+            if (mask[c] && (flags[c] & CrustFlag.TRENCH) && slabKm[c] > most) most = slabKm[c];
         }
-        return n;
+        return most;
     };
-    const fa = flagged(A), fb = flagged(B);
-    if (fa !== fb) return fa > fb ? { upper: A, lower: B } : { upper: B, lower: A };
-    return A.stats.continentalCells >= B.stats.continentalCells ? { upper: A, lower: B } : { upper: B, lower: A };
+    const slabA = slabAtFront(A), slabB = slabAtFront(B);
+    const aUpper = slabA !== slabB ? slabA > slabB : A.stats.continentalCells >= B.stats.continentalCells;
+    return aUpper ? { upper: A, lower: B } : { upper: B, lower: A };
 }
 
 

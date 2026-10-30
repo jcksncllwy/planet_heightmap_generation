@@ -2,7 +2,7 @@
 // Hard checks: a collision's belt rides onto a craton's rim, and the rim belts change no event (records only); a range
 // pressed against a craton from its lower plate bends a lowland into it, and the upper plate's shield is bent less than
 // the lower's (retro < pro); each shield stands at the same height at 160K and 640K; craton relief is no more than
-// ordinary lowland's; craton scraps read as their surroundings.
+// ordinary lowland's; craton scraps read as their surroundings; the plate that owned the trench is the upper plate.
 // Reported: how deep a belt reaches into a craton and how many craton cells thicken, the lower plate's foreland bend,
 // the upper plate's front and bend, how much cratons differ from one another, and craton relief against lowland's.
 // Usage: node v2/tools/check-phase10.mjs
@@ -253,6 +253,22 @@ section('scraps of craton');
         sets.map(x => ({ label: x.label, formed: x.gaps.length >= 3, ok: median(x.gaps) <= 0.1 && Math.max(...x.gaps) <= 0.5,
             text: `${x.found.join(', ')}: around them ${median(x.gaps).toFixed(2)} km above (median), the most ${Math.max(...x.gaps).toFixed(2)} km` })),
         { scene: 'scraps of craton (3 or more in a set of histories)', detail: 'craton scraps of 1–3 cells on their own plate\'s raster; the ground around them stands this far above them — below, where negative (before Phase 10 median 0.02 km, the worst 1.27 km)' });
+}
+
+// ── who rides up: both scenes build their trench on Asia, so Asia owned the margin ──
+section('the plate that owned the trench rides up');
+{
+    // (a guard on chooseSides, every seed and not a majority: polarity is a rule, not a history's chance, and a seed that
+    // gets it wrong puts the plateau on the wrong continent. Asia is looked up by name in the first frame, before a weld
+    // renames it: the scenes' own truth, read from how they are built, not from the slab the rule itself reads)
+    const seeds = [SEED, 1, 2, 3, 4, 5], scenes = ['india', 'cratons'];
+    const rows = scenes.flatMap(id => seeds.map(seed => {
+        const r = run(id, null, null, seed), asia = r.frames[0].plates.find(p => p.name === 'Asia').id, first = r.events.find(e => e.kind === 'collision');
+        return { label: `${id} ${seed}`, formed: !!first, ok: first?.data.upper === asia };
+    }));
+    const formed = rows.filter(x => x.formed), wrong = formed.filter(x => !x.ok);
+    check('the plate that owned the trench is the upper plate', formed.length > rows.length / 2 && !wrong.length,
+        `${formed.length - wrong.length} of ${formed.length} collisions have Asia upper (${rows.length} runs: ${scenes.join(' and ')} on seeds ${seeds.join(', ')})${wrong.length ? ` — wrong: ${wrong.map(x => x.label).join(', ')}` : ''}`);
 }
 
 finish('Phase 10');
