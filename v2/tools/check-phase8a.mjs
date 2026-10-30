@@ -366,19 +366,6 @@ section('fine detail moves with the crust');
     const scene = TERRAIN_SCENES.find(s => s.id === 'history'), tm = terrainMesh(640000);
     const framesOf = seed => simulateCached(scene.build(mesh, seed), { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames;
     const carriedDetail = (seed, A, B) => {
-        // the plate that turned the most in those 10 Myr, among those with plenty of land in both frames
-        let p = -1, turned = 0;
-        for (let i = 0; i < B.plates.length; i++) {
-            const a = A.plates[i], b = B.plates[i];
-            if (!a?.alive || !b?.alive || b.landCells < 200) continue;
-            const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3])));
-            if (ang > turned) { turned = ang; p = i; }
-        }
-        const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
-        const moveBtoA = (x, y, z) => {                  // a world point of frame B → where the same crust was in frame A
-            const lx = MB[0] * x + MB[3] * y + MB[6] * z, ly = MB[1] * x + MB[4] * y + MB[7] * z, lz = MB[2] * x + MB[5] * y + MB[8] * z;
-            return [MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz];
-        };
         // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
         // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
         // (the smooth part: the same platform with its noise off — the terrain samples a moving plate on its own raster)
@@ -392,7 +379,25 @@ section('fine detail moves with the crust');
             }
             return { T, r };
         };
-        const DA = detail(A), DB = detail(B), xs = [], ys = [], c3 = [0, 0, 0], w3 = [0, 0, 0];
+        // the plate that turned the most in those 10 Myr, among those with plenty of interior to read (the cells the detail is
+        // scored on, counted on the terrain: a plate with 200 land cells may have none — audit 2026-10-30 — so the scene forms
+        // on a plate that can show it)
+        const DA = detail(A), DB = detail(B), interior = new Uint32Array(B.plates.length);
+        for (let t = 0; t < tm.numCells; t++) if (!Number.isNaN(DB.r[t])) interior[B.owner[DB.T.sampler.cells[3 * t]]]++;
+        let p = -1, turned = 0;
+        for (let i = 0; i < B.plates.length; i++) {
+            const a = A.plates[i], b = B.plates[i];
+            if (!a?.alive || !b?.alive || interior[i] < 2000) continue;
+            const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3])));
+            if (ang > turned) { turned = ang; p = i; }
+        }
+        if (p < 0) return { label: seed, formed: false, ok: false, text: 'no plate with 2,000 interior cells' };
+        const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
+        const moveBtoA = (x, y, z) => {                  // a world point of frame B → where the same crust was in frame A
+            const lx = MB[0] * x + MB[3] * y + MB[6] * z, ly = MB[1] * x + MB[4] * y + MB[7] * z, lz = MB[2] * x + MB[5] * y + MB[8] * z;
+            return [MA[0] * lx + MA[1] * ly + MA[2] * lz, MA[3] * lx + MA[4] * ly + MA[5] * lz, MA[6] * lx + MA[7] * ly + MA[8] * lz];
+        };
+        const xs = [], ys = [], c3 = [0, 0, 0], w3 = [0, 0, 0];
         for (let t = 0; t < tm.numCells; t++) {
             if (Number.isNaN(DB.r[t]) || B.owner[DB.T.sampler.cells[3 * t]] !== p) continue;
             const q = moveBtoA(tm.xyz[3 * t], tm.xyz[3 * t + 1], tm.xyz[3 * t + 2]);

@@ -347,7 +347,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // broad basins and arches it buries — all of them once its surface stands their relief (platformNoiseKm, drawn ±1.5×)
     // above the floor it filled: the Congo's and the Tarim's plains hide their basement
     const basinCover = new Float32Array(n);
-    for (let w = 0; w < n; w++) basinCover[w] = land[w] ? Math.min(1, (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR / (1.5 * cfg.platformNoiseKm)) : 0;
+    // (no noise to bury, no cover: platformNoiseKm 0 would divide by zero — NaN where nothing was filled, and fill read as a full
+    // burial where some was — and the noise-free surface the moving-detail check builds would lose most of its land)
+    if (cfg.platformNoiseKm > 0) for (let w = 0; w < n; w++) basinCover[w] = land[w] ? Math.min(1, (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR / (1.5 * cfg.platformNoiseKm)) : 0;
 
     // ── the sea floor: half-space cooling depth; oceanic plateaus; abyssal-hill wavelength from the age gradient ──
     // Ridge segments (plans/V2_REALISM_PASS_PLAN.md, phase 6; tectonics/model/segments.js): each segment's floor (the whole
