@@ -6,6 +6,9 @@ import { quatIdentity, quatToMat3 } from '../../core/rotation.js';
 import { CrustRaster, CrustType } from './crust.js';
 
 let extentCells = null;       // (refreshExtent's working list, shared by every plate)
+const maskViews = new WeakMap();
+/** A crust mask as 32-bit words (one view per mask, kept). */
+function maskWords(mask) { let v = maskViews.get(mask); if (!v) maskViews.set(mask, v = new Uint32Array(mask.buffer, mask.byteOffset, mask.length >> 2)); return v; }
 
 export class Plate {
     /**
@@ -111,12 +114,19 @@ export class Plate {
         if (!extentCells || extentCells.length !== mask.length) extentCells = new Int32Array(mask.length);
         const cells = extentCells;                        // (the crust cells, in order, for the second pass)
         let sx = 0, sy = 0, sz = 0, n = 0, nc = 0, nk = 0;
-        for (let c = 0; c < mask.length; c++) {
-            if (!mask[c]) continue;
-            sx += xyz[3 * c]; sy += xyz[3 * c + 1]; sz += xyz[3 * c + 2];
-            cells[n++] = c;
-            if (type[c] !== CrustType.OCEAN) nc++;
-            if (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON) nk++;      // (a continental keel: not island arc)
+        // (the mask read four cells at a time, words with no crust passed over: the same cells in the same order, so the
+        // same sums to the bit — most of a plate's raster is not its crust)
+        const words = (mask.byteOffset & 3) ? 0 : mask.length >> 2, mask32 = words ? maskWords(mask) : null;
+        for (let i = 0, c = 0; c < mask.length; i++) {
+            const end = i < words ? 4 * i + 4 : mask.length;
+            if (i < words && mask32[i] === 0) { c = end; continue; }
+            for (; c < end; c++) {
+                if (!mask[c]) continue;
+                sx += xyz[3 * c]; sy += xyz[3 * c + 1]; sz += xyz[3 * c + 2];
+                cells[n++] = c;
+                if (type[c] !== CrustType.OCEAN) nc++;
+                if (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON) nk++;      // (a continental keel: not island arc)
+            }
         }
         this.stats.cells = n;
         this.stats.continentalCells = nc;
