@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { closedBasins } from '../js/finish/finish-basins.js';
+import { ERODE } from '../js/finish/finish-erode.js';
 
 const TYPES = { Int32Array, Uint32Array, Float32Array, Float64Array, Uint8Array };
 const read = (file, T) => { const b = fs.readFileSync(file); return new T(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)); };
@@ -12,5 +13,5 @@ export function loadRun(dir, id) {
     const f32 = k => read(path.join(run, k + '.bin'), Float32Array), u8 = k => read(path.join(run, k + '.bin'), Uint8Array);
     const C = JSON.parse(fs.readFileSync(path.join(run, 'closed.json'))), runoff = f32('runoff'), pet = f32('pet'), rain = f32('rain'), sea = u8('closedOcean');
     const o = { mesh, z: f32('z'), ocean: u8('ocean'), water: f32('water'), k: f32('k'), hold: f32('hold'), slow: R.slow ? f32('slow') : null, m: R.m, activeHold: R.activeHold, valleyKm: R.valleyKm, closed: g => closedBasins(mesh, g, runoff, pet, rain, C.cellKm2, C.F, sea) };
-    return { o, P: R.P, meta: R };
+    return { o, P: { ...ERODE, ...R.P }, meta: R };              // (settings added since the capture take their defaults)
 }

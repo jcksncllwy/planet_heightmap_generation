@@ -7,13 +7,12 @@
 //   · no rake-compress and no pointer-jumped solve. Those need the sums and the solve to be linear; ours have floors, lakes that
 //     hold load up to their room, and a max at each lake. But the trees are shallow (450-610 levels at 2.5M on real ground), so
 //     cells are sorted by their depth and swept level by level, which runs the CPU's own per-cell arithmetic, nothing reduced.
-//   · no carving through lakes: a flat's cells reach its way out by a breadth-first sweep, as the flood's flat counter does.
+//   · no carving through lakes: a flat's cells, lakes' included, drain by Barnes et al. 2014's two gradients, by two breadth-first sweeps.
 //   · WGSL's lexicographic minimum: two atomicMin passes (the weight, then the edge's id among the cells at that weight). min is
 //     commutative, so this holds no matter how threads interleave. Atomics are used only for that, for counters and for a level's
 //     order, which nothing reads back: results don't depend on scheduling, so a machine repeats its own result.
-// Limits: float32 throughout (the CPU's intermediates are doubles); a flat's internal receivers can differ from the flood's
-// (ties broken by adjacency, not heap order), which moves water only inside a lake or along a dead-level flat. Laying what lakes
-// kept, closed basins and rebound stay on the CPU, with a readback a step.
+// Limits: float32 throughout (the CPU's intermediates are doubles), so a near-tie between two slopes can fall the other way. Laying
+// what lakes kept, closed basins and rebound stay on the CPU, with a readback a step.
 
 import { openDevice, readBack } from './gpu-device.js';
 
@@ -88,12 +87,33 @@ const KERNELS = {
         let d = select(0u, INF, pick == NONE);
         distA[c] = d; distB[c] = d;` },
     findFlat: { b: { recv: 'u', flats: 'u+', counter: 'a' }, body: 'if (recv[c] == NONE) { let i = atomicAdd(&counter[0], 1u); flats[i] = c; }' },
-    flat: { b: { adjOffset: 'u', adjList: 'u', fill: 'f', outlet: 'u', distA: 'u', distB: 'u+', recv: 'u+', counter: 'a' }, body: `
+    flat: { b: { adjOffset: 'u', adjList: 'u', fill: 'f', outlet: 'u', distA: 'u', distB: 'u+', counter: 'a' }, body: `
         if (distA[c] != INF) { distB[c] = distA[c]; return; }
         let fc = fill[c];
-        var best = INF; var pick = NONE;
-        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if (outlet[y] == 0u && fill[y] == fc && distA[y] < best) { best = distA[y]; pick = y; } }
-        if (best == INF) { distB[c] = INF; atomicAdd(&counter[0], 1u); } else { distB[c] = best + 1u; recv[c] = pick; }` },
+        var best = INF;
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if (outlet[y] == 0u && fill[y] == fc && distA[y] < best) { best = distA[y]; } }
+        if (best == INF) { distB[c] = INF; atomicAdd(&counter[0], 1u); } else { distB[c] = best + 1u; }` },
+    highInit: { b: { adjOffset: 'u', adjList: 'u', fill: 'f', outlet: 'u', hiA: 'u+', hiB: 'u+' }, body: `
+        var h = 0u;
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if (outlet[y] == 0u && fill[y] > fill[c]) { h = 1u; } }
+        hiA[c] = h; hiB[c] = h;` },
+    high: { b: { adjOffset: 'u', adjList: 'u', fill: 'f', outlet: 'u', distA: 'u', hiA: 'u', hiB: 'u+', counter: 'a' }, body: `
+        if (hiA[c] != 0u) { hiB[c] = hiA[c]; return; }
+        let fc = fill[c];
+        var best = INF;
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if (outlet[y] == 0u && fill[y] == fc && distA[y] != 0u && hiA[y] != 0u && hiA[y] < best) { best = hiA[y]; } }
+        if (best == INF) { hiB[c] = 0u; atomicAdd(&counter[0], 1u); } else { hiB[c] = best + 1u; }` },
+    pickFlat: { b: { adjOffset: 'u', adjList: 'u', fill: 'f', outlet: 'u', distA: 'u', hiA: 'u', recv: 'u+' }, body: `
+        let fc = fill[c];
+        var pick = NONE; var best = 0x7FFFFFFF;
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
+            let y = adjList[j];
+            if (outlet[y] != 0u || fill[y] != fc || distA[y] == INF) { continue; }
+            if (distA[y] == 0u) { pick = y; break; }
+            let v = 2 * i32(distA[y]) - i32(hiA[y]);
+            if (v < best) { best = v; pick = y; }
+        }
+        recv[c] = pick;` },
     flagRecv: { b: { recv: 'u+', outlet: 'u', ptrA: 'u+', depthA: 'u+' }, body: `
         let r = recv[c];
         if (r == NONE) { recv[c] = NONE; ptrA[c] = c; depthA[c] = 1u; return; }
@@ -167,7 +187,7 @@ ${decl}
 }
 
 /** Build the solver for one run of one mesh. `gpu`: navigator.gpu or Dawn's. */
-export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null } = {}) {
+export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, routeOverride = null } = {}) {
     const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm } = o;
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
@@ -181,7 +201,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (1 - activeHold * hold[c]) * (slow ? slow[c] : 1);
     up('K', K);
     for (const f of ['z', 'dropped', 'Zt', 'hookW', 'weight', 'valA', 'valB', 'fill', 'surf', 'trap']) mk(f, 4 * n);
-    for (const u of ['ptrA', 'ptrB', 'ptrC', 'roots', 'label', 'bestW', 'bestE', 'hookTo', 'parent', 'recv', 'distA', 'distB', 'flats', 'depthA', 'depthB', 'order', 'outlet', 'list']) mk(u, 4 * n);
+    for (const u of ['ptrA', 'ptrB', 'ptrC', 'roots', 'label', 'bestW', 'bestE', 'hookTo', 'parent', 'recv', 'distA', 'distB', 'flats', 'depthA', 'depthB', 'order', 'outlet', 'list', 'hiA', 'hiB']) mk(u, 4 * n);
     mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1)); mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 32 * n); mk('exp', 4 * EXPORT_WORDS * n);
     const rangeBuf = device.createBuffer({ size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const uniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -214,7 +234,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         resetBest: group('resetBest', 'roots'), minWeight: group('minWeight', 'list'), minEdge: group('minEdge', 'list'), pickEdge: group('pickEdge', 'list'), hook: group('hook', 'roots'),
         flatAB: group('flatten', 'roots', { compA: 'compB', compB: 'compA' }), flatBA: group('flatten', 'roots'), active: group('active', 'roots'),
         levelInit: group('levelInit', 'roots'), levelAB: group('levelJump', 'roots'), levelBA: group('levelJump', 'roots', { valA: 'valB', valB: 'valA', ptrB: 'ptrC', ptrC: 'ptrB' }),
-        fillIn: group('fillIn', 'list'), receive: group('receive', 'list'), findFlat: group('findFlat', 'list'), flatAB2: group('flat', 'flats'), flatBA2: group('flat', 'flats', { distA: 'distB', distB: 'distA' }),
+        fillIn: group('fillIn', 'list'), receive: group('receive', 'list'), findFlat: group('findFlat', 'list'), flatAB2: group('flat', 'flats'), flatBA2: group('flat', 'flats', { distA: 'distB', distB: 'distA' }), highInit: group('highInit', 'flats'), highAB: group('high', 'flats'), highBA: group('high', 'flats', { hiA: 'hiB', hiB: 'hiA' }), pickFlat: group('pickFlat', 'flats'),
         flagRecv: group('flagRecv', 'list'), depthAB: group('depthJump', 'list'), depthBA: group('depthJump', 'list', { depthA: 'depthB', depthB: 'depthA', ptrA: 'ptrB', ptrB: 'ptrA' }), histogram: group('histogram', 'list'), place: group('place', 'list'),
         water: group('water', 'order'), solve: group('solve', 'order'), load: group('load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'),
     };
@@ -252,7 +272,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         setRange(SL.list, 0, listLen);
     };
     // ── a network: basins, their spanning tree, the filled surface, the receivers, the depth order ──
-    let levels = 0, hist0 = null, guessRounds = 6, guessPasses = 8;
+    let levels = 0, hist0 = null, guessRounds = 6, guessPasses = 8, guessHigh = 8;
     const route = async () => {
         const t0 = performance.now();
         let e = device.createCommandEncoder(), p = e.beginComputePass();
@@ -297,18 +317,36 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         device.queue.submit([e.finish()]);
         const flats = await readCount();
         setRange(SL.flats, 0, flats);
-        let pending = flats, passes = 0, even = true;
-        while (pending > 0) {
-            const batch = passes ? 8 : guessPasses;
-            e = device.createCommandEncoder();
-            for (let b = 0; b < batch; b++) { if (b === batch - 1) clearCounter(e); p = e.beginComputePass(); run(p, even ? G.flatAB2 : G.flatBA2, SL.flats, flats); even = !even; p.end(); }
-            device.queue.submit([e.finish()]);
-            passes += batch;
-            const now = await readCount();
-            if (now === pending && passes > batch) break;
-            pending = now;
-        }
-        guessPasses = Math.max(8, passes);
+        // (a flat's two gradients: Barnes, Lehman & Mulla 2014, as finish-erode.js drainFlats: hops from its lower edge, in dist; from its
+        // higher edge, in hi; each cell then takes the neighbour lowest on 2·dist − hi. Both end up in their A buffers.)
+        const waves = async (first, next, one, two) => {
+            let pending = flats, passes = 0, even = true;
+            while (pending > 0) {
+                const batch = passes ? 8 : first;
+                e = device.createCommandEncoder();
+                for (let b = 0; b < batch; b++) { if (b === batch - 1) clearCounter(e); p = e.beginComputePass(); run(p, even ? one : two, SL.flats, flats); even = !even; p.end(); }
+                device.queue.submit([e.finish()]);
+                passes += batch;
+                const now = await readCount();
+                if (now === pending) { pending = now; break; }
+                pending = now;
+            }
+            if (!even) { e = device.createCommandEncoder(); clearCounter(e); p = e.beginComputePass(); run(p, two, SL.flats, flats); even = true; p.end(); device.queue.submit([e.finish()]); }
+            next(passes);
+            return pending;
+        };
+        let passes = 0;
+        const pending = await waves(guessPasses, v => { passes = v; guessPasses = Math.max(8, v); }, G.flatAB2, G.flatBA2);
+        e = device.createCommandEncoder(); p = e.beginComputePass();
+        run(p, G.highInit, SL.flats, flats);
+        p.end();
+        device.queue.submit([e.finish()]);
+        await waves(guessHigh, v => { guessHigh = Math.max(8, v); }, G.highAB, G.highBA);
+        e = device.createCommandEncoder(); p = e.beginComputePass();
+        run(p, G.pickFlat, SL.flats, flats);
+        p.end();
+        device.queue.submit([e.finish()]);
+        if (routeOverride) { await device.queue.onSubmittedWorkDone(); const O = await routeOverride({ z, sink, base, basins, gpuRecv: await readBack(device, B.recv, Uint32Array), gpuFill: await readBack(device, B.fill) }); put('fill', O.fill); put('recv', O.recv); }
         e = device.createCommandEncoder(); p = e.beginComputePass();
         run(p, G.flagRecv, SL.list, listLen);
         const DJ = 12;

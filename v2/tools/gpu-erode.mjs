@@ -42,7 +42,7 @@ const onStep = async ({ s, route, read, z }) => {
         for (let i = 0; i < count; i++) {
             const c = order[i], lake = C.lid[c] >= 0;
             df.push(Math.abs(fill[c] - C.fill[c]));
-            if (!lake) { recvLand++; if ((recv[c] & 0x7FFFFFFF) === C.recv[c]) recvSame++; else { recvDiff++; const { adjOffset, adjList } = o.mesh; for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (rank[y] >= 0 && C.fill[y] < C.fill[c]) { strictMiss++; break; } } } dA.push(Math.abs(cells[8 * c] - C.A[c]) / Math.max(C.A[c], 1)); }
+            if (!lake) { recvLand++; if ((recv[c] & 0x7FFFFFFF) === C.recv[c]) recvSame++; else { recvDiff++; const { adjOffset, adjList } = o.mesh; for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (rank[y] >= 0 && C.fill[y] < C.fill[c]) { strictMiss++; if (has('--strict') && s === 0) { const R = recv[c] & 0x7FFFFFFF, sl = q => q === undefined ? null : (rank[q] < 0 ? 'out' : C.fill[c] - C.fill[q]); console.log('STRICT', JSON.stringify({ c, fill: C.fill[c], cpuTo: C.recv[c], cpuDrop: sl(C.recv[c]), gpuTo: R, gpuDrop: sl(R), cpuOut: rank[C.recv[c]], gpuOut: rank[R] })); } break; } } } dA.push(Math.abs(cells[8 * c] - C.A[c]) / Math.max(C.A[c], 1)); }
             if (!(z[c] === z[c])) nanz++;
             dz.push(Math.abs(z[c] - C.z[c]));
         }
