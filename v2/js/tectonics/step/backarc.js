@@ -25,6 +25,7 @@ import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { contactAt } from './contact.js';
 import { transferCells, bridgePieces } from '../ops/tidy-plates.js';
 import { largestPieceOf } from '../../core/mesh-bfs.js';
+import { clampSpeed } from './torque-balance.js';
 
 /** @returns {number} back-arc basins opened or closed this step (either changes the world view) */
 export function openBackArcs(world, dt) {
@@ -183,7 +184,9 @@ function rejoinFinishedStrips(world) {
  * small and light, it would be flung about — but with the retreating hinge of the slab: its parent's motion plus the
  * slab's rollback, straight toward its trench. So a back-arc sea opens at the rollback rate, a few cm/yr (the Mariana
  * Trough ~4, the Sea of Japan ~5). Called after every drive, whatever drives the other plates. Afterwards the strip is
- * an ordinary plate.
+ * an ordinary plate. The sum still answers to the strip's speed limit, since this replaces the rotation the force balance
+ * had already limited: a parent at 6 cm/yr and a rollback of 5 put a strip with a keel past the continental 10. Where the
+ * limit bites, the strip falls behind its trench and the sea opens that much slower.
  */
 export function steerBackArcStrips(world) {
     const { plates, config, time } = world;
@@ -198,6 +201,7 @@ export function steerBackArcStrips(world) {
         const pole = [c[1] * t[2] - c[2] * t[1], c[2] * t[0] - c[0] * t[2], c[0] * t[1] - c[1] * t[0]], l = Math.hypot(...pole) || 1;
         const rate = strip.rollbackCmYr * CM_PER_YR_TO_RAD_PER_MYR / l;
         strip.omega = [parent.omega[0] + pole[0] * rate, parent.omega[1] + pole[1] * rate, parent.omega[2] + pole[2] * rate];
+        if (clampSpeed(strip.omega, strip, c, config) && strip.dynamics) strip.dynamics.capped = true;
     }
 }
 

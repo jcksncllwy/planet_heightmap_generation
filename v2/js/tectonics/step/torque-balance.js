@@ -120,9 +120,10 @@ export function keeled(plate, config) { return plate.stats.keelCells > config.co
 /**
  * Backstop only — the force balance should keep plates inside these limits by itself, and the Phase 4
  * checks assert that it does. Scales `omega` down in place if the fastest point of the plate would
- * exceed the limit. @returns {boolean} whether it had to
+ * exceed the limit. Anything that sets a rotation outside the balance goes through here too (step/backarc.js
+ * steerBackArcStrips). @returns {boolean} whether it had to
  */
-function clampSpeed(omega, plate, centre, config) {
+export function clampSpeed(omega, plate, centre, config) {
     const fastest = fastestSpeed(omega, plate, centre);
     if (fastest < 1e-12) return false;
     const continental = keeled(plate, config);

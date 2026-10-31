@@ -1415,7 +1415,8 @@ Follow-ups to "One height from the crust".
   root is what holds a thick crust low (Zoback & Mooney 2003).
 - **Speed caps count keels.** A plate is held to the continental caps by its continental and craton crust
   (`keelCells`), not island arc: an intra-oceanic arc strip had counted continental and broke the cap at its oceanic
-  parent's speed (`steerBackArcStrips`).
+  parent's speed (`steerBackArcStrips`). A strip's steered rotation, its parent's plus the rollback, is held to the same
+  caps as the force balance's: with a keel, parent and rollback together had reached 10.2 cm/yr.
 - **Belts within Earth's widest.** A belt's width is capped at its kind's widest after the convergence-speed factor,
   not before (a Laramide belt had reached 2,880 km inland).
 - **The Mantle swell slider** (Phase 8a) now re-runs the history.
