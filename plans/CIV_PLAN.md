@@ -935,8 +935,17 @@ Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a s
 - Ensemble on main 83d20cd (`civ-ensemble --seeds 1-10`; main → branch before the scale fixes → after): people at
   0 BP 117 → 125 → 98 M (median; seed 6 alone flips, 146 → 58 M, main 54); centres 45 → 45 → 42; all big landmasses
   peopled 8 → 8 → 7; first city 6.0 → 7.0 → 7.0 ka, first state 5.0 → 6.5 → 6.5 ka. The other seeds move a few %.
-  Open: seed 10's people reach its two big landmasses only at 0 BP on the branch (3.5 and 3.0 ka on main); its first
-  voyage 7.4 ka against 10.8. Before and after the scale fixes alike.
+  Seed 10's people reached its two big landmasses only at 0 BP on the branch (3.5 and 3.0 ka on main). Its first
+  voyage is its first farmed coast, and that came at 7.0 ka against 10.5. Cause, a bug: econ.js reads the wild tree
+  and paddy stands from the crop's food, and the port's forest fallow had cut that food (124.7 → 82.4 at main's
+  10 ka tree centre), so the wild stands were thinner and the onset waited. Fallow is the farmers' rest, not the
+  forest's: the substrate now gives econ the stands without it (`stand.tree`, `stand.flooded`). Then the tree centre
+  is back at 10.0 ka, farming at 9.5 ka, the big landmasses peopled at 1.0 ka, 36 M at 0 BP. The rest is chance: main's
+  first farmed coast at 10.5 ka was on a glacial shelf drowned by 10 ka. Under four other chance seeds main gives 31–87 M
+  and its big landmasses at 3.5–0.5 ka; the branch 22–54 M at 3.5–0.5 ka. Fewer people (the fallow) but the same spread
+  of landings; main's 129 M is its luckiest draw.
+  Ensemble with the wild stands fixed (main 83d20cd → branch): people at 0 BP 117 → 98 M (median); centres 45 → 45;
+  all big landmasses peopled 8 → 8; first city 6.0 → 7.0 ka, first state 5.0 → 6.5 ka.
 - Earth (`civ-sim --earth`, base e470080 → this branch): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time
   4/7 → 3/7; people 50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M, 6 ka 69.9 → 91.0 M, 0 BP 170 → 224 M; first state ~5 ka →
   ~6 ka. Uruk 8.1k → 6.8k at 7 ka; Memphis 17.5k → 28.1k at 5 ka; Mohenjo-daro 10.0k → 53.5k at 6 ka (earlier and bigger:

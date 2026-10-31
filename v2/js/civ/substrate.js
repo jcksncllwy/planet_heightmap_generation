@@ -228,6 +228,11 @@ export function placeFood(s, g, out = {}, C = CIV, F = FOOD) {
     out.tree = s.tree * (silt * soilFactor(F.treeSoil, fine, F) + (1 - silt) * soilFactor(F.treeSoil, bed, F) * croppedShare(bed, wm, F)) * perKm2Of(C.cropFood.tree, C);
     const held = g.held;
     out.flooded = Math.max(yieldOf(s.paddy, A.paddy.soil), foodHarvests(s.paddyF, A.paddy.soil, fine, null, F) * held) * perKm2Of(C.cropFood.flooded, C);
+    // (the wild stands of the tree crops and of rice and taro, for econ.js's wild forms: the same ground and season, but no
+    // fallow — fallow is the farmers' rest, not the forest's)
+    const wildOf = (h, a) => silt * foodHarvests(h, a, fine, null, F) + (1 - silt) * foodHarvests(h, a, bed, null, F);
+    out.standTree = s.tree * (silt * soilFactor(F.treeSoil, fine, F) + (1 - silt) * soilFactor(F.treeSoil, bed, F)) * perKm2Of(C.cropFood.tree, C);
+    out.standFlooded = Math.max(wildOf(s.paddy, A.paddy.soil), foodHarvests(s.paddyF, A.paddy.soil, fine, null, F) * held) * perKm2Of(C.cropFood.flooded, C);
     out.canalWinterCereal = out.winterCereal; out.canalSummerCereal = out.summerCereal;
     if (g.irrig > 0) {
         const k = perKm2(C.irrigatedYield, C.seedRatioIrrigated, C) * Math.min(1, 2 * g.irrig);
@@ -395,7 +400,7 @@ export function civSubstrate(w, C = CIV, F = FOOD) {
     // (the soil, per cell — on the bedrock, on the silt, the cell's mean — and its kind: Parent | SoilMod << 4; the best
     // rotation's harvests a year by rain and watered, and its classes: crops.js rotCls)
     const soil = new Float32Array(n), soilBed = new Float32Array(n), soilSilt = new Float32Array(n), soilKind = new Uint8Array(n);
-    const harvests = new Float32Array(n), harvestsW = new Float32Array(n), rotCls = new Uint8Array(n), farmV = new Float32Array(n), ground = {}, pf = {};
+    const stand = { tree: new Float32Array(n), flooded: new Float32Array(n) }, harvests = new Float32Array(n), harvestsW = new Float32Array(n), rotCls = new Uint8Array(n), farmV = new Float32Array(n), ground = {}, pf = {};
     for (let c = 0; c < n; c++) {
         if (!land(c)) continue;
         for (let k = mesh.adjOffset[c]; k < mesh.adjOffset[c + 1]; k++) { const nb = mesh.adjList[k]; if (ocean[nb]) coastal[c] = 1; else if (lake[nb]) lakeside[c] = 1; }
@@ -477,12 +482,13 @@ export function civSubstrate(w, C = CIV, F = FOOD) {
         placeFood(cropAt(c), g, pf, C, F);
         soilBed[c] = pf.soilBed; soilSilt[c] = pf.soilSilt; soil[c] = pf.soil; soilKind[c] = pf.soilKind;
         for (const f of CROP_FOODS) food[f][c] = pf[f];
+        stand.tree[c] = pf.standTree; stand.flooded[c] = pf.standFlooded;
         if (irrig[c] > 0) { canalFood.winterCereal[c] = pf.canalWinterCereal; canalFood.summerCereal[c] = pf.canalSummerCereal; }
         rainfed[c] = pf.rainfed; farmers[c] = pf.farmers; farmDry[c] = pf.farmDry; farmWet[c] = pf.farmWet; farmV[c] = pf.farmV;
         harvests[c] = pf.harvests; harvestsW[c] = pf.harvestsW; rotCls[c] = pf.rotCls;
         food.herds[c] = npp[c] * open[c] * C.grazeUse / C.tluIntakeT / C.tluPerPerson;
     }
-    return { n, cellKm2, edgeKm, npp, et, forager, forageGlacial, wetland, wild, rainfed, irrig, irrigShare, farmDry, farmWet, irrigSrc: src, irrigKm: reach, farmers, relief, coastal, lakeside, food, canalFood, open, wildHerd,
+    return { n, cellKm2, edgeKm, npp, et, forager, forageGlacial, wetland, wild, stand, rainfed, irrig, irrigShare, farmDry, farmWet, irrigSrc: src, irrigKm: reach, farmers, relief, coastal, lakeside, food, canalFood, open, wildHerd,
         fish, soil, soilBed, soilSilt, soilKind, harvests, harvestsW, rotCls, farmV,
         river: { q: riverQ, regime: riverRegime, farFed: riverFar } };
 }

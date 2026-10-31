@@ -20,6 +20,8 @@ const lin = (a, b, x) => Math.min(1, Math.max(0, (x - a) / (b - a)));
 export function domesticates(sub, C = CIV) {
     const full = f => { const x = C.cropFood[f]; return x.yieldKg * 100 * (1 - x.fallow) * (1 - 1 / x.seedRatio) / C.grainPerPersonKg; };
     const suitOf = f => { const a = sub.food[f], k = full(f); return c => Math.min(1, a[c] / k); };
+    // (a wild form's stands by the crop's ground and season without the farmers' fallow: substrate.js `stand`)
+    const standOf = f => { const a = sub.stand?.[f] ?? sub.food[f], k = full(f); return c => Math.min(1, a[c] / k); };
     let herdMax = 0;
     for (let c = 0; c < sub.n; c++) if (sub.food.herds[c] > herdMax) herdMax = sub.food.herds[c];
     return [
@@ -28,8 +30,8 @@ export function domesticates(sub, C = CIV) {
         { id: 'roots', food: 'roots', from: 'wildRoots', wild: c => sub.wild.tuber[c], suit: suitOf('roots') },
         // (ours: the wild forms of the tree crops in closed forest, of rice and taro in marshes and deltas, thinner than the
         // wild cereals' at their best)
-        { id: 'tree', food: 'tree', from: 'nuts', wild: c => C.treeWild * suitOf('tree')(c) * (1 - sub.open[c]), suit: suitOf('tree') },
-        { id: 'flooded', food: 'flooded', from: 'wildSeeds', wild: c => C.floodedWild * suitOf('flooded')(c) * sub.wetland[c], suit: suitOf('flooded') },
+        { id: 'tree', food: 'tree', from: 'nuts', wild: c => C.treeWild * standOf('tree')(c) * (1 - sub.open[c]), suit: suitOf('tree') },
+        { id: 'flooded', food: 'flooded', from: 'wildSeeds', wild: c => C.floodedWild * standOf('flooded')(c) * sub.wetland[c], suit: suitOf('flooded') },
         { id: 'herds', food: 'herds', from: 'largeGame', herd: true, wild: c => sub.wildHerd[c], suit: c => (herdMax > 0 ? Math.min(1, sub.food.herds[c] / (0.5 * herdMax)) : 0) },
     ];
 }
