@@ -1991,7 +1991,7 @@ depends on how many rifts are open. `trace-lakes.mjs` prints it as "open fresh o
 | 12345 at 300 Myr | 640K | 3.36 → 3.43 | 0.04 → 0.11 |
 | | 2.5M | 5.77 → 5.89 | 0.04 → 0.07 |
 
-Dead-level, rising and dead-straight are no worse than base on these runs.
+Dead-level and rising are no worse than base on any run. Dead-straight is too, but for 831576 at 10M, 0 → 1 % (rounded).
 
 **Open:**
 - **10M on 831576 stands above Earth's 3.7 %, as it did before** (3.81), now 4.24. One lake is 0.32 of that: 488K km² at 18.7°N,
@@ -1999,8 +1999,8 @@ Dead-level, rising and dead-straight are no worse than base on these runs.
   one at 640K. Bigger than the Caspian, smaller than this world's 1.03 Mkm² closed lake. It stands on any sinking rate here,
   so the rate is not what sets it: the sill is. The open share at 10M also holds a 476K lake on main.
 - **The 1 Mkm² giants** on 831576 and 12345 are 640K's and were there before. They are closed hollows' lakes, one sill each.
-  At 2.5M on 831576 a gorge from a lake upstream now crosses that hollow, which drains it into salt pockets (the giant goes,
-  the share holds).
+  At 2.5M on 831576 that hollow no longer closes (a gorge from a lake kept upstream, by the code's path; not traced), and its
+  giant breaks into salt pockets: the share holds.
 - **Rifts are nearly absent:** 0.06 Mkm² of hollows lie within 200 km of any ridge boundary, so Earth's 0.16 Mkm² of rift-lake
   kind come back as foreland and intermontane lakes instead. Deep rift hollows are the surface's to build.
 
