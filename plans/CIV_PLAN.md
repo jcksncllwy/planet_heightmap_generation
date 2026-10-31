@@ -946,6 +946,9 @@ Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a s
   of landings; main's 129 M is its luckiest draw.
   Ensemble with the wild stands fixed (main 83d20cd → branch): people at 0 BP 117 → 98 M (median); centres 45 → 45;
   all big landmasses peopled 8 → 8; first city 6.0 → 7.0 ka, first state 5.0 → 6.5 ka.
+- Ice caps (Köppen EF): the forager regression's floor (~0.04 a km² at no NPP) peopled them in the sim (main too: all
+  2564 EF cells of seed 3 at 0 BP) and made them gathering in the Way of life view. An ice cap's land now feeds no
+  one: the view shows none there, the sim leaves it empty.
 - Earth (`civ-sim --earth`, base e470080 → this branch): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time
   4/7 → 3/7; people 50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M, 6 ka 69.9 → 91.0 M, 0 BP 170 → 224 M; first state ~5 ka →
   ~6 ka. Uruk 8.1k → 6.8k at 7 ka; Memphis 17.5k → 28.1k at 5 ka; Mohenjo-daro 10.0k → 53.5k at 6 ka (earlier and bigger:

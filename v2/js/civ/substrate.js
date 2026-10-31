@@ -419,7 +419,8 @@ export function civSubstrate(w, C = CIV, F = FOOD) {
 
         // foragers: the NPP regression, less under closed rainforest, more by water (and in the glacial climate, again)
         const nppAt = (t, p) => (code === 'EF' ? 0 : miamiNpp(t, p, C));
-        let d = landForager(npp[c], C), dG = landForager(nppAt(T + C.glacialDT, P * C.glacialPScale), C);
+        // (an ice cap's land feeds no one: the regression's floor, ~0.04 a km² at no NPP, is not a people on the ice)
+        let d = code === 'EF' ? 0 : landForager(npp[c], C), dG = code === 'EF' ? 0 : landForager(nppAt(T + C.glacialDT, P * C.glacialPScale), C);
         if (code === 'Af') { d *= C.foragerRainforest; dG *= C.foragerRainforest; }
         // (fresh water's bonuses on a strip aquaticStripKm wide, the rest of the cell without: the same at every detail;
         // and the sea's fish, added: a rich shelf feeds its coast's foragers whatever the land behind it grows)
