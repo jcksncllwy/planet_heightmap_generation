@@ -60,26 +60,33 @@ const [A, B] = D;
 const near = (a, b, rel, abs = 0) => Math.abs(a - b) <= Math.max(abs, rel * Math.max(Math.abs(a), Math.abs(b)));
 
 section(`the same at two details (${A.cells} and ${B.cells} cells finished; ${A.n} and ${B.n} read)`);
-for (const [name, f, rel, abs] of [
+for (const [name, f, rel, abs, where] of [
     ['soil fertility', d => c => d.sub.soil[c], 0.05, 0],
     ['harvests a year by rain', d => c => d.sub.harvests[c], 0.08, 0.02],
     ['harvests a year watered', d => c => d.sub.harvestsW[c], 0.08, 0.02],
     ['farmland (good harvests\' food)', d => c => d.sub.farmV[c], 0.1, 0.02],
     ['farmers a km² by rain', d => c => d.sub.farmDry[c], 0.1, 1],
     ['herds a km²', d => c => d.sub.food.herds[c], 0.1, 0.02],
-    ['foragers a km²', d => c => d.sub.forager[c], 0.1, 0.005],
+    ['foragers a km² (away from wetland: main\'s deltas, below)', d => c => d.sub.forager[c], 0.1, 0.005, d => c => !(d.sub.wetland[c] > 0)],
+    ['the land\'s own forage (npp)', d => c => d.sub.npp[c], 0.05, 0],
 ]) {
-    const a = meanOf(A, f(A)), b = meanOf(B, f(B));
+    const a = meanOf(A, f(A), where?.(A)), b = meanOf(B, f(B), where?.(B));
     check(`${name}: the land's mean alike`, near(a, b, rel, abs), `${a.toFixed(3)} vs ${b.toFixed(3)}`);
 }
-// (the sea's fish on the coasts: the people they feed, all told — the coast's length a cell wide is the detail's, so
-// the people, not the mean)
+// (main's wetland, not this lane's: a delta's every cell is all marsh, so a coarse mesh's deltas are wider — foragers
+// a km² follow it; reported)
+report('wetland share of the land, coarser ÷ finer (main\'s deltas)', meanOf(A, c => A.sub.wetland[c]) / meanOf(B, c => B.sub.wetland[c]), { digits: 2 });
+report('foragers a km², all the land, coarser ÷ finer', meanOf(A, c => A.sub.forager[c]) / meanOf(B, c => B.sub.forager[c]), { digits: 2 });
+// (the sea's fish: the people they feed, all told — a coarse mesh's coast is shorter and its cells wider than the
+// day's paddle, so the total is what should hold; and per km of coast, reported)
 const fishPeople = d => { let p = 0; for (let c = 0; c < d.n; c++) if (d.land(c)) p += d.sub.fish[c] * d.sub.cellKm2; return p; };
 const coastKm = d => { let k = 0; for (let c = 0; c < d.n; c++) if (d.land(c) && d.sub.coastal[c]) k += d.sub.edgeKm; return k; };
 {
-    // (per km of coast: a finer mesh's coast is longer — more of its bays — and its coastal strip narrower)
-    const a = fishPeople(A) / coastKm(A), b = fishPeople(B) / coastKm(B);
-    check('the sea\'s fish: people a km of coast alike', near(a, b, 0.3), `${a.toFixed(2)} vs ${b.toFixed(2)}`);
+    const a = fishPeople(A), b = fishPeople(B);
+    check('the sea\'s fish: the people they feed alike', near(a, b, 0.3), `${(a / 1e6).toFixed(2)} M vs ${(b / 1e6).toFixed(2)} M`);
+    report('the sea\'s fish a km of coast, coarser ÷ finer', (a / coastKm(A)) / (b / coastKm(B)), { digits: 2 });
+    const shelf = d => { let k = 0; for (let c = 0; c < d.n; c++) if (d.w.ocean[c] && d.w.z[c] > -FOOD.shelfKm) k++; return k * d.sub.cellKm2 / 1e6; };
+    report('the shelf, M km², coarser ÷ finer', shelf(A) / shelf(B), { digits: 2 });
 }
 for (let k = 0; k < STAPLES.length; k++) {
     const a = shareOf(A, c => A.staple[c] === k), b = shareOf(B, c => B.staple[c] === k);
@@ -94,15 +101,18 @@ section('each mechanism where its physics puts it (the finer detail)');
 {
     const { sub, n, land, w } = B;
     // water brought: never less than by rain, and more where the rain is short
-    let less = 0, dryMore = 0, dry = 0;
+    let less = 0, dryMore = 0, dry = 0, worst = 0;
     for (let c = 0; c < n; c++) {
         if (!land(c)) continue;
         // (each rotation by its food: crops.js picks the best by its class's weight)
         const wt = k => (k > 0 ? FOOD.crops[HARVEST_CLASSES[k - 1]].weight : 0);
-        if (sub.harvestsW[c] * wt(sub.rotCls[c] >> 4) + 1e-6 < sub.harvests[c] * wt(sub.rotCls[c] & 15)) less++;
+        // (each stored a byte on a √ scale: ~0.02 a step near one harvest — crops.js encHarvests)
+        const gap = sub.harvests[c] * wt(sub.rotCls[c] & 15) - sub.harvestsW[c] * wt(sub.rotCls[c] >> 4);
+        if (gap > 0.03) less++;
+        worst = Math.max(worst, gap);
         if (sub.harvests[c] < 0.2 && sub.irrig[c] > 0) { dry++; if (sub.farmWet[c] > sub.farmDry[c]) dryMore++; }
     }
-    check('the best rotation watered feeds ≥ by rain, every cell', less === 0, `${less} cells less`);
+    check('the best rotation watered feeds ≥ by rain, every cell (to the bytes\' step)', less === 0, `${less} cells less; the most ${worst.toFixed(3)}`);
     check('a dry cell watered by canals feeds more than by rain', dry === 0 || dryMore / dry > 0.95, `${dryMore}/${dry}`);
     // the soil: river silt richer than the bed beside it where leached; black earth richer than the same parent plain
     let silt = 0, siltRich = 0;

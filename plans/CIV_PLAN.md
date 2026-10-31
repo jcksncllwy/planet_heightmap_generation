@@ -899,6 +899,9 @@ Ported from upstream's Food tab (raguilar011095/planet_heightmap_generation b9eb
   The parent rock is a TODO for the geology survey (gs-geosurvey).
 - **Fish.** The shelf within ~40 km, richer where the sea is cold or upwelling, less under ice. Up to 1 forager a
   km² of coast (Binford 2001: the 90th percentile of groups living ≥ 60 % on fish; upstream's 2.5 is above them all), added to the land's foragers. The old coast multiplier is gone. Earth reads its sea from the coast's air.
+  The shelf is read on a fixed 0.25° grid, each grid cell taking the mesh cell it lies in; each land cell takes the
+  mean over its own grid cells. So a coarse cell's coast is a strip of it, not its centre, and the total holds across
+  details (Earth 3.05 M at 160K, 3.15 M at 640K).
 - **Months, not crops, in the finish.** The finish packs each cell's twelve months (24 bytes). Crops are worked out on the
   cells read (the page's 160K; the tools' own). So `crops.js` is outside the finish's code hash.
 - **Land views** on the People layer: Farmland, Soil, Staple food, Way of life. The People view's readout adds a line
@@ -917,7 +920,10 @@ Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a s
   (0.30 a km², at the line); England and Iowa grow roots best (potatoes outyield grain at civ-config's yields); the Nile
   and Mesopotamia grow summer grain best (canals water the year round, not by the flood); Mongolia farms (its rain's CV
   from storms alone is 0.28, under the herders' 0.33); Bengal 400.4 a km² (want ≤ 400).
-- `v2/tools/check-civ-food.mjs`: the same at two details, each mechanism where its physics puts it, cost.
+- `v2/tools/check-civ-food.mjs`: the same at two details, each mechanism where its physics puts it, cost. All 27
+  hold at 40K and 160K. Reported, not checked: main's delta wetland covers 2.7× the land at 40K (each delta cell is
+  all marsh), so foragers over all the land differ 14 %; away from wetland they agree (0.089 vs 0.089). The fish
+  agree within 27 % in total (0.58 vs 0.79 M); per km of coast 0.86×.
 - Earth (`civ-sim --earth`, base e470080 → this branch): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time
   4/7 → 3/7; people 50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M, 6 ka 69.9 → 91.0 M, 0 BP 170 → 224 M; first state ~5 ka →
   ~6 ka. Uruk 8.1k → 6.8k at 7 ka; Memphis 17.5k → 28.1k at 5 ka; Mohenjo-daro 10.0k → 53.5k at 6 ka (earlier and bigger:
@@ -929,5 +935,6 @@ Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a s
   `originBP` (`sim.js`).
 - Ensemble (`civ-ensemble --seeds 1-10`, base `foodbase` → `food`): farming on 10/10 worlds both; towns of 15K+ and
   states 8 → 9 worlds; all big landmasses peopled 10 → 9 (seed 6: its 40 Mkm² landmass never, base by 0 ka); median
-  first city 5.0 → 6.0 ka, first state 2.5 → 5.5 ka; centres 24 → 22; people at 0 BP 126 → 129 M; farmed share
-  0.52 → 0.48. Seed 6's people start on its richest savanna coast now (the fish), 41.5 → 19 M at 0 BP.
+  first city 5.0 → 6.0 ka, first state 2.5 → 6.0 ka; centres 24 → 22; people at 0 BP 126 → 130 M; farmed share
+  0.52 → 0.48. Seed 6's people start on its richest savanna coast now (the fish), 41.5 → 21 M at 0 BP. (Rerun with
+  the shelf read cell by cell; before it, the first state 5.5 ka and 129 M.)

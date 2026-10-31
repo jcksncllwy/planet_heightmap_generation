@@ -124,12 +124,27 @@ export function seaFish(w, coastal, warmMo, F = FOOD) {
         const T = seaT(c), I = seaIce(c), up = seaUp(c);
         rich[c] = (F.warmShelf + (1 - F.warmShelf) * Math.max(T === T ? S(F.coldSea, T) : 0, up === up ? S(F.upwell, up) : 0)) * (1 - F.seaIceLoss * (I === I ? Math.min(1, Math.max(0, I)) : 0));
     }
-    // (the shelf's share of all the ground and sea in each grid cell × its richness, spread over a day's paddle)
-    const sea = g.blur(g.average(lat, lon, rich), F.reachKm), out = new Float32Array(n);
+    // (each grid cell the mesh cell it lies in — the shelf's share of the grid's ground and sea, whatever the mesh's
+    // detail — spread over a day's paddle; each land cell then the mean over its own grid cells: a coarse cell's
+    // coast is a strip of it, not its centre. Cells smaller than a grid cell read the field at their centre.)
+    const cellOf = new Int32Array(g.size), cosOf = new Float32Array(g.h), field = new Float32Array(g.size), R = Math.PI / 180;
+    for (let j = 0; j < g.h; j++) {
+        const la = (90 - (j + 0.5) * g.step) * R, cl = Math.cos(la), sl = Math.sin(la);
+        cosOf[j] = cl;
+        for (let i = 0; i < g.w; i++) {
+            const lo = (-180 + (i + 0.5) * g.step) * R, k = j * g.w + i, c = mesh.index.nearest(cl * Math.cos(lo), cl * Math.sin(lo), sl);
+            cellOf[k] = c; field[k] = rich[c];
+        }
+    }
+    const sea = g.blur(field, F.reachKm), sum = new Float64Array(n), wt = new Float64Array(n), out = new Float32Array(n);
+    for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) {
+        const k = j * g.w + i, c = cellOf[k];
+        if (!ocean[c] && sea[k] === sea[k]) { sum[c] += cosOf[j] * S(F.fishRich, sea[k]); wt[c] += cosOf[j]; }
+    }
     for (let c = 0; c < n; c++) {
         if (ocean[c]) continue;
-        const v = g.at(sea, lat[c], lon[c]);
-        if (v > 0) out[c] = F.fishPeople * S(F.fishRich, v) * S(F.fishSummer, warmMo(c));
+        const v = wt[c] > 0 ? sum[c] / wt[c] : S(F.fishRich, g.at(sea, lat[c], lon[c]));
+        if (v > 0) out[c] = F.fishPeople * v * S(F.fishSummer, warmMo(c));
     }
     return out;
 }

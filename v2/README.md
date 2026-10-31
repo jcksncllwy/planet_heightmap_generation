@@ -2107,11 +2107,13 @@ static way of life reads the rain's CV as the run does, but the Earth place chec
 - Upstream's Earth places (`food-check`): 101/110 hold.
 - Earth's people (`civ-sim --earth`): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time 4/7 → 3/7; people at
   50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M (estimates 1–10 M: both above), 0 BP 170 → 224 M; the first state ~5 ka → ~6 ka.
-  The fish: 2.8 M foragers of Earth's capacity (19.0 → 20.5 M at 160K).
+  The fish: 3.05 M foragers of Earth's capacity at 160K, 3.15 M at 640K (it was 2.8 M before the shelf was read
+  cell by cell; the runs above were made then).
 - Ten generated worlds (`civ-ensemble --seeds 1-10`): states on 8 → 9 worlds; median first city 5.0 → 6.0 ka, first
-  state 2.5 → 5.5 ka; people at 0 BP 126 → 129 M. A generated world's origin is now on land when people set out (a
+  state 2.5 → 6.0 ka; people at 0 BP 126 → 130 M. A generated world's origin is now on land when people set out (a
   shelf cell could be chosen before; the fish made it likely).
-- Cost: the crops ~11 µs a land cell (~0.5 s on the page's 160K cells; ~2 s for Earth at 640K).
+- Cost: the crops ~11 µs a land cell (~0.5 s on the page's 160K cells; ~2 s for Earth at 640K); the fish's grid
+  (a million nearest-cell lookups) ~0.2–0.3 s at any detail.
 
 ```
 node tuning/civ/food-check.mjs                     # upstream's Earth places: seasons, soils, staples, farmland, people
