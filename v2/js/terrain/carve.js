@@ -416,15 +416,6 @@ function drownValleys(meshes, F, C, cfg) {
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (f.z[q] > 0 && widen * sink[c] > side[q]) side[q] = widen * sink[c]; }
     }
     for (let c = 0; c < n; c++) { const d = Math.max(sink[c], side[c]); if (d > 0) z[c] -= d; }
-    // a river does not climb because its valley drowned: each cell lowers by its own drainage and relief, so a cell could end
-    // below the one it drains into (audit 2026-10-30, 640K: 4 cells above the sea, rises to 0.2 km, and 29 more below it). Where
-    // the carve left it draining downhill and the drowning broke that, a cell still above the sea stands no lower than its
-    // receiver — receivers first, so a run of them is levelled to the lowest below it (16 cells at 640K, 43 at 2.5M, the most by
-    // 59 m / 0.19 km; nothing else moves). A drowned floor below the sea is left: a fjord's sill is no fault under water.
-    for (let i = 0; i < order.length; i++) {
-        const c = order[i], r = recv[c];
-        if (r >= 0 && z[c] >= 0 && z[c] < z[r] && before[c] >= before[r]) z[c] = z[r];
-    }
     // the sea floods in from the ocean over what is now below it; a hollow it does not reach is given back its height
     const reached = new Uint8Array(n), queue = new Int32Array(n);
     let tail = 0;
@@ -434,6 +425,15 @@ function drownValleys(meshes, F, C, cfg) {
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!reached[q] && z[q] < 0) { reached[q] = 1; queue[tail++] = q; } }
     }
     for (let c = 0; c < n; c++) if (z[c] < before[c] && !reached[c] && z[c] < LAND_FLOOR) z[c] = Math.min(before[c], LAND_FLOOR);
+    // a river does not climb because its valley drowned: each cell lowers by its own drainage and relief, so a cell could end
+    // below the one it drains into (audit 2026-10-30, 640K: 4 cells above the sea, rises to 0.2 km, and 29 more below it). Where
+    // the carve left it draining downhill and the drowning broke that, a cell still above the sea (once the sea has flooded in and the hollows it missed have their height back) stands no lower than its
+    // receiver — receivers first, so a run of them is levelled to the lowest below it (70 and 86 cells on two histories at 640K, 202 at 2.5M, all raised, the most by
+    // 0.2 km; nothing else moves; a cell the carve left in a pit stays as it was — drowning neither makes nor unmakes a basin). A drowned floor below the sea is left: a fjord's sill is no fault under water.
+    for (let i = 0; i < order.length; i++) {
+        const c = order[i], r = recv[c];
+        if (r >= 0 && z[c] >= 0 && z[c] < z[r]) z[c] = before[c] >= before[r] ? z[r] : before[c];      // (a cell the carve left in a pit stays as it was: drowning neither makes nor unmakes a basin)
+    }
 }
 
 /**
