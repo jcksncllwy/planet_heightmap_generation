@@ -42,7 +42,7 @@ User feedback consistently highlights these as World Orogen's core strengths. An
 
 1. **Climate simulation depth** — The climate view (wind, ocean currents, precipitation, Köppen) is the single most-cited differentiator. Users call it "the only map generator with this level of detail" and say it's what sets Orogen apart from Azgaar and every other tool. Never simplify or remove climate layers. When adding features, consider whether they can leverage the climate system (e.g. rivers fed by precipitation, settlements placed by climate).
 
-2. **Instant, in-browser, zero-friction** — No install, no account, no build step. Users love that they can open a URL and have a planet in seconds. Never add mandatory sign-up, downloads, or server dependencies. Keep generation fast — if a feature risks slowing generation significantly, make it optional or deferred (like the on-demand climate on phones above 640K regions).
+2. **Instant, in-browser, zero-friction** — No install, no account, no build step. Users love that they can open a URL and have a planet in seconds. Never add mandatory sign-up, downloads, or server dependencies. Keep generation fast — if a feature risks slowing generation significantly, make it optional or deferred (like the on-demand climate above 640K regions).
 
 3. **Interactive plate editing** — Users say "haven't seen this functionality anywhere else." The Ctrl-click multi-select → Rebuild workflow is a key differentiator. Don't break this interaction pattern. Extend it (e.g. plate direction editing) rather than replacing it.
 
@@ -50,11 +50,9 @@ User feedback consistently highlights these as World Orogen's core strengths. An
 
 5. **Free and open source** — Repeatedly praised. No paywalls, no feature-gating, no "pro" tier. This is a trust signal that drives adoption and contributions.
 
-6. **Works on mobile** — Users are surprised it runs well on phones. Maintain the responsive bottom-sheet layout, touch targets, and pinch-to-zoom. Don't add features that only work on desktop without a mobile equivalent.
+6. **Terrain aesthetics** — "Fractal-looking mountains," realistic erosion, organic coastlines. The visual quality of the terrain itself gets specific praise. Protect the artistic output of the erosion and terrain post-processing pipeline.
 
-7. **Terrain aesthetics** — "Fractal-looking mountains," realistic erosion, organic coastlines. The visual quality of the terrain itself gets specific praise. Protect the artistic output of the erosion and terrain post-processing pipeline.
-
-When proposing a new feature or change, ask: "Does this preserve all seven strengths above?" If it trades one for another, flag the tradeoff explicitly.
+When proposing a new feature or change, ask: "Does this preserve all six strengths above?" If it trades one for another, flag the tradeoff explicitly.
 
 ## Key Rules
 
@@ -75,14 +73,9 @@ After any code change, check whether the tutorial modal content (in `index.html`
 
 After any code change that adds significant user-facing features, ask the developer if they would like to update the What's New modal (in `index.html`, inside `#whatsNewOverlay`). The modal is version-gated by the `VERSION` constant in `initWhatsNew()` in `js/main.js` — bumping this string will show the modal again to returning users on their next visit.
 
-After any code change that affects the UI, ensure it works on mobile. The app uses a responsive bottom-sheet layout on screens ≤ 768px (`styles.css` media queries) and has touch-specific behavior throughout. If a change adds, removes, or modifies any of the following, verify and update the mobile experience:
+**Desktop only.** Mobile support was dropped on 2026-10-31 (Jackson: phones are a different interaction paradigm, and a good experience there would need a different app). Don't add mobile work or test on phones. The existing mobile code (bottom-sheet layout, touch handling, `state.isTouchDevice`) stays in place, unmaintained, until a cleanup removes it. Requiring WebGPU is fine, and results may differ slightly between GPUs.
 
-- New buttons or controls — must have ≥ 44px touch targets on mobile (see `@media (max-width: 768px)` in `styles.css`)
-- New interactions — must have touch equivalents; desktop uses Ctrl-click for plate editing, mobile uses `state.editMode` toggle (`js/edit-mode.js`); desktop uses scroll-to-zoom, mobile uses pinch (`js/scene.js`)
-- Tooltips — must reposition above their trigger on mobile, not to the right (overflow off-screen)
-- New overlays or modals — must be usable within the bottom-sheet layout and not be hidden behind it
-- Performance-sensitive features — consider lower thresholds on touch devices (detail warnings, export limits); check `state.isTouchDevice` in `js/state.js`
-- Info/hint text — update both desktop text (in `index.html`) and the mobile-specific text set in `js/main.js` (search for `state.isTouchDevice`)
+*(Pre-fork, "Works on mobile" was strength 6 above, and this section required 44px touch targets, touch equivalents for every interaction, bottom-sheet layouts and mobile hint text for every UI change.)*
 
 After any code change to simulation or climate code, ensure **scale invariance** — the result must look equivalent regardless of the Detail slider (numRegions from 2K to 2.5M). The key rule: never use raw cell-hop counts or neighbor-displacement magnitudes without scaling by resolution. Specifically:
 
