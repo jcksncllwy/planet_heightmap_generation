@@ -2067,6 +2067,55 @@ so a near-tie between slopes can fall the other way, and a machine repeats its o
 **Next.** Rock erodibility from the lithology column (`litho.md` in the lane's notes, its L3): k varies by rock instead of
 by the carve's fields alone, starting with the compressed ~4.5× spread, with Earth's range as a sensitivity run at 2.5M.
 
+## Food: harvests, soil, fish and the land views (2026-10-31, branch civ-food)
+
+The civ layer's crops, soil and fish, ported from upstream's Food tab (raguilar011095/planet_heightmap_generation,
+plans/V2_FARMING_PLAN.md C1–C6b, `v2/js/farming/` — © Robert Aguilar, GPL v3) and written fresh on the civ substrate.
+Details and checks: plans/CIV_PLAN.md §11; sources: plans/CIV_SOURCES.md.
+
+- **Harvests a year** (`js/civ/crops.js`, constants in `js/civ/food-config.js`). Each crop class's kinds grow month by
+  month by degree-days, wet enough and not drowned. A crop ripens after its cycle. A dry or cold month ends a run; winter
+  grains sleep through the cold, tropical roots through a dry season. Harvests are a staircase, at most three a year.
+  Rain-fed ones are discounted where the rains fail often; watered ones get ~60 mm a month. A rotation adds a second
+  crop of another class in the months the first leaves. Rice needs a month warm enough to flower. Tree crops keep the
+  old season (Thornthwaite, a temperature trapezoid).
+- **Soil** (`substrate.js placeFood`): river silt, loess, dune sand, else middling ground; black earth, leaching and podzol
+  from the land's cover. A crop's food scales by what it asks of the soil; harvests past the first only as the soil can
+  feed them; poor warm ground is rested longer (forest fallow).
+- **The sea's fish** (`substrate.js seaFish`): a rich shelf within ~40 km feeds up to 1 forager a km² of coast, added
+  to the land's foragers. Cold and upwelling seas are rich; warm clear ones and ice-covered ones less. The 1 is Binford
+  2001's (the 90th percentile of the groups living mostly on fish); upstream's 2.5 doubled Earth's early foragers.
+- **The finish keeps months, not crops.** `civ/months.js` packs each cell's twelve months (24 bytes) when People is on.
+  The crops are worked out on the cells read (`cropsFromMonths`), so crop changes do not change the finish's code hash.
+- **The land views** (People layer → the view list → "The land, before anyone"): **Farmland** (barren … excellent, by
+  the best rotation's food), **Soil** (its kind, brighter where fertile), **Staple food** (what its people would eat
+  most), **Way of life** (farming, herding or gathering: the way that feeds most a km² by the economy's own land shares;
+  herders only where the rain fails too often to farm, or nothing grows). Hover for all four at once.
+- **The People view** now adds a "The land" line to the readout: the farmland's class and the way of life and staple the
+  land would suit. Why: the People view shows who lives where, but not whether that is what the land favours. With the
+  line, a herding people on good farmland, or foragers on a rich coast, read as what they are.
+
+**Limits** (what it skips): one mean year per place (no frost days, no day length; bad years are climate-var.js's); canal
+water the year round, not by the river's season (so the Nile's summer grain beats its winter wheat); no parent rock (TODO,
+the geology survey's lithology); flooded paddy by warmth alone only on deltas and marshes; fallow by the soil, not by
+people's numbers; the fish from the present sea also in the glacial climate, and on Earth from the coast's air; the
+static way of life reads the rain's CV as the run does, but the Earth place check from storms alone.
+
+**Measured** (base main e470080 → this branch):
+- Crops against GAEZ v4 (Pearson/Spearman): winter cereals 0.55/0.66 → 0.69/0.71; summer 0.50/0.63 → 0.45/0.64;
+  roots 0.58/0.66 → 0.62/0.66; tree 0.74/0.85; paddy 0.55/0.78 → 0.61/0.82.
+- Upstream's Earth places (`food-check`): 101/110 hold.
+- Earth's people (`civ-sim --earth`): arrivals 12/20 → 13/20; centres 2/10 → 3/10; farming on time 4/7 → 3/7; people at
+  0 BP 170 → 227 M; the first state ~5 ka → ~6 ka. The fish adds ~7.8 M foragers of capacity at 640K.
+- Cost: the crops ~11 µs a land cell (~0.5 s on the page's 160K cells; ~2 s for Earth at 640K).
+
+```
+node tuning/civ/food-check.mjs                     # upstream's Earth places: seasons, soils, staples, farmland, people
+node v2/tools/check-civ-food.mjs [--cells 40000,160000]   # the same at two details; each mechanism; cost
+node --max-old-space-size=16000 v2/tools/civ-land-views.mjs [--seed 799224 --time 290 --cells 2500000]
+                                                   # the land views and the People view as PNGs → v2/out/civ/
+```
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

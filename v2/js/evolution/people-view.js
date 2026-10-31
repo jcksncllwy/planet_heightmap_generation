@@ -4,7 +4,7 @@
 // timeline: foragers in cool colours, farmers in warm ones, herders in earth tones, by density; the domestication centres
 // ringed.
 
-import { peopleOf, WAYS, TownFlag, FOODS, byteFood } from '../civ/civ-page.js';
+import { peopleOf, WAYS, TownFlag, FOODS, byteFood, STAPLES, STAPLE_WORDS, WAY_WORDS, PARENT_WORDS, MOD_WORDS } from '../civ/civ-page.js';
 
 
 export class PeopleService {
@@ -239,6 +239,73 @@ export function foodLines(P, u, v) {
     return lines;
 }
 
+// ── the land views (plans/CIV_PLAN.md §11): what the land offers before anyone lives there — its farmland, its soil,
+// the staple food its people would live on and their way of life (civ-page.js landViews; the result's `ground`) ──
+export const GROUND_SHOWS = { farmland: 'farm', soil: 'soil', staple: 'staple', way: 'staple' };
+const CLASS_WORDS = ['Barren', 'Poor', 'Fair', 'Good', 'Excellent'];
+const CLASS_RGB = [null, [150, 105, 70], [205, 170, 80], [140, 190, 70], [40, 150, 60]];
+// (the soil's colour: what the climate made of it, else what it formed from — its fertility the brightness)
+const PARENT_RGB = [null, [90, 145, 205], [220, 190, 115], [235, 215, 150], [160, 140, 110]];
+const MOD_RGB = [null, [125, 90, 60], [205, 85, 55], [195, 200, 205]];
+const soilRgb = kind => MOD_RGB[kind >> 4] ?? PARENT_RGB[kind & 15];
+// (the staples in the Food view's colours; the ways in the People view's: farmers warm, herders earth, foragers cool)
+const STAPLE_RGB = [null, FOOD_HUE.winterCereal, FOOD_HUE.summerCereal, FOOD_HUE.roots, FOOD_HUE.tree, FOOD_HUE.flooded, FOOD_HUE.herds, [90, 150, 230]];
+const WAY_RGB = [null, warm(0.55), earth(0.7), cool(0.55)];
+/** A place's colour in a land view, [r, g, b] (0–255) and how bright, or null: nothing there. */
+function groundRgb(G, key, c) {
+    if (key === 'farmland') { const b = G.farm[c], cls = b & 7; return cls ? [CLASS_RGB[cls], 0.55 + 0.45 * Math.min(1, (b >> 3) / 10)] : null; }
+    if (key === 'soil') { const rgb = soilRgb(G.soilKind[c]); return rgb ? [rgb, 0.3 + 0.7 * G.soil[c] / 255] : null; }
+    const b = G.staple[c];
+    if (key === 'staple') return STAPLE_RGB[b & 15] ? [STAPLE_RGB[b & 15], 1] : null;
+    return WAY_RGB[b >> 4] ? [WAY_RGB[b >> 4], 1] : null;
+}
+/** A finish-view.js paintFinished colouring: a land view (GROUND_SHOWS), per pixel of a texture `width` wide. */
+export function groundColor(P, key, width, lut) {
+    const L = lut.rgb, k = P.pixW / width, W = P.pixW, pix = P.pix, G = P.ground;
+    return (out, o, x, y, wet, kk, k3, v, lake) => {
+        if (wet || lake === 1 || lake === 2) {
+            const s = 0.55 + 0.45 * kk;
+            out[o] = SEA[0] * s; out[o + 1] = SEA[1] * s; out[o + 2] = SEA[2] * s; out[o + 3] = 255;
+            return;
+        }
+        const r = groundRgb(G, key, pix[Math.floor(y * k) * W + Math.floor(x * k)]);
+        if (!r) {
+            const g = (0.2 + 0.25 * (L[k3] + L[k3 + 1] + L[k3 + 2]) / 765) * 255 * kk;
+            out[o] = g; out[o + 1] = g; out[o + 2] = g * 0.95; out[o + 3] = 255;
+            return;
+        }
+        const s = (0.7 + 0.3 * kk) * r[1];
+        out[o] = Math.min(255, r[0][0] * s); out[o + 1] = Math.min(255, r[0][1] * s); out[o + 2] = Math.min(255, r[0][2] * s); out[o + 3] = 255;
+    };
+}
+const swatch = (rgb, words) => `<div class="evo-people-ramp evo-food-ramp"><span>${words}</span><i style="background:rgb(${rgb.map(Math.round).join(',')})"></i></div>`;
+/** A land view's legend. */
+export function groundLegendHTML(key) {
+    if (key === 'farmland') return `<div><b>Farmland</b> · its best rotation, rain-fed or watered, on its soil</div>
+${CLASS_RGB.map((rgb, i) => (rgb ? swatch(rgb, CLASS_WORDS[i]) : '')).join('')}
+<div class="evo-legend-note">excellent: two or three harvests a year on renewed ground (river plains, deltas); good: one solid harvest; brighter: more harvests a year by rain · grey: nothing grows</div>`;
+    if (key === 'soil') return `<div><b>Soil</b> · what it formed from, and what the climate made of it</div>
+${MOD_RGB.map((rgb, i) => (rgb ? swatch(rgb, MOD_WORDS[i]) : '')).join('')}${PARENT_RGB.map((rgb, i) => (rgb ? swatch(rgb, PARENT_WORDS[i]) : '')).join('')}
+<div class="evo-legend-note">brighter: more fertile · the parent rock's own fertility is not yet known (all ground not silt, loess or sand is "mixed")</div>`;
+    if (key === 'staple') return `<div><b>Staple food</b> · what its people would eat most, living their likeliest way</div>
+${STAPLE_RGB.map((rgb, i) => (rgb ? swatch(rgb, STAPLE_WORDS[i]) : '')).join('')}
+<div class="evo-legend-note">every crop and herd at hand, at full skill — the land's potential, not where farming has come</div>`;
+    return `<div><b>Way of life</b> · the way that would feed the most people a km²</div>
+${WAY_RGB.map((rgb, i) => (rgb ? swatch(rgb, WAY_WORDS[i]) : '')).join('')}
+<div class="evo-legend-note">by the land each way needs, as the people's own economy counts it · herders only where the rain fails too often to farm, or nothing grows · the potential: the People view shows who actually lives there</div>`;
+}
+/** The readout's lines for the land views (and the People view's "The land" line): a place's farmland, soil, staple and
+ *  way of life. */
+export function groundLines(P, u, v) {
+    const G = P.ground;
+    if (!G) return [];
+    const c = cellAt(P, u, v), f = G.farm[c], kind = G.soilKind[c], st = G.staple[c];
+    const soilWords = [MOD_WORDS[kind >> 4], PARENT_WORDS[kind & 15]].filter(Boolean).join(' on ') || 'none';
+    return [`<span class="hi-label">Farmland</span> ${CLASS_WORDS[f & 7].toLowerCase()} · ${((f >> 3) / 5).toFixed(1)} harvests a year by rain`,
+        `<span class="hi-label">Soil</span> ${soilWords} · fertility ${(G.soil[c] / 255).toFixed(2)}`,
+        `<span class="hi-label">Would live</span> ${WAY_WORDS[st >> 4].toLowerCase()} · on ${STAPLE_WORDS[st & 15].toLowerCase()}`];
+}
+
 /** The domestication centres founded by year bp, ringed on a texture's context (scaled by the caller to 2048 × 1024). */
 export function drawCentres(ctx, P, bp) {
     ctx.save();
@@ -377,6 +444,9 @@ export function peopleLines(P, f, u, v) {
         const d = p.d >= 10 ? p.d.toFixed(0) : p.d >= 1 ? p.d.toFixed(1) : p.d >= 0.01 ? p.d.toFixed(2) : p.d.toFixed(3);
         lines.push(`<span class="hi-label">People</span> ${WAYS[p.way]}${p.crop ? ` of ${FOOD_WORDS[p.crop]}` : ''} · ${d} per km²`);
     }
+    // (and what the land would support, to read them against: the land views' summary)
+    const G = P.ground, cg = c;
+    if (G) lines.push(`<span class="hi-label">The land</span> ${CLASS_WORDS[G.farm[cg] & 7].toLowerCase()} farmland · would suit ${WAY_WORDS[G.staple[cg] >> 4].toLowerCase()} on ${STAPLE_WORDS[G.staple[cg] & 15].toLowerCase()}`);
     if (Q) {
         const bp = P.bp[f], came = Q.arrivalBP[c], farmed = Q.farmBP[c], since = [];
         if (came >= bp) since.push(`people ${agoWords(came)}`);

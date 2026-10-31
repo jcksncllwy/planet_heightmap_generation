@@ -880,3 +880,41 @@ over it, and the flows wear paths that make it cheaper.
 - **T2. Flows and towns** (Rihll–Wilson), grain first.
 - **T3. Wear and paths;** then states' roads.
 - **T4. Materials,** with the deposits of §5.6.
+
+## 11. Food: harvests, soil, fish and the land views (2026-10-31, branch civ-food)
+
+Ported from upstream's Food tab (raguilar011095/planet_heightmap_generation b9eb7fe; plans/V2_FARMING_PLAN.md C1–C6b;
+© Robert Aguilar, GPL v3). Written fresh on the civ substrate, not merged. Sources: plans/CIV_SOURCES.md, "The resource map".
+
+### 11.1 What changed
+
+- **Harvests a year, not a suitability.** `crops.js` counts each class's harvests on the place's twelve months:
+  degree-days to a cycle, runs broken by a dry or cold month, a staircase, at most three. Winter grains sleep through
+  the cold; tropical roots through a dry season. Rain-fed harvests are discounted where the rains fail often. Watered
+  harvests get ~60 mm a month. A second crop of another class fills the months the first leaves (the rotation).
+  Paddy needs a month ≥ 18–22 °C to set grain. A temperate millet kind is ours.
+- **Soil, the climate half.** River silt, loess, dune sand, else middling ground. Black earth, leaching and podzol from
+  the land's cover. Silt is leached less (floods renew it). A crop's food scales by how much it asks of the soil.
+  Harvests past the first count only as the soil can feed them. Poor ground is rested longer (forest fallow).
+  The parent rock is a TODO for the geology survey (gs-geosurvey).
+- **Fish.** The shelf within ~40 km, richer where the sea is cold or upwelling, less under ice. Up to 1 forager a
+  km² of coast (Binford 2001: the 90th percentile of groups living ≥ 60 % on fish; upstream's 2.5 is above them all), added to the land's foragers. The old coast multiplier is gone. Earth reads its sea from the coast's air.
+- **Months, not crops, in the finish.** The finish packs each cell's twelve months (24 bytes). Crops are worked out on the
+  cells read (the page's 160K; the tools' own). So `crops.js` is outside the finish's code hash.
+- **Land views** on the People layer: Farmland, Soil, Staple food, Way of life. The People view's readout adds a line
+  for what the land would support, to read the people against.
+
+### 11.2 Not taken
+
+Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a switch, decides who farms.
+
+### 11.3 Checks
+
+- `tuning/civ/crop-check.mjs` (GAEZ v4, Pearson/Spearman): winter cereals 0.55/0.66 → 0.69/0.71; summer 0.50/0.63 →
+  0.45/0.64 (misses 9.1 → 7.0 %); roots 0.58/0.66 → 0.62/0.66; tree 0.74/0.85 unchanged; paddy 0.55/0.78 → 0.61/0.82.
+- `tuning/civ/food-check.mjs` (upstream's ~95 Earth places, WorldClim 10′): 101/110 hold. Season and soil 40/41;
+  staples 26/32; farmland 22/22; people 13/15. Off: Arizona's season (rain 1.7 months); the Rub al Khali has herds
+  (0.30 a km², at the line); England and Iowa grow roots best (potatoes outyield grain at civ-config's yields); the Nile
+  and Mesopotamia grow summer grain best (canals water the year round, not by the flood); Mongolia farms (its rain's CV
+  from storms alone is 0.28, under the herders' 0.33); Bengal 400.4 a km² (want ≤ 400).
+- `v2/tools/check-civ-food.mjs`: the same at two details, each mechanism where its physics puts it, cost.

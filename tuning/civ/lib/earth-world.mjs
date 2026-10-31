@@ -22,7 +22,8 @@ import { buildSimMesh, meshFromArrays } from '../../../v2/js/core/sim-mesh.js';
 import { classifyCell } from '../../../v2/js/climate/koppen.js';
 import { cellStatsCollector, statValue } from '../../../v2/js/climate/cell-stats.js';
 import { vectorCollector } from '../../../v2/js/civ/disease.js';
-import { cropCollector, CROP_KEYS } from '../../../v2/js/civ/crops.js';
+import { cropsFromMonths } from '../../../v2/js/civ/crops.js';
+import { monthsCollector } from '../../../v2/js/civ/months.js';
 import { FINISH } from '../../../v2/js/finish/finish-config.js';
 import { Res, COPPER } from '../../../v2/js/civ/resources.js';
 
@@ -87,11 +88,14 @@ export function earthFlow() {
     return fs.existsSync(f) ? v8.deserialize(fs.readFileSync(f)) : null;
 }
 
+/** The crops' harvests (crops.js), worked out from the months kept — each time, so a change to the crops needs no rebuild. */
+const cropsOf = w => cropsFromMonths(w.months, w.mesh.numCells, c => Math.asin(w.mesh.xyz[3 * c + 2]));
+
 export async function earthWorld(N = 640000) {
     const cache = path.join(DIR, `earth-${Math.round(N / 1000)}k.bin`);
     if (fs.existsSync(cache)) {
         const w = v8.deserialize(fs.readFileSync(cache));
-        if (CROP_KEYS.every(k => w.crops?.[k])) { w.mesh = meshFromArrays(w.mesh); w.flow = earthFlow(); return w; }   // (an older cache, without the crops' climate: built again)
+        if (w.months) { w.mesh = meshFromArrays(w.mesh); w.flow = earthFlow(); w.crops = cropsOf(w); return w; }   // (an older cache, without the months: built again)
     }
     const mesh = buildSimMesh(N, 12345), n = mesh.numCells, xyz = mesh.xyz;
     const wc = f => readTif(path.join(RAW, 'wc', f));
@@ -103,7 +107,7 @@ export async function earthWorld(N = 640000) {
     const etopoAt = (la, lo) => { const r = Math.min(2159, Math.max(0, Math.round((90 - la) * 12))), q = Math.round(((lo + 360) % 360) * 12) % 4320; return etopo.readInt16BE(2 * (r * 4320 + q)); };
     const z = new Float32Array(n), ocean = new Uint8Array(n), lake = new Uint8Array(n), koppen = new Uint8Array(n);
     const tAnnual = new Float32Array(n).fill(NaN), pAnnual = new Float32Array(n).fill(NaN), lat = new Float32Array(n), lon = new Float32Array(n);
-    const col = cellStatsCollector(n, c => lat[c] * D, { bytes: true }), vectors = vectorCollector(n), crops = cropCollector(n, c => lat[c] * D), T12 = new Float64Array(12), P12 = new Float64Array(12);
+    const col = cellStatsCollector(n, c => lat[c] * D, { bytes: true }), vectors = vectorCollector(n), months = monthsCollector(n), T12 = new Float64Array(12), P12 = new Float64Array(12);
     for (let c = 0; c < n; c++) {
         const x = xyz[3 * c], y = xyz[3 * c + 1], zz = xyz[3 * c + 2];
         lat[c] = Math.asin(Math.max(-1, Math.min(1, zz))) / D; lon[c] = Math.atan2(y, x) / D;
@@ -117,7 +121,7 @@ export async function earthWorld(N = 640000) {
         koppen[c] = classifyCell(T12, P12);
         col.add(c, T12, P12);
         vectors.add(c, T12, P12);
-        crops.add(c, T12, P12);
+        months.add(c, T12, P12);
     }
     // the rivers: far-fed where the land's own rain is under farFedAridity of its potential evaporation
     const Rv = await earthRivers(), farFed = new Uint8Array(Rv.q.length);
@@ -139,9 +143,9 @@ export async function earthWorld(N = 640000) {
         else if (la < -60) ice[c] = 1;
     }
     const w = { seed: 'earth', ice, mesh: { numCells: n, xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList }, z, ocean, lake, koppen, tAnnual, pAnnual,
-        stats: col.stats, rivers: { lat: Rv.lat, lon: Rv.lon, q: Rv.q, regime: null, farFed }, loess: null, erg: null, vector: vectors.vector, crops: crops.crops, deposits: await earthDeposits() };
+        stats: col.stats, rivers: { lat: Rv.lat, lon: Rv.lon, q: Rv.q, regime: null, farFed }, loess: null, erg: null, vector: vectors.vector, months: months.months, deposits: await earthDeposits() };
     fs.writeFileSync(cache, v8.serialize(w));
-    w.mesh = meshFromArrays(w.mesh); w.flow = earthFlow();
+    w.mesh = meshFromArrays(w.mesh); w.flow = earthFlow(); w.crops = cropsOf(w);
     return w;
 }
 

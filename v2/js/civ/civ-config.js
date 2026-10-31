@@ -17,7 +17,7 @@ export const CIV = {
                                 // could reap a year's grain in three weeks) — the Natufians' reason to settle; not in the glacial
     // the aquatic bonus: coasts, lake shores and big rivers (×3–10 on the richest; Binford, Kelly) [L]
     aquaticStripKm: 15,         // the bonuses below are a strip this wide along the water (so the same at every detail)
-    aquaticCoast: 2.5,
+                                // — lakes' and rivers'; the sea's fish are its shelf's (food-config.js, substrate.js)
     aquaticLake: 2,
     aquaticRiverM3s: 30,        // a river this big starts to count…
     aquaticRiverMax: 2.5,       // …up to this many times more people on a river of 30 000 m³/s
@@ -45,12 +45,12 @@ export const CIV = {
     // ── farming ──
     // rain-fed cereals: barley fails below ~200 mm, wheat needs 250–300 (Grigg 1974; FAO); Neolithic yields 400–750 kg/ha
     // (Halstead 1995) — manured gardens more [L]
+    // (the year's rain against these: how a dry year's rain cuts a harvest, sim.js — the place's own harvests come from its
+    // months, crops.js)
     rainfedMinMm: 200,
     rainfedFullMm: 450,
-    rainfedYield: 650,          // kg/ha at its best
-    rainfedGrowMonths: [3, 6],  // months above 10 °C: none at 3, full at 6
-    loessBonus: 0.3,            // loess: the LBK's and the Yellow River's soil
-    tropicalLeach: 0.6,         // Af/Am: leached soils, cereals poor (roots and tubers do better)
+    rainfedYield: 650,          // kg/ha for one harvest on middling ground (food-config soilRef: the soil does the rest —
+                                // loess and black earth richer, leached and podzol poorer: substrate.js)
     // irrigation on alluvium: southern Mesopotamia ~1500 kg/ha, seed:yield 1:20–30 (Ur III; Jacobsen & Adams 1958) [L]
     irrigatedYield: 1500,
     irrigRiverM3s: 150,         // a river big enough to irrigate from (the Euphrates ~500, the Diyala ~200)
@@ -328,7 +328,6 @@ export const CIV = {
 export const CIV_PRIORS = {
     foragerSlope: [7e-4, 1.2e-3],
     foragerIcept: [-1.9, -1.2],
-    aquaticCoast: [1.5, 5],
     aquaticMax: [3, 10],
     rainfedMinMm: [150, 300],
     rainfedYield: [400, 1000],

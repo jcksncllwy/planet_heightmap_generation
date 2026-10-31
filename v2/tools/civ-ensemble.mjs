@@ -22,7 +22,7 @@ import { civWorldFromFinish } from '../js/civ/civ-page.js';
 import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
 import { runCivSim, farms } from '../js/civ/sim.js';
 import { CIV } from '../js/civ/civ-config.js';
-import { CROP_KEYS } from '../js/civ/crops.js';
+import { cropsFromMonths } from '../js/civ/crops.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SELF = fileURLToPath(import.meta.url), DIR = path.join(OUT, 'ensemble'), CACHE = path.join(OUT, 'cache');
@@ -35,13 +35,15 @@ const overridesOf = s => (s ? Object.fromEntries(s.split(/,(?=[A-Za-z_]+=)/).map
 /** The world as the page has it (civWorldFromFinish), cached. */
 async function pageWorld({ seed, cont, time }) {
     const file = path.join(CACHE, `page-${seed}-${cont}-${SIM}-${time}-${CELLS / 1000}k-${worldCode()}.bin`);
-    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (CROP_KEYS.every(k => w.crops?.[k]) && w.flow) { w.mesh = meshFromArrays(w.mesh); return w; } }   // (an older cache, without the crops' climate or the winds: built again)
+    // (kept with the cells' months, not their crops: the crops' harvests worked out at each load — crops.js is not the
+    // world's code, and a change to it builds no world again)
+    const withCrops = w => { w.crops = cropsFromMonths(w.months, w.mesh.numCells, c => Math.asin(w.mesh.xyz[3 * c + 2])); return w; };
+    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); if (w.months && w.flow) { w.mesh = meshFromArrays(w.mesh); return withCrops(w); } }   // (an older cache, without the months or the winds: built again)
     const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(seed, { cont, sim: SIM, time });
     const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool: await TerrainPool.create(simMesh), closePool: true, civ: true });
-    const w = civWorldFromFinish(fin);
-    const { mesh } = w;
+    const w = civWorldFromFinish(fin, { months: true }), { mesh } = w;
     fs.mkdirSync(CACHE, { recursive: true });
-    fs.writeFileSync(file, v8.serialize({ ...w, mesh: { numCells: mesh.numCells, xyz: mesh.xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList } }));
+    fs.writeFileSync(file, v8.serialize({ ...w, crops: null, mesh: { numCells: mesh.numCells, xyz: mesh.xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList } }));
     return w;
 }
 

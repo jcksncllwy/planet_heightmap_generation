@@ -192,7 +192,7 @@ const loadCiv = () => (civLoading ??= Promise.all([import('./people-view.js'), i
 }));
 const peopleOption = $('mobileViewSwitch').querySelector('option[value="people"]');     // (taken out of the phone's list while People is off)
 // (the People layer's own timeline: the frame shown — years BP every 500 years — and its playback)
-const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, a food (people-view.js FOOD_SHOWS) or a craft's days to travel (PV.TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
+const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, what the land offers before anyone (PV.GROUND_SHOWS), a food (people-view.js FOOD_SHOWS) or a craft's days to travel (PV.TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
 // (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
 // ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
@@ -559,7 +559,7 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in PV.TRAVEL_SHOWS, food = P?.food && !land && !trip && peopleView.show !== 'people' ? peopleView.show : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in PV.TRAVEL_SHOWS, ground = P?.ground && peopleView.show in PV.GROUND_SHOWS ? peopleView.show : null, food = P?.food && !land && !trip && !ground && !(peopleView.show in PV.GROUND_SHOWS) && peopleView.show !== 'people' ? peopleView.show : null;
     // (the settlements: on the People layer, or over any other with Settlements on — the people worked out on request)
     const S = settlementsShown() ? fin.people : null;
     if (settlementsShown() && !fin.people) runPeople(fin);
@@ -567,7 +567,7 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration: SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes: water || view.layer === 'satellite',
-        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? PV.landColor(P, pf, t.width, lut) : trip ? PV.travelColor(P, travelShown(P), t.width, lut) : food ? PV.foodColor(P, food, t.width, lut) : PV.peopleColor(P, pf, t.width, lut)) : null });
+        colorAt: C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? PV.landColor(P, pf, t.width, lut) : trip ? PV.travelColor(P, travelShown(P), t.width, lut) : ground ? PV.groundColor(P, ground, t.width, lut) : food ? PV.foodColor(P, food, t.width, lut) : PV.peopleColor(P, pf, t.width, lut)) : null });
     if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
     t.ctx.putImageData(t.image, 0, 0);
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
@@ -577,8 +577,8 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     drawLines(t, C);
     show(t);
     painted = frame; paintedT = T; paintedMesh = B.tMesh; paintedSharp = sharp;
-    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (land ? `land|${frame.time}|${pf}` : trip ? `trip|${frame.time}|${peopleView.show}|${peopleView.month}|${travelShown(P)?.from}|${peopleView.travelNote}` : food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
-    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? PV.landLegendHTML(P, pf) : trip ? PV.travelLegendHTML(peopleView.show, peopleView.month, travelShown(P), peopleView.travelNote) : food ? PV.foodLegendHTML(food) : PV.peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
+    const legend = $('climateLegend'), legendKey = C ? `finished|${view.layer}|${view.season}|${frame.time}|${fin.cells}` : P ? (land ? `land|${frame.time}|${pf}` : trip ? `trip|${frame.time}|${peopleView.show}|${peopleView.month}|${travelShown(P)?.from}|${peopleView.travelNote}` : ground ? `ground|${frame.time}|${ground}` : food ? `food|${frame.time}|${food}` : `people|${frame.time}|${pf}`) : '';
+    if (legend.dataset.key !== legendKey) { if (C) drawLegend(legend, view.layer, view.season, C, null); else legend.innerHTML = P ? (land ? PV.landLegendHTML(P, pf) : trip ? PV.travelLegendHTML(peopleView.show, peopleView.month, travelShown(P), peopleView.travelNote) : ground ? PV.groundLegendHTML(ground) : food ? PV.foodLegendHTML(food) : PV.peopleLegendHTML(P, pf)) : ''; legend.dataset.key = legendKey; }
     if (S) {
         $('peopleSlider').max = S.bp.length - 1; $('peopleSlider').value = pf;
         // (the year, and on another layer than People — whose legend says it — the towns and states then)
@@ -1212,6 +1212,7 @@ function readout(e) {
     const C = climateOf(f);
     if (settlementsShown() && fin?.people && view.layer === 'people' && peopleView.show in PV.TRAVEL_SHOWS) lines.push(...travelLines(fin.people, travelShown(fin.people), p[0], p[1]));
     else if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? PV.landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
+        : view.layer === 'people' && peopleView.show in PV.GROUND_SHOWS ? PV.groundLines(fin.people, p[0], p[1])
         : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? PV.foodLines(fin.people, p[0], p[1]) : PV.peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
     if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
     else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));

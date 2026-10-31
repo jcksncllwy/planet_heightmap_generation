@@ -3,14 +3,15 @@
 // finish without people loads none of the civ layer.
 
 import { vectorCollector } from './disease.js';
-import { cropCollector } from './crops.js';
+import { monthsCollector } from './months.js';
 
-/** The cells' disease vectors' and crops' climates, from each cell's twelve months as the finish's climate gives them. */
+/** The cells' disease vectors' climates, and each cell's twelve months as the finish's climate gives them (packed: the
+ *  crops' harvests are worked out from them later, on the cells the civ layer reads — crops.js cropsFromMonths). */
 export function civCollector(n, latRadOf) {
-    const vectors = vectorCollector(n), crops = cropCollector(n, latRadOf);
+    const vectors = vectorCollector(n), months = monthsCollector(n);
     return {
-        add(c, T12, P12) { vectors.add(c, T12, P12); crops.add(c, T12, P12); },
-        get fields() { return { vector: vectors.vector, crops: crops.crops }; },
+        add(c, T12, P12) { vectors.add(c, T12, P12); months.add(c, T12, P12); },
+        get fields() { return { vector: vectors.vector, months: months.months }; },
     };
 }
 

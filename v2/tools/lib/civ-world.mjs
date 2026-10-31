@@ -12,6 +12,8 @@ import { setDelaunator } from '../../../js/sphere-mesh.js';
 import { buildSimMesh, meshFromArrays } from '../../js/core/sim-mesh.js';
 import { TerrainPool } from '../../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../../js/finish/finish.js';
+import { cropsFromMonths } from '../../js/civ/crops.js';
+import { seaOf } from '../../js/civ/civ-page.js';
 import { momentFrame } from './moment-frame.mjs';
 import { historyCodeHash, HISTORY_ENTRIES } from './history-cache.mjs';
 
@@ -33,7 +35,9 @@ export const worldCode = () => (codeMemo ??= historyCodeHash(ROOT, [...HISTORY_E
 export async function worldOf(seed, simMesh, opts) {
     const { cont, sim, time, cells } = opts;
     const dir = path.join(OUT, 'cache'), file = path.join(dir, `world3-${seed}-${cont}-${sim}-${time}-${Math.round(cells / 1000)}k-${worldCode()}.bin`);
-    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return w; }
+    // (the crops' harvests worked out from the months kept, at each load: crops.js is not the world's code)
+    const withCrops = w => { w.crops = w.months ? cropsFromMonths(w.months, w.mesh.numCells, c => Math.asin(w.mesh.xyz[3 * c + 2])) : null; return w; };
+    if (fs.existsSync(file)) { const w = v8.deserialize(fs.readFileSync(file)); w.mesh = meshFromArrays(w.mesh); return withCrops(w); }
     const frame = await frameOf(seed, opts);
     const pool = await TerrainPool.create(simMesh);
     const fin = await finishPlanet({ frame, simMesh, seed, cells, pool, closePool: true, debug: true, onStage: () => {}, civ: true });
@@ -41,11 +45,11 @@ export async function worldOf(seed, simMesh, opts) {
     const w = { seed, time, frame, mesh: { numCells: m.numCells, xyz: m.xyz, adjOffset: m.adjOffset, adjList: m.adjList },
         z: fin.z, ocean: fin.ocean, lake: fin.lake, lakeLevel: fin.lakeLevel, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
         stats: cc.stats, cover: cc.cover, rivers: fin.rivers, loess: fin.layers?.loess ?? null, erg: fin.layers?.erg ?? null, ice: fin.layers?.ice ?? null,
-        vector: fin.civ?.vector ?? null, crops: fin.civ?.crops ?? null };
+        vector: fin.civ?.vector ?? null, months: fin.civ?.months ?? null, sea: seaOf(fin.climate.page) };
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(file, v8.serialize(w));
     w.mesh = meshFromArrays(w.mesh);
-    return w;
+    return withCrops(w);
 }
 
 export const writePng = (file, w, h, rgba) => { const p = new PNG({ width: w, height: h }); p.data = Buffer.from(rgba.buffer, rgba.byteOffset, rgba.byteLength); fs.writeFileSync(file, PNG.sync.write(p)); };

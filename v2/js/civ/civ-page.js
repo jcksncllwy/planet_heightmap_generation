@@ -6,7 +6,9 @@
 
 import { buildSimMesh } from '../core/sim-mesh.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
-import { civSubstrate, FOODS } from './substrate.js';
+import { civSubstrate, cellLife, FOODS, STAPLES, STAPLE_WORDS, WAY_WORDS, PARENT_WORDS, MOD_WORDS } from './substrate.js';
+import { FOOD } from './food-config.js';
+import { cropsFromMonths } from './crops.js';
 import { createCivSim, byteDensity, Life } from './sim.js';
 import { climateVariability, spreadOf } from './climate-var.js';
 import { diseaseLoss } from './disease.js';
@@ -28,7 +30,7 @@ export const wayCode = (life, crop) => (WAY_OF_LIFE[life] ?? 0) | ((crop + 1) <<
 /** A food byte (substrate.js food, persons/km²): 0 none; 1–251 from 0.01 to 1000, 50 steps a decade. */
 export const foodByte = d => (d >= 0.01 ? Math.min(255, 1 + Math.round(50 * (Math.log10(d) + 2))) : 0);
 export const byteFood = b => (b ? Math.pow(10, (b - 1) / 50 - 2) : 0);
-export { FOODS };
+export { FOODS, STAPLES, STAPLE_WORDS, WAY_WORDS, PARENT_WORDS, MOD_WORDS };
 /** A frame's two bytes as density (persons/km²), way of life (WAYS index) and crop (a FOODS key, or null); null for nobody. */
 export function peopleOf(b, wb) { return b ? { d: Math.pow(10, (b - 1) / 8 - 4), way: wb & 7, crop: FOODS[(wb >> 3) - 1] ?? null } : null; }
 
@@ -37,20 +39,37 @@ export { TownFlag };
 let coarse = null;
 /** The civ layer's world from finishPlanet's output (finish.js): the moment's fields on a mesh of at most PAGE_CELLS — taken
  *  when the moment is finished (the worker lets the finer fields go), its people worked out later, on request. */
-export function civWorldFromFinish(out) {
+export function civWorldFromFinish(out, { months = false } = {}) {
     const cc = out.climate.cell, L = out.civ ?? {}, R = out.rivers;
     // (the rivers copied: the page is sent the moment's own)
     const rivers = { lat: R.lat.slice(), lon: R.lon.slice(), q: R.q.slice(), regime: R.regime?.slice() ?? null, farFed: R.farFed?.slice() ?? null };
     const fine = { mesh: out.mesh, z: out.z, ocean: out.ocean, lake: out.lake, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
-        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null, crops: L.crops ?? null, flow: L.flow ?? null };
-    if (out.mesh.numCells <= PAGE_CELLS) return fine;
-    const mesh = coarse ??= buildSimMesh(PAGE_CELLS, MESH_SEED), n = mesh.numCells, xyz = mesh.xyz, src = new Int32Array(n);
-    for (let c = 0; c < n; c++) src[c] = out.mesh.index.nearest(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]);
+        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null, flow: L.flow ?? null, sea: seaOf(out.climate.page) };
+    const small = out.mesh.numCells <= PAGE_CELLS, mesh = small ? out.mesh : (coarse ??= buildSimMesh(PAGE_CELLS, MESH_SEED)), n = mesh.numCells, xyz = mesh.xyz;
+    const src = small ? null : new Int32Array(n);
+    if (src) for (let c = 0; c < n; c++) src[c] = out.mesh.index.nearest(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]);
+    // (the crops' harvests from the cells' months, on the cells read: crops.js)
+    const crops = L.months ? cropsFromMonths(L.months, n, c => Math.asin(xyz[3 * c + 2]), src) : null;
+    // (and the months themselves, for a tool to keep — `months`: crops.js's code is not the world's)
+    const keep = months && L.months ? (src ? { T: takeMonths(L.months.T, src), P: takeMonths(L.months.P, src) } : L.months) : undefined;
+    if (small) return { ...fine, crops, ...(keep ? { months: keep } : {}) };
     const take = a => { if (!a) return null; const b = new a.constructor(n); for (let c = 0; c < n; c++) b[c] = a[src[c]]; return b; };
     return { mesh, z: take(fine.z), ocean: take(fine.ocean), lake: take(fine.lake), koppen: take(fine.koppen), tAnnual: take(fine.tAnnual), pAnnual: take(fine.pAnnual),
         stats: Object.fromEntries(STAT_KEYS.map(k => [k, take(fine.stats[k])])), rivers: fine.rivers, loess: take(fine.loess), erg: take(fine.erg), ice: take(fine.ice),
-        vector: fine.vector ? { rain: take(fine.vector.rain), warm: take(fine.vector.warm) } : null,
-        crops: fine.crops ? Object.fromEntries(Object.entries(fine.crops).map(([k, a]) => [k, take(a)])) : null, flow: fine.flow };
+        vector: fine.vector ? { rain: take(fine.vector.rain), warm: take(fine.vector.warm) } : null, crops, flow: fine.flow, sea: fine.sea, ...(keep ? { months: keep } : {}) };
+}
+/** Twelve values a cell, each cell's from its cell `src[c]`. */
+function takeMonths(a, src) {
+    const b = new a.constructor(12 * src.length);
+    for (let c = 0; c < src.length; c++) b.set(a.subarray(12 * src[c], 12 * src[c] + 12), 12 * c);
+    return b;
+}
+
+/** The climate's sea as the civ layer reads it (substrate.js seaFish): its year's temperature (°C), ice (0…1) and
+ *  upwelling (m/day) on the climate's grid (finish.js climate.page, climate-fields.js pageClimate) — copied, or null. */
+export function seaOf(page) {
+    if (!page?.Tsea?.year || !page.upwelling?.year) return null;
+    return { w: page.grid.w, h: page.grid.h, T: Float32Array.from(page.Tsea.year), ice: page.seaIce?.year ? Float32Array.from(page.seaIce.year) : null, upwell: Float32Array.from(page.upwelling.year) };
 }
 
 /**
@@ -78,7 +97,28 @@ export function startPeople(w, width, onProgress = () => {}, runs = null) {
     const food = new Uint8Array(FOODS.length * n);
     FOODS.forEach((f, i) => { const a = state.sub.food[f]; for (let c = 0; c < n; c++) food[i * n + c] = foodByte(a[c]); });
     return { state, result: { cells: n, ...first, packages: res.packages, origin: [Math.asin(xyz[3 * o + 2]) * D, Math.atan2(xyz[3 * o + 1], xyz[3 * o]) * D],
-        pix, pixW: W, food, ms: performance.now() - t0 } };
+        pix, pixW: W, food, ground: landViews(w, state.sub, vary), ms: performance.now() - t0 } };
+}
+
+/** What the land offers before anyone lives there (the People layer's land views: people-view.js GROUND_SHOWS; the result's `ground`), a byte a
+ *  cell each: farm — the farmland's class (0 barren … 4 excellent: food-config farmClasses on substrate.js farmV) | its
+ *  best rotation's harvests a year by rain, 0–15 in fifths, << 3 (byte >> 3 / 5); soil — its fertility, 0–255; soilKind —
+ *  substrate.js's (Parent | SoilMod << 4); staple — STAPLES index | the way of life (substrate.js WAYS) << 4 (cellLife,
+ *  with the rain's year-to-year CV as sim.js reads it: the storms' and the climate's modes). */
+function landViews(w, sub, V) {
+    const n = sub.n, farm = new Uint8Array(n), soil = new Uint8Array(n), staple = new Uint8Array(n);
+    for (let c = 0; c < n; c++) {
+        if (w.ocean[c] || w.lake[c] || !(w.tAnnual[c] === w.tAnnual[c])) continue;
+        let cls = 0;
+        for (const t of FOOD.farmClasses) if (sub.farmV[c] >= t) cls++;
+        farm[c] = cls | (Math.min(15, Math.round(5 * sub.harvests[c])) << 3);
+        soil[c] = Math.round(255 * Math.min(1, sub.soil[c]));
+        let cv = 0;
+        if (V) { let v = V.rainCV[c] ** 2; for (let m = 0; m < 4; m++) v += V.rainLn[4 * c + m] ** 2 / 2; cv = Math.sqrt(v); }
+        const [way, st] = cellLife(sub, c, cv);
+        staple[c] = st | (way << 4);
+    }
+    return { farm, soil, soilKind: Uint8Array.from(sub.soilKind), staple };
 }
 
 /** Days to travel from (lat, lon) to every cell of a run (startPeople's state) in month m (0 = January), by a craft

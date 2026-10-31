@@ -318,9 +318,15 @@
             <button id="peoplePlay" class="evo-people-play" aria-label="Play / pause the people">&#x25B6;</button>
             <input id="peopleSlider" type="range" min="0" max="140" step="1" value="140" aria-label="Years ago">
             <output id="peopleLabel" class="evo-people-label">Now</output>
-            <select id="peopleShow" title="What the map shows: the people, or what the land offers them — each resource's people per km² at full skill">
+            <select id="peopleShow" title="What the map shows: the people; or what the land offers them — its farmland, soil, staple food and way of life, each resource's people per km² at full skill">
                 <option value="people">People</option>
                 <option value="land">Land in use (fields, pasture)</option>
+                <optgroup label="The land, before anyone">
+                    <option value="farmland">Farmland</option>
+                    <option value="soil">Soil</option>
+                    <option value="staple">Staple food</option>
+                    <option value="way">Way of life</option>
+                </optgroup>
                 <optgroup label="Food the land offers">
                     <option value="wild">All wild food</option>
                     <option value="crops">Best crop</option>
