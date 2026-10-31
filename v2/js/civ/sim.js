@@ -142,9 +142,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         const savanna = new Float64Array(size.length), isSavanna = c => KOPPEN_CLASSES[koppen[home[c]]]?.code === 'Aw';
         for (const c of cells) if (part[c] >= 0 && isSavanna(c)) savanna[part[c]]++;
         const main = Math.max(...savanna) > 0 ? savanna.indexOf(Math.max(...savanna)) : size.indexOf(Math.max(...size));
+        // (on land at the sea level when people set out: not a glacial shelf that was sea then — a rich fishing coast's
+        // shelf cells read their coast's capacity)
+        const startSeaKm = schedule(C.seaLevelM, T0) / 1000;
         let best = -1, bk = -1, any = -1, ak = -1;
         for (const c of cells) {
-            if (part[c] !== main) continue;
+            if (part[c] !== main || !dry(c, startSeaKm)) continue;
             if (isSavanna(c) && Kf[c] > bk) { bk = Kf[c]; best = c; }
             if (Kf[c] > ak) { ak = Kf[c]; any = c; }
         }

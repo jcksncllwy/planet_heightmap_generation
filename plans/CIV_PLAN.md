@@ -918,3 +918,16 @@ Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a s
   and Mesopotamia grow summer grain best (canals water the year round, not by the flood); Mongolia farms (its rain's CV
   from storms alone is 0.28, under the herders' 0.33); Bengal 400.4 a km² (want ≤ 400).
 - `v2/tools/check-civ-food.mjs`: the same at two details, each mechanism where its physics puts it, cost.
+- Earth (`civ-sim --earth`, base e470080 → this branch): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time
+  4/7 → 3/7; people 50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M, 6 ka 69.9 → 91.0 M, 0 BP 170 → 224 M; first state ~5 ka →
+  ~6 ka. Uruk 8.1k → 6.8k at 7 ka; Memphis 17.5k → 28.1k at 5 ka; Mohenjo-daro 10.0k → 53.5k at 6 ka (earlier and bigger:
+  two watered harvests a year on the Indus); Erlitou still none.
+- Fish at upstream's 2.5 a km² first (run 2): 50 ka 12.4 M, 12 ka 34.7 M. At Binford's 1 (run 3): above. Both above the
+  1–10 M estimated for 12 ka (Thomlinson 1975; Pala et al. 2012), as base already was (open: forager capacity, §8 item 3).
+- A latent bug the fish showed: a generated world's origin could be a glacial shelf cell, sea when people set out (its
+  coast's capacity read through `home`); seed 6 then had no people. The origin is now on land at the sea level of
+  `originBP` (`sim.js`).
+- Ensemble (`civ-ensemble --seeds 1-10`, base `foodbase` → `food`): farming on 10/10 worlds both; towns of 15K+ and
+  states 8 → 9 worlds; all big landmasses peopled 10 → 9 (seed 6: its 40 Mkm² landmass never, base by 0 ka); median
+  first city 5.0 → 6.0 ka, first state 2.5 → 5.5 ka; centres 24 → 22; people at 0 BP 126 → 129 M; farmed share
+  0.52 → 0.48. Seed 6's people start on its richest savanna coast now (the fish), 41.5 → 19 M at 0 BP.
