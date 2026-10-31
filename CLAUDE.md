@@ -4,7 +4,9 @@
 
 World Orogen — a browser-based procedural planet generator using Three.js and ES modules with no build step.
 
-**World Orogen is concept art for planets, not a geophysical simulator.** Every feature should prioritize making the output *look* more believable or helping users iterate faster. Never slow down generation to chase physical accuracy — if a simpler approximation looks just as good, use it. However, the scientific grounding is what makes the output convincing: tectonic models inspired by real geology, pressure-driven wind patterns, and Köppen classification aren't optional polish — they're the reason the output passes the glance test. Preserve and extend this scientific foundation whenever it serves the visuals. The tool's job is to be the fastest path from a blank page to a world worth building on.
+**World Orogen is concept art for planets, built on emergent physics.** Every feature should make the output *look* more believable or help users iterate faster. Believability comes from simulating the processes that shape real worlds (plates and their boundaries, erosion and deposition, climate), not from rules that paint those processes' outcomes. The scientific grounding is what makes the output convincing, and it's why the output passes the glance test: tectonics, pressure-driven winds, Köppen. Extend it with emergent processes wherever the compute budget allows (see How We Model). Generation must stay fast: never slow it down for accuracy without offsetting the cost or making it optional. The tool's job is to be the fastest path from a blank page to a world worth building on.
+
+*(This paragraph was rewritten 2026-10-31 on Jackson's fork. The pre-fork text called World Orogen "not a geophysical simulator" and said "if a simpler approximation looks just as good, use it". The fork's direction is the opposite: replace rules with emergent simulation wherever it's feasible.)*
 
 ## Guiding Principles
 
