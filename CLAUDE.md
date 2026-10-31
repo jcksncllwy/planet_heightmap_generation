@@ -10,11 +10,13 @@ World Orogen — a browser-based procedural planet generator using Three.js and 
 
 ## Guiding Principles
 
-All three tenets should be considered simultaneously. When they conflict, break ties in this order:
+All three tenets should be considered simultaneously. They depend on each other (the physics is how the output earns its look, and the look is worth little if it takes too long to arrive), so this order is high-level guidance, not a strict ranking. When they conflict, break ties in this order:
 
-1. **Artistic appeal** — The output should look visually interesting and compelling, informed by real science but not constrained by it. Aesthetics come first.
-2. **Ease of use and efficiency** — The interface should be approachable and intuitive. Generation should be fast. Don't sacrifice usability for realism.
-3. **Scientific plausibility** — Terrain, tectonics, and geology should be grounded in real planetary science. Results don't need to be physically accurate simulations, but they should be believable.
+1. **Emergent physics** — Terrain, tectonics, climate and geology should come from simulating the processes that shape real worlds, not from rules that paint their outcomes (see How We Model). The aim is a believable world, not a research-grade simulation: reduced physics with written limits is fine.
+2. **Artistic appeal** — The output should look visually interesting and compelling. When a simulated result looks wrong, look for the missing or mistuned process before adding an art rule on top of it.
+3. **Ease of use and speed** — The interface should be approachable and intuitive, and generation should be fast. Third in the order is not optional: some slowdowns are unacceptable whatever they buy, so the no-slowdown rule above still holds (offset the cost, or make it optional).
+
+*(Reordered 2026-10-31 on Jackson's fork. The pre-fork order was artistic appeal, then ease of use and efficiency, then scientific plausibility, with "aesthetics come first" and "results don't need to be physically accurate simulations".)*
 
 ## How We Model (the v2 engine)
 
