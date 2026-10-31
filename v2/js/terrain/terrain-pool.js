@@ -8,6 +8,7 @@
 
 import { preparePlan, carveLadder, carveSettings, carveInputs, surfaceParts } from './synthesize.js';
 import { terrainMeshAsync } from './terrain-mesh.js';
+import { GEO_FRAME_FIELDS } from '../tectonics/model/geology.js';
 
 const IS_NODE = typeof window === 'undefined' && typeof process !== 'undefined' && !!process.versions?.node;
 const CHUNKS_PER_WORKER = 8;
@@ -17,7 +18,7 @@ const WAVES_NEAR_MAX_CELLS = 3e6;     // the coast's waves near the shore on the
 // rotation, below)
 export const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'terrane', 'formedAt', 'boundary', 'margin', 'mantleHeat', 'oroType', 'oroLast', 'thickKm',
     'beltU', 'beltReach', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide', 'prevShear', 'volcType', 'volcAt', 'volcKm', 'volcSource',
-    'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'riverKm2', 'seaFillKm', 'basinFillKm', 'fzU', 'arcKm', 'arcAt'];
+    'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'riverKm2', 'seaFillKm', 'basinFillKm', 'fzU', 'arcKm', 'arcAt', ...GEO_FRAME_FIELDS];
 
 /** The Frame fields terrain synthesis reads, and the plates' rotations (detail is anchored to the crust): what the planner is sent. */
 function slimFrame(frame) {

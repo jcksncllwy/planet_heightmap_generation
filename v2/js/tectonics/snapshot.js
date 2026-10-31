@@ -7,6 +7,7 @@ import { BoundaryKind, Provisional } from './model/world.js';
 import { speedCmYrAt } from './step/kinematics.js';
 import { classifyMargins, seaFilledUp } from './measure.js';
 import { arcCrustKm } from './step/collision.js';
+import { encodeCoverKm, encodeExhumKm, encodeUnroofKm, encodeArcMyr, encodeAge, encodeFacies } from './model/geology.js';
 
 const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge counts as part of the live trench:
                               // the visible edge of a rotated raster jitters by about a cell from step to step
@@ -42,6 +43,9 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {Float32Array} basinFillKm   sediment laid in the land's hollows by the history's rivers (km; step/rivers.js)
  * @property {Float32Array} arcKm         an island arc's crust (km; 0 off arcs): what its volcanoes added while its slab fed them
  * @property {Float32Array} arcAt         …and when that last was (sim time, Myr): the terrain stands it on that crust (measure.js arcSurfaceKm)
+ * @property {Uint8Array} geoFlags  @property {Uint8Array} coverKm  @property {Uint8Array} coverMaxKm  @property {Uint8Array} coverMaxAge  @property {Uint16Array} facies
+ * @property {Uint8Array} exhumKm  @property {Int8Array} unroofKm  @property {Uint8Array} arcMyr   the geological record, packed (tectonics/model/geology.js)
+ * @property {{seededKm3:number, laidKm3:number, wornFillKm3:number}|null} geoBook   the record's account of its cover (step/geology.js)
  * @property {Float32Array} riverKm2      the drainage (km², rain-weighted) the history last routed through each cell
  * @property {Int32Array} crustCells      every plate's crust cells (plate id × numCells + raster cell), plate by plate…
  * @property {Uint8Array} crustType       …and what each is (CrustType): the plates' own outlines, which the world view shows
@@ -85,6 +89,8 @@ export function captureFrame(world, reuse = null) {
         volcType: new Uint8Array(n), volcAt: new Float32Array(n), volcKm: new Float32Array(n), volcSource: new Uint16Array(n),
         mantleHeat: new Uint8Array(n),                      // 0…255 for 0…1 (a frame need not carry it at full precision)
         margin: new Uint8Array(n),                          // what kind of coast each coastal land cell is (measure.js Margin)
+        geoFlags: new Uint8Array(n), coverKm: new Uint8Array(n), coverMaxKm: new Uint8Array(n), coverMaxAge: new Uint8Array(n), facies: new Uint16Array(n),
+        exhumKm: new Uint8Array(n), unroofKm: new Int8Array(n), arcMyr: new Uint8Array(n),
     };
     f.time = world.time;
     // mark every raster cell that is some world cell's nearest; the rest are hidden between world cells (see below)
@@ -110,6 +116,7 @@ export function captureFrame(world, reuse = null) {
         f.riverKm2[w] = world.riverKm2 ? world.riverKm2[w] : 0;
         f.arcKm[w] = 0; f.arcAt[w] = 0;
         f.fzU[w] = 0;
+        f.geoFlags[w] = 0; f.coverKm[w] = 0; f.coverMaxKm[w] = 0; f.coverMaxAge[w] = 0; f.facies[w] = 0; f.exhumKm[w] = 0; f.unroofKm[w] = 0; f.arcMyr[w] = 0;
         if (owner[w] < 0) { f.type[w] = 0; f.formedAt[w] = 0; f.flags[w] = 0; f.terrane[w] = 0; f.slabKm[w] = 0; f.oroType[w] = 0; f.oroWork[w] = 0; f.oroStart[w] = 0; f.oroLast[w] = 0; f.thickKm[w] = 0; continue; }
         const crust = plates[owner[w]].crust, c = ownerCell[w];
         if (provisional[w] === Provisional.NEWBORN) {          // the ridge axis: crust forming right now
@@ -130,6 +137,8 @@ export function captureFrame(world, reuse = null) {
         f.riverIncKm[w] = crust.riverIncKm[c]; f.seaFillKm[w] = crust.seaFillKm[c]; f.basinFillKm[w] = crust.basinFillKm[c]; f.baseKm[w] = crust.baseKm[c];
         // (an island arc's crust and when its volcanoes last fed it — one the history never grew, a scene's, by its age and as live)
         if (crust.type[c] === CrustType.ARC) { f.arcKm[w] = arcCrustKm(crust, c, world.time, world.config); f.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : world.time; }
+        f.geoFlags[w] = crust.geoFlags[c]; f.coverKm[w] = encodeCoverKm(crust.coverKm[c]); f.coverMaxKm[w] = encodeCoverKm(crust.coverMaxKm[c]); f.coverMaxAge[w] = crust.coverMaxKm[c] > 0 ? encodeAge(world.time - crust.coverMaxAt[c]) : 0;
+        f.facies[w] = encodeFacies(crust.coverCarb[c], crust.coverSalt[c], crust.coverCoal[c], crust.coverOrganic[c]); f.exhumKm[w] = encodeExhumKm(crust.exhumKm[c]); f.unroofKm[w] = encodeUnroofKm(crust.unroofKm[c]); f.arcMyr[w] = encodeArcMyr(crust.arcMyr[c]);
         f.volcType[w] = crust.volcType[c]; f.volcAt[w] = crust.volcAt[c]; f.volcKm[w] = crust.volcKm[c]; f.volcSource[w] = crust.volcSource[c];
         // A hotspot track is a THIN record — about a cell wide on the plate's own lattice — and that lattice is rotated
         // against the world's, so some of its cells are nobody's nearest and a nearest-cell gather would show the chain
@@ -188,6 +197,7 @@ export function captureFrame(world, reuse = null) {
     if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustFill = f.crustFill.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
     f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
     f.budget = { ...world.budget };
+    f.geoBook = world.geoBook ? { ...world.geoBook } : null;
     f.events = world.events.slice();
     return f;
 }

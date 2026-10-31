@@ -2066,6 +2066,35 @@ so a near-tie between slopes can fall the other way, and a machine repeats its o
 
 **Next.** Rock erodibility from the lithology column (`litho.md` in the lane's notes, its L3): k varies by rock instead of
 by the carve's fields alone, starting with the compressed ~4.5× spread, with Earth's range as a sensitivity run at 2.5M.
+## The geological record (2026-10-31, branch litho, L1)
+
+Each piece of crust now keeps a record of its rock column, ported from World Orogen (raguilar011095, GPL v3; the idea of
+reading rock from orogenies and old seas comes from Madeline James's worldbuilding guide): `tectonics/model/geology.js`
+(flags, frame encodings), `tectonics/step/geology.js`, `config.geology`. Records only: a history is identical with it or
+without (`check-geology.mjs` hashes every frame both ways, two seeds).
+
+- **Wear** (`recordWear`, from `heights.js`, every step): rock off the top. The root as it stands, the relief and swells as
+  the crust they stand for (÷ the column's slope, ~6 km of rock per km of ground, as `crustThicknessKm` counts them; upstream
+  counts them 1:1), and a share of the crests. It strips the cover above the rivers' standing fill, then the basement
+  (`exhumKm`, which grade reads).
+- **Cover** comes from this fork's books, not upstream's rates by setting: what `basinFillKm` and `seaFillKm` gain joins it,
+  each `everyMyr`, with a make-up by the latitude it lies at then. What they lose by wear leaves it. A belt thickens it
+  (`thickenCover`, from `buildHeights`).
+- **Settings**: `arcMyr`, `riftAt`, and the flags WAS_ARC, FORELAND, RIFT_BASIN, OPHIOLITE, SLAB_CHANGE.
+
+**Limits** (also in the file's header):
+- No shelf deposition: a river reaching the open ocean lays nothing on any cell, so shelves stay bare. Upstream's sea stand,
+  flooding, SHELF and EPEIRIC are not ported, so no inland-sea cover either.
+- The start world's exhumation and platform cover are a painted initial state (tier 3), booked apart in `geoBook.seededKm3`.
+- Facies by latitude alone (tier 3). Carbonate is only the rivers' dissolved load in warm enclosed seas: no carbonate
+  platforms, so limestone is under-counted.
+- `riftAt` and OPHIOLITE are read off crust flags at the clock's tick: up to `everyMyr` late, a re-rifted cell keeps its first date.
+- A sealed cell copies its neighbour's record.
+
+**The budget, measured** (20K, 400 Myr; Mkm³; seeds 12345 / 777): booked basin + sea fill 1004 / 1178, cover laid 666 / 858.
+The gap is three things, each measured: river cuts refilled, which never enter `basinFillKm` (122 / 114); wear of fill inside
+a tick (6 / 6); and over-booking in `rivers.js` `trapLoad` (212 / 200): `cutNow[c] -= u` runs before `vol(c, r)`, so `kept`
+is computed on the reduced cut. Laid + those three matches the books to within 0.1 Mkm³ of the wear term.
 
 ## Food: harvests, soil, fish and the land views (2026-10-31, branch civ-food)
 

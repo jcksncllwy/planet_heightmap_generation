@@ -3,6 +3,8 @@
 // the lab's sliders or a tuning harness can override values per world without touching the defaults.
 // Values marked [WBP] come from Worldbuilding Pasta's Part Va rules of thumb.
 
+import { GEOLOGY } from '../geology/geology-config.js';
+
 export const CM_PER_YR_TO_KM_PER_MYR = 10;          // 1 cm/yr = 10 km/Myr
 export const CM_PER_YR_TO_RAD_PER_MYR = 10 / 6371; // … = 10/6371 rad/Myr on an Earth-radius sphere
 
@@ -560,6 +562,42 @@ export const TECTONICS = {
     reserved: {
         minPlateAreaKm2: 1.5e5,           // smaller plates are absorbed by a neighbour
         historyMyr: 600,                  // [WBP] 500–1000 Myr covers nearly all surviving geology
+    },
+
+    // ── The geological record (step/geology.js; ported from World Orogen, raguilar011095, GPL v3). Records only. ──
+    // Cover is what the rivers' own books laid (basinFillKm, seaFillKm), so there are no rates by setting here: no shelf,
+    // inland-sea, rift or foreland km/Myr, and no sea stand (lane litho, Jackson's ruling 4).
+    geology: {
+        records: true,              // keep it (false: none kept — the check that the tectonics never read it runs both ways)
+        everyMyr: 4,                // the rivers' fill, the arcs and the settings looked at this often (the rivers drain every 4 Myr; the wear goes with the heights)
+        // ── the zonal palaeoclimate: what a hollow or a sea lays by the latitude it lay at then (upstream's bands; sources in its
+        // plans/V2_GEOLOGY_RESEARCH.md, not re-verified here) ──
+        warmLat: [22, 32],          // warm-water carbonate: full equatorward of the first latitude, gone poleward of the second
+        coolCarbonate: 0.25,        // cool-water carbonate's share, poleward of that (low production)
+        aridLat: [12, 18, 32, 38],  // the arid belt: rising over the first two latitudes, falling over the last two
+        wetLat: [8, 14, 34, 40, 58, 66],   // ever-wet tropics (gone over the first two); humid mid-latitudes (between the rest)
+        coalShare: 0.12,            // coal in a wet belt's basin fill, at most
+        coalByWetBelts: GEOLOGY.guideRules.coalByWetBelts,   // coal by the wet belts (science) or within 45° (her guide)
+        saltShare: 0.4,             // salt in a restricted arid sea or hollow
+        organicShare: 0.35,         // organic-rich mud in an enclosed warm sea, or a young rift's lake
+        dissolvedShare: 0.2,        // the rivers' dissolved load in what they deliver (recalled: ~1/5 of denudation by mass, Gaillardet et al. 1999): a sea's carbonate, at most
+        faciesMixKm: 0.5,           // the cover's make-up is that of about its top this many km
+        // ── the settings ──
+        riftBasinMyr: 40,           // a rift counts as a young basin this long (upstream's value, unverified)
+        forelandKm: 300,            // a foreland reaches this far over the plain from its belt's outer edge (foredeeps 100–300 km wide)…
+        forelandFlagKm: 190,        // …flagged within this of it (upstream's 0.3 of its taper over forelandKm)
+        forelandEdgeU: 0.8,         // …the edge where the belt's cross-section reaches this (0 at its front, 1 at its far edge)
+        forelandDepthKm: 0.02,      // the history's own sunk basins (heights.js) count too, from this far below the plain
+        // ── the record of wear ──
+        crestShare: 0.3,            // of a belt's crests worn away, this share is rock taken off the whole cell (crests cover a part of it)
+        crustKm: 35,                // the continental crust's ordinary thickness: shortening that thickens it by x thickens its cover by x / this
+        // ── the start world's past (seedGeology, a painted initial state: step/geology.js header) ──
+        cratonExhumKm: [12, 28],    // a shield worn down this deep before history began (per craton)…
+        beltExhumKm: [6, 16],       // …the older continental crust about the cratons (its Proterozoic mobile belts)
+        platformCoverKm: 2.5,       // platform sediment over the old crust, at most (in its sags; over half of it)
+        platformNoiseKm: 1500,      // the size of the sags and arches
+        platformLowGain: 1,         // the sags lean to the start world's lowlands (1 − its swells' height, heights.js seedBaseRelief):
+        platformLowMid: 0.9,        // the noise + this × (that − this)
     },
 };
 

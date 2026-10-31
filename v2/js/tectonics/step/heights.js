@@ -25,6 +25,7 @@ import { arcCrustKm } from './collision.js';
 import { TERRAIN, erosionAtLatitude, erosionAtHeight } from '../../terrain/terrain-config.js';
 import { broadProfile } from '../../terrain/profiles.js';
 import { FastNoise } from '../../core/fast-noise.js';
+import { recordWear, thickenCover } from './geology.js';
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -45,6 +46,7 @@ export function beltReliefKm(type, reachKm, H) {
 export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickenedKm, config, amp = 1) {
     const H = heightsOf(config);
     crust.rootKm[c] += thickenedKm * (H.rootGain?.[type] ?? 1);
+    if (config.geology?.records) thickenCover(crust, c, thickenedKm, crust.oroLast[c], config.geology);     // (records only: step/geology.js)
     // (amp: a craton's rim takes a thin-skinned belt, cratonStrainShare of the relief — orogeny.js)
     const A = amp * beltReliefKm(type, reachKm, H), share = 1 - Math.exp(-workKm / H.upliftBuildKm[type]);
     // (on island-arc crust a subduction belt's broad uplift is mostly the arc's own growth, which its maturity already
@@ -85,7 +87,7 @@ export function evolveHeights(world, dt) {
     if (dt <= 0) return 0;
     const { mesh, plates, time, config } = world, H = heightsOf(config);
     const { adjOffset, adjList, xyz, edgeKm } = mesh;
-    const rate = rateTable(H), C = columnModel(H);
+    const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null;
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
@@ -159,7 +161,7 @@ export function evolveHeights(world, dt) {
             // sea, slowly (erosionAtHeight: low ground hardly wears). A basin (below 0) fills back at the reference rate; a
             // rift's shoulders are an escarpment that retreats at its own pace, whatever its height.
             const rift = oroType[c] === OrogenyType.RIFT, up = upliftKm[c] + flux[c], arc = type[c] === CrustType.ARC;
-            const col = colOf(c);
+            const col = colOf(c), r0 = rootKm[c], c0 = rugged[c] + prevRugged[c], b0 = baseKm[c];
             // (with the sediment laid in its hollow, as the rivers stand it: step/rivers.js)
             let height = Math.max(0, up) + baseKm[c] + Math.max(0, col) + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
             if (arc && !(flags[c] & CrustFlag.MARGIN_ISLE)) height += Math.max(0, arcSurfaceKm(arcCrustKm(crust, c, time, config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0));
@@ -177,6 +179,9 @@ export function evolveHeights(world, dt) {
             // (a hollow's fill wears with the land it lies in — hardly at all while it lies low (erosionAtHeight sets the
             // pace); it is sediment, so a shield's hardness does not hold it: it wears as the cover does)
             if (basinFillKm[c] > 0) basinFillKm[c] *= hard < 1 ? wear(rate[bin] * dt * erosionAtHeight(height, H) / H.reliefTauMyr) : keep;
+            // (the geological record, step/geology.js: the rock this wear took off — the root as it stands, the relief and the
+            // swells as the crust they stand for (measure.js crustThicknessKm), a share of the crests)
+            if (geo) recordWear(crust, c, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]] + geo.crestShare * (c0 - rugged[c] - prevRugged[c]), Math.max(0, -up), time, dt, geo);
         }
     }
     return 0;

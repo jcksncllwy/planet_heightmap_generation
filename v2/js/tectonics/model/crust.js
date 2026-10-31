@@ -53,7 +53,8 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt']);
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
+    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -111,6 +112,20 @@ export class CrustRaster {
         // thickens only while its trench feeds it, so an arc split off and left silent stays as thin as it was
         this.arcKm = new Float32Array(numCells);
         this.arcAt = new Float32Array(numCells);
+        // The geological record (step/geology.js, model/geology.js): records only, the history never reads them
+        this.geoFlags = new Uint8Array(numCells);      // GeoFlag bits: settings it has been in
+        this.coverKm = new Float32Array(numCells);     // sediment on it now (km)…
+        this.coverMaxKm = new Float32Array(numCells);  // …the most it has held, and when: how deep its base has been buried
+        this.coverMaxAt = new Float32Array(numCells);
+        this.coverCarb = new Float32Array(numCells);   // the top of the cover's make-up, as shares: carbonate, salt, coal, organic-rich mud (the rest sand and mud)
+        this.coverSalt = new Float32Array(numCells);
+        this.coverCoal = new Float32Array(numCells);
+        this.coverOrganic = new Float32Array(numCells);
+        this.coverFedKm = new Float32Array(numCells);  // the rivers' fill here (seaFillKm + basinFillKm) the cover has already taken
+        this.exhumKm = new Float32Array(numCells);     // how deep the basement has been worn (km): how deep the rock now at the surface once lay
+        this.unroofKm = new Float32Array(numCells);    // rock taken off since its last belt went quiet, less what was laid back (km)
+        this.arcMyr = new Float32Array(numCells);      // time spent in a live subduction belt (Myr)
+        this.riftAt = new Float32Array(numCells);      // when a rift opened here, read from its flags (0 = never)
         this.count = 0;                                // number of masked cells
         this.version = 0;                              // bumped whenever a cell of the mask changes (step/gather.js nearEdge: unchanged since last asked?)
         this.fields = CELL_FIELDS.map(name => this[name]);
