@@ -48,6 +48,7 @@ import { Regime } from '../finish/finish-hydro.js';
 import { cropClimate, cropsAt, HARVEST_CLASSES } from './crops.js';
 import { FOOD } from './food-config.js';
 import { LatLonGrid } from '../finish/finish-grid.js';
+import { locate } from '../core/mesh-locate.js';
 
 const R = 6371;
 const K = Object.fromEntries(KOPPEN_CLASSES.map((k, i) => [k.code, i]));
@@ -118,22 +119,30 @@ export function seaFish(w, coastal, warmMo, F = FOOD) {
         const Tg = g.blur(g.average(lat, lon, tSL, near), 300), Ig = g.blur(g.average(lat, lon, ice, near), 300);
         seaT = c => g.at(Tg, lat[c], lon[c]); seaIce = c => g.at(Ig, lat[c], lon[c]); seaUp = () => 0;
     }
+    // (each sea cell's richness; the shelf itself is found below, on the grid, from the depth between cells)
     const rich = new Float32Array(n);
     for (let c = 0; c < n; c++) {
-        if (!ocean[c] || !(z[c] > -F.shelfKm)) continue;
+        if (!ocean[c]) continue;
         const T = seaT(c), I = seaIce(c), up = seaUp(c);
         rich[c] = (F.warmShelf + (1 - F.warmShelf) * Math.max(T === T ? S(F.coldSea, T) : 0, up === up ? S(F.upwell, up) : 0)) * (1 - F.seaIceLoss * (I === I ? Math.min(1, Math.max(0, I)) : 0));
     }
-    // (each grid cell the mesh cell it lies in — the shelf's share of the grid's ground and sea, whatever the mesh's
-    // detail — spread over a day's paddle; each land cell then the mean over its own grid cells: a coarse cell's
-    // coast is a strip of it, not its centre. Cells smaller than a grid cell read the field at their centre.)
+    // (each grid cell the mesh cell it lies in, and its depth linear between the cells around it: shelf where that is
+    // sea shallower than shelfKm, with the sea cells' richness there — so a narrow shelf by a coast is found at any
+    // detail, where a coarse cell's mean depth would hide it. Spread over a day's paddle; each land cell then the mean
+    // over its own grid cells: a coarse cell's coast is a strip of it, not its centre. Cells smaller than a grid cell
+    // read the field at their centre.)
     const cellOf = new Int32Array(g.size), cosOf = new Float32Array(g.h), field = new Float32Array(g.size), R = Math.PI / 180;
+    const tri = new Int32Array(3), wt3 = new Float64Array(3);
     for (let j = 0; j < g.h; j++) {
         const la = (90 - (j + 0.5) * g.step) * R, cl = Math.cos(la), sl = Math.sin(la);
         cosOf[j] = cl;
         for (let i = 0; i < g.w; i++) {
-            const lo = (-180 + (i + 0.5) * g.step) * R, k = j * g.w + i, c = mesh.index.nearest(cl * Math.cos(lo), cl * Math.sin(lo), sl);
-            cellOf[k] = c; field[k] = rich[c];
+            const lo = (-180 + (i + 0.5) * g.step) * R, k = j * g.w + i;
+            locate(mesh, cl * Math.cos(lo), cl * Math.sin(lo), sl, tri, wt3);
+            cellOf[k] = tri[0];
+            let d = 0, r = 0, rw = 0;
+            for (let q = 0; q < 3; q++) { const c = tri[q]; d += wt3[q] * z[c]; if (ocean[c]) { r += wt3[q] * rich[c]; rw += wt3[q]; } }
+            field[k] = d < 0 && d > -F.shelfKm && rw > 0 ? r / rw : 0;
         }
     }
     const sea = g.blur(field, F.reachKm), sum = new Float64Array(n), wt = new Float64Array(n), out = new Float32Array(n);
@@ -234,8 +243,10 @@ export function placeFood(s, g, out = {}, C = CIV, F = FOOD) {
     out.farmers = g.irrigShare * wet + (1 - g.irrigShare) * dry;
     out.farmDry = dry; out.farmWet = wet;
     out.harvests = s.rot; out.harvestsW = s.rotW; out.rotCls = (s.rotCls + 1) | ((s.rotWCls + 1) << 4);
-    // (the best rotation's food in good harvests a year, by rain or watered: the farmland's class)
-    out.farmV = Math.max(yieldOf(s.rot, rotA), g.irrig > 0 && g.irrigShare > 0 ? Math.min(1, 2 * g.irrig) * foodHarvests(s.rotW, rotWA, fine, null, F) * C.irrigatedYield / C.rainfedYield : 0);
+    // (the best rotation's food in good harvests a year, by rain, and watered on the share canals reach: the farmland's
+    // class — the cell's mean, so a coarse cell with a river is not all canal land)
+    const rainV = yieldOf(s.rot, rotA), wetV = g.irrig > 0 ? Math.min(1, 2 * g.irrig) * foodHarvests(s.rotW, rotWA, fine, null, F) * C.irrigatedYield / C.rainfedYield : 0;
+    out.farmV = rainV + g.irrigShare * Math.max(0, wetV - rainV);
     return out;
 }
 
@@ -354,14 +365,20 @@ export function civSubstrate(w, C = CIV, F = FOOD) {
         if (!land(c) || riverQ[c] < C.deltaMinM3s) continue;
         for (let k = mesh.adjOffset[c]; k < mesh.adjOffset[c + 1]; k++) if (ocean[mesh.adjList[k]]) { dDelta[c] = 0; mouthQ[c] = riverQ[c]; break; }
     }
+    const mouthOf = new Int32Array(n).fill(-1);
+    for (let c = 0; c < n; c++) if (dDelta[c] === 0) mouthOf[c] = c;
     spreadKm(mesh, dDelta, {
         maxKm: C.deltaKmPerRootM3s * Math.sqrt(30000),
         canEnter: (a, b) => land(b) && z[b] <= C.deltaMaxKm && dDelta[a] + edgeKm <= C.deltaKmPerRootM3s * Math.sqrt(mouthQ[a]),
-        onReach: (a, b) => { mouthQ[b] = mouthQ[a]; },
+        onReach: (a, b) => { mouthQ[b] = mouthQ[a]; mouthOf[b] = mouthOf[a]; },
     });
+    // (each delta's area by km — deltaAreaPerL2 × its reach inland² — over the cells it reached: a coarse mesh's mouth
+    // cell is wider than its delta, a fine mesh's cells share it)
+    const deltaCells = new Float64Array(n);
+    for (let c = 0; c < n; c++) if (mouthOf[c] >= 0) deltaCells[mouthOf[c]]++;
     for (let c = 0; c < n; c++) {
-        if (dDelta[c] < Infinity) wetland[c] = 1;
-        else if (land(c) && riverQ[c] >= C.marshMinM3s && relief[c] < C.marshReliefKm) wetland[c] = C.marshShare;
+        if (mouthOf[c] >= 0) { const m = mouthOf[c], L = C.deltaKmPerRootM3s * Math.sqrt(Math.min(30000, mouthQ[m])); wetland[c] = Math.min(1, C.deltaAreaPerL2 * L * L / (deltaCells[m] * cellKm2)); }
+        else if (land(c) && riverQ[c] >= C.marshMinM3s && relief[c] < C.marshReliefKm) wetland[c] = Math.min(1, C.marshKm * edgeKm / cellKm2);
     }
 
     const npp = new Float32Array(n), et = new Float32Array(n), forager = new Float32Array(n), forageGlacial = new Float32Array(n), rainfed = new Float32Array(n);

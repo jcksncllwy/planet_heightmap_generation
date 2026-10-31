@@ -28,9 +28,11 @@ export const CIV = {
     deltaMinM3s: 300,           // a river this big builds a delta at its mouth…
     deltaKmPerRootM3s: 2.5,     // …reaching this far inland per √(m³/s): ~130 km for the Tigris–Euphrates' ~2500, ~130 for the Nile's
     deltaMaxKm: 0.02,           // …over ground at most this high
+    deltaAreaPerL2: 1.3,        // …covering this × its reach² (km²): the Nile's ~24,000 km² on ~130 km (Stanley & Warne 1993,
+                                // recalled), Mesopotamia's marshes ~15,000–20,000 km² (recalled) — a mesh's cells share it
     marshMinM3s: 300,           // and a big river's marshes upstream, where its valley is flat
     marshReliefKm: 0.04,
-    marshShare: 0.6,            // (a marsh is part of its cell; a delta all of it)
+    marshKm: 30,                // (a marsh a strip this wide along its river: 0.6 of a cell at the page's 160K, as before [ours])
 
     // ── wild cereals and the other crop packages: where farming can begin ──
     // Blumler (1992): the large-seeded wild grasses are in Mediterranean climates (wet winter, long dry summer); the hilly

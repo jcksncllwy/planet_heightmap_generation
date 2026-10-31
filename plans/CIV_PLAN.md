@@ -899,9 +899,14 @@ Ported from upstream's Food tab (raguilar011095/planet_heightmap_generation b9eb
   The parent rock is a TODO for the geology survey (gs-geosurvey).
 - **Fish.** The shelf within ~40 km, richer where the sea is cold or upwelling, less under ice. Up to 1 forager a
   km² of coast (Binford 2001: the 90th percentile of groups living ≥ 60 % on fish; upstream's 2.5 is above them all), added to the land's foragers. The old coast multiplier is gone. Earth reads its sea from the coast's air.
-  The shelf is read on a fixed 0.25° grid, each grid cell taking the mesh cell it lies in; each land cell takes the
-  mean over its own grid cells. So a coarse cell's coast is a strip of it, not its centre, and the total holds across
-  details (Earth 3.05 M at 160K, 3.15 M at 640K).
+  The shelf is found on a fixed 0.25° grid: each grid point's depth is linear between the mesh cells around it, and it
+  is shelf where that is sea shallower than 200 m. A coarse cell's mean depth would hide a narrow shelf by a coast.
+  Each land cell takes the mean over its own grid cells, so a coarse cell's coast is a strip of it, not its centre.
+  Earth: 3.42 M at 160K, 3.51 M at 640K.
+- **Scale, by km not cells.** The Farmland view's value is watered only on the share canals reach, not the whole cell
+  (a coarse cell with a river was all canal land). A delta covers 1.3 × its reach inland² (the Nile's ~24,000 km² on
+  ~130 km), shared over the cells it reaches; before, every delta cell was all marsh. A marsh is a 30 km strip along
+  its river, not 0.6 of a cell.
 - **Months, not crops, in the finish.** The finish packs each cell's twelve months (24 bytes). Crops are worked out on the
   cells read (the page's 160K; the tools' own). So `crops.js` is outside the finish's code hash.
 - **Land views** on the People layer: Farmland, Soil, Staple food, Way of life. The People view's readout adds a line
@@ -920,10 +925,18 @@ Hearths and crop spread; the 10× gatherers' hold; cradles. The economy, not a s
   (0.30 a km², at the line); England and Iowa grow roots best (potatoes outyield grain at civ-config's yields); the Nile
   and Mesopotamia grow summer grain best (canals water the year round, not by the flood); Mongolia farms (its rain's CV
   from storms alone is 0.28, under the herders' 0.33); Bengal 400.4 a km² (want ≤ 400).
-- `v2/tools/check-civ-food.mjs`: the same at two details, each mechanism where its physics puts it, cost. All 27
-  hold at 40K and 160K. Reported, not checked: main's delta wetland covers 2.7× the land at 40K (each delta cell is
-  all marsh), so foragers over all the land differ 14 %; away from wetland they agree (0.089 vs 0.089). The fish
-  agree within 27 % in total (0.58 vs 0.79 M); per km of coast 0.86×.
+- `v2/tools/check-civ-food.mjs`: the same at two details, each mechanism where its physics puts it, cost. At 40K
+  and 160K, on two worlds (seed 13 at 500 Myr; seed 799224 at 290 Myr): all hold. Farmland 0.451 vs 0.459 and 0.570
+  vs 0.580; the fish 0.42 vs 0.36 M and 1.23 vs 1.37 M; foragers over all the land within 5 %. Before the scale fixes
+  farmland was 13–15 % higher at 40K (canal land by the cell: 0.136 of the mean vs 0.044; deltas all marsh: wetland
+  2.7×) and the fish 35 % lower (the coast's narrow shelves hidden in coarse cells; not the coast's length or its
+  islands). Reported, open: wetland still 1.55–1.7× at 40K. On a fine mesh a delta's low ground within its reach is
+  often less than its area.
+- Ensemble on main 83d20cd (`civ-ensemble --seeds 1-10`; main → branch before the scale fixes → after): people at
+  0 BP 117 → 125 → 98 M (median; seed 6 alone flips, 146 → 58 M, main 54); centres 45 → 45 → 42; all big landmasses
+  peopled 8 → 8 → 7; first city 6.0 → 7.0 → 7.0 ka, first state 5.0 → 6.5 → 6.5 ka. The other seeds move a few %.
+  Open: seed 10's people reach its two big landmasses only at 0 BP on the branch (3.5 and 3.0 ka on main); its first
+  voyage 7.4 ka against 10.8. Before and after the scale fixes alike.
 - Earth (`civ-sim --earth`, base e470080 → this branch): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time
   4/7 → 3/7; people 50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M, 6 ka 69.9 → 91.0 M, 0 BP 170 → 224 M; first state ~5 ka →
   ~6 ka. Uruk 8.1k → 6.8k at 7 ka; Memphis 17.5k → 28.1k at 5 ka; Mohenjo-daro 10.0k → 53.5k at 6 ka (earlier and bigger:

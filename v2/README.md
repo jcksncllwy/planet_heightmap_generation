@@ -2107,8 +2107,9 @@ static way of life reads the rain's CV as the run does, but the Earth place chec
 - Upstream's Earth places (`food-check`): 101/110 hold.
 - Earth's people (`civ-sim --earth`): arrivals 12/20 → 13/20; centres 2/10 → 4/10; farming on time 4/7 → 3/7; people at
   50 ka 5.5 → 7.8 M, 12 ka 18.3 → 23.8 M (estimates 1–10 M: both above), 0 BP 170 → 224 M; the first state ~5 ka → ~6 ka.
-  The fish: 3.05 M foragers of Earth's capacity at 160K, 3.15 M at 640K (it was 2.8 M before the shelf was read
-  cell by cell; the runs above were made then).
+  The fish: 3.42 M foragers of Earth's capacity at 160K, 3.51 M at 640K (2.8 M when the runs above were made).
+- Scale: check-civ-food holds at 40K and 160K on two worlds. Canal land, deltas and marshes are by km, not cells;
+  the shelf is found between cells. Wetland is still 1.55–1.7× at 40K (open).
 - Ten generated worlds (`civ-ensemble --seeds 1-10`): states on 8 → 9 worlds; median first city 5.0 → 6.0 ka, first
   state 2.5 → 6.0 ka; people at 0 BP 126 → 130 M. A generated world's origin is now on land when people set out (a
   shelf cell could be chosen before; the fish made it likely).

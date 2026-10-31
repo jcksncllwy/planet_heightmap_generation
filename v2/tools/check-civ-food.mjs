@@ -60,23 +60,22 @@ const [A, B] = D;
 const near = (a, b, rel, abs = 0) => Math.abs(a - b) <= Math.max(abs, rel * Math.max(Math.abs(a), Math.abs(b)));
 
 section(`the same at two details (${A.cells} and ${B.cells} cells finished; ${A.n} and ${B.n} read)`);
-for (const [name, f, rel, abs, where] of [
+for (const [name, f, rel, abs] of [
     ['soil fertility', d => c => d.sub.soil[c], 0.05, 0],
     ['harvests a year by rain', d => c => d.sub.harvests[c], 0.08, 0.02],
     ['harvests a year watered', d => c => d.sub.harvestsW[c], 0.08, 0.02],
     ['farmland (good harvests\' food)', d => c => d.sub.farmV[c], 0.1, 0.02],
     ['farmers a km² by rain', d => c => d.sub.farmDry[c], 0.1, 1],
     ['herds a km²', d => c => d.sub.food.herds[c], 0.1, 0.02],
-    ['foragers a km² (away from wetland: main\'s deltas, below)', d => c => d.sub.forager[c], 0.1, 0.005, d => c => !(d.sub.wetland[c] > 0)],
+    ['foragers a km²', d => c => d.sub.forager[c], 0.1, 0.005],
     ['the land\'s own forage (npp)', d => c => d.sub.npp[c], 0.05, 0],
 ]) {
-    const a = meanOf(A, f(A), where?.(A)), b = meanOf(B, f(B), where?.(B));
+    const a = meanOf(A, f(A)), b = meanOf(B, f(B));
     check(`${name}: the land's mean alike`, near(a, b, rel, abs), `${a.toFixed(3)} vs ${b.toFixed(3)}`);
 }
-// (main's wetland, not this lane's: a delta's every cell is all marsh, so a coarse mesh's deltas are wider — foragers
-// a km² follow it; reported)
-report('wetland share of the land, coarser ÷ finer (main\'s deltas)', meanOf(A, c => A.sub.wetland[c]) / meanOf(B, c => B.sub.wetland[c]), { digits: 2 });
-report('foragers a km², all the land, coarser ÷ finer', meanOf(A, c => A.sub.forager[c]) / meanOf(B, c => B.sub.forager[c]), { digits: 2 });
+// (the wetland: each delta's area by km, but on a fine mesh the low ground a delta reaches can be less than that area;
+// reported)
+report('wetland share of the land, coarser ÷ finer', meanOf(A, c => A.sub.wetland[c]) / meanOf(B, c => B.sub.wetland[c]), { digits: 2 });
 // (the sea's fish: the people they feed, all told — a coarse mesh's coast is shorter and its cells wider than the
 // day's paddle, so the total is what should hold; and per km of coast, reported)
 const fishPeople = d => { let p = 0; for (let c = 0; c < d.n; c++) if (d.land(c)) p += d.sub.fish[c] * d.sub.cellKm2; return p; };
