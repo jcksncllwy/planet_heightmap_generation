@@ -243,6 +243,8 @@ function treeScratch(n, m) {
  * @param {Float32Array} rain     rain (mm/year)
  * @param {number} cellKm2
  * @param {Uint8Array} ocean      the world ocean (finish.js oceanMask): the flood starts there, and only there
+ * @param {{fill: Float32Array, parent: Int32Array, order: Int32Array, count: number}|null} [flood]  that flood, already done (the
+ *   GPU's, gpu/erode-gpu.js): each cell's spill level, the neighbour it drains to, and the land with each cell after its parent
  * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[]}}
  *   sink: 1 on every cell of a closed hollow (its rivers end there); base: the level a river ending there is graded to
  *   (the ground, or a lake's level); water: each lake's level on the cells under it (NaN elsewhere) — a closed hollow's
@@ -250,26 +252,30 @@ function treeScratch(n, m) {
  *   floor and sill (km), its water's level (km) and area (km²), inflow and what it would evaporate full (km³/yr), and
  *   whether it spills (full) or keeps a lake (wet) or a playa
  */
-export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {
+export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null) {
     const { adjOffset, adjList, numCells: n } = mesh;
     // ── the priority flood from the world ocean: each other cell's spill level, and the way it was reached (toward the
     // ocean) — a sea cut off from it is crossed as any hollow is, its spill level its sill ──
-    const fill = new Float32Array(n), parent = new Int32Array(n).fill(-1), order = new Int32Array(n), done = new Uint8Array(n), heap = new MinHeap(1 << 16);
-    let count = 0;
-    for (let c = 0; c < n; c++) {
-        if (!ocean[c]) continue;
-        done[c] = 2;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!ocean[nb] && parent[nb] < 0) { parent[nb] = c; fill[nb] = Math.max(0, z[nb]); heap.push(fill[nb], nb); } }
-    }
-    while (heap.size) {
-        const c = heap.pop();
-        if (done[c]) continue;
-        done[c] = 1; order[count++] = c;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-            const nb = adjList[k];
-            if (done[nb] || ocean[nb]) continue;
-            const level = Math.max(fill[c], z[nb]);
-            if (parent[nb] < 0 || level < fill[nb]) { parent[nb] = c; fill[nb] = level; heap.push(level, nb); }
+    const fill = flood?.fill ?? new Float32Array(n), parent = flood?.parent ?? new Int32Array(n).fill(-1), order = flood?.order ?? new Int32Array(n), done = new Uint8Array(n);
+    let count = flood?.count ?? 0;
+    if (flood) for (let c = 0; c < n; c++) done[c] = ocean[c] ? 2 : 1;
+    else {
+        const heap = new MinHeap(1 << 16);
+        for (let c = 0; c < n; c++) {
+            if (!ocean[c]) continue;
+            done[c] = 2;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!ocean[nb] && parent[nb] < 0) { parent[nb] = c; fill[nb] = Math.max(0, z[nb]); heap.push(fill[nb], nb); } }
+        }
+        while (heap.size) {
+            const c = heap.pop();
+            if (done[c]) continue;
+            done[c] = 1; order[count++] = c;
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k];
+                if (done[nb] || ocean[nb]) continue;
+                const level = Math.max(fill[c], z[nb]);
+                if (parent[nb] < 0 || level < fill[nb]) { parent[nb] = c; fill[nb] = level; heap.push(level, nb); }
+            }
         }
     }
     // (the tectonic surface's own hollows — rifts, forelands, closed basins — where lakes may stand; the finishing's
