@@ -14,6 +14,24 @@ All three tenets should be considered simultaneously. When they conflict, break 
 2. **Ease of use and efficiency** — The interface should be approachable and intuitive. Generation should be fast. Don't sacrifice usability for realism.
 3. **Scientific plausibility** — Terrain, tectonics, and geology should be grounded in real planetary science. Results don't need to be physically accurate simulations, but they should be believable.
 
+## How We Model (the v2 engine)
+
+This is *how* scientific plausibility is achieved. It works inside the tenets above: the output must still look good, and generation must stay fast.
+
+**Prefer emergent processes to rules that describe outcomes.** The more hand rules and probabilities we can replace with emergent simulation, the better. Choose a modelling approach from three tiers, in this order:
+
+1. **Simulation**, where feedback creates the pattern. Examples: plate boundaries forming where stress beats a strength that damage weakens and remembers; rivers eroding and depositing together; water filling what that leaves.
+2. **Reduced physics**, where the behaviour is local, near-linear or well measured: analytic solutions, vertically integrated (2D) models, and parameterizations with a sourced range. Examples: rigid plate interiors ("heuristic plates, simulated boundaries"), slab pull applied as a force, the analytic stream-power carve, evaporation by Penman.
+3. **Rules that encode an outcome.** "A hollow is a lake if it's ≥ 300 km²", "rift with probability p per Myr". These are allowed only as a stopgap with a written exit plan.
+
+Spend the compute budget where the feedback is. Where a measured relationship exists, a sourced parameterization beats a simulation we can't afford. Don't slow generation for physics: offset any cost, or make it optional.
+
+**Write down every reduced model's limits**, meaning what it skips, in the code header and in `v2/README.md`. Example: the one-pass carve erodes but never deposits, and routes water *through* hollows instead of changing them. Rules added later otherwise silently compensate for those gaps.
+
+**When a fix would be "another rule on the same symptom", stop and look for the missing process.** If a second or third rule targets the same symptom, audit the layer underneath before patching again. Lakes were the lesson: four rounds of lake rules stood in for missing erosion and deposition.
+
+**Ground numbers in sources.** Every constant and every Earth target cites its source, or is marked "recalled" when it isn't verified. Hard `check()`s are for things that must never happen (bug guards, conservation, physical laws). Comparisons with Earth are `report()`s against a sourced range.
+
 ## What Users Love (Protect These)
 
 User feedback consistently highlights these as World Orogen's core strengths. Any change should preserve or enhance them — never degrade them as a side effect.
