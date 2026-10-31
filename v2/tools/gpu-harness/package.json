@@ -1,0 +1,10 @@
+{
+  "name": "world-orogen-gpu-harness",
+  "private": true,
+  "description": "Tool-only: Dawn's WebGPU for Node, and Playwright to run the same kernels in the installed Chrome. Nothing in the app loads this.",
+  "type": "module",
+  "dependencies": {
+    "webgpu": "0.6.2",
+    "playwright-core": "1.56.1"
+  }
+}
