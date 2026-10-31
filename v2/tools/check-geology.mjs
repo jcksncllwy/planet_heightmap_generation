@@ -11,6 +11,13 @@ import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { packFrame, packedBytes } from '../js/tectonics/frame-pack.js';
 import { CrustType, OrogenyType } from '../js/tectonics/model/crust.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildSimMesh } from '../js/core/sim-mesh.js';
+import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { TerrainPool } from '../js/terrain/terrain-pool.js';
+import { finishPlanet } from '../js/finish/finish.js';
+import { ROCK_COUNT, ROCK_FAMILY } from '../js/geology/rocks.js';
 import { GEO_FRAME_FIELDS, GeoFlag, decodeCoverKm, decodeExhumKm, decodeArcMyr, decodeFacies } from '../js/tectonics/model/geology.js';
 
 const SEEDS = [12345, 777], SIM = 20000, UNTIL = 400;
@@ -83,6 +90,30 @@ for (const seed of SEEDS) {
     let cov = 0;
     for (const w of landCells) { if (!last.coverKm[w]) continue; cov++; decodeFacies(last.facies[w], fac); for (const k in tot) tot[k] += fac[k]; }
     report('land under cover', 100 * cov / landCells.length, { unit: ' %', digits: 1, detail: `make-up: carbonate ${(tot.carb / cov).toFixed(2)}, salt ${(tot.salt / cov).toFixed(2)}, coal ${(tot.coal / cov).toFixed(2)}, organic ${(tot.organic / cov).toFixed(2)}` });
+}
+
+// ── the finish: rocks and k_rock on a finished moment, at two details (LITHO_CELLS: the gate's 640K against 2.5M) ──
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const DETAILS = (process.env.LITHO_CELLS ?? '160000,640000').split(',').map(Number), MOMENTS = [[12345, 300], [777, 300], [777, 950]], FSIM = 40000;
+const simMesh = buildSimMesh(FSIM, MESH_SEED), FAMILIES = ['loose', 'sedimentary', 'volcanic', 'plutonic', 'metamorphic'];
+for (const [seed, time] of MOMENTS) {
+    section(`the finish's rock, seed ${seed} at ${time} Myr`);
+    const frame = await momentFrame(ROOT, { seed, cont: 30, sim: FSIM, time }), shares = [];
+    for (const cells of DETAILS) {
+        const pool = await TerrainPool.create(simMesh);
+        const fin = await finishPlanet({ frame, simMesh, seed, cells, pool, closePool: true }), { rock, kRock, coarse, shares: sh } = fin.litho;
+        let sum = 0, land = 0, lo = Infinity, hi = 0, grainy = 0;
+        for (let c = 0; c < rock.length; c++) if (rock[c]) { sum += kRock[c]; land++; lo = Math.min(lo, kRock[c]); hi = Math.max(hi, kRock[c]); grainy += coarse[c]; }
+        check(`k_rock's mean over the land is 1 and every value a number (${cells})`, Math.abs(sum / land - 1) < 1e-3 && lo > 0 && hi < Infinity, `mean ${(sum / land).toFixed(4)}, ${lo.toFixed(2)}…${hi.toFixed(2)}, spread ${(hi / lo).toFixed(1)}×`);
+        const fam = Object.fromEntries(FAMILIES.map(f => [f, 0]));
+        for (let k = 1; k < ROCK_COUNT; k++) fam[ROCK_FAMILY[k]] += sh[k];
+        shares.push(fam);
+        const total = Object.values(fin.ms).reduce((a, b) => a + b, 0);
+        report(`the rock stage's share of the finish (${cells})`, 100 * fin.ms.lithology / total, { unit: ' %', digits: 1, detail: `${(fin.ms.lithology / 1000).toFixed(1)} s of ${(total / 1000).toFixed(1)} s` });
+        report(`land's sedimentary rock and loose sediment (${cells})`, fam.sedimentary + fam.loose, { earth: [0.5, 0.75], source: 'GLiM today 70 % (Hartmann & Moosdorf 2012); the low end is an estimate for a low stand of a cycle, unsourced. Young sediment does not exist yet here', detail: FAMILIES.map(f => `${f} ${(100 * fam[f]).toFixed(0)}`).join(' · ') });
+        report(`land breaking down coarse (${cells})`, grainy / land, { detail: 'sand and gravel; the rest mud or solution' });
+    }
+    if (shares.length > 1) report('family shares, largest shift between the details', Math.max(...FAMILIES.map(f => Math.abs(shares[0][f] - shares.at(-1)[f]))), { earth: [0, 0.05], source: 'scale invariance: the same world at two details' });
 }
 
 finish('geology');

@@ -293,6 +293,8 @@ Loaded via CDN import maps (no installation needed):
 
 This project is licensed under the GNU General Public License v3.0 — see [LICENSE](LICENSE) for details.
 
+The geological record and rock classes in `v2/js/tectonics/step/geology.js`, `v2/js/tectonics/model/geology.js` and `v2/js/geology/` are ported from World Orogen by raguilar011095 (GPL v3). Madeline James's worldbuilding guide is the idea source for reading rock from a world's orogenies and old seas.
+
 ## Acknowledgments
 
 Inspired by [Red Blob Games' planet generation](https://www.redblobgames.com/x/1843-planet-generation/) — Fibonacci sphere meshing, dual-mesh traversal, and distance-field elevation approach.

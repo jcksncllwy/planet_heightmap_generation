@@ -6,6 +6,7 @@
 
 import { FINISH, COVER } from './finish-config.js';
 import { LatLonGrid } from './finish-grid.js';
+import { rockBeforeCarve, rockCfg } from './finish-lithology.js';
 import { closedBasins } from './finish-basins.js';
 import { depositSediment, creepByClimate, dissect } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
@@ -66,7 +67,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const lap = name => { const t = performance.now(); ms[name] = (ms[name] ?? 0) + t - t0; t0 = t; };
     onStage('mesh');
     // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
-    const E = erosionAt(F, cfg), surfCfg = { ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness };
+    const E = erosionAt(F, cfg), surfCfg = rockCfg({ ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness });
     // (the surface's plan, begun on the pool's first worker while the mesh is built and warped here: it needs only the
     // mesh's cell size)
     const planned = pool.plan(frame, { cfg: surfCfg, seed, edgeKm: terrainEdgeKm(cells) });
@@ -137,6 +138,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
 
     // ── the rivers: runoff (rain less evaporation) weights the drainage; dry basins stay closed; carved for longer ──
     onStage('rivers');
+    const litho = rockBeforeCarve({ mesh, z, frame, simMesh, seed, cfg, lat, lon, rain: pAnn, temp: tAnn }, carveIn);      // (finish-lithology.js)
+    lap('lithology');
     const runoff = new Float32Array(n), pet = new Float32Array(n);
     let oldW = 0, sumR = 0, sumP = 0, landN = 0;
     for (let c = 0; c < n; c++) {
@@ -319,7 +322,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     lap('final climate');
     const flow = new Float32Array(n);
     for (let c = 0; c < n; c++) flow[c] = Math.log10(Math.max(1, Hy.area[c]));
-    return { mesh, z: C.z, ocean, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
+    return { mesh, z: C.z, ocean, litho, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
         civ: civ ? { ice: I.ice, loess: W.loess, erg: W.erg, ...civCells.fields, flow: travelFlow } : null,              // (for the civ layer: v2/js/civ/civ-page.js)

@@ -2087,14 +2087,32 @@ without (`check-geology.mjs` hashes every frame both ways, two seeds).
   flooding, SHELF and EPEIRIC are not ported, so no inland-sea cover either.
 - The start world's exhumation and platform cover are a painted initial state (tier 3), booked apart in `geoBook.seededKm3`.
 - Facies by latitude alone (tier 3). Carbonate is only the rivers' dissolved load in warm enclosed seas: no carbonate
-  platforms, so limestone is under-counted.
+  platforms and no flooding (a consequence of cover coming only from our books), so limestone runs low against Earth.
 - `riftAt` and OPHIOLITE are read off crust flags at the clock's tick: up to `everyMyr` late, a re-rifted cell keeps its first date.
 - A sealed cell copies its neighbour's record.
 
 **The budget, measured** (20K, 400 Myr; Mkm³; seeds 12345 / 777): booked basin + sea fill 1004 / 1178, cover laid 666 / 858.
 The gap is three things, each measured: river cuts refilled, which never enter `basinFillKm` (122 / 114); wear of fill inside
 a tick (6 / 6); and over-booking in `rivers.js` `trapLoad` (212 / 200): `cutNow[c] -= u` runs before `vol(c, r)`, so `kept`
-is computed on the reduced cut. Laid + those three matches the books to within 0.1 Mkm³ of the wear term.
+is computed on the reduced cut. Laid + those three matches the books to within 0.3 Mkm³.
+
+## Rock at the finish: k_rock (2026-10-31, branch litho, L2)
+
+Before the carve the finish reads the record into rock (`finish/finish-lithology.js`, `geology/rocks.js`, `geology/lithology.js`;
+trimmed from World Orogen, GPL v3): per cell a rock class (`Rock`), `kRock` (erodibility, land mean 1), `bedded` (0…255) and
+`coarse` (1 sand and gravel, 0 mud or solution), returned as `fin.litho` for other stages. `geology-config.js useRock` names
+which hand rules k_rock replaces, one by one: the shield's and a flood basalt's carve hardness (`carveCratonHardness`,
+`lipHardness`, zeroed in the surface's settings by `rockCfg`, so `terrain/synthesize.js` is unchanged and the terrain outside
+the finish keeps them) and `iceSoft` on land. The crests' hardness stays: it is the drawn ridges' structure, which a rock read
+from the record does not know.
+
+k_rock ∝ e^(2.3(½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it: ~4.5× between shale and granite,
+5.6× from the softest to the hardest class (Jackson's ruling: this compressed spread first, Earth's range tested in L3).
+
+**Limits**: one layer: k_rock is the rock at the uncarved surface, not the layer a river cuts into (L3 reads the column). No
+structure cues from the surface, no young sediment (it does not exist yet at this stage), no painted relief or cover stairs.
+Rock patterns inside a sim cell are noise (tier 3). Mean 1 over land cells, not weighted by where erosion falls. Frames from
+before the record read as zeros: bare basement by setting. History erosion is still rock-blind (L6): `heights.js` keeps its craton rule.
 
 ## Food: harvests, soil, fish and the land views (2026-10-31, branch civ-food)
 
