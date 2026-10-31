@@ -59,8 +59,9 @@ export function classifyBoundaries(world, dt) {
         convergence[w] = closing / CM_PER_YR_TO_RAD_PER_MYR;
 
         const motion = classifyMotion(closing, shear, activeSpeed, config.obliqueLimit);
-        // (LOCKED keeps its slab: forces come from a boundary's state, so a world at rest can start itself)
-        if (config.trenchEstablishKm > 0 && real && (motion === Motion.OPENING || motion === Motion.SLIDING)) idleSlab(A.crust, cellA, dt, config);
+        // (an edge at rest keeps its slab: forces come from a boundary's state, so a world at rest can start itself; and an oblique
+        // edge that still closes, SLIDING here, is a trench all the same, as Sumatra's and the western Aleutians' are)
+        if (config.trenchEstablishKm > 0 && real && closing < 0 && motion !== Motion.LOCKED) idleSlab(A.crust, cellA, dt, config);
         if (motion === Motion.OPENING) boundaryKind[w] = BoundaryKind.RIDGE;
         else if (motion === Motion.SLIDING) {
             boundaryKind[w] = BoundaryKind.TRANSFORM;
