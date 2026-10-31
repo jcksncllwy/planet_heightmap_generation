@@ -86,6 +86,8 @@ for (const seed of SEEDS) {
     report('land that has stood in a live subduction belt', 100 * arcShare, { unit: ' %', digits: 1, detail: `median ${median(arcCells.map(w => decodeArcMyr(last.arcMyr[w])))} Myr` });
     report('quiet belts worn, median km', median(belts.map(w => decodeExhumKm(last.exhumKm[w]))), { earth: [4, 30], source: 'Barrovian grades bared in old orogens (upstream research §3): slate 4–8 km, gneiss 16–24 km', detail: `${belts.length} cells` });
     report('flagged land, WAS_ARC / FORELAND / RIFT_BASIN / OPHIOLITE / SLAB_CHANGE', flagged(GeoFlag.WAS_ARC), { digits: 0, detail: `${flagged(GeoFlag.WAS_ARC)} / ${flagged(GeoFlag.FORELAND)} / ${flagged(GeoFlag.RIFT_BASIN)} / ${flagged(GeoFlag.OPHIOLITE)} / ${flagged(GeoFlag.SLAB_CHANGE)} of ${landCells.length}` });
+    // (a flag kept for good, so it grows with the history: a rate, not a share at one moment)
+    report('land entering a foreland, % of land per 100 Myr', 100 * flagged(GeoFlag.FORELAND) / landCells.length / (UNTIL / 100), { earth: [4, 12], digits: 1, source: 'derived, recalled inputs: foredeeps 100–300 km wide (DeCelles & Giles 1996) × ~30,000 km of active belts over ~150 Mkm² of land is 2–6 % at a time; a ~50 Myr basin life turns that over twice per 100 Myr', detail: 'almost all of it the distance rule, forelandFlagKm: the sunk-basin rule alone flags 3–4 % of land by 400 Myr' });
     const fac = { carb: 0, salt: 0, coal: 0, organic: 0 }, tot = { carb: 0, salt: 0, coal: 0, organic: 0 };
     let cov = 0;
     for (const w of landCells) { if (!last.coverKm[w]) continue; cov++; decodeFacies(last.facies[w], fac); for (const k in tot) tot[k] += fac[k]; }

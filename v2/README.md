@@ -2090,6 +2090,8 @@ without (`check-geology.mjs` hashes every frame both ways, two seeds).
   platforms and no flooding (a consequence of cover coming only from our books), so limestone runs low against Earth.
 - `riftAt` and OPHIOLITE are read off crust flags at the clock's tick: up to `everyMyr` late, a re-rifted cell keeps its first date.
 - A sealed cell copies its neighbour's record.
+- FORELAND is kept for good, so its share grows with the history (49–58 % of land by 400 Myr, ~12–14 % per 100 Myr, nearly all
+  from the distance rule `forelandFlagKm`). `check-geology` reports the rate against a range derived from recalled inputs; not tuned.
 
 **The budget, measured** (20K, 400 Myr; Mkm³; seeds 12345 / 777): booked basin + sea fill 1004 / 1178, cover laid 666 / 858.
 The gap is three things, each measured: river cuts refilled, which never enter `basinFillKm` (122 / 114); wear of fill inside
