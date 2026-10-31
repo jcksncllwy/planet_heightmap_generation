@@ -30,6 +30,7 @@
 //   collision lock    where land overlaps land, the two plates are viscously tied together
 
 import { CrustType, CrustFlag } from '../model/crust.js';
+import { BoundaryKind } from '../model/world.js';
 import { contactAt } from './contact.js';
 import { areYoungRiftPartners } from './collision.js';
 import { ringsOf } from '../../core/mesh-rings.js';
@@ -56,7 +57,7 @@ const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4;
 
 /** @returns {Map<number, PlateLoad>} loads for every living, non-background plate */
 export function gatherLoads(world) {
-    const { mesh, owner, ownerCell, plates, landClaims, collider, time, config } = world;
+    const { mesh, owner, ownerCell, plates, landClaims, collider, boundaryKind, time, config } = world;
     const { xyz, numCells, edgeKm } = mesh;
     const edgeLength = edgeKm / Math.sqrt(3) / 100;       // one shared cell edge, in units of 100 km (hexagonal cells)
     const loads = new Map(), loadOf = [];
@@ -115,6 +116,9 @@ export function gatherLoads(world) {
         const trenchA = (A.flags[cellA] & CrustFlag.TRENCH) !== 0, trenchB = (B.flags[cellB] & CrustFlag.TRENCH) !== 0;
         const length = edgeLength * n[3];
 
+        // A contact pressed together with no slab yet (BoundaryKind.CONVERGING, step/boundaries.js) resists its closing as a
+        // slab sinking does; the two plates share it (half each), since neither has yet gone down
+        if (boundaryKind[w] === BoundaryKind.CONVERGING) load.slabs.push({ w, r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length: length / 2 });
         let kind = -1, size = 0, rAge;
         if (trenchB && oceanA && !trenchA) {
             kind = PULL; size = config.slabPull * ageFactor(A.formedAt[cellA]) * maturity(B, cellB);

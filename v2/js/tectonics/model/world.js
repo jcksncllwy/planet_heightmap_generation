@@ -163,6 +163,7 @@ export const BoundaryKind = Object.freeze({
     SUBDUCTING: 3,   // this cell's plate is going down here
     OVERRIDING: 4,   // this cell's plate is the upper plate of a subduction zone
     COLLISION: 5,    // continent–continent
+    CONVERGING: 6,   // closing, with no slab established yet: forced convergence (step/boundaries.js)
 });
 
 export const Provisional = Object.freeze({

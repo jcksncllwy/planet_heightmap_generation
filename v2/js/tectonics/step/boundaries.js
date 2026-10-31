@@ -12,6 +12,7 @@ import { overrides } from './polarity.js';
 import { contactAt } from './contact.js';
 import { spreadBelt, beltWidthKm, beltShape, obliquityDeg, OrogenyType } from './orogeny.js';
 import { reachesWithin } from '../../core/mesh-bfs.js';
+import { establishes } from './subduction-init.js';
 
 const Motion = Object.freeze({ LOCKED: 0, OPENING: 1, CLOSING: 2, SLIDING: 3 });
 
@@ -47,7 +48,7 @@ export function classifyBoundaries(world, dt) {
         if (otherW < 0) {                              // interior cell
             // A trench flag only means something on ocean crust while that crust is a plate edge;
             // on land it stays as the record of a former active margin.
-            if (real && (A.crust.flags[cellA] & CrustFlag.TRENCH) && A.crust.type[cellA] === CrustType.OCEAN) A.crust.flags[cellA] &= ~CrustFlag.TRENCH;
+            if (real && (A.crust.flags[cellA] & CrustFlag.TRENCH) && A.crust.type[cellA] === CrustType.OCEAN) { A.crust.flags[cellA] &= ~CrustFlag.TRENCH; if (config.trenchEstablishKm > 0) A.crust.slabKm[cellA] = 0; }
             continue;
         }
         const B = plates[owner[otherW]], x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
@@ -58,6 +59,7 @@ export function classifyBoundaries(world, dt) {
         convergence[w] = closing / CM_PER_YR_TO_RAD_PER_MYR;
 
         const motion = classifyMotion(closing, shear, activeSpeed, config.obliqueLimit);
+        if (config.trenchEstablishKm > 0 && real && motion !== Motion.CLOSING) idleSlab(A.crust, cellA, dt, config);
         if (motion === Motion.OPENING) boundaryKind[w] = BoundaryKind.RIDGE;
         else if (motion === Motion.SLIDING) {
             boundaryKind[w] = BoundaryKind.TRANSFORM;
@@ -80,11 +82,16 @@ export function classifyBoundaries(world, dt) {
                     prefersLower: overrides(lower, lowerCell, upper, upperCell) === true, weight: trenched ? config.segmentTrenchWeight : 1 });
             }
             boundaryKind[w] = aOverrides === null ? BoundaryKind.COLLISION : aOverrides ? BoundaryKind.OVERRIDING : BoundaryKind.SUBDUCTING;
+            // A slab that has lost the plate behind it: the floor arriving is so young it can no longer hold the slab up (a
+            // ridge reaching the trench: Burkett & Billen 2009, 2010), and the slab goes
+            if (aOverrides && real && config.trenchEstablishKm > 0 && (A.crust.flags[cellA] & CrustFlag.TRENCH) && B.crust.type[ownerCell[otherW]] === CrustType.OCEAN && world.time - B.crust.formedAt[ownerCell[otherW]] < config.trenchDetachAgeMyr) {
+                A.crust.flags[cellA] &= ~CrustFlag.TRENCH; A.crust.slabKm[cellA] = 0; world.budget.detachedKm = (world.budget.detachedKm ?? 0) + world.mesh.edgeKm;
+            }
             // an ocean trench cell that is itself going down (its polarity was reversed by land arriving on the other side) loses its trench
             if (aOverrides === false && real && A.crust.type[cellA] === CrustType.OCEAN && B.crust.type[ownerCell[otherW]] !== CrustType.OCEAN) A.crust.flags[cellA] &= ~CrustFlag.TRENCH;
             if (aOverrides && real) {
                 const km = closing * dt * PLANET_RADIUS_KM;
-                if (feedTrench(world, w, A.crust, cellA, km)) {
+                if (feedTrench(world, w, A, cellA, B, ownerCell[otherW], km, closing / CM_PER_YR_TO_RAD_PER_MYR)) {
                     const f = fed.get(A) ?? fed.set(A, { cells: [], kms: [], headOn: [], shear: [], age: [], km: 0, flat: 0 }).get(A);
                     const slabAge = world.time - B.crust.formedAt[ownerCell[otherW]];
                     f.cells.push(cellA); f.kms.push(km); f.headOn.push(closing / Math.hypot(closing, shear)); f.age.push(slabAge); f.km += km;
@@ -98,6 +105,8 @@ export function classifyBoundaries(world, dt) {
                     if (slabAge < buoyantFor && advance > config.flatSlabAdvanceCmYr) f.flat++;
                 }
             }
+            // no slab established on either side: the plates press together, and no subduction zone stands here yet
+            if (config.trenchEstablishKm > 0 && aOverrides !== null && !(A.crust.flags[cellA] & CrustFlag.TRENCH) && !(B.crust.flags[ownerCell[otherW]] & CrustFlag.TRENCH)) boundaryKind[w] = BoundaryKind.CONVERGING;
         }
     }
     if (config.segmentPolarity) voteSegments(world, oceanContacts); else world.oceanOverrider.fill(-1);
@@ -198,16 +207,25 @@ function nearLand(plate, mesh, cell, config) {
 // The overriding edge of a closing contact: establish the trench here if crust has really gone down —
 // at this cell or right next door — and lengthen its slab. Kinematics alone is not enough to establish
 // one: cell-scale jitter at ridge offsets looks like closing for a step. @returns whether the slab grew
-function feedTrench(world, w, crust, cell, subductedKm) {
-    const { consumedAt, mesh } = world, { adjOffset, adjList } = mesh;
+function feedTrench(world, w, A, cell, B, cellB, subductedKm, closingCmYr) {
+    const { consumedAt, mesh, config, time } = world, { adjOffset, adjList } = mesh, crust = A.crust;
     if (!(crust.flags[cell] & CrustFlag.TRENCH)) {
         let fed = consumedAt[w];
         for (let k = adjOffset[w]; !fed && k < adjOffset[w + 1]; k++) fed = consumedAt[adjList[k]];
         if (!fed) return false;
+        if (config.trenchEstablishKm > 0 && !establishes(world, A, cell, B, cellB, subductedKm, closingCmYr)) return false;
         crust.flags[cell] |= CrustFlag.TRENCH;
     }
     crust.recordSubduction(cell, subductedKm);
     return subductedKm > 0;
+}
+
+/** A plate edge not closing: its slab, or the start of one, fades over the time a slab takes to sink on its own (founderSlabMyr; slab
+ * break-off: a slab no plate feeds detaches), and the trench ends. A choice of scale, not a measured rate. */
+function idleSlab(crust, cell, dt, config) {
+    if (!(crust.slabKm[cell] > 0)) return;
+    crust.slabKm[cell] *= Math.exp(-dt / config.founderSlabMyr);
+    if ((crust.flags[cell] & CrustFlag.TRENCH) && crust.type[cell] === CrustType.OCEAN && crust.slabKm[cell] < config.trenchEstablishKm) { crust.flags[cell] &= ~CrustFlag.TRENCH; crust.slabKm[cell] = 0; }
 }
 
 /** Crust above normal ocean crust that a slab cell carries (km): a plume head's plateau, a hotspot track's ridge. */

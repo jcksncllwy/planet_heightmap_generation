@@ -57,6 +57,37 @@ export function founderUrge(ageMyr, squeeze, config, weightMyr = ageMyr) {
 }
 
 /**
+ * Closing is not yet subducting. A contact that closes is forced convergence, and it becomes a trench only by the founder law
+ * (founderUrge: the floor's weight and the squeeze, with the pull of a slab beside it, against a weak zone's strength), held
+ * for trenchEstablishKm of convergence: cumulative convergence, not its rate, carries a forced margin to a self-sustaining
+ * slab (Hall et al. 2003; Gurnis, Hall & Lavier 2004). What has gone down so far is kept on slabKm, and fades while the
+ * contact stops closing (boundaries.js idleSlab). Until then the contact is BoundaryKind.CONVERGING: it pulls nothing,
+ * builds no belt or arc, and resists closing (step/forces.js).
+ * Limits: the force on the contact is read from its closing rate, not solved for (a stress solve would feed the squeeze);
+ * rigid plates must still lose the overlap at a contact that has not failed, so a CONVERGING contact consumes crust with no
+ * slab: on Earth that convergence would stop or spread into a diffuse belt. @returns {boolean} established now
+ */
+export function establishes(world, A, cell, B, cellB, km, closingCmYr) {
+    const { config, time, mesh } = world, { adjOffset, adjList } = mesh, a = A.crust, b = B.crust;
+    if (b.type[cellB] !== CrustType.OCEAN) return true;                  // (land arriving: the polarity rule's business)
+    const age = time - b.formedAt[cellB], upAge = time - a.formedAt[cell];
+    const step = Math.max(0, Math.sqrt(Math.max(0, age)) - Math.sqrt(Math.max(0, upAge)));
+    const weightMyr = a.type[cell] === CrustType.OCEAN ? step * step : age;
+    let mature = 0;
+    for (let k = adjOffset[cell]; k < adjOffset[cell + 1]; k++) { const nb = adjList[k]; if (a.mask[nb] && (a.flags[nb] & CrustFlag.TRENCH)) mature = Math.max(mature, Math.min(1, a.slabKm[nb] / config.slabMatureKm)); }
+    const squeeze = config.founderStrength * (Math.max(0, closingCmYr) / config.founderSqueezeCmYr + config.founderSlabLoad * mature);
+    // (the one place the squeeze on a contact is judged: an in-plate stress solve would feed this term)
+    if (!(founderUrge(age, squeeze, config, weightMyr) > 0)) return false;
+    // (the convergence belongs to the contact, not to one raster cell: where the plates also slide, the contact runs along
+    // the edge, and what the stretch beside it has taken comes with it — a tally kept per cell alone never fills, and would
+    // fill slower on a finer mesh)
+    let carried = a.slabKm[cell];
+    for (let k = adjOffset[cell]; k < adjOffset[cell + 1]; k++) { const nb = adjList[k]; if (a.mask[nb] && !(a.flags[nb] & CrustFlag.TRENCH) && a.slabKm[nb] > carried) carried = a.slabKm[nb]; }
+    a.slabKm[cell] = carried + km;
+    return a.slabKm[cell] >= config.trenchEstablishKm;
+}
+
+/**
  * @param {number} dt Myr
  * @returns {number} margins that began subducting this step
  */

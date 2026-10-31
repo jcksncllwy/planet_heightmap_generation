@@ -14,6 +14,7 @@ export const BOUNDARY_RGB = {
     [BoundaryKind.TRANSFORM]: [70, 205, 95],
     [BoundaryKind.SUBDUCTING]: [120, 190, 255],
     [BoundaryKind.OVERRIDING]: [30, 90, 255],
+    [BoundaryKind.CONVERGING]: [170, 150, 200],
     [BoundaryKind.COLLISION]: [255, 0, 200],
 };
 export const ACTIVE_FLAG_RGB = [96, 60, 210];     // flagged crust just behind the live trench edge

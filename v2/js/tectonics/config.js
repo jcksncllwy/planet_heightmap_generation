@@ -367,7 +367,9 @@ export const TECTONICS = {
     marginFounderRatePerMyr: 0.02,    // the same, for a margin INSIDE a plate (its old ocean breaks away as a plate of its own,
                                       // founderWithinPlates): without it a plate that holds its whole ocean never breaks up again
     // (founderStrength: below, in the stress-driven initiation block)
-    founderSqueezeCmYr: 6,            // two plates closing on a passive margin between them at this rate squeeze it as hard
+    founderSqueezeCmYr: 3.4,          // two plates closing on a margin between them at this rate squeeze it as hard as it is strong:
+                                      // the rate at which a contact's resistance, shared by its two plates (slabResistance ÷ 2, step/forces.js),
+                                      // reaches founderStrength: 0.08 ÷ 15 rad/Myr ≈ 3.4 cm/yr. (Was 6, set by hand)
     oceanNeutralAgeMyr: 30,           // ocean younger than this is too warm and light to founder however hard it is squeezed
 
     // ── Oceans that break into plates (realism pass, phase 3: step/ocean-plates.js) ──
@@ -422,6 +424,11 @@ export const TECTONICS = {
                                       // count as going down. A new trench takes ~10 Myr from failure to sinking on its own (Gurnis, Hall &
                                       // Lavier 2004; Stern & Gerya 2018: 6–8 Myr for Izu–Bonin–Mariana) — past that, one still not going
                                       // down has failed (Zhou et al. 2020's aborted initiation) and is captured as before
+    trenchEstablishKm: 100,           // a closing contact is a trench once it has taken this much convergence under the founder law: a
+                                      // fracture zone becomes a self-sustaining subduction zone after ~100 km (Hall et al. 2003, EPSL 212),
+                                      // and cumulative convergence, not its rate, sets the force balance (Gurnis, Hall & Lavier 2004)
+    trenchDetachAgeMyr: 5,            // floor younger than this reaching a trench cannot hold the slab up, and the slab detaches: ridges are
+                                      // abandoned 100–275 km from the trench (Burkett & Billen 2009, 2010), ~3–9 Myr at ~30 km/Myr half-spreading
     founderPropagate: true,           // trench ends propagate along strike, and invade a passive margin they abut (false: no propagation)
 
 
@@ -614,6 +621,7 @@ export const MECHANISMS = Object.freeze({
     subductionInit: { subductionInitRatePerMyr: 0 },                         // passive margins foundering (step/subduction-init.js)
     marginFounder:  { marginFounderRatePerMyr: 0 },                          // margins inside a plate foundering: the ocean breaks away (step/subduction-init.js)
     founderAcross:  { founderAcross: false },                                // a plate failing across its open ocean under compression (step/subduction-init.js)
+    trenchEstablish: { trenchEstablishKm: 0 },                               // a closing contact must earn its slab, and slabs detach (step/subduction-init.js establishes, step/boundaries.js)
     trenchPropagation: { founderPropagate: false },                          // trench ends running along strike, invading passive margins (step/subduction-init.js)
     backgroundRetires: { backgroundEndMyr: Infinity },                       // the pre-history ocean becomes plates (step/ocean-plates.js)
     oceanSplits:    { oceanSplitRatePerMyr: 0 },                             // big ocean plates split along a new ridge (step/ocean-plates.js)

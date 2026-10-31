@@ -81,6 +81,7 @@ export function recordedFrameAt(frames, t) {
 export const BOUNDARY_KIND_NAME = {
     [BoundaryKind.RIDGE]: 'ridge', [BoundaryKind.TRANSFORM]: 'transform', [BoundaryKind.SUBDUCTING]: 'going down a trench',
     [BoundaryKind.OVERRIDING]: 'overriding edge of a trench', [BoundaryKind.COLLISION]: 'collision front',
+    [BoundaryKind.CONVERGING]: 'closing, no slab yet',
 };
 
 /** Legend entries for the boundary overlay, generated from the palette so they cannot drift from it. */
@@ -90,6 +91,7 @@ export function boundaryLegend({ collisionNote = '' } = {}) {
         { color: css(BOUNDARY_RGB[BoundaryKind.OVERRIDING]), label: 'trench — edge of the overriding plate' },
         { color: css(ACTIVE_FLAG_RGB), label: 'trench flag behind the edge (persistent, in that plate’s crust)' },
         { color: css(BOUNDARY_RGB[BoundaryKind.SUBDUCTING]), label: 'trench, subducting side' },
+        { color: css(BOUNDARY_RGB[BoundaryKind.CONVERGING]), label: 'closing with no slab yet — no trench has failed here' },
         { color: css(BOUNDARY_RGB[BoundaryKind.TRANSFORM]), label: 'transform — plates sliding past' },
         { color: css(BOUNDARY_RGB[BoundaryKind.COLLISION]), label: `collision — land on land${collisionNote}` },
         { color: css(DORMANT_TRENCH_RGB), label: 'former active margin (dormant trench flag, land only)' },
