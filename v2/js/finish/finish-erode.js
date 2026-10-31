@@ -45,6 +45,7 @@ export const ERODE = {
     polishG: 1,                 // …with this deposition
     showKm2: 1600,              // the census's least lake (two cells at 640K: finish-config lakeMinKm2's reach)
     keepRules: [],              // of those rules, the ones left on: 'pit', 'load', 'breach', 'size', 'origin'
+    flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
     rulesOff: true,             // the hydrology left with fill-and-spill and the water balance, and the ice's own rules (below)
 };
 
@@ -133,10 +134,55 @@ export function erodeLandscape(o, P) {
                 const s = fc - (rn === -2 ? surfaceOut(nb) : fill[nb]);
                 if (s > drop) { drop = s; pick = nb; }
             }
+            if (pick < 0 && P.flatRule) {
+                // (no way down: a cell beside an outlet takes it, any other waits for its flat's two gradients)
+                for (let j = adjOffset[c]; j < adjOffset[c + 1] && pick < 0; j++) if (rank[adjList[j]] === -2) pick = adjList[j];
+                if (pick < 0) { recv[c] = -1; flats.push(c); continue; }
+            }
             if (pick < 0) pick = parent[c];
             recv[c] = pick;
             step[c] = R * Math.hypot(xyz[3 * pick] - xyz[3 * c], xyz[3 * pick + 1] - xyz[3 * c + 1], xyz[3 * pick + 2] - xyz[3 * c + 2]);
         }
+        if (flats.length) drainFlats();
+    };
+    // (A flat has no gradient, so its water's path is a choice, and the flood's pop order is an arbitrary one. Garbrecht & Martz 1997:
+    // drainage runs away from higher ground and towards lower; Barnes, Lehman & Mulla 2014 superimpose the two, the second twice over so
+    // that every flat cell has a neighbour further along: 2·(hops from the lower edge) − (hops from the higher edge), the flat's maximum
+    // of the second being a constant only differences see. A flat with no higher edge has only the first. Each cell drains to the
+    // neighbour lowest on that surface, the first in adjacency order on a tie. Lakes' cells are flats too: this is their way to the outlet.
+    // Same rule, same ties as gpu/erode-gpu.js, so the two paths choose alike. The receivers no longer follow the flood, so order is rebuilt.)
+    const flats = [], low = new Int32Array(n), high = new Int32Array(n), kids = new Int32Array(n), way = new Int32Array(n), mark = new Uint8Array(n), isFlat = c => mark[c] === 1;
+    const wave = (seed, on) => { for (let q = seed, d = 1; q.length; d++) { const next = []; for (const c of q) { for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (isFlat(y) && on[y] === 0 && fill[y] === fill[c]) { on[y] = d + 1; next.push(y); } } } q = next; } };
+    const drainFlats = () => {
+        const toLow = [], toHigh = [];
+        for (const c of flats) mark[c] = 1;
+        for (const c of flats) {
+            low[c] = 0; high[c] = 0;
+            let exit = false, wall = false;
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (rank[y] < 0) continue; if (fill[y] === fill[c] && !isFlat(y)) exit = true; if (fill[y] > fill[c]) wall = true; }
+            if (exit) { low[c] = 1; toLow.push(c); }
+            if (wall) { high[c] = 1; toHigh.push(c); }
+        }
+        wave(toLow, low); wave(toHigh, high);
+        for (const c of flats) {
+            let pick = -1, best = Infinity;
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+                const y = adjList[j];
+                if (rank[y] < 0 || fill[y] !== fill[c]) continue;
+                if (!isFlat(y)) { pick = y; break; }
+                const v = 2 * low[y] - high[y];
+                if (low[y] > 0 && v < best) { best = v; pick = y; }
+            }
+            way[c] = pick < 0 ? parent[c] : pick;
+        }
+        for (const c of flats) { const pick = way[c]; recv[c] = pick; step[c] = R * Math.hypot(xyz[3 * pick] - xyz[3 * c], xyz[3 * pick + 1] - xyz[3 * c + 1], xyz[3 * pick + 2] - xyz[3 * c + 2]); mark[c] = 0; }
+        // (receivers before donors)
+        kids.fill(0);
+        for (let i = 0; i < count; i++) { const r = recv[order[i]]; if (rank[r] >= 0) kids[r]++; }
+        const stack = [];
+        for (let i = 0; i < count; i++) if (!kids[order[i]]) stack.push(order[i]);
+        for (let at = count; stack.length;) { const c = stack.pop(), r = recv[c]; order[--at] = c; if (rank[r] >= 0 && --kids[r] === 0) stack.push(r); }
+        flats.length = 0;
     };
     const surfaceOut = c => (ocean[c] ? Math.min(0, z[c]) : base[c]);
     const wetSteps = P.trace ? new Uint16Array(n) : null;
