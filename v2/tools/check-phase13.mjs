@@ -21,7 +21,7 @@ import { hopDistance } from '../js/core/mesh-bfs.js';
 import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { stageOf, EARTH_LAND, EARTH_LAND_RATIO, EARTH_SUBMERGED, byStage, stageText } from './lib/cycle-stage.mjs';
-import { shelfStats, EARTH_SHELF_KM, EARTH_BREAK_KM } from './lib/shelf-stats.mjs';
+import { shelfStats, EARTH_SHELF_KM, EARTH_SHELF_SHARE, EARTH_BREAK_KM } from './lib/shelf-stats.mjs';
 import { columnKm, crustThicknessKm, columnModel } from '../js/tectonics/measure.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 
@@ -195,7 +195,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
                 const H = heights.at(-1); H.land = sl / Math.max(1, nl); H.freeboard = sc / Math.max(1, nc); H.craton = median(shield);
             }
             sea.push({ time: f.time, stage: stageOf(f), land: share, seaKm: T.rec.seaKm, floorKm: T.rec.sea.ridgeSeaKm, interior: median(inner),
-                submerged: M.submerged, breakKm: M.breakKm, ...Object.fromEntries(Object.keys(EARTH_SHELF_KM).map(k => [`shelf ${k}`, M.shelfKm[k]])) });
+                submerged: M.submerged, shelfShare: M.shelfShare, breakKm: M.breakKm, ...Object.fromEntries(Object.keys(EARTH_SHELF_KM).map(k => [`shelf ${k}`, M.shelfKm[k]])) });
             // (island arcs above the sea, every 200 Myr: those whose slab fed them within ARC_LIVE_MYR, and the silent ones)
             if (f.time % 200 === 0 && f.time > 0) for (let t = 0; t < tm.numCells; t++) {
                 const c = T.sampler.cells[3 * t];
@@ -304,6 +304,7 @@ section('land and sea through the cycle');
     const meanAll = (r, k) => { const a = r.sea.filter(x => x.time >= 100 && Number.isFinite(x[k])).map(x => x[k]); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; };
     for (const kind of Object.keys(EARTH_SHELF_KM))
         report(`shelf width: ${kind} coasts`, rows.map(r => meanAll(r, `shelf ${kind}`)), { ...EARTH_SHELF_KM[kind], unit: ' km', digits: 0, detail: txt(r => `by stage: ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => `${st} ${Math.round(meanOf(r, st, `shelf ${kind}`))}`).join(', ')}`) });
+    report('shelf area, of the planet', rows.map(r => 100 * meanAll(r, 'shelfShare')), { ...EARTH_SHELF_SHARE, unit: ' %', digits: 1 });
     report('shelf break depth off passive coasts', rows.map(r => 1000 * meanAll(r, 'breakKm')), { earth: EARTH_BREAK_KM.earth.map(v => 1000 * v), source: EARTH_BREAK_KM.source, unit: ' m', digits: 0 });
     // the first-order swing: the sea's level smoothed over 60 Myr (three frames; Earth's first-order cycle is over 100 Myr
     // long — the shorter cycles are glacial and tectonic noise), its highest less its lowest from 100 Myr

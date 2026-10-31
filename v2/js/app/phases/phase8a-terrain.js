@@ -60,7 +60,7 @@ const TERRAIN_TUNABLES = [
     { id: 'ruggedTauMyr', label: 'Crests and ridges wear away over (re-runs the history)', min: 50, max: 800, step: 1, unit: ' Myr', evolves: true },
     { id: 'collapseKm', label: 'Ground collapses under its own weight above (re-runs the history)', min: 3, max: 8, step: 0.25, unit: ' km', evolves: true },
     { id: 'marginThinKm', label: 'Rifted margins: width of the thinned crust before the continent–ocean boundary (its shore and shelf follow from it)', min: 100, max: 400, step: 10, unit: ' km' },
-    { id: 'denudationKmPerMyr', label: 'Rifted margins: the continents’ denudation, the sediment that builds their shelves out', min: 0, max: 0.2, step: 0.01, unit: ' km/Myr' },
+    { id: 'denudationKmPerMyr', label: 'Rifted margins: the start world’s denudation, the sediment on the margins no river of the history fed (the rest is the rivers’ own rock)', min: 0, max: 0.2, step: 0.01, unit: ' km/Myr' },
     { id: 'coastNoiseKm', label: 'Rugged coasts’ irregularity (island arcs, young collision coasts; passive and active margins follow their smooth line)', min: 0, max: 120, step: 5, unit: ' km' },
     { id: 'rainErosionExponent', label: 'Erosion follows rainfall by latitude, 0 = everywhere alike (re-runs the history)', min: 0, max: 1.5, step: 0.1, evolves: true },
 ];

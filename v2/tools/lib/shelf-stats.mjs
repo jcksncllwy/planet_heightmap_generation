@@ -23,6 +23,8 @@ export const EARTH_SHELF_KM = {
     'passive young': { earth: [5, 60], source: 'Red Sea and Gulf of Aden: narrow shelves on young thinned crust (recalled)' },
     active: { earth: [0, 30], source: 'Andean and Pacific-rim active margins: under ~30 km (Shepard 1963; Harris et al. 2014)' },
 };
+/** Sea to the shelf break, as a share of the planet: holds through the cycle only roughly (a highstand floods past it). */
+export const EARTH_SHELF_SHARE = { earth: [6, 9], source: '~7.5 % of the surface to the break (Cogley 1984, as cycle-stage.mjs reads it); the measure joins sea to 200 m to the coast' };
 export const EARTH_BREAK_KM = { earth: [0.12, 0.2], source: 'mean ~130 m, 120–200 m on most margins (Shepard 1963; Kennett 1982) — glacial lowstands set it' };
 
 const R = 6371;
@@ -78,5 +80,5 @@ export function shelfStats(tm, z, T, simMesh, frame, { shelfDepthKm = 0.2, break
         if (up >= 0 && upZ > z[t] && gradAt(up) < breakGradient) depths.push(-z[t]);
     }
     depths.sort((a, b) => a - b);
-    return { submerged: cont ? under / cont : NaN, landShare: land / n, shelfKm, coastKm, breakKm: depths.length ? depths[depths.length >> 1] : NaN, breakCells: depths.length };
+    return { submerged: cont ? under / cont : NaN, landShare: land / n, shelfShare: queue.length / n, shelfKm, coastKm, breakKm: depths.length ? depths[depths.length >> 1] : NaN, breakCells: depths.length };
 }

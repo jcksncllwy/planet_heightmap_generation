@@ -2196,6 +2196,25 @@ node --max-old-space-size=16000 v2/tools/civ-land-views.mjs [--seed 799224 --tim
                                                    # the land views and the People view as PNGs → v2/out/civ/
 ```
 
+## Shelves are built by rivers; what the lowland is short of (2026-10-31, branch lowland)
+
+**A hollow's fill is booked correctly.** `trapLoad` in `step/rivers.js` shrank a cell's cut before reckoning the sediment it took, so the fill was over-counted by about 1.5× and the excess was taken out of the load going downstream (at times more than the load, so negative sediment ran on). The effect on the world is small: about 3 % of the rock reaching the mouths over 600 Myr, and no measured change in any lowland statistic beyond path noise.
+
+**Shelves.** A river on a passive coast now builds its own margin before anything goes down a fan (`step/sea-fill.js` `buildShelves`). Its rock fills the coast nearest the mouth first, along the shore, up to the room the margin's subsidence makes (`terrain/margins.js` `shelfRoomKm2`, McKenzie's subsidence filled from the shoreline to the end of the necking zone), and only the surplus goes on. There is no share of the flux to set: accommodation limits it. The rock is kept per coast cell (`crust.shelfKm3`, km³ of rock) and the terrain's prism reads it (`terrain/records.js`), so a margin's supply is what its rivers really brought. A margin of the start world, which no river fed, keeps the old estimate (denudation over its age). What a coast keeps stays on its crust when the coast stops being one, so sutured and reactivated margins carry their old rock: 37–52 % of it lies inland of today's coasts by 300–950 Myr, the cover the geological record needs.
+
+Limits (reduced physics): the rock is a total per coast cell, not a wedge on the mesh, and the prism's shape is the analytic one; longshore drift is a fixed reach of 1500 km (recalled), not a current; rock is never reworked at a lowstand; the prism stops at the necking zone, so it cannot prograde over distal crust or ocean floor as the Niger's and the Mississippi's do; and the supply uses `trenchDenudationKmPerMyr`, about twice Earth's flux. In practice nearly every margin is full (the rock available far exceeds the room), so the shelf's width is set by the margin's geometry and not yet by its rivers. A full margin holds 1.9–3.1 km of sediment on average over its 200 km, peaking at 8–13 km.
+
+**What this does not fix.** The land is still too high and too little of it is lowland, and these were measured as *not* mainly sea-level or swell problems (640K, 9 moments, paired on the same frames where stated):
+
+- The largest term in the land's height is the belts' uplift: 0.54 km averaged over all continental crust, on a column of about 0.30 km. 33–49 % of continental crust was worked by a belt in the last 50 Myr. Older ground has worn down (over 200 Myr: 0.16–0.28 km), so the excess is how much is active, not slow wear.
+- The swell's amplitude is within Earth's range (p10–p90 about ±0.3 km against ~±500 m observed at long wavelength, Hoggard et al. 2016). Removing it lowers the land's mean by 0.13 km and its median by 0.21 km, and the craton swells and sags that read the same field account for almost none of that.
+- Downwelling over slabs (Mitrovica et al. 1989; Gurnis 1992), tried at the sourced ~300 m over 1400 km, moved continental crust under the sea only from 3.8 to 4.0 %. It is not in the model. `tools/trace-lowland.mjs --slab` repeats the test. It is an overlay on finished frames, with no feedback on the history.
+- Continental crust is about 28 % of the planet against Earth's ~41 %, so flooding 15–30 % of it would leave land under Earth's ~29 %.
+- The sea stays where it was. A sea reckoned from Earth's water volume would need the history's sea floor to be right first (`seaLevelFloorAge` in `terrain-config.js`).
+- Shelf area is ~0.7 % of the planet against ~7.5 %, while passive shelves are of a fair width: only about 35 % of the coast is passive (20 % late in a run), which comes back to how much trench there is.
+
+`tools/trace-lowland.mjs` measures all of this at any moments. A single history is noisy: a 0.01 % change to one constant moves a moment's land below 400 m by ~5 points, so compare means over many moments, or the same frames.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

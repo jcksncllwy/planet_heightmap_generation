@@ -130,6 +130,7 @@ export const TERRAIN = {
                                 // sediment reached the sea before dams, from ~10⁸ km²: 0.05 km/Myr of rock), and each landmass
                                 // sheds it onto its margins: a margin's sediment (km² per km of coast) is that, × the
                                 // landmass's area ÷ its coast's length × the margin's age × how fast it erodes there (rain)
+                                // (only the start world's margins read this now: the history's rivers lay their own, step/sea-fill.js)
     marginElasticKm: [5, 30],   // a passive margin's elastic thickness when it rifts and once mature (Watts 2001, Isostasy and
                                 // Flexure of the Lithosphere, ch. 7 — recalled): its coastal plain is the moat the shelf's
                                 // load bends into the land behind it, out to 3πα/4 — ~55 km young, ~210 mature

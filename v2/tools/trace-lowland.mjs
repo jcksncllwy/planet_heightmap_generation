@@ -4,7 +4,7 @@
 // sea, lakes and closed drainage (the finish's); the sea's level, the mean swell the land stands on; the sediment the
 // history's books hold (hollows, enclosed seas), and a sha256 of the moment's heights (the fingerprint).
 // Usage: node v2/tools/trace-lowland.mjs [--seeds 626225,777,12345] [--moments 300,600,950] [--sim 40000] [--cont 30]
-//        [--cells 640000] [--terrain k=v,k=v] [--json out.json]
+//        [--cells 640000] [--terrain k=v,k=v] [--slab s] [--json out.json]
 // Heavy at --cells 2500000: run through sim-slots, one at a time.
 
 import crypto from 'node:crypto';
@@ -19,6 +19,7 @@ import { landWater } from './lib/land-water.mjs';
 import { FRAME_FIELDS, TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
+import { BoundaryKind } from '../js/tectonics/model/world.js';
 import { seaLevel } from '../js/terrain/sea-level.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { columnModel } from '../js/tectonics/measure.js';
@@ -31,6 +32,21 @@ const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 30)), cel
 const terrainOver = Object.fromEntries((flag('--terrain', '') || '').split(',').filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number(v)]; }));
 const until = Math.max(...moments), rows = [], cfg = terrainConfig(terrainOver);
 
+// (--slab s: a prototype on the frames as they stand, so the same paths with and without: the mantle over a sinking slab,
+// heat × (1 − s (1 − d/reach)) on the upper plate out to reach km of its trench)
+const slab = Number(flag('--slab', 0));
+function coolOverSlabs(fr, mesh, s, reachKm) {
+    const { adjOffset, adjList, edgeKm, numCells: n } = mesh, hops = new Int32Array(n).fill(-1), q = [], max = Math.round(reachKm / edgeKm);
+    for (let w = 0; w < n; w++) if (fr.boundary[w] === BoundaryKind.OVERRIDING) { hops[w] = 0; q.push(w); }
+    for (let i = 0; i < q.length; i++) {
+        if (hops[q[i]] >= max) continue;
+        for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (hops[nb] < 0 && fr.owner[nb] === fr.owner[q[i]]) { hops[nb] = hops[q[i]] + 1; q.push(nb); } }
+    }
+    const heat = Uint8Array.from(fr.mantleHeat);
+    for (const w of q) heat[w] = Math.round(heat[w] * (1 - s * (1 - hops[w] / max)));
+    fr.mantleHeat = heat;
+}
+
 for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), simMesh = buildSimMesh(sim, MESH_SEED), frames = new Map();
     simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
@@ -41,6 +57,7 @@ for (const seed of seeds) {
     } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim, meshSeed: MESH_SEED, heights: {}, by: 'trace-lowland' } });
     for (const t of moments) {
         const { fr, stage, budget } = frames.get(t), pool = await TerrainPool.create(simMesh);
+        if (slab > 0) coolOverSlabs(fr, simMesh, slab, 1400);
         const fin = await finishPlanet({ frame: fr, simMesh, seed, cells, pool, closePool: true, cfg });
         const W = landWater(fin, simMesh, fr), { mesh, z, ocean } = fin, n = mesh.numCells;
         // heights over the finish's own sea: the ocean's cells are its sea; a hollow below 0 inside the land is still land
