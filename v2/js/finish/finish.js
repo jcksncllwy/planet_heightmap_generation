@@ -12,6 +12,7 @@ import { lastIceAge } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
 import { hydrology, sinkingGround, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
+import { ERODE, erodeLandscape, erodeLadder, rulesOff, hollowCensus, playas } from './finish-erode.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
 import { terrainMesh, terrainEdgeKm } from '../terrain/terrain-mesh.js';
@@ -58,15 +59,19 @@ export async function finishPlanet(o) {
 
 async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {}, civ = false }) {
     const ms = {}, stats = {};
+    // (the study's census of the land's hollows after a stage: F.erode.trace)
+    const census = (name, sea) => { if (F.erode?.trace) (stats.census ??= {})[name] = hollowCensus(mesh, z, sea, null, F.lakeMinKm2, 1e-3 * F.lakeMinDepthM); };
+    let mesh, z;
     let t0 = performance.now();
-    const lap = name => { const t = performance.now(); ms[name] = t - t0; t0 = t; };
+    const lap = name => { const t = performance.now(); ms[name] = (ms[name] ?? 0) + t - t0; t0 = t; };
     onStage('mesh');
     // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
     const E = erosionAt(F, cfg), surfCfg = { ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness };
     // (the surface's plan, begun on the pool's first worker while the mesh is built and warped here: it needs only the
     // mesh's cell size)
     const planned = pool.plan(frame, { cfg: surfCfg, seed, edgeKm: terrainEdgeKm(cells) });
-    const mesh = terrainMesh(cells), n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n;
+    mesh = terrainMesh(cells);
+    const n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n;
     lap('mesh');
 
     // ── F1: the surface, domain-warped (its positions displaced before anything is read there), roughened where high ──
@@ -78,7 +83,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (its workers' memory back before the heavy stages: a few fresh workers, idle until the coast's waves, gone after them)
     if (closePool) await pool.restart(Math.min(pool.size, COAST_WORKERS)); else pool.forget?.(warped);
     let carveIn = surf.carveIn;
-    const z = surf.heightKm, fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / mesh.edgeKm);
+    z = surf.heightKm;
+    const fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / mesh.edgeKm);
     surf = null; warped = null;
     roughen(mesh, z, seed, F, fade);
     lap('surface');
@@ -160,6 +166,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds });
     // (the carve's sea: the world ocean — a cut-off sea's dry floor below sea level is land its rivers cross, down to its
     // water's level, their base level there)
+    census('before carve', ocean0);
     const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base, ocean: ocean0 }, settings);
     // (where flood basalt still caps the ground after the carving — its pile not cut through — for the satellite view)
     const basalt = new Uint8Array(n);
@@ -168,6 +175,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const young = new Uint8Array(n);
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
+    // (the study's time-stepped erosion, F.erode, default off: finish-erode.js)
+    const EP = F.erode ? { ...ERODE, ...F.erode } : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm } : null;
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
@@ -181,6 +190,15 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     onStage('hillslopes');
     creepByClimate(mesh, C.z, pAnn, tAnn, { ...F, creepKm: E.creepKm });
     lap('hillslopes');
+    z = C.z;
+    census('after carve, sediment, creep', ocean0);
+    if (EP?.at === 'early' || EP?.at === 'both') {
+        onStage('erosion');
+        stats.erode = EP.ladder ? erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: pAnn, closedOf: (lm, g, f, sea) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea) }, EP, terrainMesh)
+            : erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: g => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean0) }, EP);
+        lap('erosion');
+        census('after erosion', ocean0);
+    }
 
     // ── F3: the last ice age ──
     onStage('ice age');
@@ -193,12 +211,14 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     stats.iceBasins = { km2: Math.round(basinKm2), maxKm: Math.round(basinMaxKm * 1000) / 1000 };
     stats.floods = { lakes: I.floods.lakes, lakeKm2: Math.round(I.floods.lakeKm2), volumeKm3: Math.round(I.floods.volumeKm3), largestKm3: Math.round(I.floods.largestKm3), biggest: I.floods.biggest ?? [] };
     stats.floods.guard = { unheld: I.floods.unheld ?? 0, lats: I.floods.lats ?? [] };            // (finish-floods.js: for check-floods)
+    census('after ice age', ocean0);
     lap('ice age');
 
     // ── F4: the wind ──
     onStage('wind');
     const W = windWork({ mesh, z: C.z, lat, lon, koppen, grid, wind, climGrid, outwash: I.margin, scoured: I.floods.flood, seed, fade, debug }, F);
     stats.ergKm2 = W.ergKm2; stats.loessKm2 = W.loessKm2;
+    census('after wind', ocean0);
     lap('wind');
 
     // ── F5: the coast — the waves cut it back and drift its sand along it ──
@@ -207,6 +227,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         pool: pool.closed || pool.broken ? null : pool }, F);
     if (closePool) pool.terminate();
     stats.coast = Co.stats;
+    census('after coast', ocean0);
     lap('coast');
 
     // ── the sea: water below sea level joined to the world ocean (fjords, sunk basins); a sea cut off from it is the
@@ -221,15 +242,26 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const seaBasin = fillSeaBasins(mesh, C.z, ocean, F);
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's and the distances' caches for this mesh)
     lap('sea');
+    if (EP?.at === 'late' || EP?.at === 'both') {
+        onStage('erosion');
+        const slow = new Float32Array(n).fill(1);
+        for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
+        const late = erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: g => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
+        if (stats.erode) stats.erodeLate = late; else stats.erode = late;
+        lap('erosion');
+        census('after late erosion', ocean);
+    }
 
     // ── R1: rivers and lakes, by the climate ──
     onStage('water');
+    census('before water', ocean);
     const ice = new Uint8Array(n);
     for (let c = 0; c < n; c++) if (koppen[c] === KOPPEN_ID.EF) ice[c] = 1;
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
-    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, basin: I.basin, tectonic: B.tectonic, sinkAt: sinkingGround(frame, simMesh, mesh, cfg.carveActiveMyr), seaBasin, fillHollows: true, lat, lon, months, debug }, F);
+    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, basin: I.basin, tectonic: EP?.rulesOff && !EP.keepRules.includes('origin') ? null : B.tectonic, sinkAt: sinkingGround(frame, simMesh, mesh, cfg.carveActiveMyr), seaBasin, fillHollows: true, lat, lon, months, debug }, EP?.rulesOff ? rulesOff(F, EP.keepRules) : F);
     Object.assign(stats, { water: Hy.stats });
+    if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (the sea again, after the rivers' gorges)
     ocean = oceanMask(mesh, C.z);
     lap('water');

@@ -2004,6 +2004,56 @@ Dead-level and rising are no worse than base on any run. Dead-straight is too, b
 - **Rifts are nearly absent:** 0.06 Mkm² of hollows lie within 200 km of any ridge boundary, so Earth's 0.16 Mkm² of rift-lake
   kind come back as foreland and intermontane lakes instead. Deep rift hollows are the surface's to build.
 
+## Erosion through time, behind a flag (2026-10-31, branch erosion)
+
+**What it is.** A study prototype, off by default: `F.erode` runs time-stepped erosion and deposition in the finish
+(`finish/finish-erode.js`), and the hydrology's lake rules are switched off by constants, so hollows that survive are
+filled by the water balance alone. With the flag off, nothing changes: on 831576@310 at 640K the study's whole result
+matches main.
+
+**What it does.** Implicit stream power (n = 1, Braun & Willett 2013) on a priority-flood network, with the carve's own k,
+m, drainage, belt hold and valley share. Deposition is Yuan et al. 2019's G·Qs/A, inside the implicit solve. Laid after
+the solve, deposits dammed big rivers. A lake keeps its load until full, and that load is laid out from its river mouths
+(`delta`), so a filling lake shrinks and stays deep instead of keeping its whole area as a shallow sheet. Closed basins
+come from `closedBasins`. The run:
+- before the ice age, a ladder from 160K up to the shown mesh;
+- fills bury the finer relief (`bury`);
+- isostatic rebound of 0.82 (`rebound`, ρc/ρm = 2.7/3.3, Airy), on the coarsest level only;
+- after wind and coast, a polish, because dunes and loess dam the plains erosion leaves;
+- a terminal body shallower than a year's net evaporation becomes a pan (`playaYears`).
+
+**To turn it on**, at 2.5M (at 640K, drop the 640K level and give the last level 0.2 Myr / 4 steps):
+```
+ERODE='{"at":"both","polishMyr":0.3,"polishSteps":6,"bury":true,"rebound":0.82,"playaYears":1,"delta":true,
+  "ladder":[{"cells":160000,"timeMyr":0.5,"steps":10},{"cells":640000,"timeMyr":0.2,"steps":4},{"timeMyr":0.1,"steps":2}]}'
+node v2/tools/render-moment.mjs --seed 831576 --cont 30 --time 310 --cells 2500000 --width 4096 --lakes --out name --set "erode=$ERODE"
+node v2/tools/erode-study.mjs --seed 831576 --time 310 --cells 2500000 --erode "$ERODE" --label name
+```
+`keepRules` puts single lake rules back on: `pit`, `load`, `breach`, `size`, `origin`.
+
+**What it gives** at 2.5M, on 831576 / 626225 / 12345: lake share 2.02 / 3.45 / 2.31 %
+(Earth 1.8–3.7; base at c21cb7f 3.37 / 5.73 / 5.81), 640K–2.5M spread 0.16 / 0.35 / 0.93 points, largest lake on land
+0.55 / 0.13 / 0.29 Mkm² (base 0.49 / 0.99 / 3.55), Horton 4.9–5.6 (base 6.47 on 831576). Measured on main dc416b1
+for 831576 only; the other seeds are on c21cb7f, before lakes2. Full tables: `erosion-report.md` in the lane's notes.
+
+**Limits.**
+- **Open fresh share is missed:** 0.94 / 1.91 / 0.68 % of land against Earth's ~0.13, no clear gain on the base. The fill-time
+  rule alone gives 0.03 % but takes share to 1.12 %, so a softened one is the next test. One seed so far.
+- **The largest lake on 831576 is over 0.45 Mkm²:** a polar ice-age lake of 0.55 and a second of 0.52 at 5.5°N.
+- **Lakes2's sinking floors do nothing with the flag on.** They offset the fill-time rule's load, and that rule is off:
+  the 2.5M numbers on 831576 are the same to the digit with and without lakes2. Keeping `load` is what would bring them in.
+- **Junction angles are not its cause, and it doesn't fix them:** 79–85°, Earth 45–72°. The control with rules off and no
+  erosion is already 84° against main's 77°.
+- **The span is the free parameter.** The solver sees only k·t, and the carve's k is already close to Earth's: about 13 km³/yr
+  leaving the land at the coarsest level, against roughly 10. So k stays, and there is no plateau to run to: 1 Myr clears the
+  sheets but takes 831576 to 1.45 % and dead level to 7.2 %. 0.5 Myr is a chosen compromise.
+- **Untimed on a quiet machine.** About +20–25 % on total time on an older design, under load 1.6–5 per core. 10M was not
+  run on this design.
+- With the flag on, no check has been run.
+
+**Next.** Rock erodibility from the lithology column (`litho.md` in the lane's notes, its L3): k varies by rock instead of
+by the carve's fields alone, starting with the compressed ~4.5× spread, with Earth's range as a sensitivity run at 2.5M.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
