@@ -15,8 +15,9 @@
 // its shoreline is where that crosses the sea: a high rift shoulder still stands above it, a low platform does not.
 //
 // Sediment shed from the continent fills the drowned crust to a graded shelf: from the shore down to the break at
-// shelfEdgeKm, prograding seaward as it comes (its supply: the continent's denudation, cfg.denudationKmPerMyr, over the
-// margin's age), each km³ of it sinking the crust further under its weight (Airy: the fill is (ρm − ρw)/(ρm − ρs) ≈ 2.5
+// shelfEdgeKm, prograding seaward as it comes (its supply: the rock the history's rivers laid on it, crust.shelfKm3 from
+// step/sea-fill.js; on the start world's margins, which no river fed, the continent's denudation over the margin's age),
+// each km³ of it sinking the crust further under its weight (Airy: the fill is (ρm − ρw)/(ρm − ρs) ≈ 2.5
 // times the water it replaces), as far as the end of the necking zone, beyond which the crust falls away to the distal
 // basin and the sediment bypasses down the slope (the shelf break stands over the necking zone: Péron-Pinvidic et al.
 // 2013). The slope below the break is the prism's front, at the continental slope's gradient (cfg.clinoformGradient),
@@ -101,6 +102,13 @@ export function riftedMargin(C, W, m, sedKm2, out) {
     out[0] = W * uS;
     out[1] = W * (uS - (uS - C.uNeck) * j / U_STEPS);
     return out;
+}
+
+/** All the sediment (km² per km of margin) a margin of thinned width W (km) and maturity m can hold: its crust's subsidence
+ *  filled from the shoreline to the end of the necking zone. Beyond that the rock bypasses down the slope (step/sea-fill.js). */
+export function shelfRoomKm2(C, W, m) {
+    const fi = Math.min(M_STEPS, Math.max(0, m * M_STEPS)), i0 = Math.floor(fi), i1 = Math.min(M_STEPS, i0 + 1), f = fi - i0;
+    return W * ((1 - f) * C.fill[i0][U_STEPS] + f * C.fill[i1][U_STEPS]);
 }
 
 /** A passive margin's coastal plain (km): where the shelf's sediment load bends the land behind it down — the flexural

@@ -54,7 +54,7 @@ for (const seed of seeds) {
         const dry = land.subarray(0, m).sort(), below = dry.reduce((a, h) => a + (h < 0.4 ? 1 : 0), 0) / Math.max(1, m);
         const rec = fin.stats.sea ?? null, row = { seed, t, stage, below400: 100 * below, meanKm: W.meanKm, medianKm: dry[m >> 1] ?? NaN, landShare: 100 * m / n, under: 100 * under / Math.max(1, crust),
             lakes: 100 * W.onLandKm2 / W.landKm2, closed: 100 * (fin.stats.water.endorheicShare ?? NaN), rec,
-            basinFillMkm3: (budget.basinFillKm3 ?? 0) / 1e6, seaFillMkm3: (budget.seaFillKm3 ?? 0) / 1e6, hash: crypto.createHash('sha256').update(Buffer.from(z.buffer, z.byteOffset, z.byteLength)).digest('hex').slice(0, 12) };
+            basinFillMkm3: (budget.basinFillKm3 ?? 0) / 1e6, seaFillMkm3: (budget.seaFillKm3 ?? 0) / 1e6, shelfMkm3: (budget.shelfKm3 ?? 0) / 1e6, hash: crypto.createHash('sha256').update(Buffer.from(z.buffer, z.byteOffset, z.byteLength)).digest('hex').slice(0, 12) };
         // ── why: the static picture. The sea and the swell at this moment; how much crust there is to flood; the shelf (sea to
         // 200 m, joined or not); what the land's platform is made of; and how the targets answer the sea moved by dz, or the
         // swell scaled, on this surface as it stands (no coast redrawn: a first-order reading, not a run) ──
@@ -82,10 +82,17 @@ for (const seed of seeds) {
             }
             return { dz, swellScale, below400: 100 * lo / Math.max(1, l), meanKm: sum / Math.max(1, l), landShare: 100 * l / n, under: 100 * un / Math.max(1, cr) };
         };
+        // (the wedge: the rock on the coast now, and how thick it stands on a cell's own length of coast, km² of section over the margin's width)
+        const sedRatio = cfg.riftCrustRho / cfg.riftSedRho, wedge = [];
+        let shelfNow = 0;
+        for (let w = 0; w < simMesh.numCells; w++) if (fr.owner[w] >= 0 && fr.shelfKm3?.[w] > 0) { shelfNow += fr.shelfKm3[w]; wedge.push(sedRatio * fr.shelfKm3[w] / simMesh.edgeKm / cfg.marginThinKm); }
+        wedge.sort((a, b) => a - b);
+        row.shelfNowMkm3 = shelfNow / 1e6; row.wedgeKm = wedge.length ? [wedge[wedge.length >> 1], wedge[Math.floor(0.9 * (wedge.length - 1))], wedge.at(-1)] : [0, 0, 0];
         row.seaKm = sl.seaKm; row.heatLand = sl.heatLand; row.heatSea = sl.heatSea; row.depthKm = sl.depthKm; row.ridgeSeaKm = sl.ridgeSeaKm;
         row.crustShare = 100 * crust / n; row.simCrustShare = 100 * simCont / simMesh.numCells; row.shelfShare = 100 * shelf / n; row.parts = parts;
         row.readings = [[0.1, 1], [0.2, 1], [0.3, 1], [0.4, 1], [0.5, 1], [0, 0.5], [0, 0], [0.2, 0.5], [0.3, 0.5]].map(([d, k]) => reading(d, k));
         rows.push(row);
+        console.log(`   shelf rock ${row.shelfNowMkm3.toFixed(1)} Mkm³ now of ${row.shelfMkm3.toFixed(1)} laid; wedge mean thickness p50/p90/max ${row.wedgeKm.map(v => v.toFixed(1)).join('/')} km`);
         console.log(`   sea ${sl.seaKm.toFixed(3)} km · heat land ${sl.heatLand.toFixed(3)} sea ${sl.heatSea.toFixed(3)} · floor ${sl.depthKm.toFixed(2)} km (ridge term ${sl.ridgeSeaKm.toFixed(2)}) · crust ${row.crustShare.toFixed(1)} % · shelf ${row.shelfShare.toFixed(1)} % · parts ${Object.entries(parts).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(' ')}`);
         console.log(`${seed}@${t} ${(stage ?? 'between').padEnd(15)} below400 ${row.below400.toFixed(1)} % · mean ${row.meanKm.toFixed(3)} · median ${row.medianKm.toFixed(3)} km · land ${row.landShare.toFixed(1)} % · crust under sea ${row.under.toFixed(1)} % · lakes ${row.lakes.toFixed(2)} % · closed ${row.closed.toFixed(1)} % · basin fill ${row.basinFillMkm3.toFixed(1)}, sea fill ${row.seaFillMkm3.toFixed(1)} Mkm³ · ${row.hash}`);
     }

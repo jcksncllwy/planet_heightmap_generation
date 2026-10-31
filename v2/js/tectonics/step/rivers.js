@@ -24,7 +24,7 @@
 import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { MinHeap } from '../../core/min-heap.js';
 import { heightsOf } from './heights.js';
-import { fillEnclosedSeas } from './sea-fill.js';
+import { fillEnclosedSeas, buildShelves } from './sea-fill.js';
 import { arcCrustKm } from './collision.js';
 import { arcSurfaceKm, columnModel, ARC_ROOT_SHARE, seaFilledUp, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { landAndSea } from '../../terrain/sea-level.js';
@@ -157,10 +157,11 @@ export function evolveRivers(world, dt) {
             }
         }
         if (recv[c] >= 0) { area[recv[c]] += area[c]; basin[recv[c]] += basin[c]; if (pass) { sed[recv[c]] += sed[c]; sedCont[recv[c]] += sedCont[c]; } }
-        else if (pass && sed[c] > 0) mouths.push({ plate: owner[c], cell: ownerCell[c], km3: sed[c], contKm3: sedCont[c], basinKm2: basin[c], sea: seaOf[c] });
+        else if (pass && sed[c] > 0) mouths.push({ plate: owner[c], cell: ownerCell[c], world: c, km3: sed[c], contKm3: sedCont[c], basinKm2: basin[c], sea: seaOf[c] });
     }
     world.riverMouths = mouths;
     fillEnclosedSeas(world, mouths, span, land, sl);   // (a mouth on an enclosed sea fills it, to the sea's level; the rest go down their fans)
+    buildShelves(world, mouths, span, land);           // (…less what their own passive margin has room for)
     for (let w = 0; w < n; w++) world.riverKm2[w] = land[w] ? area[w] : 0;
     // ── the cut: E = k A^m S over the span, downstream first; never below the reach below, and only toward the river's
     // share of the relief; and never below the water it runs into — a lake is its base level: a river reaching one lays

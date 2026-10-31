@@ -225,6 +225,12 @@ function plateCoasts(simMesh, A, land, dist, coastKind, carried, frame, pocketKm
 }
 
 /** Is world cell w sea floor its rivers have filled to sea level (step/sea-fill.js)? */
+/** Does the sea beside this coast lie on the start world's placeholder floor? */
+function floorUndated(frame, w, simMesh) {
+    const { adjOffset, adjList } = simMesh;
+    for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (frame.owner[nb] >= 0 && frame.type[nb] === CrustType.OCEAN && frame.formedAt[nb] < 0) return true; }
+    return false;
+}
 function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
 
 /** The area (km²) of the body of sea each sea cell belongs to (connected non-land cells); 0 on land. */
@@ -447,7 +453,10 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         ownWiden[w] = ownMature[w] * ownOpen[w];
         ownRift[w] = rifted ? 1 : 0;
         const lat = Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI;
-        ownSed[w] = cfg.denudationKmPerMyr * (cfg.riftCrustRho / cfg.riftSedRho) * mass.perCoastKm[mass.of[w]] * age * erosionAtLatitude(lat, cfg);
+        // (a margin's sediment, km² per km of coast: the rock the history's rivers laid here, step/sea-fill.js. A margin of the
+        // start world, on floor the history has not dated, was fed before the history began: its denudation over its age)
+        ownSed[w] = rifted && floorUndated(frame, w, simMesh) ? cfg.denudationKmPerMyr * (cfg.riftCrustRho / cfg.riftSedRho) * mass.perCoastKm[mass.of[w]] * age * erosionAtLatitude(lat, cfg)
+            : (cfg.riftCrustRho / cfg.riftSedRho) * (frame.shelfKm3?.[w] ?? 0) / simMesh.edgeKm;
     }
     // how rugged a coast is (0 smooth … 1): roughness belongs where the land at the sea is rough — an island arc's volcanic
     // edifices, and a young collision coast's ranges and basins striking into the sea (the Aegean, the Dalmatian coast) —

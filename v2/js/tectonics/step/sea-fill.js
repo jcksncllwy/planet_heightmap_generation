@@ -15,8 +15,10 @@
 // see. Such a floor can still be subducted, or caught in a collision, sediment and all.
 
 import { CrustType, CrustFlag } from '../model/crust.js';
+import { BoundaryKind } from '../model/world.js';
 import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { heightsOf } from './heights.js';
+import { marginConstants, shelfRoomKm2 } from '../../terrain/margins.js';
 
 /** Sediment builds a delta to the water's surface and its top plain this far above it (km): ~the high-water mark, a
  *  tidal range over mean sea (microtidal coasts < 2 m: Davies 1964) — so a sea filled up is land, not a film of water. */
@@ -72,9 +74,92 @@ export function fillEnclosedSeas(world, mouths, span, land, sea) {
     s.mark = mark;
 }
 
+// ── A passive margin keeps its rivers' rock, as far as it has room (lane lowland, 2026-10-31) ── A river on an open coast
+// builds a shelf before anything goes down a fan: the wedge sits on the crust the rift thinned, and the room for it is that
+// crust's subsidence, which the margin's cooling goes on making (McKenzie 1978; terrain/margins.js, which draws the prism
+// and owns the sum: shelfRoomKm2). So what a margin holds is limited by accommodation, not by a share of the flux: the rock
+// fills the coast nearest the mouth first, along the shore, and what the margin has no room for carries on down its fan
+// (step/trench-fans.js) or out to the rise. A big river builds a wide shelf and a coast without one stays narrow.
+// Limits (reduced physics): the rock is a total per coast cell, not a wedge on the mesh (the prism's shape is the analytic
+// one in margins.js); longshore drift is a reach, not a current; the rock is never reworked at a lowstand; a margin's kind is
+// the frame's own reading (classifyMargins), not its leading or trailing side; and the supply
+// inherits trenchDenudationKmPerMyr, ~2× Earth's flux (terrain-config.js denudationKmPerMyr has the sourced 0.05).
+/** How far along its coast a river's rock is carried (km): the Amazon's mud runs ~1500 km along the Guianas (recalled). */
+const SHELF_ALONG_KM = 1500;
+
+/**
+ * Lay each open-coast river's rock on its own passive margin (from step/rivers.js, after fillEnclosedSeas): nearest the
+ * mouth first, each coast cell up to the room its margin's age gives it (crust.shelfKm3), and take it off the mouth, so
+ * only the surplus reaches a fan. `span` Myr of rock; rates in km³/Myr, as `mouths` carry them.
+ */
+export function buildShelves(world, mouths, span, land) {
+    const { mesh, plates, owner, ownerCell, time, config } = world, { adjOffset, adjList, edgeKm, numCells: n } = mesh;
+    if (!mouths.length) return;
+    const H = heightsOf(config), C = marginConstants(H), s = scratchFor(n), { stamp, queue: q } = s, reach = Math.max(1, Math.round(SHELF_ALONG_KM / edgeKm));
+    const continental = t => t === CrustType.CONTINENT || t === CrustType.CRATON;
+    const seaBeside = w => { for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) if (!land[adjList[k]]) return adjList[k]; return -1; };
+    // (is this coast passive? As tectonics/measure.js classifyMargins reads a frame: out to sea over its own plate, the first
+    // boundary met within marginReachKm — a trench or a transform or a collision is not; a ridge, a lower plate's edge or
+    // nothing is. Asked of few cells, so walked from each and kept for this drainage: 1 passive, 2 not)
+    const kinds = s.kinds, hops = Math.max(1, Math.round(config.marginReachKm / edgeKm)), seen = s.seen;
+    kinds.fill(0);
+    const passive = (w0, plate) => {
+        if (kinds[w0]) return kinds[w0] === 1;
+        let tick = ++s.tick, ring = [w0], kind = 1;
+        seen[w0] = tick;
+        walk: for (let hop = 0; hop <= hops && ring.length; hop++) {
+            const next = [];
+            for (const c of ring) {
+                const b = world.boundaryKind[c], k = plates[plate].crust, cc = ownerCell[c];
+                if (b === BoundaryKind.OVERRIDING || b === BoundaryKind.TRANSFORM || b === BoundaryKind.COLLISION || (owner[c] === plate && k.type[cc] === CrustType.OCEAN && (k.flags[cc] & CrustFlag.TRENCH))) { kind = 2; break walk; }
+                if (b === BoundaryKind.RIDGE || b === BoundaryKind.SUBDUCTING) break walk;
+                for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+                    const nb = adjList[j];
+                    if (seen[nb] === tick || owner[nb] !== plate || (land[nb] && hop > 0)) continue;
+                    seen[nb] = tick; next.push(nb);
+                }
+            }
+            ring = next;
+        }
+        kinds[w0] = kind;
+        return kind === 1;
+    };
+    let mark = s.mark;
+    for (const m of mouths) {
+        if (m.enclosed || !(m.km3 > 0) || owner[m.world] !== m.plate) continue;
+        const crust = plates[m.plate].crust;
+        if (!continental(crust.type[m.cell])) continue;
+        const start = m.world, total = m.km3 * span;
+        if (seaBeside(start) < 0 || !passive(start, m.plate)) continue;
+        let km3 = total, len = 1, hop = 0, ringEnd = 1;
+        q[0] = start; stamp[start] = ++mark;
+        for (let i = 0; i < len && km3 > 0; i++) {
+            if (i === ringEnd) { if (++hop > reach) break; ringEnd = len; }
+            const w = q[i], c = ownerCell[w], sea = seaBeside(w);
+            const floorOwn = owner[sea] === m.plate && crust.type[ownerCell[sea]] === CrustType.OCEAN && crust.formedAt[ownerCell[sea]] >= 0;
+            if (floorOwn && passive(w, m.plate)) {
+                // (the room on this cell's length of coast, in rock: margins.js works in sediment, compacted: riftSedRho)
+                const age = Math.max(0, time - crust.formedAt[ownerCell[sea]]), room = shelfRoomKm2(C, H.marginThinKm, 1 - Math.exp(-age / H.marginMatureMyr)) * edgeKm * (H.riftSedRho / H.riftCrustRho);
+                const take = Math.min(km3, Math.max(0, room - crust.shelfKm3[c]));
+                if (take > 0) { crust.shelfKm3[c] += take; km3 -= take; }
+            }
+            for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+                const nb = adjList[k];
+                if (stamp[nb] !== mark && land[nb] && owner[nb] === m.plate && continental(crust.type[ownerCell[nb]]) && seaBeside(nb) >= 0) { stamp[nb] = mark; q[len++] = nb; }
+            }
+        }
+        if (km3 < total) {
+            const keep = km3 / total;
+            world.budget.shelfKm3 = (world.budget.shelfKm3 ?? 0) + total - km3;
+            m.km3 *= keep; m.contKm3 *= keep;
+        }
+    }
+    s.mark = mark;
+}
+
 let scratch = null;
 function scratchFor(n) {
     if (scratch?.n === n) return scratch;
-    scratch = { n, comp: new Int32Array(n), stamp: new Int32Array(n), queue: new Int32Array(n), mark: 0 };
+    scratch = { n, comp: new Int32Array(n), stamp: new Int32Array(n), queue: new Int32Array(n), mark: 0, kinds: new Uint8Array(n), seen: new Int32Array(n), tick: 0 };
     return scratch;
 }
