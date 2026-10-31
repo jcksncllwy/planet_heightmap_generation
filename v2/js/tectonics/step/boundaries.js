@@ -59,7 +59,8 @@ export function classifyBoundaries(world, dt) {
         convergence[w] = closing / CM_PER_YR_TO_RAD_PER_MYR;
 
         const motion = classifyMotion(closing, shear, activeSpeed, config.obliqueLimit);
-        if (config.trenchEstablishKm > 0 && real && motion !== Motion.CLOSING) idleSlab(A.crust, cellA, dt, config);
+        // (LOCKED keeps its slab: forces come from a boundary's state, so a world at rest can start itself)
+        if (config.trenchEstablishKm > 0 && real && (motion === Motion.OPENING || motion === Motion.SLIDING)) idleSlab(A.crust, cellA, dt, config);
         if (motion === Motion.OPENING) boundaryKind[w] = BoundaryKind.RIDGE;
         else if (motion === Motion.SLIDING) {
             boundaryKind[w] = BoundaryKind.TRANSFORM;
@@ -220,7 +221,7 @@ function feedTrench(world, w, A, cell, B, cellB, subductedKm, closingCmYr) {
     return subductedKm > 0;
 }
 
-/** A plate edge not closing: its slab, or the start of one, fades over the time a slab takes to sink on its own (founderSlabMyr; slab
+/** A plate edge moving but not closing: its slab, or the start of one, fades over the time a slab takes to sink on its own (founderSlabMyr; slab
  * break-off: a slab no plate feeds detaches), and the trench ends. A choice of scale, not a measured rate. */
 function idleSlab(crust, cell, dt, config) {
     if (!(crust.slabKm[cell] > 0)) return;
