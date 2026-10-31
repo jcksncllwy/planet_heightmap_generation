@@ -52,7 +52,14 @@ export function lithologyOf(o, G = GEOLOGY) {
 export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
     const { rock, kRock, hard, bedded, coarse, shares } = lithologyOf({ ...o, lip: carveIn.lip }, G), { k, soft } = carveIn, use = G.useRock;
     if (use.craton || use.lip || use.crest) for (let c = 0; c < k.length; c++) if (rock[c]) k[c] *= kRock[c];
-    if (use.iceSoft) for (let c = 0; c < soft.length; c++) if (rock[c]) soft[c] = 1 - hard[c];
+    if (use.iceSoft) {
+        // (the rock says where it is soft; the land's mean stays the terrain's, as k_rock's stays 1: the ice's and the cliffs'
+        // rates were calibrated on it, and cliffHardRatio's 1e-3 makes them steep in it)
+        let was = 0, now = 0, land = 0;
+        for (let c = 0; c < soft.length; c++) if (rock[c]) { was += soft[c]; now += 1 - hard[c]; land++; }
+        const shift = land ? (was - now) / land : 0;
+        for (let c = 0; c < soft.length; c++) if (rock[c]) soft[c] = Math.min(1, Math.max(0, 1 - hard[c] + shift));
+    }
     return { rock, kRock, bedded, coarse, shares };
 }
 

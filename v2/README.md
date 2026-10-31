@@ -325,7 +325,7 @@ js/evolution/      the Evolution page: its shell (evolution-main), terrain-playe
 js/finish/         the Finish step (plans/V2_FINISH_PLAN.md): finish.js (the stages, and the picture of heights), finish-worker,
                    finish-config (its tunables, in km / Myr / °C / mm), finish-grid (a lat-lon grid for smooth regional fields),
                    finish-basins (closed basins, cut-off seas: their lakes by water balance), finish-sediment (fans, floodplains, deltas; creep by climate),
-                   finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-coast (waves, cliffs, longshore drift), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
+                   finish-lithology (rock and k_rock, before the carve), finish-ice (the last ice age), finish-floods (its ice-dammed lakes' outburst floods), finish-coast (waves, cliffs, longshore drift), finish-wind (sand seas, dunes, pans, loess), finish-hydro (rivers, their
                    regimes, lakes), finish-cover (the land's cover and its colours from space)
 js/civ/            the civ layer (plans/CIV_PLAN.md): civ-config (its constants, in km / years / persons per km² / kg per ha,
                    each with its source; CIV_PRIORS), substrate (what a finished moment offers people: NPP, foragers, wild
@@ -2105,7 +2105,8 @@ trimmed from World Orogen, GPL v3): per cell a rock class (`Rock`), `kRock` (ero
 `coarse` (1 sand and gravel, 0 mud or solution), returned as `fin.litho` for other stages. `geology-config.js useRock` names
 which hand rules k_rock replaces, one by one: the shield's and a flood basalt's carve hardness (`carveCratonHardness`,
 `lipHardness`, zeroed in the surface's settings by `rockCfg`, so `terrain/synthesize.js` is unchanged and the terrain outside
-the finish keeps them) and `iceSoft` on land. The crests' hardness stays: it is the drawn ridges' structure, which a rock read
+the finish keeps them) and `iceSoft` on land, as the rock's softness with the land's mean held at the old rule's (without that, on
+seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %). The crests' hardness stays: it is the drawn ridges' structure, which a rock read
 from the record does not know.
 
 k_rock ∝ e^(2.3(½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it: ~4.5× between shale and granite,

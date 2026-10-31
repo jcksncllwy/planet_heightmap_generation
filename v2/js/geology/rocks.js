@@ -158,10 +158,11 @@ function averageMapped(grid, lat, lon, map, fields, use) {
     return sums.map(s => { const out = new Float32Array(grid.size); for (let g = 0; g < grid.size; g++) out[g] = k[g] ? s[g] / k[g] : NaN; return out; });
 }
 
-/** The sim cell whose record each surface cell shows, through the terrain's large warp: the heaviest land corner. */
-function readRecord(mesh, simMesh, land, seed, cfg) {
+/** The sim cell whose record each land cell of the surface shows, through the terrain's large warp: the heaviest land corner. */
+function readRecord(mesh, simMesh, land, ocean, seed, cfg) {
     const n = mesh.numCells, { xyz } = mesh, rec = new Int32Array(n), W = warpField(seed, cfg), q = [0, 0, 0], c3 = [0, 0, 0], w3 = [0, 0, 0];
     for (let c = 0; c < n; c++) {
+        if (ocean[c]) continue;
         warpPoint(W, cfg, xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], q);
         locate(simMesh, q[0], q[1], q[2], c3, w3);
         let best = c3[0], bw = -1;
@@ -178,7 +179,7 @@ function readRecord(mesh, simMesh, land, seed, cfg) {
  */
 export function classifyRocks({ mesh, z, ocean, frame, simMesh, seed, cfg, lat, lon, lip = null }, G = GEOLOGY) {
     const n = mesh.numCells, { xyz } = mesh, rock = new Uint8Array(n), shares = new Float64Array(ROCK_COUNT);
-    const S = simRocks(frame, simMesh, seed, G), rec = readRecord(mesh, simMesh, S.land, seed, cfg);
+    const S = simRocks(frame, simMesh, seed, G), rec = readRecord(mesh, simMesh, S.land, ocean, seed, cfg);
     const nz = new FastNoise(((seed | 0) * 0x2c1b + 0x4d) >>> 0), patchF = R / G.patchKm, domeF = R / G.domeKm, beltF = 2 * Math.PI * R / G.beltSpacingKm;
     const score = new Float64Array(ROCK_COUNT);
     // ── the record, smooth: each cell's record cell's, averaged over a sim cell or so ──
