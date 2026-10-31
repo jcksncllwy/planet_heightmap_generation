@@ -1863,6 +1863,61 @@ Zeroing the terrain's own craton sags and foredeeps (`cratonSagKm`, `foredeepMax
 on island-arc crust: back-arc basins closed off by their arcs. `land-water.mjs` now counts a body as sea when a
 quarter of it lies on open sea floor.
 
+## A lake needs an origin and must outlast its river's load (2026-10-30, branch lakes)
+
+**What was wrong.** On seed 831576 at 310 Myr lakes covered 6.1, 8.2 and 10.0 % of the land at 640K, 2.5M and 10M cells
+(Earth 1.8-3.7 %). `tools/trace-lakes.mjs` books each lake cell to the code that made it. At 10M, 11.15 of 15.2 Mkm² came
+from two paths with neither rule main's lakes obey: the late pass (no origin test: 11-17 % of its area on the tectonic
+mask) and a hollow's fresh pockets (no size-for-its-river test). The big pockets were a hollow's main lake: its outlet
+breached, the pond by the outlet filled, the rest found again as a "pocket". With both off, 640K and 2.5M agreed on all
+three seeds. `pitDepthKm` and `pitBreachKm` made no difference (6.07 against 6.06 % at 640K).
+
+**Now** (`finish-hydro.js` `lakeStands`), for hollows, pockets, late hollows and a closed hollow's full sub-basins alike:
+- **An origin.** Ice-age scour, or a hollow of the tectonic surface. The finishing's own hollows fill.
+- **Big for its river**: `lakeKeepKm2`, as before.
+- **It outlasts its river's load**, unless the ice dug it. Origin alone was not enough: 74-81 % of the pockets' area was
+  on the tectonic mask, hollows up to 1 Mkm² and 65-118 m deep with 20-40,000 m³/s through them. A river leaves its load
+  in a lake, so a hollow fills in volume ÷ (inflow × `lakeLoadShare`), and the finish's rivers have run `carveTimeMyr`.
+  That is the water's residence time over the load's share, in km³ and m³/s, the same at every detail.
+- **A closed lake is not held to it.** Fill lifts its floor; its area stays what evaporation balances.
+
+**`lakeLoadShare` 1e-4** (~150 mg/L at 1.5 t/m³) makes the limit a residence time of ~100 years. Inflows here are recalled
+except Titicaca's (HESS 29: 655, 2025); volumes recalled. The world's mean (~530 mg/L, 3.5e-4, limit ~350 years) is its
+mountain rivers'; the Selenga carries ~83 mg/L.
+
+| Lake | Residence, yr | At 1e-4 | At 3.5e-4 |
+|---|---|---|---|
+| Baikal | ~390 | stands | barely stands |
+| Tanganyika | ~950 | stands | stands |
+| Malawi | ~290 | stands | fills |
+| Victoria | ~110 | barely stands | fills |
+| Titicaca | ~110 | barely stands | fills |
+
+Victoria dried at ~15-17 ka, so that margin is thin on Earth too. These lakes also have what the rule leaves out: their
+rifts sink. The Caspian and Aral are closed, so the rule does not judge them.
+
+**Results** (lake share of land, base → this branch):
+
+| Moment | 640K | 2.5M | 10M |
+|---|---|---|---|
+| 831576 at 310 Myr | 6.06 → 2.70 | 8.25 → 2.78 | 9.96 → 3.81 |
+| 626225 at 300 Myr | 11.96 → 6.24 | 13.58 → 7.56 | not run |
+| 12345 at 300 Myr | 5.48 → 3.36 | 6.95 → 5.77 | not run |
+
+`check-basins`: largest lake 0.58-0.93 → 0.29-0.40 Mkm² (Earth to 0.45); land draining to closed basins 29-35 → 26-30 %.
+Phase 8b's big rivers' median height 0.62 → 0.44 km (still over 0.40). At 10M on 831576, junctions 81° → 69°, Horton R_B
+9.4 → 6.1, dead level 2 → 1 %, rising 4 → 3 %, dead-straight 0 → 0 %, Hack 0.57 both, plain gradient 2.6e-4 → 1.0e-4. Lakes
+no longer cover the channels the measures read. Water stage at 10M 27.6 → 24.6 s (one pair, shared machine).
+
+**Open:**
+- **The spread left is single closed bodies.** 12345's 3.54 Mkm² lake at 2.5M (95,000 m³/s into a 4.4 Mkm² hollow, 1.19 Mkm²
+  at 640K) is 2.3 points of its 5.77 %; 831576's 1.03 Mkm² salt lake at 10M is 0.7. One sill decides each. Trapped seas and
+  closed sea basins 3-8 km deep make up about 4 points of 626225's 7.56 %. These are the history's and the belts' surfaces.
+- Fresh through-flowing lakes off the ice nearly vanish: no rift this deep exists on these surfaces, and nothing tells
+  the finish that a hollow still sinks. Earth keeps ~0.16 Mkm² in Baikal, Tanganyika, Malawi and Victoria.
+- Closed lakes keep their speckle at 10M: ~1,800 of the 2,100 are under 1,000 km², 0.37 Mkm² in all. `lakeMinKm2` is one cell
+  at 640K (two are asked: ~1,600 km²) and ~6 at 10M, unchanged here.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
