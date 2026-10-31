@@ -7,6 +7,7 @@
 //   · no rake-compress and no pointer-jumped solve. Those need the sums and the solve to be linear; ours have floors, lakes that
 //     hold load up to their room, and a max at each lake. But the trees are shallow (450-610 levels at 2.5M on real ground), so
 //     cells are sorted by their depth and swept level by level, which runs the CPU's own per-cell arithmetic, nothing reduced.
+//   · closedBasins can take its flood from here (gpuClosed): its fill, parent and order, with the water balance left on the CPU.
 //   · no carving through lakes: a flat's cells, lakes' included, drain by Barnes et al. 2014's two gradients, by two breadth-first sweeps.
 //   · WGSL's lexicographic minimum: two atomicMin passes (the weight, then the edge's id among the cells at that weight). min is
 //     commutative, so this holds no matter how threads interleave. Atomics are used only for that, for counters and for a level's
@@ -187,11 +188,11 @@ ${decl}
 }
 
 /** Build the solver for one run of one mesh. `gpu`: navigator.gpu or Dawn's. */
-export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, routeOverride = null } = {}) {
+export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, gpuClosed = false } = {}) {
     const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm } = o;
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
-    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, upload: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
+    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
     const U32 = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     const B = {}, mk = (name, bytes) => (B[name] = device.createBuffer({ label: name, size: Math.max(4, bytes), usage: U32 }));
     const put = (name, arr) => device.queue.writeBuffer(B[name], 0, arr.buffer, arr.byteOffset, arr.byteLength);
@@ -251,18 +252,32 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
 
     // ── the CPU's share: closed basins, and laying what lakes kept (as finish-erode.js does) ──
     let sink = null, base = null, sinkAt = null, basins = [], list = null, listLen = 0;
-    const closed = () => {
-        const C = o.closed(z);
+    // (closedBasins' flood, from the world ocean alone: the same network with its sinks not yet sinks. Its parent is the receiver here:
+    // the lowest neighbour on the filled surface, as a flood's first relaxation is. Sorted on this side so that its order is deterministic)
+    const flood = async () => {
+        const t = performance.now();
+        put('z', z); outlets(true);
+        await route();
+        const fill = await readBack(device, B.fill), rc = await readBack(device, B.recv, Uint32Array), depth = await readBack(device, B.depthA, Uint32Array);
+        const parent = new Int32Array(n).fill(-1), order = new Int32Array(listLen), at = new Uint32Array(levels + 2);
+        for (let i = 0; i < listLen; i++) at[depth[list[i]] + 1]++;
+        for (let d = 1; d <= levels + 1; d++) at[d] += at[d - 1];
+        for (let i = 0; i < listLen; i++) { const c = list[i]; parent[c] = rc[c] & NONE; order[at[depth[c]]++] = c; }
+        ms.flood += performance.now() - t;
+        return { fill, parent, order, count: listLen };
+    };
+    const closed = async () => {
+        const C = o.closed(z, gpuClosed ? await flood() : null);
         sink = C.sink; base = C.base; basins = [];
         sinkAt = sinkAt ?? new Int32Array(n);
         sinkAt.fill(-1);
         for (const L of C.lakes) if (sink[L.cells[0]]) { for (const c of L.cells) sinkAt[c] = basins.length; basins.push({ cells: L.cells, level: L.level, load: 0 }); }
     };
-    const outlets = () => {
+    const outlets = (seaOnly = false) => {
         const out = new Uint32Array(n), surf = new Float32Array(n), Zs = new Float32Array(n), self = new Uint32Array(n), d0 = new Uint32Array(n), rec = new Uint32Array(n), lab = new Uint32Array(n);
         list = new Uint32Array(n); listLen = 0;
         for (let c = 0; c < n; c++) {
-            if (ocean[c] || sink[c]) { out[c] = 1; surf[c] = ocean[c] ? Math.min(0, z[c]) : base[c]; Zs[c] = ocean[c] ? 0 : base[c]; lab[c] = n; } else list[listLen++] = c;
+            if (ocean[c] || (!seaOnly && sink[c])) { out[c] = 1; surf[c] = ocean[c] ? Math.min(0, z[c]) : base[c]; Zs[c] = ocean[c] ? 0 : base[c]; lab[c] = n; } else list[listLen++] = c;
             self[c] = c; rec[c] = c;
         }
         put('outlet', out); put('surf', surf); put('Zt', Zs); put('list', list); put('ptrA', self); put('ptrB', self); put('ptrC', self); put('label', lab); put('recv', rec); put('depthA', d0); put('depthB', d0); put('valA', Zs); put('valB', Zs);
@@ -346,7 +361,6 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         run(p, G.pickFlat, SL.flats, flats);
         p.end();
         device.queue.submit([e.finish()]);
-        if (routeOverride) { await device.queue.onSubmittedWorkDone(); const O = await routeOverride({ z, sink, base, basins, gpuRecv: await readBack(device, B.recv, Uint32Array), gpuFill: await readBack(device, B.fill) }); put('fill', O.fill); put('recv', O.recv); }
         e = device.createCommandEncoder(); p = e.beginComputePass();
         run(p, G.flagRecv, SL.list, listLen);
         const DJ = 12;
@@ -420,7 +434,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (let s = 0; s < P.steps; s++) {
         let t = performance.now();
         if (P.rebound > 0 && s > 0 && s % P.closedEvery === 0) settle();
-        if (s % P.closedEvery === 0) { closed(); ms.closed += performance.now() - t; t = performance.now(); outlets(); }
+        if (s % P.closedEvery === 0) { await closed(); ms.closed += performance.now() - t; t = performance.now(); outlets(); }
         put('z', z);
         ms.upload += performance.now() - t;
         R.route.push(await route());

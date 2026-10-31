@@ -12,6 +12,6 @@ export function loadRun(dir, id) {
     const J = JSON.parse(fs.readFileSync(path.join(m, 'mesh.json'))), mesh = { numCells: J.numCells, edgeKm: J.edgeKm, adjOffset: read(path.join(m, 'adjOffset.bin'), TYPES[J.offType]), adjList: read(path.join(m, 'adjList.bin'), TYPES[J.adjType]), xyz: read(path.join(m, 'xyz.bin'), TYPES[J.xyzType]) };
     const f32 = k => read(path.join(run, k + '.bin'), Float32Array), u8 = k => read(path.join(run, k + '.bin'), Uint8Array);
     const C = JSON.parse(fs.readFileSync(path.join(run, 'closed.json'))), runoff = f32('runoff'), pet = f32('pet'), rain = f32('rain'), sea = u8('closedOcean');
-    const o = { mesh, z: f32('z'), ocean: u8('ocean'), water: f32('water'), k: f32('k'), hold: f32('hold'), slow: R.slow ? f32('slow') : null, m: R.m, activeHold: R.activeHold, valleyKm: R.valleyKm, closed: g => closedBasins(mesh, g, runoff, pet, rain, C.cellKm2, C.F, sea) };
+    const o = { mesh, z: f32('z'), ocean: u8('ocean'), water: f32('water'), k: f32('k'), hold: f32('hold'), slow: R.slow ? f32('slow') : null, m: R.m, activeHold: R.activeHold, valleyKm: R.valleyKm, closed: (g, flood = null) => closedBasins(mesh, g, runoff, pet, rain, C.cellKm2, C.F, sea, flood) };
     return { o, P: { ...ERODE, ...R.P }, meta: R };              // (settings added since the capture take their defaults)
 }

@@ -6,7 +6,7 @@ import { registerHooks } from 'node:module';
 const EDITS = [
     ['finish/finish-erode.js', 'export function erodeLandscape(o, P) {', '$& o = globalThis.__erodeEnter?.(o, P) ?? o;'],
     ['finish/finish-erode.js', "lap('lay');", "$& globalThis.__erodeStep?.({ s, dt, count, fill, recv, rank, order, step, A, e, zNew, z, Qs, gross, dropped, lid, lakes, sink, base, t, trap, inlet, e_: e });"],
-    ['finish/finish-basins.js', 'export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean) {', '$& globalThis.__closedArgs?.({ mesh, runoff, pet, rain, cellKm2, F, ocean });'],
+    ['finish/finish-basins.js', 'export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null) {', '$& globalThis.__closedArgs?.({ mesh, runoff, pet, rain, cellKm2, F, ocean });'],
 ];
 registerHooks({
     load(url, context, next) {

@@ -6,7 +6,6 @@ import { isMainThread } from 'node:worker_threads';
 import { gpu } from './dawn.mjs';
 import { openDevice } from '../../js/gpu/gpu-device.js';
 import { erodeGPU } from '../../js/gpu/erode-gpu.js';
-import { cpuRoute } from './cpu-route.mjs';
 
 // (--import reaches worker threads too; they don't run erosion, and each would open its own device)
 // (--import reaches worker threads too; they don't run erosion, and each would open its own device)
@@ -26,13 +25,10 @@ const rotations = new Map(), rotated = mesh => {
 };
 let call = 0;
 const onGPU = async (o, P) => {
-    const R = await erodeGPU(gpu, o, P, { device: opened, routeOverride: process.env.GPU_ROUTE ? ({ z, sink, base, basins, gpuRecv }) => {
-        const O = cpuRoute(o.mesh, o.ocean, z, sink, base, basins), M = process.env.GPU_ROUTE;
-        if (M === 'cpu') return O;
-        // (the CPU's fill throughout; the GPU's receivers kept on one class of flat cell)
-        for (let c = 0; c < O.recv.length; c++) { const lake = O.fill[c] > z[c] + 1e-5; if (M === 'gpuLake' ? lake : !lake) O.recv[c] = gpuRecv[c] === 0x7FFFFFFF ? O.recv[c] : gpuRecv[c] & 0x7FFFFFFF; }
-        return O;
-    } : null });
+    // (the finish's closures take only the ground; the GPU's flood reaches closedBasins beside them)
+    const closed = o.closed;
+    o = { ...o, closed: (g, fl) => { globalThis.__closedFlood = fl; const r = closed(g); globalThis.__closedFlood = null; return r; } };
+    const R = await erodeGPU(gpu, o, P, { device: opened, gpuClosed: !!process.env.GPU_CLOSED });
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     return { curve: [], survivors: null, ms: R.ms, budget: { seaKm3PerYr: perYr(R.toSeaKm3), closedKm3PerYr: perYr(R.closedKm3) } };
 };
@@ -45,6 +41,7 @@ const EDITS = [
     ['finish/finish.js', 'stats.erode = EP.ladder ? erodeLadder(', 'stats.erode = EP.ladder ? await erodeLadder('],
     ['finish/finish.js', ': erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean: ocean0,', ': await erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean: ocean0,'],
     ['finish/finish.js', 'const late = erodeLandscape(', 'const late = await erodeLandscape('],
+    ['finish/finish-basins.js', 'export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null) {', 'export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = globalThis.__closedFlood ?? null) {'],
 ];
 registerHooks({
     load(url, context, next) {
