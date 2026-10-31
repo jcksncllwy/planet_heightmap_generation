@@ -1936,6 +1936,20 @@ Round 2 (the tectonics checks, from `audit-tecton`):
 - **7c**: the 1000 Myr two-minute check is no longer hard (a wall clock on a shared machine, of a run no user makes). The time at the whole-planet pace and the deterministic step count are reported. `check-kit.mjs` no longer lists speed as a hard check.
 - **11 zipper**: the weld must come after first contact and as the seam stalling, on four seeds; the remnant sea's area is reported against the Black Sea to the Mediterranean (widest gap as detail only: it swings 121-849 km while the area holds 0.4-0.55 Mkm²).
 
+## Who rides up at a collision (2026-10-30, branch polarity)
+
+**The rule.** The upper plate at a new collision is the one with the longest slab within two aprons (`2 × apronKm`) of
+the contact, read on both plates' rasters, ocean and land (`chooseSides`, `step/collision.js`). The ocean between the two
+went down beneath that plate, so the continent arrives on the plate going down (Cloos 1993). With no slab on either
+side, the larger continent rides up. A flip of polarity would be a further event; none is modelled.
+
+**What was wrong.** The old rule counted land trench flags beside the overlap. The arriving continent's coast gains
+fresh flags as it overrides the other plate's apron, so a handful of cells chose the side. At contact the ocean trench
+has mostly gone: the slab is on land cells on both sides, so reading ocean cells alone does not work either.
+
+**A craton split by a pulled strip is booked.** `pullArcsAfterTrenches` logged `splitCratons: []`; both back-arc branches
+now use one helper.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance
