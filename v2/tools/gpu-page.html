@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>GPU erosion cross-check</title>
+<script type="module">
+// The browser half of gpu-browser.mjs: the same kernels as Dawn runs, through Chrome's own navigator.gpu.
+import { erodeGPU } from '/v2/js/gpu/erode-gpu.js';
+import { openDevice } from '/v2/js/gpu/gpu-device.js';
+import { closedBasins } from '/v2/js/finish/finish-basins.js';
+
+const TYPES = { Int32Array, Uint32Array, Float32Array, Float64Array, Uint8Array };
+const get = async (url, T) => new T(await (await fetch(url)).arrayBuffer()), json = async url => (await fetch(url)).json();
+async function loadRun(id) {
+    const run = `/fixture/run${id}`, R = await json(`${run}/run.json`), m = `/fixture/mesh${R.n}`, J = await json(`${m}/mesh.json`), f = k => get(`${run}/${k}.bin`, Float32Array);
+    const mesh = { numCells: J.numCells, edgeKm: J.edgeKm, adjOffset: await get(`${m}/adjOffset.bin`, TYPES[J.offType]), adjList: await get(`${m}/adjList.bin`, TYPES[J.adjType]), xyz: await get(`${m}/xyz.bin`, TYPES[J.xyzType]) };
+    const C = await json(`${run}/closed.json`), runoff = await f('runoff'), pet = await f('pet'), rain = await f('rain'), sea = await get(`${run}/closedOcean.bin`, Uint8Array);
+    return { P: R.P, o: { mesh, z: await f('z'), ocean: await get(`${run}/ocean.bin`, Uint8Array), water: await f('water'), k: await f('k'), hold: await f('hold'), slow: R.slow ? await f('slow') : null, m: R.m, activeHold: R.activeHold, valleyKm: R.valleyKm, closed: g => closedBasins(mesh, g, runoff, pet, rain, C.cellKm2, C.F, sea) } };
+}
+let opened = null;
+window.adapterInfo = async () => { opened ??= await openDevice(navigator.gpu); const i = opened.info; return { vendor: i.vendor, architecture: i.architecture, device: i.device, description: i.description, isFallback: i.isFallbackAdapter, ua: navigator.userAgent }; };
+window.runFixture = async (id, reps = 2) => {
+    const { o, P } = await loadRun(id), start = o.z.slice();
+    opened ??= await openDevice(navigator.gpu);
+    let best = null;
+    for (let r = 0; r < reps; r++) { o.z.set(start); const t = performance.now(), R = await erodeGPU(navigator.gpu, o, P, { device: opened }), total = performance.now() - t; if (!best || total < best.total) best = { total, ms: R.ms }; }
+    await fetch(`/result/${id}`, { method: 'POST', body: o.z });
+    return best;
+};
+window.ready = true;
+</script>
