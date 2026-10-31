@@ -2,13 +2,16 @@
 // calls finishPlanet (erode-study.mjs), and erodeLandscape's body is replaced by erode-gpu.js, with the calls made awaitable.
 // Not the wiring a lane would ship (that is a flag in finish.js), only a way to measure the outcome of it.
 import { registerHooks } from 'node:module';
+import { isMainThread } from 'node:worker_threads';
 import { gpu } from './dawn.mjs';
 import { openDevice } from '../../js/gpu/gpu-device.js';
 import { erodeGPU } from '../../js/gpu/erode-gpu.js';
 
-const opened = await openDevice(gpu);
-console.log('GPUSWAP', JSON.stringify(opened.info.description));
+// (--import reaches worker threads too; they don't run erosion, and each would open its own device)
+const opened = isMainThread ? await openDevice(gpu) : null;
+if (opened) console.log('GPUSWAP', JSON.stringify(opened.info.description));
 globalThis.__gpuErode = async (o, P) => {
+    if (process.env.GPU_FLIP) o = { ...o, mesh: (await import('./flip-hook.mjs')).flipped(o.mesh) };
     const R = await erodeGPU(gpu, o, P, { device: opened });
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     return { curve: [], survivors: null, ms: R.ms, budget: { seaKm3PerYr: perYr(R.toSeaKm3), closedKm3PerYr: perYr(R.closedKm3) } };

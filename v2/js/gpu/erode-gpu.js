@@ -252,7 +252,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         setRange(SL.list, 0, listLen);
     };
     // ── a network: basins, their spanning tree, the filled surface, the receivers, the depth order ──
-    let levels = 0;
+    let levels = 0, hist0 = null, guessRounds = 6, guessPasses = 8;
     const route = async () => {
         const t0 = performance.now();
         let e = device.createCommandEncoder(), p = e.beginComputePass();
@@ -266,12 +266,18 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         device.queue.submit([e.finish()]);
         const roots = await readCount();
         setRange(SL.roots, 0, roots);
+        // (rounds and flat passes in one submit, as many as last step took: a spare one changes nothing, and every wait for a
+        // count costs more than the pass, above all in a browser)
         let rounds = 0, left = roots, was = -1;
         while (left > 0 && left !== was && rounds < 32) {
-            was = left; rounds++;
+            was = left;
+            const batch = rounds ? 1 : guessRounds;
             e = device.createCommandEncoder(); p = e.beginComputePass();
-            run(p, G.label, SL.list, listLen); run(p, G.resetBest, SL.roots, roots); run(p, G.minWeight, SL.list, listLen); run(p, G.minEdge, SL.list, listLen); run(p, G.pickEdge, SL.list, listLen); run(p, G.hook, SL.roots, roots);
-            for (let i = 0; i < 9; i++) run(p, i % 2 ? G.flatBA : G.flatAB, SL.roots, roots);
+            for (let b = 0; b < batch; b++) {
+                rounds++;
+                run(p, G.label, SL.list, listLen); run(p, G.resetBest, SL.roots, roots); run(p, G.minWeight, SL.list, listLen); run(p, G.minEdge, SL.list, listLen); run(p, G.pickEdge, SL.list, listLen); run(p, G.hook, SL.roots, roots);
+                for (let i = 0; i < 9; i++) run(p, i % 2 ? G.flatBA : G.flatAB, SL.roots, roots);
+            }
             p.end();
             clearCounter(e); p = e.beginComputePass();
             run(p, G.active, SL.roots, roots);
@@ -279,6 +285,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             device.queue.submit([e.finish()]);
             left = await readCount();
         }
+        guessRounds = rounds;
         e = device.createCommandEncoder(); p = e.beginComputePass();
         run(p, G.levelInit, SL.roots, roots);
         for (let i = 0; i < 12; i++) run(p, i % 2 ? G.levelBA : G.levelAB, SL.roots, roots);
@@ -292,14 +299,16 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         setRange(SL.flats, 0, flats);
         let pending = flats, passes = 0, even = true;
         while (pending > 0) {
+            const batch = passes ? 8 : guessPasses;
             e = device.createCommandEncoder();
-            for (let b = 0; b < 8; b++) { if (b === 7) clearCounter(e); p = e.beginComputePass(); run(p, even ? G.flatAB2 : G.flatBA2, SL.flats, flats); even = !even; p.end(); }
+            for (let b = 0; b < batch; b++) { if (b === batch - 1) clearCounter(e); p = e.beginComputePass(); run(p, even ? G.flatAB2 : G.flatBA2, SL.flats, flats); even = !even; p.end(); }
             device.queue.submit([e.finish()]);
-            passes += 8;
+            passes += batch;
             const now = await readCount();
-            if (now === pending && passes > 8) break;
+            if (now === pending && passes > batch) break;
             pending = now;
         }
+        guessPasses = Math.max(8, passes);
         e = device.createCommandEncoder(); p = e.beginComputePass();
         run(p, G.flagRecv, SL.list, listLen);
         const DJ = 12;
@@ -318,16 +327,13 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         let at = 0; levels = 0;
         for (let d = 1; d < MAX_LEVELS; d++) { cursor[d] = at; if (hist[d]) { setRange(8 + d, at, hist[d]); levels = d; at += hist[d]; } }
         put('cursor', cursor);
-        e = device.createCommandEncoder(); p = e.beginComputePass();
-        run(p, G.place, SL.list, listLen);
-        p.end();
-        device.queue.submit([e.finish()]);
-        await device.queue.onSubmittedWorkDone();
+        hist0 = hist;
         ms.route += t1 - t0; ms.sort += performance.now() - t1;
         return { roots, rounds, flats, passes, levels, placed: at, unresolved: pending };
     };
     const sweeps = async hist0 => {
         const t0 = performance.now(), e = device.createCommandEncoder(), p = e.beginComputePass();
+        run(p, G.place, SL.list, listLen);
         for (let d = levels; d >= 1; d--) run(p, G.water, 8 + d, hist0[d]);
         for (let d = 1; d <= levels; d++) run(p, G.solve, 8 + d, hist0[d]);
         for (let d = levels; d >= 1; d--) run(p, G.load, 8 + d, hist0[d]);
@@ -358,11 +364,6 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             }
         }
     };
-    let hist0 = null;
-    const levelSizes = async () => {
-        const h = await readBack(device, B.hist, Uint32Array, 4 * (levels + 2));
-        hist0 = h;
-    };
     const anchor = P.rebound > 0 ? z.slice() : null;
     const settle = () => {
         const d = new Float32Array(n), next = new Float32Array(n);
@@ -385,7 +386,6 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         put('z', z);
         ms.upload += performance.now() - t;
         R.route.push(await route());
-        await levelSizes();
         await sweeps(hist0);
         t = performance.now();
         const zGPU = await readBack(device, B.z), ex = await readBack(device, B.exp, Uint32Array, 4 * EXPORT_WORDS * listLen), exF = new Float32Array(ex.buffer);
