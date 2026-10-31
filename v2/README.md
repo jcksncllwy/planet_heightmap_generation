@@ -1950,6 +1950,60 @@ has mostly gone: the slab is on land cells on both sides, so reading ocean cells
 **A craton split by a pulled strip is booked.** `pullArcsAfterTrenches` logged `splitCratons: []`; both back-arc branches
 now use one helper.
 
+## A sinking floor keeps its lake open (2026-10-30, branch lakes2)
+
+**What was wrong.** `lakeStands` judged a spilling lake by its river's load alone, as if its floor stood still. That was
+Jackson's question: where are the fresh lakes with rivers through them? Off the ice, few were left, and those that were
+big enough to notice were one giant per world. Earth's spilling lakes off the ice mostly lie where the ground still
+moves: rifts, an active range's basins (Titicaca), an arc's graben (Nicaragua). Victoria is the exception, a sag between
+rifts, and it barely passes the load test anyway.
+
+**Now** a lake's net fill is its river's load less the room its sinking floor makes. If that is nothing, it never fills.
+```
+net fill (km³/yr) = inflow × lakeLoadShare − lake area × mean sinking share × lakeSinkMmYr
+it stands if      volume ≥ carveTimeMyr × net fill
+```
+- **What sinks** (`sinkingGround`, read from the frame): ground the belts deformed lately, fading over `carveActiveMyr`,
+  and rifts on continental crust. It is sinking against the sill, which is all a lake feels: a hollow in a rising belt
+  deepens as its rim rises.
+- **`lakeSinkMmYr` 0.25** is a floor's mean, half the peak of a wedge-shaped basin. Peaks: Malawi 0.5-1 mm/yr (Lyons et al.
+  2011), Baikal over 0.385 (Colman et al. 2003), a foredeep ~0.25 (derived; its width is recalled). 0.5 gives nearly the same
+  lakes: 2.5M shares move by at most 0.05 points, and the open share by at most 0.05 points of land.
+- **No seeded lottery.** The first proposal was a share of time holding water, fill ÷ (fill + recurrence). No recurrence can
+  be sourced for a broad platform hollow, and 4.29 of 6.49 Mkm² of 831576's non-ice hollows lie on ground never deformed.
+  The history already says which ground is active, so nothing random picks the lakes.
+- Earth's rule of thumb that lakes are young stays in `carveTimeMyr`. Floodplain, landslide and lava lakes are not modelled:
+  nearly all are under `lakeMinKm2` (Sarez ~80 km², recalled).
+
+**Earth's target.** Non-glacial spilling lakes of 1,000 km² and over come to ~0.19 Mkm², ~0.13 % of the land (Victoria,
+Tanganyika, Baikal, Malawi, Titicaca, Nicaragua, Albert, Tana, Poyang and others; areas recalled). This is today's figure and
+depends on how many rifts are open. `trace-lakes.mjs` prints it as "open fresh off the ice", which leaves out seas' remnants.
+
+**Results** (lake share of land, then open fresh lakes as % of land without each world's biggest; base → this branch):
+
+| Moment | Cells | Lakes, % | Open, % of land |
+|---|---|---|---|
+| 831576 at 310 Myr | 640K | 2.70 → 2.91 | 0.06 → 0.26 |
+| | 2.5M | 2.78 → 2.76 | 0.07 → 0.19 |
+| | 10M | 3.81 → 4.24 | 0.31 → 0.76 |
+| 626225 at 300 Myr | 640K | 6.24 → 6.28 | 0.22 → 0.24 |
+| | 2.5M | 7.56 → 7.59 | 0.23 → 0.25 |
+| 12345 at 300 Myr | 640K | 3.36 → 3.43 | 0.04 → 0.11 |
+| | 2.5M | 5.77 → 5.89 | 0.04 → 0.07 |
+
+Dead-level, rising and dead-straight are no worse than base on these runs.
+
+**Open:**
+- **10M on 831576 stands above Earth's 3.7 %, as it did before** (3.81), now 4.24. One lake is 0.32 of that: 488K km² at 18.7°N,
+  90 m deep on average, 16,000 m³/s through it, at the foot of an active range. Its sill closes a 496K hollow at 10M and a 190K
+  one at 640K. Bigger than the Caspian, smaller than this world's 1.03 Mkm² closed lake. It stands on any sinking rate here,
+  so the rate is not what sets it: the sill is. The open share at 10M also holds a 476K lake on main.
+- **The 1 Mkm² giants** on 831576 and 12345 are 640K's and were there before. They are closed hollows' lakes, one sill each.
+  At 2.5M on 831576 a gorge from a lake upstream now crosses that hollow, which drains it into salt pockets (the giant goes,
+  the share holds).
+- **Rifts are nearly absent:** 0.06 Mkm² of hollows lie within 200 km of any ridge boundary, so Earth's 0.16 Mkm² of rift-lake
+  kind come back as foreland and intermontane lakes instead. Deep rift hollows are the surface's to build.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

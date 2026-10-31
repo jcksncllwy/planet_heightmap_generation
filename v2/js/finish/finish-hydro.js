@@ -480,7 +480,9 @@ export function hydrology(ctx, F) {
     // its load there, so a hollow with no ice to have dug it lately fills in its volume ÷ (inflow × lakeLoadShare), and the
     // finish's rivers have run carveTimeMyr. That is its water's residence time over the load's share of the water, in
     // km³ and m³/s, so the same lake stands at every detail; until now hollows 1 Mkm² wide and 65 m deep with 37 000 m³/s
-    // through them stood, and the lakes' share grew with the detail)
+    // through them stood, and the lakes' share grew with the detail. Lane lakes2, 2026-10-30: a floor that sinks makes room
+    // for what its river brings (lakeSinkMmYr, on active ground only: sinkingGround); if it keeps up the lake never fills.
+    // Why Tanganyika stands at 1.5 km deep, and why, off the ice, Earth's lakes that spill lie where the ground still moves)
     const lakeStands = (cells, level, inflow) => {
         let glacial = 0, tect = 0, dug = 0, km3 = 0, wetKm2 = 0, sunk = 0, read = 0;
         const every = Math.max(1, Math.floor(cells.length / F.lakeSinkSamples));

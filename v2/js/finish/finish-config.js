@@ -155,10 +155,11 @@ export const FINISH = {
                                 // Baikal's (~390), Tanganyika's, Malawi's (~290) do, Victoria's and Titicaca's (~110) barely. At
                                 // the world's mean, Malawi and Titicaca would fill. A closed lake is not held to it: fill lifts
                                 // its floor, its area stays what evaporation balances
-    lakeSinkMmYr: 0.5,          // an active floor sinks this fast against its sill, and that room is taken from its river's
-                                // load: Malawi's rift 0.5–1 mm/yr at most (Lyons et al. 2011), Baikal's well over 0.385 (Colman
-                                // et al. 2003), a foredeep ~0.25 (a 4 km foredeep over ~300 km — the width recalled — crossed
-                                // at the Himalaya's 19 mm/yr: derived). Active: finish-hydro.js sinkingGround
+    lakeSinkMmYr: 0.25,         // an active floor sinks this fast against its sill, over the whole floor, and that room is taken
+                                // from its river's load. Half the peak: a half-graben or a foredeep is a wedge, its floor's mean
+                                // half its deepest. Peaks: Malawi's rift 0.5–1 mm/yr at most (Lyons et al. 2011), Baikal's well
+                                // over 0.385 (Colman et al. 2003), a foredeep ~0.25 (a 4 km foredeep over ~300 km — the width
+                                // recalled — crossed at the Himalaya's 19 mm/yr: derived). Active: finish-hydro.js sinkingGround
     lakeSinkSamples: 64,        // cells a hollow reads that from: the field is the sim's (~100 km), much coarser than a big hollow's cells
     breachKm: 0.6,              // an old basin that overflows has cut a gorge this deep through its rim (at most)…
     breachQ: [10, 1000],        // …by what spills over (m³/s): none below the first, full from the second…
