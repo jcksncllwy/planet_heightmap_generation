@@ -291,9 +291,9 @@ function trapLoad(world, s, h, km3, rainKm2, H, cellArea) {
         const c = holCells[i], r = L + g * holKm[c] - height[c];
         if (r <= 0) continue;
         const crust = plates[owner[c]].crust, cc = ownerCell[c], u = Math.min(r, cutNow[c]);
+        kept += vol(c, r);                                    // (booked before the cut shrinks: vol reads it)
         crust.riverIncKm[cc] = Math.max(0, crust.riverIncKm[cc] - u); cutNow[c] -= u;
         crust.basinFillKm[cc] += F * (r - u);
-        kept += vol(c, r);
         height[c] += r;
     }
     return kept;
