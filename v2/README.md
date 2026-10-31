@@ -2023,6 +2023,12 @@ come from `closedBasins`. The run:
 - after wind and coast, a polish, because dunes and loess dam the plains erosion leaves;
 - a terminal body shallower than a year's net evaporation becomes a pan (`playaYears`).
 
+**Flats** drain by two gradients, away from higher ground and, at twice the weight, towards lower (`flatRule`, Barnes, Lehman &
+Mulla 2014, after Garbrecht & Martz 1997). Until 2026-10-31 a flat's receivers were the flood's pop order, an arbitrary tie that
+moved lake share by more than the noise, and that no parallel solver can repeat. `flatRule: false` restores it. **Single runs of a
+seed under different tie-breaks still vary** (lake share ±0.07 on 831576, ±0.13 on 626225, standard errors of four runs): the figures
+below are single runs from before this rule; with it, on Upwell, they are 2.27 / 3.61 / 2.47 %.
+
 **To turn it on**, at 2.5M (at 640K, drop the 640K level and give the last level 0.2 Myr / 4 steps):
 ```
 ERODE='{"at":"both","polishMyr":0.3,"polishSteps":6,"bury":true,"rebound":0.82,"playaYears":1,"delta":true,
@@ -2036,6 +2042,12 @@ node v2/tools/erode-study.mjs --seed 831576 --time 310 --cells 2500000 --erode "
 (Earth 1.8–3.7; base at c21cb7f 3.37 / 5.73 / 5.81), 640K–2.5M spread 0.16 / 0.35 / 0.93 points, largest lake on land
 0.55 / 0.13 / 0.29 Mkm² (base 0.49 / 0.99 / 3.55), Horton 4.9–5.6 (base 6.47 on 831576). Measured on main dc416b1
 for 831576 only; the other seeds are on c21cb7f, before lakes2. Full tables: `erosion-report.md` in the lane's notes.
+
+**On the GPU (a spike, 2026-10-31, branch gpu; nothing in the app loads it).** `js/gpu/erode-gpu.js` runs the same step in WebGPU:
+FastFlow's depression routing (Jain et al. 2024, Cordonnier et al. 2019) for the network, then the CPU's own arithmetic swept level by
+level over cells sorted by depth. Laying lakes' load and the closed basins' water balance stay on the CPU. Tools: `v2/tools/gpu-*`,
+`npm install` in `v2/tools/gpu-harness/` (tool-only: Dawn for Node, Playwright for the Chrome cross-check). Limits: float32 throughout,
+so a near-tie between slopes can fall the other way, and a machine repeats its own result but two GPUs can differ slightly.
 
 **Limits.**
 - **Open fresh share is missed:** 0.94 / 1.91 / 0.68 % of land against Earth's ~0.13, no clear gain on the base. The fill-time
