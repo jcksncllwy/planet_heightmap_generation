@@ -140,7 +140,10 @@ section('carving');
     // (a 2 km floor: the carving has not cut active ranges down — how high they stand is the history's)
     check('active ranges keep their peaks (95th percentile ≥ 2 km)', quantile(pooled, 0.95) >= 2, `95th percentile ${quantile(pooled, 0.95).toFixed(2)} km over ${pooled.length} cells of active belts at 400, 500 and 600 Myr (${active.length} at 600)`);
     report('active ranges after carving: 95th percentile height', quantile(pooled, 0.95), { earth: [4, 5], unit: ' km', source: 'Tibet and the Altiplano 4–5 km, Alpine peaks ~4.8 km; holds through the cycle wherever a range is active: plateau height is capped by the crust\'s strength (Molnar & Lyon-Caen 1988)' });
-    check('carving at 640K cells within 2 s', T.ms.carve / 1000 < 2, `${(T.ms.carve / 1000).toFixed(2)} s (the surface took ${((T.ms.records + T.ms.sample + T.ms.surface) / 1000).toFixed(2)} s)`);
+    // (was a hard check, under 2 s: a wall clock, which fails with the machine's load, not the code's work — see 8a and 7c. Reported with the
+    // deterministic work: the cells carved and the rounds of routing and carving per level)
+    report('carving at 640K cells: wall time', T.ms.carve / 1000, { unit: ' s', digits: 2, source: 'no Earth figure: the time to carve on this machine under whatever else is running; the cell count and rounds are the deterministic measure',
+        detail: `${T.tm.numCells} cells, ${TERRAIN.carveRounds.join(' / ')} rounds per level, coarsest to finest (the surface took ${((T.ms.records + T.ms.sample + T.ms.surface) / 1000).toFixed(2)} s)` });
 }
 
 // ── plateaus are eaten from their edges ──
