@@ -93,7 +93,7 @@ const ARC_LIVE_MYR = 10;             // (an arc its slab fed within this long co
 
 /** A frame's trenches: their total length, the longest unbroken line of one plate's, and the floor older than 2 × its mean age. */
 function trenchLines(f, meanAge) {
-    const { adjOffset, adjList, edgeKm } = mesh, seen = new Uint8Array(n), over = w => f.boundary[w] === BoundaryKind.OVERRIDING;
+    const { adjOffset, adjList, edgeKm } = mesh, seen = new Uint8Array(n), over = w => f.boundary[w] === BoundaryKind.OVERRIDING && (f.flags[w] & CrustFlag.TRENCH) !== 0;
     let all = 0, longest = 0, old = 0, ocean = 0;
     for (let s = 0; s < n; s++) {
         if (f.owner[s] >= 0 && f.type[s] === CrustType.OCEAN) { ocean++; if (f.time - f.formedAt[s] > 2 * meanAge) old++; }
