@@ -11,6 +11,7 @@ import { dot, cross, normalize } from '../../core/sphere-geom.js';
 import { sceneCanvas, addContinent, addApronAndTrench, addOcean, flagCoastTrench, fillBackground } from './scene-kit.js';
 import { buildWilsonWorld, WILSON_HOME } from './wilson-cycle.js';
 import { buildStartWorld } from '../init/start-world.js';
+import { mechanismsOff } from '../config.js';
 
 const WEST = [[125, 235]], EAST = [[-55, 55]];
 
@@ -104,11 +105,15 @@ export const FORCE_SCENES = [
             'Pulled from nearly all sides, the supercontinent barely moves (well under 1 cm/yr), but “tension” reads close to 1.',
             'Phase 6 will use that stored tension to decide when and where a supercontinent rifts.',
         ],
-        build(simMesh, seed) { return buildStartWorld(simMesh, seed).world; },
+        build(simMesh, seed) { const { world } = buildStartWorld(simMesh, seed); Object.assign(world.config, GIVEN_TRENCHES); return world; },
     },
 ];
 
+// (these scenes weigh forces on trenches they lay down: a trench's own life is another scene's)
+const GIVEN_TRENCHES = mechanismsOff('trenchEstablish');
+
 function begin(simMesh, seed) {
     const world = new TectonicWorld(simMesh, seed);
+    Object.assign(world.config, GIVEN_TRENCHES);
     return { world, canvas: sceneCanvas(simMesh, world.config), noise: new SimplexNoise(seed) };
 }

@@ -12,6 +12,7 @@
 
 import { SimplexNoise } from '../../../../js/simplex-noise.js';
 import { TectonicWorld } from '../model/world.js';
+import { mechanismsOff } from '../config.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { latLonToXyz, omegaFromEulerPole } from '../step/kinematics.js';
 import { dot, cross, normalize, angleBetween as angle } from '../../core/sphere-geom.js';
@@ -26,6 +27,7 @@ const FAR_CENTRE = [2, 72];
 
 export function buildWilsonWorld(simMesh, seed, { farCentre = FAR_CENTRE } = {}) {
     const world = new TectonicWorld(simMesh, seed);
+    Object.assign(world.config, mechanismsOff('trenchEstablish'));        // (prescribed motion: the trenches here are the scene's given)
     const noise = new SimplexNoise(seed);
     const { xyz, numCells } = simMesh;
 

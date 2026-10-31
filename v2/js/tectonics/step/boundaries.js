@@ -225,9 +225,9 @@ function feedTrench(world, w, A, cell, B, cellB, subductedKm, closingCmYr) {
 /** A plate edge moving but not closing: its slab, or the start of one, fades over the time a slab takes to sink on its own (founderSlabMyr; slab
  * break-off: a slab no plate feeds detaches), and the trench ends. A choice of scale, not a measured rate. */
 function idleSlab(crust, cell, dt, config) {
-    if (!(crust.slabKm[cell] > 0)) return;
+    if (!(crust.slabKm[cell] > 0) || crust.type[cell] !== CrustType.OCEAN) return;      // (land keeps its record: collisions read it)
     crust.slabKm[cell] *= Math.exp(-dt / config.founderSlabMyr);
-    if ((crust.flags[cell] & CrustFlag.TRENCH) && crust.type[cell] === CrustType.OCEAN && crust.slabKm[cell] < config.trenchEstablishKm) { crust.flags[cell] &= ~CrustFlag.TRENCH; crust.slabKm[cell] = 0; }
+    if ((crust.flags[cell] & CrustFlag.TRENCH) && crust.slabKm[cell] < config.trenchEstablishKm) { crust.flags[cell] &= ~CrustFlag.TRENCH; crust.slabKm[cell] = 0; }
 }
 
 /** Crust above normal ocean crust that a slab cell carries (km): a plume head's plateau, a hotspot track's ridge. */
