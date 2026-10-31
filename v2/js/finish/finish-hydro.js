@@ -16,6 +16,8 @@
 
 import { MinHeap } from '../core/min-heap.js';
 import { hollowLakes } from './finish-basins.js';
+import { BoundaryKind } from '../tectonics/model/world.js';
+import { CrustType } from '../tectonics/model/crust.js';
 
 const SEC_PER_YEAR = 3.156e7, R = 6371;
 // (a flood's key on a flat: its level plus this × the cells across the flat from where the flood came onto it — the
@@ -135,6 +137,39 @@ export function fillSeaBasins(mesh, z, ocean, F) {
  *            rivers: {start: Int32Array, lat: Float32Array, lon: Float32Array, q: Float32Array, season: Float32Array},
  *            stats: Object}}
  */
+/**
+ * How much of an active floor's sinking each cell has (0…1), read from the history: lakeStands's sinking floors. Ground the
+ * belts deformed lately (fading over activeMyr since) or a rift on continental crust opening now. Relative to the sill, which
+ * is all a lake feels: a hollow in a rising belt deepens as its rim rises. Looked up per cell on demand, from the nearest sim
+ * cell: a hollow reads only a sample, so this costs next to nothing at 10M cells.
+ */
+export function sinkingGround(frame, simMesh, mesh, activeMyr) {
+    const N = simMesh.numCells, sx = simMesh.xyz, fx = mesh.xyz, K = 20, side = 2 * K + 1, cell = v => Math.min(side - 1, Math.floor((v + 1) * K));
+    const { adjOffset, adjList } = simMesh, share = new Float32Array(N), buckets = new Map();
+    for (let w = 0; w < N; w++) {
+        if (frame.oroType[w]) share[w] = Math.exp(-Math.max(0, frame.time - frame.oroLast[w]) / activeMyr);
+        const key = cell(sx[3 * w]) + side * (cell(sx[3 * w + 1]) + side * cell(sx[3 * w + 2]));
+        let b = buckets.get(key);
+        if (!b) buckets.set(key, b = []);
+        b.push(w);
+    }
+    // (a rift is a boundary's width at the sim's cells: its neighbours as well)
+    for (let w = 0; w < N; w++) {
+        if (frame.boundary[w] !== BoundaryKind.RIDGE || frame.type[w] === CrustType.OCEAN) continue;
+        share[w] = 1;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) share[adjList[k]] = 1;
+    }
+    return c => {
+        const x = fx[3 * c], y = fx[3 * c + 1], z = fx[3 * c + 2], a = cell(x), b = cell(y), e = cell(z);
+        let best = -1, near = Infinity;
+        for (let i = a - 1; i <= a + 1; i++) for (let j = b - 1; j <= b + 1; j++) for (let k = e - 1; k <= e + 1; k++) {
+            const cands = buckets.get(i + side * (j + side * k));
+            if (cands) for (const w of cands) { const d = (sx[3 * w] - x) ** 2 + (sx[3 * w + 1] - y) ** 2 + (sx[3 * w + 2] - z) ** 2; if (d < near) { near = d; best = w; } }
+        }
+        return best < 0 ? 0 : share[best];
+    };
+}
+
 export function hydrology(ctx, F) {
     const { mesh, z, ocean, runoff, pet, rain, wetMonths } = ctx, n = mesh.numCells, { adjOffset, adjList, xyz } = mesh;
     const cellKm2 = 4 * Math.PI * R * R / n, EPS = 1e-4;
@@ -447,12 +482,20 @@ export function hydrology(ctx, F) {
     // km³ and m³/s, so the same lake stands at every detail; until now hollows 1 Mkm² wide and 65 m deep with 37 000 m³/s
     // through them stood, and the lakes' share grew with the detail)
     const lakeStands = (cells, level, inflow) => {
-        let glacial = 0, tect = 0, dug = 0, km3 = 0;
-        for (const x of cells) { if (ctx.glaciated?.[x]) glacial++; if (ctx.tectonic?.[x]) tect++; if (ctx.basin?.[x] > F.basinLakeKm) dug++; if (z[x] < level) km3 += (level - z[x]) * cellKm2; }
+        let glacial = 0, tect = 0, dug = 0, km3 = 0, wetKm2 = 0, sunk = 0, read = 0;
+        const every = Math.max(1, Math.floor(cells.length / F.lakeSinkSamples));
+        for (let i = 0; i < cells.length; i++) {
+            const x = cells[i];
+            if (ctx.glaciated?.[x]) glacial++; if (ctx.tectonic?.[x]) tect++; if (ctx.basin?.[x] > F.basinLakeKm) dug++;
+            if (z[x] < level) { km3 += (level - z[x]) * cellKm2; wetKm2 += cellKm2; }
+            if (ctx.sinkAt && i % every === 0) { sunk += ctx.sinkAt(x); read++; }
+        }
         const scoured = dug >= F.basinLakeShare * cells.length, young = scoured || glacial >= 0.5 * cells.length;
         if (!young && ctx.tectonic && tect < F.lakeTectonicShare * cells.length) return false;
         if (cells.length * cellKm2 < F.lakeKeepKm2 * Math.sqrt(Math.max(1, inflow) / 1000) * (scoured ? F.basinKeepShare : young ? F.glacialKeepShare : 1)) return false;
-        return young || km3 >= F.carveTimeMyr * 1e6 * F.lakeLoadShare * inflow * SEC_PER_YEAR * 1e-9;
+        // (km³ a year: what its river leaves, less what its sinking floor makes room for — none left over, it never fills)
+        const netFill = inflow * F.lakeLoadShare * SEC_PER_YEAR * 1e-9 - wetKm2 * (read ? sunk / read : 0) * F.lakeSinkMmYr * 1e-6;
+        return young || km3 >= F.carveTimeMyr * 1e6 * netFill;
     };
     // (what runs through a lake full to its sill: what it spills, and what its open water loses on the way)
     const spilled = W => { let e = 0; for (const x of W.cells) e += lakeLoss(x); return W.outflow + e; };
