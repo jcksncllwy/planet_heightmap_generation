@@ -1,5 +1,6 @@
-// A study, behind a flag (F.erode; lane erosion, 2026-10-30): the land's erosion and deposition run through time on the
-// finish's mesh, instead of the hollows being judged one by one afterwards. The carve (terrain/carve.js) is one analytic pass
+// The finish's erosion (lane erosion, 2026-10-30; the default since 2026-11-01, Jackson: F.erode in finish-config.js, false turns
+// it off): the land's erosion and deposition run through time on the finish's mesh, instead of the hollows being judged one by
+// one afterwards. The carve (terrain/carve.js) is one analytic pass
 // over a fixed network: it never deposits, and it crosses every hollow at its spill point, so rims are not cut down and
 // floors not filled. Here, each step:
 //   · the network: a priority flood from the sea and the closed basins' floors, over the ground as it stands;
@@ -25,23 +26,30 @@ import { locate } from '../core/mesh-locate.js';
 
 const R = 6371, EPS = 1e-5, FLAT_KEY = 1e-11, LAND_FLOOR = 0.002;
 
+// The design erosion-report.md settled on ("Final design", Answer), run on three seeds at 2.5M. It is a chosen compromise, not
+// a converged result: the span has no plateau (0.5 Myr at the coarsest level; the solver sees only k·t).
 export const ERODE = {
-    at: 'early',                // 'early': after the hillslopes, before the ice age; 'late': on the finished ground, just before the water; 'both'
-    timeMyr: 1,                 // how long it runs
-    steps: 20,                  // in this many steps
+    at: 'both',                 // 'early': after the hillslopes, before the ice age; 'late': on the finished ground, just before the water; 'both'
+    ladder: [                   // coarse to fine (erodeLadder), each { cells (absent: the shown mesh), timeMyr, steps }; null: one run…
+        { cells: 160000, timeMyr: 0.5, steps: 10 },
+        { cells: 640000, timeMyr: 0.2, steps: 4 },
+        { timeMyr: 0.1, steps: 2 },
+    ],
+    timeMyr: 1,                 // …of this long…
+    steps: 20,                  // …in this many steps
     G: 1,                       // Yuan et al. 2019's deposition coefficient (they use 0–~2; 1: a steady river's slope doubled)
     closedEvery: 5,             // closed basins re-judged every this many steps (their water settles in thousands of years)
     routeEvery: 1,              // a new network every this many steps
     iceShare: 0.015,            // 'late' only: under the last ice age's ice the rivers have had 15 kyr of each Myr
     kScale: 1,                  // a multiple of the carve's k (only k × time matters to the solver)
-    rebound: 0,                 // the isostatic share of what is taken off or laid on: ρc/ρm (2.7/3.3 ≈ 0.82, Airy), 0 none…
+    rebound: 0.82,              // the isostatic share of what is taken off or laid on: ρc/ρm (2.7/3.3 ≈ 0.82, Airy), 0 none…
     reboundKm: 350,             // …spread by the lithosphere over this (σ, as finish-config reboundKm), on the coarsest level
-    bury: false,                // a level's fill buries the finer relief under it, not rides on it
-    delta: false,               // a lake's load is laid from where the rivers come in, out to the lake's level, not flat from its floor up
+    bury: true,                 // a level's fill buries the finer relief under it, not rides on it
+    delta: true,                // a lake's load is laid from where the rivers come in, out to the lake's level, not flat from its floor up
     lastClean: false,           // the last step lays nothing on the channels: no levee left behind to dam a level plain
-    playaYears: 0,              // a salt body shallower on average than this many years of its net evaporation is a playa (0: off)
-    polishMyr: 0.1,             // at 'both': after the wind and the coast, this long more…
-    polishSteps: 3,             // …in this many steps…
+    playaYears: 1,              // a salt body shallower on average than this many years of its net evaporation is a playa (0: off)
+    polishMyr: 0.3,             // at 'both': after the wind and the coast, this long more…
+    polishSteps: 6,             // …in this many steps…
     polishG: 1,                 // …with this deposition
     showKm2: 1600,              // the census's least lake (two cells at 640K: finish-config lakeMinKm2's reach)
     keepRules: [],              // of those rules, the ones left on: 'pit', 'load', 'breach', 'size', 'origin'
@@ -184,7 +192,8 @@ export function erodeLandscape(o, P) {
         for (let at = count; stack.length;) { const c = stack.pop(), r = recv[c]; order[--at] = c; if (rank[r] >= 0 && --kids[r] === 0) stack.push(r); }
         flats.length = 0;
     };
-    const surfaceOut = c => (ocean[c] ? Math.min(0, z[c]) : base[c]);
+    // (rivers end at the sea's surface, not its floor: graded to the seabed, coasts were cut below sea level, ~500 false lakes a seed)
+    const surfaceOut = c => (ocean[c] ? 0 : base[c]);
     const wetSteps = P.trace ? new Uint16Array(n) : null;
     // (a delta: what came in by each mouth fills the water nearest that mouth up to `surface`, so a filling lake shrinks and
     // stays deep beyond the front. Laid flat from the floor, it would keep all its area until the last metre: a wide sheet)
@@ -389,6 +398,12 @@ function carry(M, values, out) {
     for (let i = 0; i < n; i++) out[i] += weights[3 * i] * values[cells[3 * i]] + weights[3 * i + 1] * values[cells[3 * i + 1]] + weights[3 * i + 2] * values[cells[3 * i + 2]];
 }
 
+/** The ladder for a mesh of N cells: levels at or finer than it are one, the coarsest of them, run on the mesh itself. */
+function ladderFor(ladder, N) {
+    const here = ladder.findIndex(L => !L.cells || L.cells >= 0.9 * N);
+    return [...ladder.slice(0, here), { ...ladder[here], cells: 0 }];
+}
+
 /**
  * Coarse to fine: the long span on a coarse mesh, where the big hollows and the great rivers are settled at little cost, then a
  * few short steps at each finer level, from that level's own surface plus all the change found below it. Short wavelengths
@@ -397,7 +412,7 @@ function carry(M, values, out) {
  * erodeLandscape's, plus runoff, pet, rain for closedOf(mesh, z, fields, ocean).
  */
 export function erodeLadder(o, P, meshOf) {
-    const { mesh, z, ocean, closedOf } = o, N = mesh.numCells, levels = P.ladder, out = [];
+    const { mesh, z, ocean, closedOf } = o, N = mesh.numCells, levels = ladderFor(P.ladder, N), out = [];
     const coarse = new Map();
     let prev = null, delta = null, prevZ = null;                         // (the level below, the change it found, its surface)
     for (const L of levels) {

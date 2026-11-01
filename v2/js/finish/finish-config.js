@@ -52,6 +52,10 @@ export const FINISH = {
         crestHardness: [0.5, 0.55, 0.6, 0.65],
     },
 
+    // ── erosion and deposition through time (finish-erode.js ERODE, the design; an object here overrides it). The hydrology's
+    // lake rules stand down with it: false restores the old finish, carve and rules alone ──
+    erode: true,
+
     // ── F2: closed basins — a basin whose inflow cannot make up what its lake would lose to evaporation stays closed:
     // a flat salt pan or playa at the level where the two balance, the rivers of its catchment ending there ──
     basinMinKm2: 3000,          // (smaller hollows are left to the rivers — a hollow's sub-basin too: no lake of its own, filled

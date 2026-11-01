@@ -1,7 +1,7 @@
 // The Finish step (plans/V2_FINISH_PLAN.md): one moment of a history sculpted with care, on request — the surface
 // domain-warped and roughened where it is high and steep (F1), the climate calculated on it, the rivers carving it for
-// longer with the climate's runoff, dry basins left closed, sediment laid down, hillslopes by climate (F2), an Earth-like
-// last ice age (F3), and the wind's work (F4). Runs in finish-worker.js (or Node): the terrain pool builds the surface in
+// longer with the climate's runoff, dry basins left closed, sediment laid down, hillslopes by climate (F2), erosion and
+// deposition through time (finish-erode.js), an Earth-like last ice age (F3), the wind's work (F4), and erosion's polish. Runs in finish-worker.js (or Node): the terrain pool builds the surface in
 // slices, everything else runs here, on a mesh of any size — 10M cells included, which only this worker holds.
 
 import { FINISH, COVER } from './finish-config.js';
@@ -46,7 +46,8 @@ export function erosionAt(F, cfg) {
 }
 
 /** The stages, in order, with their rough share of the time (for the progress bar). */
-export const STAGES = [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['ice age', 0.08], ['wind', 0.05], ['coast', 0.04], ['sea', 0.02], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]];
+export const STAGES = (raw => { const all = raw.reduce((v, [, s]) => v + s, 0); return raw.map(([k, s]) => [k, s / all]); })(
+    [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['erosion', 0.14], ['ice age', 0.08], ['wind', 0.05], ['coast', 0.04], ['sea', 0.02], ['polish', 0.06], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]]);
 
 /**
  * @param {{frame: Object, simMesh: Object, seed: number, cells: number, pool: import('../terrain/terrain-pool.js').TerrainPool,
@@ -60,7 +61,7 @@ export async function finishPlanet(o) {
 
 async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {}, civ = false }) {
     const ms = {}, stats = {};
-    // (the study's census of the land's hollows after a stage: F.erode.trace)
+    // (a study's census of the land's hollows after a stage: F.erode.trace)
     const census = (name, sea) => { if (F.erode?.trace) (stats.census ??= {})[name] = hollowCensus(mesh, z, sea, null, F.lakeMinKm2, 1e-3 * F.lakeMinDepthM); };
     let mesh, z;
     let t0 = performance.now();
@@ -178,7 +179,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const young = new Uint8Array(n);
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
-    // (the study's time-stepped erosion, F.erode, default off: finish-erode.js)
+    // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
     const EP = F.erode ? { ...ERODE, ...F.erode } : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm } : null;
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
@@ -246,7 +247,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's and the distances' caches for this mesh)
     lap('sea');
     if (EP?.at === 'late' || EP?.at === 'both') {
-        onStage('erosion');
+        onStage('polish');
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         const late = erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: g => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
