@@ -65,7 +65,7 @@ export function tidyPlates(world) {
  * collapse — does not land on every world cell). The plate gets a copy of a neighbouring cell there.
  * @returns cells filled
  */
-export function fillPinholes(world) {
+export function fillPinholes(world, enclosedOnly = false) {
     const { mesh, owner, ownerCell, plates } = world, { numCells, adjOffset, adjList, xyz, index } = mesh;
     let filled = 0;
     for (let w = 0; w < numCells; w++) {
@@ -80,6 +80,7 @@ export function fillPinholes(world) {
             count++;
         }
         if (plate < 0 || count < 3) continue;
+        if (enclosedOnly && (others || count < adjOffset[w + 1] - adjOffset[w])) continue;
         if (others) {                                   // between plates: the passive ocean takes it if it is there at all
             if (background < 0) continue;
             plate = background; from = -1;

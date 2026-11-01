@@ -132,7 +132,14 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (changed) {                              // crust changed: the world view must be rebuilt before anything reads it
                 for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz);
                 led('resolve', resolve(world));
-                if (led('pinholes', fillPinholes(world))) { for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz); led('resolve', resolve(world)); }
+                if (led('pinholes', fillPinholes(world))) {
+                    for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz);
+                    led('resolve', resolve(world));
+                    // (a pass reads the owners from before it, so a gap's last cell can see too few neighbours while they are being filled,
+                    // and the resolve then leaves it wholly inside the passive ocean, which no gap search hands a cell to: once more,
+                    // for those alone. Filling every gap this way would let the passive ocean take what ridges should)
+                    if (led('pinholes', fillPinholes(world, true))) { for (const p of world.plates) if (p.dirty) p.refreshExtent(world.mesh.xyz); led('resolve', resolve(world)); }
+                }
                 led('boundaries', classifyBoundaries(world, 0));
             }
         }
