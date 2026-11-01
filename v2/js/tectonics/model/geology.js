@@ -7,10 +7,11 @@
 // Bit flags for the `geoFlags` field: settings the crust has been in, which its other records do not keep.
 export const GeoFlag = Object.freeze({
     WAS_ARC: 1,       // born in an island arc — kept after it matures into continent (arc-maturation.js only changes `type`)
-    FORELAND: 2,      // sat in a foreland basin (sunk under a range's load)
+    FORELAND: 2,      // sat in a foreland basin (the heights sank it under a range's load)
     RIFT_BASIN: 4,    // sat in a rift basin while it was young (a failed arm, an aulacogen)
     OPHIOLITE: 8,     // ocean floor caught up into land as a sea closed (ops/merge-plates.js closeSeasBetween, ops/collapse-arc.js)
     SLAB_CHANGE: 16,  // stood in a live arc when its slab flattened or steepened (porphyry copper's favourite moment)
+    BELT_FRONT: 32,   // lay on the plain just before a live belt's outer edge (by distance alone: not a basin, see step/geology.js)
 });
 
 // ── A frame's geology fields: what each holds and how it is packed into a byte or two per cell ──

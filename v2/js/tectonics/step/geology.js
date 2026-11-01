@@ -8,7 +8,7 @@
 //     then; erosion (step/heights.js, every step, recordWear) strips the cover first, then the basement — how deep the
 //     basement is worn is how deep the rock now at the surface once lay (its metamorphic grade);
 //   · time in a live subduction belt (arcs and Andean margins), and the settings the other records do not keep (GeoFlag:
-//     born in an arc, a foreland, a young rift basin, a closed sea's floor, a slab that changed).
+//     born in an arc, a foreland basin, before a live belt, a young rift basin, a closed sea's floor, a slab that changed).
 // Records only: the history never reads them (no random stream either), so a history is the same with them or without
 // (config.geology.records; check-geology.mjs runs both and compares).
 //
@@ -26,6 +26,11 @@
 //   · riftAt and OPHIOLITE are read off the crust's flags at the clock's tick, not stamped by the event (ops/rift.js and
 //     ops/merge-plates.js stay as they are): each is late by up to everyMyr, and a second rift over an already flagged cell
 //     keeps the first date.
+//   · A foreland by two causes, kept apart. FORELAND: land the heights sank under a load (reduced physics; the rock reads
+//     it). BELT_FRONT: land within forelandFlagKm of a live belt's outer edge, by distance alone (tier 3: nothing says it
+//     sank, a third of it holds no fill; no rock reads it). Each is kept for good, so BELT_FRONT sums every front that ever
+//     swept the land: its share of the land at one moment is ~2 %, by 400 Myr 42-44 %. Within ~1 cell of the sim mesh, its
+//     width is the mesh's as much as forelandFlagKm's (more of it at 40K than at 20K). Exit: the flexure as the history's own.
 //   · A sealed cell copies its neighbour's record (merge-plates.js copyFrom), cover and wear included.
 //   · The record wears uniformly: rock type does not change the wear yet (lane L6).
 
@@ -65,7 +70,7 @@ export function deposit(crust, c, km, carb, salt, coal, organic, time, G) {
 /**
  * The wear of one step at land cell c (step/heights.js, every step): `wornKm` of rock taken off the top — the cover
  * above the rivers' standing fill first, then the basement (not while a flood basalt's lavas still cover it: they wear on their own clock, volcWornKm).
- * Land sunk `basinKm` below its plain under a range's load is flagged a foreland; what fills it is the rivers' (evolveGeology).
+ * Land sunk `basinKm` below its plain under a range's load is a foreland basin; what fills it is the rivers' (evolveGeology).
  */
 export function recordWear(crust, c, wornKm, basinKm, time, dt, G) {
     if (wornKm > 0) {
@@ -133,7 +138,7 @@ export function seedGeology(world) {
 }
 
 /** The record's own account of its cover (km³), kept on the world and carried by the frames. */
-const newBook = () => ({ seededKm3: 0, laidKm3: 0, wornFillKm3: 0 });
+const newBook = () => ({ seededKm3: 0, laidKm3: 0, wornFillKm3: 0, frontShare: 0, frontTicks: 0 });
 
 /** 0…1 from the seed and a terrane id (a craton keeps its own character). */
 function hash01(seed, id) {
@@ -157,7 +162,7 @@ export function evolveGeology(world, dt) {
     const { mesh, plates, owner, ownerCell, time } = world, { xyz, numCells: n } = mesh;
     const book = world.geoBook ??= newBook(), cellArea = 4 * Math.PI * R * R / n;
 
-    // ── the forelands: the plains in front of the active belts (beyond a collision's thrust front, behind an Andean arc),
+    // ── the belts' fronts: the plains in front of the active belts (beyond a collision's thrust front, behind an Andean arc),
     // out to forelandKm — from each belt's outer edge outward, never back into the belt ──
     const s = scratchFor(n), { fore, keel, inBelt } = s;
     for (let w = 0; w < n; w++) {
@@ -171,7 +176,13 @@ export function evolveGeology(world, dt) {
         if (crust.beltU[c] >= G.forelandEdgeU) fore[w] = 0; else inBelt[w] = 1;
     }
     spreadKm(mesh, fore, { canEnter: (c, nb) => keel[nb] === 1 && !inBelt[nb], maxKm: G.forelandKm });
-    for (let w = 0; w < n; w++) if (fore[w] < G.forelandFlagKm) plates[owner[w]].crust.geoFlags[ownerCell[w]] |= GeoFlag.FORELAND;
+    // (past the edge only: the belt's own cells have their belt on record, and its folds)
+    let front = 0, landNow = 0;
+    for (let w = 0; w < n; w++) {
+        landNow += keel[w];
+        if (fore[w] > 0 && fore[w] < G.forelandFlagKm) { plates[owner[w]].crust.geoFlags[ownerCell[w]] |= GeoFlag.BELT_FRONT; front++; }
+    }
+    if (landNow) { book.frontShare = (book.frontShare ?? 0) + front / landNow; book.frontTicks = (book.frontTicks ?? 0) + 1; }
 
     // ── the slabs that flattened or steepened since last time: their arcs' moment of change ──
     const changed = new Set();

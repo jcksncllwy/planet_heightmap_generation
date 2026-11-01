@@ -2080,7 +2080,7 @@ without (`check-geology.mjs` hashes every frame both ways, two seeds).
 - **Cover** comes from this fork's books, not upstream's rates by setting: what `basinFillKm` and `seaFillKm` gain joins it,
   each `everyMyr`, with a make-up by the latitude it lies at then. What they lose by wear leaves it. A belt thickens it
   (`thickenCover`, from `buildHeights`).
-- **Settings**: `arcMyr`, `riftAt`, and the flags WAS_ARC, FORELAND, RIFT_BASIN, OPHIOLITE, SLAB_CHANGE.
+- **Settings**: `arcMyr`, `riftAt`, and the flags WAS_ARC, FORELAND, BELT_FRONT, RIFT_BASIN, OPHIOLITE, SLAB_CHANGE.
 
 **Limits** (also in the file's header):
 - No shelf deposition: a river reaching the open ocean lays nothing on any cell, so shelves stay bare. Upstream's sea stand,
@@ -2090,8 +2090,11 @@ without (`check-geology.mjs` hashes every frame both ways, two seeds).
   platforms and no flooding (a consequence of cover coming only from our books), so limestone runs low against Earth.
 - `riftAt` and OPHIOLITE are read off crust flags at the clock's tick: up to `everyMyr` late, a re-rifted cell keeps its first date.
 - A sealed cell copies its neighbour's record.
-- FORELAND is kept for good, so its share grows with the history (49–58 % of land by 400 Myr, ~12–14 % per 100 Myr, nearly all
-  from the distance rule `forelandFlagKm`). `check-geology` reports the rate against a range derived from recalled inputs; not tuned.
+- A foreland has two flags, one per cause. FORELAND is land the heights sank under a load: 2-5 % of land by 400 Myr, and the
+  only one the rock reads. BELT_FRONT is land within `forelandFlagKm` of a live belt's outer edge, by distance alone (tier 3):
+  1.9 % of land at one moment (2.7 % at 40K), but kept for good, so 42-44 % by 400 Myr as the belts sweep the land. A third of it holds no
+  fill, and its width depends on the sim mesh (about one cell at 20K). The old single flag read 49-58 % because it added
+  these and the belts' own outer cells, a third of its new cells.
 
 **The budget, measured** (20K, 400 Myr; Mkm³; seeds 12345 / 777): booked basin + sea fill 1004 / 1178, cover laid 666 / 858.
 The gap is three things, each measured: river cuts refilled, which never enter `basinFillKm` (122 / 114); wear of fill inside

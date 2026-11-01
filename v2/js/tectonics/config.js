@@ -584,10 +584,10 @@ export const TECTONICS = {
         faciesMixKm: 0.5,           // the cover's make-up is that of about its top this many km
         // ── the settings ──
         riftBasinMyr: 40,           // a rift counts as a young basin this long (upstream's value, unverified)
-        forelandKm: 300,            // a foreland reaches this far over the plain from its belt's outer edge (foredeeps 100–300 km wide)…
-        forelandFlagKm: 190,        // …flagged within this of it (upstream's 0.3 of its taper over forelandKm)
+        forelandKm: 300,            // a belt's front reaches this far over the plain from its outer edge (foredeeps 100–300 km wide)…
+        forelandFlagKm: 190,        // …BELT_FRONT within this of it (upstream's 0.3 of its taper over forelandKm)
         forelandEdgeU: 0.8,         // …the edge where the belt's cross-section reaches this (0 at its front, 1 at its far edge)
-        forelandDepthKm: 0.02,      // the history's own sunk basins (heights.js) count too, from this far below the plain
+        forelandDepthKm: 0.02,      // FORELAND: the history's own sunk basins (heights.js), from this far below the plain
         // ── the record of wear ──
         crestShare: 0.3,            // of a belt's crests worn away, this share is rock taken off the whole cell (crests cover a part of it)
         crustKm: 35,                // the continental crust's ordinary thickness: shortening that thickens it by x thickens its cover by x / this
