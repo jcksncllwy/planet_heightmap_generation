@@ -2109,7 +2109,7 @@ trimmed from World Orogen, GPL v3): per cell a rock class (`Rock`), `kRock` (ero
 which hand rules k_rock replaces, one by one: the shield's and a flood basalt's carve hardness (`carveCratonHardness`,
 `lipHardness`, zeroed in the surface's settings by `rockCfg`, so `terrain/synthesize.js` is unchanged and the terrain outside
 the finish keeps them) and `iceSoft` on land, as the rock's softness with the land's mean held at the old rule's (without that, on
-seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %). The crests' hardness stays: it is the drawn ridges' structure, which a rock read
+seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %; with it, it still falls 36 %, 4061 to 2601 km³, land lost 10 %: the coast's rock, not the land's mean, sets it, and no check covers it). The crests' hardness stays: it is the drawn ridges' structure, which a rock read
 from the record does not know.
 
 k_rock ∝ e^(2.3(½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it: ~4.5× between shale and granite,
