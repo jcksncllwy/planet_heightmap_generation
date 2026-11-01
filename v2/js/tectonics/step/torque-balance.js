@@ -38,7 +38,11 @@ export function updatePlateMotion(world) {
         softenSpeed(target, plate, centre, config);
         const capped = clampSpeed(target, plate, centre, config);
         plate.omega = [0, 1, 2].map(i => before[plate.id][i] + (target[i] - before[plate.id][i]) * blend);
-        plate.dynamics = describeDynamics(load, target, centre, capped, world.mesh);
+        // (the cap holds the rotation, not only the target. A rotation fit for one shape is not for another: a 3-cell scrap spins about
+        // itself, its pole inside it, too small for the cap to see; handed 360 cells by its trench's widening strip, the same
+        // rotation ran it at 26 cm/yr, 46 at its fastest point, and the blend carried that on for ~6 Myr. Seed 12345, 264 Myr)
+        const rotationCapped = clampSpeed(plate.omega, plate, centre, config);
+        plate.dynamics = describeDynamics(load, target, centre, capped || rotationCapped, world.mesh);
     }
 }
 
