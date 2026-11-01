@@ -122,9 +122,12 @@ function nudge(seed, overrides) {
     // (world cells judged against the starting centre: the plate moves < 11° in the run)
     let newCrustAtTrench = 0, trenchCellFrames = 0, leadingNew = 0, leadingTrench = 0;
     for (const fr of frames) for (let w = 0; w < numCells; w++) {
-        if (fr.boundary[w] !== BoundaryKind.OVERRIDING) continue;
+        // (the continent's closing front, slab or no slab: a contact still earning its slab is CONVERGING, and the wake this
+        // rules out would sit there as readily: counting only trenches halves the rim and doubles the share of the same cells)
+        const trench = fr.boundary[w] === BoundaryKind.OVERRIDING, front = trench || (fr.boundary[w] === BoundaryKind.CONVERGING && fr.owner[w] === scene.start.continentId);
+        if (!front) continue;
         const isNew = fr.type[w] === CrustType.OCEAN && fr.formedAt[w] >= 0, leading = headingCos(xyz, w, mid, h) > LEADING_COS;
-        trenchCellFrames++; if (isNew) newCrustAtTrench++;
+        if (trench) { trenchCellFrames++; if (isNew) newCrustAtTrench++; }
         if (leading) { leadingTrench++; if (isNew) leadingNew++; }
     }
     return { frames, landChanged, ahead, behind, trenchOnLand, trenchOnApron, newCrustAtTrench, trenchCellFrames, leadingNew, leadingTrench, gaps: Math.max(...frames.map(f => frameTallies(f).gaps)) };
