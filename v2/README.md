@@ -951,6 +951,23 @@ under the same load). Exact speed-ups in the hot paths (commit "Exact speed-ups 
 history to the bit, on this branch and on main) take ~9 % off main's own time and leave the branch +4 % wall, +6 % CPU
 over main: 302 s against 290 s for the four histories.
 
+## A closing contact earns its slab (2026-10-31, branch trench)
+
+Every closing contact used to become a trench within a step or two of real consumption. Closing is not subducting: a contact
+is now `BoundaryKind.CONVERGING` (it pulls nothing, builds no belt or arc, and resists closing) until the founder law
+(`founderUrge`) has held for `trenchEstablishKm` (100 km) of convergence: a fracture zone turns self-sustaining after ~100 km,
+and cumulative convergence, not its rate, sets the balance (Hall et al. 2003; Gurnis, Hall & Lavier 2004). So one law decides
+a trench's birth, at a passive margin or a contact (`establishes`, step/subduction-init.js). `founderSqueezeCmYr` is derived
+as 3.4 cm/yr, the rate at which a contact's shared resistance reaches `founderStrength` (was 6, by hand).
+Trenches die two ways: floor younger than `trenchDetachAgeMyr` (5 Myr) reaching one detaches the slab (Burkett & Billen 2009,
+2010), and a slab no plate feeds fades over `founderSlabMyr` (a choice of scale, not a measured rate). An edge at rest keeps
+its slab, so a world at rest can start itself; an oblique edge that still closes keeps its slab too, and land keeps its slab
+record, which collisions read. Force and Wilson scenes keep the trenches they are given. Off-switch:
+`MECHANISMS.trenchEstablish`. `tools/trace-trench.mjs` sorts a history's trenches by how each was established.
+**Limits.** The force on a contact is read from its closing rate, not solved for. Rigid plates must still lose the overlap at
+a contact that has not failed, so a CONVERGING contact consumes crust with no slab, where Earth's would stop or spread into a
+diffuse belt. **This is an interim law:** plates that emerge from a stress solve (the closed-loop study) may replace it.
+
 ## Sealed seas founder (2026-10-23, branch stress-init)
 
 Seas sealed inside one plate (the "Swiss cheese": a sea whose seam has welded shut) only aged — no ridge feeds them and

@@ -31,6 +31,9 @@
 // transform at each end, and the plate's far edge — and it widens as its trench lengthens, taking the strip behind each
 // new stretch: the ocean peels off progressively, as the plate's motion would (a STEP fault at each end of the trench:
 // Govers & Wortel 2005), never in one piece.
+// INTERIM LAW: `establishes` below, and everything in this file, decides by rule where rigid plates fail. If plates that
+// emerge from a stress solve replace rigid plates (the closed-loop study, branch emerge), weak zones and failure come out of
+// the solve and this law goes with them: judge it then rather than building on it.
 
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { birthOceanPlate, oceanPlateName } from '../ops/birth-ocean-plate.js';
