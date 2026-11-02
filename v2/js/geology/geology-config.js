@@ -70,5 +70,9 @@ export const GEOLOGY = {
         // erodibility: k_rock ∝ e^(erodeGain (½ − hard)) (upstream's 2.3: shale ~2×, granite ~0.45×, ~4.5× between them; Jackson's
         // ruling 3: this compressed spread first, Earth's range tested in L3)
         erodeGain: 2.3,
+        // the share of what a rock breaks down to that the rivers roll or bounce on their beds, the rest going in suspension or solution:
+        // derived so the land's load is ~14 % bed material (~3 of ~22 Gt/yr: a global model of river outlets, erosion-report.md, search
+        // summary only), with ~30 % of land on coarse rock
+        bedShareCoarse: 0.35, bedShareFine: 0.05,
     },
 };

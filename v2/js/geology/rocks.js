@@ -174,12 +174,14 @@ function readRecord(mesh, simMesh, land, ocean, seed, cfg) {
 
 /**
  * Each land cell of the surface: its kind of rock (Rock).
- * @param {Object} o  { mesh (the finish's), z (km), ocean, frame, simMesh, seed, cfg (the terrain's), lat, lon (°), lip (0…1: a flood basalt's cap) }
+ * @param {Object} o  { mesh (the finish's), z (km), ocean, frame, simMesh, seed, cfg (the terrain's), lat, lon (°), lip (0…1: a flood basalt's cap),
+ *                     belowKm (per cell: read the column this far under the surface), reuse ({}: filled by the first read, for the next) }
  * @returns {{rock: Uint8Array, shares: Float64Array}} shares: each kind's share of the land (by cell)
  */
-export function classifyRocks({ mesh, z, ocean, frame, simMesh, seed, cfg, lat, lon, lip = null }, G = GEOLOGY) {
+export function classifyRocks({ mesh, z, ocean, frame, simMesh, seed, cfg, lat, lon, lip = null, belowKm = null, reuse = {} }, G = GEOLOGY) {
     const n = mesh.numCells, { xyz } = mesh, rock = new Uint8Array(n), shares = new Float64Array(ROCK_COUNT);
-    const S = simRocks(frame, simMesh, seed, G), rec = readRecord(mesh, simMesh, S.land, ocean, seed, cfg);
+    // (reuse: the record as this mesh reads it, kept for reading the same column again deeper down)
+    const S = reuse.S ??= simRocks(frame, simMesh, seed, G), rec = reuse.rec ??= readRecord(mesh, simMesh, S.land, ocean, seed, cfg);
     const nz = new FastNoise(((seed | 0) * 0x2c1b + 0x4d) >>> 0), patchF = R / G.patchKm, domeF = R / G.domeKm, beltF = 2 * Math.PI * R / G.beltSpacingKm;
     const score = new Float64Array(ROCK_COUNT);
     // ── the record, smooth: each cell's record cell's, averaged over a sim cell or so ──
@@ -187,10 +189,10 @@ export function classifyRocks({ mesh, z, ocean, frame, simMesh, seed, cfg, lat, 
     const recordKm = G.recordBlurCells * simMesh.edgeKm, coarse = new LatLonGrid(0.5);
     const NAMES = ['cover', 'carb', 'salt', 'organic', 'marine', 'fold', 'dKm', 'suture'], nSim = simMesh.numCells;
     const baseK = Array.from({ length: NB }, (_, k) => { const a = new Float32Array(nSim); for (let w = 0; w < nSim; w++) a[w] = S.base[NB * w + k]; return a; });
-    const means = averageMapped(coarse, lat, lon, rec, [...NAMES.map(k => S[k]), ...baseK], isRecLand).map(f => coarse.blur(f, recordKm));
+    const means = reuse.means ??= averageMapped(coarse, lat, lon, rec, [...NAMES.map(k => S[k]), ...baseK], isRecLand).map(f => coarse.blur(f, recordKm));
     const F = Object.fromEntries(NAMES.map((k, i) => [k, means[i]])), FB = means.slice(NAMES.length);
     // ── a place's relief (its height over the land around it, ~reliefKm), and its region's height: high ground sheds its cover ──
-    const ref = coarse.blur(coarse.average(lat, lon, z, isLand), G.reliefKm), hReg = coarse.blur(coarse.average(lat, lon, z, isLand), 50);
+    const ref = reuse.ref ??= coarse.blur(coarse.average(lat, lon, z, isLand), G.reliefKm), hReg = reuse.hReg ??= coarse.blur(coarse.average(lat, lon, z, isLand), 50);
     // ── the beds, counted up from the basement: each its thickness (seeded) ──
     const bedTop = [];
     for (let i = 0, b = 0; b < 40; i++) { b += G.bedKm * (0.6 + 0.8 * hash01(seed ^ 0x6b3d, i)); bedTop.push(b); }
@@ -225,7 +227,7 @@ export function classifyRocks({ mesh, z, ocean, frame, simMesh, seed, cfg, lat, 
             for (const [lam, a] of foldWaves) { sum += a * Math.cos(2 * Math.PI * d / lam + wander); amp += a; }
             syn = fold * sum / amp;
         }
-        const s = top - G.foldDepthKm * (fold - syn) * 0.5 + G.reliefGain * (1 - 0.7 * fold) * Math.min(0, r) + (T > 0 ? G.bedJitterKm * smooth(0, 0.5, T) * fbm(contactO, x, y, zz, 3.1) : 0);
+        const s = top - G.foldDepthKm * (fold - syn) * 0.5 + G.reliefGain * (1 - 0.7 * fold) * Math.min(0, r) + (T > 0 ? G.bedJitterKm * smooth(0, 0.5, T) * fbm(contactO, x, y, zz, 3.1) : 0) - (belowKm ? belowKm[c] : 0);
         score.fill(0);
         if (s > G.coverShowKm) {
             // the bed here, and its kind: by the cover's make-up, each bed its own pattern across country

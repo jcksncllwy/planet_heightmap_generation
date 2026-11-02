@@ -6,7 +6,7 @@
 
 import { FINISH, COVER } from './finish-config.js';
 import { LatLonGrid } from './finish-grid.js';
-import { rockBeforeCarve, rockCfg } from './finish-lithology.js';
+import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
 import { closedBasins } from './finish-basins.js';
 import { depositSediment, creepByClimate, dissect } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
@@ -30,6 +30,7 @@ import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { worldOcean } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
+import { GEOLOGY } from '../geology/geology-config.js';
 
 const R = 6371;
 // The coast's waves are traced on at most this many of the pool's workers besides this thread (finish-coast.js): each
@@ -149,7 +150,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
 
     // ── the rivers: runoff (rain less evaporation) weights the drainage; dry basins stay closed; carved for longer ──
     onStage('rivers');
-    const litho = rockBeforeCarve({ mesh, z, frame, simMesh, seed, cfg, lat, lon, rain: pAnn, temp: tAnn }, carveIn);      // (finish-lithology.js)
+    // (F.erodeGain: k_rock's spread for a sensitivity run; the config's otherwise)
+    const Geo = F.erodeGain ? { ...GEOLOGY, lithology: { ...GEOLOGY.lithology, erodeGain: F.erodeGain } } : GEOLOGY, rockIn = { mesh, z, frame, simMesh, seed, cfg, lat, lon, rain: pAnn, temp: tAnn };
+    const litho = rockBeforeCarve(rockIn, carveIn, Geo);      // (finish-lithology.js)
     lap('lithology');
     const runoff = new Float32Array(n), pet = new Float32Array(n);
     let oldW = 0, sumR = 0, sumP = 0, landN = 0;
@@ -206,6 +209,13 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     lap('hillslopes');
     z = C.z;
     census('after carve, sediment, creep', ocean0);
+    if (EP?.column) {
+        // (the rock under the carved ground; before: the surface the first read saw)
+        const col = rockColumn({ ...rockIn, z: before, carved: C.z }, litho, Geo), k = erodeIn.k;
+        for (let i = 0; i < n; i++) k[i] *= col.here[i];
+        erodeIn.column = col;
+        lap('lithology');
+    }
     if (EP?.at === 'early' || EP?.at === 'both') {
         onStage('erosion');
         stats.erodeOn = eroder.on;
@@ -335,6 +345,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     lap('final climate');
     const flow = new Float32Array(n);
     for (let c = 0; c < n; c++) flow[c] = Math.log10(Math.max(1, Hy.area[c]));
+    delete litho.column;
     return { mesh, z: C.z, ocean, litho, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },

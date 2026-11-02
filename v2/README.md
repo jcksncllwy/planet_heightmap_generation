@@ -2104,8 +2104,36 @@ NODE_OPTIONS="--import=$PWD/v2/tools/gpu-harness/use-dawn.mjs" node v2/tools/ren
 - **Time:** paired on 831576@310, total +10 % at 640K (58 → 65 s) and +31 % at 2.5M (102 → 134 s), under load of 2–3 per
   core, so no quiet figure. 10M was not run on this design, and its memory is unmeasured.
 
-**Next.** Rock erodibility from the lithology column (`litho.md` in the lane's notes, its L3): k varies by rock instead of
-by the carve's fields alone, starting with the compressed ~4.5× spread, with Earth's range as a sensitivity run at 2.5M.
+**Erosion reads the column (L3, 2026-11-01).** `rockColumn` (finish-lithology.js) reads the rock again after the carve, at the
+depth the carve cut, so a canyon through cover has the rock under the cover. Ground above the rock is the finish's own sediment and
+erodes as alluvium (`column.loose`). `settle` moves the rock's top with the rebound. The load is split into bed material and mud by
+the rock's `coarse`, with shares `bedShareCoarse` 0.35 and `bedShareFine` 0.05 (geology-config.js), and mud has its own deposition
+coefficient, `GFine`. `column: false` turns all of it off. A second read one bed lower moved nothing past noise at any spread and
+was dropped.
+
+Measured at 2.5M, 831576@310 / 626225@300 / 12345@300, three runs each:
+
+| | lake share % (1.8–3.7) | open ≥ 1,000 km² % (0.13–0.17) | largest Mkm² (≤ 0.45) | dead level % (0–2) | mean land km (.75–.95) | to sea km³/yr (~10) |
+|---|---|---|---|---|---|---|
+| no column | 3.74 / .96 / 2.09 | .20 / .20 / .25 | .71 / .05 / .09 | 3.1 / 1.3 / .5 | 1.00 / .90 / .78 | 11.5 / 11.7 / 12.7 |
+| **column (default)** | 3.35 / .72 / 1.30 | .12 / .12 / .04 | .76 / .07 / .08 | 1.9 / .8 / 2.9 | .99 / .88 / .76 | 14.6 / 15.1 / 16.0 |
+| column, `GFine` 0.5 | 3.34 / .67 / 1.10 | .83 / .20 / .01 | .94 / .17 / .09 | 2.4 / .8 / 3.1 | .97 / .86 / .74 | 18.2 / 19.0 / 19.9 |
+| column, `GFine` 0.1 | 2.75 / .48 / .74 | .34 / .11 / .01 | .57 / .04 / .07 | 2.8 / 1.7 / 4.2 | .94 / .83 / .71 | not kept |
+| column, spread ~100× | 4.22 / 1.20 / 1.89 | 1.17 / .41 / .41 | 1.02 / .07 / .31 | 1.5 / 1.1 / 1.8 | 1.04 / .93 / .81 | 8.6 / 8.3 / 9.5 |
+| column, ~100×, `GFine` 0.5 | 3.83 / 1.00 / 1.75 | .90 / .19 / .35 | .70 / .08 / .29 | 1.7 / 1.9 / 2.7 | 1.02 / .92 / .80 | 10.3 / 9.7 / 11.0 |
+| column, spread ~3000× | 4.80 / 1.89 / 2.96 | 1.31 / .71 / .52 | .92 / .07 / .41 | 1.8 / 2.5 / 3.3 | 1.06 / .95 / .83 | 3.7 / 4.0 / 4.2 |
+
+(To sea is the finest level. Single runs carry the tie-break noise above. Spreads by `--set erodeGain=7.1` and `12.3`: ln(ratio) over
+Δhard 0.65.) The default keeps the compressed spread and `GFine` 1, so the split is built but does nothing yet: mud's coefficient
+should be far under the sand's, yet at this spread lowering it sends more to the sea, already over Earth's. Each step of
+wider rock raises lake share, open lakes and the land's mean height and lowers the export. **Earth's range:** Stock & Montgomery
+1999 (JGR 104(B3) 4983–4993) give K from 10⁻⁷–10⁻⁶ on granite and metamorphic rock to 10⁻⁴–10⁻² on mudstones, m = 0.4, n = 1, so 2–5 orders
+(from the abstract; the tables were not reached). Those K include each site's climate, so they overstate rock alone. Which spread
+and `GFine` to run is Jackson's call: ~100× with `GFine` 0.5 fits the export, but open lakes run over Earth's on all but one seed.
+
+**Limits of the column.** One read: a river that cuts through a bed during the erosion keeps that bed's k. Cuts by ice and wind
+don't count as depth. Sediment has one k. Time: the lithology stage goes from ~4–5 s to ~8–11 s at 2.5M, mostly the second rock read.
+
 ## The geological record (2026-10-31, branch litho, L1)
 
 Each piece of crust now keeps a record of its rock column, ported from World Orogen (raguilar011095, GPL v3; the idea of
@@ -2153,9 +2181,9 @@ seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %; with it, it still falls 36 %
 from the record does not know.
 
 k_rock ∝ e^(2.3(½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it: ~4.5× between shale and granite,
-5.6× from the softest to the hardest class (Jackson's ruling: this compressed spread first, Earth's range tested in L3).
+5.6× from the softest to the hardest class (Jackson's ruling: this compressed spread first; L3's tests of wider ones are under Erosion through time).
 
-**Limits**: one layer: k_rock is the rock at the uncarved surface, not the layer a river cuts into (L3 reads the column). No
+**Limits**: the carve's k_rock is the rock at the uncarved surface; only the time-stepped erosion reads the layer it cuts (`rockColumn`, above). No
 structure cues from the surface, no young sediment (it does not exist yet at this stage), no painted relief or cover stairs.
 Rock patterns inside a sim cell are noise (tier 3). Mean 1 over land cells, not weighted by where erosion falls. Frames from
 before the record read as zeros: bare basement by setting. History erosion is still rock-blind (L6): `heights.js` keeps its craton rule.

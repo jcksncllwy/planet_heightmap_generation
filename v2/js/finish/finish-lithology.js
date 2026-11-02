@@ -7,9 +7,10 @@
 // What this skips (limits): upstream's painted relief (differentialRelief) and cover stairs are not ported: tier 3, and the
 // time-stepped erosion should build them (L3). One layer: k_rock is the rock at the uncarved surface, not of the layer a
 // river cuts into, so a canyon through cover keeps the cover's k all the way down (L3 reads the column). The spread is
-// compressed (~4.5×; Earth's is far wider: Jackson's ruling 3, tested in L3).
+// compressed (~4.5×; Earth's is far wider: Jackson's ruling 3, tested in L3). rockColumn reads the column again for the
+// time-stepped erosion, after the carve: the rock at the carved surface and a loose layer, not the whole column.
 
-import { classifyRocks } from '../geology/rocks.js';
+import { classifyRocks, Rock } from '../geology/rocks.js';
 import { rockHard } from '../geology/lithology.js';
 import { GEOLOGY } from '../geology/geology-config.js';
 
@@ -19,7 +20,7 @@ import { GEOLOGY } from '../geology/geology-config.js';
  *          bedded 0…255; coarse 1 sand and gravel, 0 mud or solution; kRock 1 on the sea
  */
 export function lithologyOf(o, G = GEOLOGY) {
-    const { mesh, z, rain, temp } = o, n = mesh.numCells, L = G.lithology, ocean = new Uint8Array(n);
+    const { mesh, z, rain, temp, meanK = 0 } = o, n = mesh.numCells, L = G.lithology, ocean = new Uint8Array(n);
     for (let c = 0; c < n; c++) if (!(z[c] > 0)) ocean[c] = 1;
     const { rock, shares } = classifyRocks({ ...o, ocean }, G);
     const hard = new Float32Array(n), bedded = new Uint8Array(n), coarse = new Uint8Array(n);
@@ -39,9 +40,9 @@ export function lithologyOf(o, G = GEOLOGY) {
         hard[c] = s / k;
         kRock[c] = Math.exp(L.erodeGain * (0.5 - hard[c])); sum += kRock[c]; land++;
     }
-    const mean = land ? sum / land : 1;
+    const mean = meanK || (land ? sum / land : 1);
     for (let c = 0; c < n; c++) kRock[c] = rock[c] ? kRock[c] / mean : 1;
-    return { rock, kRock, hard, bedded, coarse, shares };
+    return { rock, kRock, hard, bedded, coarse, shares, meanK: mean };
 }
 
 /**
@@ -50,7 +51,7 @@ export function lithologyOf(o, G = GEOLOGY) {
  * land, and the shelves keep the terrain's (no rock read there). Returns the fields other stages read.
  */
 export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
-    const { rock, kRock, hard, bedded, coarse, shares } = lithologyOf({ ...o, lip: carveIn.lip }, G), { k, soft } = carveIn, use = G.useRock;
+    const reuse = {}, { rock, kRock, hard, bedded, coarse, shares, meanK } = lithologyOf({ ...o, lip: carveIn.lip, reuse }, G), { k, soft } = carveIn, use = G.useRock;
     if (use.craton || use.lip || use.crest) for (let c = 0; c < k.length; c++) if (rock[c]) k[c] *= kRock[c];
     if (use.iceSoft) {
         // (the rock says where it is soft; the land's mean stays the terrain's, as k_rock's stays 1: the ice's and the cliffs'
@@ -60,7 +61,34 @@ export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
         const shift = land ? (was - now) / land : 0;
         for (let c = 0; c < soft.length; c++) if (rock[c]) soft[c] = Math.min(1, Math.max(0, 1 - hard[c] + shift));
     }
-    return { rock, kRock, bedded, coarse, shares };
+    return { rock, kRock, bedded, coarse, shares, column: { reuse, meanK, lip: carveIn.lip, soft: use.craton || use.lip || use.crest } };
+}
+
+/**
+ * The column the time-stepped erosion cuts, on the ground the carve left: the rock at that surface, and the finish's own
+ * sediment on it. The first read used the uncarved surface, so a canyon through cover still had the cover's k; this one takes the depth the
+ * carve cut off. Ground above the uncarved surface is the finish's own sediment, loose. Same normalization as the first read, so
+ * a river that has cut into hard rock is slower in fact, not renormalized away.
+ * Limits: one read, so a river that cuts through a bed during the erosion keeps that bed's k. A second read a bed lower moved
+ * nothing past noise at either spread (2.5M, three seeds at 4.5×, 100×; one at 3000×), so it was dropped: the span cuts little
+ * rock (0.8 Myr). The ice's and the wind's cuts are not counted as depth.
+ * @param {Object} o  as lithologyOf, with z the uncarved surface, carved the ground now
+ * @param {Object} litho  rockBeforeCarve's result
+ * @returns {{here: Float32Array, loose: Float32Array, zBed: Float32Array, fine: Float32Array}}
+ *   here: k's multiple for the rock at the carved surface; loose: for the sediment, against here;
+ *   zBed: the top of the rock (km); fine: the share of what is cut here that goes as mud or in solution
+ */
+export function rockColumn(o, litho, G = GEOLOGY) {
+    const { z, carved } = o, n = z.length, { reuse, meanK, lip } = litho.column, L = G.lithology, cut = new Float32Array(n), zBed = new Float32Array(n);
+    for (let c = 0; c < n; c++) { cut[c] = Math.max(0, z[c] - carved[c]); zBed[c] = Math.min(z[c], carved[c]); }
+    const top = lithologyOf({ ...o, lip, reuse, meanK, belowKm: cut }, G), first = litho.kRock;
+    const here = new Float32Array(n), loose = new Float32Array(n), fine = new Float32Array(n), soft = Math.exp(L.erodeGain * (0.5 - L.hard[Rock.ALLUVIUM])) / meanK;
+    for (let c = 0; c < n; c++) {
+        const k = top.kRock[c];
+        here[c] = litho.column.soft ? k / first[c] : 1; loose[c] = top.rock[c] ? soft / k : 1;
+        fine[c] = 1 - (top.coarse[c] ? L.bedShareCoarse : L.bedShareFine);
+    }
+    return { here, loose, zBed, fine };
 }
 
 /** The surface's settings without the hand rules the rock replaces (the terrain's k and its stripes, as they are otherwise). */

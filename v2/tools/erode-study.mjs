@@ -1,6 +1,6 @@
 // The erosion study (finish-erode.js; lane erosion, 2026-10-30): one finished moment, with or without the time-stepped erosion,
 // measured: lakes, rivers, hypsometry, time. One RESULT line of JSON, for the report's tables.
-//   node v2/tools/erode-study.mjs --seed 831576 --time 310 --cells 640000 [--erode '{"timeMyr":1,"steps":20}'] [--set key=value,…] [--label name]
+//   node v2/tools/erode-study.mjs --seed 831576 --time 310 --cells 640000 [--erode '{"timeMyr":1,"steps":20}'] [--set key=value,…] [--rock iceSoft=false] [--label name]
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Delaunator from 'delaunator';
@@ -11,6 +11,7 @@ import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { Water } from '../js/finish/finish-hydro.js';
+import { GEOLOGY } from '../js/geology/geology-config.js';
 import { networkShape, describe } from './lib/river-network.mjs';
 import { landWater } from './lib/land-water.mjs';
 
@@ -20,6 +21,8 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const SEED = Number(arg('--seed', 831576)), CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 310)), CELLS = Number(arg('--cells', 640000));
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z_])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
+// (--rock iceSoft=false,craton=false: which of the rock's replacements of the hand rules stand, for a toggle)
+for (const kv of (arg('--rock', '') || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); GEOLOGY.useRock[k] = v === 'true'; }
 const erode = arg('--erode', null);
 if (erode) F.erode = JSON.parse(erode);
 const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME });
@@ -58,7 +61,22 @@ const out = { label: arg('--label', erode ?? 'base'), seed: SEED, time: TIME, ce
     largestMkm2: +((LW.onLand[0]?.km2 ?? 0) / 1e6).toFixed(3), largest: LW.onLand[0]?.kind, largestAt: LW.onLand[0]?.at, top: LW.onLand.slice(0, 5).map(L => `${(L.km2 / 1e6).toFixed(2)}${L.kind[0]}@${L.at}`), freshLakes: W.freshLakes, saltLakes: W.saltLakes, pans: W.pans,
     endo: W.endorheicShare, landBelow400: pct(low), meanKm: +(sum / land).toFixed(3), belowSpillPct: +(100 * LW.belowKm2 / LW.landKm2).toFixed(2), hack: +net.hack.h.toFixed(2), horton: +net.horton.rb.toFixed(2), junction: +net.junction.medianDeg.toFixed(0),
     deadLevel: +(100 * net.broom.flatShare).toFixed(1), rising: +(100 * net.broom.riseShare).toFixed(1), straight: +(100 * net.broom.straightShare).toFixed(1), plainSinP90: +net.sinuosity.plainP90.toFixed(2), plainGrade: net.plainGrade.median, cutCells: W.cutCells, nan: W.nanHeights,
-    ms: Object.fromEntries(Object.entries(fin.ms).map(([k, v]) => [k, Math.round(v)])), erodeMs: fin.stats.erode?.ms };
+    ms: Object.fromEntries(Object.entries(fin.ms).map(([k, v]) => [k, Math.round(v)])), erodeMs: fin.stats.erode?.ms, coast: fin.stats.coast };
+// (the coast's rock: what cliffs read for their erodibility, finish-coast.js, and that rate's mean over the land shore, which is
+// what the waves' cutting scales with; the rate is exponential in softness, so its mean depends on the spread, not only the mean)
+{
+    const { soft } = fin.layers, { adjOffset, adjList } = mesh, S = [];
+    let rate = 0;
+    for (let c = 0; c < n; c++) {
+        if (ocean[c]) continue;
+        let shore = 0;
+        for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) if (ocean[adjList[j]] && !lake[adjList[j]]) shore = 1;
+        if (shore) { S.push(soft[c]); rate += F.cliffHardRatio ** (1 - soft[c]); }
+    }
+    S.sort((a, b) => a - b);
+    const q = p => +S[Math.floor(p * (S.length - 1))].toFixed(3);
+    out.coastRock = { cells: S.length, mean: +(S.reduce((a, b) => a + b, 0) / S.length).toFixed(3), p10: q(.1), p50: q(.5), p90: q(.9), meanRate: +(rate / S.length).toFixed(4) };
+}
 console.log('RESULT ' + JSON.stringify(out));
 if (fin.stats.erode?.levels) console.log('LEVELS ' + JSON.stringify(fin.stats.erode.levels.map(L => ({ cells: L.cells, t: L.timeMyr, steps: L.steps, s: L.seconds, shown: L.last?.shownMkm2, budget: L.budget }))) + ' polish ' + JSON.stringify(fin.stats.erodeLate?.ms));
 else if (fin.stats.erode) console.log('CURVE ' + fin.stats.erode.curve.map(p => `${p.t}:${p.lakeMkm2}(${p.lakes}; shown ${p.shownMkm2}/${p.shown}; 1-cell ${p.one}) e${p.erodedKm3} k${p.keptKm3} s${p.seaKm3} c${p.closedKm3}`).join(' | '));
