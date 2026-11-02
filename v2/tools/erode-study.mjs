@@ -27,20 +27,34 @@ const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(si
 const t0 = performance.now();
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: true, F, onStage: () => {} });
 const seconds = (performance.now() - t0) / 1000;
-const { mesh, z, ocean, lake } = fin, { ice, basin, lakeSrc } = fin.layers, n = mesh.numCells, cellKm2 = 4 * Math.PI * 6371 ** 2 / n;
-let land = 0, low = 0, fresh = 0, salt = 0, pan = 0, openFree = 0, sum = 0;
+const { mesh, z, ocean, lake } = fin, { ice, basin, lakeSrc, hollow, hollowInfo } = fin.layers, n = mesh.numCells, cellKm2 = 4 * Math.PI * 6371 ** 2 / n;
+let land = 0, low = 0, fresh = 0, salt = 0, pan = 0, openFree = 0, openBig = 0, sum = 0;
 for (let c = 0; c < n; c++) {
     if (ocean[c] && !lake[c]) continue;
     land++; sum += z[c]; if (z[c] < 0.4) low++;
     if (lake[c] === Water.SALT) salt++;
     else if (lake[c] === Water.PAN) pan++;
-    else if (lake[c] === Water.FRESH) { fresh++; if (!ice[c] && !(basin[c] > 0.05)) openFree++; }
+    else if (lake[c] === Water.FRESH) fresh++;
+}
+// (open fresh, off the ice and no sea's remnant, as trace-lakes.mjs: a cut-off sea at sea level is no lake, lane lakeattr; and of it
+// the bodies of 1,000 km² or more, the only size Earth's ~0.13–0.17 % compares with)
+const off = c => lake[c] === Water.FRESH && !ice[c] && !(basin[c] > 0.05) && lakeSrc[c] !== 3 && !hollowInfo[hollow[c]]?.sea;
+{
+    const seen = new Uint8Array(n);
+    for (let s = 0; s < n; s++) {
+        if (seen[s] || !off(s)) continue;
+        const q = [s];
+        seen[s] = 1;
+        for (let i = 0; i < q.length; i++) for (let j = mesh.adjOffset[q[i]]; j < mesh.adjOffset[q[i] + 1]; j++) { const y = mesh.adjList[j]; if (!seen[y] && off(y)) { seen[y] = 1; q.push(y); } }
+        openFree += q.length;
+        if (q.length * cellKm2 >= 1000) openBig += q.length;
+    }
 }
 const W = fin.stats.water, LW = landWater(fin, simMesh, frame), pct = v => +(100 * v / land).toFixed(3);
 const { tAnnual, pAnnual } = fin.climate.cell, pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
 const net = networkShape({ mesh, recv: fin.layers.recv, land: c => !ocean[c], z, lake, arid: c => pAnnual[c] < 0.5 * pet(c) });
 const out = { label: arg('--label', erode ?? 'base'), seed: SEED, time: TIME, cells: CELLS, seconds: +seconds.toFixed(1),
-    lakeShare: +(100 * W.lakeShare).toFixed(2), lakes: pct(fresh + salt), fresh: pct(fresh), salt: pct(salt), pan: pct(pan), openFreeNonGlacial: pct(openFree), onLand: +(100 * LW.onLandKm2 / LW.landKm2).toFixed(2),
+    lakeShare: +(100 * W.lakeShare).toFixed(2), lakes: pct(fresh + salt), fresh: pct(fresh), salt: pct(salt), pan: pct(pan), openFreeNonGlacial: pct(openFree), openFree1000: pct(openBig), onLand: +(100 * LW.onLandKm2 / LW.landKm2).toFixed(2),
     largestMkm2: +((LW.onLand[0]?.km2 ?? 0) / 1e6).toFixed(3), largest: LW.onLand[0]?.kind, largestAt: LW.onLand[0]?.at, top: LW.onLand.slice(0, 5).map(L => `${(L.km2 / 1e6).toFixed(2)}${L.kind[0]}@${L.at}`), freshLakes: W.freshLakes, saltLakes: W.saltLakes, pans: W.pans,
     endo: W.endorheicShare, landBelow400: pct(low), meanKm: +(sum / land).toFixed(3), belowSpillPct: +(100 * LW.belowKm2 / LW.landKm2).toFixed(2), hack: +net.hack.h.toFixed(2), horton: +net.horton.rb.toFixed(2), junction: +net.junction.medianDeg.toFixed(0),
     deadLevel: +(100 * net.broom.flatShare).toFixed(1), rising: +(100 * net.broom.riseShare).toFixed(1), straight: +(100 * net.broom.straightShare).toFixed(1), plainSinP90: +net.sinuosity.plainP90.toFixed(2), plainGrade: net.plainGrade.median, cutCells: W.cutCells, nan: W.nanHeights,
