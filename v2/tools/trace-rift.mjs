@@ -1,7 +1,7 @@
 // One body of water on a finished moment, below sea level, and why it is not sea: its floor, level, depth and volume; the
 // crust under it (the history's frame); its sill to the world ocean and the barrier's length, on the surface before the carve
 // and on the finished one; and its water balance.
-//   node v2/tools/trace-rift.mjs --seed 831576 --time 340 --cells 2500000 --key <the page's history> --around 4.3,121.6 [--erode false]
+//   node v2/tools/trace-rift.mjs --seed 831576 --time 340 --cells 2500000 --key <the page's history> --around 4.3,121.6 [--biggest] [--erode false]
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Delaunator from 'delaunator';
@@ -28,6 +28,18 @@ const [la, lo] = arg('--around', '4.3,121.6').split(',').map(Number);
 const away = c => { const d = Math.abs(lon[c] - lo); return Math.hypot(lat[c] - la, Math.min(d, 360 - d) * Math.cos(la * Math.PI / 180)); };
 let at = -1;
 for (let c = 0; c < n; c++) if (lake[c] && (at < 0 || away(c) < away(at))) at = c;
+if (process.argv.includes('--biggest')) {
+    // (or the biggest water: its cells joined whatever their kind, the system a neighbour-order test sees flip)
+    const seen = new Uint8Array(n);
+    let best = 0;
+    for (let s = 0; s < n; s++) {
+        if (seen[s] || !lake[s]) continue;
+        const q = [s];
+        seen[s] = 1;
+        for (let i = 0; i < q.length; i++) for (let j = adjOffset[q[i]]; j < adjOffset[q[i] + 1]; j++) { const y = adjList[j]; if (!seen[y] && lake[y]) { seen[y] = 1; q.push(y); } }
+        if (q.length > best) { best = q.length; at = s; }
+    }
+}
 console.log(`nearest water to ${la},${lon === null ? '' : lo}: ${lat[at].toFixed(2)},${lon[at].toFixed(2)}, ${away(at).toFixed(2)}° off`);
 // (the body: one kind, joined)
 const inBody = new Uint8Array(n), body = [at];
@@ -37,6 +49,11 @@ let floor = Infinity, vol = 0, below = 0, P = 0, T = 0;
 for (const c of body) { floor = Math.min(floor, z[c]); vol += (lakeLevel[c] - z[c]) * a; if (z[c] < 0) below++; P += rain[c]; T += tAnnual[c]; }
 const h = hollowInfo[hollow[at]];
 console.log(`BODY ${['', 'fresh', 'salt', 'pan'][lake[at]]}, src ${lakeSrc[at]}, ${Math.round(body.length * a)} km² (${(100 * below / body.length).toFixed(0)} % of it floored below sea level), level ${Math.round(1000 * lakeLevel[at])} m, floor ${Math.round(1000 * floor)} m, mean depth ${Math.round(1000 * vol / (body.length * a))} m, ${Math.round(vol)} km³; rain ${Math.round(P / body.length)} mm, ${(T / body.length).toFixed(1)} °C`);
+// (its water balance full: what would evaporate off the whole hollow against what flows in. Near 1, the state is on a knife edge)
+const pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+let fullLoss = 0;
+for (let c = 0; c < n; c++) if (hollow[c] === hollow[at] && z[c] < (h ? h.level : 0)) fullLoss += Math.max(0, F.lakeEvapShare * pet(c) - rain[c]) * 1e-6 * a;
+if (h) console.log(`BALANCE inflow ${(h.inflow * 3.156e7 / 1e9).toFixed(1)} km³/yr against ${fullLoss.toFixed(1)} off the hollow full: ratio ${(h.inflow * 3.156e7 / 1e9 / fullLoss).toFixed(2)}`);
 if (h) console.log(`HOLLOW ${JSON.stringify({ km2: Math.round(h.km2), rim: Math.round(1000 * h.level), levelNow: Math.round(1000 * h.levelNow), floor: Math.round(1000 * h.floor), sea: h.sea, closed: h.closed, inflowKm3: +(h.inflow * 3.156e7 / 1e9).toFixed(1) })}`);
 // (the crust under it: the frame's nearest sim cell)
 const sx = simMesh.xyz, N = simMesh.numCells, kinds = new Map(), owners = new Map();

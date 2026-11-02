@@ -31,7 +31,7 @@ fn enc(w: f32) -> u32 { let b = bitcast<u32>(w); return select(b ^ 0x80000000u, 
 `;
 
 // Each kernel: the buffers it binds, and its body, run once for each `ix` entry in the dispatched range (c = the cell).
-const T = { u: 'array<u32>', f: 'array<f32>', a: 'array<atomic<u32>>', C: 'array<Cell>', X: 'array<Out>' };
+const T = { u: 'array<u32>', f: 'array<f32>', v: 'array<vec4f>', a: 'array<atomic<u32>>', C: 'array<Cell>', X: 'array<Out>' };
 const KERNELS = {
     copyZ: { b: { z: 'f', Zt: 'f+' }, body: 'Zt[c] = z[c];' },
     descend: { b: { adjOffset: 'u', adjList: 'u', Zt: 'f', ptrA: 'u+' }, body: `
@@ -128,7 +128,7 @@ const KERNELS = {
         var v = U_.a * water[c];
         for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if ((recv[y] & M) == c) { v += cells[y].A; } }
         cells[c].A = v;` },
-    solve: { b: { recv: 'u', fill: 'f', z: 'f', dropped: 'f', K: 'f', xyz: 'f', surf: 'f', cells: 'C+' }, body: `
+    solve: { b: { recv: 'u', fill: 'f', z: 'f', dropped: 'f', Kv: 'v', xyz: 'f', surf: 'f', cells: 'C+' }, body: `
         let rr = recv[c]; let r = rr & M; let toOut = (rr >> 31u) != 0u;
         var under = 0.0;
         if (toOut) { under = surf[r]; } else { under = cells[r].e; }
@@ -141,7 +141,10 @@ const KERNELS = {
         cells[c].lid = NONE;
         let Ac = max(cells[c].A, 1e-6); let share = min(1.0, U_.perCell * sqrt(Ac / 1e4));
         let d = vec3f(xyz[3u * r] - xyz[3u * c], xyz[3u * r + 1u] - xyz[3u * c + 1u], xyz[3u * r + 2u] - xyz[3u * c + 2u]);
-        let F = share * K[c] * pow(Ac, U_.m) * U_.dt / (R_EARTH * length(d));
+        // (the layer it cuts: its own sediment above the rock's top, or the rock: finish-erode.js. Kv: k, the rock's top, the
+        // sediment's k against the rock's; packed, so the kernel binds no more buffers than before. No column: the top is out of reach)
+        let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
+        let F = share * kv.x * layer * pow(Ac, U_.m) * U_.dt / (R_EARTH * length(d));
         var h = (old + F * under) / (1.0 + F);
         if (h < LF + under) { h = min(old, LF + under); }
         cells[c].zNew = h; cells[c].e = h; cells[c].gross = max(old - h, 0.0);` },
@@ -207,11 +210,12 @@ const pipelinesOf = device => {
 };
 
 /** Settings this solver does not have: a run asking for one goes to the CPU's. */
-export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEvery ?? 1) === 1 && !P.trace;
+// (the mud's own deposition coefficient is not on the GPU: with the column on and GFine ≠ G, the CPU runs it)
+export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEvery ?? 1) === 1 && !P.trace && !(P.column && (P.GFine ?? P.G) !== P.G);
 
 /** Build the solver for one run of one mesh. `gpu`: navigator.gpu or Dawn's. */
 export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, gpuClosed = false } = {}) {
-    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm } = o;
+    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null } = o;
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
     const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
@@ -222,7 +226,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     up('adjOffset', Uint32Array.from(adjOffset)); up('adjList', adjList instanceof Uint32Array ? adjList : Uint32Array.from(adjList)); up('xyz', xyz instanceof Float32Array ? xyz : Float32Array.from(xyz)); up('water', water);
     const K = new Float32Array(n);
     for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (1 - activeHold * hold[c]) * (slow ? slow[c] : 1);
-    up('K', K);
+    // (with the rock column, finish-lithology.js rockColumn: the rock's top, kept on the CPU as the rebound moves it, and the
+    // sediment's k against the rock's)
+    const Kv = new Float32Array(4 * n), packK = () => { for (let c = 0; c < n; c++) { Kv[4 * c] = K[c]; Kv[4 * c + 1] = column ? column.zBed[c] : 1e30; Kv[4 * c + 2] = column ? column.loose[c] : 1; } };
+    packK(); up('Kv', Kv);
     for (const f of ['z', 'dropped', 'Zt', 'hookW', 'weight', 'valA', 'valB', 'fill', 'surf', 'trap']) mk(f, 4 * n);
     for (const u of ['ptrA', 'ptrB', 'ptrC', 'roots', 'label', 'bestW', 'bestE', 'hookTo', 'parent', 'recv', 'distA', 'distB', 'flats', 'depthA', 'depthB', 'order', 'outlet', 'list', 'hiA', 'hiB']) mk(u, 4 * n);
     mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1)); mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 32 * n); mk('exp', 4 * EXPORT_WORDS * n);
@@ -413,7 +420,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     };
     const R = { route: [], toSea: 0, inClosed: 0 };
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
-    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P) : null, curve = [];
+    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column) : null, curve = [];
     let reboundKm3 = 0;
     try {
         put('dropped', new Float32Array(n));
@@ -421,7 +428,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         ms.setup = performance.now() - t00;
         for (let s = 0; s < P.steps; s++) {
             let t = performance.now();
-            if (settle && s > 0 && s % P.closedEvery === 0) reboundKm3 += settle();
+            if (settle && s > 0 && s % P.closedEvery === 0) { reboundKm3 += settle(); if (column) { packK(); put('Kv', Kv); } }
             if (s % P.closedEvery === 0) { await closed(); ms.closed += performance.now() - t; t = performance.now(); outlets(); }
             put('z', z);
             ms.upload += performance.now() - t;
