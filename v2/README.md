@@ -2066,6 +2066,11 @@ the lay and rebound code is the CPU solver's own. `ERODE.gpu: false` turns it of
 lost mid-run fails that finish and the next one opens a new device. `stats.erodeOn` says which ran, and the page logs it. Limits: float32
 throughout, so a near-tie between slopes can fall the other way; a machine repeats its own result bit for bit, but two GPUs can differ
 slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.
+The GPU mirrors the rock column (L3, below): the solve kernel cuts ground above the rock's top at the sediment's k and the rock under
+it at the rock's, from one packed vec4 a cell (k, the rock's top, the sediment's k, so no extra binding; 12 bytes a cell more, ~120 MB
+at 10M), and the rock's top follows the rebound as `settle` does on the CPU. The bed/mud split is not on the GPU: with the column on and
+`GFine` set apart from `G` (both 1 by default, so the split is inert), `gpuCanRun` sends the erosion to the CPU. `check-gpu` at the
+mirror (d081dce): 9 of 9, lake share within 0.004 points of the CPU, land |dz| p99 0.2–0.5 m.
 
 Measured (831576 at 310 Myr, Add detail in Chrome on Upwell, an Apple GPU through Metal, load ~7, `gpu-detail.mjs`): at 2.5M the whole finish
 101 → 74 s, its erosion stage 19.3 → 5.7 s (the CPU side with no adapter given to the worker); at 10M the finish 259 s, erosion 24 s,
