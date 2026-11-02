@@ -293,7 +293,7 @@ export function closeSeasBetween(out, origin, mesh, upper, config, time) {
 
 /** Each craton of the (pre-warp) raster moves as one block by the field at its cells' mean, and is written back cell-for-cell. */
 function stampCratonsRigidly(out, U, disp, mesh) {
-    const { xyz, index, numCells } = mesh, r = 1 / PLANET_RADIUS_KM;
+    const { xyz, index, numCells, adjOffset, adjList } = mesh, r = 1 / PLANET_RADIUS_KM;
     const blocks = new Map();
     for (let c = 0; c < numCells; c++) {
         if (!U.mask[c] || U.type[c] !== CrustType.CRATON) continue;
@@ -302,10 +302,22 @@ function stampCratonsRigidly(out, U, disp, mesh) {
         for (let i = 0; i < 3; i++) b.d[i] += disp[3 * c + i];
     }
     for (const b of blocks.values()) {
-        const d = b.d.map(v => v / b.cells.length * r);
+        const d = b.d.map(v => v / b.cells.length * r), block = new Set(b.cells), landing = new Set();
+        const nearestTo = (c, sign) => {
+            const x = xyz[3 * c] + sign * d[0], y = xyz[3 * c + 1] + sign * d[1], z = xyz[3 * c + 2] + sign * d[2], l = Math.hypot(x, y, z);
+            return index.nearest(x / l, y / l, z / l);
+        };
+        // (fetched backwards, each cell it lands on asking what it came from. Sent forwards, cell by cell to the nearest, two
+        // cells of a block can land on one and a shift of a fraction of a cell leaves a quarter of the block's cells unwritten:
+        // a weld that moved a craton at all took 92 of its 320 cells to plain continent, India scene, seed 12345)
         for (const c of b.cells) {
-            const x = xyz[3 * c] + d[0], y = xyz[3 * c + 1] + d[1], z = xyz[3 * c + 2] + d[2], l = Math.hypot(x, y, z);
-            out.copyFrom(index.nearest(x / l, y / l, z / l), U, c);
+            const q = nearestTo(c, 1);
+            landing.add(q);
+            for (let k = adjOffset[q]; k < adjOffset[q + 1]; k++) landing.add(adjList[k]);
+        }
+        for (const q of landing) {
+            const c = nearestTo(q, -1);
+            if (block.has(c)) out.copyFrom(q, U, c);
         }
     }
 }
