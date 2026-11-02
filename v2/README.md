@@ -2068,6 +2068,15 @@ lost mid-run fails that finish and the next one opens a new device. `stats.erode
 throughout, so a near-tie between slopes can fall the other way; a machine repeats its own result bit for bit, but two GPUs can differ
 slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.
 
+Measured (831576 at 310 Myr, Add detail in Chrome on Upwell, an Apple GPU through Metal, load ~7, `gpu-detail.mjs`): at 2.5M the whole finish
+101 → 74 s, its erosion stage 19.3 → 5.7 s (the CPU side with no adapter given to the worker); at 10M the finish 259 s, erosion 24 s,
+the browser's peak 13.6 GB (renderer 10.1, GPU process 3.8; 2.5M: 8.8 GB, the GPU process 1.4 against 0.6 on the CPU). On Chroma
+(an NVIDIA Ampere GPU, Chrome, desktop session) 640K 32.7 s and 2.5M 68.8 s whole, erosion 3.4 and 6.5 s. Chrome and Dawn on one machine
+agree bit for bit. Against the CPU the lake share differs by −0.003 points at 640K (three seeds, `check-gpu`) and −0.03 to +0.06 at 2.5M
+(Chroma, four neighbour orders a seed) — inside the CPU's own spread when only its arbitrary neighbour order changes, which at
+831576@430 alone swings fresh lakes 1.8–2.7 Mkm² and fills or empties the largest cut-off sea (183–531K km² of water). A planet's
+biggest lakes can therefore look different on the GPU, as they would on the CPU with its neighbours listed in another order.
+
 **Headless runs stay on the CPU.** Check suites and `render-moment` run the CPU solver: no GPU contention between suites, and no dependency
 in a worktree without `npm ci` in `v2/tools/gpu-harness/`. So a render can differ slightly from what the page shows for the same moment.
 What ties the two together: `check-gpu` (whole finishes, GPU against CPU: lake share, land |dz|, a bit-identical repeat; ⚑ if Dawn is not
