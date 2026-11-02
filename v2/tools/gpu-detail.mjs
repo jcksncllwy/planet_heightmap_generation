@@ -1,6 +1,6 @@
 // The real thing, end to end: the Evolution page in the installed Chrome, a history built, a moment chosen and Add detail pressed,
 // with what the finish's worker reports (stage times, the device erosion ran on) and the browser's memory, its processes' peak.
-//   node v2/tools/gpu-detail.mjs [--seed 831576] [--cont 30] [--sim 40000] [--time 310] [--cells 2500000] [--headed] [--chrome PATH] [--no-memory] [--no-gpu: Chrome started with WebGPU off, for the CPU path]
+//   node v2/tools/gpu-detail.mjs [--seed 831576] [--cont 30] [--sim 40000] [--time 310] [--cells 2500000] [--headed] [--chrome PATH] [--no-memory] [--no-gpu: the finish's worker sees a browser with no adapter, for the CPU path]
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,11 +12,14 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SEED = arg('--seed', '831576'), CONT = arg('--cont', '30'), SIM = arg('--sim', '40000'), TIME = arg('--time', '310'), CELLS = arg('--cells', '2500000'), PORT = Number(arg('--port', 8000 + (process.pid % 900)));
 const server = spawn(process.execPath, [path.join(ROOT, 'tuning/dev-server.mjs'), String(PORT)], { cwd: ROOT, stdio: 'ignore' });
+process.on('exit', () => server.kill());
 await new Promise(r => setTimeout(r, 1500));
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'gpu-detail-'));
 const context = await chromium.launchPersistentContext(profile, { channel: arg('--chrome') ? undefined : 'chrome', executablePath: arg('--chrome'), headless: !has('--headed'), viewport: { width: 1400, height: 900 },
-    args: has('--no-gpu') ? ['--disable-features=WebGPU', '--disable-unsafe-webgpu'] : ['--enable-unsafe-webgpu', ...(process.platform === 'win32' ? ['--enable-features=D3D12'] : [])] });
+    args: ['--enable-unsafe-webgpu', ...(process.platform === 'win32' ? ['--enable-features=D3D12'] : [])] });
 const page = context.pages()[0] ?? await context.newPage();
+// (Chrome's switches leave navigator.gpu in place, so the worker is told what a browser with no adapter tells it)
+if (has('--no-gpu')) await context.route('**/finish-worker.js', async route => { const r = await route.fetch(); await route.fulfill({ response: r, body: `Object.defineProperty(self.navigator, 'gpu', { value: { requestAdapter: async () => null } });\n${await r.text()}` }); });
 let history, finish = null, failed = null;
 const seen = new Promise(r => { history = r; });
 page.on('console', async m => {
