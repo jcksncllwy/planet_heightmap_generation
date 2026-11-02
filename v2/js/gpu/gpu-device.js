@@ -1,6 +1,5 @@
 // WebGPU compute, for browser and Node alike (lane gpu, 2026-10-31): the plumbing every kernel here shares. No build step and no
-// dependency: it takes a `navigator.gpu`-shaped object, the page's own or Dawn's (v2/tools/gpu-harness). Nothing in the app
-// loads this yet.
+// dependency: it takes a `navigator.gpu`-shaped object, the page's own or Dawn's (v2/tools/gpu-harness).
 
 /** A device with the adapter's largest buffers: the default binding limit (128 MB) is under a 10M mesh's adjacency. */
 export async function openDevice(gpu, { powerPreference = 'high-performance', features = [] } = {}) {
@@ -21,6 +20,14 @@ export async function openDevice(gpu, { powerPreference = 'high-performance', fe
     });
     device.addEventListener?.('uncapturederror', e => console.error('WebGPU:', e.error.message));
     return { adapter, device, info: adapter.info, limits: device.limits };
+}
+
+// (one device a `gpu`, opened once and kept: a device lost, to a driver reset or a sleeping GPU, is forgotten, so the next run opens another)
+const opened = new WeakMap();
+/** The device erosion shares across its runs, or null where there is no adapter to give one. */
+export function sharedDevice(gpu) {
+    if (!opened.has(gpu)) opened.set(gpu, openDevice(gpu).then(d => { d.device.lost?.then(() => opened.delete(gpu)); return d; }, () => (opened.delete(gpu), null)));
+    return opened.get(gpu);
 }
 
 /** A storage buffer, filled from a typed array or empty at `size` bytes. */

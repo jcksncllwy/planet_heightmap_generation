@@ -85,6 +85,7 @@ const DEBUG = process.argv.includes('--debug') || NETWORK;
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
+console.log(`\nerosion on: ${fin.stats.erodeOn ?? 'off'}`);
 console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages ms: ${Object.entries(fin.ms).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}`);
 // (--network: the finished rivers' shape against Earth's — tools/lib/river-network.mjs; arid where rain is under half the
 // potential evaporation)

@@ -14,6 +14,8 @@ import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
 import { hydrology, sinkingGround, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { ERODE, erodeLandscape, erodeLadder, rulesOff, hollowCensus, playas } from './finish-erode.js';
+import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
+import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
 import { terrainMesh, terrainEdgeKm } from '../terrain/terrain-mesh.js';
@@ -43,6 +45,14 @@ export function erosionAt(F, cfg) {
     const L = F.erosionLevels, s = Math.min(L.carveM.length - 1, Math.max(0, F.erosionStrength ?? 0)), i = Math.min(L.carveM.length - 2, Math.floor(s)), f = s - i;
     const at = a => a[i] + (a[i + 1] - a[i]) * f, m = at(L.carveM);
     return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), dissectKm: at(L.dissectKm), creepKm: at(L.creepKm), crestHardness: at(L.crestHardness) };
+}
+
+/** What runs erosion: the GPU's solver where this page (or Node, with v2/tools/gpu-harness/use-dawn.mjs) has a device, else the CPU's.
+ *  Both take the same arguments; `on` says which ran. Below EP.gpuFloodCells closed basins flood on the CPU. */
+async function erosionSolver(EP) {
+    const gpu = EP.gpu && gpuCanRun(EP) ? globalThis.navigator?.gpu : null, opened = gpu ? await sharedDevice(gpu) : null;
+    if (!opened) return { solve: erodeLandscape, on: 'cpu' };
+    return { solve: (o, P) => erodeGPU(gpu, o, P, { device: opened, gpuClosed: o.mesh.numCells >= EP.gpuFloodCells }), on: opened.info?.description || opened.info?.architecture || 'gpu' };
 }
 
 /** The stages, in order, with their rough share of the time (for the progress bar). */
@@ -180,7 +190,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
-    const EP = F.erode ? { ...ERODE, ...F.erode } : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm } : null;
+    const EP = F.erode ? { ...ERODE, ...F.erode } : null, eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm } : null;
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
@@ -198,8 +208,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     census('after carve, sediment, creep', ocean0);
     if (EP?.at === 'early' || EP?.at === 'both') {
         onStage('erosion');
-        stats.erode = EP.ladder ? erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: pAnn, closedOf: (lm, g, f, sea) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea) }, EP, terrainMesh)
-            : erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: g => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean0) }, EP);
+        stats.erodeOn = eroder.on;
+        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: pAnn, closedOf: (lm, g, f, sea, flood) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood) }, EP, terrainMesh, eroder.solve)
+            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean0, flood) }, EP);
         lap('erosion');
         census('after erosion', ocean0);
     }
@@ -250,7 +261,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         onStage('polish');
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
-        const late = erodeLandscape({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: g => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
+        stats.erodeOn = eroder.on;
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
         census('after late erosion', ocean);

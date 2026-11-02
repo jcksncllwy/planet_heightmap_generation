@@ -630,7 +630,7 @@ async function finishMoment(again = null) {
         b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key });
         b.finishOk = true;
         b.finishNote = `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
-        console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
+        console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept, erosion on ${res.stats.erodeOn ?? 'off'}`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
         view.finished = true;
         if (view.layer === 'plates') setLayer('terrain');
     } catch (err) {
