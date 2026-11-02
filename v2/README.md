@@ -2140,6 +2140,25 @@ wider rock raises lake share, open lakes and the land's mean height and lowers t
 (from the abstract; the tables were not reached). Those K include each site's climate, so they overstate rock alone. Which spread
 and `GFine` to run is Jackson's call: ~100× with `GFine` 0.5 fits the export, but open lakes run over Earth's on all but one seed.
 
+**Jackson's reports, 2026-11-01, page history `b3765410…` of 831576 (cont 30, 1200 Myr), 2.5M** (`tools/trace-interior.mjs`,
+`tools/trace-rift.mjs`):
+- *Lakes everywhere at 430 Myr* came from the finish before erosion was the default (his detail took 793 s on the history of
+  1d851b5). On his current history at 430, the code of that time gives 3.15 % lake share and 172 waters ≥ 300 km² on one
+  21 Mkm² continent, 53 of them salt at P/PET ≥ 0.5. The default gives 0.64 % and 29. The hollows are in the surface before any
+  river work: 40.8 Mkm² of hollows ≥ 300 km² and 15 m deep before the carve, 20.6 after it, 3.0 after erosion. A salt lake at
+  ~800 mm stands where its catchment is little bigger than its hollow: the net loss off open water (1.2 × PET − rain, ~870 mm
+  there) outruns the inflow (one of 64,000 km² took 67 km³/yr against the 86 that would fill it). Earth has such lakes
+  (Chilwa, recalled), but not by the hundred: Earth's interiors are integrated by rivers, and here that is the erosion's work.
+  The default now runs under Earth's share on this world: 0.64 % against 1.8–3.7.
+- *The giant fresh lake at 340 Myr* is a proto-ocean: 69 % of the sim cells under it are oceanic crust 0–1 Myr old, between
+  plates 98 and 144. It is 0.997 Mkm², its floor −3.0 km, 1.75 M km³. Before the carve its lowest way out is a 917 m sill, so the
+  surface never lets the sea in: the history makes the crust but not the flooding. That is a rift-stage finding, not the
+  finish's. The finish then treats it as a remnant of the sea that its inflow (1,519 km³/yr, rain 1,232 mm) fills, and the
+  hydrology's `h.sea` branch cuts its outlet down to `seaCutFloorKm` (3 m). Its way out then runs 7,756 km over land no higher than sea level (the
+  hydrology cut 641 cells on this world, up to 1.2 km deep; how much of that path is cut was not separated). That is an outcome
+  rule, and it makes the lake read as sea-level water. An isolated young rift basin full of fresh water has Earth analogues (the
+  South Atlantic's pre-salt lakes, recalled), but not 1 Mkm² standing at sea level.
+
 **Limits of the column.** One read: a river that cuts through a bed during the erosion keeps that bed's k. Cuts by ice and wind
 don't count as depth. Sediment has one k. Time: the lithology stage goes from ~4–5 s to ~8–11 s at 2.5M, mostly the second rock read.
 
