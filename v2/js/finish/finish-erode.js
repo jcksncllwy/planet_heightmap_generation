@@ -450,7 +450,8 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         }
         const start = f.z.slice();
         if (delta) {
-            const U = mapOnto(prev, lm), before = fine ? z.slice() : f.z.slice();
+            // (the last level's map up is the one already made to bring its fields down to the level below)
+            const U = (fine && coarse.get(prev.numCells)?.down) || mapOnto(prev, lm), before = fine ? z.slice() : f.z.slice();
             if (P.bury) {
                 // (what the level below eroded comes off this surface; what it laid down buries it: the finer relief under a
                 // fill is under it, not carried up on top of it)
@@ -461,8 +462,9 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
             // (land stays land, the sea stays where it was)
             for (let c = 0; c < lm.numCells; c++) { if (f.ocean[c]) f.z[c] = before[c]; else if (before[c] > 0 && f.z[c] < LAND_FLOOR) f.z[c] = Math.min(before[c], LAND_FLOOR); }
         }
+        const t1 = performance.now();
         const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, hold: f.hold, closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] ? P.rebound : 0 });
-        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
+        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
         delta = new Float32Array(lm.numCells);
         for (let c = 0; c < lm.numCells; c++) delta[c] = f.z[c] - start[c];
         prev = lm; prevZ = f.z;
