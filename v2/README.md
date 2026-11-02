@@ -2059,11 +2059,25 @@ node v2/tools/erode-study.mjs --seed 831576 --time 310 --cells 2500000 --erode '
 45–72) get worse. One seed; `erosion-report.md` in the lane's notes has the three-seed study, on an older history and with the
 sea-level bug below. Its rivers once graded to the seabed at the coast; they now end at sea level.
 
-**On the GPU (a spike, 2026-10-31, branch gpu; nothing in the app loads it).** `js/gpu/erode-gpu.js` runs the same step in WebGPU:
-FastFlow's depression routing (Jain et al. 2024, Cordonnier et al. 2019) for the network, then the CPU's own arithmetic swept level by
-level over cells sorted by depth. Laying lakes' load and the closed basins' water balance stay on the CPU. Tools: `v2/tools/gpu-*`,
-`npm install` in `v2/tools/gpu-harness/` (tool-only: Dawn for Node, Playwright for the Chrome cross-check). Limits: float32 throughout,
-so a near-tie between slopes can fall the other way, and a machine repeats its own result but two GPUs can differ slightly.
+**On the GPU (2026-11-01, branch gpu-wire).** Add detail's whole erosion stage runs on WebGPU where the browser has it:
+`js/gpu/erode-gpu.js` holds FastFlow's depression routing (Jain et al. 2024, Cordonnier et al. 2019) for the network, then the CPU's own
+arithmetic swept level by level over cells sorted by depth. The ladder and the polish both run on it, from 500K cells (`ERODE.gpuFloodCells`)
+with closed basins' flood too. Laying lakes' load, the closed basins' water balance, the rebound and the ladder's maps stay on the CPU, and
+the lay and rebound code is the CPU solver's own. `ERODE.gpu: false` turns it off. With no adapter, the finish runs the CPU solver; a device
+lost mid-run fails that finish and the next one opens a new device. `stats.erodeOn` says which ran, and the page logs it. Limits: float32
+throughout, so a near-tie between slopes can fall the other way; a machine repeats its own result bit for bit, but two GPUs can differ
+slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.
+
+**Headless runs stay on the CPU.** Check suites and `render-moment` run the CPU solver: no GPU contention between suites, and no dependency
+in a worktree without `npm ci` in `v2/tools/gpu-harness/`. So a render can differ slightly from what the page shows for the same moment.
+What ties the two together: `check-gpu` (whole finishes, GPU against CPU: lake share, land |dz|, a bit-identical repeat; ⚑ if Dawn is not
+installed), `gpu-browser.mjs` (Chrome against Dawn, bit for bit) and `gpu-detail.mjs` (the real page in Chrome, Add detail pressed). To run
+any tool or suite on Dawn, as a browser would:
+
+```bash
+(cd v2/tools/gpu-harness && npm ci)
+NODE_OPTIONS="--import=$PWD/v2/tools/gpu-harness/use-dawn.mjs" node v2/tools/render-moment.mjs --seed 831576 --cont 30 --time 310
+```
 
 **Limits.**
 - **Open fresh share is missed:** 0.43 % of land on 831576 at 2.5M against Earth's ~0.13–0.17 for lakes ≥ 1,000 km² (that

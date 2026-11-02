@@ -1,7 +1,6 @@
 // The real thing, end to end: the Evolution page in the installed Chrome, a history built, a moment chosen and Add detail pressed,
 // with what the finish's worker reports (stage times, the device erosion ran on) and the browser's memory, its processes' peak.
-//   node v2/tools/gpu-detail.mjs [--seed 831576] [--cont 30] [--sim 40000] [--time 310] [--cells 2500000] [--headed] [--chrome PATH] [--no-memory]
-//   (--no-gpu: navigator.gpu hidden from the worker's device request, for the CPU path in a browser: Chrome started with WebGPU off)
+//   node v2/tools/gpu-detail.mjs [--seed 831576] [--cont 30] [--sim 40000] [--time 310] [--cells 2500000] [--headed] [--chrome PATH] [--no-memory] [--no-gpu: Chrome started with WebGPU off, for the CPU path]
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

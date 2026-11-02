@@ -1,4 +1,4 @@
-// WebGPU compute, for browser and Node alike (lane gpu, 2026-10-31): the plumbing every kernel here shares. No build step and no
+// WebGPU compute, for browser and Node alike: the plumbing every kernel here shares. No build step and no
 // dependency: it takes a `navigator.gpu`-shaped object, the page's own or Dawn's (v2/tools/gpu-harness).
 
 /** A device with the adapter's largest buffers: the default binding limit (128 MB) is under a 10M mesh's adjacency. */
