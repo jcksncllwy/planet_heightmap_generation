@@ -1,6 +1,6 @@
 // The cross-check: the same kernels on the same fixture in Dawn and in the installed Chrome (headless, by Playwright), compared
 // bit for bit on this machine, with their timings. Users run Chrome's WebGPU, not Dawn's Node binding.
-//   node v2/tools/gpu-browser.mjs --dir FIXTURE [--runs 0,1,2,3] [--reps 2] [--chrome PATH] [--headed]
+//   node v2/tools/gpu-browser.mjs --dir FIXTURE [--runs 0,1,2,3] [--reps 2] [--chrome PATH] [--headed] [--gpu-closed]
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -35,10 +35,10 @@ console.log('machine', os.hostname(), 'load', os.loadavg()[0].toFixed(1), 'chrom
 const opened = await openDevice(gpu);
 console.log('dawn', JSON.stringify(opened.info.description));
 for (const id of RUNS) {
-    const b = await page.evaluate(([i, r]) => window.runFixture(i, r), [id, REPS]);
+    const b = await page.evaluate(([i, r, g]) => window.runFixture(i, r, g), [id, REPS, has('--gpu-closed')]);
     const { o, P } = loadRun(DIR, id), start = o.z.slice();
     let d = null;
-    for (let r = 0; r < REPS; r++) { o.z.set(start); const t = performance.now(), R = await erodeGPU(gpu, o, P, { device: opened }), total = performance.now() - t; if (!d || total < d.total) d = { total, ms: R.ms }; }
+    for (let r = 0; r < REPS; r++) { o.z.set(start); const t = performance.now(), R = await erodeGPU(gpu, o, P, { device: opened, gpuClosed: has('--gpu-closed') }), total = performance.now() - t; if (!d || total < d.total) d = { total, ms: R.ms }; }
     const zb = results.get(id), z = new Float32Array(zb.buffer.slice(zb.byteOffset, zb.byteOffset + zb.length));
     let differ = 0, top = 0;
     for (let c = 0; c < z.length; c++) if (z[c] !== o.z[c]) { differ++; const v = Math.abs(z[c] - o.z[c]); if (v > top) top = v; }
