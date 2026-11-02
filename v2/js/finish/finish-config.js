@@ -146,6 +146,9 @@ export const FINISH = {
                                 // cover transpires 0.6–0.8 of open water's E0, so E0 ≈ 1.25–1.7 × the land's; with petBaseMm,
                                 // petPerC: ~1.1 m a year at the Caspian's 12 °C — it loses ~1 m, Rodionov 1994 — ~2 m at the
                                 // Dead Sea's 25 °C — 1.5–2 m, Salameh & El-Naser 1999). The closed basins' balance too
+    lakeJoinKm: 30,             // two waters across a sill narrower than this… (about 3 pixels of a 4096-wide map: where they read as touching; no Earth figure)
+    lakeSwingKm: 0.05,          // …and levels closer than this are one water, one kind (finish-hydro.js oneWater). A closed lake's level swings
+                                // by metres in a century and tens of metres over millennia (Great Salt Lake ~6 m since 1850, the Caspian ~15 m in the Holocene: both recalled), so such a sill floods
     lakeMinKm2: 300,            // a hollow is a lake from this size… (150 and 5 m: "too many lakes" — developer)
     lakeMinDepthM: 15,          // …and this depth; and only where it has an origin — scoured by the ice age (lake districts),
                                 // or a hollow of the tectonic surface (rifts, forelands, closed basins: this share of its

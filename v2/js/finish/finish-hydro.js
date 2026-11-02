@@ -138,6 +138,54 @@ export function fillSeaBasins(mesh, z, ocean, F) {
  *            stats: Object}}
  */
 /**
+ * One surface, one kind (Jackson, 2026-11-01: one inland sea drawn salt with fresh along its edges). hollowLakes judges each
+ * sub-basin on its own water, so a bay behind a low sill that fills and spills is fresh beside the salt lake it spills into, and
+ * which bays exist turns on how finely the mesh draws their divides: it is an artefact of the tree, not of the water. Waters
+ * across a sill narrower than F.lakeJoinKm whose levels differ by less than F.lakeSwingKm are one water here: all of them take
+ * the kind of most of its area. Their levels stay. A reduced rule, with its limits: it needs both thresholds, it decides by area,
+ * and it changes only what is drawn and counted, not where the rivers end. What it stands in for is a salt balance per
+ * connected water, which the hydrology does not have; that, or Fill-Spill-Merge's level sets, should replace it.
+ * @returns {number} the cells whose kind changed
+ */
+function oneWater(mesh, kind, level, ocean, F) {
+    const { adjOffset, adjList, numCells: n, edgeKm } = mesh, gap = Math.round(F.lakeJoinKm / edgeKm), wet = k => k === Water.FRESH || k === Water.SALT;
+    const body = new Int32Array(n).fill(-1), dist = new Int16Array(n), levels = [], uf = [];
+    let front = [];
+    for (let s = 0; s < n; s++) {
+        if (body[s] >= 0 || !wet(kind[s])) continue;
+        const me = levels.length, q = [s];
+        levels.push(level[s]); uf.push(me);
+        body[s] = me;
+        for (let i = 0; i < q.length; i++) {
+            const c = q[i];
+            front.push(c);
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (body[y] < 0 && kind[y] === kind[s] && Math.abs(level[y] - level[s]) < 1e-3) { body[y] = me; q.push(y); } }
+        }
+    }
+    const find = i => { while (uf[i] !== i) { uf[i] = uf[uf[i]]; i = uf[i]; } return i; };
+    // (out from every shore at once: a dry cell belongs to the water nearest it, and two waters' fronts meet at their sill)
+    while (front.length) {
+        const next = [];
+        for (const c of front) for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+            const y = adjList[j];
+            if (ocean[y]) continue;
+            if (body[y] < 0) { if (dist[c] < gap) { body[y] = body[c]; dist[y] = dist[c] + 1; next.push(y); } }
+            else if (body[y] !== body[c] && dist[c] + dist[y] <= gap && Math.abs(levels[body[y]] - levels[body[c]]) <= F.lakeSwingKm) uf[find(body[y])] = find(body[c]);
+        }
+        front = next;
+    }
+    const fresh = new Float64Array(levels.length), salt = new Float64Array(levels.length);
+    for (let c = 0; c < n; c++) if (wet(kind[c])) (kind[c] === Water.SALT ? salt : fresh)[find(body[c])]++;
+    let changed = 0;
+    for (let c = 0; c < n; c++) {
+        if (!wet(kind[c])) continue;
+        const r = find(body[c]), k = salt[r] > fresh[r] ? Water.SALT : Water.FRESH;
+        if (kind[c] !== k) { kind[c] = k; changed++; }
+    }
+    return changed;
+}
+
+/**
  * How much of an active floor's sinking each cell has (0…1), read from the history: lakeStands's sinking floors. Ground the
  * belts deformed lately (fading over activeMyr since) or a rift on continental crust opening now. Relative to the sill, which
  * is all a lake feels: a hollow in a rising belt deepens as its rim rises. Looked up per cell on demand, from the nearest sim
@@ -1078,13 +1126,15 @@ export function hydrology(ctx, F) {
     }
     // ── each river's year (ctx.months: the monthly shares of each place's runoff, on the climate's grid) ──
     const regimes = ctx.months ? riverYears(ctx, F, { n, count, order, recv, rank, lakeKind, stepKm, own, sink, body, lakeIn, lakeOut, cells: Int32Array.from(L.cell) }) : null;
+    const joined = oneWater(mesh, lakeKind, lakeLevel, ctx.ocean, F);
     let lakes = 0, salt = 0, pans = 0, lakeKm2 = 0;
     const byOrigin = { glacialFresh: 0, tectonicFresh: 0, salt: 0, pan: 0 }, sizes = [];
     // (each body of water: a closed basin's each lake, salt, full or playa; another hollow's one)
     for (const h of hollows) for (const d of h.drawn ?? (h.kind ? [{ kind: h.kind, cells: h.cells.filter(c => lakeKind[c]) }] : [])) {
-        if (d.kind === Water.FRESH) lakes++; else if (d.kind === Water.SALT) salt++; else pans++;
+        const kind = d.kind === Water.PAN ? d.kind : lakeKind[d.cells[0]] || d.kind;           // (oneWater may have changed it)
+        if (kind === Water.FRESH) lakes++; else if (kind === Water.SALT) salt++; else pans++;
         const a = d.cells.length * cellKm2;
-        byOrigin[d.kind === Water.FRESH ? (h.glacial ? 'glacialFresh' : 'tectonicFresh') : d.kind === Water.SALT ? 'salt' : 'pan'] += a;
+        byOrigin[kind === Water.FRESH ? (h.glacial ? 'glacialFresh' : 'tectonicFresh') : kind === Water.SALT ? 'salt' : 'pan'] += a;
         sizes.push(a);
     }
     sizes.sort((a, b) => b - a);
@@ -1109,7 +1159,7 @@ export function hydrology(ctx, F) {
         }) : null,
         stats: { runoffMm: total * SEC_PER_YEAR / 1e3 / Math.max(1, landKm2), toSeaShare: toSea / Math.max(1e-9, total), toBasinsShare: toBasins / Math.max(1e-9, total),
             lostShare: lost / Math.max(1e-9, total), byOriginShare: Object.fromEntries(Object.entries(byOrigin).map(([k, v]) => [k, +(100 * v / Math.max(1, count * cellKm2)).toFixed(2)])),
-            biggestLakesKm2: sizes.slice(0, 6).map(Math.round), nanHeights, cutCells, cutMaxKm: +cutMaxKm.toFixed(3), cutMeanM: Math.round(1000 * cutKm3 / Math.max(1, cutCells) / cellKm2), keptPockets, filledCells, reaches, points: L.lat.length, biggestM3s: biggest, freshLakes: lakes, saltLakes: salt, pans, lakeShare: lakeKm2 / Math.max(1, landKm2), seas,
+            biggestLakesKm2: sizes.slice(0, 6).map(Math.round), joinedWaters: joined, nanHeights, cutCells, cutMaxKm: +cutMaxKm.toFixed(3), cutMeanM: Math.round(1000 * cutKm3 / Math.max(1, cutCells) / cellKm2), keptPockets, filledCells, reaches, points: L.lat.length, biggestM3s: biggest, freshLakes: lakes, saltLakes: salt, pans, lakeShare: lakeKm2 / Math.max(1, landKm2), seas,
             // (the land whose water ends in a closed basin — endorheic — and each closed basin: its catchment (km²), its
             // lakes' water and its playas (km²), its catchment's aridity (rain ÷ potential evaporation))
             endorheicShare: endoKm2 / Math.max(1, landKm2),
