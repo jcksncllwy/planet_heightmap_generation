@@ -55,6 +55,8 @@ await Promise.race([seen, new Promise((_, no) => setTimeout(() => no(new Error('
 console.log(`history ${((performance.now() - t0) / 1000).toFixed(0)} s`);
 await page.evaluate(([t, cells]) => {
     const s = document.getElementById('timeSlider'), c = document.getElementById('finishCells');
+    const play = document.getElementById('playBtn');
+    if (play.textContent.includes('\u23F8')) play.click();                        // (the page plays on once a history is built)
     s.value = t; s.dispatchEvent(new Event('input', { bubbles: true }));
     c.value = cells; c.dispatchEvent(new Event('change', { bubbles: true }));
 }, [TIME, CELLS]);
