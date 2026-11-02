@@ -150,31 +150,13 @@ export const FINISH = {
     lakeSwingKm: 0.05,          // …and levels closer than this are one water, one kind (finish-hydro.js oneWater). A closed lake's level swings
                                 // by metres in a century and tens of metres over millennia (Great Salt Lake ~6 m since 1850, the Caspian ~15 m in the Holocene: both recalled), so such a sill floods
     lakeMinKm2: 300,            // a hollow is a lake from this size… (150 and 5 m: "too many lakes" — developer)
-    lakeMinDepthM: 15,          // …and this depth; and only where it has an origin — scoured by the ice age (lake districts),
-                                // or a hollow of the tectonic surface (rifts, forelands, closed basins: this share of its
-    lakeTectonicShare: 0.25,    // cells, the tectonic surface's hollows at least tectonicHollowKm deep); the finishing's own
-    tectonicHollowKm: 0.1,      // hollows (fans, loess and dunes damming valleys) are filled: flat valley floors
-    lakeLoadShare: 1e-4,        // a river's load by volume of its water, ~150 mg/L at ~1.5 t/m³: a lake catchment's. The Selenga
-                                // brings Baikal ~2.5 Mt a year (Selenga delta, PIAHS 375: 19, 2017) in ~30 km³ (recalled), ~83 mg/L;
-                                // the world's mean, 19 Gt (Beusen et al. 2005) in ~36 000 km³, ~530 mg/L, is its mountain rivers'.
-                                // A spilling lake the ice did not dig outlasts carveTimeMyr of that, or its hollow is filled
-                                // (finish-hydro.js lakeStands): it stands if its water's residence time passes ~100 years, as
-                                // Baikal's (~390), Tanganyika's, Malawi's (~290) do, Victoria's and Titicaca's (~110) barely. At
-                                // the world's mean, Malawi and Titicaca would fill. A closed lake is not held to it: fill lifts
-                                // its floor, its area stays what evaporation balances
-    lakeSinkMmYr: 0.25,         // an active floor sinks this fast against its sill, over the whole floor, and that room is taken
-                                // from its river's load. Half the peak: a half-graben or a foredeep is a wedge, its floor's mean
-                                // half its deepest. Peaks: Malawi's rift 0.5–1 mm/yr at most (Lyons et al. 2011), Baikal's well
-                                // over 0.385 (Colman et al. 2003), a foredeep ~0.25 (a 4 km foredeep over ~300 km — the width
-                                // recalled — crossed at the Himalaya's 19 mm/yr: derived). Active: finish-hydro.js sinkingGround
-    lakeSinkSamples: 64,        // cells a hollow reads that from: the field is the sim's (~100 km), much coarser than a big hollow's cells
-    breachKm: 0.6,              // an old basin that overflows has cut a gorge this deep through its rim (at most)…
-    breachQ: [10, 1000],        // …by what spills over (m³/s): none below the first, full from the second…
-    glacialBreachShare: 0.5,    // …half as deep in the ice age's own (young) hollows, and only by big rivers (glacialBreachQ, m³/s):
+    lakeMinDepthM: 15,          // …and this depth
+    tectonicHollowKm: 0.1,      // closedBasins' own mark of the tectonic surface's hollows, this deep
+    breachKm: 0.6,              // a basin that overflows would cut a gorge this deep through its rim; the time-stepped erosion does, but for…
+    glacialBreachShare: 0.5,    // …the ice age's own (young) hollows, half as deep, and only by big rivers (glacialBreachQ, m³/s):
     glacialBreachQ: [500, 5000], // a big river breaks through its lakes, a small one keeps its lake district
-    // which lakes stay (developer: "every river needs to end at ocean not lake"): a lake on a river is cut through to its
-    // floor unless its river fills it and it is at least lakeKeepKm2 × √(inflow / 1000 m³/s) big (the ice age's lakes
-    // glacialKeepShare of that). A basin its rivers cannot fill stays closed, at any height (2026-10-28)
+    // which of the ice age's lakes stay: at least lakeKeepKm2 × √(inflow / 1000 m³/s) big, glacialKeepShare of that
+    // (other lakes: the erosion has already filled or kept their hollows). A basin its rivers cannot fill stays closed
     lakeKeepKm2: 5000,
     glacialKeepShare: 0.5,
     // a hollow the ice dug in soft rock (its basin, finish-ice) is a lake where at least basinLakeShare of its cells were dug
@@ -191,17 +173,11 @@ export const FINISH = {
     // course as it was, 1 takes the way of least work
     riverDirectness: 0.1,
     gorgeLengthKm: 0.02,
-    // Breach the pits, fill the hollows (lane rivers2, 2026-10-29; Jackson: the hybrid of Lindsay 2016, Hydrol. Processes
+    // Fill the hollows (lane rivers2, 2026-10-29, then with pits breached, Jackson: the hybrid of Lindsay 2016, Hydrol. Processes
     // 30: 846). Until now every hollow the rivers drained, and every pocket in it, got a gorge from its floor, level at
     // the floor's height until it reached lower ground: trenches up to a km deep and thousands of km long, and drained
-    // floors the rivers crossed dead straight. Now only an artifact pit is breached — one the coarse-to-fine surface makes
-    // and real ground lacks: no deeper than pitDepthKm and drained by a channel no longer than pitBreachKm. Any other
-    // hollow fills and spills: water by its balance (a lake at its rim, a salt lake, a playa), or, where its river's
-    // load fills it first, sediment graded down to its outlet.
-    pitDepthKm: 0.015,          // a pit the synthesis makes on a plain: the ground's fall across one sim cell (~100 km at
-                                // the default 40K: π·6371/√40000), at a plain's steeper gradient 1e-4 (Saucier 1994), 10 m;
-                                // and lakeMinDepthM — a hollow shallower than that is no lake the map shows
-    pitBreachKm: 100,           // …and its channel out no longer than one sim cell's width: a pit lies within one
+    // floors the rivers crossed dead straight. Now any hollow fills and spills: water by its balance (a lake at its rim, a
+    // salt lake, a playa), or, where its river's load fills it first, sediment graded down to its outlet.
     gorgeMinGrade: 1e-5,        // a channel cut through falls at least this (km/km): the flattest great rivers, the lower
                                 // Amazon ~2e-5 (recalled) — never level, so the rivers in it never run on a flat
     breachReachKm: 100,         // an outlet cuts its sill down (breachKm, by its overflow) no lower than the ground its outflow

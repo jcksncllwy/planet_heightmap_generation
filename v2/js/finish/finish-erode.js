@@ -55,24 +55,10 @@ export const ERODE = {
     polishSteps: 6,             // …in this many steps…
     polishG: 1,                 // …with this deposition
     showKm2: 1600,              // the census's least lake (two cells at 640K: finish-config lakeMinKm2's reach)
-    keepRules: [],              // of those rules, the ones left on: 'pit', 'load', 'breach', 'size', 'origin'
     gpu: true,                  // on the GPU where there is one (gpu/erode-gpu.js; a browser's navigator.gpu, or Dawn under the tools: finish.js)…
     gpuFloodCells: 500000,      // …and closed basins' flood with it from this many cells: below them, it costs more than it saves (gpu-report.md)
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
-    rulesOff: true,             // the hydrology left with fill-and-spill and the water balance, and the ice's own rules (below)
 };
-
-/** The hydrology's lake rules off, by its constants alone (lane erosion: finish-hydro.js itself unchanged). Artifact pits: none
- *  deep enough to count. Fill time: no load. Outlets: the erosion cut them, except the ice's young lakes' (their own
- *  glacialBreachQ). Big-for-its-river: lakeKeepKm2 as good as 0, with the ice's two shares scaled so its lakes keep theirs. */
-export function rulesOff(F, keep = []) {
-    const tiny = 1e-9, on = rule => keep.includes(rule), out = { ...F };
-    if (!on('pit')) { out.pitDepthKm = 0; out.pitBreachKm = 0; }
-    if (!on('load')) out.lakeLoadShare = 0;
-    if (!on('breach')) out.breachQ = [1e12, 1e13];
-    if (!on('size')) { out.lakeKeepKm2 = tiny * F.lakeKeepKm2; out.glacialKeepShare = F.glacialKeepShare / tiny; out.basinKeepShare = F.basinKeepShare / tiny; }
-    return out;
-}
 
 /**
  * @param {Object} o

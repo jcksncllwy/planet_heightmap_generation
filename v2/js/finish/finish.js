@@ -12,8 +12,8 @@ import { depositSediment, creepByClimate, dissect } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
-import { hydrology, sinkingGround, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
-import { ERODE, erodeLandscape, erodeLadder, rulesOff, hollowCensus, playas } from './finish-erode.js';
+import { hydrology, openStraits, fillSeaBasins, Water } from './finish-hydro.js';
+import { ERODE, erodeLandscape, erodeLadder, hollowCensus, playas } from './finish-erode.js';
 import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
 import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
@@ -285,7 +285,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) if (koppen[c] === KOPPEN_ID.EF) ice[c] = 1;
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
-    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, basin: I.basin, tectonic: EP?.rulesOff && !EP.keepRules.includes('origin') ? null : B.tectonic, sinkAt: sinkingGround(frame, simMesh, mesh, cfg.carveActiveMyr), seaBasin, fillHollows: true, lat, lon, months, debug }, EP?.rulesOff ? rulesOff(F, EP.keepRules) : F);
+    const Hy = hydrology({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (the sea again, after the rivers' gorges)

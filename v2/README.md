@@ -2052,7 +2052,6 @@ compare, or to override any setting:
 node v2/tools/render-moment.mjs --seed 831576 --cont 30 --time 310 --cells 2500000 --width 4096 --lakes --out name --set erode=false
 node v2/tools/erode-study.mjs --seed 831576 --time 310 --cells 2500000 --erode '{"polishSteps":3}' --label name
 ```
-`keepRules` puts single lake rules back on: `pit`, `load`, `breach`, `size`, `origin`.
 
 **What it gives**, 831576@310 on main b34b7c0, off → on: lake share 5.59 → 3.74 % at 2.5M and 4.92 → 2.50 % at 640K (Earth
 1.8–3.7), Horton 5.87 → 5.32, largest lake 0.82 → 0.71 Mkm². Dead level 1.2 → 3.1 % (Earth 0–2) and junction 80° → 83° (Earth
@@ -2089,13 +2088,10 @@ NODE_OPTIONS="--import=$PWD/v2/tools/gpu-harness/use-dawn.mjs" node v2/tools/ren
 ```
 
 **Limits.**
-- **Open fresh share is missed:** 0.43 % of land on 831576 at 2.5M against Earth's ~0.13–0.17 for lakes ≥ 1,000 km² (that
-  figure is the erosion report's tally, by another measure). The fill-time rule alone overshoots, so a softened one is the next test.
 - **The largest lake on 831576 is over 0.45 Mkm²:** 0.71 Mkm² at 2.5M.
 - **Lake share is low in the basins suite:** its mean over three moments is 0.70–0.94 % against 1.25–2.22 with this off, on
   the suite's own meshes. Earth's range is not reached at that detail.
-- **Lakes2's sinking floors do nothing here.** They offset the fill-time rule's load, and that rule is off. Keeping `load` is
-  what would bring them in.
+- **Lake share runs low on two seeds of three at 2.5M** with the column on (table below), and no rule is left to relax.
 - **Junction angles are not its cause, and it doesn't fix them:** 79–85°, Earth 45–72°. The control with rules off and no
   erosion is already 84° against main's 77°.
 - **The span is the free parameter.** The solver sees only k·t, and the carve's k is already close to Earth's: about 13 km³/yr
@@ -2104,6 +2100,19 @@ NODE_OPTIONS="--import=$PWD/v2/tools/gpu-harness/use-dawn.mjs" node v2/tools/ren
 - **Time:** paired on 831576@310, total +10 % at 640K (58 → 65 s) and +31 % at 2.5M (102 → 134 s), under load of 2–3 per
   core, so no quiet figure. 10M was not run on this design, and its memory is unmeasured.
 
+**Lake rules retired (L3, 2026-11-01).** With erosion the default, five hydrology rules were off, and they are now deleted: the artifact
+pit, fill time (`lakeLoadShare`, with lakes2's sinking floors that offset it), breach by outflow, big-for-its-river and origin. Each alone
+back on, 626225@300 / 12345@300 at 2.5M, against all off (share .72 / 1.30, open ≥ 1,000 km² .12 / .04): pit no change; fill time
+share .60 / 1.25, open .00 / .00, so it empties the open lakes that are already at or under Earth's .13–.17, and the softened form
+the study proposed has nothing to fix; breach, big-for-its-river and origin within noise (share ±.03, ±.04, +.02 / +.15). The default's
+result is the same to the digit without them (831576@310, 2.5M, every field of the study). `erode=false` therefore no longer gives
+the old world: it gives rules off with no erosion, which has too many lakes (it is a control).
+
+**What stays:** the ice age's own rules, big-for-its-river for its lakes (`lakeKeepKm2` with `glacialKeepShare`, `basinKeepShare`) and its
+young hollows' breach (`glacialBreachQ`), because erosion runs at 1.5 % on the ice's ground; the least lake the map shows (`lakeMinKm2`,
+`lakeMinDepthM`); the pans (`playaYears`); the water balance; and `oneWater` (a display and count rule, until a per-water salt balance or
+Fill-Spill-Merge's level sets replace it). The sinking-floor sections and the rule sections above are history: their code is gone.
+
 **Erosion reads the column (L3, 2026-11-01).** `rockColumn` (finish-lithology.js) reads the rock again after the carve, at the
 depth the carve cut, so a canyon through cover has the rock under the cover. Ground above the rock is the finish's own sediment and
 erodes as alluvium (`column.loose`). `settle` moves the rock's top with the rebound. The load is split into bed material and mud by
@@ -2111,7 +2120,7 @@ the rock's `coarse`, with shares `bedShareCoarse` 0.35 and `bedShareFine` 0.05 (
 coefficient, `GFine`. `column: false` turns all of it off. A second read one bed lower moved nothing past noise at any spread and
 was dropped.
 
-Measured at 2.5M, 831576@310 / 626225@300 / 12345@300, three runs each:
+Measured at 2.5M, 831576@310 / 626225@300 / 12345@300, one run each:
 
 | | lake share % (1.8–3.7) | open ≥ 1,000 km² % (0.13–0.17) | largest Mkm² (≤ 0.45) | dead level % (0–2) | mean land km (.75–.95) | to sea km³/yr (~10) |
 |---|---|---|---|---|---|---|
@@ -2177,7 +2186,7 @@ trimmed from World Orogen, GPL v3): per cell a rock class (`Rock`), `kRock` (ero
 which hand rules k_rock replaces, one by one: the shield's and a flood basalt's carve hardness (`carveCratonHardness`,
 `lipHardness`, zeroed in the surface's settings by `rockCfg`, so `terrain/synthesize.js` is unchanged and the terrain outside
 the finish keeps them) and `iceSoft` on land, as the rock's softness with the land's mean held at the old rule's (without that, on
-seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %; with it, it still falls 36 %, 4061 to 2601 km³, land lost 10 %: the coast's rock, not the land's mean, sets it, and no check covers it). The crests' hardness stays: it is the drawn ridges' structure, which a rock read
+seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %; with it, it still falls 40 %, 4157 to 2483 km³ on main at 2026-11-01. The whole fall is this switch (`--rock iceSoft=false`, same with erosion on or off). The land's mean is held, but the shore's softness falls from 0.58 to 0.43, and cliffs erode as `cliffHardRatio`^(1 − soft), so their mean rate halves, 0.103 to 0.050. No check covers it, and the cliffs' `cliffK` was set on soft rock, not on a world total). The crests' hardness stays: it is the drawn ridges' structure, which a rock read
 from the record does not know.
 
 k_rock ∝ e^(2.3(½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it: ~4.5× between shale and granite,
