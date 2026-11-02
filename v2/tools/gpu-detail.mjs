@@ -59,7 +59,8 @@ await page.evaluate(([t, cells]) => {
     s.value = t; s.dispatchEvent(new Event('input', { bubbles: true }));
     c.value = cells; c.dispatchEvent(new Event('change', { bubbles: true }));
 }, [TIME, CELLS]);
-await page.waitForFunction(() => { const b = document.getElementById('cardAction'); return b && !b.disabled && /Add detail/.test(b.textContent); }, null, { timeout: 120000 });
+// (the moment painted, not only the slider moved: the button finishes what is painted)
+await page.waitForFunction(t => { const b = document.getElementById('cardAction'); return b && !b.disabled && /Add detail/.test(b.textContent) && document.getElementById('cardTitle').textContent.startsWith(`${t} Myr`); }, TIME, { timeout: 120000 });
 await page.waitForTimeout(1500);
 stage = 'finish';
 const t1 = performance.now();
@@ -69,9 +70,7 @@ while (!finish && !failed && performance.now() - t1 < deadline) {
     await page.waitForTimeout(1000);
     const note = await page.evaluate(() => document.getElementById('cardText')?.textContent ?? '').catch(() => '');
     if (/Could not add detail|Not enough memory/.test(note)) failed = note;
-    const bar = await page.evaluate(() => document.getElementById('cardTitle')?.textContent ?? '').catch(() => '');
-    if (bar) stage = 'finish';
-}
+    }
 if (sampler) { clearInterval(sampler); try { sample(); } catch { /* as above */ } }
 console.log(finish ? finish.line : `FAILED: ${failed ?? 'timed out'}`);
 if (finish) console.log(JSON.stringify(finish.ms));
