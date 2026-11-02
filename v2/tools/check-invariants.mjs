@@ -79,7 +79,12 @@ for (const seed of SEEDS) {
                 const front = rec ? Math.max(rec.frontMaxKm ?? rec.frontKm, mesh.edgeKm) : Math.max(outlineKm / 2, mesh.edgeKm), depth = n * mesh.cellAreaKm2 / front;
                 // (a plate rifted off this very step, from a pair in collision, carries part of the overlap before its own record opens)
                 if (!rec && k.split(':').some(i => w.plates[+i].born >= w.time - w.lastDt - 1e-9)) continue;
-                if (depth > (biggestOverlap.depth ?? 0)) biggestOverlap = { cells: n, depth, at: w.time, pair: k };
+                // (the stack's depth takes the longer of the record's front and half the overlap's outline: a record's front can be
+                // far shorter than the overlap it is read against. Traced on b34b7c0: seed 12345 at 499.7 Myr, 0:196, a piece cut off
+                // plate 132 joins plate 0 and brings its overlap with it, 6 → 32 cells against a 525 km front, "777 km deep"; seed
+                // 592250 at 345 Myr, 11:28, 8 cells whose front reads 0–105 km, none touching clean land, "841 km deep". Each lies ~97 km deep)
+                const stackDepth = rec ? n * mesh.cellAreaKm2 / Math.max(front, outlineKm / 2) : depth;
+                if (stackDepth > (biggestOverlap.depth ?? 0)) biggestOverlap = { cells: n, depth: stackDepth, at: w.time, pair: k };
                 if (n * mesh.cellAreaKm2 >= BIG_OVERLAP_KM2) {
                     if (!overlapSince.has(k)) overlapSince.set(k, w.time);
                     // (how long its seam has been stalled — a collision waiting, besides, for a sea it would seal to close is
