@@ -2068,9 +2068,17 @@ throughout, so a near-tie between slopes can fall the other way; a machine repea
 slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.
 The GPU mirrors the rock column (L3, below): the solve kernel cuts ground above the rock's top at the sediment's k and the rock under
 it at the rock's, from one packed vec4 a cell (k, the rock's top, the sediment's k, so no extra binding; 12 bytes a cell more, ~120 MB
-at 10M), and the rock's top follows the rebound as `settle` does on the CPU. The bed/mud split is not on the GPU: with the column on and
-`GFine` set apart from `G` (both 1 by default, so the split is inert), `gpuCanRun` sends the erosion to the CPU. `check-gpu` at the
-mirror (d081dce): 9 of 9, lake share within 0.004 points of the CPU, land |dz| p99 0.2–0.5 m.
+at 10M), and the rock's top follows the rebound as `settle` does on the CPU. The bed/mud split runs on the GPU too (lane spread): the
+load kernel carries the mud beside the load, its share of each cut from the vec4's fourth word (`column.fine`) and its own
+coefficient `Gf` in the uniform's spare slot, so still no extra binding beyond the load kernel reading the vec4; a Cell is 36 bytes.
+On a captured 160K level (`gpu-capture`, which now saves the column; 12345@310) the GPU's first step matches the CPU's to float
+precision with the split on (|dz| p99 2·10⁻⁷ km, what lakes kept and the export to the sea equal), and ten steps end at |dz| p99 0.5 m
+as ties drift. `check-gpu` at the mirror (d081dce, the compressed spread): 9 of 9, lake share within 0.004 points of the CPU, land
+|dz| p99 0.2–0.5 m. At the wide spread (spread, 640K, 831576 / 626225 / 12345 at 310) it reads lake share +0.18 / +0.01 / −0.06 points and
+|dz| p99 10 / 3 / 15 m. Those sit inside the CPU's own floor at that spread: the same CPU code with each cell's neighbours reversed moves
+lake share +0.43 / +0.30 / −0.11 and |dz| p99 105–122 m (at the compressed spread: +0.02 / −0.00 / −0.07, 85–92 m). The wide spread makes
+single runs' lake share noisier by about ten times. Chrome on Upwell, 831576@310, 2.5M, Add detail (load 8–10): 65.1 s against 63.6 s
+at d3ee416, erosion on the GPU 6.5 against 5.7 s, peak 8.3–8.5 GB against 8.6.
 
 Measured (831576 at 310 Myr, Add detail in Chrome on Upwell, an Apple GPU through Metal, load ~7, `gpu-detail.mjs`): at 2.5M the whole finish
 101 → 74 s, its erosion stage 19.3 → 5.7 s (the CPU side with no adapter given to the worker); at 10M the finish 259 s, erosion 24 s,
@@ -2138,8 +2146,10 @@ Measured at 2.5M, 831576@310 / 626225@300 / 12345@300, one run each:
 | column, spread ~3000× | 4.80 / 1.89 / 2.96 | 1.31 / .71 / .52 | .92 / .07 / .41 | 1.8 / 2.5 / 3.3 | 1.06 / .95 / .83 | 3.7 / 4.0 / 4.2 |
 
 (To sea is the finest level. Single runs carry the tie-break noise above. Spreads by `--set erodeGain=7.1` and `12.3`: ln(ratio) over
-Δhard 0.65.) The default keeps the compressed spread and `GFine` 1, so the split is built but does nothing yet: mud's coefficient
-should be far under the sand's, yet at this spread lowering it sends more to the sea, already over Earth's. Each step of
+Δhard 0.65.) **The default is now ~100× with `GFine` 0.5** (Jackson, 2026-11-02; lane spread). Re-measured at the default on
+d3ee416: share 3.06 / 1.00 / 1.75, open ≥ 1,000 km² .35 / .14 / .35, largest .94 (salt) / .17 / .29 Mkm², dead level 1.3 / 2.0 / 2.7 %,
+mean land 1.05 / .98 / .80 km. 626225 and 12345 reproduce the row; 831576's history differs since (main's tectonics moved, 5d97f2e).
+At the compressed spread, lowering mud's coefficient sent more to the sea, already over Earth's. Each step of
 wider rock raises lake share, open lakes and the land's mean height and lowers the export. **Earth's range:** Stock & Montgomery
 1999 (JGR 104(B3) 4983–4993) give K from 10⁻⁷–10⁻⁶ on granite and metamorphic rock to 10⁻⁴–10⁻² on mudstones, m = 0.4, n = 1, so 2–5 orders
 (from the abstract; the tables were not reached). Those K include each site's climate, so they overstate rock alone. Which spread
