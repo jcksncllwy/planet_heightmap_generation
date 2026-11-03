@@ -24,7 +24,7 @@ const TUNABLES = [
     { id: 'riftTortuosityMax', label: 'Rift length ÷ end-to-end distance, max', min: 1.1, max: 3, step: 0.1 },
     { id: 'riftFailedArmKm', label: 'Failed arm length', min: 0, max: 1500, step: 50, unit: ' km' },
     { id: 'riftCostSlack', label: '…among cuts costing up to × the cheapest', min: 1, max: 3, step: 0.1 },
-    // (lane pstress: the stress field and the rift stage, flags while measured — 0 off, 1 on)
+    // (lane pstress: the stress field and the rift stage, flags — 0 off, 1 on; all on by default since lane rifton, continental strength 3e12)
     { id: 'plateStress', label: 'Solve the plates’ in-plate stress (damage where it beats the rock)', min: 0, max: 1, step: 1 },
     { id: 'plateStressRifts', label: '…and log continent it breaks in tension as stretched (diffuse extension)', min: 0, max: 1, step: 1 },
     { id: 'plateYieldContinent', label: '…continental strength, declared', min: 1e12, max: 2e13, step: 1e12, unit: ' N/m' },

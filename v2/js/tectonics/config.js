@@ -455,8 +455,8 @@ export const TECTONICS = {
     terraneMaxAreaKm2: 1.2e6,   // a colliding landmass smaller than this accretes as a terrane instead of suturing (Borneo, Madagascar ≈ 0.6–0.75; Arabia 3.2)
 
     // ── The stress inside the plates (lane pstress: field/plate-stress-field.js, step/plate-stress-field-step.js) ──
-    plateStress: false,         // solve it (a flag while it is measured: off, the history is as before)
-    plateStressRifts: false,    // …and continental crust it breaks in tension is logged as stretched (a RIFT record, no work): diffuse
+    plateStress: true,          // solve it (default on since lane rifton, 2026-11-03; off, the history's motion is the same, records only)
+    plateStressRifts: true,     // …and continental crust it breaks in tension is logged as stretched (a RIFT record, no work): diffuse
                                 // extension, the field's own (field/stress-step.js). Its amount follows plateYieldContinent, which is
                                 // declared: a finding at that strength, not a calibration (lane pstress)
     plateStressEveryMyr: 10,    // how often: a plate's load changes over its trenches' lives (tens of Myr), not step by step
@@ -469,8 +469,13 @@ export const TECTONICS = {
     // lithosphere breaks (damage). NO sourced figure exists for continental lithosphere (the jelly-sandwich debate, Burov &
     // Watts 2006), and forces of a few 10¹² N/m cannot break intact cold lithosphere (> 2 × 10¹³: Hopper & Buck 1993, search
     // snippet) — yet continents rift: the plate force paradox (Buck 2004; lane emerge). So plateYieldContinent is declared,
-    // and the share that breaks is reported at it as a finding, swept in tools/pstress-field.mjs — not fitted to a target
-    plateYieldContinent: 1e13,  // N/m: DECLARED, set equal to old ocean (the stress-field study's tContinent, UNSOURCED)
+    // and the share that breaks is reported at it as a finding, swept in tools/pstress-field.mjs — not fitted to a target.
+    // 3e12: Jackson's ruling (2026-11-03, on gjallar's recommendation, lane rifton). Swept 1e13 / 7e12 / 5e12 / 3e12, the
+    // field's diffuse extension takes the extension share of deformed continent from 6 % to 6.9 / 10.3 / 14.3 / 21.2 %
+    // against Earth's ~22 % (Müller et al. 2019; lane pstress, s4). That continents must break well below the strength of
+    // their rock is the plate force paradox (Buck 2004): weakening the model does not simulate (magma, inherited faults)
+    // taken as a declared number. Still UNSOURCED as a strength: a finding at a declared value, not a measured one
+    plateYieldContinent: 3e12,  // N/m: DECLARED (was 1e13, equal to old ocean: extension then adds ~0.5 points)
     plateYieldOcean: 1e13,      // N/m: old ocean. ~150–250 MPa over ~50 km (the yield stresses of Mallard et al. 2016's plate-like
                                 // runs, reported second-hand); an envelope gives ~8 × 10¹² in tension (a teaching source, UNVERIFIED)
     plateYieldOceanAgeMyr: 100, // …growing as √(age ÷ this) to 1: its cold, strong layer thickens as √age (half-space cooling)
@@ -512,11 +517,11 @@ export const TECTONICS = {
     riftOverhangKm: 182,        // a rift may double back on itself by at most this much (never less than a cell): no promontories that jam as the halves part
     riftArmEndCoastKm: 19400,   // the cheapest coast cells, this much coast of them, are the candidate ends of a rift's arms
     riftCostSlack: 1.6,         // cuts costing up to this many times the cheapest are considered, for the stress across them
-    riftStage: false,           // a rift stretches before it breaks up: the first riftBreakupKm of its opening is thinned continent, not
+    riftStage: true,            // a rift stretches before it breaks up: the first riftBreakupKm of its opening is thinned continent, not
                                 // ocean (step/rifting.js evolveRiftStages; lane pstress, stage 2)
     riftBreakupKm: 180,         // …this much: ~177 km of continental crustal extension across the Iberia–Newfoundland conjugate pair
                                 // before breakup (Gómez-Romeu et al., EGU 2019 abstract; 135 km by fault heaves alone)
-    riftByStress: false,        // WHERE a continent rifts is set by its stress field against its strength (field/rift-stress.js: junction
+    riftByStress: true,         // WHERE a continent rifts is set by its stress field against its strength (field/rift-stress.js: junction
                                 // and arms), not drawn at random and searched by cost (lane pstress, stage 2). When stays as below
     riftStressFloor: 0.05,      // a cut's stress (per 100 km; slab pull is 1: 3 × 10¹¹ N/m on forceUnitNPerM) counts as at least this: where nothing pulls the plate
                                 // apart, the cheapest ground breaks (ops/rift-path.js)

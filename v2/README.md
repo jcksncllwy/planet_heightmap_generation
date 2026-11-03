@@ -2169,7 +2169,7 @@ and `GFine` to run is Jackson's call: ~100× with `GFine` 0.5 fits the export, b
   plates 98 and 144. It is 0.997 Mkm², its floor −3.0 km, 1.75 M km³. Before the carve its lowest way out is a 917 m sill, so the
   surface never lets the sea in: the history makes the crust but not the flooding. That is a rift-stage finding, not the
   finish's. The finish then treats it as a remnant of the sea that its inflow (1,519 km³/yr, rain 1,232 mm) fills, and the
-  hydrology's `h.sea` branch cuts its outlet down to `seaCutFloorKm` (3 m). Its way out then runs 7,756 km over land no higher than sea level (the
+  hydrology's `h.sea` branch cut its outlet down to `seaCutFloorKm` (3 m; that branch is retired since 2026-11-03, lane rifton). Its way out then runs 7,756 km over land no higher than sea level (the
   hydrology cut 641 cells on this world, up to 1.2 km deep; how much of that path is cut was not separated). That is an outcome
   rule, and it makes the lake read as sea-level water. An isolated young rift basin full of fresh water has Earth analogues (the
   South Atlantic's pre-salt lakes, recalled), but not 1 Mkm² standing at sea level.
@@ -2311,14 +2311,14 @@ Limits (reduced physics): the rock is a total per coast cell, not a wedge on the
 
 ## Plate stress and the rift stage (2026-11-02, lane pstress)
 
-The forces and the rifts, closer to physics; the steps are flags while measured (`config.js`). Numbers: `~/.cache/geo-sim/lanes-2026-10-29/pstress-report.md`.
+The forces and the rifts, closer to physics. The four steps below are flags in `config.js`, **on by default since 2026-11-03** (lane rifton; Jackson's ruling, with `plateYieldContinent` 3 × 10¹² N/m). Set them off to get the earlier history back. Numbers: `~/.cache/geo-sim/lanes-2026-10-29/pstress-report.md` and `rifton-report.md`.
 
 - **Force unit (default).** `forceUnitNPerM` 6 × 10¹² N/m (slab pull's transmitted force, not its gross buoyancy). The rigid balance is linear in the forces, so the unit alone changes no speed (measured to 1e-9). With it, `ridgePush` 0.25 (×5, ~3 × 10¹² N/m) and `founderStrength` 0.4, as one package (Jackson, 2026-11-02).
 - **In-plate stress (`plateStress`).** Every `plateStressEveryMyr` the rigid plates' stress is solved on a ~5000-node sheet (`field/plate-stress-field.js`, CPU, deterministic) and held against the rock's strength (`field/stress-step.js`). Where it beats it, `crust.damage` is set to 1 and heals after. Records only: the history's motion is bit-identical with it on. Cost about +10 % of a history.
-- **Diffuse extension (`plateStressRifts`).** Continent broken in tension gets a RIFT record with no work: wide-rift extension beside the narrow rifts. It stamps only crust with no record or a rift's, because a relabelled belt would keep its relief on `riftReliefTauMyr`. How much it adds follows `plateYieldContinent`, which is DECLARED: ~3 × 10¹² N/m gives Earth's ~22 % extension share and the default 1 × 10¹³ gives almost none. A finding, not a calibration.
+- **Diffuse extension (`plateStressRifts`).** Continent broken in tension gets a RIFT record with no work: wide-rift extension beside the narrow rifts. It stamps only crust with no record or a rift's, because a relabelled belt would keep its relief on `riftReliefTauMyr`. How much it adds follows `plateYieldContinent`, which is DECLARED. The default is 3 × 10¹² N/m (Jackson, 2026-11-03): it gives an extension share of 21.2 % against Earth's ~22 %, where 1 × 10¹³ (old ocean's) gives almost none. That continents must break well below their rock's strength is the plate force paradox (Buck 2004), so this is a finding at a declared value, not a calibration. It also raises the total deformed share further above Earth's (the excess is compression's).
 - **Rifts by stress (`riftByStress`).** *Where* a continent rifts is chosen by tension over strength (`field/rift-stress.js`, `ops/rift-path.js` cost). *When* is still `rifting.js`'s rule.
 - **Rift stage (`riftStage`).** The first `riftBreakupKm` (180 km) of a rift's opening is thinned CONTINENT with a rift record, not ocean. It closes most of the continental crust's run-down over a cycle (phase 13: 1200 ÷ start 0.79 → 0.91).
-- **The finish's sea outlet cut** (`finish-hydro.js`, a trapped sea's outflow cut to sea level) is retired only with the rift stage on (`F.riftStage`, else the history default). A frame does not carry its history's config.
+- **The finish's sea outlet cut** (`finish-hydro.js`, a trapped sea's outflow cut to sea level) is retired outright. A trapped remnant of the sea is a lake full to its rim; whether the sea gets into a young rift is the history's (the rift stage). With `riftStage` off, such a basin is now also a lake at its rim, not a sea-level lake.
 
 ## Conventions
 

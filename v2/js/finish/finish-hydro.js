@@ -18,7 +18,6 @@ import { MinHeap } from '../core/min-heap.js';
 import { hollowLakes } from './finish-basins.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
 import { CrustType } from '../tectonics/model/crust.js';
-import { TECTONICS } from '../tectonics/config.js';
 
 const SEC_PER_YEAR = 3.156e7, R = 6371;
 // (a flood's key on a flat: its level plus this × the cells across the flat from where the flood came onto it — the
@@ -612,14 +611,9 @@ export function hydrology(ctx, F) {
             // 2026-11-02 its outflow was cut down to just above sea level, gorge and all, so it stood at sea level whatever its
             // sill: an outcome rule — a young rift's floor 917 m behind its sill became a 1 Mkm² fresh lake at 3 m (831576@340,
             // lane l3). Whether the sea gets into a young rift is now the history's (step/rifting.js: the rift stage), and the
-            // terrain's: a floor joined below sea level to the ocean is sea. That retirement rides on the rift stage's flag — the history
-            // decides it only once the rift stage runs — so with it off the old rule stands: F.riftStage, or the history's default
-            // (lane pstress; a frame does not carry its history's config, so a lab history with the flag set by hand needs F.riftStage)
-            if (h.sea && !(F.riftStage ?? TECTONICS.riftStage)) {
-                // full, it rises to its rim and spills: its outflow has cut its way down to it (a gorge just above sea
-                // level), and the lowland round it drains as land does (below)
-                level = cut(h.deepCell, F.seaCutFloorKm); from = h.deepCell;
-            } else if (drained || areaKm2 < keepKm2) {
+            // terrain's: a floor joined below sea level to the ocean is sea. Retired outright with the rift stage on by default
+            // (lane rifton, 2026-11-03; lane pstress had it ride on the flag)
+            if (drained || areaKm2 < keepKm2) {
                 // (lane rivers2, 2026-10-29 — Jackson: a basin a gorge from upstream crosses below its rim drains to the gorge's
                 // level, its deeps keeping their water; one small for its river is filled by the river's load, graded down to
                 // its outlet. Until then both were cut through to their floor)
