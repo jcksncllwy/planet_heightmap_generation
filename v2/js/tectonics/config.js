@@ -88,7 +88,11 @@ export const TECTONICS = {
     slabMatureKm: 600,          // a trench pulls in proportion to the slab hanging from it: full strength only once
                                 // this much crust has gone down (≈ the depth of the upper mantle)
     slabSuction: 0.25,          // on the overriding plate, toward its own trench — what moves an active-margin continent
-    ridgePush: 0.05,            // on both plates at a young ridge, away from it [WBP: secondary]
+    ridgePush: 0.25,            // on both plates at a young ridge, away from it [WBP: secondary]. 0.25 × forceUnitNPerM = 1.5 × 10¹² N/m,
+                                // toward the 3–5 × 10¹² of Hopper & Buck 1993 and ~3.3 × 10¹² at 80 Myr by Turcotte & Schubert's
+                                // formula (recalled; lane emerge). Was 0.05 (3 × 10¹¹ N/m on the 6 × 10¹² unit, ~10× low). Raised with
+                                // founderStrength as one change (Jackson, 2026-11-02): RMS plate speed +9 %, founders −11 % on 3 seeds
+                                // (lane pstress, s0.jsonl 'both')
     ridgeMaxAgeMyr: 40,         // crust younger than this on both sides of a contact = an active ridge
     collisionResistance: 100,   // viscous coupling per 10⁴ km² of land-on-land overlap: colliding plates lock together —
                                 // across the front, against their closing (Phase 11; developer: collisions "more fluid, more
@@ -376,9 +380,9 @@ export const TECTONICS = {
     marginFounderRatePerMyr: 0.02,    // the same, for a margin INSIDE a plate (its old ocean breaks away as a plate of its own,
                                       // founderWithinPlates): without it a plate that holds its whole ocean never breaks up again
     // (founderStrength: below, in the stress-driven initiation block)
-    founderSqueezeCmYr: 3.4,          // two plates closing on a margin between them at this rate squeeze it as hard as it is strong:
+    founderSqueezeCmYr: 17,          // two plates closing on a margin between them at this rate squeeze it as hard as it is strong:
                                       // the rate at which a contact's resistance, shared by its two plates (slabResistance ÷ 2, step/forces.js),
-                                      // reaches founderStrength: 0.08 ÷ 15 rad/Myr ≈ 3.4 cm/yr. (Was 6, set by hand)
+                                      // reaches founderStrength: 0.4 ÷ 15 rad/Myr ≈ 17 cm/yr (derived; was 3.4 from 0.08, and 6 by hand before)
     oceanNeutralAgeMyr: 30,           // ocean younger than this is too warm and light to founder however hard it is squeezed
 
     // ── Oceans that break into plates (realism pass, phase 3: step/ocean-plates.js) ──
@@ -391,7 +395,9 @@ export const TECTONICS = {
     oceanPlateCaptureKm2: 2e6,        // an ocean plate subducted down to less than this is captured by its neighbour (a microplate)
 
     // ── Stress-driven subduction initiation (branch stress-init: step/subduction-init.js, step/plate-stress.js) ──
-    founderStrength: 0.08,            // what holds a weak zone up against a squeeze across it, per 100 km of line, in units of a full
+    founderStrength: 0.4,             // (2026-11-02, lane pstress: 2–3 × 10¹² N/m ÷ forceUnitNPerM 6 × 10¹² = 0.33–0.5; it was 0.08 against a
+                                      // gross 3 × 10¹³ unit, the same N/m. Adopted with ridgePush 0.25 as one change, Jackson's ruling)
+                                      // what holds a weak zone up against a squeeze across it, per 100 km of line, in units of a full
                                       // slab pull: a squeeze this hard founders it whatever its age (founderUrge). The resisting force
                                       // of a plate starting to bend into a new trench peaks at 2–3 × 10¹² N/m (Gurnis, Hall & Lavier
                                       // 2004, G³ 5), against a slab pull of ~3 × 10¹³ N/m (Turcotte & Schubert 2002): ≈ 0.08. (Was 1.0,
