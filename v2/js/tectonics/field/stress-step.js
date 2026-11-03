@@ -7,6 +7,10 @@
 //     continent plateYieldContinent, a craton × cratonStrength
 //   breaks in tension where s1 > T_y, in compression where −s2 > plateYieldCompression × T_y
 //   broken: D = 1; after, D falls as e^(−t ÷ plateDamageHealMyr)
+//   with plateStressRifts, continental crust broken in tension is also logged as stretched: a RIFT record with no work
+//     (crust.recordOrogeny), the diffuse extension of a wide rift (Basin and Range) beside the narrow rifts rifting.js cuts.
+//     Only on crust whose record is no live belt (none, a rift's, or quiet past orogenyQuietMyr): a pull across a belt that
+//     is still shortening must not refresh the belt's clock (recordOrogeny keeps a belt's type against a rift's but times it)
 //
 // Reduced model, and its limits: the plate stays rigid however broken it is (the stress is the rigid plate's: what it would
 // carry, not what a broken plate passes on — the stress-field study's sheet was the deforming version, at ~10× the cost);
@@ -14,7 +18,7 @@
 // continental lithosphere has no sourced figure (below), so the share that breaks is a finding at a declared strength, not a
 // calibration (the plate force paradox: lane emerge, 2026-11-01).
 
-import { CrustType, CrustFlag } from '../model/crust.js';
+import { CrustType, CrustFlag, OrogenyType } from '../model/crust.js';
 import { solvePlateStress, stressAt } from './plate-stress-field.js';
 
 const WEAK = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
@@ -54,15 +58,24 @@ function breakAndHeal(world, span) {
     const { plates, config, owner, ownerCell, time, mesh } = world, heal = Math.exp(-span / config.plateDamageHealMyr);
     for (const p of plates) if (p.alive && !p.isBackground) { const D = p.crust.damage; for (let c = 0; c < D.length; c++) if (D[c]) D[c] *= heal; }
     const s = { s1: 0, s2: 0, dir: [0, 0, 0] };
-    let n = 0, ten = 0, com = 0, land = 0, landTen = 0, landCom = 0, dSum = 0;
+    let n = 0, ten = 0, com = 0, land = 0, landTen = 0, landCom = 0, dSum = 0, stretched = 0;
+    const stretch = !!config.plateStressRifts;
     for (let w = 0; w < mesh.numCells; w++) {
         const o = owner[w];
         if (o < 0 || plates[o].isBackground || !stressAt(world, w, s)) continue;
         const crust = plates[o].crust, c = ownerCell[w], T = strengthOf(crust, c, time, config), isLand = crust.type[c] !== CrustType.OCEAN;
         n++; if (isLand) land++;
-        if (s.s1 > T) { crust.damage[c] = 1; ten++; if (isLand) landTen++; }
+        if (s.s1 > T) {
+            crust.damage[c] = 1; ten++;
+            if (isLand) {
+                landTen++;
+                if (stretch && crust.type[c] !== CrustType.ARC && (crust.oroType[c] === OrogenyType.NONE || crust.oroType[c] === OrogenyType.RIFT || time - crust.oroLast[c] > config.orogenyQuietMyr)) {
+                    crust.recordOrogeny(c, OrogenyType.RIFT, 0, time, config.orogenyQuietMyr); stretched++;
+                }
+            }
+        }
         else if (-s.s2 > config.plateYieldCompression * T) { crust.damage[c] = 1; com++; if (isLand) landCom++; }
         dSum += crust.damage[c];
     }
-    return { tension: ten / Math.max(1, n), compression: com / Math.max(1, n), landTension: landTen / Math.max(1, land), landCompression: landCom / Math.max(1, land), damage: dSum / Math.max(1, n) };
+    return { tension: ten / Math.max(1, n), compression: com / Math.max(1, n), landTension: landTen / Math.max(1, land), landCompression: landCom / Math.max(1, land), landStretched: stretched / Math.max(1, land), damage: dSum / Math.max(1, n) };
 }

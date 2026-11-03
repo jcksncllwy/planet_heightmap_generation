@@ -456,6 +456,9 @@ export const TECTONICS = {
 
     // ── The stress inside the plates (lane pstress: field/plate-stress-field.js, step/plate-stress-field-step.js) ──
     plateStress: false,         // solve it (a flag while it is measured: off, the history is as before)
+    plateStressRifts: false,    // …and continental crust it breaks in tension is logged as stretched (a RIFT record, no work): diffuse
+                                // extension, the field's own (field/stress-step.js). Its amount follows plateYieldContinent, which is
+                                // declared: a finding at that strength, not a calibration (lane pstress)
     plateStressEveryMyr: 10,    // how often: a plate's load changes over its trenches' lives (tens of Myr), not step by step
     plateStressCells: 5000,     // the stress mesh, whatever the sim's (~340 km between nodes): the field varies across a plate's
                                 // breadth; one fixed mesh keeps it the same on every sim mesh

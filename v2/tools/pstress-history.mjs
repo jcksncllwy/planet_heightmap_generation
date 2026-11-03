@@ -126,7 +126,7 @@ function stressSummary(log) {
     const m = k => mean(log.map(x => x[k])), from = log.filter(x => x.time >= 100);
     return { solves: log.length, ms: Math.round(log.reduce((a, x) => a + x.ms, 0)), it: m('iterations'), maxIt: Math.max(...log.map(x => x.iterations)), worstRel: Math.max(...log.map(x => x.rel)),
         imbalance: m('imbalance'), dropped: m('dropped'), tension: mean(from.map(x => x.tension)), compression: mean(from.map(x => x.compression)),
-        landTension: mean(from.map(x => x.landTension)), landCompression: mean(from.map(x => x.landCompression)), damage: mean(from.map(x => x.damage)),
+        landTension: mean(from.map(x => x.landTension)), landCompression: mean(from.map(x => x.landCompression)), landStretched: mean(from.map(x => x.landStretched ?? 0)), damage: mean(from.map(x => x.damage)),
         tII: [0, 1, 2].map(i => +mean(from.map(x => x.tII[i])).toExponential(2)) };
 }
 function sweepMean(rows) {
