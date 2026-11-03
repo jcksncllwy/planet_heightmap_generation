@@ -72,6 +72,15 @@ export const TECTONICS = {
     // ── Plate driving forces (step/forces.js, step/torque-balance.js) ──
     // Boundary forces are per 100 km of boundary, drag is per 10⁴ km² of plate; `mobility` converts the
     // balance into rad/Myr and is the one constant that calibrates speeds to WBP's table.
+    forceUnitNPerM: 6e12,       // the force unit in N/m: what a full slab pull (slabPull = 1) passes into its plate per metre of trench.
+                                // Not the slab's gross negative buoyancy, up to ~3 × 10¹³ (England & Wortel 1980; this unit until 2026-11-02):
+                                // of that, ~20 % reaches the plate (van Summeren et al. 2012, abstract: or at least half, with a weak layer
+                                // round the slab); 8–12 % in lab models (Schellart 2004, abstract); 1–4 × 10¹² N/m available (Hopper & Buck
+                                // 1993, search snippet). With it the drag lands in Bird, Liu & Rucker 2008's ≤ ~1 MPa under slabless plates
+                                // (ocean ~0.3 MPa, continent ~1.6 at 10 cm/yr) — at 3 × 10¹³ it was 1.6 and 8. The balance is linear in the
+                                // forces, so the unit changes no plate speed (tools/pstress-history.mjs --probe: the rotations agree to
+                                // ~10⁻¹³ with every force and resistance × 0.2); it sets what a stress is against a strength in N/m
+                                // (founderStrength; field/plate-stress-field.js). Lane emerge's force-scale study, report 2026-11-01
     slabPull: 1.0,              // on the subducting plate, toward the trench (× age factor × slab maturity)
     slabResistance: 30,         // viscous resistance to a slab sinking through the mantle, per 100 km of trench per
                                 // rad/Myr of convergence: what actually limits a subducting plate's speed (≈ slabPull ÷ this)
@@ -438,6 +447,31 @@ export const TECTONICS = {
     fragmentJoinKm: 350,        // a piece of land cut off from its plate joins another plate whose crust lies within this distance
     terraneMinAreaKm2: 6e4,     // smaller scraps (a few cells of arc) are absorbed quietly: no event, no belt, no strait closing
     terraneMaxAreaKm2: 1.2e6,   // a colliding landmass smaller than this accretes as a terrane instead of suturing (Borneo, Madagascar ≈ 0.6–0.75; Arabia 3.2)
+
+    // ── The stress inside the plates (lane pstress: field/plate-stress-field.js, step/plate-stress-field-step.js) ──
+    plateStress: false,         // solve it (a flag while it is measured: off, the history is as before)
+    plateStressEveryMyr: 10,    // how often: a plate's load changes over its trenches' lives (tens of Myr), not step by step
+    plateStressCells: 5000,     // the stress mesh, whatever the sim's (~340 km between nodes): the field varies across a plate's
+                                // breadth; one fixed mesh keeps it the same on every sim mesh
+    plateStressTol: 1e-2,       // the solver's relative residual: the field is read for where a plate is most pulled, to a few %
+                                // (at 40K, 5K against 10K and 20K stress meshes and 1e-2 against 1e-3: quantiles within ~10 %, pstress-field.mjs)
+    plateStressMaxIter: 800,
+    // …and the strength it is held against (field/stress-step.js), vertically integrated, N/m. Where the stress beats it the
+    // lithosphere breaks (damage). NO sourced figure exists for continental lithosphere (the jelly-sandwich debate, Burov &
+    // Watts 2006), and forces of a few 10¹² N/m cannot break intact cold lithosphere (> 2 × 10¹³: Hopper & Buck 1993, search
+    // snippet) — yet continents rift: the plate force paradox (Buck 2004; lane emerge). So plateYieldContinent is declared,
+    // and the share that breaks is reported at it as a finding, swept in tools/pstress-field.mjs — not fitted to a target
+    plateYieldContinent: 1e13,  // N/m: DECLARED, set equal to old ocean (the stress-field study's tContinent, UNSOURCED)
+    plateYieldOcean: 1e13,      // N/m: old ocean. ~150–250 MPa over ~50 km (the yield stresses of Mallard et al. 2016's plate-like
+                                // runs, reported second-hand); an envelope gives ~8 × 10¹² in tension (a teaching source, UNVERIFIED)
+    plateYieldOceanAgeMyr: 100, // …growing as √(age ÷ this) to 1: its cold, strong layer thickens as √age (half-space cooling)
+    plateYieldOceanFloor: 0.05, // …from at least this share (ridge-axis lithosphere is not nothing)
+    plateYieldCompression: 2.5, // rock is this much stronger pressed than pulled: ~2 × 10¹³ against ~8 × 10¹² (the same teaching
+                                // source, UNVERIFIED; Byerlee friction gives 2–4× for thrust over normal faults, recalled)
+    plateDamageKeep: 0.17,      // a broken zone keeps this share of its strength: fault friction ~0.1 (Bird, Liu & Rucker 2008's
+                                // best fit) against Byerlee's ~0.6
+    plateDamageHealMyr: 300,    // damage fades e-fold over this: a CHOICE (Bercovici & Ricard 2014 need weak zones to outlast a
+                                // Wilson cycle; the stress-field study found scars fading in 100–200 Myr under a 300 Myr law)
 
     // ── Rifting (Phase 6a) [WBP]. Probabilistic, from the world's seeded rng (developer decision). ──
     riftMinContinentKm2: 1.8e7, // only a continent this big rifts on its own (South America 18, Africa 30 Mkm²; smaller ones need a plume)

@@ -27,6 +27,7 @@ import { evolveRivers } from './step/rivers.js';
 import { seedGeology, evolveGeology } from './step/geology.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
 import { crustLedger } from './step/crust-ledger.js';
+import { stepPlateStress } from './field/stress-step.js';
 
 /**
  * @param {import('./model/world.js').TectonicWorld} world
@@ -148,6 +149,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         evolveGeology(world, dt);                                       // the geological record (records only; on a clock of its own)
         led('drive', drive(world));
         led('backArcStrips', steerBackArcStrips(world));                          // a back-arc strip follows its retreating trench, whatever drives the rest
+        led('plateStress', stepPlateStress(world, dt));                  // the stress inside the plates, and where it breaks them (config.plateStress)
         // (each plate's rotation averaged over ~SLOW_ROTATION_MYR: the spreading poles fracture zones are measured about —
         // records only, tectonics/model/segments.js; the rotation itself wobbles a degree or two from step to step)
         for (const p of world.plates) {

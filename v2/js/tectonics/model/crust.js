@@ -54,7 +54,7 @@ export const CrustFlag = Object.freeze({
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
     'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
-    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt']);
+    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'damage']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -127,6 +127,7 @@ export class CrustRaster {
         this.unroofKm = new Float32Array(numCells);    // rock taken off since its last belt went quiet, less what was laid back (km)
         this.arcMyr = new Float32Array(numCells);      // time spent in a live subduction belt (Myr)
         this.riftAt = new Float32Array(numCells);      // when a rift opened here, read from its flags (0 = never)
+        this.damage = new Float32Array(numCells);      // how broken the lithosphere is, 0–1: set where the plate's stress beat its strength, healing after (field/stress-step.js)
         this.count = 0;                                // number of masked cells
         this.version = 0;                              // bumped whenever a cell of the mask changes (step/gather.js nearEdge: unchanged since last asked?)
         this.fields = CELL_FIELDS.map(name => this[name]);
