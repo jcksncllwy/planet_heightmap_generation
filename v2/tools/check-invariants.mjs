@@ -127,6 +127,10 @@ for (const seed of SEEDS) {
         `longest stall under an overlap over ${BIG_OVERLAP_KM2 / 1e3}k km²: ${longestStall.myr.toFixed(0)} Myr${longestStall.pair ? ` (${longestStall.pair} at ${longestStall.at.toFixed(0)} Myr)` : ''}; limit ${world.config.sutureStallGiveUpMyr + world.config.sutureCheckMyr + 2} Myr`);
     report('the longest a big overlap lasted', longestOverlap.myr, { unit: ' Myr', digits: 0, source: 'no Earth figure: India–Asia, in contact since ~50 Ma, still converges (Molnar & Stock 2009)',
         detail: `over ${BIG_OVERLAP_KM2 / 1e3}k km²${longestOverlap.pair ? `: ${longestOverlap.pair} from ${longestOverlap.since.toFixed(0)} Myr` : ''}` });
+    // (tidy hands cut-off pieces to a neighbour; craton landing on the host's land had nowhere to go and was deleted — all
+    // 90 cells of B, seed 592250 at 440 Myr. The hand-off counts the craton it delivers on the host's raster)
+    check('tidy hands craton over whole: no craton cell lost when a piece joins another plate', (world.budget.tidyCratonLost ?? 0) === 0,
+        `${world.budget.tidyCratonLost ?? 0} craton cells lost in hand-offs; ${world.budget.tidyInCollision ?? 0} piece-steps left in collision with the host, ${world.budget.tidyScrapAbsorbed ?? 0} scraps absorbed, ${world.budget.tidyRecordsHanded ?? 0} collision records handed over`);
     if (HISTORY_MYR <= CRATONS_SURVIVE_MYR) check('every craton survives the whole history, with its letter', cratonIds.length > 0 && lostCratonAt === null, lostCratonAt ?? `${cratonIds.length} cratons, all present at ${world.time.toFixed(0)} Myr`);
     else report('cratons lost over the history', lostCratonAt ? lostCratonAt.split(' at ')[0].split(', ').length : 0, { earth: [0, 1], digits: 0, source: 'Archean cratons are durable, ~35 survive from ≥2.5 Ga; partial decratonization is rare (Bleeker 2003, Lithos 71; North China Craton)', detail: lostCratonAt ?? `${cratonIds.length} cratons, all present` });
 }

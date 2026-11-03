@@ -10,14 +10,27 @@
 //                                                            where it is overridden at once and goes as before (kept young
 //                                                            there, the 'laramide' slab read young and stayed flat 3–5 Myr
 //                                                            longer at 80K than at 40K)
-//   · with land, near another plate (fragmentJoinKm)      → joins that plate (a terrane docking, in effect)
+//   · with land, near another plate (fragmentJoinKm)      → joins that plate (a terrane docking, in effect), and its
+//                                                            collisions with third plates go with it (ops/hand-collisions.js)
+//                                                            Its land that falls on the host's land is stacked onto the
+//                                                            host's nearest free ground, through the host's land, within that
+//                                                            same reach (a crumb a cell or two wide under a neighbour's coast)
+//   · with land lying deeper on that plate's land         → stays, in collision with it: the collision code docks or welds
+//                                                            it (ops/merge-plates.js stamps its cratons back rigidly and
+//                                                            books the overlap into thickness). Handed over, land the host
+//                                                            already held had nowhere to go and was deleted: a piece of B
+//                                                            holding all 90 of its craton cells, 95 of its 99 land cells on
+//                                                            DIJKM's land, lost every one, seed 592250 at 440 Myr (rifton);
+//                                                            92–213 land cells a 600 Myr history, 35–70 steps in ~820
 //   · with land, far from every other plate               → stays as it is: land is never deleted
-// Scraps of land (under terraneMinAreaKm2) join quietly, without an event. A plate that has just received a piece is
+// Scraps of land (under terraneMinAreaKm2) join quietly, without an event, and one too deep in the host's land to stack is
+// absorbed (craton never: a scrap with craton is a collision too). A plate that has just received a piece is
 // not itself tidied again in the same pass (the piece is not joined to it until the next resolve).
 
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
+import { landContacts, handCollisions } from './hand-collisions.js';
 
 /** @returns {number} pieces dealt with */
 export function tidyPlates(world) {
@@ -50,7 +63,19 @@ export function tidyPlates(world) {
             }
             const host = [...contact.entries()].sort((a, b) => b[1] - a[1])[0], scrap = piece.land * cellAreaKm2 < config.terraneMinAreaKm2;
             if (host) {
-                const to = plates[host[0]], moved = transferCells(world, plate, to, piece.cells);
+                const to = plates[host[0]];
+                if (!placesAllLand(world, plate, to, piece.cells, nearHops)) {
+                    // (a crumb of a cell or two deep inside the host's land is the two rasters' lattice over the same ground: no
+                    // collision ever welds it, and kept it lingered for tens of Myr — 1265–3532 piece-steps a 600 Myr history.
+                    // It is absorbed, as before. Craton never is: a craton-bearing piece, or a bigger one, is a collision)
+                    if (!scrap || hasCraton(plate.crust, piece.cells)) { world.budget.tidyInCollision = (world.budget.tidyInCollision ?? 0) + 1; continue; }
+                    world.budget.tidyScrapAbsorbed = (world.budget.tidyScrapAbsorbed ?? 0) + 1;
+                }
+                // (the craton the hand-off delivers, counted on the host's raster: a craton lost here fails check-invariants)
+                const craton = hasCraton(plate.crust, piece.cells) ? [countCraton(plate.crust, piece.cells), countCraton(to.crust)] : null;
+                const others = landContacts(world, plate, to, piece.cells), moved = transferCells(world, plate, to, piece.cells, nearHops);
+                if (craton) world.budget.tidyCratonLost = (world.budget.tidyCratonLost ?? 0) + Math.max(0, craton[0] - (countCraton(to.crust) - craton[1]));
+                world.budget.tidyRecordsHanded = (world.budget.tidyRecordsHanded ?? 0) + handCollisions(world, plate, to, others);
                 received.add(to);
                 if (!scrap) world.log(EventKind.FRAGMENT, `a piece of ${plate.name} (${(piece.land * cellAreaKm2 / 1e6).toFixed(2)} Mkm² of land) cut off from the rest joins ${to.name}: ${moved} cells`, { from: plate.id, to: to.id, areaMkm2: piece.land * cellAreaKm2 / 1e6, cells: moved });
             }                                              // (land with nothing near it stays put: land is never deleted)
@@ -58,6 +83,38 @@ export function tidyPlates(world) {
         if (plate.crust.count === 0) { plate.alive = false; plate.omega = [0, 0, 0]; plate.dynamics = null; }
     }
     return handled;
+}
+
+const hasCraton = (crust, cells) => cells.some(c => crust.type[c] === CrustType.CRATON);
+function countCraton(crust, cells = null) {
+    const { mask, type } = crust;
+    let n = 0;
+    if (cells) { for (const c of cells) if (type[c] === CrustType.CRATON) n++; }
+    else for (let c = 0; c < mask.length; c++) if (mask[c] && type[c] === CrustType.CRATON) n++;
+    return n;
+}
+
+/**
+ * Can every land cell of `cells` of `from` be handed to `to` — transferCells with this `reachHops`, as tidy calls it —
+ * without any being absorbed? A dry run of its placing: land the host holds or the piece has just written is taken,
+ * as it is there. When some cannot, the piece lies deeper on the host's land than stacking reaches: a collision.
+ */
+function placesAllLand(world, from, to, cells, reachHops) {
+    const { mesh } = world, { xyz, index } = mesh, F = from.crust, T = to.crust, P = [0, 0, 0], written = new Set();
+    const taken = q => (T.mask[q] && T.type[q] !== CrustType.OCEAN) || written.has(q);
+    for (const c of cells) {
+        if (F.type[c] === CrustType.OCEAN) continue;
+        from.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
+        let q = to.cellAt(index, P[0], P[1], P[2]);
+        if (taken(q)) {
+            const at = q;
+            q = freeCellBeside(to, mesh, at, P, taken);
+            if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, taken);
+            if (q < 0) return false;
+        }
+        written.add(q);
+    }
+    return true;
 }
 
 /**
