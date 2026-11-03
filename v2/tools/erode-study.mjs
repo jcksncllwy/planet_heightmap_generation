@@ -12,6 +12,8 @@ import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { Water } from '../js/finish/finish-hydro.js';
 import { GEOLOGY } from '../js/geology/geology-config.js';
+import { ERODE } from '../js/finish/finish-erode.js';
+import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { networkShape, describe } from './lib/river-network.mjs';
 import { landWater } from './lib/land-water.mjs';
 
@@ -25,6 +27,13 @@ for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z_])/).filter(Boolean
 for (const kv of (arg('--rock', '') || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); GEOLOGY.useRock[k] = v === 'true'; }
 const erode = arg('--erode', null);
 if (erode) F.erode = JSON.parse(erode);
+// (--flip: every cell's neighbours in reverse order, on the shown mesh and the ladder's: the same world with every tie broken
+// the other way, from the carve on. Two orders give a run's own noise floor; a shift between settings smaller than the shift
+// between orders is not the setting's. Lane spread, 2026-11-02.)
+if (process.argv.includes('--flip')) for (const N of new Set([CELLS, ...(ERODE.ladder ?? []).map(L => L.cells).filter(Boolean)])) {      // (once a size: twice is no flip)
+    const { adjOffset, adjList } = terrainMesh(N);
+    for (let c = 0; c + 1 < adjOffset.length; c++) adjList.subarray(adjOffset[c], adjOffset[c + 1]).reverse();
+}
 const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME });
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
 const t0 = performance.now();
