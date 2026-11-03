@@ -201,7 +201,7 @@ section('self-driven Wilson cycle');
         const last = r.frames.at(-1), alive = last.plates.filter(p => p.alive && !p.isBackground);
         J(seed, AFTER[0], true, alive.length === 2 && alive.some(p => p.name.includes('East') && p.name.includes('Far')), alive.map(p => p.name).join(', '));
         const west = last.plates.find(p => p.name === 'West');
-        const westBelt = cellsWhere(numCells, w => last.owner[w] === west.id && isLand(last, w) && last.oroType[w] && last.oroType[w] !== OrogenyType.ANDEAN && last.oroType[w] !== OrogenyType.TRANSPRESSION).length;   // (a transpression ridge where its trench turns oblique is no collision)
+        const westBelt = cellsWhere(numCells, w => last.owner[w] === west.id && isLand(last, w) && last.oroType[w] && last.oroType[w] !== OrogenyType.ANDEAN && last.oroType[w] !== OrogenyType.TRANSPRESSION && last.oroType[w] !== OrogenyType.RIFT).length;   // (RIFT: stretched, not a collision — the plate-stress field's diffuse extension, lane rifton)   // (a transpression ridge where its trench turns oblique is no collision)
         J(seed, AFTER[1], true, westBelt === 0, `${westBelt} West cells with a collision record`);
         J(seed, AFTER[2], true, r.frames.every(f => frameTallies(f).gaps === 0) && r.collision.at(-1) === 0, `overlap at the end: ${r.collision.at(-1)}`);
     }

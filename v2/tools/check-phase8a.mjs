@@ -142,7 +142,9 @@ const history = run('history');
     const shear = { [OrogenyType.ANDEAN]: [], [OrogenyType.TRANSPRESSION]: [] };
     for (let w = 0; w < mesh.numCells; w++) {
         if (f.owner[w] < 0 || f.type[w] === CrustType.OCEAN || !f.oroType[w]) continue;
-        if (f.oroType[w] !== OrogenyType.ARC) { belt++; if (f.beltReach[w] > 0) withGeometry++; }
+        // (a RIFT record with no work is no belt: the stress field's diffuse extension and the rift stage's stretched floor
+        // have no cross-section to record — lane rifton)
+        if (f.oroType[w] !== OrogenyType.ARC && !(f.oroType[w] === OrogenyType.RIFT && !(f.oroWork[w] > 0))) { belt++; if (f.beltReach[w] > 0) withGeometry++; }
         const collision = f.oroType[w] === OrogenyType.URAL || f.oroType[w] === OrogenyType.HIMALAYAN;
         if (!collision && f.beltSide[w] !== BeltSide.NONE) sideWrong++;
         shear[f.oroType[w]]?.push(Math.abs(f.beltShear[w]));
