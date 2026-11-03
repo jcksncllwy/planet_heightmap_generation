@@ -24,6 +24,12 @@ const TUNABLES = [
     { id: 'riftTortuosityMax', label: 'Rift length ÷ end-to-end distance, max', min: 1.1, max: 3, step: 0.1 },
     { id: 'riftFailedArmKm', label: 'Failed arm length', min: 0, max: 1500, step: 50, unit: ' km' },
     { id: 'riftCostSlack', label: '…among cuts costing up to × the cheapest', min: 1, max: 3, step: 0.1 },
+    // (lane pstress: the stress field and the rift stage, flags while measured — 0 off, 1 on)
+    { id: 'plateStress', label: 'Solve the plates’ in-plate stress (damage where it beats the rock)', min: 0, max: 1, step: 1 },
+    { id: 'plateStressRifts', label: '…and log continent it breaks in tension as stretched (diffuse extension)', min: 0, max: 1, step: 1 },
+    { id: 'plateYieldContinent', label: '…continental strength, declared', min: 1e12, max: 2e13, step: 1e12, unit: ' N/m' },
+    { id: 'riftByStress', label: 'Rifts placed by stress over strength (needs the stress)', min: 0, max: 1, step: 1 },
+    { id: 'riftStage', label: 'A rift stretches as thinned continent before it breaks up', min: 0, max: 1, step: 1 },
     { id: 'sutureStallMinKm', label: 'Shortening before a stalled seam may weld', min: 0, max: 600, step: 25, unit: ' km' },
 ];
 const CHECKLISTS = {
@@ -76,7 +82,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
         initialView: scene.view ?? latLonOf(centre),
         params: [
             { id: 'scene', label: 'Scene', value: scene.id, options: RIFT_SCENES.map(s => ({ value: s.id, label: s.label })) },
-            ...TUNABLES.map(t => ({ ...t, value: world.config[t.id] })),
+            ...TUNABLES.map(t => ({ ...t, value: +world.config[t.id] })),             // (+: a flag shows as 0 / 1)
         ],
         layers: [
             { label: 'Plates', paint: colorByPlate },
