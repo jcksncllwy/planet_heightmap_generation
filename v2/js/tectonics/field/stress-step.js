@@ -9,8 +9,10 @@
 //   broken: D = 1; after, D falls as e^(−t ÷ plateDamageHealMyr)
 //   with plateStressRifts, continental crust broken in tension is also logged as stretched: a RIFT record with no work
 //     (crust.recordOrogeny), the diffuse extension of a wide rift (Basin and Range) beside the narrow rifts rifting.js cuts.
-//     Only on crust whose record is no live belt (none, a rift's, or quiet past orogenyQuietMyr): a pull across a belt that
-//     is still shortening must not refresh the belt's clock (recordOrogeny keeps a belt's type against a rift's but times it)
+//     Only on crust with no record or a rift's: a pull across a belt still shortening must not refresh the belt's clock
+//     (recordOrogeny keeps a belt's type against a rift's but times it), and a quiet belt relabelled a rift would keep its
+//     relief 4.5× as long (step/heights.js wears a rift's uplift on riftReliefTauMyr, an escarpment's) — the opposite of
+//     an orogen's collapse. (Measured 2026-11-02: allowing quiet belts, ~9 of the ~20 points it added at 5e12 were relabels.)
 //
 // Reduced model, and its limits: the plate stays rigid however broken it is (the stress is the rigid plate's: what it would
 // carry, not what a broken plate passes on — the stress-field study's sheet was the deforming version, at ~10× the cost);
@@ -69,7 +71,7 @@ function breakAndHeal(world, span) {
             crust.damage[c] = 1; ten++;
             if (isLand) {
                 landTen++;
-                if (stretch && crust.type[c] !== CrustType.ARC && (crust.oroType[c] === OrogenyType.NONE || crust.oroType[c] === OrogenyType.RIFT || time - crust.oroLast[c] > config.orogenyQuietMyr)) {
+                if (stretch && crust.type[c] !== CrustType.ARC && (crust.oroType[c] === OrogenyType.NONE || crust.oroType[c] === OrogenyType.RIFT)) {
                     crust.recordOrogeny(c, OrogenyType.RIFT, 0, time, config.orogenyQuietMyr); stretched++;
                 }
             }
