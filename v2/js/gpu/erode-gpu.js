@@ -19,11 +19,13 @@ import { openDevice, readBack } from './gpu-device.js';
 import { deltaLayer, rebounder, layUp } from '../finish/finish-erode.js';
 
 const R_EARTH = 6371, EPS = 1e-5, LAND_FLOOR = 0.002, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
+// (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
+export const CELL_WORDS = 9;
 
 const HEAD = /* wgsl */`
-struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, perCell: f32, m: f32, pad: f32 }
+struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, perCell: f32, m: f32, Gf: f32 }
 struct Rg { start: u32, count: u32 }
-struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32 }
+struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32 }
 struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32 }
 const NONE = 0x7FFFFFFFu; const INF = 0xFFFFFFFFu; const M = 0x7FFFFFFFu;
 const EPS = ${EPS}f; const LF = ${LAND_FLOOR}f; const R_EARTH = ${R_EARTH}f;
@@ -142,32 +144,38 @@ const KERNELS = {
         let Ac = max(cells[c].A, 1e-6); let share = min(1.0, U_.perCell * sqrt(Ac / 1e4));
         let d = vec3f(xyz[3u * r] - xyz[3u * c], xyz[3u * r + 1u] - xyz[3u * c + 1u], xyz[3u * r + 2u] - xyz[3u * c + 2u]);
         // (the layer it cuts: its own sediment above the rock's top, or the rock: finish-erode.js. Kv: k, the rock's top, the
-        // sediment's k against the rock's; packed, so the kernel binds no more buffers than before. No column: the top is out of reach)
+        // sediment's k against the rock's, and the share of what it cuts that is mud; packed, so the kernel binds no more buffers
+        // than before. No column: the top is out of reach, and no mud)
         let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
         let F = share * kv.x * layer * pow(Ac, U_.m) * U_.dt / (R_EARTH * length(d));
         var h = (old + F * under) / (1.0 + F);
         if (h < LF + under) { h = min(old, LF + under); }
         cells[c].zNew = h; cells[c].e = h; cells[c].gross = max(old - h, 0.0);` },
-    load: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', z: 'f', dropped: 'f+', trap: 'f+', cells: 'C+' }, body: `
+    // (the load and, of it, the mud, qf: finish-erode.js's Qs and Qf. A lake keeps mud in proportion; a reach drops the bed
+    // material by G and the mud by Gf. No column: no mud, and the drop is q·G's, as it was before the split)
+    load: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', z: 'f', dropped: 'f+', trap: 'f+', Kv: 'v', cells: 'C+' }, body: `
         let lid = cells[c].lid; let rr = recv[c]; let r = rr & M; let toOut = (rr >> 31u) != 0u;
-        var q = cells[c].gross * U_.a; var capIn = 0.0; var inlet = 0.0;
+        let cut = cells[c].gross * U_.a;
+        var q = cut; var qf = cut * Kv[c].w; var capIn = 0.0; var inlet = 0.0;
         for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
             let y = adjList[j];
             if ((recv[y] & M) != c) { continue; }
-            q += cells[y].q;
+            q += cells[y].q; qf += cells[y].qf;
             if (lid != NONE) { if (cells[y].lid == lid) { capIn += cells[y].cap; } else { inlet += cells[y].q; } }
         }
         cells[c].inlet = inlet; cells[c].cap = 0.0; dropped[c] = 0.0; trap[c] = 0.0;
         if (lid != NONE) {
             let room = capIn + max(0.0, cells[c].e - z[c]) * U_.a;
-            if (!toOut && cells[r].lid == lid) { cells[c].q = q; cells[c].cap = room; return; }
+            if (!toOut && cells[r].lid == lid) { cells[c].q = q; cells[c].qf = qf; cells[c].cap = room; return; }
             let hold = min(q, room);
+            if (q > 0.0) { qf *= 1.0 - hold / q; }
             trap[c] = hold; q -= hold;
         } else {
-            let d = q * min(1.0, U_.G * U_.a / max(cells[c].A, U_.a * 1e-3));
-            dropped[c] = d / U_.a; q -= d;
+            let per = U_.a / max(cells[c].A, U_.a * 1e-3);
+            let dm = qf * min(1.0, U_.Gf * per); let d = (q - qf) * min(1.0, U_.G * per) + dm;
+            dropped[c] = d / U_.a; q -= d; qf -= dm;
         }
-        cells[c].q = q;` },
+        cells[c].q = q; cells[c].qf = qf;` },
     commit: { b: { cells: 'C', z: 'f+' }, body: 'z[c] = cells[c].zNew;' },
     exportCells: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+' }, index: 'i', body: `
         let v = cells[c];
@@ -210,8 +218,7 @@ const pipelinesOf = device => {
 };
 
 /** Settings this solver does not have: a run asking for one goes to the CPU's. */
-// (the mud's own deposition coefficient is not on the GPU: with the column on and GFine ≠ G, the CPU runs it)
-export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEvery ?? 1) === 1 && !P.trace && !(P.column && (P.GFine ?? P.G) !== P.G);
+export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEvery ?? 1) === 1 && !P.trace;
 
 /** Build the solver for one run of one mesh. `gpu`: navigator.gpu or Dawn's. */
 export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, gpuClosed = false } = {}) {
@@ -226,18 +233,18 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     up('adjOffset', Uint32Array.from(adjOffset)); up('adjList', adjList instanceof Uint32Array ? adjList : Uint32Array.from(adjList)); up('xyz', xyz instanceof Float32Array ? xyz : Float32Array.from(xyz)); up('water', water);
     const K = new Float32Array(n);
     for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (1 - activeHold * hold[c]) * (slow ? slow[c] : 1);
-    // (with the rock column, finish-lithology.js rockColumn: the rock's top, kept on the CPU as the rebound moves it, and the
-    // sediment's k against the rock's)
-    const Kv = new Float32Array(4 * n), packK = () => { for (let c = 0; c < n; c++) { Kv[4 * c] = K[c]; Kv[4 * c + 1] = column ? column.zBed[c] : 1e30; Kv[4 * c + 2] = column ? column.loose[c] : 1; } };
+    // (with the rock column, finish-lithology.js rockColumn: the rock's top, kept on the CPU as the rebound moves it, the
+    // sediment's k against the rock's, and the mud's share of what is cut)
+    const Kv = new Float32Array(4 * n), packK = () => { for (let c = 0; c < n; c++) { Kv[4 * c] = K[c]; Kv[4 * c + 1] = column ? column.zBed[c] : 1e30; Kv[4 * c + 2] = column ? column.loose[c] : 1; Kv[4 * c + 3] = column ? column.fine[c] : 0; } };
     packK(); up('Kv', Kv);
     for (const f of ['z', 'dropped', 'Zt', 'hookW', 'weight', 'valA', 'valB', 'fill', 'surf', 'trap']) mk(f, 4 * n);
     for (const u of ['ptrA', 'ptrB', 'ptrC', 'roots', 'label', 'bestW', 'bestE', 'hookTo', 'parent', 'recv', 'distA', 'distB', 'flats', 'depthA', 'depthB', 'order', 'outlet', 'list', 'hiA', 'hiB']) mk(u, 4 * n);
-    mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1)); mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 32 * n); mk('exp', 4 * EXPORT_WORDS * n);
+    mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1)); mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 4 * CELL_WORDS * n); mk('exp', 4 * EXPORT_WORDS * n);
     const rangeBuf = device.createBuffer({ size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const uniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const ub = new ArrayBuffer(32), uv = new DataView(ub);
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
-    [a, dt, P.G, valleyKm / Math.sqrt(a), m].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
+    [a, dt, P.G, valleyKm / Math.sqrt(a), m, P.GFine ?? P.G].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
     const stage = device.createBuffer({ size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);

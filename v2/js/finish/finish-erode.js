@@ -38,8 +38,8 @@ export const ERODE = {
     timeMyr: 1,                 // …of this long…
     steps: 20,                  // …in this many steps
     G: 1,                       // Yuan et al. 2019's deposition coefficient (they use 0–~2; 1: a steady river's slope doubled), for the bed material…
-    GFine: 1,                   // …and for the mud. G goes with settling speed (Davy & Lague 2009), so mud's should be far less than sand's, but
-                                // under 1 at the compressed k_rock it sends more to the sea, already over Earth's: see README
+    GFine: 0.5,                 // …and for the mud. G goes with settling speed (Davy & Lague 2009), so mud's is less than sand's. 0.5 with
+                                // the ~100× k_rock (geology-config.js erodeGain 7.1) gives Earth's ~10 km³/yr to the sea: see README
     column: true,               // k reads the rock column (finish-lithology.js rockColumn), and the load is split into bed material and mud
     closedEvery: 5,             // closed basins re-judged every this many steps (their water settles in thousands of years)
     routeEvery: 1,              // a new network every this many steps

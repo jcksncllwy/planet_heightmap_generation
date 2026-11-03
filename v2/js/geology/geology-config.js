@@ -67,9 +67,14 @@ export const GEOLOGY = {
         // what it breaks down to: 1 coarse (sand and gravel, bedload: granite, sandstone, gneiss), 0 fine (mud, or dissolved)
         // (ours, recalled: quartz-rich rock weathers to sand; shale, tuff and basalt to clay; limestone mostly to solution)
         coarse: [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0],
-        // erodibility: k_rock ∝ e^(erodeGain (½ − hard)) (upstream's 2.3: shale ~2×, granite ~0.45×, ~4.5× between them; Jackson's
-        // ruling 3: this compressed spread first, Earth's range tested in L3)
-        erodeGain: 2.3,
+        // erodibility: k_rock ∝ e^(erodeGain (½ − hard)). 7.1: ~100× between shale and granite (ln 100 over Δhard 0.65).
+        // Stock & Montgomery 1999 (JGR 104(B3) 4983–4993, abstract) give K from 10⁻⁷–10⁻⁶ on granite to 10⁻⁴–10⁻² on mudstone,
+        // 2–5 orders with each site's climate inside it, so rock alone sits at the low end. With GFine 0.5 (finish-erode.js) it
+        // brings the export to the sea to Earth's ~10 km³/yr at 2.5M (L3, README "Erosion reads the column"). Jackson's ruling,
+        // 2026-11-02; upstream's 2.3 (~4.5×) was the compressed spread before it. Alluvium (finish-lithology.js rockColumn's
+        // loose) takes its k from this too (hard 0.1: e^(0.4 erodeGain) over the land's mean rock), so the wider spread softens the
+        // finish's own sediment with the rock
+        erodeGain: 7.1,
         // the share of what a rock breaks down to that the rivers roll or bounce on their beds, the rest going in suspension or solution:
         // derived so the land's load is ~14 % bed material (~3 of ~22 Gt/yr: a global model of river outlets, erosion-report.md, search
         // summary only), with ~30 % of land on coarse rock
