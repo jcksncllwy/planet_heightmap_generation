@@ -23,7 +23,10 @@ const CRATONS_SURVIVE_MYR = 600;         // cratons outlast this on Earth (~35 f
 const BIG_OVERLAP_KM2 = 1e5;       // two plates' land may overlap this much only while the two still converge (a stalled seam welds)
 const mesh = labMesh();
 const LEDGER_CELLS = 20000, LEDGER_MYR = 300, LEDGER_SEED = 12345;
-const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'arcMaturation', 'tidy'];   // the only stages whose process may make or lose land
+// the only stages whose process may make or lose land. (riftStage, lane pstress: a young rift's halves part through continent
+// stretched thin, not new ocean, for their first riftBreakupKm — step/rifting.js evolveRiftStages: stretching spreads continental
+// crust over more area, so the area ledger sees land made, the volume it came from being the margins' thinning)
+const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'arcMaturation', 'tidy', 'riftStage'];
 
 section('the crust raster and the config');
 {

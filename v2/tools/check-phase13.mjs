@@ -233,6 +233,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, gapMin: Math.min(Infinity, ...gaps), gapMedian: median(gaps), early, lowest, clump, reassembled, againAt,
         fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, lowlandStages, land0, land1200, contRatio: cont1200 / Math.max(1, cont0), cont0, cont500, cont1000,
         ledger: world.ledger, budget: world.budget,
+        stress: (world.stressLog ?? []).filter(x => x.time >= 100),
         arcBiggest: Math.max(0, ...arcs.map(a => a.largest)), arcFar: Math.max(0, ...arcs.map(a => a.far)), arcAll: arcs.reduce((x, a) => x + a.all, 0) / Math.max(1, arcs.length),
         arcLiveLand: arcLand.live.up / Math.max(1, arcLand.live.n), arcDeadLand: arcLand.dead.up / Math.max(1, arcLand.dead.n), arcDeadShare: arcLand.dead.n / Math.max(1, arcLand.live.n + arcLand.dead.n),
         largestPlate: Math.max(0, ...largestShares), largestMedian: median(largestShares), frozenMost,
@@ -359,7 +360,14 @@ section('heights from the crust (branch unified)');
     // late-dispersal land had a belt within 100 Myr)
     report('continental crust deformed within 240 Myr (belts and rifts)', rows.map(r => 100 * meanH(r, 'deformed', null, 300)), { earth: [25, 40], unit: ' %', digits: 0,
         source: 'about a third of the continental crust deformed since 240 Ma, ~65 % of it by extension (Müller et al. 2019, Tectonics 38: 1884, a deformable plate model) — frames from 300 Myr',
-        detail: txt(r => `of it compression (belts): ${(100 * meanH(r, 'compressed', null, 300)).toFixed(0)} % of the crust (Earth ~12 %)`) });
+        detail: txt(r => `of it compression (belts): ${(100 * meanH(r, 'compressed', null, 300)).toFixed(0)} % of the crust (Earth ~12 %); extension (rifts): ${(100 * (meanH(r, 'deformed', null, 300) - meanH(r, 'compressed', null, 300))).toFixed(0)} % (Earth ~22 %)`) });
+    // (lane pstress) the stress inside the plates (field/plate-stress-field.js): the share of the plates' area where it beats the
+    // rock's strength (field/stress-step.js) — the field's diffuse deforming zones. The continents' strength is DECLARED
+    // (config.plateYieldContinent: no sourced figure), so this is a finding at that strength, not a calibration
+    const yieldShare = r => r.stress.length ? 100 * r.stress.reduce((a, x) => a + x.tension + x.compression, 0) / r.stress.length : NaN;
+    report('plates at yield under their own stress (tension + compression, frames from 100 Myr)', rows.map(yieldShare), { earth: [13, 16], unit: ' %', digits: 1,
+        source: 'deforming share of the surface ~15 % (Gordon 1998), ~14 % (Kreemer et al. 2014): today only, and their threshold is a strain rate, this one a strength',
+        detail: txt(r => r.stress.length ? `of the continents ${(100 * r.stress.reduce((a, x) => a + x.landTension, 0) / r.stress.length).toFixed(1)} % in tension, ${(100 * r.stress.reduce((a, x) => a + x.landCompression, 0) / r.stress.length).toFixed(1)} % in compression; solve ${(r.stress.reduce((a, x) => a + x.ms, 0) / r.stress.length).toFixed(0)} ms` : 'plateStress off') });
 }
 
 section('the crust over the history');
