@@ -9,11 +9,14 @@
 // last rift or weld, the chance growing as its quiet spell runs long, one forced when it runs too long), with a floor for
 // the world as a whole (riftGlobalGapMyr).
 
-import { CrustFlag, CrustType } from '../model/crust.js';
+import { CrustFlag, CrustType, OrogenyType } from '../model/crust.js';
+import { columnModel } from '../measure.js';
+import { heightsOf } from './heights.js';
 import { tangentToward } from '../../core/sphere-geom.js';
 import { findRift, riftContext, splitPlate, chooseJunction } from '../ops/rift.js';
 import { EventKind } from '../model/world.js';
 import { isContinental } from './hotspots.js';
+import { riftStressContext, stressJunctions } from '../field/rift-stress.js';
 
 const JUNCTION_TRIES = 12;     // junctions tried per rift chance: the best crossing among them is taken (many admit none)
 const FORCED_JUNCTION_TRIES = 48;  // …and for a rift that is overdue (a few a history): it must take
@@ -94,10 +97,22 @@ export function* riftContinents(world, dt) {
         const pace = paced ? paceOf(age(plate), config) : 1;
         const chance = pace * config.riftRatePerMyr * dt * tension * heatFactor * Math.min(config.riftSizeCap, areaKm2 / config.riftMinContinentKm2 - 1);   // a supercontinent rifts readily, a continent barely big enough hardly ever
         if (world.rng() >= chance) continue;
-        const junctions = Array.from({ length: JUNCTION_TRIES }, () => chooseJunction(world, plate, world.rng));
+        const junctions = junctionsFor(world, plate, JUNCTION_TRIES);
         if (yield* tryRift(world, plate, junctions, { text: `tension ${tension.toFixed(2)}${heat ? `, mantle heat ${h.toFixed(2)}` : ''}`, kind: 'tension', hotspot: -1 })) { splits++; if (paced) break; }
     }
     return splits;
+}
+
+/**
+ * Where to try a rift from: by the stress (config.riftByStress: the cells it pulls hardest against their strength,
+ * field/rift-stress.js — the rng is still drawn as many times, so the dice that follow are the same dice), or a weak interior
+ * cell drawn at random (ops/rift.js chooseJunction).
+ */
+function junctionsFor(world, plate, count) {
+    const drawn = Array.from({ length: count }, () => chooseJunction(world, plate, world.rng));
+    if (!world.config.riftByStress) return drawn;
+    const st = riftStressContext(world, plate), picked = st ? stressJunctions(world, plate, st, count) : [];
+    return picked.length ? picked : drawn;
 }
 
 /** The pace of a piece's breakup at this age (since it was born of a rift or welded together; × its rift chance): 0 at
@@ -118,7 +133,7 @@ function* forceRift(world, plate, age) {
     const { config } = world;
     const cause = { text: `no rift for ${age.toFixed(0)} Myr`, kind: 'overdue', hotspot: -1 };
     const attempt = function* () {
-        const junctions = Array.from({ length: FORCED_JUNCTION_TRIES }, () => chooseJunction(world, plate, world.rng));
+        const junctions = junctionsFor(world, plate, FORCED_JUNCTION_TRIES);
         return (yield* tryRift(world, plate, junctions, cause)) || (yield* tryRift(world, plate, junctions, cause, false));
     };
     return (yield* attempt()) || (yield* withLooseShape(config, attempt));
@@ -157,12 +172,14 @@ export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = 
     for (const found of results) if (found && (!rift || found.value < rift.value)) rift = found;
     if (!rift) return false;
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN, weakKm = rift.path.filter(c => plate.crust.flags[c] & weak).length * mesh.edgeKm;   // (before the split flags the new margins)
+    world.onRiftPath?.(world, plate, rift.path);          // (a measuring tool's look at the line, before the split: tools/pstress-history.mjs)
     const before = plate.name, ageMyr = world.time - plate.born, fresh = splitPlate(world, plate, rift.path, rift.failedArm, (a, b) => namesAfterSplit(world, a, b, before), rift.across);
     const km = rift.path.length * mesh.edgeKm;
     // (a craton the rift went through is now on both plates: its terrane id is kept on both halves, recorded here)
     const cratonsOf = P => { const ids = new Set(); for (let c = 0; c < mesh.numCells; c++) if (P.crust.mask[c] && P.crust.type[c] === CrustType.CRATON) ids.add(P.crust.terrane[c]); return ids; };
     const onFresh = cratonsOf(fresh), splitCratons = [...cratonsOf(plate)].filter(id => onFresh.has(id));
     const cratonKm = rift.path.filter(c => plate.crust.mask[c] ? plate.crust.type[c] === CrustType.CRATON : fresh.crust.type[c] === CrustType.CRATON).length * mesh.edgeKm;
+    if (world.config.riftStage) openRiftStage(world, plate, fresh, rift.path);
     world.log(EventKind.RIFT, `${before} rifts (${cause.text}): ${plate.name} and ${fresh.name} part along ${km.toFixed(0)} km of rift${rift.failedArm.length ? `, a failed arm of ${(rift.failedArm.length * mesh.edgeKm).toFixed(0)} km left behind` : ''}`,
         { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm, ageMyr, stress: rift.stress, share: rift.share, cratonKm, splitCratons });
     world.lastRiftAt = world.time;
@@ -221,4 +238,65 @@ function namesAfterSplit(world, a, b, before) {
     const base = before.replace(/(·\d+)+$/, ''), taken = new Set(world.plates.filter(p => p.alive).map(p => p.name)), names = [];
     for (let n = 1; names.length < 2; n++) if (!taken.has(`${base}·${n}`)) names.push(`${base}·${n}`);
     return names;
+}
+
+// ── The continental rift stage (lane pstress, stage 2; config.riftStage) ──
+// A continent does not part along a clean cut into new ocean at once: it stretches first. Over the first riftBreakupKm of
+// opening the halves pull apart through continental crust thinned ever more toward the axis (a necking zone, then crust
+// < 10 km thick against ~30 km as formed: the hyperextended domain of a magma-poor margin — Sutra et al. 2013, G³), and only
+// then does the mantle break through and a spreading axis make ocean floor. Here: the crust the halves make between them in
+// that time (resolve.js fills the gap as it does any parting) is that stretched continent, not ocean — thinned from 1 − 0.2
+// to 1 − 0.7 of its crust as the opening runs from 0 to riftBreakupKm — and carries an extension record (OrogenyType.RIFT,
+// with no work: it sinks, it is not a shoulder). Thinned crust stands low (Airy: measure.js columnKm), so a young rift's floor
+// sags below the sea; whether the sea gets in is the terrain's: a floor joined below sea level to the open ocean is sea (the
+// Red Sea, the Gulf of California), one closed off by its ends' land holds lakes (East Africa) — finish/finish-hydro.js gives a
+// closed hollow below sea level the ordinary lake treatment, at its rim.
+// Reduced model, and its limits: the opening's speed is the torque balance's, as a spreading ridge's (the rift's own slowness,
+// mm/yr for tens of Myr, is not modelled: a rift reaches breakup in a few Myr at a few cm/yr); the thinning profile is a ramp
+// in time, not a stretching factor worked out from strain; no magma (volcanic margins are as magma-poor ones).
+
+const STAGE_SPAN = [0.2, 0.7];      // the share of its crust a stretched cell has lost: at the start of the opening, at breakup
+
+/** A rift just split plate and fresh along path: open its stage. The zone it may stretch over: within riftBreakupKm of the line. */
+function openRiftStage(world, plate, fresh, path) {
+    const { mesh, config } = world, { adjOffset, adjList, numCells, edgeKm } = mesh;
+    const hops = Math.ceil(config.riftBreakupKm / edgeKm) + 1, seen = new Uint8Array(numCells), zone = [];
+    let ring = [...new Set(path)];
+    for (const c of ring) { seen[c] = 1; zone.push(c); }
+    for (let h = 0; h < hops; h++) {
+        const next = [];
+        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seen[nb]) { seen[nb] = 1; zone.push(nb); next.push(nb); } }
+        ring = next;
+    }
+    (world.riftStages ??= []).push({ a: plate.id, b: fresh.id, born: world.time, lengthKm: path.length * edgeKm, zone: Int32Array.from(zone), stretchedKm2: 0 });
+}
+
+/**
+ * The rift stage of every young rift: the crust its halves made between them since the last step, stretched continent until
+ * the opening reaches riftBreakupKm (then it has broken up, and the stage ends). @returns {number} cells made continental
+ */
+export function evolveRiftStages(world) {
+    const { plates, config, time, mesh } = world;
+    if (!world.riftStages?.length) return 0;
+    const C = columnModel(heightsOf(config)), crustKm = C.crust[CrustType.CONTINENT], cellKm2 = mesh.cellAreaKm2;
+    let made = 0;
+    world.riftStages = world.riftStages.filter(st => {
+        const A = plates[st.a], B = plates[st.b];
+        if (!A?.alive || !B?.alive || A.riftPartner !== B.id || B.riftPartner !== A.id) return false;
+        const f = Math.min(1, st.stretchedKm2 / st.lengthKm / config.riftBreakupKm), lost = STAGE_SPAN[0] + (STAGE_SPAN[1] - STAGE_SPAN[0]) * f;
+        for (const P of [A, B]) {
+            const cr = P.crust;
+            for (const c of st.zone) {
+                if (!cr.mask[c] || cr.type[c] !== CrustType.OCEAN || cr.formedAt[c] < st.born) continue;
+                cr.type[c] = CrustType.CONTINENT;
+                cr.rootKm[c] = -crustKm * lost;
+                cr.flags[c] |= CrustFlag.RIFT_MARGIN;
+                cr.recordOrogeny(c, OrogenyType.RIFT, 0, time, config.orogenyQuietMyr);
+                st.stretchedKm2 += cellKm2; made++;
+                P.dirty = true;                         // (a type changed in place: counts, not shape)
+            }
+        }
+        return st.stretchedKm2 / st.lengthKm < config.riftBreakupKm;
+    });
+    return made;
 }

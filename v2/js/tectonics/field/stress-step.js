@@ -23,10 +23,12 @@ const WEAK = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
 export function stepPlateStress(world, dt) {
     const { config } = world;
     if (!config.plateStress || !world.loads) return 0;
-    world.stressClock = (world.stressClock ?? config.plateStressEveryMyr) + dt;
-    if (world.stressClock < config.plateStressEveryMyr - 1e-9) return 0;
-    const span = world.stressClock;
-    world.stressClock = 0;
+    // (on the step that lands on each multiple of plateStressEveryMyr — steps never cross the step grid, of which it is a multiple:
+    // so the solves fall on the frames' moments — and at the first step)
+    const every = config.plateStressEveryMyr, k = Math.round(world.time / every), last = world.stressAt;
+    if (last !== undefined && !(Math.abs(world.time - k * every) < 1e-6 && k * every > last + 1e-6)) return 0;
+    const span = last === undefined ? 0 : world.time - last;
+    world.stressAt = world.time;
     const t0 = performance.now(), solved = solvePlateStress(world);
     if (!solved) return 0;
     const out = breakAndHeal(world, span);

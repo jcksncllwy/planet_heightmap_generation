@@ -12,7 +12,7 @@ import { growWings, buildArcs } from './step/wings.js';
 import { collapseArcs } from './ops/collapse-arc.js';
 import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
 import { matureArcs } from './step/arc-maturation.js';
-import { riftContinents, searchJunctions } from './step/rifting.js';
+import { riftContinents, searchJunctions, evolveRiftStages } from './step/rifting.js';
 import { initiateSubduction, founderWithinPlates } from './step/subduction-init.js';
 import { retireBackground, splitOceanPlates, captureMicroplates } from './step/ocean-plates.js';
 import { CrustRaster } from './model/crust.js';
@@ -120,6 +120,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (slow) changed += led('sedimentSubduction', subductSediment(world, slowDt)); // trench sediment goes down the subduction channel: the land it came from is lost
             world.foreArcs = world.fans = null;                    // (the margins and fans those two shared: rebuilt next time)
             changed += led('rifts', yield* riftContinents(world, dt));  // plume and tension rifts (splits plates)
+            changed += led('riftStage', evolveRiftStages(world));          // young rifts stretch continent before they break up (config.riftStage)
             changed += led('backArcs', openBackArcs(world, dt));       // rolling-back trenches split off strips; finished strips rejoin
             changed += led('subductionInit', initiateSubduction(world, dt)); // passive margins founder (may carve an ocean plate)
             // …and margins inside a plate, sealed seas too: its old ocean breaks away as a plate (on a clock of its own: the

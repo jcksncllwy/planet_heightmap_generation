@@ -9,6 +9,7 @@ import { sidesOf, exteriorSea, maskedCells } from './rift-partition.js';
 import { FastNoise } from '../../core/fast-noise.js';
 import { edgeKmOf } from '../../core/min-heap.js';
 import { netTorques, stressAcross, cutAlong } from '../step/plate-stress.js';
+import { riftStressContext, stressPaths } from '../field/rift-stress.js';
 
 /**
  * The grain of the crust a rift follows (developer: rifts "on way too straight lines … should curve a bit and be jagged";
@@ -41,7 +42,9 @@ export function grainOf(world) {
  */
 export function riftContext(world, plate) {
     const { mesh } = world, crust = plate.crust, exterior = exteriorSea(mesh, crust);
-    return { cells: maskedCells(crust), exterior, grain: grainOf(world), rho: netTorques(world, plate), mat: Array.from(plate.mat) };
+    // (config.riftByStress: the plate's stress field and strength per cell — field/rift-stress.js — set where it breaks)
+    const stress = world.config.riftByStress ? riftStressContext(world, plate) : null;
+    return { cells: maskedCells(crust), exterior, grain: grainOf(world), rho: netTorques(world, plate), mat: Array.from(plate.mat), stress };
 }
 
 /**
@@ -61,7 +64,9 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
     const grain = ctx.grain;
     const strength = c => crust.type[c] === CrustType.CRATON ? config.cratonStrength : 1;
-    const { cost, from } = cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * strength(c) * grain(c));
+    // (or, by the stress: strength over the tension across each step — field/rift-stress.js; the weak lines and cratons are in the strength)
+    const { cost, from } = ctx.stress ? stressPaths(mesh, crust, junction, ctx.stress, grain)
+        : cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * strength(c) * grain(c));
     // coastal land cells reached — on the OUTER coast (an inland sea is not a way out), with the direction they lie in
     const { exterior } = ctx;
     const J = pos(xyz, junction), coast = [];
@@ -110,7 +115,8 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
         const sides = sidesOf(mesh, crust, path, ctx.cells);
         if (!(sides.share > 0) || (needCratonsBothSides && !sides.cratonsBothSides)) continue;   // a rift divides cratons: each side keeps at least one (a plume may shear a craton-less piece off)
         const sigma = ctx.rho ? stressOnCut(mesh, ctx, sides.side, path) : 0;
-        const value = pair.perKm / (Math.max(0, sigma) + config.riftStressFloor);
+        // (by the stress, the cost already weighs the tension across each step: the cheapest cut is the one it breaks)
+        const value = ctx.stress ? pair.perKm : pair.perKm / (Math.max(0, sigma) + config.riftStressFloor);
         if (value < bestValue) { bestValue = value; chosen = pair; chosenPath = path; chosenStress = sigma; chosenShare = sides.share; }
     }
     if (!chosen) return null;

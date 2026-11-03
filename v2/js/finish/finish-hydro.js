@@ -607,11 +607,12 @@ export function hydrology(ctx, F) {
                 closed.push({ catchKm2: h.area, lakeKm2, panKm2: h.pans.reduce((a, W) => a + W.cells.length * cellKm2, 0), aridity: h.aE > 0 ? h.aP / h.aE : 0, lakes: S.lakes.length });
                 continue;                                             // (its outlet keeps what reached it: a dry cell its river crosses)
             }
-            if (h.sea) {
-                // full, it rises to its rim and spills: its outflow has cut its way down to it (a gorge just above sea
-                // level), and the lowland round it drains as land does (below)
-                level = cut(h.deepCell, F.seaCutFloorKm); from = h.deepCell;
-            } else if (drained || areaKm2 < keepKm2) {
+            // (a trapped remnant of the sea that its water fills is a lake like any other, full to its rim and spilling there. Until
+            // 2026-11-02 its outflow was cut down to just above sea level, gorge and all, so it stood at sea level whatever its
+            // sill: an outcome rule — a young rift's floor 917 m behind its sill became a 1 Mkm² fresh lake at 3 m (831576@340,
+            // lane l3). Whether the sea gets into a young rift is now the history's (step/rifting.js: the rift stage), and the
+            // terrain's: a floor joined below sea level to the ocean is sea)
+            if (drained || areaKm2 < keepKm2) {
                 // (lane rivers2, 2026-10-29 — Jackson: a basin a gorge from upstream crosses below its rim drains to the gorge's
                 // level, its deeps keeping their water; one small for its river is filled by the river's load, graded down to
                 // its outlet. Until then both were cut through to their floor)
