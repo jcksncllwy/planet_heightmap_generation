@@ -7,6 +7,8 @@
 // its process may do.
 
 import { CrustType } from '../model/crust.js';
+import { crustThicknessKm } from '../measure.js';
+import { heightsOf } from './heights.js';
 
 /** The planet's continental and arc crust now, in cells (every live plate's raster). */
 export function crustTally(world) {
@@ -51,18 +53,38 @@ function words(a) {
 }
 if (CrustType.OCEAN !== 0 || CrustType.CONTINENT !== 1 || CrustType.CRATON !== 2 || CrustType.ARC !== 3) throw new Error('crust-ledger.js counts CrustType by its bits');
 
+/** The planet's continental crust VOLUME now, in cell-km (Σ over continent and craton cells of measure.js crustThicknessKm):
+ * the area ledger sees a belt thicken, a weld absorb its overlap or erosion thin a shield as nothing (lane crust, stage 0:
+ * config.crustLedgerVolume, a diagnostic for tools/trace-crust.mjs — slow, every cell's column each stage). */
+export function crustVolume(world) {
+    const H = heightsOf(world.config);
+    let v = 0;
+    for (const p of world.plates) {
+        if (!p.alive) continue;
+        const { mask, type, rootKm, upliftKm, baseKm } = p.crust;
+        for (let c = 0; c < mask.length; c++) {
+            if (!mask[c]) continue;
+            const t = type[c];
+            if (t === CrustType.CONTINENT || t === CrustType.CRATON) v += crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c]);
+        }
+    }
+    return v;
+}
+
 /**
  * A ledger for one world, or null when it is off. ledger.open() before a stage, ledger.book(stage) after it.
  */
 export function crustLedger(world) {
     if (!world.config.crustLedger) return null;
-    world.ledger ??= { start: crustTally(world), stages: {} };
+    const vol = !!world.config.crustLedgerVolume, tally = vol ? w => ({ ...crustTally(w), vol: crustVolume(w) }) : crustTally;
+    world.ledger ??= { start: tally(world), stages: {} };
     let before = null;
     return {
-        open() { before = crustTally(world); },
+        open() { before = tally(world); },
         book(stage) {
-            const now = crustTally(world), entry = world.ledger.stages[stage] ??= { land: 0, arc: 0 };
+            const now = tally(world), entry = world.ledger.stages[stage] ??= { land: 0, arc: 0 };
             entry.land += now.land - before.land; entry.arc += now.arc - before.arc;
+            if (vol) entry.vol = (entry.vol ?? 0) + now.vol - before.vol;
             before = now;
         },
     };

@@ -24,6 +24,7 @@ export const TECTONICS = {
                                 // changes little from step to step; run less often, the world view rebuilt after them is too
     snapshotEveryMyr: 10,
     crustLedger: false,         // book every stage's change to the continental and arc crust (step/crust-ledger.js; the checks turn it on)
+    crustLedgerVolume: false,   // …and to its volume (area × thickness): slow, a diagnostic for tools/trace-crust.mjs
 
     // ── Initial supercontinent [WBP] (init/) ──
     cratonCount: 14,            // [WBP: 8–12] more, smaller cores than that: a supercontinent reads as an assembly of many
