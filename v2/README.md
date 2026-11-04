@@ -154,8 +154,10 @@ basin (or a full trapped sea's lowland) left without water drains whole: every
 pocket in it (a sub-basin behind its own sill, which the gorge from the basin's floor does not reach) gets its own gorge
 out from its lowest point. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
-names a river's discharge, regime and flood months, and a lake's kind). Measured (20K plates, desktop): 640K
-~8 s, 2.5M ~15 s, 10M ~53 s the first time (~40 s after: the mesh is kept), the browser ~3 GB above the page at 10M.
+names a river's discharge, regime and flood months, and a lake's kind). Measured when this stage was new (20K plates,
+desktop): 640K ~8 s, 2.5M ~15 s, 10M ~53 s. The whole Add detail now (erosion, ice, wind, coast, water and climate since;
+Chrome on an M1 Pro, erosion on WebGPU, 2026-11-02): 2.5M 74 s on a quiet machine (~190 s under load), 10M 259 s the
+first time (mesh ~26 s of it, kept after), peak memory 13.6 GB at 10M — the Detail menu's "~4 min".
 **Export** (on the timeline once the moment shown is finished; `js/evolution/export.js`, PNG files by `js/view/png.js`,
 the ZIP by `js/view/zip.js`): the colour map as the Terrain view shows it (palette, lakes, rivers); the Satellite view
 for the year, January or July (as shown: no grid, no glint); the Köppen climate zones in their own colours, unshaded;
