@@ -133,6 +133,7 @@ export function evolveRivers(world, dt) {
     // ── drainage (km², rain-weighted), leaves to the sea ──
     area.fill(0); sed.fill(0); sedCont.fill(0); basin.fill(0);
     const denude = world.config.trenchDenudationKmPerMyr ?? 0, mouths = [];
+    let supplied = 0, suppliedCont = 0;                 // (the basins' rock, km³/Myr: booked below, beside where it goes — lane crust)
     const { rain, erode } = latitudeRates(mesh, H);
     for (let i = count - 1; i >= 0; i--) {
         const c = order[i];
@@ -140,8 +141,8 @@ export function evolveRivers(world, dt) {
         // (the basin's rock, km³/Myr: every cell of it wearing down at its latitude's rate; the continent's share kept
         // apart — an arc's or an island's rock was never continental crust)
         const crust = plates[owner[c]].crust, t = crust.type[ownerCell[c]], rock = denude > 0 && t !== CrustType.OCEAN ? cellArea * denude * erode[c] : 0;
-        sed[c] += rock; basin[c] += cellArea;
-        if (t === CrustType.CONTINENT || t === CrustType.CRATON) sedCont[c] += rock;
+        sed[c] += rock; basin[c] += cellArea; supplied += rock;
+        if (t === CrustType.CONTINENT || t === CrustType.CRATON) { sedCont[c] += rock; suppliedCont += rock; }
         // (a hollow is one lake, its outlet the cell it spills from: the load its rivers bring out of it any other way —
         // where its flat floor's receivers happen to leave it — is the lake's, and leaves by the outlet; there it keeps
         // what it traps, up to its room)
@@ -160,6 +161,8 @@ export function evolveRivers(world, dt) {
         else if (pass && sed[c] > 0) mouths.push({ plate: owner[c], cell: ownerCell[c], world: c, km3: sed[c], contKm3: sedCont[c], basinKm2: basin[c], sea: seaOf[c] });
     }
     world.riverMouths = mouths;
+    world.budget.riverSupplyKm3 = (world.budget.riverSupplyKm3 ?? 0) + supplied * span;
+    world.budget.riverContSupplyKm3 = (world.budget.riverContSupplyKm3 ?? 0) + suppliedCont * span;
     fillEnclosedSeas(world, mouths, span, land, sl);   // (a mouth on an enclosed sea fills it, to the sea's level; the rest go down their fans)
     buildShelves(world, mouths, span, land);           // (…less what their own passive margin has room for)
     for (let w = 0; w < n; w++) world.riverKm2[w] = land[w] ? area[w] : 0;
