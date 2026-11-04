@@ -520,6 +520,8 @@ export const TECTONICS = {
     riftCostSlack: 1.6,         // cuts costing up to this many times the cheapest are considered, for the stress across them
     riftStage: true,            // a rift stretches before it breaks up: the first riftBreakupKm of its opening is thinned continent, not
                                 // ocean (step/rifting.js evolveRiftStages; lane pstress, stage 2)
+    riftStageVolume: false,     // (lane crust, 1a) …and that thinned continent is the zone's own crust spread wider, not made: the margins
+                                // thin as the opening widens, volume conserved (step/rifting.js stretchConserving)
     riftBreakupKm: 180,         // …this much: ~177 km of continental crustal extension across the Iberia–Newfoundland conjugate pair
                                 // before breakup (Gómez-Romeu et al., EGU 2019 abstract; 135 km by fault heaves alone)
     riftByStress: true,         // WHERE a continent rifts is set by its stress field against its strength (field/rift-stress.js: junction

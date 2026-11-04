@@ -260,15 +260,15 @@ const STAGE_SPAN = [0.2, 0.7];      // the share of its crust a stretched cell h
 /** A rift just split plate and fresh along path: open its stage. The zone it may stretch over: within riftBreakupKm of the line. */
 function openRiftStage(world, plate, fresh, path) {
     const { mesh, config } = world, { adjOffset, adjList, numCells, edgeKm } = mesh;
-    const hops = Math.ceil(config.riftBreakupKm / edgeKm) + 1, seen = new Uint8Array(numCells), zone = [];
+    const hops = Math.ceil(config.riftBreakupKm / edgeKm) + 1, seen = new Uint8Array(numCells), zone = [], hop = [];
     let ring = [...new Set(path)];
-    for (const c of ring) { seen[c] = 1; zone.push(c); }
+    for (const c of ring) { seen[c] = 1; zone.push(c); hop.push(0); }
     for (let h = 0; h < hops; h++) {
         const next = [];
-        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seen[nb]) { seen[nb] = 1; zone.push(nb); next.push(nb); } }
+        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seen[nb]) { seen[nb] = 1; zone.push(nb); hop.push(h + 1); next.push(nb); } }
         ring = next;
     }
-    (world.riftStages ??= []).push({ a: plate.id, b: fresh.id, born: world.time, lengthKm: path.length * edgeKm, zone: Int32Array.from(zone), stretchedKm2: 0 });
+    (world.riftStages ??= []).push({ a: plate.id, b: fresh.id, born: world.time, lengthKm: path.length * edgeKm, zone: Int32Array.from(zone), hop: Uint8Array.from(hop), hops, stretchedKm2: 0 });
 }
 
 /**
@@ -283,6 +283,7 @@ export function evolveRiftStages(world) {
     world.riftStages = world.riftStages.filter(st => {
         const A = plates[st.a], B = plates[st.b];
         if (!A?.alive || !B?.alive || A.riftPartner !== B.id || B.riftPartner !== A.id) return false;
+        if (config.riftStageVolume) { made += stretchConserving(st, A, B, C, time, config, cellKm2); return st.stretchedKm2 / st.lengthKm < config.riftBreakupKm; }
         const f = Math.min(1, st.stretchedKm2 / st.lengthKm / config.riftBreakupKm), lost = STAGE_SPAN[0] + (STAGE_SPAN[1] - STAGE_SPAN[0]) * f;
         for (const P of [A, B]) {
             const cr = P.crust;
@@ -299,4 +300,68 @@ export function evolveRiftStages(world) {
         return st.stretchedKm2 / st.lengthKm < config.riftBreakupKm;
     });
     return made;
+}
+
+// ── The rift stage that conserves the crust (lane crust, stage 1a; config.riftStageVolume) ──
+// Stretching makes no rock. The stage above gives each cell of the opening a crust of its own (1 − lost of a continent's),
+// made from nothing, and leaves the halves' crust as it was: over a 1200 Myr cycle it adds 0.7–0.9 Gkm³ (~15 % of the
+// planet's continental crust) and no margin is ever thinned (crust-report.md §1). Here the opening's crust is the zone's
+// own, spread wider: pure shear across the zone, strongest at the line and fading to nothing at the zone's edge — the
+// necking and hyperextended domains of a rifted margin, where crust ~30–35 km thick thins to < 10 km toward the axis
+// over 100–300 km (Sutra et al. 2013, G³; Iberia–Newfoundland). Each step, with the opening's new cells N and the zone's
+// continent D (both halves, the stage's earlier cells included; cratons excepted, too strong to neck — Lenardic & Moresi
+// 1999), each cell of D keeps 1 − k·w of its crust (w = 1 at the line, falling linearly to 0 past the zone's last ring)
+// and each new cell gets the line's crust as thinned, H₁(1 − k) (H₁ the mean crust of D's cells nearest the line): k is
+// the one number that leaves Σ crust unchanged — k = |N|·H₁ ÷ (Σ_D h·w + |N|·H₁). The area the opening adds is the same
+// as the stage above (riftBreakupKm of it, sourced); its volume now comes out of the margins, which thin and sink (Airy:
+// measure.js columnKm), so a young rift's margins stand below the sea where the stage above left cliffs.
+// Reduced model, and its limits: the thinning is a profile, not a strain worked out from forces; only the root (crust)
+// thins — the relief and the swells a cell carries are left as they were (heights.js wears them); a cell's crust is never
+// thinned below THIN_FLOOR_KM. Arcs and cratons in the zone are left whole.
+const THIN_FLOOR_KM = 3;            // (no crust thinner than this: the hyperextended domain's thinnest, ~3 km, Sutra et al. 2013)
+function stretchConserving(st, A, B, C, time, config, cellKm2) {
+    const crustKm = C.crust[CrustType.CONTINENT], fresh = [], old = [];
+    let sumHW = 0, sumH1 = 0, n1 = 0;
+    const w = i => 1 - st.hop[i] / (st.hops + 1);
+    for (const P of [A, B]) {
+        const cr = P.crust;
+        for (let i = 0; i < st.zone.length; i++) {
+            const c = st.zone[i];
+            if (!cr.mask[c]) continue;
+            if (cr.type[c] === CrustType.OCEAN) { if (cr.formedAt[c] >= st.born) fresh.push(P, c, i); continue; }
+            if (cr.type[c] !== CrustType.CONTINENT) continue;
+            const h = Math.max(0, C.crust[CrustType.CONTINENT] + cr.rootKm[c]);
+            old.push(P, c, i, h);
+            sumHW += h * w(i);
+            if (w(i) >= 0.6) { sumH1 += h; n1++; }
+        }
+    }
+    const nNew = fresh.length / 3;
+    if (!nNew) return 0;
+    if (!old.length) {                                           // (no continent left in the zone to stretch: the opening is ocean)
+        st.stretchedKm2 = st.lengthKm * config.riftBreakupKm;
+        return 0;
+    }
+    let sumH = 0; for (let j = 3; j < old.length; j += 4) sumH += old[j];
+    const H1 = n1 ? sumH1 / n1 : sumH / (old.length / 4);
+    const k = nNew * H1 / (sumHW + nNew * H1);
+    // (the floor: a cell already near it gives less, so the books still balance — what it cannot give is not made)
+    let given = 0;
+    for (let j = 0; j < old.length; j += 4) {
+        const P = old[j], c = old[j + 1], i = old[j + 2], h = old[j + 3], h2 = Math.max(Math.min(h, THIN_FLOOR_KM), h * (1 - k * w(i)));
+        given += h - h2;
+        P.crust.rootKm[c] = h2 - crustKm;
+        P.dirty = true;
+    }
+    const each = given / nNew;
+    for (let j = 0; j < fresh.length; j += 3) {
+        const P = fresh[j], c = fresh[j + 1], cr = P.crust;
+        cr.type[c] = CrustType.CONTINENT;
+        cr.rootKm[c] = each - crustKm;
+        cr.flags[c] |= CrustFlag.RIFT_MARGIN;
+        cr.recordOrogeny(c, OrogenyType.RIFT, 0, time, config.orogenyQuietMyr);
+        st.stretchedKm2 += cellKm2;
+        P.dirty = true;
+    }
+    return nNew;
 }
