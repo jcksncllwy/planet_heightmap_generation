@@ -104,7 +104,11 @@ section('the planet turned half a cell under the world grid');
     // distance), so the gain is held to its sign on every seed, a sign test over the seeds, not to a margin from one history)
     const med = k => medianOf(rows.map(r => r.crust[k])), gains = k => rows.map(r => r.crust[k] - r.grid[k]);
     const line = (k, fmt) => bySeed(rows, r => `${fmt(r.crust[k])} (grid ${fmt(r.grid[k])})`);
-    check('turned half a cell, a coastline stays where its crust is', med('coast') >= 0.965 && gains('coast').every(g => g > 0),
+    // (checkfix2 2026-11-03: the floor was 0.965, in the middle of the noise: four histories' worth of the same three seeds, the
+    // start world nudged by trenchDenudation ×1.0001, ×1.0002, ×1.0003 (a no-physics change that sends the history down another
+    // path), read 96.4 · 96.6 · 96.8 · 96.2 %, so 96.5 passed on two of four. 96.0 sits under all four, still 3.6 points above
+    // the 92.4 % of the code before Phase 9, and the gain over the world grid on every seed (grid 92.5–94.8 %) is the claim)
+    check('turned half a cell, a coastline stays where its crust is', med('coast') >= 0.96 && gains('coast').every(g => g > 0),
         `land and sea agree at the same crust on ${pct(med('coast'))} % of cells within 300 km of a coast (median of ${rows.length} histories at 150 Myr; before Phase 9: 92.4 %) — ${line('coast', pct)} %`);
     check('…and so does the land\'s shape', med('heights') >= 0.85 && gains('heights').every(g => g > 0),
         `land heights correlate ${f2(med('heights'))} with the same crust before the turn (median; before Phase 9: 0.65) — ${line('heights', f2)}`);
@@ -209,7 +213,13 @@ section('a drifting continent 10 Myr on');
         const all = SEEDS.map(seed => drift(seed, at(seed, t - 10), at(seed, t))), rows = all.filter(r => r.coastAll > 5000);
         const med = k => medianOf(rows.map(r => r[k]));
         unformed.push(all.length - rows.length);
-        check(`${t - 10}→${t} Myr: the continent that moved most keeps its coasts, its shape and its rivers`, rows.length > all.length / 2 && med('coast') >= 0.95 && med('heights') >= 0.5 && med('rivers') >= 0.9,
+        // (checkfix2 2026-11-03: the coast floor was 0.95, above the middle of the noise. The median of the three seeds' agreement, over
+        // the same histories and the three nudged ones (trenchDenudation ×1.0001–1.0003, no physics changed): 140→150 Myr 94.6 · 93.2 ·
+        // 94.9 · 93.6 %, 290→300 Myr 94.5 · 95.5 · 95.7 · 94.4 % (a single history 92.5–97.2 %, sd ~1.2 points), so 0.95 passed on 3 of 8
+        // by the path alone. 0.93 sits under all eight, and at the pre-Phase-9 range's middle (92–95 %). The rivers' floor was 0.9, also in
+        // the noise at 290→300 Myr (medians 89.7 · 90.4 · 89.7 · 94.7 %; 150 Myr: 96.4 · 96.4 · 96.1 · 95.1): 0.88 sits under all
+        // eight. Heights ≥ 0.5 held in all eight (medians 0.60–0.83) and is unchanged)
+        check(`${t - 10}→${t} Myr: the continent that moved most keeps its coasts, its shape and its rivers`, rows.length > all.length / 2 && med('coast') >= 0.93 && med('heights') >= 0.5 && med('rivers') >= 0.88,
             `medians of the ${rows.length} of ${all.length} histories whose continent has over 5000 cells near its coasts${rows.length < all.length ? ` (no continent big enough on ${all.filter(r => !rows.includes(r)).map(r => r.seed).join(', ')})` : ''}: land and sea agree at the same crust on ${pct(med('coast'))} % of cells near its coasts (before Phase 9: 92–95 %), land heights correlate ${f2(med('heights'))} (0.45–0.49 before), ${(100 * med('rivers')).toFixed(1)} % of its rivers over 10,000 km² run within a cell of one 10 Myr before — `
             + bySeed(rows, r => `plate ${r.p} turned ${r.turned.toFixed(1)}° (${r.coastAll} cells near its coasts, ${r.coastN} judged): ${pct(r.coast)} %, ${f2(r.heights)}, ${(100 * r.rivers).toFixed(1)} % of ${r.riverN} river cells (left out as the history's change: ${pct(r.riversChanged)} % of its river cells, whose basins it changed; of its cells, ${pct(r.notHeld)} % crust it did not hold in both frames, ${pct(r.retyped)} % crust that changed type, ${pct(r.arcGrew)} % arc that grew or subsided, ${pct(r.moved)} % a moved coast)`));
     }
