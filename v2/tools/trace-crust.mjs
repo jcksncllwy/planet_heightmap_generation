@@ -17,6 +17,8 @@ import { crustThicknessKm } from '../js/tectonics/measure.js';
 import { synthesizeTerrain } from '../js/terrain/synthesize.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
+import { marginConstants } from '../js/terrain/margins.js';
+import { CoastKind } from '../js/terrain/records.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const seed = +arg('seed', 12345), MYR = +arg('myr', 1200), CELLS = +arg('cells', 40000);
@@ -74,8 +76,19 @@ simulate(world, {
                 nc++; bins[H_EDGES.findIndex(e => h < e)]++;
                 if (h > 0) sumUp += h;
             }
+            // (the rifted margins' thinned crust beyond the history's crust edge, out to the true COB under the sea: the
+            // terrain draws it (synthesize.js, margins.js uEdge) though the history counts it as ocean — Earth's continental
+            // area counts it: Cogley 1984 takes the crust to the foot of the slope)
+            const MC = marginConstants(TERRAIN), R = T.rec, S = T.sampler;
+            let band = 0;
+            for (let t = 0; t < tm.numCells; t++) {
+                const a = S.cells[3 * t], b = S.cells[3 * t + 1], c = S.cells[3 * t + 2], wa = S.weights[3 * t], wb = S.weights[3 * t + 1], wc = S.weights[3 * t + 2];
+                if (cont[a] || T.heightKm[t] > 0 || R.coastKind[a] !== CoastKind.PASSIVE) continue;
+                const coast = wa * R.coastKm[a] + wb * R.coastKm[b] + wc * R.coastKm[c], thin = wa * R.thinKm[a] + wb * R.thinKm[b] + wc * R.thinKm[c];
+                if (coast < 0 && coast > -MC.uEdge * thin) band += wa * R.riftShare[a] + wb * R.riftShare[b] + wc * R.riftShare[c];
+            }
             hyps.push({ time: f.time, contShare: nc / nAll, landShare: nLand / nAll, contBelowSea: bins.slice(0, 6).reduce((a, b) => a + b, 0) / Math.max(1, nc),
-                bins: bins.map(b => b / Math.max(1, nc)), seaKm: T.rec.seaKm });
+                bins: bins.map(b => b / Math.max(1, nc)), seaKm: T.rec.seaKm, marginBand: band / nAll });
         }
     },
 });
