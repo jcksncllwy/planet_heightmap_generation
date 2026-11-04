@@ -89,6 +89,7 @@ const out = { seed, myr: MYR, cells: CELLS, sets, secs, cellKm2: km2,
     ledger: Object.fromEntries(Object.entries(L).map(([k, e]) => [k, { landMkm2: Mk(e.land), arcMkm2: Mk(e.arc), volGkm3: (e.vol ?? 0) * km2 / 1e9 }])),
     collisions: { underthrust: -Mk(B.underthrustCells ?? 0), sutureOverlap: -Mk(sutureLost), sealedLand: Mk(B.sealedLandCells ?? 0), sealPaid: -Mk(B.sealPaidCells ?? 0), other: Mk(collOther), sutures: sutures.length },
     budget: Object.fromEntries(Object.entries(B).filter(([k]) => /Cells$/.test(k)).map(([k, v]) => [k, Mk(v)])),
+    sedGkm3: Object.fromEntries(Object.entries(B).filter(([k]) => /Km3$/.test(k)).map(([k, v]) => [k, v / 1e9])),   // the sediment books (km³ → Gkm³): where the worn rock went
     volBudget: Object.fromEntries(Object.entries(B).filter(([k]) => /^collision\w+Km$/.test(k)).map(([k, v]) => [k, v * km2 / 1e9])),   // Gkm³
     ledgerAt: ledgerAt.map(x => ({ time: x.time, stages: Object.fromEntries(Object.entries(x.stages).filter(([, v]) => v).map(([k, v]) => [k, Mk(v)])), underthrust: Mk(x.budget.underthrustCells ?? 0) })),
     frames, hyps };
