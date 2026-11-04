@@ -244,11 +244,25 @@ section('Andean margin');
         const o = plate.omega, v = [o[1] * p[2] - o[2] * p[1], o[2] * p[0] - o[0] * p[2], o[0] * p[1] - o[1] * p[0]];
         return (v[0] * out[0] + v[1] * out[1] + v[2] * out[2]) / ol / CM_PER_YR_TO_RAD_PER_MYR;
     };
-    const fast = run('one-sided', 80, { dragContinent: cfg.dragContinent / 2, dragCraton: cfg.dragCraton / 2 }), fastLast = fast.frames.at(-1), fastSolo = fastLast.plates.find(p => p.name === 'Solo');
+    const halfDrag = { dragContinent: cfg.dragContinent / 2, dragCraton: cfg.dragCraton / 2 };
+    const fast = run('one-sided', 80, halfDrag), fastLast = fast.frames.at(-1), fastSolo = fastLast.plates.find(p => p.name === 'Solo');
     const fastBelt = cellsWhere(numCells, w => isLand(fastLast, w) && fastLast.oroType[w] === OrogenyType.ANDEAN), fastReach = reachAt(fastLast, fastBelt);
     const advance = advanceCmYr(last, solo, belt), fastAdvance = advanceCmYr(fastLast, fastSolo, fastBelt);
-    check('…and further the faster the upper plate advances on its trench', fastAdvance > advance && fastBelt.length > belt.length && fastReach >= reach,
-        `Solo advancing on its trench at ${advance.toFixed(1)} cm/yr: ${belt.length} cells reaching ${reach.toFixed(0)} km; at ${fastAdvance.toFixed(1)} cm/yr (half the drag): ${fastBelt.length} cells reaching ${fastReach.toFixed(0)} km`);
+    // (checkfix2 2026-11-03: was the single farthest belt cell on one seed, 421 vs 414 km, 7 km under the ~110 km cell: the
+    // ordering of two cells' distances, not a belt. The belt's reach is its 90th-percentile distance inland, as the widening
+    // check above reads it, over six seeds: with half the drag it is further on all six, by 50–120 km (p90 264→322, 260→313,
+    // 248→310, 261→348, 250→323, 233→351), with 27–46 more cells; the farthest cell alone reverses on 12345 only (421→414; the
+    // other five rise by 36–157 km): it is the noisy summary. The history has no spread to perturb here — a no-physics nudge
+    // of trenchDenudation leaves the scene bit-identical — so the seed-to-seed spread is the band)
+    const forced = [SEED, ...MORE_SEEDS, 3].map(seed => {
+        const q = seed === SEED ? { base: last, soloB: solo, baseBelt: belt, fastFrame: fastLast, soloF: fastSolo, fastCells: fastBelt }
+            : (() => { const b = run('one-sided', 80, {}, true, seed).frames.at(-1), f = run('one-sided', 80, halfDrag, true, seed).frames.at(-1), pl = fr => fr.plates.find(x => x.name === 'Solo');
+                return { base: b, soloB: pl(b), baseBelt: cellsWhere(numCells, w => isLand(b, w) && b.oroType[w] === OrogenyType.ANDEAN), fastFrame: f, soloF: pl(f), fastCells: cellsWhere(numCells, w => isLand(f, w) && f.oroType[w] === OrogenyType.ANDEAN) }; })();
+        const wb = widthP90(q.base, q.soloB), wf = widthP90(q.fastFrame, q.soloF), advB = advanceCmYr(q.base, q.soloB, q.baseBelt), advF = advanceCmYr(q.fastFrame, q.soloF, q.fastCells);
+        return { label: seed, formed: wb.cells > 0 && wf.cells > 0, ok: advF > advB && wf.cells > wb.cells && wf.p90 > wb.p90,
+            text: `${advB.toFixed(1)} → ${advF.toFixed(1)} cm/yr: ${wb.cells} → ${wf.cells} cells, 90th percentile ${wb.p90.toFixed(0)} → ${wf.p90.toFixed(0)} km` };
+    });
+    checkAcross('…and further the faster the upper plate advances on its trench', forced, { detail: 'Solo with half the drag against as built; reach = 90th-percentile distance inland' });
     // the trailing coast (within ±40° of due east of the centre) must carry nothing; a slight rotation may let the rim
     // override old ocean near the tips of the trench, which is a real (small) trench and is allowed
     const centre = solo.centre, east = [-centre[1], centre[0], 0], north = [-centre[2] * centre[0], -centre[2] * centre[1], centre[0] ** 2 + centre[1] ** 2];
