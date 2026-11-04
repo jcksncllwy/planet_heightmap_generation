@@ -139,6 +139,9 @@ export const TECTONICS = {
     beltSpeedExponent: 0.5,     // factor = (rate ÷ ref)^exponent, clamped below — fast convergence carries deformation further inland (flat slabs)
     beltSpeedFactorMin: 0.6,
     beltSpeedFactorMax: 1.6,
+    rockBook: false,            // (lane crust) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
+                                // own (trenchDenudationKmPerMyr, ~5× the crust's own wear over the first 200 Myr): one book, so what
+                                // the basins, seas and shelves keep is the continents' rock, and only what leaves them is lost
     beltStrainRate: 0,          // (lane crust, 1c; /s, 0 = off) a LIVE belt reaches only as far as it deforms at least this fast: a sheet
                                 // shortening at v across width W strains at v ÷ W, so W = v ÷ this (capped at its kind's maxKm), with v the
                                 // shortening rate now — not the convergence absorbed so far, floored by speed — so a slowing belt narrows

@@ -87,7 +87,7 @@ export function evolveHeights(world, dt) {
     if (dt <= 0) return 0;
     const { mesh, plates, time, config } = world, H = heightsOf(config);
     const { adjOffset, adjList, xyz, edgeKm } = mesh;
-    const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null;
+    const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null, book = !!config.rockBook;
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
@@ -178,6 +178,7 @@ export function evolveHeights(world, dt) {
             if (baseKm[c] > 0) baseKm[c] *= keep;
             // (a hollow's fill wears with the land it lies in — hardly at all while it lies low (erosionAtHeight sets the
             // pace); it is sediment, so a shield's hardness does not hold it: it wears as the cover does)
+            if (book) crust.wornKm[c] += Math.max(0, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]]);
             if (basinFillKm[c] > 0) basinFillKm[c] *= hard < 1 ? wear(rate[bin] * dt * erosionAtHeight(height, H) / H.reliefTauMyr) : keep;
             // (the geological record, step/geology.js: the rock this wear took off — the root as it stands, the relief and the
             // swells as the crust they stand for (measure.js crustThicknessKm), a share of the crests)

@@ -57,15 +57,16 @@ if (CrustType.OCEAN !== 0 || CrustType.CONTINENT !== 1 || CrustType.CRATON !== 2
  * the area ledger sees a belt thicken, a weld absorb its overlap or erosion thin a shield as nothing (lane crust, stage 0:
  * config.crustLedgerVolume, a diagnostic for tools/trace-crust.mjs — slow, every cell's column each stage). */
 export function crustVolume(world) {
-    const H = heightsOf(world.config);
+    const H = heightsOf(world.config), fills = !!world.config.rockBook, cellKm2 = world.mesh.cellAreaKm2;
     let v = 0;
     for (const p of world.plates) {
         if (!p.alive) continue;
-        const { mask, type, rootKm, upliftKm, baseKm } = p.crust;
+        const { mask, type, rootKm, upliftKm, baseKm, basinFillKm, seaFillKm, shelfKm3 } = p.crust;
         for (let c = 0; c < mask.length; c++) {
             if (!mask[c]) continue;
             const t = type[c];
-            if (t === CrustType.CONTINENT || t === CrustType.CRATON) v += crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c]);
+            if (t === CrustType.CONTINENT || t === CrustType.CRATON) v += crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c])
+                + (fills ? basinFillKm[c] + seaFillKm[c] + shelfKm3[c] / cellKm2 : 0);   // (rockBook: the rock laid on it is the continent's)
         }
     }
     return v;
