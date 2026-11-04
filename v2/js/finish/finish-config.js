@@ -142,6 +142,7 @@ export const FINISH = {
     riverWidthPerSqrtQ: 5,      // a river's width (m) per √(m³/s) — hydraulic geometry (Leopold & Maddock)
     bedLossMPerYear: 20,        // what a river's bed loses where it is fully arid (m a year over its width: seepage and
                                 // evaporation — the Nile loses ~10 % over 1800 km of desert)
+    fsm: true,                  // the water on the erosion's ground by Fill-Spill-Merge (finish-fsm.js); false: the hydrology's rules (a study switch)
     lakeEvapShare: 1.2,         // open water evaporates this much of the land's potential evaporation (Penman 1948: a grass
                                 // cover transpires 0.6–0.8 of open water's E0, so E0 ≈ 1.25–1.7 × the land's; with petBaseMm,
                                 // petPerC: ~1.1 m a year at the Caspian's 12 °C — it loses ~1 m, Rodionov 1994 — ~2 m at the

@@ -147,7 +147,7 @@ export function fillSeaBasins(mesh, z, ocean, F) {
  * connected water, which the hydrology does not have; that, or Fill-Spill-Merge's level sets, should replace it.
  * @returns {number} the cells whose kind changed
  */
-function oneWater(mesh, kind, level, ocean, F) {
+export function oneWater(mesh, kind, level, ocean, F) {
     const { adjOffset, adjList, numCells: n, edgeKm } = mesh, gap = Math.round(F.lakeJoinKm / edgeKm), wet = k => k === Water.FRESH || k === Water.SALT;
     const body = new Int32Array(n).fill(-1), dist = new Int16Array(n), levels = [], uf = [];
     let front = [];
@@ -1029,7 +1029,7 @@ export const Regime = Object.freeze({ STEADY: 0, FLOOD: 1, SEASONAL: 2, EPHEMERA
  * season's low flow can vanish into the bed: the river runs dry). Then per point: its regime, its flood months
  * (around the peak, the months within 60 % of it), and whether it is fed from afar (permanent where the land is dry).
  */
-function riverYears(ctx, F, G) {
+export function riverYears(ctx, F, G) {
     const { n, count, order, recv, rank, stepKm, own, sink, body, lakeIn, lakeOut, cells } = G, { pet, rain } = ctx, monthsAt = ctx.months.at;
     const P = cells.length, qm = new Float32Array(12 * P), M = 4, acc = Array.from({ length: M }, () => new Float32Array(n)), sh = new Float32Array(M), ar = new Float32Array(M);
     const lam = F.lakeRegulation;
