@@ -146,6 +146,8 @@ export function classifyBoundaries(world, dt) {
         });
         const works = keep.map(i => f.kms[i] * config.andeanWorkShare * beltShape(f.headOn[i], undefined, config)), shears = keep.map(i => f.shear[i]);
         const belt = { type: flat ? OrogenyType.LARAMIDE : OrogenyType.ANDEAN, time: world.time };
+        // (config.arcAdditionKm3PerKmMyr: the crust this margin's belt adds is bounded by arc magmatism along its front)
+        if (config.arcAdditionKm3PerKmMyr > 0) belt.volCapKm3 = config.arcAdditionKm3PerKmMyr * andean.length * mesh.edgeKm * dt;
         const pick = (arr, test) => arr.filter((_, j) => test(andean[j]));
         const isArc = c => plate.crust.type[c] === CrustType.ARC, notArc = c => !isArc(c);
         if (andean.some(notArc)) spreadBelt(plate, mesh, andean.filter(notArc), { ...belt, widths: pick(widths, notArc), works: pick(works, notArc), shears: pick(shears, notArc) }, config);

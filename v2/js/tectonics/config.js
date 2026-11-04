@@ -139,6 +139,10 @@ export const TECTONICS = {
     beltSpeedExponent: 0.5,     // factor = (rate ÷ ref)^exponent, clamped below — fast convergence carries deformation further inland (flat slabs)
     beltSpeedFactorMin: 0.6,
     beltSpeedFactorMax: 1.6,
+    arcAdditionKm3PerKmMyr: 0,  // (lane crust, 1c(ii); 0 = off) an Andean or Laramide belt adds at most this much crust per km of its front per
+                                // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
+                                // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
+                                // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
     rockBook: false,            // (lane crust) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
                                 // own (trenchDenudationKmPerMyr, ~5× the crust's own wear over the first 200 Myr): one book, so what
                                 // the basins, seas and shelves keep is the continents' rock, and only what leaves them is lost

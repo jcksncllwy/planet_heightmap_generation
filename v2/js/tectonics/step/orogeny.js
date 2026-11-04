@@ -139,6 +139,18 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
     let n = 0;
     for (const c of queue) if (mark[c] !== stamp) { mark[c] = stamp; list[n++] = c; }
     const reached = list.subarray(0, n).sort();
+    // the thickening a cell takes (below: the same share everywhere, with a smooth plateau profile)
+    const thickOf = c => {
+        if (belt.noThicken || u[c] === Infinity || type[c] === CrustType.OCEAN) return 0;
+        const rimCell = type[c] === CrustType.CRATON;
+        if (rimCell && !(shieldShare > 0)) return 0;
+        const workKm = workOf(src[c]) * (rimCell ? shieldShare : 1), cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]), share = rimCell ? 1 : strength(c);
+        return room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
+    };
+    // (belt.volCapKm3: the most crust this step's belt may add — a margin's arc magmatism, config.arcAdditionKm3PerKmMyr — the
+    // rest of its relief being the margin's own crust shortened, which this raster does not take away: lane crust, 1c(ii))
+    let scale = 1;
+    if (belt.volCapKm3 !== undefined) { let v = 0; for (const c of reached) v += thickOf(c); v *= mesh.cellAreaKm2; if (v > belt.volCapKm3) scale = belt.volCapKm3 / v; }
     for (const c of reached) {
         if (u[c] === Infinity || type[c] === CrustType.OCEAN) continue;
         // (a craton, a front cell on one included: thin-skinned — the cover folds and thrusts, the shield barely
@@ -168,7 +180,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         // shortening spread over a belt that much wider thickens each column that much less — the crust the convergence
         // adds is its own, however wide the weak ground lets it spread (mass: the shortening × the crust's thickness))
         const cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]), share = rimCell ? 1 : strength(c);
-        const thickened = belt.noThicken ? 0 : room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
+        const thickened = thickOf(c) * scale;
         crust.thickKm[c] += thickened;
         // heights (records only): the root thickens with the crust; uplift and crests rise toward the belt's shape — the
         // whole belt at the pace of its front's convergence. Over weak ground the shape is laid out 1/s as wide, so it
