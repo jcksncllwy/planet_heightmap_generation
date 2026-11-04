@@ -139,6 +139,11 @@ export const TECTONICS = {
     beltSpeedExponent: 0.5,     // factor = (rate ÷ ref)^exponent, clamped below — fast convergence carries deformation further inland (flat slabs)
     beltSpeedFactorMin: 0.6,
     beltSpeedFactorMax: 1.6,
+    beltStrainRate: 0,          // (lane crust, 1c; /s, 0 = off) a LIVE belt reaches only as far as it deforms at least this fast: a sheet
+                                // shortening at v across width W strains at v ÷ W, so W = v ÷ this (capped at its kind's maxKm), with v the
+                                // shortening rate now — not the convergence absorbed so far, floored by speed — so a slowing belt narrows
+                                // and a stalled one stops refreshing its records. Unsourced: swept 3e-16 / 1e-15 / 3e-15 (India ~4 cm/yr
+                                // over Tibet's ~1300 km and the Andes' ~1 cm/yr of shortening over ~350 km both give ~1e-15; my arithmetic)
     beltObliqueMin: 0.35,       // a belt's reach × this where the plates slide along the front rather than meet across it, rising to × 1
                                 // head-on (× cos² of the obliquity): oblique convergence goes into strike-slip, not into the belt
     beltYoungSlabBoost: 0.5,    // a trench's belt reaches up to this much further over a brand-new slab (the ridge close offshore)…

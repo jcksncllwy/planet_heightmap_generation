@@ -18,7 +18,7 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { tangentToward } from '../../core/sphere-geom.js';
-import { spreadBelt, beltWidthKm, beltShape, obliquityDeg, OrogenyType, BeltSide } from './orogeny.js';
+import { spreadBelt, beltWidthKm, liveBeltWidthKm, beltShape, obliquityDeg, OrogenyType, BeltSide } from './orogeny.js';
 import { mergePlates } from '../ops/merge-plates.js';
 import { accreteTerrane, landmassOf } from '../ops/accrete-terrane.js';
 import { scrapeArc } from '../ops/scrape-arc.js';
@@ -146,11 +146,15 @@ export function trackCollisions(world, dt) {
             // an oblique collision takes much of its motion up as strike-slip along the seam: narrower belts
             const vx = o[1] * c[2] - o[2] * c[1], vy = o[2] * c[0] - o[0] * c[2], vz = o[0] * c[1] - o[1] * c[0];
             const shape = beltShape(closing / Math.max(1e-12, Math.hypot(vx, vy, vz)), undefined, config);
-            const upperWidth = beltWidthKm(major ? 'himalayan' : 'ural', rec.shorteningKm, rec.meanRateCmYr, config) * shape;
-            const lowerWidth = beltWidthKm(major ? 'foreland' : 'ural', rec.shorteningKm, rec.meanRateCmYr, config) * shape;
+            // (under beltStrainRate, as far as the seam's shortening NOW strains the crust at that rate — the closing is the
+            // normal component already, so no obliquity factor; under collisionVolume the consumed crust is the belt's thickening
+            // — ops/thicken.js — so the belt itself adds none: it would count the same shortening twice)
+            const live = config.beltStrainRate > 0, noThicken = !!config.collisionVolume;
+            const upperWidth = live ? liveBeltWidthKm(major ? 'himalayan' : 'ural', km / dt, config) : beltWidthKm(major ? 'himalayan' : 'ural', rec.shorteningKm, rec.meanRateCmYr, config) * shape;
+            const lowerWidth = live ? liveBeltWidthKm(major ? 'foreland' : 'ural', km / dt, config) : beltWidthKm(major ? 'foreland' : 'ural', rec.shorteningKm, rec.meanRateCmYr, config) * shape;
             const shear = obliquityDeg([vx, vy, vz], n, c, closing);
-            spreadBelt(U, mesh, uniq(upperFront), { type, widthKm: upperWidth, workKm: km, time, side: BeltSide.UPPER, shear }, config);
-            spreadBelt(L, mesh, uniq(lowerFront), { type, widthKm: lowerWidth, workKm: km, time, side: BeltSide.LOWER, shear }, config);
+            spreadBelt(U, mesh, uniq(upperFront), { type, widthKm: upperWidth, workKm: km, time, side: BeltSide.UPPER, shear, noThicken }, config);
+            spreadBelt(L, mesh, uniq(lowerFront), { type, widthKm: lowerWidth, workKm: km, time, side: BeltSide.LOWER, shear, noThicken }, config);
         }
 
         // the lower plate's continent slides under the upper one: its land deep in the overlap is consumed, and the

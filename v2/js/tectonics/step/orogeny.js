@@ -25,6 +25,16 @@ export function beltWidthKm(kind, workKm, rateCmYr, config) {
 }
 
 /**
+ * How far inland a LIVE belt reaches under config.beltStrainRate (lane crust, 1c): as far as shortening at
+ * `shortKmPerMyr` keeps the crust straining at least that fast (W = v ÷ ε̇*), capped at the kind's widest. The rate is
+ * the shortening across the belt now, so obliquity is already in it. Off (0): beltWidthKm's law.
+ */
+export function liveBeltWidthKm(kind, shortKmPerMyr, config) {
+    return Math.min(config.belts[kind].maxKm, Math.max(0, shortKmPerMyr) * KM_PER_MYR_IN_M_PER_S / config.beltStrainRate / 1000);
+}
+const KM_PER_MYR_IN_M_PER_S = 1000 / 3.15576e13;
+
+/**
  * How a front's geometry scales its belt (× on the width): a head-on front deforms deep inland, an oblique one
  * takes much of the motion up as strike-slip along the margin and stays narrow (the obliquity is the angle
  * between the relative motion and the front's normal); and under a young slab — the ridge close offshore — the
@@ -158,7 +168,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         // shortening spread over a belt that much wider thickens each column that much less — the crust the convergence
         // adds is its own, however wide the weak ground lets it spread (mass: the shortening × the crust's thickness))
         const cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]), share = rimCell ? 1 : strength(c);
-        const thickened = room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
+        const thickened = belt.noThicken ? 0 : room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
         crust.thickKm[c] += thickened;
         // heights (records only): the root thickens with the crust; uplift and crests rise toward the belt's shape — the
         // whole belt at the pace of its front's convergence. Over weak ground the shape is laid out 1/s as wide, so it

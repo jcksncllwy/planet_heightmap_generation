@@ -10,7 +10,7 @@ import { CM_PER_YR_TO_RAD_PER_MYR, CM_PER_YR_TO_KM_PER_MYR } from '../config.js'
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { overrides } from './polarity.js';
 import { contactAt } from './contact.js';
-import { spreadBelt, beltWidthKm, beltShape, obliquityDeg, OrogenyType } from './orogeny.js';
+import { spreadBelt, beltWidthKm, liveBeltWidthKm, beltShape, obliquityDeg, OrogenyType } from './orogeny.js';
 import { reachesWithin } from '../../core/mesh-bfs.js';
 import { establishes } from './subduction-init.js';
 
@@ -135,7 +135,10 @@ export function classifyBoundaries(world, dt) {
         // a flat slab creeps inland under the plate as it goes down, and the deformation above it with it: the Laramide
         // belt starts where the Andean one was and migrates inland with the length of slab gone down flat
         plate.flatSlabKm = flat ? plate.flatSlabKm + f.km / f.cells.length : 0;
+        // (under beltStrainRate: as far as this stretch's shortening — the work below — strains the margin at that rate)
+        const live = config.beltStrainRate > 0, kind = flat ? 'laramide' : 'andean';
         const widths = keep.map(i => {
+            if (live) return liveBeltWidthKm(kind, f.kms[i] * config.andeanWorkShare * beltShape(f.headOn[i], undefined, config) / dt, config);
             const c = f.cells[i], rate = f.kms[i] / dt / CM_PER_YR_TO_KM_PER_MYR, shape = beltShape(f.headOn[i], f.age[i], config);   
             const steep = beltWidthKm('andean', plate.crust.slabKm[c] * config.andeanWorkShare, rate, config);
             if (!flat) return Math.min(cap(config, 'andean'), steep * shape);
@@ -152,7 +155,7 @@ export function classifyBoundaries(world, dt) {
     // Transpression belts: narrow, and wider the longer the fault has been pressed together (the front's own record).
     for (const [plate, s] of slid) {
         if (dt <= 0) continue;
-        const widths = s.cells.map((c, i) => Math.min(cap(config, 'transpression'), beltWidthKm('transpression', plate.crust.oroWork[c], s.kms[i] / dt / CM_PER_YR_TO_KM_PER_MYR, config)));
+        const widths = s.cells.map((c, i) => config.beltStrainRate > 0 ? liveBeltWidthKm('transpression', s.kms[i] / dt, config) : Math.min(cap(config, 'transpression'), beltWidthKm('transpression', plate.crust.oroWork[c], s.kms[i] / dt / CM_PER_YR_TO_KM_PER_MYR, config)));
         spreadBelt(plate, mesh, s.cells, { type: OrogenyType.TRANSPRESSION, time: world.time, widths, works: s.kms, shears: s.shear }, config);
     }
 }

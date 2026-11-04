@@ -180,8 +180,8 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     const merged = { crust: out }, meanIndent = sumIndent / Math.max(1, oCount);
     const rearSeam = seam.filter(q => origin[q] === 1), noseSeam = seam.filter(q => origin[q] === 2);
     const total = collision.shorteningKm + meanIndent, rate = collision.meanRateCmYr;
-    spreadBelt(merged, mesh, rearSeam, { type: OrogenyType.HIMALAYAN, widthKm: beltWidthKm('himalayan', total, rate, config), workKm: meanIndent, time, side: BeltSide.UPPER, keepShear: true }, config, q => origin[q] === 1);
-    spreadBelt(merged, mesh, noseSeam, { type: OrogenyType.HIMALAYAN, widthKm: beltWidthKm('foreland', total, rate, config), workKm: meanIndent, time, side: BeltSide.LOWER, keepShear: true }, config, q => origin[q] === 2);
+    spreadBelt(merged, mesh, rearSeam, { type: OrogenyType.HIMALAYAN, widthKm: beltWidthKm('himalayan', total, rate, config), workKm: meanIndent, time, side: BeltSide.UPPER, keepShear: true, noThicken: !!config.collisionVolume }, config, q => origin[q] === 1);
+    spreadBelt(merged, mesh, noseSeam, { type: OrogenyType.HIMALAYAN, widthKm: beltWidthKm('foreland', total, rate, config), workKm: meanIndent, time, side: BeltSide.LOWER, keepShear: true, noThicken: !!config.collisionVolume }, config, q => origin[q] === 2);
 
     // ── hand over ──
     upper.crust = out;
