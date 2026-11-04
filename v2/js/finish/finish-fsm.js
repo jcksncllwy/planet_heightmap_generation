@@ -142,7 +142,10 @@ export function fillSpillMerge(ctx, F) {
             // them a world took the water of the hollows below them: a humid plain's lakes (rain 1 160 mm) closed and drawn as playas,
             // white, in the gallery, and the land draining to a sink 0.33–0.52 against Earth's ~0.2. A sub-basin that small inside a
             // bigger closed hollow is the bigger hollow's: there its water ends, as in a playa's floor)
-            if (h.cells.length < 2 || h.cells.length * cellKm2 < F.lakeMinKm2) {
+            // (and one shallower than the map shows, its rim under lakeMinDepthM above its floor: judged by its water, the plains' dishes
+            // a few metres deep closed as salt lakes so shallow that they dried to playas, white and branching on a green plain in the
+            // gallery, 2026-11-03. A dish that shallow fills with its rivers' load as a pit does)
+            if (h.cells.length < 2 || h.cells.length * cellKm2 < F.lakeMinKm2 || (h.level - h.floor) * 1000 < F.lakeMinDepthM) {
                 fillTo({ cells: h.cells, level: h.level }, 'pit');
                 h.kind = Water.NONE; h.levelNow = h.level;
                 q[c] = h.inflow; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;

@@ -128,7 +128,7 @@ land's potential evaporation, less the rain on it: the paper has no evaporation,
 full to its sill spills into the one beside it, two full ones merge, and a hollow whose water cannot fill it is closed, its
 rivers ending at a salt lake (or a playa) at its own level. Nothing is cut and no size, origin or age decides whether water
 stands. The map's thresholds (`lakeMinKm2` 300 km², two cells, `lakeMinDepthM` 15 m) decide only what is drawn: water under
-them full to its sill is filled to that sill (a pond the map cannot show, its river's load), and a whole hollow smaller than
+them full to its sill is filled to that sill (a pond the map cannot show, its river's load), and a whole hollow smaller or shallower than
 the map shows fills and spills (a pit of a cell fills with load in thousands of years; judged as sinks, the dry lands' pits
 took the water of the hollows below them); a sub-map pit inside a bigger closed hollow is where its water ends, its floor
 levelled, not drawn. Then the rivers: a priority flood over land and water from the sea and from where water ends, each
