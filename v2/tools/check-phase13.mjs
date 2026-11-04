@@ -25,6 +25,14 @@ import { shelfStats, EARTH_SHELF_KM, EARTH_SHELF_SHARE, EARTH_BREAK_KM } from '.
 import { columnKm, crustThicknessKm, columnModel } from '../js/tectonics/measure.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 
+// (lane crust) a continental cell counts as deformed where its crust stands at least this far (as a share) off its kind's
+// undeformed thickness — β ≥ 1.1 stretched, or 10 % thickened. Derived, not fitted: the edge of a deforming network is the
+// landward limit of resolvably strained crust (Müller et al. 2019, Tectonics 38: 1884, after Williams et al. 2011), and
+// crustal thickness is known to ~3–4 km on ~35–40 km continents (global Moho uncertainty, Szwillus et al. 2019, JGR 124:
+// 1626), so a change under ~10 % is not resolved. Never move this to make the figure pass
+const DEFORMED_STRAIN = 0.1;
+const COLUMN = columnModel(TERRAIN);
+
 const SEEDS = [12345, 777, 4242];
 const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (the window over which the most a landmass held while the pieces dispersed is read)
 const FREEZE = 0.9, FREEZE_MYR = 50;                // (a plate holding over 90 % of the planet for over 50 Myr: the lid has stopped)
@@ -156,11 +164,20 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
         // over the frames from 100 Myr (the start's ranges are pre-history)
         {
             const all = [], cra = [];
-            let deformed = 0, compressed = 0;           // (branch unified-swell: crust a belt or a rift worked within 240 Myr)
+            // (branch unified-swell; lane crust: by strain) crust a belt or a rift worked within 240 Myr AND left strained —
+            // its thickness off its kind's undeformed column by at least DEFORMED_STRAIN. Müller et al. 2019's deforming
+            // networks run from the continent–ocean boundary to the landward limit of stretched (or shortened) crust: the
+            // area whose finite strain the plate model resolves, not every cell a belt's footprint once touched. The old
+            // count (any record, by reach) is kept as `touched`
+            let deformed = 0, compressed = 0, touched = 0, touchedC = 0;
             for (let w = 0; w < n; w++) {
                 if (!cont[w]) continue;
-                if (f.oroType[w] && f.time - f.oroLast[w] < 240) { deformed++; if (f.oroType[w] !== OrogenyType.RIFT) compressed++; }
                 const k = crustThicknessKm(TERRAIN, f.type[w], f.rootKm[w], f.upliftKm[w], f.baseKm[w]);
+                if (f.oroType[w] && f.time - f.oroLast[w] < 240) {
+                    const rift = f.oroType[w] === OrogenyType.RIFT;
+                    touched++; if (!rift) touchedC++;
+                    if (Math.abs(k / COLUMN.crust[f.type[w]] - 1) >= DEFORMED_STRAIN) { deformed++; if (!rift) compressed++; }
+                }
                 all.push(k); if (f.type[w] === CrustType.CRATON) cra.push(k);
                 if (f.time >= 100 && f.oroType[w] && f.oroType[w] !== OrogenyType.ARC && f.oroType[w] !== OrogenyType.RIFT) {
                     const q = Math.floor((f.time - f.oroLast[w]) / 25), h = columnKm(TERRAIN, f.type[w], f.rootKm[w]) + Math.max(0, f.upliftKm[w]) + f.baseKm[w] - columnModel(TERRAIN).ref[CrustType.CONTINENT];
@@ -169,7 +186,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
             }
             all.sort((a, b) => a - b);
             heights.push({ time: f.time, stage: stageOf(f), crust: all.reduce((x, y) => x + y, 0) / Math.max(1, all.length), crustCraton: cra.reduce((x, y) => x + y, 0) / Math.max(1, cra.length), crustTop: all[Math.floor(0.999 * (all.length - 1))] ?? NaN,
-                deformed: deformed / Math.max(1, all.length), compressed: compressed / Math.max(1, all.length) });
+                deformed: deformed / Math.max(1, all.length), compressed: compressed / Math.max(1, all.length), touched: touched / Math.max(1, all.length), touchedC: touchedC / Math.max(1, all.length) });
         }
         if (f.time === 0) cont0 = cont.reduce((s, v) => s + v, 0);
         if (Math.abs(f.time - scene.maxMyr) < 1e-6) cont1200 = cont.reduce((s, v) => s + v, 0);
@@ -359,8 +376,8 @@ section('heights from the crust (branch unified)');
     // within the last 240 Myr — a rate, through the cycle; most of the land's height above Earth's is the belts' (half the
     // late-dispersal land had a belt within 100 Myr)
     report('continental crust deformed within 240 Myr (belts and rifts)', rows.map(r => 100 * meanH(r, 'deformed', null, 300)), { earth: [25, 40], unit: ' %', digits: 0,
-        source: 'about a third of the continental crust deformed since 240 Ma, ~65 % of it by extension (Müller et al. 2019, Tectonics 38: 1884, a deformable plate model) — frames from 300 Myr',
-        detail: txt(r => `of it compression (belts): ${(100 * meanH(r, 'compressed', null, 300)).toFixed(0)} % of the crust (Earth ~12 %); extension (rifts): ${(100 * (meanH(r, 'deformed', null, 300) - meanH(r, 'compressed', null, 300))).toFixed(0)} % (Earth ~22 %)`) });
+        source: 'about a third of the continental crust deformed since 240 Ma, ~65 % of it by extension (Müller et al. 2019, Tectonics 38: 1884, a deformable plate model; its networks hold resolvably strained crust, so cells count by strain ≥ 10 %, not by a belt\'s reach — lane crust, 2026-11-04) — frames from 300 Myr',
+        detail: txt(r => `of it compression (belts): ${(100 * meanH(r, 'compressed', null, 300)).toFixed(0)} % of the crust (Earth ~12 %); extension (rifts): ${(100 * (meanH(r, 'deformed', null, 300) - meanH(r, 'compressed', null, 300))).toFixed(0)} % (Earth ~22 %); counted by strain ≥ ${100 * DEFORMED_STRAIN} % — any record by reach: ${(100 * meanH(r, 'touched', null, 300)).toFixed(0)} % (compression ${(100 * meanH(r, 'touchedC', null, 300)).toFixed(0)} %)`) });
     // (lane pstress) the stress inside the plates (field/plate-stress-field.js): the share of the plates' area where it beats the
     // rock's strength (field/stress-step.js) — the field's diffuse deforming zones. The continents' strength is DECLARED
     // (config.plateYieldContinent: no sourced figure), so this is a finding at that strength, not a calibration

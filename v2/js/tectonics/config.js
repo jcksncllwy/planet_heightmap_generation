@@ -139,22 +139,23 @@ export const TECTONICS = {
     beltSpeedExponent: 0.5,     // factor = (rate ÷ ref)^exponent, clamped below — fast convergence carries deformation further inland (flat slabs)
     beltSpeedFactorMin: 0.6,
     beltSpeedFactorMax: 1.6,
-    arcAdditionKm3PerKmMyr: 0,  // (lane crust, 1c(ii); 0 = off) an Andean or Laramide belt adds at most this much crust per km of its front per
+    arcAdditionKm3PerKmMyr: 60, // (lane crust, 1c(ii); 0 = off, the old unbounded thickening) an Andean or Laramide belt adds at most this much crust per km of its front per
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
-    collapseMakesArea: false,   // (lane crust, 2) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
+    collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
+                                // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
                                 // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)
-    subductionErosionKm3PerKmMyr: 0,   // (lane crust; 0 = off) every closing overriding trench eats this much continental crust per km of
+    subductionErosionKm3PerKmMyr: 36,  // (lane crust; 0 = off) every closing overriding trench eats this much continental crust per km of
                                 // its length per Myr off the fore-arc nearest it (step/subduction-erosion.js): ~36 is Earth's mean —
                                 // ~60 % of the ~2.5 km³/yr recycled at ocean margins over ~41,700 km of them (Scholl & von Huene
                                 // 2009, GSL SP 318; the 36 is my arithmetic); measured long-term rates 30–115 (von Huene et al. 2004)
     subductionErosionReachKm: 250,   // …from the continent nearest the trench within this: the fore-arc, trench to volcanic front
                                 // ~150–300 km (recalled, not sourced: a margin farther than this from its trench has an oceanic fore-arc)
-    rockBook: false,            // (lane crust) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
+    rockBook: true,             // (lane crust; false = the old separate flux) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
                                 // own (trenchDenudationKmPerMyr, ~5× the crust's own wear over the first 200 Myr): one book, so what
                                 // the basins, seas and shelves keep is the continents' rock, and only what leaves them is lost
-    beltStrainRate: 0,          // (lane crust, 1c; /s, 0 = off) a LIVE belt reaches only as far as it deforms at least this fast: a sheet
+    beltStrainRate: 1e-15,      // (lane crust, 1c; /s, 0 = off: reach by absorbed convergence, floored by speed) a LIVE belt reaches only as far as it deforms at least this fast: a sheet
                                 // shortening at v across width W strains at v ÷ W, so W = v ÷ this (capped at its kind's maxKm), with v the
                                 // shortening rate now — not the convergence absorbed so far, floored by speed — so a slowing belt narrows
                                 // and a stalled one stops refreshing its records. Unsourced: swept 3e-16 / 1e-15 / 3e-15 (India ~4 cm/yr
@@ -207,7 +208,7 @@ export const TECTONICS = {
                                 // over 1200 Myr of collisions the continents lost a fifth of their area — 148 → 115–125 Mkm² —
                                 // developer: "keep it at least closer to flat over time"; now 133–165, with arcs maturing)
     underthrustThickenKm: 25,   // …thickening the upper plate's crust above it by this much…
-    collisionVolume: false,     // (lane crust, 1b) the crust a collision consumes — underthrust, or absorbed in a weld's overlap — is kept
+    collisionVolume: true,      // (lane crust, 1b) the crust a collision consumes — underthrust, or absorbed in a weld's overlap — is kept
                                 // as the upper plate's thickness (ops/thicken.js), up to underthrustMaxThickKm a cell, ring by ring
                                 // from the front, instead of deleted (step/collision.js keepConsumed)…
     collisionLostShare: 0.15,   // …all but this share, which returns to the mantle. Derived: collisions lose ~0.7 km³/yr of continental
@@ -547,7 +548,7 @@ export const TECTONICS = {
     riftCostSlack: 1.6,         // cuts costing up to this many times the cheapest are considered, for the stress across them
     riftStage: true,            // a rift stretches before it breaks up: the first riftBreakupKm of its opening is thinned continent, not
                                 // ocean (step/rifting.js evolveRiftStages; lane pstress, stage 2)
-    riftStageVolume: false,     // (lane crust, 1a) …and that thinned continent is the zone's own crust spread wider, not made: the margins
+    riftStageVolume: true,      // (lane crust, 1a) …and that thinned continent is the zone's own crust spread wider, not made: the margins
                                 // thin as the opening widens, volume conserved (step/rifting.js stretchConserving)
     riftBreakupKm: 180,         // …this much: ~177 km of continental crustal extension across the Iberia–Newfoundland conjugate pair
                                 // before breakup (Gómez-Romeu et al., EGU 2019 abstract; 135 km by fault heaves alone)
