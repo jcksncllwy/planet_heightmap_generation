@@ -15,11 +15,13 @@ import { HelperPool } from './helper-pool.js';
 import { HISTORY_CODE } from './history-code.js';
 import { historyKey, mathFingerprint } from './history-key.js';
 import { HistoryUpload } from './history-upload.js';
+import { setDelaunator } from '../../../js/sphere-mesh.js';
 
 const SCENE_LISTS = { terrain: TERRAIN_SCENES };
 
 let kept = null;                  // { world, scene, snapshotEveryMyr }: the history run, to run on from
 let packMs = 0;
+let delaunatorSet = false;
 let helpers = null;               // the helper pool, once made (null where a worker cannot start workers of its own)
 let small = false;                // a phone or small device (the page's core/device.js): the helpers go once a run is done
 // the history saved to the machine's history cache as it is built (app/history-upload.js): only when the dev server served
@@ -57,6 +59,8 @@ self.onmessage = async ({ data }) => {
         }
         const { list, sceneId, seed, mesh, snapshotEveryMyr, heights = {}, ending = 'none', start = {}, lengthMyr = null } = data;
         small = !!data.small;
+        // (V1's buildSphere, which the plate stress field's own mesh uses, needs Delaunator set: the page's setting is not this worker's)
+        if (!delaunatorSet) { setDelaunator((await import(data.delaunatorUrl)).default); delaunatorSet = true; }
         const scene = SCENE_LISTS[list].find(s => s.id === sceneId), simMesh = meshFromArrays(mesh);
         await helpersFor(simMesh);
         // (start: start-world tunables, for scenes that take them)

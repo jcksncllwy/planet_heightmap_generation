@@ -57,7 +57,8 @@ export function runHistory({ list, scene, heights = {}, ending = 'none', start =
         };
         worker.onerror = e => fail(new Error(`history worker: ${e.message}`));
         signal?.addEventListener('abort', () => fail(new DOMException('The history was stopped', 'AbortError')), { once: true });
-        worker.postMessage({ list, sceneId: scene.id, seed, snapshotEveryMyr, heights, ending, start, lengthMyr, small: SMALL_DEVICE, save, saveSpec,
+        // (a module worker has no import map: it is told where Delaunator lives — the stress field builds a mesh of its own)
+        worker.postMessage({ delaunatorUrl: import.meta.resolve('delaunator'), list, sceneId: scene.id, seed, snapshotEveryMyr, heights, ending, start, lengthMyr, small: SMALL_DEVICE, save, saveSpec,
             mesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList } });
     });
 }

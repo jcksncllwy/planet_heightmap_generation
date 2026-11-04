@@ -31,7 +31,8 @@ export class HelperPool {
     static async create(simMesh, size = null) {
         const n = size ?? await helperCount(), workers = await Promise.all(Array.from({ length: n }, spawn));
         const mesh = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
-        for (const w of workers) w.post({ type: 'mesh', mesh });
+        const delaunatorUrl = import.meta.resolve('delaunator');
+        for (const w of workers) w.post({ type: 'mesh', mesh, delaunatorUrl });
         return new HelperPool(workers);
     }
 

@@ -12,13 +12,19 @@
 import { meshFromArrays } from '../core/sim-mesh.js';
 import { findRift, grainOf } from '../tectonics/ops/rift-path.js';
 import { evaluateAttempt } from '../tectonics/init/start-world.js';
+import { setDelaunator } from '../../../js/sphere-mesh.js';
 
 const IS_NODE = typeof self === 'undefined';
 let post = null, mesh = null;
 const worlds = new Map();                 // seed → the little a rift's search reads of a world (its grain is cached on it)
 
 function handle(msg) {
-    if (msg.type === 'mesh') { mesh = meshFromArrays(msg.mesh); worlds.clear(); return; }
+    if (msg.type === 'mesh') {
+        mesh = meshFromArrays(msg.mesh); worlds.clear();
+        // (the jobs below get their context ready-made and never build a mesh; this keeps them one call from needing Delaunator without failing)
+        if (msg.delaunatorUrl) import(msg.delaunatorUrl).then(m => setDelaunator(m.default), () => {});
+        return;
+    }
     try {
         if (msg.type === 'rift') {
             const { seed, config, crust, ctx, junctions, pull, needCratonsBothSides } = msg;
