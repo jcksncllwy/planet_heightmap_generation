@@ -187,6 +187,13 @@ export const TECTONICS = {
                                 // over 1200 Myr of collisions the continents lost a fifth of their area — 148 → 115–125 Mkm² —
                                 // developer: "keep it at least closer to flat over time"; now 133–165, with arcs maturing)
     underthrustThickenKm: 25,   // …thickening the upper plate's crust above it by this much…
+    collisionVolume: false,     // (lane crust, 1b) the crust a collision consumes — underthrust, or absorbed in a weld's overlap — is kept
+                                // as the upper plate's thickness (ops/thicken.js), up to underthrustMaxThickKm a cell, ring by ring
+                                // from the front, instead of deleted (step/collision.js keepConsumed)…
+    collisionLostShare: 0.15,   // …all but this share, which returns to the mantle. Derived: collisions lose ~0.7 km³/yr of continental
+                                // crust (Scholl & von Huene 2009, GSL Spec. Pub. 318) out of ~4.8 km³/yr they consume today — India
+                                // ~4 cm/yr over ~2400 km (Copley et al. 2010) and Arabia ~2 cm/yr over ~2000 km (McQuarrie et al.
+                                // 2003), × ~35 km of crust (my arithmetic): 0.7 ÷ 4.8 ≈ 0.15
     underthrustMaxThickKm: 40,  // …up to this (Tibet: crust ~70 km, about 35 km thicker than normal)
     collisionForgetMyr: 8,      // a collision record whose plates have not touched for this long is forgotten: the next meeting starts afresh
     collisionJitterFrontKm: 845, // a brand-new contact of parting plates no bigger than a one-cell sliver this long is jitter, not a collision

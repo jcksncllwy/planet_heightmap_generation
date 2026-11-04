@@ -25,6 +25,9 @@ import { scrapeArc } from '../ops/scrape-arc.js';
 import { EventKind } from '../model/world.js';
 import { centroidOfCells } from '../../core/sphere-geom.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
+import { continentVolume, crustOf, layThickening } from '../ops/thicken.js';
+import { columnModel } from '../measure.js';
+import { heightsOf } from './heights.js';
 
 /**
  * @typedef {Object} Collision
@@ -201,7 +204,16 @@ export function trackCollisions(world, dt) {
         // (a weld may close a ring round a sea: the sea is then sealed inside one plate, its floor foundering in time like any
         // margin's — step/subduction-init.js founderWithinPlates)
         if (wouldWeld) {
+            // (config.collisionVolume, lane crust 1b: the crust the weld absorbs is kept as thickness, less the lost share)
+            const Cm = config.collisionVolume ? columnModel(heightsOf(config)) : null, volBefore = Cm ? continentVolume(U, Cm) + continentVolume(L, Cm) : 0;
             const result = mergePlates(world, U, L, cells, rec);
+            if (Cm) {
+                const gone = volBefore - continentVolume(U, Cm);
+                if (gone > 0) {
+                    const seeds = cells.map(w => U.cellAt(mesh.index, mesh.xyz[3 * w], mesh.xyz[3 * w + 1], mesh.xyz[3 * w + 2]));
+                    keepConsumed(world, U, seeds, gone);
+                }
+            }
             world.budget.sealedCells = (world.budget.sealedCells ?? 0) + result.sealedCells;
             world.budget.sealedLandCells = (world.budget.sealedLandCells ?? 0) + result.sealedLandCells;
             world.budget.sealPaidCells = (world.budget.sealPaidCells ?? 0) + result.sealPaidCells;
@@ -505,18 +517,23 @@ function underthrust(world, U, L, cells, rec, km) {
     // India lost ~2,000 km of its front beneath Tibet)
     const excess = Math.max(0, cells.length - Math.max(1, Math.floor(rec.frontKm * config.overlapCapKm / cellAreaKm2)));
     let consumed = 0;
+    const Cm = config.collisionVolume ? columnModel(heightsOf(config)) : null, keptAt = [];
+    let keptKm = 0;
     for (const w of candidates) {
         if (consumed >= Math.max(Math.floor(rec.underthrustDue), excess)) break;
         const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2], cl = L.cellAt(index, x, y, z);
         if (!L.crust.mask[cl] || L.crust.type[cl] === CrustType.OCEAN || L.crust.type[cl] === CrustType.CRATON) continue;
+        if (Cm) { keptKm += crustOf(L.crust, cl, Cm); keptAt.push(U.cellAt(index, x, y, z)); }
         L.crust.remove(cl);
         consumed++;
         const cu = U.cellAt(index, x, y, z);
+        if (Cm) continue;                                   // (1b: laid below, all of it, instead of a fixed 25 km here)
         if (U.crust.mask[cu] && U.crust.type[cu] !== CrustType.OCEAN) {
             U.crust.thickKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.thickKm[cu] + config.underthrustThickenKm);
             U.crust.rootKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.rootKm[cu] + config.underthrustThickenKm);    // (heights: the plateau's root)
         }
     }
+    if (Cm && keptKm > 0) keepConsumed(world, U, keptAt, keptKm);
     rec.underthrustDue = Math.min(Math.max(0, rec.underthrustDue - consumed), 1);      // (what could not be consumed this step is not carried)
     rec.underthrustCells = (rec.underthrustCells ?? 0) + consumed;
     world.budget.underthrustCells += consumed;
@@ -564,3 +581,17 @@ function recycle(world, donor, cells) {
 }
 
 const uniq = list => [...new Set(list)];
+
+/**
+ * (config.collisionVolume, lane crust 1b) Crust a collision took out of the map — `volKm` cell-km, underthrust or absorbed
+ * at a weld — goes into the upper plate's crust from `seeds` outward (ops/thicken.js), less collisionLostShare of it,
+ * which goes back to the mantle. Booked in world.budget (cell-km): collisionKeptKm, collisionLostKm, collisionUnplacedKm.
+ */
+function keepConsumed(world, U, seeds, volKm) {
+    const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
+    const left = layThickening(U, world.mesh, seeds, kept, config.underthrustMaxThickKm);
+    budget.collisionKeptKm = (budget.collisionKeptKm ?? 0) + kept - left;
+    budget.collisionLostKm = (budget.collisionLostKm ?? 0) + lost;
+    budget.collisionUnplacedKm = (budget.collisionUnplacedKm ?? 0) + left;
+    U.dirty = true;
+}

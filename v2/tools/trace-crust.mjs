@@ -89,6 +89,7 @@ const out = { seed, myr: MYR, cells: CELLS, sets, secs, cellKm2: km2,
     ledger: Object.fromEntries(Object.entries(L).map(([k, e]) => [k, { landMkm2: Mk(e.land), arcMkm2: Mk(e.arc), volGkm3: (e.vol ?? 0) * km2 / 1e9 }])),
     collisions: { underthrust: -Mk(B.underthrustCells ?? 0), sutureOverlap: -Mk(sutureLost), sealedLand: Mk(B.sealedLandCells ?? 0), sealPaid: -Mk(B.sealPaidCells ?? 0), other: Mk(collOther), sutures: sutures.length },
     budget: Object.fromEntries(Object.entries(B).filter(([k]) => /Cells$/.test(k)).map(([k, v]) => [k, Mk(v)])),
+    volBudget: Object.fromEntries(Object.entries(B).filter(([k]) => /^collision\w+Km$/.test(k)).map(([k, v]) => [k, v * km2 / 1e9])),   // Gkm³
     ledgerAt: ledgerAt.map(x => ({ time: x.time, stages: Object.fromEntries(Object.entries(x.stages).filter(([, v]) => v).map(([k, v]) => [k, Mk(v)])), underthrust: Mk(x.budget.underthrustCells ?? 0) })),
     frames, hyps };
 const f0 = frames[0], fE = frames.at(-1);
@@ -97,4 +98,5 @@ console.log(`area ${f0.areaMkm2.toFixed(1)} → ${fE.areaMkm2.toFixed(1)} Mkm² 
 console.log('ledger (Mkm²):', Object.entries(out.ledger).filter(([, e]) => e.landMkm2).map(([k, e]) => `${k} ${e.landMkm2.toFixed(1)}`).join(', '));
 console.log('ledger volume (Gkm³):', Object.entries(out.ledger).filter(([, e]) => Math.abs(e.volGkm3) > 1e-4).map(([k, e]) => `${k} ${e.volGkm3.toFixed(3)}`).join(', '));
 console.log('collisions split (Mkm²):', Object.entries(out.collisions).map(([k, v]) => `${k} ${typeof v === 'number' ? v.toFixed(1) : v}`).join(', '));
+if (Object.keys(out.volBudget).length) console.log('collision volume (Gkm³):', Object.entries(out.volBudget).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(', '));
 console.log('CRUST_JSON ' + JSON.stringify(out));
