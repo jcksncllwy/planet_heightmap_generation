@@ -97,7 +97,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
         summary: 'The force scenes again, with the event rules on. Convergence at every trench and collision front is recorded as a mountain belt that reaches inland ' +
             '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates resist each other across the front and shorten — they keep converging, slower as the overlap builds, and a contact is a pivot, not a clamp: ' +
             'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Only once the seam has stalled — no set shortening or time ends a collision — and the sea between has closed or stopped closing, and no sea it would seal between the coasts is still closing, do they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
-            'squeezed back and sideways, cratons moved as rigid blocks. ' + scene.about,
+            'squeezed back and sideways, cratons moved as rigid blocks. The crust a collision consumes is not deleted: all but ~15 % of it stays as the upper plate’s thickened crust (collisionVolume), and a belt reaches only as far inland as it still strains at least 10⁻¹⁵ /s, so a slowing belt narrows and a stalled one stops refreshing its record (beltStrainRate). ' + scene.about,
         checklist: [...scene.checklist,
             'The crust rules still hold: no gaps, and land is only ever lost where a collision absorbed it (the event log gives the count).'],
         checkCommand: 'node v2/tools/check-phase5.mjs',

@@ -2355,6 +2355,43 @@ The forces and the rifts, closer to physics. The four steps below are flags in `
 - **Rift stage (`riftStage`).** The first `riftBreakupKm` (180 km) of a rift's opening is thinned CONTINENT with a rift record, not ocean. It closes most of the continental crust's run-down over a cycle (phase 13: 1200 ÷ start 0.79 → 0.91).
 - **The finish's sea outlet cut** (`finish-hydro.js`, a trapped sea's outflow cut to sea level) is retired outright. A trapped remnant of the sea is a lake full to its rim; whether the sea gets into a young rift is the history's (the rift stage). With `riftStage` off, such a basin is now also a lake at its rim, not a sea-level lake.
 
+## The crust budget keeps its volume (2026-11-04, lane crust)
+Before this lane the continents ran down over a cycle (area 1200 ÷ start 0.82 ± 0.04, volume 0.88 on 3 seeds): processes
+deleted area that on Earth becomes thickness, and one process took the same coast twice. Now on by default
+(`config.js`; each flag's comment has its source, and each new taker has its own crust-ledger stage, held by
+check-invariants):
+- **Rifts stretch, they do not make** (`riftStageVolume`, step/rifting.js stretchConserving): the rift stage's thinned
+  margins are the zone's own crust spread wider, volume conserved.
+- **Collisions keep what they consume** (`collisionVolume`, step/collision.js keepConsumed, ops/thicken.js): underthrust
+  or overlapped crust stays as the upper plate's thickness, all but `collisionLostShare` 0.15 (Scholl & von Huene 2009).
+- **A belt reaches as far as it strains** (`beltStrainRate` 1e-15 /s): a live belt's width is its shortening rate now ÷
+  this, so a slowing belt narrows and a stalled one stops refreshing its record. Unsourced, declared as swept
+  (3e-16 / 1e-15 / 3e-15).
+- **Andean belts add only arc magmatism** (`arcAdditionKm3PerKmMyr` 60, Scholl & von Huene 2009); their thickening beyond
+  is the margin's own shortened crust.
+- **One rock book** (`rockBook`): the rivers carry the rock the heights wear (crust.wornKm), not a flux of their own, and
+  rock laid on continental crust still counts as its volume. It fixes a double loss: sediment subduction ate coast for
+  rock the heights had already worn off (−6.4 Mkm² a cycle).
+- **Subduction erosion** (`subductionErosionKm3PerKmMyr` 36, `subductionErosionReachKm` 250; step/subduction-erosion.js):
+  every closing overriding trench eats the continent nearest it within the fore-arc, thinning it until it founders. The
+  rate per km is Earth's; the length that erodes is emergent (~0.8 AU removed against Earth's ~1.5).
+
+Measured (3 seeds × 1200 Myr, mean of 300/600/900/1200; off → on): area 1200 ÷ start 0.82 → 0.89 ± 0.01; continental crust
+under the sea 7.0 → 18.6 % (Earth ~29); land 26.5 → 23.3 % of the sphere, crust 26.9 → 27.7 %; compressive records
+< 240 Myr by reach 63.9 → 54.3 %. Check 13 now counts deformed crust **by strain** (≥ 10 % off its undeformed column), as
+Müller et al. 2019's deforming networks count resolvably strained crust, not every cell a belt once touched; the reach
+count is still printed beside it.
+
+What this does not do (open):
+- **Volume still runs down ~13 % a cycle.** ~4 Gkm³ of the rock the heights wear goes past the shelf and is in no book;
+  on Earth most stays on the continents as recycled cover.
+- **The 41-vs-29 gap is the start inventory**, not geometry: `continentalFraction` 0.29 is in effect land. Progradation
+  was measured and refuted as a crust maker (a filled sea floor carries ~14.6 km of sediment on ocean crust; Cogley 1984
+  ends continental crust at the slope's foot).
+- `collapseMakesArea` (a collapsing range spreading over its own plate's sea floor) stays off: +0.8 Mkm² a cycle, within
+  noise.
+- Intra-oceanic fore-arcs do not erode; the fore-arc reach (250 km) is recalled, not sourced.
+
 ## Conventions
 
 - **Scale invariance.** Everything is in km / Myr / cm·yr⁻¹. Never a bare hop count: `withinKm` for a distance

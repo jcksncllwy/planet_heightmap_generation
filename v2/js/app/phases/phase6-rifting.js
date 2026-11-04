@@ -74,7 +74,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
         title: 'Phase 6a — Rifting',
         summary: 'Oceans open. A continent that has been stable for a while and is under tension (its trenches pulling it opposite ways) rifts with a chance per Myr from the world’s seeded random stream; ' +
             'a mantle plume forces one. The rift starts at a junction, runs to the coasts on opposite sides along the cheapest line — old sutures and failed rifts are cheap, cratons are dear — ' +
-            'leaves a failed arm, and splits the plate in two. From then on the Phase 2–5 rules do the rest: a ridge opens, the halves drift under their own trenches. ' + scene.about,
+            'leaves a failed arm, and splits the plate in two. Its first ~180 km of opening is the continent’s own crust stretched thinner, volume conserved (riftStageVolume): wider, lower margins that stand under the sea, not new crust. From then on the Phase 2–5 rules do the rest: a ridge opens, the halves drift under their own trenches. ' + scene.about,
         checklist: [...CHECKLISTS[scene.id], 'No gaps; land is conserved through every rift (cells change plate, never vanish).'],
         checkCommand: 'node v2/tools/check-phase6.mjs',
         maxTime: scene.maxMyr,

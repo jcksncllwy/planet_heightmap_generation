@@ -19,6 +19,8 @@ const TUNABLES = [
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
     { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
     { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast while its slab feeds it', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
+    { id: 'subductionErosionKm3PerKmMyr', label: 'Every closing trench eats its fore-arc continent at', min: 0, max: 115, step: 1, unit: ' km³/km/Myr' },
+    { id: 'arcAdditionKm3PerKmMyr', label: 'An Andean belt adds at most this much crust (0 = unbounded)', min: 0, max: 150, step: 5, unit: ' km³/km/Myr' },
     { id: 'marginIsleRatePerMyr', label: 'Fore-arc islands born per 1000 km of accretionary coast per Myr', min: 0, max: 3, step: 0.1 },
 ];
 const CHECKLISTS = {
@@ -31,6 +33,7 @@ const CHECKLISTS = {
         'India reaches Asia at ~38 Myr. As they converge, India’s land in the overlap is consumed — it slides under Asia — so the land chart falls rather than rises through the collision.',
         'Asia’s crust above the consumed land thickens (Thickness layer: bright) — a plateau for Phase 8, Tibet.',
         'Set “Share of a collision’s convergence consumed” to 0 to compare: nothing slides under, and the collision only welds.',
+        'The land India loses is not lost to the crust: all but ~15 % of it is Asia’s thickening (collisionVolume), so the crust’s volume falls far less than its area.',
     ],
     arcs: [
         'The two continents close, each with island arcs on its facing margin; the arcs meet first.',
@@ -39,7 +42,8 @@ const CHECKLISTS = {
     ],
     history: [
         'The start world over 600 Myr with every rule on (building takes a while).',
-        'The land chart rises — arcs and fore-arc islands add crust — but levels off rather than climbing without end: erosive margins, sediment carried down the trenches, underthrusting and recycled arcs take some back (stats: the budget so far).',
+        'The land chart rises — arcs and fore-arc islands add crust — but levels off rather than climbing without end: erosive margins, subduction erosion at every closing trench, sediment carried down the trenches, underthrusting and recycled arcs take some back (stats: the budget so far).',
+        'One rock book (rockBook): the rivers carry only the rock the heights actually wear off the crust, and what basins, seas and shelves keep on continental crust still counts as the continents’ — so sediment going down a trench costs volume, not the coast’s area a second time.',
     ],
 };
 
@@ -57,7 +61,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
 
     return {
         title: 'Phase 7c — Crust budget',
-        summary: 'Continents grow — island arcs and fore-arc islands add crust — and now they also lose it, so they do not grow without bound over a long history. About half of active margins are EROSIVE: the trench eats the fore-arc and the coast retreats. At every trench, erosive or not, the slab also drags down the sediment the rivers bring it — whole basins’ rock, carried out across the sea floor down their submarine fans and along the trench — and the land that sediment came from is lost (the whole-history scene). A river running into an enclosed sea fills it instead, until the sea is a lowland basin. A continent driven into another slides UNDER it, and its area becomes the other’s thickened crust. A small island arc arriving at a continent goes down with its slab instead of accreting, so continents gain from arcs in fewer, bigger pieces. ' + scene.about,
+        summary: 'Continents grow — island arcs and fore-arc islands add crust — and now they also lose it, so they do not grow without bound over a long history. About half of active margins are EROSIVE: the trench eats the fore-arc and the coast retreats. At every trench, erosive or not, the slab also drags down the sediment the rivers bring it — whole basins’ rock, carried out across the sea floor down their submarine fans and along the trench — and the land that sediment came from is lost (the whole-history scene). A river running into an enclosed sea fills it instead, until the sea is a lowland basin. A continent driven into another slides UNDER it, and its area becomes the other’s thickened crust. A small island arc arriving at a continent goes down with its slab instead of accreting, so continents gain from arcs in fewer, bigger pieces. Every closing trench also eats the continent within ~250 km of it, ~36 km³ per km of trench per Myr (Scholl & von Huene 2009), thinning the fore-arc until it founders — it subsides under the sea first. The budget keeps volume as well as area: consumed collision crust becomes thickness, rifts stretch crust rather than make it, and Andean belts add only arc magmatism’s ~60 km³/km/Myr. ' + scene.about,
         checklist: [...CHECKLISTS[scene.id], 'No gaps.'],
         checkCommand: 'node v2/tools/check-phase7c.mjs',
         maxTime: scene.maxMyr,
