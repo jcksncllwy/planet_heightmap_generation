@@ -66,11 +66,12 @@ export function depositSediment(mesh, before, C, sink, cellKm2, F, ocean = null)
             else mouths.set(r, (mouths.get(r) ?? 0) + load[c]);
         }
     }
-    // ── a closed basin's floor: what reaches it spread over it (fans out onto the playa), mass kept ──
+    // ── a closed basin's floor: what reaches it spread over it (fans out onto the playa), and never built above its rim ──
+    let spilledKm3 = 0;
     if (sink) {
         for (let c = 0; c < n; c++) toSink[c] /= cellKm2;
-        spread(mesh, toSink, c => land(c), F.fanSpreadKm);
-        for (let c = 0; c < n; c++) if (toSink[c] > 0 && land(c)) z[c] += toSink[c];
+        spread(mesh, toSink, c => land(c) && !!sink[c], F.fanSpreadKm);
+        spilledKm3 = fillHollows(mesh, z, toSink, sink, land) * cellKm2;
     }
     // ── deltas: a river's share of its load built out over the shelf from its mouth, nearest first, to a low plain ──
     let deltas = 0;
@@ -92,7 +93,59 @@ export function depositSediment(mesh, before, C, sink, cellKm2, F, ocean = null)
         }
         if (built) deltas++;
     }
-    return { deltas, mouths };
+    return { deltas, mouths, spilledKm3 };
+}
+
+/**
+ * A closed hollow's fill (km on each cell, spread as its fans lay it) laid on its floor, bounded by its rim: sediment in a
+ * basin with no outlet builds its floor up — the Basin and Range's valleys and the Tarim hold kilometres of it — but never
+ * above the lowest ground round it, its spill point: filled to there it is no longer closed, and what more its rivers bring
+ * goes on over the sill. Each hollow (connected sink cells): a fan standing above the rim is cut to it, what that removes
+ * is laid as a level fill over the hollow's lowest ground, and what the whole hollow has no room for spills.
+ * Until 2026-11-04 (lane visual5) the fill was laid where the spread left it, with no bound: a big closed catchment's
+ * load — sedimentShare of all it cut, laid over σ fanSpreadKm, one or two cells at 2.5M — stood up to 29 km high, single
+ * spikes on flat plains, and which spots spiked moved with the erodibility's spread.
+ * @returns {number} what spilled (km, summed over cells: × cellKm2 for km³)
+ */
+function fillHollows(mesh, z, fill, sink, land) {
+    const { adjOffset, adjList, numCells: n } = mesh, seen = new Uint8Array(n), cells = [];
+    let spilled = 0;
+    for (let c0 = 0; c0 < n; c0++) {
+        if (!sink[c0] || seen[c0] || !land(c0)) continue;
+        // the hollow, and its rim: the lowest ground beside it that is not in it
+        cells.length = 0; cells.push(c0); seen[c0] = 1;
+        let rim = Infinity, total = 0;
+        for (let q = 0; q < cells.length; q++) {
+            const c = cells[q];
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const nb = adjList[k];
+                if (sink[nb] && land(nb)) { if (!seen[nb]) { seen[nb] = 1; cells.push(nb); } } else if (z[nb] < rim) rim = z[nb];
+            }
+        }
+        for (const c of cells) total += fill[c];
+        if (!(total > 0)) continue;
+        if (!(rim < Infinity)) rim = Math.max(...cells.map(c => z[c]));
+        // the fans as laid, cut to the rim; what is cut goes to the floor
+        let excess = 0;
+        for (const c of cells) {
+            const d = Math.max(0, fill[c]), room = Math.max(0, rim - z[c]);
+            if (d > room) { excess += d - room; z[c] += room; } else z[c] += d;
+        }
+        if (!(excess > 0)) continue;
+        // the floor filled level from its lowest ground up to what the excess fills (bisection on the level), the rim at most
+        let room = 0, lo = Infinity;
+        for (const c of cells) { room += Math.max(0, rim - z[c]); if (z[c] < lo) lo = z[c]; }
+        if (excess >= room) { for (const c of cells) if (z[c] < rim) z[c] = rim; spilled += excess - room; continue; }
+        let hi = rim;
+        for (let it = 0; it < 40; it++) {
+            const L = 0.5 * (lo + hi);
+            let v = 0;
+            for (const c of cells) if (z[c] < L) v += L - z[c];
+            if (v > excess) hi = L; else lo = L;
+        }
+        for (const c of cells) if (z[c] < lo) z[c] = lo;
+    }
+    return spilled;
 }
 
 /** The carve's network as a routing (see routing): its order and receivers (a sea cell s for its −1 − s). */
