@@ -20,7 +20,7 @@
 // live with the terrain's (terrain-config.js); a world may carry its own in world.config.heights.
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../model/crust.js';
-import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR, seaDepthKm } from '../measure.js';
 import { arcCrustKm } from './collision.js';
 import { TERRAIN, erosionAtLatitude, erosionAtHeight } from '../../terrain/terrain-config.js';
 import { broadProfile } from '../../terrain/profiles.js';
@@ -89,7 +89,7 @@ export function evolveHeights(world, dt) {
     const { adjOffset, adjList, xyz, edgeKm } = mesh;
     const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null, book = !!config.rockBook;
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
-    let flux = scratch.flux;
+    let flux = scratch.flux, made = 0;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
@@ -108,6 +108,7 @@ export function evolveHeights(world, dt) {
         // uplift and its thickened crust spread to its neighbours at collapseKm2PerMyr — crust moved, not lost: a plateau
         // levels off and grows outward (sub-stepped where a step is too long for that rate on this mesh)
         const collapse = H.collapseKm2PerMyr > 0, kc = collapse ? H.collapseKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm) : 0;
+        const spill = collapse && config.collapseMakesArea ? (plate.collapseSpill ??= new Map()) : null;
         if (collapse) {
             let hi = scratch.hi;
             if (!hi || hi.length !== n) hi = scratch.hi = new Float32Array(n);
@@ -133,10 +134,22 @@ export function evolveHeights(world, dt) {
                     }
                     flux[c] = du; scratch.rootFlux[c] = dr;
                 }
+                // (config.collapseMakesArea: a collapsing cell on its plate's own open sea spreads its hot root across that
+                // edge too, at the same rate as onto land — the crust flows out over the free edge it stands beside)
+                if (spill) for (let c = 0; c < n; c++) {
+                    if (!(hi[c] > 0) || !(rootKm[c] > 0) || type[c] === CrustType.CRATON) continue;
+                    for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                        const nb = adjList[k];
+                        if (!mask[nb] || type[nb] !== CrustType.OCEAN || (flags[nb] & CrustFlag.TRENCH)) continue;
+                        const t = kSub * hi[c] * rootKm[c];
+                        scratch.rootFlux[c] -= t; spill.set(nb, (spill.get(nb) ?? 0) + t);
+                    }
+                }
                 // (only the thickening spreads: crust thinner than formed has no hot root to flow)
                 for (let c = 0; c < n; c++) if (flux[c] || scratch.rootFlux[c]) { upliftKm[c] += flux[c]; rootKm[c] += scratch.rootFlux[c]; }
             }
         }
+        if (spill) made += spillToArea(plate, spill, C, time, config, world);
         for (let c = 0; c < n; c++) {
             flux[c] = 0;
             if (!spreads(c)) continue;
@@ -185,8 +198,36 @@ export function evolveHeights(world, dt) {
             if (geo) recordWear(crust, c, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]] + geo.crestShare * (c0 - rugged[c] - prevRugged[c]), Math.max(0, -up), time, dt, geo);
         }
     }
-    return 0;
+    return made;
 }
+
+/**
+ * Orogenic collapse makes area (lane crust, config.collapseMakesArea): the root a collapsing range spread onto its plate's
+ * own sea floor (`spill`, km of crust per cell) stands there as thinned continent once it is enough to stand no deeper than
+ * the floor it covers (measure.js columnModel; at least the hyperextended floor, ~3 km: Sutra et al. 2013) — the Aegean's
+ * and the Basin and Range's crust, extended out from under a plateau that could not hold itself up (Dewey 1988), standing
+ * below the sea: a drowned margin made from thickness. What has not yet reached that waits; a cell no longer the plate's
+ * open sea loses it (booked, world.budget.collapseLostKm3). Limits: no plate kinematics — the plate's raster does not grow,
+ * the crust takes its own plate's sea floor; the floor's ocean crust is replaced, not kept under it.
+ * @returns {number} continental cells made
+ */
+function spillToArea(plate, spill, C, time, config, world) {
+    const crust = plate.crust, { mask, type, flags, rootKm, formedAt } = crust, cellKm2 = 4 * Math.PI * R * R / mask.length;
+    let made = 0;
+    for (const [c, km] of spill) {
+        if (!mask[c] || type[c] !== CrustType.OCEAN || (flags[c] & CrustFlag.TRENCH)) { world.budget.collapseLostKm3 = (world.budget.collapseLostKm3 ?? 0) + km * cellKm2; spill.delete(c); continue; }
+        const floor = -seaDepthKm(Math.max(0, time - formedAt[c])), need = Math.max(SPILL_FLOOR_KM, C.crust[CrustType.CONTINENT] + (floor - C.ref[CrustType.CONTINENT]) / C.slope[CrustType.CONTINENT]);
+        if (km < need) continue;
+        crust.create(c, CrustType.CONTINENT, time);
+        rootKm[c] = km - C.crust[CrustType.CONTINENT];
+        crust.flags[c] |= CrustFlag.RIFT_MARGIN;
+        crust.recordOrogeny(c, OrogenyType.RIFT, 0, time, config.orogenyQuietMyr);
+        spill.delete(c); made++; plate.dirty = true;
+    }
+    if (made) world.budget.collapseCells = (world.budget.collapseCells ?? 0) + made;
+    return made;
+}
+const SPILL_FLOOR_KM = 3;
 
 
 /**

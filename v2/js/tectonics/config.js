@@ -143,6 +143,8 @@ export const TECTONICS = {
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
+    collapseMakesArea: false,   // (lane crust, 2) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
+                                // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)
     subductionErosionKm3PerKmMyr: 0,   // (lane crust; 0 = off) every closing overriding trench eats this much continental crust per km of
                                 // its length per Myr off the fore-arc nearest it (step/subduction-erosion.js): ~36 is Earth's mean —
                                 // ~60 % of the ~2.5 km³/yr recycled at ocean margins over ~41,700 km of them (Scholl & von Huene
