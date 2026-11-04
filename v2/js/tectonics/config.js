@@ -143,6 +143,12 @@ export const TECTONICS = {
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
+    subductionErosionKm3PerKmMyr: 0,   // (lane crust; 0 = off) every closing overriding trench eats this much continental crust per km of
+                                // its length per Myr off the fore-arc nearest it (step/subduction-erosion.js): ~36 is Earth's mean —
+                                // ~60 % of the ~2.5 km³/yr recycled at ocean margins over ~41,700 km of them (Scholl & von Huene
+                                // 2009, GSL SP 318; the 36 is my arithmetic); measured long-term rates 30–115 (von Huene et al. 2004)
+    subductionErosionReachKm: 250,   // …from the continent nearest the trench within this: the fore-arc, trench to volcanic front
+                                // ~150–300 km (recalled, not sourced: a margin farther than this from its trench has an oceanic fore-arc)
     rockBook: false,            // (lane crust) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
                                 // own (trenchDenudationKmPerMyr, ~5× the crust's own wear over the first 200 Myr): one book, so what
                                 // the basins, seas and shelves keep is the continents' rock, and only what leaves them is lost

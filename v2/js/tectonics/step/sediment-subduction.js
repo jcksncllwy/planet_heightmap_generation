@@ -53,6 +53,9 @@ export function subductSediment(world, dt) {
     }
     world.budget.sedimentKm3 = (world.budget.sedimentKm3 ?? 0) + km3;
     world.budget.sedimentAllKm3 = (world.budget.sedimentAllKm3 ?? 0) + allKm3;
+    // (config.rockBook: the rivers' rock is what the heights already wore off the crust (crust.wornKm) — it left the
+    // continent's books as it wore, so eating the coast for it again would lose it twice: booked, not taken. Lane crust)
+    if (config.rockBook) return 0;
     let lost = 0;
     for (const [id, list] of byPlate) {
         const plate = plates[id], crust = plate.crust, { mask, type } = crust;
