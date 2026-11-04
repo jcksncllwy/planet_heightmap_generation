@@ -29,8 +29,8 @@ const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).
 const quantile = (a, p) => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
-function run(id, heights = null, overrides = null) {
-    const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
+function run(id, heights = null, overrides = null, seed = SEED) {
+    const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these — and, through the rivers' sediment, so does the history: below)
     if (overrides) Object.assign(world.config, overrides);
     const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
@@ -348,31 +348,48 @@ section('erosion by rainfall');
     // in: the mean erosion factor at its latitude in the frames since it went quiet (carried back on its plate's rotation;
     // the frames 50 Myr apart). Same cell, same history, the two runs paired: worn lower where its path was wetter than
     // the reference (factor > 1), kept higher where drier (< 1). Today's latitude bands are listed as before
-    const F = rainy.frame, R = new Float64Array(9), Rt = new Float64Array(9), eAt = l => erosionAtLatitude(l, TERRAIN);
-    const pathE = (t, c) => {
-        const pl = F.owner[c]; if (pl < 0 || !F.plates[pl]?.alive) return NaN;
-        quatToMat3(F.plates[pl].quat, R);
-        const x = on.tm.xyz[3 * t], y = on.tm.xyz[3 * t + 1], z = on.tm.xyz[3 * t + 2], lx = R[0] * x + R[3] * y + R[6] * z, ly = R[1] * x + R[4] * y + R[7] * z, lz = R[2] * x + R[5] * y + R[8] * z;
-        let sum = 0, k = 0;
-        for (const f of rainy.frames) {
-            if (f.time < F.time - on.rec.quietMyr[c] - 1e-6 || !f.plates[pl]?.alive) continue;
-            quatToMat3(f.plates[pl].quat, Rt);
-            const zz = Rt[6] * lx + Rt[7] * ly + Rt[8] * lz;
-            sum += eAt(Math.asin(Math.max(-1, Math.min(1, zz))) * 180 / Math.PI); k++;
+    // (checkfix2 2026-11-03: judged on one history, with the class means as the verdict: "wetter than the reference" holds every
+    // cell whose path factor is a hair over 1 (the mean path factor is 0.87–0.95: most belts drifted through the dry), so its mean
+    // is ~0 and flips sign — +7 · −11 · −13 · +9 · −5 m on seeds 12345 · 777 · 4242 · 1 · 2 — with the history (7 m on a8f2772, −20 m
+    // on 8cc63e2). What does not flip: the dry class is higher on all five (+24 · +33 · +87 · +77 · +33 m), and the pairing's slope
+    // against the path's factor is negative on all five (−192 · −257 · −388 · −131 · −140 m per unit of factor). So the claim is
+    // read as that: over five histories, the dry class is higher and the relief change falls with the path's erosion)
+    const eAt = l => erosionAtLatitude(l, TERRAIN);
+    const rainPair = (seed, rainyRun = null, alikeRun = null) => {
+        const rainyH = rainyRun ?? run('history', null, decoupled, seed), alikeH = alikeRun ?? run('history', { rainErosionExponent: 0 }, decoupled, seed);
+        const onT = seed === SEED ? on : { ...synthesizeTerrain(rainyH.frame, mesh, tm160, { seed, parts: true }), tm: tm160 }, offT = seed === SEED ? off : { ...synthesizeTerrain(alikeH.frame, mesh, tm160, { seed, parts: true, cfg: terrainConfig({ rainErosionExponent: 0 }) }), tm: tm160 };
+        const Fm = rainyH.frame, Rm = new Float64Array(9), Rtm = new Float64Array(9);
+        const pathEs = (t, c) => {
+            const pl = Fm.owner[c]; if (pl < 0 || !Fm.plates[pl]?.alive) return NaN;
+            quatToMat3(Fm.plates[pl].quat, Rm);
+            const x = onT.tm.xyz[3 * t], y = onT.tm.xyz[3 * t + 1], z = onT.tm.xyz[3 * t + 2], lx = Rm[0] * x + Rm[3] * y + Rm[6] * z, ly = Rm[1] * x + Rm[4] * y + Rm[7] * z, lz = Rm[2] * x + Rm[5] * y + Rm[8] * z;
+            let sum = 0, k = 0;
+            for (const f of rainyH.frames) {
+                if (f.time < Fm.time - onT.rec.quietMyr[c] - 1e-6 || !f.plates[pl]?.alive) continue;
+                quatToMat3(f.plates[pl].quat, Rtm);
+                sum += eAt(Math.asin(Math.max(-1, Math.min(1, Rtm[6] * lx + Rtm[7] * ly + Rtm[8] * lz))) * 180 / Math.PI); k++;
+            }
+            return k ? sum / k : NaN;
+        };
+        const wet = [], dry = [], xs = [], ys = [];
+        for (let t = 0; t < onT.tm.numCells; t++) {
+            const c = corner(onT, t);
+            if (!onT.rec.kind[c] || !(onT.rec.quietMyr[c] > 40 && onT.rec.quietMyr[c] < 250) || !(onT.heightKm[t] > 0 && offT.heightKm[t] > 0)) continue;
+            const e = pathEs(t, c); if (!(e === e)) continue;
+            const d = onT.parts.relief[t] - offT.parts.relief[t];
+            (e > 1 ? wet : dry).push(d); xs.push(e - 1); ys.push(d);
         }
-        return k ? sum / k : NaN;
+        const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
+        const slope = sxx > 0 ? sxy / sxx : NaN;
+        return { label: seed, formed: wet.length > 0 && dry.length > 0 && slope === slope, ok: slope < 0 && mean(dry) > 0,
+            text: `${(1000 * mean(wet)).toFixed(0)} m where their path was wetter than the reference (${wet.length} cells), ${(1000 * mean(dry)).toFixed(0)} m where drier (${dry.length}); ${(1000 * slope).toFixed(0)} m per unit of the path's erosion factor` };
     };
-    const wetD = [], dryD = [];
-    for (let t = 0; t < on.tm.numCells; t++) {
-        const c = corner(on, t);
-        if (!on.rec.kind[c] || !(on.rec.quietMyr[c] > 40 && on.rec.quietMyr[c] < 250) || !(on.heightKm[t] > 0 && off.heightKm[t] > 0)) continue;
-        const e = pathE(t, c); if (!(e === e)) continue;
-        (e > 1 ? wetD : dryD).push(on.parts.relief[t] - off.parts.relief[t]);
-    }
+    const tm160 = on.tm;
+    const rain = [rainPair(SEED, rainy, alike), ...[777, 4242, 1, 2].map(seed => rainPair(seed))];
     const band = (T, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t), lat = Math.abs(Math.asin(T.tm.xyz[3 * t + 2])) * 180 / Math.PI; if (lat >= lo && lat < hi && T.rec.kind[c] && T.rec.quietMyr[c] > 40 && T.rec.quietMyr[c] < 250 && T.heightKm[t] > 0) a.push(T.parts.relief[t]); } return mean(a); };
     const wetOn = band(on, 0, 12), wetOff = band(off, 0, 12), dryOn = band(on, 20, 32), dryOff = band(off, 20, 32);
-    check('old belts are lower in the wet tropics and higher in the dry subtropics than with erosion alike everywhere', wetD.length > 0 && dryD.length > 0 && mean(wetD) < 0 && mean(dryD) > 0,
-        `relief of belts quiet 40–250 Myr, the same cell with rain's erosion less with erosion alike: ${(1000 * mean(wetD)).toFixed(0)} m where their path was wetter than the reference (${wetD.length} cells), ${(1000 * mean(dryD)).toFixed(0)} m where drier (${dryD.length}); by today's latitude: tropics ${wetOn.toFixed(2)} km (${wetOff.toFixed(2)} without), subtropics ${dryOn.toFixed(2)} km (${dryOff.toFixed(2)} without)`);
+    checkAcross('old belts are worn more where their path was wetter: the dry class is higher, and the relief change falls with the path\'s erosion factor, than with erosion alike everywhere', rain,
+        { detail: `relief of belts quiet 40–250 Myr, the same cell with rain's erosion less with erosion alike; seed 12345 by today's latitude: tropics ${wetOn.toFixed(2)} km (${wetOff.toFixed(2)} without), subtropics ${dryOn.toFixed(2)} km (${dryOff.toFixed(2)} without)` });
 }
 
 // ── the fine detail belongs to the crust (anchor.js): a moving plate carries its detail with it ──
