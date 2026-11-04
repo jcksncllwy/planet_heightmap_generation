@@ -8,8 +8,12 @@ export class FinishService {
 
     /**
      * Finish a moment. keep: the worker stays afterwards, with the mesh it built (a 10M-cell mesh takes ~15 s; a 640K one
-     * under a second — its ~0.3 GB is not worth keeping); else it goes, its memory with it.
-     * @returns {Promise<{raster: {w, h, heightM, ocean}, stats, ms}>} (rejects with an AbortError if cancelled)
+     * under a second — its ~0.3 GB is not worth keeping); else it goes, its memory with it (once it has kept the moment
+     * in the finish cache, when it is saving one: 'saved').
+     * msg.cache {history}: look the moment up in the finish cache first, and keep it there after (finish-worker.js);
+     * msg.cachedOnly: only look it up (rejects with err.miss when it is not there).
+     * @returns {Promise<{raster: {w, h, heightM, ocean}, stats, ms, cached?: boolean, cacheKey?: string}>} (rejects with an
+     *          AbortError if cancelled)
      */
     finish(msg, { onStage = null, onProgress = null, keep = true } = {}) {
         const w = this.start(), id = this.next++;
@@ -35,9 +39,10 @@ export class FinishService {
             if (!j) return;
             if (data.type === 'stage') j.onStage?.(data.stage);
             else if (data.type === 'progress') j.onProgress?.(data.share);
-            else if (data.type === 'done') { this.jobs.delete(data.id); j.resolve(data); }
-            else { this.jobs.delete(data.id); j.reject(new Error(data.message)); }
-            if ((data.type === 'done' || data.type === 'error') && !j.keep && !this.jobs.size && this.worker === w) { w.terminate(); this.worker = null; }
+            else if (data.type === 'done') { if (!data.saving) this.jobs.delete(data.id); j.resolve(data); }
+            else if (data.type === 'saved') { this.jobs.delete(data.id); if (!data.ok) console.warn('[finish] the finished moment was not kept in the finish cache'); }
+            else { this.jobs.delete(data.id); j.reject(Object.assign(new Error(data.message), { miss: !!data.miss })); }
+            if ((data.type === 'done' || data.type === 'saved' || data.type === 'error') && !j.keep && !this.jobs.size && this.worker === w) { w.terminate(); this.worker = null; }
         };
         w.onerror = e => {
             for (const j of this.jobs.values()) j.reject(new Error(e.message || 'the finishing worker stopped (out of memory?)'));

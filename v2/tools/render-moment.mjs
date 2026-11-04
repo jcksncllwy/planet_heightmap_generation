@@ -10,7 +10,12 @@
 //        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]] [--network] [--key <history-cache key>]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). --latest: the moment the
-// user is looking at in the Evolution page (the history cache's latest.json: node v2/tools/history.mjs latest). Output: v2/out/moments/.
+// user is looking at in the Evolution page (the history cache's latest.json: node v2/tools/history.mjs latest) — and, when
+// it is shown in detail, the page's very finish (the finish cache: its detail and width; the GPU's erosion, Chromium's
+// maths), not a finish of Node's. Output: v2/out/moments/.
+// The finish goes through the finish cache (lib/finish-cache.mjs): read when this checkout's finish code has finished this
+// moment at these settings in Node before, else run and kept. Not with --debug, --network, --overlay or --set (they need
+// the finish's working layers, or change its constants); --no-cache: always finish.
 // On a shared machine, run it through sim-slots (sim-slots run -n 6 --gb 16 -- node …): SIM_THREADS sizes its pool.
 
 import fs from 'node:fs';
@@ -23,6 +28,10 @@ import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
 import { readLatest } from './lib/history-cache.mjs';
+import { nodeKey, finishCached, loadFinish } from './lib/finish-cache.mjs';
+import { historyKeyOf } from './lib/moment-frame.mjs';
+import { finishResult } from '../js/finish/finish-result.js';
+import { erosionEngine } from '../js/finish/finish.js';
 import { coastLoops, coastFractal, kindOf, COAST_KINDS } from './lib/coast-fractal.mjs';
 import { deriveRecords } from '../js/terrain/records.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
@@ -49,7 +58,9 @@ if (process.argv.includes('--latest') && !LATEST) throw new Error('--latest: not
 const fromLatest = { '--seed': LATEST?.seed, '--cont': LATEST?.cont, '--sim': LATEST?.sim, '--time': LATEST?.timeMyr };
 const argOrLatest = (k, d) => arg(k, fromLatest[k] ?? d);
 const SEED = Number(argOrLatest('--seed', 12345)), CONT = Number(argOrLatest('--cont', 30)), SIM = Number(argOrLatest('--sim', 40000)), TIME = Number(argOrLatest('--time', 300));
-const CELLS = Number(arg('--cells', 2500000)), W = Number(arg('--width', 4096)), PALETTE = arg('--palette', 'relief');
+// (--latest with the moment shown in detail: the page's finish, at its detail and width — unless asked for others)
+const PAGE_FIN = LATEST?.finish && LATEST.finishSpec && !process.argv.includes('--cells') && !process.argv.includes('--width') && !process.argv.includes('--time') ? LATEST.finishSpec : null;
+const CELLS = Number(arg('--cells', PAGE_FIN?.cells ?? 2500000)), W = Number(arg('--width', PAGE_FIN?.width ?? 4096)), PALETTE = arg('--palette', 'relief');
 const CROP = arg('--crop', null)?.split(',').map(Number) ?? null;
 const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`);
 const NETWORK = process.argv.includes('--network'), R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
@@ -80,11 +91,29 @@ if (process.argv.includes('--live')) {
 
 // ── the finish, as the page's worker runs it ──
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
-const DEBUG = process.argv.includes('--debug') || NETWORK;
+const DEBUG = process.argv.includes('--debug') || NETWORK, OVERLAY_ASKED = process.argv.includes('--overlay');
 // (--set key=value[,key=value]: the finish's constants changed for this run — finish-config.js; numbers, or JSON)
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
-const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
+const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !arg('--set', '') && !process.argv.includes('--no-cache');
+let fin, raster = null;
+const fromCache = (page, cells, mesh) => ({ mesh, z: cells.z, ocean: cells.ocean, lake: cells.lake, lakeLevel: cells.lakeLevel, glaciated: cells.glaciated, rivers: page.rivers, stats: page.stats, ms: page.ms, layers: null, climate: null });
+const pageFin = CACHEABLE && PAGE_FIN ? await loadFinish(LATEST.finish, { mesh: true, waitMs: 5 * 60e3 }) : null;
+if (pageFin) {
+    pool.terminate();
+    fin = fromCache(pageFin, pageFin.cells, pageFin.mesh); raster = pageFin.raster;
+    console.log(`the page's own finish, from the finish cache (${LATEST.finish}: ${PAGE_FIN.host}, erosion ${PAGE_FIN.erosion}, ${PAGE_FIN.cells.toLocaleString()} cells, ${PAGE_FIN.width} px)`);
+} else {
+    const { spec, key } = CACHEABLE ? nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: W, erosion: await erosionEngine(F) }) : { spec: null, key: null };
+    let full = null;
+    const r = await finishCached(spec, key, async () => {
+        full = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
+        return CACHEABLE ? finishResult(full, { width: W }) : { page: null, cells: null };
+    }, { seed: SEED, cont: CONT, sim: SIM });
+    if (r.cached) { pool.terminate(); fin = fromCache(r.page, r.cells, terrainMesh(CELLS)); console.log(`finish read from the finish cache (${r.key})`); }
+    else fin = full;
+    raster = r.page?.raster ?? null;
+}
 console.log(`\nerosion on: ${fin.stats.erodeOn ?? 'off'}`);
 console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages ms: ${Object.entries(fin.ms).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}`);
 // (--network: the finished rivers' shape against Earth's — tools/lib/river-network.mjs; arid where rain is under half the
@@ -95,7 +124,7 @@ if (NETWORK) {
 }
 
 // ── the picture, painted as the page paints it ──
-const raster = finishRaster(fin.mesh, fin.z, fin.ocean, W, null, fin.lake, fin.lakeLevel, null);
+raster ??= finishRaster(fin.mesh, fin.z, fin.ocean, W, null, fin.lake, fin.lakeLevel, null);
 const H = W >> 1, image = { data: new Uint8ClampedArray(W * H * 4) };
 paintFinished(raster, { width: W, image }, heightLutOf(PALETTE), { lakes: true, exaggeration: 20 });
 // (--rivers [q0]: the rivers drawn over it as the page draws them — every reach carrying q0 m³/s or more (the page's default

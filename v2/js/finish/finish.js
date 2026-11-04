@@ -57,6 +57,17 @@ async function erosionSolver(EP) {
     return { solve: (o, P) => erodeGPU(gpu, o, P, { device: opened, gpuClosed: o.mesh.numCells >= EP.gpuFloodCells }), on: opened.info?.description || opened.info?.architecture || 'gpu' };
 }
 
+/** What erosionSolver will run on here, without opening a device: 'gpu', 'cpu', or 'off' (no erosion in F) — the finish
+ *  cache's engine (app/finish-key.js), worked out before a finish to look one up. A device that then fails to open runs
+ *  the CPU's: the finish is filed under what really ran (its stats.erodeOn). */
+export async function erosionEngine(F = FINISH) {
+    const EP = F.erode ? { ...ERODE, ...F.erode } : null;
+    if (!EP) return 'off';
+    const gpu = EP.gpu && gpuCanRun(EP) ? globalThis.navigator?.gpu : null;
+    if (!gpu) return 'cpu';
+    try { return (await gpu.requestAdapter({ powerPreference: 'high-performance' })) ? 'gpu' : 'cpu'; } catch { return 'cpu'; }
+}
+
 /** The stages, in order, with their rough share of the time (for the progress bar). */
 export const STAGES = (raw => { const all = raw.reduce((v, [, s]) => v + s, 0); return raw.map(([k, s]) => [k, s / all]); })(
     [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['erosion', 0.14], ['ice age', 0.08], ['wind', 0.05], ['coast', 0.04], ['sea', 0.02], ['polish', 0.06], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]]);

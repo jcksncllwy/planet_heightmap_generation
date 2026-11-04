@@ -20,6 +20,9 @@ export function pageWorld({ seed, cont, sim }) {
     return { scene, world, key: keyOf(world, scene.drive) };
 }
 
+/** The history-cache key of a frame momentFrame gave (null: the cache was off). */
+export const historyKeyOf = frame => frame.historyKey ?? null;
+
 /**
  * The frame at `time` Myr (a multiple of 10: the page's moments) of the page's history for these settings — the fields
  * the terrain reads (FRAME_FIELDS) and each plate's rotation. `{ full: true }`: the whole frame; `{ key }`: read that
@@ -28,16 +31,17 @@ export function pageWorld({ seed, cont, sim }) {
 export async function momentFrame(root, { seed, cont, sim, time, full = false, key: theirs = null }) {
     // (key: an entry to read first — the page's own, from latest.json: built by the browser's engine, whose maths differ
     // from Node's in the last bit, so Node's key for the same settings is another entry: history-key.js)
-    const pick = f => { if (full) return f; const out = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); out.plates = f.plates.map(p => p && { quat: p.quat }); return out; };
+    // (the frame's history-cache key goes with it, unlisted — historyKeyOf: the finish cache files a finish under it)
+    const pick = (f, k) => { const out = full ? f : Object.fromEntries(FRAME_FIELDS.map(n => [n, f[n]])); if (!full) out.plates = f.plates.map(p => p && { quat: p.quat }); Object.defineProperty(out, 'historyKey', { value: k, enumerable: false, configurable: true }); return out; };
     const fromPage = theirs && getFrame(theirs, time);
-    if (fromPage) return pick(fromPage);
+    if (fromPage) return pick(fromPage, theirs);
     const { scene, world, key } = pageWorld({ seed, cont, sim });
     const cached = key && getFrame(key, time);
-    if (cached) return pick(cached);
+    if (cached) return pick(cached, key);
     if (Math.abs(time / 10 - Math.round(time / 10)) > 1e-9) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
     let frame;
     simulateCached(world, { untilMyr: time, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.abs(f.time - time) < 1e-6) frame = f; } },
         { drive: scene.drive, spec: { scene: PAGE_SCENE, seed, cont, sim, meshSeed: MESH_SEED, heights: {}, by: 'momentFrame' } });
     if (!frame) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
-    return pick(frame);
+    return pick(frame, key);
 }

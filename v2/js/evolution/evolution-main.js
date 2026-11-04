@@ -140,8 +140,12 @@ $('rebuildBtn').addEventListener('click', () => build());                       
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
 const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&cont=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
-    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : ''));
+    (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : '') +
+    (detailedOf(B) ? `&detail=${detailedOf(B)[0].time}&dcells=${detailedOf(B)[1].cells}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
+// (detail: the moment kept in detail when the link was made, at dcells — on a reload, brought back from the finish cache
+// as soon as the history reaches it, never finished again unasked: the first build only)
+let linkedDetail = url.get('detail') != null && Number.isFinite(Number(url.get('detail'))) ? { t: Number(url.get('detail')), cells: Number(url.get('dcells')) || null } : null;
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
 // interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)
 const GO_PIECE_MYR = 20;
@@ -232,8 +236,11 @@ const simMeshOf = n => { if (!simMeshes.has(n)) simMeshes.set(n, buildSimMesh(n,
 let B = null;                           // { controller, player, frames, simMesh, tMesh, raster, live, started, endMyr, error }
 let playing = false, playTime = 0, lastTick = 0, preparing = null, painted = null, paintedT = null, paintedMesh = null, paintedSharp = false, dirty = true, cellRgb = null, simRgb = null;
 // (the moment on screen, for the history cache's latest.json — only once this history is being saved: history-view.js)
+// (finish: the finished moment on screen — its finish-cache key — when the moment shown is the one kept in detail and it is
+// shown detailed: tools/finish-latest.mjs loads it)
 watchView(() => (B?.cache && painted ? { key: B.cache.key, code: B.cache.code, timeMyr: painted.time, url: location.href, seed: B.seed, cont: B.cache.cont, sim: B.simCells,
-    lengthMyr: B.lengthMyr, ending: B.cache.ending, builtToMyr: builtTo(), building: B.live } : null));
+    lengthMyr: B.lengthMyr, ending: B.cache.ending, builtToMyr: builtTo(), building: B.live,
+    finish: (view.finished && B.finishes.get(painted)?.cacheKey) || null, finishCells: B.finishes.get(painted)?.cells ?? null } : null));
 
 async function build() {
     if (B?.finishJob) finisher.cancel();
@@ -244,8 +251,9 @@ async function build() {
     const b = B = { controller: new AbortController(), player: null, frames: [], simMesh: null, simCells, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
         climates: new Map(), climateJob: null, problem: null,         // (climates: frame → {tMesh, data}, while this history is open)
         run: null, going: false, wantGo: false, moreTo: linkedMore,        // (keep going: the history's run, kept to run on)
-        finishes: new Map(), finishJob: null, finishNote: null };           // (finishes: frame → {cells, raster, secs} — the one detailed moment)
-    linkedMore = 0;
+        finishes: new Map(), finishJob: null, finishNote: null,           // (finishes: frame → {cells, raster, secs} — the one detailed moment)
+        restore: linkedDetail };                                        // (a link's detailed moment, to bring back from the finish cache)
+    linkedMore = 0; linkedDetail = null;
     saveUrl(); labels();
     ui.world.open = false;                                                            // (the World section folds to its summary)
     // (watching it build is playing it from the start, at the speed chosen — held at the newest moment built)
@@ -267,8 +275,10 @@ async function build() {
         const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, lengthMyr: len, keep: true,
             save: SAVE_HISTORY, saveSpec: { cont: Math.round(cont * 100), sim: simCells, meshSeed: MESH_SEED, lengthMyr: len, ending, url: location.href }, onCache: c => { b.cache = { ...c, cont: Math.round(cont * 100), ending }; } }, b.simMesh, seed, SNAPSHOT_MYR,
             t => { if (B === b) progress(b, t); },
-            frame => { if (B !== b) return; if (!b.frames.length) console.info(`[evolution] first frame simulated at ${((performance.now() - b.started) / 1000).toFixed(1)} s`); b.frames.push(frame); b.player?.addFrame(frame); if (frame.time > Number(ui.time.max)) setScale(frame.time); rail(); },
+            frame => { if (B !== b) return; if (!b.frames.length) console.info(`[evolution] first frame simulated at ${((performance.now() - b.started) / 1000).toFixed(1)} s`); b.frames.push(frame); b.player?.addFrame(frame); if (frame.time > Number(ui.time.max)) setScale(frame.time); rail();
+                if (b.restore && Math.abs(frame.time - b.restore.t) < 1e-6) restoreDetail(b, frame, b.ready); },
             b.controller.signal);
+        b.ready = meshReady;
         b.tMesh = await meshReady;
         if (B !== b) return;
         b.seed = seed;
@@ -596,8 +606,22 @@ function paintFinishedFrame(frame, fin, T, sharp) {
 
 // ── the Finish step: on request, for the moment shown — kept per moment while the history is open ──
 const CANCEL_GRACE_MS = 600;
-async function finishMoment(again = null) {
-    const b = B, frame = again ?? painted;
+/**
+ * A link's detailed moment (?detail=…&dcells=…), brought back on a reload: the timeline held at it and its finish read
+ * from the finish cache (finish-worker.js) — never finished again unasked: a miss leaves the moment as it is, with Add
+ * detail to press.
+ */
+async function restoreDetail(b, frame, ready) {
+    const want = b.restore;
+    b.restore = null;
+    await ready;
+    if (B !== b || !b.cache || b.finishJob) return;
+    if (want.cells && [...$('finishCells').options].some(o => Number(o.value) === want.cells)) $('finishCells').value = String(want.cells);
+    setPlaying(false); playTime = frame.time; ui.time.value = playTime; dirty = true; rail();
+    await finishMoment(null, { frame, cachedOnly: true });
+}
+async function finishMoment(again = null, { frame: asked = null, cachedOnly = false } = {}) {
+    const b = B, frame = again ?? asked ?? painted;
     if (!b?.simMesh || !frame) return;
     // (the button cancels a finish under way — but not in its first moments: it turns into Cancel where Add detail was,
     // so a double click would otherwise start a finish and stop it at once)
@@ -621,16 +645,19 @@ async function finishMoment(again = null) {
         // holds its copies of the meshes, and a phone closes a tab at well under 2 GB — and the finishing worker let go after
         // unless its mesh takes long to build again)
         if (SMALL_DEVICE) b.player?.rest();
-        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions(), poolSize: SMALL_DEVICE ? 3 : null, civ: view.civ },
+        // (cache: the finish cache, through the dev server, when this history is being saved — looked up first, kept after)
+        const res = await finisher.finish({ frame: slim, simMesh: { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList }, seed: b.seed, cells, width, climateOptions: climateOptions(), poolSize: SMALL_DEVICE ? 3 : null, civ: view.civ,
+            cache: b.cache ? { history: b.cache.key } : null, cachedOnly },
             { onStage, onProgress, keep: !SMALL_DEVICE && cells >= 2.5e6 });
         if (B !== b) return;
         const secs = (performance.now() - started) / 1000;
         // (one detailed moment: this one replaces the one before, now that it is done)
         b.finishes.clear();
-        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key });
+        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key, cacheKey: res.cacheKey ?? null, cached: !!res.cached });
         b.finishOk = true;
-        b.finishNote = `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
-        console.info(`[evolution] finish of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept, erosion on ${res.stats.erodeOn ?? 'off'}`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
+        b.finishNote = res.cached ? `Detail brought back from the finish cache in ${secs.toFixed(1)} s` : `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
+        console.info(`[evolution] ${res.cached ? 'finish read from the finish cache' : 'finish'} of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept, erosion on ${res.stats.erodeOn ?? 'off'}${res.cacheKey ? `, finish-cache key ${res.cacheKey}` : ''}`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
+        saveUrl();
         view.finished = true;
         if (view.layer === 'plates') setLayer('terrain');
     } catch (err) {
@@ -646,9 +673,10 @@ async function finishMoment(again = null) {
             setTimeout(() => finishMoment(frame), 300);
             return;
         }
-        if (B === b) b.finishNote = err.name === 'AbortError' ? 'Adding detail cancelled'
+        if (B === b) b.finishNote = err.miss ? null : err.name === 'AbortError' ? 'Adding detail cancelled'
             : oom ? 'Not enough memory for this detail — try a coarser one, or close other tabs (other World Orogen tabs can share this one’s memory)' : `Could not add detail: ${String(err.message).split('\n')[0]}`;
-        if (err.name !== 'AbortError') console.error(err);
+        if (err.miss) console.info(`[evolution] the detailed moment of the link (${frame.time.toFixed(0)} Myr) is not in the finish cache: Add detail makes it`);
+        else if (err.name !== 'AbortError') console.error(err);
     } finally {
         b.player?.wake();
         if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; updateClimateUi(); }
@@ -682,7 +710,8 @@ const peopleFrame = P => Math.max(0, Math.min(P.bp.length - 1, Math.round(people
 // button says what it does, not what it costs: developer, "the 'replace' wording on the timeline is a bit confusing") ──
 const cellsWords = n => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1e3}K`);
 /** The history's one detailed moment, as [frame, finished], or null. */
-const detailedOf = b => (b?.finishes.size ? b.finishes.entries().next().value : null);
+// (a declaration, hoisted: saveUrl reads it)
+function detailedOf(b) { return b?.finishes.size ? b.finishes.entries().next().value : null; }
 const showIf = (el, on) => { el.hidden = !on; return on; };
 /** The card, the timeline's button and badge, the Extend history button, the sheet's line and the Satellite tab's lock. */
 function updateCard() {

@@ -112,37 +112,45 @@ const milli = t => Math.round(t * 1000);
 export const framePath = (key, t) => path.join(entryDir(key), `t${String(milli(t)).padStart(10, '0')}.frame`);
 const FRAME_NAME = /^t(\d{10})\.frame$/;
 
-function atomicWrite(file, bytes) {
+export function atomicWrite(file, bytes) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
     try { fs.writeFileSync(tmp, bytes); fs.renameSync(tmp, file); }
     catch (err) { try { fs.unlinkSync(tmp); } catch { /* (gone) */ } throw err; }
 }
 
-/** A frame file's bytes from the wire bytes of a packed frame (compressed: `deflated` when already done, by the server). */
-function frameFileBytes(raw, deflated = zlib.deflateSync(raw, { level: LEVEL })) {
+/** A sealed file's bytes (a frame's here; a finished moment's in finish-cache.mjs, under its own magic) from the raw
+ *  bytes it keeps: the header — magic, version, the raw length, their SHA-256 — and the bytes deflated (`deflated` when
+ *  already done: by the server, or by the page before it uploaded them). */
+export function sealedBytes(raw, deflated = zlib.deflateSync(raw, { level: LEVEL }), magic = MAGIC) {
     const head = Buffer.alloc(HEAD);
-    head.write(MAGIC, 0, 'latin1'); head.writeUInt32LE(VERSION, 4); head.writeUInt32LE(raw.byteLength, 8);
+    head.write(magic, 0, 'latin1'); head.writeUInt32LE(VERSION, 4); head.writeUInt32LE(raw.byteLength, 8);
     crypto.createHash('sha256').update(raw).digest().copy(head, 16);
     return Buffer.concat([head, deflated]);
 }
+const frameFileBytes = (raw, deflated) => sealedBytes(raw, deflated);
 
-/** The wire bytes in a frame file, or null when it is not whole (and then it is deleted). */
-function readFrameFile(file) {
+/** The raw bytes a sealed buffer keeps, checked (the header, the length, the digest) — or an Error saying what is wrong. */
+export function unsealBytes(buf, magic = MAGIC) {
+    if (buf.length < HEAD || buf.toString('latin1', 0, 4) !== magic || buf.readUInt32LE(4) !== VERSION) return new Error('bad header');
+    let raw;
+    try { raw = zlib.inflateSync(buf.subarray(HEAD)); } catch (err) { return err; }
+    if (raw.length !== buf.readUInt32LE(8)) return new Error('wrong length');
+    if (!crypto.createHash('sha256').update(raw).digest().equals(buf.subarray(16, HEAD))) return new Error('digest mismatch');
+    return raw;
+}
+
+/** The raw bytes in a sealed file, or null when it is not whole (and then it is deleted). */
+export function readSealed(file, magic = MAGIC) {
     let buf;
     try { buf = fs.readFileSync(file); } catch { return null; }
-    try {
-        if (buf.length < HEAD || buf.toString('latin1', 0, 4) !== MAGIC || buf.readUInt32LE(4) !== VERSION) throw new Error('bad header');
-        const raw = zlib.inflateSync(buf.subarray(HEAD));
-        if (raw.length !== buf.readUInt32LE(8)) throw new Error('wrong length');
-        if (!crypto.createHash('sha256').update(raw).digest().equals(buf.subarray(16, 48))) throw new Error('digest mismatch');
-        return raw;
-    } catch (err) {
-        logEvent({ event: 'corrupt', file, error: err.message });
-        try { fs.unlinkSync(file); } catch { /* (another reader got there first) */ }
-        return null;
-    }
+    const raw = unsealBytes(buf, magic);
+    if (!(raw instanceof Error)) return raw;
+    logEvent({ event: 'corrupt', file, error: raw.message });
+    try { fs.unlinkSync(file); } catch { /* (another reader got there first) */ }
+    return null;
 }
+const readFrameFile = file => readSealed(file);
 
 /** Keep one frame (a frame as captured, or its packed form, or its wire bytes). Never overwrites a whole frame already there. */
 export function putFrame(key, frameOrBytes) {
