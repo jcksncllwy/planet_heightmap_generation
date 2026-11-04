@@ -121,17 +121,27 @@ warped by fractal noise; an ice sheet's edge kept sharp; cold dry climates in th
 greener the drier the climate and season (none under snow); the picture above's fine detail as brightness, and a quarter
 of it over all for its texture; its snow where the climate has snow in the season shown. The sea ice is drawn with a
 sharp, noise-ragged edge and loose floes where the cover is partial. **Rivers and lakes** by the climate
-(`finish-hydro.js`): discharge in m³/s from each place's runoff, less what dry river beds lose; each river's year — its
+(`finish-fsm.js`, Fill-Spill-Merge, Barnes, Callaghan & Wickert 2021, on the ground the time-stepped erosion left): each
+hollow's tree of sub-basins (`finish-basins.js` hollowLakes) fills from what reaches it, its catchment's runoff and what
+full hollows upstream spill into it, against what its lake would lose to evaporation at each level (open water at 1.2 × the
+land's potential evaporation, less the rain on it: the paper has no evaporation, so this is its departure from it); a sub-basin
+full to its sill spills into the one beside it, two full ones merge, and a hollow whose water cannot fill it is closed, its
+rivers ending at a salt lake (or a playa) at its own level. Nothing is cut and no size, origin or age decides whether water
+stands. The map's thresholds (`lakeMinKm2` 300 km², two cells, `lakeMinDepthM` 15 m) decide only what is drawn: water under
+them full to its sill is filled to that sill (a pond the map cannot show, its river's load), and a whole hollow smaller than
+the map shows fills and spills (a pit of a cell fills with load in thousands of years; judged as sinks, the dry lands' pits
+took the water of the hollows below them); a sub-map pit inside a bigger closed hollow is where its water ends, its floor
+levelled, not drawn. Then the rivers: a priority flood over land and water from the sea and from where water ends, each
+cell down the steepest fall per km, a flat (a lake, a filled pond) by Barnes, Lehman & Mulla 2014's two gradients, as the
+erosion routes; discharge in m³/s from each place's runoff, a lake passing on what reached it less its open water's loss,
+less what dry river beds lose; each river's year — its
 monthly flows from each month's rain and snowmelt (and groundwater draining back slowly), routed down the rivers — and
-its regime: permanent, permanent with a yearly flood season (the Nile's), seasonal, dry most of the year; every river ends at the sea: a
-lake stays only where its river fills it and it is big for its river, and passes all its water on; anything smaller —
-or a basin its river cannot fill — is cut through by a gorge to its floor (old basins that overflow have cut their rims
-down; the ice age's hollows are lake districts). A gorge keeps its river's own course through the basin, every bend of
-it, unless a shortcut is enough less work — the rock cut and a little for the length: along its own course a river does
-only `riverDirectness` of the work (0.1), so a bend is cut through only where the way round is over ten times the
-shortcut's (the worst hooks and tangles across drained basins — developer, rivers "that go back and forth", but "some
-windyness is good"; 0 keeps every course, 1 takes the way of least work); a land basin closed only where its rivers cannot fill it (see *Closed basins at any height*), and no dry land below
-sea level except a cut-off sea's (below). **The world ocean and the seas cut off from it** (2026-10-27,
+its regime: permanent, permanent with a yearly flood season (the Nile's), seasonal, dry most of the year. Its limits: it has
+no time and no load, so it says where water stands on this ground, never whether the ground should hold it (that is the
+erosion's: without it, a study switch, the lakes are ~2.5× Earth's); a young lake filling with sediment is not judged. Until
+2026-11-03 (lane fsm-wire) `finish-hydro.js` rewrote the ground so its rivers could cross it — graded fills, gorges, pockets
+cut, the ice's lakes kept only if big for their river, two late rounds of fills — 2.6–3.2 % of the land's cells at 2.5M; FSM
+moves 1.3–1.9 %, all of it filling to a level water stands at. **The world ocean and the seas cut off from it** (2026-10-27,
 `terrain/world-ocean.js`, `finish-basins.js`): the sea is the water below sea level joined to the largest body of it — the
 world ocean; a body below sea level that does not join it has its surface set by its water balance, not by sea level (the
 Caspian at −28 m, the Dead Sea at −430 m; the Mediterranean drawn down 1.5–3 km when the Atlantic was cut off in the
@@ -140,7 +150,7 @@ first opened into the ocean. Any other is a closed basin: its lake grown from it
 would — a pocket behind a ridge only once the water tops it — until what evaporates off it (open water: 1.2 × the land's
 potential evaporation, Penman 1948, less the rain on it) outweighs what flows in (its catchment's runoff, less what dry
 river beds lose). Water balance settles in thousands of years, at once on the timeline's scale: the finish solves its
-equilibrium. Full to its rim, it spills (its outflow cut down through the rim, a fresh lake just above sea level); short
+equilibrium. Full to its rim, it spills, a fresh lake at its rim; short
 of it, a salt lake at its own level — below sea level, or above it in a basin whose rim is higher still — or, where too
 little flows in for a lake the map can show, a playa: a flat on its floor, the basin round it dry ground below sea level
 (the Qattara at −133 m; the Messinian floors 2–3 km down). Its floor is the history's, filled by its rivers while it was
@@ -149,10 +159,7 @@ a playa toward 120 m, and any body over 250 000 km² with water below 1 km count
 rivers carve down its dry slopes to its water — their base level its level, not sea level (the carve's sea is the world
 ocean) — and the fans spread on its dry floor. Checked against Earth (`check-basins.mjs`): the balance gives the
 Caspian's 371 000 km² from the Volga's inflow within ×1.5, the Dead Sea's ~1000 km² before its river was drawn off, and
-the Messinian's drawdown in ~1 000 years; reported over three histories against Earth's closed seas. A land
-basin (or a full trapped sea's lowland) left without water drains whole: every
-pocket in it (a sub-basin behind its own sill, which the gorge from the basin's floor does not reach) gets its own gorge
-out from its lowest point. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
+the Messinian's drawdown in ~1 000 years; reported over three histories against Earth's closed seas. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
 names a river's discharge, regime and flood months, and a lake's kind). Measured when this stage was new (20K plates,
 desktop): 640K ~8 s, 2.5M ~15 s, 10M ~53 s. The whole Add detail now (erosion, ice, wind, coast, water and climate since;
@@ -2123,7 +2130,7 @@ the study proposed has nothing to fix; breach, big-for-its-river and origin with
 result is the same to the digit without them (831576@310, 2.5M, every field of the study). `erode=false` therefore no longer gives
 the old world: it gives rules off with no erosion, which has too many lakes (it is a control).
 
-**What stays:** the ice age's own rules, big-for-its-river for its lakes (`lakeKeepKm2` with `glacialKeepShare`, `basinKeepShare`) and its
+**What stays** (until lane fsm-wire, 2026-11-03, which retired these too with the old hydrology): the ice age's own rules, big-for-its-river for its lakes (`lakeKeepKm2` with `glacialKeepShare`, `basinKeepShare`) and its
 young hollows' breach (`glacialBreachQ`), because erosion runs at 1.5 % on the ice's ground; the least lake the map shows (`lakeMinKm2`,
 `lakeMinDepthM`); the pans (`playaYears`); the water balance; and `oneWater` (a display and count rule, until a per-water salt balance or
 Fill-Spill-Merge's level sets replace it). The sinking-floor sections and the rule sections above are history: their code is gone.

@@ -147,42 +147,42 @@ export function fillSpillMerge(ctx, F) {
                 h.kind = Water.NONE; h.levelNow = h.level;
                 q[c] = h.inflow; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;
             } else {
-            const S = hollowLakes(mesh, h.cells, z, x => q[x], lakeLoss, 0, h.level);
-            h.closed = !S.full; h.outflow = S.full ? S.outflow : 0;
-            let lakeKm2 = 0, panKm2 = 0, salt = false;
-            for (const W of S.lakes) {
-                let floor = Infinity;
-                for (const x of W.cells) if (z[x] < floor) floor = z[x];
-                census.bodies++;
-                if (W.full) {
-                    if (!shows(W, floor)) { fillTo(W, 'small'); continue; }
-                    for (const x of W.cells) { lake[x] = Water.FRESH; lakeLevel[x] = W.level + 1e-5; if (lakeSrc) lakeSrc[x] = 8; }
-                    census.fresh++; lakeKm2 += W.cells.length * cellKm2;
-                    h.drawn.push({ kind: Water.FRESH, cells: W.cells });
-                } else {
-                    // (where water ends: a salt lake the map shows. A smaller one is a playa, its floor levelled to where its water dries,
-                    // and the rivers end there; it is drawn as dry ground, like a pond: the map's thresholds decide what is drawn. Drawn as
-                    // playas, the closed pits of the dry lands were 2 900–4 800 white one-cell dots a world, 0.4–0.7 % of the land; Jackson,
-                    // 2026-11-03: "white one-cell salt pans on plateaus". A playa the map shows comes from a salt lake: finish-erode.js playas)
-                    const drawn = W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;
-                    for (const x of W.cells) {
-                        sink[x] = 1;
-                        if (drawn) { lake[x] = Water.SALT; lakeLevel[x] = W.level + 1e-5; if (lakeSrc) lakeSrc[x] = 9; }
-                        else if (z[x] < W.level) { z[x] = W.level; filledCells++; }
+                const S = hollowLakes(mesh, h.cells, z, x => q[x], lakeLoss, 0, h.level);
+                h.closed = !S.full; h.outflow = S.full ? S.outflow : 0;
+                let lakeKm2 = 0, panKm2 = 0, salt = false;
+                for (const W of S.lakes) {
+                    let floor = Infinity;
+                    for (const x of W.cells) if (z[x] < floor) floor = z[x];
+                    census.bodies++;
+                    if (W.full) {
+                        if (!shows(W, floor)) { fillTo(W, 'small'); continue; }
+                        for (const x of W.cells) { lake[x] = Water.FRESH; lakeLevel[x] = W.level + 1e-5; if (lakeSrc) lakeSrc[x] = 8; }
+                        census.fresh++; lakeKm2 += W.cells.length * cellKm2;
+                        h.drawn.push({ kind: Water.FRESH, cells: W.cells });
+                    } else {
+                        // (where water ends: a salt lake the map shows. A smaller one is a playa, its floor levelled to where its water dries,
+                        // and the rivers end there; it is drawn as dry ground, like a pond: the map's thresholds decide what is drawn. Drawn as
+                        // playas, the closed pits of the dry lands were 2 900–4 800 white one-cell dots a world, 0.4–0.7 % of the land; Jackson,
+                        // 2026-11-03: "white one-cell salt pans on plateaus". A playa the map shows comes from a salt lake: finish-erode.js playas)
+                        const drawn = W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;
+                        for (const x of W.cells) {
+                            sink[x] = 1;
+                            if (drawn) { lake[x] = Water.SALT; lakeLevel[x] = W.level + 1e-5; if (lakeSrc) lakeSrc[x] = 9; }
+                            else if (z[x] < W.level) { z[x] = W.level; filledCells++; }
+                        }
+                        if (drawn) { census.salt++; salt = true; lakeKm2 += W.cells.length * cellKm2; h.drawn.push({ kind: Water.SALT, cells: W.cells }); } else census.pits++;
                     }
-                    if (drawn) { census.salt++; salt = true; lakeKm2 += W.cells.length * cellKm2; h.drawn.push({ kind: Water.SALT, cells: W.cells }); } else census.pits++;
                 }
-            }
-            if (h.closed) {
-                census.closedHollows++;
-                const end = S.fate(h.deepCell);
-                h.kind = salt ? Water.SALT : Water.PAN;      // (a closed basin with no salt lake the map shows: a playa's, drawn or not) h.levelNow = end >= 0 ? S.lakes[end].level : h.floor;
-                closed.push({ catchKm2: h.area, lakeKm2, panKm2, aridity: h.aE > 0 ? h.aP / h.aE : 0, lakes: S.lakes.length });
-                q[c] = 0;
-                continue;
-            }
-            h.kind = h.drawn.length ? Water.FRESH : Water.NONE; h.levelNow = h.level;
-            q[c] = S.outflow; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;
+                if (h.closed) {
+                    census.closedHollows++;
+                    const end = S.fate(h.deepCell);
+                    h.kind = salt ? Water.SALT : Water.PAN;      // (a closed basin with no salt lake the map shows: a playa's, drawn or not) h.levelNow = end >= 0 ? S.lakes[end].level : h.floor;
+                    closed.push({ catchKm2: h.area, lakeKm2, panKm2, aridity: h.aE > 0 ? h.aP / h.aE : 0, lakes: S.lakes.length });
+                    q[c] = 0;
+                    continue;
+                }
+                h.kind = h.drawn.length ? Water.FRESH : Water.NONE; h.levelNow = h.level;
+                q[c] = S.outflow; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;
             }
         }
         const out = bedKept(c, q[c], edgeKm(c, recv[c])), r = recv[c];

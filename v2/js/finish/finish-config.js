@@ -137,12 +137,11 @@ export const FINISH = {
     lakeSiltShare: 0.3,         // a drained lake's floor raised by this share of the water over it…
     lakeSiltMaxKm: 0.04,        // …at most this: a flat plain of lake silts
 
-    // ── R1: rivers and lakes (finish-hydro.js) ──
+    // ── R1: rivers and lakes (finish-fsm.js, Fill-Spill-Merge; finish-hydro.js) ──
     riverMinM3s: 8,             // a river is traced from this discharge (the page draws from its own threshold, above it)
     riverWidthPerSqrtQ: 5,      // a river's width (m) per √(m³/s) — hydraulic geometry (Leopold & Maddock)
     bedLossMPerYear: 20,        // what a river's bed loses where it is fully arid (m a year over its width: seepage and
                                 // evaporation — the Nile loses ~10 % over 1800 km of desert)
-    fsm: true,                  // the water on the erosion's ground by Fill-Spill-Merge (finish-fsm.js); false: the hydrology's rules (a study switch)
     lakeEvapShare: 1.2,         // open water evaporates this much of the land's potential evaporation (Penman 1948: a grass
                                 // cover transpires 0.6–0.8 of open water's E0, so E0 ≈ 1.25–1.7 × the land's; with petBaseMm,
                                 // petPerC: ~1.1 m a year at the Caspian's 12 °C — it loses ~1 m, Rodionov 1994 — ~2 m at the
@@ -153,49 +152,10 @@ export const FINISH = {
     lakeMinKm2: 300,            // a hollow is a lake from this size… (150 and 5 m: "too many lakes" — developer)
     lakeMinDepthM: 15,          // …and this depth
     tectonicHollowKm: 0.1,      // closedBasins' own mark of the tectonic surface's hollows, this deep
-    breachKm: 0.6,              // a basin that overflows would cut a gorge this deep through its rim; the time-stepped erosion does, but for…
-    glacialBreachShare: 0.5,    // …the ice age's own (young) hollows, half as deep, and only by big rivers (glacialBreachQ, m³/s):
-    glacialBreachQ: [500, 5000], // a big river breaks through its lakes, a small one keeps its lake district
-    // which of the ice age's lakes stay: at least lakeKeepKm2 × √(inflow / 1000 m³/s) big, glacialKeepShare of that
-    // (other lakes: the erosion has already filled or kept their hollows). A basin its rivers cannot fill stays closed
-    lakeKeepKm2: 5000,
-    glacialKeepShare: 0.5,
-    // a hollow the ice dug in soft rock (its basin, finish-ice) is a lake where at least basinLakeShare of its cells were dug
-    // over basinLakeKm, and kept if its river fills it and it is basinKeepShare of lakeKeepKm2 × √(inflow / 1000 m³/s) —
-    // the Great Lakes hold a river many times their size would cut through anywhere else
+    // a hollow the ice dug in soft rock (its basin, finish-ice) is the ice's where at least basinLakeShare of its cells were dug
+    // over basinLakeKm: its lakes count as glacial (stats.water.byOriginShare), as a hollow half under the ice's ice does
     basinLakeKm: 0.05,
     basinLakeShare: 0.25,
-    basinKeepShare: 0.1,
-    // Where a river must cut through — a basin it drains, a pocket in it — its gorge keeps the river's own course, every bend
-    // of it, unless a shortcut is enough less work: the rock it cuts, and gorgeLengthKm for each km of its length (developer:
-    // rivers "that go back and forth"; then "there should be some balance … between the 'true down' path and the 'shortcut'
-    // path … Some windyness is good"). How direct: along its own course a river does only this share of the work, so a bend is
-    // cut through only where the way round is over 1 / this times the shortcut (0.5: a detour twice as long); 0 keeps every
-    // course as it was, 1 takes the way of least work
-    riverDirectness: 0.1,
-    gorgeLengthKm: 0.02,
-    // Fill the hollows (lane rivers2, 2026-10-29, then with pits breached, Jackson: the hybrid of Lindsay 2016, Hydrol. Processes
-    // 30: 846). Until now every hollow the rivers drained, and every pocket in it, got a gorge from its floor, level at
-    // the floor's height until it reached lower ground: trenches up to a km deep and thousands of km long, and drained
-    // floors the rivers crossed dead straight. Now any hollow fills and spills: water by its balance (a lake at its rim, a
-    // salt lake, a playa), or, where its river's load fills it first, sediment graded down to its outlet.
-    gorgeMinGrade: 1e-5,        // a channel cut through falls at least this (km/km): the flattest great rivers, the lower
-                                // Amazon ~2e-5 (recalled) — never level, so the rivers in it never run on a flat
-    breachReachKm: 100,         // an outlet cuts its sill down (breachKm, by its overflow) no lower than the ground its outflow
-                                // reaches within this: the sill is lowered by a knickpoint working back from that ground, and
-                                // knickpoints retreat tens of km in 10⁴–10⁵ yr (Crosby & Whipple 2006, recalled) — until now a
-                                // breach could run its gorge thousands of km to find lower ground
-    fillGrade: 5e-5,            // a hollow filled by its river's load rises from its outlet at this: a delta plain's topset
-                                // (the lower Mississippi's ~1e-4, Saucier 1994; the Amazon's 2e-5) — never dead level
-    fillSag: 0.25,              // …and sags by this share of its own thickness: a muddy fill compacts — porosity ~0.6–0.7 laid
-                                // down, ~0.4 a few hundred m down (Athy 1930; Baldwin & Butler 1985, recalled) — so a buried
-                                // valley shows through as a swale its river follows, a buried ridge as a rise: the floor's relief
-                                // draped on the fill, not planed off (a fill graded from one point alone is a cone, its rivers
-                                // straight spokes to its outlet: the broom — lane rivers2, 2026-10-29)
-    seaCutKm: 0,                // a basin below sea level opens into the ocean if its cut through dry land is at most this long
-                                // (0: never — developer: a small trapped sea is "NOT a valid end it should go out to the real sea")…
-    seaCutFloorKm: 0.003,       // …else its gorge stops this little above sea level (no arm of the sea winding inland); the
-                                // ground it leaves below sea level is filled in to there (no dry land below sea level)
     // inland seas (2026-10-15, developer: inland seas "COMPLETELY dried out … leaving holes in the ground"): a body below
     // sea level behind a low, short barrier is a sea the mesh cannot connect — a strait narrower than its cells, low land
     // the carve keeps at its 2 m floor — opened into the ocean along the way it would spill, by a smooth weight on the
