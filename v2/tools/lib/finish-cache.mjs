@@ -18,7 +18,7 @@
 //         deleted, never trusted (and the moment finished again by whoever wants it).
 // Writes: to a temporary file, then renamed into place — atomic. A Node process finishing a moment holds build.lock (its
 //         pid); another that wants the same moment waits for it rather than finishing it too.
-// Weight (measured 2026-11-04, the page's 4096-wide picture at 2.5M cells; 8192 at 10M): see v2/README.md "Finish cache".
+// Weight: 56 MB an entry at 2.5M cells and the page's 4096-px picture (measured 2026-11-04); ~220 MB at 10M, 8192 px (estimated).
 
 import fs from 'node:fs';
 import os from 'node:os';

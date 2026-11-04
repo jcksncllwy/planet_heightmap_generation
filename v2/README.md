@@ -228,6 +228,8 @@ node v2/tools/bench-lab.mjs 2500000           # the lab's terrain pipeline piece
 node v2/tools/history.mjs latest              # the history cache: what the user is looking at in the Evolution page (see "The history cache")
 node v2/tools/history.mjs frame --latest --out f.bin   # …that very frame; also frame --seed … --time …, ls, gc, code
 node v2/tools/check-history-cache.mjs         # the cache: frames bit for bit, the key, concurrent writers, damaged files
+node v2/tools/finish-latest.mjs [--png]       # the finish cache: the finished moment the user is looking at, loaded in seconds (see "The finish cache")
+node v2/tools/check-finish-cache.mjs          # the finish cache: bit for bit, the key, damaged files, the page's upload path
 ```
 
 After an engine change run `check-invariants.mjs`, `check-scale.mjs` and the check scripts of the phases the change
@@ -1258,6 +1260,30 @@ node v2/tools/history.mjs frame --latest --out f.bin     # that very frame: v8.d
 sim-slots run -n 6 --gb 16 -- node --max-old-space-size=16000 v2/tools/render-moment.mjs --latest   # …rendered
 node v2/tools/history.mjs ls                             # every entry; frame --key <key> --time T for any of them
 ```
+
+## The finish cache (2026-11-04, branch fincache)
+
+The history cache's twin, for "Add detail": every finished moment is kept on disk, machine-wide, so **any session can load
+exactly the finished moment the user is looking at** — `node v2/tools/finish-latest.mjs`, or `loadLatestFinish({ mesh: true })`
+from `v2/tools/lib/finish-cache.mjs` (the picture, per-cell z/ocean/lake/lakeLevel/glaciated on the finish's mesh, rivers,
+the moment's climate, stats) — instead of finishing it again headlessly (which on Node would not even be the same picture:
+the page erodes on the GPU, with Chromium's maths).
+
+- **Store:** `~/.cache/geo-sim/finishes/<key>/` (`GEO_SIM_FINISH_CACHE_DIR`; `GEO_SIM_FINISH_CACHE=0` off): `page.bin` (what
+  the page shows), `cells.bin`, `meta.json` (the spec, who made it, `state` uploading → complete). Files are sealed as
+  history frames are (SHA-256 checked on every read; a damaged one is deleted and the moment finished again), written
+  atomically; a Node finish holds `build.lock` and others wait for it. Cap `GEO_SIM_FINISH_CACHE_GB` (default 8): least
+  recently used go first. One entry weighs 56 MB at 2.5M cells (the page's 4096-px picture: page 50 MB, cells 9 MB; measured 2026-11-04) and an estimated ~220 MB at 10M (8192 px: four times the cells and the pixels; not measured).
+- **Key** (`app/finish-key.js`): the moment's history key and time, the finish code's hash (`finish-worker.js` and all it
+  imports, `app/finish-code.js` as the dev server serves it), the detail, the picture's width, Greenhouse and
+  Precipitation, People on/off, and the engine — page or Node, its maths, GPU or CPU erosion. Page and Node finishes file
+  apart; a Node tool may *read* the page's (that is the point). View settings (river density, palette) are not in it.
+- **Page:** the finish worker looks the moment up before finishing (a hit is back in seconds, "Detail brought back from
+  the finish cache") and after a finish compresses and uploads it in the background (`/api/finish/*`). The view it posts
+  to `latest.json` names the finished moment on screen (`finish`, `finishSpec`). The link gains `&detail=<Myr>&dcells=…`:
+  a reload brings that moment back from the cache as soon as the history reaches it (never finished again unasked).
+- **Node:** `render-moment.mjs` goes through the cache (not with `--debug`, `--network`, `--overlay`, `--set`; `--no-cache`),
+  and with `--latest` uses the page's own finish when the moment shown is detailed.
 
 ## One height from the crust (2026-10-28, branch unified)
 
