@@ -64,6 +64,15 @@ export function qSat(T) {
 }
 
 /** Evaporation from land with water `avail` and potential rate `ep` (same units) — Turc–Pike: the smaller, smoothly. */
+/** The slope Δ (hPa/K) of the saturation vapour pressure at air temperature T (°C) — Clausius–Clapeyron in Magnus'
+ * form. Priestley–Taylor evaporates Δ/(Δ + γ) of the net radiation (γ = PSYCHRO: ~0.4 at 0 °C, ~0.6 at 15 °C, ~0.75 at
+ * 25 °C); the finish's ice age cools its potential evaporation by it (finish-ice.js). */
+export const PSYCHRO = 0.66;
+export function satSlope(T) {
+    const tc = Math.max(-40, Math.min(45, T)), es = 6.112 * Math.exp(17.67 * tc / (tc + 243.5));
+    return es * 17.67 * 243.5 / ((tc + 243.5) ** 2);
+}
+
 const turcPike = (avail, ep) => avail / Math.sqrt(1 + (avail / Math.max(1e-12, ep)) ** 2);
 
 /** The saturated column (mm) above air at T (°C): ≈ ρ q_s H with the water-vapour scale height H. */
@@ -400,9 +409,8 @@ export function columnWaterRain() {
                     // psychrometric constant γ) — little in cold or dark months, most in the sunny tropics.
                     const alb = ALBEDO_LAND + (ALBEDO_SNOW - ALBEDO_LAND) * p.snow[c];
                     const rn = Math.max(0, SURFACE_SW * (1 - alb) * sun[j] - NET_LW);
-                    const tc = Math.max(-40, Math.min(45, Tair[c])), es = 6.112 * Math.exp(17.67 * tc / (tc + 243.5));
-                    const slope = es * 17.67 * 243.5 / ((tc + 243.5) ** 2);
-                    p.eLand[c] = evapScale * PT_ALPHA * slope / (slope + 0.66) * rn / LATENT;   // kg m⁻² s⁻¹ per unit land area
+                    const slope = satSlope(Tair[c]);
+                    p.eLand[c] = evapScale * PT_ALPHA * slope / (slope + PSYCHRO) * rn / LATENT;   // kg m⁻² s⁻¹ per unit land area
                 }
             }
             // The column's share over high ground: the moist boundary layer rides up with ground that heats the air
@@ -469,7 +477,7 @@ export function columnWaterRain() {
                 return a / tau * rate[c] * Math.exp(a * (r - 1)) + lift[c] * Math.exp(b * (r - 1)) * (1 + b * r);
             };
             solver.setRowDiffusion(p.Krow, p.Krow);
-            const P = new Float64Array(G), E = new Float64Array(G);
+            const P = new Float64Array(G), E = new Float64Array(G), EL = new Float64Array(G);
             for (let c = 0; c < G; c++) P[c] = rainOf(c, Wv[c]);
             // Newton steps. Where the air starts too dry the tangent is nearly flat and a full step would overshoot
             // enormously, so a step may raise the relative humidity by at most 2/a (rain × e² at most); steps down need
@@ -485,7 +493,8 @@ export function columnWaterRain() {
                     let el = 0;
                     if (f > 0) {
                         const avail = ground ? P[c] * (1 - p.snow[c]) + ground.melt[c] + ground.soil[c] : P[c], ep = p.eLand[c];
-                        el = f * turcPike(avail, ep);
+                        EL[c] = turcPike(avail, ep);
+                        el = f * EL[c];
                     }
                     E[c] = p.eSea[c] + el;
                     const W0 = Wv[c], s = slopeOf(c, W0);
@@ -513,7 +522,7 @@ export function columnWaterRain() {
                 }
                 if (change < P_.RAIN_TOL * wsum && Math.abs(sp / se - 1) < 10 * P_.RAIN_TOL) break;
             }
-            return { P, E, balance: sp / se };
+            return { P, E, EL, balance: sp / se };
         }
 
         // ── Pass 1 through the year (each point starting from the one before), then pass 2 with the soil's store ──
@@ -556,9 +565,16 @@ export function columnWaterRain() {
 
         const Pout = new Float32Array(K * core.size), Wout = new Float32Array(K * core.size);
         const Eout = new Float32Array(K * core.size), Rout = new Float32Array(K * core.size);
+        // (the land's own: its evaporation and its Priestley–Taylor potential, mm/month per unit land area — the finish's
+        // runoff and its lakes' evaporation, from the same air; NaN where the grid has no land)
+        const ELout = new Float32Array(K * core.size), PETout = new Float32Array(K * core.size);
         const tmp = new Float64Array(G);
         for (let k = 0; k < K; k++) {
-            const off = k * core.size, { P, E } = results[k];
+            const off = k * core.size, { P, E, EL } = results[k];
+            for (let c = 0; c < G; c++) tmp[c] = EL[c] * SECONDS_PER_MONTH;
+            refineField(g, core, ratio, tmp, ELout, off);
+            for (let c = 0; c < G; c++) tmp[c] = prep[k].eLand[c] * SECONDS_PER_MONTH;
+            refineField(g, core, ratio, tmp, PETout, off);
             for (let c = 0; c < G; c++) tmp[c] = P[c] * SECONDS_PER_MONTH;
             refineField(g, core, ratio, tmp, Pout, off);
             for (let c = 0; c < G; c++) tmp[c] = E[c] * SECONDS_PER_MONTH;
@@ -602,7 +618,7 @@ export function columnWaterRain() {
                 }
             }
         }
-        const out = { P: Pout, W: Wout, E: Eout, r: Rout, orographic, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
+        const out = { P: Pout, W: Wout, E: Eout, Eland: ELout, PET: PETout, r: Rout, orographic, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };
         if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt };
         return out;

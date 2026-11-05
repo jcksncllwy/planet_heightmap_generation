@@ -61,8 +61,9 @@ atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and 
 and setting. A sea cut off from the world ocean (the largest body of water; `terrain/world-ocean.js`) has its level set
 by its water balance, not by sea level, and a timeline frame has no climate — so it is balanced on the zonal climate the
 history erodes by (2026-10-28, `terrain/basin-estimate.js`): the rain by latitude (`rainByLatitude`, falling off inland
-over `rainInlandKm`), the temperature by latitude less the lapse rate with height (`tempByLatitude`), and Add detail's own
-potential evaporation and Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
+over `rainInlandKm`), the temperature by latitude less the lapse rate with height (`tempByLatitude`), a potential
+evaporation from that temperature (`petBaseMm + petPerC·T`: a frame has no sunlight budget; Add detail takes the climate's
+own since 2026-11-05) and Add detail's Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
 catchment's runoff against what its water loses at each level). One that fills is drawn as a lake at its spill level
 (the ground of its hollow above sea level drowned too), one that keeps a lake as that lake, at its level, in its own
 grey-teal (`terrain-shade.js cutOffTint`, without the glint), and its dry ground as lowland (a playa or a salt flat).
@@ -72,7 +73,13 @@ not — on 345 of 386 seas (89 %; 99 % by area); where they differ the zonal est
 finish balances (`basinMinKm2`). The readout and the Stats say it is an estimate. The same on the lab's Terrain layer
 (Phase 8a, at its Sea level). **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
-calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation), dry basins left closed —
+calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation: Budyko's curve, Fu's ω 2.6,
+on the climate's own potential evaporation — the rain stage's Priestley–Taylor rate from the sunlight the ground keeps and
+the air's temperature, month by month (`finish.js potentialMonths`), the same air its land evaporated into, so the land
+gives back what the atmosphere's balance lost to it: 0.33–0.42 of its rain against the climate's 0.32–0.43 over 3 seeds ×
+2 moments, where a temperature-only form gave 0.37–0.52 — it missed the summers of the cold continents; Earth ~0.35–0.40,
+Trenberth et al. 2007; the lakes' evaporation, the rivers' seasons and the ice age's water from it too; the land cover
+keeps the temperature's, its S-curves fitted with it), dry basins left closed —
 flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the finish's own erosion strength
 (`erosionStrength` 0–3, 3; developer, 2026-10-15: "break up SOME of the monotony of the ridges"): the stream power's m
 lowered and k raised so its erosion climbs further up the headwaters (rivers draining 10⁵ km² cutting as before), the

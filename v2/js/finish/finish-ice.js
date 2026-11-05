@@ -9,9 +9,14 @@
 import { spreadKm } from '../core/min-heap.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { outburstFloods } from './finish-floods.js';
+import { satSlope, PSYCHRO } from '../climate/rain.js';
 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const R = 6371, LAPSE = 6.5;
+
+/** Priestley–Taylor's potential evaporation in air at `cold` °C over that at `warm` (Δ/(Δ + γ), the sunlight the same —
+ * rain.js; the summer's temperatures, when the year's evaporation mostly happens). */
+const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm); return (a / (a + PSYCHRO)) / (b / (b + PSYCHRO)); };
 
 /** The summer temperature (°C) at the equilibrium line for a year's precipitation P (mm) — Ohmura et al. 1992. */
 const elaTemp = P => (-296 + Math.sqrt(Math.max(0, 296 * 296 - 36 * (645 - P)))) / 18;
@@ -30,8 +35,8 @@ export function lastIceAge(ctx, F) {
     // ── the ice age's summer and snow, and where snow outlasts summer ──
     const tS = new Float32Array(n), snow = new Float32Array(n), acc = new Uint8Array(n);
     // (and the ice age's water, for the lakes the ice dams — finish-floods.js: the runoff and rain dried as the snow is, the
-    // runoff only where the summer thaws, the open water's evaporation cooled with the air, by the finish's own potential
-    // evaporation per °C)
+    // runoff only where the summer thaws, the open water's evaporation cooled with the air — Priestley–Taylor's Δ/(Δ + γ) at
+    // the colder summer over today's, the sunlight the same)
     const water = ctx.runoff && ctx.pet ? { runoff: new Float32Array(n), rain: new Float32Array(n), pet: new Float32Array(n) } : null;
     for (let c = 0; c < n; c++) {
         const a = Math.abs(lat[c]) / 90, cold = F.iceColdEqC + (F.iceColdPoleC - F.iceColdEqC) * a ** 1.5;
@@ -47,7 +52,7 @@ export function lastIceAge(ctx, F) {
             water.rain[c] = P === P ? P : 0;
             // (the shelves the sea leaves bare had no land climate at the moment: NaN — finish-floods.js gives them their
             // lake's own)
-            water.pet[c] = ctx.pet[c] > 0 ? Math.max(F.petMinMm, ctx.pet[c] - F.petPerC * cold) : NaN;
+            water.pet[c] = ctx.pet[c] > 0 ? Math.max(F.petMinMm, ctx.pet[c] * ptCooled(tS[c], tS[c] + cold)) : NaN;
         }
         if (z[c] > -F.iceSeaDropKm && P > 80 && tS[c] < elaTemp(P)) acc[c] = 1;
     }

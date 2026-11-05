@@ -101,7 +101,7 @@ for (const seed of SEEDS) {
         // (the seas the finish counts as remnants of the sea: finish-config.js seaBasinKm2)
         const seas = (fin.stats.water.seas ?? []).filter(s => s.belowKm2 >= F.seaBasinKm2[0]);
         const down = seas.filter(s => !s.spills), wetDown = down.filter(s => s.kind === Water.SALT), dry = down.filter(s => s.kind !== Water.SALT);
-        closedRows.push({ seed, t, endo: fin.stats.water.endorheicShare ?? NaN, closed: fin.stats.water.closed ?? [] });
+        closedRows.push({ seed, t, endo: fin.stats.water.endorheicShare ?? NaN, closed: fin.stats.water.closed ?? [], runoff: fin.stats.runoffShare ?? NaN, climRunoff: fin.stats.climateRunoffShare ?? NaN });
         // (the land's water and hollows, and the sediment the history's hollows hold — crust records, km of it per sim cell)
         const fr = frames.get(t), simKm2 = 4 * Math.PI * 6371 ** 2 / simMesh.numCells;
         let fillKm3 = 0; for (let w = 0; w < simMesh.numCells; w++) if (fr.owner[w] >= 0) fillKm3 += (fr.basinFillKm?.[w] ?? 0) * simKm2;
@@ -141,6 +141,16 @@ section('closed basins on land (finished at 160K cells, the same moments)');
     report('land draining to closed basins: mean of the moments', bySeed.map(R => 100 * R.reduce((a, r) => a + r.endo, 0) / Math.max(1, R.length)), { earth: [15, 35], unit: ' %', digits: 1,
         source: '~20 % of the continents today (Wang et al. 2018, Nat. Geosci. 11: 926); more in a supercontinent’s dry interior (no figure found)',
         detail: SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r.endo).toFixed(1)}`).join(', ')}`).join(' · ') });
+    // (the land's runoff, rain less evaporation, as a share of its rain — the finish's, from the climate's own potential
+    // evaporation (finish.js potentialMonths), against Earth's and against the climate's own land rain less land evaporation:
+    // the rivers carry back what the atmosphere's balance lost to the land)
+    const meanOf = (R, k) => R.reduce((a, r) => a + r[k], 0) / Math.max(1, R.length);
+    report('the land’s runoff ÷ its rain: mean of the moments', bySeed.map(R => 100 * meanOf(R, 'runoff')), { earth: [33, 42], unit: ' %', digits: 1,
+        source: 'land runoff ~37 000–40 000 km³ of ~111 000–116 000 km³ of land rain: 33 % (Dai & Trenberth 2002, J. Hydrometeor. 3: 660), 35 % (Trenberth et al. 2007, J. Hydrometeor. 8: 758), 41 % (Oki & Kanae 2006, Science 313: 1068); a cycle-independent ratio (Budyko: set by aridity, not by the continents’ layout)',
+        detail: SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r.runoff).toFixed(1)}`).join(', ')}`).join(' · ') });
+    report('…less the climate’s own (its land’s rain less its land’s evaporation, ÷ its rain)', bySeed.map(R => 100 * (meanOf(R, 'runoff') - meanOf(R, 'climRunoff'))), { earth: [-3, 3], unit: ' points', digits: 1,
+        source: 'closure, not Earth: the finish’s rivers from the same air as the climate’s balance (rain.js Priestley–Taylor); the rest is the cells’ rain, finer than the grid’s, through Budyko’s curve',
+        detail: SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r.climRunoff).toFixed(1)}`).join(', ')}`).join(' · ') });
     // (a closed lake's size against its catchment: what the catchment's runoff can hold against the lake's evaporation —
     // its aridity in one number, Bracht-Flyr et al. 2013; over 10 000 km² of catchment, the map's)
     const median = a => { const v = [...a].sort((x, y) => x - y); return v.length ? v[v.length >> 1] : NaN; };

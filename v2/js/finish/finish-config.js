@@ -12,11 +12,15 @@ export const FINISH = {
     // ── the rivers: the carve run longer, with the climate's runoff ──
     carveTimeMyr: 1.0,          // (the timeline's 0.75; 1.2 cut trunk canyons too deep beside uncut ground — developer)
     carveRounds: [3, 2, 2, 2, 1],
-    // runoff = rain − evaporation (Budyko's curve in Fu's form, ω), potential evaporation from the annual temperature
-    petBaseMm: 300,             // potential evaporation at 0 °C…
-    petPerC: 55,                // …plus this per °C (~1700 mm at 25 °C)
+    // runoff = rain − evaporation (Budyko's curve in Fu's form, ω), the potential evaporation the climate's own
+    // (Priestley–Taylor's from its sunlight and air, rain.js — finish.js potentialMonths): the land then returns to the sea
+    // what the atmosphere's balance lost to it, ~0.32–0.43 of its rain (the runoff lane, 3 seeds × 2 moments; Earth ~0.35–0.40,
+    // Trenberth et al. 2007, Oki & Kanae 2006)
+    petBaseMm: 300,             // the temperature's potential evaporation — the land cover's wetness (its S-curves were fitted
+    petPerC: 55,                // with it, COVER), and the rivers' where a climate has no rain stage: at 0 °C, plus this per °C
     petMinMm: 60,
-    budykoW: 2.6,
+    budykoW: 2.6,               // Fu's ω: Earth's catchments' mean, ~2.6 (Zhang et al. 2004; Turc–Pike's ν = 2, the climate's
+                                // own land evaporation law, is ω ≈ ν + 0.72 = 2.7 — Yang et al. 2008)
     rainMaxMm: 6000,            // the climate's rain, for the finish's erosion, at most this (its grid has rare hotspots of
                                 // 10 000–70 000 mm a year: ~0.2 % of land — Earth's wettest places get ~12 000)
     runoffFloor: 0.1,           // a desert's rivers still count this share of the mean (old wetter climates cut the wadis)…
@@ -142,10 +146,12 @@ export const FINISH = {
     riverWidthPerSqrtQ: 5,      // a river's width (m) per √(m³/s) — hydraulic geometry (Leopold & Maddock)
     bedLossMPerYear: 20,        // what a river's bed loses where it is fully arid (m a year over its width: seepage and
                                 // evaporation — the Nile loses ~10 % over 1800 km of desert)
-    lakeEvapShare: 1.2,         // open water evaporates this much of the land's potential evaporation (Penman 1948: a grass
-                                // cover transpires 0.6–0.8 of open water's E0, so E0 ≈ 1.25–1.7 × the land's; with petBaseMm,
-                                // petPerC: ~1.1 m a year at the Caspian's 12 °C — it loses ~1 m, Rodionov 1994 — ~2 m at the
-                                // Dead Sea's 25 °C — 1.5–2 m, Salameh & El-Naser 1999). The closed basins' balance too
+    lakeEvapShare: 1.2,         // open water evaporates this much of the land's potential evaporation — Priestley–Taylor's
+                                // for a wet surface (the climate's, rain.js): water's darker (albedo ~0.06 to the land's 0.15
+                                // there) keeps ~1.15 × the net sunlight, and the dry air over a desert lake adds what
+                                // Priestley–Taylor leaves out (Penman's wind term: 1.3–1.5 × it in arid lands, Shuttleworth
+                                // 1993) — so 1.15–1.6; Earth: the Caspian loses ~1 m a year (Rodionov 1994), the Dead Sea
+                                // 1.5–2 m (Salameh & El-Naser 1999). The closed basins' balance too
     lakeJoinKm: 30,             // two waters across a sill narrower than this… (about 3 pixels of a 4096-wide map: where they read as touching; no Earth figure)
     lakeSwingKm: 0.05,          // …and levels closer than this are one water, one kind (finish-hydro.js oneWater). A closed lake's level swings
                                 // by metres in a century and tens of metres over millennia (Great Salt Lake ~6 m since 1850, the Caspian ~15 m in the Holocene: both recalled), so such a sill floods

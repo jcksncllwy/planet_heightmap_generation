@@ -941,9 +941,11 @@ function stats(T, frame) {
 /** A finished moment's closed basins, for the stats panel: the share of its land whose rivers end in one, and their water
  *  (finish-hydro.js: closed at any height where their rivers cannot fill them; Earth's ~20 %, Wang et al. 2018). */
 function closedLine(frame) {
-    const W = B?.finishes.get(frame)?.stats?.water;
+    const S = B?.finishes.get(frame)?.stats, W = S?.water;
     if (!W || !(W.endorheicShare >= 0)) return '';
-    return `<div title="Basins whose rivers cannot fill them to their rim keep their water: it evaporates there, at a salt lake or a playa. Earth: about a fifth of the land (Wang et al. 2018)">Detailed: ${(100 * W.endorheicShare).toFixed(1)} % of the land drains to closed basins · ${W.saltLakes} salt lakes, ${W.pans} playas</div>`;
+    // (and the land's runoff against the climate's own land rain less evaporation — finish.js: the rivers from the same air)
+    const runoff = S.runoffShare >= 0 && S.climateRunoffShare >= 0 ? `<div title="The share of the land's rain its rivers carry back to the sea, against the climate's own: its land's rain less what its land evaporated. Earth: about 35–40 % (Trenberth et al. 2007)">Runoff: ${(100 * S.runoffShare).toFixed(0)} % of the land's rain (the climate's ${(100 * S.climateRunoffShare).toFixed(0)} %)</div>` : '';
+    return `<div title="Basins whose rivers cannot fill them to their rim keep their water: it evaporates there, at a salt lake or a playa. Earth: about a fifth of the land (Wang et al. 2018)">Detailed: ${(100 * W.endorheicShare).toFixed(1)} % of the land drains to closed basins · ${W.saltLakes} salt lakes, ${W.pans} playas</div>` + runoff;
 }
 
 function tick(now) {

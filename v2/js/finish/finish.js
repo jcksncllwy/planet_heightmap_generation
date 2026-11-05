@@ -26,6 +26,7 @@ import { carveTerrain, forgetMesh } from '../terrain/carve.js';
 import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimate } from '../climate/climate.js';
 import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
+import { interpolationMatrix } from '../climate/seasons.js';
 import { pageClimate } from '../evolution/climate-fields.js';
 import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
@@ -133,11 +134,15 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const CF = civ ? await import('../civ/civ-finish.js') : null, travelFlow = CF?.travelFlow(res.grid, circ, res.stages.ocean);
     const climGrid = { w: res.grid.w, h: res.grid.h }, warmSl = new Float32Array(n);
     for (let c = 0; c < n; c++) warmSl[c] = bilinear(climGrid, warmG, lat[c], lon[c]);
+    // (the land's potential evaporation, month by month (mm): the climate's own — Priestley–Taylor's, from the sunlight
+    // the ground keeps and the air's temperature (rain.js) — the rate its land evaporated at, so the rivers carry the water
+    // the atmosphere lost to them; its anchors made months as the months themselves are)
+    const petM = potentialMonths(res, G, F);
     // (the months each place's rain passes a share of its evaporation, or it freezes — the rivers' seasons)
     const wetG = new Float32Array(G), wetMonths = new Float32Array(n);
     for (let g = 0; g < G; g++) {
         let k = 0;
-        for (let m = 0; m < 12; m++) { const T = res.months.T[m * G + g], P = res.months.P[m * G + g], E = Math.max(5, (F.petBaseMm + F.petPerC * T) / 12); if (T < 0 || P > F.wetShare * E) k++; }
+        for (let m = 0; m < 12; m++) { const T = res.months.T[m * G + g], P = res.months.P[m * G + g], E = Math.max(5, petM[m * G + g]); if (T < 0 || P > F.wetShare * E) k++; }
         wetG[g] = k;
     }
     for (let c = 0; c < n; c++) wetMonths[c] = bilinear(climGrid, wetG, lat[c], lon[c]);
@@ -153,7 +158,20 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) if (!(pAnn[c] === pAnn[c])) { pAnn[c] = bilinear(climGrid, pG, lat[c], lon[c]); tAnn[c] = bilinear(climGrid, tG, lat[c], lon[c]) - gamma * Math.max(0, z[c]); }
     // (each place's runoff shared over the months — rain, snow kept until it melts, less a share of each month's
     // evaporation; a share, where it is humid, through the ground, which drains back slowly — and each month's dryness)
-    const monthly = runoffMonths(res.months, G, F);
+    const monthly = runoffMonths(res.months, petM, G, F);
+    // (the year's potential evaporation on the grid, for each cell's; and the climate's own land water, for the stats: its
+    // land's rain less its land's evaporation, as a share of the rain — what the rivers should carry back to the sea)
+    const petG = new Float32Array(G), RS = res.stages.rain, KA = res.anchorMonths.length;
+    let gP = 0, gE = 0;
+    for (let g = 0; g < G; g++) {
+        let e = 0, pp = 0;
+        for (let m = 0; m < 12; m++) { petG[g] += Math.max(0, petM[m * G + g]); pp += Math.max(0, res.months.P[m * G + g]); }
+        if (!RS?.Eland) continue;
+        for (let k = 0; k < KA; k++) e += RS.Eland[k * G + g];
+        const lf = res.surface.landFrac[g], wgt = lf > 0 ? lf * Math.cos(res.grid.lat[Math.floor(g / res.grid.w)] * Math.PI / 180) : 0;
+        if (wgt > 0) { gP += wgt * pp; gE += wgt * 12 * e / KA; }
+    }
+    stats.climateRunoffShare = gP > 0 ? +((gP - gE) / gP).toFixed(3) : null;
     // (kept for the finished moment's own climate, at the end: the page's grid fields, and the grid's climate to finish
     // each cell again on the finished surface)
     const pageC = pageClimate(res, { cells: false }), gridClimate = { grid: res.grid, surface: res.surface, months: res.months, cell: { lat, lon } };
@@ -170,11 +188,12 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     let oldW = 0, sumR = 0, sumP = 0, landN = 0;
     for (let c = 0; c < n; c++) {
         if (!(pAnn[c] === pAnn[c])) continue;
-        const P = Math.max(0, pAnn[c]), E0 = Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnn[c]);
+        const P = Math.max(0, pAnn[c]), E0 = Math.max(F.petMinMm, bilinear(climGrid, petG, lat[c], lon[c]));
         pet[c] = E0;
         runoff[c] = P > 0 ? Math.max(0, P - P * (1 + E0 / P - (1 + (E0 / P) ** F.budykoW) ** (1 / F.budykoW))) : 0;
         if (z[c] > 0) { oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += P; landN++; }
     }
+    stats.runoffShare = sumP > 0 ? +(sumR / sumP).toFixed(3) : null;
     const meanR = landN ? sumR / landN : 1, meanP = landN ? sumP / landN : 1, meanW = landN ? oldW / landN : 1;
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, pAnn[c]) / meanP) ** F.wetPower);
@@ -421,17 +440,17 @@ function roughen(mesh, z, seed, F, fade) {
  *  rain, and snow kept until it melts — less a share of its potential evaporation; a share of that (more where it is
  *  humid) seeps into the ground, which drains back into the rivers slowly (baseflowMonths: a dry season's flow dwindles
  *  month by month). Three years, from dry ground: the store and the snow settle to their yearly round. */
-function runoffMonths(months, G, F) {
+function runoffMonths(months, petM, G, F) {
     const out = Array.from({ length: 12 }, () => new Float32Array(G)), arid = Array.from({ length: 12 }, () => new Float32Array(G));
     const liquid = new Float64Array(12), flow = new Float64Array(12);
     const drain = 1 - Math.exp(-1 / F.baseflowMonths);
     for (let g = 0; g < G; g++) {
         let Pyr = 0, Eyr = 0;
-        for (let m = 0; m < 12; m++) { const T = months.T[m * G + g]; Pyr += Math.max(0, months.P[m * G + g]); Eyr += Math.max(5, (F.petBaseMm + F.petPerC * T) / 12); }
+        for (let m = 0; m < 12; m++) { Pyr += Math.max(0, months.P[m * G + g]); Eyr += Math.max(5, petM[m * G + g]); }
         const base = F.baseflowShare * smooth(0.2, 1, Pyr / Eyr);
         let snow = 0, store = 0, sf = 0, sl = 0;
         for (let cyc = 0; cyc < 3; cyc++) for (let m = 0; m < 12; m++) {
-            const T = months.T[m * G + g], P = Math.max(0, months.P[m * G + g]), E = Math.max(5, (F.petBaseMm + F.petPerC * T) / 12);
+            const T = months.T[m * G + g], P = Math.max(0, months.P[m * G + g]), E = Math.max(5, petM[m * G + g]);
             let liq;
             if (T < 0) { snow += P; liq = 0; } else { const melt = Math.min(snow, F.snowMeltMmPerC * T); snow -= melt; liq = P + melt; }
             const quick = Math.max(0, liq - F.monthEvapShare * E), d = store * drain;
@@ -440,11 +459,32 @@ function runoffMonths(months, G, F) {
         }
         for (let m = 0; m < 12; m++) {
             out[m][g] = sf > 0 ? flow[m] / sf : sl > 0 ? liquid[m] / sl : 1 / 12;
-            const T = months.T[m * G + g], E = Math.max(5, (F.petBaseMm + F.petPerC * T) / 12);
+            const T = months.T[m * G + g], E = Math.max(5, petM[m * G + g]);
             arid[m][g] = T < 0 ? 0 : smooth(0, 1, (E - Math.max(0, months.P[m * G + g])) / E);
         }
     }
     return { share: out, arid };
+}
+
+/**
+ * The land's potential evaporation for each month on the climate's grid (mm, 12 × G): the rain stage's Priestley–Taylor
+ * rate at its anchors (rain.js PET), made months as the months' temperature is (seasons.js; linear, at least 0). What it
+ * skips: it is the grid's, at the grid's land height (a cell above or below it keeps its grid's — the cold of height
+ * lowers Δ/(Δ + γ), but its sunnier, thinner air raises the radiation); no wind or dryness of the air (Penman's
+ * aerodynamic term: a desert's air evaporates more than its sunlight alone allows, ~1.3–1.5 × Priestley–Taylor in arid
+ * lands, Shuttleworth 1993). Without the rain stage's PET (an anchor source with no physics) the temperature's (FINISH
+ * petBaseMm + petPerC·T, the cover's).
+ */
+function potentialMonths(res, G, F) {
+    const PET = res.stages?.rain?.PET, out = new Float32Array(12 * G);
+    if (!PET) { for (let i = 0; i < 12 * G; i++) out[i] = (F.petBaseMm + F.petPerC * res.months.T[i]) / 12; return out; }
+    const K = res.anchorMonths.length, M = interpolationMatrix(K, res.anchorMonths[0], 0);
+    for (let g = 0; g < G; g++) for (let m = 0; m < 12; m++) {
+        let e = 0;
+        for (let k = 0; k < K; k++) e += M[m * K + k] * PET[k * G + g];
+        out[m * G + g] = Math.max(0, e);
+    }
+    return out;
 }
 
 /** The four grid points around (lat, lon) and their bilinear weights (as bilinear). */
