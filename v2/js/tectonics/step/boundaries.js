@@ -94,7 +94,7 @@ export function classifyBoundaries(world, dt) {
             if (aOverrides && real) {
                 const km = closing * dt * PLANET_RADIUS_KM;
                 if (feedTrench(world, w, A, cellA, B, ownerCell[otherW], km, closing / CM_PER_YR_TO_RAD_PER_MYR)) {
-                    const f = fed.get(A) ?? fed.set(A, { cells: [], kms: [], headOn: [], shear: [], age: [], km: 0, flat: 0 }).get(A);
+                    const f = fed.get(A) ?? fed.set(A, { cells: [], kms: [], headOn: [], shear: [], age: [], isFlat: [], km: 0, flat: 0 }).get(A);
                     const slabAge = world.time - B.crust.formedAt[ownerCell[otherW]];
                     f.cells.push(cellA); f.kms.push(km); f.headOn.push(closing / Math.hypot(closing, shear)); f.age.push(slabAge); f.km += km;
                     f.shear.push(obliquityDeg([vx, vy, vz], normal, [x, y, z], closing));
@@ -104,7 +104,8 @@ export function classifyBoundaries(world, dt) {
                     // pair — advances on the trench
                     const advance = ((A.omega[1] * z - A.omega[2] * y) * normal[0] + (A.omega[2] * x - A.omega[0] * z) * normal[1] + (A.omega[0] * y - A.omega[1] * x) * normal[2]) / CM_PER_YR_TO_RAD_PER_MYR;
                     const buoyantFor = config.flatSlabMaxAgeMyr * (1 + extraCrustKm(B.crust, ownerCell[otherW], config) / config.flatSlabCrustKm) ** 2;
-                    if (slabAge < buoyantFor && advance > config.flatSlabAdvanceCmYr) f.flat++;
+                    const flatHere = slabAge < buoyantFor && advance > config.flatSlabAdvanceCmYr;
+                    f.isFlat.push(flatHere); if (flatHere) f.flat++;
                 }
             }
             // no slab established on either side: the plates press together, and no subduction zone stands here yet
@@ -138,12 +139,13 @@ export function classifyBoundaries(world, dt) {
         // (under beltStrainRate: as far as this stretch's shortening — the work below — strains the margin at that rate. Over a
         // flat slab the plate is driven from beneath, by the slab's basal traction along all of its flat length, not from
         // the trench (Bird 1988, Science 239; Axen et al. 2018): the belt reaches at least as far inland as the flat slab
-        // has gone — the kind's reach law on the flat slab's length, without the rate factor, since that reach is the
+        // has gone, above the stretches where the slab itself goes in flat (a steep stretch beside them, Chile beside
+        // Peru, keeps its own rate's reach) — the kind's reach law on the flat slab's length, without the rate factor, since that reach is the
         // slab's geometry, not the rate's. Lane crust)
         const live = config.beltStrainRate > 0, kind = flat ? 'laramide' : 'andean';
         const flatReach = live && flat ? Math.min(config.belts.laramide.maxKm, config.belts.laramide.baseKm + config.belts.laramide.perKm * plate.flatSlabKm) : 0;
         const widths = keep.map(i => {
-            if (live) return Math.max(flatReach * beltShape(f.headOn[i], undefined, config), liveBeltWidthKm(kind, f.kms[i] * config.andeanWorkShare * beltShape(f.headOn[i], undefined, config) / dt, config));
+            if (live) return Math.max((f.isFlat[i] ? flatReach : 0) * beltShape(f.headOn[i], undefined, config), liveBeltWidthKm(kind, f.kms[i] * config.andeanWorkShare * beltShape(f.headOn[i], undefined, config) / dt, config));
             const c = f.cells[i], rate = f.kms[i] / dt / CM_PER_YR_TO_KM_PER_MYR, shape = beltShape(f.headOn[i], f.age[i], config);   
             const steep = beltWidthKm('andean', plate.crust.slabKm[c] * config.andeanWorkShare, rate, config);
             if (!flat) return Math.min(cap(config, 'andean'), steep * shape);

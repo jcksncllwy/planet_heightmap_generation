@@ -25,7 +25,7 @@ import { scrapeArc } from '../ops/scrape-arc.js';
 import { EventKind } from '../model/world.js';
 import { centroidOfCells } from '../../core/sphere-geom.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
-import { continentVolume, crustOf, layThickening } from '../ops/thicken.js';
+import { continentVolume, crustOf, layThickening, layProfile } from '../ops/thicken.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
 
@@ -593,7 +593,15 @@ const uniq = list => [...new Set(list)];
  */
 function keepConsumed(world, U, seeds, volKm) {
     const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
-    const left = layThickening(U, world.mesh, seeds, kept, config.underthrustMaxThickKm);
+    // across this step's collision belt on the upper plate, in its plateau profile (1 − u²); the rest ring by ring from the front
+    const cr = U.crust, belt = [], weights = [];
+    for (let c = 0; c < cr.mask.length; c++) {
+        if (!cr.mask[c] || cr.type[c] !== CrustType.CONTINENT || cr.beltAt[c] !== world.time || !(cr.beltReach[c] > 0)) continue;
+        if (cr.oroType[c] !== OrogenyType.HIMALAYAN && cr.oroType[c] !== OrogenyType.URAL) continue;
+        belt.push(c); weights.push(1 - Math.min(1, cr.beltU[c]) ** 2);
+    }
+    const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
+    const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm);
     budget.collisionKeptKm = (budget.collisionKeptKm ?? 0) + kept - left;
     budget.collisionLostKm = (budget.collisionLostKm ?? 0) + lost;
     budget.collisionUnplacedKm = (budget.collisionUnplacedKm ?? 0) + left;

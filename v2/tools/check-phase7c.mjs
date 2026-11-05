@@ -63,7 +63,12 @@ section('a continent slides under another (underthrusting)');
     check('India reaches Asia and they weld', !!suture, suture ? suture.text.slice(0, 120) : 'no suture');
     check('as they converge, India’s land in the overlap slides under Asia', r.budget.underthrustCells >= 5, `${r.budget.underthrustCells} cells (${Mkm2(r.budget.underthrustCells).toFixed(2)} Mkm²) consumed`);
     const maxThick = f => { let m = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w)) m = Math.max(m, f.thickKm[w]); return m; };
-    check('Asia’s crust above it thickens — a plateau to come', maxThick(r.last) > maxThick(off.last), `thickest crust ${maxThick(r.last).toFixed(1)} km above normal (without underthrusting: ${maxThick(off.last).toFixed(1)})`);
+    // (by the thickened crust's volume, not its thickest cell: under collisionVolume every consumed column is laid ring by
+    // ring up to the ceiling, underthrustMaxThickKm, with or without underthrusting — the weld's overlap fills it too — so the
+    // thickest cell stands at the ceiling in both runs (40.0 vs 40.0 km) and the maximum says nothing; what India's
+    // underthrust land adds is crust, so it shows as volume. Lane crust)
+    const thickVol = f => { let v = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w)) v += Math.max(0, f.thickKm[w]) * cellAreaKm2; return v / 1e6; };
+    check('Asia’s crust above it thickens — a plateau to come', thickVol(r.last) > thickVol(off.last), `thickened crust ${thickVol(r.last).toFixed(1)} Mkm³ above normal (without underthrusting: ${thickVol(off.last).toFixed(1)}); thickest ${maxThick(r.last).toFixed(1)} km (${maxThick(off.last).toFixed(1)})`);
     report('thickest crust above normal over the underthrust land', maxThick(r.last), { earth: [25, 40], unit: ' km', digits: 1, source: 'Tibet ~60–80 km, about twice normal (Owens & Zandt 1997)' });
     if (suture) {
         const before = nearestFrame(r.frames, suture.time - 10), after = nearestFrame(r.frames, suture.time + 4);

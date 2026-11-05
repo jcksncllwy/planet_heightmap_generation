@@ -3,9 +3,11 @@
 // absorbs — is folded into the crust above as thickness (Tibet's ~70 km crust is India's and Asia's own, shortened),
 // less a small share the collision really returns to the mantle. Without this the engine deleted ~2.7–3.1 Gkm³ of
 // continent per 1200 Myr cycle at collisions, ~2.5 AU against Earth's ~0.7 (crust-report.md §1).
-// Reduced model, and its limits: the volume is laid on the upper plate's continent nearest the front, each cell filled to
-// a thickest root before the next ring takes the rest (a plateau widening as it fills: Tibet grew outward, its edges the
-// youngest); where it stands then is heights.js's (its collapse spreads it further); no lower-crustal channel flow, no
+// Reduced model, and its limits: the volume is laid across the collision's own belt on the upper plate, in the belt's
+// plateau profile (1 − u², the shape spreadBelt thickens by: thickest behind the front, thinning to its far edge — the
+// thin viscous sheet's crustal thickening across a deforming zone, England & Houseman 1986), each cell to a thickest root;
+// what finds no room there goes on the continent nearest the front, each cell filled before the next ring takes the
+// rest (a plateau widening as it fills: Tibet grew outward, its edges the youngest); where it stands then is heights.js's (its collapse spreads it further); no lower-crustal channel flow, no
 // eclogite foundering beyond the lost share.
 
 import { CrustType } from '../model/crust.js';
@@ -19,6 +21,28 @@ export function continentVolume(plate, C) {
     let v = 0;
     for (let c = 0; c < mask.length; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) v += crustOf(plate.crust, c, C);
     return v;
+}
+
+/**
+ * Lay `volKm` (cell-km of crust) over `cells` in proportion to `weights` (each cell's root raised to at most `maxRootKm`;
+ * what a full cell would have taken goes to the others: water-filling). @returns {number} the volume that found no room
+ */
+export function layProfile(plate, cells, weights, volKm, maxRootKm) {
+    const cr = plate.crust;
+    let open = cells.map((c, i) => i).filter(i => weights[i] > 0 && cr.rootKm[cells[i]] < maxRootKm);
+    for (let pass = 0; open.length && volKm > 1e-9 && pass < 16; pass++) {
+        let W = 0;
+        for (const i of open) W += weights[i];
+        let laid = 0;
+        for (const i of open) {
+            const c = cells[i], add = Math.min(maxRootKm - cr.rootKm[c], volKm * weights[i] / W);
+            cr.rootKm[c] += add; cr.thickKm[c] = Math.min(maxRootKm, cr.thickKm[c] + add); laid += add;
+        }
+        volKm -= laid;
+        open = open.filter(i => cr.rootKm[cells[i]] < maxRootKm - 1e-9);
+    }
+    plate.dirty = true;
+    return Math.max(0, volKm);
 }
 
 /**
