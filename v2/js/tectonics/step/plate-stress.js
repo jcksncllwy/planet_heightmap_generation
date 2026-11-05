@@ -30,18 +30,25 @@ export function netTorques(world, plate) {
         const c = loadCell[w];
         rho[3 * c] += cellTorque[3 * w]; rho[3 * c + 1] += cellTorque[3 * w + 1]; rho[3 * c + 2] += cellTorque[3 * w + 2];
     }
-    // the couplings at the rotations the plates have now: −c (a · (ω − ω_other)) a, as torque-balance.js has them
-    const couple = (w, a, k, other) => {
-        if (loadOwner[w] !== plate.id) return;
-        const o = plates[other]?.omega ?? [0, 0, 0], rel = a[0] * (w0[0] - o[0]) + a[1] * (w0[1] - o[1]) + a[2] * (w0[2] - o[2]), c = loadCell[w];
+    // the couplings at the rotations the plates have now: −c (a · (ω − ω_other)) a, as torque-balance.js has them — every
+    // one the motion solve has on this plate, each on the plate's own cell where it acts (c, set by step/forces.js: at a
+    // land-on-land lock both plates carry their half, the collider's on ITS cell, not the world view's owner's)
+    const couple = (c, a, k, other) => {
+        const o = plates[other]?.omega ?? [0, 0, 0], rel = a[0] * (w0[0] - o[0]) + a[1] * (w0[1] - o[1]) + a[2] * (w0[2] - o[2]);
         for (let i = 0; i < 3; i++) rho[3 * c + i] -= k * rel * a[i];
     };
-    for (const { w, r, n, other, length } of load.slabs) couple(w, cross(r, n), config.slabResistance * length, other);
-    for (const { w, r, n, other, weight } of load.contacts) {
+    for (const { c, r, n, other, length } of load.slabs) couple(c, cross(r, n), config.slabResistance * length, other);
+    for (const { c, r, n, other, weight } of load.contacts) {
         const k = config.collisionResistance * areaUnit * weight, an = cross(r, n), o = plates[other]?.omega ?? [0, 0, 0];
         const closing = (w0[0] - o[0]) * an[0] + (w0[1] - o[1]) * an[1] + (w0[2] - o[2]) * an[2] > 0;
-        couple(w, an, k * (closing ? 1 : config.collisionSeparateShare), other);
-        couple(w, cross(r, an), k * config.collisionShearShare, other);
+        couple(c, an, k * (closing ? 1 : config.collisionSeparateShare), other);
+        couple(c, cross(r, an), k * config.collisionShearShare, other);
+    }
+    // a rift hinge's pin: −c (I − r rᵀ)(ω − ω_other), as torque-balance.js has it (step/forces.js riftHinge)
+    for (const { r, other, c: k, cell } of load.hinges) {
+        if (cell < 0) continue;
+        const o = plates[other]?.omega ?? [0, 0, 0], d = [w0[0] - o[0], w0[1] - o[1], w0[2] - o[2]], rd = r[0] * d[0] + r[1] * d[1] + r[2] * d[2];
+        for (let i = 0; i < 3; i++) rho[3 * cell + i] -= k * (d[i] - r[i] * rd);
     }
     // the mantle's drag under each cell: −c (ω − (1 − j) r (r·ω))
     const perArea = areaUnit / config.mobility, { mask, type } = plate.crust, r = [0, 0, 0], keep = 1 - cellSpin(mesh);   // (torque-balance.js dragTensor)

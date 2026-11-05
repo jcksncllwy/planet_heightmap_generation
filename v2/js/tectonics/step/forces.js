@@ -103,8 +103,9 @@ export function gatherLoads(world) {
             const craton = plates[a].crust.type[ownerCell[w]] === CrustType.CRATON || other.crust.type[otherCell] === CrustType.CRATON;
             const weight = craton ? config.cratonLockFactor : 1;         // cratons never underthrust: the lock hardens
             const nAB = frontNormal(world, w, a, collider[w], r);
-            loadOf[a]?.contacts.push({ w, r, n: nAB, other: collider[w], weight });
-            loadOf[collider[w]]?.contacts.push({ w, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
+            // (c: each side's own raster cell here, so plate-stress.js puts each half of the lock on the plate it acts on)
+            loadOf[a]?.contacts.push({ w, c: ownerCell[w], r, n: nAB, other: collider[w], weight });
+            loadOf[collider[w]]?.contacts.push({ w, c: otherCell, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
             continue;
         }
         const load = loadOf[a];
@@ -118,11 +119,11 @@ export function gatherLoads(world) {
 
         // A contact pressed together with no slab yet (BoundaryKind.CONVERGING, step/boundaries.js) resists its closing as a
         // slab sinking does; the two plates share it (half each), since neither has yet gone down
-        if (boundaryKind[w] === BoundaryKind.CONVERGING) load.slabs.push({ w, r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length: length / 2 });
+        if (boundaryKind[w] === BoundaryKind.CONVERGING) load.slabs.push({ w, c: ownerCell[w], r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length: length / 2 });
         let kind = -1, size = 0, rAge;
         if (trenchB && oceanA && !trenchA) {
             kind = PULL; size = config.slabPull * ageFactor(A.formedAt[cellA]) * maturity(B, cellB);
-            load.slabs.push({ w, r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length });
+            load.slabs.push({ w, c: ownerCell[w], r: [r0, r1, r2], n: [n[0], n[1], n[2]], other: owner[across], length });
         } else if (trenchA && oceanB && !trenchB) { kind = SUCTION; size = config.slabSuction * ageFactor(B.formedAt[cellB]) * maturity(A, cellA); }
         else if ((rAge = riftAge(plates[a], A, cellA, plates[owner[across]], B, cellB, time)) < config.riftPushMyr) { kind = RIFT; size = -config.riftPush * (1 - rAge / config.riftPushMyr); }
         else if (oceanA && oceanB && isYoung(A, cellA) && isYoung(B, cellB)) { kind = RIDGE; size = -config.ridgePush; }
@@ -163,7 +164,25 @@ function riftHinge(world, plate, load) {
     const r = plate.toWorld(p[0] / l, p[1] / l, p[2] / l, [0, 0, 0]);
     const land = Math.min(plate.stats.continentalCells, other.stats.continentalCells) * mesh.cellAreaKm2 / 1e4;
     const loose = Math.min(1, (1 - age) / config.riftHingeFade);
-    load.hinges.push({ r, other: other.id, c: config.riftHingeLock * land / config.mobility * loose });
+    load.hinges.push({ r, other: other.id, c: config.riftHingeLock * land / config.mobility * loose, cell: hingeCell(plate, mesh, r) });
+}
+
+/**
+ * The plate's raster cell that carries the hinge's pin (step/plate-stress.js): the one under it, or, the pin lying just
+ * beyond the rift's tip and so often off the plate, its nearest own cell among that cell's neighbours; −1 if neither.
+ */
+function hingeCell(plate, mesh, r) {
+    const q = plate.cellAt(mesh.index, r[0], r[1], r[2]), { mask } = plate.crust, { xyz, adjOffset, adjList } = mesh;
+    if (mask[q]) return q;
+    let best = -1, bestD = -Infinity;
+    const P = [0, 0, 0];
+    for (let k = adjOffset[q]; k < adjOffset[q + 1]; k++) {
+        const nb = adjList[k]; if (!mask[nb]) continue;
+        plate.toWorld(xyz[3 * nb], xyz[3 * nb + 1], xyz[3 * nb + 2], P);
+        const d = P[0] * r[0] + P[1] * r[1] + P[2] * r[2];
+        if (d > bestD) { bestD = d; best = nb; }
+    }
+    return best;
 }
 
 /**
