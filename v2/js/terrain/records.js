@@ -6,7 +6,7 @@
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
 import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, SEDIMENT_LOAD_FACTOR, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
-import { seaLevel } from './sea-level.js';
+import { seaLevel, liftRefKm } from './sea-level.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
@@ -384,12 +384,15 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     // whether it holds a lake, a salt pan or nothing is the water's balance (the finish's water pass), not this
     const seaColKm = new Float32Array(n).fill(NaN), dryHollow = new Uint8Array(n);
     {
-        const CM0 = columnModel(cfg), landSwellRef = cfg.mantleSwellKm * cfg.mantleSwellLandRef, fillAt = w => frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0;
+        // (each cell against the swell's reference for its own crust, as synthesize.js draws it — liftRefKm: an island arc
+        // against the sea floor's, the rest against the land's; until 2026-11-05 every cell was held to the land's, so a pure
+        // arc was flooded as if it stood mantleSwellKm × (land − sea ref) ≈ 0.27 km lower than it is drawn)
+        const CM0 = columnModel(cfg), fillAt = w => frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0;
         const below = new Float32Array(n).fill(NaN);           // (the column, for land standing below the sea; NaN elsewhere)
         for (let w = 0; w < n; w++) {
             if (!land[w] || frame.owner[w] < 0 || fillAt(w)) continue;          // (a filled sea's plain is graded to the sea's level)
             const col = crustColumnKm(frame, cfg, CM0, w).h, top = col + Math.max(0, frame.upliftKm[w]);
-            if (top + sl.swellKm[w] - landSwellRef < sl.seaKm) below[w] = col;
+            if (top + sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0) < sl.seaKm) below[w] = col;
         }
         const queue = []; let drowned = 0;
         for (let w = 0; w < n; w++) if (!land[w]) queue.push(w);
@@ -431,8 +434,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
         depthKm[w] = Math.max(0, filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0) - (sl.swellKm[w] - swellSeaRef));    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js; raised or lowered by the mantle's swell)
-        // (drowned crust's floor: its own column, not a ridge's by age — and the swell as the land's crust takes it)
-        if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - cfg.mantleSwellKm * cfg.mantleSwellLandRef));
+        // (drowned crust's floor: its own column, not a ridge's by age — and the swell as its crust takes it: liftRefKm, the
+        // reference it was flooded against above)
+        if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0)));
     }
     // oceanic plateaus (a flood basalt on the sea floor): read from the world view, where at any moment ~15 % of a moving
     // plate's cells show a neighbour's crust, then smoothed over lipSeaSmoothKm and never lowered inside — one broad rise
