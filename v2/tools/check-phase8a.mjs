@@ -339,9 +339,10 @@ section('erosion by rainfall');
     // margins, filled seas) — so the two runs diverge from ~50 Myr (a third of the cells differ by 100 Myr, all by 200).
     // Both are run with no terrigenous fill reaching the trenches (trenchDenudationKmPerMyr 0, and rockBook off: under the
     // rock book the rivers carry the very rock the heights wore — crust.wornKm, lane crust — so the erosion under test would
-    // be the fill) — then the two are one history, cell for cell and event for event (checked below), and differ only in
-    // how their heights wore
-    const decoupled = { trenchDenudationKmPerMyr: 0, rockBook: false }, rainy = run('history', null, decoupled), alike = run('history', { rainErosionExponent: 0 }, decoupled);
+    // be the fill; and subduction erosion off: it eats the fore-arc's root as the heights left it, so the wear would steer
+    // where it founders) — then the two are one history, cell for cell and event for event (checked below), and differ
+    // only in how their heights wore
+    const decoupled = { trenchDenudationKmPerMyr: 0, rockBook: false, subductionErosionKm3PerKmMyr: 0 }, rainy = run('history', null, decoupled), alike = run('history', { rainErosionExponent: 0 }, decoupled);
     const sameHistory = rainy.frames.every((f, i) => f.owner.every((o, w) => o === alike.frames[i].owner[w] && f.type[w] === alike.frames[i].type[w])) && rainy.frame.events.length === alike.frame.events.length;
     check('…the two histories compared are one: only the heights\' erosion differs', sameHistory, `${rainy.frames.length} frames to ${rainy.frame.time} Myr, every cell's plate and crust the same; ${rainy.frame.events.length} events in each (no terrigenous trench fill in either)`);
     const on = terrain(rainy.frame, 160000), off = terrainWith(alike.frame, 160000, { rainErosionExponent: 0 });

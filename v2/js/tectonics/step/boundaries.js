@@ -135,10 +135,15 @@ export function classifyBoundaries(world, dt) {
         // a flat slab creeps inland under the plate as it goes down, and the deformation above it with it: the Laramide
         // belt starts where the Andean one was and migrates inland with the length of slab gone down flat
         plate.flatSlabKm = flat ? plate.flatSlabKm + f.km / f.cells.length : 0;
-        // (under beltStrainRate: as far as this stretch's shortening — the work below — strains the margin at that rate)
+        // (under beltStrainRate: as far as this stretch's shortening — the work below — strains the margin at that rate. Over a
+        // flat slab the plate is driven from beneath, by the slab's basal traction along all of its flat length, not from
+        // the trench (Bird 1988, Science 239; Axen et al. 2018): the belt reaches at least as far inland as the flat slab
+        // has gone — the kind's reach law on the flat slab's length, without the rate factor, since that reach is the
+        // slab's geometry, not the rate's. Lane crust)
         const live = config.beltStrainRate > 0, kind = flat ? 'laramide' : 'andean';
+        const flatReach = live && flat ? Math.min(config.belts.laramide.maxKm, config.belts.laramide.baseKm + config.belts.laramide.perKm * plate.flatSlabKm) : 0;
         const widths = keep.map(i => {
-            if (live) return liveBeltWidthKm(kind, f.kms[i] * config.andeanWorkShare * beltShape(f.headOn[i], undefined, config) / dt, config);
+            if (live) return Math.max(flatReach * beltShape(f.headOn[i], undefined, config), liveBeltWidthKm(kind, f.kms[i] * config.andeanWorkShare * beltShape(f.headOn[i], undefined, config) / dt, config));
             const c = f.cells[i], rate = f.kms[i] / dt / CM_PER_YR_TO_KM_PER_MYR, shape = beltShape(f.headOn[i], f.age[i], config);   
             const steep = beltWidthKm('andean', plate.crust.slabKm[c] * config.andeanWorkShare, rate, config);
             if (!flat) return Math.min(cap(config, 'andean'), steep * shape);

@@ -37,7 +37,9 @@ export function layThickening(plate, mesh, seeds, volKm, maxRootKm, maxHops = 64
         let left = room.length;
         for (const c of room) {
             const add = Math.min(maxRootKm - cr.rootKm[c], volKm / left--);
-            cr.rootKm[c] += add; cr.thickKm[c] += add; volKm -= add;
+            // (thickKm, the record, is held to the same ceiling: a worn cell — its root below its record — takes volume
+            // into its root again, but its record was already at most the ceiling, as the belts' own thickening is)
+            cr.rootKm[c] += add; cr.thickKm[c] = Math.min(maxRootKm, cr.thickKm[c] + add); volKm -= add;
         }
         const next = [];
         for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
