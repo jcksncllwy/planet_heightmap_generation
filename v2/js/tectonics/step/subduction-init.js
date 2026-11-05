@@ -826,16 +826,20 @@ function propagateAcross(world, P, dt) {
 /** Which side founders: against land, the ocean; ocean against ocean, the older (colder, denser) side. */
 function chooseFoundering(world, A, B, segment) {
     const { mesh, owner, ownerCell } = world, { xyz, index } = mesh;
-    let ageA = 0, ageB = 0, landA = 0, landB = 0, n = 0;
+    let bornA = 0, bornB = 0, nA = 0, nB = 0, landA = 0, landB = 0;
     for (const w of segment) {
         const cellA = A.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
         const cellB = B.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
-        if (A.crust.mask[cellA]) { ageA += A.crust.formedAt[cellA]; if (A.crust.type[cellA] !== CrustType.OCEAN) landA++; }
-        if (B.crust.mask[cellB]) { ageB += B.crust.formedAt[cellB]; if (B.crust.type[cellB] !== CrustType.OCEAN) landB++; }
-        n++;
+        if (A.crust.mask[cellA]) { bornA += A.crust.formedAt[cellA]; nA++; if (A.crust.type[cellA] !== CrustType.OCEAN) landA++; }
+        if (B.crust.mask[cellB]) { bornB += B.crust.formedAt[cellB]; nB++; if (B.crust.type[cellB] !== CrustType.OCEAN) landB++; }
     }
     if (landA !== landB) return landA > landB ? { upper: A, lower: B } : { upper: B, lower: A };
-    return ageA <= ageB ? { upper: A, lower: B } : { upper: B, lower: A };     // the older crust (formed earlier) sinks
+    // formedAt is when the crust formed, so the older side has the EARLIER mean: it sinks (is lower). Means, not sums:
+    // the two sides need not cover the same number of the segment's cells.
+    const meanA = nA ? bornA / nA : Infinity, meanB = nB ? bornB / nB : Infinity;
+    // (until 2026-11-05 the sums were compared and the earlier made the UPPER plate: on seeds 12345/2/3, 16 of 65 ocean-ocean
+    // foundings sank the younger side — a quarter, the sums' differing cell counts deciding the rest)
+    return meanA <= meanB ? { upper: B, lower: A } : { upper: A, lower: B };
 }
 
 /** Arm a trench on the upper plate's cells along the segment, and give it a starting slab. */
