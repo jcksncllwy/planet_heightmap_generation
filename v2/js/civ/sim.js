@@ -308,7 +308,10 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         // (what stays the same all step)
         const P = w.pAnnual[h], r = V.region[h], cv = V.rainCV[h];
         if (regionStamp[r] !== step) { regionStamp[r] = step; for (let k = 0; k < C.stepYears; k++) regionNoise[r * C.stepYears + k] = normal(r, y0 + k); }
-        const ramp0 = kR > 0 ? smooth(C.rainfedMinMm, C.rainfedFullMm, P) : 0, lnFull = Math.log(C.rainfedFullMm / Math.max(1, P));
+        // (a year's rain-fed harvest is its ramp against the long-run mean's, mR; ramp0, the normal year's, only scales both
+        // and cancels — so where the normal year's rain grows nothing (P ≤ rainfedMinMm; ramp0 0, kR > 0 still possible) the
+        // year's own ramp is used, unscaled, against its own mean, not divided by 0: a wet year there grows some, a dry none)
+        const ramp0 = kR > 0 ? smooth(C.rainfedMinMm, C.rainfedFullMm, P) : 0, rampN = ramp0 > 0 ? ramp0 : 1, lnFull = Math.log(C.rainfedFullMm / Math.max(1, P));
         const src = kI > 0 ? sub.irrigSrc[h] : -1;
         let rn = null;
         if (src >= 0) {
@@ -324,7 +327,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             let mR = 0, mI = 0, mW = 0;
             for (let k = 0; k < MEAN_DRAWS; k++) {
                 const aH = normal(k, 101), aL = normal(k, 102), lnx = modeLn(V.rainLn, h, aH, aL) + cv * normal(k, 103);
-                mR += ramp0 > 0 ? (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / ramp0) : 1;
+                mR += kR > 0 ? (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / rampN) : 1;
                 const s0 = sub.irrigSrc[h];
                 if (s0 >= 0) { const q = Math.exp(modeLn(V.riverLn, s0, aH, aL) + V.riverCV[s0] * normal(k, 104)); mI += q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1; }
                 else mI += 1;
@@ -354,7 +357,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             const aH = modes[2 * y], aL = modes[2 * y + 1];
             const lnx = modeLn(V.rainLn, h, aH, aL) + cv * regionNoise[r * C.stepYears + j];
             let food = 0;
-            if (kR > 0) food += kR * (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / ramp0) / mR;
+            if (kR > 0) food += kR * (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / rampN) / mR;
             if (src >= 0) {
                 const q = Math.exp(modeLn(V.riverLn, src, aH, aL) + rn[j]);
                 food += kI * (q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1) / mI;
