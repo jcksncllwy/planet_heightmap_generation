@@ -11,14 +11,14 @@
 import { check, report, section, finish, labMesh, isLand, landCount, countWhere } from './lib/check-kit.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
+import { LAND_STAGES } from '../js/tectonics/step/crust-ledger.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { frameTallies } from '../js/tectonics/measure.js';
 import { CrustType, CrustFlag, OrogenyType } from '../js/tectonics/model/crust.js';
 import { BoundaryKind, EventKind } from '../js/tectonics/model/world.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];      // (the start world's history is run on a few seeds)
-const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'arcMaturation', 'tidy', 'riftStage'];   // (riftStage: a young
-// rift's halves part through stretched continent, not new ocean — step/rifting.js; as check-invariants.mjs, lane rifton)   // the only stages whose process may make or lose land
+// (the only stages whose process may make or lose land: step/crust-ledger.js LAND_STAGES, shared with check-invariants.mjs)
 const mesh = labMesh(), { numCells } = mesh;
 const flagged = (f, flag) => countWhere(numCells, w => f.owner[w] >= 0 && (f.flags[w] & flag));
 // the plates carrying continent (a plate of ocean that broke away at an old margin — step/subduction-init.js — is not a half)
@@ -127,7 +127,7 @@ section('the start world breaks up');
     // continental crust is made and lost only by the stages whose process may (the crust ledger, step/crust-ledger.js); island
     // arcs grow — reported against Earth, where arc addition and recycling roughly balance (Clift et al. 2009)
     const offending = rr => Object.entries(rr.world.ledger.stages).filter(([stage, e]) => e.land !== 0 && !LAND_STAGES.includes(stage));
-    check('continental crust is made and lost only by collisions, margin isles, sediment subduction, arc maturation, tidying and the rift stage', runs.every(rr => offending(rr).length === 0),
+    check('continental crust is made and lost only by collisions, margin isles, sediment subduction, subduction erosion, arc maturation, tidying and the rift stage', runs.every(rr => offending(rr).length === 0),
         perSeed(rr => offending(rr).length ? offending(rr).map(([k, e]) => `${k} ${e.land > 0 ? '+' : ''}${e.land}`).join(', ')
             : `${rr.world.ledger.start.land} → ${rr.world.ledger.start.land + Object.values(rr.world.ledger.stages).reduce((s, e) => s + e.land, 0)} continent cells (${LAND_STAGES.map(k => `${k} ${rr.world.ledger.stages[k]?.land ?? 0}`).join(', ')})`));
     const arcGrowth = rr => { const L = rr.world.ledger, myr = rr.frames.at(-1).time; return 100 * Object.values(L.stages).reduce((s, e) => s + e.arc, 0) / L.start.land * 100 / myr; };

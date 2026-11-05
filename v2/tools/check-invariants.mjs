@@ -9,6 +9,7 @@ import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { MARGIN_SCENES } from '../js/tectonics/scenarios/margin-scenes.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
+import { LAND_STAGES } from '../js/tectonics/step/crust-ledger.js';
 import { CrustRaster, CrustType, CELL_FIELDS } from '../js/tectonics/model/crust.js';
 import { TECTONICS, MECHANISMS } from '../js/tectonics/config.js';
 
@@ -23,10 +24,7 @@ const CRATONS_SURVIVE_MYR = 600;         // cratons outlast this on Earth (~35 f
 const BIG_OVERLAP_KM2 = 1e5;       // two plates' land may overlap this much only while the two still converge (a stalled seam welds)
 const mesh = labMesh();
 const LEDGER_CELLS = 20000, LEDGER_MYR = 300, LEDGER_SEED = 12345;
-// the only stages whose process may make or lose land. (riftStage, lane pstress: a young rift's halves part through continent
-// stretched thin, not new ocean, for their first riftBreakupKm — step/rifting.js evolveRiftStages: stretching spreads continental
-// crust over more area, so the area ledger sees land made, the volume it came from being the margins' thinning)
-const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'subductionErosion', 'arcMaturation', 'tidy', 'riftStage', 'heights'];
+// (the only stages whose process may make or lose land: step/crust-ledger.js LAND_STAGES)
 
 section('the crust raster and the config');
 {
@@ -162,7 +160,7 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     });
     const { stages, start } = world.ledger, landAtEnd = landNow(world);
     for (const [stage, e] of Object.entries(stages)) if (e.land !== 0 && !LAND_STAGES.includes(stage) && !offending.has(stage)) offending.set(stage, `${stage} ${e.land > 0 ? '+' : ''}${e.land} cells`);
-    check('the crust ledger: no stage but collisions, margin isles, sediment subduction, arc maturation and tidy makes or loses continental crust', offending.size === 0,
+    check('the crust ledger: no stage but collisions, margin isles, sediment subduction, subduction erosion, arc maturation, tidy and the rift stage makes or loses continental crust', offending.size === 0,
         offending.size ? [...offending.values()].join('; ') : `${Object.keys(stages).length - LAND_STAGES.length} other stages booked exactly 0 cells of land in every step`);
     const booked = Object.values(stages).reduce((n, e) => n + e.land, 0);
     check('…and its books balance: the stages add up to the change in continental crust', booked === landAtEnd - landAtStart && start.land === landAtStart,
@@ -171,7 +169,13 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     check('…and arc maturation gains exactly the arc cells it turned continental', matured === (world.budget.arcMaturedCells ?? 0),
         `arcMaturation booked ${matured} cells of land; world.budget.arcMaturedCells ${world.budget.arcMaturedCells ?? 0}`);
     const sunk = stages.sedimentSubduction ?? { land: 0, arc: 0 };
-    check('…and sediment subduction only loses continental crust, exactly the cells it booked, and touches no arc', sunk.land === -(world.budget.sedimentCells ?? 0) && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) > 0,
+    // (config.rockBook, lane crust: the trench's terrigenous sediment is the rock the heights already wore off the crust —
+    // crust.wornKm, thinning it as it wore — so sediment subduction takes it down without eating the coast a second time:
+    // it books no cells, and the trenches must still have taken sediment. Without the book it eats exactly the coast it
+    // booked. The recycled volume, ~1.65 km³/yr on Earth (Scholl & von Huene 2009), is then the wear's, not cells')
+    if (world.config.rockBook) check('…and sediment subduction takes its rock down without eating the coast again (the heights wore it off the crust already), and touches no arc', sunk.land === 0 && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) === 0 && (world.budget.sedimentKm3 ?? 0) > 0,
+        `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}; ${((world.budget.sedimentKm3 ?? 0) / 1e6).toFixed(2)} Mkm³ of terrigenous sediment subducted`);
+    else check('…and sediment subduction only loses continental crust, exactly the cells it booked, and touches no arc', sunk.land === -(world.budget.sedimentCells ?? 0) && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) > 0,
         `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}`);
     const B = world.budget;
     check('…and a weld or a dock makes no crust: every cell of sea it fills is paid for with a cell of its coast', (B.sealPaidCells ?? 0) === (B.sealedLandCells ?? 0) && (B.arcPaidCells ?? 0) === (B.sealedArcCells ?? 0),

@@ -10,6 +10,14 @@ import { CrustType } from '../model/crust.js';
 import { crustThicknessKm } from '../measure.js';
 import { heightsOf } from './heights.js';
 
+/** The only stages whose process may make or lose continental crust — the checks (check-invariants.mjs, check-phase6.mjs) hold
+ *  every other stage to 0. (riftStage, lane pstress: a young rift's halves part through continent stretched thin, not new
+ *  ocean, for their first riftBreakupKm — step/rifting.js evolveRiftStages spreads the zone's crust over more area, so the
+ *  area ledger sees land made, the volume being the margins' thinning. subductionErosion, lane crust: a closing overriding
+ *  trench eats its fore-arc continent until it founders — step/subduction-erosion.js. heights, lane crust: only with
+ *  config.collapseMakesArea, a collapsing range's root spreading over its plate's own sea floor — step/heights.js.) */
+export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'subductionErosion', 'arcMaturation', 'tidy', 'riftStage', 'heights'];
+
 /** The planet's continental and arc crust now, in cells (every live plate's raster). */
 export function crustTally(world) {
     let land = 0, arc = 0;
