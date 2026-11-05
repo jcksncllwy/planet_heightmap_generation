@@ -21,6 +21,8 @@ const TERRAIN_SLOTS = 4, terrainSuites = new Set(['phase8a', 'phase8b', 'lab', '
 const reportFile = join(tmpdir(), `orogen-reports-${process.pid}.jsonl`);
 writeFileSync(reportFile, '');
 
+// (nothing to run is not a pass: no suite named, or no job to run them, ends the run as an error, saying so)
+if (!(jobs >= 1) || !suites.length) { console.error(`run-checks: nothing would run (${suites.length} suites, --jobs ${jobs})`); process.exit(2); }
 const results = [];
 async function runOne(name) {
     const t0 = performance.now();
@@ -42,7 +44,10 @@ const queue = [...suites];
 await Promise.all(Array.from({ length: jobs }, async () => { while (queue.length) await runOne(queue.shift()); }));
 
 const failed = results.filter(r => r.code !== 0);
-console.log(`\n── hard checks ──\n${failed.length ? failed.map(r => `${r.name}:\n${r.fails.map(l => `  ${l}`).join('\n') || `  ${r.last}`}`).join('\n') : 'all suites pass'}`);
+// (a suite that passed with no hard check in it — e.g. gpu off Chroma, no Dawn — ran nothing: listed apart, not as a pass)
+const empty = results.filter(r => r.code === 0 && /NO hard checks ran/.test(r.last));
+console.log(`\n── hard checks ──\n${failed.length ? failed.map(r => `${r.name}:\n${r.fails.map(l => `  ${l}`).join('\n') || `  ${r.last}`}`).join('\n') : `all ${results.length - empty.length} suites that ran checks pass`}`);
+if (empty.length) console.log(`ran NO hard checks (not a pass): ${empty.map(r => r.name).join(', ')}`);
 const reports = existsSync(reportFile) ? readFileSync(reportFile, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
 rmSync(reportFile, { force: true });
 console.log(`\n── Earth-likeness (${reports.length} reported, ${reports.filter(r => !r.inside).length} outside Earth's range) ──`);

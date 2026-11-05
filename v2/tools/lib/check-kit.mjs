@@ -44,16 +44,17 @@ export function check(name, ok, detail = '') {
  * One Earth-likeness statistic: never fails. `value` is a number or a list of them (one per seed); `earth` Earth's range
  * [lo, hi] in the same unit (or null: no Earth figure — reported for interest), `source` where Earth's figure comes from.
  * @param {{earth?: number[]|null, unit?: string, source?: string, digits?: number, detail?: string}} [o]
- * @returns {boolean} whether every value lies inside Earth's range (true when there is none)
+ * @returns {boolean} whether every value lies inside Earth's range (true when there is no range; FALSE when there is one and
+ *   nothing was measured — an empty or all-null list — since a statistic of nothing is not inside anything)
  */
 export function report(name, value, { earth = null, unit = '', source = '', digits = 2, detail = '' } = {}) {
     const values = (Array.isArray(value) ? value : [value]).filter(v => v !== undefined && v !== null);
     const fmt = v => (Number.isFinite(v) ? v.toFixed(digits) : String(v)) + unit;
-    const inside = !earth || values.every(v => Number.isFinite(v) && v >= earth[0] && v <= earth[1]);
+    const inside = !earth || (values.length > 0 && values.every(v => Number.isFinite(v) && v >= earth[0] && v <= earth[1]));
     reports++;
     if (!inside) outside++;
     const earthText = earth ? `Earth ${earth[0] === earth[1] ? fmt(earth[0]) : `${fmt(earth[0])}–${fmt(earth[1])}`}${source ? `, ${source}` : ''}` : source ? `(${source})` : '';
-    console.log(`${inside ? 'REPORT' : 'REPORT⚑'}  ${name}: ${values.length ? values.map(fmt).join(' · ') : 'none'}${earthText ? `  (${earthText})` : ''}${detail ? `  —  ${detail}` : ''}`);
+    console.log(`${inside ? 'REPORT' : 'REPORT⚑'}  ${name}: ${values.length ? values.map(fmt).join(' · ') : 'none (nothing measured)'}${earthText ? `  (${earthText})` : ''}${detail ? `  —  ${detail}` : ''}`);
     if (process.env.REPORT_JSON) appendFileSync(process.env.REPORT_JSON, JSON.stringify({ suite: process.argv[1].replace(/.*\//, ''), section: sectionTitle, name, values, earth, unit, source, inside }) + '\n');
     return inside;
 }
@@ -93,7 +94,8 @@ export function section(title) { sectionTitle = title; console.log(`\n── ${t
 /** Print the verdict and set the process exit code (the hard checks alone decide it). Call last. */
 export function finish(phaseName) {
     const reported = reports ? `; ${reports} reported${outside ? `, ${outside} outside Earth's range (⚑)` : ''}` : '';
-    console.log(`\n${failures === 0 ? `${phaseName}: all ${total} checks passed${reported}.` : `${phaseName}: ${failures} of ${total} checks FAILED${reported}.`}`);
+    // (no hard check at all is not "all passed": the suite ran nothing it could fail — say so; run-checks lists it apart)
+    console.log(`\n${total === 0 ? `${phaseName}: NO hard checks ran${reported}.` : failures === 0 ? `${phaseName}: all ${total} checks passed${reported}.` : `${phaseName}: ${failures} of ${total} checks FAILED${reported}.`}`);
     process.exitCode = failures === 0 ? 0 : 1;
 }
 
