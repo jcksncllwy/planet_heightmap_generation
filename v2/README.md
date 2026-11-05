@@ -2376,9 +2376,13 @@ check-invariants):
 - **One rock book** (`rockBook`): the rivers carry the rock the heights wear (crust.wornKm), not a flux of their own, and
   rock laid on continental crust still counts as its volume. It fixes a double loss: sediment subduction ate coast for
   rock the heights had already worn off (−6.4 Mkm² a cycle).
-- **Subduction erosion** (`subductionErosionKm3PerKmMyr` 36, `subductionErosionReachKm` 250; step/subduction-erosion.js):
+- **Subduction erosion** (`subductionErosionKm3PerKmMyr`, **off by default**; built at 36, `subductionErosionReachKm` 250; step/subduction-erosion.js):
   every closing overriding trench eats the continent nearest it within the fore-arc, thinning it until it founders. The
   rate per km is Earth's; the length that erodes is emergent (~0.8 AU removed against Earth's ~1.5).
+  Off since 2026-11-05: with `beltStrainRate` off it held the Andes down. Check 8a's main range stood only 0.21 km over the
+  coast (needs 0.3) and the upper-plate plateau 0.56 km over the foreland (needs 0.75); both pass with it at 0. The
+  unsourced 250 km reach spans the inner half of the belt and eats the arc's root, where Earth's erosive margins lose the
+  fore-arc wedge. **Follow-up:** a sourced trench-to-arc reach, then turn it back on.
 
 Measured (3 seeds × 1200 Myr, mean of 300/600/900/1200; off → on, with `beltStrainRate` still on then, so the compressive
 figure below is the flag's): area 1200 ÷ start 0.82 → 0.89 ± 0.01; continental crust

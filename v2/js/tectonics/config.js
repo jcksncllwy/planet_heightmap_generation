@@ -146,7 +146,13 @@ export const TECTONICS = {
     collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
                                 // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
                                 // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)
-    subductionErosionKm3PerKmMyr: 36,  // (lane crust; 0 = off) every closing overriding trench eats this much continental crust per km of
+    subductionErosionKm3PerKmMyr: 0,   // OFF by default (gjallar's ruling, 2026-11-05; built and measured at 36). With beltStrainRate off
+                                // it holds the Andes down: check 8a's main range stands only 0.21 km over the coast (needs 0.3) and the
+                                // collision's upper-plate plateau 0.56 km over the foreland (needs 0.75); at 0 both pass (Upwell, crust7).
+                                // The suspect is the reach: subductionErosionReachKm's unsourced 250 km spans the inner half of a
+                                // 300–500 km belt and eats the arc's root behind the fore-arc, where Earth's erosive margins lose
+                                // only the fore-arc wedge. Follow-up: a sourced trench-to-arc reach, then back on.
+                                // (lane crust; 0 = off) every closing overriding trench eats this much continental crust per km of
                                 // its length per Myr off the fore-arc nearest it (step/subduction-erosion.js): ~36 is Earth's mean —
                                 // ~60 % of the ~2.5 km³/yr recycled at ocean margins over ~41,700 km of them (Scholl & von Huene
                                 // 2009, GSL SP 318; the 36 is my arithmetic); measured long-term rates 30–115 (von Huene et al. 2004)

@@ -199,9 +199,13 @@ section('rivers through the history');
     // same crust, 10 Myr apart, on the continent that moved most — against the same terrain with its records read on the
     // fixed world grid (anchorRecords off), where the detail stays put as the crust moves under it
     const A = frames.at(-2), B = frames.at(-1), tm = terrainMesh(640000);
-    let p = -1, turned = 0;
-    for (let i = 0; i < B.plates.length; i++) { const a = A.plates[i], b = B.plates[i]; if (!a?.alive || !b?.alive || b.landCells < 200) continue; const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3]))); if (ang > turned) { turned = ang; p = i; } }
-    const MA = quatToMat3(A.plates[p].quat, new Float64Array(9)), MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
+    // (the continents in turn order, fastest first, down to the first whose land gives the sample floor below: a small
+    // continent can turn fastest — small plates are fast — and its few thousand cells would fail the floor for the
+    // sample's size, not for its rivers; gjallar's ruling 2026-11-05, lane crust)
+    const cands = [];
+    for (let i = 0; i < B.plates.length; i++) { const a = A.plates[i], b = B.plates[i]; if (!a?.alive || !b?.alive || b.landCells < 200) continue; const ang = 2 * Math.acos(Math.min(1, Math.abs(a.quat[0] * b.quat[0] + a.quat[1] * b.quat[1] + a.quat[2] * b.quat[2] + a.quat[3] * b.quat[3]))); cands.push({ i, ang }); }
+    cands.sort((x, y) => y.ang - x.ang || x.i - y.i);
+    let p = -1, turned = 0, MA = null, MB = null;
     const holds = cfg => {
         // (both frames on today's sea: the sea's own level moves with the mantle and the sea floor's age — terrain/sea-level.js
         // — and drowns or bares low ground with it; that is the sea's change, not the rivers')
@@ -219,7 +223,14 @@ section('rivers through the history');
         for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
         return { corr: sxy / Math.sqrt(sxx * syy), cells: xs.length };
     };
-    const rides = holds(TERRAIN), fixed = holds({ ...TERRAIN, anchorRecords: false });
+    let rides = { corr: NaN, cells: 0 };
+    for (const c of cands) {
+        p = c.i; turned = c.ang;
+        MA = quatToMat3(A.plates[p].quat, new Float64Array(9)); MB = quatToMat3(B.plates[p].quat, new Float64Array(9));
+        rides = holds(TERRAIN);
+        if (rides.cells > 5000) break;
+    }
+    const fixed = holds({ ...TERRAIN, anchorRecords: false });
     check('small rivers hold their courses better riding with the crust than on the fixed world grid', rides.cells > 5000 && rides.corr > fixed.corr,
         `plate ${p} turned ${(turned * 180 / Math.PI).toFixed(1)}° in 10 Myr: small catchments' drainage correlates ${rides.corr.toFixed(2)} with the same crust 10 Myr before over ${rides.cells} cells; ${fixed.corr.toFixed(2)} over ${fixed.cells} with the records on the world grid`);
 }
