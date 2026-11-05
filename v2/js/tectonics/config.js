@@ -155,7 +155,14 @@ export const TECTONICS = {
     rockBook: true,             // (lane crust; false = the old separate flux) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
                                 // own (trenchDenudationKmPerMyr, ~5× the crust's own wear over the first 200 Myr): one book, so what
                                 // the basins, seas and shelves keep is the continents' rock, and only what leaves them is lost
-    beltStrainRate: 1e-15,      // (lane crust, 1c; /s, 0 = off: reach by absorbed convergence, floored by speed) a LIVE belt reaches only as far as it deforms at least this fast: a sheet
+    beltStrainRate: 0,          // OFF by default (gjallar's ruling, 2026-11-05; 1e-15 is the value it was built and measured at). It took
+                                // compressive records < 240 Myr 61 → 55 % (3 seeds), but its live width makes Andean belts sub-cell
+                                // (median 44 km against one ~121 km cell at 160K; Earth's Andes 300–700 km): the per-step Andean work
+                                // ÷ dt is tens of km/Myr only at a fast margin, so the belt holds no terrain (8a main range) and its
+                                // area jitters with the mesh (scale: Laramide 12.05 vs 10.56 Mkm² at 40K/80K). Likely missing: the
+                                // margin's shortening averaged over its life, not this step's. Under it a Laramide belt is floored at
+                                // the flat slab's length (step/boundaries.js, Bird 1988), inert when off.
+                                // (lane crust, 1c; /s, 0 = off: reach by absorbed convergence, floored by speed) a LIVE belt reaches only as far as it deforms at least this fast: a sheet
                                 // shortening at v across width W strains at v ÷ W, so W = v ÷ this (capped at its kind's maxKm), with v the
                                 // shortening rate now — not the convergence absorbed so far, floored by speed — so a slowing belt narrows
                                 // and a stalled one stops refreshing its records. Unsourced: swept 3e-16 / 1e-15 / 3e-15 (India ~4 cm/yr

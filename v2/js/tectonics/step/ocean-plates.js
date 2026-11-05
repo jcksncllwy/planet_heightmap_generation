@@ -121,6 +121,47 @@ export function captureMicroplates(world) {
     return captured;
 }
 
+/**
+ * A small plate gone down beneath its neighbours with crust that is not ocean left on it (lane crust, p6b; gjallar's ruling
+ * 2026-11-05) accretes to the plate covering it. Arc or continent does not sink: a remnant subducted to its last buoyant
+ * cells is scraped off against the upper plate and welded to it, as terranes are (Cawood et al. 2009, GSL SP 318). Without
+ * this it sat hidden (no world cell, so no boundary and no forces) at 0 cm/yr for the rest of the history, an orphan
+ * captureMicroplates skips because it ends only ocean remnants. The host is the plate whose world cells most of the remnant
+ * lies under; moved land on the host's own land is stacked beside it or absorbed (transferCells), which is why this has its
+ * own ledger stage (step/crust-ledger.js LAND_STAGES: 'hiddenRemnants').
+ * @returns {number} remnants accreted
+ */
+export function accreteHiddenRemnants(world) {
+    const { config, plates, mesh, owner } = world;
+    if (!(config.oceanPlateCaptureKm2 > 0)) return 0;
+    const { numCells, xyz, index, cellAreaKm2 } = mesh, limit = config.oceanPlateCaptureKm2 / cellAreaKm2;
+    const W = [0, 0, 0];
+    let accreted = 0;
+    for (const P of plates) {
+        if (!P.alive || P.isBackground || P.reshaped || P.crust.count === 0 || P.stats.continentalCells === 0 || P.crust.count >= limit) continue;
+        let shown = false;
+        for (let w = 0; w < numCells && !shown; w++) if (owner[w] === P.id) shown = true;
+        if (shown) continue;
+        const cells = [], votes = new Map();
+        for (let c = 0; c < P.crust.mask.length; c++) {
+            if (!P.crust.mask[c]) continue;
+            cells.push(c);
+            P.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], W);
+            const o = owner[index.nearest(W[0], W[1], W[2])];
+            if (o >= 0 && o !== P.id && plates[o].alive && !plates[o].isBackground) votes.set(o, (votes.get(o) ?? 0) + 1);
+        }
+        let host = -1, most = 0;
+        for (const [o, n] of votes) if (n > most || (n === most && o < host)) { most = n; host = o; }
+        if (host < 0) continue;                                        // (under the passive ocean only: left as it was)
+        const H = plates[host];
+        transferCells(world, P, H, cells);
+        endPlate(plates, P);
+        accreted++;
+        world.log(EventKind.MICROPLATE, `${P.name}, subducted down to its last ${cells.length} buoyant cell${cells.length === 1 ? '' : 's'}, accretes to ${H.name}`, { plate: P.id, host: H.id, areaMkm2: cells.length * cellAreaKm2 / 1e6 });
+    }
+    return accreted;
+}
+
 /** @param {number} dt Myr since it last ran  @returns {number} plates split */
 export function splitOceanPlates(world, dt) {
     const { config, time, plates, mesh } = world;

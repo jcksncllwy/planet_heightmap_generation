@@ -2364,9 +2364,13 @@ check-invariants):
   margins are the zone's own crust spread wider, volume conserved.
 - **Collisions keep what they consume** (`collisionVolume`, step/collision.js keepConsumed, ops/thicken.js): underthrust
   or overlapped crust stays as the upper plate's thickness, all but `collisionLostShare` 0.15 (Scholl & von Huene 2009).
-- **A belt reaches as far as it strains** (`beltStrainRate` 1e-15 /s): a live belt's width is its shortening rate now ÷
-  this, so a slowing belt narrows and a stalled one stops refreshing its record. Unsourced, declared as swept
-  (3e-16 / 1e-15 / 3e-15).
+- **A belt reaches as far as it strains** (`beltStrainRate`, **off by default**; built at 1e-15 /s): a live belt's width
+  is its shortening rate now ÷ this, so a slowing belt narrows and a stalled one stops refreshing its record. Unsourced,
+  declared as swept (3e-16 / 1e-15 / 3e-15). On, it took compressive records < 240 Myr from 61 to 55 % (3 seeds), but
+  this step's Andean shortening gives sub-cell Andean belts (median 44 km against Earth's 300–700 km), so the Andes
+  hold no main range behind the coast (check 8a) and the Laramide belt's area depends on the mesh (12.05 vs
+  10.56 Mkm² at 40K/80K, check-scale). Left as a flag. Missing piece: probably the margin's shortening averaged
+  over its life rather than this step's.
 - **Andean belts add only arc magmatism** (`arcAdditionKm3PerKmMyr` 60, Scholl & von Huene 2009); their thickening beyond
   is the margin's own shortened crust.
 - **One rock book** (`rockBook`): the rivers carry the rock the heights wear (crust.wornKm), not a flux of their own, and
@@ -2376,7 +2380,8 @@ check-invariants):
   every closing overriding trench eats the continent nearest it within the fore-arc, thinning it until it founders. The
   rate per km is Earth's; the length that erodes is emergent (~0.8 AU removed against Earth's ~1.5).
 
-Measured (3 seeds × 1200 Myr, mean of 300/600/900/1200; off → on): area 1200 ÷ start 0.82 → 0.89 ± 0.01; continental crust
+Measured (3 seeds × 1200 Myr, mean of 300/600/900/1200; off → on, with `beltStrainRate` still on then, so the compressive
+figure below is the flag's): area 1200 ÷ start 0.82 → 0.89 ± 0.01; continental crust
 under the sea 7.0 → 18.6 % (Earth ~29); land 26.5 → 23.3 % of the sphere, crust 26.9 → 27.7 %; compressive records
 < 240 Myr by reach 63.9 → 54.3 %. Check 13 now counts deformed crust **by strain** (≥ 10 % off its undeformed column), as
 Müller et al. 2019's deforming networks count resolvably strained crust, not every cell a belt once touched; the reach

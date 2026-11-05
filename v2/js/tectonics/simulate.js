@@ -14,7 +14,7 @@ import { tidyPlates, fillPinholes } from './ops/tidy-plates.js';
 import { matureArcs } from './step/arc-maturation.js';
 import { riftContinents, searchJunctions, evolveRiftStages } from './step/rifting.js';
 import { initiateSubduction, founderWithinPlates } from './step/subduction-init.js';
-import { retireBackground, splitOceanPlates, captureMicroplates } from './step/ocean-plates.js';
+import { retireBackground, splitOceanPlates, captureMicroplates, accreteHiddenRemnants } from './step/ocean-plates.js';
 import { CrustRaster } from './model/crust.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
 import { trackCycle } from './step/supercontinent.js';
@@ -131,6 +131,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (world.founderMyr >= world.config.marginFounderEveryMyr - 1e-9) { changed += led('marginFounder', founderWithinPlates(world, world.founderMyr)); world.founderMyr = 0; }
             if (slow) changed += led('oceanPlates', retireBackground(world) + splitOceanPlates(world, slowDt)); // the pre-history ocean becomes plates; big ocean plates split
             changed += led('microplates', captureMicroplates(world));      // a small ocean plate is captured by its neighbour
+            changed += led('hiddenRemnants', accreteHiddenRemnants(world)); // a plate subducted to its last arc or continent cells, hidden, accretes to the plate over it
             if (slow) changed += led('arcMaturation', matureArcs(world, slowDt)); // arcs welded onto a continent become continent (cell types only)
             changed += led('tidy', tidyPlates(world));             // fragments join a neighbour; ocean scraps go to the passive ocean
             if (changed) {                              // crust changed: the world view must be rebuilt before anything reads it
