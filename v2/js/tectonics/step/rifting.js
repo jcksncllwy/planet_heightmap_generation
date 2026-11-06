@@ -9,6 +9,7 @@
 // last rift or weld, the chance growing as its quiet spell runs long, one forced when it runs too long), with a floor for
 // the world as a whole (riftGlobalGapMyr).
 
+import { useRockBook } from '../rock-book.js';
 import { CrustFlag, CrustType, OrogenyType } from '../model/crust.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
@@ -168,6 +169,7 @@ export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = 
     const { mesh } = world, pull = pullAxisOf(plate, mesh), ctx = riftContext(world, plate);     // (what every junction's search reads of the crust)
     // (the junctions' searches, handed out — each junction's own, the answers in the junctions' order)
     const results = yield { plate, junctions, pull, needCratonsBothSides, ctx, config: world.config };
+    useRockBook(world.budget);                  // (the rock book: another history may have stepped while this one waited)
     let rift = null;
     for (const found of results) if (found && (!rift || found.value < rift.value)) rift = found;
     if (!rift) return false;

@@ -9,6 +9,7 @@ import { TectonicWorld, EventKind } from '../model/world.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { tangentBasis } from '../../core/sphere-geom.js';
 import { spreadBelt, OrogenyType } from '../step/orogeny.js';
+import { useRockBook } from '../rock-book.js';
 import { placeCratons } from './cratons.js';
 import { shapeLandmass } from './landmass.js';
 import { plateOutlineWithApron, chooseActiveRim } from './rim-trench.js';
@@ -22,6 +23,7 @@ const FRACTION_TOLERANCE = 0.004;   // how far from the requested continental fr
  * @returns {{world: TectonicWorld, start: Object}} `start` = layout facts (cratons, centre, passive sector, …)
  */
 export function buildStartWorld(simMesh, seed, overrides = {}) {
+    useRockBook(null);                          // (a start world's belts are its own, not the last history's flows: rock-book.js)
     const world = new TectonicWorld(simMesh, seed, overrides);
     return assemble(world, simMesh, seed, findLayout(simMesh, seed, world.config, a => evaluateAttempt(simMesh, seed, world.config, a)));
 }

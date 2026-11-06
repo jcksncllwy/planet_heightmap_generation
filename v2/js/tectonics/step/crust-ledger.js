@@ -7,8 +7,9 @@
 // its process may do.
 
 import { CrustType } from '../model/crust.js';
-import { crustThicknessKm } from '../measure.js';
+import { crustThicknessKm, columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
+import { arcCrustKm } from './collision.js';
 
 /** The only stages whose process may make or lose continental crust — the checks (check-invariants.mjs, check-phase6.mjs) hold
  *  every other stage to 0. (riftStage, lane pstress: a young rift's halves part through continent stretched thin, not new
@@ -82,12 +83,38 @@ export function crustVolume(world) {
     return v;
 }
 
+/** The rock the planet holds now, in parts (cell-km; lane rockbook, a diagnostic with crustLedgerVolume): continental crust
+ * (its kind's as formed plus its root), the relief it carries above that (measure.js crustThicknessKm's uplift and swell
+ * term, as crust), the rivers' fill on it (basin, enclosed-sea and shelf rock), island-arc crust (collision.js arcCrustKm),
+ * the sediment on OCEAN crust (the rise, enclosed-sea fill), and the rock worn off and not yet carried (crust.wornKm).
+ * crust + relief + fill = crustVolume's continent. */
+export function rockParts(world) {
+    const H = heightsOf(world.config), C = columnModel(H), cellKm2 = world.mesh.cellAreaKm2, time = world.time, config = world.config;
+    const parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 };
+    for (const p of world.plates) {
+        if (!p.alive) continue;
+        const k = p.crust, { mask, type } = k;
+        for (let c = 0; c < mask.length; c++) {
+            if (!mask[c]) continue;
+            const t = type[c];
+            parts.transit += k.wornKm[c];               // (worn off, not yet carried by the rivers: rockBook)
+            if (t === CrustType.CONTINENT || t === CrustType.CRATON) {
+                parts.crust += C.crust[t] + k.rootKm[c];
+                parts.relief += (Math.max(0, k.upliftKm[c]) + k.baseKm[c]) / C.slope[t];
+                parts.fill += k.basinFillKm[c] + k.seaFillKm[c] + k.shelfKm3[c] / cellKm2;
+            } else if (t === CrustType.ARC) parts.arc += arcCrustKm(k, c, time, config);
+            else parts.oceanSed += k.seaFillKm[c] + k.riseKm3[c] / cellKm2;
+        }
+    }
+    return parts;
+}
+
 /**
  * A ledger for one world, or null when it is off. ledger.open() before a stage, ledger.book(stage) after it.
  */
 export function crustLedger(world) {
     if (!world.config.crustLedger) return null;
-    const vol = !!world.config.crustLedgerVolume, tally = vol ? w => ({ ...crustTally(w), vol: crustVolume(w) }) : crustTally;
+    const vol = !!world.config.crustLedgerVolume, tally = vol ? w => ({ ...crustTally(w), vol: crustVolume(w), parts: rockParts(w), budget: { ...w.budget } }) : crustTally;
     world.ledger ??= { start: tally(world), stages: {} };
     let before = null;
     return {
@@ -95,7 +122,13 @@ export function crustLedger(world) {
         book(stage) {
             const now = tally(world), entry = world.ledger.stages[stage] ??= { land: 0, arc: 0 };
             entry.land += now.land - before.land; entry.arc += now.arc - before.arc;
-            if (vol) entry.vol = (entry.vol ?? 0) + now.vol - before.vol;
+            if (vol) {
+                entry.vol = (entry.vol ?? 0) + now.vol - before.vol;
+                // (rockbook: each part's change, and each budget counter's — the books a stage wrote while it moved the rock)
+                entry.parts ??= {}; entry.budget ??= {};
+                for (const key in now.parts) entry.parts[key] = (entry.parts[key] ?? 0) + now.parts[key] - before.parts[key];
+                for (const key in now.budget) { const d = now.budget[key] - (before.budget[key] ?? 0); if (d) entry.budget[key] = (entry.budget[key] ?? 0) + d; }
+            }
             before = now;
         },
     };

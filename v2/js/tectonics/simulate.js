@@ -3,6 +3,7 @@
 // force model (step/torque-balance.js `updatePlateMotion`). `drive` always sees a freshly resolved
 // world, including at time 0, and `world.lastDt` tells it how long the last step was.
 
+import { useRockBook } from './rock-book.js';
 import { advancePlates } from './step/kinematics.js';
 import { fastestSpeed } from './step/torque-balance.js';
 import { resolve } from './step/resolve.js';
@@ -94,6 +95,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
     let nextSnapshot = Math.min(world.time + snapshotEveryMyr, untilMyr);
     const L = crustLedger(world), led = (stage, v) => { L?.book(stage); return v; };   // (the crust ledger: off unless a check asks)
     while (world.time < untilMyr - 1e-9) {
+        useRockBook(world.budget);                      // (the rock book: code with no world in hand books here — rock-book.js)
         L?.open();
         world.rollbackBirths = null;                    // (this step's births at retreating trenches: resolve.js → step/backarc.js)
         const nextGrid = (Math.floor(world.time / grid + 1e-9) + 1) * grid;
@@ -121,7 +123,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (slow) changed += led('marginIsles', growMarginIsles(world, slowDt)); // fore-arc islands rise and join the coast (cell types only)
             if (slow) changed += led('sedimentSubduction', subductSediment(world, slowDt)); // trench sediment goes down the subduction channel: the land it came from is lost
             if (slow) changed += led('subductionErosion', erodeForeArcs(world, slowDt));     // the trench abrades the fore-arc's base: the coast steps back (config.subductionErosionKm3PerKmMyr)
-            if (slow) bookFans(world, slowDt);                      // (the books: where the rivers' rock went — fans or the rise)
+            if (slow) led('fans', bookFans(world, slowDt));                      // (the books: where the rivers' rock went — fans or the rise)
             world.foreArcs = world.fans = null;                    // (the margins and fans those two shared: rebuilt next time)
             changed += led('rifts', yield* riftContinents(world, dt));  // plume and tension rifts (splits plates)
             changed += led('riftStage', evolveRiftStages(world));          // young rifts stretch continent before they break up (config.riftStage)
@@ -152,7 +154,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         }
         if (slow) led('heights', evolveHeights(world, slowDt)); // heights wear down and spread (records only: nothing below reads them)
         led('rivers', evolveRivers(world, dt));                         // rivers drain the land and cut into it (records only too; on a clock of their own)
-        evolveGeology(world, dt);                                       // the geological record (records only; on a clock of its own)
+        led('geology', evolveGeology(world, dt));                                       // the geological record (records only; on a clock of its own)
         led('drive', drive(world));
         led('backArcStrips', steerBackArcStrips(world));                          // a back-arc strip follows its retreating trench, whatever drives the rest
         led('plateStress', stepPlateStress(world, dt));                  // the stress inside the plates, and where it breaks them (config.plateStress)
