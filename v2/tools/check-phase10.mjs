@@ -2,7 +2,7 @@
 // Hard checks: a collision's belt rides onto a craton's rim, and the rim belts change no event (records only); a range
 // pressed against a craton from its lower plate bends a lowland into it, and the upper plate's shield is bent less than
 // the lower's (retro < pro); each shield stands at the same height at 160K and 640K; craton relief is no more than
-// ordinary lowland's; craton scraps read as their surroundings; the plate that owned the trench is the upper plate.
+// ordinary lowland's; craton scraps the land encloses read as their surroundings (those at the sea's edge reported); the plate that owned the trench is the upper plate.
 // Reported: how deep a belt reaches into a craton and how many craton cells thicken, the lower plate's foreland bend,
 // the upper plate's front and bend, how much cratons differ from one another, and craton relief against lowland's.
 // Usage: node v2/tools/check-phase10.mjs
@@ -227,12 +227,13 @@ section('scraps of craton');
             const o = F.owner[w0], onRaster = A.moved[o] ? rasterPatch(o, A.cell[w0]) : patch.length;
             if (onRaster < 1 || onRaster > 3) continue;                          // (a bigger shield's tip, seen through the world view)
             const ring = new Set();
-            for (const w of patch) for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) { const q = mesh.adjList[k]; if (!isC(F, q) && isLand(F, q)) ring.add(q); }
+            let sea = 0;
+            for (const w of patch) for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) { const q = mesh.adjList[k]; if (!isC(F, q) && isLand(F, q)) ring.add(q); else if (!isLand(F, q)) sea++; }
             if (ring.size < 3) continue;
             T ??= synthesizeTerrain(F, mesh, tm, { seed });
             const meanH = cells => { const set = new Set(cells); let s = 0, m = 0; for (let t = 0; t < tm.numCells; t++) if (set.has(T.sampler.cells[3 * t])) { s += T.heightKm[t]; m++; } return m ? s / m : NaN; };
             const inside = meanH(patch), around = meanH([...ring]);
-            if (inside === inside && around === around) gaps.push({ gap: around - inside, note: `${patch.length} cell${patch.length > 1 ? 's' : ''}, belt ${[...new Set([...ring].map(q => F.oroType[q]))].join('/')}, ground around ${around.toFixed(2)} km` });
+            if (inside === inside && around === around) gaps.push({ gap: around - inside, coast: sea > 0, drowned: inside < 0 && patch.every(w => T.rec.land[w]), note: `${patch.length} cell${patch.length > 1 ? 's' : ''}, belt ${[...new Set([...ring].map(q => F.oroType[q]))].join('/')}, ground around ${around.toFixed(2)} km` });
         }
         return gaps;
     };
@@ -244,11 +245,22 @@ section('scraps of craton');
     // collision: a set needed 3 of them and two of the three sets found fewer on main's path and on every perturbed one (0–10 a
     // set), so the check failed on the scene not forming, never on a scrap. Pooled, the scene is formed when the six histories
     // together show at least SCRAP_FLOOR scraps; each is listed with where it was found)
-    const SCRAP_FLOOR = 5, scraps = [];
+    // (scrap 2026-11-06: only a scrap the land encloses — no sea cell beside it — is judged. A hole IN a range is the defect
+    // asked about; a scrap at the sea's edge is a coast, and the coast is drawn as a smooth line (records.js marginLine, σ
+    // ≥ coastLineKm 120 km: a margin's line at the scale of its promontories, Thomas 1977), so a sim cell with the sea on
+    // most sides lies offshore of it and reads the margin's slope, whatever its crust: the 2.66 km "hole" at history 12345
+    // @560 was such a cell (sea on 4 of 7 sides; its own column 0.37 km against its neighbours' 0.21; the terrain read it
+    // 58 km offshore). Every land cell of that history at 500–600 Myr with the sea on 3 sides stood 0.42 km below its land
+    // neighbours (median; 0.47 for craton), the worst 10 % over 2 km: a coast's drop, which phase 9 judges. The coastal
+    // scraps are listed, never judged here: their count, the gap's median, 90th percentile and most, and how many read
+    // under the sea though the records hold their column land — a KNOWN ISSUE, not a craton one: the land mask and the
+    // drawn surface disagree at a coast tip, for any crust (standing goal #8, one surface datum and land mask; review U3,
+    // records.js marginLine). Left for that goal, kept visible here)
+    const SCRAP_FLOOR = 5, scraps = [], coastal = [];
     for (const [i, sceneSeed] of SCENE_SEEDS.entries()) {
         for (const [id, seed, times] of [['india', sceneSeed, [50, 60, 70, 80, 90]], ['history', PLANET_SEEDS[i], Array.from({ length: 30 }, (_, j) => 20 * (j + 1))]]) {
             const { frames } = run(id, Math.max(...times), null, seed);
-            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) scraps.push({ gap: g.gap, where: `${id} ${seed} @${F.time} (${g.note})` });
+            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) (g.coast ? coastal : scraps).push({ gap: g.gap, where: `${id} ${seed} @${F.time} (${g.note})` });
         }
     }
     const gaps = scraps.map(x => x.gap), worst = scraps.reduce((m, x) => (!m || x.gap > m.gap ? x : m), null);
@@ -256,6 +268,11 @@ section('scraps of craton');
         [{ label: `${SCENE_SEEDS.length} India scenes and ${PLANET_SEEDS.length} planets pooled`, formed: gaps.length >= SCRAP_FLOOR, ok: median(gaps) <= 0.1 && Math.max(...gaps) <= 0.5,
             text: `${gaps.length} scraps (floor ${SCRAP_FLOOR}): around them ${median(gaps).toFixed(2)} km above (median), the most ${Math.max(...gaps).toFixed(2)} km${worst ? ` at ${worst.where}` : ''}` }],
         { scene: 'scraps of craton (5 or more in the six histories)', detail: 'craton scraps of 1–3 cells on their own plate\'s raster; the ground around them stands this far above them — below, where negative (before Phase 10 median 0.02 km, the worst 1.27 km)' });
+    {
+        const cg = Float64Array.from(coastal, x => x.gap).sort(), at = p => cg.length ? cg[Math.min(cg.length - 1, Math.floor(p * cg.length))] : NaN;
+        report('scraps of craton at the sea\'s edge (a coast: not judged), each one\'s height below the land beside it', [...cg], { unit: ' km', digits: 2,
+            detail: `${coastal.length} scraps: median ${at(0.5).toFixed(2)}, 90th percentile ${at(0.9).toFixed(2)}, the most ${(cg.length ? cg[cg.length - 1] : NaN).toFixed(2)} km; ${coastal.filter(x => x.drowned).length} read under the sea though their column is land (known issue, standing goal #8: records.js marginLine) — ${coastal.map(x => `${x.where}: ${x.gap.toFixed(2)}${x.drowned ? ' (under the sea)' : ''}`).join(', ')}` });
+    }
     report('scraps of craton found, and each one\'s height below its surroundings', gaps, { unit: ' km', digits: 2, detail: scraps.map(x => `${x.where}: ${x.gap.toFixed(2)}`).join(', ') });
 }
 

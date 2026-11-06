@@ -541,7 +541,7 @@ plate a load (its height above what its own root floats), summed as a thin elast
 the shield's rim, and the upper plate's front where it is thrust under it (`underthrustKm`) — so its foreland is the deep
 one; a plateau's back on an upper plate stands on its own root, so only its crests load the block, and the front there
 stays steep;
-scraps of craton inside a range read as the range; and each craton has a character — a shallow sag basin, a broad swell
+scraps of craton inside a range read as the range (Phase 10 judges the scraps the land encloses; one at the sea's edge is a coast); and each craton has a character — a shallow sag basin, a broad swell
 or a flat shield (`cratonCharacter`; a swell or sag is the mantle's — which, and how strong, follows the mantle's heat
 under the shield since branch unified-swell — so it rises over `cratonSwellFlankKm` in from the edge, not over a share of
 the shield) — with a faint grain of domes and keels. Trapped pockets of
@@ -2511,3 +2511,25 @@ doesn't (the terrain reads the scrap's own raster cell). The 0.5 km absolute bou
 the crust ledger's area and volume on, and prints per stage the continental and arc crust booked (read generically, so a new stage appears by itself),
 the rock the heights wore off, and where the rivers set it down: basin fill, enclosed seas, shelves, trench wedge, sediment subducted (or, when
 present, crustfu's `fanKm3`, `riseKm3`, `seaOverflowKm3`). On 63b39b6: 7.43 Gkm³ worn per cycle (Earth ≈ 6–10, recalled), 7.18 carried, 2.27 set down, so **5.16 Gkm³ (69 %) in no book.** On 5ab3142 (crustfu's books): 6.49 worn, 6.36 carried, 6.35 set down (basin .53, sea .68, overflow .70, shelves .35, trench fans 2.12, rise 1.97), **0.15 Gkm³ in no book.** Report only; ~8 min.
+
+## The craton-scrap hole was a coast (2026-11-06, lane scrap)
+
+coast9 left phase 10's pooled scrap check failing on main's own path on one scrap: history 12345 at 560 Myr, one cell, 2.66 km
+below the ground beside it (0.10 km). Traced on aa16a74, it is not a craton defect. The cell (world 29716, plate 159's raster
+16016) is a coast tip, with the sea on 4 of its 7 sides. Its own column stands *higher* than its neighbours' (0.37 km against
+0.21, `columnModel`), the records keep it land (`rec.land` 1, raster coast distance +9.8 km), and the craton terms play no part.
+The margin line (`records.js marginLine`, σ ≥ `coastLineKm` 120 km: the coast at the scale of its promontories) draws the coast
+across the cell, so its terrain points lie 58 km offshore and read the margin slope's depth (platform −2.57 km). The check's
+"ground around" counted only the land neighbours, so it compared a coast tip with inland ground. Its continental neighbour
+reads below sea level too (−0.36 km). As a control, every land cell of that history at 500–600 Myr with the sea on 3 sides
+stands 0.42 km below its land neighbours (median; 0.47 for craton), and the worst 10 % stand more than 2 km below: a coast's drop.
+
+**Change (check only, no physics).** `check-phase10.mjs` judges only the scraps the land encloses, with no sea cell beside them,
+because a hole *in a range* is the defect it asks about. It reports the scraps at the sea's edge separately: their count, the gap's
+median, 90th percentile and maximum, and how many read under the sea though their column is land.
+
+**Known issue, left for standing goal #8 (one surface datum and land mask; review U3).** At a coast tip the land mask and the
+drawn surface disagree for any crust. A cell the records call land, with its own column above the sea, is drawn under it by the
+margin line (here 2.57 km under). The coastal-scrap report keeps this visible. The fix belongs to the surface datum, not to the
+cratons.
+
