@@ -9,6 +9,7 @@
 
 import { check, checkAcross, report, section, finish, labMesh, medianOf, nearestFrame } from './lib/check-kit.mjs';
 import { simulateCached } from './lib/history-cache.mjs';
+import { onPath } from './lib/paths.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
@@ -23,7 +24,7 @@ const SEED = 12345, SCENE_SEEDS = [SEED, 1, 2], PLANET_SEEDS = [SEED, 777, 4242]
 const mesh = labMesh(), n = mesh.numCells;
 const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[s.length >> 1]; };
 const run = (id, until, overrides = null, seed = SEED) => {
-    const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
+    const scene = TERRAIN_SCENES.find(s => s.id === id), world = onPath(scene.build(mesh, seed));
     if (overrides) Object.assign(world.config, overrides);
     const { frames } = simulateCached(world, { untilMyr: until ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     // (events: the last frame's — the world is not run when the history comes from the cache)

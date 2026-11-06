@@ -10,6 +10,7 @@
 // Usage: node v2/tools/check-phase9.mjs
 
 import { check, report, section, finish, labMesh, medianOf } from './lib/check-kit.mjs';
+import { onPath, PATH_K } from './lib/paths.mjs';
 import { simulateCached } from './lib/history-cache.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
@@ -25,7 +26,7 @@ const SEEDS = [12345, 777, 4242];
 const mesh = labMesh(), n = mesh.numCells;
 const corr = (xs, ys) => { const mx = xs.reduce((s, v) => s + v, 0) / xs.length, my = ys.reduce((s, v) => s + v, 0) / ys.length; let a = 0, b = 0, c = 0; for (let i = 0; i < xs.length; i++) { a += (xs[i] - mx) * (ys[i] - my); b += (xs[i] - mx) ** 2; c += (ys[i] - my) ** 2; } return a / Math.sqrt(b * c); };
 const scene = TERRAIN_SCENES.find(s => s.id === 'history');
-const history = (seed, until) => { const world = scene.build(mesh, seed); return simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames; };     // (the history cache: tools/lib/history-cache.mjs)
+const history = (seed, until) => { const world = onPath(scene.build(mesh, seed)); return simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames; };     // (the history cache: tools/lib/history-cache.mjs)
 const tm = terrainMesh(640000);
 const f2 = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : String(v)), pct = v => f2(100 * v, 1);
 const bySeed = (rows, fn) => rows.map(r => `${r.seed}: ${fn(r)}`).join(' · ');

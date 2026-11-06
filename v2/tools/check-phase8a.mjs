@@ -8,6 +8,7 @@
 
 import { check, checkAcross, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulateCached } from './lib/history-cache.mjs';
+import { onPath } from './lib/paths.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, CrustFlag, OrogenyType, BeltSide, VolcanicType } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
@@ -399,7 +400,7 @@ section('erosion by rainfall');
 section('fine detail moves with the crust');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'history'), tm = terrainMesh(640000);
-    const framesOf = seed => simulateCached(scene.build(mesh, seed), { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames;
+    const framesOf = seed => simulateCached(onPath(scene.build(mesh, seed)), { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames;
     const carriedDetail = (seed, A, B) => {
         // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
         // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
