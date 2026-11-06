@@ -258,8 +258,9 @@ export const TERRAIN = {
                                 // its volume would swing the sea 0.45–0.63 km over a cycle (Earth 0.2–0.3 km: Haq &
                                 // Al-Qahtani 2005) — a lowstand after each breakup, where Earth had its highstand. It is
                                 // computed and shown either way (the lab's sea-level card)
-    waterInventory: 0,          // the ocean's water, × Earth's (1.332e9 km³: tectonics/ocean/inventory.js): > 0 sets the sea's
-                                // level by pouring it onto the ground (terrain/land-mask.js); 0 the reckoned level above
+    waterInventory: 1,          // the ocean's water, × Earth's (1.332e9 km³: tectonics/ocean/inventory.js): > 0 sets the sea's
+                                // level by pouring it onto the ground (terrain/land-mask.js); 0 the reckoned level above.
+                                // On by default at Earth's 1.0× (Jackson, 2026-11-06; its gate is tools/check-ocean-earth.mjs)
     lipLandKm: 0.75,            // flood basalt on land: this much height per km of basalt (8b round 6: 0.6 → 0.75 — Putorana
                                 // stands ~1.5 km, the Western Ghats 1–1.6)
     lipSeaKm: 1.4,              // an oceanic plateau (Ontong Java) rises this much per km of basalt

@@ -634,7 +634,8 @@ a fixed volume of water stands — `waterInventory` × Earth's ocean (1.332e9 km
 sim cell's ground (`surfaceKm`: the land as the rivers stand it, the floor by its depth–age law, both on the mantle's swell)
 from the lowest cell and spilling outward (one priority flood and a running sum, `pourOcean`, ~10 ms at 40K) — not the
 reckoning above, which calibrated the floor's mean depth so that a dispersed world's sea stood at 0. The pour is in the one
-land mask, so the history's rivers and the terrain's records share it. Only the level changes: which cells may be sea
+land mask, so the history's rivers and the terrain's records share it. It is on by default at Earth's 1.0× (Jackson,
+2026-11-06); `waterInventory: 0` still gives the reckoned level. Only the level changes: which cells may be sea
 (the crust's kind, filled seas, small pockets, lifted fills) is still the mask's rules, and the flood drowns at the poured
 level. Its proof is Earth's own ground: `tools/check-ocean-earth.mjs` pours 1.0× onto ETOPO5 binned on the 40K and 160K
 meshes (a committed derived artifact, `tools/data/earth-surface-*.i16`, `tools/make-earth-surface.mjs`) and the sea stands
