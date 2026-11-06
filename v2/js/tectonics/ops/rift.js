@@ -52,7 +52,10 @@ export function splitPlate(world, plate, path, failedArm, nameFor, across = null
     // Stretching makes relief too: the flanks a rift opened along are lifted into shoulders (the East African Rift,
     // the Western Ghats, the Brazilian highlands). Recorded here as a belt like any orogeny, so the terrain stage
     // need not work out afterwards where a rift once ran (developer).
-    const shoulder = { type: OrogenyType.RIFT, widthKm: config.riftShoulderKm, workKm: config.riftShoulderWorkKm, time };
+    // (config.riftStageVolume: the shoulders are the margin's own crust lifted — flexural rebound of the footwall as the rift
+    // unloads it, and the heated lithosphere's buoyancy (Weissel & Karner 1989, JGR 94: 13919) — not thickened: their
+    // record and uplift stand, but they add no root, which made crust beside a stretch that conserves it. Defects item 7)
+    const shoulder = { type: OrogenyType.RIFT, widthKm: config.riftShoulderKm, workKm: config.riftShoulderWorkKm, time, noThicken: !!config.riftStageVolume };
     const notFailed = cr => (q => !(cr.flags[q] & CrustFlag.FAILED_RIFT));     // the belt spreads AROUND the failed arm, never onto it
     const standing = (cells, cr) => cells.filter(c => !(cr.flags[c] & CrustFlag.FAILED_RIFT));   // a cell on both the rift line and the arm belongs to the arm
     const lifted = [standing(shoulders[0], crust), standing(shoulders[1], fresh.crust)];
