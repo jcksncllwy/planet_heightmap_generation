@@ -324,8 +324,11 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
   terrain-mesh     the terrain mesh (cached per size) and sampleOnto: each terrain cell's 3 sim cells + weights,
                    looked up through a smooth noise warp so the sim's cells never show (the warp read from a table
                    precomputed on a cube map — within ~0.3 km of the noise, a fifth of the cost)
-  margin-line      the coast's line: the land/sea raster's smooth contour (a Gaussian of a sim cell), the coast distance
-                   measured exactly to it; gaussianAt (cached kernels) smooths a margin's shelf and plain along it
+  land-mask        the land and the sea on the sim grid, and the sea's level: one mask the records, the history's rivers
+                   and (through world-ocean on the drawn surface) the finish all read (standing goal #8)
+  margin-line      the coast's line: the land/sea raster's smooth contour (a Gaussian of a sim cell), drawn between the
+                   land mask's cells, never across one; the coast distance measured exactly to it; gaussianAt (cached
+                   kernels) smooths a margin's shelf and plain along it
   margins          a rifted margin's cross-section from how its crust thinned (McKenzie 1978): the shoreline, the shelf
                    break the sediment builds out to, the coastal plain's flexural width
   records          step 1: the Frame read into per-sim-cell fields — signed coast distance, shelf / plain / slope by
@@ -817,8 +820,9 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   raster's own staircase under them all. Now: the coast is the margin's smooth line (`margin-line.js`) — the 0.5 contour of
   the land/sea raster seen through a Gaussian of `coastLineKm` 120 km — the length of a rift's border-fault segments
   (50–150 km: Rosendahl 1987, Ebinger 1989), never under one sim cell — (a rift's cell-to-cell steps and the raster's
-  staircase gone, its bends and transform steps kept; a cell turns only on the coast, never erasing an island or a lake,
-  never parting a land or a sea), the coast distance measured exactly to that contour's segments, so the shelf's edge and
+  staircase gone, its bends and transform steps kept; no cell changes side — where the smoothing disagrees with the land
+  mask, at a tip or a narrow bay, the cell keeps its own half of every edge to the other side: the raster's shape there,
+  which is all the crust says; until 2026-11-06 such a cell was turned, under a topology veto), the coast distance measured exactly to that contour's segments, so the shelf's edge and
   the coastal plain are true offsets of it. Roughness is where the land at the sea is rough (records.js `rugged`): island
   arcs, and young collision coasts by their relief (`coastRuggedKm`, while the belt is fresh: `coastFreshMyr`) take the
   coast noise (`coastNoiseKm`), the fine detail and a sharper line (`coastLineRuggedKm`, never under half a sim cell); a passive or active margin
@@ -1475,9 +1479,9 @@ Still open:
 Follow-ups to "One height from the crust".
 - **One land, history and terrain.** The history's rivers decided land and filled seas without the mantle's swell, the
   terrain with it, so they disagreed on what was land (unified's choices 6–8). Now `step/rivers.js` asks
-  `terrain/sea-level.js landAndSea` on the world's own view of the crust: continental crust and arcs, seas filled up,
-  and a filled sea the swell holds above the sea are land, and the sea's level is reckoned with them, as
-  `records.js deriveRecords` does for a frame. The rivers route over heights against the sea with the swell in (it
+  `terrain/land-mask.js landMask` on the world's own view of the crust — the very decision `records.js deriveRecords`
+  makes for a frame (until 2026-11-06 it asked `sea-level.js landAndSea`, which took every continent and arc as land
+  however low: see "One land mask" below). The rivers route over heights against the sea with the swell in (it
   tilts the land and its rivers: DiCaprio et al. 2009), and cross filled plains to the real shore; a plain is
   sediment, so it is neither cut nor counted as rock worn. An enclosed sea fills to the sea's level over the swell and
   a delta top 1 m above it (`step/sea-fill.js`), so a filled sea is land to both. Sediment standing above the sea once
@@ -2597,8 +2601,29 @@ stands 0.42 km below its land neighbours (median; 0.47 for craton), and the wors
 because a hole *in a range* is the defect it asks about. It reports the scraps at the sea's edge separately: their count, the gap's
 median, 90th percentile and maximum, and how many read under the sea though their column is land.
 
-**Known issue, left for standing goal #8 (one surface datum and land mask; review U3).** At a coast tip the land mask and the
-drawn surface disagree for any crust. A cell the records call land, with its own column above the sea, is drawn under it by the
-margin line (here 2.57 km under). The coastal-scrap report keeps this visible. The fix belongs to the surface datum, not to the
-cratons.
+**One land mask and one datum (standing goal #8; model review U3, 2026-11-06).** Each stage used to decide "is this land?"
+on its own. The terrain's records went by the crust's height, with a below-sea column joined to the ocean drowned. The
+history's rivers went by its kind: every continent and arc was land, however low. The finish's rock went by z ≤ 0, so a
+closed hollow below the sea read as sea. Now there is one decision, `terrain/land-mask.js landMask`: water below the sea's
+level is sea where it joins the world ocean. The records and the history's rivers read it on the sim grid. On a drawn
+surface, `world-ocean.js worldOcean` applies the same rule to the heights; the finish's sea and its rock read that. The
+mask smooths the mantle's heat once per call, so on the rivers' clock it costs ~8 ms at 40K. `tools/datum-study.mjs`
+measures the stages against each other on 3 seeds × 300/560 Myr at 160K:
+- The rivers saw 16–42 Mkm² more land than the terrain draws. Their sea stood 11–22 m off the terrain's, and 11–36 % of the
+  cells they routed water through lay in the drawn sea. Now: the same land, the same sea, and 0.5–2.2 %.
+- The margin line turned 455–709 land cells a moment into sea, so a coast tip's land column read up to 6.7 km down the
+  margin's slope. Now no cell turns. Land cells drawn mostly under the sea number about the same (266–833), but are
+  shallower: the 10th percentile is −1.8 to −3.6 km, against −2.9 to −4.9. What is left has three parts. Two-thirds of
+  each such cell sits within 60 km of the smoothed line, the sub-cell area a smooth line trades both ways across a
+  staircase. About two-thirds of the points the coast puts offshore are put there by the anchored per-plate lookup and
+  the coast's curvature term (`synthesize.js`), not by the line. The largest group at 300 Myr lies onshore but low on
+  rifted margins: the margin profile's thermal sag applied where the history stretched nothing (U8; the next step reads
+  the history's stretch record, `crust.riftThin`).
+- Repair rules: the margin line's topology veto is retired, because no cell turns. Two are kept, named. The pocket fill
+  (`pocketSeaKm2`, review heuristic 07) is now applied alike by every stage, in the mask. The mask does not make it
+  unnecessary: only a coastal sediment surface would fill such seas. The shelf top graded from the datum
+  (`synthesize.js` `sedTop`) and the filled plain held at `max(0, seaKm)` (`records.js`; heuristic 20) are kept as
+  physics, not repair: a shelf records its long-term base level. A sea that falls exposes it and a sea that rises drowns it.
+- Civ's fixed coastline (`v2/js/civ/**`) is out of scope. To share the mask, civ would read `rec.land` (sim grid), or
+  `worldOcean(mesh, z, 0)` on its own mesh, in place of its fixed coastline.
 
