@@ -44,7 +44,11 @@ export function fillSpillMerge(ctx, F) {
     let nanHeights = 0;
     for (let c = 0; c < n; c++) if (Number.isNaN(z[c])) nanHeights++;           // (a bug upstream, counted: check-phase8b.mjs fails on any)
     const own = c => Math.max(0, runoff[c]) * cellKm2 * 1e3 / SEC_PER_YEAR;     // (mm × km² → m³/s)
-    const lakeLoss = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c])) * cellKm2 * 1e3 / SEC_PER_YEAR;
+    // (what open water loses over a cell, beyond what its land already lost: the cell's own runoff is in the water that
+    // reaches the hollow, so the sky water its open water nets against is the rain its ground keeps — rain less its own
+    // runoff, ctx.skyKept (finish.js) — not all the rain, which counted it twice; without it, the rain)
+    const kept = ctx.skyKept ?? rain;
+    const lakeLoss = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, kept[c])) * cellKm2 * 1e3 / SEC_PER_YEAR;
     const aridity = c => (pet[c] > 0 ? smooth(0, 1, (pet[c] - Math.max(0, rain[c])) / pet[c]) : 0);
     const bedKept = (c, out, stepKm) => {
         const arid = aridity(c);

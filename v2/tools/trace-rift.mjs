@@ -50,7 +50,7 @@ for (const c of body) { floor = Math.min(floor, z[c]); vol += (lakeLevel[c] - z[
 const h = hollowInfo[hollow[at]];
 console.log(`BODY ${['', 'fresh', 'salt', 'pan'][lake[at]]}, src ${lakeSrc[at]}, ${Math.round(body.length * a)} km² (${(100 * below / body.length).toFixed(0)} % of it floored below sea level), level ${Math.round(1000 * lakeLevel[at])} m, floor ${Math.round(1000 * floor)} m, mean depth ${Math.round(1000 * vol / (body.length * a))} m, ${Math.round(vol)} km³; rain ${Math.round(P / body.length)} mm, ${(T / body.length).toFixed(1)} °C`);
 // (its water balance full: what would evaporate off the whole hollow against what flows in. Near 1, the state is on a knife edge)
-const pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+const pet = c => fin.layers?.pet?.[c] ?? 0 /* (the finish's own potential evaporation: the climate's Priestley–Taylor, debug layer) */;
 let fullLoss = 0;
 for (let c = 0; c < n; c++) if (hollow[c] === hollow[at] && z[c] < (h ? h.level : 0)) fullLoss += Math.max(0, F.lakeEvapShare * pet(c) - rain[c]) * 1e-6 * a;
 if (h) console.log(`BALANCE inflow ${(h.inflow * 3.156e7 / 1e9).toFixed(1)} km³/yr against ${fullLoss.toFixed(1)} off the hollow full: ratio ${(h.inflow * 3.156e7 / 1e9 / fullLoss).toFixed(2)}`);

@@ -28,6 +28,7 @@ import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimate } from '../climate/climate.js';
 import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
 import { interpolationMatrix } from '../climate/seasons.js';
+import { fuEvaporation, snowYear, waterMonths, monthPET, SOIL_MM } from '../climate/water.js';
 import { pageClimate } from '../evolution/climate-fields.js';
 import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
@@ -176,13 +177,14 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const monthly = runoffMonths(res.months, petM, G, F);
     // (the year's potential evaporation on the grid, for each cell's; and the climate's own land water, for the stats: its
     // land's rain less its land's evaporation, as a share of the rain — what the rivers should carry back to the sea)
-    const petG = new Float32Array(G), RS = res.stages.rain, KA = res.anchorMonths.length;
+    const petG = new Float32Array(G), elandG = new Float32Array(G), RS = res.stages.rain, KA = res.anchorMonths.length;
     let gP = 0, gE = 0;
     for (let g = 0; g < G; g++) {
         let e = 0, pp = 0;
         for (let m = 0; m < 12; m++) { petG[g] += Math.max(0, petM[m * G + g]); pp += Math.max(0, res.months.P[m * G + g]); }
         if (!RS?.Eland) continue;
         for (let k = 0; k < KA; k++) e += RS.Eland[k * G + g];
+        elandG[g] = 12 * e / KA;
         const lf = res.surface.landFrac[g], wgt = lf > 0 ? lf * Math.cos(res.grid.lat[Math.floor(g / res.grid.w)] * Math.PI / 180) : 0;
         if (wgt > 0) { gP += wgt * pp; gE += wgt * 12 * e / KA; }
     }
@@ -202,13 +204,17 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const litho = rockBeforeCarve(rockIn, carveIn, Geo);      // (finish-lithology.js)
     lap('lithology');
     const runoff = new Float32Array(n), pet = new Float32Array(n);
-    let oldW = 0, sumR = 0, sumP = 0, sumK = 0, landN = 0;
+    let oldW = 0, sumR = 0, sumP = 0, sumK = 0, sumE = 0, sumEc = 0, landN = 0;
     for (let c = 0; c < n; c++) {
         if (!(pAnn[c] === pAnn[c])) continue;
         const P = Math.max(0, liquid.rain[c]), E0 = Math.max(F.petMinMm, bilinear(climGrid, petG, lat[c], lon[c]));
         pet[c] = E0;
-        runoff[c] = P > 0 ? Math.max(0, P - P * (1 + E0 / P - (1 + (E0 / P) ** F.budykoW) ** (1 / F.budykoW))) : 0;
-        if (z[c] > 0) { oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); sumK += liquid.store[c]; landN++; }
+        runoff[c] = P - fuEvaporation(P, E0, F.budykoW);
+        if (z[c] > 0) {
+            oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); sumK += liquid.store[c]; landN++;
+            sumE += P - runoff[c];
+            if (RS?.Eland) sumEc += bilinear(climGrid, elandG, lat[c], lon[c]);
+        }
     }
     // (the kept snow's way out: down to where it melts, or to the sea — iceDischarge; its meltwater runs as the margin's)
     // (the world ocean — the sea joined to the largest body of water — its straits narrower than the mesh's cells opened
@@ -216,7 +222,22 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // the carve's micro-relief (which leaves z as it is), for the ice: what reaches it calves, what reaches a sunk basin
     // melts into it)
     let ocean0 = oceanMask(mesh, z);
+    // (the water a cell's own ground keeps from the sky — its rain less its own runoff: its land's evaporation and its kept
+    // snow. A hollow's water gathers every cell's runoff, its own cells' too, so what open water loses over a cell is its
+    // evaporation beyond what the land there already lost, E_open − E_land — not E_open less all the rain, which counted
+    // the cell's rain twice, once in its runoff (model review U1; 0.9–2.9 % of the land's runoff, all of it on lakes:
+    // tools/water-study.mjs). finish-basins.js closedBasins, finish-fsm.js and the erosion's closed basins read it as
+    // their lakes' sky water)
+    const skyKept = new Float32Array(n);
+    for (let c = 0; c < n; c++) skyKept[c] = pAnn[c] === pAnn[c] ? Math.max(0, pAnn[c]) - runoff[c] : NaN;
+    const TMP = globalThis.process?.env?.WATER_TMP_OLDLAKE; if (TMP === 'carve') skyKept.set(pAnn);   // TMP
     const D = iceDischarge(mesh, z, ocean0, liquid.store, runoff, cellKm2);
+    // (the water ledger's books over the land, km³/yr — climate/water.js: rain = evaporation + runoff + kept snow, per
+    // cell by construction; and against the climate's own land evaporation (rain.js Eland, the water its air got back
+    // from this land): closure = (rain − the climate's evaporation − runoff − kept) ÷ rain)
+    const k3 = x => Math.round(x * cellKm2 * 1e-6);
+    stats.waterLedger = { rainKm3: k3(sumP), evapKm3: k3(sumE), runoffKm3: k3(sumR), keptKm3: k3(sumK), climateEvapKm3: RS?.Eland ? k3(sumEc) : null,
+        closure: RS?.Eland && sumP > 0 ? +((sumP - sumEc - sumR - sumK) / sumP).toFixed(3) : null };
     sumR += D.meltMmKm2 / cellKm2; sumK = D.calvedMmKm2 / cellKm2 + D.heldMmKm2 / cellKm2;
     Object.assign(stats.snowStore, { meltKm3: Math.round(D.meltMmKm2 * 1e-6), calvedKm3: Math.round(D.calvedMmKm2 * 1e-6), heldKm3: Math.round(D.heldMmKm2 * 1e-6) });
     stats.runoffShare = sumP > 0 ? +(sumR / sumP).toFixed(3) : null;
@@ -229,7 +250,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     meander(mesh, carveIn.micro, z, seed, F, fade);
     const straits0 = openStraits(mesh, z, ocean0, F);
     if (straits0.opened) ocean0 = oceanMask(mesh, z);
-    const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F, ocean0);
+    const B = closedBasins(mesh, z, runoff, pet, skyKept, cellKm2, F, ocean0);
     stats.closedBasins = B.basins;
     stats.cutOffSeas = B.seas;
     const before = z.slice();
@@ -276,8 +297,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     if (EP?.at === 'early' || EP?.at === 'both') {
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: pAnn, closedOf: (lm, g, f, sea, flood) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood) }, EP, terrainMesh, eroder.solve)
-            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean0, flood) }, EP);
+        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood) }, EP, terrainMesh, eroder.solve)
+            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean0, flood) }, EP);
         lap('erosion');
         census('after erosion', ocean0);
     }
@@ -285,7 +306,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff, pet }, F);
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: TMP === 'icemelt' ? Float32Array.from(skyKept, (k, c) => pAnn[c] - k) : runoff, pet }, F);   // TMP
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;
     let basinKm2 = 0, basinMaxKm = 0;
@@ -329,7 +350,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
         census('after late erosion', ocean);
@@ -343,7 +364,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
     // (Fill-Spill-Merge on the erosion's ground: finish-fsm.js. Without the erosion, a study switch, it gives ~2.5× Earth's lakes)
-    const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, frozen: liquid.frozen, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
+    const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, skyKept: TMP === 'fsm' ? pAnn : skyKept, frozen: liquid.frozen, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (the sea again, after the rivers' gorges)
@@ -462,31 +483,32 @@ function roughen(mesh, z, seed, F, fade) {
 }
 
 /** Per month (12 fields each, on the climate grid): the share of a year's runoff that comes in that month, and how dry the
- *  month is (0 where rain meets its potential evaporation, or the ground is frozen; 1 without rain). Each month's water —
- *  rain, and snow kept until it melts — less a share of its potential evaporation; a share of that (more where it is
- *  humid) seeps into the ground, which drains back into the rivers slowly (baseflowMonths: a dry season's flow dwindles
- *  month by month). Three years, from dry ground: the store and the snow settle to their yearly round. */
+ *  month is (0 where rain meets its potential evaporation, or the ground is frozen; 1 without rain). The water ledger's
+ *  months (climate/water.js) at the grid's land height: its snow, the year's Budyko evaporation run through the soil, and
+ *  the spill's share through the ground draining back slowly. A place that runs no water of its own (no month thaws, or
+ *  its rain all evaporates) times what reaches it from above — the ice's meltwater, a river passing — by its months'
+ *  melt (°C above freezing), or, where none thaws, in its warmest month: the summer's. */
 function runoffMonths(months, petM, G, F) {
     const out = Array.from({ length: 12 }, () => new Float32Array(G)), arid = Array.from({ length: 12 }, () => new Float32Array(G));
-    const liquid = new Float64Array(12), flow = new Float64Array(12);
-    const drain = 1 - Math.exp(-1 / F.baseflowMonths);
+    const T12 = new Float64Array(12), P12 = new Float64Array(12), E12 = new Float64Array(12), liq = new Float64Array(12), R12 = new Float64Array(12), Ev = new Float64Array(12);
+    const o = { soilMm: SOIL_MM, baseShare: 0, baseMonths: F.baseflowMonths };
     for (let g = 0; g < G; g++) {
         let Pyr = 0, Eyr = 0;
-        for (let m = 0; m < 12; m++) { Pyr += Math.max(0, months.P[m * G + g]); Eyr += Math.max(5, petM[m * G + g]); }
-        const base = F.baseflowShare * smooth(0.2, 1, Pyr / Eyr);
-        let snow = 0, store = 0, sf = 0, sl = 0;
-        for (let cyc = 0; cyc < 3; cyc++) for (let m = 0; m < 12; m++) {
-            const T = months.T[m * G + g], P = Math.max(0, months.P[m * G + g]), E = Math.max(5, petM[m * G + g]);
-            let liq;
-            if (T < 0) { snow += P; liq = 0; } else { const melt = Math.min(snow, F.snowMeltMmPerC * T); snow -= melt; liq = P + melt; }
-            const quick = Math.max(0, liq - F.monthEvapShare * E), d = store * drain;
-            store += base * quick - d;
-            if (cyc === 2) { flow[m] = (1 - base) * quick + d; liquid[m] = liq; sf += flow[m]; sl += liq; }
-        }
         for (let m = 0; m < 12; m++) {
-            out[m][g] = sf > 0 ? flow[m] / sf : sl > 0 ? liquid[m] / sl : 1 / 12;
-            const T = months.T[m * G + g], E = Math.max(5, petM[m * G + g]);
-            arid[m][g] = T < 0 ? 0 : smooth(0, 1, (E - Math.max(0, months.P[m * G + g])) / E);
+            T12[m] = months.T[m * G + g]; P12[m] = Math.max(0, months.P[m * G + g]); E12[m] = Math.max(0, petM[m * G + g]);
+            Pyr += P12[m]; Eyr += Math.max(5, E12[m]);
+        }
+        o.baseShare = F.baseflowShare * smooth(0.2, 1, Pyr / Eyr);
+        snowYear(T12, P12, liq, F.snowMeltMmPerC);
+        let L = 0, Ep = 0;
+        for (let m = 0; m < 12; m++) { L += liq[m]; Ep += E12[m]; }
+        waterMonths(liq, E12, fuEvaporation(L, Math.max(F.petMinMm, Ep), F.budykoW), o, R12, Ev);
+        let sf = 0, warm = 0, top = 0;
+        for (let m = 0; m < 12; m++) { sf += R12[m]; warm += Math.max(0, T12[m]); if (T12[m] > T12[top]) top = m; }
+        for (let m = 0; m < 12; m++) {
+            out[m][g] = sf > 0 ? R12[m] / sf : warm > 0 ? Math.max(0, T12[m]) / warm : m === top ? 1 : 0;
+            const E = Math.max(5, E12[m]);
+            arid[m][g] = T12[m] < 0 ? 0 : smooth(0, 1, (E - P12[m]) / E);
         }
     }
     return { share: out, arid };
@@ -510,21 +532,23 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
         for (let m = 0; m < 12; m++) Tsl[m * G + g] = months.T[m * G + g] + gamma * href;
     }
     const rain = new Float32Array(n), store = new Float32Array(n), frozen = new Uint8Array(n), thaw = new Uint8Array(n), bi = new Int32Array(4), bw = new Float64Array(4), cellKm2 = 4 * Math.PI * R * R / n;
+    const T12 = new Float64Array(12), P12 = new Float64Array(12), liq = new Float64Array(12);
     let keptKm3 = 0, keptKm2 = 0, frozenKm2 = 0;
     for (let c = 0; c < n; c++) {
         const P = pAnn[c];
         if (!(P === P)) { rain[c] = store[c] = NaN; continue; }
         corners(climGrid, lat[c], lon[c], bi, bw);
         const h = gamma * Math.max(0, z[c]);
-        let snow = 0, wet = 0, melt = 0, all = 0;
+        let all = 0, melt = 0;
         for (let m = 0, o = 0; m < 12; m++, o += G) {
-            const T = Tsl[o + bi[0]] * bw[0] + Tsl[o + bi[1]] * bw[1] + Tsl[o + bi[2]] * bw[2] + Tsl[o + bi[3]] * bw[3] - h;
-            const Pm = Math.max(0, months.P[o + bi[0]] * bw[0] + months.P[o + bi[1]] * bw[1] + months.P[o + bi[2]] * bw[2] + months.P[o + bi[3]] * bw[3]);
-            all += Pm;
-            if (T < 0) snow += Pm; else { wet += Pm; melt += F.snowMeltMmPerC * T; thaw[c]++; }
+            T12[m] = Tsl[o + bi[0]] * bw[0] + Tsl[o + bi[1]] * bw[1] + Tsl[o + bi[2]] * bw[2] + Tsl[o + bi[3]] * bw[3] - h;
+            P12[m] = Math.max(0, months.P[o + bi[0]] * bw[0] + months.P[o + bi[1]] * bw[1] + months.P[o + bi[2]] * bw[2] + months.P[o + bi[3]] * bw[3]);
+            all += P12[m];
+            if (T12[m] >= 0) { melt += T12[m]; thaw[c]++; }
         }
-        const share = all > 0 ? (wet + Math.min(snow, melt)) / all : 1, p = Math.max(0, P);
-        rain[c] = p * share; store[c] = p - rain[c];
+        const p = Math.max(0, P), k = all > 0 ? p / all : 0;
+        for (let m = 0; m < 12; m++) P12[m] = all > 0 ? P12[m] * k : p / 12;
+        store[c] = Math.min(p, snowYear(T12, P12, liq, F.snowMeltMmPerC)); rain[c] = p - store[c];
         if (!(melt > 0)) frozen[c] = 1;
         if (z[c] > 0) { if (store[c] > 0) { keptKm3 += store[c] * cellKm2 * 1e-6; keptKm2 += cellKm2; } if (frozen[c]) frozenKm2 += cellKm2; }
     }
@@ -604,12 +628,16 @@ function iceDischarge(mesh, z, ocean, store, runoff, cellKm2) {
  * skips: it is the grid's, at the grid's land height (a cell above or below it keeps its grid's — the cold of height
  * lowers Δ/(Δ + γ), but its sunnier, thinner air raises the radiation); no wind or dryness of the air (Penman's
  * aerodynamic term: a desert's air evaporates more than its sunlight alone allows, ~1.3–1.5 × Priestley–Taylor in arid
- * lands, Shuttleworth 1993). Without the rain stage's PET (an anchor source with no physics) the temperature's (FINISH
- * petBaseMm + petPerC·T, the cover's).
+ * lands, Shuttleworth 1993). Without the rain stage's PET (an anchor source with no physics) the same law from the
+ * month's sunlight and temperature (climate/water.js monthPET).
  */
 function potentialMonths(res, G, F) {
     const PET = res.stages?.rain?.PET, out = new Float32Array(12 * G);
-    if (!PET) { for (let i = 0; i < 12 * G; i++) out[i] = (F.petBaseMm + F.petPerC * res.months.T[i]) / 12; return out; }
+    if (!PET) {
+        const w = res.grid.w, h = res.grid.h;
+        for (let g = 0; g < G; g++) { const la = 90 - (Math.floor(g / w) + 0.5) * 180 / h; for (let m = 0; m < 12; m++) out[m * G + g] = monthPET(la, m, res.months.T[m * G + g]); }
+        return out;
+    }
     const K = res.anchorMonths.length, M = interpolationMatrix(K, res.anchorMonths[0], 0);
     for (let g = 0; g < G; g++) for (let m = 0; m < 12; m++) {
         let e = 0;

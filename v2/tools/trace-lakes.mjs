@@ -55,7 +55,7 @@ rows.forEach((R, i) => { if (R.bodies) console.log(`  ${NAMES[i].padEnd(13)} ${(
 top.sort((a, b) => b.km2 - a.km2);
 for (const t of top.slice(0, 24)) console.log(`  ${(t.km2 / 1e3).toFixed(0).padStart(5)}K ${NAMES[t.src].padEnd(12)} ${t.lat.toFixed(1)},${t.lon.toFixed(1)} level ${(1000 * t.lev).toFixed(0)} m, depth mean ${(1000 * t.depth).toFixed(0)} max ${(1000 * t.max).toFixed(0)} (pre-carve mean ${(1000 * t.depthBefore).toFixed(0)})` + (t.h ? `; hollow ${(t.h.km2 / 1e3).toFixed(0)}K level ${(1000 * t.h.level).toFixed(0)} floor ${(1000 * t.h.floor).toFixed(0)} now ${t.h.levelNow == null ? '-' : (1000 * t.h.levelNow).toFixed(0)} ${t.h.lake ? 'lake' : 'nolake'}${t.h.sea ? ' sea' : ''}${t.h.old ? ' old' : ''}${t.h.glacial ? ' glac' : ''}${t.h.closed ? ' closed' : ''} in ${Math.round(t.h.inflow)}` : ''));
 if (process.argv.includes('--network')) {
-    const { tAnnual, pAnnual } = fin.climate.cell, pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+    const { tAnnual, pAnnual } = fin.climate.cell, pet = c => fin.layers?.pet?.[c] ?? 0 /* (the finish's own potential evaporation: the climate's Priestley–Taylor, debug layer) */;
     console.log('network: ' + describe(networkShape({ mesh, recv: fin.layers.recv, land: c => !ocean[c], z: fin.z, lake, arid: c => pAnnual[c] < 0.5 * pet(c) })));
 }
 process.exit(0);

@@ -63,7 +63,7 @@ const off = c => lake[c] === Water.FRESH && !ice[c] && !(basin[c] > 0.05) && lak
     }
 }
 const W = fin.stats.water, LW = landWater(fin, simMesh, frame), pct = v => +(100 * v / land).toFixed(3);
-const { tAnnual, pAnnual } = fin.climate.cell, pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+const { tAnnual, pAnnual } = fin.climate.cell, pet = c => fin.layers?.pet?.[c] ?? 0 /* (the finish's own potential evaporation: the climate's Priestley–Taylor, debug layer) */;
 const net = networkShape({ mesh, recv: fin.layers.recv, land: c => !ocean[c], z, lake, arid: c => pAnnual[c] < 0.5 * pet(c) });
 const out = { label: arg('--label', erode ?? 'base'), seed: SEED, time: TIME, cells: CELLS, seconds: +seconds.toFixed(1),
     lakeShare: +(100 * W.lakeShare).toFixed(2), lakes: pct(fresh + salt), fresh: pct(fresh), salt: pct(salt), pan: pct(pan), openFreeNonGlacial: pct(openFree), openFree1000: pct(openBig), onLand: +(100 * LW.onLandKm2 / LW.landKm2).toFixed(2),

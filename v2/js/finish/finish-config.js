@@ -6,7 +6,7 @@
 // 4.1 ± 1.5 mm d⁻¹ K⁻¹ over 66 glaciers (Braithwaite 2008, J. Glaciol. 54: 437), × 30 days — the climate's own rate
 // (climate/rain.js MELT_MM_PER_C_MONTH, 120). One rate for the rivers' seasons, the thaw gate and the cover's snow (lane
 // polar, 2026-11-05; until then the finish's 90, ~3 mm d⁻¹ K⁻¹, uncited, against the climate's 120: model review U9).
-const SNOW_MELT_MM_PER_C = 120;
+import { SNOW_MELT_MM_PER_C, SOIL_MM } from '../climate/water.js';     // (the water ledger's: one snowmelt rate, one soil)
 
 export const FINISH = {
     // ── F1: warp and detail ──
@@ -189,12 +189,12 @@ export const FINISH = {
     // (the sea is the world ocean — the water below sea level joined to the largest body of it: finish.js oceanMask; until
     // 2026-10-27 any body over 250 000 km² holding water below 1 km — seaSeedKm2, seaDeepKm — was sea, full at sea level)
     wetShare: 0.3,              // a month is wet where its rain passes this share of its potential evaporation (or it freezes)
-    // each river's year: each month's runoff — rain, and snow kept until it melts (snowMeltMmPerC per °C above freezing, a
-    // month) — less a share of the month's potential evaporation (monthEvapShare); a share of it seeps into the ground
-    // (baseflowShare where it is humid, none in deserts) and drains back to the rivers slowly (baseflowMonths: the time a
-    // dry season takes to drain the ground to a third); big lakes even out what they pass on (lakeRegulation)
+    // each river's year: the water ledger's months (climate/water.js waterMonths) — each month's liquid water (rain,
+    // and snow kept until it melts, snowMeltMmPerC per °C above freezing, a month) through the soil, evaporating its share
+    // of the year's Budyko evaporation; what the full soil spills runs off, a share of it (baseflowShare where it is
+    // humid, none in deserts) through the ground, which drains back to the rivers slowly (baseflowMonths: the time a dry
+    // season takes to drain the ground to a third); big lakes even out what they pass on (lakeRegulation)
     snowMeltMmPerC: SNOW_MELT_MM_PER_C,
-    monthEvapShare: 0.8,
     baseflowShare: 0.5,
     baseflowMonths: 2.5,
     lakeRegulation: 0.6,
@@ -268,7 +268,7 @@ export const COVER = {
     leafWarm: [3, 10],          // …(trees leaf out later)…
     grassWet: [0.18, 0.6],      // …and wet enough (its rain and the soil's water ÷ its potential evaporation; grass…
     treeWetMonth: [0.1, 0.45],  // …trees, with deeper roots)
-    soilMm: 150,                // the water the soil holds through a dry spell
+    soilMm: SOIL_MM,            // the water the soil holds through a dry spell (the water ledger's, climate/water.js)
     lag: 0.4,                   // a month's look is this much the month before's (greening and browning take time)
     snowPhase: [2, -2],         // snow, not rain: from this °C (none) to this (all)
     snowMeltMmPerC: SNOW_MELT_MM_PER_C,     // snow melts this many mm a month per °C above freezing (the finish's one rate)

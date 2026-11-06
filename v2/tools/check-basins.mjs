@@ -17,6 +17,7 @@ import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { FRAME_FIELDS, TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
+import { zonalPETAt } from '../js/climate/water.js';
 import { lakeBalance, hollowLakes } from '../js/finish/finish-basins.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { Water } from '../js/finish/finish-hydro.js';
@@ -24,8 +25,10 @@ import { landWater } from './lib/land-water.mjs';
 import { trapEfficiency } from '../js/tectonics/step/rivers.js';
 
 const SEEDS = [626225, 777, 12345], MOMENTS = [300, 600, 950], SIM = 40000, MESH_SEED = 12345, CELLS = 160000;
-const F = FINISH, pet = tC => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tC);      // (finish.js: the land's potential evaporation, mm/yr)
-const openWater = (tC, rainMm) => Math.max(0, F.lakeEvapShare * pet(tC) - rainMm);       // (what a lake loses net of the rain on it)
+// (the land's potential evaporation, mm/yr: the water ledger's Priestley–Taylor at the latitude and temperature —
+// climate/water.js zonalPET, the climate's own law; and what a lake loses net of the rain on it)
+const F = FINISH, pet = (latDeg, tC) => Math.max(F.petMinMm, zonalPETAt(latDeg, tC));
+const openWater = (latDeg, tC, rainMm) => Math.max(0, F.lakeEvapShare * pet(latDeg, tC) - rainMm);
 
 /** A mesh that is a chain of N cells, each the neighbour of the next. */
 function chain(N) {
@@ -39,20 +42,20 @@ section('the balance against Earth’s closed seas');
 // fine enough for the Dead Sea's few hundred, room enough (500 000 km²) for the Caspian
 {
     const N = 50000, mesh = chain(N), z = Float32Array.from({ length: N }, (_, i) => -1 + i / N), A = 10;
-    const balance = (km3, tC, rainMm) => lakeBalance(mesh, 0, () => true, z, () => openWater(tC, rainMm) * A * 1e-6, km3).wet.length * A;
+    const balance = (km3, latDeg, tC, rainMm) => lakeBalance(mesh, 0, () => true, z, () => openWater(latDeg, tC, rainMm) * A * 1e-6, km3).wet.length * A;
     // the Caspian: the Volga's ~250 km³/yr and the other rivers' ~50 (Rodionov 1994), its air ~11–12 °C a year, ~200 mm of
-    // rain on it: it stands at ~371 000 km²
-    const caspian = balance(300, 11.5, 200);
+    // rain on it (at ~42° N): it stands at ~371 000 km²
+    const caspian = balance(300, 42, 11.5, 200);
     check('the Caspian: 300 km³/yr in, at its temperature and rain, balances within ×1.5 of its 371 000 km²', caspian > 371000 / 1.5 && caspian < 371000 * 1.5,
-        `${Math.round(caspian).toLocaleString()} km² (open water loses ${Math.round(openWater(11.5, 200))} mm/yr net; Earth ~1000 mm)`);
-    // the Dead Sea before 1960: the Jordan's ~1.3 km³/yr (Salameh & El-Naser 1999), ~24 °C, ~70 mm: ~1000 km²
-    const dead = balance(1.3, 24, 70);
+        `${Math.round(caspian).toLocaleString()} km² (open water loses ${Math.round(openWater(42, 11.5, 200))} mm/yr net; Earth ~1000 mm)`);
+    // the Dead Sea before 1960: the Jordan's ~1.3 km³/yr (Salameh & El-Naser 1999), ~24 °C, ~70 mm, 31.5° N: ~1000 km²
+    const dead = balance(1.3, 31.5, 24, 70);
     check('the Dead Sea before its river was drawn off: 1.3 km³/yr balances within ×1.6 of its ~1000 km²', dead > 1000 / 1.6 && dead < 1000 * 1.6,
-        `${Math.round(dead).toLocaleString()} km² (open water loses ${Math.round(openWater(24, 70))} mm/yr net; Earth 1.5–2 m)`);
-    // the Messinian Mediterranean: ~2.5 Mkm² at ~19 °C, ~500 mm of rain, its rivers (and the Paratethys) ~400 km³/yr. Cut off,
+        `${Math.round(dead).toLocaleString()} km² (open water loses ${Math.round(openWater(31.5, 24, 70))} mm/yr net; Earth 1.5–2 m)`);
+    // the Messinian Mediterranean: ~2.5 Mkm² at ~19 °C, ~500 mm of rain, ~38° N, its rivers (and the Paratethys) ~400 km³/yr. Cut off,
     // its equilibrium is a small share of its area, and it gets there — 1.5 km down — in a few thousand years (Hsü et al.
     // 1973; Blanc 2002; Ryan 2009: drawn down in 10³–10⁴ years)
-    const med = balance(400, 19, 500), loss = 2.5e6 * openWater(19, 500) * 1e-6 - 400, years = 2.5e6 * 0.7 * 1.5 / loss;
+    const med = balance(400, 38, 19, 500), loss = 2.5e6 * openWater(38, 19, 500) * 1e-6 - 400, years = 2.5e6 * 0.7 * 1.5 / loss;
     check('the Messinian Mediterranean: cut off, it balances at under a third of its 2.5 Mkm², drawn down 1.5 km in 10³–10⁴ years',
         med < 2.5e6 / 3 && years > 1e3 && years < 1e4, `balance ${Math.round(med / 1e3)}K km²; net loss full ${Math.round(loss)} km³/yr → 1.5 km (×0.7 for its narrowing) in ${Math.round(years).toLocaleString()} years`);
 }

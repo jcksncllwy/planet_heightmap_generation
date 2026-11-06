@@ -240,7 +240,9 @@ function treeScratch(n, m) {
  * @param {Float32Array} z        heights (km)
  * @param {Float32Array} runoff   runoff per cell (mm/year)
  * @param {Float32Array} pet      potential evaporation (mm/year)
- * @param {Float32Array} rain     rain (mm/year)
+ * @param {Float32Array} rain     the sky's water each cell's ground keeps (mm/year): its rain less its own runoff — what
+ *                                open water there nets its evaporation against, its runoff being in the inflow already
+ *                                (finish.js skyKept; the rain itself where no runoff is counted on the hollow's cells)
  * @param {number} cellKm2
  * @param {Uint8Array} ocean      the world ocean (finish.js oceanMask): the flood starts there, and only there
  * @param {{fill: Float32Array, parent: Int32Array, order: Int32Array, count: number}|null} [flood]  that flood, already done (the
@@ -299,7 +301,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
     // runoff runs down the flood's way back toward the sea, gathering; a hollow holds what reaches its cells, and passes
     // on at its outlet (the cell of it reached first) only what its lakes do not evaporate — so a full lake's overflow
     // feeds the hollow below it (km² · mm / year). What open water loses: its potential evaporation (F.lakeEvapShare of
-    // the land's), less the rain on it ──
+    // the land's), less the sky water its ground keeps (rain less its own runoff: the runoff is in q already) ──
     const evap = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c])) * cellKm2;
     const q = new Float64Array(n), sink = new Uint8Array(n), base = new Float32Array(n), water = new Float32Array(n).fill(NaN), seas = [];
     const minCells = F.basinMinKm2 / cellKm2;

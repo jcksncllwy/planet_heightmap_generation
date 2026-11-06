@@ -30,6 +30,7 @@
 // is conserved), with Newton steps for the steep rain-out; a second pass over the year lets snow and soil carry
 // water from the wet months into the dry ones.
 
+import { SNOW_MELT_MM_PER_C, LATENT, PT_ALPHA, SURFACE_SW, NET_LW, ALBEDO_LAND, ALBEDO_SNOW, satSlope, PSYCHRO } from './water.js';
 import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { HelmholtzSolver } from './solver.js';
 import { atAnchors } from './inputs.js';
@@ -45,12 +46,7 @@ const R_MAX = 1.5;                            // column relative humidity beyond
 const S_MAX = 0.2;                            // largest spread of the column's relative humidity by storms
 const STABLE_MAX_K = 10;                      // stability (surface below its latitude's temperature) counted up to this …
 const UNSTABLE_MAX_K = 8;                     // … and instability (above it) up to this
-const MELT_MM_PER_C_MONTH = 120;              // degree-day snowmelt, ≈ 4 mm per °C per day
-const LATENT = 2.5e6;                         // J/kg, latent heat of vaporisation
-const PT_ALPHA = 1.26;                        // Priestley–Taylor coefficient
-const SURFACE_SW = 0.55;                      // share of the top-of-atmosphere sunlight reaching the ground (clouds, air)
-const NET_LW = 50;                            // W/m², net longwave the ground loses
-const ALBEDO_LAND = 0.15, ALBEDO_SNOW = 0.6;
+const MELT_MM_PER_C_MONTH = SNOW_MELT_MM_PER_C; // degree-day snowmelt, ≈ 4 mm per °C per day (the water ledger's, water.js)
 const BRUNT = 0.01;                           // 1/s, buoyancy frequency of the troposphere (Eady growth rate, flow blocking)
 const MAX_SHEAR = 4e-3;                       // 1/s, strongest vertical wind shear of a jet (≈ 40 m/s over 10 km)
 const STABLE_RELAX_S = 86400;                 // s, time for air to take on the stability of the surface beneath it
@@ -63,16 +59,11 @@ export function qSat(T) {
     return 0.622 * 6.112 * Math.exp(17.67 * t / (t + 243.5)) / 1013;
 }
 
-/** Evaporation from land with water `avail` and potential rate `ep` (same units) — Turc–Pike: the smaller, smoothly. */
-/** The slope Δ (hPa/K) of the saturation vapour pressure at air temperature T (°C) — Clausius–Clapeyron in Magnus'
- * form. Priestley–Taylor evaporates Δ/(Δ + γ) of the net radiation (γ = PSYCHRO: ~0.4 at 0 °C, ~0.6 at 15 °C, ~0.75 at
- * 25 °C); the finish's ice age cools its potential evaporation by it (finish-ice.js). */
-export const PSYCHRO = 0.66;
-export function satSlope(T) {
-    const tc = Math.max(-40, Math.min(45, T)), es = 6.112 * Math.exp(17.67 * tc / (tc + 243.5));
-    return es * 17.67 * 243.5 / ((tc + 243.5) ** 2);
-}
+// (Priestley–Taylor's constants and Δ, the land's potential evaporation: the water ledger's, water.js — one law for
+// the climate's land, the finish's and the timeline's basin estimate)
+export { satSlope, PSYCHRO } from './water.js';
 
+/** Evaporation from land with water `avail` and potential rate `ep` (same units) — Turc–Pike: the smaller, smoothly. */
 const turcPike = (avail, ep) => avail / Math.sqrt(1 + (avail / Math.max(1e-12, ep)) ** 2);
 
 /** The saturated column (mm) above air at T (°C): ≈ ρ q_s H with the water-vapour scale height H. */

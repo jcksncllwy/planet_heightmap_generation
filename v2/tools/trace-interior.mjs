@@ -22,7 +22,7 @@ const frame = await momentFrame(ROOT, { seed: SEED, cont: Number(arg('--cont', 3
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: true, F, onStage: () => {} });
 const { mesh, z, ocean, lake, lakeLevel } = fin, { lat, lon, hollow, hollowInfo, lakeSrc } = fin.layers, { adjOffset, adjList, numCells: n } = mesh, a = 4 * Math.PI * 6371 ** 2 / n;
-const { tAnnual, pAnnual } = fin.climate.cell, pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+const { tAnnual, pAnnual } = fin.climate.cell, pet = c => fin.layers?.pet?.[c] ?? 0 /* (the finish's own potential evaporation: the climate's Priestley–Taylor, debug layer) */;
 const land = c => !ocean[c] || lake[c] > 0, NAME = ['dry', 'fresh', 'salt', 'pan'];
 
 // (the continents: land joined by adjacency, its lakes in it)

@@ -8,9 +8,11 @@
 //  · rain: terrain-config.js rainByLatitude (rainAtLatitude: zonal means, the same table the history erodes by), less
 //    inland as the sea's moisture rains out on its way (× e^(−d / rainInlandKm), d the distance from the world ocean);
 //  · temperature: tempByLatitude (zonal annual means at sea level) less the lapse rate with height;
-//  · potential evaporation and runoff: the finish's own formulas (finish-config.js petBaseMm + petPerC × T; Budyko's
-//    curve in Fu's form, budykoW), so the two disagree only where the climate does (rain shadows, monsoons, continental
-//    interiors — what a zonal table cannot know).
+//  · potential evaporation and runoff: the water ledger's (climate/water.js): Priestley–Taylor from the latitude's
+//    sunlight and the temperature, its seasons the temperature stage's land response (zonalPET), and Budyko's curve in
+//    Fu's form (budykoW) — the finish's own, so the two disagree only where the climate does (rain shadows, monsoons,
+//    continental interiors — what a zonal table cannot know). Until 2026-11-06 the temperature's 300 + 55 T: 1/5–1/2 of
+//    the climate's own below 5 °C, its runoff 0.43–0.54 of the rain against the finish's 0.34–0.40 (tools/water-study.mjs).
 //
 // A sea that fills to its sill is drawn as a lake at its spill level (its hollow's ground above sea level drowned too);
 // one that keeps a lake below its sill, as that lake at its balance level and dry ground around it; one that dries, as
@@ -20,6 +22,7 @@
 import { rainAtLatitude } from './terrain-config.js';
 import { FINISH } from '../finish/finish-config.js';
 import { closedBasins } from '../finish/finish-basins.js';
+import { zonalPETAt, fuEvaporation } from '../climate/water.js';
 
 const R = 6371, D2R = Math.PI / 180;
 
@@ -42,12 +45,12 @@ export function zonalWater(mesh, z, cfg, F = FINISH, ocean = null) {
     // (the rain the zonal mean gives, less inland: what the winds bring from the sea rains out as they go — ocean is the
     // world ocean, its distance spread over the mesh's cells)
     const inland = ocean && cfg.rainInlandKm > 0 ? oceanDistance(mesh, ocean) : null, L = cfg.rainInlandKm;
-    const lapse = cfg.lapseRateCPerKm ?? 6.5, w = F.budykoW, iw = 1 / w;
+    const lapse = cfg.lapseRateCPerKm ?? 6.5;
     for (let c = 0; c < n; c++) {
         if (ocean && ocean[c]) continue;                          // (the world ocean's cells: the balance never reads them)
-        const P = inland ? Z.rain[c] * Math.exp(-inland[c] / L) : Z.rain[c], E0 = Math.max(F.petMinMm, F.petBaseMm + F.petPerC * (Z.temp[c] - lapse * Math.max(0, z[c])));
+        const P = inland ? Z.rain[c] * Math.exp(-inland[c] / L) : Z.rain[c], E0 = Math.max(F.petMinMm, zonalPETAt(Z.lat[c], Z.temp[c] - lapse * Math.max(0, z[c])));
         rain[c] = P; pet[c] = E0;
-        if (P > 0) { const f = E0 / P; runoff[c] = Math.max(0, P - P * (1 + f - Math.pow(1 + Math.pow(f, w), iw))); }
+        runoff[c] = P > 0 ? P - fuEvaporation(P, E0, F.budykoW) : 0;
     }
     return { rain, pet, runoff };
 }
@@ -68,12 +71,12 @@ function oceanDistance(mesh, ocean) {
 let zonal = null;
 function zonalOf(mesh, cfg) {
     if (zonal?.mesh === mesh && zonal.cfg === cfg) return zonal;
-    const n = mesh.numCells, xyz = mesh.xyz, rain = new Float32Array(n), temp = new Float32Array(n);
+    const n = mesh.numCells, xyz = mesh.xyz, rain = new Float32Array(n), temp = new Float32Array(n), lats = new Float32Array(n);
     for (let c = 0; c < n; c++) {
         const lat = Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2]))) / D2R;
-        rain[c] = rainAtLatitude(lat, cfg); temp[c] = tempAtLatitude(lat, cfg);
+        rain[c] = rainAtLatitude(lat, cfg); temp[c] = tempAtLatitude(lat, cfg); lats[c] = lat;
     }
-    return (zonal = { mesh, cfg, rain, temp });
+    return (zonal = { mesh, cfg, rain, temp, lat: lats });
 }
 
 /**
@@ -94,7 +97,9 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH) 
     for (let c = 0; c < n; c++) zz[c] = z[c] - seaLevelKm;
     const ocean = water.ocean ?? null;
     const { rain, pet, runoff } = zonalWater(mesh, zz, cfg, F, ocean);
-    const B = closedBasins(mesh, zz.slice(), runoff, pet, rain, cellKm2, F, ocean ?? oceanOf(water, n));
+    const kept = new Float32Array(n);                                 // (the sky water each cell's ground keeps: closedBasins)
+    for (let c = 0; c < n; c++) kept[c] = rain[c] - runoff[c];
+    const B = closedBasins(mesh, zz.slice(), runoff, pet, kept, cellKm2, F, ocean ?? oceanOf(water, n));
     const cut = new Uint8Array(n), dry = new Uint8Array(n), paintKm = Float32Array.from(z), seas = [];
     for (const S of B.seas) {
         const id = S.id, level = S.levelKm;

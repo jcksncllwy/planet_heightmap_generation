@@ -309,7 +309,7 @@ section('the network’s shape');
     const nets = [
         ['the timeline’s carve (640K)', networkShape({ mesh: T.tm, recv: T.receivers, land, z: T.heightKm })],
         ['Add detail’s rivers (640K)', networkShape({ mesh: fin.mesh, recv: fin.layers.recv, land: c => !fin.ocean[c], z: fin.z, lake: fin.lake,
-            arid: c => pAnnual[c] < 0.5 * Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]) })],
+            arid: c => pAnnual[c] < 0.5 * fin.layers.pet[c] })],     // (dry: under half its potential evaporation — the finish's own, the climate's Priestley–Taylor)
     ];
     for (const [name, S] of nets) {
         report(`${name}: Hack's exponent h (main stream length ∝ area^h)`, S.hack.h, { earth: [0.5, 0.6], source: 'holds through the cycle (a network\'s geometry, not a snapshot): h ≈ 0.6 (Hack 1957); 0.57 ± 0.03 (Rigon et al. 1996, recalled); toward 0.5 for the largest basins (Mueller 1973, recalled)',

@@ -43,6 +43,14 @@ const budyko = (P, E0, w) => P > 0 ? Math.max(0, P - P * (1 + E0 / P - (1 + (E0 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const BANDS = [-Infinity, -5, 5, 15, 22, Infinity];
 
+// (the finished lakes by kind: km² and bodies — fresh, salt, ice-dammed (flood) …; Water codes, finish-hydro.js)
+function lakeKinds(fin) {
+    const n = fin.mesh.numCells, km2 = 4 * Math.PI * 6371 ** 2 / n, out = {};
+    for (let c = 0; c < n; c++) if (fin.lake[c]) out[fin.lake[c]] = (out[fin.lake[c]] || 0) + km2;
+    for (const k in out) out[k] = Math.round(out[k] / 1e3);
+    return out;
+}
+
 for (const run of arg('--runs', '831576@430').split(',')) {
     const [seed, time] = run.split('@').map(Number), t0 = performance.now();
     const frame = await momentFrame(ROOT, { seed, cont: CONT, sim: SIM, time });
@@ -162,5 +170,6 @@ for (const run of arg('--runs', '831576@430').split(',')) {
             gapKm3: toKm3(S.P - S.Eclim - S.Rfin - S.kept), gapShare: r3((S.P - S.Eclim - S.Rfin - S.kept) / S.P),
             frontalShare: pr > 0 ? r3(fr / pr) : null, lakeKkm2: r0(lakeKm2 / 1e3), lakeDoubleKm3: r0(dbl), lakeRainKm3: r0(lakeRain),
             lakeDoubleOverRunoff: r3(dbl / Math.max(1e-9, S.Rfin * km2 * 1e-6)) },
-        snowStore: st.snowStore, water: { toSea: st.water?.toSeaShare, toBasins: st.water?.toBasinsShare, lost: st.water?.lostShare } }));
+        snowStore: st.snowStore, water: { toSea: st.water?.toSeaShare, toBasins: st.water?.toBasinsShare, lost: st.water?.lostShare },
+        census: st.water?.census ?? null, lakes: lakeKinds(fin), ledger: st.waterLedger ?? null, floods: st.floods ?? st.ice?.floods ?? null }));
 }

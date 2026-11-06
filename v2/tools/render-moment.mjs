@@ -119,7 +119,7 @@ console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages m
 // (--network: the finished rivers' shape against Earth's — tools/lib/river-network.mjs; arid where rain is under half the
 // potential evaporation)
 if (NETWORK) {
-    const { tAnnual, pAnnual } = fin.climate.cell, pet = c => Math.max(F.petMinMm, F.petBaseMm + F.petPerC * tAnnual[c]);
+    const { tAnnual, pAnnual } = fin.climate.cell, pet = c => fin.layers?.pet?.[c] ?? 0 /* (the finish's own potential evaporation: the climate's Priestley–Taylor, debug layer) */;
     console.log('network (the finished rivers): ' + describe(networkShape({ mesh: fin.mesh, recv: fin.layers.recv, land: c => !fin.ocean[c], z: fin.z, lake: fin.lake, arid: c => pAnnual[c] < 0.5 * pet(c) })));
 }
 
