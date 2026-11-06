@@ -5,8 +5,9 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, seaDepthKm, filledSeaDepthKm, seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, SEDIMENT_LOAD_FACTOR, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
-import { seaLevel, liftRefKm } from './sea-level.js';
+import { Margin, filledSeaDepthKm, columnModel, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
+import { liftRefKm } from './sea-level.js';
+import { landMask, crustColumnKm, fillPockets } from './land-mask.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
@@ -226,41 +227,12 @@ function plateCoasts(simMesh, A, land, dist, coastKind, carried, frame, pocketKm
     return out;
 }
 
-/** Is world cell w sea floor its rivers have filled to sea level (step/sea-fill.js)? */
 /** Does the sea beside this coast lie on the start world's placeholder floor? */
 function floorUndated(frame, w, simMesh) {
     const { adjOffset, adjList } = simMesh;
     for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (frame.owner[nb] >= 0 && frame.type[nb] === CrustType.OCEAN && frame.formedAt[nb] < 0) return true; }
     return false;
 }
-function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
-
-// a crust cell's own column, as the continental platform reckons it (deriveRecords): its kind as formed (an arc by its
-// volcanoes' crust and its quiet) and its thickening or thinning since (lift), the start world's swells and the
-// sediment the history's rivers laid on it. Against the land's swell reference; the swell itself is added by the caller
-function crustColumnKm(frame, cfg, CM, w) {
-    const type = frame.type[w];
-    let h, lift;
-    if (type === CrustType.ARC) {
-        // an island arc stands on the crust its volcanoes added while its slab fed them, by isostasy, hot while
-        // active and cooling, sinking and worn down once silent (tectonics/measure.js arcSurfaceKm): a young arc a
-        // submerged ridge its volcanoes break (the Marianas, Tonga), a long-fed one land (Japan), a remnant arc a
-        // drowned ridge (the Kyushu–Palau Ridge). (Was by its age, and by its distance from a continent: an arc
-        // stranded far from its trench stood as high as a live one — rings of land round the basins behind them)
-        h = frame.flags[w] & CrustFlag.MARGIN_ISLE ? cfg.foreArcIsleKm : arcSurfaceKm(frame.arcKm[w], frame.time - frame.arcAt[w]);
-        // (its thickening by belts: an arc's recorded thickening is mostly its own growth, already in its crust)
-        lift = CM.slope[1] * ARC_ROOT_SHARE * Math.max(0, frame.rootKm[w]);
-    } else {
-        // (a continent's or a craton's column: its kind as formed, CM.ref, and its crust thickened or thinned since. A sea
-        // closed off too small to keep — ocean crust under the land, unfilled — stands as a lowland platform, an ordinary
-        // continent's column as formed)
-        h = CM.ref[type === CrustType.OCEAN ? CrustType.CONTINENT : type];
-        lift = CM.slope[type] * frame.rootKm[w];
-    }
-    lift = Math.fround(lift + frame.baseKm[w]);                         // (the start world's swells, as worn so far; as the platform stores it)
-    return { h: h + lift + (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR, lift };
-}
-
 /** The area (km²) of the body of sea each sea cell belongs to (connected non-land cells); 0 on land. */
 function seaAreas(simMesh, land) {
     const { adjOffset, adjList, numCells: n } = simMesh, cellKm2 = 4 * Math.PI * R * R / n;
@@ -295,22 +267,6 @@ function landmasses(simMesh, land) {
         perCoastKm.push(queue.length * cellKm2 / Math.max(1, coast * edgeKm));
     }
     return { of, perCoastKm };
-}
-
-/** Sea pockets smaller than `maxKm2` (connected non-land cells enclosed by land) become land, in place. */
-function fillPockets(simMesh, land, maxKm2) {
-    const { adjOffset, adjList, numCells: n } = simMesh, maxCells = maxKm2 / (4 * Math.PI * 6371 * 6371 / n);
-    if (maxCells < 1) return;
-    const seen = new Uint8Array(n), members = [];
-    for (let s = 0; s < n; s++) {
-        if (land[s] || seen[s]) continue;
-        members.length = 0; members.push(s); seen[s] = 1;
-        for (let i = 0; i < members.length; i++) {
-            const c = members[i];
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!land[nb] && !seen[nb]) { seen[nb] = 1; members.push(nb); } }
-        }
-        if (members.length < maxCells) for (const c of members) land[c] = 1;
-    }
 }
 
 /** Kinds of coast, for shelf / plain / slope widths (terrain-config.js `margins`). */
@@ -349,63 +305,10 @@ const plainOf = (m, mature) => (m.youngPlainKm === undefined ? m.plainKm : m.you
 export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(frame, simMesh)) {
     const n = simMesh.numCells, { xyz, adjOffset, adjList } = simMesh, time = frame.time;
     const noise = new SimplexNoise(seed * 13 + 5);
-    const land = new Uint8Array(n);
     const arc = new Uint8Array(n), craton = new Uint8Array(n);
-    for (let w = 0; w < n; w++) {
-        land[w] = frame.owner[w] >= 0 && (frame.type[w] !== CrustType.OCEAN || filledUp(frame, w)) ? 1 : 0;   // (an enclosed sea filled to sea level is lowland)
-    }
-    fillPockets(simMesh, land, cfg.pocketSeaKm2);
-    // the mantle's swell under every cell, the land's and the sea floor's, and the sea's level that answers it and the
-    // sea floor's age (terrain/sea-level.js): absolute — a supercontinent on its own warm mantle stands high as a whole,
-    // and the sea falls against it (developer, 8b round 6, had it relative to the land's mean, so that a continent sitting
-    // still did not lift every height; today's heights are now its datum instead)
-    // (the land's share is read at each point from the smooth swell field — synthesize.js — not baked into the platform
-    // per cell, where the land's corners would step it at the cell's scale and a low coast would follow the steps)
-    let sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);
+    // the land and the sea, and the sea's level (terrain/land-mask.js: the one mask the history's rivers read too)
+    let { land, sl, seaColKm, dryHollow } = landMask(frame, simMesh, cfg);
     const swellSeaRef = cfg.mantleSwellKm * cfg.mantleSwellSeaRef;
-    // a sediment-filled sea whose floor the mantle's swell has lifted above the sea: dry land — a lowland plain — though its
-    // fill fell short of the room the history gives it (step/sea-fill.js: it reckons the floor's subsidence, not the
-    // swell). Read as sea, its floor stood above the sea inside its own coast, and the margin's shelf and slope drawn down
-    // from that coast left a moat round it (branch unified)
-    const lifted = w => frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && !land[w] && frame.seaFillKm?.[w] > 0 && frame.formedAt[w] >= 0
-        && sl.swellKm[w] - swellSeaRef - (seaDepthKm(time - frame.formedAt[w]) - frame.seaFillKm[w] / SEDIMENT_LOAD_FACTOR) >= sl.seaKm;
-    let raised = 0;
-    for (let w = 0; w < n; w++) if (lifted(w)) { land[w] = 1; raised++; }
-    if (raised) sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);         // (the sea's level, with them as land)
-    // land is decided by height, not by the kind of crust (Jackson's ruling, 2026-11-03): any crust — continent, arc or
-    // rifted floor — whose own column (crustColumnKm, with the mantle's swell) stands below the sea's level is sea where
-    // it joins the open ocean: flooded from the sea over the cells below it. The threshold is the sea's level itself, not
-    // the shelf break: ground between the two that joins the sea is drowned (a shelf is graded to wave base below the
-    // water, not above it), and the margin's shelf ramp is drawn from the new coast. Its floor is its own column, not a
-    // ridge's by age (seaColKm). Thinned continent read as land (Red Sea and Gulf of California floors, 1–3 km down;
-    // young submerged arcs, 2–3 km down) was drawn on the land side with a shelf ramped up to sea level over it: blotchy,
-    // lacy shelves and green strips (lane visual5, rifton-report known bug 2; Jackson's 460 bays). Ground below the sea
-    // with no way to it stays land, a closed hollow (dryHollow): the Dead Sea's, the Caspian's, Qattara's, Turpan's —
-    // whether it holds a lake, a salt pan or nothing is the water's balance (the finish's water pass), not this
-    const seaColKm = new Float32Array(n).fill(NaN), dryHollow = new Uint8Array(n);
-    {
-        // (each cell against the swell's reference for its own crust, as synthesize.js draws it — liftRefKm: an island arc
-        // against the sea floor's, the rest against the land's; until 2026-11-05 every cell was held to the land's, so a pure
-        // arc was flooded as if it stood mantleSwellKm × (land − sea ref) ≈ 0.27 km lower than it is drawn)
-        const CM0 = columnModel(cfg), fillAt = w => frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0;
-        const below = new Float32Array(n).fill(NaN);           // (the column, for land standing below the sea; NaN elsewhere)
-        for (let w = 0; w < n; w++) {
-            if (!land[w] || frame.owner[w] < 0 || fillAt(w)) continue;          // (a filled sea's plain is graded to the sea's level)
-            const col = crustColumnKm(frame, cfg, CM0, w).h, top = col + Math.max(0, frame.upliftKm[w]);
-            if (top + sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0) < sl.seaKm) below[w] = col;
-        }
-        const queue = []; let drowned = 0;
-        for (let w = 0; w < n; w++) if (!land[w]) queue.push(w);
-        for (let i = 0; i < queue.length; i++) {
-            const c = queue[i];
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-                const q = adjList[k];
-                if (land[q] && below[q] === below[q]) { land[q] = 0; seaColKm[q] = below[q]; queue.push(q); drowned++; }
-            }
-        }
-        for (let w = 0; w < n; w++) if (land[w] && below[w] === below[w]) dryHollow[w] = 1;
-        if (drowned) sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1);
-    }
     for (let w = 0; w < n; w++) {
         arc[w] = land[w] && frame.type[w] === CrustType.ARC ? 1 : 0;
         craton[w] = land[w] && frame.type[w] === CrustType.CRATON ? 1 : 0;
