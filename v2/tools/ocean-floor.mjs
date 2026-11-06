@@ -50,7 +50,8 @@ for (const seed of seeds) {
         surfaceKm(fr, simMesh, H, z);
         const heat = mantleWarmth(fr, simMesh, H), seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
         const P = pourOcean(simMesh, z, EARTH_OCEAN_KM3, scratch); scratch = P.scratch;
-        let N = 0, ownerless = 0, sZ = 0, sAge = 0, sLaw = 0, sFill = 0, sSwell = 0, sLip = 0, sBasin = 0, sG = 0, sP = 0, old = 0;
+        let N = 0, ownerless = 0, sZ = 0, sAge = 0, sLaw = 0, sFill = 0, sSwell = 0, sLip = 0, sBasin = 0, sG = 0, sP = 0, old = 0, sRise = 0, riseVol = 0, hasRise = !!f.riseKm3;
+        const cellKm2 = 4 * Math.PI * 6371 * 6371 / n;
         const ages = [];
         for (let w = 0; w < n; w++) {
             const o = fr.owner[w];
@@ -62,6 +63,7 @@ for (const seed of seeds) {
             sZ += z[w]; sAge += age; sLaw += law; sFill += fill; sSwell += H.mantleSwellKm * heat[w] - seaRef;
             sLip += o >= 0 && fr.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, fr.volcKm[w]) : 0;
             sBasin += o >= 0 ? (fr.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR : 0;
+            if (hasRise && o >= 0) { riseVol += f.riseKm3[w]; sRise += f.riseKm3[w] / cellKm2 / SEDIMENT_LOAD_FACTOR; }
             sG += gdh1(age); sP += ps77(age); if (age > 120) old++;
             ages.push(age);
         }
@@ -71,7 +73,7 @@ for (const seed of seeds) {
         let land = 0; for (let w = 0; w < n; w++) if (!P.sea[w]) land++;
         rows.push({ seed, t: Math.round(fr.time), share: N / n, ownerless: ownerless / N, zKm: sZ / N, age: meanAge, ageMedian: ages[N >> 1],
             old120: old / N, law: sLaw / N, fill: sFill / N, swell: sSwell / N, lip: sLip / N, basin: sBasin / N, gdh1: sG / N, ps77: sP / N,
-            lawAtEarthMean: sRescaled / N, levelKm: P.levelKm, land: land / n });
+            lawAtEarthMean: sRescaled / N, rise: hasRise ? sRise / N : NaN, riseVolKm3: riseVol, levelKm: P.levelKm, land: land / n });
     } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim, meshSeed: MESH_SEED, heights: {}, by: 'ocean-floor' } });
 }
 
@@ -83,7 +85,7 @@ for (const seed of seeds) {
     console.log(`  open floor ${pc(med('share'))} % of the surface (ownerless ${pc(med('ownerless'))} %), its surface ${f2(med('zKm'))} km; Earth's water stands at ${(1000 * med('levelKm')).toFixed(0)} m (p5 ${(1000 * q(R.map(r => r.levelKm), 0.05)).toFixed(0)}, p95 ${(1000 * q(R.map(r => r.levelKm), 0.95)).toFixed(0)}), land ${pc(med('land'))} %`);
     console.log(`  ages: mean ${med('age').toFixed(0)} Myr, median ${med('ageMedian').toFixed(0)}, older than 120 Myr ${pc(med('old120'))} %  (Earth mean 62–64, triangular tm 180: ~11 % beyond 120)`);
     console.log(`  depth by its law ${f2(med('law'))} km · same ages by GDH1 ${f2(med('gdh1'))} (−${f2(med('law') - med('gdh1'))}) · by PS77 ${f2(med('ps77'))} (−${f2(med('law') - med('ps77'))}) · model law at a 60 Myr mean ${f2(med('lawAtEarthMean'))} (−${f2(med('law') - med('lawAtEarthMean'))})`);
-    console.log(`  shallowing terms: sediment ${f2(med('fill'))} km · swell − sea ref ${f2(med('swell'))} · plateaus ${f2(med('lip'))} · basin fill ${f2(med('basin'))}`);
+    console.log(`  shallowing terms: sediment ${f2(med('fill'))} km · swell − sea ref ${f2(med('swell'))} · plateaus ${f2(med('lip'))} · basin fill ${f2(med('basin'))} · the rivers' rise if drawn ${f2(med('rise'))} (standing ${(med('riseVolKm3') / 1e6).toFixed(1)}e6 km³; Earth's marine sediment 3.01e8 km³, mean 0.72 km: Straume et al. 2019)`);
 }
 console.log(`\nEarth's ages through the model law ${f2(EARTH.modelLaw)} km, GDH1 ${f2(EARTH.gdh1)}, PS77 ${f2(EARTH.ps77)}`);
 if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ EARTH, rows }));
