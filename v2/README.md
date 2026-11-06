@@ -1131,6 +1131,10 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   now bounds the growth rate (30 % per 100 Myr) rather than the total. On main and here, the two plates grow
   identically frame by frame (Westland ~0.25 %/Myr, taking the passive ocean); they just stay two plates 20 Myr longer
   (weld at 128 Myr, not 108), so a total over that window measured the collision's length.
+  Since 2026-11-05 (lane defects) it counts what a plate takes from the passive background at half. On Earth a ridge's far
+  flank keeps half the new floor, but this model's background never accretes, so a slab-pulled plate takes the whole gap
+  behind it. This is a simplification until the background accretes (the ocean-lifecycle lane). The founder scene's margin is
+  an exact age tie, now drawn per history (`chooseFoundering`), and Westland sinking had grown it 52 % against 33 %.
 - Numbers (main fe78ce2 → branch). Largest plate's share, Phase 13, three seeds: 76 / 68 / 74 % → 44 / 59 / 48 %.
   600 Myr histories over 4 seeds: peak share 44 / 46 / 51 / 59 → 31 / 50 / 38 / 37 %; mean 24.5 → 21.6 %. All welds now
   come on a stall, 82–117 Myr after contact on average (was 41–74). Peak thickening in the histories is unchanged

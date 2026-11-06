@@ -43,6 +43,7 @@ import { EventKind, BoundaryKind } from '../model/world.js';
 import { piecesOf } from '../../core/mesh-bfs.js';
 import { exteriorSea } from '../ops/rift-partition.js';
 import { netTorques, stressAcross, cutAlong } from './plate-stress.js';
+import { makeRng } from '../../../../js/rng.js';
 
 /**
  * How eagerly a margin founders: q = √(age ÷ subductionInitAgeMyr) + squeeze ÷ founderStrength — the ocean's sinking weight
@@ -839,7 +840,16 @@ function chooseFoundering(world, A, B, segment) {
     const meanA = nA ? bornA / nA : Infinity, meanB = nB ? bornB / nB : Infinity;
     // (until 2026-11-05 the sums were compared and the earlier made the UPPER plate: on seeds 12345/2/3, 16 of 65 ocean-ocean
     // foundings sank the younger side — a quarter, the sums' differing cell counts deciding the rest)
-    return meanA <= meanB ? { upper: B, lower: A } : { upper: A, lower: B };
+    if (meanA !== meanB) return meanA < meanB ? { upper: B, lower: A } : { upper: A, lower: B };
+    // An exact tie (both sides formed in the same step — as a scene builds its basin, Phase 6b's founder scene on every
+    // seed) has no physical preference, so the side must not follow the argument order: until 2026-11-05 a tie always sank
+    // A, before that always B, and the founder scene only ever tested one polarity. A seeded draw instead, deterministic per
+    // history: hashed from the seed, the pair (in id order, so A and B may come either way) and the time, not taken from
+    // a stream, so no other draw of the history moves because a tie happened (cf. polarity.js overrides(), which alternates
+    // a cell-wise tie by parity: a whole segment needs one choice)
+    const lo = A.id < B.id ? A : B, hi = lo === A ? B : A;
+    const sinksLo = makeRng((world.seed ^ Math.imul(lo.id + 1, 0x9e3779b1) ^ Math.imul(hi.id + 1, 0x85ebca6b) ^ Math.imul(Math.round(world.time * 1000), 0xc2b2ae35)) >>> 0)() < 0.5;
+    return sinksLo ? { upper: hi, lower: lo } : { upper: lo, lower: hi };
 }
 
 /** Arm a trench on the upper plate's cells along the segment, and give it a starting slab. */

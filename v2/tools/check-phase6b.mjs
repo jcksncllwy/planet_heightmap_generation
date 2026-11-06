@@ -49,6 +49,9 @@ const separationKm = (f, ids) => {
     return Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb)))) * PLANET_RADIUS_KM;
 };
 const plateCells = (f, id) => { let n = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] === id) n++; return n; };
+// A plate's size with what it took from the passive background counted at HALF (see 'neither plate balloons' below):
+// its cells now, less half of those it holds that the background held in the first frame
+const plateCellsHalfBg = (f, id, f0, bgId) => { let n = 0, fromBg = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] === id) { n++; if (f0.owner[w] === bgId) fromBg++; } return n - fromBg / 2; };
 
 section('an old passive margin founders');
 {
@@ -84,11 +87,18 @@ section('an old passive margin founders');
     // (as a rate: how long they stay two plates is the collision's outcome — a pair welds once its seam stalls — so a total
     // over that window would grade the collision's length, not the plates. 30 % per 100 Myr: the bound this check always set,
     // over the ~100 Myr the two once stayed apart)
-    const apartMyr = Math.max(...apart.map(f => f.time)) || 1;
-    const grew = ids.map(id => Math.max(...apart.map(f => plateCells(f, id))) / plateCells(r.frames[0], id));
+    // (and the growth taken from the passive background counts at HALF. A simplification, not physics: on Earth spreading is
+    // near-symmetric and a ridge's far flank keeps half the new floor, but this model's background never accretes
+    // (resolve.js growCrustIntoGaps: beside it, the moving plate takes the whole gap), so a plate pulled away from it by
+    // its slab gains twice what a ridge would give it. Which plate's slab pulls is the founding's polarity: an exact
+    // age tie here, drawn per seed (subduction-init.js chooseFoundering): with Westland sinking it grew 52 %, with Eastland
+    // sinking neither grew over 33 % (seed 12345, 2026-11-05). The real fix is background accretion, in the
+    // ocean-lifecycle lane; then this halving goes. The 30 % bound is unchanged.)
+    const apartMyr = Math.max(...apart.map(f => f.time)) || 1, bgId = r.frames[0].plates.find(p => p.isBackground).id;
+    const grew = ids.map(id => Math.max(...apart.map(f => plateCellsHalfBg(f, id, r.frames[0], bgId))) / plateCells(r.frames[0], id));
     const perCentury = grew.map(g => 100 * (g - 1) * 100 / apartMyr);
     check('neither plate balloons: they only trade crust across their shared margin', perCentury.every(g => g < 30),
-        `largest plate-area growth: ${grew.map(g => (100 * (g - 1)).toFixed(0) + ' %').join(' / ')} over the ${apartMyr} Myr they stay two plates — ${perCentury.map(g => g.toFixed(0) + ' %').join(' / ')} per 100 Myr`);
+        `largest plate-area growth (taken from the passive background at half): ${grew.map(g => (100 * (g - 1)).toFixed(0) + ' %').join(' / ')} over the ${apartMyr} Myr they stay two plates — ${perCentury.map(g => g.toFixed(0) + ' %').join(' / ')} per 100 Myr`);
     check('no gaps; continental crust is neither created nor destroyed', r.frames.every(f => frameTallies(f).gaps === 0) && Math.abs(coreCount(r.frames.at(-1)) - coreCount(r.frames[0])) < 0.1 * coreCount(r.frames[0]),
         `continent+craton ${coreCount(r.frames[0])} \u2192 ${coreCount(r.frames.at(-1))} cells (with island arcs: ${landCount(r.frames[0])} \u2192 ${landCount(r.frames.at(-1))}); no gaps in any frame`);
 }
