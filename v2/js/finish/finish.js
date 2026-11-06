@@ -209,7 +209,12 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         if (z[c] > 0) { oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); sumK += liquid.store[c]; landN++; }
     }
     // (the kept snow's way out: down to where it melts, or to the sea — iceDischarge; its meltwater runs as the margin's)
-    const D = iceDischarge(mesh, z, liquid.store, runoff, cellKm2);
+    // (the world ocean — the sea joined to the largest body of water — its straits narrower than the mesh's cells opened
+    // first: a sea cut off from it is a closed basin, its level its water balance's — finish-basins.js; taken here, before
+    // the carve's micro-relief (which leaves z as it is), for the ice: what reaches it calves, what reaches a sunk basin
+    // melts into it)
+    let ocean0 = oceanMask(mesh, z);
+    const D = iceDischarge(mesh, z, ocean0, liquid.store, runoff, cellKm2);
     sumR += D.meltMmKm2 / cellKm2; sumK = D.calvedMmKm2 / cellKm2 + D.heldMmKm2 / cellKm2;
     Object.assign(stats.snowStore, { meltKm3: Math.round(D.meltMmKm2 * 1e-6), calvedKm3: Math.round(D.calvedMmKm2 * 1e-6), heldKm3: Math.round(D.heldMmKm2 * 1e-6) });
     stats.runoffShare = sumP > 0 ? +(sumR / sumP).toFixed(3) : null;
@@ -220,9 +225,6 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, liquid.rain[c]) / meanP) ** F.wetPower);
     meander(mesh, carveIn.micro, z, seed, F, fade);
-    // (the world ocean — the sea joined to the largest body of water — its straits narrower than the mesh's cells opened
-    // first: a sea cut off from it is a closed basin, its level its water balance's — finish-basins.js)
-    let ocean0 = oceanMask(mesh, z);
     const straits0 = openStraits(mesh, z, ocean0, F);
     if (straits0.opened) ocean0 = oceanMask(mesh, z);
     const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F, ocean0);
@@ -533,20 +535,20 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
  * (the mass balance of a sheet in its round: Cuffey & Paterson 2010, The Physics of Glaciers, ch. 4). Each cell's kept
  * snow (thawedWater's store, mm/year) goes down the land's steepest fall, gathering, from cell to kept cell, until it
  * reaches a cell whose own snow all melts — there it melts, and runs off from that cell, added to its runoff — or the sea
- * (ground at or below sea level: calved, booked, no river). A pit in the bed fills and spills over its lowest rim; what
+ * (the world ocean: calved, booked, no river; a sea cut off from it is land's, and takes the meltwater). A pit in the bed fills and spills over its lowest rim; what
  * a big frozen basin keeps (a flood of more than PIT_CELLS cells finds no way out) is held: booked too.
  * A shortcut, for the ice's own mass budget (model review U9) to replace: no ice dynamics (the ice takes the bed's fall,
  * not its surface's, and its divides are the bed's); the margin's melt is not limited by its warmth (all of it melts at
  * the first such cell, one cell wide); no time (the sheet neither grows nor shrinks).
  * @returns {{meltMmKm2: number, calvedMmKm2: number, heldMmKm2: number}}  the year's ice melted, calved and held (mm·km²; ×1e-6: km³)
  */
-function iceDischarge(mesh, z, store, runoff, cellKm2) {
+function iceDischarge(mesh, z, ocean, store, runoff, cellKm2) {
     const { adjOffset, adjList, numCells: n } = mesh;
     let k = 0;
-    for (let c = 0; c < n; c++) if (store[c] > 0 && z[c] > 0) k++;
+    for (let c = 0; c < n; c++) if (store[c] > 0 && !ocean[c]) k++;
     const kept = new Int32Array(k), flux = new Float64Array(n);
     k = 0;
-    for (let c = 0; c < n; c++) if (store[c] > 0 && z[c] > 0) { kept[k++] = c; flux[c] = store[c] * cellKm2; }
+    for (let c = 0; c < n; c++) if (store[c] > 0 && !ocean[c]) { kept[k++] = c; flux[c] = store[c] * cellKm2; }
     kept.sort((a, b) => z[b] - z[a]);
     let melt = 0, calved = 0, held = 0;
     const pits = [], pitFlux = [];
@@ -555,7 +557,7 @@ function iceDischarge(mesh, z, store, runoff, cellKm2) {
         let low = -1;
         for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (z[y] < z[c] && (low < 0 || z[y] < z[low])) low = y; }
         if (low < 0) { pits.push(c); pitFlux.push(f); }
-        else if (!(z[low] > 0)) calved += f;
+        else if (ocean[low]) calved += f;
         else if (store[low] > 0) flux[low] += f;
         else { runoff[low] += f / cellKm2; melt += f; }
     }
@@ -578,7 +580,7 @@ function iceDischarge(mesh, z, store, runoff, cellKm2) {
             if (out < 0) break;
             let x = out;                                                // (down from the rim's far side)
             for (;;) {
-                if (!(z[x] > 0)) { end = -2; break; }
+                if (ocean[x]) { end = -2; break; }
                 if (!(store[x] > 0)) { end = x; break; }
                 let low = -1;
                 for (let j = adjOffset[x]; j < adjOffset[x + 1]; j++) { const y = adjList[j]; if (z[y] < z[x] && (low < 0 || z[y] < z[low])) low = y; }
