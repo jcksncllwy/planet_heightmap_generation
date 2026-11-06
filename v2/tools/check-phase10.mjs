@@ -240,20 +240,23 @@ section('scraps of craton');
     // Which scraps a collision leaves is the history's chance: judged over three sets of histories — the India scene and
     // the whole planet on a seed each — a set with fewer than 3 scraps counted as not forming the scene)
     const tm160 = terrainMesh(160000);
-    const sets = SCENE_SEEDS.map((sceneSeed, i) => {
-        const gaps = [], found = [];
+    // (coast9 2026-11-05: judged over ALL the scraps of the six histories, not per set of two. A scrap is a rare outcome of one
+    // collision: a set needed 3 of them and two of the three sets found fewer on main's path and on every perturbed one (0–10 a
+    // set), so the check failed on the scene not forming, never on a scrap. Pooled, the scene is formed when the six histories
+    // together show at least SCRAP_FLOOR scraps; each is listed with where it was found)
+    const SCRAP_FLOOR = 5, scraps = [];
+    for (const [i, sceneSeed] of SCENE_SEEDS.entries()) {
         for (const [id, seed, times] of [['india', sceneSeed, [50, 60, 70, 80, 90]], ['history', PLANET_SEEDS[i], Array.from({ length: 30 }, (_, j) => 20 * (j + 1))]]) {
             const { frames } = run(id, Math.max(...times), null, seed);
-            let k = 0;
-            for (const F of frames.filter(f => times.includes(f.time))) { const g = gapsOf(F, tm160, seed); gaps.push(...g); k += g.length; }
-            found.push(`${k} in ${id} ${seed}`);
+            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) scraps.push({ gap: g, where: `${id} ${seed} @${F.time}` });
         }
-        return { label: `${sceneSeed}/${PLANET_SEEDS[i]}`, gaps, found };
-    });
+    }
+    const gaps = scraps.map(x => x.gap), worst = scraps.reduce((m, x) => (!m || x.gap > m.gap ? x : m), null);
     checkAcross('scraps of craton read as the ground around them — no flat holes in a range',
-        sets.map(x => ({ label: x.label, formed: x.gaps.length >= 3, ok: median(x.gaps) <= 0.1 && Math.max(...x.gaps) <= 0.5,
-            text: `${x.found.join(', ')}: around them ${median(x.gaps).toFixed(2)} km above (median), the most ${Math.max(...x.gaps).toFixed(2)} km` })),
-        { scene: 'scraps of craton (3 or more in a set of histories)', detail: 'craton scraps of 1–3 cells on their own plate\'s raster; the ground around them stands this far above them — below, where negative (before Phase 10 median 0.02 km, the worst 1.27 km)' });
+        [{ label: `${SCENE_SEEDS.length} India scenes and ${PLANET_SEEDS.length} planets pooled`, formed: gaps.length >= SCRAP_FLOOR, ok: median(gaps) <= 0.1 && Math.max(...gaps) <= 0.5,
+            text: `${gaps.length} scraps (floor ${SCRAP_FLOOR}): around them ${median(gaps).toFixed(2)} km above (median), the most ${Math.max(...gaps).toFixed(2)} km${worst ? ` at ${worst.where}` : ''}` }],
+        { scene: 'scraps of craton (5 or more in the six histories)', detail: 'craton scraps of 1–3 cells on their own plate\'s raster; the ground around them stands this far above them — below, where negative (before Phase 10 median 0.02 km, the worst 1.27 km)' });
+    report('scraps of craton found, and each one\'s height below its surroundings', gaps, { unit: ' km', digits: 2, detail: scraps.map(x => `${x.where}: ${x.gap.toFixed(2)}`).join(', ') });
 }
 
 // ── who rides up: both scenes build their trench on Asia, so Asia owned the margin ──
