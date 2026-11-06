@@ -148,5 +148,21 @@ out.monsoon = BOXES.map(([name, la0, la1, lo0, lo1, h]) => {
 table('Monsoon and winter-rain boxes — annual land P (mm) and local-summer-half share', ['box', 'P model', 'P obs', 'summer share model', 'summer share obs'],
     out.monsoon.map(b => [b.name, Math.round(b.modelAnnual), Math.round(b.obsAnnual), `${Math.round(100 * b.modelSummerShare)} %`, `${Math.round(100 * b.obsSummerShare)} %`]));
 
+// ── 5. High latitudes: land ≥ 60° by warmest month (°C, at the ground's height), model (grid land, its ice share) vs Beck ──
+const hiLat = { N: { m: [0, 0, 0, 0, 0], o: [0, 0, 0, 0, 0] }, S: { m: [0, 0, 0, 0, 0], o: [0, 0, 0, 0, 0] } };
+const binOf = (w) => (w < 0 ? 0 : w < 5 ? 1 : w < 10 ? 2 : 3);
+for (let c = 0; c < G; c++) {
+    const la = latOf(c); if (Math.abs(la) < 60 || !(landFrac[c] >= 0.5)) continue;
+    const h = la > 0 ? 'N' : 'S';
+    let wm = -Infinity, wo = -Infinity;
+    for (let m = 0; m < 12; m++) { wm = Math.max(wm, T.monthly[m * G + c]); const v = obs.t2m[m * G + c]; if (v === v) wo = Math.max(wo, v); }
+    hiLat[h].m[(T.iceFrac?.[c] || 0) >= 0.5 ? 4 : binOf(wm)] += km2(c);
+    if (wo > -Infinity) hiLat[h].o[binOf(wo)] += km2(c);
+}
+out.hiLat = hiLat;
+const pcs = (a) => { const s = a.reduce((x, y) => x + y, 0); return a.map(v => `${Math.round(100 * v / s)}`).join(' / '); };
+table('Land ≥ 60°: share of area by warmest month (<0 / 0–5 / 5–10 / >10 °C / model ice sheet), % — model on Earth vs Beck (Beck has no sheet class: its ice is the <0 bin)',
+    ['hemisphere', 'model', 'Beck'], ['N', 'S'].map(h => [h, pcs(hiLat[h].m), pcs(hiLat[h].o.slice(0, 4))]));
+
 console.log(`\n(N ${N}, climate ${(ms / 1000).toFixed(1)} s, ${K} anchors)`);
 if (JSON_OUT) fs.writeFileSync(JSON_OUT, JSON.stringify(out, null, 1));
