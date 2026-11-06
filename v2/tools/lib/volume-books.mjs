@@ -30,8 +30,15 @@ export function closure(r, per = 1200) {
     const stageGkm3 = Object.fromEntries(Object.entries(r.stages).map(([k, e]) => [k, g(e.vol * r.cellKm2)]));
     const worn = -(stageGkm3.heights ?? 0);               // the heights stage's net: rock worn off the crust (less the collapse that spreads a root)
     const supplied = g(B.riverSupplyKm3 ?? 0);
-    const sinks = { 'basin fill (hollows)': g(B.basinFillKm3 ?? 0), 'enclosed-sea fill': g(B.seaFillKm3 ?? 0), 'shelves': g(B.shelfKm3 ?? 0),
-        'trench wedge (prisms)': g(B.wedgeKm3 ?? 0), 'terrigenous sediment subducted': g(B.sedimentKm3 ?? 0) };
+    // (crustfu 7f430df adds the books that close the rivers' supply: riverSupplyKm3 = basin + sea + overflow + shelf + fan + rise.
+    // Read when present (the fan holds what the trench wedge and the subducted sediment were of it), absent they are the old
+    // five and the rest shows as unbooked — so this runs on a tree without them and closes on one with)
+    const closed = 'fanKm3' in B;
+    const sinks = closed
+        ? { 'basin fill (hollows)': g(B.basinFillKm3 ?? 0), 'enclosed-sea fill': g(B.seaFillKm3 ?? 0), 'enclosed-sea overflow': g(B.seaOverflowKm3 ?? 0), 'shelves': g(B.shelfKm3 ?? 0),
+            'trench fans': g(B.fanKm3 ?? 0), 'continental rise': g(B.riseKm3 ?? 0) }
+        : { 'basin fill (hollows)': g(B.basinFillKm3 ?? 0), 'enclosed-sea fill': g(B.seaFillKm3 ?? 0), 'shelves': g(B.shelfKm3 ?? 0),
+            'trench wedge (prisms)': g(B.wedgeKm3 ?? 0), 'terrigenous sediment subducted': g(B.sedimentKm3 ?? 0) };
     const placed = Object.values(sinks).reduce((a, v) => a + v, 0);
     return { stageGkm3, worn, supplied, sinks, placed, unbooked: worn - placed, suppliedUnbooked: supplied - placed,
         cells: Object.fromEntries(Object.entries(r.stages).map(([k, e]) => [k, { land: e.land * s, arc: e.arc * s }])), per };
