@@ -84,7 +84,8 @@ export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
 export function rockColumn(o, litho, G = GEOLOGY) {
     const { z, carved } = o, n = z.length, { reuse, meanK, ocean, lip } = litho.column, L = G.lithology, cut = new Float32Array(n), zBed = new Float32Array(n);
     for (let c = 0; c < n; c++) { cut[c] = Math.max(0, z[c] - carved[c]); zBed[c] = Math.min(z[c], carved[c]); }
-    const top = lithologyOf({ ...o, ocean, lip, reuse, meanK, belowKm: cut }, G)       // (the sea as the first read found it: the carve moves the coast little, and a second flood of 2.5M cells is 0.1 s), first = litho.kRock;
+    // (the sea as the first read found it: the carve moves the coast little, and a second flood of 2.5M cells is 0.1 s)
+    const top = lithologyOf({ ...o, ocean, lip, reuse, meanK, belowKm: cut }, G), first = litho.kRock;
     const here = new Float32Array(n), loose = new Float32Array(n), fine = new Float32Array(n), soft = Math.exp(L.erodeGain * (0.5 - L.hard[Rock.ALLUVIUM])) / meanK;
     for (let c = 0; c < n; c++) {
         const k = top.kRock[c];
