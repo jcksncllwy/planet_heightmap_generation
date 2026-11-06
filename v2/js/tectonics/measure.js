@@ -80,8 +80,21 @@ export const SEAMOUNT_KM = 1;
 /** An island is worn down this fast (km/Myr) once it stops erupting — and the sea floor under it keeps sinking. */
 export const ISLAND_EROSION_KM_PER_MYR = 0.15;
 
-/** Depth of ocean floor of a given age (km), by half-space cooling (Parsons & Sclater), flattening out on old floor. */
-export function seaDepthKm(crustAgeMyr) { return Math.min(6.4, 2.6 + 0.345 * Math.sqrt(Math.max(0, crustAgeMyr))); }
+/**
+ * Depth of ocean floor of a given age (km): GDH1, Stein & Stein 1992 (Nature 359: 123, eq. 2), fitted to the North
+ * Pacific's and the northwest Atlantic's sediment-corrected depths and heat flow — a cooling plate 95 km thick:
+ *   d = 2.600 + 0.365 √t            for t < 20 Myr (half-space: the young plate cools as if unbounded),
+ *   d = 5.651 − 2.473 e^(−0.0278 t)  beyond (the plate's base holds the heat in, and old floor flattens out).
+ * The two meet at 20 Myr (4.232 against 4.233 km). Until 2026-11-06 (lane sliders) this was half-space √t all the way
+ * to a 6.4 km cap at ~121 Myr (2.6 + 0.345 √t, after Parsons & Sclater 1977's young branch): floor older than ~70 Myr
+ * stood 0.2–0.8 km deeper than either plate model, and the open floor's mean 0.20–0.22 km deeper than GDH1 at its own
+ * ages (tools/ocean-floor.mjs, 3 seeds × 1200 Myr). The ridge, seaDepthKm(0) = 2.6 km, is unchanged, and with it the
+ * column's reference (columnModel's H0).
+ */
+export function seaDepthKm(crustAgeMyr) {
+    const t = Math.max(0, crustAgeMyr);
+    return t < 20 ? 2.6 + 0.365 * Math.sqrt(t) : 5.651 - 2.473 * Math.exp(-0.0278 * t);
+}
 
 // ── An island arc's crest, from its crust (2026-10-28, branch arcs). An arc is ocean lithosphere with crust added to it by
 // its volcanoes while its slab feeds them — 8 km at birth, 0.4 km/Myr while active, up to ~35 km (tectonics/config.js
