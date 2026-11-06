@@ -20,7 +20,7 @@
 
 import { CrustType, CrustFlag } from '../tectonics/model/crust.js';
 import { seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
-import { seaLevel, liftRefKm, liftedDry } from './sea-level.js';
+import { seaLevel, seaLevelAgain, liftRefKm, liftedDry } from './sea-level.js';
 
 /** Is world cell w sea floor its rivers have filled to sea level (step/sea-fill.js)? */
 export function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
@@ -72,7 +72,8 @@ export function fillPockets(simMesh, land, maxKm2) {
  * The frame is any view with its fields per world cell: owner, type, formedAt, flags, seaFillKm, basinFillKm, rootKm,
  * baseKm, upliftKm, arcKm, arcAt, mantleHeat (0–255), time — a snapshot (tectonics/snapshot.js), or the history's own
  * view of its plates (tectonics/step/rivers.js).
- * @param {Object} [out]  buffers to reuse: { land: Uint8Array, swellKm: Float32Array, seaColKm: Float32Array, dryHollow: Uint8Array }
+ * @param {Object} [out]  buffers to reuse: { land: Uint8Array, swellKm: Float32Array, seaColKm: Float32Array, dryHollow: Uint8Array,
+ *                        heat: Float32Array (the mantle's smoothed warmth; made here, and kept on out, if missing) }
  * @returns {{land: Uint8Array, sl: Object, seaColKm: Float32Array, dryHollow: Uint8Array}}
  *   land 1 / sea 0; sl the sea's level and the swell (sea-level.js seaLevel); seaColKm the column of crust drowned (NaN
  *   elsewhere); dryHollow 1 on land standing below the sea with no way to it
@@ -88,15 +89,15 @@ export function landMask(frame, simMesh, cfg, out = {}) {
     // sea floor's age (terrain/sea-level.js): absolute — a supercontinent on its own warm mantle stands high as a whole,
     // and the sea falls against it (developer, 8b round 6, had it relative to the land's mean, so that a continent sitting
     // still did not lift every height; today's heights are now its datum instead)
-    const swellKm = out.swellKm?.length === n ? out.swellKm : null;
-    let sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1, swellKm);
+    const swellKm = out.swellKm?.length === n ? out.swellKm : null, heat = out.heat?.length === n ? out.heat : (out.heat = new Float32Array(n));
+    let sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1, swellKm, heat);
     // a sediment-filled sea whose floor the mantle's swell has lifted above the sea: dry land — a lowland plain — though its
     // fill fell short of the room the history gives it (step/sea-fill.js: it reckons the floor's subsidence, not the
     // swell). Read as sea, its floor stood above the sea inside its own coast, and the margin's shelf and slope drawn down
     // from that coast left a moat round it (branch unified)
     let raised = 0;
     for (let w = 0; w < n; w++) if (!land[w] && liftedDry(frame, w, sl, cfg)) { land[w] = 1; raised++; }
-    if (raised) sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1, sl.swellKm);         // (the sea's level, with them as land)
+    if (raised) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);         // (the sea's level, with them as land)
     // land is decided by height, not by the kind of crust (Jackson's ruling, 2026-11-03): any crust — continent, arc or
     // rifted floor — whose own column (crustColumnKm, with the mantle's swell) stands below the sea's level is sea where
     // it joins the open ocean: flooded from the sea over the cells below it. The threshold is the sea's level itself, not
@@ -130,7 +131,7 @@ export function landMask(frame, simMesh, cfg, out = {}) {
             }
         }
         for (let w = 0; w < n; w++) if (land[w] && below[w] === below[w]) dryHollow[w] = 1;
-        if (drowned) sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1, sl.swellKm);
+        if (drowned) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);
     }
     return { land, sl, seaColKm, dryHollow };
 }

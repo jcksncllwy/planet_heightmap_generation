@@ -199,12 +199,18 @@ function coarseGraph(mesh) {
  * @param {Float32Array} [swellKm]  a buffer to write the swell to
  * @returns {{swellKm: Float32Array, seaKm: number, swellSeaKm: number, ridgeSeaKm: number, heatLand: number, heatSea: number, depthKm: number}}
  */
-export function seaLevel(frame, simMesh, cfg, isLand, swellKm = null) {
+export function seaLevel(frame, simMesh, cfg, isLand, swellKm = null, heatOut = null) {
     const n = simMesh.numCells, H = mantleWarmth(frame, simMesh, cfg);
+    if (heatOut) heatOut.set(H);
     swellKm ??= new Float32Array(n);
     for (let w = 0; w < n; w++) swellKm[w] = cfg.mantleSwellKm * H[w];
     return reckonSea(frame, simMesh, cfg, isLand, H, swellKm);
 }
+
+/** The sea's level again on the same frame once its land has changed (terrain/land-mask.js: a filled sea lifted dry,
+ *  land drowned): the mantle has not, so its heat (seaLevel's heatOut) and swell (sl.swellKm) are reused, not smoothed
+ *  again — the smoothing is most of a mask's cost on the history's river clock (2026-11-06: ~7 of ~20 ms at 40K). */
+export const seaLevelAgain = (frame, simMesh, cfg, isLand, heat, swellKm) => reckonSea(frame, simMesh, cfg, isLand, heat, swellKm);
 
 /** The sea's level over the heat H (smoothed) and its swell: seaLevel, once the swell is known. */
 function reckonSea(frame, simMesh, cfg, isLand, H, swellKm) {
