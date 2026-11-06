@@ -642,8 +642,10 @@ meshes (a committed derived artifact, `tools/data/earth-surface-*.i16`, `tools/m
 at −11 / −13 m over 29.9 / 30.1 % land (Earth 0 m, 29.2 %). On the model's own worlds the land, the level and the flooding
 are outcomes (`tools/ocean-history.mjs`, by stage of the cycle; lane report 2026-11-06): with Earth's crust (41 %) and
 water the land is 35–39 % (Earth 18–33 by stage), the continents little flooded, and the level swings 0.7–1.1 km over a
-cycle (Earth 0.2–0.3): the history's floor stands ~0.4–0.6 km deeper than Earth's (its ages, no abyssal sediment, few
-plateaus: `tools/ocean-floor.mjs`) and its drowned margins are a fraction of Earth's shelves — the missing physics, not
+cycle (Earth 0.2–0.3): the history's floor stands ~0.4–0.6 km deeper than Earth's (its ages, little abyssal sediment, few
+plateaus: `tools/ocean-floor.mjs`). The rivers' rise is drawn (2026-11-06): the rock they laid past an open margin's shelf
+(`riseKm3`, a frame field) shallows the floor it lies on, Airy-loaded, in the records' depth and the pour's ground — on the
+same frames it lifts the poured sea 165–182 m on average (183–241 m at 900–1200 Myr) and takes 0.4–0.9 points of land and its drowned margins are a fraction of Earth's shelves — the missing physics, not
 the water. Limits: one water body at equilibrium; no water held on land (ice sheets, ~2 % of the ocean, are not taken
 out yet); the ground is the history's per-cell column, not the finish's shelves.
 

@@ -6,7 +6,7 @@
 // ~today's level (Pangaea) to +150…+250 m (the Late Cretaceous, the Ordovician), a cycle's swing of ~0.2–0.3 km (Haq &
 // Al-Qahtani 2005; Haq & Schutter 2008; Müller et al. 2008).
 // Usage: node v2/tools/ocean-history.mjs [--seeds 626225,777,12345] [--until 1200] [--sim 40000] [--cont 29]
-//        [--water 0,1] [--json out.json]        (water 0: the reckoned level, for the base)
+//        [--water 0,1] [--json out.json]        (water 0: the reckoned level, for the base — asked for explicitly: the pour is on by default)
 import fs from 'node:fs';
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
@@ -27,7 +27,7 @@ const waters = flag('--water', '0,1').split(',').map(Number);
 const out = [], pct = x => (100 * x).toFixed(1), mean = a => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
 
 for (const water of waters) for (const seed of seeds) {
-    const heights = water > 0 ? { waterInventory: water } : {}, H = terrainConfig(heights);
+    const heights = { waterInventory: water }, H = terrainConfig(heights);
     const { scene, world } = pageWorld({ seed, cont, sim, heights }), simMesh = buildSimMesh(sim, MESH_SEED), n = simMesh.numCells;
     const rows = [], mask = {}, t0 = performance.now();
     let maskMs = 0;
