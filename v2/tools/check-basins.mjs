@@ -131,7 +131,9 @@ report('area below sea level in cut-off seas: mean of the moments', rows.map(r =
     source: 'the Caspian depression ~0.6 today; the Zechstein ~0.6 in Pangea (Peryt et al. 2010); the Messinian Mediterranean 2.5 and the Paratethys (Hsü et al. 1973; Krijgsman et al. 1999)',
     detail: txt(r => `water on them ${r.water.toFixed(2)} Mkm²`) });
 // (a seed with no salt lake standing below sea level in a cut-off sea has no median: it is said so, not printed as null)
-report('a drawn-down sea’s water surface: median', rows.map(r => r.surfaceBelow ? r.surfaceMedian : null), { earth: [-1.5, -0.028], unit: ' km', digits: 3,
+// (and the gate's summary shows the name and values only: when no seed has one, the name says why)
+const surfaceAll = rows.reduce((a, r) => a + r.surfaceN, 0);
+report('a drawn-down sea’s water surface: median' + (rows.some(r => r.surfaceBelow) ? '' : surfaceAll ? ` — none: all ${surfaceAll} salt lakes in cut-off seas stand above sea level` : ' — none: no cut-off sea holds a salt lake'), rows.map(r => r.surfaceBelow ? r.surfaceMedian : null), { earth: [-1.5, -0.028], unit: ' km', digits: 3,
     source: 'the Caspian −28 m, Lake Assal −155 m, the Dead Sea −430 m (−390 m in 1930); the Messinian Mediterranean −1.5 to −3 km (Hsü et al. 1973; Ryan 2009)',
     detail: txt(r => r.surfaceBelow ? `${r.surfaceBelow} of ${r.surfaceN} salt lakes below sea level` : r.surfaceN ? `none below sea level: its ${r.surfaceN} salt lake${r.surfaceN > 1 ? 's' : ''} in cut-off seas stand above it` : 'no cut-off sea holds a salt lake: none qualifies') });
 report('…the lowest', rows.map(r => r.surfaceLow), { earth: [-3, -0.028], unit: ' km', digits: 3, source: 'the Dead Sea −430 m today; the Messinian Mediterranean drawn down 1.5–3 km (Hsü et al. 1973; Blanc 2002; Ryan 2009)' });
