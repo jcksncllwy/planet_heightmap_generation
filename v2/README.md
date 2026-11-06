@@ -2414,6 +2414,12 @@ under the sea 7.0 → 18.6 % (Earth ~29); land 26.5 → 23.3 % of the sphere, cr
 Müller et al. 2019's deforming networks count resolvably strained crust, not every cell a belt once touched; the reach
 count is still printed beside it.
 
+- **Each process counts once** (defects item 7, crustfu): the Andean arc cap (`arcAdditionKm3PerKmMyr`) bounds the root
+  heights.js lays, rootGain included (it was 1.25 × the cap); with `riftStageVolume` a rift's shoulders are lifted, not
+  thickened (flexural rebound and heat: Weissel & Karner 1989 — their record and uplift stand, no root); and synthesis's
+  rifted-margin profile (terrain/margins.js) subsides only for the thinning beyond what the history's rift stage already
+  did to the crust (its Airy part Si (d0 − d); the thermal part is all the profile's).
+
 What this does not do (open):
 - **Most worn rock leaves the continent.** It is booked now (above), but ~4–5 Gkm³ a cycle (rise ~1.9–2.4, the trenches'
   kept share ~1.7–2.2, enclosed-sea overflow ~0.7) lies on ocean crust, where on Earth most stays on the continents as

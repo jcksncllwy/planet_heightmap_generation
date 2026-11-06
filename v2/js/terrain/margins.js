@@ -76,11 +76,14 @@ export function marginConstants(cfg) {
 }
 
 /** McKenzie's subsidence (km, water-loaded) at u = x / W across a margin of maturity m = 1 − e^(−t/τ). */
-export function subsidence(C, u, m) {
+export function subsidence(C, u, m, d0 = 1) {
     const d = smooth01(u);                                                  // 1/β, the crust's share of its thickness
     if (d >= 1) return 0;
     const r = d <= 1e-9 ? 1 : (Math.sin(Math.PI * d) / (Math.PI * d));      // (β/π) sin(π/β)
-    return C.Si * (1 - d) + C.E0 * r * m;
+    // (d0: the share the history has already thinned this crust to — its height stands that much lower already. The
+    // crust's own (Airy) subsidence is linear in the thinning, so only Si (d0 − d) is left to sink, none where the history
+    // thinned it as far; the thermal term is all the profile's, the history having no rift's cooling. d0 = 1: unthinned)
+    return C.Si * Math.max(0, Math.min(1, d0) - d) + C.E0 * r * m;
 }
 
 /**
