@@ -2446,3 +2446,39 @@ What this does not do (open):
 - **Provisional cells.** A world cell that no raster holds crust for is marked, never disguised
   (`Provisional.NEWBORN` = ridge axis, `LIKE_NEIGHBOUR` = passing hole ahead of a closing edge).
 - **Debugging crust growth:** `decideBirth(world, plate, cell, everyone)` in `step/resolve.js` returns `{born, why}`.
+
+## Path-sensitive checks made robust, and the rock-volume report (2026-11-05, lane coast9)
+
+**Which checks, and why they flickered.** A history is chaotic, so a physics-neutral nudge sends it down another path. We ran
+phases 9, 10 and 8a on main (63b39b6) and on three perturbed paths (`GEO_SIM_PATH=1,2,3`, `tools/lib/paths.mjs`: `plumeSpacingKm`
+×(1 + k·10⁻³), 1.5 km per k). gjallar's earlier control, `trenchDenudationKmPerMyr`, no longer perturbs main: with `rockBook` on the
+rivers carry the rock the heights wear, and `riverSupplyKm3` is bit-identical at ×1.003. Before the fixes the four paths read:
+
+| check | main · +1 · +2 · +3 | class |
+|---|---|---|
+| p9 half-cell coast | 94.8 · 94.8 · 94.8 · 94.2 % vs ≥ 96 %: fails on every path | (b) the bound was above what either read reaches; cell-size-dependent |
+| p9 land's shape (gain over the grid on every seed) | pass · fail · fail · pass | (a) a sign test on three reads, gains of 0.01–0.04 |
+| p9 ridges (gain over the grid on every seed) | fail · fail · fail · fail | (b) both reads put the kernels on the crust: a gain of ~0 is expected, its sign is noise |
+| p9 renewed after a period | pass · fail · fail · fail | (a)/(b) the bay sample is 68–883 cells: 0.3–1.4 independent 700 km patches |
+| p10 craton scraps | formed in 1 of 3 sets on every path | (a) a set needed 3 scraps; they are rare (0–10 a history) |
+| p8a moving continent keeps its detail | pass on all four paths; the scene formed 3 of 3 | none: it held once main's other failures were settled by the crust lane |
+
+**What changed (check design, no model code).**
+- *Half-cell coast.* Judged in km. The check counts cells within 300 km of a coast on both sides, a 600 km band; a coast displaced by *d* on
+  average flips *d*/600 of them, so *d* = (1 − agreement) × 600 km. The world-grid read re-samples the crust through the nearest cell of a
+  raster whose offset from the first is a fresh fraction of a cell: two independent roundings, |U₁ − U₂| with U uniform on ±*h*/2, whose mean is
+  *h*/3. With *h* = √(cell area) = 113 km, *d*_max = 37.6 km, agreement ≥ 93.7 %. The crust read is held to that line and, separately, to
+  beating the grid on average. It measured 30–32 km (94.7–94.9 %) on all four paths; the pre-Phase-9 92.4 % is 46 km, over the line. Scale-free: *h* moves with the mesh.
+- *Gain over the grid* (coast, heights): 9 reads, not 3 (100, 150 and 200 Myr of each history); mean gain > 0 and a majority of reads favouring the crust (`lib/gain-test.mjs`).
+- *Ridges:* demoted from "better than the grid" to "not worse": the two reads are the same by construction, so a gain isn't expected. It fails only if the mean gain is below zero by more than two standard errors (≈ 2 % false failure on a true tie). The ridge correlation itself (≥ 0.55) stays hard.
+- *Renewal:* the ridges, thousands of cells, are the hard renewal check. The bays' renewal is a `report()` with its independent-patch count (a sample of ~1 patch reads −0.2…0.8 by chance); the bays' frame-to-frame hold stays hard with a 100-cell floor, n printed.
+- *Craton scraps:* judged over the six histories together, scene formed at ≥ 5 scraps (was 3 in each of three sets), each scrap listed with where it was found.
+
+**Open (class c, left failing where it fails).** Path +2, history 777 at 600 Myr: one 1-cell craton scrap inside a multi-belt range
+(belt types 2/1/3, ground around it 2.78 km) reads 0.72 km below it, over the 0.5 km bound. One look: a scrap cell doesn't take the belt's uplift in full.
+The 0.5 km absolute bound was set from the pre-fix worst (1.27 km) and scales with nothing; it is not derived. Not fixed here.
+
+**Rock-volume report.** `node v2/tools/check-volume.mjs` (library `tools/lib/volume-books.mjs`) runs the 1200 Myr cycle at 20K cells with
+the crust ledger's area and volume on, and prints per stage the continental and arc crust booked (read generically, so a new stage appears by itself),
+the rock the heights wore off, and where the rivers set it down: basin fill, enclosed seas, shelves, trench wedge, sediment subducted (or, when
+present, crustfu's `fanKm3`, `riseKm3`, `seaOverflowKm3`). On main: 7.43 Gkm³ worn per cycle (Earth ≈ 6–10, recalled), 7.18 carried, 2.27 set down, so **5.16 Gkm³ (69 %) is in no book.** Report only; ~8 min.
