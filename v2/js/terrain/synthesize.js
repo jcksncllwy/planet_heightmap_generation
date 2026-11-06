@@ -179,6 +179,16 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
             if (frame.rootKm[w] < 0 && (t === CrustType.CONTINENT || t === CrustType.CRATON)) thinShare[w] = Math.max(0, 1 + frame.rootKm[w] / Ccrust[t]);
         }
         rec.thinShare = thinShare;
+        // (and the share the history's stretch left it, its record — crust.riftThin = 1 − 1/β, compounded, the rift stage's:
+        // the margin's thermal sag landward of the crust's edge goes only as far as that stretch, margins.js subsidence.
+        // Continental crust with no record was never stretched: 1. Elsewhere, and on frames from before the record: 0, the
+        // profile's own. Standing goal #8 step 4, plumbing owned by the datum lane by gulltoppr's ruling, 2026-11-06)
+        const stretchShare = new Float32Array(n);
+        if (frame.riftThin) for (let w = 0; w < n; w++) {
+            const t = frame.type[w];
+            if (t === CrustType.CONTINENT || t === CrustType.CRATON) stretchShare[w] = 1 - frame.riftThin[w];
+        }
+        rec.stretchShare = stretchShare;
         const span = f => {
             const lo = new Float32Array(n), hi = new Float32Array(n), { adjOffset, adjList } = simMesh;
             for (let w = 0; w < n; w++) {
@@ -412,7 +422,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     // (each shield's mantle: the swell under its craton cells, on average, against the land's reference — +1 over fully
     // insulated mantle, −1 over fully cooled, 0 without a swell; the same in every chunk: read from the records)
     const shieldMantle = shieldMantleOf(rec, cfg);
-    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, basinCover, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm, thinShare } = rec;
+    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, basinCover, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm, thinShare, stretchShare } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
@@ -886,8 +896,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // stays above the sea, water-loaded below it and never deeper than the sea floor at its foot — and over it the
             // sediment's shelf and slope: the shoreline is where that crosses the sea ──
             if (rs > 1e-3 && coast < (1 - MC.uEdge) * thinW) {
-                const thinned = thinShare ? w0 * thinShare[c0] + w1 * thinShare[c1] + w2 * thinShare[c2] : 1;     // (a plan cached before it: 1)
-                const e = h - MC.fAir * subsidence(MC, coast / thinW + MC.uEdge, mature, thinned), b = e >= 0 ? e : Math.max(e / MC.fAir, -footD);
+                const thinned = thinShare ? w0 * thinShare[c0] + w1 * thinShare[c1] + w2 * thinShare[c2] : 1, stretched = stretchShare ? w0 * stretchShare[c0] + w1 * stretchShare[c1] + w2 * stretchShare[c2] : 0;     // (a plan cached before it: 1)
+                const e = h - MC.fAir * subsidence(MC, coast / thinW + MC.uEdge, mature, thinned, stretched), b = e >= 0 ? e : Math.max(e / MC.fAir, -footD);
                 h += rs * (Math.max(b, sedTop(coast, rShelf, brk, openS)) - h);
             }
         } else {
