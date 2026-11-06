@@ -2630,3 +2630,25 @@ measures the stages against each other on 3 seeds × 300/560 Myr at 160K:
 - Civ's fixed coastline (`v2/js/civ/**`) is out of scope. To share the mask, civ would read `rec.land` (sim grid), or
   `worldOcean(mesh, z, 0)` on its own mesh, in place of its fixed coastline.
 
+
+## Earth replay R1: the t₀ data, an Earth start world, a static force test (2026-11-06, lane replay1)
+
+New files only; no model behaviour changed. Study: `~/obsidian/brain/projects/geo-sim-earth-replay-study.md`. Earth (Müller et al. 2019, 0–250 Ma) as the model's start world at t₀ (model time 0 = t₀ Ma), plus the checks that the plumbing and one force-balance solve on Earth's geometry read right. Everything is **report-only and held out**: no parameter may cite a replay number (study Q5).
+
+**Run, from a fresh shell at the worktree root** (data is gitignored under `tuning/earth/data/`; python is the pygplates venv from `fetch-earth-replay.sh`, `-I` always; **never call pygplates `resolve_topologies()`** — it segfaults on this arm64 build; these tools use `TopologicalModel`):
+
+    sh tuning/earth/fetch-earth-replay.sh && sh tuning/earth/fetch-earth-replay-r1.sh   # data (the second adds 65/250 Ma age grids + Cratons)
+    node v2/tools/earth-replay-mesh.mjs                                    # dump the 40K and 80K lab-mesh cell centres
+    PY=tuning/earth/data/venv/bin/python
+    sim-slots run -n 2 --gb 4 --who $me -- $PY -I v2/tools/earth-replay-plates.py --cells 40000   # plate id per cell per Myr, 0–250: plates-<n>.u16 (20 MB at 40K; ~15 min on a loaded machine)
+    sim-slots run -n 2 --gb 4 --who $me -- $PY -I v2/tools/earth-replay-crust.py  --cells 40000 --t0 0 65 100 250   # crust class + trenches at each t₀
+    $PY -I v2/tools/earth-replay-poses.py --t0 0 65 100 250                # pygplates's own poses, the harness's reference
+    node v2/tools/earth-replay-start-check.mjs                             # hard: the start builder cannot read an outcome
+    node v2/tools/earth-replay-harness.mjs [--cells 40000] [--t0 100]      # hard: pose closure ≤ ½ cell, partition ≥ 95 % (≤ 5 Myr on)
+    node v2/tools/earth-replay-static-force.mjs [--cells 40000] [--t0 0 65]   # report-only ω table (wrap heavy runs in sim-slots)
+
+- `js/tectonics/scenarios/earth-start.js` — `buildEarthStart(mesh, seed, inputs)`: one plate per reconstruction plate id, pose identity at t₀; continent / craton / arc from the continental, craton and island-arc polygons carried to t₀; ocean `formedAt = −age` from the t₀ age grid; mature trenches on the overriding plate along topological subduction zones. Crust thickness, belts, hotspots, sediment and climate are the model's kind defaults. **Not registered** in the lab or any scene index (that needs existing files); tools import it directly.
+- **It cannot read an outcome.** The builder is handed plain arrays and imports no reader; `earth-replay-inputs.mjs` loads them through `readInput`, which accepts only the manifest's t₀ files (the age grid *at t₀*, never today's). `earth-replay-start-check.mjs` asserts both import graphs and that the gate refuses ETOPO/CRUST1.0/other-time files.
+- **Known limits.** Continental polygons are the present-day shapes carried back (mild outcome-awareness: score processes, not outlines). Cratons: Merdith 2021's layer is a mixed set of basement terranes in another frame, not a craton map; only features of type Craton or named craton/shield are used (~13 Mkm² of Earth's ~50), joined through the continental polygon's own rotation, so cratons are under-counted. Island arcs: the 35 static IslandArc polygons exist only for the youngest times (80 cells at 0 Ma, none at 100/250 Ma); arcs there are `formedAt` 0. Cells in a deforming network take its rigid block's or its own plate id. Slab age and dip are not given. 
+- **Harness numbers** (40K, t₀ = 100): pose closure worst 0.009 km against pygplates (float32 mesh); partition agreement 98.7 % at +1 Myr, 96.1 % at +5, 90.8 % at +10, 69 % at +20 (crust made and lost since t₀ is not carried, so it drifts — plumbing, not physics).
+- **Static force test**: builds Earth at t₀, one `updatePlateMotion` solve (`lastDt` set huge so the relaxation blend is 1), then each plate's ω against the Müller stage rotation around t₀ (mantle frame): fastest surface speed, pole position, area-weighted RMS velocity difference, plates at the hard cap or ≥ 85 % of the soft limit that bends ω first (`softenSpeed`, 7 cm/yr continental). A baseline for the force-model owner; tunes nothing.
