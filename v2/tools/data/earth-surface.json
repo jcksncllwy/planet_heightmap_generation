@@ -1,0 +1,20 @@
+{
+  "source": "ETOPO5 (NOAA NGDC 1988), tuning/civ/fetch-earth.sh",
+  "sourceSha256": "471d3dd534144aa9a6551fe3e76320a06a45dade6fd8d45f7d6ad981d59f93c3",
+  "sampling": "every 2nd row and column (10′), area-weighted (cos lat) mean per nearest cell, m, rounded",
+  "tool": "v2/tools/make-earth-surface.mjs",
+  "meshes": {
+    "40001": {
+      "file": "earth-surface-40k.i16",
+      "numCells": 40001,
+      "fingerprint": "40001:7375fe245333ba79",
+      "sha256": "2975c0ad9b995ccc9f924390ad88982475e5b6727e0797f48ab796683c7e39f3"
+    },
+    "160001": {
+      "file": "earth-surface-160k.i16",
+      "numCells": 160001,
+      "fingerprint": "160001:4651ef764f97f428",
+      "sha256": "f00d355cc7906982df1447eb46e135d6416aa94be8bdc4dc89863b51de276b75"
+    }
+  }
+}
