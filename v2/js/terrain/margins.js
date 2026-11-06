@@ -75,11 +75,18 @@ export function marginConstants(cfg) {
     return (cache = C);
 }
 
-/** McKenzie's subsidence (km, water-loaded) at u = x / W across a margin of maturity m = 1 − e^(−t/τ). */
-export function subsidence(C, u, m, d0 = 1) {
+/** McKenzie's subsidence (km, water-loaded) at u = x / W across a margin of maturity m = 1 − e^(−t/τ); d0, ds below. */
+export function subsidence(C, u, m, d0 = 1, ds = 0) {
     const d = smooth01(u);                                                  // 1/β, the crust's share of its thickness
     if (d >= 1) return 0;
-    const r = d <= 1e-9 ? 1 : (Math.sin(Math.PI * d) / (Math.PI * d));      // (β/π) sin(π/β)
+    // (ds: the share the history's own stretch left the crust, its record — crust.riftThin, 1 − 1/β compounded. Landward
+    // of the history's crust edge (u > uEdge) the crust is the history's, and it was stretched as far as that record says
+    // and no further: its lithosphere was heated, and cools, only by that much — a margin's thermal sag where the history
+    // stretched nothing was the profile's alone, a second subsidence on ground the history kept whole (U8; datum-study:
+    // onshore land drawn under the sea, mostly on rifted margins). Seaward of the edge the profile stands for the distal
+    // domain the raster cannot resolve. ds = 0: no record, the profile's own)
+    const dt = u > C.uEdge ? Math.max(d, Math.min(1, ds)) : d;
+    const r = dt >= 1 ? 0 : dt <= 1e-9 ? 1 : (Math.sin(Math.PI * dt) / (Math.PI * dt));   // (β/π) sin(π/β)
     // (d0: the share the history has already thinned this crust to — its height stands that much lower already. The
     // crust's own (Airy) subsidence is linear in the thinning, so only Si (d0 − d) is left to sink, none where the history
     // thinned it as far; the thermal term is all the profile's, the history having no rift's cooling. d0 = 1: unthinned)
