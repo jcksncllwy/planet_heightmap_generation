@@ -41,6 +41,7 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @property {Float32Array} riverIncKm    how deep the history's rivers have cut (step/rivers.js)
  * @property {Float32Array} shelfKm3      rock the history's rivers have laid on a coast cell's shelf (km³; step/sea-fill.js)
  * @property {Float32Array} seaFillKm     sediment laid on the sea floor by the history's rivers (km; step/sea-fill.js)
+ * @property {Float32Array} riseKm3       rock the rivers laid past the shelf on this ocean cell, the continental rise (km³; step/trench-fans.js layRise)
  * @property {Float32Array} basinFillKm   sediment laid in the land's hollows by the history's rivers (km; step/rivers.js)
  * @property {Float32Array} arcKm         an island arc's crust (km; 0 off arcs): what its volcanoes added while its slab fed them
  * @property {Float32Array} arcAt         …and when that last was (sim time, Myr): the terrain stands it on that crust (measure.js arcSurfaceKm)
@@ -87,7 +88,7 @@ export function captureFrame(world, reuse = null) {
         beltU: new Uint8Array(n), beltReach: new Uint16Array(n), beltSide: new Uint8Array(n), beltShear: new Int8Array(n),
         prevType: new Uint8Array(n), prevLast: new Float32Array(n), prevU: new Uint8Array(n), prevReach: new Uint16Array(n), prevSide: new Uint8Array(n), prevShear: new Int8Array(n),
         rootKm: new Float32Array(n), upliftKm: new Float32Array(n), baseKm: new Float32Array(n), rugged: new Float32Array(n), prevRugged: new Float32Array(n), volcWornKm: new Float32Array(n),
-        riverIncKm: new Float32Array(n), riverKm2: new Float32Array(n), seaFillKm: new Float32Array(n), basinFillKm: new Float32Array(n), shelfKm3: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n),
+        riverIncKm: new Float32Array(n), riverKm2: new Float32Array(n), seaFillKm: new Float32Array(n), basinFillKm: new Float32Array(n), shelfKm3: new Float32Array(n), riseKm3: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n),
         volcType: new Uint8Array(n), volcAt: new Float32Array(n), volcKm: new Float32Array(n), volcSource: new Uint16Array(n),
         mantleHeat: new Uint8Array(n),                      // 0…255 for 0…1 (a frame need not carry it at full precision)
         margin: new Uint8Array(n),                          // what kind of coast each coastal land cell is (measure.js Margin)
@@ -115,7 +116,7 @@ export function captureFrame(world, reuse = null) {
         f.volcType[w] = 0; f.volcAt[w] = 0; f.volcKm[w] = 0; f.volcSource[w] = 0;
         f.beltU[w] = 0; f.beltReach[w] = 0; f.beltSide[w] = 0; f.beltShear[w] = 0;
         f.prevType[w] = 0; f.prevLast[w] = 0; f.prevU[w] = 0; f.prevReach[w] = 0; f.prevSide[w] = 0; f.prevShear[w] = 0;
-        f.rootKm[w] = 0; f.upliftKm[w] = 0; f.baseKm[w] = 0; f.rugged[w] = 0; f.prevRugged[w] = 0; f.volcWornKm[w] = 0; f.riverIncKm[w] = 0; f.seaFillKm[w] = 0; f.basinFillKm[w] = 0; f.shelfKm3[w] = 0;
+        f.rootKm[w] = 0; f.upliftKm[w] = 0; f.baseKm[w] = 0; f.rugged[w] = 0; f.prevRugged[w] = 0; f.volcWornKm[w] = 0; f.riverIncKm[w] = 0; f.seaFillKm[w] = 0; f.basinFillKm[w] = 0; f.shelfKm3[w] = 0; f.riseKm3[w] = 0;
         f.riverKm2[w] = world.riverKm2 ? world.riverKm2[w] : 0;
         f.arcKm[w] = 0; f.arcAt[w] = 0;
         f.fzU[w] = 0;
@@ -139,7 +140,7 @@ export function captureFrame(world, reuse = null) {
         f.prevSide[w] = crust.prevSide[c]; f.prevShear[w] = crust.prevShear[c];
         f.rootKm[w] = crust.rootKm[c]; f.upliftKm[w] = crust.upliftKm[c]; f.rugged[w] = crust.rugged[c]; f.prevRugged[w] = crust.prevRugged[c]; f.volcWornKm[w] = crust.volcWornKm[c];
         f.riftThin[w] = crust.riftThin[c]; f.riftThinAt[w] = crust.riftThinAt[c];
-        f.riverIncKm[w] = crust.riverIncKm[c]; f.seaFillKm[w] = crust.seaFillKm[c]; f.basinFillKm[w] = crust.basinFillKm[c]; f.shelfKm3[w] = crust.shelfKm3[c]; f.baseKm[w] = crust.baseKm[c];
+        f.riverIncKm[w] = crust.riverIncKm[c]; f.seaFillKm[w] = crust.seaFillKm[c]; f.basinFillKm[w] = crust.basinFillKm[c]; f.shelfKm3[w] = crust.shelfKm3[c]; f.riseKm3[w] = crust.riseKm3[c]; f.baseKm[w] = crust.baseKm[c];
         // (an island arc's crust and when its volcanoes last fed it — one the history never grew, a scene's, by its age and as live)
         if (crust.type[c] === CrustType.ARC) { f.arcKm[w] = arcCrustKm(crust, c, world.time, world.config); f.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : world.time; }
         f.geoFlags[w] = crust.geoFlags[c]; f.coverKm[w] = encodeCoverKm(crust.coverKm[c]); f.coverMaxKm[w] = encodeCoverKm(crust.coverMaxKm[c]); f.coverMaxAge[w] = crust.coverMaxKm[c] > 0 ? encodeAge(world.time - crust.coverMaxAt[c]) : 0;
