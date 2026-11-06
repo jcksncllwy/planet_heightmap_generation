@@ -207,10 +207,13 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         runoff[c] = P > 0 ? Math.max(0, P - P * (1 + E0 / P - (1 + (E0 / P) ** F.budykoW) ** (1 / F.budykoW))) : 0;
         if (z[c] > 0) { oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); sumK += liquid.store[c]; landN++; }
     }
+    // (the kept snow's way out: down to where it melts, or to the sea — iceDischarge; its meltwater runs as the margin's)
+    const D = iceDischarge(mesh, z, liquid.store, runoff, cellKm2);
+    sumR += D.meltMmKm2 / cellKm2; sumK = D.calvedMmKm2 / cellKm2 + D.heldMmKm2 / cellKm2;
+    Object.assign(stats.snowStore, { meltKm3: Math.round(D.meltMmKm2 * 1e-6), calvedKm3: Math.round(D.calvedMmKm2 * 1e-6), heldKm3: Math.round(D.heldMmKm2 * 1e-6) });
     stats.runoffShare = sumP > 0 ? +(sumR / sumP).toFixed(3) : null;
-    // (and with the kept snow counted as the sea's too: an ice sheet in its round returns its accumulation by calving and
-    // melt at its edge — Antarctica's ~2 000 km³ a year, Rignot et al. 2013 — the ice's discharge, not the rivers'; the
-    // water ledger (lane #5) and the ice's mass (U9) are to route it; until then it is booked, not run)
+    // (and with the ice that reaches the sea counted too: calved, and held in frozen pits — the rivers' share is the land's
+    // liquid; Earth's ~0.35–0.40 counts Antarctica's ~2 000 km³ a year of ice discharge, Rignot et al. 2013)
     stats.runoffShareWithIce = sumP > 0 ? +((sumR + sumK) / sumP).toFixed(3) : null;
     const meanR = landN ? sumR / landN : 1, meanP = landN ? sumP / landN : 1, meanW = landN ? oldW / landN : 1;
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
@@ -521,6 +524,39 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
         if (z[c] > 0) { if (store[c] > 0) { keptKm3 += store[c] * cellKm2 * 1e-6; keptKm2 += cellKm2; } if (frozen[c]) frozenKm2 += cellKm2; }
     }
     return { rain, store, frozen, stats: { keptKm3: Math.round(keptKm3), keptKm2: Math.round(keptKm2), frozenKm2: Math.round(frozenKm2) } };
+}
+
+/**
+ * The kept snow's way out (lane polar, 2026-11-05): a steady-state ice sheet — its accumulation leaves it as fast as it
+ * falls, by melt where the ice flows down to ground warm enough (the ablation zone) or by calving where it reaches the sea
+ * (the mass balance of a sheet in its round: Cuffey & Paterson 2010, The Physics of Glaciers, ch. 4). Each cell's kept
+ * snow (thawedWater's store, mm/year) goes down the land's steepest fall, gathering, from cell to kept cell, until it
+ * reaches a cell whose own snow all melts — there it melts, and runs off from that cell, added to its runoff — or the sea
+ * (ground at or below sea level: calved, booked, no river). A frozen pit (no lower neighbour) holds it: booked too.
+ * A shortcut, for the ice's own mass budget (model review U9) to replace: no ice dynamics (the ice takes the bed's fall,
+ * not its surface's, and its divides are the bed's); the margin's melt is not limited by its warmth (all of it melts at
+ * the first such cell, one cell wide); no time (the sheet neither grows nor shrinks).
+ * @returns {{meltMmKm2: number, calvedMmKm2: number, heldMmKm2: number}}  the year's ice melted, calved and held (mm·km²; ×1e-6: km³)
+ */
+function iceDischarge(mesh, z, store, runoff, cellKm2) {
+    const { adjOffset, adjList, numCells: n } = mesh;
+    let k = 0;
+    for (let c = 0; c < n; c++) if (store[c] > 0 && z[c] > 0) k++;
+    const kept = new Int32Array(k), flux = new Float64Array(n);
+    k = 0;
+    for (let c = 0; c < n; c++) if (store[c] > 0 && z[c] > 0) { kept[k++] = c; flux[c] = store[c] * cellKm2; }
+    kept.sort((a, b) => z[b] - z[a]);
+    let melt = 0, calved = 0, held = 0;
+    for (let i = 0; i < k; i++) {
+        const c = kept[i], f = flux[c];
+        let low = -1;
+        for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (z[y] < z[c] && (low < 0 || z[y] < z[low])) low = y; }
+        if (low < 0) held += f;
+        else if (!(z[low] > 0)) calved += f;
+        else if (store[low] > 0) flux[low] += f;
+        else { runoff[low] += f / cellKm2; melt += f; }
+    }
+    return { meltMmKm2: melt, calvedMmKm2: calved, heldMmKm2: held };
 }
 
 /**
