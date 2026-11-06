@@ -34,7 +34,7 @@ for (const run of arg('--runs', '831576@430').split(',')) {
     const km2 = 4 * Math.PI * 6371 ** 2 / n;
     const frozen = c => L.warmSl[c] - gamma * Math.max(0, z[c], lake[c] && lakeLevel[c] === lakeLevel[c] ? lakeLevel[c] : 0) <= 0;
     const A = { land: 0, frozen: 0, frozenIce: 0, runoffAll: 0, runoffFrozen: 0, lakeAll: 0, lakeFrozen: 0, volFrozenKm3: 0, q10: 0, q100: 0, q10all: 0 };
-    const kinds = {}, hi = { frozenKm2: 0, thawedKm2: 0, frozenNearSea: 0, thawedNearSea: 0 };
+    const fringe = { warm: [0, 0, 0, 0], depthM: 0, km2: 0, liq: 0, src: {} }, kinds = {}, hi = { frozenKm2: 0, thawedKm2: 0, frozenNearSea: 0, thawedNearSea: 0 };
     for (let c = 0; c < n; c++) {
         if (ocean[c] && !lake[c]) continue;
         const fz = frozen(c);
@@ -55,6 +55,12 @@ for (const run of arg('--runs', '831576@430').split(',')) {
         if (Math.abs(L.lat[c]) > 70 && lake[c] === 1) {
             const near = lakeLevel[c] < 0.15;
             if (fz) { hi.frozenKm2 += km2; if (near) hi.frozenNearSea += km2; } else { hi.thawedKm2 += km2; if (near) hi.thawedNearSea += km2; }
+            if (near && !fz) {      // (the fringe's ground: its warmest month at the water's height, its water's depth, its liquid share)
+                const w = L.warmSl[c] - gamma * Math.max(0, lakeLevel[c]), b = w < 2 ? 0 : w < 5 ? 1 : w < 10 ? 2 : 3;
+                fringe.warm[b] += km2; fringe.depthM += 1000 * Math.max(0, lakeLevel[c] - z[c]) * km2; fringe.km2 += km2;
+                if (L.liquid) fringe.liq += (L.rain[c] > 0 ? L.liquid[c] / L.rain[c] : 1) * km2;
+                if (L.lakeSrc) fringe.src[L.lakeSrc[c]] = (fringe.src[L.lakeSrc[c]] || 0) + km2;
+            }
         }
     }
     // frozen-ground lake bodies (connected same-level water), and how many lie wholly on frozen ground
@@ -74,5 +80,7 @@ for (const run of arg('--runs', '831576@430').split(',')) {
         frozenBodies: bodies, frozenBodiesWhole: whole, frozenKindsKkm2: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, r1(v / 1e3)])),
         riverCells: { q10all: A.q10all, q10frozen: A.q10, q100frozen: A.q100 },
         hiLat70: Object.fromEntries(Object.entries(hi).map(([k, v]) => [k + 'Kkm2', r1(v / 1e3)])),
-        runoffShare: fin.stats.runoffShare, lakes: (({ freshLakes, saltLakes, pans, lakeShare, endorheicShare }) => ({ freshLakes, saltLakes, pans, lakeShare, endorheicShare }))(fin.stats.water) }));
+        fringe: { km2K: r1(fringe.km2 / 1e3), warmBinsPct_lt2_2to5_5to10_gt10: fringe.warm.map(v => pct(v, fringe.km2)), meanDepthM: fringe.km2 ? Math.round(fringe.depthM / fringe.km2) : null, liquidShare: fringe.km2 && L.liquid ? +(fringe.liq / fringe.km2).toFixed(3) : null, srcKkm2: Object.fromEntries(Object.entries(fringe.src).map(([k, v]) => [k, r1(v / 1e3)])) },
+        snowStore: fin.stats.snowStore ?? null,
+        runoffShare: fin.stats.runoffShare, runoffShareWithIce: fin.stats.runoffShareWithIce ?? null, lakes: (({ freshLakes, saltLakes, pans, lakeShare, endorheicShare }) => ({ freshLakes, saltLakes, pans, lakeShare, endorheicShare }))(fin.stats.water) }));
 }

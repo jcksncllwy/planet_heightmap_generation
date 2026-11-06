@@ -197,15 +197,19 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const litho = rockBeforeCarve(rockIn, carveIn, Geo);      // (finish-lithology.js)
     lap('lithology');
     const runoff = new Float32Array(n), pet = new Float32Array(n);
-    let oldW = 0, sumR = 0, sumP = 0, landN = 0;
+    let oldW = 0, sumR = 0, sumP = 0, sumK = 0, landN = 0;
     for (let c = 0; c < n; c++) {
         if (!(pAnn[c] === pAnn[c])) continue;
         const P = Math.max(0, liquid.rain[c]), E0 = Math.max(F.petMinMm, bilinear(climGrid, petG, lat[c], lon[c]));
         pet[c] = E0;
         runoff[c] = P > 0 ? Math.max(0, P - P * (1 + E0 / P - (1 + (E0 / P) ** F.budykoW) ** (1 / F.budykoW))) : 0;
-        if (z[c] > 0) { oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); landN++; }
+        if (z[c] > 0) { oldW += carveIn.rain[c]; sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); sumK += liquid.store[c]; landN++; }
     }
     stats.runoffShare = sumP > 0 ? +(sumR / sumP).toFixed(3) : null;
+    // (and with the kept snow counted as the sea's too: an ice sheet in its round returns its accumulation by calving and
+    // melt at its edge — Antarctica's ~2 000 km³ a year, Rignot et al. 2013 — the ice's discharge, not the rivers'; the
+    // water ledger (lane #5) and the ice's mass (U9) are to route it; until then it is booked, not run)
+    stats.runoffShareWithIce = sumP > 0 ? +((sumR + sumK) / sumP).toFixed(3) : null;
     const meanR = landN ? sumR / landN : 1, meanP = landN ? sumP / landN : 1, meanW = landN ? oldW / landN : 1;
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, liquid.rain[c]) / meanP) ** F.wetPower);

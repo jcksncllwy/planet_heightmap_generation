@@ -2,6 +2,12 @@
 // Everything in km, Myr, °C and mm — never in cells — so a moment finished at 160K and at 10M is the same planet, the
 // finer one showing more of it.
 
+// Snow melts this many mm of water a month per °C of the month's mean above freezing: the degree-day factor for snow,
+// 4.1 ± 1.5 mm d⁻¹ K⁻¹ over 66 glaciers (Braithwaite 2008, J. Glaciol. 54: 437), × 30 days — the climate's own rate
+// (climate/rain.js MELT_MM_PER_C_MONTH, 120). One rate for the rivers' seasons, the thaw gate and the cover's snow (lane
+// polar, 2026-11-05; until then the finish's 90, ~3 mm d⁻¹ K⁻¹, uncited, against the climate's 120: model review U9).
+const SNOW_MELT_MM_PER_C = 120;
+
 export const FINISH = {
     // ── F1: warp and detail ──
     warpKm: 14,                 // the whole surface domain-warped by up to about this (breaks the last of the sim's lines)…
@@ -187,7 +193,7 @@ export const FINISH = {
     // month) — less a share of the month's potential evaporation (monthEvapShare); a share of it seeps into the ground
     // (baseflowShare where it is humid, none in deserts) and drains back to the rivers slowly (baseflowMonths: the time a
     // dry season takes to drain the ground to a third); big lakes even out what they pass on (lakeRegulation)
-    snowMeltMmPerC: 90,
+    snowMeltMmPerC: SNOW_MELT_MM_PER_C,
     monthEvapShare: 0.8,
     baseflowShare: 0.5,
     baseflowMonths: 2.5,
@@ -265,7 +271,7 @@ export const COVER = {
     soilMm: 150,                // the water the soil holds through a dry spell
     lag: 0.4,                   // a month's look is this much the month before's (greening and browning take time)
     snowPhase: [2, -2],         // snow, not rain: from this °C (none) to this (all)
-    snowMeltMmPerC: 90,         // snow melts this many mm a month per °C above freezing
+    snowMeltMmPerC: SNOW_MELT_MM_PER_C,     // snow melts this many mm a month per °C above freezing (the finish's one rate)
     snowCoverMm: [3, 20],       // snow on the ground (mm of water): first patches → white (≈ 7 cm of snow buries
                                 // tundra and grass: the winter Arctic and the steppes white from space; a mild
                                 // European January mostly bare)
