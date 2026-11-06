@@ -2474,11 +2474,13 @@ rivers carry the rock the heights wear, and `riverSupplyKm3` is bit-identical at
 - *Renewal:* the ridges, thousands of cells, are the hard renewal check. The bays' renewal is a `report()` with its independent-patch count (a sample of ~1 patch reads −0.2…0.8 by chance); the bays' frame-to-frame hold stays hard with a 100-cell floor, n printed.
 - *Craton scraps:* judged over the six histories together, scene formed at ≥ 5 scraps (was 3 in each of three sets), each scrap listed with where it was found.
 
-**Open (class c, left failing where it fails).** Path +2, history 777 at 600 Myr: one 1-cell craton scrap inside a multi-belt range
-(belt types 2/1/3, ground around it 2.78 km) reads 0.72 km below it, over the 0.5 km bound. One look: a scrap cell doesn't take the belt's uplift in full.
-The 0.5 km absolute bound was set from the pre-fix worst (1.27 km) and scales with nothing; it is not derived. Not fixed here.
+**Open (class c, left failing where it fails).** On main 5ab3142's own path (`GEO_SIM_PATH` unset) the pooled scrap check fails on a real
+hole: 40 scraps found, and one (history 12345 at 560 Myr, one cell, ground around it 0.10 km) reads 2.66 km below its surroundings, i.e. a
+1-cell craton scrap standing ~2.6 km under the sea in the middle of lowland; the next worst is 0.98 km. The three perturbed paths pass (15, 26 and 9 scraps, worst under 0.5 km;
+on 63b39b6 path +2 had a 0.72 km scrap inside a 2.78 km multi-belt range). Not investigated further: a scrap cell of craton can keep a base the surrounding crust's record
+doesn't (the terrain reads the scrap's own raster cell). The 0.5 km absolute bound was set from the pre-fix worst (1.27 km); it scales with nothing and is not derived.
 
 **Rock-volume report.** `node v2/tools/check-volume.mjs` (library `tools/lib/volume-books.mjs`) runs the 1200 Myr cycle at 20K cells with
 the crust ledger's area and volume on, and prints per stage the continental and arc crust booked (read generically, so a new stage appears by itself),
 the rock the heights wore off, and where the rivers set it down: basin fill, enclosed seas, shelves, trench wedge, sediment subducted (or, when
-present, crustfu's `fanKm3`, `riseKm3`, `seaOverflowKm3`). On main: 7.43 Gkm³ worn per cycle (Earth ≈ 6–10, recalled), 7.18 carried, 2.27 set down, so **5.16 Gkm³ (69 %) is in no book.** Report only; ~8 min.
+present, crustfu's `fanKm3`, `riseKm3`, `seaOverflowKm3`). On 63b39b6: 7.43 Gkm³ worn per cycle (Earth ≈ 6–10, recalled), 7.18 carried, 2.27 set down, so **5.16 Gkm³ (69 %) in no book.** On 5ab3142 (crustfu's books): 6.49 worn, 6.36 carried, 6.35 set down (basin .53, sea .68, overflow .70, shelves .35, trench fans 2.12, rise 1.97), **0.15 Gkm³ in no book.** Report only; ~8 min.
