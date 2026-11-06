@@ -53,17 +53,23 @@ for (const seed of seeds) {
         const under = [];
         for (let w = 0; w < n; w++) if (rec.land[w] && cnt[w] && wet[w] > cnt[w] / 2) {
             let seaN = 0; for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) if (!rec.land[mesh.adjList[k]]) seaN++;
-            under.push({ mean: up[w] / cnt[w], seaN, dry: rec.dryHollow?.[w] ? 1 : 0 });
+            under.push({ mean: up[w] / cnt[w], seaN, dry: rec.dryHollow?.[w] ? 1 : 0, ck: rec.coastKm[w] });
         }
         // why: each terrain point under the sea on land (records; not a dry hollow) — the margin line flipped its sim cell to
         // sea (rec.coastKm < 0 at the cell), the coast read there (line, warp) is offshore, the coast noise / fine detail /
         // arc straits moved it offshore, or the coast is onshore and the height still came out under the sea
-        const why = { cellFlipped: 0, rawOffshore: 0, noiseOffshore: 0, onshoreLow: 0 }, zOf = { cellFlipped: [], rawOffshore: [], noiseOffshore: [], onshoreLow: [] }, riftOn = [];
+        const rawSplit = { line: 0, lookup: 0 }; const why = { cellFlipped: 0, rawOffshore: 0, noiseOffshore: 0, onshoreLow: 0 }, zOf = { cellFlipped: [], rawOffshore: [], noiseOffshore: [], onshoreLow: [] }, riftOn = [];
         for (let t = 0; t < tn; t++) {
             const w = T.sampler.cells[3 * t];
             if (!rec.land[w] || rec.dryHollow[w] || !(T.heightKm[t] < 0)) continue;
             const k = rec.coastKm[w] < 0 ? 'cellFlipped' : T.parts.dcoastRaw[t] < 0 ? 'rawOffshore' : T.parts.dcoast[t] > 0 ? 'onshoreLow' : 'noiseOffshore';   // (dcoast: land side only)
             why[k]++; zOf[k].push(T.heightKm[t]);
+            // (raw offshore: the line itself, read where the world sampler puts the point, is offshore — or only the
+            // anchored per-plate lookup and the coast's curvature term, synthesize.js, moved it there)
+            if (k === 'rawOffshore') {
+                const b = 3 * t, cs = T.sampler.weights[b] * rec.coastKm[T.sampler.cells[b]] + T.sampler.weights[b + 1] * rec.coastKm[T.sampler.cells[b + 1]] + T.sampler.weights[b + 2] * rec.coastKm[T.sampler.cells[b + 2]];
+                if (cs < 0) rawSplit.line++; else rawSplit.lookup++;
+            }
             if (k === 'onshoreLow') riftOn.push(rec.riftShare[w]);
         }
         const um = under.map(u => u.mean).sort((a, b) => a - b), q = p => um.length ? r2(um[Math.min(um.length - 1, Math.floor(p * um.length))]) : null;
@@ -84,7 +90,8 @@ for (const seed of seeds) {
             recVsRivers: { recordsOnly: recOnly, riversOnly: rivOnly, riversOnlyCont: rivOnlyCont, riversOnlyArc: rivOnlyArc, cells: recLand },
             drawnVsRecords: { seaOnRecLandMkm2: r2(drawnSeaRecLand * tKm2 / 1e6), landOnRecSeaMkm2: r2(drawnLandRecSea * tKm2 / 1e6) },
             landCellsDrawnUnderSea: { count: under.length, coastal: under.filter(u => u.seaN > 0).length, dryHollow: under.filter(u => u.dry).length, p50: q(0.5), p10: q(0.1), min: q(0) },
-            whyUnder: why,
+            whyUnder: why, rawSplit,
+            underByCoastKm: [0, 30, 60, 120, Infinity].map((hi, i, a) => under.filter(u => u.ck < hi && u.ck >= (i ? a[i - 1] : -Infinity)).length),
             whyMedianKm: Object.fromEntries(Object.entries(zOf).map(([k, a]) => [k, a.length ? r2(a.sort((x, y) => x - y)[a.length >> 1]) : null])),
             onshoreLowRifted: riftOn.filter(x => x > 0.5).length,
             cutBelowSea: { bodies: cutBodies, pts: cutPts, onRecSea: cutOnRecSea, onDryHollow: cutOnRecLandHollow, onRecLandOther: cutOnRecLandOther },
