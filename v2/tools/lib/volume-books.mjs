@@ -72,7 +72,7 @@ const UNITS = { rivers: 'rivers+fans', fans: 'rivers+fans' };
  * step/rivers.js (the datum lane's, #8) — trapLoad books the rock that refills a valley cut (crust.riverIncKm shrinks: a record
  * with no volume) as basinFillKm3, unbooked as rock, and some supply reaches no sink; measured 3.2–4.0 % (20K, 300 Myr, seeds
  * 12345/777/4242). Tighten to 1 % when rivers.js books the cut fill as cutFillKm3 (km³, positive: rock laid in a cut). */
-export const UNIT_TOLERANCE = { 'rivers+fans': 0.05 };
+export const UNIT_TOLERANCE = { 'rivers+fans': 0.02 };
 
 /**
  * Each stage's rock closure (Gkm³ over the run): its change in rock, the flows it booked (STAGE_FLOWS), and the residual —
