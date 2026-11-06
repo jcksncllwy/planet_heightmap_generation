@@ -2617,8 +2617,12 @@ measures the stages against each other on 3 seeds × 300/560 Myr at 160K:
   each such cell sits within 60 km of the smoothed line, the sub-cell area a smooth line trades both ways across a
   staircase. About two-thirds of the points the coast puts offshore are put there by the anchored per-plate lookup and
   the coast's curvature term (`synthesize.js`), not by the line. The largest group at 300 Myr lies onshore but low on
-  rifted margins: the margin profile's thermal sag applied where the history stretched nothing (U8; the next step reads
-  the history's stretch record, `crust.riftThin`).
+  rifted margins. Review U8 read it as the margin profile's thermal sag applied twice, a second subsidence on ground the
+  history kept whole. The margin profile now reads the history's stretch record (`crust.riftThin`, 1 − 1/β): landward of
+  the crust's edge the sag goes only as far as the history stretched (`margins.js` `subsidence`). The effect is near
+  null (onshore-low points −0.1 to −0.8 %), and the reason is the finding: on 777 @300, 68 % of the onshore-low points
+  sit on crust the history really stretched. Most of that lowland is a stretched margin's near-shore plain (median 30 km
+  inland) sagging 0.1–0.3 km under the sea, not a double subsidence. U8 is to be re-scoped from this, not re-tried.
 - Repair rules: the margin line's topology veto is retired, because no cell turns. Two are kept, named. The pocket fill
   (`pocketSeaKm2`, review heuristic 07) is now applied alike by every stage, in the mask. The mask does not make it
   unnecessary: only a coastal sediment surface would fill such seas. The shelf top graded from the datum
