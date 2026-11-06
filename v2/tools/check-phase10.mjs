@@ -260,7 +260,7 @@ section('scraps of craton');
     for (const [i, sceneSeed] of SCENE_SEEDS.entries()) {
         for (const [id, seed, times] of [['india', sceneSeed, [50, 60, 70, 80, 90]], ['history', PLANET_SEEDS[i], Array.from({ length: 30 }, (_, j) => 20 * (j + 1))]]) {
             const { frames } = run(id, Math.max(...times), null, seed);
-            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) (g.coast ? coastal : scraps).push({ gap: g.gap, where: `${id} ${seed} @${F.time} (${g.note})` });
+            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) (g.coast ? coastal : scraps).push({ gap: g.gap, drowned: g.drowned, where: `${id} ${seed} @${F.time} (${g.note})` });
         }
     }
     const gaps = scraps.map(x => x.gap), worst = scraps.reduce((m, x) => (!m || x.gap > m.gap ? x : m), null);
