@@ -29,10 +29,12 @@ export const TECTONICS = {
     // ── Initial supercontinent [WBP] (init/) ──
     cratonCount: 14,            // [WBP: 8–12] more, smaller cores than that: a supercontinent reads as an assembly of many
                                 // old pieces, and there are more seams for a later rift to choose between (developer)
-    continentalFraction: 0.29,  // the start world's continent (incl. shelves) as a share of the surface; never > 0.4. In effect the
-                                // LAND area: this model's continental crust stands almost all above the sea (0.29 → ~30 % land),
-                                // where Earth's 29 % of land sits on ~41 % of continental crust, its thinned margins drowned
-                                // (Cogley 1984). HONOURED FIRST: if the spacing rules need more room, cratons get smaller, not the land bigger
+    continentalFraction: 0.29,  // the start world's continental CRUST (incl. shelves and margins) as a share of the surface — not
+                                // its land: how much stands above the sea is the water's (terrain/land-mask.js, the water
+                                // inventory, terrain-config waterInventory). Earth: ~41 % crust under ~29 % land (Cogley 1984);
+                                // the page's Earth preset is 0.41 (lane sliders: 3 seeds started at 0.41 met it, 42–44 %).
+                                // Before the inventory this stood in for the land's area (its crust stood almost all above the
+                                // reckoned sea). HONOURED FIRST: if the spacing rules need more room, cratons get smaller, not the crust bigger
     cratonShare: 0.24,          // REQUESTED fraction of continental crust that is craton (an upper bound, see above)
     cratonMinAreaScale: 0.3,    // cratons shrink down to this share of their requested area before anything else gives
     cratonSizeRatio: 3.4,       // largest craton diameter ÷ smallest — guarantees a mix of big and small cores

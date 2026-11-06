@@ -87,9 +87,14 @@
                     <div id="seedRow"><input type="text" id="seedCode" placeholder="Seed" inputmode="numeric" aria-label="World seed"></div>
                 </div>
                 <div class="cg">
-                    <label>Starting Continent Size <span class="tip" data-tip="How much of the planet the first supercontinent covers, shelves included">?</span> <span class="v" id="vCont">30%</span></label>
-                    <input type="range" id="sCont" min="20" max="40" value="30" step="1">
-                    <div class="slider-hint"><span>Small</span><span>Large</span></div>
+                    <label>Water <span class="tip" data-tip="The ocean's water, as a share of Earth's (1.33 billion km³). It is poured onto the ground and settles: where it stands decides the coasts, so the land's share is an outcome. Earth: 1.00×">?</span> <span class="v" id="vWater">1.00× Earth</span></label>
+                    <input type="range" id="sWater" min="0.25" max="2" value="1" step="0.05">
+                    <div class="slider-hint"><span>Dry</span><span>Wet</span></div>
+                </div>
+                <div class="cg">
+                    <label>Continental Crust <span class="tip" data-tip="How much of the planet starts as continental crust (the first supercontinent, its shelves and drowned margins included) — not land: how much of it stands above the sea is the water's to decide. Earth: ~41 %">?</span> <span class="v" id="vCont">41%</span></label>
+                    <input type="range" id="sCont" min="20" max="45" value="41" step="1">
+                    <div class="slider-hint"><span>Less</span><span>More</span></div>
                 </div>
                 <div class="cg">
                     <label>History Length <span class="tip" data-tip="How long the planet's tectonic history runs. A supercontinent breaks up and gathers again every few hundred million years, at the mantle's pace (Earth: about 600)">?</span> <span class="v" id="vLen">1200 Myr</span></label>

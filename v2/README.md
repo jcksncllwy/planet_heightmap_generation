@@ -32,7 +32,9 @@ the developer before the next begins.**
 
 **Evolution** (`/evolution`, `evolution.html`) is the product page built on this engine — a side generator beside V1's
 Generate and Import Heightmap. Its layout (plans/V2_EVOLUTION_UI_PLAN.md): the sidebar holds **New World** (a new seed),
-the **World** section — folded to a one-line summary once a history is building: the seed, starting continent size,
+the **World** section — folded to a one-line summary once a history is building: the seed, **Water** (the ocean, × Earth's;
+in the link `water=`) and **Continental Crust** (the start world's crust, % of the surface — not its land; `crust=`; Earth's
+preset 1.00× and 41 %, the defaults; an older link's `cont=`, the retired land-size slider, takes them),
 history length, ending, the planet's **Temperature** (−30…+30 W/m²) and **Precipitation** (±50 %) — the climate's
 options (`greenhouseWm2`: a radiative forcing in the energy balance; `precipScale`: the evaporation in the rain budget — so the ice, winds, currents and rain answer them), for the preview climate and Add detail alike; they change the climate only, so
 previews are worked out again when shown and a detailed moment says it was made with the old ones (in the link: `greenhouse=`,
@@ -625,6 +627,24 @@ all of it as hot, got none. Read from the frame alone: the history is unchanged.
 sea's level and both parts with the land share (and the Evolution page's statistics); the "Mantle swell" slider sets
 `mantleSwellKm`, and "Sea floor's age moves the sea too" `seaLevelFloorAge`. Phase 13 reports the land share by stage of the cycle, the sea's first-order swing and the
 supercontinent's interior height against the dispersed continents' (`tools/lib/cycle-stage.mjs`).
+
+**The water inventory** (2026-11-06, lane sliders; `tectonics/ocean/inventory.js`, `terrain/land-mask.js`). Jackson: "pour
+an earth-like amount of water onto the planet and let it settle to determine where oceans are." The sea's level is where
+a fixed volume of water stands — `waterInventory` × Earth's ocean (1.332e9 km³, Charette & Smith 2010) poured onto every
+sim cell's ground (`surfaceKm`: the land as the rivers stand it, the floor by its depth–age law, both on the mantle's swell)
+from the lowest cell and spilling outward (one priority flood and a running sum, `pourOcean`, ~10 ms at 40K) — not the
+reckoning above, which calibrated the floor's mean depth so that a dispersed world's sea stood at 0. The pour is in the one
+land mask, so the history's rivers and the terrain's records share it. Only the level changes: which cells may be sea
+(the crust's kind, filled seas, small pockets, lifted fills) is still the mask's rules, and the flood drowns at the poured
+level. Its proof is Earth's own ground: `tools/check-ocean-earth.mjs` pours 1.0× onto ETOPO5 binned on the 40K and 160K
+meshes (a committed derived artifact, `tools/data/earth-surface-*.i16`, `tools/make-earth-surface.mjs`) and the sea stands
+at −11 / −13 m over 29.9 / 30.1 % land (Earth 0 m, 29.2 %). On the model's own worlds the land, the level and the flooding
+are outcomes (`tools/ocean-history.mjs`, by stage of the cycle; lane report 2026-11-06): with Earth's crust (41 %) and
+water the land is 35–39 % (Earth 18–33 by stage), the continents little flooded, and the level swings 0.7–1.1 km over a
+cycle (Earth 0.2–0.3): the history's floor stands ~0.4–0.6 km deeper than Earth's (its ages, no abyssal sediment, few
+plateaus: `tools/ocean-floor.mjs`) and its drowned margins are a fraction of Earth's shelves — the missing physics, not
+the water. Limits: one water body at equilibrium; no water held on land (ice sheets, ~2 % of the ocean, are not taken
+out yet); the ground is the history's per-cell column, not the finish's shelves.
 
 **Rivers (Phase 8b, `carve.js`).** The tectonic surface is carved by the stream power law, solved analytically in time
 along the river network (Tzathas, Gailleton, Steer & Cordonnier 2024): after `carveTimeMyr` a point stands where the
