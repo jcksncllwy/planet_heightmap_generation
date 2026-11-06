@@ -26,8 +26,8 @@ import { MinHeap } from '../../core/min-heap.js';
 import { heightsOf } from './heights.js';
 import { fillEnclosedSeas, buildShelves } from './sea-fill.js';
 import { arcCrustKm } from './collision.js';
-import { arcSurfaceKm, columnModel, ARC_ROOT_SHARE, seaFilledUp, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
-import { landAndSea } from '../../terrain/sea-level.js';
+import { arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { landMask } from '../../terrain/land-mask.js';
 import { rainAtLatitude, erosionAtLatitude } from '../../terrain/terrain-config.js';
 
 const R = 6371;
@@ -44,21 +44,23 @@ export function evolveRivers(world, dt) {
     const s = scratchFor(n);
     const { land, base, lift, height, fill, rank, order, recv, recvKm, area, cutNow, hold, sed, sedCont, basin, seaOf, view, hol, holKm, holCells } = s;
     world.riverKm2 ??= new Float32Array(n);
-    // ── the land and the sea as the terrain stands them (branch unified-swell): continental crust and island arcs, seas
-    // filled up — and a filled sea the mantle's swell holds up above the sea — on the world's own view of the crust and its
-    // mantle (terrain/sea-level.js landAndSea; records.js deriveRecords reads a frame the same way: the mantle's heat as a
-    // frame keeps it, 0–255) ──
+    // ── the land and the sea as the terrain stands them: the one mask (terrain/land-mask.js), on the world's own view of
+    // the crust and its mantle as a frame carries them (tectonics/snapshot.js) — continental crust and island arcs whose
+    // column stands above the sea, or below it with no way to it (a closed hollow); seas filled up, small enclosed ones,
+    // and a filled sea the mantle's swell holds up above the sea. (Until 2026-11-06 the rivers took every continent and
+    // arc as land however low — sea-level.js landAndSea — and ran 11–36 % of their water over what the terrain draws as
+    // sea, on a sea level 11–22 m off its own: tools/datum-study.mjs) ──
     view.time = time; view.owner = owner;
     for (let w = 0; w < n; w++) {
         const o = owner[w];
         view.mantleHeat[w] = Math.round(255 * world.mantleHeat[w]);
-        land[w] = 0;
-        if (o < 0) { view.type[w] = CrustType.OCEAN; view.formedAt[w] = -1; view.seaFillKm[w] = 0; continue; }
+        if (o < 0) { view.type[w] = CrustType.OCEAN; view.formedAt[w] = -1; view.seaFillKm[w] = 0; continue; }       // (no plate: never land)
         const crust = plates[o].crust, c = ownerCell[w], type = crust.type[c];
         view.type[w] = type; view.formedAt[w] = crust.formedAt[c]; view.seaFillKm[w] = crust.seaFillKm[c];
-        if (type !== CrustType.OCEAN || (crust.seaFillKm[c] > 0 && seaFilledUp(time - crust.formedAt[c], crust.seaFillKm[c]))) land[w] = 1;
+        view.flags[w] = crust.flags[c]; view.rootKm[w] = crust.rootKm[c]; view.baseKm[w] = crust.baseKm[c]; view.upliftKm[w] = crust.upliftKm[c]; view.basinFillKm[w] = crust.basinFillKm[c];
+        if (type === CrustType.ARC) { view.arcKm[w] = arcCrustKm(crust, c, time, world.config); view.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : time; }
     }
-    const sl = landAndSea(view, mesh, H, land, s.swellKm), swellKm = sl.swellKm, seaKm = sl.seaKm;
+    const sl = landMask(view, mesh, H, s.mask).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
     // ── the land's height against the sea: its evolved height (as records.js draws the platform: the column of its crust,
     // the uplift; the mantle's swell under it, against its side's reference; the sea's level) less what rivers have cut;
@@ -321,6 +323,7 @@ function scratchFor(n) {
     if (scratch?.n === n) return scratch;
     scratch = { n, land: new Uint8Array(n), base: new Float32Array(n), lift: new Float32Array(n), cutNow: new Float32Array(n), hold: new Float32Array(n), height: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
         order: new Int32Array(n), recv: new Int32Array(n), recvKm: new Float32Array(n), area: new Float32Array(n), sed: new Float64Array(n), sedCont: new Float64Array(n), basin: new Float64Array(n), seaOf: new Int32Array(n), heap: new MinHeap(1 << 14),
-        swellKm: new Float32Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n) } };
+        swellKm: new Float32Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n), flags: new Uint8Array(n), rootKm: new Float32Array(n), baseKm: new Float32Array(n), upliftKm: new Float32Array(n), basinFillKm: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n) } };
+    scratch.mask = { land: scratch.land, swellKm: scratch.swellKm, seaColKm: scratch.seaColKm, dryHollow: scratch.dryHollow };
     return scratch;
 }

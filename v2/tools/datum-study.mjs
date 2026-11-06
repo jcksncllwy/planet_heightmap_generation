@@ -10,8 +10,7 @@ import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { synthesizeTerrain } from '../js/terrain/synthesize.js';
-import { landAndSea } from '../js/terrain/sea-level.js';
-import { seaFilledUp } from '../js/tectonics/measure.js';
+import { landMask } from '../js/terrain/land-mask.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { heightsOf } from '../js/tectonics/step/heights.js';
 
@@ -30,10 +29,9 @@ for (const seed of seeds) {
         const F = frames.find(f => f.time === time);
         if (!F) { console.log(JSON.stringify({ seed, time, missing: true })); continue; }
         const T = synthesizeTerrain(F, mesh, tm, { seed, parts: true }), rec = T.rec;
-        // ── the rivers' land, as step/rivers.js builds it from the world view ──
-        const rl = new Uint8Array(n);
-        for (let w = 0; w < n; w++) if (F.owner[w] >= 0 && (F.type[w] !== CrustType.OCEAN || (F.seaFillKm[w] > 0 && seaFilledUp(time - F.formedAt[w], F.seaFillKm[w])))) rl[w] = 1;
-        const slR = landAndSea(F, mesh, H, rl);
+        // ── the rivers' land, as step/rivers.js builds it from the world view (terrain/land-mask.js; until 2026-11-06
+        // sea-level.js landAndSea: every continent and arc land) ──
+        const M = landMask(F, mesh, H), rl = M.land, slR = M.sl;
         let recLand = 0, rivLand = 0, recOnly = 0, rivOnly = 0, rivOnlyCont = 0, rivOnlyArc = 0;
         for (let w = 0; w < n; w++) {
             const a = rec.land[w] ? 1 : 0, b = rl[w] ? 1 : 0;

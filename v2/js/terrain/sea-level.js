@@ -194,7 +194,7 @@ function coarseGraph(mesh) {
  *     it is reported either way (ridgeSeaKm).
  * The ocean here is the sea floor that holds water: ocean crust not filled to sea level, and any cell no plate covers.
  * The frame may be any view with its fields per world cell (owner, type, formedAt, seaFillKm, mantleHeat 0–255, time):
- * the history's rivers pass the world's (landAndSea).
+ * the history's rivers pass the world's (terrain/land-mask.js landMask).
  * @param {(w: number) => boolean} isLand  the land as the records see it (continental crust, filled seas)
  * @param {Float32Array} [swellKm]  a buffer to write the swell to
  * @returns {{swellKm: Float32Array, seaKm: number, swellSeaKm: number, ridgeSeaKm: number, heatLand: number, heatSea: number, depthKm: number}}
@@ -234,30 +234,12 @@ export function liftRefKm(cfg, arcShare) {
 
 /**
  * A sea floor its sediment fills that the mantle's swell holds up at or above the sea: dry land (records.js deriveRecords;
- * the history's rivers, landAndSea) — the floor of seaDepthKm(age), shallowed by its fill (Airy: SEDIMENT_LOAD_FACTOR),
+ * the history's rivers: terrain/land-mask.js landMask) — the floor of seaDepthKm(age), shallowed by its fill (Airy: SEDIMENT_LOAD_FACTOR),
  * raised or lowered by the swell against the sea floor's reference, against the sea's level.
  */
 export function liftedDry(frame, w, sl, cfg) {
     return frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 && frame.formedAt[w] >= 0
         && sl.swellKm[w] - cfg.mantleSwellKm * cfg.mantleSwellSeaRef - (seaDepthKm(frame.time - frame.formedAt[w]) - frame.seaFillKm[w] / SEDIMENT_LOAD_FACTOR) >= sl.seaKm;
-}
-
-/**
- * The land and the sea's level as the terrain's records stand them (records.js deriveRecords; branch unified-swell, so
- * the history's rivers and the sea they fill see the land the terrain draws — tectonics/step/rivers.js): `land` comes set
- * for crust that is land whatever the sea (continental crust, island arcs, seas filled up: 1); a filled sea the swell
- * lifts dry joins it (2), and the sea's level is reckoned again with it as land.
- * @param {Uint8Array} land  (in and out)
- * @param {Float32Array} [swellKm]  a buffer for the swell
- */
-export function landAndSea(frame, simMesh, cfg, land, swellKm = null) {
-    const n = simMesh.numCells, H = mantleWarmth(frame, simMesh, cfg), isLand = w => land[w] !== 0;
-    swellKm ??= new Float32Array(n);
-    for (let w = 0; w < n; w++) swellKm[w] = cfg.mantleSwellKm * H[w];
-    let sl = reckonSea(frame, simMesh, cfg, isLand, H, swellKm), raised = 0;
-    for (let w = 0; w < n; w++) if (!land[w] && liftedDry(frame, w, sl, cfg)) { land[w] = 2; raised++; }
-    if (raised) sl = reckonSea(frame, simMesh, cfg, isLand, H, swellKm);
-    return sl;
 }
 
 /** A frame's sea level as its records carry it, small enough to post from a worker (null without records). */
