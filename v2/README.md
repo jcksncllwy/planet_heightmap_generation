@@ -62,8 +62,8 @@ and setting. A sea cut off from the world ocean (the largest body of water; `ter
 by its water balance, not by sea level, and a timeline frame has no climate — so it is balanced on the zonal climate the
 history erodes by (2026-10-28, `terrain/basin-estimate.js`): the rain by latitude (`rainByLatitude`, falling off inland
 over `rainInlandKm`), the temperature by latitude less the lapse rate with height (`tempByLatitude`), a potential
-evaporation from that temperature (`petBaseMm + petPerC·T`: a frame has no sunlight budget; Add detail takes the climate's
-own since 2026-11-05) and Add detail's Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
+evaporation from that temperature and the latitude's sunlight (`climate/water.js zonalPET`: the climate's own
+Priestley–Taylor law, its seasons from the temperature stage's land response — the water ledger, 2026-11-06) and Add detail's Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
 catchment's runoff against what its water loses at each level). One that fills is drawn as a lake at its spill level
 (the ground of its hollow above sea level drowned too), one that keeps a lake as that lake, at its level, in its own
 grey-teal (`terrain-shade.js cutOffTint`, without the glint), and its dry ground as lowland (a playa or a salt flat).
@@ -92,7 +92,7 @@ ice and spills, no lake and no sink (`finish-fsm.js`). The rivers then carry 0.3
 ice's calving (it was 0.35–0.41, the ice's snow as rain); the endorheic share and the lakes as before but those on the ice.
 What it skips: the ice has no dynamics (it takes the bed's fall, not its surface's) and its margin melts all it brings in
 one cell; a month's mean below freezing has no thawing days (positive degree-days from the monthly spread); no store
-carried between years — the monthly snow and soil ledger is the next lane's, and the ice's own mass budget (model review
+carried between years but the kept snow (the water ledger, below), and the ice's own mass budget (model review
 U9) is to replace `iceDischarge`, dry basins left closed —
 flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the finish's own erosion strength
 (`erosionStrength` 0–3, 3; developer, 2026-10-15: "break up SOME of the monotony of the ridges"): the stream power's m
@@ -2458,6 +2458,51 @@ What this does not do (open):
 - `collapseMakesArea` (a collapsing range spreading over its own plate's sea floor) stays off: +0.8 Mkm² a cycle, within
   noise.
 - Intra-oceanic fore-arcs do not erode; the fore-arc reach (250 km) is recalled, not sourced.
+
+## One water ledger (2026-11-06, lane water; model review U1)
+
+Before, the land's water was computed six ways: the climate's Priestley–Taylor bucket (rain.js), the finish's Budyko
+runoff on it, `runoffMonths`' own seasonal heuristic (a 1/12 share where no month ran: 2.7–10.5 % of the land), polar's
+annual `thawedWater`, a linear 300 + 55·T potential evaporation in the timeline's basin estimate and `check-basins` (1/5–1/2
+of Priestley–Taylor below 5 °C), and the cover's and civ's own buckets at 150 and 100 mm (`tools/water-study.mjs`, 3 seeds × 2
+moments at 640K). Now one account, `climate/water.js`, books what each place's rain becomes, P = E + R + ΔS:
+
+- **Snow** (`snowYear`): each month below 0 °C falls as snow and melts at 120 mm a month per °C (Braithwaite 2008). Three
+  years from bare ground; what the third year keeps is the kept snow, the ice's store (`iceDischarge` takes it, as before).
+- **The year's split** (`fuEvaporation`): Budyko in Fu's form (ω 2.6) on the climate's own Priestley–Taylor. On the
+  finished ground its land evaporation is 0.97–1.01 of the climate's own. A pure monthly bucket ran off only 0.23–0.30,
+  because monthly means lose the storms within the month (Milly 1994). So the year's split is Budyko's and the months only
+  time it.
+- **The months** (`waterMonths`): each month evaporates k·Ep_m, at most what the ground holds (its liquid plus a 150 mm
+  soil, Manabe 1969, the one soil the cover reads too), with k set so the year matches Budyko's. The soil's spill runs
+  off, part of it through the ground (baseflow). There's no 1/12 fallback: ground that never runs times its inflow by its
+  melt, or else by its warmest month.
+- **The lakes**: a hollow's water gathers every cell's runoff, so its sky water is the rain less the cell's own runoff
+  (`skyKept`), not the rain. The old form counted each lake cell's rain twice, 360–970 km³/yr (0.9–2.9 % of the land's
+  runoff). Open water loses E_open − E_land against it (closedBasins, the erosion's closed basins, the FSM).
+- **The last ice age's lakes** read the sky's own runoff, not today's runoff with today's sheets' melt added. Today's
+  sheets aren't the ice age's, and their melt had fed the ice-dammed lakes at the margins. floods, 7 worlds: seed
+  626225@300's ice-dammed lakes went from 2.49 to 1.67 Mkm²; 12345@300's largest lake from 520 to 35 thousand km³, and its total from 1.17 to
+  0.76 Mkm². The rest is proglacial physics (see the floods section). The ice age's own melt budget is U9.
+- **The timeline** (`zonalPET`, `zonalPETAt`): Priestley–Taylor from the latitude's insolation, with seasons from the
+  temperature stage's land response F̂/(B + K + iωC). `terrain/basin-estimate.js` and `check-basins`' Earth seas read it.
+- **The climate** is bit-identical. Its Priestley–Taylor constants moved to water.js, and rain.js re-exports them. Its own
+  bucket keeps its tuned 87.5 mm: that bucket sets how much the land gives back to the air, while the ledger only sets when.
+
+Books: `stats.waterLedger` (rain, evaporation, runoff, kept, the climate's evaporation, closure). Reported in check-basins:
+the land's runoff ÷ rain 0.34–0.40 (0.36–0.42 with the ice that reaches the sea; Earth 0.33–0.42, Dai & Trenberth 2002,
+Oki & Kanae 2006), the sky's alone, and the closure against the climate's evaporation, within −1.5…+0.6 %.
+
+**The cover** keeps 300 + 55·T as a classification index only (`FINISH.petBaseMm`, `petPerC`). Its wetness S-curves were
+fitted on it, and it books no water. Its soil and snowmelt are the ledger's. Refitting the cover to AET/PET is a later lane.
+
+**What it skips:** the month's mean temperature only (no thawing days from the monthly spread); snow's sublimation and
+drift; frozen soil; no store carried between years but the kept snow; lakes and wetlands evaporate as their land does
+in the ledger (their extra loss is the hollows').
+
+**Not wired (other programs):** the history's rivers' fixed 0.35 runoff (`tectonics/step/rivers.js`) would read the
+ledger's zonal shares (Budyko on `zonalPET`). Civ's Fu buckets (`civ/crops.js`, 100 mm) would read the ledger's soil and
+monthly E per cell from the finish's fields.
 
 ## Conventions
 

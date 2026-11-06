@@ -8,6 +8,10 @@
 //   trees in leaf or bare, snow on the ground (the year: the months' mean green, and the snow that lies most of the year);
 //   a biome's name, for the readout.
 // Pure functions of the months: the finish calls them per cell, a check on Earth's observed climate per grid cell.
+// Its water: the water ledger's soil capacity and snowmelt rate (climate/water.js SOIL_MM, SNOW_MELT_MM_PER_C); its
+// wetness is rain ÷ the temperature's 300 + 55·T (FINISH.petBaseMm, petPerC), kept as a classification index — the
+// S-curves were fitted on it — not as water: it books none. The snow's rain–snow ramp and dry-air loss stay its own (how
+// long snow lies, for the look); the ledger's snow splits at 0 °C.
 
 import { FINISH, COVER } from './finish-config.js';
 import { KOPPEN_CLASSES } from '../climate/koppen.js';
@@ -472,7 +476,7 @@ export function terrainLook(C, heightM, w, K = COVER) {
     const { mean, std } = boxStats(hC, land, cw, ch, pxKm, K.valleyKm);
     // (the rivers' green ribbons and the lakes' fringes: how much of each pixel is riverside, 0…1)
     // (only where it is dry enough for the green to show — most rivers run through green country)
-    const dryAt = i => { const T = tAnnual[i] / 100; return 1 - smooth(0.25, 1, pAnnual[i] / Math.max(60, 300 + 55 * T)); };
+    const dryAt = i => { const T = tAnnual[i] / 100; return 1 - smooth(0.25, 1, pAnnual[i] / Math.max(FINISH.petMinMm, FINISH.petBaseMm + FINISH.petPerC * T)); };
     const rip = rivers || water ? riparian(rivers, water, w, hC, land, cw, ch, pxKm, K, noise, dryAt) : null;
     const rg = 6371 / K.ripGrainKm, ripViews = ripSat ? [ripSat.year, ripSat.jan, ripSat.jul] : null;
     const LUT = Float64Array.from({ length: 256 }, (_, v) => toLin(v)), rW = K.rockWarm.map(toLin), rC = K.rockCold.map(toLin);
@@ -498,7 +502,7 @@ export function terrainLook(C, heightM, w, K = COVER) {
             const ge = (hC[row + (x + 1 === cw ? 0 : x + 1)] - hC[row + (x === 0 ? cw - 1 : x - 1)]) / (2 * pxKm * cl), gn = (hC[up + x] - hC[dn + x]) / (2 * pxKm);
             const slope = 1000 * Math.sqrt(ge * ge + gn * gn);
             // the place's dryness and cold (its year: rain against the potential evaporation the rivers use)
-            const T = tAnnual[i] / 100, wet = pAnnual[i] / Math.max(60, 300 + 55 * T);
+            const T = tAnnual[i] / 100, wet = pAnnual[i] / Math.max(FINISH.petMinMm, FINISH.petBaseMm + FINISH.petPerC * T);
             const dry = 1 - smooth(0.25, 1, wet), cold = smooth(3, -6, T);
             const rugged = Math.max(smooth(K.rockRelief[0], K.rockRelief[1], std[i]), smooth(K.rockSlope[0], K.rockSlope[1], slope));
             const rock = K.rockMax * rugged * (K.rockExposure + (1 - K.rockExposure) * Math.max(dry, cold));

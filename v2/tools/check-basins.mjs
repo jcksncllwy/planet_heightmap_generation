@@ -104,7 +104,8 @@ for (const seed of SEEDS) {
         // (the seas the finish counts as remnants of the sea: finish-config.js seaBasinKm2)
         const seas = (fin.stats.water.seas ?? []).filter(s => s.belowKm2 >= F.seaBasinKm2[0]);
         const down = seas.filter(s => !s.spills), wetDown = down.filter(s => s.kind === Water.SALT), dry = down.filter(s => s.kind !== Water.SALT);
-        closedRows.push({ seed, t, endo: fin.stats.water.endorheicShare ?? NaN, closed: fin.stats.water.closed ?? [], runoff: fin.stats.runoffShare ?? NaN, climRunoff: fin.stats.climateRunoffShare ?? NaN });
+        closedRows.push({ seed, t, endo: fin.stats.water.endorheicShare ?? NaN, closed: fin.stats.water.closed ?? [], runoff: fin.stats.runoffShare ?? NaN, climRunoff: fin.stats.climateRunoffShare ?? NaN,
+            skyRunoff: fin.stats.waterLedger?.rainKm3 ? fin.stats.waterLedger.runoffKm3 / fin.stats.waterLedger.rainKm3 : NaN, iceRunoff: fin.stats.runoffShareWithIce ?? NaN, closure: fin.stats.waterLedger?.closure ?? NaN });
         // (the land's water and hollows, and the sediment the history's hollows hold — crust records, km of it per sim cell)
         const fr = frames.get(t), simKm2 = 4 * Math.PI * 6371 ** 2 / simMesh.numCells;
         let fillKm3 = 0; for (let w = 0; w < simMesh.numCells; w++) if (fr.owner[w] >= 0) fillKm3 += (fr.basinFillKm?.[w] ?? 0) * simKm2;
@@ -116,7 +117,7 @@ for (const seed of SEEDS) {
     const all = k => per.flatMap(p => p[k]), sum = k => per.reduce((a, p) => a + p[k], 0);
     const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
     rows.push({ seed, n: sum('n'), full: sum('full'), below: sum('belowKm2') / per.length / 1e6, water: sum('waterKm2') / per.length / 1e6,
-        surfaceMedian: median(all('surfaces').filter(v => v < 0)), surfaceLow: Math.min(...all('surfaces')), floorLow: Math.min(...all('floors')) });
+        surfaceMedian: median(all('surfaces').filter(v => v < 0)), surfaceN: all('surfaces').length, surfaceBelow: all('surfaces').filter(v => v < 0).length, surfaceLow: Math.min(...all('surfaces')), floorLow: Math.min(...all('floors')) });
 }
 const txt = f => rows.map(r => `${r.seed}: ${f(r)}`).join(' · ');
 // (a hollow whose floor is below sea level, cut off from the ocean, is a cryptodepression: most of Earth's large ones
@@ -129,8 +130,10 @@ report('cut-off seas full to their rim and spilling, of all (300, 600, 950 Myr)'
 report('area below sea level in cut-off seas: mean of the moments', rows.map(r => r.below), { earth: [0.3, 3.5], unit: ' Mkm²', digits: 2,
     source: 'the Caspian depression ~0.6 today; the Zechstein ~0.6 in Pangea (Peryt et al. 2010); the Messinian Mediterranean 2.5 and the Paratethys (Hsü et al. 1973; Krijgsman et al. 1999)',
     detail: txt(r => `water on them ${r.water.toFixed(2)} Mkm²`) });
-report('a drawn-down sea’s water surface: median', rows.map(r => r.surfaceMedian), { earth: [-1.5, -0.028], unit: ' km', digits: 3,
-    source: 'the Caspian −28 m, Lake Assal −155 m, the Dead Sea −430 m (−390 m in 1930); the Messinian Mediterranean −1.5 to −3 km (Hsü et al. 1973; Ryan 2009)' });
+// (a seed with no salt lake standing below sea level in a cut-off sea has no median: it is said so, not printed as null)
+report('a drawn-down sea’s water surface: median', rows.map(r => r.surfaceBelow ? r.surfaceMedian : null), { earth: [-1.5, -0.028], unit: ' km', digits: 3,
+    source: 'the Caspian −28 m, Lake Assal −155 m, the Dead Sea −430 m (−390 m in 1930); the Messinian Mediterranean −1.5 to −3 km (Hsü et al. 1973; Ryan 2009)',
+    detail: txt(r => r.surfaceBelow ? `${r.surfaceBelow} of ${r.surfaceN} salt lakes below sea level` : r.surfaceN ? `none below sea level: its ${r.surfaceN} salt lake${r.surfaceN > 1 ? 's' : ''} in cut-off seas stand above it` : 'no cut-off sea holds a salt lake: none qualifies') });
 report('…the lowest', rows.map(r => r.surfaceLow), { earth: [-3, -0.028], unit: ' km', digits: 3, source: 'the Dead Sea −430 m today; the Messinian Mediterranean drawn down 1.5–3 km (Hsü et al. 1973; Blanc 2002; Ryan 2009)' });
 report('a dried sea’s floor (a playa below sea level): the lowest', rows.map(r => r.floorLow), { earth: [-3, -0.086], unit: ' km', digits: 3,
     source: 'Death Valley −86 m, Karagiye −132 m, the Qattara −133 m; the Messinian Mediterranean’s floors dry 2–3 km down (Hsü et al. 1973)' });
@@ -144,8 +147,8 @@ section('closed basins on land (finished at 160K cells, the same moments)');
     report('land draining to closed basins: mean of the moments', bySeed.map(R => 100 * R.reduce((a, r) => a + r.endo, 0) / Math.max(1, R.length)), { earth: [15, 35], unit: ' %', digits: 1,
         source: '~20 % of the continents today (Wang et al. 2018, Nat. Geosci. 11: 926); more in a supercontinent’s dry interior (no figure found)',
         detail: SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r.endo).toFixed(1)}`).join(', ')}`).join(' · ') });
-    // (the land's runoff, rain less evaporation, as a share of its rain — the finish's, from the climate's own potential
-    // evaporation (finish.js potentialMonths), against Earth's and against the climate's own land rain less land evaporation:
+    // (the land's runoff, rain less evaporation, as a share of its rain — the finish's water ledger's (climate/water.js:
+    // Budyko on the climate's own Priestley–Taylor evaporation), today's ice sheets' melt in it, against Earth's and against the climate's own land rain less land evaporation:
     // the rivers carry back what the atmosphere's balance lost to the land)
     const meanOf = (R, k) => R.reduce((a, r) => a + r[k], 0) / Math.max(1, R.length);
     report('the land’s runoff ÷ its rain: mean of the moments', bySeed.map(R => 100 * meanOf(R, 'runoff')), { earth: [33, 42], unit: ' %', digits: 1,
@@ -154,6 +157,18 @@ section('closed basins on land (finished at 160K cells, the same moments)');
     report('…less the climate’s own (its land’s rain less its land’s evaporation, ÷ its rain)', bySeed.map(R => 100 * (meanOf(R, 'runoff') - meanOf(R, 'climRunoff'))), { earth: [-3, 3], unit: ' points', digits: 1,
         source: 'closure, not Earth: the finish’s rivers from the same air as the climate’s balance (rain.js Priestley–Taylor); the rest is the cells’ rain, finer than the grid’s, through Budyko’s curve',
         detail: SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r.climRunoff).toFixed(1)}`).join(', ')}`).join(' · ') });
+    // (the same without the ice sheets' melt — the sky's water alone — and with all the ice that reaches the sea counted
+    // as runoff, calved and held in frozen pits too, as Earth's figures count Antarctica's ice discharge)
+    const pts = k => SEEDS.map((seed, i) => `${seed}: ${bySeed[i].map(r => `${r.t} Myr ${(100 * r[k]).toFixed(1)}`).join(', ')}`).join(' · ');
+    report('…the sky’s alone, without the ice sheets’ melt', bySeed.map(R => 100 * meanOf(R, 'skyRunoff')), { earth: [33, 42], unit: ' %', digits: 1,
+        source: 'Dai & Trenberth 2002 as above; Earth’s figure includes Antarctica’s and Greenland’s discharge, ~2 000 and ~500 km³ a year (Rignot et al. 2013; Mouginot et al. 2019), ~2 points of it', detail: pts('skyRunoff') });
+    report('…with all the ice that reaches the sea (melted, calved, held in frozen pits)', bySeed.map(R => 100 * meanOf(R, 'iceRunoff')), { earth: [33, 42], unit: ' %', digits: 1,
+        source: 'Dai & Trenberth 2002 as above, ice discharge counted', detail: pts('iceRunoff') });
+    // (the water ledger's books over the land: rain − the climate's own land evaporation − runoff − kept snow, ÷ rain.
+    // Per cell the ledger closes by construction; this is the finish's cells against the climate's grid — finer rain
+    // through Budyko's curve)
+    report('the water ledger’s closure against the climate’s evaporation: mean of the moments', bySeed.map(R => 100 * meanOf(R, 'closure')), { earth: [-3, 3], unit: ' %', digits: 1,
+        source: 'closure, not Earth: P = E + runoff + Δsnow over the land (climate/water.js)', detail: pts('closure') });
     // (a closed lake's size against its catchment: what the catchment's runoff can hold against the lake's evaporation —
     // its aridity in one number, Bracht-Flyr et al. 2013; over 10 000 km² of catchment, the map's)
     const median = a => { const v = [...a].sort((x, y) => x - y); return v.length ? v[v.length >> 1] : NaN; };

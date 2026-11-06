@@ -230,7 +230,12 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // their lakes' sky water)
     const skyKept = new Float32Array(n);
     for (let c = 0; c < n; c++) skyKept[c] = pAnn[c] === pAnn[c] ? Math.max(0, pAnn[c]) - runoff[c] : NaN;
-    const TMP = globalThis.process?.env?.WATER_TMP_OLDLAKE; if (TMP === 'carve') skyKept.set(pAnn);   // TMP
+    // (the sky's own runoff, before iceDischarge adds today's sheets' melt to it: the last ice age's lakes read this.
+    // Today's sheets aren't the ice age's — its sheets stood elsewhere and larger — so their melt isn't the ice age's
+    // water; reading it fed the ice-dammed lakes at the margins with a meltwater the ice age never had: floods' seed
+    // 626225@300 ice-dammed lakes 2.49 → 1.67 Mkm², 12345@300's largest 520 → 35 thousand km³ without it. The ice age's
+    // own sheets' melt budget is the model review's U9)
+    const skyRunoff = runoff.slice();
     const D = iceDischarge(mesh, z, ocean0, liquid.store, runoff, cellKm2);
     // (the water ledger's books over the land, km³/yr — climate/water.js: rain = evaporation + runoff + kept snow, per
     // cell by construction; and against the climate's own land evaporation (rain.js Eland, the water its air got back
@@ -306,7 +311,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: TMP === 'icemelt' ? Float32Array.from(skyKept, (k, c) => pAnn[c] - k) : runoff, pet }, F);   // TMP
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet }, F);
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;
     let basinKm2 = 0, basinMaxKm = 0;
@@ -364,7 +369,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
     // (Fill-Spill-Merge on the erosion's ground: finish-fsm.js. Without the erosion, a study switch, it gives ~2.5× Earth's lakes)
-    const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, skyKept: TMP === 'fsm' ? pAnn : skyKept, frozen: liquid.frozen, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
+    const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, skyKept, frozen: liquid.frozen, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (the sea again, after the rivers' gorges)

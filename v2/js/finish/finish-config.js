@@ -22,8 +22,12 @@ export const FINISH = {
     // (Priestley–Taylor's from its sunlight and air, rain.js — finish.js potentialMonths): the land then returns to the sea
     // what the atmosphere's balance lost to it, ~0.32–0.43 of its rain (the runoff lane, 3 seeds × 2 moments; Earth ~0.35–0.40,
     // Trenberth et al. 2007, Oki & Kanae 2006)
-    petBaseMm: 300,             // the temperature's potential evaporation — the land cover's wetness (its S-curves were fitted
-    petPerC: 55,                // with it, COVER), and the rivers' where a climate has no rain stage: at 0 °C, plus this per °C
+    // (the temperature's potential evaporation, 300 + 55·T: since the water ledger (lane water, 2026-11-06) no water is
+    // booked by it — the rivers, lakes and seasons read the climate's Priestley–Taylor (climate/water.js; monthPET where a
+    // climate has no rain stage). It stays as the land cover's classification index only: COVER's wetness S-curves (and
+    // civ's crops) were fitted on rain ÷ this, and refitting them to the ledger's AET/PET is its own lane)
+    petBaseMm: 300,             // the cover's wetness index: at 0 °C…
+    petPerC: 55,                // …plus this per °C
     petMinMm: 60,
     budykoW: 2.6,               // Fu's ω: Earth's catchments' mean, ~2.6 (Zhang et al. 2004; Turc–Pike's ν = 2, the climate's
                                 // own land evaporation law, is ω ≈ ν + 0.72 = 2.7 — Yang et al. 2008)
