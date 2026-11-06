@@ -77,3 +77,24 @@ export function trenchFans(world) {
     }
     return world.fans;
 }
+
+/**
+ * Book where each open river mouth's rock went this span of `dt` Myr (the books only: nothing is moved). A mouth whose rock
+ * reaches a trench feeds its fan (world.budget.fanKm3; there sediment subduction and the prism share it); one with no
+ * trench in reach lays it past its shelf, on the slope, rise and abyssal plain of its own margin (world.budget.riseKm3:
+ * rock on ocean crust, not continental crust — Cogley 1984 takes the continent to the foot of the slope). Called after
+ * the stages that read the fans, so it never builds them earlier than they were. Mouths on an enclosed sea are
+ * step/sea-fill.js's.
+ */
+export function bookFans(world, dt) {
+    const mouths = world.riverMouths;
+    if (!mouths?.length || !(dt > 0)) return;
+    const { deliveries } = trenchFans(world), fed = new Set(deliveries.map(d => d.mouth)), B = world.budget;
+    let fan = 0, rise = 0;
+    for (const m of mouths) {
+        if (m.enclosed || !(m.km3 > 0)) continue;
+        if (fed.has(m)) fan += m.km3 * dt; else rise += m.km3 * dt;
+    }
+    B.fanKm3 = (B.fanKm3 ?? 0) + fan;
+    B.riseKm3 = (B.riseKm3 ?? 0) + rise;
+}

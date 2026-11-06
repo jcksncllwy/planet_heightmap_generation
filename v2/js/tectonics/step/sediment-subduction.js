@@ -40,11 +40,12 @@ export function subductSediment(world, dt) {
     };
     // each basin's continental rock lost, km³/Myr, gathered per source plate onto the coast around its mouth
     const byPlate = new Map();
-    let km3 = 0, allKm3 = 0;
+    let km3 = 0, allKm3 = 0, keptKm3 = 0;
     for (const { mouth, cells, weights } of deliveries) {
         let f = 0;
         for (let i = 0; i < cells.length; i++) f += weights[i] * shareAt(cells[i]);
         allKm3 += mouth.km3 * f * dt;               // (all the rivers' rock that goes down, arcs' and islands' too: Earth's figure)
+        keptKm3 += mouth.km3 * (1 - f) * dt;        // (…and what stays at the margin: the prism, or a full trench overtopping)
         const lost = mouth.contKm3 * f;
         if (!(lost > 0)) continue;
         km3 += lost * dt;
@@ -53,6 +54,11 @@ export function subductSediment(world, dt) {
     }
     world.budget.sedimentKm3 = (world.budget.sedimentKm3 ?? 0) + km3;
     world.budget.sedimentAllKm3 = (world.budget.sedimentAllKm3 ?? 0) + allKm3;
+    // (the fans' rock that does not go down stays on the margin: scraped into the prism, or, where the trench is full,
+    // spread over the incoming plate's floor to come back to the trench later — rock on ocean crust either way, not continental
+    // crust. budget.wedgeKm3 is the prism's own estimate (fill above the channel × convergence, step/margin-isles.js): the
+    // rest of trenchKeptKm3 is overtopping. fanKm3 = sedimentAllKm3 + trenchKeptKm3, step/trench-fans.js bookFans)
+    world.budget.trenchKeptKm3 = (world.budget.trenchKeptKm3 ?? 0) + keptKm3;
     // (config.rockBook: the rivers' rock is what the heights already wore off the crust (crust.wornKm) — it left the
     // continent's books as it wore, so eating the coast for it again would lose it twice: booked, not taken. Lane crust)
     if (config.rockBook) return 0;

@@ -22,6 +22,7 @@ import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
 import { growMarginIsles } from './step/margin-isles.js';
 import { erodeForeArcs } from './step/subduction-erosion.js';
 import { subductSediment } from './step/sediment-subduction.js';
+import { bookFans } from './step/trench-fans.js';
 import { captureFrame } from './snapshot.js';
 import { evolveHeights, seedBaseRelief } from './step/heights.js';
 import { evolveRivers } from './step/rivers.js';
@@ -120,6 +121,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (slow) changed += led('marginIsles', growMarginIsles(world, slowDt)); // fore-arc islands rise and join the coast (cell types only)
             if (slow) changed += led('sedimentSubduction', subductSediment(world, slowDt)); // trench sediment goes down the subduction channel: the land it came from is lost
             if (slow) changed += led('subductionErosion', erodeForeArcs(world, slowDt));     // the trench abrades the fore-arc's base: the coast steps back (config.subductionErosionKm3PerKmMyr)
+            if (slow) bookFans(world, slowDt);                      // (the books: where the rivers' rock went — fans or the rise)
             world.foreArcs = world.fans = null;                    // (the margins and fans those two shared: rebuilt next time)
             changed += led('rifts', yield* riftContinents(world, dt));  // plume and tension rifts (splits plates)
             changed += led('riftStage', evolveRiftStages(world));          // young rifts stretch continent before they break up (config.riftStage)

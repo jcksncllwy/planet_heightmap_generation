@@ -70,6 +70,7 @@ export function fillEnclosedSeas(world, mouths, span, land, sea) {
             for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (!land[nb] && stamp[nb] !== mark) { stamp[nb] = mark; q[len++] = nb; } }
         }
         world.budget.seaFillKm3 = (world.budget.seaFillKm3 ?? 0) + m.km3 * span - Math.max(0, km3);
+        world.budget.seaOverflowKm3 = (world.budget.seaOverflowKm3 ?? 0) + Math.max(0, km3);   // (a sea filled to its level: the rest)
     }
     s.mark = mark;
 }

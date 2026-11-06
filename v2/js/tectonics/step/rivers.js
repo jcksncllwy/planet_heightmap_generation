@@ -168,7 +168,7 @@ export function evolveRivers(world, dt) {
     world.riverMouths = mouths;
     world.budget.riverSupplyKm3 = (world.budget.riverSupplyKm3 ?? 0) + supplied * span;
     world.budget.riverContSupplyKm3 = (world.budget.riverContSupplyKm3 ?? 0) + suppliedCont * span;
-    fillEnclosedSeas(world, mouths, span, land, sl);   // (a mouth on an enclosed sea fills it, to the sea's level; the rest go down their fans)
+    fillEnclosedSeas(world, mouths, span, land, sl);   // (a mouth on an enclosed sea fills it, to the sea's level: budget.seaOverflowKm3 the rest)
     buildShelves(world, mouths, span, land);           // (…less what their own passive margin has room for)
     for (let w = 0; w < n; w++) world.riverKm2[w] = land[w] ? area[w] : 0;
     // ── the cut: E = k A^m S over the span, downstream first; never below the reach below, and only toward the river's

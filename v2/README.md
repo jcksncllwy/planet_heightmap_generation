@@ -2392,6 +2392,13 @@ check-invariants):
 - **One rock book** (`rockBook`): the rivers carry the rock the heights wear (crust.wornKm), not a flux of their own, and
   rock laid on continental crust still counts as its volume. It fixes a double loss: sediment subduction ate coast for
   rock the heights had already worn off (−6.4 Mkm² a cycle).
+  Every km³ of it is booked where it goes (world.budget, km³): `basinFillKm3` (lakes and basins), `seaFillKm3` and
+  `seaOverflowKm3` (an enclosed sea, to its level, and what it had no room for that drainage), `shelfKm3` (the passive
+  margin's shelf), `riseKm3` (past the shelf with no trench in reach: slope, rise and abyssal plain, on ocean crust) and
+  `fanKm3` (down a fan to a trench), which splits into `sedimentAllKm3` (down the channel) and `trenchKeptKm3` (the prism,
+  or overtopping a full trench onto the incoming floor; `wedgeKm3` is the prism's own estimate from the fill). Their sum is
+  the rivers' supply, `riverSupplyKm3` (cycle scene, 20K, 1200 Myr: 7.21 of 7.23 Gkm³ on 12345, 6.26 of 6.28 on 777).
+  Only basin, sea and shelf fill on continental crust count as its volume; the rest lies on ocean crust (Cogley 1984).
 - **Subduction erosion** (`subductionErosionKm3PerKmMyr`, **off by default**; built at 36, `subductionErosionReachKm` 250; step/subduction-erosion.js):
   every closing overriding trench eats the continent nearest it within the fore-arc, thinning it until it founders. The
   rate per km is Earth's; the length that erodes is emergent (~0.8 AU removed against Earth's ~1.5).
@@ -2408,8 +2415,10 @@ Müller et al. 2019's deforming networks count resolvably strained crust, not ev
 count is still printed beside it.
 
 What this does not do (open):
-- **Volume still runs down ~13 % a cycle.** ~4 Gkm³ of the rock the heights wear goes past the shelf and is in no book;
-  on Earth most stays on the continents as recycled cover.
+- **Most worn rock leaves the continent.** It is booked now (above), but ~4–5 Gkm³ a cycle (rise ~1.9–2.4, the trenches'
+  kept share ~1.7–2.2, enclosed-sea overflow ~0.7) lies on ocean crust, where on Earth most stays on the continents as
+  recycled cover. Rock on the rise rides its floor to a trench; the raster does not carry it (no field), so its fate
+  there — subducted or accreted — is not modelled.
 - **The 41-vs-29 gap is the start inventory**, not geometry: `continentalFraction` 0.29 is in effect land. Progradation
   was measured and refuted as a crust maker (a filled sea floor carries ~14.6 km of sediment on ocean crust; Cogley 1984
   ends continental crust at the slope's foot).
