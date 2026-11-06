@@ -9,7 +9,7 @@
 
 import { CrustType, CrustFlag, OrogenyType, BeltSide } from '../model/crust.js';
 import { edgeKmOf } from '../../core/min-heap.js';
-import { buildHeights } from './heights.js';
+import { buildHeights, heightsOf } from './heights.js';
 
 /**
  * How far inland a belt of this kind reaches, given the convergence it has absorbed so far (km, i.e.
@@ -148,9 +148,16 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         return room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
     };
     // (belt.volCapKm3: the most crust this step's belt may add — a margin's arc magmatism, config.arcAdditionKm3PerKmMyr — the
-    // rest of its relief being the margin's own crust shortened, which this raster does not take away: lane crust, 1c(ii))
+    // rest of its relief being the margin's own crust shortened, which this raster does not take away: lane crust, 1c(ii)).
+    // The crust it adds is the ROOT heights.js lays, its thickening × rootGain (an Andean root's magma from below): the
+    // gain is that same magmatism, so it counts inside the cap, not on top of it (it was: 1.25 × the cap, defects item 7)
     let scale = 1;
-    if (belt.volCapKm3 !== undefined) { let v = 0; for (const c of reached) v += thickOf(c); v *= mesh.cellAreaKm2; if (v > belt.volCapKm3) scale = belt.volCapKm3 / v; }
+    if (belt.volCapKm3 !== undefined) {
+        let v = 0;
+        for (const c of reached) v += thickOf(c);
+        v *= mesh.cellAreaKm2 * (heightsOf(config).rootGain?.[belt.type] ?? 1);
+        if (v > belt.volCapKm3) scale = belt.volCapKm3 / v;
+    }
     for (const c of reached) {
         if (u[c] === Infinity || type[c] === CrustType.OCEAN) continue;
         // (a craton, a front cell on one included: thin-skinned — the cover folds and thrusts, the shield barely
