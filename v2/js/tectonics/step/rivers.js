@@ -297,16 +297,21 @@ function trapLoad(world, s, h, km3, rainKm2, H, cellArea) {
         for (let it = 0; it < 40; it++) { const m = 0.5 * (l0 + l1); if (laid(m) < want) l0 = m; else l1 = m; }
         L = l1;
     }
-    let kept = 0;
+    let kept = 0, cutFill = 0;
     for (let i = a; i < b; i++) {
         const c = holCells[i], r = L + g * holKm[c] - height[c];
         if (r <= 0) continue;
         const crust = plates[owner[c]].crust, cc = ownerCell[c], u = Math.min(r, cutNow[c]);
         kept += vol(c, r);                                    // (booked before the cut shrinks: vol reads it)
+        cutFill += u * cellArea;
         crust.riverIncKm[cc] = Math.max(0, crust.riverIncKm[cc] - u); cutNow[c] -= u;
         crust.basinFillKm[cc] += F * (r - u);
         height[c] += r;
     }
+    // (the part of it laid back into the rivers' own cuts — a valley refilled, its crust.riverIncKm shrinking — booked as its
+    // own flow for the rock book, tectonics/rock-book.js: cutFillKm3, km³, positive. It stays inside basinFillKm3 too, the
+    // total kept, so check-volume's sinks sum as before; the rock book reads the two apart. Rockbook's seam, 2026-11-06)
+    if (cutFill > 0) world.budget.cutFillKm3 = (world.budget.cutFillKm3 ?? 0) + cutFill;
     return kept;
 }
 
