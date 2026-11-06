@@ -2557,6 +2557,30 @@ the crust ledger's area and volume on, and prints per stage the continental and 
 the rock the heights wore off, and where the rivers set it down: basin fill, enclosed seas, shelves, trench wedge, sediment subducted (or, when
 present, crustfu's `fanKm3`, `riseKm3`, `seaOverflowKm3`). On 63b39b6: 7.43 Gkm³ worn per cycle (Earth ≈ 6–10, recalled), 7.18 carried, 2.27 set down, so **5.16 Gkm³ (69 %) in no book.** On 5ab3142 (crustfu's books): 6.49 worn, 6.36 carried, 6.35 set down (basin .53, sea .68, overflow .70, shelves .35, trench fans 2.12, rise 1.97), **0.15 Gkm³ in no book.** Report only; ~8 min.
 
+## The rock book closes stage by stage (2026-11-06, lane rockbook, review U2)
+
+All the rock the planet holds is one record: crust-ledger.js `rockParts` counts continental crust (its kind's thickness plus its
+root), the relief it carries (as the crust it stands for), the sediment on any cell (basin, enclosed-sea, shelf and rise rock),
+island-arc crust with its root and relief, and the rock worn off and not yet carried (`crust.wornKm`). A stage that makes or
+loses rock books the flow by name in km³ to `world.budget` (`tectonics/rock-book.js` lists them all): arcs grown, matured and
+recycled; a collision's rock consumed and kept; pieces moved to another plate or handed back to the ocean; margin isles raised,
+merged and eroded; a hollow's fill worn away. Every book is the cell's rock after its change less before, in the record's own
+per-cell measure (`cellRockKm3`), so a book cannot drift from what it counts. `tools/lib/volume-books.mjs` `STAGE_FLOWS` says
+which stage may book which flow, and `check-invariants.mjs` (the ledger's 300 Myr run, volume on) holds every stage's change in
+rock to its books within 1 % of its gross movement (or 0.005 Gkm³). All of this only reads and counts: histories are
+bit-identical (crust fields and the budget's other counters hash the same at 12345 × 400 Myr).
+
+- **Measured** (20K, 300 Myr, seeds 12345 / 777 / 4242): every stage closes within 0.8 %, except the rivers and their fans,
+  held as one unit (the fans spend over the next steps what the rivers deliver) to 5 %: −3.2 … −4.0 %. The gap is in
+  step/rivers.js. trapLoad books the rock that refills a valley cut as `basinFillKm3`, but the cut (`crust.riverIncKm`) is a
+  record with no volume (0.029 Gkm³ on 12345). Some supply also reaches no sink: ~0.015 Gkm³, ~10 Myr of the mouths' rate
+  against a 4 Myr river span. The tolerance tightens to 1 % when rivers.js books `cutFillKm3`.
+- **Unpaid sources, named:** a belt's relief and root (`beltReliefKm3`, `beltRootKm3`: the rigid upper plate loses nothing for
+  them; review row 10, "belts from shortening"). A rift's shoulders are among them: `beltReliefKm3` booked in the rifts stage.
+  An arc welded on as continent is reworked up to an ordinary continent's crust (`arcMaturedKm3`).
+- **Not done:** one density/porosity law for the three sediment densities (margin 2400, fill 2500, foredeep 2700/900). It
+  changes the path and the margin's density is the datum lane's to read; deferred.
+
 ## The craton-scrap hole was a coast (2026-11-06, lane scrap)
 
 coast9 left phase 10's pooled scrap check failing on main's own path on one scrap: history 12345 at 560 Myr, one cell, 2.66 km

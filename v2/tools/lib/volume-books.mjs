@@ -59,7 +59,7 @@ export const STAGE_FLOWS = {
     rifts: { beltReliefKm3: +1, beltRootKm3: +1 },
     arcs: { arcAddedKm3: +1 },
     arcMaturation: { arcMaturedKm3: +1 },
-    'rivers+fans': { seaOverflowKm3: -1, fanKm3: -1 },
+    'rivers+fans': { seaOverflowKm3: -1, fanKm3: -1, riseUnlaidKm3: -1, cutFillKm3: -1 },
     marginIsles: { marginErodedKm3: +1, isleRaisedKm3: +1, isleMergedKm3: +1 },
     arcCollapse: { arcCollapseKm3: +1, beltReliefKm3: +1, beltRootKm3: +1 },
     heights: { fillWornKm3: +1 },
@@ -68,6 +68,11 @@ export const STAGE_FLOWS = {
 // the rivers' rock on sea floor going down a trench, step/floor-rock.js — book what they lose wherever they run)
 const ANY_STAGE = { movedLostKm3: +1, givenBackLostKm3: +1, riseDownKm3: -1, riseKeptKm3: -1, seaFillDownKm3: -1, seaFillKeptKm3: -1 };
 const UNITS = { rivers: 'rivers+fans', fans: 'rivers+fans' };
+/** Each unit's tolerance on its residual, as a share of its gross movement (else 1 %). rivers+fans: the gap is in
+ * step/rivers.js (the datum lane's, #8) — trapLoad books the rock that refills a valley cut (crust.riverIncKm shrinks: a record
+ * with no volume) as basinFillKm3, unbooked as rock, and some supply reaches no sink; measured 3.2–4.0 % (20K, 300 Myr, seeds
+ * 12345/777/4242). Tighten to 1 % when rivers.js books the cut fill as cutFillKm3 (km³, positive: rock laid in a cut). */
+export const UNIT_TOLERANCE = { 'rivers+fans': 0.05 };
 
 /**
  * Each stage's rock closure (Gkm³ over the run): its change in rock, the flows it booked (STAGE_FLOWS), and the residual —

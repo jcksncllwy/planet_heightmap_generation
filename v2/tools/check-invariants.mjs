@@ -10,6 +10,7 @@ import { MARGIN_SCENES } from '../js/tectonics/scenarios/margin-scenes.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { LAND_STAGES } from '../js/tectonics/step/crust-ledger.js';
+import { rockClosure, UNIT_TOLERANCE } from './lib/volume-books.mjs';
 import { CrustRaster, CrustType, CELL_FIELDS } from '../js/tectonics/model/crust.js';
 import { TECTONICS, MECHANISMS } from '../js/tectonics/config.js';
 
@@ -141,7 +142,7 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     // step must leave it exactly as it found it.
     const ledgerMesh = labMesh(LEDGER_CELLS), scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
     const world = scene.build(ledgerMesh, LEDGER_SEED, { continentalFraction: 0.3 });
-    world.config.crustLedger = true;
+    world.config.crustLedger = true; world.config.crustLedgerVolume = true;     // (the rock book's volume too: lane rockbook, below)
     const landNow = w => { let n = 0; for (const p of w.plates) if (p.alive) { const { mask, type } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) n++; } return n; };
     const landAtStart = landNow(world);
     // (the ledger sums each stage over the whole history; the drive, called once a step after the event stages, also
@@ -194,6 +195,17 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     const G = v => (v / 1e9).toFixed(2);
     report('the rivers\' rock on the ocean floor: share the books lose', laid > 0 ? 100 * (laid - down - kept - riseNow - fillNow) / laid : 0, { unit: ' %', digits: 1, earth: [0, 10],
         source: 'a book, not an Earth figure: 0 is closure', detail: `laid ${G(laid)} Gkm³ (rise ${G((B.riseKm3 ?? 0) - (B.riseUnlaidKm3 ?? 0))}, unlaid ${G(B.riseUnlaidKm3 ?? 0)}; enclosed seas ${G(B.seaFillKm3 ?? 0)}) = down the channel ${G(down)} + into the prism ${G(kept)} + on the floor now ${G(riseNow + fillNow)} + lost ${G(laid - down - kept - riseNow - fillNow)}` });
+    // The rock book (lane rockbook, review U2): each stage's change in all the rock the planet holds — crust, relief, fill,
+    // arc, sediment on the sea floor, rock in transit (crust-ledger.js rockParts) — must be the flows it booked by name
+    // (rock-book.js; which stage may book which: tools/lib/volume-books.mjs STAGE_FLOWS). A residual is rock a stage made or
+    // lost with no book. Tolerance: 1 % of the stage's gross movement, or 0.005 Gkm³ (a few cells' columns over the run) —
+    // a unit named in UNIT_TOLERANCE its own, with the reason there (the rivers and their fans: crust-report.md "rockbook").
+    const R = rockClosure(stages, ledgerMesh.cellAreaKm2), units = Object.entries(R), tol = n => UNIT_TOLERANCE[n] ?? 0.01;
+    const over = units.filter(([n, u]) => Math.abs(u.residual) > Math.max(tol(n) * u.gross, 0.005));
+    const share = ([, u]) => Math.abs(u.residual) / Math.max(1e-9, u.gross), big = units.filter(([, u]) => u.gross > 0.005).sort((a, b) => share(b) - share(a)).slice(0, 4);
+    check('the rock book closes: every stage\'s change in rock is the flows it booked, within 1 % of its gross (or 0.005 Gkm³; the rivers and fans 5 %)', over.length === 0,
+        (over.length ? `unbooked: ${over.map(([n, u]) => `${n} ${u.residual.toFixed(3)} of ${u.gross.toFixed(3)} Gkm³`).join('; ')}` : `${units.length} stages close`)
+        + `; largest residuals ${big.map(([n, u]) => `${n} ${u.residual.toFixed(4)} Gkm³ (${(100 * share([n, u])).toFixed(2)} %)`).join(', ')}`);
 }
 
 finish('Invariants');
