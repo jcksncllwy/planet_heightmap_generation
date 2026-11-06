@@ -162,7 +162,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // in the months above. Snow the thawed months cannot melt is kept, year on year — the snowfield and the ice sheet's
     // accumulation, not runoff: where no month thaws none of the year's water runs (the program's ruling; risk row 6 and
     // 12 of the model review), and neither its rivers nor its lakes are fed by it. The rest, the liquid, is what Budyko
-    // shares between the rivers and the air, and what falls on open water. Kept as stats.snowStore for the water ledger
+    // shares between the rivers and the air. A hollow on ground that never thaws fills with its snow, as ice, and spills:
+    // no lake (finish-fsm.js). The water a hollow's open water gains from the sky stays the whole year's (snow on a lake
+    // is kept on it, as the rain is), so the erosion's closed basins see the frozen hollow full, as before. Kept as stats.snowStore for the water ledger
     // (lane #5) and for the ice's mass (U9). What it skips: the year is the climate's mean month by month — a month a
     // little below freezing on the mean has thawing days (positive degree-days from the monthly spread, Braithwaite 1985),
     // and a store that melts away years later; the snow's sublimation and wind drift; no store carried between years)
@@ -219,7 +221,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     let ocean0 = oceanMask(mesh, z);
     const straits0 = openStraits(mesh, z, ocean0, F);
     if (straits0.opened) ocean0 = oceanMask(mesh, z);
-    const B = closedBasins(mesh, z, runoff, pet, liquid.rain, cellKm2, F, ocean0);
+    const B = closedBasins(mesh, z, runoff, pet, pAnn, cellKm2, F, ocean0);
     stats.closedBasins = B.basins;
     stats.cutOffSeas = B.seas;
     const before = z.slice();
@@ -266,8 +268,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     if (EP?.at === 'early' || EP?.at === 'both') {
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: liquid.rain, closedOf: (lm, g, f, sea, flood) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood) }, EP, terrainMesh, eroder.solve)
-            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, liquid.rain, cellKm2, F, ocean0, flood) }, EP);
+        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: pAnn, closedOf: (lm, g, f, sea, flood) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood) }, EP, terrainMesh, eroder.solve)
+            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean0, flood) }, EP);
         lap('erosion');
         census('after erosion', ocean0);
     }
@@ -319,7 +321,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, liquid.rain, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, pAnn, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
         census('after late erosion', ocean);
@@ -333,7 +335,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
     // (Fill-Spill-Merge on the erosion's ground: finish-fsm.js. Without the erosion, a study switch, it gives ~2.5× Earth's lakes)
-    const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, liquid: liquid.rain, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
+    const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, frozen: liquid.frozen, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (the sea again, after the rivers' gorges)
@@ -490,8 +492,8 @@ function runoffMonths(months, petM, G, F) {
  * its round (snow that falls is snow that melts, where it can): liquid = rain + min(snow, the thawed months' melt); the
  * rest is the store — a snowfield's and an ice sheet's accumulation. No month thaws: no liquid at all. Where every
  * winter's snow melts (most of the land), liquid is all the year's rain, and nothing changes.
- * @returns {{rain: Float32Array, store: Float32Array, stats}}  liquid water and kept snow (mm/year per cell; NaN where
- *          pAnn is); stats: the land's kept snow (km³ of water a year), its area and the never-thawing land's (km²)
+ * @returns {{rain: Float32Array, store: Float32Array, frozen: Uint8Array, stats}}  liquid water and kept snow (mm/year per
+ *          cell; NaN where pAnn is); frozen: 1 where no month thaws; stats: the land's kept snow (km³ of water a year), its area and the never-thawing land's (km²)
  */
 function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n) {
     const Tsl = new Float32Array(12 * G);
@@ -499,7 +501,7 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
         const href = hLand[g] === hLand[g] ? Math.max(0, hLand[g]) : 0;
         for (let m = 0; m < 12; m++) Tsl[m * G + g] = months.T[m * G + g] + gamma * href;
     }
-    const rain = new Float32Array(n), store = new Float32Array(n), bi = new Int32Array(4), bw = new Float64Array(4), cellKm2 = 4 * Math.PI * R * R / n;
+    const rain = new Float32Array(n), store = new Float32Array(n), frozen = new Uint8Array(n), bi = new Int32Array(4), bw = new Float64Array(4), cellKm2 = 4 * Math.PI * R * R / n;
     let keptKm3 = 0, keptKm2 = 0, frozenKm2 = 0;
     for (let c = 0; c < n; c++) {
         const P = pAnn[c];
@@ -515,9 +517,10 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
         }
         const share = all > 0 ? (wet + Math.min(snow, melt)) / all : 1, p = Math.max(0, P);
         rain[c] = p * share; store[c] = p - rain[c];
-        if (z[c] > 0) { if (store[c] > 0) { keptKm3 += store[c] * cellKm2 * 1e-6; keptKm2 += cellKm2; } if (!(melt > 0)) frozenKm2 += cellKm2; }
+        if (!(melt > 0)) frozen[c] = 1;
+        if (z[c] > 0) { if (store[c] > 0) { keptKm3 += store[c] * cellKm2 * 1e-6; keptKm2 += cellKm2; } if (frozen[c]) frozenKm2 += cellKm2; }
     }
-    return { rain, store, stats: { keptKm3: Math.round(keptKm3), keptKm2: Math.round(keptKm2), frozenKm2: Math.round(frozenKm2) } };
+    return { rain, store, frozen, stats: { keptKm3: Math.round(keptKm3), keptKm2: Math.round(keptKm2), frozenKm2: Math.round(frozenKm2) } };
 }
 
 /**

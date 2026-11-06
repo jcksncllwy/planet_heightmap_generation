@@ -44,10 +44,7 @@ export function fillSpillMerge(ctx, F) {
     let nanHeights = 0;
     for (let c = 0; c < n; c++) if (Number.isNaN(z[c])) nanHeights++;           // (a bug upstream, counted: check-phase8b.mjs fails on any)
     const own = c => Math.max(0, runoff[c]) * cellKm2 * 1e3 / SEC_PER_YEAR;     // (mm × km² → m³/s)
-    // (the rain on open water that stays liquid: ctx.liquid, the thaw gate's (finish.js thawedWater) — snow on a lake that
-    // never thaws is the ice's, not the lake's; the dryness below stays the whole year's rain against its evaporation)
-    const wetOn = ctx.liquid ?? rain;
-    const lakeLoss = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, wetOn[c])) * cellKm2 * 1e3 / SEC_PER_YEAR;
+    const lakeLoss = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c])) * cellKm2 * 1e3 / SEC_PER_YEAR;
     const aridity = c => (pet[c] > 0 ? smooth(0, 1, (pet[c] - Math.max(0, rain[c])) / pet[c]) : 0);
     const bedKept = (c, out, stepKm) => {
         const arid = aridity(c);
@@ -112,8 +109,10 @@ export function fillSpillMerge(ctx, F) {
             if (ctx.basin?.[c] > F.basinLakeKm) dug++;
             if (ctx.seaBasin?.[c]) sea = true;
         }
+        let frozen = 0;
+        if (ctx.frozen) for (const c of cells) frozen += ctx.frozen[c];
         const scoured = dug >= F.basinLakeShare * cells.length;
-        hollows.push({ cells, level: L, outlet, floor, deepCell, sea, scoured, glacial: scoured || glacial >= 0.5 * cells.length, inflow: 0, area: 0, aP: 0, aE: 0, drawn: [] });
+        hollows.push({ cells, level: L, outlet, floor, deepCell, sea, scoured, glacial: scoured || glacial >= 0.5 * cells.length, iced: frozen >= 0.5 * cells.length, inflow: 0, area: 0, aP: 0, aE: 0, drawn: [] });
     }
     lap('hollows');
 
@@ -148,7 +147,16 @@ export function fillSpillMerge(ctx, F) {
             // (and one shallower than the map shows, its rim under lakeMinDepthM above its floor: judged by its water, the plains' dishes
             // a few metres deep closed as salt lakes so shallow that they dried to playas, white and branching on a green plain in the
             // gallery, 2026-11-03. A dish that shallow fills with its rivers' load as a pit does)
-            if (h.cells.length < 2 || h.cells.length * cellKm2 < F.lakeMinKm2 || (h.level - h.floor) * 1000 < F.lakeMinDepthM) {
+            // (a hollow on ground where no month thaws — most of its cells: ctx.frozen, finish.js thawedWater — holds no water: its
+            // snow stays, year on year, and fills it as firn and ice to its rim, and what reaches it passes on (as ice, or as the
+            // water of the thawed ground above it under the ice). Not a lake and not a sink: an ice sheet's hollows are its bed's,
+            // and Earth's endorheic land (~20 %) leaves Antarctica's ice out. Its floor is left as it is: the ice is not drawn
+            // here (lane polar, 2026-11-05; until then its rain, snow and all, ran off and filled it as a fresh lake, 0–157 000
+            // km² a world, and with the thaw gate alone closed it as a salt lake or playa)
+            if (h.iced) {
+                h.kind = Water.NONE; h.levelNow = h.level; census.iced = (census.iced || 0) + 1;
+                q[c] = h.inflow; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;
+            } else if (h.cells.length < 2 || h.cells.length * cellKm2 < F.lakeMinKm2 || (h.level - h.floor) * 1000 < F.lakeMinDepthM) {
                 fillTo({ cells: h.cells, level: h.level }, 'pit');
                 h.kind = Water.NONE; h.levelNow = h.level;
                 q[c] = h.inflow; area[c] = h.area; aP[c] = h.aP; aE[c] = h.aE;
