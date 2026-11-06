@@ -12,16 +12,19 @@
 
 import { classifyRocks, Rock } from '../geology/rocks.js';
 import { rockHard } from '../geology/lithology.js';
+import { worldOcean } from '../terrain/world-ocean.js';
 import { GEOLOGY } from '../geology/geology-config.js';
 
 /**
- * @param {Object} o  { mesh, z (km, the uncarved surface), frame, simMesh, seed, cfg (the terrain's), lat, lon (°), rain (mm), temp (°C), lip (0…1) }
+ * @param {Object} o  { mesh, z (km, the uncarved surface), ocean (optional: the world ocean on z; worldOcean), frame, simMesh, seed, cfg (the terrain's), lat, lon (°), rain (mm), temp (°C), lip (0…1) }
  * @returns {{rock: Uint8Array, kRock: Float32Array, hard: Float32Array, bedded: Uint8Array, coarse: Uint8Array, shares: Float64Array}}
  *          bedded 0…255; coarse 1 sand and gravel, 0 mud or solution; kRock 1 on the sea
  */
 export function lithologyOf(o, G = GEOLOGY) {
-    const { mesh, z, rain, temp, meanK = 0 } = o, n = mesh.numCells, L = G.lithology, ocean = new Uint8Array(n);
-    for (let c = 0; c < n; c++) if (!(z[c] > 0)) ocean[c] = 1;
+    // (the sea is the world ocean — water below sea level joined to the largest body of it, as the finish's own sea is:
+    // finish.js oceanMask, terrain/land-mask.js. Until 2026-11-06 it was every cell at or below 0, so the floor of a
+    // closed hollow below the sea — the Dead Sea's, Qattara's — read as sea floor and had no rock)
+    const { mesh, z, rain, temp, meanK = 0 } = o, n = mesh.numCells, L = G.lithology, ocean = o.ocean ?? worldOcean(mesh, z, 0).ocean;
     const { rock, shares } = classifyRocks({ ...o, ocean }, G);
     const hard = new Float32Array(n), bedded = new Uint8Array(n), coarse = new Uint8Array(n);
     for (let c = 0; c < n; c++) {
@@ -51,7 +54,7 @@ export function lithologyOf(o, G = GEOLOGY) {
  * land, and the shelves keep the terrain's (no rock read there). Returns the fields other stages read.
  */
 export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
-    const reuse = {}, { rock, kRock, hard, bedded, coarse, shares, meanK } = lithologyOf({ ...o, lip: carveIn.lip, reuse }, G), { k, soft } = carveIn, use = G.useRock;
+    const reuse = {}, ocean = o.ocean ?? worldOcean(o.mesh, o.z, 0).ocean, { rock, kRock, hard, bedded, coarse, shares, meanK } = lithologyOf({ ...o, ocean, lip: carveIn.lip, reuse }, G), { k, soft } = carveIn, use = G.useRock;
     if (use.craton || use.lip || use.crest) for (let c = 0; c < k.length; c++) if (rock[c]) k[c] *= kRock[c];
     if (use.iceSoft) {
         // (the rock says where it is soft; the land's mean stays the terrain's, as k_rock's stays 1: the ice's and the cliffs'
@@ -61,7 +64,7 @@ export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
         const shift = land ? (was - now) / land : 0;
         for (let c = 0; c < soft.length; c++) if (rock[c]) soft[c] = Math.min(1, Math.max(0, 1 - hard[c] + shift));
     }
-    return { rock, kRock, bedded, coarse, shares, column: { reuse, meanK, lip: carveIn.lip, soft: use.craton || use.lip || use.crest } };
+    return { rock, kRock, bedded, coarse, shares, column: { reuse, meanK, ocean, lip: carveIn.lip, soft: use.craton || use.lip || use.crest } };
 }
 
 /**
@@ -79,9 +82,9 @@ export function rockBeforeCarve(o, carveIn, G = GEOLOGY) {
  *   zBed: the top of the rock (km); fine: the share of what is cut here that goes as mud or in solution
  */
 export function rockColumn(o, litho, G = GEOLOGY) {
-    const { z, carved } = o, n = z.length, { reuse, meanK, lip } = litho.column, L = G.lithology, cut = new Float32Array(n), zBed = new Float32Array(n);
+    const { z, carved } = o, n = z.length, { reuse, meanK, ocean, lip } = litho.column, L = G.lithology, cut = new Float32Array(n), zBed = new Float32Array(n);
     for (let c = 0; c < n; c++) { cut[c] = Math.max(0, z[c] - carved[c]); zBed[c] = Math.min(z[c], carved[c]); }
-    const top = lithologyOf({ ...o, lip, reuse, meanK, belowKm: cut }, G), first = litho.kRock;
+    const top = lithologyOf({ ...o, ocean, lip, reuse, meanK, belowKm: cut }, G)       // (the sea as the first read found it: the carve moves the coast little, and a second flood of 2.5M cells is 0.1 s), first = litho.kRock;
     const here = new Float32Array(n), loose = new Float32Array(n), fine = new Float32Array(n), soft = Math.exp(L.erodeGain * (0.5 - L.hard[Rock.ALLUVIUM])) / meanK;
     for (let c = 0; c < n; c++) {
         const k = top.kRock[c];
