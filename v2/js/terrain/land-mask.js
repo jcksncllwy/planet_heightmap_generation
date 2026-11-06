@@ -92,19 +92,12 @@ export function landMask(frame, simMesh, cfg, out = {}) {
     // still did not lift every height; today's heights are now its datum instead)
     const swellKm = out.swellKm?.length === n ? out.swellKm : null, heat = out.heat?.length === n ? out.heat : (out.heat = new Float32Array(n));
     let sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1, swellKm, heat);
-    // a sediment-filled sea whose floor the mantle's swell has lifted above the sea: dry land — a lowland plain — though its
-    // fill fell short of the room the history gives it (step/sea-fill.js: it reckons the floor's subsidence, not the
-    // swell). Read as sea, its floor stood above the sea inside its own coast, and the margin's shelf and slope drawn down
-    // from that coast left a moat round it (branch unified)
-    let raised = 0;
-    for (let w = 0; w < n; w++) if (!land[w] && liftedDry(frame, w, sl, cfg)) { land[w] = 1; raised++; }
-    if (raised) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);         // (the sea's level, with them as land)
     // the water inventory (cfg.waterInventory × Earth's ocean; lane sliders, Jackson 2026-11-03: "pouring an earth-like amount
     // of water onto the planet and letting it settle"): the sea's level is where that volume stands, poured onto every cell's
     // ground (tectonics/ocean/inventory.js surfaceKm, on the same swell) from the lowest — not reckoned from the mantle's
     // heat against a calibrated floor depth (sea-level.js). ONLY THE LEVEL CHANGES here: which cells may be sea (the crust's
     // kind, filled seas, pockets, lifted fills) stays the rules above until they retire, and the flood below drowns at this
-    // level. (The pour's own sea differs from the mask's where ocean crust behind a sill stands above the level — land to
+    // level, and a filled sea lifted dry is judged on the same ground against it (below). (The pour's own sea differs from the mask's where ocean crust behind a sill stands above the level — land to
     // the pour, sea to the mask: an enclosed sea drawn at a continent's reference if it were made land, ~5 km too high)
     let pour = null;
     if (cfg.waterInventory > 0) {
@@ -113,6 +106,17 @@ export function landMask(frame, simMesh, cfg, out = {}) {
         out.pour = pour.scratch;
         sl = { ...sl, seaKm: pour.levelKm };
     }
+    // a sediment-filled sea whose floor the mantle's swell has lifted above the sea: dry land — a lowland plain — though its
+    // fill fell short of the room the history gives it (step/sea-fill.js: it reckons the floor's subsidence, not the
+    // swell). Read as sea, its floor stood above the sea inside its own coast, and the margin's shelf and slope drawn down
+    // from that coast left a moat round it (branch unified)
+    let raised = 0;
+    // (poured: its ground — the pour's own surface, fill and rise on it — at or above the poured level; reckoned: liftedDry's
+    // floor against the reckoned level, which then moves with them as land. Until 2026-11-06 the pour came after this and
+    // judged them against the reckoned level)
+    const groundKm = pour ? out.groundKm : null;
+    for (let w = 0; w < n; w++) if (!land[w] && (groundKm ? frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 && groundKm[w] >= sl.seaKm : liftedDry(frame, w, sl, cfg))) { land[w] = 1; raised++; }
+    if (raised && !pour) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);         // (the sea's level, with them as land)
     // land is decided by height, not by the kind of crust (Jackson's ruling, 2026-11-03): any crust — continent, arc or
     // rifted floor — whose own column (crustColumnKm, with the mantle's swell) stands below the sea's level is sea where
     // it joins the open ocean: flooded from the sea over the cells below it. The threshold is the sea's level itself, not
