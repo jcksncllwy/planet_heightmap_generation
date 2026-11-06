@@ -150,6 +150,26 @@ node tuning/climate/diag-polar.mjs [--planets …|none] [--climate <snapshot>]  
                                                 #   continental (D)? Earth's poleward of 50° vs Beck by latitude and distance
                                                 #   from the sea, exact and near match, Arctic stations, the polar seas' summer
                                                 #   and sea ice vs OISST, and the generated planets' polar lowlands
+
+### Climate review tools (2026-11-06; report-only, Earth in → Earth climate out)
+
+```bash
+node v2/tools/climate-review-earth.mjs [--n 160000] [--json f]    # zonal T, water budget, sea ice, monsoons, ≥60° bins on the Earth mesh
+node tuning/climate/coupled-check.mjs --quick                      # Köppen vs Beck and the guardrails on the same mesh
+node v2/tools/climate-review-polar.mjs --runs 831576@310 [--alt K=v] # ≥60° ice, bare-land summers, sea ice on Evolution worlds
+node v2/tools/check-climate-polar.mjs                              # transition / margin / polar-summer consistency (report-only WARNs)
+node v2/tools/climate-review-priors.mjs                            # every tuned climate setting against its literature prior
+```
+
+The Earth references need the dev-only readers *and* the repo's own deps, and `tuning/climate/data/` (gitignored). A worktree has no
+`package.json`, so the setup is fragile; the one that worked (2026-11-06) was a scratch dir with
+`npm install geotiff netcdfjs h5wasm pngjs delaunator`, `tuning/climate/node_modules` symlinked to its `node_modules`, the repo-root
+`node_modules` symlinked to the main checkout's, and `tuning/climate/data/{raw,ref1deg}` symlinked to an already-fetched copy with an empty
+`data/lab/` beside them (coupled-check writes there). Otherwise run `fetch-references.mjs` and `regrid-references.mjs`.
+
+**Polar port (94a92b1 + 804b0ab, upstream #74), Earth before → after:** Köppen exact 46.6 → 47.5 %; 80–90N all-surface bias +10.6 → +4.9 K,
+70–80N +6.2 → +2.7 K; NH sea ice Aug 0.0 → 5.9, Nov 0.1 → 2.6 Mkm², but Sep and Oct stay 0.0 (the 75–85N ocean air is +2.6 to +3.2 K in
+Aug–Sep, so the degree-day melt takes the whole first-year pack; U9's energy-limited summer is the fix). Water P/E 1.00 unchanged.
 node tuning/climate/diag-detail.mjs             # Phase 9: how much detail the Köppen map has (class edges vs Beck), Tibet,
                                                 #   named regions; CORE='{"texture":null}' to try core options
 node tuning/climate/diag-v1-detail.mjs          # the same detail measure for V1's climate
