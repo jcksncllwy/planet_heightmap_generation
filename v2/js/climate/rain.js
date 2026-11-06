@@ -600,6 +600,9 @@ export function columnWaterRain() {
         // RAIN_FRONT_MM a month at its centre (Gaussian ±RAIN_FRONT_DEG) — the fronts' own lift as they sweep inland, which
         // the monthly mean budget leaves out — faded under pressure above the latitude's mean (e-folding RAIN_FRONT_HIGH_HPA:
         // the highs) and in rain shadows (× the mountains' share of the rain, at most 1).
+        // (output only: the rain the fronts add per cell, summed over the anchors — water from no evaporation in the budget;
+        // the water ledger's report counts it, finish.js)
+        const frontal = new Float32Array(core.size);
         if (P_.RAIN_FRONT_MM > 0 && winds.belts && winds.slp) {
             const cw = core.w, ch = core.h, lf = ctx.surface.landFrac, sg = P_.RAIN_FRONT_DEG;
             for (let k = 0; k < K; k++) {
@@ -613,12 +616,13 @@ export function columnWaterRain() {
                     for (let i = 0; i < cw; i++) {
                         const c = j * cw + i;
                         if (!(lf[c] > 0)) continue;
-                        Pout[k * core.size + c] += lf[c] * P_.RAIN_FRONT_MM * wf * Math.exp(-Math.max(0, sl[c] - row) / P_.RAIN_FRONT_HIGH_HPA) * Math.min(1, orographic[c]);
+                        const add = lf[c] * P_.RAIN_FRONT_MM * wf * Math.exp(-Math.max(0, sl[c] - row) / P_.RAIN_FRONT_HIGH_HPA) * Math.min(1, orographic[c]);
+                        Pout[k * core.size + c] += add; frontal[c] += add;
                     }
                 }
             }
         }
-        const out = { P: Pout, W: Wout, E: Eout, Eland: ELout, PET: PETout, r: Rout, orographic, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
+        const out = { P: Pout, W: Wout, E: Eout, Eland: ELout, PET: PETout, r: Rout, orographic, frontal, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };
         if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt };
         return out;

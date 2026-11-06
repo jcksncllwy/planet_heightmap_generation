@@ -187,6 +187,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         if (wgt > 0) { gP += wgt * pp; gE += wgt * 12 * e / KA; }
     }
     stats.climateRunoffShare = gP > 0 ? +((gP - gE) / gP).toFixed(3) : null;
+    // (debug: the grid's water for the ledger's studies — tools/water-study.mjs)
+    const waterGrid = debug ? { grid: res.grid, surface: res.surface, months: res.months, petM, Eland: RS?.Eland ?? null, frontal: RS?.frontal ?? null, rainP: RS?.P ?? null, anchors: KA, share: monthly.share } : null;
     // (kept for the finished moment's own climate, at the end: the page's grid fields, and the grid's climate to finish
     // each cell again on the finished surface)
     const pageC = pageClimate(res, { cells: false }), gridClimate = { grid: res.grid, surface: res.surface, months: res.months, cell: { lat, lon } };
@@ -406,7 +408,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
         civ: civ ? { ice: I.ice, loess: W.loess, erg: W.erg, ...civCells.fields, flow: travelFlow } : null,              // (for the civ layer: v2/js/civ/civ-page.js)
-        layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal, lakeSrc: Hy.lakeSrc, hollow: Hy.hollow, hollowInfo: Hy.hollowInfo, tectonic: B.tectonic, warmSl, runoff, pet, liquid: liquid.rain, snowStore: liquid.store, frozen: liquid.frozen, thaw: liquid.thaw } : null };
+        layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal, lakeSrc: Hy.lakeSrc, hollow: Hy.hollow, hollowInfo: Hy.hollowInfo, tectonic: B.tectonic, warmSl, runoff, pet, liquid: liquid.rain, snowStore: liquid.store, frozen: liquid.frozen, thaw: liquid.thaw, tAnn, waterGrid } : null };
 }
 
 /** The mesh's positions displaced by a smooth noise field (km-sized waves, three octaves): a domain warp of everything read there. */
