@@ -2399,6 +2399,19 @@ check-invariants):
   or overtopping a full trench onto the incoming floor; `wedgeKm3` is the prism's own estimate from the fill). Their sum is
   the rivers' supply, `riverSupplyKm3` (cycle scene, 20K, 1200 Myr: 7.21 of 7.23 Gkm³ on 12345, 6.26 of 6.28 on 777).
   Only basin, sea and shelf fill on continental crust count as its volume; the rest lies on ocean crust (Cogley 1984).
+- **The rivers' rock on the ocean floor rides to its trench** (lane crustfu2; step/floor-rock.js). The rise's rock is laid as a
+  record, `crust.riseKm3`, on the ocean cells within three `riseWidthKm` (300 km, e-folding; the rise is ~100–1000 km wide,
+  Heezen, Tharp & Ewing 1959) of its mouth. It is laid across a drowned shelf if need be (step/trench-fans.js layRise). That
+  rock, and an enclosed sea's fill (`crust.seaFillKm`), moves with its plate. Where the floor is subducted (resolve.js, or a
+  plate that runs out: ocean-plates.js), it meets the trench as any incoming sediment does: `min(T, accretionSedimentKm)` ×
+  `sedimentSubductionShare` of the section goes down the channel and the rest is scraped into the prism (Clift & Vannucchi
+  2004). The books are `riseDownKm3`, `riseKeptKm3`, `seaFillDownKm3`, `seaFillKeptKm3` and `riseUnlaidKm3`. A floor cell
+  dropped onto crust another plate holds there (tidy, terrane accretion, the background ocean) carries its rock with it.
+  Cycle scene, 20K, 1200 Myr, 12345 / 777 (Gkm³): of 2.80 / 3.13 laid, 0.50 / 0.57 went down, 1.61 / 1.92 went to the
+  prism, 0.49 / 0.45 is still on the floor, and 0.19 (6–7 %) is lost to drop paths not yet carried (check-invariants
+  reports the share). **Limits:** it is books and records only. The terrain does not read `riseKm3` (its rise is
+  terrain/margins.js's analytic one) and the trenches' fill does not count it. The spread is by distance, not by where
+  turbidity currents pond.
 - **Subduction erosion** (`subductionErosionKm3PerKmMyr`, **off by default**; built at 36, `subductionErosionReachKm` 250; step/subduction-erosion.js):
   every closing overriding trench eats the continent nearest it within the fore-arc, thinning it until it founders. The
   rate per km is Earth's; the length that erodes is emergent (~0.8 AU removed against Earth's ~1.5).
