@@ -30,13 +30,14 @@ const R = 6371;
  * hollows, less what its rivers cut), sea floor as the terrain's records do (records.js: the depth–age law less the
  * sediment an enclosed sea laid, an oceanic plateau aside), both on the mantle's swell against their side's reference.
  * Read from a frame (FRAME_FIELDS). PROTOTYPE: ports the two formulas rather than sharing them — a wired version
- * extracts one per-cell surface for rivers.js, records.js and this.
+ * extracts one per-cell surface for rivers.js, records.js and this. `swellKm`: the mantle's swell per cell, when the caller
+ * has it (terrain/land-mask.js: sea-level.js seaLevel's sl.swellKm, the same mantleSwellKm × smoothed heat).
  */
-export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells)) {
-    const n = simMesh.numCells, C = columnModel(H), heat = mantleWarmth(frame, simMesh, H), time = frame.time;
+export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells), swellKm = null) {
+    const n = simMesh.numCells, C = columnModel(H), heat = swellKm ? null : mantleWarmth(frame, simMesh, H), time = frame.time;
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
     for (let w = 0; w < n; w++) {
-        const swell = H.mantleSwellKm * heat[w], o = frame.owner[w], type = frame.type[w];
+        const swell = swellKm ? swellKm[w] : H.mantleSwellKm * heat[w], o = frame.owner[w], type = frame.type[w];
         if (o < 0 || type === CrustType.OCEAN) {
             const age = o >= 0 && frame.formedAt[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
             const lip = o >= 0 && frame.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, frame.volcKm[w]) : 0;

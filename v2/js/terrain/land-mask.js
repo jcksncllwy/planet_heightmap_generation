@@ -21,6 +21,7 @@
 import { CrustType, CrustFlag } from '../tectonics/model/crust.js';
 import { seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { seaLevel, seaLevelAgain, liftRefKm, liftedDry } from './sea-level.js';
+import { surfaceKm, pourOcean, EARTH_OCEAN_KM3 } from '../tectonics/ocean/inventory.js';
 
 /** Is world cell w sea floor its rivers have filled to sea level (step/sea-fill.js)? */
 export function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
@@ -98,6 +99,20 @@ export function landMask(frame, simMesh, cfg, out = {}) {
     let raised = 0;
     for (let w = 0; w < n; w++) if (!land[w] && liftedDry(frame, w, sl, cfg)) { land[w] = 1; raised++; }
     if (raised) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);         // (the sea's level, with them as land)
+    // the water inventory (cfg.waterInventory × Earth's ocean; lane sliders, Jackson 2026-11-03: "pouring an earth-like amount
+    // of water onto the planet and letting it settle"): the sea's level is where that volume stands, poured onto every cell's
+    // ground (tectonics/ocean/inventory.js surfaceKm, on the same swell) from the lowest — not reckoned from the mantle's
+    // heat against a calibrated floor depth (sea-level.js). ONLY THE LEVEL CHANGES here: which cells may be sea (the crust's
+    // kind, filled seas, pockets, lifted fills) stays the rules above until they retire, and the flood below drowns at this
+    // level. (The pour's own sea differs from the mask's where ocean crust behind a sill stands above the level — land to
+    // the pour, sea to the mask: an enclosed sea drawn at a continent's reference if it were made land, ~5 km too high)
+    let pour = null;
+    if (cfg.waterInventory > 0) {
+        const z = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : (out.groundKm = new Float32Array(n)), sl.swellKm);
+        pour = pourOcean(simMesh, z, cfg.waterInventory * EARTH_OCEAN_KM3, out.pour);
+        out.pour = pour.scratch;
+        sl = { ...sl, seaKm: pour.levelKm };
+    }
     // land is decided by height, not by the kind of crust (Jackson's ruling, 2026-11-03): any crust — continent, arc or
     // rifted floor — whose own column (crustColumnKm, with the mantle's swell) stands below the sea's level is sea where
     // it joins the open ocean: flooded from the sea over the cells below it. The threshold is the sea's level itself, not
@@ -131,7 +146,7 @@ export function landMask(frame, simMesh, cfg, out = {}) {
             }
         }
         for (let w = 0; w < n; w++) if (land[w] && below[w] === below[w]) dryHollow[w] = 1;
-        if (drowned) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);
+        if (drowned && !pour) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);
     }
     return { land, sl, seaColKm, dryHollow };
 }

@@ -14,9 +14,9 @@ export const MESH_SEED = 12345;                       // (the page's: every plan
 export const PAGE_SCENE = 'cycle';
 
 /** The start world the page's worker runs for these settings (app/history-worker.js), and its cache key. */
-export function pageWorld({ seed, cont, sim }) {
+export function pageWorld({ seed, cont, sim, heights = {} }) {
     const scene = TERRAIN_SCENES.find(s => s.id === PAGE_SCENE), world = scene.build(buildSimMesh(sim, MESH_SEED), seed, { continentalFraction: cont / 100 });
-    world.config.heights = terrainConfig({});        // (as the worker sets them: the page has no overrides)
+    world.config.heights = terrainConfig(heights);   // (as the worker sets them: the page's own, e.g. the water slider's waterInventory)
     return { scene, world, key: keyOf(world, scene.drive) };
 }
 
