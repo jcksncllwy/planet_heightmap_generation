@@ -395,7 +395,12 @@ export const TECTONICS = {
     trenchAxialTransportKm: 700, // …and along the trench's own axis, e-folding over this: the Chile trench is turbidite-filled from
                                 // its glacial sources at 41–46°S north to the Juan Fernández ridge at ~33°S, ~1000–1400 km, by an axial
                                 // channel (Völker et al. 2013; Laursen & Normark 2002 at its northern end): half that span
-    enclosedSeaFill: true,      // a river running into an enclosed sea lays its rock on that sea's floor, and a sea filled to sea level
+    riseWidthKm: 300,           // a mouth with no trench in reach lays what its shelf has no room for past the shelf, on its own margin's
+                                // ocean floor — the continental rise and the fans on it — thinning seaward, e-folding over this (out to
+                                // three of them): the rise is ~100–1000 km wide (Heezen, Tharp & Ewing 1959, recalled; the Amazon fan
+                                // ~700 km). A record (crust.riseKm3, step/trench-fans.js layRise): it rides its plate to a trench,
+                                // where the channel takes what it can and the prism the rest (step/resolve.js), or it stays
+    enclosedSeaFill: true,     // a river running into an enclosed sea lays its rock on that sea's floor, and a sea filled to sea level
                                 // is lowland (step/sea-fill.js; the floor's depth under it: measure.js; false: the rock is lost, as before)
     continentCrustKm: 40,       // continental crust's mean thickness: a volume lost (km³) is booked as this much less area
                                 // (Christensen & Mooney 1995: 41 km; Rudnick & Gao 2003: ~40 km)

@@ -79,10 +79,12 @@ export function trenchFans(world) {
 }
 
 /**
- * Book where each open river mouth's rock went this span of `dt` Myr (the books only: nothing is moved). A mouth whose rock
- * reaches a trench feeds its fan (world.budget.fanKm3; there sediment subduction and the prism share it); one with no
+ * Book where each open river mouth's rock went this span of `dt` Myr. A mouth whose rock reaches a trench feeds its fan
+ * (world.budget.fanKm3; there sediment subduction and the prism share it — the books only: nothing is moved); one with no
  * trench in reach lays it past its shelf, on the slope, rise and abyssal plain of its own margin (world.budget.riseKm3:
- * rock on ocean crust, not continental crust — Cogley 1984 takes the continent to the foot of the slope). Called after
+ * rock on ocean crust, not continental crust — Cogley 1984 takes the continent to the foot of the slope), and that rock is
+ * laid as a record on the ocean floor it lands on (layRise): it rides its plate until the floor is subducted
+ * (step/resolve.js books its fate) — the Atlantic's rises are the trenches' fill of a future ocean's closing. Called after
  * the stages that read the fans, so it never builds them earlier than they were. Mouths on an enclosed sea are
  * step/sea-fill.js's.
  */
@@ -90,11 +92,51 @@ export function bookFans(world, dt) {
     const mouths = world.riverMouths;
     if (!mouths?.length || !(dt > 0)) return;
     const { deliveries } = trenchFans(world), fed = new Set(deliveries.map(d => d.mouth)), B = world.budget;
-    let fan = 0, rise = 0;
+    let fan = 0, rise = 0, lost = 0;
     for (const m of mouths) {
         if (m.enclosed || !(m.km3 > 0)) continue;
-        if (fed.has(m)) fan += m.km3 * dt; else rise += m.km3 * dt;
+        if (fed.has(m)) fan += m.km3 * dt;
+        else { rise += m.km3 * dt; if (!layRise(world, m, m.km3 * dt)) lost += m.km3 * dt; }
     }
     B.fanKm3 = (B.fanKm3 ?? 0) + fan;
     B.riseKm3 = (B.riseKm3 ?? 0) + rise;
+    B.riseUnlaidKm3 = (B.riseUnlaidKm3 ?? 0) + lost;   // (a mouth whose plate or crust is gone, or with no open ocean floor beside it)
 }
+
+/**
+ * Lay `km3` of a mouth's rock on the ocean floor off its coast (crust.riseKm3): over the ocean cells within
+ * three riseWidthKm of the mouth (as the crow flies: the walk may cross a drowned shelf, or a cape), thinning seaward e-folding over riseWidthKm — the continental rise and its
+ * fans (Heezen, Tharp & Ewing 1959). Limits (reduced physics): the rock is a total per cell, not a wedge; it is spread by
+ * distance, not by where turbidity currents run or pond (an abyssal plain is level: the deepest floor fills first), and it
+ * does not shoal the floor — the terrain's rise is the analytic one in terrain/margins.js; here it is the rock's book and
+ * its carrier to the trench. @returns {boolean} whether it found a floor to land on
+ */
+function layRise(world, m, km3) {
+    const { mesh, plates, owner, ownerCell, config } = world, { xyz, index, adjOffset, adjList, edgeKm, numCells: n } = mesh;
+    // (where the mouth is now, if its crust is still there: the rivers drain on a clock of their own, and their mouths' plates
+    // can merge or break before the books close; else the sea cell beside it when they drained)
+    const plate = plates[m.plate], P = riseScratch.P;
+    let w0 = -1;
+    if (plate?.alive && plate.crust.mask[m.cell]) { plate.toWorld(xyz[3 * m.cell], xyz[3 * m.cell + 1], xyz[3 * m.cell + 2], P); w0 = index.nearest(P[0], P[1], P[2]); }
+    const floor = w => owner[w] >= 0 && plates[owner[w]].crust.type[ownerCell[w]] === CrustType.OCEAN;
+    if (riseScratch.seen?.length !== n) { riseScratch.seen = new Int32Array(n); riseScratch.tick = 0; }
+    const seen = riseScratch.seen, tick = ++riseScratch.tick, L = config.riseWidthKm, maxHops = Math.max(1, Math.round(3 * L / edgeKm));
+    // (out across the sea — over a drowned shelf too: the rivers count continent under the sea as sea — to the ocean floor
+    // beyond, which takes the rock: it is laid only on ocean crust, thinning with distance from the mouth)
+    const ring = [], ringHops = [], cells = [], hops = [];
+    const start = [w0, m.sea];
+    if (w0 >= 0) for (let k = adjOffset[w0]; k < adjOffset[w0 + 1]; k++) start.push(adjList[k]);
+    for (const w of start) if (w >= 0 && seen[w] !== tick) { seen[w] = tick; ring.push(w); ringHops.push(1); }
+    for (let i = 0; i < ring.length; i++) {
+        const w = ring[i];
+        if (floor(w)) { cells.push(w); hops.push(ringHops[i]); }
+        if (ringHops[i] >= maxHops) continue;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (seen[nb] !== tick) { seen[nb] = tick; ring.push(nb); ringHops.push(ringHops[i] + 1); } }
+    }
+    if (!cells.length) return false;
+    let sum = 0;
+    const wts = hops.map(h => { const x = Math.exp(-(h - 1) * edgeKm / L); sum += x; return x; });
+    for (let i = 0; i < cells.length; i++) plates[owner[cells[i]]].crust.riseKm3[ownerCell[cells[i]]] += km3 * wts[i] / sum;
+    return true;
+}
+const riseScratch = { P: [0, 0, 0], seen: null, tick: 0 };

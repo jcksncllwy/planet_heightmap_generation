@@ -19,6 +19,7 @@
 //                           unbounded, and the history's step shrinks to the fastest rotation's) — unless it is going down
 //                           a trench: then it is pulled by its own slab, and is consumed there (and ends once it is gone)
 
+import { bookSubductedFloorRock } from './floor-rock.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind, BoundaryKind } from '../model/world.js';
 import { transferCells } from '../ops/tidy-plates.js';
@@ -82,7 +83,7 @@ export function captureMicroplates(world) {
         for (let w = 0; w < numCells && !shown; w++) if (owner[w] === P.id) shown = true;
         if (!shown) {                                                  // (continentalCells counts every crust but ocean: 0 here)
             let gone = 0;
-            for (let c = 0; c < P.crust.mask.length; c++) if (P.crust.mask[c]) { P.crust.remove(c); gone++; }
+            for (let c = 0; c < P.crust.mask.length; c++) if (P.crust.mask[c]) { bookSubductedFloorRock(world, P.crust, c); P.crust.remove(c); gone++; }
             world.budget.consumed += gone;                             // (consumed, as at a trench: resolve.js)
             P.dirty = true;
             endPlate(plates, P); captured++;

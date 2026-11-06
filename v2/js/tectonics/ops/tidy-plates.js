@@ -27,6 +27,7 @@
 // absorbed (craton never: a scrap with craton is a collision too). A plate that has just received a piece is
 // not itself tidied again in the same pass (the piece is not joined to it until the next resolve).
 
+import { mergeFloorRock } from '../step/floor-rock.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
@@ -234,7 +235,7 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
             T.copyFrom(q, F, c);
             if (land) T.flags[q] &= ~CrustFlag.TRENCH;
             moved++;
-        }
+        } else if (q >= 0 && T.mask[q]) mergeFloorRock(world, T, q, F, c);           // (dropped onto crust it has: the rivers' rock on it stays)
         F.remove(c);
     }
     from.markReshaped(); to.markReshaped();
@@ -288,6 +289,7 @@ export function giveToBackground(world, plate, background, cells, keepAge = fals
             plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
             const w = index.nearest(P[0], P[1], P[2]), age = keepAge ? plate.crust.formedAt[c] : Math.min(plate.crust.formedAt[c], -1);
             if (!background.crust.mask[w]) background.crust.create(w, CrustType.OCEAN, age);
+            mergeFloorRock(world, background.crust, w, plate.crust, c);                // (the rivers' rock on it goes with it)
             // a rotated raster does not land on every world cell: fill the pinholes beside it that nobody owns
             for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (owner[nb] === plate.id && !background.crust.mask[nb] && !plate.crust.mask[plate.cellAt(index, xyz[3 * nb], xyz[3 * nb + 1], xyz[3 * nb + 2])]) background.crust.create(nb, CrustType.OCEAN, age); }
         }

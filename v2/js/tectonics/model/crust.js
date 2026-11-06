@@ -53,7 +53,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'wornKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
     'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'damage']);
 
 export class CrustRaster {
@@ -103,6 +103,8 @@ export class CrustRaster {
         this.basinFillKm = new Float32Array(numCells); // sediment the rivers have laid in a hollow of the land, below its spill (km; step/rivers.js)
         this.wornKm = new Float32Array(numCells);      // crust the heights have worn here since the rivers last drained (km; config.rockBook)
         this.shelfKm3 = new Float32Array(numCells);    // rock the rivers have laid on this coast cell's shelf (km³ of rock; step/sea-fill.js)
+        this.riseKm3 = new Float32Array(numCells);     // rock the rivers have laid past the shelf on this OCEAN cell: the continental rise (km³ of rock;
+                                                       // step/trench-fans.js layRise; a record the terrain does not read — its rise is margins.js's)
         // Volcanic record (step/hotspots.js): what a plume built here, when it last erupted here, and which plume it was.
         this.volcType = new Uint8Array(numCells);      // VolcanicType
         this.volcAt = new Float32Array(numCells);      // sim time of the last eruption here (a track's age progression lives in this)

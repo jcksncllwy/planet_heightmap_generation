@@ -7,6 +7,7 @@
 // fore-arc with it: the trench-flagged ocean right in front of it moves to the host too, flags and
 // all, so the trench line is continuous and its new polarity holds from the first step.
 
+import { mergeFloorRock } from '../step/floor-rock.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { spreadBelt, beltWidthKm, OrogenyType, BeltSide } from '../step/orogeny.js';
 import { closeSeasBetween } from './merge-plates.js';
@@ -56,7 +57,7 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
             if (land) H.flags[q] &= ~CrustFlag.TRENCH;                     // on land the polarity rule re-establishes the trench where it belongs
             if (land) origin[q] = 2;
             if (land) moved++;
-        }
+        } else if (H.mask[q]) mergeFloorRock(world, H, q, D, c);                     // (dropped onto the host's crust: the rivers' rock on it stays)
         D.remove(c);
     }
     donor.markReshaped();

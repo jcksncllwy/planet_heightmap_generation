@@ -184,6 +184,16 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     for (const stage of LAND_STAGES) report(`net continental crust from ${stage}`, per100(stages[stage]?.land ?? 0), { unit: ' Mkm²/100 Myr', digits: 1 });
     report('net continental crust, all sources', per100(booked), { unit: ' Mkm²/100 Myr', digits: 1, source: 'Earth: near zero today — arc additions ≈ losses to subduction erosion and sediment subduction, ~3 km³/yr each (Scholl & von Huene 2009; Dhuime et al. 2012)',
         detail: `of which underthrust −${per100(world.budget.underthrustCells ?? 0).toFixed(1)}, eroded −${per100(world.budget.erodedCells ?? 0).toFixed(1)}, sediment subducted −${per100(world.budget.sedimentCells ?? 0).toFixed(1)}, sea sealed at welds +${per100(world.budget.sealedLandCells ?? 0).toFixed(1)} and paid −${per100(world.budget.sealPaidCells ?? 0).toFixed(1)}, arcs matured +${per100(world.budget.arcMaturedCells ?? 0).toFixed(1)}` });
+    // (the rivers' rock on the ocean floor — the rise, step/trench-fans.js layRise; an enclosed sea's fill, step/sea-fill.js —
+    // rides its plate to a trench, where step/floor-rock.js books it down the channel or into the prism. What the books lose
+    // besides is the paths that drop a floor cell without carrying its rock: measured ~6 % at 20K, 1200 Myr (lane crustfu2))
+    const A = ledgerMesh.cellAreaKm2;
+    let riseNow = 0, fillNow = 0;
+    for (const p of world.plates) if (p.alive) { const k = p.crust; for (let c = 0; c < k.mask.length; c++) if (k.mask[c]) { riseNow += k.riseKm3[c]; if (k.type[c] === CrustType.OCEAN) fillNow += k.seaFillKm[c] * A; } }
+    const laid = (B.riseKm3 ?? 0) - (B.riseUnlaidKm3 ?? 0) + (B.seaFillKm3 ?? 0), down = (B.riseDownKm3 ?? 0) + (B.seaFillDownKm3 ?? 0), kept = (B.riseKeptKm3 ?? 0) + (B.seaFillKeptKm3 ?? 0);
+    const G = v => (v / 1e9).toFixed(2);
+    report('the rivers\' rock on the ocean floor: share the books lose', laid > 0 ? 100 * (laid - down - kept - riseNow - fillNow) / laid : 0, { unit: ' %', digits: 1, earth: [0, 10],
+        source: 'a book, not an Earth figure: 0 is closure', detail: `laid ${G(laid)} Gkm³ (rise ${G((B.riseKm3 ?? 0) - (B.riseUnlaidKm3 ?? 0))}, unlaid ${G(B.riseUnlaidKm3 ?? 0)}; enclosed seas ${G(B.seaFillKm3 ?? 0)}) = down the channel ${G(down)} + into the prism ${G(kept)} + on the floor now ${G(riseNow + fillNow)} + lost ${G(laid - down - kept - riseNow - fillNow)}` });
 }
 
 finish('Invariants');
