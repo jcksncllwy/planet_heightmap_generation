@@ -336,7 +336,8 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const raw = frame.owner[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
         const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
-        depthKm[w] = Math.max(0, filledSeaDepthKm(age, frame.seaFillKm?.[w] ?? 0) - (sl.swellKm[w] - swellSeaRef));    // (less the sediment an enclosed sea's rivers laid on it: step/sea-fill.js; raised or lowered by the mantle's swell)
+        const rockKm = (frame.seaFillKm?.[w] ?? 0) + (frame.riseKm3?.[w] ?? 0) / simMesh.cellAreaKm2;
+        depthKm[w] = Math.max(0, filledSeaDepthKm(age, rockKm) - (sl.swellKm[w] - swellSeaRef));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
         // (drowned crust's floor: its own column, not a ridge's by age — and the swell as its crust takes it: liftRefKm, the
         // reference it was flooded against above)
         if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0)));

@@ -51,8 +51,8 @@ export function evolveRivers(world, dt) {
     // arc as land however low — sea-level.js landAndSea — and ran 11–36 % of their water over what the terrain draws as
     // sea, on a sea level 11–22 m off its own: tools/datum-study.mjs) ──
     view.time = time; view.owner = owner;
-    const pouring = H.waterInventory > 0;          // (the water inventory's ground needs the flood basalt and the rivers' cut too: inventory.js surfaceKm)
-    if (pouring && !view.volcType) Object.assign(view, { volcType: new Uint8Array(n), volcKm: new Float32Array(n), volcWornKm: new Float32Array(n), riverIncKm: new Float32Array(n) });
+    const pouring = H.waterInventory > 0;          // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm)
+    if (pouring && !view.volcType) Object.assign(view, { volcType: new Uint8Array(n), volcKm: new Float32Array(n), volcWornKm: new Float32Array(n), riverIncKm: new Float32Array(n), riseKm3: new Float32Array(n) });
     for (let w = 0; w < n; w++) {
         const o = owner[w];
         view.mantleHeat[w] = Math.round(255 * world.mantleHeat[w]);
@@ -61,7 +61,7 @@ export function evolveRivers(world, dt) {
         view.type[w] = type; view.formedAt[w] = crust.formedAt[c]; view.seaFillKm[w] = crust.seaFillKm[c];
         view.flags[w] = crust.flags[c]; view.rootKm[w] = crust.rootKm[c]; view.baseKm[w] = crust.baseKm[c]; view.upliftKm[w] = crust.upliftKm[c]; view.basinFillKm[w] = crust.basinFillKm[c];
         if (type === CrustType.ARC) { view.arcKm[w] = arcCrustKm(crust, c, time, world.config); view.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : time; }
-        if (pouring) { view.volcType[w] = crust.volcType[c]; view.volcKm[w] = crust.volcKm[c]; view.volcWornKm[w] = crust.volcWornKm[c]; view.riverIncKm[w] = crust.riverIncKm[c]; }
+        if (pouring) { view.volcType[w] = crust.volcType[c]; view.volcKm[w] = crust.volcKm[c]; view.volcWornKm[w] = crust.volcWornKm[c]; view.riverIncKm[w] = crust.riverIncKm[c]; view.riseKm3[w] = crust.riseKm3[c]; }
     }
     const sl = landMask(view, mesh, H, s.mask).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;

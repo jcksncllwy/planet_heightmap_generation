@@ -28,7 +28,7 @@ const R = 6371;
  * Every cell's surface against today's datum (km, + up): what the water would stand on. Continental and arc crust as the
  * history's rivers stand it (tectonics/step/rivers.js: its column, uplift, start swells, flood basalt, the sediment in its
  * hollows, less what its rivers cut), sea floor as the terrain's records do (records.js: the depth–age law less the
- * sediment an enclosed sea laid, an oceanic plateau aside), both on the mantle's swell against their side's reference.
+ * sediment an enclosed sea laid and the rise its rivers laid off an open margin, riseKm3; an oceanic plateau aside), both on the mantle's swell against their side's reference.
  * Read from a frame (FRAME_FIELDS). PROTOTYPE: ports the two formulas rather than sharing them — a wired version
  * extracts one per-cell surface for rivers.js, records.js and this. `swellKm`: the mantle's swell per cell, when the caller
  * has it (terrain/land-mask.js: sea-level.js seaLevel's sl.swellKm, the same mantleSwellKm × smoothed heat).
@@ -41,7 +41,9 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
         if (o < 0 || type === CrustType.OCEAN) {
             const age = o >= 0 && frame.formedAt[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
             const lip = o >= 0 && frame.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, frame.volcKm[w]) : 0;
-            out[w] = -filledSeaDepthKm(age, o >= 0 ? frame.seaFillKm?.[w] ?? 0 : 0) + lip + swell - seaRef
+            // (the rivers' rock on it, Airy-loaded: an enclosed sea's fill and an open margin's rise, riseKm3 spread over its cell)
+            const rockKm = o >= 0 ? (frame.seaFillKm?.[w] ?? 0) + (frame.riseKm3?.[w] ?? 0) / simMesh.cellAreaKm2 : 0;
+            out[w] = -filledSeaDepthKm(age, rockKm) + lip + swell - seaRef
                 + (o >= 0 ? (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR : 0);
             continue;
         }
