@@ -54,7 +54,7 @@ export const CrustFlag = Object.freeze({
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
     'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
-    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'damage']);
+    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -130,6 +130,12 @@ export class CrustRaster {
         this.unroofKm = new Float32Array(numCells);    // rock taken off since its last belt went quiet, less what was laid back (km)
         this.arcMyr = new Float32Array(numCells);      // time spent in a live subduction belt (Myr)
         this.riftAt = new Float32Array(numCells);      // when a rift opened here, read from its flags (0 = never)
+        // The stretch the history gave this crust (lane rockbook; a record — no step reads it, the terrain's margins do):
+        // the share of its crust rifting has taken, 1 − 1/β (0 = never stretched; β = the stretching factor, McKenzie
+        // 1978), compounded over every rift that stretched it, and when it was last stretched (Myr; the thermal
+        // subsidence clock starts there). step/rifting.js writes both; erosion, collapse and thickening never touch them
+        this.riftThin = new Float32Array(numCells);
+        this.riftThinAt = new Float32Array(numCells);
         this.damage = new Float32Array(numCells);      // how broken the lithosphere is, 0–1: set where the plate's stress beat its strength, healing after (field/stress-step.js)
         this.count = 0;                                // number of masked cells
         this.version = 0;                              // bumped whenever a cell of the mask changes (step/gather.js nearEdge: unchanged since last asked?)
