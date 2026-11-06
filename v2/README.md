@@ -79,7 +79,21 @@ the air's temperature, month by month (`finish.js potentialMonths`), the same ai
 gives back what the atmosphere's balance lost to it: 0.33–0.42 of its rain against the climate's 0.32–0.43 over 3 seeds ×
 2 moments, where a temperature-only form gave 0.37–0.52 — it missed the summers of the cold continents; Earth ~0.35–0.40,
 Trenberth et al. 2007; the lakes' evaporation, the rivers' seasons and the ice age's water from it too; the land cover
-keeps the temperature's, its S-curves fitted with it), dry basins left closed —
+keeps the temperature's, its S-curves fitted with it); liquid only where a month thaws (the thaw gate, lane polar, 2026-11-05:
+`finish.js thawedWater`): each place's year split by the climate's own months at its height — rain in the months above
+0 °C, snow in the others, melted in the thawed months at 120 mm a month per °C (snow's degree-day factor, 4.1 mm d⁻¹ K⁻¹,
+Braithwaite 2008; the climate's own rate, and the cover's and the rivers' seasons' since); snow the thawed months cannot
+melt is kept, and where no month thaws none of the year's water runs. Until then the ice sheets' snow ran off as rain:
+2.4–7.7 % of the land, never thawing, gave 10–18 % of its rivers' water and 0–156 000 km² of fresh lakes standing on the ice
+(3 seeds × 2 moments, `tools/polar-study.mjs`). The kept snow leaves as an ice sheet in its round leaves it (`iceDischarge`;
+Cuffey & Paterson 2010): down the bed's fall, over its pits' rims, to the first ground where all its own snow melts — there
+it runs off as meltwater — or to the sea, calved (booked: `stats.snowStore`); a hollow where no month thaws fills with its
+ice and spills, no lake and no sink (`finish-fsm.js`). The rivers then carry 0.34–0.40 of the land's rain, 0.36–0.42 with the
+ice's calving (it was 0.35–0.41, the ice's snow as rain); the endorheic share and the lakes as before but those on the ice.
+What it skips: the ice has no dynamics (it takes the bed's fall, not its surface's) and its margin melts all it brings in
+one cell; a month's mean below freezing has no thawing days (positive degree-days from the monthly spread); no store
+carried between years — the monthly snow and soil ledger is the next lane's, and the ice's own mass budget (model review
+U9) is to replace `iceDischarge`, dry basins left closed —
 flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the finish's own erosion strength
 (`erosionStrength` 0–3, 3; developer, 2026-10-15: "break up SOME of the monotony of the ridges"): the stream power's m
 lowered and k raised so its erosion climbs further up the headwaters (rivers draining 10⁵ km² cutting as before), the
