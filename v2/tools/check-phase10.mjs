@@ -232,7 +232,7 @@ section('scraps of craton');
             T ??= synthesizeTerrain(F, mesh, tm, { seed });
             const meanH = cells => { const set = new Set(cells); let s = 0, m = 0; for (let t = 0; t < tm.numCells; t++) if (set.has(T.sampler.cells[3 * t])) { s += T.heightKm[t]; m++; } return m ? s / m : NaN; };
             const inside = meanH(patch), around = meanH([...ring]);
-            if (inside === inside && around === around) gaps.push(around - inside);
+            if (inside === inside && around === around) gaps.push({ gap: around - inside, note: `${patch.length} cell${patch.length > 1 ? 's' : ''}, belt ${[...new Set([...ring].map(q => F.oroType[q]))].join('/')}, ground around ${around.toFixed(2)} km` });
         }
         return gaps;
     };
@@ -248,7 +248,7 @@ section('scraps of craton');
     for (const [i, sceneSeed] of SCENE_SEEDS.entries()) {
         for (const [id, seed, times] of [['india', sceneSeed, [50, 60, 70, 80, 90]], ['history', PLANET_SEEDS[i], Array.from({ length: 30 }, (_, j) => 20 * (j + 1))]]) {
             const { frames } = run(id, Math.max(...times), null, seed);
-            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) scraps.push({ gap: g, where: `${id} ${seed} @${F.time}` });
+            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) scraps.push({ gap: g.gap, where: `${id} ${seed} @${F.time} (${g.note})` });
         }
     }
     const gaps = scraps.map(x => x.gap), worst = scraps.reduce((m, x) => (!m || x.gap > m.gap ? x : m), null);
