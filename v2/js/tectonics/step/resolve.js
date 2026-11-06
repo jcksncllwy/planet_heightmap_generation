@@ -7,6 +7,8 @@
 // that may not be filled yet are flagged in `world.provisional` (see assignGapOwners).
 
 import { bookSubductedFloorRock } from './floor-rock.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from './crust-ledger.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { Provisional } from '../model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
@@ -53,7 +55,7 @@ function gatherAndSubduct(world, removed, gaps, tally) {
     let consumed = 0;
     const budget = world.budget;
     const subduct = (plate, cell, w) => {
-        if (plate.crust.type[cell] === CrustType.ARC) budget.recycledCells++;           // (thin arc crust going down a trench: polarity.js)
+        if (plate.crust.type[cell] === CrustType.ARC) { budget.recycledCells++; bookRock('arcRecycledKm3', -cellRockKm3(world, plate.crust, cell)); }   // (thin arc crust going down a trench: polarity.js; its rock, rock-book.js)
         else bookSubductedFloorRock(world, plate.crust, cell);    // (the rivers' rock on it: step/floor-rock.js)
         plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++;
         (removed.get(plate) ?? removed.set(plate, []).get(plate)).push(cell);

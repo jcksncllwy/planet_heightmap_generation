@@ -28,6 +28,8 @@ import { hopsFrom } from '../../core/mesh-bfs.js';
 import { continentVolume, crustOf, layThickening, layProfile } from '../ops/thicken.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3, plateRockKm3 } from './crust-ledger.js';
 
 /**
  * @typedef {Object} Collision
@@ -210,7 +212,11 @@ export function trackCollisions(world, dt) {
         if (wouldWeld) {
             // (config.collisionVolume, lane crust 1b: the crust the weld absorbs is kept as thickness, less the lost share)
             const Cm = config.collisionVolume ? columnModel(heightsOf(config)) : null, volBefore = Cm ? continentVolume(U, Cm) + continentVolume(L, Cm) : 0;
+            // (the rock book: the rock the weld took off the map — the overlap absorbed, the sea it sealed — is the two plates'
+            // rock before less the merged plate's after, less the belt the merge spread, booked by its own counters)
+            const rockBefore = plateRockKm3(world, U) + plateRockKm3(world, L), B = world.budget, beltBefore = (B.beltReliefKm3 ?? 0) + (B.beltRootKm3 ?? 0);
             const result = mergePlates(world, U, L, cells, rec);
+            bookRock('collisionConsumedKm3', plateRockKm3(world, U) + (L.alive ? plateRockKm3(world, L) : 0) - rockBefore - ((B.beltReliefKm3 ?? 0) + (B.beltRootKm3 ?? 0) - beltBefore));
             if (Cm) {
                 const gone = volBefore - continentVolume(U, Cm);
                 if (gone > 0) {
@@ -528,13 +534,16 @@ function underthrust(world, U, L, cells, rec, km) {
         const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2], cl = L.cellAt(index, x, y, z);
         if (!L.crust.mask[cl] || L.crust.type[cl] === CrustType.OCEAN || L.crust.type[cl] === CrustType.CRATON) continue;
         if (Cm) { keptKm += crustOf(L.crust, cl, Cm); keptAt.push(U.cellAt(index, x, y, z)); }
+        bookRock('collisionConsumedKm3', -cellRockKm3(world, L.crust, cl));       // (all its rock off the map: what is kept, keepConsumed books back)
         L.crust.remove(cl);
         consumed++;
         const cu = U.cellAt(index, x, y, z);
         if (Cm) continue;                                   // (1b: laid below, all of it, instead of a fixed 25 km here)
         if (U.crust.mask[cu] && U.crust.type[cu] !== CrustType.OCEAN) {
+            const root0 = U.crust.rootKm[cu];
             U.crust.thickKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.thickKm[cu] + config.underthrustThickenKm);
             U.crust.rootKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.rootKm[cu] + config.underthrustThickenKm);    // (heights: the plateau's root)
+            if (U.crust.type[cu] !== CrustType.ARC) bookRock('collisionKeptKm3', (U.crust.rootKm[cu] - root0) * cellAreaKm2);     // (collisionVolume off: the fixed thickening; an arc's root is not its measure)
         }
     }
     if (Cm && keptKm > 0) keepConsumed(world, U, keptAt, keptKm, rec.startedAt);
@@ -577,7 +586,7 @@ function recycleThinArc(world, donor, cell) {
 /** Remove arc cells of `donor` into the mantle (they go down with the slab), logging it if the piece is worth naming. */
 function recycle(world, donor, cells) {
     const { cellAreaKm2 } = world.mesh;
-    for (const c of cells) donor.crust.remove(c);
+    for (const c of cells) { bookRock('arcRecycledKm3', -cellRockKm3(world, donor.crust, c)); donor.crust.remove(c); }   // (its rock: rock-book.js)
     donor.markReshaped();
     world.budget.recycledCells += cells.length;
     if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `an island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting: its crust is too thin to float`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });
@@ -607,6 +616,7 @@ function keepConsumed(world, U, seeds, volKm, since) {
     }
     const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
     const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm);
+    bookRock('collisionKeptKm3', (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
     budget.collisionKeptKm = (budget.collisionKeptKm ?? 0) + kept - left;
     budget.collisionLostKm = (budget.collisionLostKm ?? 0) + lost;
     budget.collisionUnplacedKm = (budget.collisionUnplacedKm ?? 0) + left;

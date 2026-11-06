@@ -28,6 +28,8 @@ import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { normalize, tangentToward } from '../../core/sphere-geom.js';
 import { reachesWithin, hopDistance } from '../../core/mesh-bfs.js';
 import { isContinental } from './hotspots.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from './crust-ledger.js';
 
 
 /** Extend every trench's ends along strike by the wing growth rate. @returns cells captured or flagged */
@@ -184,15 +186,19 @@ export function buildArcs(world, dt = 0) {
         }
         if (dt > 0) {
             const { arcKm, arcAt } = plate.crust;
-            for (const c of fed) { arcKm[c] = Math.min(config.arcMaxKm, Math.max(arcKm[c], config.arcBirthKm) + config.arcThickenKmPerMyr * dt); arcAt[c] = time; }
+            // (the rock book: the magma the arc gained, its crust after less before — rock-book.js arcAddedKm3)
+            let added = 0;
+            for (const c of fed) { added -= cellRockKm3(world, plate.crust, c); arcKm[c] = Math.min(config.arcMaxKm, Math.max(arcKm[c], config.arcBirthKm) + config.arcThickenKmPerMyr * dt); arcAt[c] = time; added += cellRockKm3(world, plate.crust, c); }
+            bookRock('arcAddedKm3', added);
         }
         if (!born.length) continue;
         plate.arcTerraneId ??= world.nextTerraneId();
         for (const c of born) {
             if (type[c] !== CrustType.OCEAN) continue;
-            const { formedAt } = plate.crust;
+            const { formedAt } = plate.crust, before = cellRockKm3(world, plate.crust, c);
             type[c] = CrustType.ARC; formedAt[c] = time; plate.crust.terrane[c] = plate.arcTerraneId;
             plate.crust.arcKm[c] = config.arcBirthKm; plate.crust.arcAt[c] = time;      // (its crust grows while its trench feeds it: above)
+            bookRock('arcAddedKm3', cellRockKm3(world, plate.crust, c) - before);          // (its new crust, less the floor's sediment it buries)
             flags[c] &= ~CrustFlag.APRON;
             plate.crust.recordOrogeny(c, OrogenyType.ARC, 0, time, config.orogenyQuietMyr);
             built++;

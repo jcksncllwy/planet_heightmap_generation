@@ -43,3 +43,45 @@ export function closure(r, per = 1200) {
     return { stageGkm3, worn, supplied, sinks, placed, unbooked: worn - placed, suppliedUnbooked: supplied - placed,
         cells: Object.fromEntries(Object.entries(r.stages).map(([k, e]) => [k, { land: e.land * s, arc: e.arc * s }])), per };
 }
+
+// ── the rock book (lane rockbook) ──────────────────────────────────────────────────────────────────────────────────────
+// Each ledger stage's change in the rock it holds (step/crust-ledger.js rockParts, every part summed: crust, relief, fill,
+// arc, sediment on the ocean floor, rock worn off and in transit) must equal the flows it booked to world.budget (km³,
+// rock-book.js): STAGE_FLOWS names, per stage, each counter it may write and the sign it enters with (+1: the counter
+// counts rock made; −1: rock it took away). A stage not named here may book nothing and must leave the rock as it was.
+// rivers and fans are one unit: the rivers set the rock that reaches a mouth down there over the next slow steps, as a rate
+// (step/trench-fans.js), so the rock between them — a slow step's worth — is the unit's only residual.
+export const STAGE_FLOWS = {
+    kinematics: { arcAgeingKm3: +1 },
+    resolve: { riseDownKm3: -1, riseKeptKm3: -1, seaFillDownKm3: -1, seaFillKeptKm3: -1, arcRecycledKm3: +1 },
+    boundaries: { beltReliefKm3: +1, beltRootKm3: +1 },
+    collisions: { beltReliefKm3: +1, beltRootKm3: +1, collisionConsumedKm3: +1, collisionKeptKm3: +1, arcRecycledKm3: +1 },
+    rifts: { beltReliefKm3: +1, beltRootKm3: +1 },
+    arcs: { arcAddedKm3: +1 },
+    arcMaturation: { arcMaturedKm3: +1 },
+    'rivers+fans': { seaOverflowKm3: -1, fanKm3: -1 },
+    marginIsles: { marginErodedKm3: +1, isleRaisedKm3: +1, isleMergedKm3: +1 },
+    arcCollapse: { arcCollapseKm3: +1, beltReliefKm3: +1, beltRootKm3: +1 },
+    heights: { fillWornKm3: +1 },
+};
+// (the ops several stages share — a piece moved to another plate, cells handed back to the passive ocean, ops/tidy-plates.js;
+// the rivers' rock on sea floor going down a trench, step/floor-rock.js — book what they lose wherever they run)
+const ANY_STAGE = { movedLostKm3: +1, givenBackLostKm3: +1, riseDownKm3: -1, riseKeptKm3: -1, seaFillDownKm3: -1, seaFillKeptKm3: -1 };
+const UNITS = { rivers: 'rivers+fans', fans: 'rivers+fans' };
+
+/**
+ * Each stage's rock closure (Gkm³ over the run): its change in rock, the flows it booked (STAGE_FLOWS), and the residual —
+ * rock the stage made or lost with no book. `stages` is world.ledger.stages from a run with crustLedgerVolume.
+ * @returns {Object<string, {delta: number, booked: number, residual: number, gross: number, flows: Object<string, number>}>}
+ */
+export function rockClosure(stages, cellKm2) {
+    const out = {};
+    for (const [stage, e] of Object.entries(stages)) {
+        if (!e.parts) continue;
+        const unit = UNITS[stage] ?? stage, u = out[unit] ??= { delta: 0, booked: 0, residual: 0, gross: 0, flows: {} }, map = { ...ANY_STAGE, ...STAGE_FLOWS[unit] };
+        for (const v of Object.values(e.parts)) { u.delta += v * cellKm2 / GKM3; u.gross += Math.abs(v) * cellKm2 / GKM3; }
+        for (const [key, sign] of Object.entries(map)) { const v = sign * (e.budget?.[key] ?? 0) / GKM3; if (v) { u.booked += v; u.flows[key] = (u.flows[key] ?? 0) + v; } }
+    }
+    for (const u of Object.values(out)) u.residual = u.delta - u.booked;
+    return out;
+}

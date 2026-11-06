@@ -32,6 +32,8 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { landContacts, handCollisions } from './hand-collisions.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from '../step/crust-ledger.js';
 
 /** @returns {number} pieces dealt with */
 export function tidyPlates(world) {
@@ -231,11 +233,15 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
             q = freeCellBeside(to, mesh, at, P, isHostLand);
             if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, isHostLand);
         }
+        // (the rock book: what the move lost — land with no room left on the host, the host's own floor sediment a cell
+        // landing on it buried — rock-book.js movedLostKm3)
+        const before = cellRockKm3(world, F, c) + (q >= 0 ? cellRockKm3(world, T, q) : 0);
         if (q >= 0 && (land || !T.mask[q])) {
             T.copyFrom(q, F, c);
             if (land) T.flags[q] &= ~CrustFlag.TRENCH;
             moved++;
         } else if (q >= 0 && T.mask[q]) mergeFloorRock(world, T, q, F, c);           // (dropped onto crust it has: the rivers' rock on it stays)
+        bookRock('movedLostKm3', (q >= 0 ? cellRockKm3(world, T, q) : 0) - before);
         F.remove(c);
     }
     from.markReshaped(); to.markReshaped();
@@ -288,11 +294,14 @@ export function giveToBackground(world, plate, background, cells, keepAge = fals
         if (background) {
             plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
             const w = index.nearest(P[0], P[1], P[2]), age = keepAge ? plate.crust.formedAt[c] : Math.min(plate.crust.formedAt[c], -1);
+            const before = cellRockKm3(world, plate.crust, c) + cellRockKm3(world, background.crust, w);
             if (!background.crust.mask[w]) background.crust.create(w, CrustType.OCEAN, age);
             mergeFloorRock(world, background.crust, w, plate.crust, c);                // (the rivers' rock on it goes with it)
+            bookRock('givenBackLostKm3', cellRockKm3(world, background.crust, w) - before);   // (the rock book: its crust, if not ocean's — rock-book.js)
             // a rotated raster does not land on every world cell: fill the pinholes beside it that nobody owns
             for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (owner[nb] === plate.id && !background.crust.mask[nb] && !plate.crust.mask[plate.cellAt(index, xyz[3 * nb], xyz[3 * nb + 1], xyz[3 * nb + 2])]) background.crust.create(nb, CrustType.OCEAN, age); }
         }
+        else bookRock('givenBackLostKm3', -cellRockKm3(world, plate.crust, c));
         plate.crust.remove(c);
     }
     plate.markReshaped();

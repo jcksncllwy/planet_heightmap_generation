@@ -9,6 +9,8 @@
 // either every step would manufacture land). The belt comes later, from the collision of the cores.
 
 import { CrustType, CrustFlag } from '../model/crust.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from '../step/crust-ledger.js';
 
 /**
  * Move `cells` (raster cells of `donor`, arc crust) onto `host`.
@@ -23,13 +25,14 @@ export function scrapeArc(world, host, donor, cells) {
     for (const c of cells) {
         if (!D.mask[c]) continue;
         donor.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
-        const q = host.cellAt(index, P[0], P[1], P[2]);
+        const q = host.cellAt(index, P[0], P[1], P[2]), before = cellRockKm3(world, D, c) + cellRockKm3(world, H, q);   // (the rock book: what the scrape loses, rock-book.js movedLostKm3)
         if (H.mask[q] && H.type[q] !== CrustType.OCEAN) absorbed++;      // the host's land is already here
         else {
             H.copyFrom(q, D, c);
             H.flags[q] = (H.flags[q] & ~CrustFlag.TRENCH) | CrustFlag.SUTURE;   // scraped on: a weak seam, and the trench is re-established outboard by the polarity rule
             moved++;
         }
+        bookRock('movedLostKm3', cellRockKm3(world, H, q) - before);
         D.remove(c);
     }
     donor.markReshaped(); host.markReshaped();

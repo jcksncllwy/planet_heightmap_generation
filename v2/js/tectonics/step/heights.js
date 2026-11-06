@@ -26,6 +26,7 @@ import { TERRAIN, erosionAtLatitude, erosionAtHeight } from '../../terrain/terra
 import { broadProfile } from '../../terrain/profiles.js';
 import { FastNoise } from '../../core/fast-noise.js';
 import { recordWear, thickenCover } from './geology.js';
+import { bookRock } from '../rock-book.js';
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -88,6 +89,7 @@ export function evolveHeights(world, dt) {
     const { mesh, plates, time, config } = world, H = heightsOf(config);
     const { adjOffset, adjList, xyz, edgeKm } = mesh;
     const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null, book = !!config.rockBook;
+    let fillWorn = 0;                                   // (the rock book: hollows' fill worn away with their land — not handed to the rivers: rock-book.js fillWornKm3)
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux, made = 0;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
@@ -192,12 +194,13 @@ export function evolveHeights(world, dt) {
             // (a hollow's fill wears with the land it lies in — hardly at all while it lies low (erosionAtHeight sets the
             // pace); it is sediment, so a shield's hardness does not hold it: it wears as the cover does)
             if (book) crust.wornKm[c] += Math.max(0, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]]);
-            if (basinFillKm[c] > 0) basinFillKm[c] *= hard < 1 ? wear(rate[bin] * dt * erosionAtHeight(height, H) / H.reliefTauMyr) : keep;
+            if (basinFillKm[c] > 0) { const f0 = basinFillKm[c]; basinFillKm[c] *= hard < 1 ? wear(rate[bin] * dt * erosionAtHeight(height, H) / H.reliefTauMyr) : keep; fillWorn += f0 - basinFillKm[c]; }
             // (the geological record, step/geology.js: the rock this wear took off — the root as it stands, the relief and the
             // swells as the crust they stand for (measure.js crustThicknessKm), a share of the crests)
             if (geo) recordWear(crust, c, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]] + geo.crestShare * (c0 - rugged[c] - prevRugged[c]), Math.max(0, -up), time, dt, geo);
         }
     }
+    bookRock('fillWornKm3', -fillWorn * world.mesh.cellAreaKm2);
     return made;
 }
 

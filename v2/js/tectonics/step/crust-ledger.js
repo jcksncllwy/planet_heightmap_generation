@@ -86,27 +86,69 @@ export function crustVolume(world) {
 /** The rock the planet holds now, in parts (cell-km; lane rockbook, a diagnostic with crustLedgerVolume): continental crust
  * (its kind's as formed plus its root), the relief it carries above that (measure.js crustThicknessKm's uplift and swell
  * term, as crust), the rivers' fill on it (basin, enclosed-sea and shelf rock), island-arc crust (collision.js arcCrustKm),
- * the sediment on OCEAN crust (the rise, enclosed-sea fill), and the rock worn off and not yet carried (crust.wornKm).
- * crust + relief + fill = crustVolume's continent. */
+ * the sediment on OCEAN crust (the rise, enclosed-sea fill), and the rock worn off and not yet carried (crust.wornKm). */
 export function rockParts(world) {
-    const H = heightsOf(world.config), C = columnModel(H), cellKm2 = world.mesh.cellAreaKm2, time = world.time, config = world.config;
-    const parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 };
+    const R = rockMeasure(world), parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 };
     for (const p of world.plates) {
         if (!p.alive) continue;
-        const k = p.crust, { mask, type } = k;
-        for (let c = 0; c < mask.length; c++) {
-            if (!mask[c]) continue;
-            const t = type[c];
-            parts.transit += k.wornKm[c];               // (worn off, not yet carried by the rivers: rockBook)
-            if (t === CrustType.CONTINENT || t === CrustType.CRATON) {
-                parts.crust += C.crust[t] + k.rootKm[c];
-                parts.relief += (Math.max(0, k.upliftKm[c]) + k.baseKm[c]) / C.slope[t];
-                parts.fill += k.basinFillKm[c] + k.seaFillKm[c] + k.shelfKm3[c] / cellKm2;
-            } else if (t === CrustType.ARC) parts.arc += arcCrustKm(k, c, time, config);
-            else parts.oceanSed += k.seaFillKm[c] + k.riseKm3[c] / cellKm2;
-        }
+        const k = p.crust, { mask } = k;
+        for (let c = 0; c < mask.length; c++) if (mask[c]) addCellRock(parts, R, k, c);
     }
     return parts;
+}
+
+/** What rockParts and cellRockKm measure a cell with: the column model, the cell's area, the time (an arc's age). */
+function rockMeasure(world) {
+    const config = world.config;
+    return { C: columnModel(heightsOf(config)), cellKm2: world.mesh.cellAreaKm2, time: world.time, config };
+}
+
+/** Add raster cell `c` of crust `k`'s rock to `parts` (cell-km, by part — rockParts' measure, one cell). Every kind of cell
+ * holds whatever sediment lies on it (basin, enclosed-sea, shelf and rise rock: the rivers set it down on arcs and ocean too),
+ * and an arc its root and relief as well as its own crust (heights.js wears them into crust.wornKm like a continent's). */
+function addCellRock(parts, R, k, c) {
+    const t = k.type[c], C = R.C, sed = k.basinFillKm[c] + k.seaFillKm[c] + (k.shelfKm3[c] + k.riseKm3[c]) / R.cellKm2;
+    parts.transit += k.wornKm[c];               // (worn off, not yet carried by the rivers: rockBook)
+    if (t === CrustType.OCEAN) { parts.oceanSed += sed; return; }
+    parts.fill += sed;
+    const relief = (Math.max(0, k.upliftKm[c]) + k.baseKm[c]) / C.slope[t];
+    if (t === CrustType.ARC) { parts.arc += arcCrustKm(k, c, R.time, R.config) + k.rootKm[c] + relief; return; }
+    parts.crust += C.crust[t] + k.rootKm[c];
+    parts.relief += relief;
+}
+
+/**
+ * The rock at raster cell `c` of `crust`, km³, every part together (lane rockbook: rockParts' measure, one cell). A stage
+ * that takes a cell off the map, or changes what kind of crust it is, books the change in this — the cell's rock before,
+ * less after — so the book and the record are one measure: see rock-book.js.
+ */
+export function cellRockKm3(world, crust, c) {
+    if (!crust.mask[c]) return 0;
+    const R = rockMeasure(world), one = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 };
+    addCellRock(one, R, crust, c);
+    return (one.crust + one.relief + one.fill + one.arc + one.oceanSed + one.transit) * R.cellKm2;
+}
+
+/** Σ cellRockKm3 over a plate's raster (km³: a weld's books — before and after its merge). */
+export function plateRockKm3(world, plate) {
+    if (!plate.alive) return 0;
+    const R = rockMeasure(world), parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 }, k = plate.crust, { mask } = k;
+    for (let c = 0; c < mask.length; c++) if (mask[c]) addCellRock(parts, R, k, c);
+    return (parts.crust + parts.relief + parts.fill + parts.arc + parts.oceanSed + parts.transit) * R.cellKm2;
+}
+
+/** Σ rock of the island-arc cells the history never grew (arcKm 0: a scene's hand-laid arc, measured by its age — collision.js
+ * arcCrustKm), km³. Their measure thickens with time while nothing touches them: simulate.js books the change over the
+ * kinematics stage as arcAgeingKm3 — a term of the measure, not a process, so only while the volume ledger runs. */
+export function handLaidArcKm3(world) {
+    const R = rockMeasure(world);
+    let v = 0;
+    for (const p of world.plates) {
+        if (!p.alive) continue;
+        const k = p.crust, { mask, type, arcKm } = k;
+        for (let c = 0; c < mask.length; c++) if (mask[c] && type[c] === CrustType.ARC && !(arcKm[c] > 0)) v += arcCrustKm(k, c, R.time, R.config);
+    }
+    return v * R.cellKm2;
 }
 
 /**

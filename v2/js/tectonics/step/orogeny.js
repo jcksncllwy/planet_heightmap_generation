@@ -197,10 +197,11 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         // whole belt at the pace of its front's convergence. Over weak ground the shape is laid out 1/s as wide, so it
         // stands s as high: the same convergence lifts the same volume however far it spreads (a wide plateau is low in
         // relief across its interior — Tibet's, Fielding et al. 1994)
-        const cont = crust.type[c] === CrustType.CONTINENT || crust.type[c] === CrustType.CRATON, root0 = crust.rootKm[c], up0 = Math.max(0, crust.upliftKm[c]);
+        const rock = crust.type[c] !== CrustType.OCEAN, root0 = crust.rootKm[c], up0 = Math.max(0, crust.upliftKm[c]);
         buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? shieldShare : share);
-        // (the rock book: what the belt made, unpaid — continental cells only: an arc's crust is its own record, arcKm)
-        if (cont) { bookRoot += crust.rootKm[c] - root0; bookRelief += (Math.max(0, crust.upliftKm[c]) - up0) / colSlope[crust.type[c]]; }
+        // (the rock book: what the belt made, unpaid — on continent and arc alike: crust-ledger.js counts an arc's root and
+        // relief with its own crust)
+        if (rock) { bookRoot += crust.rootKm[c] - root0; bookRelief += (Math.max(0, crust.upliftKm[c]) - up0) / colSlope[crust.type[c]]; }
     }
     bookRock('beltRootKm3', bookRoot * mesh.cellAreaKm2); bookRock('beltReliefKm3', bookRelief * mesh.cellAreaKm2);
     for (const c of reached) { u[c] = Infinity; src[c] = -1; seaKm[c] = 0; }

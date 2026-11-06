@@ -9,6 +9,8 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { spreadBelt, beltWidthKm, OrogenyType } from '../step/orogeny.js';
 import { giveToBackground } from './tidy-plates.js';
 import { EventKind } from '../model/world.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from '../step/crust-ledger.js';
 
 /** @returns {number} arc cells collapsed onto coasts this step */
 export function collapseArcs(world) {
@@ -109,6 +111,11 @@ function collapseChain(world, plate, background, chain, dist, coastCell, parent)
         ring = next;
     }
     // land the arc on the coast (read every source before writing, since sources and destinations overlap)
+    // (the rock book, arcCollapseKm3: the cells it rewrites, sources and landings, after less before — the floor sediment a
+    // landing arc buries; the arc cell left behind is given back below, and its loss booked there: rock-book.js)
+    const touched = new Set([...landed.keys(), ...landed.values()]);
+    let rockKm3 = 0;
+    for (const c of touched) rockKm3 -= cellRockKm3(world, crust, c);
     const moved = [...landed].map(([dest, a]) => [dest, crust.snapshot(a)]);
     for (const [dest, a] of landed) { giveBack.delete(dest); if (!landed.has(a)) giveBack.add(a); }
     for (const [dest, snap] of moved) {
@@ -116,6 +123,8 @@ function collapseChain(world, plate, background, chain, dist, coastCell, parent)
         crust.slabKm[dest] = 0; crust.wingKm[dest] = 0;                                  // (it is land now, no trench)
         crust.flags[dest] = (crust.flags[dest] & ~(CrustFlag.TRENCH | CrustFlag.APRON)) | CrustFlag.SUTURE;
     }
+    for (const c of touched) rockKm3 += cellRockKm3(world, crust, c);
+    bookRock('arcCollapseKm3', rockKm3);
     // give the fore-arc back to the open ocean in front of the trench
     giveToBackground(world, plate, background, [...giveBack].filter(c => !landed.has(c)));
     // a short belt and a suture where the arc joined

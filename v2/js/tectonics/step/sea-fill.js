@@ -28,7 +28,7 @@ const DELTA_TOP_KM = 0.001;
  * Lay each enclosed-sea river's rock on its sea's floor (from step/rivers.js, after it drains the land): `mouths` with
  * their sea cell (world), `span` Myr of their basins' rock. Marks each mouth `enclosed` (true: its rock stays in its
  * sea, not down a fan). A sea is enclosed if it is not the world ocean, the largest body of water. `land` and `sea`
- * (the swell under each cell and the sea's level: terrain/sea-level.js landAndSea) are the rivers'.
+ * (the swell under each cell and the sea's level) are the rivers' own, as step/rivers.js reads them.
  */
 export function fillEnclosedSeas(world, mouths, span, land, sea) {
     const { mesh, plates, owner, ownerCell, time, config } = world, { adjOffset, adjList, numCells: n } = mesh;

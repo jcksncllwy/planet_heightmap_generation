@@ -8,10 +8,30 @@
 // pointed back at its own before its next stage.
 //
 // The flows named here (km³; + makes rock, − removes it):
-//   beltRootKm3     crust a belt's root gained (or lost) — UNPAID: the rigid upper plate loses no area for it, so the
+//   beltRootKm3     crust a belt's root gained (continent or arc) (or lost) — UNPAID: the rigid upper plate loses no area for it, so the
 //                   shortening that should pay for it is not taken from anywhere (review row 10, "belts from shortening")
 //   beltReliefKm3   the crust behind a belt's relief (uplift ÷ column slope, measure.js crustThicknessKm) — UNPAID likewise
-// …and the ones other files book where their process runs (see crust-report.md "rockbook").
+//   arcAddedKm3     magma a fed arc gained, and a new arc's crust less the floor sediment it buries (step/wings.js buildArcs)
+//   arcMaturedKm3   an arc welded on as continent: its rock as continent less as arc — the floor at an ordinary continent's
+//                   crust, ARC_ROOT_SHARE of its root kept (step/arc-maturation.js)
+//   isleMergedKm3   …the same for a fore-arc island joining its coast; isleRaisedKm3 the island the prism raises, less the
+//                   floor sediment under it; marginErodedKm3 the coast an erosive margin eats (step/margin-isles.js)
+//   arcRecycledKm3  thin arc going down a trench, or with its slab at a collision (step/resolve.js, step/collision.js)
+//   arcCollapseKm3  an arc landing on its coast: the floor sediment it lands on (ops/collapse-arc.js)
+//   collisionConsumedKm3  rock a collision takes off the map — the lower plate's edge underthrust, a weld's overlap and
+//                   the sea it seals; collisionKeptKm3 what keepConsumed lays back as thickness (step/collision.js): their
+//                   sum is the collision's loss (collisionLostShare, and the unplaced)
+//   movedLostKm3    a piece moved to another plate: land with no room left on its host, the host's floor sediment it
+//                   buries (ops/tidy-plates.js transferCells, ops/scrape-arc.js, ops/accrete-terrane.js)
+//   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them
+//                   (ops/tidy-plates.js giveToBackground)
+//   fillWornKm3     a hollow's fill worn away with its land — not handed to the rivers (step/heights.js)
+//   arcAgeingKm3    a hand-laid arc's measure thickening with its age: a term of the measure, booked only while the
+//                   volume ledger runs (simulate.js; crust-ledger.js handLaidArcKm3)
+// Each of these is the cell's rock after less before, in crust-ledger.js cellRockKm3 — the record's own measure — so a
+// book cannot drift from what it books. The rivers' and trenches' sediment counters (riverSupplyKm3, basinFillKm3,
+// seaFillKm3, seaOverflowKm3, shelfKm3, fanKm3, riseKm3, riseDownKm3, …) are the rest of the book; which stage may book
+// which is tools/lib/volume-books.mjs STAGE_FLOWS (crust-report.md "rockbook").
 
 let active = null;
 

@@ -26,6 +26,8 @@ import { BoundaryKind, EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { CM_PER_YR_TO_KM_PER_MYR } from '../config.js';
 import { trenchFans } from './trench-fans.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from './crust-ledger.js';
 
 /** @returns {number} cells raised or merged this step */
 export function growMarginIsles(world, dt) {
@@ -88,7 +90,9 @@ export function growMarginIsles(world, dt) {
             // where the coast is more intricate than its trench, the same retreat is shared among more cells)
             const p = pErode * Math.min(1, erosiveTrench / Math.max(1, coastCells.length)), eaten = [];
             for (const [c, sea] of coastCells) if (rng() < p) eaten.push([c, crust.formedAt[sea]]);
-            for (const [c, age] of eaten) { crust.create(c, CrustType.OCEAN, age); flags[c] = CrustFlag.APRON; }
+            let erodedKm3 = 0;                                       // (the rock book: the coast's rock, gone down the trench — rock-book.js)
+            for (const [c, age] of eaten) { erodedKm3 -= cellRockKm3(world, crust, c); crust.create(c, CrustType.OCEAN, age); flags[c] = CrustFlag.APRON; erodedKm3 += cellRockKm3(world, crust, c); }
+            bookRock('marginErodedKm3', erodedKm3);
             if (eaten.length) { plate.dirty = true; changed += eaten.length; world.budget.erodedCells += eaten.length; }
         }
         // the fore-arc: sea between this coast and its trench, keeping the gap in front of the trench
@@ -120,11 +124,15 @@ export function growMarginIsles(world, dt) {
         if (raise.length) {
             world.budget.isleRaisedCells = (world.budget.isleRaisedCells ?? 0) + raise.length;
             plate.marginIsleTerrane ??= world.nextTerraneId();
+            let raisedKm3 = 0;                                       // (the rock book: the prism's rock raised as an island, less the floor's sediment it stands on)
             for (const c of raise) {
+                raisedKm3 -= cellRockKm3(world, crust, c);
                 type[c] = CrustType.ARC; crust.formedAt[c] = time;
+                raisedKm3 += cellRockKm3(world, crust, c);
                 flags[c] = (flags[c] & ~CrustFlag.APRON) | CrustFlag.MARGIN_ISLE;
                 crust.terrane[c] = plate.marginIsleTerrane;
             }
+            bookRock('isleRaisedKm3', raisedKm3);
             changed += raise.length;
             plate.dirty = true;
         }
@@ -149,7 +157,9 @@ function mergeIntoMainland(world, plate) {
             else if (!seen[nb] && type[nb] === CrustType.ARC && (flags[nb] & CrustFlag.MARGIN_ISLE)) { seen[nb] = 1; piece.push(nb); }
         }
         if (!touches) continue;
-        for (const c of piece) { crust.rootKm[c] = arcToContinentRootKm(crust, c, world.time, config); type[c] = CrustType.CONTINENT; }     // (its crust a continent's: heights.js)
+        let mergedKm3 = 0;                                           // (the rock book: as continent less as arc — arc-maturation.js's measure)
+        for (const c of piece) { mergedKm3 -= cellRockKm3(world, crust, c); crust.rootKm[c] = arcToContinentRootKm(crust, c, world.time, config); type[c] = CrustType.CONTINENT; mergedKm3 += cellRockKm3(world, crust, c); }
+        bookRock('isleMergedKm3', mergedKm3);     // (its crust a continent's: heights.js)
         merged += piece.length;
         if (piece.length * cellAreaKm2 >= config.terraneMinAreaKm2) world.log(EventKind.ISLE_MERGE, `an island off ${plate.name}’s coast (${(piece.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) has grown into the mainland`, { plate: plate.id, areaKm2: piece.length * cellAreaKm2 });
     }

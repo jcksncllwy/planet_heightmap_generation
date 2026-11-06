@@ -12,6 +12,8 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { spreadBelt, beltWidthKm, OrogenyType, BeltSide } from '../step/orogeny.js';
 import { closeSeasBetween } from './merge-plates.js';
 import { freeCellBeside } from './tidy-plates.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from '../step/crust-ledger.js';
 
 /**
  * Move the land cells `terrane` (raster cells of `donor`) onto `host`. Terrane land that would land on land already
@@ -50,14 +52,16 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
         const land = isTerrane[c] === 1;
         if (land && origin[q]) {                                          // land (the host's, or terrane already placed) is here
             q = freeCellBeside(host, mesh, q, P, n => origin[n] !== 0);
-            if (q < 0) { absorbed++; D.remove(c); continue; }
+            if (q < 0) { absorbed++; bookRock('movedLostKm3', -cellRockKm3(world, D, c)); D.remove(c); continue; }
         }
+        const before = cellRockKm3(world, D, c) + cellRockKm3(world, H, q);   // (the rock book: what the move loses, rock-book.js movedLostKm3)
         if (origin[q] !== 1 && (land || !H.mask[q])) {                   // the host keeps its own land, and its own crust over the fore-arc
             H.copyFrom(q, D, c);
             if (land) H.flags[q] &= ~CrustFlag.TRENCH;                     // on land the polarity rule re-establishes the trench where it belongs
             if (land) origin[q] = 2;
             if (land) moved++;
         } else if (H.mask[q]) mergeFloorRock(world, H, q, D, c);                     // (dropped onto the host's crust: the rivers' rock on it stays)
+        bookRock('movedLostKm3', cellRockKm3(world, H, q) - before);
         D.remove(c);
     }
     donor.markReshaped();

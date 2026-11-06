@@ -3,7 +3,7 @@
 // force model (step/torque-balance.js `updatePlateMotion`). `drive` always sees a freshly resolved
 // world, including at time 0, and `world.lastDt` tells it how long the last step was.
 
-import { useRockBook } from './rock-book.js';
+import { useRockBook, bookRock } from './rock-book.js';
 import { advancePlates } from './step/kinematics.js';
 import { fastestSpeed } from './step/torque-balance.js';
 import { resolve } from './step/resolve.js';
@@ -29,7 +29,7 @@ import { evolveHeights, seedBaseRelief } from './step/heights.js';
 import { evolveRivers } from './step/rivers.js';
 import { seedGeology, evolveGeology } from './step/geology.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
-import { crustLedger } from './step/crust-ledger.js';
+import { crustLedger, handLaidArcKm3 } from './step/crust-ledger.js';
 import { stepPlateStress } from './field/stress-step.js';
 
 /**
@@ -101,7 +101,10 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         const nextGrid = (Math.floor(world.time / grid + 1e-9) + 1) * grid;
         const dt = Math.min(chooseStep(world), nextGrid - world.time, untilMyr - world.time);
         const cellsMoved = closingRate(world) * dt / world.mesh.edgeRad;
-        led('kinematics', advancePlates(world, dt));
+        const ageing = world.config.crustLedgerVolume, handLaid = ageing ? handLaidArcKm3(world) : 0;   // (the volume ledger's own term: crust-ledger.js handLaidArcKm3)
+        advancePlates(world, dt);
+        if (ageing) bookRock('arcAgeingKm3', handLaidArcKm3(world) - handLaid);
+        led('kinematics');
         world.lastDt = dt;
         const tally = led('resolve', resolve(world));
         led('boundaries', classifyBoundaries(world, dt));

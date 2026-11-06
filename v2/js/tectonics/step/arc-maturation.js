@@ -8,6 +8,8 @@
 
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { arcToContinentRootKm } from './heights.js';
+import { bookRock } from '../rock-book.js';
+import { cellRockKm3 } from './crust-ledger.js';
 
 /** @returns {number} plates whose crust changed (cell types only) */
 export function matureArcs(world, dt) {
@@ -34,7 +36,12 @@ export function matureArcs(world, dt) {
         // (its terrane, its age, its belts and its volcanoes stay; its crust — the arc's own, and its share of what belts
         // thickened it by — is continental crust now, reworked to at least an ordinary continent's thickness: the step's
         // premise, welded arcs thickened and intruded into continental crust (branch unified: the column stands on it))
-        for (const c of ring) { plate.crust.rootKm[c] = arcToContinentRootKm(plate.crust, c, time, config); type[c] = CrustType.CONTINENT; }
+        // (the rock book, arcMaturedKm3: the cell's rock as continent less as arc — the reworking's floor at an ordinary
+        // continent's crust, ARC_ROOT_SHARE of a belt's root on it, and the relief and fill it carried that the arc's
+        // measure, its crust alone, did not count: rock-book.js)
+        let matured = 0;
+        for (const c of ring) { matured -= cellRockKm3(world, plate.crust, c); plate.crust.rootKm[c] = arcToContinentRootKm(plate.crust, c, time, config); type[c] = CrustType.CONTINENT; matured += cellRockKm3(world, plate.crust, c); }
+        bookRock('arcMaturedKm3', matured);
         world.budget.arcMaturedCells = (world.budget.arcMaturedCells ?? 0) + ring.length;
         plate.dirty = true;
         changed++;
