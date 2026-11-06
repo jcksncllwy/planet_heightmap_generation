@@ -2376,6 +2376,10 @@ check-invariants):
   margins are the zone's own crust spread wider, volume conserved.
 - **Collisions keep what they consume** (`collisionVolume`, step/collision.js keepConsumed, ops/thicken.js): underthrust
   or overlapped crust stays as the upper plate's thickness, all but `collisionLostShare` 0.15 (Scholl & von Huene 2009).
+  It is laid across the whole belt the collision has stamped since it began, in the plateau profile 1 − u² (England &
+  Houseman 1986), then ring by ring from the front for what finds no room. (Laying it only on the step's own belt left the
+  weld — which absorbs the most and comes after the seam stalls, a step that stamps no belt — to ring-fill ~100 cells to
+  the 40 km ceiling: phase5's plateau check failed 2 of 3 seeds on that spike.)
 - **A belt reaches as far as it strains** (`beltStrainRate`, **off by default**; built at 1e-15 /s): a live belt's width
   is its shortening rate now ÷ this, so a slowing belt narrows and a stalled one stops refreshing its record. Unsourced,
   declared as swept (3e-16 / 1e-15 / 3e-15). On, it took compressive records < 240 Myr from 61 to 55 % (3 seeds), but
