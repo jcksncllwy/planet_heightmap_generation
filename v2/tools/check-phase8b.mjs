@@ -327,6 +327,24 @@ section('the network’s shape');
         report(`${name}: low-ground reaches dead level (fall under 1e-6 over ${S.sinuosity.reachKm.toFixed(0)} km)`, 100 * S.broom.flatShare, { earth: [0, 2], unit: ' %', digits: 0, source: 'no alluvial river is level over 200 km: the flattest great rivers fall ~1e-5 (the lower Amazon ~2e-5, recalled); holds through the cycle',
             detail: `of ${S.broom.lowReaches} reaches on ground falling under 2e-4, any height, none through a lake; rising (routed across a dry hollow) ${(100 * S.broom.riseShare).toFixed(0)} %; dead-straight unbranched runs (links ≥ ${S.broom.linkKm.toFixed(0)} km, sinuosity < 1.05) ${(100 * S.broom.straightShare).toFixed(0)} % of ${S.broom.links} links' length` });
     }
+    // (the thaw gate, lane polar 2026-11-05: no liquid water where no month thaws — finish.js thawedWater, iceDischarge)
+    {
+        const L = fin.layers, km2 = 4 * Math.PI * 6371 ** 2 / fin.mesh.numCells;
+        let frozenR = 0, frozenN = 0, lakeKm2 = 0, frozenLakeKm2 = 0, tP = 0, tR = 0;
+        for (let c = 0; c < fin.mesh.numCells; c++) {
+            if (fin.ocean[c] && !fin.lake[c]) continue;
+            if (L.frozen[c]) { frozenN++; frozenR += L.runoff[c] > 0 ? 1 : 0; }
+            if (fin.lake[c] && fin.lake[c] !== 3) { lakeKm2 += km2; if (L.frozen[c]) frozenLakeKm2 += km2; }
+            if (L.thaw[c] >= 1 && L.thaw[c] <= 3 && L.rain[c] > 0 && fin.z[c] > 0 && L.runoff[c] <= L.rain[c]) { tP += L.rain[c]; tR += L.runoff[c]; }
+        }
+        check('no liquid runoff where no month thaws', frozenR === 0, `${frozenR} of ${frozenN} never-thawing land cells run off`);
+        report('lakes on ground where no month thaws', 100 * frozenLakeKm2 / Math.max(1, lakeKm2), { earth: [0, 1], unit: ' % of lake area', digits: 1,
+            source: 'none stand on Earth\'s ice sheets\' surface but meltwater ponds of their ablation zones; a lake straddling the line keeps its thawed half (finish-fsm.js iced hollows)' });
+        report('land runoff, the ice sheets\' discharge included', fin.stats.runoffShareWithIce, { earth: [0.35, 0.40], digits: 3,
+            source: `share of land precipitation; ~0.35–0.40 with Antarctica's and Greenland's discharge (Trenberth et al. 2007; Dai & Trenberth 2002) — the cycle shifts it little; rivers alone ${fin.stats.runoffShare}, snow kept ${fin.stats.snowStore?.keptKm3} km³/yr (melted at the margin ${fin.stats.snowStore?.meltKm3}, calved ${fin.stats.snowStore?.calvedKm3})` });
+        report('runoff ratio where 1–3 months thaw (tundra, permafrost)', tP > 0 ? tR / tP : NaN, { earth: [0.5, 0.9], digits: 2,
+            source: 'snowmelt-dominated high-Arctic catchments return most of their precipitation as runoff: little evaporation, frozen ground (Woo 2012, Permafrost Hydrology, ch. 8; range from the literature\'s catchments, not one figure)' });
+    }
     report('Add detail at 640K cells (for the network above)', finSeconds, { unit: ' s', digits: 1, source: 'no Earth figure: the time the finish takes headlessly' });
 }
 

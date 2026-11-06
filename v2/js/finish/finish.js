@@ -4,6 +4,7 @@
 // deposition through time (finish-erode.js), an Earth-like last ice age (F3), the wind's work (F4), and erosion's polish. Runs in finish-worker.js (or Node): the terrain pool builds the surface in
 // slices, everything else runs here, on a mesh of any size — 10M cells included, which only this worker holds.
 
+import { MinHeap } from '../core/min-heap.js';
 import { FINISH, COVER } from './finish-config.js';
 import { LatLonGrid } from './finish-grid.js';
 import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
@@ -403,7 +404,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
         civ: civ ? { ice: I.ice, loess: W.loess, erg: W.erg, ...civCells.fields, flow: travelFlow } : null,              // (for the civ layer: v2/js/civ/civ-page.js)
-        layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal, lakeSrc: Hy.lakeSrc, hollow: Hy.hollow, hollowInfo: Hy.hollowInfo, tectonic: B.tectonic, warmSl, runoff, pet, liquid: liquid.rain, snowStore: liquid.store } : null };
+        layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal, lakeSrc: Hy.lakeSrc, hollow: Hy.hollow, hollowInfo: Hy.hollowInfo, tectonic: B.tectonic, warmSl, runoff, pet, liquid: liquid.rain, snowStore: liquid.store, frozen: liquid.frozen, thaw: liquid.thaw } : null };
 }
 
 /** The mesh's positions displaced by a smooth noise field (km-sized waves, three octaves): a domain warp of everything read there. */
@@ -495,8 +496,8 @@ function runoffMonths(months, petM, G, F) {
  * its round (snow that falls is snow that melts, where it can): liquid = rain + min(snow, the thawed months' melt); the
  * rest is the store — a snowfield's and an ice sheet's accumulation. No month thaws: no liquid at all. Where every
  * winter's snow melts (most of the land), liquid is all the year's rain, and nothing changes.
- * @returns {{rain: Float32Array, store: Float32Array, frozen: Uint8Array, stats}}  liquid water and kept snow (mm/year per
- *          cell; NaN where pAnn is); frozen: 1 where no month thaws; stats: the land's kept snow (km³ of water a year), its area and the never-thawing land's (km²)
+ * @returns {{rain: Float32Array, store: Float32Array, frozen: Uint8Array, thaw: Uint8Array, stats}}  liquid water and kept snow (mm/year
+ *          per cell; NaN where pAnn is); frozen: 1 where no month thaws; thaw: the months at or above 0 °C; stats: the land's kept snow (km³ of water a year), its area and the never-thawing land's (km²)
  */
 function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n) {
     const Tsl = new Float32Array(12 * G);
@@ -504,7 +505,7 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
         const href = hLand[g] === hLand[g] ? Math.max(0, hLand[g]) : 0;
         for (let m = 0; m < 12; m++) Tsl[m * G + g] = months.T[m * G + g] + gamma * href;
     }
-    const rain = new Float32Array(n), store = new Float32Array(n), frozen = new Uint8Array(n), bi = new Int32Array(4), bw = new Float64Array(4), cellKm2 = 4 * Math.PI * R * R / n;
+    const rain = new Float32Array(n), store = new Float32Array(n), frozen = new Uint8Array(n), thaw = new Uint8Array(n), bi = new Int32Array(4), bw = new Float64Array(4), cellKm2 = 4 * Math.PI * R * R / n;
     let keptKm3 = 0, keptKm2 = 0, frozenKm2 = 0;
     for (let c = 0; c < n; c++) {
         const P = pAnn[c];
@@ -516,14 +517,14 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
             const T = Tsl[o + bi[0]] * bw[0] + Tsl[o + bi[1]] * bw[1] + Tsl[o + bi[2]] * bw[2] + Tsl[o + bi[3]] * bw[3] - h;
             const Pm = Math.max(0, months.P[o + bi[0]] * bw[0] + months.P[o + bi[1]] * bw[1] + months.P[o + bi[2]] * bw[2] + months.P[o + bi[3]] * bw[3]);
             all += Pm;
-            if (T < 0) snow += Pm; else { wet += Pm; melt += F.snowMeltMmPerC * T; }
+            if (T < 0) snow += Pm; else { wet += Pm; melt += F.snowMeltMmPerC * T; thaw[c]++; }
         }
         const share = all > 0 ? (wet + Math.min(snow, melt)) / all : 1, p = Math.max(0, P);
         rain[c] = p * share; store[c] = p - rain[c];
         if (!(melt > 0)) frozen[c] = 1;
         if (z[c] > 0) { if (store[c] > 0) { keptKm3 += store[c] * cellKm2 * 1e-6; keptKm2 += cellKm2; } if (frozen[c]) frozenKm2 += cellKm2; }
     }
-    return { rain, store, frozen, stats: { keptKm3: Math.round(keptKm3), keptKm2: Math.round(keptKm2), frozenKm2: Math.round(frozenKm2) } };
+    return { rain, store, frozen, thaw, stats: { keptKm3: Math.round(keptKm3), keptKm2: Math.round(keptKm2), frozenKm2: Math.round(frozenKm2) } };
 }
 
 /**
@@ -532,7 +533,8 @@ function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n)
  * (the mass balance of a sheet in its round: Cuffey & Paterson 2010, The Physics of Glaciers, ch. 4). Each cell's kept
  * snow (thawedWater's store, mm/year) goes down the land's steepest fall, gathering, from cell to kept cell, until it
  * reaches a cell whose own snow all melts — there it melts, and runs off from that cell, added to its runoff — or the sea
- * (ground at or below sea level: calved, booked, no river). A frozen pit (no lower neighbour) holds it: booked too.
+ * (ground at or below sea level: calved, booked, no river). A pit in the bed fills and spills over its lowest rim; what
+ * a big frozen basin keeps (a flood of more than PIT_CELLS cells finds no way out) is held: booked too.
  * A shortcut, for the ice's own mass budget (model review U9) to replace: no ice dynamics (the ice takes the bed's fall,
  * not its surface's, and its divides are the bed's); the margin's melt is not limited by its warmth (all of it melts at
  * the first such cell, one cell wide); no time (the sheet neither grows nor shrinks).
@@ -547,14 +549,47 @@ function iceDischarge(mesh, z, store, runoff, cellKm2) {
     for (let c = 0; c < n; c++) if (store[c] > 0 && z[c] > 0) { kept[k++] = c; flux[c] = store[c] * cellKm2; }
     kept.sort((a, b) => z[b] - z[a]);
     let melt = 0, calved = 0, held = 0;
+    const pits = [], pitFlux = [];
     for (let i = 0; i < k; i++) {
         const c = kept[i], f = flux[c];
         let low = -1;
         for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (z[y] < z[c] && (low < 0 || z[y] < z[low])) low = y; }
-        if (low < 0) held += f;
+        if (low < 0) { pits.push(c); pitFlux.push(f); }
         else if (!(z[low] > 0)) calved += f;
         else if (store[low] > 0) flux[low] += f;
         else { runoff[low] += f / cellKm2; melt += f; }
+    }
+    // (a pit in the bed: the ice fills it and goes on over its lowest rim — a small flood from the pit, lowest cell first,
+    // until a cell below the level reached: from there down the steepest fall to where it melts or the sea, or into another
+    // pit, filled the same way. What a flood of more than PIT_CELLS cells has not let out stays held)
+    const seen = new Int32Array(n).fill(-1), heap = new MinHeap(1 << 10), PIT_CELLS = 4096;
+    for (let p = 0; p < pits.length; p++) {
+        const f = pitFlux[p];
+        let at = pits[p], end = -1, budget = PIT_CELLS;
+        while (end < 0 && budget > 0) {
+            heap.size = 0; heap.push(z[at], at); seen[at] = p;
+            let level = -Infinity, out = -1;
+            while (heap.size && budget-- > 0) {
+                const x = heap.pop();
+                if (z[x] < level) { out = x; break; }
+                if (z[x] > level) level = z[x];
+                for (let j = adjOffset[x]; j < adjOffset[x + 1]; j++) { const y = adjList[j]; if (seen[y] !== p) { seen[y] = p; heap.push(z[y], y); } }
+            }
+            if (out < 0) break;
+            let x = out;                                                // (down from the rim's far side)
+            for (;;) {
+                if (!(z[x] > 0)) { end = -2; break; }
+                if (!(store[x] > 0)) { end = x; break; }
+                let low = -1;
+                for (let j = adjOffset[x]; j < adjOffset[x + 1]; j++) { const y = adjList[j]; if (z[y] < z[x] && (low < 0 || z[y] < z[low])) low = y; }
+                if (low < 0) break;
+                x = low; seen[x] = p;
+            }
+            if (end === -1) { if (x === at) break; at = x; }            // (another pit: fill it too)
+        }
+        if (end === -2) calved += f;
+        else if (end >= 0) { runoff[end] += f / cellKm2; melt += f; }
+        else held += f;
     }
     return { meltMmKm2: melt, calvedMmKm2: calved, heldMmKm2: held };
 }
