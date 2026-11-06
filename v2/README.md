@@ -326,9 +326,8 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    precomputed on a cube map — within ~0.3 km of the noise, a fifth of the cost)
   land-mask        the land and the sea on the sim grid, and the sea's level: one mask the records, the history's rivers
                    and (through world-ocean on the drawn surface) the finish all read (standing goal #8)
-  margin-line      the coast's line: the land/sea raster's smooth contour (a Gaussian of a sim cell), drawn between the
-                   land mask's cells, never across one; the coast distance measured exactly to it; gaussianAt (cached
-                   kernels) smooths a margin's shelf and plain along it
+  margin-line      the coast's line: the land/sea raster's smooth contour (a Gaussian of a sim cell), the coast distance
+                   measured exactly to it; gaussianAt (cached kernels) smooths a margin's shelf and plain along it
   margins          a rifted margin's cross-section from how its crust thinned (McKenzie 1978): the shoreline, the shelf
                    break the sediment builds out to, the coastal plain's flexural width
   records          step 1: the Frame read into per-sim-cell fields — signed coast distance, shelf / plain / slope by
@@ -820,9 +819,8 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   raster's own staircase under them all. Now: the coast is the margin's smooth line (`margin-line.js`) — the 0.5 contour of
   the land/sea raster seen through a Gaussian of `coastLineKm` 120 km — the length of a rift's border-fault segments
   (50–150 km: Rosendahl 1987, Ebinger 1989), never under one sim cell — (a rift's cell-to-cell steps and the raster's
-  staircase gone, its bends and transform steps kept; no cell changes side — where the smoothing disagrees with the land
-  mask, at a tip or a narrow bay, the cell keeps its own half of every edge to the other side: the raster's shape there,
-  which is all the crust says; until 2026-11-06 such a cell was turned, under a topology veto), the coast distance measured exactly to that contour's segments, so the shelf's edge and
+  staircase gone, its bends and transform steps kept; a cell turns only on the coast, never erasing an island or a lake,
+  never parting a land or a sea), the coast distance measured exactly to that contour's segments, so the shelf's edge and
   the coastal plain are true offsets of it. Roughness is where the land at the sea is rough (records.js `rugged`): island
   arcs, and young collision coasts by their relief (`coastRuggedKm`, while the belt is fresh: `coastFreshMyr`) take the
   coast noise (`coastNoiseKm`), the fine detail and a sharper line (`coastLineRuggedKm`, never under half a sim cell); a passive or active margin
@@ -2611,19 +2609,20 @@ mask smooths the mantle's heat once per call, so on the rivers' clock it costs ~
 measures the stages against each other on 3 seeds × 300/560 Myr at 160K:
 - The rivers saw 16–42 Mkm² more land than the terrain draws. Their sea stood 11–22 m off the terrain's, and 11–36 % of the
   cells they routed water through lay in the drawn sea. Now: the same land, the same sea, and 0.5–2.2 %.
-- The margin line turned 455–709 land cells a moment into sea, so a coast tip's land column read up to 6.7 km down the
-  margin's slope. Now no cell turns. Land cells drawn mostly under the sea number about the same (266–833), but are
-  shallower: the 10th percentile is −1.8 to −3.6 km, against −2.9 to −4.9. What is left has three parts. Two-thirds of
-  each such cell sits within 60 km of the smoothed line, the sub-cell area a smooth line trades both ways across a
-  staircase. About two-thirds of the points the coast puts offshore are put there by the anchored per-plate lookup and
-  the coast's curvature term (`synthesize.js`), not by the line. The largest group at 300 Myr lies onshore but low on
-  rifted margins. Review U8 read it as the margin profile's thermal sag applied twice, a second subsidence on ground the
+- The margin line turns 455–709 land cells a moment into sea, so a coast tip's land column reads up to 6.7 km down the
+  margin's slope. A line that turned no cell (drawn between the mask's cells) was tried and dropped (2026-11-06): it
+  made those columns 1.0–1.6 km shallower, but it tied the drawn land to the grid's cells, and land heights followed
+  the crust less through a half-cell turn (`check-phase9.mjs` "…and so does the land's shape": 0.87 → 0.83, on every
+  perturbed path). Coast tips are left to their own follow-up. Of the points the coast puts offshore, the line puts
+  58–63 % (3 seeds × 300/560 Myr), the anchored per-plate lookup and the coast's curvature term (`synthesize.js`) the rest.
+  The largest group at 300 Myr lies onshore but low on rifted margins. Review U8 read it as the margin profile's thermal sag applied twice, a second subsidence on ground the
   history kept whole. The margin profile now reads the history's stretch record (`crust.riftThin`, 1 − 1/β): landward of
   the crust's edge the sag goes only as far as the history stretched (`margins.js` `subsidence`). The effect is near
   null (onshore-low points −0.1 to −0.8 %), and the reason is the finding: on 777 @300, 68 % of the onshore-low points
   sit on crust the history really stretched. Most of that lowland is a stretched margin's near-shore plain (median 30 km
   inland) sagging 0.1–0.3 km under the sea, not a double subsidence. U8 is to be re-scoped from this, not re-tried.
-- Repair rules: the margin line's topology veto is retired, because no cell turns. Two are kept, named. The pocket fill
+- Repair rules: none retired. The margin line's topology veto stays with the line that turns cells. Two are kept as
+  named rules or physics. The pocket fill
   (`pocketSeaKm2`, review heuristic 07) is now applied alike by every stage, in the mask. The mask does not make it
   unnecessary: only a coastal sediment surface would fill such seas. The shelf top graded from the datum
   (`synthesize.js` `sedTop`) and the filled plain held at `max(0, seaKm)` (`records.js`; heuristic 20) are kept as
