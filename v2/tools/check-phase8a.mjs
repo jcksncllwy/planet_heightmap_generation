@@ -9,9 +9,11 @@
 import { check, checkAcross, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulateCached } from './lib/history-cache.mjs';
 import { onPath } from './lib/paths.mjs';
-import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
+import { TERRAIN_SCENES, sceneTerrainConfig } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, CrustFlag, OrogenyType, BeltSide, VolcanicType } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
+import { landMask } from '../js/terrain/land-mask.js';
+import { pourOcean, volumeAt, EARTH_OCEAN_KM3 } from '../js/tectonics/ocean/inventory.js';
 import { synthesizeTerrain, hypsometry, preparePlan } from '../js/terrain/synthesize.js';
 import { VOLCANO_STRIDE, VOLCANO_WEAR_SLOT } from '../js/terrain/volcanoes.js';
 import { locate } from '../js/core/mesh-locate.js';
@@ -30,20 +32,22 @@ const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).
 const quantile = (a, p) => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
+const sceneOf = new WeakMap();     // (frame → its scene: a scene of one mechanism keeps the reckoned sea — terrain-scenes.js fixtureOcean)
 function run(id, heights = null, overrides = null, seed = SEED) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
-    if (heights) world.config.heights = terrainConfig(heights);           // (the heights evolve with these — and, through the rivers' sediment, so does the history: below)
+    if (heights) world.config.heights = sceneTerrainConfig(scene, heights);           // (the heights evolve with these — and, through the rivers' sediment, so does the history: below)
     if (overrides) Object.assign(world.config, overrides);
     const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
+    for (const f of frames) sceneOf.set(f, scene);
     return { world, frame: frames.at(-1), first: frames[0], frames };
 }
 function terrainWith(frame, cells, overrides) {
     const tm = terrainMesh(cells);
-    return { ...synthesizeTerrain(frame, mesh, tm, { seed: SEED, parts: true, cfg: terrainConfig(overrides) }), tm };
+    return { ...synthesizeTerrain(frame, mesh, tm, { seed: SEED, parts: true, cfg: sceneTerrainConfig(sceneOf.get(frame), overrides) }), tm };
 }
 function terrain(frame, cells = 640000) {
     const tm = terrainMesh(cells), started = performance.now();
-    const T = synthesizeTerrain(frame, mesh, tm, { seed: SEED, parts: true });
+    const T = synthesizeTerrain(frame, mesh, tm, { seed: SEED, parts: true, cfg: sceneTerrainConfig(sceneOf.get(frame)) });
     return { ...T, tm, seconds: (performance.now() - started) / 1000 };
 }
 /** The coast's divider dimension by kind of margin on a terrain (the zero contour of its heights). */
@@ -266,10 +270,25 @@ section('the sea floor, island arcs and hotspots');
         const c0 = T.sampler.cells[3 * t], c1 = T.sampler.cells[3 * t + 1], c2 = T.sampler.cells[3 * t + 2];
         if (rec.land[c0] || rec.land[c1] || rec.land[c2] || rec.coastKm[c0] > -300 || rec.trenchKm[c0] < 400) continue;
         const age = Math.max(rec.ageMyr[c0], rec.ageMyr[c1], rec.ageMyr[c2]), young = Math.min(rec.ageMyr[c0], rec.ageMyr[c1], rec.ageMyr[c2]);
-        if (age < 4) ridge.push(heightKm[t]); else if (young > 100) old.push(heightKm[t]);
+        if (age < 4) ridge.push(heightKm[t] + rec.seaKm); else if (young > 100) old.push(heightKm[t] + rec.seaKm);
     }
+    // The floor's depth by age (GDH1, its sediment and swell) is judged against the datum — where Earth's water stands on
+    // Earth's ground (check-ocean-earth gates that: −11 / −13 m) — not against this history's poured sea: the water
+    // inventory pours Earth's ocean onto the seed's own basins, whose room differs from Earth's (12345@600: they hold more,
+    // and the sea stands 0.72 km under the datum), and a seed against Earth only reports (Jackson's rule: Earth's
+    // conditions gate). The depths under the seed's own sea are reported below (sliders4, himinbjorg's ruling 2026-11-07).
+    const atSea = a => median(a) - rec.seaKm;
     check('mid-ocean ridges stand about 2.5 km deep', median(ridge) >= -3.2 && median(ridge) <= -2.2, `median ${median(ridge).toFixed(2)} km over ${ridge.length} cells of crust under 4 Myr old`);
     check('old floor lies 5–6.5 km deep', median(old) >= -6.6 && median(old) <= -5.2, `median ${median(old).toFixed(2)} km over ${old.length} cells of crust over 100 Myr old`);
+    report('mid-ocean ridges under this history\'s own sea', atSea(ridge), { earth: [-3.2, -2.2], unit: ' km', digits: 2, source: 'Earth ~2.5 km (Stein & Stein 1992); the seed\'s poured level moves it', detail: `the sea ${(rec.seaKm * 1000).toFixed(0)} m against the datum` });
+    report('old floor under this history\'s own sea', atSea(old), { earth: [-6.6, -5.2], unit: ' km', digits: 2, source: 'Earth 5–6.5 km (Stein & Stein 1992); the seed\'s poured level moves it' });
+    {   // what the basins hold to the datum, against Earth's ocean: the water the seed would need for Earth's sea level
+        const out = {}, F = history.frame;
+        landMask(F, mesh, TERRAIN, out);
+        const P = pourOcean(mesh, out.groundKm, EARTH_OCEAN_KM3), room = volumeAt(mesh, out.groundKm, P.spill, 0);
+        report('the basins\' room to the datum against Earth\'s ocean', 100 * (room / EARTH_OCEAN_KM3 - 1), { earth: [-1.6, 1.6], unit: ' %', digits: 1, source: 'Earth 0: its ocean fills its basins to its sea (Charette & Smith 2010, 1.332e9 km³); ± check-ocean-earth\'s 60 m over 3.61e8 km² of ocean',
+            detail: `${(room / 1e9).toFixed(3)}e9 km³ below the datum; Earth's water stands at ${(P.levelKm * 1000).toFixed(0)} m` });
+    }
     const arcs = run('mariana'), A = terrain(arcs.frame);
     let arcCells = 0, arcLand = 0;
     for (let t = 0; t < A.tm.numCells; t++) { const c = corner(A, t); if (arcs.frame.type[c] === CrustType.ARC && arcs.frame.owner[c] >= 0) { arcCells++; if (A.heightKm[t] > 0) arcLand++; } }
@@ -310,7 +329,7 @@ section('a continent splits');
     const across = [riftFigures(frame, T), ...RIFT_SEEDS.filter(s => s !== SEED).map(seed => {
         const scene = TERRAIN_SCENES.find(s => s.id === 'rift'), world = scene.build(mesh, seed), tm = terrainMesh(640000);
         const F = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames.at(-1);
-        return riftFigures(F, { ...synthesizeTerrain(F, mesh, tm, { seed, parts: true }), tm });
+        return riftFigures(F, { ...synthesizeTerrain(F, mesh, tm, { seed, parts: true, cfg: sceneTerrainConfig(scene) }), tm });
     })];
     // (lower, not necessarily dry: an aulacogen can be a seaway — the Benue Trough was. A report, not a check: main itself failed
     // 5 of these 8 seeds on it, a knife-edge on a process the model lacks. Owner: the rift-stage lane)
@@ -481,6 +500,7 @@ section('flood basalts through time');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'traps'), world = scene.build(mesh, SEED);
     const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
+    for (const f of frames) sceneOf.set(f, scene);
     const lipCells = f => { const a = []; for (let w = 0; w < mesh.numCells; w++) if (f.owner[w] >= 0 && f.type[w] !== CrustType.OCEAN && f.volcType[w] === VolcanicType.LIP) a.push(w); return a; };
     const erupted = frames.find(f => lipCells(f).length > 0).time, at = age => frames.find(f => f.time >= erupted + age - 1e-6);
     // over the province (0.25 km of pile or more), away from the coast: where its cap (its top tier) still stands, and how that
@@ -489,7 +509,7 @@ section('flood basalts through time');
     // The pile unworn: the same frame with its wear record zeroed. The cap is cut up by the carving (carve.js stripBasalt,
     // 2026-09-29: along the drainage, from the edge and the rivers), so what stands is read on the carved terrain: the
     // carved height less the ground under the lava.
-    const carved = f => { const tm = terrainMesh(640000), T = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true, carve: true }); return { ...T, tm }; };
+    const carved = f => { const tm = terrainMesh(640000), T = synthesizeTerrain(f, mesh, tm, { seed: SEED, parts: true, carve: true, cfg: sceneTerrainConfig(scene) }); return { ...T, tm }; };
     const cap = f => {
         const T = carved(f), U = terrain({ ...f, volcWornKm: new Float32Array(f.volcWornKm.length) }), { rec } = T, S = T.sampler;
         const share = new Float32Array(T.tm.numCells).fill(NaN), shares = [];
