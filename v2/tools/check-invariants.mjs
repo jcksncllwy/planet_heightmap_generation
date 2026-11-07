@@ -203,7 +203,7 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     const R = rockClosure(stages, ledgerMesh.cellAreaKm2), units = Object.entries(R), tol = n => UNIT_TOLERANCE[n] ?? 0.01;
     const over = units.filter(([n, u]) => Math.abs(u.residual) > Math.max(tol(n) * u.gross, 0.005));
     const share = ([, u]) => Math.abs(u.residual) / Math.max(1e-9, u.gross), big = units.filter(([, u]) => u.gross > 0.005).sort((a, b) => share(b) - share(a)).slice(0, 4);
-    check('the rock book closes: every stage\'s change in rock is the flows it booked, within 1 % of its gross (or 0.005 Gkm³; the rivers and fans 5 %)', over.length === 0,
+    check('the rock book closes: every stage\'s change in rock is the flows it booked, within 1 % of its gross (or 0.005 Gkm³; the rivers and fans 2 %: volume-books.mjs UNIT_TOLERANCE)', over.length === 0,
         (over.length ? `unbooked: ${over.map(([n, u]) => `${n} ${u.residual.toFixed(3)} of ${u.gross.toFixed(3)} Gkm³`).join('; ')}` : `${units.length} stages close`)
         + `; largest residuals ${big.map(([n, u]) => `${n} ${u.residual.toFixed(4)} Gkm³ (${(100 * share([n, u])).toFixed(2)} %)`).join(', ')}`);
 }

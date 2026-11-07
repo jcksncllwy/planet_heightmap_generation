@@ -141,7 +141,9 @@ function layRise(world, m, km3) {
     else return -1;
     const pr = Math.hypot(P[0], P[1], P[2]);
     const kmFrom = w => 6371 * Math.acos(Math.max(-1, Math.min(1, (xyz[3 * w] * P[0] + xyz[3 * w + 1] * P[1] + xyz[3 * w + 2] * P[2]) / (pr * Math.hypot(xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2])))));
-    const floor = w => owner[w] >= 0 && plates[owner[w]].crust.type[ownerCell[w]] === CrustType.OCEAN;
+    // (ocean floor on the map now: the owner map is the step's, and a stage since may have taken the cell off its plate —
+    // subducted, or handed back — so rock laid on it would ride a cell no book counts, crust-ledger.js rockParts)
+    const floor = w => { if (owner[w] < 0) return false; const k = plates[owner[w]].crust, c = ownerCell[w]; return k.mask[c] && k.type[c] === CrustType.OCEAN; };
     if (riseScratch.seen?.length !== n) { riseScratch.seen = new Int32Array(n); riseScratch.tick = 0; }
     const seen = riseScratch.seen, tick = ++riseScratch.tick, ring = riseScratch.ring, cells = riseScratch.cells;
     ring.length = 0; cells.length = 0;
