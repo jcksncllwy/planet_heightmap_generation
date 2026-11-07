@@ -9,6 +9,7 @@
 // Usage: node v2/tools/check-phase6.mjs
 
 import { check, report, section, finish, labMesh, isLand, landCount, countWhere } from './lib/check-kit.mjs';
+import { onPath } from './lib/paths.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { LAND_STAGES } from '../js/tectonics/step/crust-ledger.js';
@@ -25,7 +26,7 @@ const flagged = (f, flag) => countWhere(numCells, w => f.owner[w] >= 0 && (f.fla
 const continental = f => f.plates.filter(p => p.alive && !p.isBackground && p.landCells > 0);
 
 function run(id, overrides = {}, untilMyr = null, prepare = null, seed = SEED) {
-    const scene = RIFT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
+    const scene = RIFT_SCENES.find(s => s.id === id), world = onPath(scene.build(mesh, seed));      // (on path GEO_SIM_PATH: lib/paths.mjs)
     Object.assign(world.config, overrides);
     prepare?.(world);
     // each collision record's deepest stacking (its overlap's area over its front) while in contact, sampled at each snapshot

@@ -8,6 +8,7 @@
 // Usage: node v2/tools/check-phase11.mjs
 
 import { check, checkAcross, report, section, finish, labMesh, LAB_MESH_SEED } from './lib/check-kit.mjs';
+import { onPath } from './lib/paths.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { COLLISION_SCENES } from '../js/tectonics/scenarios/collision-scenes.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
@@ -28,7 +29,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? 
 // ── the zipper: first contact at an angle; the lower plate turns about it; the weld waits for the seam ──
 section('two continents meeting at an angle');
 const zipper = (overrides, seed = LAB_MESH_SEED) => {
-    const world = COLLISION_SCENES.find(s => s.id === 'zipper').build(mesh, seed);
+    const world = onPath(COLLISION_SCENES.find(s => s.id === 'zipper').build(mesh, seed));      // (on path GEO_SIM_PATH: lib/paths.mjs)
     Object.assign(world.config, onlyMechanisms(), overrides);
     const { frames } = simulate(world, { untilMyr: 100, drive: updatePlateMotion, snapshotEveryMyr: 2 });
     const turn = f => { const a = f.plates[0].quat, b = f.plates[1].quat; return 2 * Math.acos(Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]))) * 180 / Math.PI; };
@@ -60,7 +61,7 @@ section('a sea sealed inside one plate');
     // a round sea, 700 km in radius, in the middle of a continent; its floor formed `ageMyr` before the run. The sea is made
     // big enough to be a plate of its own: oceanPlateMinAreaKm2 set below its area (the scene's, at any mesh resolution)
     const sealed = (ageMyr, untilMyr) => {
-        const world = new TectonicWorld(mesh, LAB_MESH_SEED), canvas = sceneCanvas(mesh, world.config);
+        const world = onPath(new TectonicWorld(mesh, LAB_MESH_SEED)), canvas = sceneCanvas(mesh, world.config);
         const solo = world.addPlate('Solo');
         addContinent(canvas, new SimplexNoise(LAB_MESH_SEED), { plate: solo, centre: [10, 20], radiusKm: 2600, cratonKm: 0 });
         fillBackground(canvas, world, world.config);
@@ -162,7 +163,7 @@ section('whole histories (600 Myr, three seeds)');
     };
     const rows = [];
     for (const seed of [12345, 777, 4242]) {
-        const { world } = buildStartWorld(mesh, seed), frames = [];
+        const world = onPath(buildStartWorld(mesh, seed).world), frames = [];
         let staleMax = 0;
         simulate(world, { untilMyr: 600, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: 50, onFrame: f => {
             if (f.time > 0) frames.push(f);
