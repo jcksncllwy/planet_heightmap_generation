@@ -1166,6 +1166,21 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   and the stack's resistance stops the pair. A weaker `collisionResistance` (25 or 50 instead of 100) makes it weld
   stacked at ~1,200 km, so the lock's strength is not what limits it. With the underthrust on (Phase 7c's India), the
   crust reaches the 40 km thickening cap.
+- **The collision lock is a bounded force (lane belts, `collisionLockGpe`, opt-in, off by default).** A contact resists with the
+  gravitational potential energy of the crust the collision has thickened, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²] per metre of front
+  (5.7 × 10¹² N/m at Tibet's 35 km of extra crust; Copley et al. 2010), Δh the thickest crust within two rings of the
+  contact (`forces.js frontThickening`). It enters the torque balance as that force ÷ the closing rate, no slower than
+  the stall rate: a regularised friction, not `collisionResistance`'s viscosity per km² of overlap (which applies only
+  with the flag off). India in the whole model (`belts-probe.mjs --full`, seeds 12345/1/2): 1122/1115/1125 km of shortening
+  with the flag off, 1146/1437/1354 on. Still short of Earth's 2400–3200 km. The pair moves as one: ~30 Myr after contact the closing
+  across the seam is ~0 while Asia speeds up 3.2 → 4.7 cm/yr (Eurasia holds ~1–2) and India runs on at 7–12 cm/yr, along
+  the front rather than into it (seed 12345; with Phase 5's rules plus the underthrust, Asia 0.9 → 3.8 and India 4–5.7). The upper
+  plate's own resistance (its basal and keel drag, its far boundaries) is the missing process, queued as its own lane.
+  Tried and dropped: the lower plate's crust going down as negative slab pull (Cloos 1993). The front's slab pull is
+  already dropped at contact, so it double-counted and stalled India at ~1100 km. Also tried: upper-plate shortening behind a jammed
+  craton (no gain once the underthrust consumes the overlap). Phase 5's India (`NO_WINGS`, underthrust off) measures the
+  stack weld, not the seam, and is not the acceptance scene.
+  Why it is off: with the flag on the gate fails p4/p5a/p7c/p8a and check-phase11 throws at :52 (`gcp-run/runs/3e862ed-20261107-145247.txt`); India `--full` 12345/1/2 is 1146/1437/1354 km vs 1122/1115/1125 off, because Asia gets carried along; the upper plate's resistance is the next lane.
 - **Phase 11's zipper now passes.** Main's failure (607 km of sea left at the weld) came from the 24 Myr stall
   give-up, not from `overdue`. With stall-only welds the zipper closes before it welds, so `overdue` is not needed and
   is gone.

@@ -29,7 +29,7 @@ const TUNABLES = [
     { id: 'beltSpeedExponent', label: 'Belt reach: how strongly speed widens it', min: 0, max: 1.5, step: 0.1 },
     { id: 'thickeningPerWorkKm', label: 'Thickening per km of shortening', min: 0, max: 0.06, step: 0.005, unit: ' km/km' },
     { id: 'weakCellCost', label: 'Old sutures carry a belt further (1 = no effect)', min: 0.1, max: 1, step: 0.05 },
-    { id: 'collisionResistance', label: 'Collision resistance', min: 0, max: 1000, step: 25 },
+    { id: 'collisionResistance', label: 'Collision resistance (unless collisionLockGpe is on)', min: 0, max: 1000, step: 25 },
     { id: 'collisionSeparateShare', label: 'A contact resists parting at this share (low: it pivots)', min: 0, max: 1, step: 0.05 },
     { id: 'collisionShearShare', label: '…and sliding along the front at this share', min: 0, max: 1, step: 0.05 },
     { id: 'sutureGapWidthKm', label: 'Weld once the sea between is nowhere wider than', min: 0, max: 1000, step: 25, unit: ' km' },
@@ -95,7 +95,7 @@ export function createPhase(simMesh, seed, overrides = {}) {
     return {
         title: 'Phase 5a — Collision events',
         summary: 'The force scenes again, with the event rules on. Convergence at every trench and collision front is recorded as a mountain belt that reaches inland ' +
-            '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates resist each other across the front and shorten — they keep converging, slower as the overlap builds, and a contact is a pivot, not a clamp: ' +
+            '(width by type, only a short, thin-skinned way onto a craton, carried further along old sutures). Colliding plates resist each other across the front and shorten — they keep converging, slower as the overlap builds (with collisionLockGpe on, the resistance is the thickened crust’s gravitational potential energy, Copley et al. 2010, a bounded force), and a contact is a pivot, not a clamp: ' +
             'the pull of the ocean still going down beside it turns a plate about it and closes the rest like a zipper (Phase 11). Only once the seam has stalled — no set shortening or time ends a collision — and the sea between has closed or stopped closing, and no sea it would seal between the coasts is still closing, do they weld into one, and the outlines are redrawn as WBP redraws them by hand: the indenter pushed in, the crust ahead of it ' +
             'squeezed back and sideways, cratons moved as rigid blocks. The crust a collision consumes is not deleted: all but ~15 % of it stays as the upper plate’s thickened crust (collisionVolume), and a belt reaches only as far inland as it still strains at least 10⁻¹⁵ /s, so a slowing belt narrows and a stalled one stops refreshing its record (beltStrainRate). ' + scene.about,
         checklist: [...scene.checklist,
