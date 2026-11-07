@@ -7,7 +7,7 @@
 // What this skips (limits): upstream's painted relief (differentialRelief) and cover stairs are not ported: tier 3, and the
 // time-stepped erosion should build them (L3). One layer: k_rock is the rock at the uncarved surface, not of the layer a
 // river cuts into, so a canyon through cover keeps the cover's k all the way down (L3 reads the column). The spread is
-// compressed (~4.5×; Earth's is far wider: Jackson's ruling 3, tested in L3). rockColumn reads the column again for the
+// ~100× between shale and granite (erodeGain 7.1, geology-config.js:77; upstream's 2.3, ~4.5×, was too compressed: Jackson's ruling, tested in L3). rockColumn reads the column again for the
 // time-stepped erosion, after the carve: the rock at the carved surface and a loose layer, not the whole column.
 
 import { classifyRocks, Rock } from '../geology/rocks.js';

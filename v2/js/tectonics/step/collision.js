@@ -164,8 +164,8 @@ export function trackCollisions(world, dt) {
         const underNow = underthrust(world, U, L, cells, rec, km);
 
         // weld?
-        // once the seam has stalled: the two have stopped converging, and only then are they one plate. Nothing else ends a
-        // collision — no set shortening, contact time or overlap: after the cores meet the pair keeps converging for as long
+        // once the seam has stalled: the two have stopped converging, and then they are one plate — or at once, if stacked (below).
+        // Nothing else ends a collision — no set shortening, contact time or overlap: after the cores meet the pair keeps converging for as long
         // as the forces on the two drive it against the collision's resistance (torque-balance.js), slowing as that grows
         // (India has run 2400–3200 km into Asia since ~50 Ma and still converges at ~4 cm/yr: Molnar & Stock 2009, van
         // Hinsbergen et al. 2012) — the overlap meanwhile taken up as belt, thickening and underthrust crust

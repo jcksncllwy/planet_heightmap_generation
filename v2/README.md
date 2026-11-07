@@ -607,7 +607,7 @@ it warms (the history's `mantleHeat`, `mantleInsulateMyr`), and warm mantle lift
 topography (Gurnis 1988; Lenardic et al. 2005; Coltice et al. 2007; the African superswell, Pangaea's legacy, ~0.5 km
 above the other shields, Nyblade & Robinson 1994). The swell is absolute, under the sea floor as under the land
 (`mantleSwellKm` 1 km from fully cooled to fully insulated mantle, the heat smoothed over `mantleSwellSmoothKm` 400 km),
-and the sea answers it: the ocean's water is a fixed volume, so the sea's level is the swell's mean under the sea floor.
+and the sea answers it. Reckoned (`sea-level.js seaLevel`; no water volume is kept, and `waterInventory: 0` selects it), the sea's level is the swell's mean under the sea floor; by default the level is instead where Earth's water stands when poured onto the ground ("The water inventory" below; `land-mask.js:103`).
 Heights are today's, so each part is measured from what a dispersed world shows on average (`mantleSwellLandRef`,
 `mantleSwellSeaRef`, measured over three histories' dispersed frames): a dispersed world's sea stands at 0 on average,
 a supercontinent on its own warm mantle stands high as a whole and the sea falls against it (a lowstand, a dry, high
@@ -986,7 +986,7 @@ plates' own stresses across their coasts are ±0.1 of one, so the squeeze barely
 `subductionInitAgeMyr` 180 Myr) did nearly all the founding; ~80 % of the founders drawn between two plates were then
 thrown away because the pair's contact was in pieces, none long enough; and a plate with no continent had no margin at
 all. Now:
-- **A weak zone's strength** is `founderStrength` 0.08 slab pulls per 100 km: the 2–3 × 10¹² N/m a plate's resistance to
+- **A weak zone's strength** was `founderStrength` 0.08 slab pulls per 100 km (0.4 now, on the 6 × 10¹² N/m unit: `config.js:447`, "Plate stress and the rift stage" below): the 2–3 × 10¹² N/m a plate's resistance to
   bending into a new trench peaks at (Gurnis, Hall & Lavier 2004) against a slab pull of ~3 × 10¹³ N/m. Most trenches are
   now born pressed together (induced), younger than their weight alone would sink them (Crameri et al. 2020).
 - **Between two plates** each unbroken stretch of contact is a margin of its own, with its own age and closing.
@@ -1019,8 +1019,8 @@ Every closing contact used to become a trench within a step or two of real consu
 is now `BoundaryKind.CONVERGING` (it pulls nothing, builds no belt or arc, and resists closing) until the founder law
 (`founderUrge`) has held for `trenchEstablishKm` (100 km) of convergence: a fracture zone turns self-sustaining after ~100 km,
 and cumulative convergence, not its rate, sets the balance (Hall et al. 2003; Gurnis, Hall & Lavier 2004). So one law decides
-a trench's birth, at a passive margin or a contact (`establishes`, step/subduction-init.js). `founderSqueezeCmYr` is derived
-as 3.4 cm/yr, the rate at which a contact's shared resistance reaches `founderStrength` (was 6, by hand).
+a trench's birth, at a passive margin or a contact (`establishes`, step/subduction-init.js). `founderSqueezeCmYr` was derived
+as 3.4 cm/yr (17 now with `founderStrength` 0.4: `config.js:432`), the rate at which a contact's shared resistance reaches `founderStrength` (was 6, by hand).
 Trenches die two ways: floor younger than `trenchDetachAgeMyr` (5 Myr) reaching one detaches the slab (Burkett & Billen 2009,
 2010), and a slab no plate feeds fades over `founderSlabMyr` (a choice of scale, not a measured rate). An edge at rest keeps
 its slab, so a world at rest can start itself; an oblique edge that still closes keeps its slab too, and land keeps its slab
@@ -1149,7 +1149,7 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
 
 ## Collisions run on until the seam stalls (2026-10-27, branch welds, round 2)
 
-- **No set time or shortening ends a collision** (`collision.js`, `config.js`). Two colliding plates weld only once the
+- **No set time or shortening ends a collision** (`collision.js`, `config.js`). Two colliding plates weld once the
   seam between them has been closing slower than `sutureStallCmYr` (0.4 cm/yr) for `sutureStallMyr` (12 Myr), with at
   least `sutureStallMinKm` (200 km) taken up. The 200 km counts either the shortening this pair absorbed or the overlap's
   depth (area over front), whichever is more: land stacked by a third plate or handed on at a weld counts too. Removed:
@@ -1158,7 +1158,7 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   lock times. After the cores meet, the torque balance alone sets how fast the pair slows: the forces driving the two
   against the collision's viscous resistance. India has run 2400–3200 km into Asia since ~50 Ma and still converges
   (Molnar & Stock 2009; van Hinsbergen et al. 2012). Kept: the stack weld (`sutureStackKm`, 500 km deep), the stall
-  give-up (`sutureStallGiveUpMyr`) and the gap stall (`sutureGapStallMyr`).
+  give-up (`sutureStallGiveUpMyr`) and the gap stall (`sutureGapStallMyr`). The stack weld overrides the stall: land stacked that deep welds at once, stalled or not, converging or not (`collision.js:208`, `wouldWeld = (ready && closed && !sealing) || stacked`).
 - **India** (Phase 5): contact at 50 Myr. Closing slows from 8.7 to ~2 cm/yr within ~12 Myr, then falls below the
   stall rate. The weld comes ~60 Myr after contact, after 1,050 km of shortening (main welded it at the 600 km lock). The upper plate's indentation at the weld is 946 / 736 / 631 km in Phase 5's scenes, inside Earth's 600–1,100 km (was 736 / 420 / 736). The
   area swept across the front matches the overlap the weld absorbs (1.46 against 1.22 Mkm²). Shortening stays short
@@ -2313,8 +2313,7 @@ the finish keeps them) and `iceSoft` on land, as the rock's softness with the la
 seed 777 at 300 Myr, 2.5M, coast erosion fell 56 %; with it, it still falls 40 %, 4157 to 2483 km³ on main at 2026-11-01. The whole fall is this switch (`--rock iceSoft=false`, same with erosion on or off). The land's mean is held, but the shore's softness falls from 0.58 to 0.43, and cliffs erode as `cliffHardRatio`^(1 − soft), so their mean rate halves, 0.103 to 0.050. No check covers it, and the cliffs' `cliffK` was set on soft rock, not on a world total). The crests' hardness stays: it is the drawn ridges' structure, which a rock read
 from the record does not know.
 
-k_rock ∝ e^(2.3(½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it: ~4.5× between shale and granite,
-5.6× from the softest to the hardest class (Jackson's ruling: this compressed spread first; L3's tests of wider ones are under Erosion through time).
+k_rock ∝ e^(`erodeGain` (½ − hard)), `hard` from Selby's rock mass strength as upstream tabulates it. `erodeGain` is 7.1 (`geology-config.js:77`): ~100× between shale (hard 0.2) and granite (0.85), e^(7.1 × 0.65). Upstream's 2.3 (~4.5× between them, 5.6× softest to hardest) was the compressed spread this replaced (Jackson's ruling, 2026-11-02; L3's tests of wider ones are under Erosion through time).
 
 **Limits**: the carve's k_rock is the rock at the uncarved surface; only the time-stepped erosion reads the layer it cuts (`rockColumn`, above). No
 structure cues from the surface, no young sediment (it does not exist yet at this stage), no painted relief or cover stairs.
@@ -2403,7 +2402,7 @@ Limits (reduced physics): the rock is a total per coast cell, not a wedge on the
 
 The forces and the rifts, closer to physics. The four steps below are flags in `config.js`, **on by default since 2026-11-03** (lane rifton; Jackson's ruling, with `plateYieldContinent` 3 × 10¹² N/m). Set them off to get the earlier history back. Numbers: `~/.cache/geo-sim/lanes-2026-10-29/pstress-report.md` and `rifton-report.md`.
 
-- **Force unit (default).** `forceUnitNPerM` 6 × 10¹² N/m (slab pull's transmitted force, not its gross buoyancy). The rigid balance is linear in the forces, so the unit alone changes no speed (measured to 1e-9). With it, `ridgePush` 0.25 (×5, ~3 × 10¹² N/m) and `founderStrength` 0.4, as one package (Jackson, 2026-11-02).
+- **Force unit (default).** `forceUnitNPerM` 6 × 10¹² N/m (slab pull's transmitted force, not its gross buoyancy). The rigid balance is linear in the forces, so the unit alone changes no speed (measured to 1e-9). With it, `ridgePush` 0.25 (×5 from 0.05; 0.25 × 6 × 10¹² = 1.5 × 10¹² N/m, `config.js:94`) and `founderStrength` 0.4, as one package (Jackson, 2026-11-02).
 - **In-plate stress (`plateStress`).** Every `plateStressEveryMyr` the rigid plates' stress is solved on a ~5000-node sheet (`field/plate-stress-field.js`, CPU, deterministic) and held against the rock's strength (`field/stress-step.js`). Where it beats it, `crust.damage` is set to 1 and heals after. Records only: the history's motion is bit-identical with it on. Cost about +10 % of a history.
   Its loads are all those the motion solve has (lane defects, 2026-11-05): until then a land-on-land lock's collider half and the rift hinges' pins were left out (`plate-stress.js` kept only the world view's owner's couplings), so a colliding or unzipping plate's stress missed the forces holding it. With them, the loads' net imbalance fell 0.199 → 0.184, and rifts 52 → 55 on 3 seeds × 600 Myr (in path noise; `lanes-2026-10-29/defects/stress.jsonl`).
 - **Diffuse extension (`plateStressRifts`).** Continent broken in tension gets a RIFT record with no work: wide-rift extension beside the narrow rifts. It stamps only crust with no record or a rift's, because a relabelled belt would keep its relief on `riftReliefTauMyr`. How much it adds follows `plateYieldContinent`, which is DECLARED. The default is 3 × 10¹² N/m (Jackson, 2026-11-03): it gives an extension share of 21.2 % against Earth's ~22 %, where 1 × 10¹³ (old ocean's) gives almost none. That continents must break well below their rock's strength is the plate force paradox (Buck 2004), so this is a finding at a declared value, not a calibration. It also raises the total deformed share further above Earth's (the excess is compression's).

@@ -1,7 +1,11 @@
 // A rifted margin's cross-section (2026-10-28): where its shoreline, shelf break and slope lie, from how the crust thinned.
 //
 // The history keeps a rifted margin's continental crust at full thickness right to its rift line, where the new ocean
-// began: the continent–ocean boundary (COB). On Earth that crust thins toward the COB across a zone 150–400 km wide — a
+// began: the continent–ocean boundary (COB). (Only partly true now. With the default tectonics config.riftStageVolume the
+// rift stage thins the crust it stretches, and its height already stands lower: synthesize.js passes subsidence the share
+// the history left (d0 = thinShare, from rootKm) and the stretch it recorded (ds = stretchShare, from riftThin), so only the
+// thinning beyond them sinks again. Margins with no such record, and the distal domain the raster cannot resolve, still
+// follow the full-thickness premise.) On Earth that crust thins toward the COB across a zone 150–400 km wide — a
 // proximal domain barely stretched, a necking zone where the crust thins from ~30 to ~10 km, a distal, hyperextended one
 // tapering to nothing (Péron-Pinvidic et al. 2013, Mar. Pet. Geol. 43: 21–47) — and thinned crust stands lower by
 // isostasy: at once as it stretches, and more as its heated lithosphere cools after (McKenzie 1978, EPSL 40: 25–32):

@@ -7,7 +7,9 @@
 //
 // The swell is absolute — against the mantle, under the sea floor as under the land — and the sea answers it. The
 // ocean's water is a fixed volume: where the floor rises the water is pushed up, where it sinks the water drains in, and
-// over the ocean's area that is one level. So against the sea a cell stands by how much warmer its mantle is than the
+// over the ocean's area that is one level. (This file only reckons that level, to first order: the swell's mean under
+// the sea floor, no volume kept. With the default waterInventory > 0 the level is not this one: land-mask.js pours
+// Earth's water onto the ground, pourOcean, and its level (land-mask.js:108) replaces seaKm. waterInventory 0 keeps this one.) So against the sea a cell stands by how much warmer its mantle is than the
 // ocean's on average, and with a supercontinent standing on all of the warm mantle and the ocean's floor over cooled
 // mantle, the sea falls against the land: Pangaea's era was a first-order lowstand, with a dry, high interior; the
 // dispersal brought the Cretaceous highstand, when shallow seas covered ~30 % of today's land (Worsley et al. 1984; Haq &
@@ -185,7 +187,8 @@ function coarseGraph(mesh) {
  *     the swell has no cell-scale steps), less the reference for its side (liftRefKm): continental crust against the heat
  *     a dispersed world's continents stand on (its platform is today's), the sea floor — and an island arc on it — against
  *     the dispersed world's sea floor (the depth–age law and the arcs' heights are today's);
- *   · seaKm: how far the sea stands above today's datum — its water a fixed volume over the ocean's area: the swell's
+ *   · seaKm: how far the sea stands above today's datum, reckoned (no water volume is kept here; the poured sea of
+ *     waterInventory > 0, land-mask.js pourOcean, replaces it): the swell's
  *     mean over the sea floor (mantleSwellKm × (the ocean's mean heat − its reference)) and the floor's mean depth's
  *     shortfall from the reference (younger floor: higher sea). Floor the history has not dated yet (the start's
  *     placeholder ocean, tectonics/config.js initialOceanAgeMyr: "uniformly old, soon overwritten") counts at the
