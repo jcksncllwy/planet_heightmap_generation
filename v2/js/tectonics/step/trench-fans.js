@@ -115,7 +115,8 @@ export function bookFans(world, dt) {
  * The floor sinks with its age (measure.js seaDepthKm), so an old margin's rise has room for more. The walk runs out from
  * the mouth across the ocean floor (over a drowned shelf or a cape near the mouth, within riseProfile.coastKm) to the
  * turbidites' reach, trenchFanReachKm; rock the whole reach has no room for (an over-supplied margin, which would prograde
- * its shelf: not modelled) is spread evenly over what it reached, so none is lost and no cell is capped.
+ * its shelf) fills what it reached up toward the sea's surface, each cell a like share of its room, and only a reach
+ * filled to the brim takes the rest evenly: none is lost and no cell is capped.
  * Limits (reduced physics): the profile is measured as the crow flies from the mouth, not along the channels; a cell is
  * one column (no wedge inside it); the abyssal plain does not seek the deepest floor first; compaction is the load
  * factor's one compacted density, not a porosity–depth law; the floor's depth is its age's (no swell). The terrain's rise
@@ -154,8 +155,15 @@ function layRise(world, m, km3) {
     }
     if (!cells.length) return false;
     if (left > 0) {
-        for (const w of cells) plates[owner[w]].crust.riseKm3[ownerCell[w]] += left / cells.length;
+        // (the reach is at grade: the margin builds up and out toward its shelf — each cell takes a like share of the room
+        // left between it and the sea's surface; a bay filled to the brim takes the last evenly)
         world.riseOverKm3 = (world.riseOverKm3 ?? 0) + left;
+        let roomAll = 0;
+        const brim = cells.map(w => { const k = plates[owner[w]].crust, c = ownerCell[w]; const r = Math.max(0, SEDIMENT_LOAD_FACTOR * seaDepthKm(now - k.formedAt[c]) * A - (k.riseKm3[c] + k.seaFillKm[c] * A)); roomAll += r; return r; });
+        const f = roomAll > 0 ? Math.min(1, left / roomAll) : 0;
+        for (let i = 0; i < cells.length; i++) plates[owner[cells[i]]].crust.riseKm3[ownerCell[cells[i]]] += f * brim[i];
+        left -= f * roomAll;
+        if (left > 0) for (const w of cells) plates[owner[w]].crust.riseKm3[ownerCell[w]] += left / cells.length;
     }
     return true;
 }
