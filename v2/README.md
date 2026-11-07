@@ -2443,8 +2443,21 @@ check-invariants):
   the rivers' supply, `riverSupplyKm3` (cycle scene, 20K, 1200 Myr: 7.21 of 7.23 Gkm³ on 12345, 6.26 of 6.28 on 777).
   Only basin, sea and shelf fill on continental crust count as its volume; the rest lies on ocean crust (Cogley 1984).
 - **The rivers' rock on the ocean floor rides to its trench** (lane crustfu2; step/floor-rock.js). The rise's rock is laid as a
-  record, `crust.riseKm3`, on the ocean cells within three `riseWidthKm` (300 km, e-folding; the rise is ~100–1000 km wide,
-  Heezen, Tharp & Ewing 1959) of its mouth. It is laid across a drowned shelf if need be (step/trench-fans.js layRise). That
+  record, `crust.riseKm3`, on the ocean floor off its mouth by fill and spill (lane riserock; step/trench-fans.js layRise). The
+  margin's sediment builds out to a graded profile it cannot stand above: the slope at ~3°, the rise at ~1:250 from its foot at
+  2.5 km to its toe at 4.5 km, then the abyssal plain at ~1:1000 (`config.riseProfile`; Heezen, Tharp & Ewing 1959; Emery 1980).
+  Each cell takes, nearest first, what fills its water down to that surface, Airy-loaded (measure.js SEDIMENT_LOAD_FACTOR),
+  out to the turbidites' reach `trenchFanReachKm`; the walk may cross a drowned shelf or cape within `riseProfile.coastKm`.
+  What the reach has no room for builds it up toward the sea's surface (each cell a like share of its room). A reach at that
+  brim spills on past it over the ocean floor, each cell to its brim, and a sea whose every reachable floor is at the brim (a
+  sea closed by land that sea-fill did not mark enclosed) sends the rest on as an enclosed sea's overflow (`seaOverflowKm3`;
+  ~2–3 % of the rise on 626225/831576). No cell is capped and no rock stands above the sea. Floor merged under another
+  plate's crust (step/floor-rock.js) spills its rock above the brim over that plate's ocean cells the same way. 3 seeds × 430/
+  800/1200 Myr (40K): the rise's p99 ~10–17 km and the passive-margin mean ~2.5–5 km, against Earth's 5–15 km at the
+  thickest and ~2–4 km mean (Straume et al. 2019 GlobSed; Poag 1985); was p99 33–84 and max to 552 km
+  (tools/rise-thickness.mjs). Limits: the profile is measured as the crow flies, not along channels; one column per cell;
+  compaction is one compacted density, not a porosity–depth law; the floor's depth is its age's (no swell). Margins at
+  grade on floor 300–1100 Myr old, which this history never subducts, still send ~1/3 of the rise past the reach. That
   rock, and an enclosed sea's fill (`crust.seaFillKm`), moves with its plate. Where the floor is subducted (resolve.js, or a
   plate that runs out: ocean-plates.js), it meets the trench as any incoming sediment does: `min(T, accretionSedimentKm)` ×
   `sedimentSubductionShare` of the section goes down the channel and the rest is scraped into the prism (Clift & Vannucchi
