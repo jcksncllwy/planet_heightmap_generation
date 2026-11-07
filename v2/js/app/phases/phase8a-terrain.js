@@ -7,7 +7,7 @@
 // scrubbing near it need no building. Built terrain outlives a rebuild of the phase: a display-only setting re-shades it.
 // Without workers (Node: the check scripts) everything runs right here, with the same results.
 
-import { TERRAIN_SCENES } from '../../tectonics/scenarios/terrain-scenes.js';
+import { TERRAIN_SCENES, sceneTerrainConfig } from '../../tectonics/scenarios/terrain-scenes.js';
 import { CrustType } from '../../tectonics/model/crust.js';
 import { terrainMeshAsync, sampleOnto } from '../../terrain/terrain-mesh.js';
 import { TerrainPool } from '../../terrain/terrain-pool.js';
@@ -247,7 +247,7 @@ export function terrainPhase(spec) {
     const reached = ending === 'none' || framesEnding(frames, scene.maxMyr, ending, TECTONICS) !== null;
     const view = Object.fromEntries(VIEW_TUNABLES.map(t => [t.id, overrides[t.id] ?? t.value]));
     const cfgOverrides = Object.fromEntries(TUNABLES.filter(t => overrides[t.id] !== undefined).map(t => [t.id, overrides[t.id]]));
-    const cfg = terrainConfig(cfgOverrides);
+    const cfg = sceneTerrainConfig(scene, cfgOverrides);      // (a scene of one mechanism keeps the reckoned sea: terrain-scenes.js fixtureOcean)
     const tMesh = await meshReady;
 
     // ── terrain per frame ── The frame the shell asks for is built on the pool (prepare); then, while the page is idle,

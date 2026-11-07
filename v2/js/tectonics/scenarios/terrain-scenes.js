@@ -15,6 +15,7 @@ import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { dot, cross, normalize } from '../../core/sphere-geom.js';
 import { sceneCanvas, addContinent, addApronAndTrench, addOcean, fillBackground } from './scene-kit.js';
 import { onlyMechanisms, mechanismsOn } from '../config.js';
+import { terrainConfig } from '../../terrain/terrain-config.js';
 
 /** A scene's `focus`: where to look in a frame — here, the centre of the land cells carrying a flag. */
 function flagged(flag) {
@@ -65,28 +66,40 @@ const wholePlanet = scene => ({
     async buildAsync(simMesh, seed, overrides, helpers) { const world = await scene.buildAsync(simMesh, seed, overrides, helpers); Object.assign(world.config, WHOLE_PLANET_PACE); return world; },
 });
 
+// The scenes of one mechanism are built worlds, not histories: their ocean is a fixture (the rift scene's is 95 % of the
+// cells, 97 % of it over 100 Myr old), so Earth's water poured onto it (waterInventory, terrain/land-mask.js) stands where no
+// history would put it — 2.95 km under the datum on the rift scene, its new ridges 0.8 km above the sea, drawn dry. They
+// keep the reckoned level (waterInventory 0: terrain/sea-level.js), the history's rivers and the terrain alike (sliders4,
+// himinbjorg's ruling 2026-11-07). The whole planets pour. `heights` is the scene's own terrain settings, under any asked.
+const fixtureOcean = scene => ({
+    ...scene, heights: { ...scene.heights, waterInventory: 0 },
+    build(simMesh, seed, overrides) { const world = scene.build(simMesh, seed, overrides); world.config.heights ??= terrainConfig({ waterInventory: 0 }); return world; },
+});
+/** A scene's terrain settings: its own (`heights`), under the ones asked for. */
+export const sceneTerrainConfig = (scene, overrides = {}) => terrainConfig({ ...scene?.heights, ...overrides });
+
 export const TERRAIN_SCENES = [
-    from(MARGIN_SCENES, 'margins', { id: 'andes', label: 'An Andean margin', about: 'A continent overrides an ocean plate along its leading coast: a coastal range, a valley behind it, the main volcanic range, fold-and-thrust ridges inland — all parallel to the coast. Offshore, the trench and its outer rise; the trailing coast behind has a wide shelf.' }),
-    from(MARGIN_SCENES, 'laramide', { id: 'laramide', label: 'A Laramide belt', about: 'A continent drives over a young slab, which goes in flat: deformation reaches far inland — a high interior with blocky basement ranges and a front range bracketing it, and no volcanoes (the magmatic gap).' }),
-    from(BUDGET_SCENES, 'india', { id: 'india', label: 'A continental collision', about: '“India” reaches “Asia” and slides under it. On Asia’s side (the upper plate): a range along the suture, the plateau of thickened crust, a back range and a fall line. On India’s side: the highest range just off the suture, fold hills, then the foreland basin. Ridges run parallel to the suture.' }),
-    from(MARGIN_SCENES, 'mariana', { id: 'mariana', label: 'An ocean island arc', about: 'An arc on an ocean plate, rifting off behind: a chain of volcanic islands on a submarine ridge, the trench in front, a young back-arc basin behind.' }),
-    from(MARGIN_SCENES, 'japan', { id: 'japan', label: 'A strip of coast rifts off', about: 'A strip of an active continental margin rifts off as a back-arc basin opens behind it: a Japan — a mountainous arc of continental crust with volcanoes, a sea behind it.' }),
-    from(HOTSPOT_SCENES, 'hawaii', { id: 'hawaii', label: 'A hotspot track', about: 'A plate slides over a fixed plume: volcanic islands near the plume, older ones worn down and drowned downstream as the floor under them ages and sinks (seamounts, guyots).' }),
+    fixtureOcean(from(MARGIN_SCENES, 'margins', { id: 'andes', label: 'An Andean margin', about: 'A continent overrides an ocean plate along its leading coast: a coastal range, a valley behind it, the main volcanic range, fold-and-thrust ridges inland — all parallel to the coast. Offshore, the trench and its outer rise; the trailing coast behind has a wide shelf.' })),
+    fixtureOcean(from(MARGIN_SCENES, 'laramide', { id: 'laramide', label: 'A Laramide belt', about: 'A continent drives over a young slab, which goes in flat: deformation reaches far inland — a high interior with blocky basement ranges and a front range bracketing it, and no volcanoes (the magmatic gap).' })),
+    fixtureOcean(from(BUDGET_SCENES, 'india', { id: 'india', label: 'A continental collision', about: '“India” reaches “Asia” and slides under it. On Asia’s side (the upper plate): a range along the suture, the plateau of thickened crust, a back range and a fall line. On India’s side: the highest range just off the suture, fold hills, then the foreland basin. Ridges run parallel to the suture.' })),
+    fixtureOcean(from(MARGIN_SCENES, 'mariana', { id: 'mariana', label: 'An ocean island arc', about: 'An arc on an ocean plate, rifting off behind: a chain of volcanic islands on a submarine ridge, the trench in front, a young back-arc basin behind.' })),
+    fixtureOcean(from(MARGIN_SCENES, 'japan', { id: 'japan', label: 'A strip of coast rifts off', about: 'A strip of an active continental margin rifts off as a back-arc basin opens behind it: a Japan — a mountainous arc of continental crust with volcanoes, a sea behind it.' })),
+    fixtureOcean(from(HOTSPOT_SCENES, 'hawaii', { id: 'hawaii', label: 'A hotspot track', about: 'A plate slides over a fixed plume: volcanic islands near the plume, older ones worn down and drowned downstream as the floor under them ages and sinks (seamounts, guyots).' })),
     // (40 Myr, not the rifting phase's 160: 20 Myr after the split the young ocean and both shoulders are in view —
     // the trenches on the outer coasts pull the halves apart fast; the camera goes to the rifted margins, wherever they are)
     // (the Deccan scene's plume head, under a continent drifting slowly on for 300 Myr so its traps age in view — and a
     // tail that dies soon, so no chain of volcanoes crosses them)
-    from(HOTSPOT_SCENES, 'deccan', {
+    fixtureOcean(from(HOTSPOT_SCENES, 'deccan', {
         id: 'traps', label: 'Flood basalts through time', maxMyr: 312, focus: flagged(CrustFlag.LIP),
         build(simMesh, seed) { const world = HOTSPOT_SCENES.find(s => s.id === 'deccan').build(simMesh, seed); for (const p of world.plumes) p.lifeMyr = 15; return world; },
         drive(world) { const ind = world.plates.find(p => p.name === 'Indica'), P = latLonToXyz(-30, 75); ind.omega = omegaFor(P, heading(P, 0), 1.5); },
         about: 'A plume head floods a continent with basalt at 12 Myr; the continent drifts slowly north for 300 Myr. Young, the province is a plateau with a lobed edge; as it wears, canyons with stepped walls cut into it and its escarpment retreats from the edge, leaving flat-topped mesas before it (Ethiopia’s ambas, the Western Ghats); old, it is mesas and buttes on a low, stepped remnant. Around it a faint grain of dykes radiates from the plume’s centre. (The Deccan, Siberian and Karoo traps.)',
-    }),
-    from(RIFT_SCENES, 'plume', { id: 'rift', label: 'A continent splits', maxMyr: 40, focus: flagged(CrustFlag.RIFT_MARGIN), about: 'A plume splits a continent: the new coasts are lifted into shoulders — a great escarpment facing the young ocean, sloping gently inland — and the arm that failed is a low corridor.' }),
-    {
+    })),
+    fixtureOcean(from(RIFT_SCENES, 'plume', { id: 'rift', label: 'A continent splits', maxMyr: 40, focus: flagged(CrustFlag.RIFT_MARGIN), about: 'A plume splits a continent: the new coasts are lifted into shoulders — a great escarpment facing the young ocean, sloping gently inland — and the arm that failed is a low corridor.' })),
+    fixtureOcean({
         id: 'cratons', label: 'Ranges against cratons', maxMyr: 90, view: [8, 72], build: buildCratons, drive: updatePlateMotion,
         about: 'India, with a big shield close behind its leading coast, collides with Asia, whose shield lies ~900 km behind its south coast. On India’s side (the lower plate) the range’s foothills ride onto the shield’s rim, and in front of them a lowland bends the shield down; on Asia’s side the plateau reaches the shield and its back meets it in a steep front. Neither shield’s outline shows as the sim’s cells.',
-    },
+    }),
     // (a whole planet may be asked to end in a stage of the supercontinent cycle: `endings` — tectonics/ending.js)
     wholePlanet(from(BUDGET_SCENES, 'history', { id: 'history', label: 'A whole planet (600 Myr)', endings: true, about: 'The start world run for 600 Myr with every rule on (building takes about a minute). Young belts stand high and sharp, old ones low but still grained; cratons flat and low; wide shelves on passive margins, narrow ones on active margins; mid-ocean ridges and trenches in the sea.' })),
     // (Phase 13: the same start world, twice as long — long enough for the supercontinent to break up, disperse and gather again)
