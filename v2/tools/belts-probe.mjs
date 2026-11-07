@@ -1,7 +1,10 @@
 // The India collision, step by step (lane belts, Phase A): when the cores meet, how fast the seam closes after, what
 // India's speed does, what welds the pair (stalled / stacked) and how much shortening it took by then — under config
 // overrides, for same-frame A/Bs of the speed caps, the collision's resistance and the weld rules.
-// Usage: node v2/tools/belts-probe.mjs [--seeds 12345,1,2] [--myr 200] [--set '{"maxSpeedContinental":20}'] [--label x] [--series]
+// Usage: node v2/tools/belts-probe.mjs [--seeds 12345,1,2] [--myr 200] [--set '{"maxSpeedContinental":20}' | --kv maxSpeedContinental=20] [--label x] [--series] [--full]
+// --full: the collision in the whole model's mechanisms (underthrusting on: Phase 7c), not Phase 5's event rules alone (NO_WINGS)
+// — lane belts' acceptance (hofud, 2026-11-07): under NO_WINGS nothing consumes the overlap, and the stack weld (sutureStackKm)
+// caps the shortening at its geometry whatever the collision's resistance.
 // Prints one JSON line per seed (and, with --series, the per-step series).
 
 import { labMesh } from './lib/check-kit.mjs';
@@ -14,12 +17,14 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from '../js/tectonics/config.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const seeds = arg('--seeds', '12345,1,2').split(',').map(Number), untilMyr = +arg('--myr', 200);
-const set = JSON.parse(arg('--set', '{}')), label = arg('--label', 'base'), series = process.argv.includes('--series');
+// (--kv a=1,b=true: the same overrides without quotes, which a Windows ssh hop strips — sim-slots' Chroma runs)
+const kv = Object.fromEntries((arg('--kv', '') || '').split(',').filter(Boolean).map(p => { const [k, v] = p.split('='); return [k, JSON.parse(v)]; }));
+const set = { ...JSON.parse(arg('--set', '{}')), ...kv }, label = arg('--label', 'base'), series = process.argv.includes('--series'), full = process.argv.includes('--full');
 const mesh = labMesh();
 
 for (const seed of seeds) {
     const world = FORCE_SCENES.find(s => s.id === 'india').build(mesh, seed);
-    Object.assign(world.config, NO_WINGS, set);
+    Object.assign(world.config, full ? {} : NO_WINGS, set);
     const india = world.plates.find(p => p.name === 'India'), asia = world.plates.find(p => p.name === 'Asia');
     const rows = [];
     const speed = p => p?.alive === false ? null : Math.hypot(...(p.omega ?? [0, 0, 0])) / CM_PER_YR_TO_RAD_PER_MYR;
