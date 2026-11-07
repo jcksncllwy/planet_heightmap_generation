@@ -103,6 +103,10 @@ export const TECTONICS = {
                                 // touches (India into Asia, ~5 cm/yr), taken up by shortening and underthrusting, which keeps
                                 // the collided part pressed while the rest closes (Phase 12, 300 → 100: held rigid, the plate
                                 // see-sawed about the middle of the contact, opening one end as it closed the other)
+    collisionLockGpe: false,    // (lane belts) the lock resists with a FORCE, the buoyancy of the crust the collision has thickened (~5.7 × 10¹² N/m
+                                // at Tibet's; Copley et al. 2010), not collisionResistance's viscosity per km² of overlap — under which the
+                                // closing fell as the overlap grew, India stalling at ~0.5 cm/yr 30 Myr after contact (Earth ~4) and
+                                // converging 1110–1350 km (Earth 2400–3200): step/torque-balance.js collisionGpeNPerM. The shares below apply
     collisionShearShare: 0.5,   // …along the front half as hard (oblique plates slide some; much looser and they slide past
                                 // each other instead of colliding)…
     collisionSeparateShare: 0.05, // …and against parting this share: a contact is a pivot, not a lock — the pull of the ocean

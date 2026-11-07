@@ -104,8 +104,12 @@ export function gatherLoads(world) {
             const weight = craton ? config.cratonLockFactor : 1;         // cratons never underthrust: the lock hardens
             const nAB = frontNormal(world, w, a, collider[w], r);
             // (c: each side's own raster cell here, so plate-stress.js puts each half of the lock on the plate it acts on)
-            loadOf[a]?.contacts.push({ w, c: ownerCell[w], r, n: nAB, other: collider[w], weight });
-            loadOf[collider[w]]?.contacts.push({ w, c: otherCell, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight });
+            // (dh: the thickening the front pushes against — what the GPE lock resists with, the same on both sides: torque-balance.js.
+            // The thickest of the two plates' crust within two rings of here: the overlap's own cells are the lower plate's
+            // edge going under, the plateau the collision builds (keepConsumed, 1 − u²) stands just behind it)
+            const dh = config.collisionLockGpe ? frontThickening(world, w, a, collider[w]) : 0;
+            loadOf[a]?.contacts.push({ w, c: ownerCell[w], r, n: nAB, other: collider[w], weight, dh });
+            loadOf[collider[w]]?.contacts.push({ w, c: otherCell, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight, dh });
             continue;
         }
         const load = loadOf[a];
@@ -225,4 +229,18 @@ function riftAge(plateA, A, cellA, plateB, B, cellB, time) {
 function newLoad() {
     const zero = () => [0, 0, 0];
     return { torque: zero(), flowTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [], hinges: [] };
+}
+
+/** (config.collisionLockGpe) The thickest crust (km above its kind's as formed: crust.thickKm) of plates a and b within two rings of world cell w. */
+function frontThickening(world, w, a, b) {
+    const { mesh: { adjOffset, adjList }, owner, ownerCell, plates } = world;
+    let best = 0;
+    const look = c => { const p = owner[c]; if (p === a || p === b) best = Math.max(best, plates[p].crust.thickKm[ownerCell[c]]); };
+    look(w);
+    for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+        const nb = adjList[k];
+        look(nb);
+        for (let j = adjOffset[nb]; j < adjOffset[nb + 1]; j++) look(adjList[j]);
+    }
+    return best;
 }

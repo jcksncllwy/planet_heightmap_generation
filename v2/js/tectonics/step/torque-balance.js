@@ -20,6 +20,7 @@ import { CrustType } from '../model/crust.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
 import { gatherLoads, FORCE_KINDS } from './forces.js';
 import { speedCmYrAt } from './kinematics.js';
+import { heightsOf } from './heights.js';
 
 /** Recompute every plate's angular velocity from the forces on it. Use as the `drive` of tectonics/simulate.js. */
 export function updatePlateMotion(world) {
@@ -62,11 +63,15 @@ function balancedRotation(world, plate, load, omegaOf) {
     }
     // collision lock, across the front and along it:  F = −c_n (n · v_rel) n − c_t (t · v_rel) t, v_rel = v_self − v_other;
     // across, full strength where the two close and a small share where they part (judged at the start of the step)
-    const self = omegaOf[plate.id];
-    for (const { r, n, other, weight } of load.contacts) {
-        const c = config.collisionResistance * areaUnit * weight, o = omegaOf[other];
+    const self = omegaOf[plate.id], gpe = config.collisionLockGpe ? gpeLock(world, plate, load) : null;
+    for (const ct of load.contacts) {
+        const { r, n, other, weight } = ct, o = omegaOf[other];
         const an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];      // r × n: n·(ω × r) = ω·(r × n)
-        const closing = (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2] > 0;
+        const rate = (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2], closing = rate > 0;
+        // (config.collisionLockGpe: the lock's force is bounded — the buoyancy of the crust the collision has thickened, its
+        // share of the front — and enters the linear solve as the coupling that gives that force at the closing rate the two
+        // had at the step's start, no slower than the stall rate: a regularised friction, not a viscosity)
+        const c = gpe ? gpe.forceOf(ct) * weight / Math.max(rate, gpe.floor) : config.collisionResistance * areaUnit * weight;
         const t = an, at = [r[1] * t[2] - r[2] * t[1], r[2] * t[0] - r[0] * t[2], r[0] * t[1] - r[1] * t[0]];   // t = r × n along the front; r × t
         for (const [a, k] of [[an, closing ? 1 : config.collisionSeparateShare], [at, config.collisionShearShare]]) {
             const ck = c * k, oa = o[0] * a[0] + o[1] * a[1] + o[2] * a[2];
@@ -80,6 +85,38 @@ function balancedRotation(world, plate, load, omegaOf) {
         for (let i = 0; i < 3; i++) T[i] += c * (o[i] - r[i] * ro);
     }
     return solve3(D, T);
+}
+
+/**
+ * The force per metre of front a collision resists its closing with, N/m (config.collisionLockGpe): the gravitational
+ * potential energy the thickened crust holds against the crust it is pushed into — for Airy-compensated crust of
+ * thickness H + Δh against H, ΔF = ½ ρc g (1 − ρc/ρa) [(H + Δh)² − H²] (Molnar & Lyon-Caen 1988; Fleitout & Froidevaux
+ * 1982). With H 35 km, Δh 35 (Tibet's ~70 km crust) it is ~5.7 × 10¹² N/m — the 5–6 × 10¹² Copley, Avouac & Wernicke
+ * (2010) find the Tibetan plateau exerts on India, and so what holds India to ~4 cm/yr rather than stopping it. It grows
+ * with the thickening the collision has built (none at first contact: then the lithospheres' own strength and the lower
+ * plate's buoyant crust slowing its slab carry it), and saturates where the crust spreads under its own weight instead.
+ * H and the densities are the column model's (terrain-config.js riftCrustKm, riftCrustRho, the mantle as columnModel
+ * expands it). Limits: the plateau's GPE alone — the lithospheric mantle's own (a thickened root is denser, a removed
+ * one lighter) and the front's friction are not drawn.
+ */
+export function collisionGpeNPerM(dhKm, H) {
+    const rc = H.riftCrustRho, ra = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC), h0 = H.riftCrustKm * 1000, h = h0 + Math.max(0, dhKm) * 1000;
+    return 0.5 * rc * 9.81 * (1 - rc / ra) * (h * h - h0 * h0);
+}
+
+/** (config.collisionLockGpe) Per contact of this plate: its share of the pair's front (model length, 100 km) × the GPE force in force units. */
+function gpeLock(world, plate, load) {
+    const { config, mesh, collisions } = world, H = heightsOf(config), count = new Map();
+    for (const { other } of load.contacts) count.set(other, (count.get(other) ?? 0) + 1);
+    const lenOf = new Map();
+    for (const [other, n] of count) {
+        const key = plate.id < other ? `${plate.id}:${other}` : `${other}:${plate.id}`;
+        // (the front as the collision measured it; before its record exists, a cell edge per contact cell)
+        const frontKm = Math.max(collisions?.get(key)?.frontKm ?? 0, mesh.edgeKm);
+        lenOf.set(other, frontKm / 100 / n);
+    }
+    return { floor: config.sutureStallCmYr * CM_PER_YR_TO_RAD_PER_MYR,
+        forceOf: ct => collisionGpeNPerM(ct.dh ?? 0, H) / config.forceUnitNPerM * lenOf.get(ct.other) };
 }
 
 /** The fastest surface speed over the plate's cap, rad/Myr: rate · sin(angle from the axis), the angle axisAngle ± capRadius. */
