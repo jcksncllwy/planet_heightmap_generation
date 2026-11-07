@@ -332,6 +332,12 @@ export const TERRAIN = {
     trenchHalfKm: 55,           // its half-width
     riseKm: 0.35,               // the outer rise on the subducting plate, this high…
     riseAtKm: 160,              // …this far from the trench axis
+    forearcTaperDeg: [1, 2],    // a forearc wedge's surface slopes from the shelf break down to its trench's axis at its critical
+                                // taper (Davis, Suppe & Dahlen 1983): 1–8° on Earth, the gentlest ~1° (wide accretionary prisms,
+                                // Makran, Barbados) and most ≥ 2° (Lallemand, Schnürle & Malavieille 1994). A coast and a trench
+                                // so far apart that the slope between them would be flatter than the gentlest are not one margin's
+                                // wedge: the wedge fades from full at 2° to none at 1° (Earth's forearcs: 100–250 km coast to
+                                // trench, Makran's ~350 km)
     // ridge segments and fracture zones (records.js; tectonics/model/segments.js)
     fractureOffsetMyr: 12,      // each segment's floor reads this much older or younger at most: the ridge and isochrons step
     fractureTroughKm: 0.7,      // a fracture zone's trough, this deep…

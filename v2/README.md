@@ -586,7 +586,7 @@ mature one a shelf ~100 km wide with its break at ~120–150 m. The other margin
 and passive coasts that never rifted — keep their per-margin profiles (`margins` in terrain-config.js), which stand for
 physics not derived yet. A transform margin has a sheared edge, but the history records no shear or age for it. A
 collision coast faces no ocean COB, and an arc's heights come from its slab (records.js); their crust still ends at the
-shelf break. An active margin with the history's trench within 450 km of its coast is derived (round 2, 2026-10-28).
+shelf break. An active margin with the history's trench in reach is derived (round 2, 2026-10-28; bounded to its own margin by its taper since lane coasts, below).
 Its forearc, the wedge on the overriding plate's crust, slopes at one surface slope from the shelf break down to the
 trench's axis. That slope is the wedge's critical taper (Davis, Suppe & Dahlen 1983; forearcs slope ~1–8°, Lallemand et
 al. 1994). There is no abyssal floor between, so the crust's edge, the COB, lies at the trench. Seed 626225 at 300 Myr,
@@ -2682,3 +2682,33 @@ New files only; no model behaviour changed. Study: `~/obsidian/brain/projects/ge
 
 ## Rendering Earth (2026-11-06, lane earthrender)
 `node v2/tools/render-earth.mjs [--crops-out <dir>]` draws ETOPO5 through render-moment's own picture path (`finishRaster` + `paintFinished`, palette `relief`) on the 2.5M terrain mesh: render only, ~10 s. Use it to tell a draw artifact (shows on Earth too, e.g. the stair-stepped coast) from a geometry artifact (the sim's straight shelf edges, detached flat islands, scattered lakes). Neutral defaults: no lakes, rivers, ice, lithology or Köppen. ETOPO5 (9 km) is read from `-civ`'s raw folder (read-only; `--etopo` for another path). It is finer than the 2.5M cell (~14 km), so a finer ETOPO adds nothing at this detail.
+
+## Coasts: what makes the wiggle, and the sea side's two drawn defects (2026-11-07, lane coasts)
+
+**The coastline's wiggle is the tectonic surface's.** On 831576 at 430 and 340 and 12345 at 560 (2.5M, finished), turning off
+both lookup warps (`warpKm`, `cellWarp`; `render-moment --tset`) moves the coast's D by under ±0.06 by kind and with no
+consistent sign (main 1.146 / 1.190 / 1.160 overall; Earth 1.15–1.35). Turning off the finish's erosion and waves as well
+lowers local D at 15–42 km by only ~0.015–0.02. What the warps do is hide the grid: without them the coast's spectrum
+(`render-moment` prints it) rises at 85–120 km, the sim's cell (430: 1.155 against 1.101/1.104 beside it; main 1.128).
+
+**The forearc wedge is bounded to its own margin** (synthesize.js, sea side). It used to be drawn wherever a trench lay
+within 450 km and the ridge lay farther, so deep-ocean cells 230–400 km off an active coast were raised to −2…−2.6 km, and
+the cut's contour showed as pale straight-edged patches. The wedge now has weight by its taper: its drop (shelf top to floor
+plus the trench's depth) over its width W, coast to trench, through the cell. It fades from full at 2° to none at 1°
+(`forearcTaperDeg`; critical-taper wedges slope ~1–8°, Davis, Suppe & Dahlen 1983; Earth's forearcs run 100–250 km coast
+to trench). A wedge too wide for its drop is a sea floor, not a forearc. The ridge test is now a smooth step (30–90 km past
+the trench) instead of a cut. 831576@430, 640K: lift > 0.3 km for W 0–250 / 250–400 / > 400 km goes 378 / 679 / 3734 →
+255 / 65 / 0 cells. On the terrain scenes (andes, japan) the lost lift was detached: a rim ~900 km off the Andes scene's
+coast and a −1.6 km plateau in mid back-arc sea. Their forearcs' ramps end without a step (`tools/forearc-scenes.mjs`
+counts the lift, with the debug hook).
+
+**The shelf grades to wave base under the poured sea, not the datum.** When the poured sea stands below the datum (a
+lowstand), the sea-side shelf, its sediment top and the land-side submarine shelf grade to `shelfEdgeKm + min(0, seaKm)`.
+A nearly filled narrow sea was drawn as a flat, detached dry island before (0.11 km above a sea at −0.26). A sea above the
+datum still drowns the shelf: shelves are planed at the lowstands. records.js fills the floor with sediment to the same
+wave base. Sea-side cells drawn dry on 831576@430: 0.76 % → 0.14 %. Of what remains, the flat islands' floor is the rise
+rock's thickness (riseKm3 over area, 28–51 km), which is its own lane.
+
+**Left, in their own lanes** (the lane's report: sized plans): the coast tips (277–424 land cells per world drawn on the sea
+side of their sim cell) and replacing the warp with the history's eroded relief, flooded at the current level.
+

@@ -5,7 +5,7 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType, BeltSide } from '../tectonics/model/crust.js';
 import { BoundaryKind } from '../tectonics/model/world.js';
-import { Margin, filledSeaDepthKm, columnModel, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
+import { Margin, filledSeaDepthKm, seaDepthKm, columnModel, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { liftRefKm } from './sea-level.js';
 import { landMask, crustColumnKm, fillPockets } from './land-mask.js';
 import { spreadKm } from '../core/min-heap.js';
@@ -337,7 +337,12 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         const age = fzU?.[w] ? Math.max(0, raw + cfg.fractureOffsetMyr * segmentShift(fzU[w])) : raw;
         ageMyr[w] = age;
         const rockKm = (frame.seaFillKm?.[w] ?? 0) + (frame.riseKm3?.[w] ?? 0) / simMesh.cellAreaKm2;
-        depthKm[w] = Math.max(0, filledSeaDepthKm(age, rockKm) - (sl.swellKm[w] - swellSeaRef));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
+        // (the sediment raises the floor only up to wave base under the sea it is laid in — the poured sea, sl.seaKm, not the
+        // datum: marine fill has no room above it, and a fill clamped at the datum stood dry under a sea poured below it, flat
+        // banks far offshore (coasts2, 831576@430: a rise 28–51 km thick per cell). Crust shallower than that without its
+        // fill keeps its own depth: a floor the swell lifts out of a low sea is exposed ground)
+        const swellK = sl.swellKm[w] - swellSeaRef, bareKm = Math.max(0, seaDepthKm(age) - swellK);
+        depthKm[w] = Math.min(bareKm, Math.max(filledSeaDepthKm(age, rockKm) - swellK, -sl.seaKm - cfg.shelfEdgeKm));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
         // (drowned crust's floor: its own column, not a ridge's by age — and the swell as its crust takes it: liftRefKm, the
         // reference it was flooded against above)
         if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0)));

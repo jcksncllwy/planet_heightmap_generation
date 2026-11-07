@@ -68,7 +68,7 @@ if (process.argv.includes('--terrain')) {
     const { synthesizeTerrain } = await import('../js/terrain/synthesize.js');
     const { sampleOnto } = await import('../js/terrain/terrain-mesh.js');
     const tm = terrainMesh(Number(arg('--terrain', '640000')) || 640000), S = sampleOnto(simMesh, tm, cfg, SEED);
-    const nT = tm.numCells, DB = globalThis.__coastDbg = { rs: new Float32Array(nT).fill(NaN), floor: new Float32Array(nT).fill(NaN), c: new Int32Array(3 * nT), w: new Float32Array(3 * nT), slope: new Float32Array(nT), top: new Float32Array(nT), coast: new Float32Array(nT), act: new Float32Array(nT), tk: new Float32Array(nT).fill(NaN), rk: new Float32Array(nT).fill(NaN) };
+    const nT = tm.numCells, DB = globalThis.__coastDbg = { rs: new Float32Array(nT).fill(NaN), floor: new Float32Array(nT).fill(NaN), c: new Int32Array(3 * nT), w: new Float32Array(3 * nT), slope: new Float32Array(nT), top: new Float32Array(nT), coast: new Float32Array(nT), act: new Float32Array(nT), lift: new Float32Array(nT), tk: new Float32Array(nT).fill(NaN), rk: new Float32Array(nT).fill(NaN) };
     const T = synthesizeTerrain(frame, simMesh, tm, { cfg, seed: SEED, parts: true, sampler: S });
     { const H = T.tectonicKm ?? T.heightKm; let off = 0, dry = 0, dryRift = 0, dryFore = 0, dryNear = 0;
       for (let t = 0; t < nT; t++) { if (!(DB.floor[t] === DB.floor[t])) continue; off++; if (H[t] > 0) { dry++; if (DB.rs[t] > 0.5) dryRift++; if (DB.tk[t] < 450) dryFore++; if (DB.coast[t] > -60) dryNear++; } }
@@ -88,4 +88,9 @@ if (process.argv.includes('--terrain') && globalThis.__coastDbg) {
     let sea = 0, rift = 0, fore = 0;
     for (let t = 0; t < n; t++) { if (!(DB.floor[t] === DB.floor[t])) continue; sea++; if (DB.rs[t] > 0.5) rift++; if (DB.tk[t] < 450) fore++; }
     console.log(`sea-side terrain cells ${sea}: rifted section ${(100 * rift / sea).toFixed(1)} %, forearc ramp in reach ${(100 * fore / sea).toFixed(1)} %`);
+    // (the forearc ramp's lift by the wedge's width W, coast to trench through the cell: Earth's forearcs are 100–250 km, so a
+    // lift where W is far beyond that is a trench of another margin drawing a shallow patch offshore — lane coasts2)
+    if (DB.lift) { const bins = [[0, 250], [250, 400], [400, 1e9]].map(([a, b]) => ({ a, b, n: 0, km: 0 }));
+      for (let t = 0; t < n; t++) if (DB.lift[t] > 0.3) { const W = DB.tk[t] - DB.coast[t], B = bins.find(x => W >= x.a && W < x.b); if (B) { B.n++; B.km += DB.lift[t]; } }
+      console.log('forearc ramp lifting > 0.3 km, by W coast to trench: ' + bins.map(B => `${B.a}–${B.b < 1e9 ? B.b : '∞'} km ${B.n} cells (mean ${(B.km / Math.max(1, B.n)).toFixed(2)} km)`).join(' · ')); }
 }

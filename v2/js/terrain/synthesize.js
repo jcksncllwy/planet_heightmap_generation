@@ -431,8 +431,13 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     // (an ordinary continent's column as formed, and a shield's step above it: tectonics/measure.js, records.js)
     const refKm = columnModel(cfg).ref[CrustType.CONTINENT];
     const MC = marginConstants(cfg), shelfDepth = -cfg.shelfEdgeKm, clinoform = cfg.clinoformGradient ?? 0.05;
+    // (a shelf is planed at the lowstands, terrain-config shelfEdgeKm: under a sea poured below the datum its break and the
+    // sediment's top are graded to wave base under that sea, not under the datum, the whole submarine shelf from its shoreline
+    // to its break; a sea standing above the datum drowns the shelf where the lowstand cut it. Crust keeps its isostatic height
+    // either way: a rift shoulder or a platform standing above a low sea is exposed ground; graded sediment never is)
+    const lowKm = Math.min(0, seaKm), brkKm = cfg.shelfEdgeKm + lowKm;
     const sedTop = (x, shelf, brk, open) => {
-        const lift = shelfDepth * (1 - open);
+        const lift = shelfDepth * (1 - open) + lowKm;
         if (x >= brk) return Math.min(0.01 + lift, lift + shelfDepth * (x - shelf) / Math.max(1, shelf - brk));
         return lift - shelfDepth - clinoform * (brk - x);
     };
@@ -660,7 +665,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (parts) { parts.dcoast[t] = coast; parts.dshelf[t] = shelf; parts.dplain[t] = plain; }
             // (a margin's shelf by its kind, from the shoreline down to the break at the crust's edge — on a rifted margin the
             // land itself, its subsidence and its sediment make the shelf: below)
-            h = coast < shelf ? (1 - rs) * cfg.shelfEdgeKm * (1 - coast / shelf) : platform * ramp;
+            h = coast < shelf ? (1 - rs) * brkKm * (1 - coast / shelf) : platform * ramp;
             // (crust whose platform lies below the shelf break — a submerged arc ridge, a drowned plateau — has no shelf graded
             // up to the sea at its edge and no coastal plain: wave base never planed it, so its edge falls from its own depth,
             // with no rim at sea level around it or around its holes; Kyushu–Palau, West Mariana and Lau ridges, Karig 1972.
@@ -908,12 +913,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const slope = w0 * slopeKm[c0] + w1 * slopeKm[c1] + w2 * slopeKm[c2];
             // (the slope starts at the shelf break, or at the crust's own platform where that lies deeper: a submerged ridge's
             // flank falls from its own depth — the land corners' platform, as the land side reads it)
-            let top = cfg.shelfEdgeKm;
+            let top = brkKm;
             const lwS = (land[c0] ? w0 : 0) + (land[c1] ? w1 : 0) + (land[c2] ? w2 : 0);
             if (lwS > 0) {
                 let landP = ((land[c0] ? w0 * platformKm[c0] : 0) + (land[c1] ? w1 * platformKm[c1] : 0) + (land[c2] ? w2 * platformKm[c2] : 0)) / lwS;
                 if (swellKm) landP += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
-                if (landP < cfg.shelfEdgeKm) top = Math.max(landP, -floor);
+                if (landP < brkKm) top = Math.max(landP, -floor);
             }
             // (and never below the floor it falls to: a sea shallower than a shelf break — nearly filled, its floor lifted by
             // the mantle's swell — has no slope down from its coast, which stood as a trough round it; branch unified)
@@ -926,9 +931,16 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const act = (coastKind[c0] === CoastKind.ACTIVE ? w0 : 0) + (coastKind[c1] === CoastKind.ACTIVE ? w1 : 0) + (coastKind[c2] === CoastKind.ACTIVE ? w2 : 0);
             if (act > 0.01) {
                 // (only between the coast and the trench: on the overriding plate, which the outer rise's distance — spread
-                // over the plate going down only, records.js — does not reach)
+                // over the plate going down only, records.js — does not reach. And only its own trench: the wedge spans its
+                // margin, W = coast to trench through this point, its surface falling from the shelf break to the trench's
+                // axis at a slope no flatter than the gentlest taper (forearcTaperDeg) — a trench so far that the slope would
+                // be flatter is another margin's, and the wedge fades
+                // out with the slope rather than at a set distance, which drew straight-edged shallows far offshore)
                 const tk = w0 * trenchKm[c0] + w1 * trenchKm[c1] + w2 * trenchKm[c2], rk = w0 * riseKm[c0] + w1 * riseKm[c1] + w2 * riseKm[c2];
-                if (tk < 450 && rk > tk + 60) { const fa = top + (-floor - top) * (-coast) / Math.max(1, -coast + tk); h += act * (Math.max(h, fa) - h); }
+                const W = Math.max(1, -coast + tk), [t0, t1] = cfg.forearcTaperDeg.map(d => Math.tan(d * Math.PI / 180));
+                const axis = floor + w0 * trenchDepthKm[c0] + w1 * trenchDepthKm[c1] + w2 * trenchDepthKm[c2];
+                const own = act * smooth(t0, t1, (top + axis) / W) * smooth(30, 90, rk - tk);
+                if (own > 0) { const fa = top + (-floor - top) * (-coast) / W; h += own * (Math.max(h, fa) - h); }
             }
             // (off a rifted margin the crust's edge is the foot of the slope: the sediment prism's front, if it reaches out
             // here, down to the floor)
