@@ -32,7 +32,7 @@ import { nodeKey, finishCached, loadFinish } from './lib/finish-cache.mjs';
 import { historyKeyOf } from './lib/moment-frame.mjs';
 import { finishResult } from '../js/finish/finish-result.js';
 import { erosionEngine } from '../js/finish/finish.js';
-import { coastLoops, coastFractal, kindOf, COAST_KINDS } from './lib/coast-fractal.mjs';
+import { coastLoops, coastFractal, kindOf, COAST_KINDS, dividerKm, polyLengthKm } from './lib/coast-fractal.mjs';
 import { deriveRecords } from '../js/terrain/records.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { finishPlanet, finishRaster } from '../js/finish/finish.js';
@@ -95,7 +95,11 @@ const DEBUG = process.argv.includes('--debug') || NETWORK, OVERLAY_ASKED = proce
 // (--set key=value[,key=value]: the finish's constants changed for this run — finish-config.js; numbers, or JSON)
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
-const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !arg('--set', '') && !process.argv.includes('--no-cache');
+// (--tset key=value[,key=value]: the terrain's constants changed for this run — terrain-config.js; e.g. warpKm=0,cellWarp=0 to
+// see the coast without the lookup's warps)
+const TSET = Object.fromEntries((arg('--tset', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v)]; }));
+const TCFG = terrainConfig(TSET);
+const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !arg('--set', '') && !arg('--tset', '') && !process.argv.includes('--no-cache');
 let fin, raster = null;
 const fromCache = (page, cells, mesh) => ({ mesh, z: cells.z, ocean: cells.ocean, lake: cells.lake, lakeLevel: cells.lakeLevel, glaciated: cells.glaciated, rivers: page.rivers, stats: page.stats, ms: page.ms, layers: null, climate: null });
 const pageFin = CACHEABLE && PAGE_FIN ? await loadFinish(LATEST.finish, { mesh: true, waitMs: 5 * 60e3 }) : null;
@@ -107,7 +111,7 @@ if (pageFin) {
     const { spec, key } = CACHEABLE ? nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: W, erosion: await erosionEngine(F) }) : { spec: null, key: null };
     let full = null;
     const r = await finishCached(spec, key, async () => {
-        full = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, onStage: s => process.stdout.write(`${s}… `) });
+        full = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, cfg: TCFG, onStage: s => process.stdout.write(`${s}… `) });
         return CACHEABLE ? finishResult(full, { width: W }) : { page: null, cells: null };
     }, { seed: SEED, cont: CONT, sim: SIM });
     if (r.cached) { pool.terminate(); fin = fromCache(r.page, r.cells, terrainMesh(CELLS)); console.log(`finish read from the finish cache (${r.key})`); }
@@ -339,7 +343,20 @@ if (PROBE) for (const pt of PROBE.split(';')) {
 }
 // (the coastline's shape: its divider dimension D over 50–500 km rulers and its length L(50 km) / L(500 km), by kind of margin
 // — tools/lib/coast-fractal.mjs; the ice age's coasts count as glacial)
-const coastShape = coastFractal(coastLoops(fin.mesh, c => fin.ocean[c] === 1, z), kindOf(simMesh, deriveRecords(frame, simMesh, TERRAIN, SEED), fin.glaciated ?? null), { kinds: COAST_KINDS });
+const coastShape = coastFractal(coastLoops(fin.mesh, c => fin.ocean[c] === 1, z), kindOf(simMesh, deriveRecords(frame, simMesh, TCFG, SEED), fin.glaciated ?? null), { kinds: COAST_KINDS });
 console.log('coast shape (D, L50/L500): ' + ['all', ...COAST_KINDS].filter(k => coastShape[k]).map(k => `${k} ${coastShape[k].D.toFixed(3)}${Number.isFinite(coastShape[k].ratio) ? ` ×${coastShape[k].ratio.toFixed(2)}` : ''} (${Math.round(coastShape[k].km).toLocaleString()} km)`).join(' · '));
+// (the coast's spectrum: each coast loop of 1500 km or more walked with dividers from about the terrain cell to past the
+// sim's, summed; the local D between neighbouring rulers. The sim's cells, ~120 km at 40K, show as a rise of the local D
+// about their size — the raster's staircase — and the warps' and erosion's scales as where the length still grows)
+const SPEC_KM = [15, 21, 30, 42, 60, 85, 120, 170, 240, 340, 480], specL = SPEC_KM.map(() => 0);
+for (const { pts, cells } of coastLoops(fin.mesh, c => fin.ocean[c] === 1, z)) {
+    const k = cells.length;
+    if (k < 4) continue;
+    const closed = new Float64Array(3 * (k + 1)); closed.set(pts); closed.set(pts.subarray(0, 3), 3 * k);
+    if (polyLengthKm(closed) < 1500) continue;
+    SPEC_KM.forEach((e, i) => { specL[i] += dividerKm(closed, e); });
+}
+const coastSpectrum = SPEC_KM.slice(1).map((e, i) => ({ fromKm: SPEC_KM[i], toKm: e, D: 1 - Math.log(specL[i + 1] / specL[i]) / Math.log(e / SPEC_KM[i]) }));
+console.log('coast spectrum (local D by ruler, loops ≥ 1500 km): ' + coastSpectrum.map(b => `${b.fromKm}–${b.toKm} ${b.D.toFixed(3)}`).join(' · ') + ` (L15 ${Math.round(specL[0]).toLocaleString()} km)`);
 fs.writeFileSync(path.join(outDir, `${NAME}.json`), JSON.stringify({ seed: SEED, cont: CONT, sim: SIM, time: TIME, cells: CELLS, water: Object.fromEntries(kinds.slice(1).map((k, i) => [k, kindKm2[i + 1]])),
-    dryHollowKm2: holeKm2, deepestDryM: deepest, dryBelowSeaKm2: dryBelowSea, coastShape, stats: fin.stats }, null, 2));
+    dryHollowKm2: holeKm2, deepestDryM: deepest, dryBelowSeaKm2: dryBelowSea, coastShape, coastSpectrum, tset: TSET, stats: fin.stats }, null, 2));
