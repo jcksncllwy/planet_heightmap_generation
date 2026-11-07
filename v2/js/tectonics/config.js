@@ -397,11 +397,19 @@ export const TECTONICS = {
     trenchAxialTransportKm: 700, // …and along the trench's own axis, e-folding over this: the Chile trench is turbidite-filled from
                                 // its glacial sources at 41–46°S north to the Juan Fernández ridge at ~33°S, ~1000–1400 km, by an axial
                                 // channel (Völker et al. 2013; Laursen & Normark 2002 at its northern end): half that span
-    riseWidthKm: 300,           // a mouth with no trench in reach lays what its shelf has no room for past the shelf, on its own margin's
-                                // ocean floor — the continental rise and the fans on it — thinning seaward, e-folding over this (out to
-                                // three of them): the rise is ~100–1000 km wide (Heezen, Tharp & Ewing 1959, recalled; the Amazon fan
-                                // ~700 km). A record (crust.riseKm3, step/trench-fans.js layRise): it rides its plate to a trench,
-                                // where the channel takes what it can and the prism the rest (step/resolve.js), or it stays
+    riseProfile: {              // a mouth with no trench in reach lays what its shelf has no room for past the shelf, down to the surface a
+                                // margin's sediment grades to (step/trench-fans.js layRise: fill and spill, nearest first, out to
+                                // trenchFanReachKm). A record (crust.riseKm3): it rides its plate to a trench, where the channel takes
+                                // what it can and the prism the rest (step/resolve.js), or it stays.
+        shelfKm: 80,            // the mouth to the shelf break: the world's shelves average ~80 km wide (Shepard 1963)
+        breakKm: 0.13,          // the break's depth, ~130 m (Shepard 1963; Kennett 1982)
+        slope: 0.05,            // the slope below it, ~3° (continental slopes 2–5°, Pratson & Haxby 1996; terrain-config.js clinoformGradient)
+        footKm: 2.5,            // …down to its foot, where the rise begins, at 1.5–3.5 km (Heezen, Tharp & Ewing 1959; Kennett 1982)
+        rise: 0.004,            // the rise, 1:100–1:700 (Heezen et al. 1959; Emery 1980): ~1:250, the middle of that range
+        toeKm: 4.5,             // …down to its toe on the abyssal plain, at ~4–5 km (Heezen et al. 1959): the rise ~500 km wide (100–1000)
+        plain: 0.001,           // the abyssal plain beyond, its turbidites levelled to < 1:1000 (Heezen & Laughton 1963)
+        coastKm: 400,           // the walk out from the mouth may cross a drowned shelf or a cape this far, then only ocean floor
+    },
     enclosedSeaFill: true,     // a river running into an enclosed sea lays its rock on that sea's floor, and a sea filled to sea level
                                 // is lowland (step/sea-fill.js; the floor's depth under it: measure.js; false: the rock is lost, as before)
     continentCrustKm: 40,       // continental crust's mean thickness: a volume lost (km³) is booked as this much less area
