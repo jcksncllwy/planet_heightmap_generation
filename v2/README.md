@@ -639,7 +639,12 @@ land mask, so the history's rivers and the terrain's records share it. It is on 
 (the crust's kind, filled seas, small pockets, lifted fills) is still the mask's rules, and the flood drowns at the poured
 level. Its proof is Earth's own ground: `tools/check-ocean-earth.mjs` pours 1.0× onto ETOPO5 binned on the 40K and 160K
 meshes (a committed derived artifact, `tools/data/earth-surface-*.i16`, `tools/make-earth-surface.mjs`) and the sea stands
-at −11 / −13 m over 29.9 / 30.1 % land (Earth 0 m, 29.2 %). On the model's own worlds the land, the level and the flooding
+at −11 / −13 m over 29.9 / 30.1 % land (Earth 0 m, 29.2 %). The lab's scenes of one mechanism (andes, laramide, india, mariana, japan, hawaii, traps, rift, cratons:
+`terrain-scenes.js` fixtureOcean) keep the reckoned level: their ocean is a built fixture, not a history — the rift scene's
+is 95 % of the cells, 97 % of it over 100 Myr old, and Earth's water on it stood 2.95 km under the datum, its new ridges
+drawn dry — so only the whole planets pour. Phase 8a judges the floor's depth by age against the datum (Earth's water on
+Earth's ground), and reports the depths under a seed's own sea and how much more its basins hold than Earth's ocean fills
+(12345 at 600 Myr: +19.5 %, the sea 0.72 km under the datum; sliders4, 2026-11-07). On the model's own worlds the land, the level and the flooding
 are outcomes (`tools/ocean-history.mjs`, by stage of the cycle; lane report 2026-11-06): with Earth's crust (41 %) and
 water the land is 35–39 % (Earth 18–33 by stage), the continents little flooded, and the level swings 0.7–1.1 km over a
 cycle (Earth 0.2–0.3): the history's floor stands ~0.4–0.6 km deeper than Earth's (its ages, little abyssal sediment, few
