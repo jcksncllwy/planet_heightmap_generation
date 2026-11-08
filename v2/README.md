@@ -2468,9 +2468,12 @@ check-invariants):
   sea closed by land that sea-fill did not mark enclosed) sends the rest on as an enclosed sea's overflow (`seaOverflowKm3`;
   ~2–3 % of the rise on 626225/831576). No cell is capped and no rock stands above the sea. Floor merged under another
   plate's crust (step/floor-rock.js) spills its rock above the brim over that plate's ocean cells the same way. 3 seeds × 430/
-  800/1200 Myr (40K): the rise's p99 ~10–17 km and the passive-margin mean ~2.5–5 km, against Earth's 5–15 km at the
+  800/1200 Myr (40K): the rise's p99 11.0–15.6 km, the passive-margin mean 3.1–6.3 km and the max 16.0–22.9 km, against Earth's 5–15 km at the
   thickest and ~2–4 km mean (Straume et al. 2019 GlobSed; Poag 1985); was p99 33–84 and max to 552 km
-  (tools/rise-thickness.mjs). Limits: the profile is measured as the crow flies, not along channels; one column per cell;
+  (tools/rise-thickness.mjs, commit 691cbbd). Not all inside Earth's range: the p99 tops 15 km at one moment (626225 at
+  1200 Myr, 15.6; 831576 at 1200, 15.4), 4 of the 9 passive-margin means sit above 4 km (4.1–4.6, and 6.3 on 626225 at
+  1200 Myr, the same moment as the 22.9 km max), and every max is past 15 km. The p99 is mostly in range (seven of nine
+  at or under 14.2); the mean is the soft spot. Limits: the profile is measured as the crow flies, not along channels; one column per cell;
   compaction is one compacted density, not a porosity–depth law; the floor's depth is its age's (no swell). Margins at
   grade on floor 300–1100 Myr old, which this history never subducts, still send ~1/3 of the rise past the reach. That
   rock, and an enclosed sea's fill (`crust.seaFillKm`), moves with its plate. Where the floor is subducted (resolve.js, or a
