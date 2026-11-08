@@ -49,8 +49,11 @@ const zipper = (overrides, seed = LAB_MESH_SEED) => {
     const seeds = [LAB_MESH_SEED, 1, 2, 3], runs = [now, ...seeds.slice(1).map(seed => zipper({}, seed))];
     checkAcross('after first contact the two weld once the seam has stalled, not before', runs.map((z, i) => ({ label: seeds[i], formed: z.contact !== undefined, ok: !!z.weld && z.weld.time > z.contact && z.weld.data.why === 'stalled',
         text: z.weld ? `contact at ${z.contact.toFixed(0)} Myr, weld at ${z.weld.time.toFixed(0)} Myr as ${z.weld.data.why}` : z.contact === undefined ? 'no contact' : `contact at ${z.contact.toFixed(0)} Myr, no weld` })));
-    report('the sea left between the continents at the weld', runs.filter(z => z.weld).map(z => z.gapMkm2), { earth: [0.44, 2.5], unit: ' Mkm²', digits: 2, source: 'remnant seas of a collision: the Black Sea ~0.44 Mkm² to the Mediterranean ~2.5 Mkm² (the code\'s own figures, collision.js; recalled, not looked up)',
-        detail: `seeds ${seeds.join(', ')}; widest gap ${runs.filter(z => z.weld).map(z => `${z.widestKm.toFixed(0)} km`).join(', ')} (unstable, so detail only; the limit for a closed margin is ${now.limitKm.toFixed(0)} km)` });
+    // (a weld the stack forced (why 'stacked') measures no gap — collision.js books gapKm2 Infinity and no widest gap: named in
+    // the detail as unmeasured, not averaged in or read as a number)
+    const measured = z => z.weld && Number.isFinite(z.gapMkm2) && Number.isFinite(z.widestKm), unmeasured = runs.map((z, i) => z.weld && !measured(z) ? `${seeds[i]} (${z.weld.data.why})` : null).filter(Boolean);
+    report('the sea left between the continents at the weld', runs.filter(measured).map(z => z.gapMkm2), { earth: [0.44, 2.5], unit: ' Mkm²', digits: 2, source: 'remnant seas of a collision: the Black Sea ~0.44 Mkm² to the Mediterranean ~2.5 Mkm² (the code\'s own figures, collision.js; recalled, not looked up)',
+        detail: `seeds ${seeds.join(', ')}; widest gap ${runs.filter(measured).map(z => `${z.widestKm.toFixed(0)} km`).join(', ') || 'none measured'} (unstable, so detail only; the limit for a closed margin is ${now.limitKm.toFixed(0)} km)${unmeasured.length ? `; no gap measured at the weld of seed${unmeasured.length > 1 ? 's' : ''} ${unmeasured.join(', ')}` : ''}` });
     report('the lower continent turns about the contact before the weld', now.weld ? now.turned : NaN, { unit: '°', digits: 1, source: 'no Earth figure: collisions are diachronous (the Tethys zipper)',
         detail: now.weld ? `over ${(now.weld.time - now.contact).toFixed(0)} Myr` : 'no weld' });
 }
