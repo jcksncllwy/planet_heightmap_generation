@@ -53,6 +53,14 @@ function balancedRotation(world, plate, load, omegaOf) {
     const D = dragTensor(plate, mesh, config, areaUnit);
     const T = load.torque.slice();
 
+    addSlabResistance(D, T, load, omegaOf, config);
+    addCollisionLock(D, T, world, plate, load, omegaOf);
+    addHinges(D, T, load, omegaOf);
+    return solve3(D, T);
+}
+
+// The couplings, each added into the balance D ω = T (in this order: the sums are float, and the history must not change).
+function addSlabResistance(D, T, load, omegaOf, config) {
     // slab resistance acts along the trench normal only:  F = −c (n · (v_self − v_other)) n
     for (const { r, n, other, length } of load.slabs) {
         const c = config.slabResistance * length;
@@ -61,6 +69,10 @@ function balancedRotation(world, plate, load, omegaOf) {
         const o = omegaOf[other], otherNormalSpeed = o[0] * a[0] + o[1] * a[1] + o[2] * a[2];
         for (let i = 0; i < 3; i++) T[i] += c * otherNormalSpeed * a[i];
     }
+}
+
+function addCollisionLock(D, T, world, plate, load, omegaOf) {
+    const { config, mesh } = world, areaUnit = mesh.cellAreaKm2 / 1e4;
     // collision lock, across the front and along it:  F = −c_n (n · v_rel) n − c_t (t · v_rel) t, v_rel = v_self − v_other;
     // across, full strength where the two close and a small share where they part (judged at the start of the step)
     const self = omegaOf[plate.id], gpe = config.collisionLockGpe ? gpeLock(world, plate, load) : null;
@@ -78,13 +90,35 @@ function balancedRotation(world, plate, load, omegaOf) {
             for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) D[3 * i + j] += ck * a[i] * a[j]; T[i] += ck * oa * a[i]; }
         }
     }
+}
+
+function addHinges(D, T, load, omegaOf) {
     // rift hinge, a pin:  F = −c v_rel at r — the halves turn about it (step/forces.js riftHinge)
     for (const { r, other, c } of load.hinges) {
         addProjector(D, r, c);
         const o = omegaOf[other], ro = r[0] * o[0] + r[1] * o[1] + r[2] * o[2];
         for (let i = 0; i < 3; i++) T[i] += c * (o[i] - r[i] * ro);
     }
-    return solve3(D, T);
+}
+
+/**
+ * (diagnostic: tools/belts-probe.mjs --forces) Each term of a plate's balance, as the torque it puts on the plate turning at
+ * its present rotation: the drives by kind (T), and T − D ω of the basal drag, the slab resistance, the collision lock and
+ * the rift hinge — judged against the loads and rotations of the last step (world.loads). Sums to ~0 once the plate has
+ * relaxed to its balance (relaxMyr).
+ */
+export function balanceTerms(world, plate) {
+    const load = world.loads?.get(plate.id);
+    if (!load) return null;
+    const omegaOf = world.plates.map(p => p.omega), w = plate.omega, areaUnit = world.mesh.cellAreaKm2 / 1e4;
+    const apply = (D, T) => [0, 1, 2].map(i => T[i] - (D[3 * i] * w[0] + D[3 * i + 1] * w[1] + D[3 * i + 2] * w[2]));
+    const term = add => { const D = new Float64Array(9), T = [0, 0, 0]; add(D, T); return apply(D, T); };
+    const out = Object.fromEntries(FORCE_KINDS.map((k, i) => [k, load.byKind[i].slice()]));
+    out.drag = apply(dragTensor(plate, world.mesh, world.config, areaUnit), [0, 0, 0]);
+    out.slabResistance = term((D, T) => addSlabResistance(D, T, load, omegaOf, world.config));
+    out.lock = term((D, T) => addCollisionLock(D, T, world, plate, load, omegaOf));
+    out.hinge = term((D, T) => addHinges(D, T, load, omegaOf));
+    return out;
 }
 
 /**
