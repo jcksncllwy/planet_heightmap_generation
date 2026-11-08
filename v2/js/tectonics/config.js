@@ -111,6 +111,12 @@ export const TECTONICS = {
                                 // as one (Asia speeds up 3.2 → 4.7 cm/yr, Eurasia ~1–2; India runs on at 7–12 along the front, the closing
                                 // ~0): the upper plate's own resistance is the next lane, not this lock. Off by default: on, the gate fails
                                 // p4/p5a/p7c/p8a and check-phase11 throws. collisionResistance applies only with this off. The shares below apply
+    collisionSlabPull: false,   // (lane upper, opt-in) the slab hanging under a collision front keeps pulling the lower plate in, net of the buoyancy
+                                // of its continental crust gone down after it (Cloos 1993), until break-off (step/forces.js hangingSlabPull)
+    collisionSlabGrossNPerM: 3e13, // …the slab's gross negative buoyancy, N/m, that the crust's buoyancy is set against (England & Wortel 1980: up to ~3 × 10¹³;
+                                // the force unit is the ~20 % of it the plate feels — forceUnitNPerM)
+    collisionBreakoffMyr: 20,   // …and the slab breaks off this long after first contact: 20–25 Myr for an old, strong slab (van Hunen & Allen 2011,
+                                // EPSL), within the 5–30 Myr of dynamic models they review; the low end of the old-slab range
     collisionShearShare: 0.5,   // …along the front half as hard (oblique plates slide some; much looser and they slide past
                                 // each other instead of colliding)…
     collisionSeparateShare: 0.05, // …and against parting this share: a contact is a pivot, not a lock — the pull of the ocean

@@ -36,6 +36,7 @@ import { areYoungRiftPartners } from './collision.js';
 import { ringsOf } from '../../core/mesh-rings.js';
 import { tangentToward } from '../../core/sphere-geom.js';
 import { mantleFlowAt, dispersalField, repelAt } from './supercontinent.js';
+import { heightsOf } from './heights.js';
 
 /** Force names, in the order of PlateLoad.byKind / forceByKind. Display code keys colours by these names. */
 export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push', 'mantle flow'];
@@ -147,7 +148,51 @@ export function gatherLoads(world) {
         load.cells[kind]++;
     }
     for (const p of plates) if (loadOf[p.id]) riftHinge(world, p, loadOf[p.id]);
+    if (config.collisionSlabPull) hangingSlabPull(world, loadOf, cellTorque);
     return loads;
+}
+
+/**
+ * (config.collisionSlabPull) The slab still hanging under a collision front keeps pulling the lower plate in, net of the
+ * buoyancy of its continental crust that has gone down after it, until the slab breaks off. Without it the model drops the
+ * pull the moment land reaches the trench (a boundary cell of land on land is a contact, not a trench), and India,
+ * whose own ocean was its driver, had nothing pressing it in: belts-probe --forces, 12345/1/2, the pull across the front
+ * fell 14 → ~1 (× 10¹⁸ N) within ~5–15 Myr of contact, and from then the closing was Asia's advance alone (lane upper).
+ *   net pull per metre = slabPull × (1 − F_b ⁄ F_slab),  F_b = (ρa − ρc) g h_c L
+ * F_slab: the slab's gross negative buoyancy, collisionSlabGrossNPerM (England & Wortel 1980; the force unit is the share of
+ * it the plate feels, ~20 %: config forceUnitNPerM); F_b: the buoyancy of the continental crust (thickness h_c, density ρc,
+ * the column model's, as torque-balance.js collisionGpeNPerM) carried down after it, L of it down-dip — the crust the
+ * collision has underthrust (step/collision.js underthrustCells) over its front (Cloos 1993: subduction is driven by the
+ * lithosphere's negative buoyancy, and continental crust's resists it). One net term: the pull is not dropped at contact and
+ * a buoyancy then subtracted on top, so nothing is counted twice. It ends at break-off, collisionBreakoffMyr after first
+ * contact, or once the crust's buoyancy cancels the slab, whichever comes first. Acts on the lower plate only, across the
+ * front toward the upper, split evenly over the pair's contact cells by their share of the front (as torque-balance.js
+ * gpeLock). Limits: one slab per collision, full strength (its age and how much went down before contact are not
+ * remembered); break-off is a cited time, not the slab's necking; the crust's eclogitisation (which removes part of the
+ * lower crust's buoyancy) is not drawn.
+ */
+function hangingSlabPull(world, loadOf, cellTorque) {
+    const { config, collisions, time, mesh } = world, H = heightsOf(config);
+    const rc = H.riftCrustRho, ra = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC), hc = H.riftCrustKm * 1000;
+    for (const rec of collisions?.values() ?? []) {
+        const load = loadOf[rec.lower], after = time - rec.startedAt;
+        if (!load || rec.sutured || !(after >= 0) || after >= config.collisionBreakoffMyr || !(rec.frontKm > 0)) continue;
+        const enteredM = (rec.underthrustCells ?? 0) * mesh.cellAreaKm2 / rec.frontKm * 1000;
+        const net = 1 - (ra - rc) * 9.81 * hc * enteredM / config.collisionSlabGrossNPerM;
+        if (!(net > 0)) continue;
+        const cs = load.contacts.filter(c => c.other === rec.upper);
+        if (!cs.length) continue;
+        const f = config.slabPull * net * Math.max(rec.frontKm, mesh.edgeKm) / 100 / cs.length;
+        for (const { w, r, n } of cs) {
+            const fx = n[0] * f, fy = n[1] * f, fz = n[2] * f, tx = r[1] * fz - r[2] * fy, ty = r[2] * fx - r[0] * fz, tz = r[0] * fy - r[1] * fx;
+            load.torque[0] += tx; load.torque[1] += ty; load.torque[2] += tz;
+            cellTorque[3 * w] += tx; cellTorque[3 * w + 1] += ty; cellTorque[3 * w + 2] += tz;
+            const k = load.byKind[PULL]; k[0] += tx; k[1] += ty; k[2] += tz;
+            const v = load.forceByKind[PULL]; v[0] += fx; v[1] += fy; v[2] += fz;
+            load.torqueMagnitudeSum += Math.hypot(tx, ty, tz);
+            load.cells[PULL]++;
+        }
+    }
 }
 
 /**
