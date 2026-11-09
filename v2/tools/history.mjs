@@ -3,7 +3,7 @@
 //
 //   node v2/tools/history.mjs latest                       what the user is viewing: the history, the moment, the link
 //   node v2/tools/history.mjs frame --latest [--out f.bin] that very frame, written to a file
-//   node v2/tools/history.mjs frame --seed 626225 --time 950 [--cont 30] [--sim 40000] [--out f.bin] [--no-build]
+//   node v2/tools/history.mjs frame --seed 626225 --time 950 [--cont 30] [--sim 40000] [--out f.bin] [--no-build] [--fields]
 //                                                          the page's history for these settings as Node builds it (built if not cached —
 //                                                          run that through sim-slots: sim-slots run -n 1 --gb 3 -- node …)
 //   node v2/tools/history.mjs frame --key <key> --time 950 [--out f.bin]   any entry's frame (keys: ls)
@@ -17,7 +17,8 @@
 // A frame file is v8.serialize({ frame }) — the whole frame, as captureFrame made it: v8.deserialize(fs.readFileSync(f)).frame.
 // Its BYTES differ run to run for one history (V8 writes a number as an int32 or a double by how the engine holds it):
 // to compare histories, compare the "hash" frame prints, or `history.mjs hash f.bin …` (lib/frame-hash.mjs) — never shasum.
-// Without --out it is written to v2/out/frames/frame-<seed>-<time>.bin.
+// Without --out it is written to v2/out/frames/frame-<seed>-<time>.bin. --fields also prints each field's value hash, to
+// show two histories agree on every field but a new one (a records-only field: the rest must match).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +28,7 @@ import { setDelaunator } from '../../js/sphere-mesh.js';
 import * as HC from './lib/history-cache.mjs';
 import { mathFingerprint } from '../js/app/history-key.js';
 import { momentFrame, pageWorld } from './lib/moment-frame.mjs';
-import { frameHash } from './lib/frame-hash.mjs';
+import { frameHash, fieldHashes } from './lib/frame-hash.mjs';
 
 setDelaunator(Delaunator);
 const [cmd = 'help', ...rest] = process.argv.slice(2);
@@ -39,7 +40,7 @@ const ago = ms => { const s = (Date.now() - ms) / 1000; return s < 120 ? `${s.to
 function writeFrame(frame, out) {
     fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
     fs.writeFileSync(out, v8.serialize({ frame }));
-    console.log(JSON.stringify({ file: path.resolve(out), time: frame.time, hash: frameHash(frame) }));   // (hash: by value — compare THAT, not the file's bytes: lib/frame-hash.mjs)
+    console.log(JSON.stringify({ file: path.resolve(out), time: frame.time, hash: frameHash(frame), ...(has('--fields') ? { fields: fieldHashes(frame) } : {}) }));   // (hash: by value — compare THAT, not the file's bytes: lib/frame-hash.mjs)
 }
 const defaultOut = (seed, t) => path.join(HC.REPO_ROOT, 'v2', 'out', 'frames', `frame-${seed}-${t}.bin`);
 

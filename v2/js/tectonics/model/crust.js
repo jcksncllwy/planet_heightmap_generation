@@ -53,7 +53,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
     'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage']);
 
 export class CrustRaster {
@@ -102,6 +102,11 @@ export class CrustRaster {
         this.seaFillKm = new Float32Array(numCells);   // sediment the rivers have laid on this sea floor, an enclosed sea's (km; step/sea-fill.js)
         this.basinFillKm = new Float32Array(numCells); // sediment the rivers have laid in a hollow of the land, below its spill (km; step/rivers.js)
         this.wornKm = new Float32Array(numCells);      // crust the heights have worn here since the rivers last drained (km; config.rockBook)
+        // The ground's tectonic rise (+) or sinking (−) over the window since the last frame, erosion left out (km; records
+        // only: step/heights.js), the height it stood at after the last heights step, and that step's number (0 = none yet)
+        this.tectKm = new Float32Array(numCells);
+        this.tectRefKm = new Float32Array(numCells);
+        this.tectAt = new Uint32Array(numCells);
         this.shelfKm3 = new Float32Array(numCells);    // rock the rivers have laid on this coast cell's shelf (km³ of rock; step/sea-fill.js)
         this.riseKm3 = new Float32Array(numCells);     // rock the rivers have laid past the shelf on this OCEAN cell: the continental rise (km³ of rock;
                                                        // step/trench-fans.js layRise; a record the terrain does not read — its rise is margins.js's)

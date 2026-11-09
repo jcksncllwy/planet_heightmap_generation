@@ -7,6 +7,7 @@ import { BoundaryKind, Provisional } from './model/world.js';
 import { speedCmYrAt } from './step/kinematics.js';
 import { classifyMargins, seaFilledUp } from './measure.js';
 import { arcCrustKm } from './step/collision.js';
+import { tectWindowMyr, openTectWindow } from './step/heights.js';
 import { encodeCoverKm, encodeExhumKm, encodeUnroofKm, encodeArcMyr, encodeAge, encodeFacies } from './model/geology.js';
 
 const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge counts as part of the live trench:
@@ -95,7 +96,10 @@ export function captureFrame(world, reuse = null) {
         geoFlags: new Uint8Array(n), coverKm: new Uint8Array(n), coverMaxKm: new Uint8Array(n), coverMaxAge: new Uint8Array(n), facies: new Uint16Array(n),
         exhumKm: new Uint8Array(n), unroofKm: new Int8Array(n), arcMyr: new Uint8Array(n),
         riftThin: new Float32Array(n), riftThinAt: new Float32Array(n),   // the stretch record (model/crust.js; lane rockbook's seam)
+        tectRateKm: new Float32Array(n),                    // the ground's tectonic rise since the last frame, erosion left out (km/Myr; step/heights.js)
     };
+    f.tectRateKm ??= new Float32Array(n);
+    const tectSpan = tectWindowMyr(world);
     f.time = world.time;
     // mark every raster cell that is some world cell's nearest; the rest are hidden between world cells (see below)
     const epoch = ++captureEpoch;
@@ -120,7 +124,7 @@ export function captureFrame(world, reuse = null) {
         f.riverKm2[w] = world.riverKm2 ? world.riverKm2[w] : 0;
         f.arcKm[w] = 0; f.arcAt[w] = 0;
         f.fzU[w] = 0;
-        f.riftThin[w] = 0; f.riftThinAt[w] = 0;
+        f.riftThin[w] = 0; f.riftThinAt[w] = 0; f.tectRateKm[w] = 0;
         f.geoFlags[w] = 0; f.coverKm[w] = 0; f.coverMaxKm[w] = 0; f.coverMaxAge[w] = 0; f.facies[w] = 0; f.exhumKm[w] = 0; f.unroofKm[w] = 0; f.arcMyr[w] = 0;
         if (owner[w] < 0) { f.type[w] = 0; f.formedAt[w] = 0; f.flags[w] = 0; f.terrane[w] = 0; f.slabKm[w] = 0; f.oroType[w] = 0; f.oroWork[w] = 0; f.oroStart[w] = 0; f.oroLast[w] = 0; f.thickKm[w] = 0; continue; }
         const crust = plates[owner[w]].crust, c = ownerCell[w];
@@ -140,6 +144,7 @@ export function captureFrame(world, reuse = null) {
         f.prevSide[w] = crust.prevSide[c]; f.prevShear[w] = crust.prevShear[c];
         f.rootKm[w] = crust.rootKm[c]; f.upliftKm[w] = crust.upliftKm[c]; f.rugged[w] = crust.rugged[c]; f.prevRugged[w] = crust.prevRugged[c]; f.volcWornKm[w] = crust.volcWornKm[c];
         f.riftThin[w] = crust.riftThin[c]; f.riftThinAt[w] = crust.riftThinAt[c];
+        if (tectSpan > 0) f.tectRateKm[w] = crust.tectKm[c] / tectSpan;
         f.riverIncKm[w] = crust.riverIncKm[c]; f.seaFillKm[w] = crust.seaFillKm[c]; f.basinFillKm[w] = crust.basinFillKm[c]; f.shelfKm3[w] = crust.shelfKm3[c]; f.riseKm3[w] = crust.riseKm3[c]; f.baseKm[w] = crust.baseKm[c];
         // (an island arc's crust and when its volcanoes last fed it — one the history never grew, a scene's, by its age and as live)
         if (crust.type[c] === CrustType.ARC) { f.arcKm[w] = arcCrustKm(crust, c, world.time, world.config); f.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : world.time; }
@@ -205,6 +210,7 @@ export function captureFrame(world, reuse = null) {
     f.budget = { ...world.budget };
     f.geoBook = world.geoBook ? { ...world.geoBook } : null;
     f.events = world.events.slice();
+    openTectWindow(world);
     return f;
 }
 

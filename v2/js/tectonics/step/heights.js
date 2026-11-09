@@ -92,10 +92,14 @@ export function evolveHeights(world, dt) {
     let fillWorn = 0;                                   // (the rock book: hollows' fill worn away with their land — not handed to the rivers: rock-book.js fillWornKm3)
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux, made = 0;
+    // (records only: the tectonic rise accumulator below. Each heights step is numbered; a cell whose reference height is
+    // from the step before carries forward, a new one, or one that was ocean, starts from here. Numbers start at 2, so a
+    // created cell's 0 never reads as "the step before")
+    const epoch = world.heightsEpoch = (world.heightsEpoch ?? 1) + 1;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm, basinFillKm } = crust;
+        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm, basinFillKm, tectKm, tectRefKm, tectAt } = crust;
         const m = plate.mat, n = mask.length;
         // the column a cell stands on (km above the sea, the mantle's swell aside: tectonics/measure.js): a continent's
         // and a craton's from their crust; an island arc's thickening only — its own crust stands by arcSurfaceKm, which
@@ -177,9 +181,18 @@ export function evolveHeights(world, dt) {
             // rift's shoulders are an escarpment that retreats at its own pace, whatever its height.
             const rift = oroType[c] === OrogenyType.RIFT, up = upliftKm[c] + flux[c], arc = type[c] === CrustType.ARC;
             const col = colOf(c), r0 = rootKm[c], c0 = rugged[c] + prevRugged[c], b0 = baseKm[c];
+            const arcTop = arc && !(flags[c] & CrustFlag.MARGIN_ISLE) ? Math.max(0, arcSurfaceKm(arcCrustKm(crust, c, time, config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0)) : 0;
+            // The tectonic rise (records only; the finish's uplift U, lane fluvial): what the ground's height did since this
+            // cell's last heights step, and this step's collapse, with erosion left out. Every change between two heights
+            // steps is tectonic (belts building and their foreland basins sinking, rifts thinning, collapse, underthrusting,
+            // subduction erosion, an arc growing): the only other writers of these heights are this step's wear and
+            // spreading, and those run after the reference is read below and before it is taken again. Signed: a basin's
+            // sinking below the sea counts. Left out: the rivers' fill and cuts and the volcanoes' own edifices (their
+            // records are their own), and the mantle's swell (no record here).
+            const tectNow = upliftKm[c] + baseKm[c] + col + arcTop;
+            if (tectAt[c] === epoch - 1) tectKm[c] += tectNow - tectRefKm[c];
             // (with the sediment laid in its hollow, as the rivers stand it: step/rivers.js)
-            let height = Math.max(0, up) + baseKm[c] + Math.max(0, col) + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
-            if (arc && !(flags[c] & CrustFlag.MARGIN_ISLE)) height += Math.max(0, arcSurfaceKm(arcCrustKm(crust, c, time, config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0));
+            const height = Math.max(0, up) + baseKm[c] + Math.max(0, col) + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR + arcTop;
             // (a shield's crystalline basement wears slower than the cover and the young rock of a range, by the carving's
             // own hardness of it: terrain-config.js carveCratonHardness — bedrock erodibility spans orders of magnitude by
             // lithology, crystalline the least: Stock & Montgomery 1999; cratons 1–10 m/Myr, Bierman & Caffee 2001)
@@ -198,6 +211,7 @@ export function evolveHeights(world, dt) {
             // (the geological record, step/geology.js: the rock this wear took off — the root as it stands, the relief and the
             // swells as the crust they stand for (measure.js crustThicknessKm), a share of the crests)
             if (geo) recordWear(crust, c, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]] + geo.crestShare * (c0 - rugged[c] - prevRugged[c]), Math.max(0, -up), time, dt, geo);
+            tectRefKm[c] = upliftKm[c] + baseKm[c] + colOf(c) + arcTop; tectAt[c] = epoch;
         }
     }
     bookRock('fillWornKm3', -fillWorn * world.mesh.cellAreaKm2);
@@ -257,4 +271,13 @@ function rateTable(H) {
         t = scratch.tables = { H, rate };
     }
     return t.rate;
+}
+
+/** The tectonic rise's window (records only; snapshot.js captureFrame): the time since the last frame (Myr). */
+export const tectWindowMyr = world => world.time - (world.tectSince ?? 0);
+
+/** A frame was taken: the tectonic rise gathers afresh from now. */
+export function openTectWindow(world) {
+    world.tectSince = world.time;
+    for (const plate of world.plates) if (plate.alive) plate.crust.tectKm.fill(0);
 }
