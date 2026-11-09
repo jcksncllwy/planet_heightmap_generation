@@ -107,8 +107,9 @@ export function gatherLoads(world) {
             // (c: each side's own raster cell here, so plate-stress.js puts each half of the lock on the plate it acts on)
             // (dh: the thickening the front pushes against — what the GPE lock resists with, the same on both sides: torque-balance.js.
             // The thickest of the two plates' crust within two rings of here: the overlap's own cells are the lower plate's
-            // edge going under, the plateau the collision builds (keepConsumed, 1 − u²) stands just behind it)
-            const dh = config.collisionLockGpe ? frontThickening(world, w, a, collider[w]) : 0;
+            // edge going under, the plateau the collision builds (keepConsumed, 1 − u²) stands just behind it — and here, in the
+            // overlap itself, the two crusts stacked one on the other)
+            const dh = config.collisionLockGpe ? frontThickening(world, w, a, collider[w], plates[a].crust, ownerCell[w], other.crust, otherCell) : 0;
             loadOf[a]?.contacts.push({ w, c: ownerCell[w], r, n: nAB, other: collider[w], weight, dh });
             loadOf[collider[w]]?.contacts.push({ w, c: otherCell, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight, dh });
             continue;
@@ -276,10 +277,21 @@ function newLoad() {
     return { torque: zero(), flowTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [], hinges: [] };
 }
 
-/** (config.collisionLockGpe) The thickest crust (km above its kind's as formed: crust.thickKm) of plates a and b within two rings of world cell w. */
-function frontThickening(world, w, a, b) {
-    const { mesh: { adjOffset, adjList }, owner, ownerCell, plates } = world;
-    let best = 0;
+/**
+ * (config.collisionLockGpe) The thickening the lock at overlap cell w resists with, km above ordinary crust (riftCrustKm):
+ * the thickest crust (crust.thickKm, above its kind's as formed) of plates a and b within two rings of w — the plateau the
+ * collision has built — and, at least, the column in the overlap itself: the two plates' crusts stacked there, the one
+ * going under the other (Argand 1924's doubled crust under Tibet; Zhao et al. 2010 image India's crust beneath it). That
+ * doubled column is what holds the pair at first contact, before any belt is built (and in a history without the event
+ * rules, which never build one: the overlap is all the thickening there is). With the event rules on, the collision
+ * takes the overlap up every step (step/collision.js), so the stack is one step's convergence wide; its weight, as the
+ * plateau's, is reckoned per metre of front, as an Airy-compensated column (torque-balance.js collisionGpeNPerM). Limits:
+ * the lower plate's edge is drawn at its kind's full thickness, not thinned as a passive margin's is.
+ */
+function frontThickening(world, w, a, b, crustA, cellA, crustB, cellB) {
+    const { mesh: { adjOffset, adjList }, owner, ownerCell, plates, config } = world, H = heightsOf(config);
+    const kindKm = (crust, c) => crust.type[c] === CrustType.CRATON ? H.cratonCrustKm : H.riftCrustKm;
+    let best = kindKm(crustA, cellA) + Math.max(0, crustA.thickKm[cellA]) + kindKm(crustB, cellB) + Math.max(0, crustB.thickKm[cellB]) - H.riftCrustKm;
     const look = c => { const p = owner[c]; if (p === a || p === b) best = Math.max(best, plates[p].crust.thickKm[ownerCell[c]]); };
     look(w);
     for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
