@@ -25,6 +25,11 @@ import { CrustType } from '../../js/tectonics/model/crust.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../../js/tectonics/config.js';
 import { appendFileSync } from 'node:fs';
 
+// GEO_SIM_DAWN=1: the finish's erosion runs on the GPU, through Dawn (gpu-harness/use-dawn.mjs), as Add detail runs it in a
+// browser, instead of on the frozen CPU path. A GEO_SIM_ variable, so sim-slots carries it to Chroma, whose jobs find the
+// `webgpu` package in its shared node_modules (a D3D12 adapter). The finish's suites run with it; the GCP gate VMs have no GPU.
+if (process.env.GEO_SIM_DAWN === '1') await import('../gpu-harness/use-dawn.mjs');
+
 setDelaunator(Delaunator);      // the browser gets Delaunator from a <script> tag; Node has to hand it over
 
 /** The lab's mesh: same cell count, same fixed seed (v2/js/app/lab-main.js MESH_SEED). */
