@@ -1327,6 +1327,9 @@ outside any checkout, `~/.cache/geo-sim/histories/` (`tools/lib/history-cache.mj
 ```
 node v2/tools/history.mjs latest                         # the history, the moment (timeMyr), the page's link, when
 node v2/tools/history.mjs frame --latest --out f.bin     # that very frame: v8.deserialize(fs.readFileSync('f.bin')).frame
+node v2/tools/history.mjs hash f.bin g.bin               # frames' VALUE hashes — compare these (frame prints one too), never shasum:
+                                                        # V8 writes one number as int32 or double by engine timing, so one history's
+                                                        # file bytes differ run to run (lib/frame-hash.mjs; check-determinism.mjs)
 sim-slots run -n 6 --gb 16 -- node --max-old-space-size=16000 v2/tools/render-moment.mjs --latest   # …rendered
 node v2/tools/history.mjs ls                             # every entry; frame --key <key> --time T for any of them
 ```
