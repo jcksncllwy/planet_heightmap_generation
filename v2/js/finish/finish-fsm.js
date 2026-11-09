@@ -194,7 +194,8 @@ export function fillSpillMerge(ctx, F) {
                 if (h.closed) {
                     census.closedHollows++;
                     const end = S.fate(h.deepCell);
-                    h.kind = salt ? Water.SALT : Water.PAN;      // (a closed basin with no salt lake the map shows: a playa's, drawn or not) h.levelNow = end >= 0 ? S.lakes[end].level : h.floor;
+                    h.kind = salt ? Water.SALT : Water.PAN;      // (a closed basin with no salt lake the map shows: a playa's, drawn or not)
+                    h.levelNow = end >= 0 ? S.lakes[end].level : h.floor;
                     closed.push({ catchKm2: h.area, lakeKm2, panKm2, aridity: h.aE > 0 ? h.aP / h.aE : 0, lakes: S.lakes.length });
                     q[c] = 0;
                     continue;
