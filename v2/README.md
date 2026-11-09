@@ -691,11 +691,14 @@ with each cell's slope as well, kept within each cell's neighbourhood range (`mo
 the distance across it that the ridge kernels carry (`crestFollow`: a main crest is one curved line, not a zig-zag).
 Hills go down to what the mesh can show, more on high ground, none at the shore (`hillsKm`); island arcs are cut
 into chains of islands by a noise of islands (`arcStraitKm`: straits are shallow sea; a broad arc keeps its interior).
-In `carve.js`: drowned valleys where hills and mountains meet the sea — each big valley lowered near its mouth along
-the river, the sea then flooding in only where it connects — fjords (`drownKm` 180 km up the valley, 1.4 km deep at the
-mouth) where the coast is cold, short shallow rias elsewhere (`riaKm` 60, 0.15 km: the sea risen since the ice age);
-cold by the warmest month at sea level in Add detail (`drownColdC`: none at 19 °C, full by 13), by latitude on the
-timeline (`drownColdLat` 44–58°) — and submarine canyons from big
+In `carve.js`: rias from the lowstand — the carve's base level is the ice age's sea, `iceSeaDropKm` 0.12 km below today's
+(Peltier & Fairbanks 2006, Lambeck et al. 2014, Blum & Törnqvist 2000; the history's own fall within the carve window,
+`tools/sea-window.mjs`, is about 1 m median and 15 m at worst, so the ice term alone sets it), so the shelf it bared is carved as land and
+its rivers cut valleys down to it; today's sea then floods in once from the world ocean (`floodSea`), through every cell below 0
+it reaches: the valleys it reaches are rias, the spurs between them headlands, and a hollow it does not reach stays as cut
+(counted as `stats.lowstand.hollowKm2`). The finish's early erosion grades to the same lowstand and floods once more at today's
+sea. Fjords are the ice's (finish-ice.js). Nothing draws a ria: no `drownValleys`, no coast-band warp, no `ria*` or `drown*` keys. Also
+submarine canyons from big
 rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
 Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights
 (`SmoothMapRaster.paintHeights`, or on the GPU `view/gpu-paint.js`), so a shore is the heights' zero line — crisp — not
@@ -861,7 +864,7 @@ explosive breakups, moth-eaten ocean plateaus, a featureless sea floor and a fla
   the coastal plain are true offsets of it. Roughness is where the land at the sea is rough (records.js `rugged`): island
   arcs, and young collision coasts by their relief (`coastRuggedKm`, while the belt is fresh: `coastFreshMyr`) take the
   coast noise (`coastNoiseKm`), the fine detail and a sharper line (`coastLineRuggedKm`, never under half a sim cell); a passive or active margin
-  takes none — its roughness is what its rivers' drowned valleys (rias, carve.js), the ice's fjords (finish-ice.js) and the
+  takes none — its roughness is what its rivers' lowstand valleys, drowned by today's sea (rias, carve.js), the ice's fjords (finish-ice.js) and the
   waves (finish-coast.js) cut into it. The sim-scale coast noise is gone, and a margin's shelf, coastal plain and maturity
   are smoothed along it over its flexural scale (`shelfAlongKm`). D on the tectonic surface at 1M cells, two seeds:
   mature passive 1.13 → 1.04, young passive 1.08–1.11 → 1.02–1.13 (a few thousand km), active 1.15–1.18 → 1.09–1.11, arcs
@@ -2155,7 +2158,7 @@ no longer cover the channels the measures read. Water stage at 10M 27.6 → 24.6
 The surface audit (`audit-surface`, main 34abaab) found five failing checks of which none was a clean model failure. What changed:
 
 - **Sea floor** (8b): the check predates submarine canyons. It now builds the carve a second time with `canyonKm: 0`: that sea must be exactly the tectonic surface; the canyons may only lower the cells under the sea, by at most `canyonDepthKm`, and move nothing above it. Still hard.
-- **Rivers run downhill** (8b): drowned valley floors (cells the carve left below the sea) are counted apart, not as rivers. Behind it a small model fix: `drownValleys` lowers each cell by its own drainage and relief, which could leave a river climbing; a cell still above the sea now stands no lower than its receiver where the drowning broke a downhill run (70 and 86 cells on two histories at 640K, 202 at 2.5M, all raised, at most 0.21 km; nothing else moves; a cell the carve left in a pit stays as it was). Still hard.
+- **Rivers run downhill** (8b): drowned valley floors (cells the carve left below the sea) are counted apart, not as rivers. (Retired 2026-11-09, coastflood: `drownValleys` is gone; the carve grades to the lowstand and today's sea floods in once, so the note below is history.) Behind it a small model fix: `drownValleys` lowers each cell by its own drainage and relief, which could leave a river climbing; a cell still above the sea now stands no lower than its receiver where the drowning broke a downhill run (70 and 86 cells on two histories at 640K, 202 at 2.5M, all raised, at most 0.21 km; nothing else moves; a cell the carve left in a pit stays as it was). Still hard.
 - **Moving continent carries its fine detail** (8a): `basinCover` (terrain/records.js) divided by `platformNoiseKm`, so with the noise off, as the check builds its noise-free surface, ~60 % of the interior was NaN. It is now 0 when there is no noise (bit-identical otherwise). The check picks the plate that turned most among those with at least 2,000 interior cells, counted on the terrain.
 - **Swells steer rivers** (8b): divides exclude filled plains (they have none), and the ratio is the median over five histories (12345, 1, 2, 777, 4242), bound 0.6 unchanged and labelled as a picked mechanism bound.
 - **Big rivers run through lowlands** (8b): now a `report()` against ETOPO5 measured the same way (0.21-0.24 km), plus a hard guard that there are big rivers to measure. The model's lack of lowland (12-30 % of land below 400 m against Earth's 46-50 %) is a land-height question for the belt work.

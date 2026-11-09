@@ -118,12 +118,15 @@ export function carveLadder(simMesh, tMesh, meshOf) {
     return [simMesh, ...[160000, 640000, 2500000].filter(c => c < tMesh.numCells * 0.9 && c > simMesh.numCells * 1.5).map(meshOf), tMesh];
 }
 
-/** The carving's settings (the same on every mesh: carve.js scales the valleys to each mesh's cells). */
-export function carveSettings(cfg) {
+/**
+ * The carving's settings (the same on every mesh: carve.js scales the valleys to each mesh's cells). seaWindowKm: the
+ * lowest the history's own sea stood against today's within the carving's time (≤ 0; 0: not given) — the base level is
+ * the lower of that and the ice age's lowstand (terrain-config iceSeaDropKm).
+ */
+export function carveSettings(cfg, seaWindowKm = 0) {
     return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, activeHold: cfg.carveActiveHold, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
         lipEdgeRetreat: cfg.lipEdgeRetreatKmPerMyr ?? 0, lipValleyRate: cfg.lipValleyKmPerMyr ?? 0, lipValleyAreaKm2: cfg.lipValleyAreaKm2 ?? 3000, lipWallKm: cfg.lipWallKm ?? 6, lipWallNoise: cfg.lipWallNoise ?? 0, lipStairShare: cfg.lipStairShare ?? 1, lipIncisionMyr: cfg.lipIncisionMyr ?? 0,
-        drownKm: cfg.drownKm ?? 0, drownDepthKm: cfg.drownDepthKm ?? 0, drownAreaKm2: cfg.drownAreaKm2, drownReliefKm: cfg.drownReliefKm, drownWiden: cfg.drownWiden ?? 0,
-        riaKm: cfg.riaKm ?? cfg.drownKm ?? 0, riaDepthKm: cfg.riaDepthKm ?? cfg.drownDepthKm ?? 0, drownColdLat: cfg.drownColdLat,
+        lowstandKm: Math.min(seaWindowKm, -(cfg.iceSeaDropKm ?? 0)),
         canyonKm: cfg.canyonKm ?? 0, canyonDepthKm: cfg.canyonDepthKm ?? 0, canyonAreaKm2: cfg.canyonAreaKm2 };
 }
 
@@ -133,6 +136,7 @@ export function carveSettings(cfg) {
  * worker builds it from the frame and hands it to the others (planToData).
  */
 const BLEND = 11;
+const COAST_BAND_CELLS = 1;        // (the coast band the warps leave alone, in sim cells: surfaceRange)
 /** The lift (km) of a cell's crust thickened past its kind's as formed (tectonics/measure.js; an arc's: the share of its
  *  thickening that is not its own growth) — the part of its column a belt's cross-section shapes. */
 const thickLiftKm = (cfg, type, rootKm) => (type === CrustType.ARC ? columnModel(cfg).slope[CrustType.CONTINENT] * ARC_ROOT_SHARE : columnModel(cfg).slope[type]) * Math.max(0, rootKm);
@@ -377,8 +381,11 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         detailF.push(R / lam); detailAmp.push(amp);
     }
     const simEdge = simMesh.edgeKm;
-    // (the coast band the warps leave alone: fully within bandLo of the coast, faded out by bandHi — terrain-config coastWarpBand)
-    const bandLo = (cfg.coastWarpBand ?? 0) * simEdge, bandHi = 1.5 * bandLo, u3 = [0, 0, 0], uw3 = [0, 0, 0];
+    // (the coast band the warps leave alone: within one sim cell of the coast, faded out by one and a half — there the coast
+    // is read where the point is, so its shape is the carved relief's and the flood's, not the lookup noise's. The margin
+    // line is already smooth at that scale (margin-line.js): unwarped, the band shows no grid — coastflood study 1,
+    // 2026-11-09: no 85–120 km bump on 831576@430/340, 12345@560)
+    const bandLo = COAST_BAND_CELLS * simEdge, bandHi = 1.5 * bandLo, u3 = [0, 0, 0], uw3 = [0, 0, 0];
     // the hills' octaves (frequency, amplitude) down to what this terrain mesh can show; the arcs' island noise
     const hillsF = [], hillsAmp = [];
     for (let o = 0, lam = cfg.hillsFromKm ?? 0; lam > 0 && o < 8; o++, lam /= 2) {
@@ -508,7 +515,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     // margin, by the share its sediment has buried — its maturity, records.js — the coast is read where the
                     // point is, not where the warp moved it: the coast field's gradient across the raster triangle times
                     // the warp's displacement taken back. A young, sediment-starved rift coast and an active one keep it)
-                    const bandW = bandHi > 0 ? smooth(bandHi, bandLo, Math.abs(coastR)) : 0;
+                    const bandW = smooth(bandHi, bandLo, Math.abs(coastR));
                     if (bandW > 0) {
                         // (in the coast band: the coast read where the point is on the raster, the warp taken off)
                         locate(simMesh, local[0], local[1], local[2], u3, uw3);
@@ -540,7 +547,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         if (coast === null) {
             coast = w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
             if (coastCurve > 0) coast += coastCurve * curveOf(simMesh, slopes.of(-1, coastKm), coastKm, c0, c1, c2, w0, w1, w2);
-            const bandW = bandHi > 0 ? smooth(bandHi, bandLo, Math.abs(coast)) : 0;
+            const bandW = smooth(bandHi, bandLo, Math.abs(coast));
             if (bandW > 0) {
                 // (in the coast band: the coast read where the point is on the world grid, the warp taken off)
                 locate(simMesh, px, py, pz, u3, uw3);

@@ -63,9 +63,12 @@ export function carveLevel(mesh, f, route, cfg) {
     // (closed basins' floors are outlets like the sea, each at its own level: the finish's dry basins)
     // (the sea: f.ocean where given — the world ocean, the finish's: a sea cut off from it is land down to its water,
     // its floor's sink — else the ground below sea level)
-    const sink = f.sink ?? null, wet = f.ocean ? c => f.ocean[c] > 0.5 : c => !(f.z[c] > 0);
+    // (the sea the rivers ran to: at the lowstand, cfg.lowstandKm below today's — terrain-config iceSeaDropKm — so the shelf
+    // it bared is land they cross and cut, and the world ocean only where it is deeper than that)
+    const low = cfg.lowstandKm ?? 0;
+    const sink = f.sink ?? null, wet = f.ocean ? c => f.ocean[c] > 0.5 && !(f.z[c] > low) : c => !(f.z[c] > low);
     const land = sink ? c => !wet(c) && !(sink[c] > 0.5) : c => !wet(c);
-    const baseOf = sink ? c => (sink[c] > 0.5 ? f.base[c] : 0) : () => 0;
+    const baseOf = sink ? c => (sink[c] > 0.5 ? f.base[c] : low) : () => low;
     // ── the priority flood: from the sea inward, lowest spill first ──
     const fill = new Float32Array(n), rank = new Int32Array(n).fill(-1), parent = new Int32Array(n).fill(-1), order = new Int32Array(n);
     const heap = new MinHeap(1 << 16);
@@ -126,20 +129,20 @@ export function carveLevel(mesh, f, route, cfg) {
     const fillAt = donorsAt.slice(0, n);
     for (let i = 0; i < count; i++) { const c = order[i], r = recv[c]; if (r >= 0) donors[fillAt[r]++] = c; }
     const pathCell = new Int32Array(count + 1), pathT = new Float64Array(count + 1), pathS = new Float64Array(count + 1), pathZ0 = new Float64Array(count + 1);
-    const walk = new Int32Array(count), walkDepth = new Int32Array(count), baseAt = sink ? new Float32Array(n) : null;
+    const walk = new Int32Array(count), walkDepth = new Int32Array(count), baseAt = new Float32Array(n);
     for (let i = 0; i < count; i++) {
         const root = order[i];
         if (recv[root] >= 0) continue;                                    // (roots: rivers that reach the sea)
         const base = baseOf(-1 - recv[root]);                             // (or a closed basin's floor)
         let top = 0;
         walk[top] = root; walkDepth[top++] = 1;
-        pathT[0] = 0; pathS[0] = base; pathZ0[0] = base;                  // (depth 0: the coast, at sea level)
+        pathT[0] = 0; pathS[0] = base; pathZ0[0] = base;                  // (depth 0: the coast, at the lowstand's sea)
         while (top > 0) {
             const c = walk[--top], d = walkDepth[top];
             // the path so far is depth 0 … d−1; c is at depth d
             const a = f.k[c] * Math.max(area[c], 1e-6) ** m, dx = recvKm[c];
             pathCell[d] = c; pathT[d] = pathT[d - 1] + dx / a; pathS[d] = pathS[d - 1] + dx * f.u[c] / a; pathZ0[d] = Math.max(base, f.z[c] - f.u[c] * t);   // (never below the sea: its base level)
-            if (baseAt) baseAt[c] = base;
+            baseAt[c] = base;
             const target = pathT[d] - t;
             let h;
             if (target <= 0) h = pathS[d];                                // the steady state: graded from the coast
@@ -154,7 +157,7 @@ export function carveLevel(mesh, f, route, cfg) {
         }
     }
     // ── the history's rivers: a bed is at least as deep as they cut it (a canyon where a river held its way) ──
-    for (let i = 0; i < count; i++) { const c = order[i], old = f.z[c] - f.inc[c]; if (old < bed[c]) bed[c] = Math.max(baseAt ? baseAt[c] : 0, old); }
+    for (let i = 0; i < count; i++) { const c = order[i], old = f.z[c] - f.inc[c]; if (old < bed[c]) bed[c] = Math.max(baseAt[c], old); }
     // ── an active belt rises as fast as its rivers cut: its beds stand higher — by activeHold at full activity (f.hold):
     // the range is shaped, not trenched (developer, 8b round 3) ──
     for (let i = 0; i < count; i++) { const c = order[i]; bed[c] = f.z[c] - (1 - cfg.activeHold * f.hold[c]) * (f.z[c] - bed[c]); }
@@ -180,9 +183,9 @@ export function carveLevel(mesh, f, route, cfg) {
         const c = order[i], r = recv[c], lim = (r >= 0 ? z[r] : baseOf(-1 - r)) + f.slope[c] * recvKm[c];
         if (lim < z[c]) z[c] = lim;
     }
-    // (land stays land: a river cut to its base level stands just above the sea — or above its basin's floor)
-    if (!baseAt) { for (let c = 0; c < n; c++) if (f.z[c] > 0 && z[c] < LAND_FLOOR) z[c] = Math.min(f.z[c], LAND_FLOOR); }
-    else for (let i = 0; i < count; i++) { const c = order[i], fl = baseAt[c] + LAND_FLOOR; if (z[c] < fl) z[c] = Math.min(f.z[c], fl); }
+    // (a river cut to its base level stands just above it — the lowstand's sea, or its basin's floor: ground the lowstand's
+    // rivers cut below today's sea is drowned where today's sea reaches it — carveTerrain's flood — a ria)
+    for (let i = 0; i < count; i++) { const c = order[i], fl = baseAt[c] + LAND_FLOOR; if (z[c] < fl) z[c] = Math.min(f.z[c], fl); }
     return { z, recv, area, order: order.subarray(0, count) };
 }
 const LAND_FLOOR = 0.002;
@@ -366,74 +369,38 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
     }
     if (F[L - 1].lipAge && (cfg.lipEdgeRetreat > 0 || cfg.lipValleyRate > 0)) stripBasalt(meshes[L - 1], F[L - 1], result, cfg);
     if (cfg.lipStepKm > 0) terraceBasalt(F[L - 1], result, cfg);     // (on the mesh shown only)
-    if (cfg.drownKm > 0 && cfg.drownDepthKm > 0) drownValleys(meshes, F, result, cfg);
+    floodToday(meshes[L - 1], F[L - 1], result);
     if (cfg.canyonKm > 0 && cfg.canyonDepthKm > 0) cutCanyons(meshes[L - 1], F[L - 1], result, cfg);
     return result;
 }
 
 /**
- * Drowned valleys (terrain-config drownKm …): where hills and mountains meet the sea, the sea runs up the big river valleys
- * — rias and fjords — and the ridges between them stand out as headlands. Each land cell's distance to the sea along its
- * river (the flood's order: every cell after the one it drains into); its valley floor lowered by
- *     depth · (1 − s / reach)² · (how much it drains) · (how high the land around is)
- * — depth and reach a fjord's where the coast is cold, a ria's where it is not (fields.fjord, 0…1: Add detail's climate;
- * without it, by latitude: drownColdLat)
- * — the land around read on the next coarser mesh (its mean tectonic height, over ~4 of these cells), so a valley's mouth,
- * graded to the sea, still counts as mountainous where its sides are. Then the sea floods in from the open ocean over
- * whatever is now below it; a hollow it cannot reach is given back its height (no pools of sea inland). Fades out where
- * the terrain cannot draw a valley's width (cells over ~25 km).
+ * Today's sea over the carved surface: a flood from the world ocean (fields.ocean where given, else the ground at or
+ * below 0) through every cell now below the sea — the lowstand's valleys it reaches are drowned (rias), spurs between
+ * them stay headlands. Nothing is moved: a hollow below the sea it does not reach stays as cut — dry land below the
+ * sea, or a lake for the finish's water — and is only counted (km²) here, for the studies.
  */
-function drownValleys(meshes, F, C, cfg) {
-    const L = meshes.length, mesh = meshes[L - 1], f = F[L - 1], { z, recv, area, order } = C, n = mesh.numCells;
-    const show = smooth(55, 25, mesh.edgeKm);
-    if (show <= 0) return;
-    const { adjOffset, adjList } = mesh, { dist } = infoOf(mesh);
-    const around = L > 1 ? upsample(meshes[L - 2], mesh, F[L - 2].z) : f.z;
-    const [a1, a2] = cfg.drownAreaKm2 ?? [2000, 30000], [r1, r2] = cfg.drownReliefKm ?? [0.15, 0.9], la1 = Math.log(a1), la2 = Math.log(a2);
-    // (fjord or ria: how cold here, 0…1 — the climate's where given, else the latitude's)
-    const [lat1, lat2] = cfg.drownColdLat ?? [44, 58], riaKm = cfg.riaKm ?? cfg.drownKm, riaDepth = cfg.riaDepthKm ?? cfg.drownDepthKm, { xyz } = mesh;
-    const coldAt = f.fjord ? c => f.fjord[c] : c => smooth(lat1, lat2, Math.abs(Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2])))) * 180 / Math.PI);
-    // (along the river to the sea: each cell after its receiver, in the flood's order)
-    const along = new Float32Array(n), before = z.slice(), sink = new Float32Array(n);
-    let drowned = false;
-    for (let i = 0; i < order.length; i++) {
-        const c = order[i], r = recv[c], to = r >= 0 ? r : -1 - r;
-        let step = 0;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (adjList[k] === to) { step = dist[k]; break; }
-        along[c] = (r >= 0 ? along[r] : f.sink && f.sink[to] > 0.5 ? Infinity : 0) + step;      // (a closed basin is no sea)
-        if (along[c] >= cfg.drownKm) continue;
-        const cold = coldAt(c), reach = riaKm + (cfg.drownKm - riaKm) * cold;
-        if (along[c] >= reach) continue;
-        const g = (1 - along[c] / reach) ** 2, drain = smooth(la1, la2, Math.log(Math.max(1, area[c]))), relief = smooth(r1, r2, around[c]);
-        const d = show * (riaDepth + (cfg.drownDepthKm - riaDepth) * cold) * g * drain * relief;
-        if (d > 0) { sink[c] = d; drowned = true; }
-    }
-    if (!drowned) return;
-    // (the valley's sides go down with it, by drownWiden of it: an inlet a few cells wide, not a slit)
-    const widen = cfg.drownWiden ?? 0, side = new Float32Array(n);
-    if (widen > 0) for (let c = 0; c < n; c++) {
-        if (!(sink[c] > 0)) continue;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (f.z[q] > 0 && widen * sink[c] > side[q]) side[q] = widen * sink[c]; }
-    }
-    for (let c = 0; c < n; c++) { const d = Math.max(sink[c], side[c]); if (d > 0) z[c] -= d; }
-    // the sea floods in from the ocean over what is now below it; a hollow it does not reach is given back its height
-    const reached = new Uint8Array(n), queue = new Int32Array(n);
+export function floodSea(mesh, z, seed, level = 0) {
+    const n = mesh.numCells, { adjOffset, adjList } = mesh, sea = new Uint8Array(n), queue = new Int32Array(n);
     let tail = 0;
-    for (let c = 0; c < n; c++) if (f.ocean ? f.ocean[c] > 0.5 : f.z[c] <= 0) { reached[c] = 1; queue[tail++] = c; }
+    for (let c = 0; c < n; c++) if (seed[c]) { sea[c] = 1; queue[tail++] = c; }
+    const seeds = tail;
     for (let head = 0; head < tail; head++) {
         const c = queue[head];
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!reached[q] && z[q] < 0) { reached[q] = 1; queue[tail++] = q; } }
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!sea[q] && z[q] < level) { sea[q] = 1; queue[tail++] = q; } }
     }
-    for (let c = 0; c < n; c++) if (z[c] < before[c] && !reached[c] && z[c] < LAND_FLOOR) z[c] = Math.min(before[c], LAND_FLOOR);
-    // a river does not climb because its valley drowned: each cell lowers by its own drainage and relief, so a cell could end
-    // below the one it drains into (audit 2026-10-30, 640K: 4 cells above the sea, rises to 0.2 km, and 29 more below it). Where
-    // the carve left it draining downhill and the drowning broke that, a cell still above the sea (once the sea has flooded in and the hollows it missed have their height back) stands no lower than its
-    // receiver — receivers first, so a run of them is levelled to the lowest below it (70 and 86 cells on two histories at 640K, 202 at 2.5M, all raised, the most by
-    // 0.2 km; nothing else moves; a cell the carve left in a pit stays as it was — drowning neither makes nor unmakes a basin). A drowned floor below the sea is left: a fjord's sill is no fault under water.
-    for (let i = 0; i < order.length; i++) {
-        const c = order[i], r = recv[c];
-        if (r >= 0 && z[c] >= 0 && z[c] < z[r]) z[c] = before[c] >= before[r] ? z[r] : before[c];      // (a cell the carve left in a pit stays as it was: drowning neither makes nor unmakes a basin)
-    }
+    return { sea, drowned: tail - seeds, queue, seeds, tail };
+}
+
+function floodToday(mesh, f, C) {
+    const { z } = C, n = mesh.numCells, cellKm2 = infoOf(mesh).area;
+    const seed = new Uint8Array(n);
+    for (let c = 0; c < n; c++) seed[c] = f.ocean ? f.ocean[c] > 0.5 : f.z[c] <= 0;
+    const { sea, drowned } = floodSea(mesh, z, seed);
+    let hollow = 0;
+    for (let c = 0; c < n; c++) if (!sea[c] && z[c] < 0 && f.z[c] >= 0) hollow++;
+    C.sea = sea;
+    C.flood = { drownedKm2: Math.round(drowned * cellKm2), hollowKm2: Math.round(hollow * cellKm2) };
 }
 
 /**

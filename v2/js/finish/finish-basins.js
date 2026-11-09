@@ -254,7 +254,7 @@ function treeScratch(n, m) {
  *   floor and sill (km), its water's level (km) and area (km²), inflow and what it would evaporate full (km³/yr), and
  *   whether it spills (full) or keeps a lake (wet) or a playa
  */
-export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null) {
+export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0) {
     const { adjOffset, adjList, numCells: n } = mesh;
     // ── the priority flood from the world ocean: each other cell's spill level, and the way it was reached (toward the
     // ocean) — a sea cut off from it is crossed as any hollow is, its spill level its sill ──
@@ -266,7 +266,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         for (let c = 0; c < n; c++) {
             if (!ocean[c]) continue;
             done[c] = 2;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!ocean[nb] && parent[nb] < 0) { parent[nb] = c; fill[nb] = Math.max(0, z[nb]); heap.push(fill[nb], nb); } }
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!ocean[nb] && parent[nb] < 0) { parent[nb] = c; fill[nb] = Math.max(seaKm, z[nb]); heap.push(fill[nb], nb); } }
         }
         while (heap.size) {
             const c = heap.pop();
@@ -323,7 +323,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
     function closeHollow(L, id) {
         let low = L.cells[0];
         for (const c of L.cells) if (z[c] < z[low]) low = c;
-        const floor = z[low], cutOff = floor < 0, area = L.cells.length * cellKm2;
+        const floor = z[low], cutOff = floor < seaKm, area = L.cells.length * cellKm2;
         const S = hollowLakes(mesh, L.cells, z, c => q[c], evap, minCells, L.level);
         L.inflow = S.inflow;
         const shows = W => W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;

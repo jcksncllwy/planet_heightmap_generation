@@ -20,9 +20,6 @@ export const TERRAIN = {
     // continent, frame after frame) and fixed there (it does not renew).
     cellWarp: 0.35,
     cellWarpCells: 3,
-    // the coast band the warps leave alone (in sim cells: |coast| under this, faded out over half as much again): there the
-    // coast is read where the point is, so its shape is the relief's, not the noise's. 0: warped everywhere (study flag)
-    coastWarpBand: 0,
 
     // ── Coasts ──
     // A coast's shape (developer, 2026-10-23: "I'm still not seeing things like the western coast of India or Africa … they're
@@ -553,30 +550,17 @@ export const TERRAIN = {
     // two, the carving time back where it was — a 600 Myr planet's median land 0.69 km before, 0.89 at the peak, 0.78 now)
     carveTimeMyr: 0.75,         // how long the rivers have worked on the present surface (longer: deeper, more graded; 0.6 until
                                 // 2026-09-29 — developer: increase the carving "again a bit")
-    // drowned valleys (developer: "where the mountains or hills hit the sea" — the coast there ran smooth past the valleys):
-    // where hills and mountains meet the sea, the sea runs up the big river valleys — rias and fjords — and the ridges
-    // between stand out as headlands. Along each river, within drownKm of its mouth (measured along the river), its
-    // valley floor is lowered by up to drownDepthKm — most at the mouth, fading upstream — by how much it drains
-    // (drownAreaKm2: none below the first, full from the second) and how high the land around is (drownReliefKm, the
-    // land's mean height over ~4 terrain cells: none on a lowland coast, full in the mountains). Whatever that leaves
-    // below the sea but cut off from it is given back. Shown where the terrain can draw a valley's width (fading out
-    // toward 160K's 61 km cells).
-    // (developer, 2026-10-18: "a lot of fjords in areas where they arent that cold, it makes the coast look super fractal
-    // basically everywhere") Deep and long only where it is cold — fjords, where the ice age's glaciers reached the sea
-    // and cut the valleys far below it (Norway, Patagonia, British Columbia); elsewhere rias — the sea risen ~120 m since
-    // the ice age, up the lowest stretch of the big valleys (Galicia, south China): a few short inlets, not a fractal coast.
-    // Cold: the warmest month at sea level (Add detail: the moment's climate), from none at the first to full at the second
-    // (Galicia's rias ~20 °C, Puget Sound ~18, Norway's and Patagonia's fjords 11–15); the timeline, before any climate,
-    // by latitude (where Earth's coasts pass those summers).
-    drownKm: 180,               // a fjord's reach up its valley…
-    drownDepthKm: 1.4,          // …and its depth at the mouth
-    riaKm: 60,                  // a ria's
-    riaDepthKm: 0.15,
-    drownColdC: [19, 13],
-    drownColdLat: [44, 58],
-    drownAreaKm2: [800, 15000],
-    drownReliefKm: [0.15, 0.9],
-    drownWiden: 0.55,           // a drowned valley's neighbours lowered by this share of it too (an inlet a few cells wide)
+    // the rivers' base level: the sea at the ice age's lowstand. The carving's time (carveTimeMyr, ~1 Myr) spans ~10 of
+    // the 100 kyr glacial cycles, each taking the sea ~120 m down (Earth's last: −120…−134 m, Peltier & Fairbanks 2006;
+    // Lambeck et al. 2014); at each lowstand the rivers cross the bared shelf and cut down toward that sea, and the
+    // valleys they cut are drowned when it rises again — rias (Galicia, Brittany, the Chesapeake: Blum & Törnqvist 2000).
+    // So the carve runs to a sea iceSeaDropKm below today's (lower still where the history's own sea stood lower within
+    // the carving's time: terrain/sea-level.js, given by the caller), the shelf above it carved as land, and today's sea
+    // then floods in from the ocean over whatever stands below it (carve.js floodToday). Reduced: the lowest sea held as
+    // the base level throughout (the rivers' incision at lowstand outlasts the cycle; their valleys' refilling by the
+    // transgression is left to the finish's sediment); fjords are the finish's ice age's (finish-ice.js), not this.
+    // One figure: the finish's ice age reads it too (finish-config.js iceSeaDropKm).
+    iceSeaDropKm: 0.12,
     carveM: 0.4,                // the drainage-area exponent m (the paper's; concavity m / n)
     carveK: 5,                  // k (km^(1−2m)/Myr): the wave's speed where 1 km² drains — 200 km/Myr at 10⁴ km² (the paper's k)
     carveBgUplift: 0.02,        // background rock uplift (km/Myr) everywhere: rivers keep a gentle graded slope

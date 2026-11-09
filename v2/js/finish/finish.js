@@ -23,6 +23,7 @@ import { KOPPEN_ID } from '../climate/koppen.js';
 import { terrainMesh, terrainEdgeKm } from '../terrain/terrain-mesh.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { carveLadder, carveSettings } from '../terrain/synthesize.js';
+import { floodSea } from '../terrain/carve.js';
 import { carveTerrain, forgetMesh } from '../terrain/carve.js';
 import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimate } from '../climate/climate.js';
@@ -259,15 +260,15 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     stats.closedBasins = B.basins;
     stats.cutOffSeas = B.seas;
     const before = z.slice();
-    // (how cold each coast is — its warmest month at sea level: fjords where it is cold, rias where not; carve.js drownValleys)
-    const [warmC, coldC] = cfg.drownColdC ?? [19, 13];
-    carveIn.fjord = new Float32Array(n);
-    for (let c = 0; c < n; c++) carveIn.fjord[c] = smooth(warmC, coldC, warmSl[c]);
-    const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds });
+    // (the rivers' base level: the ice age's lowstand, the finish's own figure — terrain-config iceSeaDropKm)
+    const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds, iceSeaDropKm: F.iceSeaDropKm });
     // (the carve's sea: the world ocean — a cut-off sea's dry floor below sea level is land its rivers cross, down to its
     // water's level, their base level there)
     census('before carve', ocean0);
     const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base, ocean: ocean0 }, settings);
+    const low = settings.lowstandKm;
+    ocean0 = C.sea;                                                   // (today's sea over the carved ground: bayhead deltas lie in the rias it drowned)
+    stats.lowstand = { baseKm: low, ...C.flood };   // (the lowstand's valleys today's sea drowned, km²; the hollows below it it did not reach)
     // (where flood basalt still caps the ground after the carving — its pile not cut through — for the satellite view)
     const basalt = new Uint8Array(n);
     for (let c = 0; c < n; c++) if (carveIn.lip[c] > 0) basalt[c] = Math.round(255 * carveIn.lip[c] * smooth(0, 0.05, C.z[c] - carveIn.lipBase[c]));
@@ -300,11 +301,29 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         lap('lithology');
     }
     if (EP?.at === 'early' || EP?.at === 'both') {
+        // (the lowstand's ocean: the sea where it was still deeper than the lowstand; the shelf between is land the erosion grades to it)
+        const lowOcean = new Uint8Array(n);
+        for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low ? 1 : 0;
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: ocean0, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood) }, EP, terrainMesh, eroder.solve)
-            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: ocean0, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean0, flood) }, EP);
+        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm) }, EP, terrainMesh, eroder.solve)
+            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low) }, EP);
         lap('erosion');
+        // (one flood at today's sea over what the erosion left: the lowstand's valleys it reaches are the rias)
+        {
+            const f1 = floodSea(mesh, C.z, ocean0), { adjOffset, adjList } = mesh;
+            // (what the flood added: broad plain, or valleys? a cell with every neighbour in the sea is plain interior; the BFS ring it was reached in is its distance inland, in cells)
+            const ring = new Int32Array(n).fill(1e9), hist = [0, 0, 0, 0, 0, 0];
+            for (let c = 0; c < n; c++) if (ocean0[c]) ring[c] = 0;
+            let interior = 0;
+            for (let i = f1.seeds; i < f1.tail; i++) {
+                const c = f1.queue[i]; let r = 1e9, all = true;
+                for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!f1.sea[q]) all = false; if (ring[q] + 1 < r) r = ring[q] + 1; }
+                ring[c] = r; if (all) interior++; hist[Math.min(5, r - 1)]++;
+            }
+            stats.lowstand.afterErode = { drownedKm2: Math.round(f1.drowned * cellKm2), interiorKm2: Math.round(interior * cellKm2), ringKm2: hist.map(h => Math.round(h * cellKm2)) };
+            ocean0 = f1.sea;
+        }
         census('after erosion', ocean0);
     }
 

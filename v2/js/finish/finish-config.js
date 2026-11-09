@@ -6,7 +6,8 @@
 // 4.1 ± 1.5 mm d⁻¹ K⁻¹ over 66 glaciers (Braithwaite 2008, J. Glaciol. 54: 437), × 30 days — the climate's own rate
 // (climate/rain.js MELT_MM_PER_C_MONTH, 120). One rate for the rivers' seasons, the thaw gate and the cover's snow (lane
 // polar, 2026-11-05; until then the finish's 90, ~3 mm d⁻¹ K⁻¹, uncited, against the climate's 120: model review U9).
-import { SNOW_MELT_MM_PER_C, SOIL_MM } from '../climate/water.js';     // (the water ledger's: one snowmelt rate, one soil)
+import { SNOW_MELT_MM_PER_C, SOIL_MM } from '../climate/water.js';
+import { TERRAIN } from '../terrain/terrain-config.js';     // (the water ledger's: one snowmelt rate, one soil)
 
 export const FINISH = {
     // ── F1: warp and detail ──
@@ -95,7 +96,7 @@ export const FINISH = {
     iceColdEqC: 3.5,            // colder than now at the equator…
     iceColdPoleC: 16,           // …and at the poles (polar amplification: ~ (|lat|/90)^1.5 between)
     iceDrier: 0.3,              // precipitation lower by up to this share toward the poles
-    iceSeaDropKm: 0.12,         // the sea ~120 m lower: shelves bare, ice grounded on them
+    iceSeaDropKm: TERRAIN.iceSeaDropKm,   // the sea ~120 m lower: shelves bare, ice grounded on them (terrain-config.js: the carve's base level too)
     iceGroundedKm: 0.4,         // ice grounded on the sea floor down to this depth where it spread from land
     iceMarginC: [2, 6],         // ice flows past its snowline into summers this much warmer: a glacier's tongue … an ice sheet's lobe
     iceSheetKm2: [3e4, 1e6],    // (by how big the snowfield it flows from is)

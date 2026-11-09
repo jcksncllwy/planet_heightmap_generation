@@ -13,6 +13,7 @@ import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { synthesizeTerrain, hypsometry } from '../js/terrain/synthesize.js';
+import { floodSea } from '../js/terrain/carve.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide } from '../js/terrain/records.js';
@@ -67,9 +68,8 @@ section('the river network');
         if (r < 0 || T.heightKm[t] >= T.heightKm[r] - 1e-4) continue;
         if (T.heightKm[t] >= T.tectonicKm[t] - 1e-6) basins++; else if (T.heightKm[t] < 0) drowned++; else uphill++;
     }
-    // (audit 2026-10-30: the cells the carve drowned — now below the sea — are an inlet's floor, a ria or a fjord with a sill, and
-    // are not rivers; with drownKm 0 there were none of the 33 rises. Above the sea, drownValleys levels a river its drowning
-    // would have left climbing, so none is left to excuse)
+    // (the cells the carve left below today's sea — the lowstand's valleys it flooded — are an inlet's floor, a ria or a fjord with a
+    // sill, and are not rivers. Above the sea no rule levels a river: the carve grades to the lowstand and none climbs)
     check('rivers run downhill (basins and drowned valley floors aside)', channels > 1000 && uphill === 0, `${channels} cells of rivers draining over ${fullKm2.toFixed(0)} km²; ${uphill} carved below the cell they drain into; ${basins} (${(100 * basins / channels).toFixed(1)} %) in basins of the tectonic surface; ${drowned} on the floor of a drowned valley`);
     // dendritic: drainage areas follow a power law, P(A ≥ a) ∝ a^−β with β ≈ 0.43 on Earth (Rodríguez-Iturbe & Rinaldo)
     const areas = [];
@@ -89,11 +89,15 @@ section('carving');
     // what made it change: built again with no canyons it is exactly the tectonic surface, and the canyons only lower it, by no
     // more than canyonDepthKm, and leave the land as it was)
     const noCanyons = synthesizeTerrain(history.frame, mesh, T.tm, { seed: SEED, carve: true, cfg: { ...TERRAIN, canyonKm: 0 } });
-    let raised = 0, seaChanged = 0, canyonCells = 0, canyonRaised = 0, canyonTooDeep = 0, landMoved = 0, deepest = 0, cut = 0, landCells = 0;
+    let raised = 0, seaChanged = 0, lowstandValley = 0, canyonCells = 0, canyonRaised = 0, canyonTooDeep = 0, landMoved = 0, deepest = 0, cut = 0, landCells = 0;
     for (let t = 0; t < n; t++) {
         if (T.heightKm[t] > T.tectonicKm[t] + 1e-6) raised++;
         const dug = noCanyons.heightKm[t] - T.heightKm[t];
-        if (!land(t) && noCanyons.heightKm[t] !== T.tectonicKm[t]) seaChanged++;
+        // (a sea cell may differ from the tectonic surface only where the lowstand bared it (shelf within iceSeaDropKm of today's sea) and a
+        // river cut it: a lowstand valley. Anything else is the carve touching a sea floor it has no business with)
+        if (!land(t) && noCanyons.heightKm[t] !== T.tectonicKm[t]) {
+            if (noCanyons.heightKm[t] < T.tectonicKm[t] && T.tectonicKm[t] > -TERRAIN.iceSeaDropKm) lowstandValley++; else seaChanged++;
+        }
         // (under the sea as the carve left it — a drowned valley's floor is under it too, and a canyon runs up an inlet's mouth)
         if (noCanyons.heightKm[t] <= 0) {
             if (dug !== 0) { canyonCells++; if (dug < 0) canyonRaised++; if (dug > TERRAIN.canyonDepthKm + 1e-6) canyonTooDeep++; deepest = Math.max(deepest, dug); }
@@ -105,9 +109,9 @@ section('carving');
         if (T.tectonicKm[t] - T.heightKm[t] > 0.1) cut++;
     }
     check('rivers only ever lower the ground', raised === 0, `${raised} cells raised`);
-    check('the sea floor is untouched but for submarine canyons, which only cut it, and the land is not touched by them',
+    check('the sea floor is untouched but for submarine canyons and the lowstand’s river valleys, which only cut it, and the land is not touched by canyons',
         seaChanged === 0 && canyonRaised === 0 && canyonTooDeep === 0 && landMoved === 0,
-        `without canyons ${seaChanged} sea cells differ from the tectonic surface; ${canyonCells} cells under the sea cut by canyons (deepest ${deepest.toFixed(2)} km of ${TERRAIN.canyonDepthKm}), ${canyonRaised} raised, ${canyonTooDeep} cut too deep, ${landMoved} cells above the sea moved`);
+        `without canyons ${seaChanged} sea cells differ from the tectonic surface other than ${lowstandValley} lowstand valley cells (shelf bared by the ice-age sea, cut by rivers); ${canyonCells} cells under the sea cut by canyons (deepest ${deepest.toFixed(2)} km of ${TERRAIN.canyonDepthKm}), ${canyonRaised} raised, ${canyonTooDeep} cut too deep, ${landMoved} cells above the sea moved`);
     const plain = synthesizeTerrain(history.frame, mesh, T.tm, { seed: SEED });
     check('the surface the rivers carve is exactly 8a’s tectonic surface', plain.heightKm.every((v, i) => Object.is(v, T.tectonicKm[i])), '640K cells, built with and without the carving');
     report('land cut more than 100 m by the rivers', 100 * cut / landCells, { unit: ' %', digits: 1, source: 'no Earth figure' });
@@ -116,7 +120,24 @@ section('carving');
         `median ${before.landKm[2].toFixed(2)} → ${after.landKm[2].toFixed(2)} km; below 400 m ${(100 * before.below400).toFixed(0)} % → ${(100 * after.below400).toFixed(0)} % of land`);
     report('land below 400 m after carving', 100 * after.below400, { earth: [45, 55], unit: ' %', digits: 0, source: '~54 % below 500 m, ETOPO hypsometry — today only: an icehouse lowstand with the continents dispersed; no history of hypsometry found (sea level ~+170 m in the Late Cretaceous, Müller et al. 2008, would drown much of it)',
         detail: `${(100 * before.below400).toFixed(0)} % before carving` });
-    check('land stays land: the coastline is not moved', Math.abs(after.landShare - before.landShare) < 0.002, `${(100 * before.landShare).toFixed(2)} % → ${(100 * after.landShare).toFixed(2)} % of the planet`);
+    // The coast moves by one process only: rivers cut valleys at the ice-age lowstand and the postglacial rise drowned them (rias, estuaries;
+    // Lambeck et al. 2014 PNAS 111, 15296; Peltier & Fairbanks 2006 Quat. Sci. Rev. 25, 3322). So every cell that was land and is sea now
+    // must have been cut by the carve, and any that the world ocean reaches is a drowned valley; the cells it does not reach are hollows (false lakes,
+    // reported). A land cell lost any other way is a coastline moved by something else.
+    const seaSeed = new Uint8Array(n); for (let t = 0; t < n; t++) seaSeed[t] = land(t) ? 0 : 1;
+    const reach = floodSea(T.tm, T.heightKm, seaSeed).sea;
+    let lost = 0, lostUncut = 0, lostHollow = 0;
+    for (let t = 0; t < n; t++) {
+        if (!land(t) || !(T.heightKm[t] <= 0)) continue;
+        lost++;
+        if (!(T.heightKm[t] < T.tectonicKm[t])) lostUncut++;
+        if (!reach[t]) lostHollow++;
+    }
+    // (the hollows: a cell the carve cut below the sea that the ocean cannot reach is an inland depression, a false lake rather than a moved coast; held to 1 % of the loss)
+    check('land becomes sea only where the lowstand carve cut a valley, and today’s sea floods it', lostUncut === 0 && lostHollow <= 0.01 * lost,
+        `${lost} land cells now at or below the sea: ${lostUncut} not cut by the carve, ${lostHollow} cut below the sea but not reached by the world ocean (hollows)`);
+    report('land share after the postglacial flood', 100 * after.landShare, { unit: ' %', digits: 2, source: 'lowstand valleys drowned (Lambeck et al. 2014; Peltier & Fairbanks 2006)', detail: `${(100 * before.landShare).toFixed(2)} % before carving` });
+    check('the drowned valleys are a bounded share of the land (backstop)', Math.abs(after.landShare - before.landShare) < 0.02, `${(100 * before.landShare).toFixed(2)} % → ${(100 * after.landShare).toFixed(2)} % of the planet`);
     // big rivers are graded to lowlands
     const big = []; for (let t = 0; t < n; t++) if (land(t) && T.drainage[t] >= 1e5) big.push(T.heightKm[t]);
     // (audit 2026-10-30: was a hard check, median < 0.4 km with no source — a limit that fits today's Earth, one stage of the cycle.

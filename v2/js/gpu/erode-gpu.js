@@ -222,7 +222,7 @@ export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEv
 
 /** Build the solver for one run of one mesh. `gpu`: navigator.gpu or Dawn's. */
 export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, gpuClosed = false } = {}) {
-    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null } = o;
+    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null } = o, seaLvl = Math.fround(o.seaKm ?? 0);     // (a float32, as the CPU's: finish-erode.js)
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
     const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
@@ -304,7 +304,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         const out = new Uint32Array(n), surf = new Float32Array(n), Zs = new Float32Array(n), self = new Uint32Array(n), d0 = new Uint32Array(n), rec = new Uint32Array(n), lab = new Uint32Array(n);
         list = new Uint32Array(n); listLen = 0;
         for (let c = 0; c < n; c++) {
-            if (ocean[c] || (!seaOnly && sink[c])) { out[c] = 1; surf[c] = ocean[c] ? 0 : base[c]; Zs[c] = ocean[c] ? 0 : base[c]; lab[c] = n; } else list[listLen++] = c;
+            if (ocean[c] || (!seaOnly && sink[c])) { out[c] = 1; surf[c] = ocean[c] ? seaLvl : base[c]; Zs[c] = ocean[c] ? seaLvl : base[c]; lab[c] = n; } else list[listLen++] = c;
             self[c] = c; rec[c] = c;
         }
         put('outlet', out); put('surf', surf); put('Zt', Zs); put('list', list); put('ptrA', self); put('ptrB', self); put('ptrC', self); put('label', lab); put('recv', rec); put('depthA', d0); put('depthB', d0); put('valA', Zs); put('valB', Zs);
@@ -427,7 +427,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     };
     const R = { route: [], toSea: 0, inClosed: 0 };
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
-    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column) : null, curve = [];
+    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaLvl) : null, curve = [];
     let reboundKm3 = 0;
     try {
         put('dropped', new Float32Array(n));
