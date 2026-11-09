@@ -377,6 +377,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         detailF.push(R / lam); detailAmp.push(amp);
     }
     const simEdge = simMesh.edgeKm;
+    // (the coast band the warps leave alone: fully within bandLo of the coast, faded out by bandHi — terrain-config coastWarpBand)
+    const bandLo = (cfg.coastWarpBand ?? 0) * simEdge, bandHi = 1.5 * bandLo, u3 = [0, 0, 0], uw3 = [0, 0, 0];
     // the hills' octaves (frequency, amplitude) down to what this terrain mesh can show; the arcs' island noise
     const hillsF = [], hillsAmp = [];
     for (let o = 0, lam = cfg.hillsFromKm ?? 0; lam > 0 && o < 8; o++, lam /= 2) {
@@ -506,7 +508,18 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                     // margin, by the share its sediment has buried — its maturity, records.js — the coast is read where the
                     // point is, not where the warp moved it: the coast field's gradient across the raster triangle times
                     // the warp's displacement taken back. A young, sediment-starved rift coast and an active one keep it)
-                    if (smoothCoast > 0 && matureR > 0.01 && Math.abs(coastR) < 400) coastR -= smoothCoast * matureR * warpShift(simMesh.xyz, q3, s0, s1, s2, local, warped);
+                    const bandW = bandHi > 0 ? smooth(bandHi, bandLo, Math.abs(coastR)) : 0;
+                    if (bandW > 0) {
+                        // (in the coast band: the coast read where the point is on the raster, the warp taken off)
+                        locate(simMesh, local[0], local[1], local[2], u3, uw3);
+                        const t0 = S.coast[u3[0]], t1 = S.coast[u3[1]], t2 = S.coast[u3[2]];
+                        if (t0 === t0 && t1 === t1 && t2 === t2) {
+                            let cu = uw3[0] * t0 + uw3[1] * t1 + uw3[2] * t2;
+                            if (coastCurve > 0) cu += coastCurve * curveOf(simMesh, slopes.of(oc, S.coast), S.coast, u3[0], u3[1], u3[2], uw3[0], uw3[1], uw3[2]);
+                            coastR += bandW * (cu - coastR);
+                        }
+                    }
+                    if (smoothCoast > 0 && matureR > 0.01 && Math.abs(coastR) < 400) coastR -= (1 - bandW) * smoothCoast * matureR * warpShift(simMesh.xyz, q3, s0, s1, s2, local, warped);
                     ruggedR = qw3[0] * S.rugged[q3[0]] + qw3[1] * S.rugged[q3[1]] + qw3[2] * S.rugged[q3[2]];
                     riftR = qw3[0] * S.rift[q3[0]] + qw3[1] * S.rift[q3[1]] + qw3[2] * S.rift[q3[2]];
                     if (riftR > 1e-3) {
@@ -527,6 +540,14 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
         if (coast === null) {
             coast = w0 * coastKm[c0] + w1 * coastKm[c1] + w2 * coastKm[c2];
             if (coastCurve > 0) coast += coastCurve * curveOf(simMesh, slopes.of(-1, coastKm), coastKm, c0, c1, c2, w0, w1, w2);
+            const bandW = bandHi > 0 ? smooth(bandHi, bandLo, Math.abs(coast)) : 0;
+            if (bandW > 0) {
+                // (in the coast band: the coast read where the point is on the world grid, the warp taken off)
+                locate(simMesh, px, py, pz, u3, uw3);
+                let cu = uw3[0] * coastKm[u3[0]] + uw3[1] * coastKm[u3[1]] + uw3[2] * coastKm[u3[2]];
+                if (coastCurve > 0) cu += coastCurve * curveOf(simMesh, slopes.of(-1, coastKm), coastKm, u3[0], u3[1], u3[2], uw3[0], uw3[1], uw3[2]);
+                coast += bandW * (cu - coast);
+            }
         }
         if (parts) parts.dcoastRaw[t] = coast;
         // (how rugged the coast is here — records.js rugged: an island arc's, a young collision coast's by its relief — and

@@ -20,6 +20,9 @@ export const TERRAIN = {
     // continent, frame after frame) and fixed there (it does not renew).
     cellWarp: 0.35,
     cellWarpCells: 3,
+    // the coast band the warps leave alone (in sim cells: |coast| under this, faded out over half as much again): there the
+    // coast is read where the point is, so its shape is the relief's, not the noise's. 0: warped everywhere (study flag)
+    coastWarpBand: 0,
 
     // ── Coasts ──
     // A coast's shape (developer, 2026-10-23: "I'm still not seeing things like the western coast of India or Africa … they're
