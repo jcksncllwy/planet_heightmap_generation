@@ -106,13 +106,16 @@ export const TECTONICS = {
     collisionLockGpe: false,    // (lane belts, opt-in) the lock resists with a FORCE, the buoyancy of the crust the collision has thickened (~5.7 × 10¹² N/m
                                 // at Tibet's; Copley et al. 2010), not collisionResistance's viscosity per km² of overlap — under which the
                                 // closing fell as the overlap grew, India stalling at ~0.5 cm/yr 30 Myr after contact (Earth ~4) and
-                                // converging 1110–1350 km (Earth 2400–3200): step/torque-balance.js collisionGpeNPerM. India in the whole
-                                // model (belts-probe --full, seeds 12345/1/2): 1122/1115/1125 off → 1146/1437/1354 km on; still short: the pair moves
-                                // as one (Asia speeds up 3.2 → 4.7 cm/yr, Eurasia ~1–2; India runs on at 7–12 along the front, the closing
-                                // ~0): the upper plate's own resistance is the next lane, not this lock. Off by default: on, the gate fails
-                                // p4/p5a/p7c/p8a and check-phase11 throws. collisionResistance applies only with this off. The shares below apply
+                                // converging 1110–1350 km (Earth 2400–3200): step/torque-balance.js collisionGpeNPerM; its Δh counts the two
+                                // crusts stacked in the overlap, so it holds from first contact (forces.js frontThickening). Off by default
+                                // (lane belts5, 2026-11-09): on, Phase 4's forces-only slowing on contact fails (a force capped at the
+                                // plateau's cannot stop a plate whose drive goes on: India's 20 → 6 cm/yr was its drive collapsing), and the
+                                // whole model's biggest collisions close 1461–2374 km at 1–2 cm/yr (Earth ~5 for ~50 Myr) — the missing
+                                // process is the drive after contact, not this lock (README, "The collision lock is a bounded force").
+                                // collisionResistance applies only with this off. The shares below apply
     collisionSlabPull: false,   // (lane upper, opt-in) the slab hanging under a collision front keeps pulling the lower plate in, net of the buoyancy
-                                // of its continental crust gone down after it (Cloos 1993), until break-off (step/forces.js hangingSlabPull)
+                                // of its continental crust gone down after it (Cloos 1993), until break-off (step/forces.js hangingSlabPull).
+                                // Off: it brings no whole-model collision into Earth's range (README, lane belts5)
     collisionSlabGrossNPerM: 3e13, // …the slab's gross negative buoyancy, N/m, that the crust's buoyancy is set against (England & Wortel 1980: up to ~3 × 10¹³;
                                 // the force unit is the ~20 % of it the plate feels — forceUnitNPerM)
     collisionBreakoffMyr: 20,   // …and the slab breaks off this long after first contact: 20–25 Myr for an old, strong slab (van Hunen & Allen 2011,

@@ -1167,19 +1167,38 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   stacked at ~1,200 km, so the lock's strength is not what limits it. With the underthrust on (Phase 7c's India), the
   crust reaches the 40 km thickening cap.
 - **The collision lock is a bounded force (lane belts, `collisionLockGpe`, opt-in, off by default).** A contact resists with the
-  gravitational potential energy of the crust the collision has thickened, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²] per metre of front
-  (5.7 × 10¹² N/m at Tibet's 35 km of extra crust; Copley et al. 2010), Δh the thickest crust within two rings of the
-  contact (`forces.js frontThickening`). It enters the torque balance as that force ÷ the closing rate, no slower than
-  the stall rate: a regularised friction, not `collisionResistance`'s viscosity per km² of overlap (which applies only
-  with the flag off). India in the whole model (`belts-probe.mjs --full`, seeds 12345/1/2): 1122/1115/1125 km of shortening
-  with the flag off, 1146/1437/1354 on. Still short of Earth's 2400–3200 km. The pair moves as one: ~30 Myr after contact the closing
-  across the seam is ~0 while Asia speeds up 3.2 → 4.7 cm/yr (Eurasia holds ~1–2) and India runs on at 7–12 cm/yr, along
-  the front rather than into it (seed 12345; with Phase 5's rules plus the underthrust, Asia 0.9 → 3.8 and India 4–5.7). The upper
-  plate's own resistance (its basal and keel drag, its far boundaries) is the missing process, queued as its own lane.
-  Tried and dropped: the lower plate's crust going down as negative slab pull (Cloos 1993). The front's slab pull is
-  already dropped at contact, so it double-counted and stalled India at ~1100 km. Also tried: upper-plate shortening behind a jammed
-  craton (no gain once the underthrust consumes the overlap). Phase 5's India (`NO_WINGS`, underthrust off) measures the
-  stack weld, not the seam, and is not the acceptance scene.
+  gravitational potential energy of the thickened crust, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²] per metre of front (5.7 × 10¹² N/m at
+  Tibet's 35 km of extra crust; Copley et al. 2010). Δh is the larger of the thickest crust within two rings of the contact
+  and the column in the overlap itself, where the two crusts are stacked one on the other (Argand 1924; Zhao et al. 2010),
+  so the lock holds from first contact, before any belt is built, and in histories without the event rules
+  (`forces.js frontThickening`). It enters the torque balance as that force ÷ the closing rate, no slower than the stall
+  rate: a regularised friction, not `collisionResistance`'s viscosity per km² of overlap (which applies only with the flag off).
+  **Why it stays off** (lane belts5, 2026-11-09). On, it passes Phase 5a's India and Phase 11's zipper, but not Phase 4's
+  forces-only "collision slows the plate" (4.70 → 3.93 cm/yr) and "slows sharply on contact" (6.9 → 6.1). A force capped at the
+  plateau's cannot stop a plate whose drive goes on; India's 20 → 6 cm/yr was its drive collapsing. Phase 7c's underthrust A/B
+  also fails, because under a force the underthrust's thickening slows the pair. And the whole model's collisions come out short.
+  The biggest weld per history by convergence after contact (`belts-history.mjs`, seeds 12345/777/4242, Chroma), against
+  Earth's 2400–3200 km for India–Asia:
+
+  | | km | Myr contact → weld | mean closing, cm/yr |
+  |---|---|---|---|
+  | off (`collisionResistance`) | 3025 / 3613 / 2939 | 233 / 145 / 156 | 1.3 / 2.5 / 1.9 |
+  | lock | 2374 / 1461 / 1943 | 151 / 141 / 99 | 1.6 / 1.0 / 2.0 |
+  | lock + `collisionSlabPull` | 1760 / 2502 / 1682 | 77 / 165 / 97 | 2.3 / 1.5 / 1.7 |
+
+  India closed its 2400–3200 km in ~50 Myr (~5 cm/yr). The model's collisions reach Earth's distance (off) only by lasting
+  3–4× too long at a third of the rate. What is missing is the drive after contact, not the lock: across the front Asia moves
+  into India the whole time (mantle flow and its own suction), the lock resists Asia, and India's slab pull collapses 5–15 Myr
+  after contact (lane upper, `belts-probe.mjs --forces`). Tried and dropped: the lower plate's crust going down as negative
+  slab pull (Cloos 1993; it double-counted the slab the front already drops), upper-plate shortening behind a jammed craton.
+  Phase 5's India (`NO_WINGS`, underthrust off) measures the stack weld, not the seam, and is not the acceptance scene.
+- **The hanging slab (lane upper, `collisionSlabPull`, opt-in, off by default).** After contact the slab still hanging under
+  the front keeps pulling the lower plate in, its gross negative buoyancy (`collisionSlabGrossNPerM`, 3 × 10¹³ N/m; England &
+  Wortel 1980) net of the buoyancy of the continental crust underthrust after it (Cloos 1993), until it breaks off
+  `collisionBreakoffMyr` (20 Myr; van Hunen & Allen 2011) after contact (`forces.js hangingSlabPull`). On Phase 5's India with
+  the lock, it raises the shortening 1146/1437/1354 → 1362/1593/1753 km (seeds 12345/1/2). The crust's buoyancy ends the
+  pull after ~200 km of underthrust, before break-off, on all three. In the whole model it brings no history into Earth's
+  range (table above), and with the lock before belts5's overlap column it gave a 5340 km weld on 12345. It stays off.
   Why it is off: with the flag on the gate fails p4/p5a/p7c/p8a and check-phase11 throws at :52 (`gcp-run/runs/3e862ed-20261107-145247.txt`); India `--full` 12345/1/2 is 1146/1437/1354 km vs 1122/1115/1125 off, because Asia gets carried along; the upper plate's resistance is the next lane.
 - **Phase 11's zipper now passes.** Main's failure (607 km of sea left at the weld) came from the 24 Myr stall
   give-up, not from `overdue`. With stall-only welds the zipper closes before it welds, so `overdue` is not needed and
