@@ -5,9 +5,10 @@
 // insulated it — step/hotspots.js — and rifts readily; one that has drifted onto cool mantle hardly rifts at all, so a
 // supercontinent's breakup comes in a burst and then quiets — step/supercontinent.js); a mantle plume head
 // (step/hotspots.js) may force one where it rises. The rift itself — where it runs, how it splits the plate — is ops/rift.js.
-// The pace of breakups is kept per piece of continent (riftMinGapMyr … riftMaxGapMyr, config.js: none too soon after its own
-// last rift or weld, the chance growing as its quiet spell runs long, one forced when it runs too long), with a floor for
-// the world as a whole (riftGlobalGapMyr).
+// The pace of breakups is kept per piece of continent (riftMinGapMyr … riftDueMyr, config.js: none too soon after its own
+// last rift or weld, the chance growing as its quiet spell runs long). Nothing paces the world as a whole and nothing forces
+// a rift: the upstream rules for those (riftMaxGapMyr, riftGlobalGapMyr, ee0a67b) were retired 2026-11-09 — rifts are local
+// (Earth has several under way at once), and without them the supercontinent cycle survives on every seed (riftaudit §2.2).
 
 import { useRockBook } from '../rock-book.js';
 import { CrustFlag, CrustType, OrogenyType } from '../model/crust.js';
@@ -20,7 +21,6 @@ import { isContinental } from './hotspots.js';
 import { riftStressContext, stressJunctions } from '../field/rift-stress.js';
 
 const JUNCTION_TRIES = 12;     // junctions tried per rift chance: the best crossing among them is taken (many admit none)
-const FORCED_JUNCTION_TRIES = 48;  // …and for a rift that is overdue (a few a history): it must take
 
 /**
  * A generator (simulate.js): each rift's search over its junctions is handed out as a request — { plate, junctions, pull,
@@ -35,29 +35,20 @@ export function* riftContinents(world, dt) {
     // The pace of breakups (developer, 2026-10-01): each PIECE of continent keeps its own clock — from when it was born of a
     // rift or welded together (plate.born; a terrane docking does not reset it) — none within riftMinGapMyr of it (a plume
     // head arriving then waits), the chance coming back over riftSpacingMyr and growing past riftDueMyr, and at
-    // riftMaxGapMyr a rift forced — if the piece is big enough to rift on its own (riftMinContinentKm2: a small one is never
-    // forced apart); the world as a whole rifts at most once per riftGlobalGapMyr (one a step at most)
+    // (nothing forces a rift, and the world is not held to one a step: retired 2026-11-09)
     const paced = config.riftRatePerMyr > 0 && config.riftMinGapMyr > 0;
-    const worldWaits = paced && world.lastRiftAt !== null && time - world.lastRiftAt < config.riftGlobalGapMyr - 1e-9;
     const age = plate => time - plate.born, areaOf = plate => plate.stats.continentalCells * mesh.cellAreaKm2;
     const tooYoung = plate => paced && age(plate) < config.riftMinGapMyr - 1e-9;
-    // (the forced rift's clock runs only while the piece is big enough to rift on its own: one that has just grown that big —
-    // terranes, arcs docking — is not split at once for the years it spent small)
-    for (const p of plates) if (p.alive && !p.isBackground) p.bigSince = areaOf(p) >= config.riftMinContinentKm2 ? p.bigSince ?? time : null;
-    const bigAge = plate => time - Math.max(plate.born, plate.bigSince ?? time);
     const cycle = world.cycle;
     // (while the pieces gather, those of the landmass they gather into — over the downwelling — are pressed together: rarer
     // rifts there; pressed into one and welded, their clocks start again)
     const gatherInto = cycle?.gather > 0 ? new Set(cycle.largestPlates ?? []) : null;
-    // (forced from riftGlobalGapMyr before the limit: held back by the world's floor, it still comes within it)
-    const overdue = plate => paced && bigAge(plate) + dt >= config.riftMaxGapMyr - config.riftGlobalGapMyr - 1e-9 && areaOf(plate) >= config.riftMinContinentKm2;
     // (Phase 13, steered: a supercontinent just counted holds for superTenureMyr — its plates do not rift, a plume's head
-    // included: a plume under it still erupts its flood basalt — step/supercontinent.js — unless the piece is overdue)
+    // included: a plume under it still erupts its flood basalt — step/supercontinent.js)
     const superHeld = cycle?.phase === 'assembled' && cycle.formedAt > 0 && time - cycle.formedAt < config.superTenureMyr ? new Set(cycle.largestPlates ?? []) : null;
-    const held = plate => superHeld?.has(plate.id) && !overdue(plate);
+    const held = plate => superHeld?.has(plate.id);
     // plume heads that arrived under a continent (step/hotspots.js decided which may split it): the rift starts under the
-    // plume — or, if that is a craton, from the ordinary ground nearest it. One that finds the piece too young or held, or
-    // the world just rifted, waits for it — up to plumeRiftWaitMyr after the head arrived (the Deccan traps came a few Myr
+    // plume — or, if that is a craton, from the ordinary ground nearest it. One that finds the piece too young or held, waits for it — up to plumeRiftWaitMyr after the head arrived (the Deccan traps came a few Myr
     // before the Seychelles rifted off India) — where the head arrived on the continent (its junctions, taken then in the
     // plate's own frame: the plate has moved on over the plume since); one that finds no cut gives up
     const waiting = [];
@@ -65,19 +56,13 @@ export function* riftContinents(world, dt) {
         const plate = plates[pr.plate];
         if (!plate?.alive) continue;
         if (pr.since === undefined) { pr.since = time; pr.junctions = pr.cell >= 0 ? [pr.cell] : plumeJunctions(world, plate, pr.xyz); }
-        if (worldWaits || (paced && splits) || held(plate) || tooYoung(plate)) { if (paced && time - pr.since < config.plumeRiftWaitMyr - 1e-9) waiting.push(pr); continue; }
-        // (one that waited finds the piece changed — often a coast near where the head arrived: the looser rules a forced rift
-        // falls back on, if the usual ones admit no cut)
+        if (held(plate) || tooYoung(plate)) { if (paced && time - pr.since < config.plumeRiftWaitMyr - 1e-9) waiting.push(pr); continue; }
+        // (one that waited finds the piece changed — often a coast near where the head arrived: the looser rules of shape, if the
+        // usual ones admit no cut)
         if ((yield* tryRift(world, plate, pr.junctions, pr.cause, false)) || (time > pr.since && (yield* withLooseShape(config, function* () { return yield* tryRift(world, plate, pr.junctions, pr.cause, false); })))) splits++;
     }
     world.pendingPlumeRifts = waiting;
-    if (worldWaits || (paced && splits)) return splits;
     const heat = config.riftHeatGain > 0 ? heatUnderContinents(world) : null;
-    // pieces overdue: the one longest without a rift first
-    if (paced) {
-        const due = plates.filter(p => p.alive && !p.isBackground && p.dynamics && overdue(p)).sort((a, b) => bigAge(b) - bigAge(a));
-        for (const plate of due) if (yield* forceRift(world, plate, age(plate))) return 1;
-    }
     // spontaneous rifting under tension
     // (Phase 13, steered — step/supercontinent.js: while a supercontinent's pieces disperse, the plates of a landmass that has
     // gathered much of the continental crust again too soon come apart readily)
@@ -99,7 +84,7 @@ export function* riftContinents(world, dt) {
         const chance = pace * config.riftRatePerMyr * dt * tension * heatFactor * Math.min(config.riftSizeCap, areaKm2 / config.riftMinContinentKm2 - 1);   // a supercontinent rifts readily, a continent barely big enough hardly ever
         if (world.rng() >= chance) continue;
         const junctions = junctionsFor(world, plate, JUNCTION_TRIES);
-        if (yield* tryRift(world, plate, junctions, { text: `tension ${tension.toFixed(2)}${heat ? `, mantle heat ${h.toFixed(2)}` : ''}`, kind: 'tension', hotspot: -1 })) { splits++; if (paced) break; }
+        if (yield* tryRift(world, plate, junctions, { text: `tension ${tension.toFixed(2)}${heat ? `, mantle heat ${h.toFixed(2)}` : ''}`, kind: 'tension', hotspot: -1 })) splits++;
     }
     return splits;
 }
@@ -125,21 +110,7 @@ function paceOf(age, config) {
     return x * x * (3 - 2 * x) * (1 + late * late);
 }
 
-/**
- * A piece overdue (riftMaxGapMyr without a rift or a weld) is split: by the usual rules of a rift's shape, from
- * FORCED_JUNCTION_TRIES junctions; then, if no cut passes them — a landmass just gathered is ragged — by looser ones.
- * @returns {boolean} whether it split (if not, it is tried again next step)
- */
-function* forceRift(world, plate, age) {
-    const { config } = world;
-    const cause = { text: `no rift for ${age.toFixed(0)} Myr`, kind: 'overdue', hotspot: -1 };
-    const attempt = function* () {
-        const junctions = junctionsFor(world, plate, FORCED_JUNCTION_TRIES);
-        return (yield* tryRift(world, plate, junctions, cause)) || (yield* tryRift(world, plate, junctions, cause, false));
-    };
-    return (yield* attempt()) || (yield* withLooseShape(config, attempt));
-}
-/** A forced rift's looser rules of shape (and a plume's that waited), when no cut passes the usual ones. */
+/** A plume's looser rules of shape (its rift waited and the piece changed), when no cut passes the usual ones. */
 const LOOSE_SHAPE = { riftTortuosityMax: 2, riftMinChordKm: 1000 };
 /** Run the generator gen with the rules of a rift's shape loosened (LOOSE_SHAPE), then put them back. */
 function* withLooseShape(config, gen) {
@@ -184,7 +155,6 @@ export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = 
     if (world.config.riftStage) openRiftStage(world, plate, fresh, rift.path);
     world.log(EventKind.RIFT, `${before} rifts (${cause.text}): ${plate.name} and ${fresh.name} part along ${km.toFixed(0)} km of rift${rift.failedArm.length ? `, a failed arm of ${(rift.failedArm.length * mesh.edgeKm).toFixed(0)} km left behind` : ''}`,
         { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm, ageMyr, stress: rift.stress, share: rift.share, cratonKm, splitCratons });
-    world.lastRiftAt = world.time;
     return true;
 }
 

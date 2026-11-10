@@ -1,11 +1,13 @@
 // The rhythm of a history's breakups: the Evolution page's history (the 'cycle' scene, start world at 30 % continent) run
 // headless, its continental rifts listed with the gaps between them (the world's) and the age of the piece that rifted (since
-// its own last rift or weld — the per-piece rules: none under 30 Myr, forced at 150), the longest any piece big enough to
+// its own last rift or weld — the per-piece rule: none under 30 Myr), the longest any piece big enough to
 // rift went without one (and whether it was then pressed into a gathering supercontinent — exempt), and the supercontinent
-// cycle's own events.
+// cycle's own events, the plates alive, the rifts begun in one step, and the supercontinent's tenure and reassembly.
+// GEO_SIM_PATH=k runs the history on path k (lib/paths.mjs).
 // Usage: node v2/tools/trace-rifts.mjs [simCells=20000] [seed …] [--len 1200] [--set key=value,…] [--json]
 
 import { labMesh } from './lib/check-kit.mjs';
+import { onPath } from './lib/paths.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { EventKind } from '../js/tectonics/model/world.js';
@@ -22,10 +24,13 @@ for (const seed of seeds) {
     const t0 = performance.now();
     const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
     Object.assign(world.config, overrides);
+    onPath(world);
+    const plateCounts = [];
     // (each step: the oldest piece big enough to rift on its own — outside a gathering landmass, and in one)
     let oldest = 0, oldestGathering = 0;
     const drive = w => {
         scene.drive(w);
+        plateCounts.push(w.plates.filter(p => p.alive && !p.isBackground).length);
         const gathering = w.cycle?.gather > 0 ? new Set(w.cycle.largestPlates ?? []) : null;
         for (const p of w.plates) {
             if (!p.alive || p.isBackground || p.stats.continentalCells * w.mesh.cellAreaKm2 < w.config.riftMinContinentKm2) continue;
@@ -37,6 +42,15 @@ for (const seed of seeds) {
     const rifts = world.events.filter(e => e.kind === EventKind.RIFT).map(e => ({ t: e.time, cause: e.data.cause, age: e.data.ageMyr }));
     const ages = rifts.map(r => r.age).filter(a => a !== undefined && a < 1e5).sort((a, b) => a - b);
     const cycle = world.events.filter(e => e.kind === EventKind.SUPERCONTINENT || e.kind === EventKind.DISPERSED).map(e => ({ t: e.time, kind: e.kind }));
+    const median = a => a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : null;
+    // rifts begun in one step (the step's time is shared by its events); forced rifts are gone, so 'overdue' stays 0
+    const perStep = new Map();
+    for (const x of rifts) perStep.set(x.t, (perStep.get(x.t) ?? 0) + 1);
+    const concurrent = { stepsWithRift: perStep.size, maxPerStep: Math.max(0, ...perStep.values()), stepsWithTwo: [...perStep.values()].filter(n => n > 1).length };
+    const forced = rifts.filter(x => x.cause === 'overdue').length;
+    // supercontinent tenure (S → the next D) and reassembly (D → the next S), Myr
+    const tenure = [], reassembly = [];
+    for (let i = 0; i + 1 < cycle.length; i++) (cycle[i].kind === EventKind.SUPERCONTINENT ? tenure : reassembly).push(Math.round(cycle[i + 1].t - cycle[i].t));
     const gaps = [];
     for (let i = 1; i < rifts.length; i++) gaps.push(rifts[i].t - rifts[i - 1].t);
     // (the quiet stretches, the start and the end of the history included)
@@ -46,13 +60,14 @@ for (const seed of seeds) {
     for (let i = 0; i < rifts.length; i++) { let k = i; while (k < rifts.length && rifts[k].t - rifts[i].t < 30) k++; burst = Math.max(burst, k - i); }
     const r = { seed, cells, len, secs: (performance.now() - t0) / 1000, rifts: rifts.length, under30: gaps.filter(g => g < 30).length, over150: quiet.filter(g => g > 150).length,
         minGap: gaps.length ? Math.min(...gaps) : null, medianGap: gaps.length ? [...gaps].sort((a, b) => a - b)[gaps.length >> 1] : null, maxQuiet: Math.max(...quiet), meanGap: gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null, burst30: burst,
-        pieceAgeMin: ages[0] ?? null, pieceAgeMedian: ages[ages.length >> 1] ?? null, pieceAgeMax: ages.at(-1) ?? null, oldestPiece: oldest, oldestGathering,
+        forced, concurrent, tenure, reassembly, plates: { median: median(plateCounts), max: Math.max(...plateCounts) }, pieceAgeMin: ages[0] ?? null, pieceAgeMedian: ages[ages.length >> 1] ?? null, pieceAgeMax: ages.at(-1) ?? null, oldestPiece: oldest, oldestGathering,
         times: rifts.map(x => Math.round(x.t) + (x.cause === 'plume' ? 'p' : x.cause === 'overdue' ? '!' : '')), cycle: cycle.map(c => `${c.kind === EventKind.SUPERCONTINENT ? 'S' : 'D'}${Math.round(c.t)}`) };
     all.push(r);
     if (json) console.log(JSON.stringify(r));
     else {
         console.log(`seed ${seed} (${cells / 1000}K, ${len} Myr, ${r.secs.toFixed(0)} s): ${r.rifts} rifts; gaps ${r.minGap?.toFixed(0)} min, ${r.medianGap?.toFixed(0)} median, ${r.meanGap?.toFixed(0)} mean; ${r.under30} under 30 Myr, ${r.over150} quiet stretches over 150 Myr (longest ${r.maxQuiet.toFixed(0)}); at most ${r.burst30} rifts in 30 Myr`);
         console.log(`   pieces: age at rift ${r.pieceAgeMin?.toFixed(0)} min, ${r.pieceAgeMedian?.toFixed(0)} median, ${r.pieceAgeMax?.toFixed(0)} max; the oldest piece big enough to rift: ${oldest.toFixed(0)} Myr (in a gathering landmass: ${oldestGathering.toFixed(0)})`);
+        console.log(`   forced ${forced}; rifts begun in one step: ${concurrent.stepsWithTwo} steps with 2+ (max ${concurrent.maxPerStep}) of ${concurrent.stepsWithRift}; plates ${r.plates.median} median (${r.plates.max} max); supercontinent tenure ${tenure.join('/') || '—'} Myr, reassembly ${reassembly.join('/') || '—'} Myr`);
         console.log(`   rifts: ${r.times.join(' ')}`);
         console.log(`   cycle: ${r.cycle.join(' ') || '—'}  (S supercontinent, D dispersed)`);
     }

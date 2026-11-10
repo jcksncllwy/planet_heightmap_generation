@@ -1,8 +1,7 @@
 // Helpers for the history's worker: a few workers (app/helper-worker.js) that take the pieces of a job that do not depend
 // on one another — the junctions of a rift's search, the layout attempts of the start world — side by side, and give back
 // each piece's answer in order. The history then picks among them as it always did: the same history, sooner (developer,
-// 2026-10-18: "lets do the rift and start world on multiple cores"). A rift's search (12 junctions; 48 for an overdue
-// piece) was ~67 ms on the desktop, a burst in the collision-heavy stretches; the start world's search 0.2–2.3 s before the
+// 2026-10-18: "lets do the rift and start world on multiple cores"). A rift's search (12 junctions) was ~67 ms on the desktop, a burst in the collision-heavy stretches; the start world's search 0.2–2.3 s before the
 // first frame, an attempt at a time. In Node (the checks) they are worker threads.
 
 const IS_NODE = typeof window === 'undefined' && typeof self === 'undefined' && typeof process !== 'undefined' && !!process.versions?.node;

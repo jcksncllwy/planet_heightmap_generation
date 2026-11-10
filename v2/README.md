@@ -802,7 +802,7 @@ The history on more than one core, where it splits into pieces that do not depen
 the cores but one). The start world's layout attempts — each with its own rng and noise, so each depends on its number
 alone (init/start-world.js `evaluateAttempt`) — are evaluated a batch at a time and taken in order by the same rules
 (the chosen layout's cratons and rng placed again, cheaply, so the rim trenches come out the same); and each rift's search
-over its 12 junctions (48 for an overdue piece) is handed out in runs and its answers come back in the junctions' order.
+over its 12 junctions is handed out in runs and its answers come back in the junctions' order.
 For that the step loop is a generator (simulate.js `stepsOf`): a rift yields its request (step/rifting.js), which
 `simulate` answers in place and `simulateAsync` by the helpers. Every frame the same (Node: five histories in place and with
 helpers, and one extended in two pieces; the page: its packed frames against Node's, desktop and phone settings). The start

@@ -649,10 +649,10 @@ export const TECTONICS = {
     riftSpacingMyr: 50,         // …its chance coming back smoothly from there to full by this (a piece then rifts at ~50 Myr typically)…
     riftDueMyr: 90,             // …and growing once this has passed: × (1 + ((age − this) ÷ riftDueRampMyr)²) — × 3.25 at 120, × 10 at 150…
     riftDueRampMyr: 20,
-    riftMaxGapMyr: 150,         // …and at this a rift is forced, if it is big enough to rift on its own (riftMinContinentKm2; the
-                                // clock for this counts from when it grew that big, if later)
-    riftGlobalGapMyr: 10,       // the world as a whole: no two rifts within this (one a step at most)
-    plumeRiftWaitMyr: 30,       // a plume head under a piece too young to rift (or while the world waits) splits it once it may,
+    // (Retired 2026-11-09, Jackson: riftMaxGapMyr 150, a rift forced at that age, and riftGlobalGapMyr 10, the world rifting at
+    // most once per 10 Myr and one a step. Upstream ee0a67b rules with no physical reading — rifts are local and Earth has
+    // several under way at once; riftaudit §2.2: without them the supercontinent cycle survives on 3/3 seeds.)
+    plumeRiftWaitMyr: 30,       // a plume head under a piece too young to rift (or a supercontinent still holding) splits it once it may,
                                 // up to this long after the head arrived; its flood basalt erupts on arrival
 
     // ── The supercontinent cycle (Phase 13, step/supercontinent.js) ──
