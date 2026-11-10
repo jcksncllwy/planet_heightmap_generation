@@ -63,7 +63,8 @@ export const ERODE = {
     diffSweeps: 20,             // …and the Jacobi sweeps of its implicit step
     spanWindow: false,          // the ladder's coarsest rung stretched to the moment's window (frame tectSpanMyr), at its own dt…
     spanMaxMyr: 20,             // …up to this long (a history's first frame counts its window from the start: a cost cap)
-    spanSplit: 'coarse',        // …all of it on the coarsest rung ('coarse'), or every rung stretched alike ('even')
+    spanSplit: 'even',          // …every rung stretched alike ('even'), or all of it on the coarsest ('coarse': leaves the 160K rung's ~100 km
+                                // interfluves as isolated mounds on the plains — fluvial5 A/B, 2026-11-10)
     tectUplift: false,          // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
 };
