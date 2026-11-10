@@ -63,6 +63,7 @@ export const ERODE = {
     diffSweeps: 20,             // …and the Jacobi sweeps of its implicit step
     spanWindow: false,          // the ladder's coarsest rung stretched to the moment's window (frame tectSpanMyr), at its own dt…
     spanMaxMyr: 20,             // …up to this long (a history's first frame counts its window from the start: a cost cap)
+    spanSplit: 'coarse',        // …all of it on the coarsest rung ('coarse'), or every rung stretched alike ('even')
     tectUplift: false,          // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
 };
@@ -503,6 +504,10 @@ function carry(M, values, out) {
  */
 export function ladderOverWindow(P, windowMyr) {
     if (!P.spanWindow || !P.ladder || !(windowMyr > 0)) return P;
+    if (P.spanSplit === 'even') {                       // (every rung stretched alike, each at its own dt)
+        const total = P.ladder.reduce((t, L) => t + L.timeMyr, 0), f = Math.min(windowMyr, P.spanMaxMyr ?? Infinity) / total;
+        return f <= 1 ? P : { ...P, ladder: P.ladder.map(L => ({ ...L, timeMyr: L.timeMyr * f, steps: Math.ceil(L.steps * f - 1e-9) })) };
+    }
     const [first, ...rest] = P.ladder, finer = rest.reduce((t, L) => t + L.timeMyr, 0), T = Math.min(windowMyr, P.spanMaxMyr ?? Infinity) - finer;
     if (T <= first.timeMyr) return P;
     const dt = first.timeMyr / first.steps;
