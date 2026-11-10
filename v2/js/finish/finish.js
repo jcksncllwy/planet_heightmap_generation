@@ -572,7 +572,7 @@ function runoffMonths(months, petM, G, F) {
  * @returns {{rain: Float32Array, store: Float32Array, frozen: Uint8Array, thaw: Uint8Array, stats}}  liquid water and kept snow (mm/year
  *          per cell; NaN where pAnn is); frozen: 1 where no month thaws; thaw: the months at or above 0 °C; stats: the land's kept snow (km³ of water a year), its area and the never-thawing land's (km²)
  */
-function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n) {
+export function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n) {
     const Tsl = new Float32Array(12 * G);
     for (let g = 0; g < G; g++) {
         const href = hLand[g] === hLand[g] ? Math.max(0, hLand[g]) : 0;
@@ -678,7 +678,7 @@ function iceDischarge(mesh, z, ocean, store, runoff, cellKm2) {
  * lands, Shuttleworth 1993). Without the rain stage's PET (an anchor source with no physics) the same law from the
  * month's sunlight and temperature (climate/water.js monthPET).
  */
-function potentialMonths(res, G, F) {
+export function potentialMonths(res, G, F) {
     const PET = res.stages?.rain?.PET, out = new Float32Array(12 * G);
     if (!PET) {
         const w = res.grid.w, h = res.grid.h;
@@ -695,7 +695,7 @@ function potentialMonths(res, G, F) {
 }
 
 /** The four grid points around (lat, lon) and their bilinear weights (as bilinear). */
-function corners(g, lat, lon, bi, bw) {
+export function corners(g, lat, lon, bi, bw) {
     const { w, h } = g, step = 180 / h;
     const x = (lon + 180) / step - 0.5, y = Math.max(0, Math.min(h - 1, (90 - lat) / step - 0.5));
     const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
@@ -704,7 +704,7 @@ function corners(g, lat, lon, bi, bw) {
     bw[0] = (1 - fx) * (1 - fy); bw[1] = fx * (1 - fy); bw[2] = (1 - fx) * fy; bw[3] = fx * fy;
 }
 
-function bilinear(g, field, lat, lon) {
+export function bilinear(g, field, lat, lon) {
     const { w, h } = g, step = 180 / h;
     const x = (lon + 180) / step - 0.5, y = Math.max(0, Math.min(h - 1, (90 - lat) / step - 0.5));
     const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;

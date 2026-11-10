@@ -109,7 +109,7 @@ function labels() {
 for (const el of [ui.cont, ui.water, ui.len, ui.seed, ui.tmp, ui.prc]) el.addEventListener('input', labels);
 // (a new Temperature or Precipitation: the previews' climates are worked out again when shown; a detailed moment keeps
 // its old climate — its rivers, ice and Satellite were sculpted by it — until detail is added again)
-for (const el of [ui.tmp, ui.prc]) el.addEventListener('change', () => { saveUrl(); labels(); dirty = true; updateClimateUi(); });
+for (const el of [ui.tmp, ui.prc]) el.addEventListener('change', () => { saveUrl(); labels(); B?.player?.setClimateKey(climateKey()); dirty = true; updateClimateUi(); });
 // ── tooltips (the "?" marks): drawn over the page — V1's own sit inside the panel, which scrolls and so clips what spills
 // out of it (developer: "the tooltips are hidden inside the sidebar if they appear towards the right"); to the right of
 // the mark where there is room, else above it (always above on a narrow screen: the bottom sheet); a tap shows one ──
@@ -359,6 +359,7 @@ function useTerrain(b, tMesh, cells) {
     b.tMesh = tMesh; b.terrainCells = cells;             // (the setting: a mesh has about that many cells)
     if (gpu) gpu.setMesh(tMesh); else b.raster = rasterOf(tMesh);       // (the GPU's triangles, or the CPU's pixel table)
     b.player = new TerrainPlayer({ simMesh: b.simMesh, tMesh, cfg: terrainConfig(b.heights), seed: b.seed, shading: SHADING, workers: WORKERS, onBuilt: () => { dirty = true; } });
+    b.player.setClimateKey(climateKey());
     for (const f of b.frames) b.player.addFrame(f);
     old?.dispose();
     cellRgb = new Uint8Array(tMesh.numCells * 3);
@@ -884,6 +885,30 @@ async function calculateClimate() {
     }
 }
 
+// ── the real-climate balance (2026-11-10, Jackson approved): a moment with a sea of ≥ 1 Mkm² cut off from the ocean that
+// the history holds empty (basin-estimate.js needsClimate) is drawn at once balanced on the zonal climate, then again on
+// the computed one — the Climate tab's (1°) where this moment has it, else its own at 2° (climate-worker.js 'water'), on
+// a worker of its own so the Climate tab's stays free. One at a time, the moment on screen; none while playing. ──
+const waterClimate = new ClimateService();
+let balancing = null;
+function balanceClimate(frame) {
+    const b = B, P = b?.player, T = paintedT;
+    if (!P || painted !== frame || paintedMesh !== b.tMesh) return;
+    const tab = climateOf(frame)?.water;
+    if (tab && P.wantsClimate(frame, tab.gridDeg)) { P.balance(frame, tab); return; }
+    if (playing || balancing || b.balanceFailed?.has(frame) || !P.wantsClimate(frame)) return;
+    const key = climateKey(), t = frame.time.toFixed(0);
+    balancing = frame;
+    waterClimate.compute(b.tMesh, T.heightKm, climateOptions(), 'water').then(w => {
+        if (B !== b || key !== climateKey()) return;
+        P.balance(frame, w);
+        console.info(`[evolution] cut-off seas at ${t} Myr balanced on the climate (${w.gridDeg}°): ${(w.ms / 1000).toFixed(2)} s in the worker`);
+    }).catch(err => {
+        console.error(err);
+        if (B === b) (b.balanceFailed ??= new Set()).add(frame);     // (shown on the zonal estimate; not retried in a loop)
+    }).finally(() => { if (balancing === frame) balancing = null; dirty = true; });
+}
+
 /** The Calculate button, the moments with a climate, the season choice, and the chip over the planet. */
 // (every climate layer but Satellite, which comes with a finish: the main five as tabs, the rest under More)
 const CLIMATE_SUB = new Set([...CLIMATE_LAYERS].filter(l => !FINISHED_ONLY_LAYERS.has(l)));
@@ -981,7 +1006,10 @@ function tick(now) {
         // sharp, but a detailed moment's picture is painted on a canvas still)
         const settled = !playing && now - lastScrub > SHARP_AFTER_MS;
         const sharpTable = settled && !gpu ? sharpTableOf(B.tMesh) : null, sharp = gpu ? settled && SHARP_WIDTH > 0 : !!sharpTable;
-        if (B.player.isReady(frame)) { if (frame !== painted || dirty || sharp !== paintedSharp) { paint(frame, sharpTable, sharp); dirty = false; } }
+        if (B.player.isReady(frame)) {
+            if (frame !== painted || dirty || sharp !== paintedSharp) { paint(frame, sharpTable, sharp); dirty = false; }
+            balanceClimate(frame);
+        }
         else if (!preparing && !(B.drawFailed?.frame === frame && now < B.drawFailed.retryAt)) {
             const b = B;
             const p = preparing = b.player.prepare(frame)
@@ -1232,13 +1260,16 @@ function readout(e) {
     if (plate >= 0) lines.push(`<span style="color:${oceanic ? '#4af' : '#6b3'}">●</span> <b>${CRUST_WORDS[type] ?? 'Crust'}</b> · plate ${plate}`);
     lines.push(`<span class="hi-label">Elev</span> ${Math.round(at ? at.heightM : h * 1000).toLocaleString()} m`);
     // (a sea cut off from the world ocean, on the live terrain: its level is its water balance's — Add detail finds it)
-    // (estimated on the zonal climate — basin-estimate.js; Add detail balances it on its own)
+    // (estimated on the zonal climate — basin-estimate.js — or balanced on the computed one where the page has it for a big
+    // sea (balanceClimate: 2°, or the Climate tab's 1°); Add detail balances it on its own surface)
+    const W0 = paintedT.water, how = W0?.climate === 'computed' ? `balanced on the climate (${W0.climateDeg ?? 1}°; Add detail balances it on its own surface)`
+        : `estimated by latitude${balancing === f ? ' — the climate is being worked out' : ''} (Add detail balances it)`;
     // (a sea the history part-fills over a seaway's sill: its water is the history's — basin-estimate.js standPoured)
     const given = !at ? paintedT.water?.given?.[t] : 0;
     if (given === 1) lines.push(`<span style="color:#7aa">●</span> <b>Sea filling over a sill</b> · the ocean spills in over a seaway at sea level; the water the history pours in, from the bottom up`);
     else if (given === 2) lines.push(`<span style="color:#b9a27a">●</span> <b>Basin filling over a sill</b> · below sea level, not yet reached by the water the ocean spills in`);
-    else if (!at && paintedT.water?.cut[t] === 1 && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, estimated (Add detail balances it)`);
-    else if (!at && paintedT.water?.dry?.[t]) lines.push(`<span style="color:#b9a27a">●</span> <b>Dry basin below sea level</b> · too little rain to fill it, estimated (Add detail balances it)`);
+    else if (!at && paintedT.water?.cut[t] === 1 && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, ${how}`);
+    else if (!at && paintedT.water?.dry?.[t]) lines.push(`<span style="color:#b9a27a">●</span> <b>Dry basin below sea level</b> · too little rain to fill it, ${how}`);
     if (at && view.water && (view.layer === 'terrain' || view.layer === 'satellite')) {
         if (at.water && !at.ocean) lines.push(`<span style="color:#5ae">●</span> <b>${['', 'Fresh lake', 'Salt lake', 'Salt pan'][at.water]}</b>`);
         const rv = fin.rivers && !at.ocean ? riverAt(fin, view.riverQ, p[0], p[1]) : null;

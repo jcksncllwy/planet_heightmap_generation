@@ -20,7 +20,7 @@ import { FINISH } from '../js/finish/finish-config.js';
 import { zonalPETAt } from '../js/climate/water.js';
 import { lakeBalance, hollowLakes } from '../js/finish/finish-basins.js';
 import { worldOcean, FILLED } from '../js/terrain/world-ocean.js';
-import { estimateCutOff } from '../js/terrain/basin-estimate.js';
+import { estimateCutOff, needsClimate } from '../js/terrain/basin-estimate.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { Water } from '../js/finish/finish-hydro.js';
 import { landWater } from './lib/land-water.mjs';
@@ -107,6 +107,23 @@ section('the world ocean is the largest body of water');
     check('…a part-filled sea stands the history\'s water from its bottom: the deepest cell wet at its level, the shallower dry, nothing debited',
         E.given[9] === 1 && E.given[8] === 2 && Math.abs(E.givenKm3 / cellA - 1) < 1e-4 && E.cut[9] === 1 && E.dry[8] === 1 && E.oceanFallKm === 0 && !(E.heldKm3 > 0),
         `given ${E.given.join('')} · ${(E.givenKm3 / cellA).toFixed(4)} cell-km stood (1 poured) · level ${(1000 * (E.seas.find(s => s.history)?.levelKm ?? NaN)).toFixed(0)} m · fall ${E.oceanFallKm} · held ${E.heldKm3}`);
+}
+
+section('a big cut-off sea is balanced on the computed climate (the real-climate balance)');
+{
+    // (basin-estimate.js needsClimate: a cut-off body ≥ CLIMATE_MIN_KM2 the history pours nothing into — a 10-cell
+    // sphere's cell is 51 Mkm²; estimateCutOff's `climate`: the computed water per cell, climate-water.js)
+    const N = 10, mesh = chain(N), z = Float32Array.from([-1, -1, 0.5, -2, -2, -2, -2, 0.2, 1, -0.1]);
+    const hist = (sea, waterKm) => ({ sea: Uint8Array.from(sea), waterKm: Float32Array.from(waterKm) });
+    const zs = Float32Array.from([0.3, 0.3, 0.5, -2, -2, -2, -2, 0.2, -0.5, -1.5]);
+    const pouredOnly = worldOcean(mesh, zs, 0, hist([0, 0, 0, 1, 1, 1, 1, 0, 0, 1], [0, 0, 0, 2, 2, 2, 2, 0, 0, 1]));
+    check('a frame with a big sea the history holds empty wants the computed climate; one whose big sea it pours into does not',
+        needsClimate(worldOcean(mesh, z), N) && !needsClimate(pouredOnly, N), `held empty ${needsClimate(worldOcean(mesh, z), N)} · poured into ${needsClimate(pouredOnly, N)}`);
+    const fill = v => new Float32Array(N).fill(v), wet = { rain: fill(5000), pet: fill(100), runoff: fill(4900), gridDeg: 2 }, arid = { rain: fill(0), pet: fill(3000), runoff: fill(0), gridDeg: 2 };
+    const Ew = estimateCutOff(mesh, z, worldOcean(mesh, z), TERRAIN, 0, F, wet), Ed = estimateCutOff(mesh, z, worldOcean(mesh, z), TERRAIN, 0, F, arid);
+    check('…and its rain decides: wet, the seas fill; arid, they dry (no water held), the ocean debited only for what stands',
+        Ew.climate === 'computed' && Ew.climateDeg === 2 && Ew.cut[0] === 1 && Ew.cut[3] === 0 && Ew.heldKm3 > 0 && Ed.dry[0] === 1 && !(Ed.heldKm3 > 1e-3 * Ew.heldKm3) && Ed.oceanFallKm < Ew.oceanFallKm,
+        `wet: cut ${Ew.cut.join('')} held ${(Ew.heldKm3 / 1e6).toFixed(1)} Mkm³ · arid: dry ${Ed.dry.join('')} held ${(Ed.heldKm3 / 1e6).toFixed(1)} Mkm³ · ${Ew.climate} ${Ew.climateDeg}°`);
 }
 
 section('cut-off seas through the history (finished at 160K cells)');

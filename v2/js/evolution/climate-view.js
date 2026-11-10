@@ -30,15 +30,16 @@ export class ClimateService {
     constructor() { this.worker = null; this.jobs = new Map(); this.sent = new Set(); this.nextId = 1; }
 
     /** The climate of a frame's terrain (heights in km, the sea at 0) on a terrain mesh: a promise of the page's data.
-     *  `options`: the page's Greenhouse / Precipitation (greenhouseWm2, precipScale). */
-    compute(tMesh, heightKm, options = {}) {
+     *  `options`: the page's Greenhouse / Precipitation (greenhouseWm2, precipScale). `type` 'water': only its water, at
+     *  the worker's coarser grid (climate-worker.js — the cut-off seas' balance). */
+    compute(tMesh, heightKm, options = {}, type = 'climate') {
         this.worker ??= this.start();
         const key = tMesh.numCells;
         if (!this.sent.has(key)) { this.worker.postMessage({ type: 'mesh', key, xyz: tMesh.xyz }); this.sent.add(key); }
         const id = this.nextId++;
         return new Promise((resolve, reject) => {
             this.jobs.set(id, { resolve, reject });
-            this.worker.postMessage({ type: 'climate', id, key, heightKm: Float32Array.from(heightKm), options });
+            this.worker.postMessage({ type, id, key, heightKm: Float32Array.from(heightKm), options });
         });
     }
 

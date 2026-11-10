@@ -12,12 +12,14 @@ import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
 import { worldOcean } from '../terrain/world-ocean.js';
 import { pouredSeaOnto } from '../terrain/land-mask.js';
-import { estimateCutOff, shadeWithWater } from '../terrain/basin-estimate.js';
+import { estimateCutOff, shadeWithWater, needsClimate } from '../terrain/basin-estimate.js';
 import { TERRAIN } from '../terrain/terrain-config.js';
 import { SMALL_DEVICE } from '../core/device.js';
 
 const usePool = typeof window !== 'undefined' && typeof Worker !== 'undefined';
 const BUDGET = SMALL_DEVICE ? 64e6 : 320e6;
+// (the computed climates' water kept for the frames balanced on it: 12 bytes a terrain cell each — 2 MB at 160K cells)
+const CLIMATES_KEPT = SMALL_DEVICE ? 8 : 32;
 const AHEAD = 10;
 
 // One worker pool for the page, for one sim mesh and size (a new sim resolution replaces it). `workers`: how many
@@ -59,6 +61,8 @@ export class TerrainPlayer {
         this.carving = new Map();      // frame → its carving under way
         this.shown = new Map();        // frame → what is painted: heights + hillshade (the last few)
         this.seas = new WeakMap();     // frame → the history's poured sea on the terrain mesh (historySeaOf)
+        this.climates = new Map();     // frame → {key, water}: the computed climate's water for its cut-off seas (balance)
+        this.climateKey = '';          // the page's climate settings (Greenhouse, Precipitation) the climates are for
         this.prefetching = false;
         this.workers = workers;
         this.resting = null;           // let go of the pool for a while (rest): { wake: a promise, resolve }
@@ -165,8 +169,37 @@ export class TerrainPlayer {
         if (this.shown.size > 4) this.shown.delete(this.shown.keys().next().value);
         return out;
     }
-    /** The shading for a frame: the view's, with the history's poured sea under it (world-ocean.js: which seas it joins). */
-    shadingOf(frame, r) { return { ...this.shading, history: this.historySeaOf(frame, r) }; }
+    /** The shading for a frame: the view's, with the history's poured sea under it (world-ocean.js: which seas it joins),
+     *  and the computed climate's water where the page has given it one (balance). */
+    shadingOf(frame, r) { return { ...this.shading, history: this.historySeaOf(frame, r), climate: this.climateOf(frame) }; }
+
+    // ── the real-climate balance (2026-11-10): a frame with a big sea cut off from the ocean is shown first balanced on
+    // the zonal climate, then again on the computed one, once the page has it (basin-estimate.js needsClimate) ──
+    /** The computed climate's water for a frame ({rain, pet, runoff, gridDeg} — terrain/climate-water.js), or null. */
+    climateOf(frame) { const e = this.climates.get(frame); return e && e.key === this.climateKey ? e.water : null; }
+    /** Whether the frame shown is balanced on the zonal climate with a sea the computed one should balance — or on a
+     *  coarser computed climate than `finerDeg` (the Climate tab's, when it has one). */
+    wantsClimate(frame, finerDeg = Infinity) {
+        const T = this.fresh(frame) ? this.shown.get(frame) : null, W = T?.shade?.water ?? null;
+        if (!W || !needsClimate(W, this.tMesh.numCells)) return false;
+        const have = this.climateOf(frame);
+        return !have || finerDeg < (have.gridDeg ?? Infinity);
+    }
+    /** Balance a frame's cut-off seas on the computed climate's water: it is shaded again (onBuilt, then prepare). */
+    balance(frame, water) {
+        this.climates.delete(frame);
+        this.climates.set(frame, { key: this.climateKey, water });
+        while (this.climates.size > CLIMATES_KEPT) this.climates.delete(this.climates.keys().next().value);
+        this.shown.delete(frame);
+        this.onBuilt();
+    }
+    /** New climate settings: frames balanced on the old ones are shaded again (zonal, until the page computes anew). */
+    setClimateKey(key) {
+        if (key === this.climateKey) return;
+        this.climateKey = key;
+        for (const f of this.climates.keys()) this.shown.delete(f);
+        this.climates.clear();
+    }
     /** The history's poured sea on the terrain mesh (land-mask.js pouredSeaOnto), once per frame. */
     historySeaOf(frame, r) {
         if (this.seas.has(frame)) return this.seas.get(frame);

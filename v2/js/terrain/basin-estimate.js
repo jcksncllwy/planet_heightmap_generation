@@ -36,6 +36,26 @@ import { hillshade } from '../view/terrain-shade.js';
 
 const R = 6371, D2R = Math.PI / 180;
 
+/**
+ * The area (km²) from which a cut-off sea is balanced on the computed climate, not the zonal one (the real-climate
+ * balance, 2026-11-10: the page computes the frame's climate for it — climate-water.js — and the shading worker balances
+ * again). The cutoff lane's threshold study (2026-11-10: the zonal estimate against the computed climate's balance over
+ * three seeds' histories) found no wet/dry disagreement on seas of ≥ 0.1 Mkm², and 24 % disagreeing among smaller ones,
+ * which hold little water; what the zonal table gets wrong on a big sea is how much it holds — and a sea of ≥ 1 Mkm²
+ * (a Caspian is 0.37) holds 10⁴–10⁶ km³, a fall of the world ocean by metres, and makes its own rain, which no table by
+ * latitude knows. Under it the zonal estimate stands; the climate costs 1.5–1.8 s a frame (climate-worker.js), so the
+ * line is also what keeps the average under half a second a frame.
+ */
+export const CLIMATE_MIN_KM2 = 1e6;
+
+/** Whether a frame's water (worldOcean's, or estimateCutOff's) has a sea the computed climate should balance: a body cut
+ *  off from the world ocean of ≥ CLIMATE_MIN_KM2 the history pours nothing into (one it pours into stands the history's
+ *  water, whatever the climate: standPoured). */
+export function needsClimate(water, numCells) {
+    const cellKm2 = 4 * Math.PI * R * R / numCells;
+    return (water?.bodies ?? []).slice(1).some(b => !(b.pouredKm3 > 0) && b.cells * cellKm2 >= CLIMATE_MIN_KM2);
+}
+
 /** Zonal mean temperature at sea level (°C) at a latitude, from cfg.tempByLatitude. */
 export function tempAtLatitude(latDeg, cfg) {
     const table = cfg.tempByLatitude, a = Math.min(90, Math.abs(latDeg));
@@ -108,7 +128,7 @@ function zonalOf(mesh, cfg) {
  *    behind a sill empty, so water a view stands in a cut-off sea is the ocean's: it is debited here, and the books close;
  *  · seas: per sea {km2, floorKm, sillKm, levelKm, full, wet, low (its lowest cell), heldKm3} (the history's: history,
  *    givenKm3, no sill);
- *  · climate: 'zonal', or 'computed' when `climate` was given.
+ *  · climate: 'zonal', or 'computed' when `climate` was given; climateDeg: its grid (°), when it says.
  * `climate` (optional): the frame's computed water per cell, mm/yr — {rain, pet, runoff} (the climate the model computes,
  * as the finish assembles it); without it, the zonal climate (zonalWater).
  * The heights themselves are not changed: a dry sea is drawn at its true floor (hillshade by `dry`, as land).
@@ -154,8 +174,8 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH, 
     for (let c = 0; c < n; c++) if (water.cut[c] && !cut[c]) { cut[c] = 1; level[c] = 0; }
     let heldKm3 = 0;
     for (let c = 0; c < n; c++) if (cut[c] === 1 && !given[c]) heldKm3 += Math.max(0, level[c] - zz[c]) * cellKm2;
-    const source = climate ? 'computed' : 'zonal';
-    if (!(heldKm3 > 0) && !seas.length) return Object.assign(water, { cut, dry, given, paintKm: null, seas, heldKm3: 0, givenKm3, oceanFallKm: 0, climate: source });
+    const source = climate ? 'computed' : 'zonal', climateDeg = climate?.gridDeg ?? null;
+    if (!(heldKm3 > 0) && !seas.length) return Object.assign(water, { cut, dry, given, paintKm: null, seas, heldKm3: 0, givenKm3, oceanFallKm: 0, climate: source, climateDeg });
     const oceanFallKm = oceanFall(water.ocean, zz, heldKm3, cellKm2);
     const paintKm = new Float32Array(n);
     for (let c = 0; c < n; c++) {
@@ -163,7 +183,7 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH, 
         else if (cut[c] === 2) { dry[c] = 1; paintKm[c] = seaLevelKm - 0.001 - Math.max(0, zz[c] - base[c]); }
         else paintKm[c] = z[c] + oceanFallKm;
     }
-    return Object.assign(water, { cut, dry, given, paintKm, seas, heldKm3, givenKm3, oceanFallKm, climate: source });
+    return Object.assign(water, { cut, dry, given, paintKm, seas, heldKm3, givenKm3, oceanFallKm, climate: source, climateDeg });
 }
 
 /**
@@ -228,13 +248,14 @@ export function oceanFall(ocean, zz, heldKm3, cellKm2) {
 }
 
 /**
- * A frame's hillshade with its water (worldOcean at opts.seaLevelKm — with opts.history, the history's poured sea: world-ocean.js — then estimateCutOff) as shade.water — balanced first,
+ * A frame's hillshade with its water (worldOcean at opts.seaLevelKm — with opts.history, the history's poured sea: world-ocean.js — then estimateCutOff,
+ * on opts.climate where the page has computed it: climate-water.js) as shade.water — balanced first,
  * so a dried cut-off sea is shaded as land is (terrain-shade.js hillshade's `dry`). The shading worker's job, and the
  * pages' where there is none.
  */
 export function shadeWithWater(mesh, heightKm, opts = {}, cfg) {
-    const { history = null, ...shading } = opts, sea = shading.seaLevelKm ?? 0;
-    const water = estimateCutOff(mesh, heightKm, worldOcean(mesh, heightKm, sea, history), cfg, sea);
+    const { history = null, climate = null, ...shading } = opts, sea = shading.seaLevelKm ?? 0;
+    const water = estimateCutOff(mesh, heightKm, worldOcean(mesh, heightKm, sea, history), cfg, sea, FINISH, climate);
     const shade = hillshade(mesh, heightKm, { ...shading, dry: water.dry });
     shade.water = water;
     return shade;
