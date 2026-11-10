@@ -90,7 +90,8 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
     const hLand = ctx.surface.meanLandKm, land = ctx.surface.landFrac;
     // the ground the air meets: over land its own height (an island's mountains are not diluted by the sea around them
     // in its 1° cell), over the sea 0
-    const hc = (x) => { const v = hLand[x]; return land[x] >= 0.25 && v === v ? Math.max(0, v) : 0; };
+    // (land below sea level — a sunk basin — at its own height: air sinks into it, lee-dry, and climbs out — PITHEAT)
+    const hc = (x) => { const v = hLand[x]; return land[x] >= 0.25 && v === v ? v : 0; };
     // islands: the sea share around each 1° cell (3 × 3)
     const seaAround = new Float64Array(G);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {

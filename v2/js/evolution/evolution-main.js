@@ -870,7 +870,7 @@ async function calculateClimate() {
     b.climateJob = { frame };
     updateClimateUi();
     try {
-        const data = await climate.compute(tMesh, T.heightKm, climateOptions());
+        const data = await climate.compute(tMesh, T.heightKm, climateOptions(), 'climate', T.land);
         if (B !== b) return;
         keepClimate(b, frame, { tMesh, data, key });
         if (b.problem?.startsWith('Could not work out the climate')) b.problem = null;
@@ -899,7 +899,7 @@ function balanceClimate(frame) {
     if (playing || balancing || b.balanceFailed?.has(frame) || !P.wantsClimate(frame)) return;
     const key = climateKey(), t = frame.time.toFixed(0);
     balancing = frame;
-    waterClimate.compute(b.tMesh, T.heightKm, climateOptions(), 'water').then(w => {
+    waterClimate.compute(b.tMesh, T.heightKm, climateOptions(), 'water', T.land).then(w => {
         if (B !== b || key !== climateKey()) return;
         P.balance(frame, w);
         console.info(`[evolution] cut-off seas at ${t} Myr balanced on the climate (${w.gridDeg}°): ${(w.ms / 1000).toFixed(2)} s in the worker`);

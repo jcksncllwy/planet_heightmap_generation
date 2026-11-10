@@ -157,12 +157,15 @@ export class TerrainPlayer {
     fresh(frame) { const s = this.shown.get(frame), full = this.full.get(frame); return !!s && (!full || s.src === full); }
 
     keep(frame, r, shade = shadeWithWater(this.tMesh, r.heightKm, this.shadingOf(frame, r), TERRAIN)) {
-        let hyps = null, water = null;
+        let hyps = null, water = null, land = null;
         const seaLevelKm = this.shading.seaLevelKm, tMesh = this.tMesh, historySea = () => this.historySeaOf(frame, r);
         // (water: the seas cut off from the world ocean — terrain/world-ocean.js — for drawing them apart: found by the shading
         // worker with the hillshade, or here where there is none)
         const out = { src: r, heightKm: r.heightKm, shade, sampler: r.sampler ?? this.sampler, get hyps() { return hyps ??= hypsometry(r.heightKm, seaLevelKm); },
             get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, seaLevelKm, historySea()), TERRAIN, seaLevelKm); },
+            // (the climate's land: all the world ocean drawn here does not reach — a sea cut off from it is dry ground at its
+            // own height to the air, below sea level too, as the finish's climate takes it — PITHEAT)
+            get land() { return land ??= Uint8Array.from(worldOcean(tMesh, r.heightKm, seaLevelKm, historySea()).ocean, o => 1 - o); },
             // (the heights to paint by: a cut-off sea's lake at its own level, its dry ground as lowland — basin-estimate.js)
             get paintKm() { return this.water.paintKm ?? r.heightKm; } };
         this.shown.set(frame, out);

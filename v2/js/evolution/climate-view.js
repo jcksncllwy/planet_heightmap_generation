@@ -31,15 +31,16 @@ export class ClimateService {
 
     /** The climate of a frame's terrain (heights in km, the sea at 0) on a terrain mesh: a promise of the page's data.
      *  `options`: the page's Greenhouse / Precipitation (greenhouseWm2, precipScale). `type` 'water': only its water, at
-     *  the worker's coarser grid (climate-worker.js — the cut-off seas' balance). */
-    compute(tMesh, heightKm, options = {}, type = 'climate') {
+     *  the worker's coarser grid (climate-worker.js — the cut-off seas' balance). `land`: 1 where the world ocean does not
+     *  reach (the frame's, terrain-player.js); without it the climate takes land as heights above 0. */
+    compute(tMesh, heightKm, options = {}, type = 'climate', land = null) {
         this.worker ??= this.start();
         const key = tMesh.numCells;
         if (!this.sent.has(key)) { this.worker.postMessage({ type: 'mesh', key, xyz: tMesh.xyz, delaunatorUrl: import.meta.resolve('delaunator') }); this.sent.add(key); }
         const id = this.nextId++;
         return new Promise((resolve, reject) => {
             this.jobs.set(id, { resolve, reject });
-            this.worker.postMessage({ type, id, key, heightKm: Float32Array.from(heightKm), options });
+            this.worker.postMessage({ type, id, key, heightKm: Float32Array.from(heightKm), land: land ? Uint8Array.from(land) : null, options });
         });
     }
 
@@ -124,6 +125,9 @@ function put(out, c, T, v, k) {
     out[3 * c] = Math.min(255, T.lut[i] * k); out[3 * c + 1] = Math.min(255, T.lut[i + 1] * k); out[3 * c + 2] = Math.min(255, T.lut[i + 2] * k);
 }
 const shadeOf = (terrain, c) => 0.45 + 0.55 * terrain.shade[c];
+// (the climate's land: the frame's — all the world ocean does not reach, a dry sunk basin too (terrain-player.js) — else
+// the heights above 0)
+const landOf = terrain => { const L = terrain.land, h = terrain.heightKm; return L ? c => L[c] === 1 : c => h[c] > 0; };
 
 const KOPPEN_RGB = KOPPEN_CLASSES.map(k => k.color.map(v => Math.round(255 * v)));
 const ICE_RGB = [232, 238, 244];
@@ -147,24 +151,24 @@ function rainAt(C, season, p, c, landCell) {
 }
 
 /**
- * Colour the terrain cells for a climate layer. `terrain`: {heightKm, shade} of the frame; `relief(out)`: the terrain's
- * own colours (the palette chosen), for the land under the currents.
+ * Colour the terrain cells for a climate layer. `terrain`: {heightKm, shade, land?} of the frame; `relief(out)`: the
+ * terrain's own colours (the palette chosen), for the land under the currents.
  */
 export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
-    const p = placementOf(tMesh), n = tMesh.numCells, h = terrain.heightKm;
+    const p = placementOf(tMesh), n = tMesh.numCells, isLand = landOf(terrain);
     if (layer === 'koppen') {
         for (let c = 0; c < n; c++) {
             const k = shadeOf(terrain, c);
-            let rgb = KOPPEN_RGB[h[c] > 0 ? C.cell.koppen[c] : 0];
-            if (h[c] <= 0) { const ice = Math.min(1, Math.max(0, at(C.ice, p, c))); if (ice > 0.02) rgb = rgb.map((v, ch) => v + (ICE_RGB[ch] - v) * ice); }
+            let rgb = KOPPEN_RGB[isLand(c) ? C.cell.koppen[c] : 0];
+            if (!isLand(c)) { const ice = Math.min(1, Math.max(0, at(C.ice, p, c))); if (ice > 0.02) rgb = rgb.map((v, ch) => v + (ICE_RGB[ch] - v) * ice); }
             out[3 * c] = Math.min(255, rgb[0] * k); out[3 * c + 1] = Math.min(255, rgb[1] * k); out[3 * c + 2] = Math.min(255, rgb[2] * k);
         }
     } else if (layer === 'temperature') {
         const T = lutOf('temperature');
-        for (let c = 0; c < n; c++) put(out, c, T, temperatureAt(C, season, p, c, h[c] > 0), shadeOf(terrain, c));
+        for (let c = 0; c < n; c++) put(out, c, T, temperatureAt(C, season, p, c, isLand(c)), shadeOf(terrain, c));
     } else if (layer === 'rain') {
         const T = lutOf('rain');
-        for (let c = 0; c < n; c++) put(out, c, T, rainAt(C, season, p, c, h[c] > 0), shadeOf(terrain, c));
+        for (let c = 0; c < n; c++) put(out, c, T, rainAt(C, season, p, c, isLand(c)), shadeOf(terrain, c));
     } else if (layer === 'pressure') {
         const T = lutOf('pressure');
         for (let c = 0; c < n; c++) put(out, c, T, at(C.slp[season], p, c), shadeOf(terrain, c));
@@ -175,13 +179,13 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
         // the sea: where cold water rises; the land: its own colours, greyed and dimmed
         relief(out);
         const T = lutOf('upwelling');
-        for (let c = 0; c < n; c++) { if (h[c] <= 0) put(out, c, T, at(C.upwelling[season], p, c), shadeOf(terrain, c)); else greyCell(out, c, 0.55, 0.75); }
+        for (let c = 0; c < n; c++) { if (!isLand(c)) put(out, c, T, at(C.upwelling[season], p, c), shadeOf(terrain, c)); else greyCell(out, c, 0.55, 0.75); }
     } else if (layer === 'ice') {
         // the sea's ice in its season; on land, the ice sheets over the land's own colours
         relief(out);
         const T = lutOf('seaIce');
         for (let c = 0; c < n; c++) {
-            if (h[c] <= 0) { put(out, c, T, at(C.seaIce[season], p, c), shadeOf(terrain, c)); continue; }
+            if (!isLand(c)) { put(out, c, T, at(C.seaIce[season], p, c), shadeOf(terrain, c)); continue; }
             greyCell(out, c, 0.4, 0.85);
             const f = Math.max(0, Math.min(1, at(C.iceSheet, p, c))), k = shadeOf(terrain, c), sn = C.snow ? Math.max(0, Math.min(1, at(C.snow[season], p, c))) : 0;
             if (sn > 0) for (let ch = 0; ch < 3; ch++) out[3 * c + ch] += (Math.min(255, SNOW[ch] * k) - out[3 * c + ch]) * sn;
@@ -192,7 +196,7 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
         const T = lutOf(layer), st = C.cell.stats?.[layer];
         for (let c = 0; c < n; c++) {
             const k = shadeOf(terrain, c);
-            if (h[c] <= 0) { out[3 * c] = SEA_DIM[0] * k; out[3 * c + 1] = SEA_DIM[1] * k; out[3 * c + 2] = SEA_DIM[2] * k; continue; }
+            if (!isLand(c)) { out[3 * c] = SEA_DIM[0] * k; out[3 * c + 1] = SEA_DIM[1] * k; out[3 * c + 2] = SEA_DIM[2] * k; continue; }
             const v = layer === 'rainShadow' ? at(C.orographic, p, c) : st ? statValue(st, layer, c) : NaN;
             if (v === v) put(out, c, T, v, k);
             else { out[3 * c] = out[3 * c + 1] = out[3 * c + 2] = 105 * k; }
@@ -202,7 +206,7 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
         relief(out);
         const T = lutOf('sst');
         for (let c = 0; c < n; c++) {
-            if (h[c] <= 0) { put(out, c, T, at(C.sstAnom[season], p, c), shadeOf(terrain, c)); continue; }
+            if (!isLand(c)) { put(out, c, T, at(C.sstAnom[season], p, c), shadeOf(terrain, c)); continue; }
             greyCell(out, c, 0.55, 0.75);
         }
     }
@@ -291,8 +295,8 @@ export function drawLegend(el, layer, season, C, terrain) {
                 for (let x = 0, i = y * R.w; x < R.w; x++, i++) if (R.koppen[i]) { count[R.koppen[i]] += a; land += a; }
             }
         } else {
-            const k = C.cell.koppen, h = terrain.heightKm;
-            for (let c = 0; c < k.length; c++) if (h[c] > 0) { count[k[c]]++; land++; }
+            const k = C.cell.koppen, isLand = landOf(terrain);
+            for (let c = 0; c < k.length; c++) if (isLand(c)) { count[k[c]]++; land++; }
         }
         const rows = [...count.keys()].filter(i => i > 0 && count[i] / land >= 0.005).sort((a, b) => count[b] - count[a]);
         el.innerHTML = `<div class="evo-koppen">${rows.map(i => {
@@ -527,7 +531,7 @@ function layerLine(layer, season, C, g, land, stat) {
 
 // ── the hover readout's climate lines, for terrain cell t ──
 export function readoutLines(C, terrain, tMesh, t, layer = null, season = 'year') {
-    const p = placementOf(tMesh), lines = [], land = terrain.heightKm[t] > 0;
+    const p = placementOf(tMesh), lines = [], land = landOf(terrain)(t);
     const line = layerLine(layer, season, C, f => at(f, p, t), land, key => (C.cell.stats?.[key] ? statValue(C.cell.stats[key], key, t) : NaN));
     if (line) lines.push(line);
     if (land) {

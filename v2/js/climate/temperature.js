@@ -77,7 +77,10 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
 
         // Surface and winds on the energy-balance grid
         const landFrac = coarsen(core, g, ratio, ctx.surface.landFrac);
-        const landKm = coarsen(core, g, ratio, ctx.surface.meanLandKm.map(v => (v === v ? Math.max(0, v) : 0)));
+        // (land below sea level — a sunk basin the world ocean does not reach — at its own height: the lapse rate warms it
+        // as it cools a plateau. The ridges' blocking reads heights ≥ 0: its crests are measured over the sea's surface)
+        const landKm = coarsen(core, g, ratio, ctx.surface.meanLandKm.map(v => (v === v ? v : 0)));
+        const blockKm = coarsen(core, g, ratio, ctx.surface.meanLandKm.map(v => (v === v ? Math.max(0, v) : 0)));
         const uM = new Float64Array(12 * G), vM = new Float64Array(12 * G);
         if (winds) for (let m = 0; m < 12; m++) {
             uM.set(coarsen(core, g, ratio, winds.u.subarray(m * core.size, (m + 1) * core.size)), m * G);
@@ -208,7 +211,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // Great Basin; the Andes part Chile from Argentina). Each face between two cells is open by
         // e^{−(ridge above the lower side)/TEMP_BLOCK_KM}, the ridge taken strip by strip on the terrain's 1° grid (its
         // crest from one cell's centre to the next), so a range narrower than the grid still counts.
-        const faces = P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, landKm, P.TEMP_BLOCK_KM) : null;
+        const faces = P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, blockKm, P.TEMP_BLOCK_KM) : null;
         const dRad = g.step * Math.PI / 180;
         const Tk = new Float64Array(G), iceYear = new Float64Array(G), seaIceYear = new Float64Array(G);
         // The sea ice drawn and handed on, month by month: a degree-day budget through the year — the ice thickens by
@@ -466,7 +469,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // temperature; islands and coasts downwind of the sea take the sea's air.
         const airSolver = winds && P.TEMP_AIR_DARK_DAYS > 0 ? new HelmholtzSolver(g, 0, 0) : null;
         // (the low air itself, not the weather aloft: a range blocks it fully — Pacific air stays out of the Great Plains)
-        const airFaces = airSolver && P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, landKm, P.TEMP_BLOCK_KM, 0) : null;
+        const airFaces = airSolver && P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, blockKm, P.TEMP_BLOCK_KM, 0) : null;
         const airCache = new Map(), airA = new Float64Array(G), airAi = new Float64Array(G), airRhs = new Float64Array(G);
         const airSig = new Float64Array(G), airU = new Float64Array(G), airV = new Float64Array(G), airTheta = new Float64Array(G);
         const airMass = (t, T) => {
@@ -550,7 +553,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
         const heightCorrect = (out, offset) => {
-            for (let c = 0; c < core.size; c++) { const hr = Math.max(href[c] === href[c] ? Math.max(0, href[c]) : 0, domeCore[c]); out[offset + c] -= lapseCore[c] * hr; }
+            // (the ground's height, or an ice sheet's dome where it stands higher; below sea level too — PITHEAT)
+            for (let c = 0; c < core.size; c++) { const hg = href[c] === href[c] ? href[c] : 0, d = domeCore[c], hr = d > 0 && d > hg ? d : hg; out[offset + c] -= lapseCore[c] * hr; }
         };
         const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size);
         const inversion = new Float32Array(12 * core.size);

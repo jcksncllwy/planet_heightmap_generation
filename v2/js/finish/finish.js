@@ -121,13 +121,20 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── the climate, on this surface ──
     onStage('climate');
     // (climateOptions: the page's Greenhouse and Precipitation — greenhouseWm2, precipScale)
-    let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up' }, climateOptions);
+    // (its land: all the world ocean does not reach — ground below sea level cut off from it, a sunk basin or a Caspian
+    // drained, is land to the air, at its own height, the lapse rate warming it as air sinking into it is compressed;
+    // the Dead Sea's shore at −430 m and the Danakil's are among the hottest places on Earth. Until 2026-11-10 the
+    // climate took land as z > 0: such a pit was sea to every stage, and its ground read the sea level's temperature.
+    // The climate runs before the lakes exist, so a cut-off lake is read as its dry floor — PITHEAT, README)
+    const climateLand = oceanMask(mesh, z);
+    for (let c = 0; c < n; c++) climateLand[c] = climateLand[c] ? 0 : 1;
+    let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up', land: climateLand }, climateOptions);
     const { koppen, tAnnual: tAnn, pAnnual: pAnn, lat, lon } = res.cell, G = res.grid.size;
     for (let c = 0; c < n; c++) if (pAnn[c] > F.rainMaxMm) pAnn[c] = F.rainMaxMm;     // (the climate's rare wet hotspots)
     // (the warmest month at sea level, and the winds, on the climate's grid)
     const gamma = CORE_DEFAULTS.lapseRateCPerKm, warmG = new Float32Array(G).fill(-Infinity);
     for (let g = 0; g < G; g++) {
-        const href = res.surface.meanLandKm[g] === res.surface.meanLandKm[g] ? Math.max(0, res.surface.meanLandKm[g]) : 0;
+        const href = res.surface.meanLandKm[g] === res.surface.meanLandKm[g] ? res.surface.meanLandKm[g] : 0;
         for (let m = 0; m < 12; m++) { const t = res.months.T[m * G + g] + gamma * href; if (t > warmG[g]) warmG[g] = t; }
     }
     const circ = res.stages.circulation, year = (a, m = -1) => { const o = new Float32Array(G); for (let g = 0; g < G; g++) { if (m >= 0) o[g] = a[m * G + g]; else { let s = 0; for (let k = 0; k < 12; k++) s += a[k * G + g]; o[g] = s / 12; } } return o; };
@@ -149,11 +156,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         wetG[g] = k;
     }
     for (let c = 0; c < n; c++) wetMonths[c] = bilinear(climGrid, wetG, lat[c], lon[c]);
-    // (the climate classifies only land above the sea; ground below sea level the ocean does not reach — a sunk basin, a
-    // Caspian — takes the grid's year: its rain, and its temperature at sea level)
+    // (the climate classifies only its land — all the world ocean does not reach, a sunk basin's floor too; the sea takes
+    // the grid's year: its rain, and its temperature at the water's surface)
     const pG = new Float32Array(G), tG = new Float32Array(G);
     for (let g = 0; g < G; g++) {
-        const href = res.surface.meanLandKm[g] === res.surface.meanLandKm[g] ? Math.max(0, res.surface.meanLandKm[g]) : 0;
+        const href = res.surface.meanLandKm[g] === res.surface.meanLandKm[g] ? res.surface.meanLandKm[g] : 0;
         let p = 0, t = 0;
         for (let m = 0; m < 12; m++) { p += res.months.P[m * G + g]; t += res.months.T[m * G + g] / 12; }
         pG[g] = p; tG[g] = t + gamma * href;
@@ -171,7 +178,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (lane #5) and for the ice's mass (U9). What it skips: the year is the climate's mean month by month — a month a
     // little below freezing on the mean has thawing days (positive degree-days from the monthly spread, Braithwaite 1985),
     // and a store that melts away years later; the snow's sublimation and wind drift; no store carried between years)
-    const liquid = thawedWater(res.months, res.surface.meanLandKm, climGrid, G, z, pAnn, lat, lon, gamma, F, n);
+    const liquid = thawedWater(res.months, res.surface.meanLandKm, climGrid, G, z, pAnn, lat, lon, gamma, F, n, climateLand);
     stats.snowStore = liquid.stats;
     // (each place's runoff shared over the months — rain, snow kept until it melts, less a share of each month's
     // evaporation; a share, where it is humid, through the ground, which drains back slowly — and each month's dryness)
@@ -352,7 +359,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet }, F);
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet, land: climateLand }, F);
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;
     let basinKm2 = 0, basinMaxKm = 0;
@@ -568,14 +575,16 @@ function runoffMonths(months, petM, G, F) {
  * the others; the snow melts in the thawed months, F.snowMeltMmPerC per °C above freezing, up to all of it. Over a year in
  * its round (snow that falls is snow that melts, where it can): liquid = rain + min(snow, the thawed months' melt); the
  * rest is the store — a snowfield's and an ice sheet's accumulation. No month thaws: no liquid at all. Where every
- * winter's snow melts (most of the land), liquid is all the year's rain, and nothing changes.
+ * winter's snow melts (most of the land), liquid is all the year's rain, and nothing changes. `land` (the climate's: 1
+ * where the world ocean does not reach) takes a cell's own height below sea level too — a sunk basin's floor, warmer by
+ * the lapse rate; the sea its surface. Without it, as before 2026-11-10: heights below 0 read as 0.
  * @returns {{rain: Float32Array, store: Float32Array, frozen: Uint8Array, thaw: Uint8Array, stats}}  liquid water and kept snow (mm/year
  *          per cell; NaN where pAnn is); frozen: 1 where no month thaws; thaw: the months at or above 0 °C; stats: the land's kept snow (km³ of water a year), its area and the never-thawing land's (km²)
  */
-export function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n) {
+export function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma, F, n, land = null) {
     const Tsl = new Float32Array(12 * G);
     for (let g = 0; g < G; g++) {
-        const href = hLand[g] === hLand[g] ? Math.max(0, hLand[g]) : 0;
+        const href = hLand[g] === hLand[g] ? hLand[g] : 0;
         for (let m = 0; m < 12; m++) Tsl[m * G + g] = months.T[m * G + g] + gamma * href;
     }
     const rain = new Float32Array(n), store = new Float32Array(n), frozen = new Uint8Array(n), thaw = new Uint8Array(n), bi = new Int32Array(4), bw = new Float64Array(4), cellKm2 = 4 * Math.PI * R * R / n;
@@ -585,7 +594,7 @@ export function thawedWater(months, hLand, climGrid, G, z, pAnn, lat, lon, gamma
         const P = pAnn[c];
         if (!(P === P)) { rain[c] = store[c] = NaN; continue; }
         corners(climGrid, lat[c], lon[c], bi, bw);
-        const h = gamma * Math.max(0, z[c]);
+        const h = gamma * (land ? (land[c] ? z[c] : 0) : Math.max(0, z[c]));
         let all = 0, melt = 0;
         for (let m = 0, o = 0; m < 12; m++, o += G) {
             T12[m] = Tsl[o + bi[0]] * bw[0] + Tsl[o + bi[1]] * bw[1] + Tsl[o + bi[2]] * bw[2] + Tsl[o + bi[3]] * bw[3] - h;

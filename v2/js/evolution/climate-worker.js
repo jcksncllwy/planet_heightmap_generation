@@ -38,22 +38,22 @@ self.onmessage = async ({ data }) => {
     }
     if (data.type !== 'climate' && data.type !== 'water') return;
     try { await delaunatorReady; } catch (e) { self.postMessage({ type: 'error', id: data.id, message: String(e?.message ?? e) }); return; }
-    const { id, key, heightKm, options = {} } = data;
+    const { id, key, heightKm, options = {} } = data, land = data.land ?? undefined;
     try {
         const t0 = performance.now();
         if (data.type === 'water') {
-            const res = planetClimate({ xyz: meshes.get(key), elevKm: heightKm, axes: 'z-up' }, { ...options, gridStepDeg: WATER_GRID_DEG });
-            const water = climateWater(res, heightKm);
+            const res = planetClimate({ xyz: meshes.get(key), elevKm: heightKm, axes: 'z-up', land }, { ...options, gridStepDeg: WATER_GRID_DEG });
+            const water = climateWater(res, heightKm, undefined, land);
             water.ms = performance.now() - t0;
             self.postMessage({ type: 'climate', id, data: water }, climateWaterTransfers(water));
             return;
         }
         // (and each land cell's measures beyond Köppen, from its twelve months — cell-stats.js — one byte each)
         const xyz = meshes.get(key), stats = cellStatsCollector(heightKm.length, c => Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2]))), { bytes: true });
-        const res = planetClimate({ xyz, elevKm: heightKm, axes: 'z-up' }, { ...options, onCell: stats.add });
+        const res = planetClimate({ xyz, elevKm: heightKm, axes: 'z-up', land }, { ...options, onCell: stats.add });
         const out = pageClimate(res);
         out.cell.stats = stats.stats;
-        out.water = climateWater(res, heightKm);
+        out.water = climateWater(res, heightKm, undefined, land);
         out.ms = performance.now() - t0;
         self.postMessage({ type: 'climate', id, data: out }, [...climateTransfers(out), ...climateWaterTransfers(out.water)]);
     } catch (err) {

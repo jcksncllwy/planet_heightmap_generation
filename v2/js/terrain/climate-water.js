@@ -7,7 +7,7 @@
 // helpers — so the timeline's estimate and the finish disagree only by the finish's surface, not its sums):
 //
 //  · rain: the climate's per-cell year (pAnnual), its rare wet hotspots capped at F.rainMaxMm; ground the climate does not
-//    classify (below sea level, the sea) takes its grid's year;
+//    classify (the world ocean) takes its grid's year;
 //  · runoff: the liquid share of it (thawedWater: snow kept where no month melts it) less Fu's evaporation (budykoW)
 //    against the land's potential evaporation — the climate's Priestley–Taylor at its anchors, made months
 //    (potentialMonths), summed over the year and read at the cell (bilinear);
@@ -22,9 +22,10 @@ import { fuEvaporation } from '../climate/water.js';
 
 /**
  * Each cell's year of water from planetClimate's result `res`, on the terrain the climate was computed on (`z`, km above
- * the sea): {rain, pet, runoff} (Float32Array, mm/year) — basin-estimate.js estimateCutOff's `climate`.
+ * the sea): {rain, pet, runoff} (Float32Array, mm/year) — basin-estimate.js estimateCutOff's `climate`. `land`: the
+ * climate's (1 where the world ocean does not reach), so ground below sea level cut off from it thaws at its own height.
  */
-export function climateWater(res, z, F = FINISH) {
+export function climateWater(res, z, F = FINISH, land = null) {
     const n = z.length, G = res.grid.size, grid = { w: res.grid.w, h: res.grid.h }, { lat, lon } = res.cell;
     const gamma = CORE_DEFAULTS.lapseRateCPerKm, rain = Float32Array.from(res.cell.pAnnual);
     for (let c = 0; c < n; c++) if (rain[c] > F.rainMaxMm) rain[c] = F.rainMaxMm;
@@ -32,7 +33,7 @@ export function climateWater(res, z, F = FINISH) {
     const pG = new Float32Array(G);
     for (let g = 0; g < G; g++) { let p = 0; for (let m = 0; m < 12; m++) p += res.months.P[m * G + g]; pG[g] = p; }
     for (let c = 0; c < n; c++) if (!(rain[c] === rain[c])) rain[c] = bilinear(grid, pG, lat[c], lon[c]);
-    const liquid = thawedWater(res.months, res.surface.meanLandKm, grid, G, z, rain, lat, lon, gamma, F, n);
+    const liquid = thawedWater(res.months, res.surface.meanLandKm, grid, G, z, rain, lat, lon, gamma, F, n, land);
     const petM = potentialMonths(res, G, F), petG = new Float32Array(G);
     for (let g = 0; g < G; g++) for (let m = 0; m < 12; m++) petG[g] += Math.max(0, petM[m * G + g]);
     const pet = new Float32Array(n), runoff = new Float32Array(n);

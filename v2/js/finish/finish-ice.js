@@ -24,7 +24,9 @@ const elaTemp = P => (-296 + Math.sqrt(Math.max(0, 296 * 296 - 36 * (645 - P))))
 /**
  * @param {Object} ctx  { mesh, z (km, changed in place), lat, lon (degrees), warmSl (warmest month at sea level, °C),
  *                        rain (mm/year; NaN at sea), grid (LatLonGrid), cellKm2, seed, soft, runoff, pet (mm/year; the
- *                        moment's — for the dammed lakes' water balance; without them every dammed lake fills) }
+ *                        moment's — for the dammed lakes' water balance; without them every dammed lake fills), land
+ *                        (optional: the climate's — 1 where the world ocean does not reach; a sunk basin's summer at its own
+ *                        height below sea level, the shelves' at the sea's surface) }
  * @returns {{ice: Uint8Array, margin: Uint8Array, iceKm2: number, sheets: number, basin: Float32Array, floods: Object}}
  *          basin: how deep (km) the ice dug each cell's basin; floods: finish-floods.js
  */
@@ -41,7 +43,7 @@ export function lastIceAge(ctx, F) {
     for (let c = 0; c < n; c++) {
         const a = Math.abs(lat[c]) / 90, cold = F.iceColdEqC + (F.iceColdPoleC - F.iceColdEqC) * a ** 1.5;
         const P = (ctx.rain[c] === ctx.rain[c] ? ctx.rain[c] : grid.at(rainG, lat[c], ctx.lon[c])) * (1 - F.iceDrier * a);
-        tS[c] = warmSl[c] - cold - LAPSE * Math.max(0, z[c]);
+        tS[c] = warmSl[c] - cold - LAPSE * (ctx.land?.[c] ? z[c] : Math.max(0, z[c]));
         snow[c] = P;
         if (water) {
             const dry = 1 - F.iceDrier * a;

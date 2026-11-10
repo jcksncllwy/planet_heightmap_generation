@@ -79,7 +79,8 @@ export function derivedCirculation() {
         // from the ground under it, a low sheet read as air ~10 °C too cold, and its cold high shifted the hemisphere's belts)
         const freeLapse = ctx.options.lapseRateCPerKm ?? 6.5;
         const href = new Float64Array(core.size), dome = temperature.domeKm;
-        for (let c = 0; c < core.size; c++) { const hr = ctx.surface.meanLandKm[c]; href[c] = Math.max(hr === hr ? Math.max(0, hr) : 0, dome ? dome[c] : 0); }
+        // (land below sea level at its own height too, brought up to sea level as it was brought down — PITHEAT)
+        for (let c = 0; c < core.size; c++) { const hr = ctx.surface.meanLandKm[c], hg = hr === hr ? hr : 0, d = dome ? dome[c] : 0; href[c] = d > 0 && d > hg ? d : hg; }
         const Tfree = new Float64Array(core.size);
         const sea = new Float64Array(G);
         for (let c = 0; c < G; c++) sea[c] = 1 - land[c];

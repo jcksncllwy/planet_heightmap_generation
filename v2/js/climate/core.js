@@ -247,12 +247,12 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCe
     for (let c = 0; c < G; c++) {
         const s = redirect[c];
         if (s < 0) continue;
-        const href = surface.meanLandKm[s] === surface.meanLandKm[s] ? Math.max(0, surface.meanLandKm[s]) : 0;
+        const href = surface.meanLandKm[s] === surface.meanLandKm[s] ? surface.meanLandKm[s] : 0;
         for (let m = 0; m < 12; m++) { Tsl[m * G + c] = months.T[m * G + s] + gamma * href; P[m * G + c] = months.P[m * G + s]; }
     }
 
     const hLand = new Float32Array(G);
-    for (let c = 0; c < G; c++) { const s = redirect[c]; const v = s >= 0 ? surface.meanLandKm[s] : NaN; hLand[c] = v === v ? Math.max(0, v) : 0; }
+    for (let c = 0; c < G; c++) { const s = redirect[c]; const v = s >= 0 ? surface.meanLandKm[s] : NaN; hLand[c] = v === v ? v : 0; }
     // texture: two smooth noise fields on the unit sphere, a fixed size in km (so the same at every terrain resolution)
     const tex = o.texture && (o.texture.tempC || o.texture.rain) ? o.texture : null;
     const noiseT = tex ? new FastNoise(o.seed * 7919 + 17) : null, noiseP = tex ? new FastNoise(o.seed * 7919 + 29) : null;
@@ -271,7 +271,9 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCe
         const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
         // the height the climate sees: the surroundings' (the 1° mean land height) and a share of the cell's own relief
         const hAround = w00 * hLand[c00] + w10 * hLand[c10] + w01 * hLand[c01] + w11 * hLand[c11];
-        const hc = hAround + o.terrainRelief * (Math.max(0, elevKm[r]) - hAround);
+        // (below sea level too — land the world ocean does not reach, a sunk basin's floor, warmer by the lapse rate as air
+        // sinking into it is compressed; until 2026-11-10 heights were taken ≥ 0 here and in the reduction above, upstream's)
+        const hc = hAround + o.terrainRelief * (elevKm[r] - hAround);
         // rain grows with the cell's height above its surroundings (orographic enhancement: ridges wetter, valleys
         // drier), bounded — so rain, like temperature, follows the terrain below the grid's scale
         let pf = o.rainPerKm ? Math.max(0.4, Math.min(2.5, Math.exp(o.rainPerKm * (hc - hAround)))) : 1, dt = 0;
