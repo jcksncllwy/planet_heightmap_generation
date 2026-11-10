@@ -183,12 +183,8 @@ export function carveLevel(mesh, f, route, cfg) {
         const c = order[i], r = recv[c], lim = (r >= 0 ? z[r] : baseOf(-1 - r)) + f.slope[c] * recvKm[c];
         if (lim < z[c]) z[c] = lim;
     }
-    // (a river cut to its base level stands just above it — the lowstand's sea, or its basin's floor: ground the lowstand's
-    // rivers cut below today's sea is drowned where today's sea reaches it — carveTerrain's flood — a ria)
-    for (let i = 0; i < count; i++) { const c = order[i], fl = baseAt[c] + LAND_FLOOR; if (z[c] < fl) z[c] = Math.min(f.z[c], fl); }
     return { z, recv, area, order: order.subarray(0, count) };
 }
-const LAND_FLOOR = 0.002;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** The stair's levels above the foot of a pile (km): steps of `step` ± 40 %, from a fixed hash — every mesh alike. */

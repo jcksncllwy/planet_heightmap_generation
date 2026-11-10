@@ -2,9 +2,10 @@
 // (erode-gpu.js) sweeps level by level, ~1,800 dispatches a step, done instead in O(log n) passes each, after FastFlow
 // (Jain, Kerbl, Gain, Finley & Cordonnier, CGF 43(7) 2024):
 //   · solveAffine — the implicit stream-power solve, pointer-jumped. FastFlow's Alg. 7 composes h_c = α_c + β_c·h_r up the
-//     receiver tree; our lakes add a max (a lake's bed holds at its old height or the water under it), so each cell's update
-//     is f_c(x) = max(a_c, α_c + β_c·x), β ≥ 0. That family is closed under composition,
-//         f₁∘f₂ (x) = max(a₁, α₁ + β₁·a₂, (α₁ + β₁·α₂) + β₁·β₂·x),
+//     receiver tree; ours adds two bounds: a lake's surface holds at its old ground or the water under it (a max), and a reach
+//     never cuts below its own old ground where its receiver stands higher (a min: stream power erodes only down a slope).
+//     So each cell's update is f_c(x) = clamp(α_c + β_c·x, lo_c, hi_c), β ≥ 0, lo ≤ hi. Monotone clamps compose into clamps,
+//         f₁∘f₂ (x) = clamp((α₁ + β₁·α₂) + β₁·β₂·x, f₁(lo₂), f₁(hi₂)),
 //     so pointer jumping holds with the lakes in place: ⌈log₂ depth⌉ passes, then one apply at the roots' heights.
 //   · drainage — the sum of a weight (area × runoff) over every cell upstream, by rake-and-compress over each cell's donor
 //     row (FastFlow §4): a donor with no donors left is added and dropped (rake); one with a single donor is added and
@@ -24,22 +25,28 @@ import { storage, readBack, pipeline, bind } from './gpu-device.js';
 
 const WG = 128, ROW = 65535 * WG, BIG = 1e30, R_EARTH = 6371;
 
+// A clamped affine map as a vec4f (lo, α, β, hi): x ↦ min(hi, max(lo, α + β·x)). ±BIG stand for no bound (finite, so that
+// β·BIG with β = 0 is 0, not NaN). Shared with gpu/erode-gpu.js, which wires the solve into the finish.
+export const CLAMP_AFFINE_WGSL = /* wgsl */`
+fn clampAt(f: vec4f, x: f32) -> f32 { return min(f.w, max(f.x, f.y + f.z * x)); }
+fn compose(f: vec4f, g: vec4f) -> vec4f { return vec4f(clampAt(f, g.x), f.y + f.z * g.y, f.z * g.z, clampAt(f, g.w)); }
+`;
+
 const HEAD = /* wgsl */`
 struct U { n: u32, W: u32, dt: f32, D: f32, Sc: f32, R: f32, p0: f32, p1: f32 }
 @group(0) @binding(0) var<uniform> U_: U;
 const BIG = ${BIG}f;
+${CLAMP_AFFINE_WGSL}
 `;
 
 // Each kernel: the buffers it binds (binding 1, 2, … in order; '+' read_write) and its body, run for every cell c < n.
 const T = { u: 'array<u32>', f: 'array<f32>', v: 'array<vec4f>', a: 'array<atomic<u32>>' };
 const KERNELS = {
-    // f_c ← f_c ∘ f_ptr(c), ptr ← ptr(ptr): a root (ptr = c) holds the identity (a = −BIG, α = 0, β = 1), so it stays one
+    // f_c ← f_c ∘ f_ptr(c), ptr ← ptr(ptr): a root (ptr = c) holds the identity (−BIG, 0, 1, BIG), so it stays one
     affineJump: { b: { fA: 'v', ptrA: 'u', fB: 'v+', ptrB: 'u+' }, body: `
-        let p = ptrA[c]; let f = fA[c]; let g = fA[p];
-        fB[c] = vec4f(max(-BIG, max(f.x, f.y + f.z * g.x)), f.y + f.z * g.y, f.z * g.z, 0.0);
-        ptrB[c] = ptrA[p];` },
+        let p = ptrA[c]; fB[c] = compose(fA[c], fA[p]); ptrB[c] = ptrA[p];` },
     affineApply: { b: { f: 'v', ptr: 'u', h0: 'f', h: 'f+' }, body: `
-        let g = f[c]; h[c] = max(g.x, g.y + g.z * h0[ptr[c]]);` },
+        h[c] = clampAt(f[c], h0[ptr[c]]);` },
     // a cell's donors: its neighbours that drain to it, in its neighbour list's order (no atomics: the row's order is fixed)
     donorsInit: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', w: 'f', sA: 'f+', cntA: 'u+', rowA: 'u+' }, body: `
         var k = 0u;
@@ -114,15 +121,17 @@ export async function fluvialKernels(device, mesh) {
     const count = k => (stats.dispatches += k);
 
     /**
-     * h_c = f_c(h at the root of c's receiver chain), f_c(x) = max(a_c, α_c + β_c·x), for every cell. `recv`: each cell's
-     * receiver (a root: itself); `a`, `alpha`, `beta`: Float32Arrays (a = −Infinity: none, at a root it is ignored: a root
-     * takes h0); `h0`: the roots' heights. `jumps`: passes, default ⌈log₂ n⌉ (enough for any depth). @returns Float32Array h
+     * h_c = f_c(h at the root of c's receiver chain), f_c(x) = min(b_c, max(a_c, α_c + β_c·x)), for every cell. `recv`: each
+     * cell's receiver (a root: itself); `a`, `alpha`, `beta`, `b`: Float32Arrays (a = −Infinity, b = Infinity: none; `b` may be
+     * left out; at a root they are ignored: a root takes h0); `h0`: the roots' heights. `jumps`: passes, default ⌈log₂ n⌉
+     * (enough for any depth). @returns Float32Array h
      */
-    async function solveAffine({ recv, a, alpha, beta, h0, jumps = Math.ceil(Math.log2(Math.max(2, n))) }) {
+    async function solveAffine({ recv, a, alpha, beta, b = null, h0, jumps = Math.ceil(Math.log2(Math.max(2, n))) }) {
         const f = new Float32Array(4 * n), ptr = u32(recv);
         for (let c = 0; c < n; c++) {
             const root = ptr[c] === c;
             f[4 * c] = root ? -BIG : Math.max(-BIG, a[c]); f[4 * c + 1] = root ? 0 : alpha[c]; f[4 * c + 2] = root ? 1 : beta[c];
+            f[4 * c + 3] = root || !b ? BIG : Math.min(BIG, b[c]);
         }
         setU();
         const F = [buf(f), buf(16 * n)], Q = [buf(ptr), buf(4 * n)], H0 = buf(Float32Array.from(h0)), H = buf(4 * n);
@@ -185,13 +194,13 @@ export async function fluvialKernels(device, mesh) {
 
 // The CPU references, float64, the same arithmetic in sequence (tools/fluvial-kernels-test.mjs): not a fallback (Q1).
 export const reference = {
-    solveAffine({ recv, a, alpha, beta, h0 }) {
+    solveAffine({ recv, a, alpha, beta, b = null, h0 }) {
         const n = recv.length, h = new Float64Array(n), done = new Uint8Array(n), stack = [];
         for (let c0 = 0; c0 < n; c0++) {
             let c = c0;
             while (!done[c] && recv[c] !== c) { stack.push(c); c = recv[c]; }
             if (!done[c]) { h[c] = h0[c]; done[c] = 1; }
-            while (stack.length) { const x = stack.pop(); h[x] = Math.max(a[x], alpha[x] + beta[x] * h[recv[x]]); done[x] = 1; }
+            while (stack.length) { const x = stack.pop(); h[x] = Math.min(b ? b[x] : Infinity, Math.max(a[x], alpha[x] + beta[x] * h[recv[x]])); done[x] = 1; }
         }
         return h;
     },

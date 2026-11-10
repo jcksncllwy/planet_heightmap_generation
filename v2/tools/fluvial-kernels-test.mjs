@@ -98,16 +98,16 @@ async function check(label, go, ref, err, tol) {
 const absErr = (g, r) => { const d = new Float64Array(n); for (let c = 0; c < n; c++) d[c] = Math.abs(g[c] - r[c]); return { p99: q(d, 0.99), max: q(d, 1) }; };
 const relErr = (g, r) => { const d = new Float64Array(n); for (let c = 0; c < n; c++) d[c] = Math.abs(g[c] - r[c]) / Math.max(1e-30, Math.abs(r[c])); return { p99: q(d, 0.99), max: q(d, 1) }; };
 
-// 1. the max-affine solve: a stream-power step (F = K·dt/Δx spread over four decades), lakes where the flood filled (a tenth
-// of the cells at random under --route steepest)
+// 1. the clamped-affine solve: a stream-power step (F = K·dt/Δx spread over four decades) that never cuts below its own old
+// ground (b), lakes where the flood filled (a tenth of the cells at random under --route steepest)
 {
-    const a = new Float32Array(n).fill(-Infinity), alpha = new Float32Array(n), beta = new Float32Array(n);
+    const a = new Float32Array(n).fill(-Infinity), b = new Float32Array(n).fill(Infinity), alpha = new Float32Array(n), beta = new Float32Array(n);
     for (let c = 0; c < n; c++) {
         const old = z[c] + 0.01 * rand();
         if (ROUTE === 'flood' ? fill[c] > z[c] + 1e-5 : rand() < 0.1) { a[c] = old; alpha[c] = 0; beta[c] = 1; continue; }
-        const F = 10 ** (4 * rand() - 2); alpha[c] = old / (1 + F); beta[c] = F / (1 + F);
+        const F = 10 ** (4 * rand() - 2); alpha[c] = old / (1 + F); beta[c] = F / (1 + F); b[c] = old;
     }
-    const job = { recv, a, alpha, beta, h0: z };
+    const job = { recv, a, alpha, beta, b, h0: z };
     const ref = reference.solveAffine(job);
     await check('solveAffine', () => K.solveAffine(job), ref, absErr, { p99: 1e-5, max: 1e-3 });
 }

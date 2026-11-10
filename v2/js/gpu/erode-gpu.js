@@ -18,7 +18,7 @@
 import { openDevice, readBack } from './gpu-device.js';
 import { deltaLayer, rebounder, layUp } from '../finish/finish-erode.js';
 
-const R_EARTH = 6371, EPS = 1e-5, LAND_FLOOR = 0.002, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
+const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 9;
 
@@ -28,7 +28,7 @@ struct Rg { start: u32, count: u32 }
 struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32 }
 struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32 }
 const NONE = 0x7FFFFFFFu; const INF = 0xFFFFFFFFu; const M = 0x7FFFFFFFu;
-const EPS = ${EPS}f; const LF = ${LAND_FLOOR}f; const R_EARTH = ${R_EARTH}f;
+const EPS = ${EPS}f; const R_EARTH = ${R_EARTH}f;
 fn enc(w: f32) -> u32 { let b = bitcast<u32>(w); return select(b ^ 0x80000000u, ~b, (b >> 31u) != 0u); }
 `;
 
@@ -148,8 +148,7 @@ const KERNELS = {
         // than before. No column: the top is out of reach, and no mud)
         let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
         let F = share * kv.x * layer * pow(Ac, U_.m) * U_.dt / (R_EARTH * length(d));
-        var h = (old + F * under) / (1.0 + F);
-        if (h < LF + under) { h = min(old, LF + under); }
+        let h = min(old, (old + F * under) / (1.0 + F));     // (stream power cuts only down a slope: finish-erode.js)
         cells[c].zNew = h; cells[c].e = h; cells[c].gross = max(old - h, 0.0);` },
     // (the load and, of it, the mud, qf: finish-erode.js's Qs and Qf. A lake keeps mud in proportion; a reach drops the bed
     // material by G and the mud by Gf. No column: no mud, and the drop is q·G's, as it was before the split)

@@ -24,7 +24,7 @@
 import { MinHeap } from '../core/min-heap.js';
 import { locate } from '../core/mesh-locate.js';
 
-const R = 6371, EPS = 1e-5, FLAT_KEY = 1e-11, LAND_FLOOR = 0.002;
+const R = 6371, EPS = 1e-5, FLAT_KEY = 1e-11;
 
 // The design erosion-report.md settled on ("Final design", Answer), run on three seeds at 2.5M. It is a chosen compromise, not
 // a converged result: the span has no plateau (0.5 Myr at the coarsest level; the solver sees only k·t).
@@ -222,8 +222,9 @@ export function erodeLandscape(o, P) {
             // (the layer it cuts: its own sediment, or the rock)
             const layer = column && old > column.zBed[c] + 1e-4 ? column.loose[c] : 1;
             const F = share * P.kScale * k[c] * layer * (1 - activeHold * hold[c]) * (slow ? slow[c] : 1) * Ac ** m * dt / step[c];
-            let h = (old + F * under) / (1 + F);
-            if (h < LAND_FLOOR + under) h = Math.min(old, LAND_FLOOR + under);
+            // (stream power cuts only down a slope: a reach whose receiver now stands above it keeps its ground. No floor
+            // above the base level: the flood afterwards says what is land)
+            const h = old > under ? (old + F * under) / (1 + F) : old;
             zNew[c] = h; e[c] = h; gross[c] = old > h ? old - h : 0;     // (= F (h − under): the rate, implicit)
         }
         lap('solve');
@@ -404,7 +405,6 @@ export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0) {
             if (ocean[c]) continue;
             const was = z[c];
             z[c] -= P.rebound * d[c];
-            if (was > seaKm && z[c] < seaKm + LAND_FLOOR) z[c] = Math.min(was, seaKm + LAND_FLOOR);     // (land stays above the sea it erodes to)
             km3 += (z[c] - was) * a;
             if (column) column.zBed[c] += z[c] - was;     // (the rock moves with the ground)
             anchor[c] = z[c];
@@ -502,8 +502,8 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
                 carry(U, cut, f.z); carry(U, delta.map(v => Math.max(0, v)), laid); carry(U, prevZ, top); carry(U, mask, m3);
                 for (let c = 0; c < lm.numCells; c++) if (laid[c] > 0) { const buried = top[c]; f.z[c] = Math.max(f.z[c], m3[c] * buried + (1 - m3[c]) * (f.z[c] + laid[c])); }
             } else carry(U, delta, f.z);
-            // (land stays land, the sea stays where it was)
-            for (let c = 0; c < lm.numCells; c++) { if (f.ocean[c]) f.z[c] = before[c]; else if (before[c] > sea && f.z[c] < sea + LAND_FLOOR) f.z[c] = Math.min(before[c], sea + LAND_FLOOR); }
+            // (the sea stays where it was: the solve moves land only)
+            for (let c = 0; c < lm.numCells; c++) if (f.ocean[c]) f.z[c] = before[c];
         }
         const t1 = performance.now();
         const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, hold: f.hold, column: f.column, closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] ? P.rebound : 0 });
