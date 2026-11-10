@@ -57,9 +57,9 @@ section('the river network');
         longest = Math.max(longest, steps);
     }
     check('every land cell drains to the sea', stranded === 0, `${stranded} land cells without a way out; the longest river ${longest} cells`);
-    // rivers run downhill: along the rivers (every cell stands at its bed: the carve lowers the whole cell), no carved cell
-    // stands below the next one down (a pit of the tectonic surface itself — a basin a lake would fill — aside)
-    const fullKm2 = channelKm2;
+    // rivers run downhill: along the rivers whose valley fills their cell (there the cell stands at the river bed), no
+    // carved cell stands below the next one down (a pit of the tectonic surface itself — a basin a lake would fill — aside)
+    const fullKm2 = 1e4 * (Math.sqrt(4 * Math.PI * 6371 ** 2 / n) / TERRAIN.carveValleyKm) ** 2;
     let channels = 0, uphill = 0, basins = 0, drowned = 0;
     for (let t = 0; t < n; t++) {
         if (!land(t) || T.drainage[t] < fullKm2) continue;

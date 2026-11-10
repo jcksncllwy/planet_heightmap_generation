@@ -54,7 +54,7 @@ function infoOf(mesh) {
  *                         micro-relief, for the routing only), inc (km: how deep the history's rivers cut here); optionally sink (> 0.5: the floor of a closed basin — rivers
  *                         end there as at the sea) and base (km: that floor's level, their base level instead of 0)
  * @param {Float32Array} route   the surface the rivers are routed over (the current estimate, micro-relief included)
- * @param {Object} cfg     { timeMyr, m }
+ * @param {Object} cfg     { timeMyr, m, valleyKm }
  * @returns {{z: Float32Array, recv: Int32Array, area: Float32Array}}  carved heights, receivers (−1: the sea), drainage (km²)
  */
 export function carveLevel(mesh, f, route, cfg) {
@@ -157,9 +157,16 @@ export function carveLevel(mesh, f, route, cfg) {
     // ── rivers run downhill: where the wave left a bed below the reach it drains into, the bed stands at that reach's
     // height — never above the tectonic surface (a pit in the tectonic surface itself stays, a basin a lake would fill) ──
     for (let i = 0; i < count; i++) { const c = order[i], r = recv[c]; if (r >= 0 && bed[c] < bed[r]) bed[c] = Math.min(f.z[c], bed[r]); }
-    // ── the ground: each cell lowered to its bed — a cell's mean, as at any resolution (the finish's erosion, with the
-    // history's uplift over the moment's window, does the rest: finish-erode.js) ──
-    for (let i = 0; i < count; i++) { const c = order[i]; z[c] = bed[c]; }
+    // ── how much of a cell its valley takes (R6, kept — fluvial5 ruling, 2026-11-10: lowering whole cells to their beds drowned
+    // a coastal strip, 5–7 % of the land): a valley widens with the square root of its river's discharge (hydraulic
+    // geometry, Leopold & Maddock 1953) — valleyKm wide at 10⁴ km². A great river's valley fills its cell and the cell drops
+    // to the bed; a stream's is a sliver of it and the cell hardly drops; a coarse cell drops less — its mean, as at any
+    // resolution. The finish's erosion, with the history's uplift over the moment's window, does the rest (finish-erode.js) ──
+    const perCell = cfg.valleyKm / Math.sqrt(cellArea);
+    for (let i = 0; i < count; i++) {
+        const c = order[i], share = Math.min(1, perCell * Math.sqrt(area[c] / 1e4));
+        z[c] = f.z[c] - share * Math.max(0, f.z[c] - bed[c]);
+    }
     return { z, recv, area, order: order.subarray(0, count) };
 }
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };

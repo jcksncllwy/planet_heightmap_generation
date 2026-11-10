@@ -576,6 +576,8 @@ export const TERRAIN = {
     // age's (finish-ice.js), not this.
     carveSeaDropKm: 0.053,
     carveM: 0.4,                // the drainage-area exponent m (the paper's; concavity m / n)
+    carveValleyKm: 20,          // a valley is this wide where its river drains 10⁴ km², wider with √(drainage) (Leopold &
+                                // Maddock 1953): a cell drops by the share of it its valley takes (R6, kept: fluvial5 ruling)
     carveK: 5,                  // k (km^(1−2m)/Myr): the wave's speed where 1 km² drains — 200 km/Myr at 10⁴ km² (the paper's k)
     carveBgUplift: 0.02,        // background rock uplift (km/Myr) everywhere: rivers keep a gentle graded slope
     carveUpliftPerKm: 0.4,      // an active belt's rock uplift, per km of its relief (a 5 km range: 2 km/Myr) — its rivers stay high

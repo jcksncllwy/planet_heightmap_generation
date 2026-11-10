@@ -125,7 +125,7 @@ export function carveLadder(simMesh, tMesh, meshOf) {
  * the lower of that and the glacial cycle's time-weighted mean sea (terrain-config carveSeaDropKm).
  */
 export function carveSettings(cfg, seaWindowKm = 0) {
-    return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
+    return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
         lipEdgeRetreat: cfg.lipEdgeRetreatKmPerMyr ?? 0, lipValleyRate: cfg.lipValleyKmPerMyr ?? 0, lipValleyAreaKm2: cfg.lipValleyAreaKm2 ?? 3000, lipWallKm: cfg.lipWallKm ?? 6, lipWallNoise: cfg.lipWallNoise ?? 0, lipStairShare: cfg.lipStairShare ?? 1, lipIncisionMyr: cfg.lipIncisionMyr ?? 0,
         lowstandKm: Math.min(seaWindowKm, -(cfg.carveSeaDropKm ?? 0)),
         canyonKm: cfg.canyonKm ?? 0, canyonDepthKm: cfg.canyonDepthKm ?? 0, canyonAreaKm2: cfg.canyonAreaKm2 };
