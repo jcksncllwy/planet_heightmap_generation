@@ -22,8 +22,9 @@
 //     warmed ΔT = h × plateHeatWarmK (Coltice et al. 2007: up to 100 °C under a supercontinent) is less viscous, so the
 //     thermal boundary layer under the lid thins (δ ∝ η^⅓, boundary-layer theory) and the mantle heat flow rises:
 //       q = qRef + qMantle × [(1 + ΔT ÷ ΔT_lid) × exp(E ÷ 3R × (1/T_m − 1/(T_m + ΔT))) − 1]
-//     and the strength falls along Buck's curve (BUCK_40KM below: the geometric mean of his 30 and 50 km crust curves),
-//     H = B(q) ÷ B(qRef). With the sourced constants H is 1 → ~0.30 from h 0 → 1 (×2.3 weaker at the land's median h 0.62);
+//     and the strength falls along Buck's curve at the cell's own crust thickness (between his 30 and 50 km curves, in ln),
+//     H = B(q, km) ÷ B(qRef, plateCrustRefKm 40). At 40 km H is 1 → ~0.30 from h 0 → 1 (×2.3 weaker at the land's median h
+//     0.62); a 50 km crust (an orogen's) keeps ×0.45 of a 40 km one's at qRef, 30 km (thinned) ×2.2;
 //   - magma: crust a plume head's flood basalt covered (volcType LIP) within magmaWeakMyr of its eruption is ÷ magmaWeakening
 //     weaker: dikes open at a force an order of magnitude below the one tectonic faulting needs (Bialas, Buck & Qin 2010);
 //   - inherited lines (SUTURE, FAILED_RIFT, RIFT_MARGIN: crust a collision, a failed arm or a stage strained) × riftWeaknessCost:
@@ -32,7 +33,7 @@
 // a cell that yielded once kept winning, and at the declared 3e12 that shattered (lane riftprobe2: ×2–3 the winning bands).
 // Its limits: H is quasi-static (the boundary layer is taken as thinned as soon as the mantle warms; it lags by its
 // diffusion time, tens of Myr, which the insulation's own ~100 Myr ramp mostly covers); Buck's curve is one strain rate and two
-// crust thicknesses (the crust's own thickness is not read); magma weakens only under a head's LIP, not along a tail; the
+// crust thicknesses (a thinner or thicker crust is held at the nearer one); magma weakens only under a head's LIP, not along a tail; the
 // inherited lines do not heal (Bercovici & Ricard 2014: weak zones outlast a Wilson cycle).
 //
 // Reduced model, and its limits: the plate stays rigid however broken it is (the stress is the rigid plate's: what it would
@@ -41,6 +42,9 @@
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../model/crust.js';
 import { solvePlateStress, stressAt } from './plate-stress-field.js';
+import { crustThicknessKm } from '../measure.js';
+import { heightsOf } from '../step/heights.js';
+import { arcCrustKm } from '../step/collision.js';
 
 const WEAK = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
 
@@ -62,34 +66,56 @@ export function stepPlateStress(world, dt) {
 }
 
 // Buck 1991's force to rift the lithosphere (10¹² N/m) against surface heat flow (mW/m²), read off his figure as Hopper & Buck
-// 1993 reproduce it (Fig. 1: 30 and 50 km crust, digitized 2026-11-10, lane riftstrength), here as the geometric mean of the
-// two (~40 km of crust: Earth's continental mean, Christensen & Mooney 1995, recalled). Only its shape is used (H, a ratio).
+// 1993 reproduce it (Fig. 1: 30 and 50 km crust, digitized 2026-11-10, lane riftstrength). Its second axis is the crust's
+// thickness: a thicker crust puts more of the column in weak quartz-feldspar rock and warms its own Moho, so 50 km of crust is
+// ~5× weaker than 30 at 65 mW/m² (Buck 1991: thickened orogenic crust is where wide rifts and core complexes form). Between
+// the two the strength is interpolated in ln B against the thickness; outside them it is held at the nearer curve (the figure
+// says nothing past them: a 70 km plateau is taken as weak as 50 km, a stretched 20 km margin as strong as 30).
 const BUCK_Q = [44, 50, 56, 60, 66, 70, 76, 80, 86, 90, 96, 100, 106];
 const BUCK_30KM = [58.3, 42.0, 30.4, 25.4, 18.9, 15.5, 11.6, 9.4, 7.1, 5.8, 3.9, 2.8, 1.5];
 const BUCK_50KM = [35.5, 21.7, 11.9, 7.3, 3.4, 2.5, 1.6, 1.5, 1.3, 1.2, 0.9, 0.8, 0.7];
-const BUCK_40KM = BUCK_Q.map((_, i) => Math.log(Math.sqrt(BUCK_30KM[i] * BUCK_50KM[i])));    // (ln, interpolated in ln)
-function buck(q) {
-    if (q <= BUCK_Q[0]) return Math.exp(BUCK_40KM[0]);
-    for (let i = 1; i < BUCK_Q.length; i++) if (q <= BUCK_Q[i]) { const f = (q - BUCK_Q[i - 1]) / (BUCK_Q[i] - BUCK_Q[i - 1]); return Math.exp(BUCK_40KM[i - 1] + f * (BUCK_40KM[i] - BUCK_40KM[i - 1])); }
-    return Math.exp(BUCK_40KM[BUCK_40KM.length - 1]);
+const BUCK_KM = [30, 50];
+/** ln B(q, crust km): Buck's curves interpolated in ln, in heat flow and in crust thickness (each clamped to the figure). */
+function lnBuck(q, km) {
+    const at = curve => {
+        if (q <= BUCK_Q[0]) return Math.log(curve[0]);
+        for (let i = 1; i < BUCK_Q.length; i++) if (q <= BUCK_Q[i]) { const f = (q - BUCK_Q[i - 1]) / (BUCK_Q[i] - BUCK_Q[i - 1]); return (1 - f) * Math.log(curve[i - 1]) + f * Math.log(curve[i]); }
+        return Math.log(curve[curve.length - 1]);
+    };
+    const f = Math.max(0, Math.min(1, (km - BUCK_KM[0]) / (BUCK_KM[1] - BUCK_KM[0])));
+    return (1 - f) * at(BUCK_30KM) + f * at(BUCK_50KM);
 }
 /** The heat-flow rise under mantle warmed by h of full insulation (mW/m²): the boundary layer thinned as η^⅓. */
 export function heatFlowRise(h, config) {
     const dT = h * config.plateHeatWarmK, T = config.plateHeatMantleK, eR = config.plateHeatCreepKJ * 1e3 / (3 * 8.314);
     return config.plateHeatMantleFlow * ((1 + dT / config.plateHeatLidK) * Math.exp(eR * (1 / T - 1 / (T + dT))) - 1);
 }
-const HEAT_STEPS = 64;
+const HEAT_STEPS = 64, KM_STEPS = 20;           // (h by 1/64; crust by 1 km across the figure's 30–50)
 let heatTable = null, heatKey = '';
-/** H(h): the share of its strength a continent keeps over mantle warmed by h (0…1), along Buck's curve. */
-export function heatWeakening(h, config) {
-    const key = `${config.plateHeatWarmK},${config.plateHeatMantleK},${config.plateHeatCreepKJ},${config.plateHeatMantleFlow},${config.plateHeatLidK},${config.plateHeatFlowRef}`;
+/**
+ * The share of plateYieldContinent a continent of `km` crust keeps over mantle warmed by h (0…1), along Buck's curves:
+ * B(qRef + Δq(h), km) ÷ B(qRef, plateCrustRefKm). (km omitted: the reference crust, i.e. the heat weakening alone.)
+ */
+export function heatWeakening(h, config, km = config.plateCrustRefKm) {
+    const key = `${config.plateHeatWarmK},${config.plateHeatMantleK},${config.plateHeatCreepKJ},${config.plateHeatMantleFlow},${config.plateHeatLidK},${config.plateHeatFlowRef},${config.plateCrustRefKm}`;
     if (key !== heatKey) {
-        heatKey = key; heatTable = new Float64Array(HEAT_STEPS + 1);
-        const q0 = config.plateHeatFlowRef, b0 = buck(q0);
-        for (let i = 0; i <= HEAT_STEPS; i++) heatTable[i] = buck(q0 + heatFlowRise(i / HEAT_STEPS, config)) / b0;
+        heatKey = key; heatTable = new Float64Array((HEAT_STEPS + 1) * (KM_STEPS + 1));
+        const q0 = config.plateHeatFlowRef, b0 = lnBuck(q0, config.plateCrustRefKm);
+        for (let i = 0; i <= HEAT_STEPS; i++) {
+            const q = q0 + heatFlowRise(i / HEAT_STEPS, config);
+            for (let j = 0; j <= KM_STEPS; j++) heatTable[i * (KM_STEPS + 1) + j] = lnBuck(q, BUCK_KM[0] + (BUCK_KM[1] - BUCK_KM[0]) * j / KM_STEPS) - b0;
+        }
     }
-    const x = Math.max(0, Math.min(1, h)) * HEAT_STEPS, i = Math.min(HEAT_STEPS - 1, Math.floor(x));
-    return heatTable[i] + (x - i) * (heatTable[i + 1] - heatTable[i]);
+    const x = Math.max(0, Math.min(1, h)) * HEAT_STEPS, i = Math.min(HEAT_STEPS - 1, Math.floor(x)), fx = x - i;
+    const y = Math.max(0, Math.min(1, (km - BUCK_KM[0]) / (BUCK_KM[1] - BUCK_KM[0]))) * KM_STEPS, j = Math.min(KM_STEPS - 1, Math.floor(y)), fy = y - j;
+    const K = KM_STEPS + 1, a = heatTable[i * K + j], b = heatTable[i * K + j + 1], c = heatTable[(i + 1) * K + j], d = heatTable[(i + 1) * K + j + 1];
+    return Math.exp((1 - fx) * ((1 - fy) * a + fy * b) + fx * ((1 - fy) * c + fy * d));
+}
+/** The crust's thickness at raster cell c (km): a continent's as formed, thickened or thinned, with the crust its relief stands for. */
+function crustKmAt(crust, c, time, config) {
+    const t = crust.type[c];
+    if (t === CrustType.ARC) return arcCrustKm(crust, c, time, config) + crust.rootKm[c];
+    return crustThicknessKm(heightsOf(config), t, crust.rootKm[c], crust.upliftKm[c], crust.baseKm[c]);
 }
 
 /** The rock's strength at raster cell c of a plate (N/m), over mantle heat h (world.mantleHeat at its world cell, 0…1). */
@@ -98,7 +124,7 @@ export function rockStrength(crust, c, time, config, h = 0) {
     let T;
     if (t === CrustType.OCEAN) T = config.plateYieldOcean * Math.max(config.plateYieldOceanFloor, Math.min(1, Math.sqrt(Math.max(0, time - crust.formedAt[c]) / config.plateYieldOceanAgeMyr)));
     else {
-        T = config.plateYieldContinent * (t === CrustType.CRATON ? config.cratonStrength : 1) * heatWeakening(h, config);
+        T = config.plateYieldContinent * (t === CrustType.CRATON ? config.cratonStrength : 1) * heatWeakening(h, config, crustKmAt(crust, c, time, config));
         if (crust.volcType[c] === VolcanicType.LIP && time - crust.volcAt[c] <= config.magmaWeakMyr) T /= config.magmaWeakening;
     }
     if (crust.flags[c] & WEAK) T *= config.riftWeaknessCost;

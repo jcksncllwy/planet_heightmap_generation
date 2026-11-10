@@ -566,6 +566,10 @@ export const TECTONICS = {
                                 // 2026-11-10: 30 km crust ~19, 50 km ~4 at 65 mW/m²; "> 20 TN/m" below 50). Over mantle no continent has warmed
                                 // (h 0); the heat below weakens it. 2e13 (cold, < 50 mW/m²) is the high case swept in tools/riftforce.mjs
     plateHeatFlowRef: 65,       // mW/m²: the surface heat flow plateYieldContinent stands at (above)…
+    plateCrustRefKm: 40,        // km: …and the crust it stands for (Earth's continental mean ~40 km, Christensen & Mooney 1995, recalled).
+                                // A cell's own crust (measure.js crustThicknessKm: as formed, thickened, thinned) moves it along the
+                                // figure's second axis: 50 km is ×0.45 of this at 65 mW/m², 30 km ×2.2, held at those curves outside
+                                // them (Buck 1991: thick orogenic crust is weak; field/stress-step.js heatWeakening)
     plateHeatMantleFlow: 45,    // …of which this much comes up from the mantle: Hopper & Buck 1993 let the crust's heat production give
                                 // 20 mW/m² of the surface flow (their §"model formulation")…
     plateHeatWarmK: 100,        // …and a continent's insulation warms the mantle under it by up to this (h = 1): "as large as 100 °C" under
