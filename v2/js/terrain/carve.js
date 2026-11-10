@@ -154,6 +154,9 @@ export function carveLevel(mesh, f, route, cfg) {
             for (let k = donorsAt[c]; k < donorsAt[c + 1]; k++) { walk[top] = donors[k]; walkDepth[top++] = d + 1; }
         }
     }
+    // ── rivers run downhill: where the wave left a bed below the reach it drains into, the bed stands at that reach's
+    // height — never above the tectonic surface (a pit in the tectonic surface itself stays, a basin a lake would fill) ──
+    for (let i = 0; i < count; i++) { const c = order[i], r = recv[c]; if (r >= 0 && bed[c] < bed[r]) bed[c] = Math.min(f.z[c], bed[r]); }
     // ── the ground: each cell lowered to its bed — a cell's mean, as at any resolution (the finish's erosion, with the
     // history's uplift over the moment's window, does the rest: finish-erode.js) ──
     for (let i = 0; i < count; i++) { const c = order[i]; z[c] = bed[c]; }
