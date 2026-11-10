@@ -24,10 +24,11 @@ const TUNABLES = [
     { id: 'riftTortuosityMax', label: 'Rift length ÷ end-to-end distance, max', min: 1.1, max: 3, step: 0.1 },
     { id: 'riftFailedArmKm', label: 'Failed arm length', min: 0, max: 1500, step: 50, unit: ' km' },
     { id: 'riftCostSlack', label: '…among cuts costing up to × the cheapest', min: 1, max: 3, step: 0.1 },
-    // (lane pstress: the stress field and the rift stage, flags — 0 off, 1 on; all on by default since lane rifton, continental strength 3e12)
-    { id: 'plateStress', label: 'Solve the plates’ in-plate stress (damage where it beats the rock)', min: 0, max: 1, step: 1 },
+    // (lane pstress: the stress field and the rift stage, flags — 0 off, 1 on; all on by default since lane rifton; continental strength sourced since lane riftstrength: Buck 1991's 1e13 at 40 km crust
+    // and 65 mW/m², weakened by the insulated mantle's heat, the cell's own crust thickness, fresh flood basalt and old weak lines)
+    { id: 'plateStress', label: 'Solve the plates’ in-plate stress (logged where it beats the rock)', min: 0, max: 1, step: 1 },
     { id: 'plateStressRifts', label: '…and log continent it breaks in tension as stretched (diffuse extension)', min: 0, max: 1, step: 1 },
-    { id: 'plateYieldContinent', label: '…continental strength, declared', min: 1e12, max: 2e13, step: 1e12, unit: ' N/m' },
+    { id: 'plateYieldContinent', label: '…continental strength (40 km crust, unwarmed mantle)', min: 1e12, max: 2e13, step: 1e12, unit: ' N/m' },
     { id: 'riftByStress', label: 'Rifts placed by stress over strength (needs the stress)', min: 0, max: 1, step: 1 },
     { id: 'riftStage', label: 'A rift stretches as thinned continent before it breaks up', min: 0, max: 1, step: 1 },
     { id: 'sutureStallMinKm', label: 'Shortening before a stalled seam may weld', min: 0, max: 600, step: 25, unit: ' km' },
