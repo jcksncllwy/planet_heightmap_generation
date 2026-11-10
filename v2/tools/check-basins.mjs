@@ -19,7 +19,9 @@ import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { zonalPETAt } from '../js/climate/water.js';
 import { lakeBalance, hollowLakes } from '../js/finish/finish-basins.js';
-import { worldOcean } from '../js/terrain/world-ocean.js';
+import { worldOcean, FILLED } from '../js/terrain/world-ocean.js';
+import { estimateCutOff } from '../js/terrain/basin-estimate.js';
+import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { Water } from '../js/finish/finish-hydro.js';
 import { landWater } from './lib/land-water.mjs';
 import { trapEfficiency } from '../js/tectonics/step/rivers.js';
@@ -86,6 +88,25 @@ section('the world ocean is the largest body of water');
     const z = Float32Array.from([-1, -1, 0.5, -2, -2, -2, -2, 0.2, 1, -0.1]), W = worldOcean(mesh, z);
     check('the largest body below sea level is the world ocean; the others are cut off', W.ocean.join('') === '0001111000' && W.cut.join('') === '1100000001',
         `ocean ${W.ocean.join('')} · cut off ${W.cut.join('')}`);
+    // the history's water (world-ocean.js): a body it fills (its water on the body's cells ≥ FILLED of the room below sea
+    // level) is the world ocean, though the view's ground cut it off (831576 at 290 Myr); one it part-fills stays apart and
+    // carries that water (basin-estimate.js stands it); one it pours none into is cut off; at a sea level not the frame's
+    // own, the ground alone decides
+    const hist = (sea, waterKm) => ({ sea: Uint8Array.from(sea), waterKm: Float32Array.from(waterKm) });
+    const H = worldOcean(mesh, z, 0, hist([1, 1, 0, 1, 1, 1, 1, 0, 0, 0], [1, 1, 0, 2, 2, 2, 2, 0, 0, 0]));
+    check('…and a body the history fills is joined to it; one it pours nothing into stays cut off', H.ocean.join('') === '1101111000' && H.cut.join('') === '0000000001' && H.oceanCells === 6 && H.bodies.length === 2,
+        `ocean ${H.ocean.join('')} · cut off ${H.cut.join('')} · ${H.bodies.length} bodies, the ocean ${H.oceanCells} cells`);
+    const P = worldOcean(mesh, z, 0, hist([1, 0, 0, 1, 1, 1, 1, 0, 0, 0], [1, 0, 0, 2, 2, 2, 2, 0, 0, 0])), half = P.bodies.find(b => b.first === 0);
+    check(`…one it fills short of ${100 * FILLED} % stays apart, carrying the history's water`, P.ocean.join('') === '0001111000' && half && Math.abs(half.pouredKm3 / (4 * Math.PI * 6371 * 6371 / N) - 1) < 1e-6,
+        `ocean ${P.ocean.join('')} · the half-filled body carries ${half ? (half.pouredKm3 / (4 * Math.PI * 6371 * 6371 / N)).toFixed(3) : '—'} cell-km of water (1 poured)`);
+    const K = worldOcean(mesh, z, -0.05, hist([1, 1, 0, 1, 1, 1, 1, 0, 0, 1], [1, 1, 0, 2, 2, 2, 2, 0, 0, 1]));
+    check('…only at the frame\'s own sea level (the history poured at it)', K.ocean.join('') === '0001111000', `at −50 m: ocean ${K.ocean.join('')}`);
+    // standing it: the water the history pours into a part-filled body, from its bottom up, not debited
+    const zs = Float32Array.from([0.3, 0.3, 0.5, -2, -2, -2, -2, 0.2, -0.5, -1.5]), cellA = 4 * Math.PI * 6371 * 6371 / N;
+    const Ws = worldOcean(mesh, zs, 0, hist([0, 0, 0, 1, 1, 1, 1, 0, 0, 1], [0, 0, 0, 2, 2, 2, 2, 0, 0, 1])), E = estimateCutOff(mesh, zs, Ws, TERRAIN, 0);
+    check('…a part-filled sea stands the history\'s water from its bottom: the deepest cell wet at its level, the shallower dry, nothing debited',
+        E.given[9] === 1 && E.given[8] === 2 && Math.abs(E.givenKm3 / cellA - 1) < 1e-4 && E.cut[9] === 1 && E.dry[8] === 1 && E.oceanFallKm === 0 && !(E.heldKm3 > 0),
+        `given ${E.given.join('')} · ${(E.givenKm3 / cellA).toFixed(4)} cell-km stood (1 poured) · level ${(1000 * (E.seas.find(s => s.history)?.levelKm ?? NaN)).toFixed(0)} m · fall ${E.oceanFallKm} · held ${E.heldKm3}`);
 }
 
 section('cut-off seas through the history (finished at 160K cells)');

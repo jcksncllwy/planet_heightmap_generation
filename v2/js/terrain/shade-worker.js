@@ -26,8 +26,8 @@ function handle(msg) {
             // basin-estimate.js — first: their dried ground is shaded as land)
             const shade = shadeWithWater(meshes.get(msg.numCells), msg.heightKm, msg.opts, TERRAIN), W = shade.water;
             delete shade.water;
-            const { cut, dry, paintKm, bodies, oceanCells, seas, heldKm3, oceanFallKm } = W;
-            post({ type: 'shaded', jobId: msg.jobId, shade, water: { cut, dry, paintKm, bodies, oceanCells, seas, heldKm3, oceanFallKm } }, [shade.buffer, cut.buffer, dry.buffer, ...(paintKm ? [paintKm.buffer] : [])]);
+            const { cut, dry, given, paintKm, bodies, oceanCells, seas, heldKm3, givenKm3, oceanFallKm } = W;
+            post({ type: 'shaded', jobId: msg.jobId, shade, water: { cut, dry, given, paintKm, bodies, oceanCells, seas, heldKm3, givenKm3, oceanFallKm } }, [shade.buffer, cut.buffer, dry.buffer, given.buffer, ...(paintKm ? [paintKm.buffer] : [])]);
         }
     } catch (err) {
         post({ type: 'error', jobId: msg.jobId, message: err.stack ?? String(err) });

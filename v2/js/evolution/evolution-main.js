@@ -1233,7 +1233,11 @@ function readout(e) {
     lines.push(`<span class="hi-label">Elev</span> ${Math.round(at ? at.heightM : h * 1000).toLocaleString()} m`);
     // (a sea cut off from the world ocean, on the live terrain: its level is its water balance's — Add detail finds it)
     // (estimated on the zonal climate — basin-estimate.js; Add detail balances it on its own)
-    if (!at && paintedT.water?.cut[t] === 1 && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, estimated (Add detail balances it)`);
+    // (a sea the history part-fills over a seaway's sill: its water is the history's — basin-estimate.js standPoured)
+    const given = !at ? paintedT.water?.given?.[t] : 0;
+    if (given === 1) lines.push(`<span style="color:#7aa">●</span> <b>Sea filling over a sill</b> · the ocean spills in over a seaway at sea level; the water the history pours in, from the bottom up`);
+    else if (given === 2) lines.push(`<span style="color:#b9a27a">●</span> <b>Basin filling over a sill</b> · below sea level, not yet reached by the water the ocean spills in`);
+    else if (!at && paintedT.water?.cut[t] === 1 && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, estimated (Add detail balances it)`);
     else if (!at && paintedT.water?.dry?.[t]) lines.push(`<span style="color:#b9a27a">●</span> <b>Dry basin below sea level</b> · too little rain to fill it, estimated (Add detail balances it)`);
     if (at && view.water && (view.layer === 'terrain' || view.layer === 'satellite')) {
         if (at.water && !at.ocean) lines.push(`<span style="color:#5ae">●</span> <b>${['', 'Fresh lake', 'Salt lake', 'Salt pan'][at.water]}</b>`);

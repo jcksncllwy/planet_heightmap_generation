@@ -18,6 +18,7 @@ import { kindType, deriveRecords } from '../../terrain/records.js';
 import { locate } from '../../core/mesh-locate.js';
 import { paintRelief, tintOf, cutOffTint, dryTintOf } from '../../view/terrain-shade.js';
 import { worldOcean } from '../../terrain/world-ocean.js';
+import { pouredSeaOnto } from '../../terrain/land-mask.js';
 import { estimateCutOff, shadeWithWater } from '../../terrain/basin-estimate.js';
 import { colorByCrustType, colorByOrogeny, colorByMantleHeat, OROGENY_RGB, css } from '../../view/palettes.js';
 import { EventKind } from '../../tectonics/model/world.js';
@@ -268,13 +269,19 @@ export function terrainPhase(spec) {
     // components (Ridges only) as its build has them; its hypsometry, land-height tally and records only when something
     // asks for them
     const shading = { exaggeration: view.exaggeration, seaLevelKm: view.seaLevelKm };
-    const keep = (frame, r, shade = shadeWithWater(tMesh, r.heightKm, shading, cfg)) => {
+    // (the history's poured sea on the terrain mesh, once per frame: which seas below sea level it joins to the ocean —
+    // terrain/world-ocean.js)
+    const seas = new WeakMap(), historySeaOf = (frame, r) => {
+        if (!seas.has(frame)) { S.sampler ??= r?.sampler ?? sampleOnto(simMesh, tMesh, cfg, seed); seas.set(frame, pouredSeaOnto(frame, simMesh, cfg, S.sampler)); }
+        return seas.get(frame);
+    }, shadingOf = (frame, r) => ({ ...shading, history: historySeaOf(frame, r) });
+    const keep = (frame, r, shade = shadeWithWater(tMesh, r.heightKm, shadingOf(frame, r), cfg)) => {
         let rec = r.rec ?? null, hyps = null, water = null;
         const out = { src: r, heightKm: r.heightKm, get parts() { return r.parts ?? null; }, sampler: r.sampler ?? S.sampler, ms: r.ms, kernels: r.kernels, volcanoes: r.volcanoes,
             tectonicKm: r.tectonicKm ?? null, drainage: r.drainage ?? null, carved: !carve || r.carved !== false, tally: null,
             shade, get hyps() { return hyps ??= hypsometry(r.heightKm, view.seaLevelKm); }, get rec() { return rec ??= deriveRecords(frame, simMesh, cfg, seed); },
             // (the world ocean and the seas cut off from it at this sea level — terrain/world-ocean.js — drawn apart)
-            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, view.seaLevelKm), cfg, view.seaLevelKm); } };
+            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, view.seaLevelKm, historySeaOf(frame, r)), cfg, view.seaLevelKm); } };
         shown.set(frame, out);
         if (shown.size > 4) shown.delete(shown.keys().next().value);
         return out;
@@ -348,7 +355,7 @@ export function terrainPhase(spec) {
         }
         // shaded on the pool, not here (a frame built meanwhile — carved, say — is shaded on the next call)
         const r = fresh(frame) ? null : S.full.get(frame) ?? fromHeights(frame);
-        if (r) keep(frame, r, await pool.shade(tMesh, r.heightKm, shading));
+        if (r) keep(frame, r, await pool.shade(tMesh, r.heightKm, shadingOf(frame, r)));
         prefetch(pool);
     }
     // carve the frame on screen, and paint it again when done
@@ -532,7 +539,7 @@ export function terrainPhase(spec) {
 
         describeCell(frame, t) {
             const T = terrainOf(frame), h = T.heightKm[t] - view.seaLevelKm, w = T.sampler.cells[3 * t];
-            const where = h >= 0 ? `${km(h)} above sea level` : T.water.dry?.[t] ? `${km(-h)} below sea level, a dry basin cut off from the ocean (estimated: too little rain to fill it)` : T.water.cut[t] ? `${km(-h)} below sea level, in a sea cut off from the ocean (a lake at its level estimated on the zonal climate; the Evolution page's Add detail balances it)` : `${km(-h)} deep`;
+            const g = T.water.given?.[t], where = h >= 0 ? `${km(h)} above sea level` : g === 1 ? `${km(-h)} below sea level, in a sea filling over a seaway's sill (the water the history pours in, stood from the bottom)` : g === 2 ? `${km(-h)} below sea level, in a basin filling over a seaway's sill, not yet reached by the water` : T.water.dry?.[t] ? `${km(-h)} below sea level, a dry basin cut off from the ocean (estimated: too little rain to fill it)` : T.water.cut[t] ? `${km(-h)} below sea level, in a sea cut off from the ocean (a lake at its level estimated on the zonal climate; the Evolution page's Add detail balances it)` : `${km(-h)} deep`;
             return `${where} · ${describeCell(frame, w)}`;
         },
 

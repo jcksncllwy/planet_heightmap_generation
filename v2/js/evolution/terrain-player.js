@@ -11,6 +11,7 @@ import { TerrainPool } from '../terrain/terrain-pool.js';
 import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
 import { worldOcean } from '../terrain/world-ocean.js';
+import { pouredSeaOnto } from '../terrain/land-mask.js';
 import { estimateCutOff, shadeWithWater } from '../terrain/basin-estimate.js';
 import { TERRAIN } from '../terrain/terrain-config.js';
 import { SMALL_DEVICE } from '../core/device.js';
@@ -57,6 +58,7 @@ export class TerrainPlayer {
         this.bytes = 0;
         this.carving = new Map();      // frame → its carving under way
         this.shown = new Map();        // frame → what is painted: heights + hillshade (the last few)
+        this.seas = new WeakMap();     // frame → the history's poured sea on the terrain mesh (historySeaOf)
         this.prefetching = false;
         this.workers = workers;
         this.resting = null;           // let go of the pool for a while (rest): { wake: a promise, resolve }
@@ -134,7 +136,7 @@ export class TerrainPlayer {
             if (this.disposed) return;
         }
         const r = this.fresh(frame) ? null : this.full.get(frame) ?? this.fromHeights(frame);
-        if (r) this.keep(frame, r, await pool.shade(this.tMesh, r.heightKm, this.shading));
+        if (r) this.keep(frame, r, await pool.shade(this.tMesh, r.heightKm, this.shadingOf(frame, r)));
         this.prefetch(pool);
     }
 
@@ -150,18 +152,28 @@ export class TerrainPlayer {
     built(frame) { return this.heights.has(frame) || this.full.has(frame); }
     fresh(frame) { const s = this.shown.get(frame), full = this.full.get(frame); return !!s && (!full || s.src === full); }
 
-    keep(frame, r, shade = shadeWithWater(this.tMesh, r.heightKm, this.shading, TERRAIN)) {
+    keep(frame, r, shade = shadeWithWater(this.tMesh, r.heightKm, this.shadingOf(frame, r), TERRAIN)) {
         let hyps = null, water = null;
-        const seaLevelKm = this.shading.seaLevelKm, tMesh = this.tMesh;
+        const seaLevelKm = this.shading.seaLevelKm, tMesh = this.tMesh, historySea = () => this.historySeaOf(frame, r);
         // (water: the seas cut off from the world ocean — terrain/world-ocean.js — for drawing them apart: found by the shading
         // worker with the hillshade, or here where there is none)
         const out = { src: r, heightKm: r.heightKm, shade, sampler: r.sampler ?? this.sampler, get hyps() { return hyps ??= hypsometry(r.heightKm, seaLevelKm); },
-            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, seaLevelKm), TERRAIN, seaLevelKm); },
+            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, seaLevelKm, historySea()), TERRAIN, seaLevelKm); },
             // (the heights to paint by: a cut-off sea's lake at its own level, its dry ground as lowland — basin-estimate.js)
             get paintKm() { return this.water.paintKm ?? r.heightKm; } };
         this.shown.set(frame, out);
         if (this.shown.size > 4) this.shown.delete(this.shown.keys().next().value);
         return out;
+    }
+    /** The shading for a frame: the view's, with the history's poured sea under it (world-ocean.js: which seas it joins). */
+    shadingOf(frame, r) { return { ...this.shading, history: this.historySeaOf(frame, r) }; }
+    /** The history's poured sea on the terrain mesh (land-mask.js pouredSeaOnto), once per frame. */
+    historySeaOf(frame, r) {
+        if (this.seas.has(frame)) return this.seas.get(frame);
+        this.sampler ??= r?.sampler ?? sampleOnto(this.simMesh, this.tMesh, this.cfg, this.seed);
+        const sea = pouredSeaOnto(frame, this.simMesh, this.cfg, this.sampler);
+        this.seas.set(frame, sea);
+        return sea;
     }
     remember(frame, r) {
         this.sampler ??= r.sampler;

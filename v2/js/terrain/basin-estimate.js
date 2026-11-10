@@ -31,6 +31,7 @@ import { FINISH } from '../finish/finish-config.js';
 import { closedBasins } from '../finish/finish-basins.js';
 import { zonalPETAt, fuEvaporation } from '../climate/water.js';
 import { worldOcean } from './world-ocean.js';
+import { pourOcean } from '../tectonics/ocean/inventory.js';
 import { hillshade } from '../view/terrain-shade.js';
 
 const R = 6371, D2R = Math.PI / 180;
@@ -97,25 +98,39 @@ function zonalOf(mesh, cfg) {
  *    under its own level (below the frame's sea); dry ground below the sea by its height above the hollow's brine lake
  *    (or its floor, if none: sea − 1 m − that height, so the dry row's colours run from salt at the bottom to the walls,
  *    and a lake's shore blends with its lake); every other cell at its height + oceanFallKm (the world ocean lowered);
- *  · heldKm3: the water standing apart from the world ocean (every cut-off body, balanced or not);
+ *  · given: 1 on the wet cells of a sea the history part-fills (water.bodies[].pouredKm3, world-ocean.js: it pours water
+ *    onto the body short of filling it — a basin filling over the sill the ocean's level holds at), 2 on its dry floor —
+ *    that water stood from the bottom (pourOcean on its cells alone), not balanced: the history's, not the climate's;
+ *  · givenKm3: that water (in the history's books already: not debited);
+ *  · heldKm3: the water standing apart from the world ocean by the estimate (every cut-off body but those, balanced or not);
  *  · oceanFallKm: how far the world ocean falls to hold that water back (heldKm3 over its area) — the history pours its
  *    whole inventory into the ocean-connected ground (tectonics/ocean/inventory.js pourOcean) and holds every hollow
  *    behind a sill empty, so water a view stands in a cut-off sea is the ocean's: it is debited here, and the books close;
- *  · seas: per sea {km2, floorKm, sillKm, levelKm, full, wet, low (its lowest cell), heldKm3};
+ *  · seas: per sea {km2, floorKm, sillKm, levelKm, full, wet, low (its lowest cell), heldKm3} (the history's: history,
+ *    givenKm3, no sill);
  *  · climate: 'zonal', or 'computed' when `climate` was given.
  * `climate` (optional): the frame's computed water per cell, mm/yr — {rain, pet, runoff} (the climate the model computes,
  * as the finish assembles it); without it, the zonal climate (zonalWater).
  * The heights themselves are not changed: a dry sea is drawn at its true floor (hillshade by `dry`, as land).
  */
 export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH, climate = null) {
-    const n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n, cut = new Uint8Array(n), dry = new Uint8Array(n), seas = [];
-    // (nothing to balance unless a cut-off body is as large as the finish balances: finish-config.js basinMinKm2)
-    const any = (water.bodies ?? []).slice(1).some(b => b.cells * cellKm2 >= F.basinMinKm2);
+    const n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n, cut = new Uint8Array(n), dry = new Uint8Array(n), given = new Uint8Array(n), seas = [];
     const zz = new Float32Array(n);
     for (let c = 0; c < n; c++) zz[c] = z[c] - seaLevelKm;
     const level = new Float32Array(n).fill(NaN), base = new Float32Array(n).fill(NaN);   // (a wet cell's water level; a dry one's floor)
+    // (a body the history pours water into, short of filling it — world-ocean.js: a basin part-filled over the sill the
+    // ocean's level holds at — stands that water, filled from its bottom; it is the history's, so neither balanced nor
+    // debited from the ocean)
+    const poured = (water.bodies ?? []).slice(1).filter(b => b.pouredKm3 > 0);
+    let givenKm3 = 0;
+    for (const b of poured) givenKm3 += standPoured(mesh, zz, water.cut, b, cut, level, given, seas, cellKm2);
+    // (nothing to balance unless a cut-off body the history pours nothing into is as large as the finish balances:
+    // finish-config.js basinMinKm2)
+    const any = (water.bodies ?? []).slice(1).some(b => !(b.pouredKm3 > 0) && b.cells * cellKm2 >= F.basinMinKm2);
     if (any) {
-        const ocean = water.ocean ?? null;
+        // (the balance reads the history's part-filled seas as the ocean: their catchments drain to the history's water)
+        let ocean = water.ocean ?? null;
+        if (ocean && poured.length) { ocean = ocean.slice(); for (let c = 0; c < n; c++) if (given[c]) ocean[c] = 1; }   // (wet and dry)
         const { rain, pet, runoff } = climate ?? zonalWater(mesh, zz, cfg, F, ocean);
         const kept = new Float32Array(n);                             // (the sky water each cell's ground keeps: closedBasins)
         for (let c = 0; c < n; c++) kept[c] = rain[c] - runoff[c];
@@ -138,9 +153,9 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH, 
     // the frame's sea level, held apart from the ocean like any other)
     for (let c = 0; c < n; c++) if (water.cut[c] && !cut[c]) { cut[c] = 1; level[c] = 0; }
     let heldKm3 = 0;
-    for (let c = 0; c < n; c++) if (cut[c] === 1) heldKm3 += Math.max(0, level[c] - zz[c]) * cellKm2;
+    for (let c = 0; c < n; c++) if (cut[c] === 1 && !given[c]) heldKm3 += Math.max(0, level[c] - zz[c]) * cellKm2;
     const source = climate ? 'computed' : 'zonal';
-    if (!(heldKm3 > 0) && !seas.length) return Object.assign(water, { cut, dry, paintKm: null, seas, heldKm3: 0, oceanFallKm: 0, climate: source });
+    if (!(heldKm3 > 0) && !seas.length) return Object.assign(water, { cut, dry, given, paintKm: null, seas, heldKm3: 0, givenKm3, oceanFallKm: 0, climate: source });
     const oceanFallKm = oceanFall(water.ocean, zz, heldKm3, cellKm2);
     const paintKm = new Float32Array(n);
     for (let c = 0; c < n; c++) {
@@ -148,7 +163,33 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH, 
         else if (cut[c] === 2) { dry[c] = 1; paintKm[c] = seaLevelKm - 0.001 - Math.max(0, zz[c] - base[c]); }
         else paintKm[c] = z[c] + oceanFallKm;
     }
-    return Object.assign(water, { cut, dry, paintKm, seas, heldKm3, oceanFallKm, climate: source });
+    return Object.assign(water, { cut, dry, given, paintKm, seas, heldKm3, givenKm3, oceanFallKm, climate: source });
+}
+
+/**
+ * Stand the water the history pours onto a body (b.pouredKm3) in it, from its bottom up: pourOcean on the body's cells
+ * alone (the same pour the history makes, every other cell walled off) — its level, and the cells under it wet (cut 1,
+ * given 1); the rest of its floor dry (cut 2, given 2: the history's, not the climate's). Adds the sea to `seas` (history: true). @returns the water stood (km³)
+ */
+function standPoured(mesh, zz, cutOff, b, cut, level, given, seas, cellKm2) {
+    const n = mesh.numCells, walled = new Float32Array(n).fill(Infinity), cells = [b.first];
+    walled[b.first] = zz[b.first];
+    for (let i = 0; i < cells.length; i++) for (let k = mesh.adjOffset[cells[i]]; k < mesh.adjOffset[cells[i] + 1]; k++) {
+        const nb = mesh.adjList[k];
+        if (cutOff[nb] && walled[nb] === Infinity) { walled[nb] = zz[nb]; cells.push(nb); }
+    }
+    let room = 0;
+    for (const c of cells) room += -zz[c] * cellKm2;
+    const P = pourOcean(mesh, walled, Math.min(b.pouredKm3, room));
+    const lv = Math.min(0, P.levelKm);
+    let low = b.first, held = 0, wet = 0;
+    for (const c of cells) {
+        if (zz[c] < zz[low]) low = c;
+        if (P.sea[c] && zz[c] < lv) { cut[c] = 1; level[c] = lv; given[c] = 1; held += (lv - zz[c]) * cellKm2; wet++; }
+        else { cut[c] = 2; given[c] = 2; }
+    }
+    seas.push({ km2: cells.length * cellKm2, floorKm: zz[low], sillKm: NaN, levelKm: lv, full: wet === cells.length, wet: wet > 0, low, heldKm3: 0, givenKm3: held, history: true });
+    return held;
 }
 
 /**
@@ -187,13 +228,14 @@ export function oceanFall(ocean, zz, heldKm3, cellKm2) {
 }
 
 /**
- * A frame's hillshade with its water (worldOcean at opts.seaLevelKm, then estimateCutOff) as shade.water — balanced first,
+ * A frame's hillshade with its water (worldOcean at opts.seaLevelKm — with opts.history, the history's poured sea: world-ocean.js — then estimateCutOff) as shade.water — balanced first,
  * so a dried cut-off sea is shaded as land is (terrain-shade.js hillshade's `dry`). The shading worker's job, and the
  * pages' where there is none.
  */
 export function shadeWithWater(mesh, heightKm, opts = {}, cfg) {
-    const sea = opts.seaLevelKm ?? 0, water = estimateCutOff(mesh, heightKm, worldOcean(mesh, heightKm, sea), cfg, sea);
-    const shade = hillshade(mesh, heightKm, { ...opts, dry: water.dry });
+    const { history = null, ...shading } = opts, sea = shading.seaLevelKm ?? 0;
+    const water = estimateCutOff(mesh, heightKm, worldOcean(mesh, heightKm, sea, history), cfg, sea);
+    const shade = hillshade(mesh, heightKm, { ...shading, dry: water.dry });
     shade.water = water;
     return shade;
 }

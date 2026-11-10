@@ -30,7 +30,7 @@ import { terrainConfig, TERRAIN } from '../js/terrain/terrain-config.js';
 import { synthesizeTerrain } from '../js/terrain/synthesize.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { estimateCutOff } from '../js/terrain/basin-estimate.js';
-import { landMask } from '../js/terrain/land-mask.js';
+import { landMask, pouredSeaOnto } from '../js/terrain/land-mask.js';
 import { EARTH_OCEAN_KM3 } from '../js/tectonics/ocean/inventory.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? Number(process.argv[i + 1]) : d; };
@@ -60,13 +60,14 @@ for (const seed of SEEDS) {
         const eh = Math.abs(poured - V) / V;
         if (eh > worstHistory) { worstHistory = eh; at.h = t; }
         // the view: the ocean at its lowered level + what the cut-off seas hold = the ocean at the frame's level
-        const T = synthesizeTerrain(f, sim, tm, { cfg, seed, sampler, carve: true }), h = T.heightKm, wo = worldOcean(tm, h, 0);
+        const T = synthesizeTerrain(f, sim, tm, { cfg, seed, sampler, carve: true }), h = T.heightKm, wo = worldOcean(tm, h, 0, pouredSeaOnto(f, sim, cfg, sampler));
         let ocean0 = 0;
         for (let c = 0; c < tm.numCells; c++) if (wo.ocean[c]) ocean0 -= h[c] * cellKm2;
         const W = estimateCutOff(tm, h, wo, TERRAIN, 0), d = W.oceanFallKm;
         let oceanD = 0;
         for (let c = 0; c < tm.numCells; c++) if (wo.ocean[c] && h[c] < -d) oceanD += (-d - h[c]) * cellKm2;
-        const ed = Math.abs(oceanD + W.heldKm3 - ocean0) / ocean0, eg = (ocean0 - V) / V;
+        // (the view's water against V: its world ocean, and the history's water it stands in seas the history part-fills)
+        const ed = Math.abs(oceanD + W.heldKm3 - ocean0) / ocean0, eg = (ocean0 + W.givenKm3 - V) / V;
         if (ed > worstDebit) { worstDebit = ed; at.d = t; }
         if (Math.abs(eg) > Math.abs(worstGap)) { worstGap = eg; at.g = t; }
         if (W.heldKm3 > maxHeld) { maxHeld = W.heldKm3; maxAt = t; }
@@ -79,6 +80,32 @@ for (const seed of SEEDS) {
     check(`seed ${seed}: the view's world ocean against the history's V, within the surface models' ${100 * SURFACE_TOL} %`, Math.abs(worstGap) <= SURFACE_TOL,
         `worst ${(100 * worstGap).toFixed(2)} % at ${at.g} Myr (the view's ground, not its water: see the header)`);
 }
+// the history's water, where the view's ground closes a seaway the history keeps (831576, the page's 41 % continent, at
+// 290 Myr: Jackson's report, 2026-11-10 — the history pins its level at a +128 m sill and pours ~100 Mkm³ over it into a
+// basin of 36 Mkm²; the view's ground, its sill tens of metres higher, cut it off and dried it on the zonal climate, its
+// world ocean −6.4 % of V). With the history's poured sea (world-ocean.js, basin-estimate.js standPoured) the view stands
+// that water; without it (the mutation: no history) this fails.
+section('the history\'s water, where the view closes a seaway it keeps (831576, 41 % continent, 290 Myr)');
+{
+    const seed = 831576, cont = 41, t = 290, heights = { waterInventory: 1 }, cfg41 = terrainConfig(heights), { world } = pageWorld({ seed, cont, sim: SIM, heights });
+    let fr = null;
+    simulateCached(world, { untilMyr: t, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+        if (Math.round(f.time) !== t) return;
+        fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time;
+    } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim: SIM, by: 'check-waterbooks' } });
+    const tm160 = terrainMesh(160000), a160 = A / tm160.numCells, sampler = sampleOnto(sim, tm160, cfg41, seed);
+    const h = synthesizeTerrain(fr, sim, tm160, { cfg: cfg41, seed, sampler, carve: true }).heightKm, V41 = cfg41.waterInventory * EARTH_OCEAN_KM3;
+    const gapOf = history => {
+        const wo = worldOcean(tm160, h, 0, history), W = estimateCutOff(tm160, h, wo, TERRAIN, 0);
+        let o = 0;
+        for (let c = 0; c < tm160.numCells; c++) if (wo.ocean[c]) o -= h[c] * a160;
+        return { gap: (o + W.givenKm3 - V41) / V41, given: W.givenKm3 };
+    };
+    const off = gapOf(null), on = gapOf(pouredSeaOnto(fr, sim, cfg41, sampler));
+    check(`the view's water within ${100 * SURFACE_TOL} % of V with the history's poured sea`, Math.abs(on.gap) <= SURFACE_TOL,
+        `${(100 * on.gap).toFixed(2)} % (${(on.given / M).toFixed(1)} Mkm³ stood where the history pours it); the ground alone: ${(100 * off.gap).toFixed(2)} %`);
+}
+
 const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(p * (s.length - 1))]; };
 report('water held in cut-off seas, per frame (median · 95th pct · max)', [q(held, 0.5), q(held, 0.95), Math.max(...held)], { unit: ' Mkm³', source: 'the view’s zonal balance; Earth today: the Caspian 0.078 Mkm³' });
 report('the world ocean’s fall for it (median · 95th pct · max)', [q(falls, 0.5), q(falls, 0.95), Math.max(...falls)], { unit: ' m', digits: 1 });

@@ -154,3 +154,27 @@ export function landMask(frame, simMesh, cfg, out = {}) {
     }
     return { land, sl, seaColKm, dryHollow };
 }
+
+/**
+ * The history's poured sea carried onto a terrain mesh (world-ocean.js worldOcean's `history`): for each terrain cell, its
+ * heaviest sim cell's (terrain-mesh.js sampleOnto) — whether the history pours the ocean into it (pourOcean's sea) and the
+ * water it stands there (its level less the ground, km). One landMask on the sim grid: ~a priority flood of its cells.
+ * @param {Object} frame  a history frame (as landMask takes)
+ * @param {{cells: Int32Array, weights: Float32Array}} sampler  sampleOnto's, 3 per terrain cell
+ * @returns {{sea: Uint8Array, waterKm: Float32Array}|null}  null when the history pours no water (cfg.waterInventory 0)
+ */
+export function pouredSeaOnto(frame, simMesh, cfg, sampler) {
+    const out = {};
+    const m = landMask(frame, simMesh, cfg, out);
+    if (!out.pour) return null;                                // (no water inventory: no pour, the ground alone decides)
+    const { sea: poured } = out.pour, ground = out.groundKm, L = m.sl.seaKm, { cells, weights } = sampler, n = cells.length / 3;
+    const sea = new Uint8Array(n), waterKm = new Float32Array(n);
+    for (let c = 0; c < n; c++) {
+        let k = 3 * c;
+        if (weights[k + 1] > weights[k]) k++;
+        if (weights[3 * c + 2] > weights[k]) k = 3 * c + 2;
+        const w = cells[k];
+        if (poured[w]) { sea[c] = 1; waterKm[c] = Math.max(0, L - ground[w]); }
+    }
+    return { sea, waterKm };
+}

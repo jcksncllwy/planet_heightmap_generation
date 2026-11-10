@@ -41,7 +41,8 @@ import { paintFinished } from '../js/evolution/finish-view.js';
 import { heightLutOf } from '../js/evolution/looks.js';
 import { MinHeap } from '../js/core/min-heap.js';
 import { locate } from '../js/core/mesh-locate.js';
-import { terrainMesh } from '../js/terrain/terrain-mesh.js';
+import { terrainMesh, sampleOnto } from '../js/terrain/terrain-mesh.js';
+import { pouredSeaOnto } from '../js/terrain/land-mask.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { synthesizeTerrain } from '../js/terrain/synthesize.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
@@ -74,10 +75,11 @@ console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 // Detail: 160K by default), painted as the page paints it — then stop ──
 if (process.argv.includes('--live')) {
     const simMesh = buildSimMesh(SIM, MESH_SEED), tMesh = terrainMesh(CELLS);
-    const T = synthesizeTerrain(frame, simMesh, tMesh, { cfg: terrainConfig(), seed: SEED, carve: true });
+    const cfg = terrainConfig(), T = synthesizeTerrain(frame, simMesh, tMesh, { cfg, seed: SEED, carve: true });
+    const historySea = pouredSeaOnto(frame, simMesh, cfg, T.sampler ?? sampleOnto(simMesh, tMesh, cfg, SEED));   // (the history's sea: world-ocean.js)
     // (the shading worker's: the cut-off seas balanced and the ocean debited for them, then the hillshade — basin-estimate.js)
-    const plain = process.argv.includes('--plain'), shade = plain ? hillshade(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }) : shadeWithWater(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }, TERRAIN);
-    const raster = new SmoothMapRaster(tMesh, W), image = new Uint8ClampedArray(W * (W >> 1) * 4), water = shade.water ?? worldOcean(tMesh, T.heightKm, 0);
+    const plain = process.argv.includes('--plain'), shade = plain ? hillshade(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }) : shadeWithWater(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0, history: historySea }, TERRAIN);
+    const raster = new SmoothMapRaster(tMesh, W), image = new Uint8ClampedArray(W * (W >> 1) * 4), water = shade.water ?? worldOcean(tMesh, T.heightKm, 0, historySea);
     // (--plain: as the timeline drew it before cut-off seas were told from the ocean)
     raster.paintHeights(plain ? T.heightKm : water.paintKm ?? T.heightKm, shade, heightLutOf(PALETTE), image, 0, plain ? null : water.cut);
     const outDir = path.join(ROOT, 'v2', 'out', 'moments');
