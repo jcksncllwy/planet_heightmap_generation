@@ -34,7 +34,7 @@ for (const seed of seeds) {
         const gathering = w.cycle?.gather > 0 ? new Set(w.cycle.largestPlates ?? []) : null;
         for (const p of w.plates) {
             if (!p.alive || p.isBackground || p.stats.continentalCells * w.mesh.cellAreaKm2 < w.config.riftMinContinentKm2) continue;
-            const a = w.time - Math.max(p.born, p.bigSince ?? w.time);       // (since it rifted, welded or grew big enough — step/rifting.js)
+            const a = w.time - p.born;       // (since it rifted or welded)
             if (gathering?.has(p.id)) oldestGathering = Math.max(oldestGathering, a); else oldest = Math.max(oldest, a);
         }
     };
