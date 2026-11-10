@@ -200,12 +200,14 @@ function standPoured(mesh, zz, cutOff, b, cut, level, given, seas, cellKm2) {
     }
     let room = 0;
     for (const c of cells) room += -zz[c] * cellKm2;
-    const P = pourOcean(mesh, walled, Math.min(b.pouredKm3, room));
+    const P = pourOcean(mesh, walled, Math.min(b.pouredKm3, room), null, { fromOcean: false });   // (from its bottom: no ocean in it)
     const lv = Math.min(0, P.levelKm);
     let low = b.first, held = 0, wet = 0;
     for (const c of cells) {
         if (zz[c] < zz[low]) low = c;
-        if (P.sea[c] && zz[c] < lv) { cut[c] = 1; level[c] = lv; given[c] = 1; held += (lv - zz[c]) * cellKm2; wet++; }
+        // (each wet cell at its own water's surface: a sub-basin behind an inner sill stands lower — pourOcean's topKm)
+        const top = Math.min(lv, P.topKm[c]);
+        if (P.sea[c] && zz[c] < top) { cut[c] = 1; level[c] = top; given[c] = 1; held += (top - zz[c]) * cellKm2; wet++; }
         else { cut[c] = 2; given[c] = 2; }
     }
     seas.push({ km2: cells.length * cellKm2, floorKm: zz[low], sillKm: NaN, levelKm: lv, full: wet === cells.length, wet: wet > 0, low, heldKm3: 0, givenKm3: held, history: true });

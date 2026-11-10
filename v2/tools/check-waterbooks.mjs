@@ -56,7 +56,7 @@ for (const seed of SEEDS) {
         // the history: V poured into the ocean-connected ground, the hollows behind sills empty
         const out = {}, m = landMask(f, sim, cfg, out), P = out.pour, z = out.groundKm, L = m.sl.seaKm;
         let poured = 0;
-        for (let w = 0; w < sim.numCells; w++) if (P.sea[w] && z[w] < L) poured += (L - z[w]) * simKm2;
+        for (let w = 0; w < sim.numCells; w++) if (P.sea[w] && z[w] < P.topKm[w]) poured += (P.topKm[w] - z[w]) * simKm2;   // (each at its own surface: a basin over a sill stands its own)
         const eh = Math.abs(poured - V) / V;
         if (eh > worstHistory) { worstHistory = eh; at.h = t; }
         // the view: the ocean at its lowered level + what the cut-off seas hold = the ocean at the frame's level

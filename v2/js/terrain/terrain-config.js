@@ -261,6 +261,12 @@ export const TERRAIN = {
     waterInventory: 1,          // the ocean's water, × Earth's (1.332e9 km³: tectonics/ocean/inventory.js): > 0 sets the sea's
                                 // level by pouring it onto the ground (terrain/land-mask.js); 0 the reckoned level above.
                                 // On by default at Earth's 1.0× (Jackson, 2026-11-06; its gate is tools/check-ocean-earth.mjs)
+    pourFromOcean: false,       // the pour from the ocean's side (lane pourstart, 2026-11-10; Jackson's ruling on the waterflow
+                                // report): where the volume runs out at the sill of the body the pour began in and the far
+                                // side is the larger, pour again from the far side — the ocean — and hold the start body empty
+                                // (831576@360: +270 → −166 m); and at a pinned sill the basin's water balance decides who is
+                                // short (land-mask.js pinnedHumid: humid, the basin brim-full and the ocean below the sill;
+                                // arid, the ocean at the sill). false: from the world's lowest cell, the basin always short
     lipLandKm: 0.75,            // flood basalt on land: this much height per km of basalt (8b round 6: 0.6 → 0.75 — Putorana
                                 // stands ~1.5 km, the Western Ghats 1–1.6)
     lipSeaKm: 1.4,              // an oceanic plateau (Ontong Java) rises this much per km of basalt

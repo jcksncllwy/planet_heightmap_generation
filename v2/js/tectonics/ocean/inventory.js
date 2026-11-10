@@ -62,23 +62,87 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
 }
 
 /**
- * Pour `volumeKm3` of water onto the ground `z` (km) from its lowest cell and let it settle: the level (km) at which the
- * ground connected to the ocean below it holds that volume. One priority flood from the lowest cell gives every cell its
- * spill height — the lowest level at which the ocean reaches it (Barnes et al. 2014's priority flood) — and pops them in
- * that order, so the volume below a level is a running sum: V(L) = Σ (L − z) a over the cells whose spill is under L.
- * A basin behind a sill joins whole when the level reaches its sill; where the volume runs out inside that jump the level
- * holds at the sill (the basin part-filled: the Mediterranean refilling over Gibraltar). O(N log N).
- * @returns {{levelKm: number, sea: Uint8Array, seaCells: number, below: number, spill: Float32Array}} sea: 1 where the
- *   ocean stands; below: cells under the level but behind a higher sill (closed below-sea hollows: land).
+ * Pour `volumeKm3` of water onto the ground `z` (km) and let it settle: the level (km) at which the ground connected to
+ * the ocean holds that volume. One priority flood from a start cell gives every cell its spill height — the lowest level
+ * at which the water reaches it (Barnes et al. 2014's priority flood) — and pops them in that order, so the volume below a
+ * level is a running sum: V(L) = Σ (L − z) a over the cells whose spill is under L. A basin behind a sill joins whole when
+ * the level reaches its sill; where the volume runs out inside that jump the level holds at the sill and the two sides
+ * share the water: one full, the other part-filled (the Mediterranean refilling over Gibraltar). O(N log N).
+ *
+ * From the ocean's side (lane pourstart, 2026-11-10; Jackson's ruling on waterflow's report): the flood starts at the
+ * world's lowest cell, but when the volume runs out at the sill of the body it began in and the far side is the larger,
+ * the start body was a basin cut off from the ocean, not the ocean — a trench or foredeep a collision sealed, deeper than
+ * any of the ocean's own floor. Poured from there, the whole ocean became "the basin behind the sill" and the world's sea
+ * stood at that sill (831576@360: +270 m, its neighbours −77 and −222 m; −166 m poured from the ocean's side). So the
+ * pour starts again from the larger side's lowest cell: the ocean fills from its own floor and the cut-off basin is held
+ * empty like every other hollow behind a sill (or part-filled over it, if the ocean reaches it). Measured by cell count
+ * below the sill — the larger body is the ocean (waterflow §2.1: 16 Mkm² against the ocean's ~300). Up to 4 re-pours.
+ *
+ * Which side of a pinned sill takes the shortfall (pinsign, the same ruling): the ocean stands at the sill and the basin
+ * is part-filled when the basin is arid — an evaporating basin draws down behind its sill in 10²–10⁴ years and the ocean
+ * feeds its loss over the sill, so it never fills (waterflow §2.2; the Messinian). A humid basin fills itself brim-full
+ * from its own catchment in as little, spills to the ocean, and the ocean stands below the sill by the water the basin
+ * holds. `humid({ sillKm, basin, ocean })` (a caller's climate; null: always arid, the pour's answer before 2026-11-10)
+ * decides, given the basin's cells (1 in `basin`: the far side, below the sill) and the ocean's (1 in `ocean`).
+ *
+ * A part-filled basin stands its water from the bottom up (the pour on its own cells, walled at the sill, recursively),
+ * not in the heap's order among cells tied at the sill's spill (which painted a part-filled basin in patches).
+ * @param {Object} [scratch]  buffers from an earlier call on the same mesh (the result's `scratch`)
+ * @param {{fromOcean?: boolean, humid?: Function, bottom?: boolean}} [opts]  fromOcean (default true): re-pour from the
+ *   ocean's side (false: from the lowest cell, the pour before 2026-11-10 — terrain-config pourFromOcean); humid: see
+ *   above; bottom (internal): stand a basin from its bottom, no re-pour, no climate
+ * @returns {{levelKm: number, sea: Uint8Array, topKm: Float32Array, seaCells: number, below: number, spill: Float32Array,
+ *   restarts: number, pin: Object|null, scratch: Object}} levelKm: the ocean's level; sea: 1 where water stands (the
+ *   ocean, and a basin it shares a pinned sill with); topKm: the water's surface on each sea cell (the ocean's level, or a
+ *   basin's own: under the sill when part-filled, at it when brim-full; NaN on dry ground); below: cells under the level
+ *   but behind a higher sill (closed below-sea hollows: land); restarts: re-pours from the ocean's side; pin: at a pinned
+ *   sill, {sillKm, basinCells, oceanCells, basinKm3 (the water the basin holds), humid}, else null.
  */
-export function pourOcean(simMesh, z, volumeKm3, scratch = null) {
-    const n = simMesh.numCells, { adjOffset, adjList } = simMesh, a = 4 * Math.PI * R * R / n, target = volumeKm3 / a;
-    const S = scratch?.n === n ? scratch : { n, heap: new MinHeap(n), spill: new Float32Array(n), order: new Int32Array(n), sea: new Uint8Array(n) };
-    const { heap, spill, order, sea } = S;
+export function pourOcean(simMesh, z, volumeKm3, scratch = null, { fromOcean = true, humid = null, bottom = false } = {}) {
+    const n = simMesh.numCells, a = 4 * Math.PI * R * R / n, target = volumeKm3 / a;
+    const S = scratch?.n === n ? scratch : { n, heap: new MinHeap(n), spill: new Float32Array(n), order: new Int32Array(n), sea: new Uint8Array(n), topKm: new Float32Array(n) };
+    const { spill, order, sea, topKm } = S;
     let low = 0;
     for (let w = 1; w < n; w++) if (z[w] < z[low]) low = w;
+    let count = flood(simMesh, z, low, S), w0 = sweep(z, spill, order, count, target), restarts = 0;
+    // (from the ocean's side: re-pour from the far side's lowest cell while the pour pins at its start body's sill and
+    // the far side is the larger)
+    while (fromOcean && !bottom && w0.pinned && restarts < 4) {
+        const P = w0.levelKm, near = firstAt(spill, order, count, P);
+        let far = 0, farLow = -1;
+        for (let i = near; i < count && spill[order[i]] === P; i++) { const c = order[i]; if (z[c] < P) { far++; if (farLow < 0 || z[c] < z[farLow]) farLow = c; } }
+        if (far <= near) break;
+        count = flood(simMesh, z, farLow, S); w0 = sweep(z, spill, order, count, target); restarts++;
+    }
+    let levelKm = w0.levelKm, pin = null;
+    sea.fill(0); topKm.fill(NaN);
+    if (w0.pinned && !bottom) {
+        // (the sill's two sides: the ocean, every cell under the sill's spill; the basin, every cell tied at it below it)
+        const P = levelKm, near = firstAt(spill, order, count, P), basin = new Uint8Array(n), ocean = new Uint8Array(n);
+        let roomBasin = 0, basinCells = 0;
+        for (let i = 0; i < near; i++) ocean[order[i]] = 1;
+        for (let i = near; i < count && spill[order[i]] === P; i++) { const c = order[i]; if (z[c] < P) { basin[c] = 1; basinCells++; roomBasin += P - z[c]; } }
+        const wet = !!humid && roomBasin < target && humid({ sillKm: P, basin, ocean });
+        if (wet) {
+            // humid: the basin brim-full at its sill, the ocean below it by what the basin holds
+            for (let c = 0; c < n; c++) if (basin[c]) { sea[c] = 1; topKm[c] = P; }
+            const o = sweep(z, spill, order, near, target - roomBasin);
+            levelKm = settle(simMesh, z, spill, order, near, target - roomBasin, o, S, a);
+        } else levelKm = settle(simMesh, z, spill, order, count, target, w0, S, a);
+        let held = 0;
+        for (let c = 0; c < n; c++) if (basin[c] && sea[c]) held += topKm[c] - z[c];
+        pin = { sillKm: P, basinCells, oceanCells: near, basinKm3: held * a, humid: !!wet };
+    } else levelKm = settle(simMesh, z, spill, order, count, target, w0, S, a);
+    let seaCells = 0, below = 0;
+    for (let w = 0; w < n; w++) { seaCells += sea[w]; if (!sea[w] && z[w] < levelKm) below++; }
+    return { levelKm, sea, topKm, seaCells, below, spill, restarts, pin, scratch: S };
+}
+
+// One priority flood from `start`: every cell's spill height, and the cells in the order they join. @returns their count
+function flood(simMesh, z, start, S) {
+    const { adjOffset, adjList } = simMesh, { heap, spill, order } = S;
     spill.fill(Infinity); heap.size = 0;
-    spill[low] = z[low]; heap.push(z[low], low);
+    spill[start] = z[start]; heap.push(z[start], start);
     let count = 0;
     while (heap.size) {
         const c = heap.pop();
@@ -89,19 +153,51 @@ export function pourOcean(simMesh, z, volumeKm3, scratch = null) {
             if (s < spill[nb]) { spill[nb] = s; heap.push(s, nb); }
         }
     }
-    // the sweep: cells join in spill order; the level is where the joined cells' room equals the volume
-    let A = 0, Z = 0, levelKm = spill[order[count - 1]], joined = count;
-    for (let i = 0; i < count; i++) {
-        const s = spill[order[i]];
-        if (A > 0 && A * s - Z >= target) { levelKm = Math.max((target + Z) / A, i > 0 ? spill[order[i - 1]] : -Infinity); joined = i; break; }
-        A++; Z += z[order[i]];
+    return count;
+}
+
+// The sweep: the first `count` cells join in spill order; the level is where the joined cells' room equals `target` (km
+// × cells). pinned: the volume ran out inside a jump, so the level holds at the last joined cell's spill (a sill).
+function sweep(z, spill, order, count, target) {
+    let A = 0, Z = 0;
+    for (let i = 0; i <= count; i++) {
+        const s = i < count ? spill[order[i]] : Infinity;
+        if (A > 0 && A * s - Z >= target) {
+            const L = (target + Z) / A, sill = spill[order[i - 1]];
+            return L < sill ? { levelKm: sill, joined: i, pinned: true } : { levelKm: L, joined: i, pinned: false };
+        }
+        if (i < count) { A++; Z += z[order[i]]; }
     }
-    if (joined === count) levelKm = (target + Z) / A;            // (more water than the whole world's relief: a water world)
-    sea.fill(0);
-    for (let i = 0; i < joined; i++) sea[order[i]] = 1;
-    let below = 0;
-    for (let w = 0; w < n; w++) if (!sea[w] && z[w] < levelKm) below++;
-    return { levelKm, sea, seaCells: joined, below, spill, scratch: S };
+    return { levelKm: (target + Z) / A, joined: count, pinned: false };       // (more water than the whole world's relief: a water world)
+}
+
+// (the first index in spill order whose spill is the sill's)
+function firstAt(spill, order, count, P) {
+    let i = 0;
+    while (i < count && spill[order[i]] < P) i++;
+    return i;
+}
+
+// Mark the water a sweep `w` over the first `count` cells leaves: the joined cells at its level; or, pinned at a sill,
+// the near side full to it and the far side's share stood from its bottom. @returns the near side's level (km)
+function settle(simMesh, z, spill, order, count, target, w, S, a) {
+    const { sea, topKm } = S, L = w.levelKm;
+    if (!w.pinned) { for (let i = 0; i < w.joined; i++) { sea[order[i]] = 1; topKm[order[i]] = L; } return L; }
+    const near = firstAt(spill, order, count, L);
+    let room = 0;
+    for (let i = 0; i < near; i++) { sea[order[i]] = 1; topKm[order[i]] = L; room += L - z[order[i]]; }
+    standFromBottom(simMesh, z, spill, order, near, count, L, (target - room) * a, sea, topKm);
+    return L;
+}
+
+// A basin's share of the water (km³) stood from its bottom: the pour on its own cells — those tied at the sill's spill
+// `P`, from order[near] on — every other cell walled off. Fills `sea` and `topKm` on its wet cells.
+function standFromBottom(simMesh, z, spill, order, near, count, P, km3, sea, topKm) {
+    if (!(km3 > 0)) return;
+    const walled = new Float32Array(z.length).fill(Infinity);
+    for (let i = near; i < count && spill[order[i]] === P; i++) walled[order[i]] = z[order[i]];
+    const B = pourOcean(simMesh, walled, km3, null, { bottom: true });
+    for (let c = 0; c < z.length; c++) if (B.sea[c] && walled[c] < Infinity) { sea[c] = 1; topKm[c] = B.topKm[c]; }
 }
 
 /** The volume (km³) the ocean-connected ground holds up to `levelKm` (the inverse: what a level costs in water). */

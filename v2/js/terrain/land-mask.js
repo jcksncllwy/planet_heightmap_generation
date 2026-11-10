@@ -22,6 +22,9 @@ import { CrustType, CrustFlag } from '../tectonics/model/crust.js';
 import { seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { seaLevel, seaLevelAgain, liftRefKm, liftedDry } from './sea-level.js';
 import { surfaceKm, pourOcean, EARTH_OCEAN_KM3 } from '../tectonics/ocean/inventory.js';
+import { zonalWater } from './basin-estimate.js';
+import { closedBasins } from '../finish/finish-basins.js';
+import { FINISH } from '../finish/finish-config.js';
 
 /** Is world cell w sea floor its rivers have filled to sea level (step/sea-fill.js)? */
 export function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
@@ -75,11 +78,14 @@ export function fillPockets(simMesh, land, maxKm2) {
  * view of its plates (tectonics/step/rivers.js).
  * @param {Object} [out]  buffers to reuse: { land: Uint8Array, swellKm: Float32Array, seaColKm: Float32Array, dryHollow: Uint8Array,
  *                        heat: Float32Array (the mantle's smoothed warmth; made here, and kept on out, if missing) }
+ * @param {Object} [climate]  the frame's computed water per sim cell, mm/yr — {rain, pet, runoff} — to judge a pinned
+ *                        sill by (pinnedHumid); without it the zonal climate the history erodes by (the seam for the
+ *                        real-climate balance, cutoff lane)
  * @returns {{land: Uint8Array, sl: Object, seaColKm: Float32Array, dryHollow: Uint8Array}}
  *   land 1 / sea 0; sl the sea's level and the swell (sea-level.js seaLevel); seaColKm the column of crust drowned (NaN
  *   elsewhere); dryHollow 1 on land standing below the sea with no way to it
  */
-export function landMask(frame, simMesh, cfg, out = {}) {
+export function landMask(frame, simMesh, cfg, out = {}, climate = null) {
     const n = simMesh.numCells, { adjOffset, adjList } = simMesh;
     const land = out.land?.length === n ? out.land : new Uint8Array(n);
     for (let w = 0; w < n; w++) {
@@ -102,7 +108,10 @@ export function landMask(frame, simMesh, cfg, out = {}) {
     let pour = null;
     if (cfg.waterInventory > 0) {
         const z = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : (out.groundKm = new Float32Array(n)), sl.swellKm);
-        pour = pourOcean(simMesh, z, cfg.waterInventory * EARTH_OCEAN_KM3, out.pour);
+        // (from the ocean's side, and at a pinned sill the basin's water balance decides which side is short: pinnedHumid —
+        // terrain-config pourFromOcean)
+        const fromOcean = !!cfg.pourFromOcean;
+        pour = pourOcean(simMesh, z, cfg.waterInventory * EARTH_OCEAN_KM3, out.pour, { fromOcean, humid: fromOcean ? pinnedHumid(simMesh, z, cfg, climate) : null });
         out.pour = pour.scratch;
         sl = { ...sl, seaKm: pour.levelKm };
     }
@@ -156,6 +165,34 @@ export function landMask(frame, simMesh, cfg, out = {}) {
 }
 
 /**
+ * A pinned sill's judge (tectonics/ocean/inventory.js pourOcean's `humid`; lane pourstart, Jackson's ruling 2026-11-10):
+ * is the basin behind the sill humid — would its own catchment fill it brim-full against what it evaporates at its sill?
+ * The finish's closed-basin balance (finish-basins.js closedBasins: its catchment's runoff against its water's loss at
+ * each level) on the sim mesh, with the sea at the sill and the ocean side as the world ocean — on the zonal climate the
+ * history erodes by (basin-estimate.js zonalWater: rainByLatitude, zonal PET), or on `climate` when given; the view's
+ * own balance for a cut-off sea (basin-estimate.js estimateCutOff), so the history and the view judge a basin alike.
+ * Humid when the largest sea the balance finds behind the sill fills to it. A basin under the finish's basinMinKm2 is
+ * not balanced: arid (the ocean at the sill: the pour's answer before 2026-11-10). Runs only on a pinned pour (~1–2 % of
+ * the history's drainages: waterflow §2.2, 7 frames of 484), tens of ms each at 40K cells.
+ */
+export function pinnedHumid(simMesh, z, cfg, climate = null) {
+    return ({ sillKm, basin, ocean }) => {
+        const n = simMesh.numCells, cellKm2 = 4 * Math.PI * 6371 * 6371 / n, zz = new Float32Array(n);
+        for (let c = 0; c < n; c++) zz[c] = z[c] - sillKm;
+        const { rain, pet, runoff } = climate ?? zonalWater(simMesh, zz, cfg, FINISH, ocean);
+        const kept = new Float32Array(n);
+        for (let c = 0; c < n; c++) kept[c] = rain[c] - runoff[c];
+        const B = closedBasins(simMesh, zz, runoff, pet, kept, cellKm2, FINISH, ocean);
+        let top = null;
+        for (const S of B.seas) {
+            const at = B.lakes[S.id].cells.some(c => basin[c]);
+            if (at && (!top || S.km2 > top.km2)) top = S;
+        }
+        return !!top?.full;
+    };
+}
+
+/**
  * The history's poured sea carried onto a terrain mesh (world-ocean.js worldOcean's `history`): for each terrain cell, its
  * heaviest sim cell's (terrain-mesh.js sampleOnto) — whether the history pours the ocean into it (pourOcean's sea) and the
  * water it stands there (its level less the ground, km). One landMask on the sim grid: ~a priority flood of its cells.
@@ -165,16 +202,16 @@ export function landMask(frame, simMesh, cfg, out = {}) {
  */
 export function pouredSeaOnto(frame, simMesh, cfg, sampler) {
     const out = {};
-    const m = landMask(frame, simMesh, cfg, out);
+    landMask(frame, simMesh, cfg, out);
     if (!out.pour) return null;                                // (no water inventory: no pour, the ground alone decides)
-    const { sea: poured } = out.pour, ground = out.groundKm, L = m.sl.seaKm, { cells, weights } = sampler, n = cells.length / 3;
+    const { sea: poured } = out.pour, ground = out.groundKm, { cells, weights } = sampler, n = cells.length / 3;
     const sea = new Uint8Array(n), waterKm = new Float32Array(n);
     for (let c = 0; c < n; c++) {
         let k = 3 * c;
         if (weights[k + 1] > weights[k]) k++;
         if (weights[3 * c + 2] > weights[k]) k = 3 * c + 2;
         const w = cells[k];
-        if (poured[w]) { sea[c] = 1; waterKm[c] = Math.max(0, L - ground[w]); }
+        if (poured[w]) { sea[c] = 1; waterKm[c] = Math.max(0, out.pour.topKm[w] - ground[w]); }
     }
     return { sea, waterKm };
 }
