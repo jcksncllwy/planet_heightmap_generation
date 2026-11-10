@@ -101,10 +101,13 @@ function zonalOf(mesh, cfg) {
  *  · oceanFallKm: how far the world ocean falls to hold that water back (heldKm3 over its area) — the history pours its
  *    whole inventory into the ocean-connected ground (tectonics/ocean/inventory.js pourOcean) and holds every hollow
  *    behind a sill empty, so water a view stands in a cut-off sea is the ocean's: it is debited here, and the books close;
- *  · seas: per sea {km2, floorKm, sillKm, levelKm, full, wet, low (its lowest cell), heldKm3}.
+ *  · seas: per sea {km2, floorKm, sillKm, levelKm, full, wet, low (its lowest cell), heldKm3};
+ *  · climate: 'zonal', or 'computed' when `climate` was given.
+ * `climate` (optional): the frame's computed water per cell, mm/yr — {rain, pet, runoff} (the climate the model computes,
+ * as the finish assembles it); without it, the zonal climate (zonalWater).
  * The heights themselves are not changed: a dry sea is drawn at its true floor (hillshade by `dry`, as land).
  */
-export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH) {
+export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH, climate = null) {
     const n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n, cut = new Uint8Array(n), dry = new Uint8Array(n), seas = [];
     // (nothing to balance unless a cut-off body is as large as the finish balances: finish-config.js basinMinKm2)
     const any = (water.bodies ?? []).slice(1).some(b => b.cells * cellKm2 >= F.basinMinKm2);
@@ -113,7 +116,7 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH) 
     const level = new Float32Array(n).fill(NaN), base = new Float32Array(n).fill(NaN);   // (a wet cell's water level; a dry one's floor)
     if (any) {
         const ocean = water.ocean ?? null;
-        const { rain, pet, runoff } = zonalWater(mesh, zz, cfg, F, ocean);
+        const { rain, pet, runoff } = climate ?? zonalWater(mesh, zz, cfg, F, ocean);
         const kept = new Float32Array(n);                             // (the sky water each cell's ground keeps: closedBasins)
         for (let c = 0; c < n; c++) kept[c] = rain[c] - runoff[c];
         const B = closedBasins(mesh, zz.slice(), runoff, pet, kept, cellKm2, F, ocean ?? oceanOf(water, n));
@@ -136,7 +139,8 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH) 
     for (let c = 0; c < n; c++) if (water.cut[c] && !cut[c]) { cut[c] = 1; level[c] = 0; }
     let heldKm3 = 0;
     for (let c = 0; c < n; c++) if (cut[c] === 1) heldKm3 += Math.max(0, level[c] - zz[c]) * cellKm2;
-    if (!(heldKm3 > 0) && !seas.length) return Object.assign(water, { cut, dry, paintKm: null, seas, heldKm3: 0, oceanFallKm: 0 });
+    const source = climate ? 'computed' : 'zonal';
+    if (!(heldKm3 > 0) && !seas.length) return Object.assign(water, { cut, dry, paintKm: null, seas, heldKm3: 0, oceanFallKm: 0, climate: source });
     const oceanFallKm = oceanFall(water.ocean, zz, heldKm3, cellKm2);
     const paintKm = new Float32Array(n);
     for (let c = 0; c < n; c++) {
@@ -144,7 +148,7 @@ export function estimateCutOff(mesh, z, water, cfg, seaLevelKm = 0, F = FINISH) 
         else if (cut[c] === 2) { dry[c] = 1; paintKm[c] = seaLevelKm - 0.001 - Math.max(0, zz[c] - base[c]); }
         else paintKm[c] = z[c] + oceanFallKm;
     }
-    return Object.assign(water, { cut, dry, paintKm, seas, heldKm3, oceanFallKm });
+    return Object.assign(water, { cut, dry, paintKm, seas, heldKm3, oceanFallKm, climate: source });
 }
 
 /**
@@ -164,16 +168,20 @@ function dryBase(mesh, zz, cut, level, base) {
 }
 
 /**
- * How far (km) the world ocean falls to give up `heldKm3`: the held water over the ocean's area at its lowered level (its
- * cells deeper than the fall; once round, the fall is metres to tens of metres against shelves hundreds of km wide).
+ * How far (km) the world ocean falls to give up `heldKm3`: the level d at which the ocean's water above −d is exactly the
+ * held water — Σ over its cells of the slice between −d and its frame's level — solved by Newton's method (the slice
+ * grows by the area still under water; a few rounds, to under a km³: the fall is metres to tens of metres).
  */
 export function oceanFall(ocean, zz, heldKm3, cellKm2) {
     if (!(heldKm3 > 0) || !ocean) return 0;
     let d = 0;
-    for (let round = 0; round < 2; round++) {
-        let a = 0;
-        for (let c = 0; c < zz.length; c++) if (ocean[c] && zz[c] < -d) a += cellKm2;
-        d = a > 0 ? heldKm3 / a : 0;
+    for (let round = 0; round < 8; round++) {
+        let given = 0, area = 0;                                     // (water above −d, and the area under it)
+        for (let c = 0; c < zz.length; c++) if (ocean[c] && zz[c] < 0) { given += Math.min(d, -zz[c]) * cellKm2; if (zz[c] < -d) area += cellKm2; }
+        if (!(area > 0)) break;
+        const step = (heldKm3 - given) / area;
+        d += step;
+        if (Math.abs(step * area) < 1e-3 * heldKm3 * 1e-3) break;
     }
     return d;
 }

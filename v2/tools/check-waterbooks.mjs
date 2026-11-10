@@ -5,17 +5,18 @@
 // goes to the world ocean through the atmosphere, and the ocean rises by it; what stands in it, the ocean is short of.
 //  · the history (tectonics/ocean/inventory.js pourOcean, from terrain/land-mask.js): every frame, all of V in the
 //    ocean-connected ground, every hollow behind a sill held empty — so V is conserved across frames by construction,
-//    checked here to 1e-6;
+//    checked here to 1e-5 (the pour's levels and ground are single-precision: worst 6.3e-6 over three seeds' whole
+//    histories, 2026-11-09; a sea leaking out of the books is 1e-3 and up);
 //  · the view (terrain/basin-estimate.js estimateCutOff): water stood in a cut-off sea is debited from the world ocean,
 //    which falls by it (oceanFallKm) — the ocean at its lowered level + the water held = the ocean at the frame’s level,
-//    to 0.001 % (closes to ~1e-6 in practice; the fall's area is the lowered ocean's, once round: metres to tens of metres against wide shelves);
+//    to 0.001 % (the fall solved by Newton's method to a millionth of the held water);
 //  · the view against the history: the view's world ocean at the frame's level against V. The two do not draw the same
 //    ground — the view's synthesized shelves and slopes (terrain/synthesize.js) against the history's column per sim cell
 //    — so they differ by a surface model, not by water: measured −2.6 … +2.9 % over three seeds' whole histories at 160K
 //    cells (2026-11-09); a bound of 4 % at the 40K cells checked here, where it is wider (reported).
 // Three seeds (the page's world: the supercontinent cycle, 30 % continent, 40 000 sim cells), every 10 Myr to 1200 Myr,
 // the terrain at 40K cells.
-// Usage: node v2/tools/check-waterbooks.mjs [--every 10] [--cells 40000]
+// Usage: node v2/tools/check-waterbooks.mjs [--every 10] [--cells 40000] [--seeds 626225,777,12345]
 
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
@@ -32,8 +33,8 @@ import { landMask } from '../js/terrain/land-mask.js';
 import { EARTH_OCEAN_KM3 } from '../js/tectonics/ocean/inventory.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? Number(process.argv[i + 1]) : d; };
-const SEEDS = [626225, 777, 12345], CONT = 30, SIM = 40000, MESH_SEED = 12345, UNTIL = 1200, EVERY = arg('--every', 10), CELLS = arg('--cells', 40000);
-const HISTORY_TOL = 1e-6, DEBIT_TOL = 1e-5, SURFACE_TOL = 0.04;
+const SEEDS = process.argv.includes('--seeds') ? process.argv[process.argv.indexOf('--seeds') + 1].split(',').map(Number) : [626225, 777, 12345], CONT = 30, SIM = 40000, MESH_SEED = 12345, UNTIL = 1200, EVERY = arg('--every', 10), CELLS = arg('--cells', 40000);
+const HISTORY_TOL = 1e-5, DEBIT_TOL = 1e-5, SURFACE_TOL = 0.04;
 const sim = buildSimMesh(SIM, MESH_SEED), tm = terrainMesh(CELLS), cfg = terrainConfig({}), V = cfg.waterInventory * EARTH_OCEAN_KM3;
 const A = 4 * Math.PI * 6371 * 6371, simKm2 = A / sim.numCells, cellKm2 = A / tm.numCells, M = 1e6;
 const scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
