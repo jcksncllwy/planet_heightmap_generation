@@ -51,8 +51,7 @@ function infoOf(mesh) {
  * @param {Object} mesh
  * @param {Object} f       per-cell fields on this mesh: z (tectonic surface, km), u (rock uplift, km/Myr), k (the
  *                         wave speed at 1 km² of drainage, km/Myr), rain (drainage weight), micro (km: the crust's
- *                         micro-relief, for the routing only), inc (km: how deep the history's rivers cut here), slope
- *                         (hillslope gradient, km per km); optionally sink (> 0.5: the floor of a closed basin — rivers
+ *                         micro-relief, for the routing only), inc (km: how deep the history's rivers cut here); optionally sink (> 0.5: the floor of a closed basin — rivers
  *                         end there as at the sea) and base (km: that floor's level, their base level instead of 0)
  * @param {Float32Array} route   the surface the rivers are routed over (the current estimate, micro-relief included)
  * @param {Object} cfg     { timeMyr, m }
@@ -262,7 +261,7 @@ function mapBetween(coarse, fine) {
     return M;
 }
 
-const FIELDS = ['z', 'u', 'k', 'rain', 'micro', 'slope', 'inc', 'hold', 'lip', 'lipBase', 'lipTop'];
+const FIELDS = ['z', 'u', 'k', 'rain', 'micro', 'inc', 'hold', 'lip', 'lipBase', 'lipTop'];
 /** Fine fields averaged onto a coarse mesh (each fine cell counts for its nearest coarse cell). */
 function downsample(coarse, fine, f) {
     const M = mapBetween(coarse, fine), n = coarse.numCells, near = M.nearest, count = new Uint32Array(n), sum = new Float64Array(n);
@@ -308,7 +307,7 @@ function upsample(coarse, fine, values) {
 
 /**
  * Carve the finest mesh's surface, coarse to fine. `meshes`: coarsest first, the finest last (a factor ~4 apart);
- * `fields`: per-cell z, u, k, rain, micro, slope, inc on the finest. cfg: { timeMyr, m, rounds: [coarsest, …, finest] }.
+ * `fields`: per-cell z, u, k, rain, micro, inc on the finest. cfg: { timeMyr, m, rounds: [coarsest, …, finest] }.
  * @returns {{z: Float32Array, recv: Int32Array, area: Float32Array}} on the finest mesh
  */
 export function carveTerrain(meshes, fields, cfg, given = null) {
