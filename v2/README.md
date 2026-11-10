@@ -75,7 +75,7 @@ was). **The water is conserved** (2026-11-09): the history pours its whole inven
 every frame and holds every hollow behind a sill empty (`tectonics/ocean/inventory.js pourOcean`), so water a cut-off sea
 holds here is the world ocean's, and the ocean is drawn lower by it (`oceanFallKm`: median ~1 m, up to 77 m over three
 seeds' histories; the Stats say how much). An equilibrium per frame, nothing carried between frames (a sea dries in
-10³–10⁴ years, a frame is 10⁶–10⁷). `tools/check-waterbooks.mjs` closes the books every frame of three histories.
+10³–10⁴ years, a frame is 10⁶–10⁷). `tools/check-waterbooks.mjs` closes the books over three histories (every 20 Myr; `--every 10`: every frame).
 Against Add detail at 640K over three seeds × four moments (`tools/basin-agree.mjs`): the same sign — water standing or
 not — on 345 of 386 seas (89 %; 99 % by area); where they differ the zonal estimate is wet and the finish's climate
 (rain shadows, monsoons) dry. ~70–190 ms a frame at 160K in the shading worker with its hillshade (Node, loaded), only when a cut-off body is as large as the
