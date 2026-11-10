@@ -41,7 +41,7 @@ const overrides = set ? Object.fromEntries(set.split(',').map(kv => { const [k, 
 const nums = args.filter(a => !a.startsWith('--')).map(Number);
 const cells = nums[0] || 20000, seeds = nums.length > 1 ? nums.slice(1) : [12345, 777, 4242];
 const mesh = labMesh(cells), scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
-const R = 6371, JUNCTIONS = 6, HEAD_MYR = 20;
+const R = 6371, JUNCTIONS = 6, HEAD_MYR = 20, OFF = !!process.env.RIFTFORCE_OFF;    // OFF: the history alone (the read-only control)
 const emit = o => { const s = JSON.stringify(o); if (out) appendFileSync(out, s + '\n'); else console.log(s); };
 if (out) writeFileSync(out, '');
 
@@ -163,8 +163,11 @@ function survey(w, F, variants = VARIANTS.map((_, i) => i), withModel = false) {
 
 /** Solve the stress on the world as it stands and survey it, leaving the history's world.plateStress as it was. */
 function solvedSurvey(w) {
-    const keep = w.plateStress;
-    try { if (!solvePlateStress(w)) return null; return survey(w, fields(w), [], true); } finally { w.plateStress = keep; }
+    // (step/plate-stress.js netTorques caches each plate's torques on world.loads: a solve here, before steerBackArcStrips turns
+    // the strips, would hand the history's own solve stale torques — so the caches go back too)
+    const keep = w.plateStress, cached = w.plates.map(p => p.netTorque);
+    try { if (!solvePlateStress(w)) return null; return survey(w, fields(w), [], true); }
+    finally { w.plateStress = keep; w.plates.forEach((p, i) => { if (cached[i] === undefined) delete p.netTorque; else p.netTorque = cached[i]; }); }
 }
 const neighbours = (w, p) => { const { adjOffset, adjList } = mesh, s = new Set(); for (let c = 0; c < mesh.numCells; c++) if (w.owner[c] === p) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const o = w.owner[adjList[k]]; if (o !== p && o >= 0 && !w.plates[o].isBackground) s.add(o); } return [...s]; };
 
@@ -174,12 +177,12 @@ for (const seed of seeds) {
     Object.assign(world.config, overrides);
     let seenSolves = 0, seenEvents = 0, pre = null, surveyMs = 0, splitMs = 0;
     const helpers = { async searchJunctions(w, req) {
-        if (!pre || pre.time !== w.time) {
+        if (!OFF && (!pre || pre.time !== w.time)) {
             const t = performance.now();
             pre = { time: w.time, plates: solvedSurvey(w), nbs: new Map(), alive: new Set(w.plates.filter(p => p.alive && !p.isBackground).map(p => p.id)) };
             splitMs += performance.now() - t;
         }
-        if (!pre.nbs.has(req.plate.id)) pre.nbs.set(req.plate.id, neighbours(w, req.plate.id));
+        if (pre && !pre.nbs.has(req.plate.id)) pre.nbs.set(req.plate.id, neighbours(w, req.plate.id));
         return searchJunctions(w, req);
     } };
     const drive = w => {
@@ -192,7 +195,7 @@ for (const seed of seeds) {
         }
         seenEvents = w.events.length;
         const n = w.stressLog?.length ?? 0;
-        if (n > seenSolves) {
+        if (n > seenSolves && !OFF) {
             seenSolves = n; const t = performance.now();
             const F = fields(w), res = survey(w, F, undefined, true);
             surveyMs += performance.now() - t;
