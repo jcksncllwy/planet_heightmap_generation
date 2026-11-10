@@ -15,8 +15,9 @@
 //     it until it is full (Yuan et al. 2019 route depressions the same way), and what it cannot hold goes on over its outlet;
 //   · what a lake kept is laid from its floor up. So a hollow ends one of two ways: filled, or drained by its outlet.
 // A closed basin (finish-basins.js closedBasins: the rim against the water balance, re-judged every closedEvery steps) keeps
-// its water and all its load. Hillslopes are left to creepByClimate: the geomorphic diffusivity, ~0.01 m²/yr (Fernandes &
-// Dietrich 1997, recalled), reaches √(2Dt) ~ 140 m in a Myr, far under any cell here.
+// its water and all its load. Hillslopes, on the GPU only: Tzathas et al. 2024's k_h·A^−0.6 term in the
+// stream power and threshold diffusion (ERODE hillD, diffD); the geomorphic diffusivity, ~0.01 m²/yr (Fernandes & Dietrich
+// 1997, recalled), reaches √(2Dt) ~ 140 m in a Myr, far under any cell here.
 // Erosion is the carve's own: its k, its m, its rain-weighted drainage, on the whole cell (a cell's mean lowering, at every
 // detail); an active belt keeps its rivers high by the history's uplift (o.uplift), not by a hold on its rate.
 // Heights km, distances km, time Myr.
@@ -29,7 +30,7 @@ const R = 6371, EPS = 1e-5, FLAT_KEY = 1e-11;
 // The design erosion-report.md settled on ("Final design", Answer), run on three seeds at 2.5M. It is a chosen compromise, not
 // a converged result: the span has no plateau (0.5 Myr at the coarsest level; the solver sees only k·t).
 export const ERODE = {
-    at: 'both',                 // 'early': after the hillslopes, before the ice age; 'late': on the finished ground, just before the water; 'both'
+    at: 'both',                 // 'early': after the sediment, before the ice age; 'late': on the finished ground, just before the water; 'both'
     ladder: [                   // coarse to fine (erodeLadder), each { cells (absent: the shown mesh), timeMyr, steps }; null: one run…
         { cells: 160000, timeMyr: 0.5, steps: 10 },
         { cells: 640000, timeMyr: 0.2, steps: 4 },

@@ -1,11 +1,9 @@
-// F2 — sediment and hillslopes. What the rivers cut is carried down their network and laid where they slow: fans where
-// they leave the mountains, floodplains in the lowlands, deltas where they meet the sea (the rest of the fine load is
-// lost to the deep sea). Then hillslopes by climate: soil creep rounds the land where it is wet and warm; deserts and
-// cold ground keep their edges.
+// F2 — sediment. What the rivers cut is carried down their network and laid where they slow: fans where they leave the
+// mountains, floodplains in the lowlands, deltas where they meet the sea (the rest of the fine load is lost to the deep
+// sea). Hillslopes are the erosion's (finish-erode.js, erode-gpu.js: the hillslope term and threshold diffusion).
 
 import { MinHeap } from '../core/min-heap.js';
 
-const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
  * The rivers' load laid down until the plains it builds carry it (2026-10-29, lane rivers). A reach carries
@@ -66,11 +64,10 @@ export function depositSediment(mesh, before, C, sink, cellKm2, F, ocean = null)
             else mouths.set(r, (mouths.get(r) ?? 0) + load[c]);
         }
     }
-    // ── a closed basin's floor: what reaches it spread over it (fans out onto the playa), and never built above its rim ──
+    // ── a closed basin's floor: what reaches it laid level from its lowest ground, never above its rim ──
     let spilledKm3 = 0;
     if (sink) {
         for (let c = 0; c < n; c++) toSink[c] /= cellKm2;
-        spread(mesh, toSink, c => land(c) && !!sink[c], F.fanSpreadKm);
         spilledKm3 = fillHollows(mesh, z, toSink, sink, land) * cellKm2;
     }
     // ── deltas: a river's share of its load built out over the shelf from its mouth, nearest first, to a low plain ──
@@ -203,72 +200,3 @@ function routing(mesh, z, outlet, R = null) {
     return R;
 }
 const edge = (xyz, a, b) => 6371 * Math.hypot(xyz[3 * a] - xyz[3 * b], xyz[3 * a + 1] - xyz[3 * b + 1], xyz[3 * a + 2] - xyz[3 * b + 2]);
-
-/** Spread a field over about `km` (σ), keeping its sum: a few passes toward the neighbours' mean, as many as the mesh
- *  needs to reach that far (none where its cells are wider than that). Cells not on `land` (the sea) take none. */
-function spread(mesh, f, land, km) {
-    const { adjOffset, adjList, edgeKm, numCells: n } = mesh;
-    // each pass that moves share a of a cell to its neighbours adds about a·edge²/2 to the variance
-    const need = 2 * km * km / (edgeKm * edgeKm), passes = Math.min(40, Math.ceil(need / 0.5));
-    if (passes < 1) return;
-    const a = Math.min(0.5, need / passes), next = new Float32Array(n);
-    for (let p = 0; p < passes; p++) {
-        next.fill(0);
-        for (let c = 0; c < n; c++) {
-            const v = f[c];
-            if (!(v > 0)) continue;
-            let nl = 0;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (land(adjList[k])) nl++;
-            if (!nl) { next[c] += v; continue; }
-            next[c] += v * (1 - a);
-            const each = v * a / nl;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (land(adjList[k])) next[adjList[k]] += each;
-        }
-        f.set(next);
-    }
-}
-
-/**
- * Dissection everywhere: every drainage line cut in by a share of how steep the ground around it is — by how many cells
- * drain there (none on a ridge, all of it in a valley the mesh can show) — so mountains are cut all over, plains stay
- * calm, and the ridges between the valleys stand. Rivers still run downhill after it (each cell no lower than the one it
- * drains into, as the carve leaves them); land stays land.
- */
-export function dissect(mesh, z, C, cellKm2, F) {
-    const { adjOffset, adjList, edgeKm } = mesh, { recv, area, order } = C;
-    const la1 = Math.log(F.dissectKm2[0]), la2 = Math.log(F.dissectKm2[1]), before = z.slice();
-    for (let i = 0; i < order.length; i++) {
-        const c = order[i];
-        let m = 0, k0 = 0;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (before[nb] > 0) { m += Math.abs(before[nb] - before[c]); k0++; } }
-        if (!k0) continue;
-        const steep = smooth(F.dissectSlope[0], F.dissectSlope[1], m / k0 / edgeKm), valley = smooth(la1, la2, Math.log(Math.max(1, area[c])));
-        if (steep > 0 && valley > 0) z[c] = Math.max(Math.min(before[c], 0.002), before[c] - F.dissectKm * steep * valley);
-    }
-    // (downhill still: in the flood's order every cell comes after the one it drains into)
-    for (let i = 0; i < order.length; i++) { const c = order[i], r = recv[c]; if (r >= 0 && z[c] < z[r]) z[c] = Math.min(before[c], z[r]); }
-}
-
-/**
- * Soil creep by climate: the land relaxed toward its neighbours' mean over about F.creepKm (σ) where it is wet and warm
- * (wetness from the annual rain and temperature), not at all in deserts and on frozen ground; the coast stays where it is.
- */
-export function creepByClimate(mesh, z, rainMm, tempC, F) {
-    const { adjOffset, adjList, edgeKm, numCells: n } = mesh;
-    const need = 2 * F.creepKm * F.creepKm / (edgeKm * edgeKm), passes = Math.min(30, Math.ceil(need / 0.5));
-    if (passes < 1) return 0;
-    const a = Math.min(0.5, need / passes), wet = new Float32Array(n);
-    for (let c = 0; c < n; c++) if (z[c] > 0 && rainMm[c] === rainMm[c]) wet[c] = a * smooth(F.creepRainMm[0], F.creepRainMm[1], rainMm[c]) * smooth(F.creepTempC[0], F.creepTempC[1], tempC[c]);
-    const next = new Float32Array(n);
-    for (let p = 0; p < passes; p++) {
-        for (let c = 0; c < n; c++) {
-            const w = wet[c];
-            if (!(w > 0)) { next[c] = z[c]; continue; }
-            let s = 0, k0 = 0;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (z[nb] > 0) { s += z[nb]; k0++; } }
-            next[c] = k0 ? Math.max(0.002, z[c] + w * (s / k0 - z[c])) : z[c];
-        }
-        z.set(next);
-    }
-    return passes;
-}

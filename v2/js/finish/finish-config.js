@@ -13,8 +13,6 @@ export const FINISH = {
     // ── F1: warp and detail ──
     warpKm: 14,                 // the whole surface domain-warped by up to about this (breaks the last of the sim's lines)…
     warpScaleKm: 150,           // …in waves about this long, and half and a quarter of it
-    craggyKm: 0.05,             // fine relief on high, steep ground (none on the plains), ± this at 3 km up…
-    craggyFromKm: 40,           // …from this wavelength down to what the mesh can show
 
     // ── the rivers: the carve run longer, with the climate's runoff ──
     carveTimeMyr: 1.0,          // (the timeline's 0.75; 1.2 cut trunk canyons too deep beside uncut ground — developer)
@@ -40,30 +38,17 @@ export const FINISH = {
     wetPower: 0.5,              // the drainage's weight grows as this power of the (relative) water, at most wetMax times the
     wetMax: 2.5,                // mean: linear, the wettest regions carried ~10× the mean — valleys and grading far beyond the
                                 // live terrain's, the land there "unnaturally blurry" (developer)
-    // rivers wander: a fine relief the rivers are routed over (not the heights), from this wavelength down to what the mesh
-    // shows, this high — so channels meander and bend instead of running straight down smooth slopes
-    meanderKm: 0.03,
-    meanderFromKm: 60,
-    // dissection everywhere (developer: cutting "isolated … some mountains look blurry and not cut in"): every drainage
-    // line cut in by a share of how steep the ground is — mountains dissected all over down to the mesh's own valleys,
-    // plains calm; the ridges between them (the cells nothing drains into) kept. Its deepest cut, on steep ground: the
-    // erosion strength's dissectKm (below)…
-    dissectSlope: [0.02, 0.25], // …by the ground's steepness (km per km)…
-    dissectKm2: [300, 8000],    // …and by the area draining there (km²: a ridge … a valley; 1.5 and 40 cells at 2.5M — in cells
-                                // until 2026-10-15, so finer detail cut finer, shallower valleys)
 
     // ── how strongly the finish erodes the mountains (developer, 2026-10-15: "strengthen the erosion in a final detail pass,
     // particularly the fancy generated erosion we adapted from the paper, but not too much … break up SOME of the
     // monotony of the ridges"): 0 as it was … 3. The stream power (carve.js; Tzathas et al. 2024: erosion a wave climbing
     // each river at k·A^m) reaches further up the headwaters — m lower, k raised so a river draining erosionPivotKm2 cuts as
-    // before; the dissection cuts deeper; soil creep rounds less; and the fold belts' crests stand harder, so the valleys
+    // before; and the fold belts' crests stand harder, so the valleys
     // deepen between them rather than the ridges wearing away. The timeline's terrain is untouched
     erosionStrength: 3,
     erosionPivotKm2: 1e5,
     erosionLevels: {            // at strength 0, 1, 2, 3 (between them, linear)
         carveM: [0.4, 0.35, 0.3, 0.25],
-        dissectKm: [0.35, 0.45, 0.55, 0.65],
-        creepKm: [10, 8.5, 7, 5.5],
         crestHardness: [0.5, 0.55, 0.6, 0.65],
     },
 
@@ -82,15 +67,9 @@ export const FINISH = {
                                 // a river leaves the bed it has built up for the lower ground beside it) — finish-sediment.js
     capacityK: 15,              // bedload a reach can carry: capacityK · drainage (km²) · slope — a river carries what it cut
                                 // down its mountain slopes and drops it where it slows (below a slope of ~0.002)
-    fanSpreadKm: 20,            // deposits spread over about this (fans and aprons, not ridges along the channel)
     deltaShare: 0.03,           // the share of a river's load built into a delta above the sea (the rest on the shelf)
     deltaTopKm: 0.004,          // a delta plain stands this high
     deltaMaxDepthKm: 0.15,      // …and grows only over the shelf
-    // ── F2: hillslopes by climate — soil creep rounds the hills where it is wet and warm; deserts and cold ground stay
-    // sharp ──
-    // (its rounding, σ at full wetness: the erosion strength's creepKm, above)
-    creepRainMm: [300, 1200],   // wetness from the annual rain…
-    creepTempC: [-5, 10],       // …and the annual temperature
 
     // ── F3: the last ice age, Earth-like ──
     iceColdEqC: 3.5,            // colder than now at the equator…

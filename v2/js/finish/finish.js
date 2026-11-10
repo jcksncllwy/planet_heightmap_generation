@@ -1,6 +1,6 @@
 // The Finish step (plans/V2_FINISH_PLAN.md): one moment of a history sculpted with care, on request — the surface
-// domain-warped and roughened where it is high and steep (F1), the climate calculated on it, the rivers carving it for
-// longer with the climate's runoff, dry basins left closed, sediment laid down, hillslopes by climate (F2), erosion and
+// domain-warped (F1), the climate calculated on it, the rivers carving it for
+// longer with the climate's runoff, dry basins left closed, sediment laid down (F2), erosion and
 // deposition through time (finish-erode.js), an Earth-like last ice age (F3), the wind's work (F4), and erosion's polish. Runs in finish-worker.js (or Node): the terrain pool builds the surface in
 // slices, everything else runs here, on a mesh of any size — 10M cells included, which only this worker holds.
 
@@ -9,7 +9,7 @@ import { FINISH, COVER } from './finish-config.js';
 import { LatLonGrid } from './finish-grid.js';
 import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
 import { closedBasins } from './finish-basins.js';
-import { depositSediment, creepByClimate, dissect } from './finish-sediment.js';
+import { depositSediment } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
@@ -45,12 +45,12 @@ const COAST_WORKERS = 3;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** The finish's erosion at F.erosionStrength (finish-config.js erosionLevels, linear between the levels): the stream power's
- *  m, and its k as a multiple of the terrain's (a river draining F.erosionPivotKm2 cuts as fast as before); the dissection's
- *  deepest cut, the soil creep's reach (km) and the crests' hardness. */
+ *  m, and its k as a multiple of the terrain's (a river draining F.erosionPivotKm2 cuts as fast as before), and the crests'
+ *  hardness. */
 export function erosionAt(F, cfg) {
     const L = F.erosionLevels, s = Math.min(L.carveM.length - 1, Math.max(0, F.erosionStrength ?? 0)), i = Math.min(L.carveM.length - 2, Math.floor(s)), f = s - i;
     const at = a => a[i] + (a[i + 1] - a[i]) * f, m = at(L.carveM);
-    return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), dissectKm: at(L.dissectKm), creepKm: at(L.creepKm), crestHardness: at(L.crestHardness) };
+    return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), crestHardness: at(L.crestHardness) };
 }
 
 /** What runs erosion: the GPU's solver where this page (or Node, with v2/tools/gpu-harness/use-dawn.mjs) has a device, else the CPU's.
@@ -74,7 +74,7 @@ export async function erosionEngine(F = FINISH) {
 
 /** The stages, in order, with their rough share of the time (for the progress bar). */
 export const STAGES = (raw => { const all = raw.reduce((v, [, s]) => v + s, 0); return raw.map(([k, s]) => [k, s / all]); })(
-    [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['hillslopes', 0.05], ['erosion', 0.14], ['ice age', 0.08], ['wind', 0.05], ['coast', 0.04], ['sea', 0.02], ['polish', 0.06], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]]);
+    [['mesh', 0.12], ['surface', 0.18], ['climate', 0.1], ['rivers', 0.2], ['sediment', 0.06], ['erosion', 0.14], ['ice age', 0.08], ['wind', 0.05], ['coast', 0.04], ['sea', 0.02], ['polish', 0.06], ['water', 0.05], ['final climate', 0.03], ['picture', 0.09]]);
 
 /**
  * @param {{frame: Object, simMesh: Object, seed: number, cells: number, pool: import('../terrain/terrain-pool.js').TerrainPool,
@@ -103,7 +103,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const n = mesh.numCells, cellKm2 = 4 * Math.PI * R * R / n;
     lap('mesh');
 
-    // ── F1: the surface, domain-warped (its positions displaced before anything is read there), roughened where high ──
+    // ── F1: the surface, domain-warped (its positions displaced before anything is read there) ──
     onStage('surface');
     // (memory: at 10M cells every array is 40 MB or more — each let go as soon as it is done with, the warped positions
     // and the sampler with the surface, the carving's inputs and caches with the carve)
@@ -115,7 +115,6 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     z = surf.heightKm;
     const fade = lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / mesh.edgeKm);
     surf = null; warped = null;
-    roughen(mesh, z, seed, F, fade);
     lap('surface');
 
     // ── the climate, on this surface ──
@@ -260,7 +259,6 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const meanR = landN ? sumR / landN : 1, meanP = landN ? sumP / landN : 1, meanW = landN ? oldW / landN : 1;
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, liquid.rain[c]) / meanP) ** F.wetPower);
-    meander(mesh, carveIn.micro, z, seed, F, fade);
     const straits0 = openStraits(mesh, z, ocean0, F);
     if (straits0.opened) ocean0 = oceanMask(mesh, z);
     const B = closedBasins(mesh, z, runoff, pet, skyKept, cellKm2, F, ocean0);
@@ -288,17 +286,13 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         uplift: EP.tectUplift ? carveIn.lift : null } : null;      // (the history's tectonic rise, km/Myr: ERODE tectUplift)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
-    dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
     lap('rivers');
 
-    // ── F2: sediment, then hillslopes by climate ──
+    // ── F2: sediment ──
     onStage('sediment');
     const Sed = depositSediment(mesh, before, C, B.sink, cellKm2, F, ocean0);
     stats.deltas = Sed.deltas;
     lap('sediment');
-    onStage('hillslopes');
-    creepByClimate(mesh, C.z, pAnn, tAnn, { ...F, creepKm: E.creepKm });
-    lap('hillslopes');
     z = C.z;
     census('after carve, sediment, creep', ocean0);
     if (EP?.column) {
@@ -498,43 +492,6 @@ function warpPositions(mesh, seed, F) {
         out[3 * c] = px; out[3 * c + 1] = py; out[3 * c + 2] = pz;
     }
     return out;
-}
-
-/** The rivers' fine routing relief (added to the carve's micro-relief, which shapes the routing only): octaves from
- *  F.meanderFromKm down to what the mesh can show — channels wander instead of running straight down smooth slopes. Held
- *  at each place to the ground's own slope (lane rivers, 2026-10-29): its job is to break ties where the ground is nearly
- *  level, not to make the way down. At its full ±30 m over ~30 km it is ~1e-3 steep, ten times a plain's 1e-5–1e-4, and
- *  rivers on the plains threaded its hollows instead of the plain's fall — the "termite trails" (developer); now on a
- *  plain it is as steep as the plain at most, and on steeper ground as before. Both slopes are each cell's mean step to
- *  its neighbours. */
-function meander(mesh, micro, z, seed, F, fade) {
-    const { xyz, numCells: n, adjOffset, adjList } = mesh, noise = new FastNoise((seed | 0) * 37 + 29), oct = [];
-    for (let lam = F.meanderFromKm, a = 1; lam > 1 && oct.length < 5; lam /= 2, a *= 0.6) { const s = a * fade(lam); if (s > 0.02) oct.push([R / lam, s]); }
-    if (!oct.length) return;
-    const v = new Float32Array(n);
-    for (let c = 0; c < n; c++) {
-        let w = 0;
-        for (let o = 0; o < oct.length; o++) { const [f, s] = oct[o]; w += s * noise.noise3D(xyz[3 * c] * f + 7.7 * o, xyz[3 * c + 1] * f + 2.2, xyz[3 * c + 2] * f + 4.4 * o); }
-        v[c] = F.meanderKm * w;
-    }
-    for (let c = 0; c < n; c++) {
-        let g = 0, m = 0;
-        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; g += Math.abs(z[nb] - z[c]); m += Math.abs(v[nb] - v[c]); }
-        micro[c] += m > g ? v[c] * g / m : v[c];
-    }
-}
-
-/** Fine relief on high ground (craggier the higher), octaves from F.craggyFromKm down to what the mesh can show. */
-function roughen(mesh, z, seed, F, fade) {
-    const { xyz, numCells: n } = mesh, noise = new FastNoise((seed | 0) * 71 + 3), oct = [];
-    for (let lam = F.craggyFromKm, a = 1; lam > 1 && oct.length < 5; lam /= 2, a *= 0.55) { const s = a * fade(lam); if (s > 0.02) oct.push([R / lam, s]); }
-    if (!oct.length) return;
-    for (let c = 0; c < n; c++) {
-        if (!(z[c] > 0.3)) continue;
-        let v = 0;
-        for (let o = 0; o < oct.length; o++) { const [f, s] = oct[o]; v += s * noise.noise3D(xyz[3 * c] * f + 3.3 * o, xyz[3 * c + 1] * f + 1.7, xyz[3 * c + 2] * f + 5.9 * o); }
-        z[c] += F.craggyKm * smooth(0.3, 3, z[c]) * v;
-    }
 }
 
 /** Per month (12 fields each, on the climate grid): the share of a year's runoff that comes in that month, and how dry the
