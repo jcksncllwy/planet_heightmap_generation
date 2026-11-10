@@ -79,7 +79,18 @@ seeds' histories; the Stats say how much). An equilibrium per frame, nothing car
 Against Add detail at 640K over three seeds × four moments (`tools/basin-agree.mjs`): the same sign — water standing or
 not — on 345 of 386 seas (89 %; 99 % by area); where they differ the zonal estimate is wet and the finish's climate
 (rain shadows, monsoons) dry. ~70–190 ms a frame at 160K in the shading worker with its hillshade (Node, loaded), only when a cut-off body is as large as the
-finish balances (`basinMinKm2`). The readout and the Stats say it is an estimate. The same on the lab's Terrain layer
+finish balances (`basinMinKm2`). The readout and the Stats say it is an estimate. **The real-climate balance** (2026-11-10, `terrain/climate-water.js`): a cut-off sea of ≥ 1 Mkm² that the history does not pour is
+re-balanced on the *computed* climate once the frame has settled (not while the history plays): the Climate tab's own water where
+the moment has it (1°), else a 3° `planetClimate` in the climate worker, one frame at a time, off the page's thread (its rain, its
+potential evaporation and its runoff assembled as the finish does). The hover says "balanced on the climate (N°)" or "estimated by
+latitude — the climate is being worked out". Over four histories (every 20 Myr) 24 % of frames want it (58 of 244); the worker's
+3° climate takes a median 1.5 s (Node, loaded), 0.51 s a frame on average over all frames (budget 0.5 s; 2° was 0.74 s, 4° 0.57 s).
+The computed climate flips wet/dry on few seas at 2° (1 of 151) but the held water moves a lot. **Limit — physics/consistency:**
+the view now holds water in big cut-off seas that the history pours back into the ocean, so on those frames the drawn ocean and
+the history's sea level disagree (seed 831576 at 900 Myr: the fall goes 13 → 233 m at 2°; held water over the 58 frames: median
++14 m, p90 +150 m) until the evaporite lane's per-basin balance moves into the history. The held water of a big sea is also
+grid-sensitive: 3° and 4° stray from 2° by a median 33 % a frame (9 of 58 within 10 %), so read the number as an estimate, the
+ocean fall included. View-only: the history and the finish are unchanged. The same on the lab's Terrain layer
 (Phase 8a, at its Sea level). **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
 calculated on it; the rivers carving longer with the climate's runoff (rain less evaporation: Budyko's curve, Fu's ω 2.6,
@@ -358,6 +369,7 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    from it — the finish's sea, and the timeline's cut-off tint
   basin-estimate   the timeline's cut-off seas balanced on the zonal climate (Add detail's own balance): lake or dry
                    hollow, the world ocean debited for the water they hold (shadeWithWater: with the frame's hillshade)
+  climate-water    a frame's computed climate (planetClimate) as each cell's rain / PET / runoff, for a big cut-off sea's balance (the climate worker's 'water', 3°)
   terrain-pool     the same synthesis on worker threads (terrain-worker.js), bit for bit — each frame's plan built
                    once, by the first worker, and handed to the others over message ports; mesh-worker builds a
                    terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread

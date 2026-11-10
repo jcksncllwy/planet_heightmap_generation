@@ -2,7 +2,7 @@
 // approved). basin-estimate.js balances a sea cut off from the world ocean on the zonal climate (rain by latitude, less
 // inland), which cannot know a rain shadow, a monsoon, or that a sea of tens of Mkm² makes its own rain. For a frame with
 // such a sea (CLIMATE_MIN_KM2) the page computes the climate (climate/climate.js planetClimate, on its climate worker,
-// at 2° — or takes the Climate tab's, at 1°, where it has one) and hands the shading worker this: each cell's year of
+// at 3° — or takes the Climate tab's, at 1°, where it has one) and hands the shading worker this: each cell's year of
 // rain, potential evaporation and runoff (mm), assembled as the finish assembles them (finish/finish.js, its own
 // helpers — so the timeline's estimate and the finish disagree only by the finish's surface, not its sums):
 //

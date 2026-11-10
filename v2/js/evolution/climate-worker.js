@@ -16,11 +16,12 @@ import { pageClimate, climateTransfers } from './climate-fields.js';
 import { cellStatsCollector } from '../climate/cell-stats.js';
 import { climateWater, climateWaterTransfers } from '../terrain/climate-water.js';
 
-// The grid a frame's climate is computed on for its cut-off seas alone (the real-climate balance, 2026-11-10): 2°, the
-// coarsest the climate runs well on — 1.5–1.8 s in a Chrome worker against 3.3–4.2 s at 1° (handoff-2, the cutoff lane).
-// A sea it balances is ≥ 1 Mkm² (basin-estimate.js CLIMATE_MIN_KM2), ≥ 25 of its 2° cells at the equator: a 2° grid
-// resolves its rain and its catchment's.
-const WATER_GRID_DEG = 2;
+// The grid a frame's climate is computed on for its cut-off seas alone (the real-climate balance, 2026-11-10): 3°.
+// Measured (Node, loaded; 4 histories, every 20 Myr, 58 frames): 2° costs 742 ms a frame on average, 3° 510 ms, 4° 566 ms
+// (the budget is 0.5 s). 4° was the ruling's first choice but its held water strays from 2°'s by a median 33 % a frame
+// (9 of 58 within 10 %), so 3°, which strays the same; the held water of a big sea is grid-sensitive, and 1° (the Climate
+// tab's) takes over where a moment has it. A sea it balances is ≥ 1 Mkm² (basin-estimate.js CLIMATE_MIN_KM2).
+const WATER_GRID_DEG = 3;
 
 const meshes = new Map();
 

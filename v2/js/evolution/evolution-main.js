@@ -887,7 +887,7 @@ async function calculateClimate() {
 
 // ── the real-climate balance (2026-11-10, Jackson approved): a moment with a sea of ≥ 1 Mkm² cut off from the ocean that
 // the history holds empty (basin-estimate.js needsClimate) is drawn at once balanced on the zonal climate, then again on
-// the computed one — the Climate tab's (1°) where this moment has it, else its own at 2° (climate-worker.js 'water'), on
+// the computed one — the Climate tab's (1°) where this moment has it, else its own at 3° (climate-worker.js 'water'), on
 // a worker of its own so the Climate tab's stays free. One at a time, the moment on screen; none while playing. ──
 const waterClimate = new ClimateService();
 let balancing = null;
@@ -1261,7 +1261,7 @@ function readout(e) {
     lines.push(`<span class="hi-label">Elev</span> ${Math.round(at ? at.heightM : h * 1000).toLocaleString()} m`);
     // (a sea cut off from the world ocean, on the live terrain: its level is its water balance's — Add detail finds it)
     // (estimated on the zonal climate — basin-estimate.js — or balanced on the computed one where the page has it for a big
-    // sea (balanceClimate: 2°, or the Climate tab's 1°); Add detail balances it on its own surface)
+    // sea (balanceClimate: 3°, or the Climate tab's 1°); Add detail balances it on its own surface)
     const W0 = paintedT.water, how = W0?.climate === 'computed' ? `balanced on the climate (${W0.climateDeg ?? 1}°; Add detail balances it on its own surface)`
         : `estimated by latitude${balancing === f ? ' — the climate is being worked out' : ''} (Add detail balances it)`;
     // (a sea the history part-fills over a seaway's sill: its water is the history's — basin-estimate.js standPoured)
