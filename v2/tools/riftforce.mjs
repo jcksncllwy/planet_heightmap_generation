@@ -41,7 +41,7 @@ const overrides = set ? Object.fromEntries(set.split(',').map(kv => { const [k, 
 const nums = args.filter(a => !a.startsWith('--')).map(Number);
 const cells = nums[0] || 20000, seeds = nums.length > 1 ? nums.slice(1) : [12345, 777, 4242];
 const mesh = labMesh(cells), scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
-const R = 6371, JUNCTIONS = 6, HEAD_MYR = 20, OFF = !!process.env.RIFTFORCE_OFF;    // OFF: the history alone (the read-only control)
+const R = 6371, JUNCTIONS = 6, HEAD_MYR = 20, OFF = !!process.env.RIFTFORCE_OFF || args.includes("--off");    // --off: the history alone (the read-only control)
 const emit = o => { const s = JSON.stringify(o); if (out) appendFileSync(out, s + '\n'); else console.log(s); };
 if (out) writeFileSync(out, '');
 
