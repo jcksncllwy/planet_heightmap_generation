@@ -221,6 +221,14 @@ export const TECTONICS = {
                                 // of Myr: India has run 2400–3200 km into Asia since ~50 Ma and still converges at ~4 cm/yr
                                 // (Molnar & Stock 2009; van Hinsbergen et al. 2012). (Were: weld after 600 km of shortening, 40
                                 // Myr of contact or 0.4 Mkm² of overlap, and at 120 Myr whatever sea was left — hand-set lock times)
+    sutureHoldGpe: false,       // (lane weld, opt-in) …or once the belt has held the pair through one measure of the seam (sutureCheckMyr): the push
+                                // across the front no more than the buoyancy force of the crust the collision has thickened (the GPE lock's,
+                                // ~5.7 × 10¹² N/m at Tibet's: torque-balance.js seamHold). A thin viscous sheet converges while the force on
+                                // its edge beats that buoyancy and stops when it does not (England & McKenzie 1982; England & Houseman 1989);
+                                // the viscous lock alone only damps the push, and whole-model pairs crept on at 0.5–0.8 cm/yr for 50–150 Myr
+                                // after their convergence ran down — contact → weld ~124 Myr against the ~60–70 of Earth's ended
+                                // collisions (Alleghanian ~325→265 Ma, Hatcher 2002; Uralian ~320→250 Ma, Puchkov 2009). Held, the seam has
+                                // also closed all it will (the sea left is a remnant: no waiting on sutureStallGiveUpMyr)
     sutureStallMinKm: 200,      // …and only once at least this much has been absorbed (two plates merely touching do not weld)
     overlapCapKm: 250,          // (Phase 11) land stacked deeper than this on average (overlap ÷ front) goes under the upper plate
                                 // while the pair waits for its seam to close…

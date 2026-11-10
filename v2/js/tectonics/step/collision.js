@@ -28,6 +28,7 @@ import { hopsFrom } from '../../core/mesh-bfs.js';
 import { continentVolume, crustOf, layThickening, layProfile } from '../ops/thicken.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
+import { seamHold } from './torque-balance.js';
 import { bookRock } from '../rock-book.js';
 import { cellRockKm3, plateRockKm3 } from './crust-ledger.js';
 
@@ -173,7 +174,16 @@ export function trackCollisions(world, dt) {
         // overlap itself — area over front — where the land stacked came otherwise: a third plate driving the two together, a
         // collision handed on at a weld. Stalled, stacked that deep, they are one; merely touching, they are not)
         const depthKm = cells.length * cellAreaKm2 / Math.max(rec.frontKm, edgeKm);
-        const ready = rec.stalledMyr >= config.sutureStallMyr && Math.max(rec.shorteningKm, depthKm) >= config.sutureStallMinKm;
+        // (config.sutureHoldGpe: or once the belt has held the two — the push across the front no more than the buoyancy
+        // force of the crust the collision has thickened, torque-balance.js seamHold — through one measure of the seam
+        // (sutureCheckMyr): a thin viscous sheet stops converging there, though the viscous lock alone would let it creep on)
+        let held = false;
+        if (config.sutureHoldGpe) {
+            const h = seamHold(world, L, U.id);
+            rec.heldSince = h && h.holds > 0 && h.pushed <= h.holds ? (rec.heldSince ?? time) : undefined;
+            held = rec.heldSince !== undefined && time - rec.heldSince >= config.sutureCheckMyr;
+        }
+        const ready = (rec.stalledMyr >= config.sutureStallMyr || held) && Math.max(rec.shorteningKm, depthKm) >= config.sutureStallMinKm;
         // …and the seam has closed (Phase 11): welded with ocean still open between the two, that ocean would be sealed
         // inside one plate for good — or it has stalled so long that it never will
         // (both measures flood the sea: taken at most every sutureCheckMyr while a pair waits — a seam closes over Myr)
@@ -187,7 +197,8 @@ export function trackCollisions(world, dt) {
         rec.gapKm2 ??= Infinity;
         // (a seam that has stalled long has closed all it will: the pivot has done its work — what is left is a remnant sea)
         const closed = (rec.gapWidestKm ?? Infinity) <= config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
-            || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr;
+            || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr
+            || held;                                       // (held, the seam has closed all it will: the sea left is a remnant)
         // (so much land stacked on land that the two are one already: they weld now, whatever sea is left — a remnant — or
         // whatever they ring; waiting would only stack them deeper)
         // (stacked: how deep, on average, the one lies on the other — the overlap left after this step's underthrusting over the

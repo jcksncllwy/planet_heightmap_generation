@@ -138,6 +138,34 @@ export function collisionGpeNPerM(dhKm, H) {
     return 0.5 * rc * 9.81 * (1 - rc / ra) * (h * h - h0 * h0);
 }
 
+/**
+ * (config.sutureHoldGpe, step/collision.js) Whether the belt between `plate` and `other` holds them: the force the lock now
+ * carries across their front against closing — what the two push into each other, the lock's coupling × the closing rate
+ * at each contact (judged on the loads and rotations of the last step, as balanceTerms) — against the most the belt the
+ * collision has built can resist with, its gravitational potential energy over its share of the front (collisionGpeNPerM,
+ * the GPE lock's force, of the plateau alone: forces.js dhBelt). A thin viscous sheet converges while the force on its edge exceeds the buoyancy force of the crust
+ * it has thickened and stops when it does not (England & McKenzie 1982; England & Houseman 1989, the Argand number): the
+ * viscous lock (collisionResistance) draws the first half, a coupling × rate that only damps a push and never stops it —
+ * whole-model pairs creep on at 0.5–0.8 cm/yr for 50–150 Myr after their convergence has run down (lane weld, 2026-11-09)
+ * — and this draws the second. @returns {{pushed: number, holds: number} | null} both in force units × model length
+ */
+export function seamHold(world, plate, other) {
+    const load = world.loads?.get(plate.id);
+    if (!load) return null;
+    const { config, mesh } = world, areaUnit = mesh.cellAreaKm2 / 1e4, omegaOf = world.plates.map(p => p.omega), self = omegaOf[plate.id], o = omegaOf[other];
+    const gpe = gpeLock(world, plate, load);
+    let pushed = 0, holds = 0;
+    for (const ct of load.contacts) {
+        if (ct.other !== other) continue;
+        const { r, n, weight } = ct, an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];
+        const rate = Math.max(0, (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2]);
+        const lock = gpe.forceOf(ct) * weight, cap = gpe.forceOf({ ...ct, dh: ct.dhBelt }) * weight;     // (the belt's, without the stack: forces.js dhBelt)
+        pushed += config.collisionLockGpe ? Math.min(lock, lock * rate / gpe.floor) : config.collisionResistance * areaUnit * weight * rate;
+        holds += cap;
+    }
+    return { pushed, holds };
+}
+
 /** (config.collisionLockGpe) Per contact of this plate: its share of the pair's front (model length, 100 km) × the GPE force in force units. */
 function gpeLock(world, plate, load) {
     const { config, mesh, collisions } = world, H = heightsOf(config), count = new Map();

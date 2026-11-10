@@ -108,10 +108,12 @@ export function gatherLoads(world) {
             // (dh: the thickening the front pushes against — what the GPE lock resists with, the same on both sides: torque-balance.js.
             // The thickest of the two plates' crust within two rings of here: the overlap's own cells are the lower plate's
             // edge going under, the plateau the collision builds (keepConsumed, 1 − u²) stands just behind it — and here, in the
-            // overlap itself, the two crusts stacked one on the other)
+            // overlap itself, the two crusts stacked one on the other. dhBelt, config.sutureHoldGpe: the belt's alone, without the stack
+            // — the plateau's buoyancy that ends a collision, weighed against the push across the seam: torque-balance.js seamHold)
             const dh = config.collisionLockGpe ? frontThickening(world, w, a, collider[w], plates[a].crust, ownerCell[w], other.crust, otherCell) : 0;
-            loadOf[a]?.contacts.push({ w, c: ownerCell[w], r, n: nAB, other: collider[w], weight, dh });
-            loadOf[collider[w]]?.contacts.push({ w, c: otherCell, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight, dh });
+            const dhBelt = config.sutureHoldGpe ? frontThickening(world, w, a, collider[w], plates[a].crust, ownerCell[w], other.crust, otherCell, false) : 0;
+            loadOf[a]?.contacts.push({ w, c: ownerCell[w], r, n: nAB, other: collider[w], weight, dh, dhBelt });
+            loadOf[collider[w]]?.contacts.push({ w, c: otherCell, r, n: [-nAB[0], -nAB[1], -nAB[2]], other: a, weight, dh, dhBelt });
             continue;
         }
         const load = loadOf[a];
@@ -286,12 +288,15 @@ function newLoad() {
  * rules, which never build one: the overlap is all the thickening there is). With the event rules on, the collision
  * takes the overlap up every step (step/collision.js), so the stack is one step's convergence wide; its weight, as the
  * plateau's, is reckoned per metre of front, as an Airy-compensated column (torque-balance.js collisionGpeNPerM). Limits:
- * the lower plate's edge is drawn at its kind's full thickness, not thinned as a passive margin's is.
+ * the lower plate's edge is drawn at its kind's full thickness, not thinned as a passive margin's is. stacked false: the
+ * plateau alone (config.sutureHoldGpe) — the lower plate's edge in the overlap is going under, not standing as a column;
+ * the buoyancy that stops a collision is the plateau's, grown as the collision thickens it (India slowed as Tibet rose:
+ * Molnar & Stock 2009; Copley et al. 2010)
  */
-function frontThickening(world, w, a, b, crustA, cellA, crustB, cellB) {
+function frontThickening(world, w, a, b, crustA, cellA, crustB, cellB, stacked = true) {
     const { mesh: { adjOffset, adjList }, owner, ownerCell, plates, config } = world, H = heightsOf(config);
     const kindKm = (crust, c) => crust.type[c] === CrustType.CRATON ? H.cratonCrustKm : H.riftCrustKm;
-    let best = kindKm(crustA, cellA) + Math.max(0, crustA.thickKm[cellA]) + kindKm(crustB, cellB) + Math.max(0, crustB.thickKm[cellB]) - H.riftCrustKm;
+    let best = stacked ? kindKm(crustA, cellA) + Math.max(0, crustA.thickKm[cellA]) + kindKm(crustB, cellB) + Math.max(0, crustB.thickKm[cellB]) - H.riftCrustKm : 0;
     const look = c => { const p = owner[c]; if (p === a || p === b) best = Math.max(best, plates[p].crust.thickKm[ownerCell[c]]); };
     look(w);
     for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
