@@ -1,7 +1,7 @@
 // Every continental collision of a seeded history, step by step (lane weld): the closing rate after contact, the stall
 // clock, the seam's sea and what a weld would seal — and, each step of the tail, which of the weld's conditions
 // (step/collision.js) is the one still unmet. Why a pair that stopped closing ~50 Myr after contact sits unwelded.
-// Usage: node v2/tools/weld-trace.mjs [--seeds 12345] [--myr 600] [--kv a=1,b=true] [--label x] [--top 5] [--series]
+// Usage: node v2/tools/weld-trace.mjs [--seeds 12345] [--myr 600] [--kv a=1,b=true] [--label x] [--top 5] [--series] [--forces] [--pull]
 // Prints one JSON line per seed: the top welds by shortening (km at 50 Myr, total, contact → end of convergence → weld,
 // and the Myr each condition blocked the weld after convergence ended); --series adds each top weld's per-step rows.
 // (End of convergence: the step after which the pair closes less than 5 % of its final shortening — Earth's "convergence
@@ -19,6 +19,10 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const seeds = arg('--seeds', '12345').split(',').map(Number), untilMyr = +arg('--myr', 600), top = +arg('--top', 5);
 const kv = Object.fromEntries((arg('--kv', '') || '').split(',').filter(Boolean).map(p => { const [k, v] = p.split('='); return [k, JSON.parse(v)]; }));
 const label = arg('--label', 'base'), wantSeries = process.argv.includes('--series'), wantForces = process.argv.includes('--forces');
+// (--pull: each top weld's lower plate, from 20 Myr before contact to 60 after, every 4 Myr: the trench it is pulled by
+// (km of boundary under slab pull, forces.js) and that pull's force (|Σ F|, model force units × 100 km) — whether the
+// slab pull drops at contact, and by how much, against the pull the plate had before)
+const wantPull = process.argv.includes('--pull');
 // (--forces: each term of the two plates' balances — torque-balance.js balanceTerms — as the force it puts into closing the
 // seam: the torque crossed with the point midway between the two plates' centres, along the way from the lower to the upper,
 // the upper's taken the other way; summed over the pair, in the model's force units)
@@ -46,7 +50,9 @@ for (const seed of seeds) {
     const series = new Map();                                     // collision record's trace id → rows
     let traceIds = 0;
     const t0 = Date.now();
+    const pullLog = [];                                           // (--pull) per step: time, plate id → [trench km, pull force]
     simulate(world, { untilMyr, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: C.stepGridMyr, keepFrames: false, stopAt: w => {
+        if (wantPull && w.loads) { const m = new Map(); for (const [id, l] of w.loads) m.set(id, [Math.round(l.cells[0] * edgeKm), +Math.hypot(...l.forceByKind[0]).toPrecision(3)]); pullLog.push({ t: w.time, m }); }
         const seen = new Set();
         for (const r of w.collisions?.values() ?? []) {
             // (ops/hand-collisions.js copies a record for a piece handed to another plate: the copy starts its own series)
@@ -84,8 +90,9 @@ for (const seed of seeds) {
         const q = p => tail.length ? tail[Math.floor(p * (tail.length - 1))] : null;
         const resets = rows.filter((r, i) => i && r.after > endAfter && r.stall === 0 && rows[i - 1].stall > 0).length;
         return { at: Math.round(e.time), handed: (rows[0]?.after ?? 0) > 2 * C.stepGridMyr, km: Math.round(total), km50: at50, endMyr: endAfter, lastCreepMyr: lastCreep, weldMyr: Math.round(e.data.afterMyr), why: e.data.why, frontKm: Math.round(e.data.frontKm),
-            tailCm: { p10: q(0.1), p50: q(0.5), p90: q(0.9) }, stallResets: resets, blocks, ...(wantSeries ? { rows } : {}) };
+            tailCm: { p10: q(0.1), p50: q(0.5), p90: q(0.9) }, stallResets: resets, blocks, ...(wantSeries ? { rows } : {}), ...(wantPull && rows.length ? { pull: pullOf(rows[0].lo, rows[0].t0) } : {}) };
     };
+    const pullOf = (lo, t0) => { const out = []; for (let m = -20; m <= 60; m += 4) { const e = pullLog.find(x => x.t >= t0 + m); const v = e?.m.get(lo); if (v) out.push([m, ...v]); } return out; };
     const biggest = [...welds].sort((a, b) => b.data.shorteningKm - a.data.shorteningKm).slice(0, top).map(summarize);
     // (pairs still colliding at the end: how long since contact, how far, and what holds them)
     const open = [...world.collisions.values()].filter(r => !r.sutured && (r.frontMaxKm ?? 0) >= C.sutureMinContactKm)
