@@ -51,8 +51,6 @@ export const createPhase = terrainPhase({
     lowlandNote: 'of land below 400 m (Earth ≈ half)',
     tunables: [
         { id: 'carveTimeMyr', label: 'How long the rivers have worked', min: 0.1, max: 5, step: 0.1, unit: ' Myr' },
-        { id: 'carveHillSlope', label: 'Valley sides: gradient (km per km)', min: 0.02, max: 0.3, step: 0.01 },
-        { id: 'carveValleyKm', label: 'Valley width where 10,000 km² drains (wider as rivers grow)', min: 2, max: 60, step: 1, unit: ' km' },
         { id: 'carveUpliftPerKm', label: 'Active ranges keep steep rivers (uplift per km of relief)', min: 0, max: 1, step: 0.05, unit: ' km/Myr' },
         { id: 'lipStepKm', label: 'Flood basalts: height of the steps they are cut into (0 = none)', min: 0, max: 0.6, step: 0.02, unit: ' km' },
         { id: 'riverCutK', label: 'The history’s rivers: how fast they cut (re-runs the history)', min: 0, max: 2, step: 0.05, evolves: true },

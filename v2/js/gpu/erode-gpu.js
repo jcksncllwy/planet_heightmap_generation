@@ -24,7 +24,7 @@ const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF,
 export const CELL_WORDS = 10;
 
 const HEAD = /* wgsl */`
-struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, perCell: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32 }
+struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32 }
 struct Rg { start: u32, count: u32 }
 struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32, area: f32 }
 struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32 }
@@ -46,7 +46,7 @@ const affineInitOf = HILL => ({ b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz:
             if (toOut) { let v = max(old, surf[r]); fA[c] = vec4f(v, v, 0.0, v); } else { fA[c] = vec4f(old, 0.0, 1.0, BIG); }
             return;
         }
-        let Ac = max(cells[c].A, 1e-6); let share = min(1.0, U_.perCell * sqrt(Ac / 1e4));
+        let Ac = max(cells[c].A, 1e-6);
         let d = vec3f(xyz[3u * r] - xyz[3u * c], xyz[3u * r + 1u] - xyz[3u * c + 1u], xyz[3u * r + 2u] - xyz[3u * c + 2u]);
         // (the layer it cuts: its own sediment above the rock's top, or the rock: finish-erode.js. Kv: k, the rock's top, the
         // sediment's k against the rock's, and the share of what it cuts that is mud; packed, so the kernel binds no more buffers.
@@ -54,7 +54,7 @@ const affineInitOf = HILL => ({ b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz:
         let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
         // (and the hillslopes and landslides the cell's slope stands for: Tzathas et al. 2024's k_h·A^−h, as FastFlow §5 —
         // a diffusivity D over Hack's flow length L ≈ 1.4·A^0.6 km (Hack 1957), a wave speed D/L: k_h = D/1.4, h = 0.6. ERODE hillD)
-        let F = ${HILL ? '(share * kv.x * layer * pow(Ac, U_.m) + U_.kh * pow(cells[c].area, -U_.h))' : 'share * kv.x * layer * pow(Ac, U_.m)'} * U_.dt / (R_EARTH * length(d));
+        let F = ${HILL ? '(kv.x * layer * pow(Ac, U_.m) + U_.kh * pow(cells[c].area, -U_.h))' : 'kv.x * layer * pow(Ac, U_.m)'} * U_.dt / (R_EARTH * length(d));
         if (toOut) { let v = min(old, (old + F * surf[r]) / (1.0 + F)); fA[c] = vec4f(v, v, 0.0, v); }
         else { fA[c] = vec4f(-BIG, old / (1.0 + F), F / (1.0 + F), old); }` });
 
@@ -262,7 +262,7 @@ export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEv
 
 /** Build the solver for one run of one mesh. `gpu`: navigator.gpu or Dawn's. */
 export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null, gpuClosed = false } = {}) {
-    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null } = o, seaLvl = Math.fround(o.seaKm ?? 0);     // (a float32, as the CPU's: finish-erode.js)
+    const { mesh, z, ocean, water, k, slow = null, m, column = null } = o, seaLvl = Math.fround(o.seaKm ?? 0);     // (a float32, as the CPU's: finish-erode.js)
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
     const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
@@ -272,7 +272,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const up = (name, arr) => { mk(name, arr.byteLength); put(name, arr); };
     up('adjOffset', Uint32Array.from(adjOffset)); up('adjList', adjList instanceof Uint32Array ? adjList : Uint32Array.from(adjList)); up('xyz', xyz instanceof Float32Array ? xyz : Float32Array.from(xyz)); up('water', water);
     const K = new Float32Array(n);
-    for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (1 - activeHold * hold[c]) * (slow ? slow[c] : 1);
+    for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (slow ? slow[c] : 1);
     // (with the rock column, finish-lithology.js rockColumn: the rock's top, kept on the CPU as the rebound moves it, the
     // sediment's k against the rock's, and the mud's share of what is cut)
     const Kv = new Float32Array(4 * n), packK = () => { for (let c = 0; c < n; c++) { Kv[4 * c] = K[c]; Kv[4 * c + 1] = column ? column.zBed[c] : 1e30; Kv[4 * c + 2] = column ? column.loose[c] : 1; Kv[4 * c + 3] = column ? column.fine[c] : 0; } };
@@ -290,7 +290,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const uniform = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const ub = new ArrayBuffer(64), uv = new DataView(ub);
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
-    [a, dt, P.G, valleyKm / Math.sqrt(a), m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
+    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
     const stage = device.createBuffer({ size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);

@@ -284,7 +284,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
-    const EP = F.erode ? { ...ERODE, ...F.erode } : null, eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm,
+    const EP = F.erode ? { ...ERODE, ...F.erode } : null, eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, m: E.m,
         uplift: EP.tectUplift ? carveIn.lift : null } : null;      // (the history's tectonic rise, km/Myr: ERODE tectUplift)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)

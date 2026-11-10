@@ -296,8 +296,7 @@ export const TERRAIN = {
                                 // 15–30 km cells)…
     lipRiser: 0.35,             // …a cliff taking this share of each step, the rest a flat tread…
     lipStairShare: 0.35,        // …and the stair only this strong: a hint of benches on the slopes, not cliffed treads
-    lipCliff: 2,                // canyon walls in basalt stand this many times steeper (a hard cap: cliffs, not slopes)…
-    lipHardness: 0.3,           // …and its rivers cut this much slower (k × 1 − this)
+    lipHardness: 0.3,           // basalt's rivers cut this much slower (k × 1 − this)
     dykeKm: 0.15,               // the radiating dyke swarm: a grain ± this high…
     dykeAcrossKm: 90,           // …its highs this far apart where they leave the province (fanning out beyond)…
     dykeAlongKm: 500,           // …each running about this far along its ray…
@@ -581,17 +580,8 @@ export const TERRAIN = {
     carveBgUplift: 0.02,        // background rock uplift (km/Myr) everywhere: rivers keep a gentle graded slope
     carveUpliftPerKm: 0.4,      // an active belt's rock uplift, per km of its relief (a 5 km range: 2 km/Myr) — its rivers stay high
     carveActiveMyr: 15,         // …fading with the time since the belt was active, over this
-    carveActiveHold: 0.3,       // an active belt's rivers cut this much less (0.45 until 2026-09-29) (uplift keeps pace with them: the range is
-                                // shaped, not trenched), fading with its activity
     carveCratonHardness: 0.5,   // shields erode this much slower (k × 1 − this)…
     carveCrestHardness: 0.5,    // …and so do the crests of a fold belt's ridges: rivers follow the strike valleys (trellis)
-    // (developer, 8b round 2: no arbitrary cut-off for which rivers carve — every river does, by the width of its valley)
-    carveValleyKm: 20,          // a valley is this wide where its river drains 10⁴ km², wider with √(drainage) (Leopold &
-                                // Maddock 1953): a cell drops by the share of it its valley takes
-    carveHillSlope: 0.1,        // valley sides: no ground stands more than this gradient (km per km) above the ground its
-                                // water runs to…
-    carveHillRelief: 0.5,       // …steeper by this share per km of belt relief (mountain valleys have steep sides)
-    carveHillNoise: 0.35,       // …and varying by ± this share from place to place
     // ── 8b-2: the rivers of the history (tectonics/step/rivers.js) — drained on the sim mesh as the history runs; their
     // cuts are records of the crust that the carving draws (developer: "a history of rivers in the terrain") ──
     riverEveryMyr: 4,           // the land is drained this often

@@ -17,8 +17,8 @@
 // A closed basin (finish-basins.js closedBasins: the rim against the water balance, re-judged every closedEvery steps) keeps
 // its water and all its load. Hillslopes are left to creepByClimate: the geomorphic diffusivity, ~0.01 m²/yr (Fernandes &
 // Dietrich 1997, recalled), reaches √(2Dt) ~ 140 m in a Myr, far under any cell here.
-// Erosion is the carve's own: its k, its m, its rain-weighted drainage, its active belts' hold, and its share of a cell
-// that a valley takes (a coarse cell, holding more than a valley, drops less), so no new erodibility and the same at every detail.
+// Erosion is the carve's own: its k, its m, its rain-weighted drainage, on the whole cell (a cell's mean lowering, at every
+// detail); an active belt keeps its rivers high by the history's uplift (o.uplift), not by a hold on its rate.
 // Heights km, distances km, time Myr.
 
 import { MinHeap } from '../core/min-heap.js';
@@ -76,7 +76,6 @@ export const ERODE = {
  * @param {Uint8Array} o.ocean      the world ocean
  * @param {Float32Array} o.water    each cell's drainage weight (the carve's rain)
  * @param {Float32Array} o.k        the wave's speed at 1 km² drained (km/Myr)
- * @param {Float32Array} o.hold     how active the belt here is (0–1)
  * @param {(z: Float32Array, flood?: Object) => Object} o.closed   closedBasins on this ground (flood: the GPU path's, finish-basins.js)
  * @param {Float32Array|null} [o.slow]   a multiple of the rate, per cell (the ice's young ground)
  * @param {Object|null} [o.column]       the rock column on this mesh (loose, zBed, fine: rockColumn)
@@ -84,13 +83,11 @@ export const ERODE = {
  *                                       tectonic terms gave the ground, isostasy included, erosion not): added to the ground each step
  * @param {{mesh: Object, map: Object}|null} [o.flex] a finer ladder level's: its rebound blurs on this coarser mesh (rebounder)
  * @param {number} o.m              the carve's m
- * @param {number} o.activeHold
- * @param {number} o.valleyKm       a valley's width at 10⁴ km²
  * @param {Object} P                ERODE's settings
  */
 export function erodeLandscape(o, P) {
-    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null, uplift = null } = o;
-    const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R * R / n, perCell = valleyKm / Math.sqrt(a);
+    const { mesh, z, ocean, water, k, slow = null, m, column = null, uplift = null } = o;
+    const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R * R / n;
     const dt = P.timeMyr / P.steps;
     // (the sea's surface, as a float32: the heights and the GPU's are, and −0.12 is not one — read as a double, a flat at the sea
     // would stand a hair above it, and the two paths part)
@@ -230,10 +227,10 @@ export function erodeLandscape(o, P) {
                 continue;
             }
             lid[c] = -1;
-            const Ac = A[c] > 1e-6 ? A[c] : 1e-6, share = Math.min(1, perCell * Math.sqrt(Ac / 1e4));
+            const Ac = A[c] > 1e-6 ? A[c] : 1e-6;
             // (the layer it cuts: its own sediment, or the rock)
             const layer = column && old > column.zBed[c] + 1e-4 ? column.loose[c] : 1;
-            const F = share * P.kScale * k[c] * layer * (1 - activeHold * hold[c]) * (slow ? slow[c] : 1) * Ac ** m * dt / step[c];
+            const F = P.kScale * k[c] * layer * (slow ? slow[c] : 1) * Ac ** m * dt / step[c];
             // (stream power cuts only down a slope: a reach whose receiver now stands above it keeps its ground. No floor
             // above the base level: the flood afterwards says what is land)
             const h = old > under ? (old + F * under) / (1 + F) : old;
@@ -545,12 +542,12 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
     for (const L of levels) {
         const fine = !L.cells || L.cells >= 0.9 * N, lm = fine ? mesh : meshOf(L.cells), t0 = performance.now();
         let M = coarse.get(lm.numCells), f;
-        if (fine) f = { z, ocean, water: o.water, k: o.k, hold: o.hold, runoff: o.runoff, pet: o.pet, rain: o.rain, column: o.column, uplift: o.uplift ?? null };
+        if (fine) f = { z, ocean, water: o.water, k: o.k, runoff: o.runoff, pet: o.pet, rain: o.rain, column: o.column, uplift: o.uplift ?? null };
         else {
             if (!M) coarse.set(lm.numCells, M = { down: mapOnto(lm, mesh) });
             const m = lm.numCells, wet = meanOnto(M.down, ocean, m, 1), oc = new Uint8Array(m);
             for (let c = 0; c < m; c++) oc[c] = wet[c] > 0.5 ? 1 : 0;
-            f = { z: meanOnto(M.down, z, m), ocean: oc, water: meanOnto(M.down, o.water, m, 1), k: meanOnto(M.down, o.k, m, 5), hold: meanOnto(M.down, o.hold, m), runoff: meanOnto(M.down, o.runoff, m), pet: meanOnto(M.down, o.pet, m, 1000), rain: meanOnto(M.down, o.rain, m),
+            f = { z: meanOnto(M.down, z, m), ocean: oc, water: meanOnto(M.down, o.water, m, 1), k: meanOnto(M.down, o.k, m, 5), runoff: meanOnto(M.down, o.runoff, m), pet: meanOnto(M.down, o.pet, m, 1000), rain: meanOnto(M.down, o.rain, m),
                 column: o.column && { loose: meanOnto(M.down, o.column.loose, m, 1), zBed: meanOnto(M.down, o.column.zBed, m), fine: meanOnto(M.down, o.column.fine, m, 0.9) },
                 uplift: o.uplift ? meanOnto(M.down, o.uplift, m) : null };
         }
@@ -569,7 +566,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
             for (let c = 0; c < lm.numCells; c++) if (f.ocean[c]) f.z[c] = before[c];
         }
         const t1 = performance.now();
-        const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, hold: f.hold, column: f.column, uplift: f.uplift, flex: flexOf(lm), closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] || f.uplift ? P.rebound : 0 });
+        const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, column: f.column, uplift: f.uplift, flex: flexOf(lm), closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] || f.uplift ? P.rebound : 0 });
         if (fine) outflow = r.outflow ?? null;
         out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
         delta = new Float32Array(lm.numCells);

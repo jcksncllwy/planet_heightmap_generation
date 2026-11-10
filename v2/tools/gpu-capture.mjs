@@ -27,7 +27,7 @@ globalThis.__erodeEnter = (o, P) => {
     const n = o.mesh.numCells, id = runs.length, dir = path.join(OUT, `run${id}`), mdir = path.join(OUT, `mesh${n}`);
     fs.mkdirSync(dir, { recursive: true });
     if (!meshes.has(n)) { meshes.add(n); fs.mkdirSync(mdir, { recursive: true }); for (const k of ['adjOffset', 'adjList', 'xyz']) save(mdir, k, o.mesh[k]); fs.writeFileSync(path.join(mdir, 'mesh.json'), JSON.stringify({ numCells: n, edgeKm: o.mesh.edgeKm, adjType: o.mesh.adjList.constructor.name, offType: o.mesh.adjOffset.constructor.name, xyzType: o.mesh.xyz.constructor.name })); }
-    for (const k of ['z', 'ocean', 'water', 'k', 'hold']) save(dir, k, o[k]);
+    for (const k of ['z', 'ocean', 'water', 'k']) save(dir, k, o[k]);
     if (o.slow) save(dir, 'slow', o.slow);
     // (the rock column, finish-lithology.js rockColumn, as the run starts: its rebound moves zBed during the run)
     if (o.column) for (const k of ['loose', 'zBed', 'fine']) save(dir, 'column-' + k, o.column[k]);
@@ -41,7 +41,7 @@ globalThis.__erodeEnter = (o, P) => {
         }
         return B;
     };
-    fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ n, m: o.m, activeHold: o.activeHold, valleyKm: o.valleyKm, slow: !!o.slow, column: !!o.column, P, seed: SEED, time: TIME }));
+    fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ n, m: o.m, slow: !!o.slow, column: !!o.column, P, seed: SEED, time: TIME }));
     runs.push({ id, n, steps: P.steps, timeMyr: P.timeMyr });
     console.log('captured', JSON.stringify(runs[runs.length - 1]));
     return { ...o, closed };

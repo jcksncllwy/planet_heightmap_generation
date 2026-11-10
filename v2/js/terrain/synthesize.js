@@ -88,10 +88,10 @@ export function surfaceParts(n) {
     return { platform: new Float32Array(n), relief: new Float32Array(n), stripes: new Float32Array(n), cones: new Float32Array(n), lip: new Float32Array(n), dcoast: new Float32Array(n), dshelf: new Float32Array(n), dplain: new Float32Array(n), dcoastRaw: new Float32Array(n) };
 }
 
-/** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, slope, inc; carve.js), and the history's
+/** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, inc; carve.js), and the history's
  *  tectonic rise for the finish's erosion (lift, km/Myr). */
 export function carveInputs(n) {
-    return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), slope: new Float32Array(n), inc: new Float32Array(n), hold: new Float32Array(n),
+    return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), inc: new Float32Array(n), hold: new Float32Array(n),
         lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n), soft: new Float32Array(n), lift: new Float32Array(n) };
 }
 
@@ -125,7 +125,7 @@ export function carveLadder(simMesh, tMesh, meshOf) {
  * the lower of that and the glacial cycle's time-weighted mean sea (terrain-config carveSeaDropKm).
  */
 export function carveSettings(cfg, seaWindowKm = 0) {
-    return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, activeHold: cfg.carveActiveHold, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
+    return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
         lipEdgeRetreat: cfg.lipEdgeRetreatKmPerMyr ?? 0, lipValleyRate: cfg.lipValleyKmPerMyr ?? 0, lipValleyAreaKm2: cfg.lipValleyAreaKm2 ?? 3000, lipWallKm: cfg.lipWallKm ?? 6, lipWallNoise: cfg.lipWallNoise ?? 0, lipStairShare: cfg.lipStairShare ?? 1, lipIncisionMyr: cfg.lipIncisionMyr ?? 0,
         lowstandKm: Math.min(seaWindowKm, -(cfg.carveSeaDropKm ?? 0)),
         canyonKm: cfg.canyonKm ?? 0, canyonDepthKm: cfg.canyonDepthKm ?? 0, canyonAreaKm2: cfg.canyonAreaKm2 };
@@ -406,7 +406,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     const slopes = coastCurve > 0 || mountainCurve > 0 ? slopeMemo(plan, simMesh) : null, crossC = [0, 0];
     const cratF = R / 600, shapeF = R / cfg.cratonShapeKm, grainF = R / cfg.cratonGrainScaleKm, grainShow = fade(cfg.cratonGrainScaleKm);
     const coastF = R / 700, platF = R / 2000, strikeF = R / 900, segF = R / cfg.stripeSegmentKm, meanderF = R / cfg.stripeMeanderAlongKm, meander = cfg.stripeMeanderKm / R;
-    const blendF = R / cfg.blendNoiseKm, crestF = R / 150, slopeF = R / 300, microF = R / cfg.carveMicroScaleKm, lipNoiseF = R / cfg.lipWallNoiseKm;
+    const blendF = R / cfg.blendNoiseKm, crestF = R / 150, microF = R / cfg.carveMicroScaleKm, lipNoiseF = R / cfg.lipWallNoiseKm;
     // old ranges erode fatter; every belt's massif texture (terrain-config.js crestSpreadKm, massifKm): its octaves'
     // wavelengths and shares, down to what the mesh can show
     const spreadOn = (cfg.crestSpreadKm ?? 0) > 0, fineR2 = (cfg.stripeFineRatio ?? 2.6) ** 2 - 1, PI2x2 = 2 * Math.PI * Math.PI;
@@ -1028,13 +1028,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             if (tect) { const a0 = land[c0] ? w0 : 0, a1 = land[c1] ? w1 : 0, a2 = land[c2] ? w2 : 0, s = a0 + a1 + a2; carve.lift[i] = s > 0 ? (a0 * tect[c0] + a1 * tect[c1] + a2 * tect[c2]) / s : 0; }
             carve.k[i] = cfg.carveK * (1 - cfg.carveCratonHardness * shield) * (1 - cfg.carveCrestHardness * Math.min(1, Math.max(0, stripes / 0.3)));
             carve.rain[i] = rainAtLatitude(Math.asin(Math.max(-1, Math.min(1, pz))) * 180 / Math.PI, cfg) / cfg.rainRefMm;
-            carve.slope[i] = cfg.carveHillSlope * (1 + cfg.carveHillRelief * belt) * (1 + cfg.carveHillNoise * noise.fbm(x * slopeF + 4.4, y * slopeF + 8.2, z * slopeF + 1.6, 2, 0.5) * 1.6);
             // flood basalt: a hard cap — cliffed canyon walls, slower rivers; and the stair it is cut into (carve.js)
             const basalt = coast >= 0 ? smooth(0, 0.05, lipTop * ramp) : 0;
             carve.lip[i] = basalt; carve.lipTop[i] = lipTop * ramp; carve.lipBase[i] = heightKm[t] - lipKeep * ramp;
             carve.lipAge[i] = basalt > 0 ? lipAge : 0;
             carve.lipNoise[i] = basalt > 0 ? 1.6 * noise.fbm(x * lipNoiseF + 2.9, y * lipNoiseF + 1.3, z * lipNoiseF + 6.1, 3, 0.5) : 0;
-            if (basalt > 0) { carve.slope[i] *= 1 + cfg.lipCliff * basalt; carve.k[i] *= 1 - cfg.lipHardness * basalt; }
+            if (basalt > 0) carve.k[i] *= 1 - cfg.lipHardness * basalt;
             carve.micro[i] = cfg.carveMicroKm * noise.fbm(x * microF + 7.3, y * microF + 2.9, z * microF + 5.1, 3, 0.5) * 1.6;
             // how deep the history's rivers cut here (8b-2), over the land corners
             const l0 = land[c0] ? w0 : 0, l1 = land[c1] ? w1 : 0, l2 = land[c2] ? w2 : 0, lw2 = l0 + l1 + l2;

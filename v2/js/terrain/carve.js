@@ -55,7 +55,7 @@ function infoOf(mesh) {
  *                         (hillslope gradient, km per km); optionally sink (> 0.5: the floor of a closed basin — rivers
  *                         end there as at the sea) and base (km: that floor's level, their base level instead of 0)
  * @param {Float32Array} route   the surface the rivers are routed over (the current estimate, micro-relief included)
- * @param {Object} cfg     { timeMyr, m, valleyKm, activeHold }
+ * @param {Object} cfg     { timeMyr, m }
  * @returns {{z: Float32Array, recv: Int32Array, area: Float32Array}}  carved heights, receivers (−1: the sea), drainage (km²)
  */
 export function carveLevel(mesh, f, route, cfg) {
@@ -129,7 +129,7 @@ export function carveLevel(mesh, f, route, cfg) {
     const fillAt = donorsAt.slice(0, n);
     for (let i = 0; i < count; i++) { const c = order[i], r = recv[c]; if (r >= 0) donors[fillAt[r]++] = c; }
     const pathCell = new Int32Array(count + 1), pathT = new Float64Array(count + 1), pathS = new Float64Array(count + 1), pathZ0 = new Float64Array(count + 1);
-    const walk = new Int32Array(count), walkDepth = new Int32Array(count), baseAt = new Float32Array(n);
+    const walk = new Int32Array(count), walkDepth = new Int32Array(count);
     for (let i = 0; i < count; i++) {
         const root = order[i];
         if (recv[root] >= 0) continue;                                    // (roots: rivers that reach the sea)
@@ -142,7 +142,6 @@ export function carveLevel(mesh, f, route, cfg) {
             // the path so far is depth 0 … d−1; c is at depth d
             const a = f.k[c] * Math.max(area[c], 1e-6) ** m, dx = recvKm[c];
             pathCell[d] = c; pathT[d] = pathT[d - 1] + dx / a; pathS[d] = pathS[d - 1] + dx * f.u[c] / a; pathZ0[d] = Math.max(base, f.z[c] - f.u[c] * t);   // (never below the sea: its base level)
-            baseAt[c] = base;
             const target = pathT[d] - t;
             let h;
             if (target <= 0) h = pathS[d];                                // the steady state: graded from the coast
@@ -156,33 +155,9 @@ export function carveLevel(mesh, f, route, cfg) {
             for (let k = donorsAt[c]; k < donorsAt[c + 1]; k++) { walk[top] = donors[k]; walkDepth[top++] = d + 1; }
         }
     }
-    // ── the history's rivers: a bed is at least as deep as they cut it (a canyon where a river held its way) ──
-    for (let i = 0; i < count; i++) { const c = order[i], old = f.z[c] - f.inc[c]; if (old < bed[c]) bed[c] = Math.max(baseAt[c], old); }
-    // ── an active belt rises as fast as its rivers cut: its beds stand higher — by activeHold at full activity (f.hold):
-    // the range is shaped, not trenched (developer, 8b round 3) ──
-    for (let i = 0; i < count; i++) { const c = order[i]; bed[c] = f.z[c] - (1 - cfg.activeHold * f.hold[c]) * (f.z[c] - bed[c]); }
-    // ── rivers run downhill: where the wave left a bed below the reach it drains into (it carried a dip of the surface
-    // upstream), the bed stands at that reach's height — never above the tectonic surface: a pit in the tectonic
-    // surface itself stays, a basin a lake would fill ──
-    for (let i = 0; i < count; i++) {
-        const c = order[i], r = recv[c];
-        if (r >= 0 && bed[c] < bed[r]) bed[c] = Math.min(f.z[c], bed[r]);
-    }
-    // ── how much of a cell its valley takes: a valley widens with the square root of its river's discharge (hydraulic
-    // geometry, Leopold & Maddock 1953) — valleyKm wide at 10⁴ km². A great river's valley fills its cell and the cell
-    // drops to the bed; a stream's is a sliver of it and the cell hardly drops. No threshold: every river counts, in
-    // proportion; and a coarse cell, holding more than a valley, drops less — its mean, as at any resolution ──
-    const perCell = cfg.valleyKm / Math.sqrt(cellArea);
-    for (let i = 0; i < count; i++) {
-        const c = order[i], share = Math.min(1, perCell * Math.sqrt(area[c] / 1e4));
-        z[c] = f.z[c] - share * Math.max(0, f.z[c] - bed[c]);
-    }
-    // ── valley sides: no ground stands more than its critical gradient (f.slope) above the ground its water runs to
-    // — a limit, like the paper's thermal erosion: the sides of a deep valley reach into the cells beside it ──
-    for (let i = 0; i < count; i++) {
-        const c = order[i], r = recv[c], lim = (r >= 0 ? z[r] : baseOf(-1 - r)) + f.slope[c] * recvKm[c];
-        if (lim < z[c]) z[c] = lim;
-    }
+    // ── the ground: each cell lowered to its bed — a cell's mean, as at any resolution (the finish's erosion, with the
+    // history's uplift over the moment's window, does the rest: finish-erode.js) ──
+    for (let i = 0; i < count; i++) { const c = order[i]; z[c] = bed[c]; }
     return { z, recv, area, order: order.subarray(0, count) };
 }
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
