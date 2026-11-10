@@ -63,7 +63,7 @@ export function carveLevel(mesh, f, route, cfg) {
     // (closed basins' floors are outlets like the sea, each at its own level: the finish's dry basins)
     // (the sea: f.ocean where given — the world ocean, the finish's: a sea cut off from it is land down to its water,
     // its floor's sink — else the ground below sea level)
-    // (the sea the rivers ran to: at the lowstand, cfg.lowstandKm below today's — terrain-config iceSeaDropKm — so the shelf
+    // (the sea the rivers ran to: at the lowstand, cfg.lowstandKm below today's — terrain-config carveSeaDropKm — so the shelf
     // it bared is land they cross and cut, and the world ocean only where it is deeper than that)
     const low = cfg.lowstandKm ?? 0;
     const sink = f.sink ?? null, wet = f.ocean ? c => f.ocean[c] > 0.5 && !(f.z[c] > low) : c => !(f.z[c] > low);

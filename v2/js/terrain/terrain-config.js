@@ -554,13 +554,21 @@ export const TERRAIN = {
     // the 100 kyr glacial cycles, each taking the sea ~120 m down (Earth's last: −120…−134 m, Peltier & Fairbanks 2006;
     // Lambeck et al. 2014); at each lowstand the rivers cross the bared shelf and cut down toward that sea, and the
     // valleys they cut are drowned when it rises again — rias (Galicia, Brittany, the Chesapeake: Blum & Törnqvist 2000).
-    // So the carve runs to a sea iceSeaDropKm below today's (lower still where the history's own sea stood lower within
-    // the carving's time: terrain/sea-level.js, given by the caller), the shelf above it carved as land, and today's sea
-    // then floods in from the ocean over whatever stands below it (carve.js floodToday). Reduced: the lowest sea held as
-    // the base level throughout (the rivers' incision at lowstand outlasts the cycle; their valleys' refilling by the
-    // transgression is left to the finish's sediment); fjords are the finish's ice age's (finish-ice.js), not this.
-    // One figure: the finish's ice age reads it too (finish-config.js iceSeaDropKm).
+    // iceSeaDropKm is the glacial maximum's sea: the finish's ice age reads it (finish-config.js iceSeaDropKm).
     iceSeaDropKm: 0.12,
+    // The carve's base level is not that extreme but the sea's time-weighted mean over the carving's time: a lowstand lasts
+    // ~10–20 kyr of each ~100 kyr cycle, and the rivers grade to where the sea stood most of the time, not to its brief
+    // floor (with the extreme held throughout, coastflood5 found one-cell drowned threads 100–300 km up whole networks,
+    // D ~1.33 against Earth's 1.05–1.3). Derived, not chosen: the mean of Spratt & Lisiecki 2016's sea-level stack
+    // (Clim. Past 12, 1079; NOAA spratt2016.txt, SeaLev_longPC1, 1 kyr steps, m above today's) over 0–750 ka (carveTimeMyr)
+    // is −53.4 m (0–430 ka −54.2, 0–798 ka −52.9: the window hardly matters); its LGM (19–26 ka) is −123 m, iceSeaDropKm's.
+    // So the carve runs to a sea carveSeaDropKm below today's (lower still where the history's own sea stood lower within
+    // the carving's time: terrain/sea-level.js, given by the caller), the shelf above it carved as land, and today's sea
+    // then floods in from the ocean over whatever stands below it (carve.js floodSea); the finish's early erosion grades to
+    // it too. Reduced: one mean level, not the erosion weighted through each level the sea passed; the valleys' refilling
+    // by the last transgression is the finish's bayhead fill (finish-erode.js bayheadFill); fjords are the finish's ice
+    // age's (finish-ice.js), not this.
+    carveSeaDropKm: 0.053,
     carveM: 0.4,                // the drainage-area exponent m (the paper's; concavity m / n)
     carveK: 5,                  // k (km^(1−2m)/Myr): the wave's speed where 1 km² drains — 200 km/Myr at 10⁴ km² (the paper's k)
     carveBgUplift: 0.02,        // background rock uplift (km/Myr) everywhere: rivers keep a gentle graded slope

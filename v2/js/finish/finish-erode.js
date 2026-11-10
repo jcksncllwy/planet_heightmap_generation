@@ -84,6 +84,8 @@ export function erodeLandscape(o, P) {
     // would stand a hair above it, and the two paths part)
     const seaKm = Math.fround(o.seaKm ?? 0);
     const fill = new Float32Array(n), rank = new Int32Array(n), parent = new Int32Array(n), order = new Int32Array(n), recv = new Int32Array(n), step = new Float32Array(n), flat = new Float32Array(n);
+    // (the last step's load each cell passes on, km³/Myr, and to which cell: the rivers' supply for bayheadFill)
+    const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);
     const A = new Float32Array(n), e = new Float32Array(n), dropped = new Float32Array(n), gross = new Float32Array(n), Qs = new Float32Array(n), Qf = column ? new Float32Array(n) : null, cap = new Float32Array(n), lid = new Int32Array(n), zNew = new Float32Array(n), heap = new MinHeap(1 << 16);
     // (the sea's edge, once: the cells beside the outlets, and the outlet each is beside)
     const coast = [], coastFrom = [];
@@ -228,7 +230,7 @@ export function erodeLandscape(o, P) {
         // ── the load, from the headwaters down ──
         Qs.fill(0); cap.fill(0); Qf?.fill(0);
         inlet?.fill(0);
-        const trap = new Float64Array(lakes);
+        const trap = new Float64Array(lakes), last = s === P.steps - 1;
         let eroded = 0, toSea = 0, kept = 0, inClosed = 0;
         for (let i = count - 1; i >= 0; i--) {
             const c = order[i], r = recv[c], cut = gross[c] * a, out = rank[r] < 0;
@@ -237,7 +239,7 @@ export function erodeLandscape(o, P) {
             eroded += cut;
             if (lid[c] >= 0) {
                 const room = cap[c] + Math.max(0, e[c] - z[c]) * a;
-                if (!out && lid[r] === lid[c]) { Qs[r] += q; cap[r] += room; if (column) Qf[r] += mud; continue; }
+                if (!out && lid[r] === lid[c]) { Qs[r] += q; cap[r] += room; if (column) Qf[r] += mud; if (last) { outQ[c] = q / dt; outR[c] = r; } continue; }
                 const hold = q < room ? q : room;
                 trap[lid[c]] = hold; if (q > 0) mud *= 1 - hold / q; q -= hold; kept += hold;
             } else {
@@ -249,6 +251,7 @@ export function erodeLandscape(o, P) {
             if (!out) { Qs[r] += q; if (inlet && lid[r] >= 0 && lid[r] !== lid[c]) inlet[r] += q; }
             else if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; inClosed += q; if (inlet) inlet[r] += q; }
             else toSea += q;
+            if (last) { outQ[c] = q / dt; outR[c] = r; }
         }
         lap('load');
         for (let i = 0; i < count; i++) { const c = order[i]; z[c] = zNew[c]; }
@@ -304,14 +307,15 @@ export function erodeLandscape(o, P) {
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3) };
-    return { curve, survivors, budget, ms: Object.fromEntries(Object.entries(t).map(([key, v]) => [key, Math.round(v)])) };
+    return { curve, survivors, budget, ms: Object.fromEntries(Object.entries(t).map(([key, v]) => [key, Math.round(v)])), outflow: { q: outQ, recv: outR } };
 }
 
 /**
  * A delta: what came in by each mouth fills the water nearest that mouth up to `surface`, so a filling lake shrinks and stays deep
  * beyond the front. Laid flat from the floor, it would keep all its area until the last metre: a wide sheet. `inlet`: each cell's
- * load come in. CPU and GPU paths both lay with this.
- * @returns {(cells: ArrayLike<number>, vol: number, surface: (c: number) => number, inside: (c: number) => boolean) => void}
+ * load come in. CPU and GPU paths both lay with this, and so does bayheadFill.
+ * @returns {(cells: ArrayLike<number>, vol: number, surface: (c: number) => number, inside: (c: number) => boolean) => number}
+ *   lays in place; returns what found no room (km³ ÷ a cell's area)
  */
 export function deltaLayer(mesh, z, inlet) {
     const { adjOffset, adjList, numCells: n } = mesh, been = new Int32Array(n).fill(-1);
@@ -320,8 +324,9 @@ export function deltaLayer(mesh, z, inlet) {
         const mouths = [];
         let all = 0;
         for (const c of cells) if (inlet[c] > 0) { mouths.push(c); all += inlet[c]; }
-        if (!all) return layUp(z, cells, vol, Infinity);
+        if (!all) { layUp(z, cells, vol, Infinity); return 0; }
         mouths.sort((x, y) => inlet[y] - inlet[x]);
+        let spilt = 0;
         for (const c0 of mouths) {
             let left = vol * inlet[c0] / all;
             const q = [c0], id = walk++;
@@ -331,8 +336,46 @@ export function deltaLayer(mesh, z, inlet) {
                 if (room > 0) { const put = room < left ? room : left; z[c] += put; left -= put; }
                 for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (been[y] !== id && inside(y)) { been[y] = id; q.push(y); } }
             }
+            spilt += left;
         }
+        return spilt;
     };
+}
+
+/**
+ * The bayhead fill (lane coastflood, 2026-11-10): today's sea drowned the valleys the rivers cut at the glacial cycle's lower
+ * sea, and the rivers have filled them from their heads since. Through the last transgression and the highstand a drowned
+ * incised valley takes its river's load at its head: a bayhead delta builds out from it (sand, then the mud of the central
+ * basin), so a valley with a big load fills to a delta plain and one with little stays an open, funnel-shaped ria, its mouth
+ * the last to fill (Dalrymple, Zaitlin & Boyd 1992 J. Sediment. Petrol. 62, 1130; Boyd, Dalrymple & Zaitlin 1992 Sediment. Geol.
+ * 80, 139; Anthony 2014 in Coastal Environments and Global Change). A process, not a mask: each mouth's volume is its river's load
+ * (the erosion's last step: what each land cell passes to a drowned one, km³/Myr) over `fillMyr`, laid with the lakes' own
+ * deltaLayer — nearest the mouth first, up to today's sea, so the delta plain stands at it.
+ * Reduced (what it skips): the load is the lowstand's, not the Holocene's own; all of it (sand and mud) stays in the valley that
+ * takes it — none is carried out to the shelf by the tide, so a funnel's mouth is, if anything, filled too much; no wave or tide
+ * shaping (the marine lane's); a mouth's load fills its own nearest water whoever's valley that is, and what a valley cannot hold
+ * is not carried on to the open shelf but only counted (spiltKm3).
+ * @param {Object} mesh
+ * @param {Float32Array} z          the ground (km), raised in place
+ * @param {Uint8Array} drowned      the cells today's sea took from the land (the lowstand's valleys)
+ * @param {Uint8Array} sea          today's sea (a land cell is one not in it)
+ * @param {{q: Float32Array, recv: Int32Array}} outflow   the erosion's last step (erodeLandscape / erodeGPU / erodeLadder)
+ * @param {number} fillMyr          how long the rivers have filled them
+ * @param {number} a                a cell's area (km²)
+ */
+export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a) {
+    const n = mesh.numCells, inlet = new Float64Array(n), cells = [];
+    let mouths = 0, supply = 0, room = 0;
+    for (let c = 0; c < n; c++) {
+        if (drowned[c]) { cells.push(c); if (z[c] < 0) room -= z[c] * a; continue; }
+        const r = outflow.recv[c], q = outflow.q[c];
+        if (sea[c] || r < 0 || !drowned[r] || !(q > 0)) continue;
+        if (!inlet[r]) mouths++;
+        inlet[r] += q; supply += q * fillMyr;
+    }
+    if (!mouths) return { mouths: 0, supplyKm3: 0, roomKm3: Math.round(room), laidKm3: 0, spiltKm3: 0 };
+    const spilt = deltaLayer(mesh, z, inlet)(cells, supply / a, () => 0, c => drowned[c] === 1) * a;
+    return { mouths, supplyKm3: Math.round(supply), roomKm3: Math.round(room), laidKm3: Math.round(supply - spilt), spiltKm3: Math.round(spilt) };
 }
 
 /**
@@ -436,7 +479,7 @@ function ladderFor(ladder, N) {
 export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
     const { mesh, z, ocean, closedOf } = o, sea = o.seaKm ?? 0, N = mesh.numCells, levels = ladderFor(P.ladder, N), out = [];
     const coarse = new Map();
-    let prev = null, delta = null, prevZ = null;                         // (the level below, the change it found, its surface)
+    let prev = null, delta = null, prevZ = null, outflow = null;         // (the level below, the change it found, its surface; the finest's load out)
     for (const L of levels) {
         const fine = !L.cells || L.cells >= 0.9 * N, lm = fine ? mesh : meshOf(L.cells), t0 = performance.now();
         let M = coarse.get(lm.numCells), f;
@@ -464,12 +507,13 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         }
         const t1 = performance.now();
         const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, hold: f.hold, column: f.column, closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] ? P.rebound : 0 });
+        if (fine) outflow = r.outflow ?? null;
         out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
         delta = new Float32Array(lm.numCells);
         for (let c = 0; c < lm.numCells; c++) delta[c] = f.z[c] - start[c];
         prev = lm; prevZ = f.z;
     }
-    return { curve: [], ms: {}, levels: out };
+    return { curve: [], ms: {}, levels: out, outflow };
 }
 
 /** The hollows of a surface, for the study: a priority flood from the sea; bodies under one spill level, the map's size and

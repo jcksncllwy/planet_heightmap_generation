@@ -691,13 +691,22 @@ with each cell's slope as well, kept within each cell's neighbourhood range (`mo
 the distance across it that the ridge kernels carry (`crestFollow`: a main crest is one curved line, not a zig-zag).
 Hills go down to what the mesh can show, more on high ground, none at the shore (`hillsKm`); island arcs are cut
 into chains of islands by a noise of islands (`arcStraitKm`: straits are shallow sea; a broad arc keeps its interior).
-In `carve.js`: rias from the lowstand — the carve's base level is the ice age's sea, `iceSeaDropKm` 0.12 km below today's
-(Peltier & Fairbanks 2006, Lambeck et al. 2014, Blum & Törnqvist 2000; the history's own fall within the carve window,
-`tools/sea-window.mjs`, is about 1 m median and 15 m at worst, so the ice term alone sets it), so the shelf it bared is carved as land and
+In `carve.js`: rias from the lowstands — the carve's base level is the glacial cycle's time-weighted mean sea, `carveSeaDropKm`
+0.053 km below today's: the mean of Spratt & Lisiecki 2016's sea-level stack over the carve's 0.75 Myr (−53 m; the window hardly
+matters), not its −120 m floor (`iceSeaDropKm`, the LGM's, which the finish's ice age keeps), since a lowstand lasts ~10–20 kyr of
+each ~100 kyr cycle and the rivers grade to where the sea stood most of the time (held at the floor, the carve ran one-cell
+drowned threads up whole networks, coastflood5). The history's own fall within the carve window (`tools/sea-window.mjs`) is
+about 1 m median and 15 m at worst, so the ice term alone sets it. The shelf it bares is carved as land and
 its rivers cut valleys down to it; today's sea then floods in once from the world ocean (`floodSea`), through every cell below 0
 it reaches: the valleys it reaches are rias, the spurs between them headlands, and a hollow it does not reach stays as cut
-(counted as `stats.lowstand.hollowKm2`). The finish's early erosion grades to the same lowstand and floods once more at today's
-sea. Fjords are the ice's (finish-ice.js). Nothing draws a ria: no `drownValleys`, no coast-band warp, no `ria*` or `drown*` keys. Also
+(counted as `stats.lowstand.hollowKm2`). The finish's early erosion grades to the same level and floods once more at today's
+sea; then the rivers fill the drowned valleys from their heads (`bayheadFill`, finish-erode.js): each river's load from the
+erosion's last step, over `bayheadFillKyr` (8 kyr: the transgression and highstand, Stanley & Warne 1994), laid nearest its
+mouth first up to today's sea, the lakes' own `deltaLayer`. A valley with a big load fills to a delta plain; one with little
+stays an open ria, funnel-shaped, its mouth the last to fill (Dalrymple et al. 1992; Boyd et al. 1992). It skips: the
+Holocene's own load (it uses the lowstand's), the tide carrying mud out of a valley, waves, and the overflow a full valley
+would build onto the open shelf (counted, `stats.lowstand.bayhead.spiltKm3`). The sea is flooded once more after it.
+Fjords are the ice's (finish-ice.js). Nothing draws a ria: no `drownValleys`, no coast-band warp, no `ria*` or `drown*` keys. Also
 submarine canyons from big
 rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
 Evolution's page colours the Terrain and Heightmap layers per pixel from the blended heights

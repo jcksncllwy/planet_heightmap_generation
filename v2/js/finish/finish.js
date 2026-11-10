@@ -15,7 +15,7 @@ import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
 import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { fillSpillMerge } from './finish-fsm.js';
-import { ERODE, erodeLandscape, erodeLadder, hollowCensus, playas } from './finish-erode.js';
+import { ERODE, erodeLandscape, erodeLadder, hollowCensus, playas, bayheadFill } from './finish-erode.js';
 import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
 import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
@@ -260,13 +260,13 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     stats.closedBasins = B.basins;
     stats.cutOffSeas = B.seas;
     const before = z.slice();
-    // (the rivers' base level: the ice age's lowstand, the finish's own figure — terrain-config iceSeaDropKm)
-    const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds, iceSeaDropKm: F.iceSeaDropKm });
+    // (the rivers' base level: the glacial cycle's time-weighted mean sea, the finish's own figure — terrain-config carveSeaDropKm)
+    const settings = carveSettings({ ...cfg, carveM: E.m, carveTimeMyr: F.carveTimeMyr, carveRounds: F.carveRounds, carveSeaDropKm: F.carveSeaDropKm });
     // (the carve's sea: the world ocean — a cut-off sea's dry floor below sea level is land its rivers cross, down to its
     // water's level, their base level there)
     census('before carve', ocean0);
     const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: B.sink, base: B.base, ocean: ocean0 }, settings);
-    const low = settings.lowstandKm;
+    const low = settings.lowstandKm, worldOcean = ocean0;               // (the world ocean before the carve: the bayhead fill's open sea)
     ocean0 = C.sea;                                                   // (today's sea over the carved ground: bayhead deltas lie in the rias it drowned)
     stats.lowstand = { baseKm: low, ...C.flood };   // (the lowstand's valleys today's sea drowned, km²; the hollows below it it did not reach)
     // (where flood basalt still caps the ground after the carving — its pile not cut through — for the satellite view)
@@ -306,22 +306,44 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low ? 1 : 0;
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        stats.erode = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm) }, EP, terrainMesh, eroder.solve)
+        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm) }, EP, terrainMesh, eroder.solve)
             : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low) }, EP);
+        const { outflow, ...erodeStats } = ER;
+        stats.erode = erodeStats;
         lap('erosion');
-        // (one flood at today's sea over what the erosion left: the lowstand's valleys it reaches are the rias)
+        // (one flood at today's sea over what the erosion left: the lowstand's valleys it reaches are the rias; then the rivers
+        // fill them from their heads through the transgression and the highstand — finish-erode.js bayheadFill — and the sea
+        // is flooded once more over what they left open)
         {
-            const f1 = floodSea(mesh, C.z, ocean0), { adjOffset, adjList } = mesh;
-            // (what the flood added: broad plain, or valleys? a cell with every neighbour in the sea is plain interior; the BFS ring it was reached in is its distance inland, in cells)
-            const ring = new Int32Array(n).fill(1e9), hist = [0, 0, 0, 0, 0, 0];
-            for (let c = 0; c < n; c++) if (ocean0[c]) ring[c] = 0;
-            let interior = 0;
-            for (let i = f1.seeds; i < f1.tail; i++) {
-                const c = f1.queue[i]; let r = 1e9, all = true;
-                for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!f1.sea[q]) all = false; if (ring[q] + 1 < r) r = ring[q] + 1; }
-                ring[c] = r; if (all) interior++; hist[Math.min(5, r - 1)]++;
+            let f1 = floodSea(mesh, C.z, ocean0);
+            const beforeFill = f1.drowned;
+            if (F.bayheadFillKyr > 0 && outflow) {
+                const t0 = performance.now(), drowned = new Uint8Array(n);
+                for (let c = 0; c < n; c++) drowned[c] = f1.sea[c] && !worldOcean[c] ? 1 : 0;
+                const bay = bayheadFill(mesh, C.z, drowned, f1.sea, outflow, F.bayheadFillKyr / 1000, cellKm2);
+                f1 = floodSea(mesh, C.z, worldOcean);
+                let filled = 0, cutOff = 0, open = 0;
+                for (let c = 0; c < n; c++) if (drowned[c]) { if (f1.sea[c]) open++; else if (C.z[c] < 0) cutOff++; else filled++; }
+                stats.lowstand.bayhead = { ...bay, ms: Math.round(performance.now() - t0), filledKm2: Math.round(filled * cellKm2), openKm2: Math.round(open * cellKm2), cutOffKm2: Math.round(cutOff * cellKm2) };
             }
-            stats.lowstand.afterErode = { drownedKm2: Math.round(f1.drowned * cellKm2), interiorKm2: Math.round(interior * cellKm2), ringKm2: hist.map(h => Math.round(h * cellKm2)) };
+            // (what the flood added beyond the carve's: broad plain, or valleys? a cell with every neighbour in the sea is plain
+            // interior; the BFS ring it was reached in is its distance inland, in cells)
+            const { adjOffset, adjList } = mesh, ring = new Int32Array(n).fill(1e9), hist = [0, 0, 0, 0, 0, 0], queue = [];
+            for (let c = 0; c < n; c++) if (ocean0[c] && f1.sea[c]) { ring[c] = 0; queue.push(c); }
+            let interior = 0, drowned = 0;
+            for (let i = 0; i < queue.length; i++) {
+                const c = queue[i];
+                for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                    const q = adjList[k];
+                    if (!f1.sea[q] || ring[q] <= ring[c] + 1) continue;
+                    ring[q] = ring[c] + 1; queue.push(q);
+                }
+                if (ring[c] === 0) continue;
+                let all = true;
+                for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!f1.sea[adjList[k]]) { all = false; break; }
+                drowned++; if (all) interior++; hist[Math.min(5, ring[c] - 1)]++;
+            }
+            stats.lowstand.afterErode = { drownedKm2: Math.round(drowned * cellKm2), beforeFillKm2: Math.round(beforeFill * cellKm2), interiorKm2: Math.round(interior * cellKm2), ringKm2: hist.map(h => Math.round(h * cellKm2)) };
             ocean0 = f1.sea;
         }
         census('after erosion', ocean0);
@@ -375,6 +397,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
         const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
+        delete late.outflow;                                          // (per cell: bayheadFill's, after the early run only — not stats)
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
         census('after late erosion', ocean);

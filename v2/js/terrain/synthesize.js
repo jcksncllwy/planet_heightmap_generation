@@ -121,12 +121,12 @@ export function carveLadder(simMesh, tMesh, meshOf) {
 /**
  * The carving's settings (the same on every mesh: carve.js scales the valleys to each mesh's cells). seaWindowKm: the
  * lowest the history's own sea stood against today's within the carving's time (≤ 0; 0: not given) — the base level is
- * the lower of that and the ice age's lowstand (terrain-config iceSeaDropKm).
+ * the lower of that and the glacial cycle's time-weighted mean sea (terrain-config carveSeaDropKm).
  */
 export function carveSettings(cfg, seaWindowKm = 0) {
     return { timeMyr: cfg.carveTimeMyr, m: cfg.carveM, rounds: cfg.carveRounds, valleyKm: cfg.carveValleyKm, activeHold: cfg.carveActiveHold, lipStepKm: cfg.lipStepKm, lipRiser: cfg.lipRiser,
         lipEdgeRetreat: cfg.lipEdgeRetreatKmPerMyr ?? 0, lipValleyRate: cfg.lipValleyKmPerMyr ?? 0, lipValleyAreaKm2: cfg.lipValleyAreaKm2 ?? 3000, lipWallKm: cfg.lipWallKm ?? 6, lipWallNoise: cfg.lipWallNoise ?? 0, lipStairShare: cfg.lipStairShare ?? 1, lipIncisionMyr: cfg.lipIncisionMyr ?? 0,
-        lowstandKm: Math.min(seaWindowKm, -(cfg.iceSeaDropKm ?? 0)),
+        lowstandKm: Math.min(seaWindowKm, -(cfg.carveSeaDropKm ?? 0)),
         canyonKm: cfg.canyonKm ?? 0, canyonDepthKm: cfg.canyonDepthKm ?? 0, canyonAreaKm2: cfg.canyonAreaKm2 };
 }
 

@@ -93,10 +93,10 @@ section('carving');
     for (let t = 0; t < n; t++) {
         if (T.heightKm[t] > T.tectonicKm[t] + 1e-6) raised++;
         const dug = noCanyons.heightKm[t] - T.heightKm[t];
-        // (a sea cell may differ from the tectonic surface only where the lowstand bared it (shelf within iceSeaDropKm of today's sea) and a
+        // (a sea cell may differ from the tectonic surface only where the lowstand bared it (shelf within carveSeaDropKm of today's sea) and a
         // river cut it: a lowstand valley. Anything else is the carve touching a sea floor it has no business with)
         if (!land(t) && noCanyons.heightKm[t] !== T.tectonicKm[t]) {
-            if (noCanyons.heightKm[t] < T.tectonicKm[t] && T.tectonicKm[t] > -TERRAIN.iceSeaDropKm) lowstandValley++; else seaChanged++;
+            if (noCanyons.heightKm[t] < T.tectonicKm[t] && T.tectonicKm[t] > -TERRAIN.carveSeaDropKm) lowstandValley++; else seaChanged++;
         }
         // (under the sea as the carve left it — a drowned valley's floor is under it too, and a canyon runs up an inlet's mouth)
         if (noCanyons.heightKm[t] <= 0) {

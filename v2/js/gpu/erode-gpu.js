@@ -426,6 +426,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         ms.sweep += performance.now() - t0;
     };
     const R = { route: [], toSea: 0, inClosed: 0 };
+    const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);       // (the last step's load out, km³/Myr, and its receiver: finish-erode.js bayheadFill)
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
     const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaLvl) : null, curve = [];
     let reboundKm3 = 0;
@@ -449,9 +450,11 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             let eroded = 0, lakeCells = 0;
             lidF.fill(-1);
             if (inlet) inlet.fill(0);
+            const last = s === P.steps - 1;
             for (let i = 0; i < listLen; i++) {
                 const c = list[i], w = EXPORT_WORDS * i, lid = ex[w], rr = ex[w + 5], q = exF[w + 4];
                 eF[c] = exF[w + 1];
+                if (last) { outQ[c] = q / dt; outR[c] = rr & NONE; }
                 eroded += exF[w + 6] * a;
                 if (lid !== NONE) { lidF[c] = lid; lakeCells++; if (inlet) inlet[c] += exF[w + 2]; if (!lakesCells.has(lid)) lakesCells.set(lid, { cells: [], trap: 0 }); const L = lakesCells.get(lid); L.cells.push(c); const tr = exF[w + 3]; if (tr > 0) L.trap = tr; }
                 if (rr >>> 31) { const r = rr & NONE; if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; R.inClosed += q; if (inlet) inlet[r] += q; } else R.toSea += q; }
@@ -485,5 +488,5 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3) };
-    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, toSeaKm3: R.toSea, closedKm3: R.inClosed };
+    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, toSeaKm3: R.toSea, closedKm3: R.inClosed, outflow: { q: outQ, recv: outR } };
 }

@@ -96,7 +96,12 @@ export const FINISH = {
     iceColdEqC: 3.5,            // colder than now at the equator…
     iceColdPoleC: 16,           // …and at the poles (polar amplification: ~ (|lat|/90)^1.5 between)
     iceDrier: 0.3,              // precipitation lower by up to this share toward the poles
-    iceSeaDropKm: TERRAIN.iceSeaDropKm,   // the sea ~120 m lower: shelves bare, ice grounded on them (terrain-config.js: the carve's base level too)
+    iceSeaDropKm: TERRAIN.iceSeaDropKm,   // the sea ~120 m lower: shelves bare, ice grounded on them (terrain-config.js)
+    // the drowned valleys' fill since the sea rose (finish-erode.js bayheadFill): the rivers' load laid from each valley's head
+    // for this long. Modern deltas began ~8.5–6.5 ka, when the postglacial rise slowed (Stanley & Warne 1994 Science 265, 228);
+    // the valleys drowned deepest earliest, from ~11 ka (Dalrymple et al. 1992's transgressive fill): ~8 kyr. 0: off
+    bayheadFillKyr: 8,
+    carveSeaDropKm: TERRAIN.carveSeaDropKm, // the rivers' base level: the glacial cycle's time-weighted mean sea, ~53 m lower (terrain-config.js)
     iceGroundedKm: 0.4,         // ice grounded on the sea floor down to this depth where it spread from land
     iceMarginC: [2, 6],         // ice flows past its snowline into summers this much warmer: a glacier's tongue … an ice sheet's lobe
     iceSheetKm2: [3e4, 1e6],    // (by how big the snowfield it flows from is)
