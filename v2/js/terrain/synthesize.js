@@ -88,10 +88,11 @@ export function surfaceParts(n) {
     return { platform: new Float32Array(n), relief: new Float32Array(n), stripes: new Float32Array(n), cones: new Float32Array(n), lip: new Float32Array(n), dcoast: new Float32Array(n), dshelf: new Float32Array(n), dplain: new Float32Array(n), dcoastRaw: new Float32Array(n) };
 }
 
-/** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, slope, inc; carve.js). */
+/** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, slope, inc; carve.js), and the history's
+ *  tectonic rise for the finish's erosion (lift, km/Myr). */
 export function carveInputs(n) {
     return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), slope: new Float32Array(n), inc: new Float32Array(n), hold: new Float32Array(n),
-        lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n), soft: new Float32Array(n) };
+        lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n), soft: new Float32Array(n), lift: new Float32Array(n) };
 }
 
 /**
@@ -142,6 +143,7 @@ const COAST_BAND_CELLS = 1;        // (the coast band the warps leave alone, in 
 const thickLiftKm = (cfg, type, rootKm) => (type === CrustType.ARC ? columnModel(cfg).slope[CrustType.CONTINENT] * ARC_ROOT_SHARE : columnModel(cfg).slope[type]) * Math.max(0, rootKm);
 export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
     const A = buildAnchor(frame, simMesh), rec = deriveRecords(frame, simMesh, cfg, seed, A);
+    rec.tectRateKm = frame.tectRateKm ?? null;     // (the ground's tectonic rise, km/Myr: the finish's uplift, finish-erode.js o.uplift)
     // The current belt's envelope (the evolved uplift) and its thickened crust (the isostatic part of the platform) as each
     // sim cell samples them, and how high each stands against its profile there — the broad profile, and the thickening's
     // (1 − u²) across the belt (tectonics/step/orogeny.js): the terrain takes their SHAPES from the profiles at the point
@@ -1021,6 +1023,9 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const active = Math.exp(-quiet / cfg.carveActiveMyr);
             carve.u[i] = cfg.carveBgUplift + cfg.carveUpliftPerKm * belt * active;
             carve.hold[i] = coast >= 0 ? active : 0;          // (how active the belt here is: its rivers cut less)
+            // (the history's tectonic rise over the land corners, km/Myr signed: the finish's uplift)
+            const tect = rec.tectRateKm;
+            if (tect) { const a0 = land[c0] ? w0 : 0, a1 = land[c1] ? w1 : 0, a2 = land[c2] ? w2 : 0, s = a0 + a1 + a2; carve.lift[i] = s > 0 ? (a0 * tect[c0] + a1 * tect[c1] + a2 * tect[c2]) / s : 0; }
             carve.k[i] = cfg.carveK * (1 - cfg.carveCratonHardness * shield) * (1 - cfg.carveCrestHardness * Math.min(1, Math.max(0, stripes / 0.3)));
             carve.rain[i] = rainAtLatitude(Math.asin(Math.max(-1, Math.min(1, pz))) * 180 / Math.PI, cfg) / cfg.rainRefMm;
             carve.slope[i] = cfg.carveHillSlope * (1 + cfg.carveHillRelief * belt) * (1 + cfg.carveHillNoise * noise.fbm(x * slopeF + 4.4, y * slopeF + 8.2, z * slopeF + 1.6, 2, 0.5) * 1.6);

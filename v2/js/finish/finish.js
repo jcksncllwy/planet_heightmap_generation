@@ -15,7 +15,7 @@ import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
 import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { fillSpillMerge } from './finish-fsm.js';
-import { ERODE, erodeLandscape, erodeLadder, hollowCensus, playas, bayheadFill } from './finish-erode.js';
+import { ERODE, erodeLandscape, erodeLadder, flexOnto, hollowCensus, playas, bayheadFill } from './finish-erode.js';
 import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
 import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
@@ -284,7 +284,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
-    const EP = F.erode ? { ...ERODE, ...F.erode } : null, eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm } : null;
+    const EP = F.erode ? { ...ERODE, ...F.erode } : null, eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, hold: carveIn.hold, m: E.m, activeHold: cfg.carveActiveHold, valleyKm: cfg.carveValleyKm,
+        uplift: EP.tectUplift ? carveIn.lift : null } : null;      // (the history's tectonic rise, km/Myr: ERODE tectUplift)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     dissect(mesh, C.z, C, cellKm2, { ...F, dissectKm: E.dissectKm });
@@ -403,7 +404,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: 0, lastClean: EP.lastClean } : EP);
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, flex: erodeIn.uplift && EP.rebound ? flexOnto(mesh, EP, terrainMesh) : null, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood) }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
         delete late.outflow;                                          // (per cell: bayheadFill's, after the early run only — not stats)
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');

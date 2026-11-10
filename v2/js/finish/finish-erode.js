@@ -57,6 +57,7 @@ export const ERODE = {
     showKm2: 1600,              // the census's least lake (two cells at 640K: finish-config lakeMinKm2's reach)
     gpu: true,                  // on the GPU where there is one (gpu/erode-gpu.js; a browser's navigator.gpu, or Dawn under the tools: finish.js)…
     gpuFloodCells: 500000,      // …and closed basins' flood with it from this many cells: below them, it costs more than it saves (gpu-report.md)
+    tectUplift: false,          // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
 };
 
@@ -73,6 +74,7 @@ export const ERODE = {
  * @param {Object|null} [o.column]       the rock column on this mesh (loose, zBed, fine: rockColumn)
  * @param {Float32Array|null} [o.uplift] the history's surface uplift here, km/Myr, signed (its frame's tectRateKm: the rise its
  *                                       tectonic terms gave the ground, isostasy included, erosion not): added to the ground each step
+ * @param {{mesh: Object, map: Object}|null} [o.flex] a finer ladder level's: its rebound blurs on this coarser mesh (rebounder)
  * @param {number} o.m              the carve's m
  * @param {number} o.activeHold
  * @param {number} o.valleyKm       a valley's width at 10⁴ km²
@@ -197,7 +199,7 @@ export function erodeLandscape(o, P) {
     // (a delta: what came in by each mouth fills the water nearest that mouth up to `surface`, so a filling lake shrinks and
     // stays deep beyond the front. Laid flat from the floor, it would keep all its area until the last metre: a wide sheet)
     const inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
-    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaKm, uplift) : null;
+    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaKm, uplift, o.flex ?? null) : null;
     let reboundKm3 = 0;
     const curve = [], t = { route: 0, closed: 0, solve: 0, load: 0, lay: 0 };
     for (let s = 0; s < P.steps; s++) {
@@ -388,8 +390,8 @@ export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a) {
  * `seaKm`: the sea's surface it keeps land above (the lowstand's during early erosion).
  * @returns {() => number} settles `z` in place, returning the km³ the land moved by
  */
-export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0, uplift = null) {
-    const { adjOffset, adjList, numCells: n } = mesh, a = 4 * Math.PI * R * R / n, anchor = z.slice();
+export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0, uplift = null, flex = null) {
+    const { numCells: n } = mesh, a = 4 * Math.PI * R * R / n, anchor = z.slice();
     let since = 0;
     // `at`: the run's time now (Myr). The uplift is the surface's own rise, its isostasy already in it: only what was taken off or
     // laid on since the last settling is a load
@@ -398,15 +400,14 @@ export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0, uplift = 
         since = at;
         let km3 = 0;
         for (let c = 0; c < n; c++) if (!ocean[c]) d[c] = z[c] - anchor[c] - (uplift ? uplift[c] * lifted : 0);
-        const need = 2 * P.reboundKm * P.reboundKm / (mesh.edgeKm * mesh.edgeKm), passes = Math.ceil(need / 0.5), w = need / passes;
-        for (let p = 0; p < passes; p++) {
-            for (let c = 0; c < n; c++) {
-                let v = 0, m = 0;
-                for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { v += d[adjList[j]]; m++; }
-                next[c] = d[c] + w * (v / m - d[c]);
-            }
-            d.set(next);
-        }
+        if (flex) {
+            // (on a fine level, the load blurred on the ladder's coarsest mesh and carried back: σ is ~6 of its cells, and
+            // the blur's passes go as 1/edge², ~2 500 at 2.5M)
+            const dc = meanOnto(flex.map, d, flex.mesh.numCells);
+            flexBlur(flex.mesh, dc, P.reboundKm);
+            d.fill(0);
+            carry(flex.map, dc, d);
+        } else flexBlur(mesh, d, P.reboundKm, next);
         for (let c = 0; c < n; c++) {
             if (ocean[c]) continue;
             const was = z[c];
@@ -443,6 +444,27 @@ export function playas(mesh, lake, level, z, pet, rain, F, years, SALT, PAN) {
         km2 += q.length * a;
     }
     return km2;
+}
+
+/** A fine mesh's rebound blurred on the ladder's coarsest mesh (rebounder's `flex`): null when the mesh is no finer than it. */
+export function flexOnto(mesh, P, meshOf) {
+    const cells = P.ladder?.[0]?.cells;
+    if (!cells || cells >= 0.9 * mesh.numCells) return null;
+    const cm = meshOf(cells);
+    return { mesh: cm, map: mapOnto(cm, mesh) };
+}
+
+/** `d` blurred in place over the lithosphere's flexural reach (σ = reachKm) by neighbour-mean passes. */
+function flexBlur(mesh, d, reachKm, next = new Float32Array(mesh.numCells)) {
+    const { adjOffset, adjList, numCells: n } = mesh, need = 2 * reachKm * reachKm / (mesh.edgeKm * mesh.edgeKm), passes = Math.ceil(need / 0.5), w = need / passes;
+    for (let p = 0; p < passes; p++) {
+        for (let c = 0; c < n; c++) {
+            let v = 0, m = 0;
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { v += d[adjList[j]]; m++; }
+            next[c] = d[c] + w * (v / m - d[c]);
+        }
+        d.set(next);
+    }
 }
 
 /** For each cell of `fine`: the 3 cells of `coarse` around it, their weights, and the nearest of them. */
@@ -485,17 +507,27 @@ function ladderFor(ladder, N) {
 export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
     const { mesh, z, ocean, closedOf } = o, sea = o.seaKm ?? 0, N = mesh.numCells, levels = ladderFor(P.ladder, N), out = [];
     const coarse = new Map();
+    // (a finer level's rebound blurs on the coarsest level's mesh: the map between them, made once)
+    let base = null;
+    const flexOf = lm => {
+        if (!o.uplift || !P.rebound) return null;
+        if (!base) { base = { mesh: lm, maps: new Map() }; return null; }
+        if (lm === base.mesh) return null;
+        if (!base.maps.has(lm.numCells)) base.maps.set(lm.numCells, lm === mesh ? coarse.get(base.mesh.numCells)?.down ?? mapOnto(base.mesh, lm) : mapOnto(base.mesh, lm));
+        return { mesh: base.mesh, map: base.maps.get(lm.numCells) };
+    };
     let prev = null, delta = null, prevZ = null, outflow = null;         // (the level below, the change it found, its surface; the finest's load out)
     for (const L of levels) {
         const fine = !L.cells || L.cells >= 0.9 * N, lm = fine ? mesh : meshOf(L.cells), t0 = performance.now();
         let M = coarse.get(lm.numCells), f;
-        if (fine) f = { z, ocean, water: o.water, k: o.k, hold: o.hold, runoff: o.runoff, pet: o.pet, rain: o.rain, column: o.column };
+        if (fine) f = { z, ocean, water: o.water, k: o.k, hold: o.hold, runoff: o.runoff, pet: o.pet, rain: o.rain, column: o.column, uplift: o.uplift ?? null };
         else {
             if (!M) coarse.set(lm.numCells, M = { down: mapOnto(lm, mesh) });
             const m = lm.numCells, wet = meanOnto(M.down, ocean, m, 1), oc = new Uint8Array(m);
             for (let c = 0; c < m; c++) oc[c] = wet[c] > 0.5 ? 1 : 0;
             f = { z: meanOnto(M.down, z, m), ocean: oc, water: meanOnto(M.down, o.water, m, 1), k: meanOnto(M.down, o.k, m, 5), hold: meanOnto(M.down, o.hold, m), runoff: meanOnto(M.down, o.runoff, m), pet: meanOnto(M.down, o.pet, m, 1000), rain: meanOnto(M.down, o.rain, m),
-                column: o.column && { loose: meanOnto(M.down, o.column.loose, m, 1), zBed: meanOnto(M.down, o.column.zBed, m), fine: meanOnto(M.down, o.column.fine, m, 0.9) } };
+                column: o.column && { loose: meanOnto(M.down, o.column.loose, m, 1), zBed: meanOnto(M.down, o.column.zBed, m), fine: meanOnto(M.down, o.column.fine, m, 0.9) },
+                uplift: o.uplift ? meanOnto(M.down, o.uplift, m) : null };
         }
         const start = f.z.slice();
         if (delta) {
@@ -512,7 +544,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
             for (let c = 0; c < lm.numCells; c++) if (f.ocean[c]) f.z[c] = before[c];
         }
         const t1 = performance.now();
-        const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, hold: f.hold, column: f.column, closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] ? P.rebound : 0 });
+        const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, hold: f.hold, column: f.column, uplift: f.uplift, flex: flexOf(lm), closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] || f.uplift ? P.rebound : 0 });
         if (fine) outflow = r.outflow ?? null;
         out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
         delta = new Float32Array(lm.numCells);

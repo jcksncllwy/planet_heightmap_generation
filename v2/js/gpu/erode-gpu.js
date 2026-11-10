@@ -459,7 +459,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const R = { route: [], toSea: 0, inClosed: 0 };
     const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);       // (the last step's load out, km³/Myr, and its receiver: finish-erode.js bayheadFill)
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
-    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaLvl, o.uplift ?? null) : null, curve = [];
+    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaLvl, o.uplift ?? null, o.flex ?? null) : null, curve = [];
     let reboundKm3 = 0;
     try {
         put('dropped', new Float32Array(n));
