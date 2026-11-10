@@ -13,11 +13,25 @@ import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { buildStartWorld } from '../js/tectonics/init/start-world.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { onPath } from './lib/paths.mjs';
+import { balanceTerms } from '../js/tectonics/step/torque-balance.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const seeds = arg('--seeds', '12345').split(',').map(Number), untilMyr = +arg('--myr', 600), top = +arg('--top', 5);
 const kv = Object.fromEntries((arg('--kv', '') || '').split(',').filter(Boolean).map(p => { const [k, v] = p.split('='); return [k, JSON.parse(v)]; }));
-const label = arg('--label', 'base'), wantSeries = process.argv.includes('--series');
+const label = arg('--label', 'base'), wantSeries = process.argv.includes('--series'), wantForces = process.argv.includes('--forces');
+// (--forces: each term of the two plates' balances — torque-balance.js balanceTerms — as the force it puts into closing the
+// seam: the torque crossed with the point midway between the two plates' centres, along the way from the lower to the upper,
+// the upper's taken the other way; summed over the pair, in the model's force units)
+const closingForces = (w, r) => {
+    const U = w.plates[r.upper], L = w.plates[r.lower], bu = balanceTerms(w, U), bl = balanceTerms(w, L);
+    if (!bu || !bl) return null;
+    const cu = U.toWorld(U.capCenter[0], U.capCenter[1], U.capCenter[2], [0, 0, 0]), cl = L.toWorld(L.capCenter[0], L.capCenter[1], L.capCenter[2], [0, 0, 0]);
+    const m = [cu[0] + cl[0], cu[1] + cl[1], cu[2] + cl[2]], ml = Math.hypot(...m), c = m.map(x => x / ml);
+    const d = [cu[0] - cl[0], cu[1] - cl[1], cu[2] - cl[2]], dc = d[0] * c[0] + d[1] * c[1] + d[2] * c[2];
+    const t = [d[0] - dc * c[0], d[1] - dc * c[1], d[2] - dc * c[2]], tl = Math.hypot(...t), n = t.map(x => x / tl);
+    const along = tq => { const f = [tq[1] * c[2] - tq[2] * c[1], tq[2] * c[0] - tq[0] * c[2], tq[0] * c[1] - tq[1] * c[0]]; return f[0] * n[0] + f[1] * n[1] + f[2] * n[2]; };
+    return Object.fromEntries(Object.keys(bl).map(k => [k, +(along(bl[k]) - along(bu[k])).toPrecision(3)]));
+};
 const mesh = labMesh();
 
 for (const seed of seeds) {
@@ -28,12 +42,16 @@ for (const seed of seeds) {
     // (rows keyed by the record itself: a weld hands a collision on to the merged plate — inheritCollisions renames its upper or
     // lower — so a key of plate ids and start would begin a new series mid-collision with all its km already in it)
     // (and the records are copied from step to step, so each carries a trace id, which the copies keep)
+    // (a series whose first row is well after contact began as a handed-on copy: `handed` in the summary)
     const series = new Map();                                     // collision record's trace id → rows
     let traceIds = 0;
     const t0 = Date.now();
     simulate(world, { untilMyr, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: C.stepGridMyr, keepFrames: false, stopAt: w => {
+        const seen = new Set();
         for (const r of w.collisions?.values() ?? []) {
-            r.traceId ??= ++traceIds;
+            // (ops/hand-collisions.js copies a record for a piece handed to another plate: the copy starts its own series)
+            if (r.traceId == null || seen.has(r.traceId)) r.traceId = ++traceIds;
+            seen.add(r.traceId);
             const k = r.traceId;
             const rows = series.get(k) ?? series.set(k, []).get(k);
             if (rows.length && rows[rows.length - 1].sutured) continue;
@@ -48,7 +66,7 @@ for (const seed of seeds) {
                 : !deep ? 'minKm' : !(narrow || giveUp || gapStall) ? 'gap' : sealing ? 'sealing' : 'other';
             rows.push({ t: w.time, up: r.upper, lo: r.lower, t0: r.startedAt, after: w.time - r.startedAt, cm: +r.closingCmYr.toFixed(2), km: Math.round(r.shorteningKm), stall: r.stalledMyr, depth: Math.round(depthKm),
                 front: Math.round(r.frontKm), gapW: r.gapWidestKm == null ? null : Math.round(r.gapWidestKm), gapAgo: r.gapShrankAt == null ? null : w.time - r.gapShrankAt,
-                trap: r.trapKm2 == null ? null : Math.round(r.trapKm2), trapCm: r.trapClosingCmYr == null ? null : +r.trapClosingCmYr.toFixed(2), block, sutured: r.sutured });
+                trap: r.trapKm2 == null ? null : Math.round(r.trapKm2), trapCm: r.trapClosingCmYr == null ? null : +r.trapClosingCmYr.toFixed(2), block, sutured: r.sutured, ...(wantForces && r.lastActive === w.time && !r.sutured ? { f: closingForces(w, r) } : {}) });
         }
         return false; } });
     const welds = world.events.filter(e => e.kind === EventKind.SUTURE && e.data?.frontKm >= C.sutureMinContactKm);
@@ -58,14 +76,14 @@ for (const seed of seeds) {
         const total = e.data.shorteningKm, at50 = rows.find(r => r.after >= 50)?.km ?? total;
         const endRow = rows.find(r => r.km >= 0.95 * total), endAfter = endRow?.after ?? e.data.afterMyr;
         // (and the last step it still closed at the stall rate or faster: after this, the stall clock never reset)
-        const lastCreep = rows.findLast(r => !r.sutured && r.cm >= C.sutureStallCmYr)?.after ?? null;
+        const lastCreep = rows.findLast(r => !r.sutured && r.block !== 'no-contact' && r.cm >= C.sutureStallCmYr)?.after ?? null;
         const blocks = {};
         for (const r of rows) if (r.after > endAfter && r.block !== 'welded') blocks[r.block] = (blocks[r.block] ?? 0) + C.stepGridMyr;
         // the creep in the tail: the closing rate's spread after convergence ended
         const tail = rows.filter(r => r.after > endAfter && r.block !== 'no-contact').map(r => r.cm).sort((a, b) => a - b);
         const q = p => tail.length ? tail[Math.floor(p * (tail.length - 1))] : null;
         const resets = rows.filter((r, i) => i && r.after > endAfter && r.stall === 0 && rows[i - 1].stall > 0).length;
-        return { at: Math.round(e.time), km: Math.round(total), km50: at50, endMyr: endAfter, lastCreepMyr: lastCreep, weldMyr: Math.round(e.data.afterMyr), why: e.data.why, frontKm: Math.round(e.data.frontKm),
+        return { at: Math.round(e.time), handed: (rows[0]?.after ?? 0) > 2 * C.stepGridMyr, km: Math.round(total), km50: at50, endMyr: endAfter, lastCreepMyr: lastCreep, weldMyr: Math.round(e.data.afterMyr), why: e.data.why, frontKm: Math.round(e.data.frontKm),
             tailCm: { p10: q(0.1), p50: q(0.5), p90: q(0.9) }, stallResets: resets, blocks, ...(wantSeries ? { rows } : {}) };
     };
     const biggest = [...welds].sort((a, b) => b.data.shorteningKm - a.data.shorteningKm).slice(0, top).map(summarize);
