@@ -20,7 +20,8 @@ section(`erosion on the GPU against the CPU: whole finishes at ${CELLS / 1000}K,
 const simMesh = buildSimMesh(SIM, MESH_SEED);
 const finishOn = async (frame, seed, on) => {
     const pool = await TerrainPool.create(simMesh);
-    const t0 = performance.now(), fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool, closePool: true, F: { ...FINISH, erode: { gpu: on } } });
+    // (parity with the GPU-only hillslope terms at 0: ruling 1, fluvial handoff-2 — the CPU path has no new processes)
+    const t0 = performance.now(), fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool, closePool: true, F: { ...FINISH, erode: { gpu: on, hillD: 0, diffD: 0 } } });
     return { z: fin.z, ocean: fin.ocean, lake: fin.lake, on: fin.stats.erodeOn, share: 100 * fin.stats.water.lakeShare, erodeS: fin.ms.erosion / 1000, totalS: (performance.now() - t0) / 1000 };
 };
 const quantiles = (v, q) => { const s = Float64Array.from(v).sort(); return q.map(p => s[Math.min(s.length - 1, Math.floor(p * s.length))]); };
