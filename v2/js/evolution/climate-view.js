@@ -35,7 +35,7 @@ export class ClimateService {
     compute(tMesh, heightKm, options = {}, type = 'climate') {
         this.worker ??= this.start();
         const key = tMesh.numCells;
-        if (!this.sent.has(key)) { this.worker.postMessage({ type: 'mesh', key, xyz: tMesh.xyz }); this.sent.add(key); }
+        if (!this.sent.has(key)) { this.worker.postMessage({ type: 'mesh', key, xyz: tMesh.xyz, delaunatorUrl: import.meta.resolve('delaunator') }); this.sent.add(key); }
         const id = this.nextId++;
         return new Promise((resolve, reject) => {
             this.jobs.set(id, { resolve, reject });

@@ -11,6 +11,7 @@
 //   data.water: each cell's year of rain, potential evaporation and runoff — terrain/climate-water.js — for the cut-off
 //   seas' balance, basin-estimate.js); for 'water', data is that water alone ({rain, pet, runoff, gridDeg, ms}).
 
+import { setDelaunator } from '../../../js/sphere-mesh.js';
 import { planetClimate } from '../climate/climate.js';
 import { pageClimate, climateTransfers } from './climate-fields.js';
 import { cellStatsCollector } from '../climate/cell-stats.js';
@@ -25,9 +26,18 @@ const WATER_GRID_DEG = 3;
 
 const meshes = new Map();
 
-self.onmessage = ({ data }) => {
-    if (data.type === 'mesh') { meshes.set(data.key, data.xyz); return; }
+// finish.js (climateWater's helpers) reaches the terrain mesh builder, so this worker sets Delaunator as every worker does
+// (check-workers.mjs); the page passes its URL with the first mesh, and a job waits for it.
+let delaunatorReady = Promise.resolve();
+
+self.onmessage = async ({ data }) => {
+    if (data.type === 'mesh') {
+        meshes.set(data.key, data.xyz);
+        if (data.delaunatorUrl) delaunatorReady = import(data.delaunatorUrl).then(m => setDelaunator(m.default));
+        return;
+    }
     if (data.type !== 'climate' && data.type !== 'water') return;
+    try { await delaunatorReady; } catch (e) { self.postMessage({ type: 'error', id: data.id, message: String(e?.message ?? e) }); return; }
     const { id, key, heightKm, options = {} } = data;
     try {
         const t0 = performance.now();
