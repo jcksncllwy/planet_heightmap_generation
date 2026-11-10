@@ -434,7 +434,7 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    landmass holding `superShare` of the continental crust for `cycleHoldMyr`) moves the upwelling under itself and the
    downwelling to a new point 90° away (its own seeded stream). Rifts follow old sutures, failed rifts and rifted
    margins about half the time (`riftWeaknessCost`), and otherwise the crust's grain — a smooth field in each plate's
-   own frame (`riftCurve*`, `riftJag*`) that bends a rift and makes it jagged, instead of a straight cut. The cycle's pace is the mantle's — no period is drawn: its pieces
+   own frame (`riftCurve*`, `riftJag*`) that bends a rift and makes it jagged, instead of a straight cut. Each piece of continent keeps its own clock (`riftMinGapMyr` 30, the chance back by `riftSpacingMyr`, growing past `riftDueMyr`); nothing forces a rift and the world is not held to one at a time (upstream's `riftMaxGapMyr` 150 and `riftGlobalGapMyr` 10 were retired 2026-11-09: rifts are local, Earth has several under way at once, and riftaudit §2.2 found the supercontinent cycle intact on 3/3 seeds without them). The cycle's pace is the mantle's — no period is drawn: its pieces
    disperse while the mantle the supercontinent warmed is still hot — kept apart (`dispersalRepulsion`), the young oceans between them rarely foundering, a landmass that
    gathers too soon rifting readily — then, once that mantle has cooled to `cycleGatherHeat`, gather (the pull toward the downwelling, full strength until
    `mantleInflowPackKm` from it), and the new supercontinent is held together until it first rifts. Landmasses are

@@ -906,6 +906,7 @@ they found was fixed, and each fix has a check that would catch its return.
   its 300 Myr history (heads arriving within 30 Myr of a rift only erupt); phase 13 — the burst check fails by design, and
   fewer rifts leave more land untouched, more lowland (43–48 %), a 10 Mkm² enclosed sea on one seed, crust growth to
   × 1.22 on one seed.
+  [Retired 2026-11-09 (riftgap): the forcing (riftMaxGapMyr, riftForcedMinKm2, 48 junctions) and the world's floor (riftGlobalGapMyr, one rift a step) below no longer exist; see v2/README.md.]
   Then, per piece (developer: "the rules dont apply to the whole world, but to each individual PIECE of continent … each
   piece has its own timer for when it CAN break. This resets when they fit together … shouldnt FORCE something to break
   apart if its too small … a limit globally … minimum at 10myrs"): each plate's clock runs from plate.born (reset for both
