@@ -2230,6 +2230,7 @@ rifts, and it barely passes the load test anyway.
 net fill (km³/yr) = inflow × lakeLoadShare − lake area × mean sinking share × lakeSinkMmYr
 it stands if      volume ≥ carveTimeMyr × net fill
 ```
+- *(Retired with the lake rules in 7d91f0a: erosion replaced them. The history's rise now reaches the finish as the frame's `tectRateKm`, `ERODE.tectUplift`; the lane fluvial section below.)*
 - **What sinks** (`sinkingGround`, read from the frame): ground the belts deformed lately, fading over `carveActiveMyr`,
   and rifts on continental crust. It is sinking against the sill, which is all a lake feels: a hollow in a rising belt
   deepens as its rim rises.
