@@ -1182,6 +1182,10 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   km50 is now read by record identity (`belts-history.mjs`, `weld-trace.mjs`): a weld hands its open collisions on
   (inheritCollisions renames them) and a handed piece takes a copy (`ops/hand-collisions.js`), so a record keyed by its
   plates first appeared long after contact with all its km in it ("2933 of 2939 km in 50 Myr" on 4242 was 1479).
+- **Off by default** (Jackson, 2026-11-10). In the India scene the hold welds India 26–38 Myr after contact and Asia's
+  crust thickens less than check 7c asks, with or without mantleFlowDrag + collisionConveyor: the scene's push after
+  contact is too weak to hold up a plateau (Earth's India still converges at ~4 cm/yr). The missing force is the pull
+  of the ocean slab still sinking beside the collision; the hold turns on once that is modelled.
 - **Limits.** The push is the lock's force at the step's rotations, not a solve with the lock removed; the plateau's GPE
   alone (no lithospheric strength). The first 50 Myr are still slower than India's (~5 cm/yr): the drive after contact.
 
