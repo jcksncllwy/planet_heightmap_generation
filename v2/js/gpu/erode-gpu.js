@@ -21,12 +21,12 @@ import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
 const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
-export const CELL_WORDS = 9;
+export const CELL_WORDS = 10;
 
 const HEAD = /* wgsl */`
-struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, perCell: f32, m: f32, Gf: f32 }
+struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, perCell: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32 }
 struct Rg { start: u32, count: u32 }
-struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32 }
+struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32, area: f32 }
 struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32 }
 const NONE = 0x7FFFFFFFu; const INF = 0xFFFFFFFFu; const M = 0x7FFFFFFFu;
 const EPS = ${EPS}f; const R_EARTH = ${R_EARTH}f; const BIG = 1e30f;
@@ -36,6 +36,28 @@ fn enc(w: f32) -> u32 { let b = bitcast<u32>(w); return select(b ^ 0x80000000u, 
 
 // Each kernel: the buffers it binds, and its body, run once for each `ix` entry in the dispatched range (c = the cell).
 const T = { u: 'array<u32>', f: 'array<f32>', v: 'array<vec4f>', a: 'array<atomic<u32>>', C: 'array<Cell>', X: 'array<Out>' };
+// (the solve's first map, with or without the hillslope term: a separate kernel, not a k_h of 0 — any hillslope expression in it
+// changes how the compiler rounds the stream power's F, and the run with ERODE hillD 0 must be the one before it, to the bit)
+const affineInitOf = HILL => ({ b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz: 'f', surf: 'f', cells: 'C', fA: 'v+' }, body: `
+        let rr = recv[c]; let r = rr & M; let old = Zt[c];
+        if (r == NONE) { fA[c] = vec4f(old, old, 0.0, old); return; }      // (an unresolved flat: it holds)
+        let toOut = (rr >> 31u) != 0u;
+        if (lpA[c] != NONE) {
+            if (toOut) { let v = max(old, surf[r]); fA[c] = vec4f(v, v, 0.0, v); } else { fA[c] = vec4f(old, 0.0, 1.0, BIG); }
+            return;
+        }
+        let Ac = max(cells[c].A, 1e-6); let share = min(1.0, U_.perCell * sqrt(Ac / 1e4));
+        let d = vec3f(xyz[3u * r] - xyz[3u * c], xyz[3u * r + 1u] - xyz[3u * c + 1u], xyz[3u * r + 2u] - xyz[3u * c + 2u]);
+        // (the layer it cuts: its own sediment above the rock's top, or the rock: finish-erode.js. Kv: k, the rock's top, the
+        // sediment's k against the rock's, and the share of what it cuts that is mud; packed, so the kernel binds no more buffers.
+        // No column: the top is out of reach, and no mud)
+        let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
+        // (and the hillslopes and landslides the cell's slope stands for: Tzathas et al. 2024's k_h·A^−h, as FastFlow §5 —
+        // a diffusivity D over Hack's flow length L ≈ 1.4·A^0.6 km (Hack 1957), a wave speed D/L: k_h = D/1.4, h = 0.6. ERODE hillD)
+        let F = ${HILL ? '(share * kv.x * layer * pow(Ac, U_.m) + U_.kh * pow(cells[c].area, -U_.h))' : 'share * kv.x * layer * pow(Ac, U_.m)'} * U_.dt / (R_EARTH * length(d));
+        if (toOut) { let v = min(old, (old + F * surf[r]) / (1.0 + F)); fA[c] = vec4f(v, v, 0.0, v); }
+        else { fA[c] = vec4f(-BIG, old / (1.0 + F), F / (1.0 + F), old); }` });
+
 const KERNELS = {
     copyZ: { b: { z: 'f', Zt: 'f+' }, body: 'Zt[c] = z[c];' },
     descend: { b: { adjOffset: 'u', adjList: 'u', Zt: 'f', ptrA: 'u+' }, body: `
@@ -129,9 +151,9 @@ const KERNELS = {
     histogram: { b: { depthA: 'u', hist: 'a' }, body: 'atomicAdd(&hist[depthA[c]], 1u);' },
     place: { b: { depthA: 'u', cursor: 'a', order: 'u+' }, body: 'order[atomicAdd(&cursor[depthA[c]], 1u)] = c;' },
     water: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', water: 'f', cells: 'C+' }, body: `
-        var v = U_.a * water[c];
-        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if ((recv[y] & M) == c) { v += cells[y].A; } }
-        cells[c].A = v;` },
+        var v = U_.a * water[c]; var ar = U_.a;          // (A: the water's, by the rain; area: the ground's, km²)
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let y = adjList[j]; if ((recv[y] & M) == c) { v += cells[y].A; ar += cells[y].area; } }
+        cells[c].A = v; cells[c].area = ar;` },
     // ── the stream power, pointer-jumped (fluvial-kernels.js): each cell's update as a clamped affine map of its receiver's
     // new surface — a reach min(old, (old + F·x)/(1 + F)), a lake max(old, x) — composed up the receiver chains in ⌈log₂ depth⌉
     // passes instead of a sweep a level. A cell draining to an outlet is a root: its map at the outlet's surface, a constant.
@@ -146,23 +168,7 @@ const KERNELS = {
             if (!root) { same = fill[r] - z[r] > EPS && fill[r] == fill[c]; }
             lpA[c] = select(c, r, same);
         } else { lpA[c] = NONE; }` },
-    affineInit: { b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz: 'f', surf: 'f', cells: 'C', fA: 'v+' }, body: `
-        let rr = recv[c]; let r = rr & M; let old = Zt[c];
-        if (r == NONE) { fA[c] = vec4f(old, old, 0.0, old); return; }      // (an unresolved flat: it holds)
-        let toOut = (rr >> 31u) != 0u;
-        if (lpA[c] != NONE) {
-            if (toOut) { let v = max(old, surf[r]); fA[c] = vec4f(v, v, 0.0, v); } else { fA[c] = vec4f(old, 0.0, 1.0, BIG); }
-            return;
-        }
-        let Ac = max(cells[c].A, 1e-6); let share = min(1.0, U_.perCell * sqrt(Ac / 1e4));
-        let d = vec3f(xyz[3u * r] - xyz[3u * c], xyz[3u * r + 1u] - xyz[3u * c + 1u], xyz[3u * r + 2u] - xyz[3u * c + 2u]);
-        // (the layer it cuts: its own sediment above the rock's top, or the rock: finish-erode.js. Kv: k, the rock's top, the
-        // sediment's k against the rock's, and the share of what it cuts that is mud; packed, so the kernel binds no more buffers.
-        // No column: the top is out of reach, and no mud)
-        let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
-        let F = share * kv.x * layer * pow(Ac, U_.m) * U_.dt / (R_EARTH * length(d));
-        if (toOut) { let v = min(old, (old + F * surf[r]) / (1.0 + F)); fA[c] = vec4f(v, v, 0.0, v); }
-        else { fA[c] = vec4f(-BIG, old / (1.0 + F), F / (1.0 + F), old); }` },
+    affineInit: affineInitOf(false), affineInitHill: affineInitOf(true),
     affineJump: { b: { fA: 'v', jpA: 'u', lpA: 'u', fB: 'v+', jpB: 'u+', lpB: 'u+' }, body: `
         let p = jpA[c]; fB[c] = compose(fA[c], fA[p]); jpB[c] = jpA[p];
         let l = lpA[c];
@@ -198,6 +204,19 @@ const KERNELS = {
         }
         cells[c].q = q; cells[c].qf = qf;` },
     commit: { b: { cells: 'C', z: 'f+' }, body: 'z[c] = cells[c].zNew;' },
+    // ── nonlinear threshold diffusion (Roering et al. 1999: q = −D·S/(1 − (S/S_c)²)), one implicit step: each edge's
+    // conductance at the step's slopes (capped at 0.99 S_c), then Jacobi sweeps of (I − dt·L)z′ = z. The outlets hold ──
+    edgeCond: { b: { adjOffset: 'u', adjList: 'u', xyz: 'f', z: 'f', gE: 'f+' }, body: `
+        let pc = vec3f(xyz[3u * c], xyz[3u * c + 1u], xyz[3u * c + 2u]);
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
+            let y = adjList[j]; let d = R_EARTH * length(vec3f(xyz[3u * y], xyz[3u * y + 1u], xyz[3u * y + 2u]) - pc);
+            let S = min(abs(z[y] - z[c]) / d, 0.99 * U_.Sc); let r = S / U_.Sc;
+            gE[j] = U_.dt * (2.0 / (3.0 * d * d)) * U_.D / (1.0 - r * r);
+        }` },
+    jacobi: { b: { adjOffset: 'u', adjList: 'u', gE: 'f', z: 'f', dA: 'f', dB: 'f+' }, body: `
+        var num = z[c]; var den = 1.0;
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) { let g = gE[j]; num += g * dA[adjList[j]]; den += g; }
+        dB[c] = num / den;` },
     exportCells: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+' }, index: 'i', body: `
         let v = cells[c];
         exp[i] = Out(v.lid, v.e, v.inlet, trap[c], v.q, recv[c], v.gross);` },
@@ -263,12 +282,15 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     mk('fA', 16 * n); mk('fB', 16 * n);
     for (const f of ['z', 'dropped', 'Zt', 'hookW', 'weight', 'valA', 'valB', 'fill', 'surf', 'trap']) mk(f, 4 * n);
     for (const u of ['ptrA', 'ptrB', 'ptrC', 'roots', 'label', 'bestW', 'bestE', 'hookTo', 'parent', 'recv', 'distA', 'distB', 'flats', 'depthA', 'depthB', 'order', 'outlet', 'list', 'hiA', 'hiB']) mk(u, 4 * n);
+    // (threshold diffusion, ERODE diffD > 0: its edge conductances and the Jacobi pair; an even number of sweeps)
+    const DIFF = (P.diffD ?? 0) > 0 ? 2 * Math.ceil((P.diffSweeps ?? 20) / 2) : 0;
+    if (DIFF) { mk('gE', 4 * adjList.length); mk('dA', 4 * n); mk('dB', 4 * n); }
     mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1)); mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 4 * CELL_WORDS * n); mk('exp', 4 * EXPORT_WORDS * n);
     const rangeBuf = device.createBuffer({ size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const uniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const ub = new ArrayBuffer(32), uv = new DataView(ub);
+    const uniform = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const ub = new ArrayBuffer(64), uv = new DataView(ub);
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
-    [a, dt, P.G, valleyKm / Math.sqrt(a), m, P.GFine ?? P.G].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
+    [a, dt, P.G, valleyKm / Math.sqrt(a), m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
     const stage = device.createBuffer({ size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);
@@ -282,6 +304,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
     const SL = { list: 0, roots: 1, flats: 2 };
     const G = {
+        ...(DIFF ? { edgeCond: group('edgeCond', 'list'), jacAB: group('jacobi', 'list'), jacBA: group('jacobi', 'list', { dA: 'dB', dB: 'dA' }) } : {}),
         copyZ: group('copyZ', 'list'), descend: group('descend', 'list'), jumpAB: group('jump', 'list'), jumpBA: group('jump', 'list', { ptrA: 'ptrB', ptrB: 'ptrA' }), findRoots: group('findRoots', 'list'), label: group('label', 'list'),
         resetBest: group('resetBest', 'roots'), minWeight: group('minWeight', 'list'), minEdge: group('minEdge', 'list'), pickEdge: group('pickEdge', 'list'), hook: group('hook', 'roots'),
         flatAB: group('flatten', 'roots', { compA: 'compB', compB: 'compA' }), flatBA: group('flatten', 'roots'), active: group('active', 'roots'),
@@ -289,7 +312,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         fillIn: group('fillIn', 'list'), receive: group('receive', 'list'), findFlat: group('findFlat', 'list'), flatAB2: group('flat', 'flats'), flatBA2: group('flat', 'flats', { distA: 'distB', distB: 'distA' }), highInit: group('highInit', 'flats'), highAB: group('high', 'flats'), highBA: group('high', 'flats', { hiA: 'hiB', hiB: 'hiA' }), pickFlat: group('pickFlat', 'flats'),
         flagRecv: group('flagRecv', 'list'), depthAB: group('depthJump', 'list'), depthBA: group('depthJump', 'list', { depthA: 'depthB', depthB: 'depthA', ptrA: 'ptrB', ptrB: 'ptrA' }), histogram: group('histogram', 'list'), place: group('place', 'list'),
         // (the solve's chains reuse the route's ptrB/ptrC and hiA/hiB: the route is done with them by then)
-        prep: group('prep', 'list', { lpA: 'hiA', jpA: 'ptrB' }), affineInit: group('affineInit', 'list', { lpA: 'hiA' }),
+        prep: group('prep', 'list', { lpA: 'hiA', jpA: 'ptrB' }), affineInit: group((P.hillD ?? 0) > 0 ? 'affineInitHill' : 'affineInit', 'list', { lpA: 'hiA' }),
         jumpAB2: group('affineJump', 'list', { jpA: 'ptrB', jpB: 'ptrC', lpA: 'hiA', lpB: 'hiB' }), jumpBA2: group('affineJump', 'list', { fA: 'fB', fB: 'fA', jpA: 'ptrC', jpB: 'ptrB', lpA: 'hiB', lpB: 'hiA' }),
         applyA: group('affineApply', 'list', { jpA: 'ptrB', lpA: 'hiA' }), applyB: group('affineApply', 'list', { fA: 'fB', jpA: 'ptrC', lpA: 'hiB' }),
         water: group('water', 'order'), load: group('load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'),
@@ -441,7 +464,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         return { roots, rounds, flats, passes, levels, placed: at, unresolved: pending };
     };
     const sweeps = async hist0 => {
-        const t0 = performance.now(), e = device.createCommandEncoder(), p = e.beginComputePass();
+        const t0 = performance.now(), e = device.createCommandEncoder();
+        let p = e.beginComputePass();
         run(p, G.place, SL.list, listLen);
         for (let d = levels; d >= 1; d--) run(p, G.water, 8 + d, hist0[d]);
         const J = Math.max(1, Math.ceil(Math.log2(levels + 1)));     // (a chain is at most `levels` long: 2^J hops reach its root)
@@ -449,7 +473,15 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         for (let i = 0; i < J; i++) run(p, i % 2 ? G.jumpBA2 : G.jumpAB2, SL.list, listLen);
         run(p, J % 2 ? G.applyB : G.applyA, SL.list, listLen);
         for (let d = levels; d >= 1; d--) run(p, G.load, 8 + d, hist0[d]);
-        run(p, G.commit, SL.list, listLen); run(p, G.exportCells, SL.list, listLen);
+        run(p, G.commit, SL.list, listLen);
+        if (DIFF) {
+            // (the diffusion's guess and its RHS start as the step's ground; an even count of sweeps ends in dA)
+            p.end(); e.copyBufferToBuffer(B.z, 0, B.dA, 0, 4 * n); e.copyBufferToBuffer(B.z, 0, B.dB, 0, 4 * n); p = e.beginComputePass();
+            run(p, G.edgeCond, SL.list, listLen);
+            for (let i = 0; i < DIFF; i++) run(p, i % 2 ? G.jacBA : G.jacAB, SL.list, listLen);
+            p.end(); e.copyBufferToBuffer(B.dA, 0, B.z, 0, 4 * n); p = e.beginComputePass();
+        }
+        run(p, G.exportCells, SL.list, listLen);
         p.end();
         device.queue.submit([e.finish()]);
         ms.encode += performance.now() - t0;

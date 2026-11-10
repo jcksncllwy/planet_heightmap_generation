@@ -57,6 +57,10 @@ export const ERODE = {
     showKm2: 1600,              // the census's least lake (two cells at 640K: finish-config lakeMinKm2's reach)
     gpu: true,                  // on the GPU where there is one (gpu/erode-gpu.js; a browser's navigator.gpu, or Dawn under the tools: finish.js)…
     gpuFloodCells: 500000,      // …and closed basins' flood with it from this many cells: below them, it costs more than it saves (gpu-report.md)
+    hillD: 0,                   // GPU only: the hillslopes' and landslides' diffusivity, km²/Myr, as a stream-power term k_h·A^−0.6 (k_h = D/1.4: erode-gpu.js)
+    diffD: 0,                   // GPU only: nonlinear threshold diffusion's D, km²/Myr (Roering et al. 1999; 0.01 is a soil's), 0: none…
+    diffSc: 1.25,               // …its critical slope…
+    diffSweeps: 20,             // …and the Jacobi sweeps of its implicit step
     tectUplift: false,          // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
 };

@@ -1,6 +1,6 @@
 // CPU against GPU erosion on a captured fixture, on this machine. Runs finish-erode.js as it stands (seen through probe-hook) and
 // erode-gpu.js from the same start, then compares each step's fill, receivers, drainage and heights.
-//   node --import ./v2/tools/gpu-harness/probe-hook.mjs v2/tools/gpu-erode.mjs --dir FIXTURE --run 3 [--steps N] [--repeat] [--no-cpu]
+//   node --import ./v2/tools/gpu-harness/probe-hook.mjs v2/tools/gpu-erode.mjs --dir FIXTURE --run 3 [--steps N] [--repeat] [--no-cpu] [--P JSON]
 import { gpu } from './gpu-harness/dawn.mjs';
 import { erodeGPU, CELL_WORDS } from '../js/gpu/erode-gpu.js';
 import { openDevice } from '../js/gpu/gpu-device.js';
@@ -9,6 +9,8 @@ import { loadRun } from './gpu-fixture.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; }, has = k => process.argv.includes(k);
 const DIR = arg('--dir'), RUN = Number(arg('--run', 3)), { o, P, meta } = loadRun(DIR, RUN), n = o.mesh.numCells;
+// (--P '{"hillD":0.01}': ERODE settings over the fixture's, both paths; the CPU ignores the GPU-only ones)
+if (arg('--P')) Object.assign(P, JSON.parse(arg('--P')));
 if (arg('--steps')) { const s = Number(arg('--steps')); P.timeMyr *= s / P.steps; P.steps = s; }
 const quant2 = (a, q) => { const v = Float64Array.from(a).sort(); return q.map(p => v[Math.min(v.length - 1, Math.floor(p * v.length))]); };
 // (the column's rock top moves with the rebound, in place: each run starts from the captured one)
@@ -68,6 +70,8 @@ const t0 = performance.now(), r = await erodeGPU(gpu, o, P, { onStep: cpu.length
 console.log('GPU', sec.toFixed(2), 's', JSON.stringify(r.ms), 'sea', (r.toSeaKm3 / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2), 'closed', (r.closedKm3 / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2));
 if (!cpu.length) console.log(JSON.stringify(r.route.slice(0, 3)));
 const land = []; if (cpu.length) { for (let c = 0; c < n; c++) if (!o.ocean[c]) land.push(Math.abs(o.z[c] - cpuEnd[c])); console.log('END |dz| km p50,p99,p99.99,max', quant(land, [.5, .99, .9999, 1]).map(v => v.toExponential(2)).join(' ')); }
+// (--dump FILE: the GPU's end ground, float32, and the start's ocean mask beside it as FILE.ocean, to compare runs)
+if (arg('--dump')) { const fs = await import('node:fs'); fs.writeFileSync(arg('--dump'), Buffer.from(o.z.buffer, o.z.byteOffset, o.z.byteLength)); fs.writeFileSync(arg('--dump') + '.ocean', Buffer.from(o.ocean)); }
 if (has('--repeat')) {
     const first = o.z.slice();
     restart();
