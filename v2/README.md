@@ -236,7 +236,7 @@ node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/check-basins.mjs         # cut-off seas: the water balance against the Caspian, the Dead Sea, the Messinian; three histories finished, reported against Earth
-node v2/tools/check-waterbooks.mjs     # the water conserved every frame: the history's pour holds it all, the view debits the ocean for its cut-off seas
+node v2/tools/check-waterbooks.mjs     # the water conserved: the history's pour holds it all, the view debits the ocean for its cut-off seas (every 20 Myr; --every 10 for every frame)
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
