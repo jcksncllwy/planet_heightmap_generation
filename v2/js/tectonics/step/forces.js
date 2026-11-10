@@ -224,7 +224,7 @@ function slabAtContact(world, rec, cs) {
     let ageSum = 0, ages = 0, slab = 0;
     for (const { w } of cs) for (let i = start[w * stride]; i < start[w * stride + stride - 1]; i++) {
         const q = cells[i], o = owner[q], c = ownerCell[q];
-        if (o === rec.lower && L.type[c] === CrustType.OCEAN && L.formedAt[c] >= 0) { ageSum += time - L.formedAt[c]; ages++; }
+        if (o === rec.lower && L.type[c] === CrustType.OCEAN) { ageSum += Math.max(0, time - L.formedAt[c]); ages++; }
         else if (o === rec.upper && (U.flags[c] & CrustFlag.TRENCH)) slab = Math.max(slab, U.slabKm[c]);
     }
     rec.slabAgeMyr = ages ? ageSum / ages : config.slabPullAgeRefMyr;
