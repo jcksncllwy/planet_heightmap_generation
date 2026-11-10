@@ -364,8 +364,10 @@ section('erosion by rainfall');
     // only in how their heights wore. And the collision lock as a force (collisionLockGpe, opt-in) off: it resists with the
     // weight of the thickened crust, which wear thins (Willett 1999, J. Geophys. Res.: erosion steers how an orogen deforms) —
     // the two runs' crust differs by ~1e-7 from ~180 Myr through the root's room the wear leaves (ops/thicken.js), and the
-    // lock carries it into the plates' motion (lane belts5: 1092 vs 1095 events)
-    const decoupled = { trenchDenudationKmPerMyr: 0, rockBook: false, subductionErosionKm3PerKmMyr: 0, collisionLockGpe: false }, rainy = run('history', null, decoupled), alike = run('history', { rainErosionExponent: 0 }, decoupled);
+    // lock carries it into the plates' motion (lane belts5: 1092 vs 1095 events). Likewise the continents' strength read from
+    // each cell's crust (plateStrengthCrust, lane riftstrength: Buck's thick crust is weak, and wear thins it) off: on, the two
+    // runs' rifts part where the wear left the crust differently
+    const decoupled = { trenchDenudationKmPerMyr: 0, rockBook: false, subductionErosionKm3PerKmMyr: 0, collisionLockGpe: false, plateStrengthCrust: false }, rainy = run('history', null, decoupled), alike = run('history', { rainErosionExponent: 0 }, decoupled);
     const sameHistory = rainy.frames.every((f, i) => f.owner.every((o, w) => o === alike.frames[i].owner[w] && f.type[w] === alike.frames[i].type[w])) && rainy.frame.events.length === alike.frame.events.length;
     check('…the two histories compared are one: only the heights\' erosion differs', sameHistory, `${rainy.frames.length} frames to ${rainy.frame.time} Myr, every cell's plate and crust the same; ${rainy.frame.events.length} events in each (no terrigenous trench fill in either)`);
     const on = terrain(rainy.frame, 160000), off = terrainWith(alike.frame, 160000, { rainErosionExponent: 0 });

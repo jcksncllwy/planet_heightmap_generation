@@ -124,7 +124,7 @@ export function rockStrength(crust, c, time, config, h = 0) {
     let T;
     if (t === CrustType.OCEAN) T = config.plateYieldOcean * Math.max(config.plateYieldOceanFloor, Math.min(1, Math.sqrt(Math.max(0, time - crust.formedAt[c]) / config.plateYieldOceanAgeMyr)));
     else {
-        T = config.plateYieldContinent * (t === CrustType.CRATON ? config.cratonStrength : 1) * heatWeakening(h, config, crustKmAt(crust, c, time, config));
+        T = config.plateYieldContinent * (t === CrustType.CRATON ? config.cratonStrength : 1) * heatWeakening(h, config, config.plateStrengthCrust ? crustKmAt(crust, c, time, config) : config.plateCrustRefKm);
         if (crust.volcType[c] === VolcanicType.LIP && time - crust.volcAt[c] <= config.magmaWeakMyr) T /= config.magmaWeakening;
     }
     if (crust.flags[c] & WEAK) T *= config.riftWeaknessCost;

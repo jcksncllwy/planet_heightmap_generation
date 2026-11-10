@@ -570,6 +570,10 @@ export const TECTONICS = {
                                 // A cell's own crust (measure.js crustThicknessKm: as formed, thickened, thinned) moves it along the
                                 // figure's second axis: 50 km is ×0.45 of this at 65 mW/m², 30 km ×2.2, held at those curves outside
                                 // them (Buck 1991: thick orogenic crust is weak; field/stress-step.js heatWeakening)
+    plateStrengthCrust: true,   // the strength reads each cell's own crust (above); off: every continent at plateCrustRefKm. The crust it reads
+                                // is the heights' (rootKm, relief), which erosion thins, so wear feeds the history through it (unroofing
+                                // restores a worn orogen's strength: Willett 1999's coupling); check-phase8a's like-for-like erosion pair
+                                // turns it off, as it does collisionLockGpe
     plateHeatMantleFlow: 45,    // …of which this much comes up from the mantle: Hopper & Buck 1993 let the crust's heat production give
                                 // 20 mW/m² of the surface flow (their §"model formulation")…
     plateHeatWarmK: 100,        // …and a continent's insulation warms the mantle under it by up to this (h = 1): "as large as 100 °C" under
