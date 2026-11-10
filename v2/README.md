@@ -1156,6 +1156,35 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   cost ~3 % (not exact: the test then reads the sea a step or two later). The rest is the histories differing (seed
   12345 rifts a larger plate: +17 %; the other seeds −6 % to +9 %).
 
+## A collision ends when its belt holds the pair (2026-11-09, lane weld)
+
+- **What was wrong.** Traced step by step over the whole model (`tools/weld-trace.mjs`, 3 seeds × 3 paths), the big
+  collisions did not stop: their closing fell to ~0.9 cm/yr 40–60 Myr after contact, then **crept at 0.5–0.8 cm/yr**, just
+  above the stall rate, for 50–150 Myr more, and welded ~25 Myr after that (the stall clock, then the gap test waiting for
+  its give-up). Contact → weld: median 124 Myr; the biggest weld of each history 112–269 Myr. Earth's ended collisions ran
+  ~60–70 Myr from contact to the end of convergence (Alleghanian ~325→265 Ma, Hatcher 2002; Uralian ~320→250 Ma, Puchkov
+  2009). The balance terms along the seam (`--forces`) show why: the viscous lock (`collisionResistance`) carries the
+  push of the plates' other margins (ridge, rift, mantle flow, slab), and a coupling × rate can only damp a push, never stop it.
+- **The physics added** (`sutureHoldGpe`; `torque-balance.js seamHold`, `forces.js` dhBelt, `collision.js`). A thin
+  viscous sheet converges while the force on its edge beats the buoyancy of the crust it has thickened, and stops when it
+  does not (England & McKenzie 1982; England & Houseman 1989). Each step the pair's push across the front — the force the
+  lock now carries — is set against the plateau's GPE over the front (`collisionGpeNPerM`, ~5.7 × 10¹² N/m at Tibet's).
+  Held through one seam check (`sutureCheckMyr`), the pair welds; the sea left between is a remnant (no give-up wait).
+  The plateau counts, not the two crusts stacked in the overlap: that is the lower plate's edge going under, and
+  counted, it held pairs from contact (welds 14–33 Myr in). India slowed as Tibet rose (Molnar & Stock 2009).
+- **Numbers** (welds ≥ 1000 km, 3 seeds × 3 paths; Earth: km in the first 50 Myr ~2000–2500, total 2400–3200):
+  | | km50 median | contact → weld, median (biggest weld per history) | total km median (biggest) |
+  |---|---|---|---|
+  | stall rule only | 1175 | 124 Myr (112–269) | 1787 (1884–4086) |
+  | sutureHoldGpe | 1220 | 55 Myr (35–116) | 1298 (1401–3529) |
+  | + mantleFlowDrag + collisionConveyor | 1470 | 52 Myr (51–159) | 1509 (1663–4207) |
+  | GPE lock instead (collisionLockGpe) | 1053 | 81 Myr | 1247 (1113–2374) |
+  km50 is now read by record identity (`belts-history.mjs`, `weld-trace.mjs`): a weld hands its open collisions on
+  (inheritCollisions renames them) and a handed piece takes a copy (`ops/hand-collisions.js`), so a record keyed by its
+  plates first appeared long after contact with all its km in it ("2933 of 2939 km in 50 Myr" on 4242 was 1479).
+- **Limits.** The push is the lock's force at the step's rotations, not a solve with the lock removed; the plateau's GPE
+  alone (no lithospheric strength). The first 50 Myr are still slower than India's (~5 cm/yr): the drive after contact.
+
 ## Collisions run on until the seam stalls (2026-10-27, branch welds, round 2)
 
 - **No set time or shortening ends a collision** (`collision.js`, `config.js`). Two colliding plates weld once the
