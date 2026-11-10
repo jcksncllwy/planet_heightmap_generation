@@ -1184,8 +1184,13 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   plates first appeared long after contact with all its km in it ("2933 of 2939 km in 50 Myr" on 4242 was 1479).
 - **Off by default** (Jackson, 2026-11-10). In the India scene the hold welds India 26–38 Myr after contact and Asia's
   crust thickens less than check 7c asks, with or without mantleFlowDrag + collisionConveyor: the scene's push after
-  contact is too weak to hold up a plateau (Earth's India still converges at ~4 cm/yr). The missing force is the pull
-  of the ocean slab still sinking beside the collision; the hold turns on once that is modelled.
+  contact is too weak to hold up a plateau (Earth's India still converges at ~4 cm/yr). Lane slab (2026-11-10) looked
+  for the missing force and found the force is there but the rate is not: across the whole model the lower plate's slab
+  pull does not drop at contact (median 8.8 × 10¹⁸ N before, 8.8 at contact, 7.3 at 8–20 Myr after), and the lock
+  carries 2.7–6.1 × 10¹² N/m across the front, Tibet's 5–6 × 10¹² (Copley et al. 2010), at 1.2–1.6 cm/yr after 50 Myr
+  against India's ~4. The viscous lock's rate per unit force is 3–6× too low, because its coupling grows with the
+  overlap and the cratons (×4). The hanging slab (below) is modelled and does not change that; the hold waits on the
+  lock's force–rate law.
 - **Limits.** The push is the lock's force at the step's rotations, not a solve with the lock removed; the plateau's GPE
   alone (no lithospheric strength). The first 50 Myr are still slower than India's (~5 cm/yr): the drive after contact.
 
@@ -1234,14 +1239,54 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   after contact (lane upper, `belts-probe.mjs --forces`). Tried and dropped: the lower plate's crust going down as negative
   slab pull (Cloos 1993; it double-counted the slab the front already drops), upper-plate shortening behind a jammed craton.
   Phase 5's India (`NO_WINGS`, underthrust off) measures the stack weld, not the seam, and is not the acceptance scene.
-- **The hanging slab (lane upper, `collisionSlabPull`, opt-in, off by default).** After contact the slab still hanging under
-  the front keeps pulling the lower plate in, its gross negative buoyancy (`collisionSlabGrossNPerM`, 3 × 10¹³ N/m; England &
-  Wortel 1980) net of the buoyancy of the continental crust underthrust after it (Cloos 1993), until it breaks off
-  `collisionBreakoffMyr` (20 Myr; van Hunen & Allen 2011) after contact (`forces.js hangingSlabPull`). On Phase 5's India with
-  the lock, it raises the shortening 1146/1437/1354 → 1362/1593/1753 km (seeds 12345/1/2). The crust's buoyancy ends the
-  pull after ~200 km of underthrust, before break-off, on all three. In the whole model it brings no history into Earth's
-  range (table above), and with the lock before belts5's overlap column it gave a 5340 km weld on 12345. It stays off.
-  Why it is off: with the flag on the gate fails p4/p5a/p7c/p8a and check-phase11 throws at :52 (`gcp-run/runs/3e862ed-20261107-145247.txt`); India `--full` 12345/1/2 is 1146/1437/1354 km vs 1122/1115/1125 off, because Asia gets carried along; the upper plate's resistance is the next lane.
+- **The hanging slab (`collisionSlabPull`, opt-in, off by default; lane upper, rebuilt in lane slab 2026-11-10).** After
+  contact the slab still hanging under the front keeps pulling the lower plate in (`forces.js hangingSlabPull`): its gross
+  negative buoyancy (`collisionSlabGrossNPerM`, 3 × 10¹³ N/m; England & Wortel 1980), scaled like a trench's pull by the
+  slab's age and length read at contact (the lower plate's ocean and the upper plate's trench within three rings of the
+  front), net of the buoyancy of the continental crust underthrust after it (Cloos 1993), until the slab breaks off.
+  - *The crust's buoyancy* counts only above the eclogite depth (`collisionEclogiteKm` 60: Holsnøy's lower-crust
+    eclogites formed at ≥ 1.46 GPa, Austrheim 1991; eclogite ~6 % denser than the mantle, Hacker et al. 2003), down a slab
+    of `collisionSlabDipDeg` 30 (32 ± 9° over 0–125 km, Lallemand et al. 2005): at most 120 km of crust offsets the slab.
+    Before, every metre underthrust counted, and any collision's crust cancelled any slab within ~175 km, a few Myr in.
+  - *Break-off* is the slab's own, not a cited time (was `collisionBreakoffMyr` 20). Stalled, the slab is warmed through
+    from both faces; when its strong core (colder than `slabCoreTempShare` 0.6 of the mantle's 1350 °C, ~800 °C: Goetze &
+    Evans 1979, Kirby 1987) is gone it necks and breaks (Davies & von Blanckenburg 1995; Duretz, Gerya & May 2011). The
+    core of a plate of age A is 2√(κA) erf⁻¹(θ) thick; its first conductive mode warms through in A × 4 erf⁻¹(θ)² ⁄ π² ×
+    ln(4(1 − θ⁄2) ⁄ π(1 − θ)), so κ cancels and t_b ≈ 0.115 A: 9 Myr for an 80-Myr slab, 16 for the India scene's ~140.
+  - **Against Earth** (not fitted): van Hunen & Allen (2011) find break-off 20–25 Myr after contact for old slabs, ~10 for
+    young. This break-off is earlier by about half, because it is the warming alone: the neck's own runaway is not drawn.
+    θ maps almost one-for-one onto t_b (0.75 gives ~25 Myr), so it is taken from olivine's strength, not from their result.
+  - **India scene** (`budget-scenes india`, 12345/777/4242, slab off → on):
+
+    | | weld, Myr after contact | km at weld | km at 20 Myr |
+    |---|---|---|---|
+    | sutureHoldGpe on | 38 / 32 / 26 → 32 / 32 / 36 | 1115 / 1055 / 989 → 1099 / 1104 / 1135 | 947 / 928 / 936 → 1000 / 987 / 995 |
+    | sutureHoldGpe off | 96 / 108 / 68 → 52 / 94 / 72 | 1371 / 1564 / 1093 → 1167 / 1425 / 1209 | the same |
+
+    +50–60 km by 20 Myr; with the hold on India still welds ~30 Myr in, short of 7c. With the hold off it welds *sooner* on
+    two seeds: the earlier push builds the overlap faster, and the lock stiffens with it.
+  - **Whole model** (`weld-trace.mjs --forces --pull`, 3 seeds × 3 paths, Chroma; biggest weld per history, top-3 welds
+    for the medians; Earth: km50 2000–2500, total 2400–3200, contact → weld ~60–70 Myr, ~4 cm/yr at 50 Myr):
+
+    | | biggest: km50 median | total km median, in 2400–3200 (> 4000) | top 3: contact → weld | cm/yr at 20 / 50 Myr |
+    |---|---|---|---|---|
+    | hold off, slab off | 1335 | 2933, 4/9 (1) | 133 Myr | 2.4 / 1.1 |
+    | hold off, slab on | 1824 | 2705, 5/9 (0) | 150 Myr | 1.9 / 1.2 |
+    | hold on, slab off | 1459 | 1846, 2/9 (0) | 63 Myr | 2.7 / 1.6 |
+    | hold on, slab on | 1720 | 1920, 1/9 (0) | 64 Myr | 3.0 / 1.6 |
+
+    The slab adds to the first 50 Myr of the biggest collisions, and with the hold on keeps the weld time Earth's.
+    It does not raise the closing at 50 Myr or the totals: the force across the front is already Earth's, and its
+    rate is the viscous lock's (the "Off by default" note above).
+  - **Limits.** One slab per collision, its age and length read once, when first seen; break-off counted from first contact,
+    not from when the slab stalled; the neck's runaway not drawn (above); the cap at the equilibrium eclogite depth, while
+    India's lower crust eclogitised late, where it reached its deepest, held back by the reaction's kinetics (Hetényi et
+    al. 2007), so the cap leaves the most net pull it can; the detached slab's flow and the plate's other trenches beyond
+    the front are the ordinary slab pull's (they carry on: the pull does not drop at contact, above).
+  - *Off by default.* It stays off until the lock's force–rate law is settled: on its own it moves no acceptance target
+    into Earth's range. Mantle flow drag + the conveyor (drive branch, held) slowed India on 2 of 3 seeds for a
+    structural reason: the conveyor fades linearly to zero at 44 Myr (660 km ⁄ 1.5 cm/yr), front-loading its km, and
+    it consumes India's flank ocean and Asia's trench sooner, so nothing is left pulling at 50 Myr. Don't retry it as is.
 - **Phase 11's zipper now passes.** Main's failure (607 km of sea left at the weld) came from the 24 Myr stall
   give-up, not from `overdue`. With stall-only welds the zipper closes before it welds, so `overdue` is not needed and
   is gone.
