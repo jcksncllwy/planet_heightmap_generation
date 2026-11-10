@@ -18,13 +18,14 @@ const VERT = `
 precision highp float; precision highp int;
 in vec3 position; in float cell;
 uniform highp sampler2D data; uniform int dataW;
-out float vH; out float vS; out vec3 vRgb; out float vCut;
+out float vH; out float vS; out vec3 vRgb; out float vCut; out float vDry;
 void main() {
     ivec2 t = ivec2(int(cell) % dataW, int(cell) / dataW);
     vec4 d = texelFetch(data, t, 0);
-    // (a sea cut off from the world ocean rides on the shade, + 2: told apart here, before the triangle blends them)
-    float cut = step(1.5, d.g);
-    vH = d.r; vS = d.g - 2.0 * cut; vRgb = d.rgb; vCut = cut;
+    // (a sea cut off from the world ocean rides on the shade, + 2; its dried ground, + 4: told apart here, before the
+    // triangle blends them)
+    float k = floor(d.g * 0.5);
+    vH = d.r; vS = d.g - 2.0 * k; vRgb = d.rgb; vCut = k == 1.0 ? 1.0 : 0.0; vDry = k == 2.0 ? 1.0 : 0.0;
     gl_Position = vec4(position.x * 2.0 - 1.0, 1.0 - position.y * 2.0, 0.0, 1.0);
 }`;
 // sRGB (0…1) → linear light (the target encodes back to sRGB on writing); the overlay's lines over a colour, in sRGB
@@ -35,7 +36,7 @@ vec3 toLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)
 vec3 lined(vec3 c) { if (laid == 0) return c; vec4 o = texture(overlay, gl_FragCoord.xy / size); return mix(c, o.rgb, o.a); }`;
 const FRAG_HEIGHTS = `
 precision highp float; precision highp int;
-in float vH; in float vS; in vec3 vRgb; in float vCut;
+in float vH; in float vS; in vec3 vRgb; in float vCut; in float vDry;
 uniform highp sampler2D lut; uniform float seaKm, minM, stepM; uniform int zero, top, shaded;
 out vec4 outColor;
 ${COMMON}
@@ -43,23 +44,24 @@ void main() {
     float m = (vH - seaKm) * 1000.0;
     int j = int(floor((m - minM) / stepM + 0.5));
     int k = m < 0.0 ? clamp(j, 0, zero - 1) : clamp(j, zero, top);
-    // (below sea level in a triangle with a corner on a sea cut off from the ocean: the lut's second row, its cut colours)
-    vec3 c = texelFetch(lut, ivec2(k, m < 0.0 && vCut > 0.001 ? 1 : 0), 0).rgb;
+    // (below sea level in a triangle with a corner on a sea cut off from the ocean: the lut's second row, its cut colours;
+    // else with one on its dried ground, the third, its dry colours)
+    vec3 c = texelFetch(lut, ivec2(k, m < 0.0 && vCut > 0.001 ? 1 : m < 0.0 && vDry > 0.001 ? 2 : 0), 0).rgb;
     if (shaded == 1) c = min(c * (0.35 + 0.65 * vS), vec3(1.0));
     outColor = vec4(toLinear(lined(c)), 1.0);
 }`;
 const FRAG_CELLS = `
 precision highp float; precision highp int;
-in float vH; in float vS; in vec3 vRgb; in float vCut;
+in float vH; in float vS; in vec3 vRgb; in float vCut; in float vDry;
 out vec4 outColor;
 ${COMMON}
 void main() { outColor = vec4(toLinear(lined(vRgb)), 1.0); }`;
 const FRAG_SEA = `
 precision highp float;
-in float vH; in float vS; in vec3 vRgb; in float vCut;
+in float vH; in float vS; in vec3 vRgb; in float vCut; in float vDry;
 uniform float seaKm;
 out vec4 outColor;
-void main() { float s = vH < seaKm && vCut < 0.001 ? 1.0 : 0.0; outColor = vec4(s, s, s, 1.0); }`;
+void main() { float s = vH < seaKm && vCut < 0.001 && vDry < 0.001 ? 1.0 : 0.0; outColor = vec4(s, s, s, 1.0); }`;
 
 export class GpuPainter {
     /** Can this renderer paint on the GPU (WebGL 2: integer texel fetches, float data textures)? */
@@ -115,18 +117,21 @@ export class GpuPainter {
     }
 
     /** The palette (looks.js heightLutOf: rgb 3 per step 0–255, minM, stepM, n, zero, shaded, cut) as a texture, once per
-     *  palette: its second row the cut-off seas' colours below sea level (the palette's own where it has none). */
+     *  palette: its second row the cut-off seas' colours below sea level, its third their dried ground's (the palette's own
+     *  where it has none). */
     setLut(lut) {
         if (this.lutKey === lut) return;
         this.lutKey = lut;
-        const px = new Uint8Array(8 * lut.n);
+        const px = new Uint8Array(12 * lut.n);
         for (let i = 0; i < lut.n; i++) {
             px[4 * i] = lut.rgb[3 * i]; px[4 * i + 1] = lut.rgb[3 * i + 1]; px[4 * i + 2] = lut.rgb[3 * i + 2]; px[4 * i + 3] = 255;
             const C = lut.cut && i < lut.zero ? lut.cut : lut.rgb, o = 4 * (lut.n + i);
             px[o] = C[3 * i]; px[o + 1] = C[3 * i + 1]; px[o + 2] = C[3 * i + 2]; px[o + 3] = 255;
+            const Dr = lut.dry && i < lut.zero ? lut.dry : lut.rgb, od = 4 * (2 * lut.n + i);
+            px[od] = Dr[3 * i]; px[od + 1] = Dr[3 * i + 1]; px[od + 2] = Dr[3 * i + 2]; px[od + 3] = 255;
         }
         this.lutTexture?.dispose();
-        this.lutTexture = new THREE.DataTexture(px, lut.n, 2, THREE.RGBAFormat, THREE.UnsignedByteType);
+        this.lutTexture = new THREE.DataTexture(px, lut.n, 3, THREE.RGBAFormat, THREE.UnsignedByteType);
         this.lutTexture.minFilter = this.lutTexture.magFilter = THREE.NearestFilter;
         this.lutTexture.needsUpdate = true;
         const u = this.uniforms;
@@ -152,7 +157,8 @@ export class GpuPainter {
     }
 
     /** A frame by its heights (km) and hillshade (0…1) per cell, coloured by the palette (as SmoothMapRaster.paintHeights); the sea too, if `sea`.
-     *  `cut` (optional, 1 per cell): seas cut off from the world ocean — drawn in the palette's cut colours, and no glint. */
+     *  `cut` (optional, per cell): 1 on seas cut off from the world ocean — drawn in the palette's cut colours — and 2 on
+     *  their dried ground — in its dry colours; neither glints. */
     drawHeights(heightKm, shade, lut, seaLevelKm, sea = false, cut = null) {
         const d = this.heightData.image.data, n = heightKm.length;
         if (cut) for (let c = 0; c < n; c++) { d[2 * c] = heightKm[c]; d[2 * c + 1] = shade[c] + 2 * cut[c]; }

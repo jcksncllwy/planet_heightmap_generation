@@ -10,9 +10,8 @@
 import { TerrainPool } from '../terrain/terrain-pool.js';
 import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
-import { hillshade } from '../view/terrain-shade.js';
 import { worldOcean } from '../terrain/world-ocean.js';
-import { estimateCutOff } from '../terrain/basin-estimate.js';
+import { estimateCutOff, shadeWithWater } from '../terrain/basin-estimate.js';
 import { TERRAIN } from '../terrain/terrain-config.js';
 import { SMALL_DEVICE } from '../core/device.js';
 
@@ -151,7 +150,7 @@ export class TerrainPlayer {
     built(frame) { return this.heights.has(frame) || this.full.has(frame); }
     fresh(frame) { const s = this.shown.get(frame), full = this.full.get(frame); return !!s && (!full || s.src === full); }
 
-    keep(frame, r, shade = hillshade(this.tMesh, r.heightKm, this.shading)) {
+    keep(frame, r, shade = shadeWithWater(this.tMesh, r.heightKm, this.shading, TERRAIN)) {
         let hyps = null, water = null;
         const seaLevelKm = this.shading.seaLevelKm, tMesh = this.tMesh;
         // (water: the seas cut off from the world ocean — terrain/world-ocean.js — for drawing them apart: found by the shading

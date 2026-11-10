@@ -45,6 +45,7 @@ import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { synthesizeTerrain } from '../js/terrain/synthesize.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
+import { shadeWithWater } from '../js/terrain/basin-estimate.js';
 import { hillshade } from '../js/view/terrain-shade.js';
 import { SmoothMapRaster } from '../js/view/map-raster.js';
 import { networkShape, describe } from './lib/river-network.mjs';
@@ -74,10 +75,11 @@ console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
 if (process.argv.includes('--live')) {
     const simMesh = buildSimMesh(SIM, MESH_SEED), tMesh = terrainMesh(CELLS);
     const T = synthesizeTerrain(frame, simMesh, tMesh, { cfg: terrainConfig(), seed: SEED, carve: true });
-    const shade = hillshade(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }), raster = new SmoothMapRaster(tMesh, W);
-    const image = new Uint8ClampedArray(W * (W >> 1) * 4), water = worldOcean(tMesh, T.heightKm, 0);
+    // (the shading worker's: the cut-off seas balanced and the ocean debited for them, then the hillshade — basin-estimate.js)
+    const plain = process.argv.includes('--plain'), shade = plain ? hillshade(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }) : shadeWithWater(tMesh, T.heightKm, { exaggeration: 20, seaLevelKm: 0 }, TERRAIN);
+    const raster = new SmoothMapRaster(tMesh, W), image = new Uint8ClampedArray(W * (W >> 1) * 4), water = shade.water ?? worldOcean(tMesh, T.heightKm, 0);
     // (--plain: as the timeline drew it before cut-off seas were told from the ocean)
-    raster.paintHeights(T.heightKm, shade, heightLutOf(PALETTE), image, 0, process.argv.includes('--plain') ? null : water.cut);
+    raster.paintHeights(plain ? T.heightKm : water.paintKm ?? T.heightKm, shade, heightLutOf(PALETTE), image, 0, plain ? null : water.cut);
     const outDir = path.join(ROOT, 'v2', 'out', 'moments');
     fs.mkdirSync(outDir, { recursive: true });
     const p = new PNG({ width: W, height: W >> 1 }); p.data = Buffer.from(image.buffer); fs.writeFileSync(path.join(outDir, `${NAME}.png`), PNG.sync.write(p));

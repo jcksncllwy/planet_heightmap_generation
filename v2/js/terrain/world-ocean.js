@@ -5,7 +5,8 @@
 // catchment against what evaporates off its water (the Caspian at −28 m, the Dead Sea at −430 m; the Mediterranean drawn
 // down 1.5–3 km when the Atlantic was cut off in the Messinian, Hsü et al. 1973; Ryan 2009). A timeline frame has no
 // climate to balance it with (the finish has: finish-basins.js), so basin-estimate.js balances it on the zonal climate
-// and its views draw it as a lake at that level, or as dry lowland.
+// and its views draw it as a lake at that level, or as a dry hollow at its true depth — and lower the world ocean by the
+// water it holds, which is the ocean's (the history pours all of it there and holds every hollow behind a sill empty).
 
 /**
  * @param {Object} mesh   adjOffset, adjList, numCells

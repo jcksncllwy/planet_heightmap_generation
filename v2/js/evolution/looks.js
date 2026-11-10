@@ -3,7 +3,7 @@
 // relief, and asked to look at other colour options — the palettes below, beside the relief.)
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../tectonics/model/crust.js';
-import { tintOf, cutOffTint } from '../view/terrain-shade.js';
+import { tintOf, cutOffTint, dryTintOf } from '../view/terrain-shade.js';
 
 // ── terrain palettes: colour stops by height (km from sea level; the sea and the land apart), shaded by the relief ──
 // Maps. Topographic: Wikipedia's convention for topographic maps (WikiProject Maps) — pale greens, creams, tans, greys to
@@ -158,6 +158,17 @@ export function cutOffRgb(rgb, zero) {
 }
 
 /**
+ * A dried cut-off sea's ground (terrain/basin-estimate.js), every palette alike: per step below sea level, the colour of
+ * ground that far above the hollow's floor (the painted height there is sea − 1 m − that height; terrain-shade.js
+ * dryTintOf). Per step below sea level (`zero` steps), 3 each.
+ */
+export function dryRgb(zero) {
+    const out = new Float32Array(3 * zero), c = [0, 0, 0];
+    for (let i = 0; i < zero; i++) { dryTintOf(Math.max(0, -(LUT_MIN_M + i * LUT_STEP_M) / 1000 - 0.001), c); out[3 * i] = c[0]; out[3 * i + 1] = c[1]; out[3 * i + 2] = c[2]; }
+    return out;
+}
+
+/**
  * A palette as a height table for SmoothMapRaster.paintHeights (colours every 10 m, −12 … +10 km): 'relief' (the lab's,
  * terrain-shade.js's tintOf), one of PALETTES, or 'heightmap' (V1's: the sea black, the land grey from 0 to 6 km, unshaded).
  */
@@ -174,19 +185,19 @@ export function heightLutOf(id) {
                 rgb[3 * i] = c[0]; rgb[3 * i + 1] = c[1]; rgb[3 * i + 2] = c[2];
             }
         } else rgb = lutOf(id);
-        heightLuts.set(id, { rgb, minM: LUT_MIN_M, stepM: LUT_STEP_M, n: LUT_N, zero: ZERO, shaded: id !== 'heightmap', cut: id === 'heightmap' ? null : cutOffRgb(rgb, ZERO) });
+        heightLuts.set(id, { rgb, minM: LUT_MIN_M, stepM: LUT_STEP_M, n: LUT_N, zero: ZERO, shaded: id !== 'heightmap', cut: id === 'heightmap' ? null : cutOffRgb(rgb, ZERO), dry: id === 'heightmap' ? null : dryRgb(ZERO) });
     }
     return heightLuts.get(id);
 }
 
 /** A palette's colours by height, shaded by the relief as the lab's relief is (terrain-shade.js's paintRelief). */
 export function paintPalette(id, heightKm, shade, out, seaLevelKm = 0, cut = null) {
-    const L = lutOf(id), C = cut ? heightLutOf(id).cut : null;
+    const L = lutOf(id), C = cut ? heightLutOf(id).cut : null, Dr = cut ? heightLutOf(id).dry : null;
     for (let c = 0; c < heightKm.length; c++) {
         const m = (heightKm[c] - seaLevelKm) * 1000;
         // (the coast exact: a cell just under sea level is sea, one just over it land)
         const j = Math.round((m - LUT_MIN_M) / LUT_STEP_M), i = 3 * (m < 0 ? Math.max(0, Math.min(ZERO - 1, j)) : Math.min(LUT_N - 1, Math.max(ZERO, j)));
-        const k = 0.35 + 0.65 * (shade ? shade[c] : 1), S = C && m < 0 && cut[c] ? C : L;
+        const k = 0.35 + 0.65 * (shade ? shade[c] : 1), S = C && m < 0 && cut[c] ? (cut[c] === 2 ? Dr : C) : L;
         out[3 * c] = Math.min(255, S[i] * k); out[3 * c + 1] = Math.min(255, S[i + 1] * k); out[3 * c + 2] = Math.min(255, S[i + 2] * k);
     }
 }

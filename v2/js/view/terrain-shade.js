@@ -2,6 +2,11 @@
 // hillshading lit from the north-west, per cell of whatever mesh the heights live on. DOM-free.
 
 const SEA_STOPS = [[-9, [8, 16, 48]], [-6, [18, 38, 92]], [-4, [26, 60, 128]], [-2, [40, 96, 164]], [-0.5, [70, 140, 196]], [0, [118, 182, 214]]];
+// (a sea cut off from the world ocean and dried — terrain/basin-estimate.js — by height (km) above its floor or its brine
+// lake: a salt flat at the bottom (halite, white to buff: the Badwater and Danakil pans; the Messinian's floors were salt
+// and gypsum, Hsü et al. 1973), playa mud and evaporite fringe above it, then the hollow's bare walls, which no sea or
+// soil has covered since it dried)
+const DRY_STOPS = [[0, [226, 222, 206]], [0.03, [214, 204, 178]], [0.25, [192, 170, 132]], [1, [164, 136, 104]], [3, [136, 114, 96]], [6, [118, 104, 96]]];
 const LAND_STOPS = [[0, [74, 122, 70]], [0.3, [104, 144, 82]], [0.8, [158, 164, 104]], [1.6, [166, 138, 92]], [2.6, [138, 110, 86]], [3.8, [128, 118, 112]], [5, [206, 206, 210]], [7, [255, 255, 255]]];
 
 function ramp(stops, v, out, o) {
@@ -26,6 +31,9 @@ export function cutOffTint(out, o = 0) {
     return out;
 }
 
+/** RGB of a dried cut-off sea's ground by its height (km) above the hollow's floor or brine lake (DRY_STOPS). */
+export function dryTintOf(aboveKm, out = [0, 0, 0], o = 0) { ramp(DRY_STOPS, aboveKm, out, o); return out; }
+
 /** RGB of a height (km above sea level) on the hypsometric ramp. */
 export function tintOf(km, out = [0, 0, 0], o = 0) { ramp(km < 0 ? SEA_STOPS : LAND_STOPS, km, out, o); return out; }
 
@@ -34,7 +42,7 @@ export function tintOf(km, out = [0, 0, 0], o = 0) { ramp(km < 0 ? SEA_STOPS : L
  * so relief reads at planet scale.
  * @returns {Float32Array}
  */
-export function hillshade(mesh, heightKm, { exaggeration = 20, seaLevelKm = 0, seaExaggeration = 0.35 } = {}) {
+export function hillshade(mesh, heightKm, { exaggeration = 20, seaLevelKm = 0, seaExaggeration = 0.35, dry = null } = {}) {
     const { xyz, adjOffset, adjList, numCells } = mesh, R = 6371, out = new Float32Array(numCells);
     const Le = -0.5, Ln = 0.5, Lu = Math.SQRT1_2;
     for (let c = 0; c < numCells; c++) {
@@ -52,7 +60,8 @@ export function hillshade(mesh, heightKm, { exaggeration = 20, seaLevelKm = 0, s
         const det = a11 * a22 - a12 * a12;
         let ge = 0, gn = 0;
         if (Math.abs(det) > 1e-12) { ge = (a22 * b1 - a12 * b2) / det; gn = (a11 * b2 - a12 * b1) / det; }
-        const ex2 = h < seaLevelKm ? exaggeration * seaExaggeration : exaggeration;
+        // (`dry`, 1 per cell: below sea level but no water over it — a dried cut-off sea — shaded as land is)
+        const ex2 = h < seaLevelKm && !(dry && dry[c]) ? exaggeration * seaExaggeration : exaggeration;
         const px = -ex2 * ge, py = -ex2 * gn, len = Math.sqrt(px * px + py * py + 1);
         out[c] = Math.max(0, (px * Le + py * Ln + Lu) / len) / Lu;
     }
@@ -60,14 +69,15 @@ export function hillshade(mesh, heightKm, { exaggeration = 20, seaLevelKm = 0, s
 }
 
 /** Tinted, shaded colours per cell into `out` (3 bytes per cell). `mode`: 'terrain' | 'shade' (grey) | 'tint' (no shading).
- *  `cut` (optional, 1 per cell): seas cut off from the world ocean, tinted apart (cutOffTint). */
+ *  `cut` (optional, per cell): 1 on seas cut off from the world ocean, tinted apart (cutOffTint); 2 on their dried ground,
+ *  coloured by height above its floor (heightKm there is basin-estimate.js's paintKm: sea − 1 m − that height). */
 export function paintRelief(heightKm, shade, out, { seaLevelKm = 0, mode = 'terrain', cut = null } = {}) {
     const rgb = [0, 0, 0];
     for (let c = 0; c < heightKm.length; c++) {
         const s = shade ? shade[c] : 1;
         if (mode === 'shade') { const g = Math.min(255, 150 * s); out[3 * c] = out[3 * c + 1] = out[3 * c + 2] = g; continue; }
-        tintOf(heightKm[c] - seaLevelKm, rgb);
-        if (cut && cut[c] && heightKm[c] < seaLevelKm) cutOffTint(rgb);
+        if (cut && cut[c] === 2) dryTintOf(Math.max(0, seaLevelKm - 0.001 - heightKm[c]), rgb);
+        else { tintOf(heightKm[c] - seaLevelKm, rgb); if (cut && cut[c] && heightKm[c] < seaLevelKm) cutOffTint(rgb); }
         const k = mode === 'tint' ? 1 : 0.35 + 0.65 * s;
         out[3 * c] = Math.min(255, rgb[0] * k); out[3 * c + 1] = Math.min(255, rgb[1] * k); out[3 * c + 2] = Math.min(255, rgb[2] * k);
     }

@@ -929,7 +929,9 @@ function cutOffLine(T) {
     // (the estimate on the zonal climate — basin-estimate.js — of which hold water)
     const S = (W.seas ?? []).filter(x => x.km2 >= FINISH.seaBasinKm2[0]), wet = S.filter(x => x.wet).length;
     const est = S.length ? `; estimated: ${wet} hold water, ${S.length - wet} dry — Add detail balances them on its own climate` : ' (their level set by their water balance: Add detail)';
-    return `<div>Seas cut off from the ocean: ${big.length} · ${(km2 / 1e6).toFixed(2)} M km²${est}</div>`;
+    // (the water they hold is the world ocean's, which is drawn lower by it: the books close — basin-estimate.js)
+    const held = W.heldKm3 > 0 ? `; they hold ${(W.heldKm3 / 1e6).toFixed(2)} M km³ of water, and the ocean is drawn ${Math.round(1000 * W.oceanFallKm)} m lower for it` : '';
+    return `<div>Seas cut off from the ocean: ${big.length} · ${(km2 / 1e6).toFixed(2)} M km²${est}${held}</div>`;
 }
 function stats(T, frame) {
     if (!$('statsDetails').open) return;
@@ -1231,7 +1233,7 @@ function readout(e) {
     lines.push(`<span class="hi-label">Elev</span> ${Math.round(at ? at.heightM : h * 1000).toLocaleString()} m`);
     // (a sea cut off from the world ocean, on the live terrain: its level is its water balance's — Add detail finds it)
     // (estimated on the zonal climate — basin-estimate.js; Add detail balances it on its own)
-    if (!at && paintedT.water?.cut[t] && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, estimated (Add detail balances it)`);
+    if (!at && paintedT.water?.cut[t] === 1 && (h < 0 || paintedT.water.paintKm)) lines.push(`<span style="color:#7aa">●</span> <b>${paintedT.water.paintKm ? 'Lake cut off from the ocean' : 'Cut off from the ocean'}</b> · its level by its water balance, estimated (Add detail balances it)`);
     else if (!at && paintedT.water?.dry?.[t]) lines.push(`<span style="color:#b9a27a">●</span> <b>Dry basin below sea level</b> · too little rain to fill it, estimated (Add detail balances it)`);
     if (at && view.water && (view.layer === 'terrain' || view.layer === 'satellite')) {
         if (at.water && !at.ocean) lines.push(`<span style="color:#5ae">●</span> <b>${['', 'Fresh lake', 'Salt lake', 'Salt pan'][at.water]}</b>`);

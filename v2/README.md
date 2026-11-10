@@ -68,10 +68,17 @@ evaporation from that temperature and the latitude's sunlight (`climate/water.js
 Priestley–Taylor law, its seasons from the temperature stage's land response — the water ledger, 2026-11-06) and Add detail's Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
 catchment's runoff against what its water loses at each level). One that fills is drawn as a lake at its spill level
 (the ground of its hollow above sea level drowned too), one that keeps a lake as that lake, at its level, in its own
-grey-teal (`terrain-shade.js cutOffTint`, without the glint), and its dry ground as lowland (a playa or a salt flat).
+grey-teal (`terrain-shade.js cutOffTint`, without the glint), and its dry ground at its true depth — a salt flat at
+the bottom, playa above it, the hollow's bare walls (`dryTintOf`, coloured by height above the brine lake or dry floor
+each cell drains to, shaded as land; until 2026-11-09 painted 2 m above sea level, a green lowland where a 6 km hole
+was). **The water is conserved** (2026-11-09): the history pours its whole inventory into the ocean-connected ground
+every frame and holds every hollow behind a sill empty (`tectonics/ocean/inventory.js pourOcean`), so water a cut-off sea
+holds here is the world ocean's, and the ocean is drawn lower by it (`oceanFallKm`: median ~1 m, up to 77 m over three
+seeds' histories; the Stats say how much). An equilibrium per frame, nothing carried between frames (a sea dries in
+10³–10⁴ years, a frame is 10⁶–10⁷). `tools/check-waterbooks.mjs` closes the books every frame of three histories.
 Against Add detail at 640K over three seeds × four moments (`tools/basin-agree.mjs`): the same sign — water standing or
 not — on 345 of 386 seas (89 %; 99 % by area); where they differ the zonal estimate is wet and the finish's climate
-(rain shadows, monsoons) dry. ~40 ms a frame at 160K in the shading worker, only when a cut-off body is as large as the
+(rain shadows, monsoons) dry. ~70–190 ms a frame at 160K in the shading worker with its hillshade (Node, loaded), only when a cut-off body is as large as the
 finish balances (`basinMinKm2`). The readout and the Stats say it is an estimate. The same on the lab's Terrain layer
 (Phase 8a, at its Sea level). **Add detail** (the code's *finish*) sculpts the moment shown again, with care, at a detail of its own (160K · 640K · 2.5M · 10M
 cells; phones up to 640K; plans/V2_FINISH_PLAN.md): the surface domain-warped and roughened on high ground; the climate
@@ -229,6 +236,7 @@ node v2/tools/check-phase1.mjs         # … 2, 3, 4, 5, 5b, 6, 6b, 7, 7b, 7c, 8
 node v2/tools/check-invariants.mjs     # invariants through whole histories: land never vanishes, dead plates empty, terrane ids, cratons
 node v2/tools/check-scale.mjs          # the same scenes at 40K and 80K cells agree in km / km² / Myr; recording rate never changes a history
 node v2/tools/check-basins.mjs         # cut-off seas: the water balance against the Caspian, the Dead Sea, the Messinian; three histories finished, reported against Earth
+node v2/tools/check-waterbooks.mjs     # the water conserved every frame: the history's pour holds it all, the view debits the ocean for its cut-off seas
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
@@ -349,6 +357,7 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
   world-ocean      the world ocean (the water below sea level joined to the largest body of it) and the seas cut off
                    from it — the finish's sea, and the timeline's cut-off tint
   basin-estimate   the timeline's cut-off seas balanced on the zonal climate (Add detail's own balance): lake or dry
+                   hollow, the world ocean debited for the water they hold (shadeWithWater: with the frame's hillshade)
   terrain-pool     the same synthesis on worker threads (terrain-worker.js), bit for bit — each frame's plan built
                    once, by the first worker, and handed to the others over message ports; mesh-worker builds a
                    terrain mesh off the page's thread; shade-worker hillshades the frame shown, so the page's thread

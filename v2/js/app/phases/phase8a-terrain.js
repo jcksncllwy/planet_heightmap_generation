@@ -16,9 +16,9 @@ import { synthesizeTerrain, hypsometry } from '../../terrain/synthesize.js';
 import { terrainConfig } from '../../terrain/terrain-config.js';
 import { kindType, deriveRecords } from '../../terrain/records.js';
 import { locate } from '../../core/mesh-locate.js';
-import { hillshade, paintRelief, tintOf, cutOffTint } from '../../view/terrain-shade.js';
+import { paintRelief, tintOf, cutOffTint, dryTintOf } from '../../view/terrain-shade.js';
 import { worldOcean } from '../../terrain/world-ocean.js';
-import { estimateCutOff } from '../../terrain/basin-estimate.js';
+import { estimateCutOff, shadeWithWater } from '../../terrain/basin-estimate.js';
 import { colorByCrustType, colorByOrogeny, colorByMantleHeat, OROGENY_RGB, css } from '../../view/palettes.js';
 import { EventKind } from '../../tectonics/model/world.js';
 import { TECTONICS } from '../../tectonics/config.js';
@@ -41,7 +41,7 @@ const SIM_RESOLUTIONS = [
 // display settings (no re-synthesis) and terrain constants (terrain-config.js) the lab can change
 const VIEW_TUNABLES = [
     { id: 'exaggeration', label: 'Hillshade: slope exaggeration (display only)', min: 5, max: 60, step: 5, value: 20 },
-    { id: 'seaLevelKm', label: 'Sea level (a sea cut off from the world ocean — the largest body of water — is balanced on the zonal climate: a lake, grey-teal, or dry lowland)', min: -0.6, max: 0.6, step: 0.05, unit: ' km', value: 0 },
+    { id: 'seaLevelKm', label: 'Sea level (a sea cut off from the world ocean — the largest body of water — is balanced on the zonal climate: a lake, grey-teal, or a dry hollow at its true depth, salt flat to bare walls; the ocean is drawn lower by the water they hold)', min: -0.6, max: 0.6, step: 0.05, unit: ' km', value: 0 },
 ];
 const TERRAIN_TUNABLES = [
     { id: 'stripeShare', label: 'Parallel ridges: share of the belt’s own uplift', min: 0, max: 0.5, step: 0.02 },
@@ -268,7 +268,7 @@ export function terrainPhase(spec) {
     // components (Ridges only) as its build has them; its hypsometry, land-height tally and records only when something
     // asks for them
     const shading = { exaggeration: view.exaggeration, seaLevelKm: view.seaLevelKm };
-    const keep = (frame, r, shade = hillshade(tMesh, r.heightKm, shading)) => {
+    const keep = (frame, r, shade = shadeWithWater(tMesh, r.heightKm, shading, cfg)) => {
         let rec = r.rec ?? null, hyps = null, water = null;
         const out = { src: r, heightKm: r.heightKm, get parts() { return r.parts ?? null; }, sampler: r.sampler ?? S.sampler, ms: r.ms, kernels: r.kernels, volcanoes: r.volcanoes,
             tectonicKm: r.tectonicKm ?? null, drainage: r.drainage ?? null, carved: !carve || r.carved !== false, tally: null,
@@ -476,7 +476,8 @@ export function terrainPhase(spec) {
         legend: [
             ...[[-6, 'abyssal plain (−6 km)'], [-2.5, 'mid-ocean ridge (−2.5 km)'], [-0.1, 'continental shelf'], [0.15, 'lowland'], [1, 'upland (1 km)'], [2.5, 'mountains (2.5 km)'], [4, 'high mountains / plateau (4 km)'], [6, 'peaks (6 km)']]
                 .map(([h, label]) => ({ color: css(tintOf(h)), label })),
-            { color: css(cutOffTint(tintOf(-0.5))), label: 'a lake in a sea cut off from the world ocean, at its level estimated on the zonal climate (dry ground of one: lowland; Add detail on the Evolution page balances it on its own climate)' },
+            { color: css(cutOffTint(tintOf(-0.5))), label: 'a lake in a sea cut off from the world ocean, at its level estimated on the zonal climate (its water debited from the world ocean, which is drawn lower by it; Add detail on the Evolution page balances it on its own climate)' },
+            { color: css(dryTintOf(0.1)), label: 'a sea cut off from the world ocean and dried, at its true depth: salt flat and playa at the bottom, bare walls above (estimated: too little rain to fill it)' },
             ...orogenyLegend(undefined, ' (Belts layer; ticks: ridge direction)'),
             ...[[0.9, 'erosion ×0.9 — dry subtropics (Erosion rate layer)'], [1.05, 'erosion ×1.05 — storm tracks, and ice toward the poles'], [1.28, 'erosion ×1.3 — the wet equator']]
                 .map(([e, label]) => ({ color: css(erosionRgb(e)), label })),

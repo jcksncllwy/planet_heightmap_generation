@@ -116,27 +116,28 @@ export class SmoothMapRaster {
      * Per pixel: the height (and hillshade) blended from the pixel's three cells, THEN coloured — so a coast is drawn as
      * the heights' zero line, crisp at the pixel, instead of land and sea colours blended across a mesh triangle (a
      * zig-zag of the mesh's triangles along every shore). `lut`: {rgb: 3 per step (0–255), minM, stepM, n, zero (the
-     * first step at or above sea level), shaded, cut (the sea's steps for a sea cut off from the world ocean, or null)};
-     * shaded colours are × (0.35 + 0.65 · shade), as paintRelief's. `cut` (optional, 1 per cell: terrain/world-ocean.js):
-     * below sea level, a pixel any of whose cells is cut off is drawn in the lut's cut colours (a triangle never holds
-     * both: the ocean and a sea cut off from it are never neighbours).
+     * first step at or above sea level), shaded, cut (the sea's steps for a sea cut off from the world ocean, or null), dry (its dried ground's)};
+     * shaded colours are × (0.35 + 0.65 · shade), as paintRelief's. `cut` (optional, per cell: terrain/basin-estimate.js):
+     * below sea level, a pixel any of whose cells is cut off (1) is drawn in the lut's cut colours, else one any of whose
+     * cells is a dried cut-off sea (2) in its dry colours (a triangle never holds the ocean and either: they are never
+     * neighbours; a lake's shore takes the lake's).
      */
     paintHeights(heightKm, shade, lut, outRgba, seaLevelKm = 0, cut = null) {
         const pc = this.pixelCells, pw = this.pixelWeights, n = this.width * this.height;
-        const L = lut.rgb, { minM, stepM, zero } = lut, top = lut.n - 1, S = lut.shaded ? shade : null, C = cut && lut.cut ? lut.cut : null;
+        const L = lut.rgb, { minM, stepM, zero } = lut, top = lut.n - 1, S = lut.shaded ? shade : null, C = cut && lut.cut ? lut.cut : null, Dr = cut && lut.dry ? lut.dry : C;
         for (let i = 0, o = 0; i < n; i++, o += 4) {
             const a = pc[3 * i], b = pc[3 * i + 1], c = pc[3 * i + 2], w1 = pw[2 * i], w2 = pw[2 * i + 1], w0 = 255 - w1 - w2;
             const m = ((w0 * heightKm[a] + w1 * heightKm[b] + w2 * heightKm[c]) / 255 - seaLevelKm) * 1000;
             const j = Math.round((m - minM) / stepM), k3 = 3 * (m < 0 ? Math.max(0, Math.min(zero - 1, j)) : Math.min(top, Math.max(zero, j)));
             const k = S ? 0.35 + 0.65 * (w0 * S[a] + w1 * S[b] + w2 * S[c]) / 255 : 1;
-            const T = C && m < 0 && (cut[a] | cut[b] | cut[c]) ? C : L;
+            const any = C && m < 0 ? cut[a] | cut[b] | cut[c] : 0, T = any & 1 ? C : any ? Dr : L;
             outRgba[o] = Math.min(255, T[k3] * k); outRgba[o + 1] = Math.min(255, T[k3 + 1] * k); outRgba[o + 2] = Math.min(255, T[k3 + 2] * k);
             outRgba[o + 3] = 255;
         }
     }
 
     /** Per pixel: 255 where the blended height is below sea level, else 0 — the sea, as crisp as paintHeights' coast;
-     *  with `cut` (1 per cell), only the world ocean's (a sea cut off from it may be dry: it does not glint). */
+     *  with `cut` (nonzero per cell), only the world ocean's (a sea cut off from it may be dry: it does not glint). */
     paintSea(heightKm, outRgba, seaLevelKm = 0, cut = null) {
         const pc = this.pixelCells, pw = this.pixelWeights, n = this.width * this.height;
         for (let i = 0, o = 0; i < n; i++, o += 4) {
