@@ -71,13 +71,15 @@ export const ERODE = {
  * @param {(z: Float32Array, flood?: Object) => Object} o.closed   closedBasins on this ground (flood: the GPU path's, finish-basins.js)
  * @param {Float32Array|null} [o.slow]   a multiple of the rate, per cell (the ice's young ground)
  * @param {Object|null} [o.column]       the rock column on this mesh (loose, zBed, fine: rockColumn)
+ * @param {Float32Array|null} [o.uplift] the history's surface uplift here, km/Myr, signed (its frame's tectRateKm: the rise its
+ *                                       tectonic terms gave the ground, isostasy included, erosion not): added to the ground each step
  * @param {number} o.m              the carve's m
  * @param {number} o.activeHold
  * @param {number} o.valleyKm       a valley's width at 10⁴ km²
  * @param {Object} P                ERODE's settings
  */
 export function erodeLandscape(o, P) {
-    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null } = o;
+    const { mesh, z, ocean, water, k, hold, slow = null, m, activeHold, valleyKm, column = null, uplift = null } = o;
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R * R / n, perCell = valleyKm / Math.sqrt(a);
     const dt = P.timeMyr / P.steps;
     // (the sea's surface, as a float32: the heights and the GPU's are, and −0.12 is not one — read as a double, a flat at the sea
@@ -195,13 +197,13 @@ export function erodeLandscape(o, P) {
     // (a delta: what came in by each mouth fills the water nearest that mouth up to `surface`, so a filling lake shrinks and
     // stays deep beyond the front. Laid flat from the floor, it would keep all its area until the last metre: a wide sheet)
     const inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
-    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaKm) : null;
+    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaKm, uplift) : null;
     let reboundKm3 = 0;
     const curve = [], t = { route: 0, closed: 0, solve: 0, load: 0, lay: 0 };
     for (let s = 0; s < P.steps; s++) {
         let t0 = performance.now();
         const lap = name => { const t1 = performance.now(); t[name] += t1 - t0; t0 = t1; };
-        if (settle && s > 0 && s % P.closedEvery === 0) reboundKm3 += settle();
+        if (settle && s > 0 && s % P.closedEvery === 0) reboundKm3 += settle(s * dt);
         if (s % P.closedEvery === 0) { closed(); lap('closed'); route(); lap('route'); } else if (s % P.routeEvery === 0) { route(); lap('route'); }
         // ── the water, headwaters first ──
         A.fill(0);
@@ -210,7 +212,7 @@ export function erodeLandscape(o, P) {
         // does not erode, and stands under the new surface of what it drains to ──
         let lakes = 0, lakeCells = 0;
         for (let i = 0; i < count; i++) {
-            const c = order[i], r = recv[c], out = rank[r] < 0, under = out ? surfaceOut(r) : e[r], old = z[c] + dropped[c];
+            const c = order[i], r = recv[c], out = rank[r] < 0, under = out ? surfaceOut(r) : e[r], old = z[c] + dropped[c] + (uplift ? Math.fround(uplift[c] * dt) : 0);
             gross[c] = 0;
             if (fill[c] > z[c] + EPS) {
                 e[c] = old > under ? old : under; zNew[c] = old; lakeCells++;
@@ -303,7 +305,7 @@ export function erodeLandscape(o, P) {
         survivors = { top: shown.slice(0, 14), byAge: { under20pct: share(h => h.meanAgeMyr < 0.2 * P.timeMyr), over80pct: share(h => h.meanAgeMyr >= 0.8 * P.timeMyr) }, shallow30m: share(h => h.depthM < 30), smallInflow: share(h => h.inflowKm2 < 3 * h.km2) };
     }
     for (let c = 0; c < n; c++) if (dropped[c] > 0) z[c] += dropped[c];       // (the last step's)
-    if (settle && P.steps > 0) reboundKm3 += settle();
+    if (settle && P.steps > 0) reboundKm3 += settle(P.timeMyr);
     let seaKm3 = 0, closedKm3 = 0, grossKm3 = 0;
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
@@ -386,12 +388,16 @@ export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a) {
  * `seaKm`: the sea's surface it keeps land above (the lowstand's during early erosion).
  * @returns {() => number} settles `z` in place, returning the km³ the land moved by
  */
-export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0) {
+export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0, uplift = null) {
     const { adjOffset, adjList, numCells: n } = mesh, a = 4 * Math.PI * R * R / n, anchor = z.slice();
-    return () => {
-        const d = new Float32Array(n), next = new Float32Array(n);
+    let since = 0;
+    // `at`: the run's time now (Myr). The uplift is the surface's own rise, its isostasy already in it: only what was taken off or
+    // laid on since the last settling is a load
+    return (at = 0) => {
+        const d = new Float32Array(n), next = new Float32Array(n), lifted = at - since;
+        since = at;
         let km3 = 0;
-        for (let c = 0; c < n; c++) if (!ocean[c]) d[c] = z[c] - anchor[c];
+        for (let c = 0; c < n; c++) if (!ocean[c]) d[c] = z[c] - anchor[c] - (uplift ? uplift[c] * lifted : 0);
         const need = 2 * P.reboundKm * P.reboundKm / (mesh.edgeKm * mesh.edgeKm), passes = Math.ceil(need / 0.5), w = need / passes;
         for (let p = 0; p < passes; p++) {
             for (let c = 0; c < n; c++) {
