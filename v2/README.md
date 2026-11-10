@@ -2906,3 +2906,43 @@ rock's thickness (riseKm3 over area, 28–51 km), which is its own lane.
 **Left, in their own lanes** (the lane's report: sized plans): the coast tips (277–424 land cells per world drawn on the sea
 side of their sim cell) and replacing the warp with the history's eroded relief, flooded at the current level.
 
+
+## Fluvial: erosion over the history's window (2026-11-10, lane fluvial)
+
+The finish's erosion used to run a short ladder (10 + 4 + 2 steps) from the moment's surface. It now runs over the
+**window the history itself covers** (`tectSpanMyr`, carried on the terrain-pool frame: the slim frame had dropped the
+scalar, so the span never engaged before c92d61f). Processes, all in `finish-erode.js` (`ERODE`):
+
+- `tectUplift` (U): the history's rise reaches the finish as `tectRateKm`, so rock uplift and incision balance over the window.
+  The old `sinkingGround` is retired.
+- `spanWindow` / `spanMaxMyr` (20): the ladder is stretched to the window, each rung at its own dt.
+- `spanSplit` **'even'** (default): every rung stretched alike. `'coarse'` put all the extra time on the 160K rung, whose
+  ~56 km spacing printed as ~100 km mounds (spectral power ×2.7–3.6 at 50–240 km; U added only ×1.2–2). With 'even' the
+  mounds become dendritic dissection.
+- `hillD` / `diffD`: hillslope and channel diffusion, 0.01; inert at physical D, pinned to 0 in check-gpu.
+
+**Kept on purpose.** R5 (a bed stands at least at its receiver's, never above the tectonic surface): without it 7770 river
+cells were carved below their receiver and 8b's downhill check failed. R6 (a cell drops by its valley's share,
+`carveValleyKm`, 20): without it a coastal strip drowned (land −5 to −7 %, drowned-valley backstop 28.13 → 25.27 % of the
+planet; with it 27.2 %). The finish solvers' R6 share is deleted. 8b standalone, all on, R6 and even: every check passes
+(0 river cells below their receiver; drowned valleys 29.13 → 27.94 %).
+
+**What it costs** (831576@430, history cache off; `stats.erode.levels[]` gives it per rung). Cost is steps × per-step cost:
+
+| | 160K | 640K | 2.5M | erosion stage |
+|---|---|---|---|---|
+| base (steps) | 10 | 4 | 2 | 640K 3.6–3.9 s; 2.5M ≈ 5 s of rungs |
+| head, coarse | 194 steps, 19.6 s | 4, 2.0 s | 2, 1.9 s | 640K 32–34 s (Chroma D3D12) |
+| head, even | 125 steps, 12.9 s | 50, 12.3 s | 25, 18.1 s | 2.5M 47.6 s (Upwell Metal, load ~25) |
+
+Per step ≈ 0.10 s at 160K, 0.25 s at 640K, 0.7 s at 2.5M, so the span costs roughly 3.3 s per Myr at 640K whatever the split.
+History and every other finish stage are unchanged (history 70–72 s vs 71–74 s; finish 112–117 s → 125–142 s). To cut
+it: a bigger dt (0.05 → 0.1 halves the steps) or a lower `spanMaxMyr`; neither has been judged on the crops.
+
+**Numbers (all on, vs main).** Above 4 km: 2.30 % of land at 2.5M (Earth 2–3 %); max height 6.7 → 7.7 km and 7.1 → 8.2 km (the
+top peaks are still rising at the window's end); mean land 1.67–1.83 → 1.42–1.65 km (Earth 0.8; the offset predates the lane).
+Lake share (640K replicates) stays at or below base's range for 831576@420–440 and sits 0.4–0.5 % against 0.14–0.17 % for 12345.
+
+**Open.** rake-compress loses on M1; hillD/diffD at physical D are inert; 'even' still dissects plateaus hard over 10 Myr
+(a K question); the span's GPU cost; mean land is 2× Earth's; scattered 30–50 km hills on the lowland east of the 831576@430
+belt that base lacks (seen in the 2.5M crops, not yet measured).
