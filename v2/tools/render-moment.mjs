@@ -50,6 +50,8 @@ import { shadeWithWater } from '../js/terrain/basin-estimate.js';
 import { hillshade } from '../js/view/terrain-shade.js';
 import { SmoothMapRaster } from '../js/view/map-raster.js';
 import { networkShape, describe } from './lib/river-network.mjs';
+// GEO_SIM_DAWN=1: the finish erodes on the GPU through Dawn (as tools/lib/check-kit.mjs; sim-slots carries GEO_SIM_ variables to Chroma)
+if (process.env.GEO_SIM_DAWN === '1') await import('./gpu-harness/use-dawn.mjs');
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
