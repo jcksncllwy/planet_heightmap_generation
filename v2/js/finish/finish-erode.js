@@ -61,6 +61,8 @@ export const ERODE = {
     diffD: 0,                   // GPU only: nonlinear threshold diffusion's D, km²/Myr (Roering et al. 1999; 0.01 is a soil's), 0: none…
     diffSc: 1.25,               // …its critical slope…
     diffSweeps: 20,             // …and the Jacobi sweeps of its implicit step
+    spanWindow: false,          // the ladder's coarsest rung stretched to the moment's window (frame tectSpanMyr), at its own dt…
+    spanMaxMyr: 20,             // …up to this long (a history's first frame counts its window from the start: a cost cap)
     tectUplift: false,          // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
 };
@@ -492,6 +494,19 @@ function meanOnto(M, fine, coarseN, empty = 0) {
 function carry(M, values, out) {
     const { cells, weights } = M, n = out.length;
     for (let i = 0; i < n; i++) out[i] += weights[3 * i] * values[cells[3 * i]] + weights[3 * i + 1] * values[cells[3 * i + 1]] + weights[3 * i + 2] * values[cells[3 * i + 2]];
+}
+
+/**
+ * The ladder over the moment's window (ERODE spanWindow): its coarsest rung runs the window less the finer rungs' spans, at
+ * the rung's own dt — the history's uplift (tectRateKm) is the rise over that window, so with it the rivers have the time the
+ * ground rose in. A frame without a window (one cached before it was kept), or a window no longer than the ladder: as it is.
+ */
+export function ladderOverWindow(P, windowMyr) {
+    if (!P.spanWindow || !P.ladder || !(windowMyr > 0)) return P;
+    const [first, ...rest] = P.ladder, finer = rest.reduce((t, L) => t + L.timeMyr, 0), T = Math.min(windowMyr, P.spanMaxMyr ?? Infinity) - finer;
+    if (T <= first.timeMyr) return P;
+    const dt = first.timeMyr / first.steps;
+    return { ...P, ladder: [{ ...first, timeMyr: T, steps: Math.ceil(T / dt - 1e-9) }, ...rest] };
 }
 
 /** The ladder for a mesh of N cells: levels at or finer than it are one, the coarsest of them, run on the mesh itself. */

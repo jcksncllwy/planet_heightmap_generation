@@ -101,6 +101,7 @@ export function captureFrame(world, reuse = null) {
     f.tectRateKm ??= new Float32Array(n);
     const tectSpan = tectWindowMyr(world);
     f.time = world.time;
+    f.tectSpanMyr = tectSpan;                           // (the window tectRateKm is over, Myr: the finish erodes over it, ERODE spanWindow)
     // mark every raster cell that is some world cell's nearest; the rest are hidden between world cells (see below)
     const epoch = ++captureEpoch;
     for (let w = 0; w < n; w++) {
