@@ -379,8 +379,9 @@ section('heights from the crust (branch unified)');
         source: 'about a third of the continental crust deformed since 240 Ma, ~65 % of it by extension (Müller et al. 2019, Tectonics 38: 1884, a deformable plate model; its networks hold resolvably strained crust, so cells count by strain ≥ 10 %, not by a belt\'s reach — lane crust, 2026-11-04) — frames from 300 Myr',
         detail: txt(r => `of it compression (belts): ${(100 * meanH(r, 'compressed', null, 300)).toFixed(0)} % of the crust (Earth ~12 %); extension (rifts): ${(100 * (meanH(r, 'deformed', null, 300) - meanH(r, 'compressed', null, 300))).toFixed(0)} % (Earth ~22 %); counted by strain ≥ ${100 * DEFORMED_STRAIN} % — any record by reach: ${(100 * meanH(r, 'touched', null, 300)).toFixed(0)} % (compression ${(100 * meanH(r, 'touchedC', null, 300)).toFixed(0)} %)`) });
     // (lane pstress) the stress inside the plates (field/plate-stress-field.js): the share of the plates' area where it beats the
-    // rock's strength (field/stress-step.js) — the field's diffuse deforming zones. The continents' strength is DECLARED
-    // (config.plateYieldContinent: no sourced figure), so this is a finding at that strength, not a calibration
+    // rock's strength (field/stress-step.js) — the field's diffuse deforming zones. The continents' strength is sourced since
+    // lane riftstrength (Buck 1991's curves: heat, the crust's own thickness, fresh flood basalt, old weak lines), against a
+    // driving force in the declared unit (config.forceUnitNPerM): a finding at that pair, not a calibration
     const yieldShare = r => r.stress.length ? 100 * r.stress.reduce((a, x) => a + x.tension + x.compression, 0) / r.stress.length : NaN;
     report('plates at yield under their own stress (tension + compression, frames from 100 Myr)', rows.map(yieldShare), { earth: [13, 16], unit: ' %', digits: 1,
         source: 'deforming share of the surface ~15 % (Gordon 1998), ~14 % (Kreemer et al. 2014): today only, and their threshold is a strain rate, this one a strength',
