@@ -1,6 +1,6 @@
 // Where a continent breaks, from its stress (lane pstress, stage 2; config.riftByStress). A rift opens where the plate's own
 // stress (field/plate-stress-field.js) pulls hardest against the strength of the ground (field/stress-step.js strengthOf:
-// rock, old weak lines, damage), and runs across the pull: a fault opens normal to the most tensile stress.
+// rock, heat, magma, old weak lines), and runs across the pull: a fault opens normal to the most tensile stress.
 //   - the junction: the land cells where s1 ÷ strength is highest (tension over strength), spread apart, deep enough inland;
 //   - the arms: cheapest paths over the land at a cost per km of strength ÷ the tension across the step (the normal stress
 //     on the plane the step runs along: s1 (n·d1)² + s2 (1 − (n·d1)²), n the step's normal, d1 s1's direction), × the grain
@@ -33,9 +33,9 @@ export function riftStressContext(world, plate) {
     const p = [0, 0, 0], s = { s1: 0, s2: 0, dir: [0, 0, 0] }, back = [0, 0, 0];
     for (let c = 0; c < numCells; c++) {
         if (!crust.mask[c]) continue;
-        strength[c] = strengthOf(crust, c, time, config);
         plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], p);
         const w = index.nearest(p[0], p[1], p[2]);
+        strength[c] = strengthOf(crust, c, time, config, world.mantleHeat[w]);   // (the mantle under it: world cell w's, whoever owns it)
         if (world.owner[w] !== plate.id || world.ownerCell[w] !== c || !stressAt(world, w, s)) continue;
         s1[c] = s.s1; s2[c] = s.s2;
         plate.toPlateFrame(s.dir[0], s.dir[1], s.dir[2], back);         // (the direction in the plate's frame, as the raster is)

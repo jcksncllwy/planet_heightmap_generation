@@ -37,7 +37,7 @@ function measure(w) {
         if (t === CrustType.OCEAN) continue;
         isLand[c] = 1; land++;
         if (t === CrustType.ARC || !stressAt(w, c, s)) continue;
-        if (s.s1 > strengthOf(cr, k, time, config)) { yielded[c] = 1; ylan++; }
+        if (s.s1 > strengthOf(cr, k, time, config, w.mantleHeat[c])) { yielded[c] = 1; ylan++; }
     }
     const seen = new Uint8Array(numCells), zones = [];
     for (let c0 = 0; c0 < numCells; c0++) {

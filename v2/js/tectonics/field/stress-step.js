@@ -1,10 +1,11 @@
 // The stress field in the history (lane pstress): every plateStressEveryMyr the plates' stress is solved
 // (field/plate-stress-field.js), held against the strength of the rock it is in, and where it beats it the lithosphere breaks:
-// damage, a record on the crust raster (crust.damage, 0–1) that moves with its plate and heals after.
+// a record on the crust raster (crust.damage, 0–1) that moves with its plate and heals after. No strength reads it (lane
+// riftstrength, below): it is where the field yielded, for the reports.
 //
-//   strength T_y = T_rock × (old weak line: riftWeaknessCost) × (1 − (1 − φ) D)                 (N/m, vertically integrated)
-//     T_rock: old ocean plateYieldOcean × √(age ÷ plateYieldOceanAgeMyr) (to 1; half-space cooling thickens it), ordinary
-//     continent plateYieldContinent, a craton × cratonStrength
+//   strength T_y = T_rock × (old weak line: riftWeaknessCost)                                     (N/m, vertically integrated)
+//     T_rock: old ocean plateYieldOcean × √(age ÷ plateYieldOceanAgeMyr) (to 1; half-space cooling thickens it); continent
+//       plateYieldContinent (a craton × cratonStrength) × heat H(h) × magma (÷ magmaWeakening on a fresh LIP)
 //   breaks in tension where s1 > T_y, in compression where −s2 > plateYieldCompression × T_y
 //   broken: D = 1; after, D falls as e^(−t ÷ plateDamageHealMyr)
 //   with plateStressRifts, continental crust broken in tension is also logged as stretched: a RIFT record with no work
@@ -14,13 +15,31 @@
 //     relief 4.5× as long (step/heights.js wears a rift's uplift on riftReliefTauMyr, an escarpment's) — the opposite of
 //     an orogen's collapse. (Measured 2026-11-02: allowing quiet belts, ~9 of the ~20 points it added at 5e12 were relabels.)
 //
+// The continent's strength law (lane riftstrength, L2 of the rift program, 2026-11-10; every factor sourced in config.js):
+//   - plateYieldContinent 1e13: Buck 1991's integrated strength (his figure, reproduced as Hopper & Buck 1993 Fig. 1) of a
+//     ~40 km crust at ~65 mW/m², Earth's average continent — the strength of continent over mantle no continent has warmed;
+//   - heat H(h): h = world.mantleHeat (0…1, the insulation a continent built under itself, step/hotspots.js). A mantle
+//     warmed ΔT = h × plateHeatWarmK (Coltice et al. 2007: up to 100 °C under a supercontinent) is less viscous, so the
+//     thermal boundary layer under the lid thins (δ ∝ η^⅓, boundary-layer theory) and the mantle heat flow rises:
+//       q = qRef + qMantle × [(1 + ΔT ÷ ΔT_lid) × exp(E ÷ 3R × (1/T_m − 1/(T_m + ΔT))) − 1]
+//     and the strength falls along Buck's curve (BUCK_40KM below: the geometric mean of his 30 and 50 km crust curves),
+//     H = B(q) ÷ B(qRef). With the sourced constants H is 1 → ~0.30 from h 0 → 1 (×2.3 weaker at the land's median h 0.62);
+//   - magma: crust a plume head's flood basalt covered (volcType LIP) within magmaWeakMyr of its eruption is ÷ magmaWeakening
+//     weaker: dikes open at a force an order of magnitude below the one tectonic faulting needs (Bialas, Buck & Qin 2010);
+//   - inherited lines (SUTURE, FAILED_RIFT, RIFT_MARGIN: crust a collision, a failed arm or a stage strained) × riftWeaknessCost:
+//     strain softening, the friction and cohesion of a zone that took strain halving (Naliboff et al. 2017) on its brittle share.
+// Exceedance damage (D = 1 wherever s1 once beat T_y, keeping 0.17 of the strength for ~300 Myr) is no longer in the strength:
+// a cell that yielded once kept winning, and at the declared 3e12 that shattered (lane riftprobe2: ×2–3 the winning bands).
+// Its limits: H is quasi-static (the boundary layer is taken as thinned as soon as the mantle warms; it lags by its
+// diffusion time, tens of Myr, which the insulation's own ~100 Myr ramp mostly covers); Buck's curve is one strain rate and two
+// crust thicknesses (the crust's own thickness is not read); magma weakens only under a head's LIP, not along a tail; the
+// inherited lines do not heal (Bercovici & Ricard 2014: weak zones outlast a Wilson cycle).
+//
 // Reduced model, and its limits: the plate stays rigid however broken it is (the stress is the rigid plate's: what it would
 // carry, not what a broken plate passes on — the stress-field study's sheet was the deforming version, at ~10× the cost);
-// damage is a yes/no break, not slip that accumulates (a rigid plate has no strain to measure slip by); the strength of
-// continental lithosphere has no sourced figure (below), so the share that breaks is a finding at a declared strength, not a
-// calibration (the plate force paradox: lane emerge, 2026-11-01).
+// damage is a yes/no break, not slip that accumulates (a rigid plate has no strain to measure slip by), so it is a record only.
 
-import { CrustType, CrustFlag, OrogenyType } from '../model/crust.js';
+import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../model/crust.js';
 import { solvePlateStress, stressAt } from './plate-stress-field.js';
 
 const WEAK = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
@@ -42,17 +61,52 @@ export function stepPlateStress(world, dt) {
     return 0;
 }
 
-/** The rock's strength at raster cell c of a plate (N/m), undamaged. */
-export function rockStrength(crust, c, time, config) {
+// Buck 1991's force to rift the lithosphere (10¹² N/m) against surface heat flow (mW/m²), read off his figure as Hopper & Buck
+// 1993 reproduce it (Fig. 1: 30 and 50 km crust, digitized 2026-11-10, lane riftstrength), here as the geometric mean of the
+// two (~40 km of crust: Earth's continental mean, Christensen & Mooney 1995, recalled). Only its shape is used (H, a ratio).
+const BUCK_Q = [44, 50, 56, 60, 66, 70, 76, 80, 86, 90, 96, 100, 106];
+const BUCK_30KM = [58.3, 42.0, 30.4, 25.4, 18.9, 15.5, 11.6, 9.4, 7.1, 5.8, 3.9, 2.8, 1.5];
+const BUCK_50KM = [35.5, 21.7, 11.9, 7.3, 3.4, 2.5, 1.6, 1.5, 1.3, 1.2, 0.9, 0.8, 0.7];
+const BUCK_40KM = BUCK_Q.map((_, i) => Math.log(Math.sqrt(BUCK_30KM[i] * BUCK_50KM[i])));    // (ln, interpolated in ln)
+function buck(q) {
+    if (q <= BUCK_Q[0]) return Math.exp(BUCK_40KM[0]);
+    for (let i = 1; i < BUCK_Q.length; i++) if (q <= BUCK_Q[i]) { const f = (q - BUCK_Q[i - 1]) / (BUCK_Q[i] - BUCK_Q[i - 1]); return Math.exp(BUCK_40KM[i - 1] + f * (BUCK_40KM[i] - BUCK_40KM[i - 1])); }
+    return Math.exp(BUCK_40KM[BUCK_40KM.length - 1]);
+}
+/** The heat-flow rise under mantle warmed by h of full insulation (mW/m²): the boundary layer thinned as η^⅓. */
+export function heatFlowRise(h, config) {
+    const dT = h * config.plateHeatWarmK, T = config.plateHeatMantleK, eR = config.plateHeatCreepKJ * 1e3 / (3 * 8.314);
+    return config.plateHeatMantleFlow * ((1 + dT / config.plateHeatLidK) * Math.exp(eR * (1 / T - 1 / (T + dT))) - 1);
+}
+const HEAT_STEPS = 64;
+let heatTable = null, heatKey = '';
+/** H(h): the share of its strength a continent keeps over mantle warmed by h (0…1), along Buck's curve. */
+export function heatWeakening(h, config) {
+    const key = `${config.plateHeatWarmK},${config.plateHeatMantleK},${config.plateHeatCreepKJ},${config.plateHeatMantleFlow},${config.plateHeatLidK},${config.plateHeatFlowRef}`;
+    if (key !== heatKey) {
+        heatKey = key; heatTable = new Float64Array(HEAT_STEPS + 1);
+        const q0 = config.plateHeatFlowRef, b0 = buck(q0);
+        for (let i = 0; i <= HEAT_STEPS; i++) heatTable[i] = buck(q0 + heatFlowRise(i / HEAT_STEPS, config)) / b0;
+    }
+    const x = Math.max(0, Math.min(1, h)) * HEAT_STEPS, i = Math.min(HEAT_STEPS - 1, Math.floor(x));
+    return heatTable[i] + (x - i) * (heatTable[i + 1] - heatTable[i]);
+}
+
+/** The rock's strength at raster cell c of a plate (N/m), over mantle heat h (world.mantleHeat at its world cell, 0…1). */
+export function rockStrength(crust, c, time, config, h = 0) {
     const t = crust.type[c];
-    let T = t === CrustType.OCEAN ? config.plateYieldOcean * Math.max(config.plateYieldOceanFloor, Math.min(1, Math.sqrt(Math.max(0, time - crust.formedAt[c]) / config.plateYieldOceanAgeMyr)))
-        : t === CrustType.CRATON ? config.plateYieldContinent * config.cratonStrength : config.plateYieldContinent;
+    let T;
+    if (t === CrustType.OCEAN) T = config.plateYieldOcean * Math.max(config.plateYieldOceanFloor, Math.min(1, Math.sqrt(Math.max(0, time - crust.formedAt[c]) / config.plateYieldOceanAgeMyr)));
+    else {
+        T = config.plateYieldContinent * (t === CrustType.CRATON ? config.cratonStrength : 1) * heatWeakening(h, config);
+        if (crust.volcType[c] === VolcanicType.LIP && time - crust.volcAt[c] <= config.magmaWeakMyr) T /= config.magmaWeakening;
+    }
     if (crust.flags[c] & WEAK) T *= config.riftWeaknessCost;
     return T;
 }
 
-/** The strength with its damage. */
-export function strengthOf(crust, c, time, config) { return rockStrength(crust, c, time, config) * (1 - (1 - config.plateDamageKeep) * crust.damage[c]); }
+/** The strength a stress is held against (damage is a record only: lane riftstrength). */
+export function strengthOf(crust, c, time, config, h = 0) { return rockStrength(crust, c, time, config, h); }
 
 /** Heal every plate's damage over `span` Myr, then break where the stress now beats the strength. @returns shares of the
  *  plates' area breaking in tension and in compression (of all, and of continental crust), and damage's mean */
@@ -65,7 +119,7 @@ function breakAndHeal(world, span) {
     for (let w = 0; w < mesh.numCells; w++) {
         const o = owner[w];
         if (o < 0 || plates[o].isBackground || !stressAt(world, w, s)) continue;
-        const crust = plates[o].crust, c = ownerCell[w], T = strengthOf(crust, c, time, config), isLand = crust.type[c] !== CrustType.OCEAN;
+        const crust = plates[o].crust, c = ownerCell[w], T = strengthOf(crust, c, time, config, world.mantleHeat[w]), isLand = crust.type[c] !== CrustType.OCEAN;
         n++; if (isLand) land++;
         if (s.s1 > T) {
             crust.damage[c] = 1; ten++;

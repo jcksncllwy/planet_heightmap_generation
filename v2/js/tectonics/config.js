@@ -557,24 +557,41 @@ export const TECTONICS = {
                                 // (at 40K, 5K against 10K and 20K stress meshes and 1e-2 against 1e-3: quantiles within ~10 %, pstress-field.mjs)
     plateStressMaxIter: 800,
     // …and the strength it is held against (field/stress-step.js), vertically integrated, N/m. Where the stress beats it the
-    // lithosphere breaks (damage). NO sourced figure exists for continental lithosphere (the jelly-sandwich debate, Burov &
-    // Watts 2006), and forces of a few 10¹² N/m cannot break intact cold lithosphere (> 2 × 10¹³: Hopper & Buck 1993, search
-    // snippet) — yet continents rift: the plate force paradox (Buck 2004; lane emerge). So plateYieldContinent is declared,
-    // and the share that breaks is reported at it as a finding, swept in tools/pstress-field.mjs — not fitted to a target.
-    // 3e12: Jackson's ruling (2026-11-03, on gjallar's recommendation, lane rifton). Swept 1e13 / 7e12 / 5e12 / 3e12, the
-    // field's diffuse extension takes the extension share of deformed continent from 6 % to 6.9 / 10.3 / 14.3 / 21.2 %
-    // against Earth's ~22 % (Müller et al. 2019; lane pstress, s4). That continents must break well below the strength of
-    // their rock is the plate force paradox (Buck 2004): weakening the model does not simulate (magma, inherited faults)
-    // taken as a declared number. Still UNSOURCED as a strength: a finding at a declared value, not a measured one
-    plateYieldContinent: 3e12,  // N/m: DECLARED (was 1e13, equal to old ocean: extension then adds ~0.5 points)
+    // lithosphere breaks (a record, crust.damage; the diffuse extension above). The continent's is a law (lane riftstrength,
+    // 2026-11-10, on Jackson's ruling Q1 (b) of 2026-11-09): a sourced strength weakened by heat, magma and strain, each below.
+    // Before it, 3e12 was DECLARED (Jackson, 2026-11-03), standing in for the weakening the model lacked (the plate force
+    // paradox, Buck 2004): with exceedance damage it put ~15 bands per solve past their strength, 5–16× over (lane riftprobe2)
+    plateYieldContinent: 1e13,  // N/m: the force to rift Earth's average continent, ~40 km of crust at ~65 mW/m² (Pollack, Hurter & Johnson
+                                // 1993's continental mean, recalled): 8.8 × 10¹² on Buck 1991's curves (Hopper & Buck 1993 Fig. 1, read
+                                // 2026-11-10: 30 km crust ~19, 50 km ~4 at 65 mW/m²; "> 20 TN/m" below 50). Over mantle no continent has warmed
+                                // (h 0); the heat below weakens it. 2e13 (cold, < 50 mW/m²) is the high case swept in tools/riftforce.mjs
+    plateHeatFlowRef: 65,       // mW/m²: the surface heat flow plateYieldContinent stands at (above)…
+    plateHeatMantleFlow: 45,    // …of which this much comes up from the mantle: Hopper & Buck 1993 let the crust's heat production give
+                                // 20 mW/m² of the surface flow (their §"model formulation")…
+    plateHeatWarmK: 100,        // …and a continent's insulation warms the mantle under it by up to this (h = 1): "as large as 100 °C" under
+                                // a supercontinent (Coltice et al. 2007, Geology 35, abstract) — world.mantleHeat's full insulation…
+    plateHeatMantleK: 1600,     // …at about this mantle temperature (K; a ~1330 °C potential temperature, McKenzie & Bickle 1988, recalled)…
+    plateHeatCreepKJ: 250,      // …whose viscosity falls with it by an Arrhenius law with this activation energy (kJ/mol): olivine diffusion
+                                // creep, the low-stress mantle's (Karato et al. 1986, as tabulated by Hopper & Buck 1993 Table 1; their
+                                // dislocation creep is 498). The boundary layer under the lid thins as η^⅓ (Nu ∝ Ra^⅓), so the mantle heat
+                                // flow rises; Buck's curve gives the strength at the new surface flow (field/stress-step.js heatWeakening):
+                                // ×0.43 at the land's median h 0.62, ×0.30 at h 1
+    plateHeatLidK: 1300,        // …across a lid this many K from the surface to the mantle (its heat flow ∝ the contrast too)
+    magmaWeakening: 10,         // crust a plume head's flood basalt covered is this many times weaker while the magma lasts: dikes open the
+                                // lithosphere at a force an order of magnitude below tectonic faulting (Bialas, Buck & Qin 2010, EPSL 292,
+                                // abstract; their Fig. 1e: ~20 TN/m by faulting against ~1–1.5 by diking at 60 km of lithosphere, a ratio
+                                // they call an underestimate of faulting's). Was ×6 in the rift audit (unverified there)
+    magmaWeakMyr: 20,           // …for this long after the eruption: magma weakens a rift into tectonic rifting over ~1 Myr (fast
+                                // injection, volcanic margins) to > 10–20 Myr (slow, the Red Sea) (Bialas, Buck & Qin 2010, abstract);
+                                // the upper end, since the dike-heated lithosphere then rifts "without additional magma"
     plateYieldOcean: 1e13,      // N/m: old ocean. ~150–250 MPa over ~50 km (the yield stresses of Mallard et al. 2016's plate-like
                                 // runs, reported second-hand); an envelope gives ~8 × 10¹² in tension (a teaching source, UNVERIFIED)
     plateYieldOceanAgeMyr: 100, // …growing as √(age ÷ this) to 1: its cold, strong layer thickens as √age (half-space cooling)
     plateYieldOceanFloor: 0.05, // …from at least this share (ridge-axis lithosphere is not nothing)
     plateYieldCompression: 2.5, // rock is this much stronger pressed than pulled: ~2 × 10¹³ against ~8 × 10¹² (the same teaching
                                 // source, UNVERIFIED; Byerlee friction gives 2–4× for thrust over normal faults, recalled)
-    plateDamageKeep: 0.17,      // a broken zone keeps this share of its strength: fault friction ~0.1 (Bird, Liu & Rucker 2008's
-                                // best fit) against Byerlee's ~0.6
+    plateDamageKeep: 0.17,      // (a record only since lane riftstrength: no strength reads crust.damage) a broken zone keeps this share of its
+                                // strength: fault friction ~0.1 (Bird, Liu & Rucker 2008's best fit) against Byerlee's ~0.6
     plateDamageHealMyr: 300,    // damage fades e-fold over this: a CHOICE (Bercovici & Ricard 2014 need weak zones to outlast a
                                 // Wilson cycle; the stress-field study found scars fading in 100–200 Myr under a 300 Myr law)
 
@@ -591,7 +608,9 @@ export const TECTONICS = {
                                 // three times ordinary lithosphere (Jordan 1978), and strength grows faster than thickness: rifts go
                                 // round cratons — but not always (the South Atlantic split the Congo and São Francisco cratons).
                                 // Was: never cut (∞)
-    riftWeaknessCost: 0.8,      // a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real
+    riftWeaknessCost: 0.8,      // (also the strength there: field/stress-step.js — strain softening, the friction and cohesion of a zone that
+                                // took strain halving, Naliboff et al. 2017 Nat. Commun. 8, over brittle strain 0–0.1, on the brittle ~20–40 %
+                                // of the strength: 0.8–0.9) a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real
                                 // preference, but a mild one — at 0.45 a continent reopened the very same suture almost
                                 // every time it broke (developer); over a long history about half the length of the rifts
                                 // follows old weak lines (Phase 13, developer: "maybe 50%… not having it follow it perfectly

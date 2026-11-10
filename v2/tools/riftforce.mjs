@@ -22,7 +22,8 @@
 // Splits: at each step where rifting tries a cut (the history's own search request, before the split), the stress is solved on
 // the world as it stands; after the step's torque balance it is solved again: per plate group (the parent's pieces, its
 // neighbours, the rest) the best band ratio and the land yielding, before and after. Steps whose tries all fail are the control.
-// Usage: node v2/tools/riftforce.mjs [simCells=20000] [seed …] [--len 1200] [--set key=value,…] [--label name] [--out file.jsonl]
+// 'law' (lane riftstrength): the bands at the model's own strengthOf, whatever it is — L2's acceptance.
+// Usage: node v2/tools/riftforce.mjs [simCells=20000] [seed …] [--len 1200] [--set key=value,…] [--only v1,v2] [--label name] [--out file.jsonl]
 
 import { writeFileSync, appendFileSync } from 'node:fs';
 import { labMesh } from './lib/check-kit.mjs';
@@ -36,7 +37,7 @@ import { searchJunctions } from '../js/tectonics/step/rifting.js';
 import { MinHeap } from '../js/core/min-heap.js';
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args.splice(i, 2)[1] : null; };
-const len = Number(flag('--len') ?? 1200), set = flag('--set'), label = flag('--label') ?? (set || 'base'), out = flag('--out');
+const only = flag('--only'), len = Number(flag('--len') ?? 1200), set = flag('--set'), label = flag('--label') ?? (set || 'base'), out = flag('--out');
 const overrides = set ? Object.fromEntries(set.split(',').map(kv => { const [k, v] = kv.split('='); return [k, Number(v)]; })) : {};
 const nums = args.filter(a => !a.startsWith('--')).map(Number);
 const cells = nums[0] || 20000, seeds = nums.length > 1 ? nums.slice(1) : [12345, 777, 4242];
@@ -52,6 +53,7 @@ const VARIANTS = [
     V('cold+m', 1e13, 0, 1, 6), V('cold+dhm3', 1e13, 1, 3, 6), V('cold+dhm10', 1e13, 1, 10, 6),
     V('hb', 2e13, 0, 1, 1), V('hb+dhm10', 2e13, 1, 10, 6),
 ];
+if (only) { const keep = new Set(only.split(',')); for (let i = VARIANTS.length - 1; i >= 0; i--) if (!keep.has(VARIANTS[i].name)) VARIANTS.splice(i, 1); }   // (--only a,b: just these offline variants; 'law', the model's own strengthOf, always)
 const WEAK = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
 const r3 = x => Math.round(x * 1000) / 1000;
 
@@ -67,7 +69,7 @@ function fields(w) {
         if (t === CrustType.OCEAN) continue;
         land[c] = 1;
         if (stressAt(w, c, s)) { s1[c] = s.s1; s2[c] = s.s2; dir[3 * c] = s.dir[0]; dir[3 * c + 1] = s.dir[1]; dir[3 * c + 2] = s.dir[2]; }
-        model[c] = strengthOf(cr, k, time, config);
+        model[c] = strengthOf(cr, k, time, config, mantleHeat[c]);
         for (const h of heads) if (h.xyz[0] * xyz[3 * c] + h.xyz[1] * xyz[3 * c + 1] + h.xyz[2] * xyz[3 * c + 2] >= h.cos) { magma[c] = 1; break; }
         const craton = t === CrustType.CRATON ? config.cratonStrength : 1, inh = cr.flags[k] & WEAK ? config.riftWeaknessCost : 1;
         const dmg = 1 - (1 - config.plateDamageKeep) * cr.damage[k], heat = mantleHeat[c];
@@ -152,7 +154,7 @@ function survey(w, F, variants = VARIANTS.map((_, i) => i), withModel = false) {
         const r = { plate: L.plate, area: r3(L.areaMkm2), v: {} };
         for (const i of variants) r.v[VARIANTS[i].name] = bands(w, F, L, dist, F.T[i]).map(b => [r3(b.ratio), Math.round(b.km), r3(b.magma)]);
         if (withModel) {
-            const b = bands(w, F, L, dist, F.model); r.model = b.length ? r3(b[0].ratio) : null;
+            const b = bands(w, F, L, dist, F.model); r.model = b.length ? r3(b[0].ratio) : null; r.v.law = b.map(x => [r3(x.ratio), Math.round(x.km), r3(x.magma)]);
             let y = 0; for (const c of L.list) if (F.s1[c] > F.model[c]) y++; r.yield = r3(y / L.list.length);
             r.meanS1 = Math.round(L.list.reduce((s, c) => s + (F.s1[c] === F.s1[c] ? F.s1[c] : 0), 0) / L.list.length / 1e9);    // GN/m
         }
