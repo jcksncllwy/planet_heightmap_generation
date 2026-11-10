@@ -119,14 +119,16 @@ export const TECTONICS = {
     collisionSlabGrossNPerM: 3e13, // …the slab's gross negative buoyancy, N/m, that the crust's buoyancy is set against (England & Wortel 1980: up to ~3 × 10¹³;
                                 // the force unit is the ~20 % of it the plate feels — forceUnitNPerM)
     slabCoreTempShare: 0.6,     // …and breaks off once the mantle has warmed through the core that carries its weight: the lithosphere colder than this
-                                // share of the mantle's temperature, ~800 °C of 1350 (olivine's strength falls away above ~800 °C at a slab's
-                                // strain rates: Goetze & Evans 1979; the 1350 °C mantle of Parsons & Sclater 1977). A slab of age A breaks
-                                // ~0.11 A after contact (step/forces.js hangingSlabPull): 9 Myr for an 80-Myr slab, 2 for a 20 — the warming
-                                // alone; van Hunen & Allen 2011 find 20–25 Myr for old slabs including the neck's own runaway, not drawn
-    collisionEclogiteKm: 60,    // …and the crust dragged down after it is buoyant only above this depth: below, its mafic lower half is eclogite,
-                                // denser than the mantle (~1.5–2 GPa: Austrheim 1991; Hacker et al. 2003; India's under southern Tibet, Hetényi et al. 2007)
+                                // share of the mantle's temperature, ~800 °C of 1350 (olivine's strength falls away at ~700–800 °C at a
+                                // plate's strain rates: Goetze & Evans 1979, the isotherm as Kirby 1987 reads it; the 1350 °C mantle of
+                                // Parsons & Sclater 1977). A slab of age A breaks ~0.115 A after contact (step/forces.js hangingSlabPull):
+                                // 9 Myr for an 80-Myr slab, 16 for India's scene's ~140 — the warming alone; van Hunen & Allen 2011 find
+                                // 20–25 Myr for old slabs (~10 for young), the neck's own runaway included, which is not drawn. Not fitted
+    collisionEclogiteKm: 60,    // …and the crust dragged down after it is buoyant only above this depth: below, its mafic lower half is eclogite
+                                // (3.1–3.6 g/cm³: Austrheim 1991, Terra Nova; Holsnøy's lower-crust eclogites formed at ≥ 1.46 GPa, > 55 km),
+                                // ~6 % denser than the mantle (Hacker, Abers & Peacock 2003); India's under southern Tibet (Hetényi et al. 2007)
     collisionSlabDipDeg: 30,    // …down a slab dipping this steeply: so at most collisionEclogiteKm ⁄ sin(dip) of crust, 120 km, offsets the slab
-                                // (subduction zones' mean dip above ~125 km, ~30°: Lallemand, Heuret & Boutelier 2005)
+                                // (subduction zones' plate-boundary dip over 0–125 km, 32 ± 9°: Lallemand, Heuret & Boutelier 2005, G³)
     collisionShearShare: 0.5,   // …along the front half as hard (oblique plates slide some; much looser and they slide past
                                 // each other instead of colliding)…
     collisionSeparateShare: 0.05, // …and against parting this share: a contact is a pivot, not a lock — the pull of the ocean

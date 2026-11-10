@@ -168,17 +168,18 @@ export function gatherLoads(world) {
  * collisionGpeNPerM) carried down after it — the crust the collision has underthrust (step/collision.js underthrustCells)
  * over its front, L of it, but only the part still shallower than the eclogite transition: below collisionEclogiteKm the
  * crust's mafic lower half turns to eclogite, denser than the mantle, and its buoyancy is gone (Austrheim 1991; Hacker et
- * al. 2003; Hetényi et al. 2007 image India's lower crust eclogitised under southern Tibet). Down a slab dipping at
+ * al. 2003; Hetényi et al. 2007 find India's lower crust eclogitised under southern Tibet — but late, where it reaches its
+ * deepest, the reaction held back by its kinetics: so the cap at the equilibrium depth leaves the most net pull it can). Down a slab dipping at
  * collisionSlabDipDeg that is L ≤ z_ecl ⁄ sin dip, so a slab that outweighs that much crust keeps a net pull (Capitanio et
  * al. 2010: Greater India's attached slab drove its convergence on long after contact) — without the cap the crust of any
  * collision cancelled any slab after ~175 km of it had gone down, within a few Myr of contact (lane slab).
  * Break-off is the slab's own: once land stalls it, the slab hangs in the mantle and is warmed through from both faces;
  * when the core that carries its weight (colder than slabCoreTempShare of the mantle's temperature) is gone it necks and
- * breaks (Davies & von Blanckenburg 1995; Duretz et al. 2011). The core of a plate of age A is z = 2√(κA) erf⁻¹(θ) thick
+ * breaks (Davies & von Blanckenburg 1995: whether and where a slab breaks is set by its temperature; Duretz, Gerya & May 2011). The core of a plate of age A is z = 2√(κA) erf⁻¹(θ) thick
  * (the half-space cooling profile); conduction from both faces warms its middle past θ in z² ⁄ (π² κ) ln(4(1 − θ⁄2) ⁄ π(1 − θ))
  * (the slab's first mode, its mean start at θ⁄2) — so t_b = A × 4 erf⁻¹(θ)² ⁄ π² × ln(…): κ cancels, an old slab holds on
- * longer than a young one, as van Hunen & Allen (2011) and Duretz et al. (2011) find (their ~5–30 Myr; not fitted here:
- * README "The hanging slab"). Acts on the lower plate only, across the front toward the upper, split evenly over the pair's
+ * longer than a young one, as van Hunen & Allen (2011) find (old slabs 20–25 Myr after contact, young ~10; not fitted
+ * here: the warming alone gives ~0.115 A, README "The hanging slab"). Acts on the lower plate only, across the front toward the upper, split evenly over the pair's
  * contact cells by their share of the front (as torque-balance.js gpeLock). Limits: one slab per collision, its age and
  * length read once, at the first step seen; break-off from first contact, not from when the slab stalled; the necking's
  * own runaway (its strain rate) is not drawn, only the warming that allows it; the detached slab's flow (step/slab-conveyor
