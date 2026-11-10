@@ -114,12 +114,19 @@ export const TECTONICS = {
                                 // process is the drive after contact, not this lock (README, "The collision lock is a bounded force").
                                 // collisionResistance applies only with this off. The shares below apply
     collisionSlabPull: false,   // (lane upper, opt-in) the slab hanging under a collision front keeps pulling the lower plate in, net of the buoyancy
-                                // of its continental crust gone down after it (Cloos 1993), until break-off (step/forces.js hangingSlabPull).
+                                // of its continental crust gone down after it (Cloos 1993) above the eclogite depth, until the slab breaks off as it warms through (step/forces.js hangingSlabPull).
                                 // Off: it brings no whole-model collision into Earth's range (README, lane belts5)
     collisionSlabGrossNPerM: 3e13, // …the slab's gross negative buoyancy, N/m, that the crust's buoyancy is set against (England & Wortel 1980: up to ~3 × 10¹³;
                                 // the force unit is the ~20 % of it the plate feels — forceUnitNPerM)
-    collisionBreakoffMyr: 20,   // …and the slab breaks off this long after first contact: 20–25 Myr for an old, strong slab (van Hunen & Allen 2011,
-                                // EPSL), within the 5–30 Myr of dynamic models they review; the low end of the old-slab range
+    slabCoreTempShare: 0.6,     // …and breaks off once the mantle has warmed through the core that carries its weight: the lithosphere colder than this
+                                // share of the mantle's temperature, ~800 °C of 1350 (olivine's strength falls away above ~800 °C at a slab's
+                                // strain rates: Goetze & Evans 1979; the 1350 °C mantle of Parsons & Sclater 1977). A slab of age A breaks
+                                // ~0.11 A after contact (step/forces.js hangingSlabPull): 9 Myr for an 80-Myr slab, 2 for a 20 — the warming
+                                // alone; van Hunen & Allen 2011 find 20–25 Myr for old slabs including the neck's own runaway, not drawn
+    collisionEclogiteKm: 60,    // …and the crust dragged down after it is buoyant only above this depth: below, its mafic lower half is eclogite,
+                                // denser than the mantle (~1.5–2 GPa: Austrheim 1991; Hacker et al. 2003; India's under southern Tibet, Hetényi et al. 2007)
+    collisionSlabDipDeg: 30,    // …down a slab dipping this steeply: so at most collisionEclogiteKm ⁄ sin(dip) of crust, 120 km, offsets the slab
+                                // (subduction zones' mean dip above ~125 km, ~30°: Lallemand, Heuret & Boutelier 2005)
     collisionShearShare: 0.5,   // …along the front half as hard (oblique plates slide some; much looser and they slide past
                                 // each other instead of colliding)…
     collisionSeparateShare: 0.05, // …and against parting this share: a contact is a pivot, not a lock — the pull of the ocean
