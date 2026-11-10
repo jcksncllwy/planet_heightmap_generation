@@ -300,7 +300,7 @@ if (process.argv.includes('--stats')) {
     land.sort((a, b) => a - b);
     const q = p => land[Math.min(land.length - 1, Math.floor(p * land.length))];
     const meanRelief = mtn.reduce((a, b) => a + b, 0) / Math.max(1, mtn.length);
-    const S = { landP50: q(0.5), landP90: q(0.9), landP99: q(0.99), landMax: land[land.length - 1], above2Km2: Math.round(above2), above4Km2: Math.round(above4), mountainKm2: Math.round(mtn.length * cellKm2s), meanReliefKm: meanRelief, riversMs: Math.round(fin.ms.rivers) };
+    const S = { landKm2: Math.round(land.length * cellKm2s), landMeanKm: land.reduce((a, b) => a + b, 0) / Math.max(1, land.length), landP50: q(0.5), landP90: q(0.9), landP99: q(0.99), landMax: land[land.length - 1], above2Km2: Math.round(above2), above4Km2: Math.round(above4), mountainKm2: Math.round(mtn.length * cellKm2s), meanReliefKm: meanRelief, riversMs: Math.round(fin.ms.rivers) };
     console.log('stats: ' + JSON.stringify(S));
 }
 // (--lakes: the biggest bodies of standing water — connected lake cells of one kind — with where they are)
