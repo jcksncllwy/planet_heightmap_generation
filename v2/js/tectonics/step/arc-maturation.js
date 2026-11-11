@@ -40,7 +40,15 @@ export function matureArcs(world, dt) {
         // continent's crust, ARC_ROOT_SHARE of a belt's root on it, and the relief and fill it carried that the arc's
         // measure, its crust alone, did not count: rock-book.js)
         let matured = 0;
-        for (const c of ring) { matured -= cellRockKm3(world, plate.crust, c); plate.crust.rootKm[c] = arcToContinentRootKm(plate.crust, c, time, config); type[c] = CrustType.CONTINENT; matured += cellRockKm3(world, plate.crust, c); }
+        // (config.crustPaidRelief, lane crustmass S1: a relabel, rock for rock — the root is then set so the continent's column
+        // holds exactly the arc's rock: an immature arc makes thin continent that stands low, F2 → 0)
+        const paid = !!config.crustPaidRelief;
+        for (const c of ring) {
+            const before = cellRockKm3(world, plate.crust, c);
+            plate.crust.rootKm[c] = arcToContinentRootKm(plate.crust, c, time, config); type[c] = CrustType.CONTINENT;
+            if (paid) plate.crust.rootKm[c] += (before - cellRockKm3(world, plate.crust, c)) / mesh.cellAreaKm2;
+            matured += cellRockKm3(world, plate.crust, c) - before;
+        }
         bookRock('arcMaturedKm3', matured);
         world.budget.arcMaturedCells = (world.budget.arcMaturedCells ?? 0) + ring.length;
         plate.dirty = true;

@@ -157,7 +157,9 @@ export function classifyBoundaries(world, dt) {
         if (config.arcAdditionKm3PerKmMyr > 0) belt.volCapKm3 = config.arcAdditionKm3PerKmMyr * andean.length * mesh.edgeKm * dt;
         const pick = (arr, test) => arr.filter((_, j) => test(andean[j]));
         const isArc = c => plate.crust.type[c] === CrustType.ARC, notArc = c => !isArc(c);
-        if (andean.some(notArc)) spreadBelt(plate, mesh, andean.filter(notArc), { ...belt, widths: pick(widths, notArc), works: pick(works, notArc), shears: pick(shears, notArc) }, config);
+        // (config.crustPaidRelief: one cap for the margin — its arc takes what its continent left of it; was a cap each)
+        const used = andean.some(notArc) ? spreadBelt(plate, mesh, andean.filter(notArc), { ...belt, widths: pick(widths, notArc), works: pick(works, notArc), shears: pick(shears, notArc) }, config) : 0;
+        if (config.crustPaidRelief && belt.volCapKm3 !== undefined) belt.volCapKm3 -= used;
         if (andean.some(isArc) && !flat) spreadBelt(plate, mesh, andean.filter(isArc), { ...belt, type: OrogenyType.ARC, widths: pick(widths, isArc).map(v => Math.min(v, config.arcBeltMaxKm)), works: pick(works, isArc), shears: pick(shears, isArc) }, config);   // an arc is a narrow line
     }
 

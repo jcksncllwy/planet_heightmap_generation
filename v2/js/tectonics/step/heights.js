@@ -44,7 +44,7 @@ export function beltReliefKm(type, reachKm, H) {
  * uplift and ruggedness toward the belt's targets — the whole belt at the pace of the convergence its front absorbed
  * this step (`workKm`): a fast front builds its range fast.
  */
-export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickenedKm, config, amp = 1) {
+export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickenedKm, config, amp = 1, paid = false) {
     const H = heightsOf(config);
     crust.rootKm[c] += thickenedKm * (H.rootGain?.[type] ?? 1);
     if (config.geology?.records) thickenCover(crust, c, thickenedKm, crust.oroLast[c], config.geology);     // (records only: step/geology.js)
@@ -56,7 +56,10 @@ export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickened
     const target = own * A * broadProfile(type, side, u * reachKm, reachKm);
     // rise toward a positive target (a newer, lower belt never lowers what an older one left) — or sink toward a
     // negative one: a foreland basin subsides under the load in front of a range, whatever stood there before
-    if (target >= 0 ? target > crust.upliftKm[c] : target < crust.upliftKm[c]) crust.upliftKm[c] += (target - crust.upliftKm[c]) * share;
+    // (paid: config.crustPaidRelief in a history, lane crustmass S1: no rise — the range stands on its root alone, which the belt paid for —
+    // and a foreland sinks only ground with no relief of its own: the moat is a hollow the rivers fill, not rock taken away)
+    if (paid) { if (target < Math.min(0, crust.upliftKm[c]) && crust.upliftKm[c] <= 0) crust.upliftKm[c] += (target - crust.upliftKm[c]) * share; }
+    else if (target >= 0 ? target > crust.upliftKm[c] : target < crust.upliftKm[c]) crust.upliftKm[c] += (target - crust.upliftKm[c]) * share;
     if (A > crust.rugged[c]) crust.rugged[c] += (A - crust.rugged[c]) * share;
 }
 

@@ -175,6 +175,14 @@ export const TECTONICS = {
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
+    crustPaidRelief: false,     // (lane crustmass, S1; off until S5) a belt's relief is the isostatic face of a root that was paid for, not rock of
+                                // its own: belts no longer raise the broad uplift (measure.js counts it as crust, uplift ÷ column slope — ~5 Gkm³
+                                // a 1200 Myr cycle made from nothing, about the planet's whole continental crust: crustmass/report.md §0, F4–F6),
+                                // only their root stands them up. The roots a rigid upper plate cannot pay for in area are bounded by arc
+                                // magmatism alone (arcAdditionKm3PerKmMyr, one cap over the margin's continent and arc alike; booked as
+                                // arcRootAddedKm3, a mantle source — Jackson's ruling 4: Andean thickening counted as arc magmatism only);
+                                // a transpression belt's or a sutured terrane's thickens nothing (no shortened area pays for it); an arc welded
+                                // on as continent keeps its rock (a relabel: its root is set so the column holds what the arc held, F2)
     collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
                                 // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
                                 // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)

@@ -88,7 +88,7 @@ function oldSutureRanges(world, continent) {
     const before = { root: crust.rootKm.slice(), uplift: crust.upliftKm.slice(), rugged: crust.rugged.slice() };
     const { xyz } = world.mesh, noise = new SimplexNoise((world.seed ^ 0x5a7e) >>> 0), f = 6371 / cfg.startSutureNoiseKm;
     const strength = sources.map(c => { const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2]; const v = noise.noise3D(x * f, y * f, z * f) + 0.4 * noise.noise3D(x * 2.7 * f + 3.3, y * 2.7 * f + 8.1, z * 2.7 * f + 1.9); return Math.max(0, Math.min(1, (v + 0.05) / 0.6)); });
-    spreadBelt(continent, world.mesh, sources, { type: OrogenyType.URAL, time: -cfg.startSutureAgeMyr,
+    spreadBelt(continent, world.mesh, sources, { type: OrogenyType.URAL, time: -cfg.startSutureAgeMyr, start: true,
         works: strength.map(s => cfg.startSutureWorkKm * s), widths: strength.map(s => cfg.startSutureBeltKm * (0.55 + 0.45 * s)) }, cfg);
     const keep = cfg.startSutureKeep;
     for (let c = 0; c < crust.mask.length; c++) {

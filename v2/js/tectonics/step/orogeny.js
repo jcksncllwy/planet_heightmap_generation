@@ -83,7 +83,11 @@ export function beltShape(headOn, slabAgeMyr, config) {
  * @param {(cell: number) => boolean} [allow]   restrict the belt to these cells (e.g. one side of a seam)
  */
 export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
-    if (!sources.length) return;
+    if (!sources.length) return 0;
+    // (config.crustPaidRelief, lane crustmass S1: relief only from a paid root, and a root only where something pays for it —
+    // here, arc magmatism under its cap (belt.volCapKm3); a collision's thickening is its consumed crust, laid by
+    // collision.js keepConsumed. The start world's sutures (belt.start) are the inventory the history begins with, not a flux)
+    const paid = !!config.crustPaidRelief && !belt.start, sourced = paid && belt.volCapKm3 !== undefined;
     const { adjOffset, adjList, edgeKm } = mesh, crust = plate.crust, edge = edgeKmOf(mesh);     // (edge[k]: the distance along adjacency entry k)
     const { mask, type, flags } = crust;
     const widthOf = i => belt.widths?.[i] ?? belt.widthKm, workOf = i => belt.works?.[i] ?? belt.workKm;
@@ -144,7 +148,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
     const reached = list.subarray(0, n).sort();
     // the thickening a cell takes (below: the same share everywhere, with a smooth plateau profile)
     const thickOf = c => {
-        if (belt.noThicken || u[c] === Infinity || type[c] === CrustType.OCEAN) return 0;
+        if (belt.noThicken || (paid && !sourced) || u[c] === Infinity || type[c] === CrustType.OCEAN) return 0;
         const rimCell = type[c] === CrustType.CRATON;
         if (rimCell && !(shieldShare > 0)) return 0;
         const workKm = workOf(src[c]) * (rimCell ? shieldShare : 1), cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]), share = rimCell ? 1 : strength(c);
@@ -159,7 +163,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         let v = 0;
         for (const c of reached) v += thickOf(c);
         v *= mesh.cellAreaKm2 * (heightsOf(config).rootGain?.[belt.type] ?? 1);
-        if (v > belt.volCapKm3) scale = belt.volCapKm3 / v;
+        if (v > belt.volCapKm3) scale = Math.max(0, belt.volCapKm3) / v;
     }
     const colSlope = columnModel(heightsOf(config)).slope;
     let bookRoot = 0, bookRelief = 0;
@@ -199,13 +203,16 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         // stands s as high: the same convergence lifts the same volume however far it spreads (a wide plateau is low in
         // relief across its interior — Tibet's, Fielding et al. 1994)
         const rock = crust.type[c] !== CrustType.OCEAN, root0 = crust.rootKm[c], up0 = Math.max(0, crust.upliftKm[c]);
-        buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? shieldShare : share);
+        buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? shieldShare : share, paid);
         // (the rock book: what the belt made, unpaid — on continent and arc alike: crust-ledger.js counts an arc's root and
         // relief with its own crust)
         if (rock) { bookRoot += crust.rootKm[c] - root0; bookRelief += (Math.max(0, crust.upliftKm[c]) - up0) / colSlope[crust.type[c]]; }
     }
-    bookRock('beltRootKm3', bookRoot * mesh.cellAreaKm2); bookRock('beltReliefKm3', bookRelief * mesh.cellAreaKm2);
+    // (paid: a capped root is arc magmatism, a mantle source — arcRootAddedKm3; the cap's use is returned so a margin's
+    // second call, its arc, takes the rest of the same cap)
+    bookRock(sourced ? 'arcRootAddedKm3' : 'beltRootKm3', bookRoot * mesh.cellAreaKm2); bookRock('beltReliefKm3', bookRelief * mesh.cellAreaKm2);
     for (const c of reached) { u[c] = Infinity; src[c] = -1; seaKm[c] = 0; }
+    return bookRoot * mesh.cellAreaKm2;
 }
 
 export { OrogenyType, BeltSide };

@@ -11,6 +11,8 @@
 //   beltRootKm3     crust a belt's root gained (continent or arc) (or lost) — UNPAID: the rigid upper plate loses no area for it, so the
 //                   shortening that should pay for it is not taken from anywhere (review row 10, "belts from shortening")
 //   beltReliefKm3   the crust behind a belt's relief (uplift ÷ column slope, measure.js crustThicknessKm) — UNPAID likewise
+//   arcRootAddedKm3 (config.crustPaidRelief) the root an Andean, Laramide or arc belt gained under its arc-magmatism cap
+//                   (arcAdditionKm3PerKmMyr): a mantle source, paid — what beltRootKm3 was for those belts (lane crustmass S1)
 //   arcAddedKm3     magma a fed arc gained, and a new arc's crust less the floor sediment it buries (step/wings.js buildArcs)
 //   arcMaturedKm3   an arc welded on as continent: its rock as continent less as arc — the floor at an ordinary continent's
 //                   crust, ARC_ROOT_SHARE of its root kept (step/arc-maturation.js)
