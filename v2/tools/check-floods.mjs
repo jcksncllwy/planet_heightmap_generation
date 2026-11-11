@@ -71,11 +71,18 @@ for (const [seed, time] of MOMENTS) {
     let bad = 0;
     for (let c = 0; c < fin.z.length; c++) if (!Number.isFinite(fin.z[c])) bad++;
     const lowLat = g.lats.length ? Math.min(...g.lats.map(Math.abs)) : NaN;
-    rows.push({ label: `${seed}@${time}`, lakes: fl.lakes, km2: fl.lakeKm2, largestKm3: fl.largestKm3, largestKm2: fl.biggest[0]?.km2 ?? 0, unheld: g.unheld, bad, lowLat, iceKm2: fin.stats.iceKm2 });
+    // (the GPU's networks, summed over the ladder's rungs and the late run: basins that never joined, flats left with no
+    // receiver. The CPU path keeps no such counts; null then)
+    const runs = [...(fin.stats.erode?.levels ?? [fin.stats.erode]), fin.stats.erodeLate].filter(r => r?.unjoined != null);
+    const undone = runs.length ? runs.reduce((u, r) => u + r.unjoined + r.unresolved, 0) : null;
+    rows.push({ label: `${seed}@${time}`, undone, lakes: fl.lakes, km2: fl.lakeKm2, largestKm3: fl.largestKm3, largestKm2: fl.biggest[0]?.km2 ?? 0, unheld: g.unheld, bad, lowLat, iceKm2: fin.stats.iceKm2 });
     console.log(`    ${seed} at ${time} Myr: ice ${(fin.stats.iceKm2 / 1e6).toFixed(1)} Mkm²; ${fl.lakes} ice-dammed lakes, ${(fl.lakeKm2 / 1e6).toFixed(2)} Mkm², ${Math.round(fl.volumeKm3).toLocaleString()} km³, the largest ${Math.round(fl.largestKm3).toLocaleString()} km³; at ${g.lats.map(v => `${v}°`).join(', ') || '—'}`);
 }
 const each = f => rows.map(r => `${r.label} ${f(r)}`).join(' · ');
 check('every ice-dammed lake has ice across its way out (bug guard: the floods agree)', rows.every(r => r.unheld === 0), each(r => `${r.unheld} of ${r.lakes}`));
+// (crustmass S5's 777@300 left basins unjoined and flats unresolved after any network with no inland minimum: hollowfix6, 2026-11-11)
+const gpuRows = rows.filter(r => r.undone !== null);
+if (gpuRows.length) check('the GPU\'s networks leave no basin unjoined and no flat without a receiver (bug guard)', gpuRows.every(r => r.undone === 0), each(r => `${r.undone ?? '(cpu)'}`));
 check('the ice age leaves every height a number (bug guard: a NaN breaks the floods\' heap)', rows.every(r => r.bad === 0), each(r => `${r.bad}`));
 // (the last glacial's, at its greatest: North America's — Agassiz, Ojibway, McConnell, Missoula, Columbia — and Eurasia's —
 // the Baltic Ice Lake, the West Siberian lakes and Komi, Vitim. Not all at once, and how many a world has depends on how

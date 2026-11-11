@@ -364,6 +364,9 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     };
     // ── a network: basins, their spanning tree, the filled surface, the receivers, the depth order ──
     let levels = 0, hist0 = null, guessRounds = 6, guessPasses = 8, guessHigh = 8;
+    // (what every network left undone, summed over the run: basins that never joined theirs downhill, flat cells left with no
+    // receiver. Both should be 0: check-floods holds them there)
+    const undone = { unjoined: 0, unresolved: 0 };
     const route = async () => {
         const t0 = performance.now();
         let e = device.createCommandEncoder(), p = e.beginComputePass();
@@ -382,7 +385,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         let rounds = 0, left = roots, was = -1;
         while (left > 0 && left !== was && rounds < 32) {
             was = left;
-            const batch = rounds ? 1 : guessRounds;
+            const batch = rounds ? 1 : Math.max(1, guessRounds);
             e = device.createCommandEncoder(); p = e.beginComputePass();
             for (let b = 0; b < batch; b++) {
                 rounds++;
@@ -396,10 +399,16 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             device.queue.submit([e.finish()]);
             left = await readCount();
         }
-        guessRounds = rounds;
+        // (a network with no inland minima, roots 0, takes no rounds: it must not teach the next one to take none. It did, and every
+        // later network on that device skipped the hooking: its basins never joined, their fill was their own pit's, and the flats
+        // on them stayed unresolved, recv NONE (crustmass S5's 777@300, 2026-11-11, hollowfix6))
+        if (rounds) guessRounds = rounds;
         e = device.createCommandEncoder(); p = e.beginComputePass();
         run(p, G.levelInit, SL.roots, roots);
-        for (let i = 0; i < 12; i++) run(p, i % 2 ? G.levelBA : G.levelAB, SL.roots, roots);
+        // (a basin's spill chain is at most `roots` long, so ⌈log₂ roots⌉ jumps reach its end: the level is exact by construction,
+        // with no count to wait for. Real chains are short (≤ 141 at 2.5M, 831576@430), so the fixed 12 (even) almost always rule)
+        const LJ = Math.max(12, 2 * Math.ceil(Math.log2(roots + 1) / 2));
+        for (let i = 0; i < LJ; i++) run(p, i % 2 ? G.levelBA : G.levelAB, SL.roots, roots);
         run(p, G.fillIn, SL.list, listLen); run(p, G.receive, SL.list, listLen);
         p.end();
         clearCounter(e); p = e.beginComputePass();
@@ -459,7 +468,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         put('cursor', cursor);
         hist0 = hist;
         ms.route += t1 - t0; ms.sort += performance.now() - t1;
-        return { roots, rounds, flats, passes, levels, placed: at, unresolved: pending };
+        undone.unjoined += left; undone.unresolved += pending;
+        return { roots, rounds, flats, passes, levels, placed: at, unjoined: left, unresolved: pending };
     };
     const sweeps = async hist0 => {
         const t0 = performance.now(), e = device.createCommandEncoder();
@@ -548,5 +558,5 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3), overRimKm3PerYr: perYr(overKm3) };
-    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, toSeaKm3: R.toSea, closedKm3: R.inClosed, outflow: { q: outQ, recv: outR } };
+    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, ...undone, toSeaKm3: R.toSea, closedKm3: R.inClosed, outflow: { q: outQ, recv: outR } };
 }
