@@ -86,6 +86,15 @@ const oz = top({ realm: 'land', habitat: 'xeric-shrubland', koppen: 'BSh', tAnnu
 check('a long-isolated dry continent → long-isolated cards lead (Australia-like, not Africa-like)',
     oz.ranked[0]?.card.isolation === 'long-isolated' && oz.ranked.filter(r => r.card.isolation === 'long-isolated').length >= 2,
     `${oz.ranked.map(r => `${r.card.id} (${r.card.isolation})`).join(', ')}; ${likes(oz).join(', ')}`);
+// …and fill its roles only from cards of its own class: a role only a connected card fills stays a plain role word
+// (gladsheim ruling, 2026-11-11: no Caracal or Suricata in an Australia-like shrubland).
+const ozRoles = Object.entries(oz.roles), fromCard = id => CARDS.find(c => c.id === id);
+check('a long-isolated continent\'s roles come only from long-isolated cards; the rest stay plain role words',
+    ozRoles.every(([, r]) => r.plain ? r.like === null && r.card === null && !!r.words : fromCard(r.card)?.isolation === 'long-isolated')
+        && !likes(oz).some(l => l === 'Caracal' || l === 'Suricata'),
+    ozRoles.map(([k, r]) => `${k} ${r.plain ? `plain "${r.label}"` : `${r.like} (${fromCard(r.card)?.isolation})`}`).join(', '));
+const earthPoints = [serengeti, amazon, pampas];
+check('a connected continent\'s roles come only from connected cards', earthPoints.every(m => Object.values(m.roles).every(r => r.plain || fromCard(r.card)?.isolation === 'connected')));
 
 const ventCell = top({ realm: 'sea', habitat: 'open-gyre', floor: 'vent', marine: { sstC: 25, depthKm: 2.6 } }, 3);
 check('a gyre surface over a vent field gets both: the gyre above, the vent fauna on the floor', ventCell.habitat === 'open-gyre' && ventCell.floor?.habitat === 'vent' && ventCell.floor.ranked[0]?.card.habitats.includes('vent'),

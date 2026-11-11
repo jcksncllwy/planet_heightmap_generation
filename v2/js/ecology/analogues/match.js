@@ -149,8 +149,10 @@ const sizeFloorKg = size => (size ? SIZE_CLASSES[size][0] : 0);
  * @param {{top?: number, cards?: object[]}} [opt]  top: how many ranked cards to return (5)
  * The result gains `floor` ({habitat, ranked, roles}) when a sea cell names its floor apart from its surface.
  * @returns {{habitat: string, noPrecedent: boolean, ranked: {card: object, score: number, why: string[]}[],
- *            roles: Object<string, {like: string, words: string, size: string|null, card: string, place: string,
- *                                   ageMa: number[], label: string, fromOther: boolean, refs: string[]}>}}
+ *            roles: Object<string, {like: string|null, words: string, size: string|null, card: string|null,
+ *                                   place: string|null, ageMa: number[]|null, label: string, fromOther: boolean,
+ *                                   plain?: boolean, refs: string[]}>}}
+ *          A `plain` role has no look-alike (only cards of another isolation class fill it): like, card, place, ageMa null.
  */
 export function matchAnalogues(cell, { top = 5, cards = CARDS } = {}) {
     const habitat = resolveHabitat(cell);
@@ -177,7 +179,7 @@ export function matchAnalogues(cell, { top = 5, cards = CARDS } = {}) {
     }
     scored.sort((a, b) => b.score - a.score || (a.card.id < b.card.id ? -1 : 1));   // ties by id: deterministic
     const noPrecedent = Number.isFinite(cell.earthLikeMa) && cell.earthLikeMa < 0;
-    const out = { habitat, noPrecedent, ranked: scored.slice(0, top), roles: fillRoles(scored, cell, noPrecedent) };
+    const out = { habitat, noPrecedent, ranked: scored.slice(0, top), roles: fillRoles(scored, cell, iso, noPrecedent) };
     // the sea floor is matched on its own (amendment 1): open gyre at the surface, a vent field below
     if (cell.realm === 'sea' && cell.floor && cell.floor !== habitat) {
         const { floor: _f, ...surface } = cell;
@@ -189,24 +191,49 @@ export function matchAnalogues(cell, { top = 5, cards = CARDS } = {}) {
 
 // Each role from the best-ranked card that has it and whose animal fits the landmass's body-size cap (×2, §7.2 step 5),
 // looking no further than the cards that still match well (half the best score); "fromOther" when it isn't the top card.
-function fillRoles(scored, cell, noPrecedent) {
+// On land the card must be of the landmass's own isolation class: a long-isolated continent's lineages are its own, so a
+// Caracal from a connected continent's card is no likeness for an Australia-like landmass's small predator, however close
+// the climate (gladsheim ruling, 2026-11-11). A role that only a card of another class fills is kept as a plain role word,
+// with no look-alike: the habitat has the role, Earth's matching assemblages of that class don't show who fills it.
+function fillRoles(scored, cell, iso, noPrecedent) {
     const roles = {};
     if (!scored.length) return roles;
     const floor = scored[0].score * 0.5;
     const capOf = role => (HERB_ROLES.has(role) ? cell.bodyCapKg?.herb : CARN_ROLES.has(role) ? cell.bodyCapKg?.carn : null);
+    const ownClass = card => cell.realm !== 'land' || card.isolation === iso;
     for (const role of ROLES) {
         const cap = capOf(role);
+        let otherClass = false;
         for (const { card, score } of scored) {
             if (score < floor) break;
             const r = card.roles[role];
             if (!r) continue;
             if (Number.isFinite(cap) && sizeFloorKg(r.size) > 2 * cap) continue;
+            if (!ownClass(card)) { otherClass = true; continue; }
             roles[role] = { ...r, card: card.id, place: card.place, ageMa: card.ageMa, fromOther: card !== scored[0].card,
                 label: likeLabel(r, card, noPrecedent), refs: SOURCES[card.id]?.[role] ?? [] };
             break;
         }
+        if (!roles[role] && otherClass) roles[role] = plainRole(role, noPrecedent);
     }
     return roles;
+}
+
+// The plain role words, for a role with no look-alike of the landmass's class.
+const ROLE_WORDS = {
+    plants: 'the main plants', grazer: 'a grazer', browser: 'a browser', megaherbivore: 'a very large plant-eater',
+    frugivore: 'a fruit-eater', granivore: 'a seed-eater', nectarivore: 'a nectar-feeder', bigPredator: 'a large predator',
+    smallPredator: 'a small predator', insectivore: 'an insect-eater', scavenger: 'a scavenger', decomposer: 'a decomposer',
+    pollinator: 'a pollinator', seedDisperser: 'a seed disperser', engineer: 'an ecosystem engineer', flyer: 'a flyer',
+    arboreal: 'a tree-dweller', burrower: 'a burrower',
+    aquaticGrazer: 'an aquatic grazer', aquaticPredator: 'an aquatic predator', plankton: 'plankton',
+    filterFeeder: 'a filter feeder', forageFish: 'forage fish', marinePredator: 'a marine predator',
+    topMarine: 'a top marine predator', reefBuilder: 'a reef builder', benthos: 'bottom-dwellers', shoreBird: 'a shore bird',
+};
+function plainRole(role, noPrecedent) {
+    const words = ROLE_WORDS[role];
+    return { like: null, words, size: null, card: null, place: null, ageMa: null, fromOther: true, plain: true, refs: [],
+        label: noPrecedent ? `${words}: no Earth precedent for this age` : words };
 }
 
 // ── words ────────────────────────────────────────────────────────────────────────────────────────────────────────────
