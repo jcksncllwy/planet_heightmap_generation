@@ -18,7 +18,7 @@ import { beltProfile, broadProfile, crestProfile, stripeZone, beltEdge } from '.
 import { buildStripeKernels, stripeAt, crossAt, beltAt, carriedField, carriedStripeAt } from './stripes.js';
 import { lipPieces, dykeAt } from './lips.js';
 import { SEGMENT_KM } from '../tectonics/model/segments.js';
-import { buildVolcanoes, coneAt, volcanoNoise } from './volcanoes.js';
+import { buildVolcanoes, coneAt, calderaAt, volcanoNoise } from './volcanoes.js';
 import { cratonCharacter, flexuralLengthKm } from './cratons.js';
 import { BeltSide, CrustType } from '../tectonics/model/crust.js';
 import { sampleOnto, warpField, warpPoint } from './terrain-mesh.js';
@@ -1009,7 +1009,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             }
             platform = h;
         }
-        const cone = coneAt(V, cn, px, py, pz, h);
+        const cone = coneAt(V, cn, px, py, pz, h) + calderaAt(V, cn, px, py, pz);
         heightKm[t] = h + cone - seaKm;                // (heights from the sea, wherever it stands: terrain/sea-level.js)
         if (carve) {
             // the carving's inputs here: rock uplift (active belts rise, by their relief, fading once quiet), how easily

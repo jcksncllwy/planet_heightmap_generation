@@ -12,8 +12,9 @@
 // The magma by setting (km³/Myr, intrusive + extrusive):
 //   ridge   new ocean floor (budget.created) × the melt column a normal mantle makes, 7 km (White, McKenzie & O'Nions 1992)
 //   arc     the history's own arc magma book, budget.arcAddedKm3 (step/wings.js): the crust the arcs GAINED — Earth's net
-//           growth figure (1.1–1.65 km³/yr, Reymer & Schubert 1984), not the gross melt (2.5–8; ~⅔ founders as cumulates,
-//           Jagoutz & Kelemen 2015). `arcGross` scales it for gas (Jackson's ruling pending: report Q1; default 1)
+//           growth figure (1.1–1.65 km³/yr, Reymer & Schubert 1984) — × ARC_GROSS, the melt that fed it: ~⅔ of arc magma
+//           founders as dense cumulates (Jagoutz & Kelemen 2015). magma.arc is that gross melt (gas, eruptions, Crisp's
+//           total all count it); magma.arcNet the book itself. Subduction erosion is the history's own step, not in k
 //   plume   each live tail × its strength × Earth's mean tail (~1.5 km³/yr of oceanic-intraplate magma, ~5 % of Crisp's
 //           26–34 km³/yr, over Sleep's ~45 hotspots)
 //   rift    decompression melting under freshly stretched continent: riftThin (1 − 1/β) and the mantle's excess heat
@@ -53,6 +54,15 @@ const LIP_IE = 1;
 /** The history's flood-basalt pile (lipThicknessKm 2, over the whole province) against Earth's mean lava thickness over a
  *  province's original extent, ~0.5–1 km (Deccan ~1 Mkm³ over ~1.5 Mkm²; Siberia ~1–2 Mkm³ of lavas over ~2.5–4 Mkm²). */
 export const LIP_EARTH_SCALE = 0.4;
+/** Arc melt ÷ the arc crust it leaves (k, Jackson's Q1: a published figure). Jagoutz & Kelemen 2015 (AREPS 43: 363, §7.3.2.2
+ *  and Fig. 16, after Jagoutz & Schmidt 2013 EPSL): ~55–70 % of the primary melt's mass returns to the mantle as density-
+ *  unstable cumulates to make andesitic arc crust, "about two-thirds" at Kohistan; k = 1 ÷ (1 − f) = 2.2–3.3, ⅔ → 3. The
+ *  history's arc book is the crust kept before subduction erosion (step/subduction-erosion.js takes its own), so foundering
+ *  is the whole gap. (Their Fig. 17's 12.9 km³/yr arc flux over 2.6 km³/yr of crust growth, k ≈ 5, nets out subduction
+ *  erosion and accretion too: the wrong ratio here.) */
+export const ARC_GROSS = 3;
+/** The settings the budget sums (magma.arcNet is the arc's crust book, not another source). */
+export const SETTINGS = Object.freeze(['ridge', 'arc', 'plume', 'rift', 'lip']);
 /** Intrusive : extrusive, by setting (White, Crisp & Spera 2006: ~5:1 on average, 1:1–16:1, no trend with setting;
  *  ridges 18:3 km³/yr in Crisp 1984; basaltic shields 1–2:1; the Kenya Rift ~310 000 km³ erupted of ~924 000 with its
  *  underplate, Guth 2016 / Latin et al. 1993). */
@@ -116,13 +126,14 @@ export function lipPulses(seed, name, volKm3) {
  * One frame's volcanism. `prev` is the frame before (its books give the window's rates); `H` the terrain constants
  * (terrainConfig: the column model's crust thicknesses). @returns the `volc` record (report §2)
  */
-export function volcStep(prev, frame, mesh, H, { seed = 0, arcGross = 1 } = {}) {
+export function volcStep(prev, frame, mesh, H, { seed = 0, arcGross = ARC_GROSS, arcNetKm3Myr = null } = {}) {
     const { numCells: n, xyz } = mesh, cellKm2 = mesh.cellAreaKm2 ?? 4 * Math.PI * R * R / n, t = frame.time;
     const dt = prev ? Math.max(1e-6, t - prev.time) : 10, t0 = t - dt;
     const B = frame.budget ?? {}, P = prev?.budget ?? {};
-    const magma = { ridge: 0, arc: 0, plume: 0, rift: 0, lip: 0 };
-    magma.ridge = prev ? Math.max(0, (B.created ?? 0) - (P.created ?? 0)) * cellKm2 * RIDGE_MELT_KM / dt : 0;
-    magma.arc = prev ? Math.max(0, (B.arcAddedKm3 ?? 0) - (P.arcAddedKm3 ?? 0)) / dt : 0;
+    const magma = { ridge: 0, arc: 0, plume: 0, rift: 0, lip: 0, arcNet: 0 };
+    magma.ridge = prev?.budget ? Math.max(0, (B.created ?? 0) - (P.created ?? 0)) * cellKm2 * RIDGE_MELT_KM / dt : 0;
+    magma.arcNet = arcNetKm3Myr ?? (prev ? Math.max(0, (B.arcAddedKm3 ?? 0) - (P.arcAddedKm3 ?? 0)) / dt : 0);
+    magma.arc = magma.arcNet * arcGross;
     const hs = frame.hotspots ?? [];
     for (const h of hs) magma.plume += h.strength * PLUME_KM3_YR * 1e6;
 
@@ -210,15 +221,29 @@ export function volcStep(prev, frame, mesh, H, { seed = 0, arcGross = 1 } = {}) 
     }
 
     const erupted = {}, gas = { co2: {}, so2: {}, h2o: {}, cl: {} };
-    for (const k of Object.keys(magma)) {
+    for (const k of SETTINGS) {
         erupted[k] = magma[k] / (1 + IE[k]);
-        const m = k === 'arc' ? magma[k] * arcGross : magma[k], e = k === 'arc' ? erupted[k] * arcGross : erupted[k], Y = YIELD[k];
+        const m = magma[k], e = erupted[k], Y = YIELD[k];
         gas.co2[k] = mtYr(m, Y.co2); gas.h2o[k] = mtYr(m, Y.h2o); gas.cl[k] = mtYr(m, Y.cl); gas.so2[k] = mtYr(e, 2 * Y.s);
     }
     // (the sills' CO₂ over the frame, Mt/yr: what the box adds to steady degassing; its pulse is the province's own)
     gas.co2.thermo = lips.reduce((s, l) => s + l.thermoGtCO2, 0) * 1e3 / (dt * 1e6);
     return { v: 1, time: t, dt, magma, erupted, gas, lips, sites };
 }
+
+/**
+ * The record at a finished moment from its own frame alone (the detail pass has no frame before it): the window is a
+ * history frame's (MOMENT_WINDOW_MYR: the rifts stretched and LIPs erupted within it), the arc's rate the history's mean
+ * so far (its arc book ÷ the time it covers) — the moment's own arc rate needs the frame before. Ridge magma reads 0 (no
+ * spreading book in one frame); nothing drawn needs it.
+ */
+export function momentVolc(frame, mesh, H, seed = 0) {
+    const t = frame.time ?? 0, arc = t > 0 ? (frame.budget?.arcAddedKm3 ?? 0) / t : 0;
+    return volcStep({ time: t - MOMENT_WINDOW_MYR }, frame, mesh, H, { seed, arcNetKm3Myr: arc });
+}
+/** A history frame's step (Myr): the window a finished moment reads its live rifts in (rift volcanism lasts ~10–20 Myr
+ *  along a rift, e.g. Kenya since ~15 Ma: Guth 2016). */
+export const MOMENT_WINDOW_MYR = 10;
 
 // ── eruptions at a finished moment (detail pass; never in the history: Jackson, atmosphere Q6) ──
 

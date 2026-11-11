@@ -8,7 +8,7 @@ import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
-import { volcStep, riftMeltKm, recentEruptions, EARTH_VEI_PER_YR, EARTH_WEIGHT, RIDGE_MELT_KM } from '../js/tectonics/volcanism.js';
+import { volcStep, riftMeltKm, recentEruptions, EARTH_VEI_PER_YR, EARTH_WEIGHT, RIDGE_MELT_KM, ARC_GROSS } from '../js/tectonics/volcanism.js';
 
 const SEED = 12345, SIM = 20000, UNTIL = 400;
 const mesh = labMesh(SIM), H = terrainConfig({});
@@ -60,10 +60,12 @@ simulate(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr:
     prev = copy;
 } });
 check('reading a frame changes nothing in it (records only)', pure, `${rows.length} frames`);
+check('arc magma is the arc book × ARC_GROSS (the melt behind the crust)', rows.every(v => Math.abs(v.magma.arc - v.magma.arcNet * ARC_GROSS) <= 1e-9 * (1 + v.magma.arc)));
 const mean = g => rows.reduce((a, v) => a + g(v), 0) / rows.length;
 const m = k => mean(v => v.magma[k]) / 1e6;
 report('ridge magma', m('ridge'), { earth: [18, 24], unit: 'km³/yr', source: 'Crisp 1984; White et al. 1992 (7 km of melt × spreading)' });
-report('arc magma (the history\'s arc book: net growth)', m('arc'), { earth: [1.1, 8], unit: 'km³/yr', source: 'Reymer & Schubert 1984 net … Crisp 1984 gross' });
+report('arc crust (the history\'s arc book: net growth)', m('arcNet'), { earth: [1.1, 1.65], unit: 'km³/yr', source: 'Reymer & Schubert 1984' });
+report('arc magma (the book × ARC_GROSS: the melt)', m('arc'), { earth: [2.5, 8], unit: 'km³/yr', source: 'Crisp 1984 (~20 % of 26–34); Jagoutz & Kelemen 2015 (⅔ founders)' });
 report('plume-tail magma', m('plume'), { earth: [1, 3], unit: 'km³/yr', source: 'Crisp 1984 (~5 % of 26–34)' });
 const lips = rows.flatMap(v => v.lips);
 report('flood basalts per 100 Myr', lips.length / (UNTIL / 100), { earth: [3, 6], source: 'Ernst 2014; Bryan & Ernst 2008 (big LIPs ~1 per 20–30 Myr)' });

@@ -14,6 +14,17 @@
 // higher ground (a coast beside it) it only adds what rises above that ground. An eroding volcano also spreads — wider,
 // lower, rounder — as before. Every volcano draws its shape from the stream
 // of the crust cell it stands on and sits where that crust is now (anchor.js), so it keeps its shape as its plate moves.
+//
+// Rift volcanoes and calderas (lane volcano) come from the moment's volcanic record (tectonics/volcanism.js momentVolc):
+//   · a rift cell that melts this window (decompression under the stretch, hot mantle only — cold rifts stay dry) builds
+//     central volcanoes in proportion to the lava it erupted (cfg.riftConeShare × lava ÷ the cone's volume): Kilimanjaro,
+//     Kenya, the Ethiopian shields; their ridges run along the rift;
+//   · at silicic centres (thick-crust arcs, rifted arcs, plumes under continents, peralkaline rifts) the largest eruption
+//     of the last cfg.calderaKyr — drawn at Earth's rates by VEI, scaled by the world's own arcs — leaves a caldera:
+//     collapse area = its dense-rock volume ÷ the subsidence (Lipman 1997), a floor, a low rim, sometimes a resurgent dome,
+//     filling in with age. The lakes in them are the finish's own (it floods closed depressions).
+// Limits: a caldera's size is its single largest eruption's (nested and repeated collapses are not summed); calderas
+// smaller than the mesh can show are not drawn; no ignimbrite plateau or tephra blanket around them (the ash: V7).
 
 import { CrustType, CrustFlag, VolcanicType, OrogenyType } from '../tectonics/model/crust.js';
 import { ISLAND_EROSION_KM_PER_MYR, SEAMOUNT_KM, seaDepthKm, arcGrowth } from '../tectonics/measure.js';
@@ -21,6 +32,7 @@ import { kindType } from './records.js';
 import { nearLists } from './near-lists.js';
 import { cellRng, crustSites } from './anchor.js';
 import { FastNoise } from '../core/fast-noise.js';
+import { momentVolc, recentEruptions, IE } from '../tectonics/volcanism.js';
 
 const R = 6371, TAU = 2 * Math.PI, MAX_ARMS = 3;
 /** The noise that shapes the cones' outlines (a plan sent to another worker leaves it out, and it is made again there). */
@@ -28,7 +40,7 @@ export const volcanoNoise = seed => new FastNoise(seed * 41 + 7);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // per-volcano shape record (Float32, STRIDE per volcano)
 const LOBES = 0, ARM_COUNT = 8, ARMS = 9, RIBS = 21, RIB_DEPTH = 29, COLLAPSE = 30, WOBBLE = 33, NOISE = 34, STRIDE = 36;
-const SALT = { hotspot: 101, arc: 102, andean: 103 };
+const SALT = { hotspot: 101, arc: 102, andean: 103, rift: 104, caldera: 105 };
 /** (for the checks) a volcano's shape record is VOLCANO_STRIDE floats of V.shape; slot VOLCANO_WEAR_SLOT changes as it wears */
 export const VOLCANO_STRIDE = STRIDE, VOLCANO_WEAR_SLOT = RIB_DEPTH;
 /** A rounded max(a, b) of non-negative heights (an 8-norm): no crease where an arm meets the edifice, and 0 stays 0. */
@@ -69,17 +81,21 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
         return { s, sa };
     };
 
+    // where the crust of world cell w is now, jittered in its plate's frame
+    const homeOf = (w, rc, rng, jitterKm) => {
+        const o = anchor.owner[w], b = 9 * Math.max(0, o), M = o >= 0 ? mats : IDENTITY, mb = o >= 0 ? b : 0;
+        const toWorld = (v) => [M[mb] * v[0] + M[mb + 1] * v[1] + M[mb + 2] * v[2], M[mb + 3] * v[0] + M[mb + 4] * v[1] + M[mb + 5] * v[2], M[mb + 6] * v[0] + M[mb + 7] * v[1] + M[mb + 8] * v[2]];
+        const j = jitterKm / R;
+        const local = unit([xyz[3 * rc] + (rng() * 2 - 1) * j, xyz[3 * rc + 1] + (rng() * 2 - 1) * j, xyz[3 * rc + 2] + (rng() * 2 - 1) * j]);
+        return { toWorld, local, c: unit(toWorld(local)) };
+    };
     // a volcano on the crust of world cell w: where that crust is now (anchor.home, plus jitter drawn in the plate's
     // frame), its long axis along `along` (a world tangent: the strike) turned a little, or any way (in the plate's frame)
     // (floorKm: the height of the sea floor a hotspot edifice stands on, or NaN — it stands on whatever is under it)
     const add = (w, rc, rng, jitterKm, h, r, ageMyr, along, kind, worn = false, floorKm = NaN) => {
         const f = 1 - Math.exp(-Math.max(0, ageMyr) * (worn ? 1 : rec.erosion[w]) / cfg.coneSpreadMyr);
         h *= 1 - cfg.coneSettle * f; r *= 1 + cfg.coneSpread * f;
-        const o = anchor.owner[w], b = 9 * Math.max(0, o), M = o >= 0 ? mats : IDENTITY, mb = o >= 0 ? b : 0;
-        const toWorld = (v) => [M[mb] * v[0] + M[mb + 1] * v[1] + M[mb + 2] * v[2], M[mb + 3] * v[0] + M[mb + 4] * v[1] + M[mb + 5] * v[2], M[mb + 6] * v[0] + M[mb + 7] * v[1] + M[mb + 8] * v[2]];
-        const j = jitterKm / R;
-        const local = unit([xyz[3 * rc] + (rng() * 2 - 1) * j, xyz[3 * rc + 1] + (rng() * 2 - 1) * j, xyz[3 * rc + 2] + (rng() * 2 - 1) * j]);
-        const c = unit(toWorld(local));
+        const { toWorld, local, c } = homeOf(w, rc, rng, jitterKm);
         let e;
         if (along) {
             e = tangent(c, along);
@@ -112,6 +128,18 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
         const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2];
         return [y * az - z * ay, z * ax - x * az, x * ay - y * ax];
     };
+    // the moment's volcanic record: its melting rift cells, and each silicic centre's largest recent eruption (only the
+    // VEI classes whose caldera is at least two terrain cells across: a smaller pit would only be noise)
+    const volc = momentVolc(frame, simMesh, cfg, seed), riftSite = new Int32Array(numCells).fill(-1), bigOne = new Map();
+    volc.sites.forEach((s, i) => { if (s.kind === 'rift') riftSite[s.w] = i; });
+    const calderaKm = km3 => 2 * Math.sqrt(km3 / cfg.calderaBulkPerDre / cfg.calderaSubsideKm / Math.PI);
+    let minVei = 6;
+    while (minVei < 8 && calderaKm(3 * 10 ** (minVei - 5)) < 2 * edgeKm) minVei++;
+    for (const e of recentEruptions(volc, seed, cfg.calderaKyr, { minVei })) {
+        const was = bigOne.get(e.w);
+        if (!was || e.km3 > was.km3) bigOne.set(e.w, e);
+    }
+    const cHomes = [], cPos = [], cRad = [], cAxis = [], cAspect = [], cDepth = [], cRim = [], cDome = [], cDomeR = [], cNoise = [];
     // per CRUST cell (anchor.js crustSites): a moving plate keeps the same volcanoes frame after frame — none lost where
     // the world grid skips a crust cell, none doubled where it lands on one twice
     crustSites(anchor, simMesh, w => frame.owner[w] >= 0, (w, rc) => {
@@ -140,11 +168,39 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
             if (Math.abs(rec.dKm[w] - centre) < Math.max(35, 0.07 * W) + 40 && rng() < cfg.andeanConeShare)
                 add(w, rc, rng, 35, cfg.coneKm.andean * (0.75 + 0.5 * rng()), cfg.coneRadiusKm.andean * (0.85 + 0.3 * rng()), 20 * rng(), strikeAt(w), 'andean');
         }
+        // rift volcanoes: as many as the cell's lava builds (a share of it in central edifices; the chance carries the remainder)
+        if (riftSite[w] >= 0) {
+            const site = volc.sites[riftSite[w]], rng = cellRng(seed, rc, SALT.rift), lava = site.km3Myr * volc.dt / (1 + IE.rift);
+            const age = Math.max(0, time - frame.riftThinAt[w]);
+            for (let i = 0; i < 3; i++) {
+                const h = cfg.coneKm.rift * (0.6 + 0.8 * rng()), r = cfg.coneRadiusKm.rift * (0.8 + 0.4 * rng());
+                if (rng() >= cfg.riftConeShare * lava / (Math.PI * r * r * h / 3) - i) break;
+                add(w, rc, rng, 45, h, r, age * rng(), strikeAt(w), 'rift');
+            }
+        }
+        // a caldera where this centre's largest recent eruption collapsed its roof
+        const big = bigOne.get(w);
+        if (big) {
+            const rng = cellRng(seed, rc, SALT.caldera), { c, local, toWorld } = homeOf(w, rc, rng, 30);
+            const area = big.km3 / cfg.calderaBulkPerDre / cfg.calderaSubsideKm, a = 1 + 0.8 * rng() ** 2;   // (some long: Toba 30 × 100 km)
+            const rad = Math.sqrt(area / Math.PI), along = strikeAt(w), fill = Math.exp(-big.ageYr / 1e6 / cfg.calderaFillMyr);
+            let e;
+            if (along) e = rotateAbout(c, tangent(c, along), (rng() * 2 - 1) * 0.4);
+            else { const e1 = tangent(local, Math.abs(local[2]) < 0.9 ? [-local[1], local[0], 0] : [1, 0, 0]); e = unit(toWorld(rotateAbout(local, e1, rng() * TAU))); }
+            cHomes.push(w); cPos.push(c[0], c[1], c[2]); cRad.push(rad); cAxis.push(e[0], e[1], e[2]); cAspect.push(a);
+            cDepth.push(cfg.calderaDepthKm * fill); cRim.push(cfg.calderaRimKm * (0.5 + 0.5 * fill));
+            const dome = 2 * rad >= 8 && rng() < cfg.calderaDome;
+            cDome.push(dome ? cfg.calderaDepthKm * (0.4 + 0.5 * rng()) : 0); cDomeR.push(0.25 + 0.15 * rng()); cNoise.push(rng() * 200, rng() * 200);
+        }
     });
+    const cReach = i => cRad[i] * Math.sqrt(cAspect[i]) * 1.7;
+    const calderas = { count: cHomes.length, pos: Float32Array.from(cPos), radius: Float32Array.from(cRad), axis: Float32Array.from(cAxis),
+        aspect: Float32Array.from(cAspect), depth: Float32Array.from(cDepth), rim: Float32Array.from(cRim), dome: Float32Array.from(cDome),
+        domeR: Float32Array.from(cDomeR), offs: Float32Array.from(cNoise), near: nearLists(simMesh, cHomes, cPos, cReach), minVei };
     const near = nearLists(simMesh, homes, pos, i => reach[i]);
     return { count: homes.length, pos: Float32Array.from(pos), height: Float32Array.from(height), radius: Float32Array.from(radius), rounded: Float32Array.from(rounded),
         axis: Float32Array.from(axis), aspect: Float32Array.from(aspect), shape: Float32Array.from(shape), reach: Float32Array.from(reach),
-        ribFade: Float32Array.from(ribFade), base: Float32Array.from(base), crust: Int32Array.from(crust), plate: Int16Array.from(plate), warp: cfg.coneWarp, noise: volcanoNoise(seed), near };
+        ribFade: Float32Array.from(ribFade), base: Float32Array.from(base), crust: Int32Array.from(crust), plate: Int16Array.from(plate), warp: cfg.coneWarp, noise: volcanoNoise(seed), near, calderas };
 }
 
 const IDENTITY = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -223,4 +279,30 @@ export function coneAt(V, c0, px, py, pz, groundKm = 0) {
         if (h > best) best = h;
     }
     return best;
+}
+
+/**
+ * How much the calderas change terrain point p (nearest sim cell c0): the floor sunk below the surroundings, a low rim and
+ * its apron, a resurgent dome — summed (they rarely meet). Signed, km.
+ */
+export function calderaAt(V, c0, px, py, pz) {
+    const C = V.calderas;
+    if (!C || !C.count) return 0;
+    const { offset, items } = C.near, { pos, radius, axis, aspect, depth, rim, dome, domeR, offs } = C, noise = V.noise;
+    let dh = 0;
+    for (let j = offset[c0]; j < offset[c0 + 1]; j++) {
+        const k = items[j], cx = pos[3 * k], cy = pos[3 * k + 1], cz = pos[3 * k + 2], dx = px - cx, dy = py - cy, dz = pz - cz;
+        const sa = Math.sqrt(aspect[k]), rk = radius[k] * sa * 1.7 / R;
+        if (dx * dx + dy * dy + dz * dz >= rk * rk) continue;
+        const ex = axis[3 * k], ey = axis[3 * k + 1], ez = axis[3 * k + 2], qx = cy * ez - cz * ey, qy = cz * ex - cx * ez, qz = cx * ey - cy * ex;
+        const a0 = (dx * ex + dy * ey + dz * ez) * R / (radius[k] * sa), b0 = (dx * qx + dy * qy + dz * qz) * R * sa / radius[k];
+        // (a scalloped ring fault: the outline warped by smooth noise, as the cones are)
+        const o1 = offs[2 * k], o2 = offs[2 * k + 1];
+        const a = a0 + 0.15 * noise.noise3D(a0 * 1.3 + o1, b0 * 1.3 + o2, 3.1), b = b0 + 0.15 * noise.noise3D(a0 * 1.3 + o2, b0 * 1.3 + o1, 7.7);
+        const rho = Math.hypot(a, b), wall = smooth(0.8, 1.0, rho);
+        let h = rho <= 1 ? -depth[k] * (1 - wall) + rim[k] * wall : rim[k] * (1 - smooth(1, 1.5, rho));
+        if (dome[k] > 0 && rho < domeR[k]) h += dome[k] * (1 - (rho / domeR[k]) ** 2) ** 2;
+        dh += h;
+    }
+    return dh;
 }

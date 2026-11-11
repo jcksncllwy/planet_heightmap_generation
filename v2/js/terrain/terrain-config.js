@@ -498,28 +498,49 @@ export const TERRAIN = {
     arcActiveMyr: 25,           // …while it is an active arc (arc crust accreted into a continent, now in a collision belt, has none)…
     arcFrontKm: 130,            // …and only along its volcanic front: one line on the trench side, not across a whole swath of arc crust
     andeanConeShare: 0.35,      // chance of a stratovolcano per sim cell along an active Andean volcanic range
-    coneKm: { young: 2.5, mature: 2.0, andean: 1.2 },   // cone heights above what they stand on
-    coneRadiusKm: { young: 34, mature: 48, andean: 34 },
+    coneKm: { young: 2.5, mature: 2.0, andean: 1.2, rift: 2.0 },   // cone heights above what they stand on (rift: the East African
+                                // giants stand 2–4 km over their plateau — Kilimanjaro ~4, Kenya ~3.5, Elgon ~3 — most rift volcanoes far less)
+    coneRadiusKm: { young: 34, mature: 48, andean: 34, rift: 28 },   // (rift: Kilimanjaro's base ~40 × 60 km, Elgon ~80 km across)
     coneActiveMyr: 15,          // an Andean volcanic range falls silent this long after its margin stops
     coneSpreadMyr: 25,          // as a volcano erodes it spreads: over about this long it grows ×(1 + coneSpread) wider…
     coneSpread: 0.6,
     coneSettle: 0.35,           // …and loses this share of its height, turning from a cone into a broad, rounded shield
     // no two volcanoes the same shape (developer: "too perfectly circular", then "more ridgey and irregularly shaped"):
     // a ragged central edifice, ridges (arms) running out from the summit, gullies in the flanks, sometimes a collapse
-    coneElongation: { hotspot: 0.3, arc: 0.35, andean: 0.25 },   // the edifice's long axis is up to 1 + this times the short one
+    coneElongation: { hotspot: 0.3, arc: 0.35, andean: 0.25, rift: 0.35 },   // the edifice's long axis is up to 1 + this times the short one
     coneWarp: 0.3,              // a volcano's own coordinates are warped by smooth noise this strong (× its radius): irregular
     coneLobes: 0.1,             // outline wobble: up to ± this share of the radius in each of three harmonics…
     coneLobesFine: 0.04,        // …and a fifth-order one this strong: a ragged edge
-    coneArms: { hotspot: [2, 3], arc: [1, 2], andean: [0, 2] },   // arms per volcano, fewest…most: a shield's rift zones,
+    coneArms: { hotspot: [2, 3], arc: [1, 2], andean: [0, 2], rift: [1, 2] },   // arms per volcano, fewest…most: a shield's rift zones,
                                 // spread round it; an arc volcano's ridge along the arc
-    coneArmLength: { hotspot: [1.3, 2.4], arc: [0.9, 1.6], andean: [0.7, 1.3] },   // × the radius
+    coneArmLength: { hotspot: [1.3, 2.4], arc: [0.9, 1.6], andean: [0.7, 1.3], rift: [1.0, 1.8] },   // × the radius
     coneArmWidth: [0.35, 0.55], // × the radius (the width of the ridge where it leaves the summit)
     coneArmHeight: [0.8, 0.95], // an arm's crest where it leaves the summit, × the volcano's height; it stays high, then falls to its tip
     coneRibs: { young: 0.12, worn: 0.35 },   // gullies cut the lower flanks this deep (share of the height), deeper as it erodes
     coneRibCount: [5, 9],       // about this many gullies round a volcano
-    coneCollapse: { hotspot: 0.3, arc: 0.2, andean: 0.15 },   // chance of a flank-collapse amphitheatre (El Golfo, Mount St Helens)…
+    coneCollapse: { hotspot: 0.3, arc: 0.2, andean: 0.15, rift: 0.15 },   // chance of a flank-collapse amphitheatre (El Golfo, Mount St Helens)…
     coneCollapseDepth: [0.3, 0.6],                               // …cutting this share of the height out of one side
-    coneSatellites: { hotspot: 0.6, arc: 0.35, andean: 0.3 },    // chance of flank vents out along the arms
+    coneSatellites: { hotspot: 0.6, arc: 0.35, andean: 0.3, rift: 0.6 },    // chance of flank vents out along the arms (rift
+                                // volcanoes are ringed by them: Kilimanjaro's ~250 parasitic cones)
+    // rift volcanoes (lane volcano): where a freshly stretched rift melts (tectonics/volcanism.js riftMeltKm — the hot-mantle
+    // rifts; cold ones stay dry), a sim cell builds central volcanoes in proportion to the lava it erupted: the chance of one
+    // = riftConeShare × erupted km³ ÷ the drawn cone's volume. Declared: about half a rift's lava builds central edifices,
+    // the rest floods the floor as fissure basalt and plateau phonolite (Kenya's ~310 000 km³ is mostly plateau flows and
+    // the big central volcanoes; Guth 2016, Baker et al. 1972 — no clean split published)
+    riftConeShare: 0.5,
+    // calderas (lane volcano): at a moment's silicic centres, the largest eruption of the last calderaKyr drawn there
+    // (tectonics/volcanism.js recentEruptions: Earth's rates by VEI, scaled by the world's arcs) drops a collapse whose area is
+    // its dense-rock volume ÷ the subsidence (Lipman 1997, Bull Volc 59: piston collapse ~1–3 km, area ≈ volume ÷ depth;
+    // Toba's ~2800 km³ DRE → the ~30 × 100 km depression). Only the classes the mesh can show are drawn.
+    calderaKyr: 2000,           // a caldera stays a closed depression ~1–2 Myr (Valles, 1.25 Ma, still deep; Yellowstone's 2.1 Ma
+                                // Island Park rim half gone; Geyer & Martí 2008, the Collapse Caldera Database: most mapped calderas Quaternary)…
+    calderaFillMyr: 1.0,        // …its topographic depth fading over about this long as tuff, lake beds and rims fill it in
+    calderaSubsideKm: 1.5,      // piston subsidence (Lipman 1997: 1–3 km for the big ones, less for small)
+    calderaDepthKm: 0.7,        // the topographic floor when young, below the surroundings: the subsidence half filled by its own
+                                // intracaldera tuff (Crater Lake ~1.2 km to its lake floor, Toba ~0.5–1, Valles ~0.5)
+    calderaRimKm: 0.25,         // the rim stands this far over the plain, falling off over half a radius (its outflow sheets)
+    calderaDome: 0.5,           // chance of a resurgent dome on a caldera over 8 km across (Smith & Bailey 1968: Valles, Toba's Samosir)
+    calderaBulkPerDre: 2.5,     // tephra bulk volume ÷ dense rock (VEI classes count bulk tephra; ~2–3, Pyle 2015)
 
     // ── Erosion follows rainfall ──
     // A hard-coded estimate of zonal-mean precipitation by |latitude| (mm/yr, after Earth's: the wet equatorial belt,
