@@ -258,6 +258,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     let { koppen, tAnn, pAnn, lat, lon, G, climGrid, warmSl, waveIn, wind, travelFlow, petM, wetMonths, liquid, monthly, waterGrid, pageC, gridClimate,
         runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = climateOn(z, climateLand, ocean0);
     lap('climate');
+    // (the surface and the sea that climate read, kept for its re-run on the pits that end as sea, below — the straits cut next write z)
+    const climZ = z.slice(), climSea = ocean0.slice();
 
     // ── the rivers: runoff (rain less evaporation) weights the drainage; dry basins stay closed; carved for longer ──
     onStage('rivers');
@@ -384,19 +386,21 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (PITHEAT); the sea that fills it has the sea's air and the sea's rain. Every stage from here reads this climate: the
     // ice age, the wind, the waves, the water, the finished moment's own. The erosion has run on the first: its rivers' water
     // was the dry pit's while it was dry. Lane reflood, 2026-11-11 (inlandsea/report.md: 243751@730's sea, read as a dry
-    // pit 5 km deep, kept 54 °C air and 20 mm of rain a year). What it skips: the climate is not re-run for a pit that stays
-    // dry or for a coast the erosion moved elsewhere, so the ground the erosion lowered or raised keeps the first surface's
-    // climate there (stats.climateRerun) ──
+    // pit 5 km deep, kept 54 °C air and 20 mm of rain a year). The re-run is the first climate's own surface and sea with
+    // only those pits turned to sea, so all it moves is the pits' doing: re-run on the eroded surface and the final coast
+    // everywhere instead, it moved the 1° grid's sea-level temperature by 0.8 °C on average and up to 14 °C thousands of km
+    // from any pit (the erosion's lowered ground and moved coasts, which the finish has never fed back to its climate). What
+    // it skips: the climate is not re-run for a pit that stays dry or for a coast the erosion moved elsewhere, so the ground
+    // the erosion lowered or raised keeps the first surface's climate there (stats.climateRerun) ──
     {
-        let pits = 0;
-        for (let c = 0; c < n; c++) if (climateLand[c] && before[c] < 0 && ocean0[c]) pits++;
-        if (pits) {
+        const pit = [];
+        for (let c = 0; c < n; c++) if (climateLand[c] && before[c] < 0 && ocean0[c]) pit.push(c);
+        if (pit.length) {
             onStage('climate');
-            const was = { T: pageC.T.year, sea: pageC.sea }, t1 = performance.now();
-            climateLand = new Uint8Array(n);
-            for (let c = 0; c < n; c++) climateLand[c] = ocean0[c] ? 0 : 1;
+            const was = { T: pageC.T.year, sea: pageC.sea }, t1 = performance.now(), pits = pit.length;
+            for (const c of pit) { climateLand[c] = 0; climSea[c] = 1; }
             ({ koppen, tAnn, pAnn, lat, lon, G, climGrid, warmSl, waveIn, wind, travelFlow, petM, wetMonths, liquid, monthly, waterGrid, pageC, gridClimate,
-                runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = climateOn(C.z, climateLand, ocean0));
+                runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = climateOn(climZ, climateLand, climSea));
             stats.climateRerun = { pitsKm2: Math.round(pits * cellKm2), ms: Math.round(performance.now() - t1), ...climateShift(was, pageC) };
             lap('climate');
         }
