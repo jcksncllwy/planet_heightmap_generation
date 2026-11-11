@@ -3241,7 +3241,13 @@ in one ledger and fixed the leaks process by process (design and measurements: `
 - **Paid relief (S1, `crustPaidRelief`)**: a belt's relief is the isostatic face of a root that was paid for, not rock from
   nowhere; roots grow only under the arc-magmatism cap (one cap per margin). Unsupported mountains stand lower.
 - **Prism accretion (S2, `prismAccretion`)**: the rock a trench scrapes off (the rise, sea fill, the fans' rock the channel
-  does not take) builds the overriding plate's accretionary prism, which counts as continental crust.
+  does not take) builds the overriding plate's accretionary prism, which counts as continental crust. `step/prism-accretion.js`
+  is the one place its rock becomes cells: it lays fore-arc islands from the trench side in (the wedge's crest, `marginIsleGapKm`
+  off an accretionary trench, first; along it the best-fed stretch first; Karig & Sharman 1975, Dickinson & Seely 1979), each
+  at a continent's thickness, so that joining the coast (`margin-isles.js`) changes its rock by nothing. Where the fore-arc is
+  laid to the coast, or every margin is erosive, the prism underplates the land within `marginIsleReachKm` instead (von Huene
+  & Scholl 1991). With it on, `margin-isles.js` raises no islands at its own rates and `wedgeConservation` is moot. Phase 11's
+  sealed sea may gain land only by its founder's prism, paid in rock.
 - **Lower-crustal flow (S3, `crustFlow`, `step/crust-flow.js`)**: ∂h/∂t = ∇·(K∇s), K = ρc g h_ch³ ÷ 12η, the channel h_ch the
   crust above 700 °C on the model's geotherm, η derived from Clark & Royden 2000's fit (~2.3e19 Pa s); implicit CG, flux
   form, harmonic K (no flow onto ocean or into cold shields); volume-neutral. `crustChannelLag`: thickened crust heats over
