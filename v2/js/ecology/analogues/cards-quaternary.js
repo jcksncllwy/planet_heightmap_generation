@@ -30,15 +30,22 @@ export default [
     },
     note: 'Oak woodland, scrub and grassland surrounded sticky asphalt seeps that trapped animals.' },
 
-  { id: 'fairbanks-mammoth-steppe', place: 'Fairbanks fossil silts, Alaska', at: [64.84, -147.72], ageMa: [0.05, 0.015],
+  // Old Crow River, Yukon: a Late Pleistocene Beringian fauna (PBDB collections 'Old Crow River', 'Locality 44', 'Upper OCR 300';
+  // Harington 1978; Jopling, Irving & Beebe 1981). It replaces a Fairbanks silts card whose PBDB record at its age held only
+  // Mammuthus and Bison (2026-11-11): same mammoth-steppe habitat, a site with the assemblage on record.
+  { id: 'old-crow-mammoth-steppe', place: 'Old Crow River, Yukon', at: [68.2, -140.0], ageMa: [0.129, 0.0117],
     realm: 'land', habitats: ['temperate-grassland', 'tundra'], koppen: ['Dfc', 'ET'],
     isolation: 'connected', area: 'continent',
-    pbdb: { radiusDeg: 3 },
+    pbdb: { radiusDeg: 1 },
     roles: {
       megaherbivore: ['Mammuthus', 'a woolly elephant that grazed grasses and other low plants', 'xl'],
-      grazer: ['Bison', 'a shaggy steppe bison that grazed in herds', 'l'],
+      grazer: ['Equus', 'a small stocky horse that grazed the steppe', 'l'],
       browser: ['Rangifer', 'a cold-adapted deer that fed on low shrubs, herbs and lichens', 'm'],
-      smallPredator: ['Canis', 'a wolf that hunted hoofed animals and scavenged carcasses', 'm'],
+      bigPredator: ['Canis', 'a wolf that hunted hoofed animals and scavenged carcasses', 'm'],
+      smallPredator: ['Vulpes', 'a fox that hunted small animals', 's'],
+      scavenger: ['Gulo', 'a powerful wolverine that scavenged carcasses and hunted small prey', 'm'],
+      burrower: ['Urocitellus', 'a ground squirrel that dug burrows in the dry steppe soil', 'xs'],
+      engineer: ['Castoroides', 'a giant beaver of the ponds and streams', 'm'],
     },
     note: 'Cold, dry, largely treeless plains remained free of ice and supported herds of large grazers.' },
 
@@ -59,10 +66,11 @@ export default [
   { id: 'lake-callabonna', place: 'Lake Callabonna, South Australia', at: [-29.78, 140.12], ageMa: [0.08, 0.05],
     realm: 'land', habitats: ['xeric-shrubland'], azonal: ['lake-shore'], koppen: ['BSh', 'BSk'],
     isolation: 'long-isolated', area: 'continent',
-    pbdb: { radiusDeg: 3 },
+    pbdb: { radiusDeg: 1 },
     roles: {
       megaherbivore: ['Diprotodon', 'a rhinoceros-sized relative of wombats that ate shrubs and other plants', 'xl'],
       grazer: ['Phascolonus', 'a giant wombat that fed on low-growing vegetation', 'l'],
+      browser: ['Sthenurus', 'a large short-faced kangaroo that browsed shrubs', 'l'],
     },
     note: 'Dry shrubland bordered a shrinking lake where large plant-eaters became trapped in soft mud.' },
 
@@ -100,6 +108,10 @@ export default [
     roles: {
       bigPredator: ['Smilodon', 'a large saber-toothed cat that hunted plant-eating mammals', 'l'],
       frugivore: ['Cuniculus', 'a stocky forest rodent that ate fallen fruit and seeds', 's'],
+      megaherbivore: ['Notiomastodon', 'an elephant-like gomphothere that browsed and grazed', 'xl'],
+      browser: ['Eremotherium', 'a giant ground sloth that reared to strip leaves from trees', 'xl'],
+      smallPredator: ['Lycalopex', 'a fox-like dog that hunted small animals', 's'],
+      arboreal: ['Protopithecus', 'a large monkey of the forest canopy', 'm'],
     },
     note: 'Seasonal woodland and savanna surrounded limestone caves that trapped animals in deep shafts.' },
 

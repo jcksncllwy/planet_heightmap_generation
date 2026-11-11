@@ -6,6 +6,9 @@ export default [
         roles: {
             browser: ['Tragoportax', 'a large antelope feeding on leaves and grass', 'l'],
             megaherbivore: ['Chilotherium', 'a heavy hornless rhinoceros feeding on low vegetation', 'xl'],
+            grazer: ['Hipparion', 'a three-toed horse that grazed and browsed', 'l'],
+            bigPredator: ['Crocuta', 'a bone-cracking hyena that hunted and scavenged', 'm'],
+            aquaticPredator: ['Gavialis', 'a narrow-snouted crocodile that caught fish in the rivers', 'l'],
         },
         note: 'Seasonal subtropical woodland and grassy river plains lay below the rising Himalayas.' },
 
@@ -137,6 +140,9 @@ export default [
         roles: {
             arboreal: ['Nimbadon', 'a bear-sized marsupial climbing trees to feed on leaves', 'm'],
             browser: ['Balbaroo', 'a small kangaroo relative feeding on forest plants', 'm'],
+            bigPredator: ['Wakaleo', 'a pouched lion that hunted from the trees', 'm'],
+            frugivore: ['Hypsiprymnodon', 'a small rat-kangaroo that ate fallen fruit', 'xs'],
+            aquaticPredator: ['Obdurodon', 'a platypus that hunted in the forest pools', 's'],
         },
         note: 'Dense rainforest surrounded limestone caves and a natural pitfall that trapped forest animals.' },
 

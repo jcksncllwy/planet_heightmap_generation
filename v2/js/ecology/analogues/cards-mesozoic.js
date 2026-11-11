@@ -374,6 +374,7 @@ export default [
     roles: {
       browser: ['Seitaad', 'a small long-necked dinosaur feeding on plants between dunes', 'm'],
       smallPredator: ['Segisaurus', 'a small lightly built dinosaur catching small animals', 's'],
+      filterFeeder: ['Unio', 'a freshwater mussel of the wet hollows between the dunes', 'xs'],
     },
     note: 'A vast sand desert contained scattered wet hollows and vegetated refuges between moving dunes.' },
 

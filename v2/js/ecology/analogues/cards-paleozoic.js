@@ -77,6 +77,8 @@ export default [
     roles: {
       aquaticPredator: ['Mesosaurus', 'a long-snouted swimming reptile catching small aquatic prey', 's'],
       benthos: ['Liocaris', 'a small shelled crustacean living close to the muddy bottom', 'xs'],
+      plants: ['Glossopteris', 'tongue-leaved seed-fern trees on the surrounding land', null],
+      marinePredator: ['Sphenacanthus', 'a spined shark', 'm'],
     },
     note: 'A shallow restricted inland sea had salty waters, abundant small crustaceans and oxygen-poor bottom mud.' },
 
@@ -304,6 +306,7 @@ export default [
     roles: {
       aquaticPredator: ['Acanthostega', 'a small fish-eating animal with a swimming tail and limbs bearing many toes', 's'],
       bigPredator: ['Eusthenodon', 'a large fleshy-finned fish with strong jaws and pointed teeth', 'l'],
+      smallPredator: ['Ichthyostega', 'a heavy-ribbed early four-legged animal of the river margins', 'm'],
     },
     note: 'Seasonal rivers and floodplain pools supported armored fishes and early swimming animals with toes.' },
 
@@ -363,6 +366,8 @@ export default [
     roles: {
       marinePredator: ['Promissum', 'an eel-shaped swimmer with a basket of tiny feeding teeth', 'xs'],
       benthos: ['Soomaspis', 'a soft-bodied armored crawler living near the sea floor', 'xs'],
+      filterFeeder: ['Orbiculoidea', 'a small round-shelled brachiopod filtering on the soft sea floor', 'xs'],
+      plankton: ['Caryocaris', 'a small shrimp-like swimmer of the open water', 'xs'],
     },
     note: 'A cold sea spread over recently glaciated ground and deposited quiet mud beneath poorly oxygenated water.' },
 
@@ -399,6 +404,8 @@ export default [
     roles: {
       plants: ['Cooksonia', 'tiny branching leafless plants bearing spore cases at their tips', null],
       smallPredator: ['Palaeotarbus', 'a minute spider-like hunter of early land animals', 'xs'],
+      aquaticPredator: ['Pterygotus', 'a large sea scorpion of the coastal shallows', 's'],
+      aquaticGrazer: ['Hemicyclaspis', 'an armoured jawless fish that sifted the muddy bottom', 's'],
     },
     note: 'Warm coastal ground carried a low treeless plant cover, with tundra used only for its stature rather than its climate.' },
 
