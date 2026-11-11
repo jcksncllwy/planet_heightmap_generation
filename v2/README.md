@@ -2337,7 +2337,7 @@ sea-level bug below. Its rivers once graded to the seabed at the coast; they now
 arithmetic swept level by level over cells sorted by depth. The ladder and the polish both run on it, from 500K cells (`ERODE.gpuFloodCells`)
 with closed basins' flood too. Laying lakes' load, the closed basins' water balance, the rebound and the ladder's maps stay on the CPU, and
 the lay and rebound code is the CPU solver's own. `ERODE.gpu: false` turns it off. With no adapter, the finish runs the CPU solver; a device
-lost mid-run fails that finish and the next one opens a new device. `stats.erodeOn` says which ran, and the page logs it. Limits: float32
+lost mid-run fails that finish and the next one opens a new device. Each network's stats (`stats.erode`, per ladder level) count the basins that never joined their way downhill (`unjoined`) and the flat cells left with no receiver (`unresolved`); both are 0, and check-floods holds them there on the GPU. A network with no inland minimum once made every later one skip the basins' hooking (hollowfix6, 2026-11-11: crustmass's flatter worlds, up to 3518 basins unjoined over a finish); the level jump's rounds now follow the basin count (⌈log₂ roots⌉, at least 12), exact by construction. `stats.erodeOn` says which ran, and the page logs it. Limits: float32
 throughout, so a near-tie between slopes can fall the other way; a machine repeats its own result bit for bit, but two GPUs can differ
 slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.
 The GPU mirrors the rock column (L3, below): the solve kernel cuts ground above the rock's top at the sediment's k and the rock under
