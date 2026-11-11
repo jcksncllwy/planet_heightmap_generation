@@ -23,7 +23,7 @@ export const HABITAT_WORDS = Object.freeze({
     alpine: 'Alpine meadow and rock, above the trees', 'flooded-grassland': 'Seasonally flooded grassland', mangrove: 'Mangrove forest on a tidal coast',
     // the sea
     'coral-reef': 'Coral reef', kelp: 'Kelp forest on a rocky shore', seagrass: 'Seagrass meadows', 'salt-marsh': 'Salt marsh and mudflat',
-    'upwelling-shelf': 'An upwelling sea: cold, rich water from below', shelf: 'Shelf sea', epeiric: 'A shallow sea over a continent',
+    'upwelling-shelf': 'An upwelling sea: rich water rising from below', shelf: 'Shelf sea', epeiric: 'A shallow sea over a continent',
     'open-gyre': 'Open ocean, warm and clear (a gyre: little grows)', 'open-productive': 'Open ocean, cool and productive',
     'polar-sea': 'Polar sea under ice most of the year', 'sea-ice-edge': 'The sea ice\'s edge (a spring bloom)',
     // fresh water
@@ -42,7 +42,7 @@ const growWords = npp => (npp < 50 ? 'almost nothing grows' : npp < 300 ? 'spars
 const BAR_DECADES = 7;
 const bar = (kgKm2, kind) => `<i class="evo-life-bar ${kind}" style="width:${(100 * Math.max(0.02, Math.min(1, Math.log10(Math.max(1, kgKm2)) / BAR_DECADES))).toFixed(1)}%"></i>`;
 const tier = (label, kgKm2, kind, value, like) => `<div class="evo-life-tier" data-tier="${kind}"><span class="evo-life-role">${label}</span>`
-    + `<span class="evo-life-amount">${bar(kgKm2, kind)}<span>${value}</span></span>${like ? `<span class="evo-life-like">like ${like}</span>` : ''}</div>`;
+    + `<span class="evo-life-amount"><span>${value}</span><span class="evo-life-track">${bar(kgKm2, kind)}</span></span>${like ? `<span class="evo-life-like">like ${like}</span>` : ''}</div>`;
 
 const GRADE_LINE = '<p class="evo-life-grade">Read at <b>today\'s grade</b>: a modern Earth-like biosphere, as if this world\'s life were Earth\'s now. Which kinds of life it has opened, and when, comes with the history of life.</p>';
 const SOURCES = {

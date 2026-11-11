@@ -36,9 +36,9 @@
 .evo-life-web { display: grid; gap: 3px; margin: 2px 0 5px; }
 .evo-life-tier { display: grid; grid-template-columns: 6.2em 1fr; gap: 0 8px; align-items: center; }
 .evo-life-role { color: #89a; font-size: 10px; letter-spacing: 0.05em; }
-.evo-life-amount { position: relative; color: #dde; }
-.evo-life-amount > span { position: relative; padding-left: 3px; }
-.evo-life-bar { position: absolute; left: 0; top: 1px; bottom: 1px; border-radius: 2px; opacity: 0.32; }
+.evo-life-amount { display: block; color: #dde; }
+.evo-life-track { display: block; height: 4px; margin: 2px 0 1px; border-radius: 2px; background: rgba(255,255,255,0.06); }
+.evo-life-bar { display: block; height: 100%; border-radius: 2px; opacity: 0.8; }
 .evo-life-bar.plant { background: #6cc35a; }
 .evo-life-bar.herb { background: #d8b04a; }
 .evo-life-bar.pred { background: #e0674e; }
