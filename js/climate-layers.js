@@ -6,6 +6,7 @@
 // the sea, and the winds and currents, are sampled from the 1° climate grid at the region's latitude and longitude.
 
 import { RAMP_FAMILIES } from '../v2/js/evolution/sat-style.js';
+import { KOPPEN_CLASSES, KOPPEN_ID } from '../v2/js/climate/koppen.js';
 
 export const CLIMATE_INSPECT = [
     { id: 'pressure',    label: 'Pressure',          seasonal: true,  arrows: 'wind', itcz: true },
@@ -201,6 +202,29 @@ export function climateReadoutLines(data, r) {
     }
     return lines;
 }
+
+// ── the Evolution Climate view's read-out and Köppen groups (lane climviewA; climview/report.md §2.2–2.3) ──
+/**
+ * Köppen's five main groups (Peel et al. 2007), the view's first look: 30 standard colours aren't separable for anyone,
+ * five are. Each group wears the standard colour of a middle member (Am, BSh, Cfb, Dfb, ET), so a group's colour is one
+ * its zones are drawn near when the user opens it.
+ */
+export const KOPPEN_GROUPS = [['A', 'Tropical', 'Am'], ['B', 'Dry', 'BSh'], ['C', 'Temperate', 'Cfb'], ['D', 'Continental', 'Dfb'], ['E', 'Polar', 'ET']]
+    .map(([letter, name, rep]) => ({ letter, name, color: KOPPEN_CLASSES[KOPPEN_ID[rep]].color }));
+/** A Köppen class id's group index (0–4: A–E), or −1 for none (the sea, no data). */
+export const koppenGroupOf = (id) => (id > 0 ? 'ABCDE'.indexOf(KOPPEN_CLASSES[id].code[0]) : -1);
+
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+/** The 16-point compass name of the direction a vector (east, north) points toward. */
+export const compassToward = (u, v) => COMPASS[Math.round(((Math.atan2(u, v) * 180 / Math.PI + 360) % 360) / 22.5) % 16];
+/** A wind's line: meteorology names a wind by where it comes FROM (u, v: m/s east and north). */
+export const windText = (u, v) => { const s = Math.hypot(u, v); return s < 0.3 ? 'calm' : `${fmt(s, 1)} m/s from the ${compassToward(-u, -v)}`; };
+/** A current's line: oceanography names a current by where it goes TO (u, v: m/s east and north). */
+export const currentText = (u, v) => { const s = Math.hypot(u, v); return s < 0.005 ? 'still' : `${fmt(100 * s)} cm/s toward the ${compassToward(u, v)}`; };
+/** What a current carries (climate-flow.js carriedOf: °C its water brings against the latitude it reaches). */
+export const carriedText = (c) => (c > 0.5 ? `warm water (+${fmt(c, 1)} °C from lower latitudes)` : c < -0.5 ? `cold water (${fmt(c, 1)} °C from higher latitudes)` : 'water of its own latitude');
+/** Rain in mm a year, from a month's mean (mm a month) — the one unit for rain everywhere in the view. */
+export const rainYearText = (mmMonth) => `${fmt(12 * mmMonth)} mm a year`;
 
 /** The wind or current vector (east, north; m/s) at a latitude / longitude, for the arrows. */
 export function vectorAt(grid, kind, season, latDeg, lonDeg) {

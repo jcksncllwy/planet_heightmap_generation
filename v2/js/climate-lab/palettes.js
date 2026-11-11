@@ -72,3 +72,66 @@ export function drawRampBar(canvas, ramp) {
         g.fillText(label, x, h);
     }
 }
+
+// ── the Evolution page's Climate view (climate-view.js): its own ramps, the lab's above left as they are ──
+// Borrowed conventions (lane climviewA; ~/.cache/geo-sim/lanes-2026-10-29/climview/report.md §2.3): ColorBrewer's
+// colour-blind-safe schemes (Brewer, colorbrewer2.org), viridis (van der Walt & Smith 2015), and Crameri, Shephard & Heron
+// 2020 (Nature Communications 11:5444): no rainbow, no red against green, lightness monotonic for a magnitude. A view ramp
+// carries its legend: `ticks` (values labelled under the bar), `lo`/`hi` (the bar's span) and `fmt` (a tick's label).
+const viridisStops = [[0, [68, 1, 84]], [0.25, [59, 82, 139]], [0.5, [33, 145, 140]], [0.75, [94, 201, 98]], [1, [253, 231, 37]]];
+export const VIEW_RAMPS = {
+    // RdYlBu (ColorBrewer, 11 classes) diverging at freezing, the quantity's own midpoint; the warm side gets six steps
+    // between 0 and 35 °C, where most land lives (the lab's ramp had three)
+    temperature: { unit: '°C', lo: -40, hi: 40, ticks: [-40, -30, -20, -10, 0, 10, 20, 30, 40], stops: [
+        [-45, [38, 30, 110]], [-30, [49, 54, 149]], [-20, [69, 117, 180]], [-10, [116, 173, 209]], [-3, [171, 217, 233]], [0, [224, 243, 248]],
+        [5, [255, 255, 191]], [10, [254, 224, 144]], [15, [253, 174, 97]], [21, [244, 109, 67]], [27, [215, 48, 39]], [34, [165, 0, 38]], [45, [90, 0, 30]]] },
+    // YlGnBu (ColorBrewer, 9 classes) on log(1 + mm a year), the stops at the isohyets' octaves (250 mm: the desert's edge)
+    rain: { unit: 'mm a year', log: true, lo: 0, hi: 8000, ticks: [0, 125, 250, 500, 1000, 2000, 4000, 8000], stops: [
+        [0, [255, 255, 217]], [125, [237, 248, 177]], [250, [199, 233, 180]], [500, [127, 205, 187]], [1000, [65, 182, 196]],
+        [1500, [29, 145, 192]], [2000, [34, 94, 168]], [4000, [37, 52, 148]], [8000, [8, 29, 88]]],
+        fmt: v => v >= 1000 ? `${v / 1000}k` : String(v) },
+    // viridis taken halfway toward the night sky: quiet, so the wind's moving lines carry the flow and the colour only
+    // says how fast
+    wind: { unit: 'm/s', lo: 0, hi: 15, ticks: [0, 3, 6, 9, 12, 15],
+        stops: viridisStops.map(([t, c]) => [15 * t, c.map((v, i) => 0.5 * v + 0.5 * [10, 12, 24][i])]) },
+    // RdBu (ColorBrewer), the sea against its latitude's average; dimmed (× 0.62) so the currents' warm and cold lines
+    // stand on it
+    sstAnom: { unit: '°C against its latitude', lo: -6, hi: 6, ticks: [-6, -4, -2, 0, 2, 4, 6], fmt: v => (v > 0 ? '+' : '') + v,
+        stops: [[-6, [33, 102, 172]], [-2, [146, 197, 222]], [0, [247, 247, 247]], [2, [244, 165, 130]], [6, [178, 24, 43]]].map(([v, c]) => [v, c.map(x => 0.62 * x + 6)]) },
+    // RdBu, lows blue and highs red about the standard atmosphere's 1013 hPa
+    pressure: { unit: 'hPa', lo: 985, hi: 1040, ticks: [988, 996, 1004, 1012, 1020, 1028, 1036], stops: [
+        [985, [33, 102, 172]], [1002, [146, 197, 222]], [1013, [247, 247, 247]], [1024, [244, 165, 130]], [1040, [178, 24, 43]]] },
+};
+// The sea under a land question (Rain, Aridity, the land measures): dark, flat and neutral, so the coast is the strongest
+// edge on the map and a dry coast shows as dry (report §2.3)
+export const SEA_UNDER_LAND = [26, 29, 36];
+
+/**
+ * A view ramp's legend bar into a canvas: the ramp across [lo, hi] (on its log scale where it has one), ticks with values
+ * under it, and a pin (a white triangle and line) at `pin` — the value under the cursor — when it is a number.
+ */
+export function drawLegendBar(canvas, ramp, pin = null) {
+    const c = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+    const pad = Math.round(w / 55), top = Math.round(h * 0.25), bh = Math.round(h * 0.38), font = Math.round(h * 0.24);
+    const tx = ramp.log ? x => Math.log1p(Math.max(0, x)) : x => x, a = tx(ramp.lo), b = tx(ramp.hi);
+    const xOf = v => pad + (tx(Math.max(ramp.lo, Math.min(ramp.hi, v))) - a) / (b - a) * (w - 2 * pad);
+    c.clearRect(0, 0, w, h);
+    for (let x = pad; x < w - pad; x++) {
+        const t = a + (x - pad) / (w - 2 * pad) * (b - a), [r, g, bb] = rampColor(ramp, ramp.log ? Math.expm1(t) : t);
+        c.fillStyle = `rgb(${r | 0},${g | 0},${bb | 0})`; c.fillRect(x, top, 1, bh);
+    }
+    c.fillStyle = '#aeb6cb'; c.font = `${font}px system-ui, sans-serif`; c.textBaseline = 'top';
+    const fmt = ramp.fmt ?? String;
+    for (const v of ramp.ticks) {
+        const x = xOf(v);
+        c.fillRect(Math.round(x) - 1, top + bh, 2, Math.round(h * 0.06));
+        c.textAlign = x < pad + font ? 'left' : x > w - pad - font ? 'right' : 'center';
+        c.fillText(fmt(v), x, top + bh + Math.round(h * 0.08));
+    }
+    if (typeof pin === 'number' && pin === pin) {
+        const x = xOf(pin), s = Math.round(top * 0.45);
+        c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = Math.max(1, h / 45);
+        c.beginPath(); c.moveTo(x - s, 1); c.lineTo(x + s, 1); c.lineTo(x, top - 2); c.closePath(); c.fill(); c.stroke();
+        c.fillRect(x - 1, top, 2, bh);
+    }
+}

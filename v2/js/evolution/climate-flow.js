@@ -333,3 +333,33 @@ export class FlowLayer {
         this.geometry.dispose(); this.tex.dispose(); this.globeMesh.material.dispose(); this.mapMesh.material.dispose();
     }
 }
+
+/**
+ * When the flow steps, for the page's animation loop: never while the tab is hidden or the page is busy (`busy()`: a
+ * finish or a build under way), at most `fps` times a second (30: the trails read the same, at half the CPU of 60), and
+ * with dt clamped after a stall (a tab brought back must not throw every particle across the planet). Under
+ * prefers-reduced-motion the flow is drawn still: TRAIL steps at once, so each particle shows as a streak, then no more
+ * until the field or the view changes (`touch()`).
+ */
+export class FlowClock {
+    constructor({ fps = 30, busy = () => false } = {}) {
+        this.minMs = 1000 / fps; this.busy = busy; this.last = null; this.still = 0;
+        const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+        this.reduced = !!mq?.matches;
+        mq?.addEventListener?.('change', e => { this.reduced = e.matches; this.touch(); });
+    }
+    /** The field or the view changed: under reduced motion, draw the still picture again. */
+    touch() { this.still = 0; }
+    /**
+     * The steps to take now, as [dt, dt, …] seconds (empty: none) — one in motion, TRAIL at once for a still picture.
+     * Call from requestAnimationFrame with its timestamp.
+     */
+    due(now) {
+        if ((typeof document !== 'undefined' && document.hidden) || this.busy()) { this.last = null; return []; }
+        if (this.reduced) { if (this.still) return []; this.still = 1; return new Array(TRAIL).fill(1 / 30); }
+        if (this.last !== null && now - this.last < this.minMs - 1) return [];
+        const dt = this.last !== null ? Math.min(0.1, (now - this.last) / 1000) : 1 / 30;
+        this.last = now;
+        return [dt];
+    }
+}
