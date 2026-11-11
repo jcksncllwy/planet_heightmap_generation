@@ -2,7 +2,7 @@
 // reaches inland, not just at the cells in contact: the belt's width depends on the kind of
 // orogeny (WBP's table: Andean a few hundred km, a continental collision a plateau of 1000+ km on
 // the upper plate and a narrow foreland on the lower one), it enters a craton only a short way — as a low,
-// thin-skinned fold-thrust belt over the shield's edge, each km costing cratonStrength km of its reach (cratons
+// thin-skinned fold-thrust belt over the shield's edge, each km costing cratonStrengthRatio km of its reach (the column's strength, stress-step; cratons
 // are strong: deformation piles up against them and goes around; Phase 10) — and it travels further along old
 // sutures and rift margins (the Tian Shan and Altai were rejuvenated 1000+ km behind the
 // Himalayan front, along old weak lines). Records only — terrain synthesis interprets them.
@@ -58,8 +58,8 @@ export function beltShape(headOn, slabAgeMyr, config) {
 /**
  * Spread `workKm` of convergence from the given source cells of one plate's raster into a belt.
  * Every land cell within the belt's reach of the front (measured along the raster; weak cells at
- * `weakCellCost`; a craton at cratonStrength — there the belt is thin-skinned: cratonStrainShare of its uplift and
- * crests, 1/cratonStrength of the thickening) gets the record, with the work tapering from the front to the
+ * `weakCellCost`; a craton at cratonStrengthRatio (its column's strength, stress-step) — there the belt is thin-skinned: cratonStrainShare of its uplift and
+ * crests, 1/cratonStrengthRatio of the thickening) gets the record, with the work tapering from the front to the
  * belt's far edge. Each source may carry its own reach and work (`widths`, `works`, parallel to
  * `sources`): a head-on stretch of a front then reaches further inland than an oblique one beside it, and
  * each cell takes the reach of the front cell it was reached from. Thickening spreads with the same reach
