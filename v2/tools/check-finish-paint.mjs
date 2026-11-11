@@ -58,7 +58,7 @@ else {
             console.log(`  ${label}: ${px} pixels differ (${share.toFixed(4)} %), by ${max} at most; the glint's mask ${glint ? `${glint} bytes differ` : 'the same'}`);
             check(`${label}: the glint's mask the same`, glint === 0);
             // (finish-paint.js's header: averaged down and unshaded, exact; else the f32 light and the enlarged f32 sum
-            // move a level or two on a few pixels in 10⁴ — 0.011 % at most measured on real moments, 2026-11-11)
+            // move a level or two on a few pixels in 10⁴ — 0.040 % at most measured on four real moments, a 160K one on 4096 px, 2026-11-11)
             if (exact) check(`${label}: byte for byte the CPU's`, px === 0);
             else check(`${label}: within 2 levels, on under 0.05 % of the pixels (${share.toFixed(4)} %, ${max})`, max <= 2 && share < 0.05);
         }

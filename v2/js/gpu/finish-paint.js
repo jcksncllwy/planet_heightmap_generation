@@ -14,7 +14,7 @@
 //   whole-metre sum reads the same table (exact), but another within ~1 mm of a palette entry's edge (10 m steps) can
 //   take the next entry: its colour then differs by that step's (a level or two). The sea and the lakes are exact (their weights are dyadic: exact in f32).
 // - The hillshade in f32 (the CPU's in f64): a channel whose light lands within ~1e-5 of a half level rounds the
-//   other way — a difference of 1 on a few pixels in 10⁴. Unshaded palettes (Heightmap) are exact.
+//   other way — a difference of 1 on a few pixels in 10⁴ (up to 4: smooth ground repeats one light over many pixels). Unshaded palettes (Heightmap) are exact.
 // - The lakes' colours and the glint: exact.
 
 import { openDevice, storage, readBack } from './gpu-device.js';

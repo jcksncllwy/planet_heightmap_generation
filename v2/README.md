@@ -842,8 +842,23 @@ sent again only when they change. Against the CPU's painting: under 1 of 255 per
 4096. So every moment is drawn at 4096 px on a desktop (2048 on phones, twice the CPU's 1024) and no pixel table is built:
 scrubbing at 160K went from 73 frames a second (43 slow frames in 4 s, 47 % of the page's time) to 144 (none, 1 %); at 640K
 the worst frame from 118 to 9 ms; while a history builds, slow frames 51 → 5; the page's memory ~320 → 155 MB at 160K.
-Detailed moments are still painted on canvases (their pictures come from the Finish step), and without WebGL 2 everything
-is painted as before (`?gpu=0` forces it, for comparison). The map view is the same texture drawn flat by the globe's
+Detailed moments' pictures (from the Finish step) are painted on the GPU too, since 2026-11-11 (developer: priority to the
+GPU paint): `gpu/finish-paint.js` does `finish-view.js` paintFinished's work — the picture averaged down to the texture's
+pixels or enlarged (Catmull–Rom), the hillshade, the palette, the lakes and the glint's sea mask — in three WGSL compute
+passes, copied into a WebGPU canvas (the device's preferred byte order) that is drawn onto the texture canvas (a copy on
+the GPU, no readback), so the rivers, the grid and the towns are drawn over it as before. The step's cost was the paint
+itself (0.2–2 s at 2.5M and 160K on a 4096-px texture), not the upload (~1 ms putImageData, 12–20 ms texImage2D). Against
+the CPU's picture (`tools/check-finish-paint.mjs`, Dawn, and real moments in headless Chrome): averaged down and unshaded
+(Heightmap at 2.5M), byte for byte; the hillshade is in f32 where the CPU's is in f64, and the enlarged sum too, so a
+channel within ~1e-5 of a half level rounds the other way: Relief differs by 1 level on at most ~0.005 % of the pixels at
+2.5M and by 1–2 on 0.005–0.04 % at 160K (the smoother ground repeats one light over many pixels); a named tolerance, ≤2 levels on
+<0.05 % (four real moments, two at each resolution); the glint's mask and the lakes, exact.
+A step's paint and upload in headless Chrome (four real moments, Relief and Heightmap; median): 68–159 → 5–7 ms on a 2048-px
+texture, 173–594 → 12–18 ms at 4096 (p95 ≤ 20 ms); on the page the paint takes 0.3–0.6 ms of its thread, and the longest
+frame after a step fell from 167–550 ms to 67–83 ms (the same machine, under load). Without WebGPU (or `?gpu=0`), the CPU's.
+Layers with their own colouring — the climate layers, People and Satellite — are still painted on the CPU (their colourings
+are JS; a port means each in WGSL), as are the exports (`export.js`, byte for byte as before). Without WebGL 2 everything
+is painted as before (`?gpu=0` forces it, for comparison; it also keeps the detailed paint on the CPU). The map view is the same texture drawn flat by the globe's
 renderer, letterboxed under the `#mapCanvas` frame. Zoom is V1's (`app/globe-view.js`): a wheel's notch is 14 % nearer
 (OrbitControls' own was 5 %, and stepped), a pinch the fingers' ratio, and the camera eases to it.
 
