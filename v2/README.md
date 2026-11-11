@@ -1530,6 +1530,17 @@ the page erodes on the GPU, with Chromium's maths).
   change). Those are marked faint on the timeline (the moments kept in memory solid); when the timeline settles (300 ms
   paused) on one, it is loaded with `cachedOnly` — never finished unasked. The link's `&detail=` names the detailed
   moment on screen, else the one viewed last.
+  **Kept moments detailed at other settings (2026-11-11, branch mmfollow-b):** a moment kept in memory but detailed at
+  another resolution, climate (Temperature, Precipitation) or People is marked hollow; hovering any mark (within 5 px:
+  the slider takes the pointer) names it — "Detailed at these settings", "… before: back in seconds", or "Detailed at
+  other settings: 160K cells · temperature ±0 W/m² · rain ±0% · People off".
+- **An upload left unfinished** (a reload or a closed tab mid-upload; 2026-11-11, branch mmfollow-b): its entry stayed
+  'uploading' for good — waited for by every tool, kept from eviction, never offered to the page. Now it is settled where
+  it is read (`settleUpload`, from isComplete, waitComplete and gc): both parts there and sound (they are written whole
+  or not at all) — 'complete', as its `done` would have made it; else, no part for 2 min (`UPLOAD_STALE_MS`),
+  'abandoned' — not waited for, evictable, and detailed again cleanly (a new upload's `begin` makes it 'uploading' again).
+  A Node build holding its lock is left alone. Checked in check-finish-cache and in the page (the `done` or the second
+  part held, the page reloaded: the moment comes back from the cache, or Add detail details it again).
 - **Node:** `render-moment.mjs` goes through the cache (not with `--debug`, `--network`, `--overlay`, `--set`; `--no-cache`),
   and with `--latest` uses the page's own finish when the moment shown is detailed.
 
