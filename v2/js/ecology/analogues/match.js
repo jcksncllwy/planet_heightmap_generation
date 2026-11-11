@@ -109,13 +109,29 @@ const ISO_LIKENESS = { 'connected|long-isolated': 0.6, 'island|long-isolated': 0
 const isoLikeness = (a, b) => (a === b ? 1 : ISO_LIKENESS[`${a}|${b}`] ?? ISO_LIKENESS[`${b}|${a}`] ?? 0.4);
 
 const outside = (x, [lo, hi]) => (x < lo ? lo - x : x > hi ? x - hi : 0);
+// A card's climate envelope read as a likelihood: flat inside, the Gaussian shoulders outside (scale 6 °C, 0.5 in ln mm, 4 °C
+// SST), normalized, so the density inside is 1/(width + scale·√π). A point inside a narrow envelope is then stronger evidence
+// than inside a wide one: the Pliocene Snake River card, whose glacial-to-warm envelope spans 20 °C, no longer ties the
+// Pampas card, whose envelope (also LGM to Last Interglacial) spans 8 °C. Divided by the same density over the whole
+// library's range on that axis, so a card with no envelope there scores 1 (no evidence either way), as before.
+const SQRT_PI = Math.sqrt(Math.PI);
+const lnP = env => env.pAnnual.map(v => Math.log(Math.max(1, v)));
+const AXES = [
+    { scale: 6, env: e => e.tAnnual, x: c => c.tAnnual },
+    { scale: 0.5, env: e => e.pAnnual && lnP(e), x: c => (c.pAnnual > 0 ? Math.log(c.pAnnual) : NaN) },
+    { scale: 4, env: e => e.sst, x: c => c.marine?.sstC },
+];
+for (const ax of AXES) {
+    const spans = CARDS.map(c => c.env && ax.env(c.env)).filter(Boolean);
+    ax.ref = Math.max(...spans.map(r => r[1])) - Math.min(...spans.map(r => r[0]));
+}
 function climateLikeness(cell, card) {
     let s = 1;
-    const env = card.env;
-    if (env?.tAnnual && Number.isFinite(cell.tAnnual)) s *= Math.exp(-((outside(cell.tAnnual, env.tAnnual) / 6) ** 2));
-    if (env?.pAnnual && cell.pAnnual > 0)
-        s *= Math.exp(-((outside(Math.log(cell.pAnnual), env.pAnnual.map(v => Math.log(Math.max(1, v)))) / 0.5) ** 2));
-    if (env?.sst && Number.isFinite(cell.marine?.sstC)) s *= Math.exp(-((outside(cell.marine.sstC, env.sst) / 4) ** 2));
+    for (const ax of AXES) {
+        const r = card.env && ax.env(card.env), x = ax.x(cell);
+        if (!r || !Number.isFinite(x)) continue;
+        s *= Math.exp(-((outside(x, r) / ax.scale) ** 2)) * (ax.ref + ax.scale * SQRT_PI) / (r[1] - r[0] + ax.scale * SQRT_PI);
+    }
     if (cell.koppen && card.koppen.length)
         s *= card.koppen.includes(cell.koppen) ? 1.1 : card.koppen.some(k => k[0] === cell.koppen[0]) ? 1 : 0.85;
     return s;

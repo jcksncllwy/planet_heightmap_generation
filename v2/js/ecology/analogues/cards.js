@@ -9,6 +9,8 @@
 // never the date).
 
 import { gradesOpenAt } from './grades.js';
+import { ENV } from './sources.js';
+import { PALEO_ENV } from './paleoenv.js';
 import PRESENT_LAND from './cards-present-land.js';
 import PRESENT_WATER from './cards-present-water.js';
 import QUATERNARY from './cards-quaternary.js';
@@ -30,6 +32,10 @@ function normalize(c) {
         isolation: c.isolation ?? 'connected',
         area: c.area ?? 'continent',
         depleted: !!c.depleted,
+        // the climate the card's assemblage lived in: today's at the site for present and Holocene cards (sources.js ENV, Beck
+        // et al. 2023 / OISST), PaleoClim's modelled palaeoclimate for Quaternary and Pliocene land cards (paleoenv.js); older
+        // cards have none yet, and the matcher reads a missing envelope as no evidence either way
+        env: Object.freeze(ENV[c.id] ?? PALEO_ENV[c.id] ?? null),
         grades: Object.freeze(gradesOpenAt((c.ageMa[0] + c.ageMa[1]) / 2)),   // at the window's middle
         roles: Object.freeze(roles),
     });
