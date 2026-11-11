@@ -42,7 +42,7 @@ const CHECKLISTS = {
     ],
     breakup: [
         'The supercontinent is old, so it may rift from the start: the first rift comes within a few tens of Myr — when exactly is a matter of chance from the seed (try New).',
-        'The rift follows the sutures between cratons (Weakness layer) and never cuts a craton; the two pieces are compact — round or square, not slivers or long crescents — and named by the cratons they hold.',
+        'The rift opens where the plate’s own stress beats the strength of the ground along the whole cut, not just at one spot: the swell of mantle an old supercontinent has kept warm pushes its interior apart from its high centre. It follows the weak sutures between cratons (Weakness layer). A craton is ~6× as strong as ordinary crust, so a rift goes round one where it can and through it only where every way round costs more; each piece keeps at least one craton, and is named by the cratons it holds.',
         'The pieces disperse under their own trenches — slowly, as continents this size do — grow wings and arcs, and may hinge, pinch and weld again where they stay in contact.',
         'Rifts are local: several pieces may rift in the same stretch, and no piece is forced apart for waiting long — a piece may rift again only 30 Myr after its own last rift or weld (A piece of continent may rift again after), its chance coming back from there.',
         'Further rifts and sutures follow over 300 Myr: the first history the generator produces by itself. The event log reads like WBP’s.',

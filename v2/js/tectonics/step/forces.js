@@ -19,6 +19,8 @@
 //                  the other continents near it (steered: they keep apart until it is time to gather). A bias, not a
 //                  driver; it is left out of a plate's tension (the tug of war between its boundaries, which decides
 //                  whether it rifts).
+//   swell push     on continental cells (config.swellPush): the lithosphere over the mantle's swell pushes away from its high
+//                  centre — the swell's gravitational potential energy (swellPush below). Left out of a plate's tension too.
 // A trench that has only just formed has no slab hanging from it yet, so it pulls weakly and
 // strengthens as crust goes down (slabMatureKm). Forces are per 100 km of boundary, measured along the
 // cell edges actually shared with the other plate — not per boundary cell — so totals do not depend on
@@ -37,10 +39,12 @@ import { ringsOf } from '../../core/mesh-rings.js';
 import { tangentToward } from '../../core/sphere-geom.js';
 import { mantleFlowAt, dispersalField, repelAt } from './supercontinent.js';
 import { heightsOf } from './heights.js';
+import { smoothHeat } from '../../terrain/sea-level.js';
+import { isContinental } from './hotspots.js';
 
 /** Force names, in the order of PlateLoad.byKind / forceByKind. Display code keys colours by these names. */
-export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push', 'mantle flow'];
-const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4;
+export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push', 'mantle flow', 'swell push'];
+const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4, SWELL = 5;
 
 /**
  * @typedef {Object} PlateLoad
@@ -152,7 +156,91 @@ export function gatherLoads(world) {
     }
     for (const p of plates) if (loadOf[p.id]) riftHinge(world, p, loadOf[p.id]);
     if (config.collisionSlabPull) hangingSlabPull(world, loadOf, cellTorque);
+    if (config.swellPush) swellPush(world, loadOf, cellTorque);
     return loads;
+}
+
+/**
+ * (config.swellPush) The swell's push. Warm mantle under a lid lifts the ground over it (terrain/sea-level.js: the swell,
+ * mantleSwellKm × the mantle's heat smoothed over mantleSwellSmoothKm — the model's own, whose height is not changed here).
+ * The lid lifted by h on buoyant mantle beneath it carries ρ̄ g h more overburden at every level of its thickness L than the
+ * lid beside it, so its potential energy per area is U = ρ̄ g L h higher (h ≪ L; the lithosphere's GPE, Coblentz, Richardson &
+ * Sandiford 1994, Tectonics 13: elevated continental lithosphere stands in extension; Molnar & Lyon-Caen 1988, GSA Spec. Pap.
+ * 218: a high range spreads under its own weight). That is a body force on the plate, f = −∇U, away from the swell's high
+ * centre. L and ρ̄ are the column model's (riftLithKm; its crust at riftCrustRho and its lid at the mantle's mean density over
+ * its geotherm, ρm (1 − α T⁄2)): ≈ 3.9 × 10¹² N/m per km of swell, 0.64 force units. It agrees with mantleSwellKm itself: a
+ * supercontinent warms the mantle under it by up to ~100 K (Coltice et al. 2007, Geology 35), and α ΔT over the ~300 km of
+ * upper mantle it lies in is ~1 km. Discretely, as the boundary forces are reckoned (per 100 km of shared cell edge): each
+ * edge of a cell carries the mean of U on its two sides, so a cell is pushed by −Σ (U_nb − U_w) ⁄ 2 × edge along the tangent
+ * toward each neighbour (the divergence theorem; Σ n ℓ = 0 round a cell, so U's level does not matter, only its slope —
+ * mantleSwellLandRef, the datum, plays no part). On every cell of the plate, continent or ocean: the lid over the swell's
+ * flank carries its GPE whatever its crust. And as a load internal to the plate: its net torque on the plate is taken back
+ * out, shared evenly over its cells, so it stresses the plate (it pulls a supercontinent's interior apart, from nothing at its
+ * edge to the swell's full contrast inside) and does not drive it. Body forces inside a plate sum to the boundary term
+ * (−∮ U n round the plate's edge, by the divergence theorem); a swell under one plate passes nothing across it. Kept as a net,
+ * the push drove the lab's scenes (riftswell report §7, scenediag.mjs): on continental cells only (the ocean on the same
+ * flank left out), every continent that moved slid off the swell it started on (the mantle's heat stays in the mantle's
+ * frame) and was pushed on along its way, a feedback — Asia 1 → 5 cm/yr against ~2 without it, the founder scene's passive
+ * plates (nothing else acting) 0 → 6 cm/yr, collisions unwelded (phases 5, 5b, 6b, 7c, 10); on every cell, the swell's
+ * smoothed flank reached across Asia's trench and held India back. Limit: the swell's push ACROSS a plate's edge is
+ * dropped. A swell straddling a ridge or reaching a neighbour's ocean would push that neighbour away (the African superswell's
+ * flanks); in the model it reaches across trenches, where the slab cools the mantle and no swell should stand (subcontinental
+ * heat comes from the absence of subduction beneath: Lowman & Gable 1999, GRL 26), so it is left out, not modelled.
+ * Other limits: one lid thickness (L) everywhere — a craton's 200–350 km root would carry more; the swell's own flow (the
+ * drag of the upwelling) is mantle flow's (supercontinent.js), not added here; h² terms dropped.
+ */
+/** Per mesh edge k (adjList[k] of cell w): the unit tangent at w toward that neighbour — fixed by the mesh, so worked out once. */
+const TANGENTS = new WeakMap();
+function edgeTangents(mesh) {
+    let T = TANGENTS.get(mesh);
+    if (T) return T;
+    const { xyz, numCells, adjOffset, adjList } = mesh;
+    T = new Float64Array(3 * adjList.length);
+    for (let w = 0; w < numCells; w++) {
+        const r0 = xyz[3 * w], r1 = xyz[3 * w + 1], r2 = xyz[3 * w + 2];
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+            const nb = adjList[k];
+            let tx = xyz[3 * nb] - r0, ty = xyz[3 * nb + 1] - r1, tz = xyz[3 * nb + 2] - r2;
+            const along = tx * r0 + ty * r1 + tz * r2;
+            tx -= along * r0; ty -= along * r1; tz -= along * r2;
+            const l = Math.hypot(tx, ty, tz);
+            if (l > 0) { T[3 * k] = tx / l; T[3 * k + 1] = ty / l; T[3 * k + 2] = tz / l; }
+        }
+    }
+    TANGENTS.set(mesh, T);
+    return T;
+}
+
+function swellPush(world, loadOf, cellTorque) {
+    const { mesh, owner, config } = world, { xyz, numCells, adjOffset, adjList, edgeKm } = mesh, H = heightsOf(config);
+    const lidRho = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC / 2);
+    const rhoBar = (H.riftCrustKm * H.riftCrustRho + (H.riftLithKm - H.riftCrustKm) * lidRho) / H.riftLithKm;
+    // force units per unit of heat, per 100 km of edge: U per km of swell (N/m) × mantleSwellKm ÷ forceUnitNPerM
+    const perHeat = rhoBar * 9.81 * H.riftLithKm * 1e3 * 1e3 * H.mantleSwellKm / config.forceUnitNPerM;
+    const S = smoothHeat(world.mantleHeat, mesh, H.mantleSwellSmoothKm), edge = edgeKm / Math.sqrt(3) / 100;
+    const T = edgeTangents(mesh), scale = perHeat * edge / 2;
+    // each cell's push, and each plate's sum of them (its net, taken back out below: the load is internal to the plate)
+    const tau = new Float64Array(3 * numCells), net = new Map();
+    for (let w = 0; w < numCells; w++) {
+        const a = owner[w];
+        if (a < 0 || !loadOf[a]) continue;
+        const r0 = xyz[3 * w], r1 = xyz[3 * w + 1], r2 = xyz[3 * w + 2], s = S[w];
+        let fx = 0, fy = 0, fz = 0;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+            const push = -(S[adjList[k]] - s) * scale;
+            fx += push * T[3 * k]; fy += push * T[3 * k + 1]; fz += push * T[3 * k + 2];
+        }
+        const tx = r1 * fz - r2 * fy, ty = r2 * fx - r0 * fz, tz = r0 * fy - r1 * fx;
+        tau[3 * w] = tx; tau[3 * w + 1] = ty; tau[3 * w + 2] = tz;
+        const m = net.get(a) ?? net.set(a, [0, 0, 0, 0]).get(a);
+        m[0] += tx; m[1] += ty; m[2] += tz; m[3]++;
+    }
+    for (let w = 0; w < numCells; w++) {
+        const a = owner[w], m = a >= 0 ? net.get(a) : null;
+        if (!m) continue;
+        for (let i = 0; i < 3; i++) cellTorque[3 * w + i] += tau[3 * w + i] - m[i] / m[3];
+        loadOf[a].cells[SWELL]++;
+    }
 }
 
 /**

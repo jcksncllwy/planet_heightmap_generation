@@ -238,7 +238,8 @@ export function clampSpeed(omega, plate, centre, config) {
 
 /** What the lab and the checks get to see about the forces on a plate. */
 function describeDynamics(load, target, centre, capped, mesh) {
-    const net = Math.hypot(load.torque[0] - load.flowTorque[0], load.torque[1] - load.flowTorque[1], load.torque[2] - load.flowTorque[2]);   // (the boundary forces'; the mantle flow is not a tug at a boundary)
+    const T = [0, 1, 2].map(i => load.torque[i] - load.flowTorque[i]);
+    const net = Math.hypot(T[0], T[1], T[2]);   // (the boundary forces'; the mantle flow is not a tug at a boundary, and the swell's push has no net)
     return {
         forces: FORCE_KINDS.map((name, k) => ({ name, cells: load.cells[k], km: load.cells[k] * mesh.edgeKm, vector: load.forceByKind[k].slice(), torque: Math.hypot(...load.byKind[k]) })),
         collisionCells: load.contacts.length,

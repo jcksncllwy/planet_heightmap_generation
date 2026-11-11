@@ -9,7 +9,7 @@ import { sidesOf, exteriorSea, maskedCells } from './rift-partition.js';
 import { FastNoise } from '../../core/fast-noise.js';
 import { edgeKmOf } from '../../core/min-heap.js';
 import { netTorques, stressAcross, cutAlong } from '../step/plate-stress.js';
-import { riftStressContext, stressPaths } from '../field/rift-stress.js';
+import { riftStressContext, stressPaths, bandForce } from '../field/rift-stress.js';
 
 /**
  * The grain of the crust a rift follows (developer: rifts "on way too straight lines … should curve a bit and be jagged";
@@ -103,7 +103,7 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     // Only DISTINCT cuts count: the cheapest pairs are mostly the same two coast spots a cell apart, so a pair whose ends
     // both lie near an evaluated pair's ends is passed over. Pairs must have no overhangs (the path always advances along
     // its own line, or a promontory of one half would stick into the other and the halves would jam as they part).
-    let chosen = null, chosenPath = null, bestValue = Infinity, chosenStress = 0, chosenShare = 0;
+    let chosen = null, chosenPath = null, bestValue = Infinity, chosenStress = 0, chosenShare = 0, chosenBand = null;
     const tried = [];
     for (const pair of pairs) {
         if (tried.length >= PAIRS_TRIED || (tried.length && pair.perKm > config.riftCostSlack * pairs[0].perKm)) break;
@@ -115,9 +115,12 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
         const sides = sidesOf(mesh, crust, path, ctx.cells);
         if (!(sides.share > 0) || (needCratonsBothSides && !sides.cratonsBothSides)) continue;   // a rift divides cratons: each side keeps at least one (a plume may shear a craton-less piece off)
         const sigma = ctx.rho ? stressOnCut(mesh, ctx, sides.side, path) : 0;
-        // (by the stress, the cost already weighs the tension across each step: the cheapest cut is the one it breaks)
-        const value = ctx.stress ? pair.perKm : pair.perKm / (Math.max(0, sigma) + config.riftStressFloor);
-        if (value < bestValue) { bestValue = value; chosen = pair; chosenPath = path; chosenStress = sigma; chosenShare = sides.share; }
+        // (by the stress, the cost already weighs the tension across each step: the cheapest cut is the one it breaks;
+        // with config.riftBandForce, F2, the cut whose whole band has the greatest F_drive ÷ F_R — field/rift-stress.js bandForce —
+        // so a cut that starts in a tensile lobe and then crosses compression loses to one the plate pulls apart end to end)
+        const band = ctx.stress && config.riftBandForce ? bandForce(mesh, path, ctx.stress, grain) : null;
+        const value = band ? -band.ratio : ctx.stress ? pair.perKm : pair.perKm / (Math.max(0, sigma) + config.riftStressFloor);
+        if (value < bestValue) { bestValue = value; chosen = pair; chosenPath = path; chosenStress = sigma; chosenShare = sides.share; chosenBand = band; }
     }
     if (!chosen) return null;
     const arm1 = chosen.a, arm2 = chosen.b;
@@ -139,8 +142,8 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     }
     const a3 = taken.length > 2 ? plainTrace(taken[2].c) : [];
     const ends = [chosenPath[0], chosenPath.at(-1)];
-    // across = normal to the rift's great circle; value = cost per km × the elongation penalty, comparable between junctions
-    return { path: chosenPath, failedArm, arms: [a1, a2, a3], across: normalize(cross(pos(xyz, ends[0]), pos(xyz, ends[1]))), value: bestValue, stress: chosenStress, share: chosenShare };
+    // across = normal to the rift's great circle; value = cost per km (or −F_drive ÷ F_R, riftBandForce), comparable between junctions
+    return { path: chosenPath, failedArm, arms: [a1, a2, a3], across: normalize(cross(pos(xyz, ends[0]), pos(xyz, ends[1]))), value: bestValue, stress: chosenStress, share: chosenShare, band: chosenBand };
 }
 
 /**

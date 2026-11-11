@@ -687,6 +687,18 @@ export const TECTONICS = {
                                 // up to this long after the head arrived; its flood basalt erupts on arrival
 
     // ── The supercontinent cycle (Phase 13, step/supercontinent.js) ──
+    // ── The swell's push (lane riftswell; step/forces.js swellPush) ──
+    swellPush: true,            // the lithosphere over the mantle's swell carries its gravitational potential energy, and pushes away from
+                                // its high centre: a body force −∇U, U = ρ̄ g L × the swell's height (the model's own: mantleSwellKm × the
+                                // smoothed heat, terrain/sea-level.js). Nothing to set: L and ρ̄ are the column model's (riftLithKm 125 km, its
+                                // crust and lid densities: ≈ 3.9 × 10¹² N/m per km of swell). Puts an insulated supercontinent's interior in
+                                // tension (Coblentz, Richardson & Sandiford 1994, Tectonics 13: elevated continents stand in extension;
+                                // Lithgow-Bertelloni & Silver 1998, Nature 395: the African superswell drives its plates). Off: no such load
+    riftBandForce: true,        // (F2, with swellPush) a rift is judged by its whole band, not by the junction's peak: of the cuts searched
+                                // (field/rift-stress.js stressJunctions now spreads their junctions over the landmass), the one whose
+                                // F_drive = Σ σn·km (the stress normal to the cut, compression counting against) is greatest against
+                                // F_R = Σ T·km (the strength along it) is taken (Buck 1991, JGR 96:20161: a rift runs through only where
+                                // the band's driving force beats its integrated strength). When stays the dice's (step/rifting.js)
     riftHeatFloor: 0.05,        // a continent's rift chance × (floor + gain × heat^power), heat = the mean mantle heat under its
     riftHeatGain: 5,            // land (step/hotspots.js): on mantle it has only just drifted onto it hardly rifts, over the mantle
     riftHeatPower: 5,           // a supercontinent has insulated for 100+ Myr readily — so a breakup comes in a burst, then quiets

@@ -36,7 +36,7 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
     path = throughOcean(mesh, crust, path);
     const { xyz, numCells, adjOffset, adjList } = mesh, side = new Int8Array(numCells), mask = crust.mask, type = crust.type;
     // (scratch kept between calls — a rift search partitions the same plate many times: see partitionScratch)
-    const { onPath, lean, seen, queue } = partitionScratch(numCells), mark = ++seen.stamp === 0xFFFFFFFF ? resetSeen(seen) : seen.stamp;
+    const { onPath, lean, seen, queue, piece } = partitionScratch(numCells), mark = ++seen.stamp === 0xFFFFFFFF ? resetSeen(seen) : seen.stamp;
     const OCEAN = CrustType.OCEAN, isLand = c => mask[c] === 1 && type[c] !== OCEAN;   // (land: the plate's crust, not ocean)
     for (const c of path) onPath[c] = 1;
     // which side of the path each cell next to it lies on (the sign of its offset from the path's local line)
@@ -62,13 +62,35 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
         let vote = 0;
         for (let i = from; i < n; i++) {
             const c = queue[i];
+            piece[c] = from;
             vote += lean[c];
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (marks[nb] !== mark && !onPath[nb] && isLand(nb)) { marks[nb] = mark; queue[n++] = nb; } }
         }
         if (vote < 0 && (rightTo === rightFrom || n - from > rightTo - rightFrom)) { rightFrom = from; rightTo = n; }
     }
+    // (does the path divide the land at all? A cut from the outer coast into a bay of the same sea, round whose head the land
+    // joins, is a slit: one piece lies on both sides of it, and the "right side" would be a scrap by an end. Divided where no
+    // piece lies on both sides of a path cell; the path divides the land if it does so along most of its cells.)
+    let divided = 0, judged = 0;
+    for (let i = 0; i < path.length; i++) {
+        const c = path[i], prev = path[Math.max(0, i - 1)], next = path[Math.min(path.length - 1, i + 1)];
+        const P = pos(xyz, c), along = tangentToward(P, pos(xyz, prev), pos(xyz, next));
+        const left = [along[1] * P[2] - along[2] * P[1], along[2] * P[0] - along[0] * P[2], along[0] * P[1] - along[1] * P[0]];
+        let L = -1, R = -1, both = false, any = false;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k];
+            if (onPath[nb] || !isLand(nb) || marks[nb] !== mark) continue;
+            any = true;
+            const d = (xyz[3 * nb] - P[0]) * left[0] + (xyz[3 * nb + 1] - P[1]) * left[1] + (xyz[3 * nb + 2] - P[2]) * left[2];
+            if (d > 0) { if (L < 0) L = piece[nb]; } else if (R < 0) R = piece[nb];
+            if (L >= 0 && R >= 0 && L === R) both = true;
+        }
+        if (!any) continue;
+        judged++; if (!both) divided++;
+    }
+    const slit = judged > 0 && 2 * divided < judged;
     for (const c of cells) if (type[c] !== OCEAN) side[c] = 1;
-    for (let i = rightFrom; i < rightTo; i++) side[queue[i]] = 2;
+    if (!slit) for (let i = rightFrom; i < rightTo; i++) side[queue[i]] = 2;
     // the plate's ocean follows its nearest land (breadth-first from all of it); anything unreached (shouldn't happen) stays
     n = 0;
     for (const c of cells) if (side[c]) queue[n++] = c;
@@ -90,7 +112,7 @@ export function partition(mesh, crust, path, cells = maskedCells(crust)) {
 let scratch = null;
 /** Cell-sized scratch for partition, all zero between calls (marks: a fresh stamp per call instead). */
 function partitionScratch(numCells) {
-    if (!scratch || scratch.onPath.length !== numCells) scratch = { onPath: new Uint8Array(numCells), lean: new Float32Array(numCells), seen: { marks: new Uint32Array(numCells), stamp: 0 }, queue: new Int32Array(numCells) };
+    if (!scratch || scratch.onPath.length !== numCells) scratch = { onPath: new Uint8Array(numCells), lean: new Float32Array(numCells), seen: { marks: new Uint32Array(numCells), stamp: 0 }, queue: new Int32Array(numCells), piece: new Int32Array(numCells) };
     return scratch;
 }
 function resetSeen(seen) { seen.marks.fill(0); return (seen.stamp = 1); }

@@ -146,6 +146,9 @@ export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = 
     if (!rift) return false;
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN, weakKm = rift.path.filter(c => plate.crust.flags[c] & weak).length * mesh.edgeKm;   // (before the split flags the new margins)
     world.onRiftPath?.(world, plate, rift.path);          // (a measuring tool's look at the line, before the split: tools/pstress-history.mjs)
+    let landCells = 0;
+    for (const c of ctx.cells) if (plate.crust.type[c] !== CrustType.OCEAN) landCells++;
+    const landMkm2 = landCells * mesh.cellAreaKm2 / 1e6;          // (the plate's land before the split: what the share is of)
     const before = plate.name, ageMyr = world.time - plate.born, fresh = splitPlate(world, plate, rift.path, rift.failedArm, (a, b) => namesAfterSplit(world, a, b, before), rift.across);
     const km = rift.path.length * mesh.edgeKm;
     // (a craton the rift went through is now on both plates: its terrane id is kept on both halves, recorded here)
@@ -154,7 +157,7 @@ export function* tryRift(world, plate, junctions, cause, needCratonsBothSides = 
     const cratonKm = rift.path.filter(c => plate.crust.mask[c] ? plate.crust.type[c] === CrustType.CRATON : fresh.crust.type[c] === CrustType.CRATON).length * mesh.edgeKm;
     if (world.config.riftStage) openRiftStage(world, plate, fresh, rift.path);
     world.log(EventKind.RIFT, `${before} rifts (${cause.text}): ${plate.name} and ${fresh.name} part along ${km.toFixed(0)} km of rift${rift.failedArm.length ? `, a failed arm of ${(rift.failedArm.length * mesh.edgeKm).toFixed(0)} km left behind` : ''}`,
-        { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm, ageMyr, stress: rift.stress, share: rift.share, cratonKm, splitCratons });
+        { plate: plate.id, fresh: fresh.id, cause: cause.kind, hotspot: cause.hotspot, lengthKm: km, weakKm, failedArmKm: rift.failedArm.length * mesh.edgeKm, ageMyr, stress: rift.stress, share: rift.share, bandRatio: rift.band ? rift.band.ratio : null, landMkm2, cratonKm, splitCratons });
     return true;
 }
 

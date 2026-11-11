@@ -36,6 +36,7 @@ const COLUMN = columnModel(TERRAIN);
 const SEEDS = [12345, 777, 4242];
 const CLUMP_MYR = TECTONICS.riftMinGapMyr + 30;     // (the window over which the most a landmass held while the pieces dispersed is read)
 const FREEZE = 0.9, FREEZE_MYR = 50;                // (a plate holding over 90 % of the planet for over 50 Myr: the lid has stopped)
+const FIRST_BREAKS = 3;      // (lane riftswell) a supercontinent's first breakups reported (Pangea's: Central Atlantic, East–West Gondwana, South Atlantic)
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 const mesh = labMesh(), n = mesh.numCells, cellKm2 = mesh.cellAreaKm2;
 const scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
@@ -246,8 +247,17 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const againAt = broken.find(t => reassembled !== undefined && t > reassembled);
     const held = reassembled === undefined ? [] : kept.filter(k => k.time >= reassembled - 30 && k.time <= (againAt ?? scene.maxMyr));
     const fullest = held.reduce((b, k) => (!b || k.share > b.share ? k : b), null);
+    // (lane riftswell) the first breakups of each supercontinent: after each assembly (the start world's too), the first
+    // FIRST_BREAKS rifts of a big landmass (the plate's land ≥ 2 × riftMinContinentKm2, riftsize §2's measure), before the next
+    // assembly, the smaller side's share of the plate's land. The start world's first rift (the start split, t ≈ 2: the start
+    // world's loads make the whole landmass tensile) is reported on its own and left out of the rest.
+    const bigKm2 = 2 * TECTONICS.riftMinContinentKm2 / 1e6, startSplit = rifts[0]?.data.share ?? NaN, firstBreaks = [];
+    supers.forEach((t, i) => {
+        const next = supers[i + 1] ?? Infinity;
+        firstBreaks.push(...rifts.filter(e => e !== rifts[0] && e.time >= t && e.time < next && (e.data.landMkm2 ?? 0) >= bigKm2).slice(0, FIRST_BREAKS).map(e => e.data.share));
+    });
     const weak = rifts.reduce((s, e) => s + (e.data.weakKm ?? 0), 0) / Math.max(1, rifts.reduce((s, e) => s + e.data.lengthKm, 0));
-    return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, gapMin: Math.min(Infinity, ...gaps), gapMedian: median(gaps), early, lowest, clump, reassembled, againAt,
+    return { seed, secs: (performance.now() - started) / 1000, supers, broken, rifts: rifts.length, gapMin: Math.min(Infinity, ...gaps), gapMedian: median(gaps), early, startSplit, firstBreaks, lowest, clump, reassembled, againAt,
         fullest: fullest && { time: fullest.time, share: fullest.share, ...shapeOf(fullest) }, weak, calm, lowland, lowlandRaw, lowlandStages, land0, land1200, contRatio: cont1200 / Math.max(1, cont0), cont0, cont500, cont1000,
         ledger: world.ledger, budget: world.budget,
         stress: (world.stressLog ?? []).filter(x => x.time >= 100),
@@ -279,6 +289,10 @@ report(`the most one landmass held for ${CLUMP_MYR} Myr while the pieces dispers
 // held is that the cycle gathers one at all; when, is reported)
 check('the pieces gather again into a new supercontinent within the run (≥ 70 % of the crust, held 30 Myr)', rows.every(r => r.reassembled !== undefined), txt(r => r.reassembled !== undefined ? `at ${r.reassembled.toFixed(0)} Myr` : 'never'));
 report('reassembly: a new supercontinent after the start', rows.map(r => r.reassembled ?? NaN), { earth: [400, 800], unit: ' Myr', digits: 0, source: '~600 ± 100 Myr cycle, Li et al. 2019 (Nuna → Rodinia → Pangea)', detail: 'emergent: gathering waits on the mantle cooling, not a clock' });
+report(`a supercontinent's first ${FIRST_BREAKS} breakups: the smaller side's share, median`, rows.map(r => median(r.firstBreaks)), { earth: [0.3, 0.5], digits: 2,
+    source: 'Pangea: Laurasia–Gondwana ~0.4 (the Central Atlantic, ~190 Ma, Labails et al. 2010), South America–Africa ~0.37 of West Gondwana (Heine et al. 2013); riftsize §2',
+    detail: txt(r => `${r.firstBreaks.map(x => x.toFixed(2)).join(', ') || 'none'}`) });
+report('…and the start split (the first rift, t ≈ 2): its share', rows.map(r => r.startSplit), { digits: 2, source: 'the start world\'s loads (no Earth figure)' });
 report('…its tenure before it breaks up', rows.map(r => r.againAt !== undefined ? r.againAt - r.reassembled : NaN), { earth: [100, 200], unit: ' Myr', digits: 0, source: 'stage-matched: Pangea held ~120–150 Myr (recalled); Rodinia ~150 — assembled by ~900 Ma, broken up from ~750 Ma (Li et al. 2008; abstract checked)',
     detail: txt(r => r.againAt !== undefined ? `broken up at ${r.againAt.toFixed(0)} Myr` : 'not by 1200 Myr') });
 report('rift length along old sutures, failed rifts and rifted margins', rows.map(r => 100 * r.weak), { unit: ' %', digits: 0, source: 'no Earth figure: inheritance is common, not universal (Buiter & Torsvik 2014)' });
