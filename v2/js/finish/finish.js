@@ -300,7 +300,10 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // the sea's surface joins the ocean, in place — closedBasins' open, joinOpenSeas — so its rivers end at the sea from that
     // moment, not at its dry floor kilometres down for the rest of the window, and its floor stops filling. Lane reflood,
     // 2026-11-11 (inlandsea/report.md: 243751@730's trapped ocean, graded dry for the whole window and flooded only after it,
-    // drowned 4.2 Mkm² of the history's land). stats.reflood: each, by the judge's mesh and count)
+    // drowned 4.2 Mkm² of the history's land). Judged on the finest level only (closedBasins' breach): the ladder's coarser
+    // levels average the ground, which cuts a narrow sill below the sea — at 2.5M, 243751@730's sea "breached" at the 640K
+    // level's first judge with its 2.5M sill still above the sea, and, held as sea through the 2.5M level, ended dry behind it.
+    // stats.reflood: each, by the judge's mesh and count)
     const judges = new Map();
     stats.reflood = [];
     const reflooded = (lm, sea, B, at = 'early') => {
@@ -337,7 +340,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low ? 1 : 0;
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => reflooded(lm, sea, closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm)), observe }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
+        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => reflooded(lm, sea, closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm, lm === mesh)), observe }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
             : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => reflooded(mesh, lowOcean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low)) }, EP);
         const { outflow, ...erodeStats } = ER;
         stats.erode = erodeStats;

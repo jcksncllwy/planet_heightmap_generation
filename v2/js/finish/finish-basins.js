@@ -247,6 +247,9 @@ function treeScratch(n, m) {
  * @param {Uint8Array} ocean      the world ocean (finish.js oceanMask): the flood starts there, and only there
  * @param {{fill: Float32Array, parent: Int32Array, order: Int32Array, count: number}|null} [flood]  that flood, already done (the
  *   GPU's, gpu/erode-gpu.js): each cell's spill level, the neighbour it drains to, and the land with each cell after its parent
+ * @param {number} [seaKm]  the sea's surface (km): the erosion's lowstand
+ * @param {boolean} [breach]  whether a hollow at the sea's surface opens (`open`): on the finest level only — a coarser level's
+ *   ground is the finest's averaged, which shaves a narrow sill below the sea that the finest still holds above it
  * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], open: Int32Array[]}}
  *   sink: 1 on every cell of a closed hollow (its rivers end there); base: the level a river ending there is graded to
  *   (the ground, or a lake's level); water: each lake's level on the cells under it (NaN elsewhere) — a closed hollow's
@@ -255,7 +258,7 @@ function treeScratch(n, m) {
  *   whether it spills (full) or keeps a lake (wet) or a playa — or `open`: its sill below the sea's surface, the sea's; open:
  *   those seas' cells, one array each (joinOpenSeas)
  */
-export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0) {
+export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0, breach = true) {
     const { adjOffset, adjList, numCells: n } = mesh;
     // ── the priority flood from the world ocean: each other cell's spill level, and the way it was reached (toward the
     // ocean) — a sea cut off from it is crossed as any hollow is, its spill level its sill ──
@@ -343,7 +346,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         // cut-off sea's rim down below the sea: the breach — the Zanclean flood refilling the Messinian Mediterranean through
         // Gibraltar, 5.33 Ma, in months to two years (Garcia-Castellanos et al. 2009). Lane reflood, 2026-11-11: the caller
         // (finish.js) makes it ocean from then on. Its water passes on, all of it, to the sea)
-        if (cutOff && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm))) {
+        if (breach && cutOff && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm))) {
             let inflow = 0;
             for (const c of L.cells) inflow += q[c];
             seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: inflow * 1e-6, open: true });
