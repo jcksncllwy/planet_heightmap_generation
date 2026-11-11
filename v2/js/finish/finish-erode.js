@@ -334,12 +334,18 @@ export function deltaLayer(mesh, z, inlet) {
         for (const c of cells) if (inlet[c] > 0) { mouths.push(c); all += inlet[c]; }
         if (!all) { layUp(z, cells, vol, Infinity); return 0; }
         mouths.sort((x, y) => inlet[y] - inlet[x]);
+        // (water already full to its surface everywhere — a closed lake its load has filled, the commonest case once it has —
+        // takes nothing from a level delta: its walk would visit every cell for no room, per mouth, per step)
+        let full = true;
+        for (const c of cells) if (surface(c) > z[c]) { full = false; break; }
         let spilt = 0;
         for (const c0 of mouths) {
             let left = vol * inlet[c0] / all;
-            const q = [c0], id = walk++, S = slope ? slope(c0) : 0;
+            const S = slope ? slope(c0) : 0;
+            if (full && !(S > 0)) { spilt += left; continue; }
+            const q = [c0], id = walk++;
             been[c0] = id; dist[c0] = 0;
-            const grow = i => { const c = q[i]; for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (been[y] !== id && inside(y)) { been[y] = id; dist[y] = dist[c] + hop(c, y); q.push(y); } } };
+            const grow = i => { const c = q[i]; for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (been[y] !== id && inside(y)) { been[y] = id; if (S > 0) dist[y] = dist[c] + hop(c, y); q.push(y); } } };
             if (!(S > 0)) {
                 // (no slope: each cell up to the surface, nearest the mouth first — a delta plain at the water's level)
                 for (let i = 0; i < q.length && left > 0; i++) {
@@ -348,6 +354,8 @@ export function deltaLayer(mesh, z, inlet) {
                     grow(i);
                 }
                 spilt += left;
+                // (a walk that ended with load left filled every cell it reached: if that was all of them, the rest are full too)
+                if (left > 0 && !full) { full = true; for (const c of cells) if (surface(c) > z[c]) { full = false; break; } }
                 continue;
             }
             // (graded: the delta plain meets the water's surface at its front, D from the mouth, and rises toward the mouth at
@@ -434,6 +442,36 @@ export function closedOutlets(B, z, n, sinkAt = null) {
     }
     return { sink, base: B.base, sinkAt, basins };
 }
+
+/**
+ * layUp's sorted heights, only as far up as its level can reach: a basin's floor fills from its lowest cells, and sorting the
+ * whole hollow every step (a closed basin's can be a million cells) costs more than the laying. A histogram of the heights finds
+ * a height T the volume cannot fill past; the cells below it, sorted, give layUp's level exactly as the whole sorted list does
+ * (its loop stops at or before the first cell at or above T). When the level may pass `top` (layUp then needs how many cells
+ * the uncapped level covers), or the volume fills everything, the whole list. `g`: the cells' heights, gathered in order.
+ */
+function lowest(g, m, vol, top) {
+    const all = () => Float32Array.from(g.subarray(0, m)).sort();
+    if (m < 4096) return all();
+    let lo = Infinity, hi = -Infinity;
+    for (let j = 0; j < m; j++) { const v = g[j]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (Number.isFinite(top) && top < hi) hi = top;
+    if (!(hi > lo)) return all();
+    const bins = 1024, w = (hi - lo) / bins, cnt = new Float64Array(bins), sum = new Float64Array(bins);
+    for (let j = 0; j < m; j++) { const v = g[j]; if (v < hi) { const k = Math.min(bins - 1, ((v - lo) / w) | 0); cnt[k]++; sum[k] += v; } }
+    // (the volume to fill every cell below edge E up to E: Σ (E − z); the first edge where it reaches `vol` bounds the level)
+    let n = 0, s = 0, T = NaN;
+    for (let k = 0; k < bins; k++) {
+        n += cnt[k]; s += sum[k];
+        const E = k === bins - 1 ? hi : lo + (k + 1) * w;
+        if (n * E - s >= vol * 1.000001 + 1e-9) { T = E; break; }
+    }
+    if (!(T === T) || T >= top) return all();
+    const h = [];
+    for (let j = 0; j < m; j++) { const v = Math.fround(g[j]); if (v < T) h.push(v); }      // (as layUp's Float32Array holds it)
+    return Float32Array.from(h).sort();
+}
+let gathered = new Float64Array(0);
 
 /**
  * The bayhead fill (lane coastflood, 2026-11-10): today's sea drowned the valleys the rivers cut at the glacial cycle's lower
@@ -694,7 +732,11 @@ export function hollowCensus(mesh, z, ocean, closed, minKm2, minKm) {
 
 /** `vol` (km³ ÷ a cell's area: km) laid over `cells` from the lowest up, to a level no higher than `top`. */
 export function layUp(z, cells, vol, top) {
-    const h = Float32Array.from(cells, c => z[c]).sort();
+    const m = cells.length;
+    if (gathered.length < m) gathered = new Float64Array(Math.max(m, 2 * gathered.length));
+    const g = gathered;
+    for (let j = 0; j < m; j++) g[j] = z[cells[j]];
+    const h = lowest(g, m, vol, top);
     let level = h[0], left = vol, i = 1;
     for (; i < h.length; i++) {
         const need = i * (h[i] - level);
@@ -704,7 +746,6 @@ export function layUp(z, cells, vol, top) {
     level += left / i;
     let over = 0;
     if (level > top) { over = (level - top) * i; level = top; }
-    const m = cells.length;
-    for (let j = 0; j < m; j++) if (z[cells[j]] < level) z[cells[j]] = level;
+    for (let j = 0; j < m; j++) if (g[j] < level) z[cells[j]] = level;
     return over;
 }
