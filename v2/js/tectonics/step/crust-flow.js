@@ -23,15 +23,21 @@
 //     ~70 km crust (crustChannelRefKm): η = 1e18 × (h_ch,Tibet ÷ 15 km)³ (~2.6e19 Pa s: Beaumont et al.'s ~1e19, Hilley et al.
 //     2005's ~1e19 when the whole lower crust flows). A number sets η outright (crustmass's sensitivity rows: 1e18, 1e20, 1e21).
 //
+//   · Thickened crust heats slowly (config.crustChannelLag): thickening stretches the geotherm with the crust, so at first the
+//     channel is only the old one thickened (f × h_ch(h₀), f = h ÷ h₀: England & Thompson 1984's homogeneous thickening), and
+//     it grows toward the steady channel over the column's diffusion time τ = h² ÷ (π² κ) (its slowest conductive mode;
+//     κ = crustThermalDiffusivity), timed from the belt's last activity (crust.oroLast). So an active belt keeps its relief
+//     and it collapses afterwards, as Earth's orogens do (Dewey 1988: extension follows thickening by ~10–30 Myr).
+//
 // Solved implicitly (backward Euler, conjugate gradients on each plate's continental cells), and applied as fluxes between
 // cells, so it moves crust and never makes or loses any (the heights stage's rock closure holds to the float).
-// Limits (a reduced model): steady geotherm (thickened crust in fact warms over ~H²/κ ≈ 40–150 Myr: England & Thompson
-// 1984 — here at once); uniform η in the channel (no stress or temperature dependence inside it); no flow across a plate's
+// Limits (a reduced model): the geotherm's transient is one exponential from the last thickening (no heat advected by the
+// flow itself, no heating of thinned crust); uniform η in the channel (no stress or temperature dependence inside it); no flow across a plate's
 // boundary nor onto ocean floor (oceanic lithosphere has no crustal channel: the channel ends at the continent's edge —
 // area at the free edge is the strain term's, S4); an island arc's crust takes no part; the broad uplift does not flow
 // (with crustPaidRelief there is none to flow: relief is the root's face).
 
-import { CrustType } from '../model/crust.js';
+import { CrustType, OrogenyType } from '../model/crust.js';
 import { columnModel, crustThicknessKm, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { heatFlowRise } from '../field/stress-step.js';
 
@@ -95,7 +101,7 @@ export function flowCrust(world, dt, H) {
     let moved = 0, iters = 0;
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, rootKm, upliftKm, baseKm, basinFillKm } = crust, heat = heatOf(plate);
+        const crust = plate.crust, { mask, type, rootKm, upliftKm, baseKm, basinFillKm, oroType, oroLast } = crust, heat = heatOf(plate);
         // the plate's continental cells, and each one's channel conductance and ground height
         const cells = [];
         for (let c = 0; c < mask.length; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) cells.push(c);
@@ -108,7 +114,13 @@ export function flowCrust(world, dt, H) {
             loc[c] = i + 1;
             const km = crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c]);
             const qm = (config.plateHeatMantleFlow + heatFlowRise(heat[c], config)) * (t === CrustType.CRATON ? lid : 1);
-            const h = channelKm(km, qm, config);
+            let h = channelKm(km, qm, config);
+            const h0 = C.crust[t];
+            if (config.crustChannelLag && km > h0 && oroType[c] !== OrogenyType.NONE && oroType[c] !== OrogenyType.RIFT) {
+                const tau = km * km * 1e6 / (Math.PI * Math.PI * config.crustThermalDiffusivity) / SEC_PER_MYR;
+                const start = Math.min(km, km / h0 * channelKm(h0, qm, config));
+                h += (start - h) * Math.exp(-Math.max(0, world.time - oroLast[c]) / tau);
+            }
             K[i] = kPerKm3 * h * h * h;
             sl[i] = C.slope[t];
             s[i] = C.ref[t] + C.slope[t] * rootKm[c] + Math.max(0, upliftKm[c]) + baseKm[c] + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;

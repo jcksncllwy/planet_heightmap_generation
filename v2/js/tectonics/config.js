@@ -198,6 +198,9 @@ export const TECTONICS = {
     crustHeatDepthKm: 10,       // km: the crust's heat production decays with depth over this (Lachenbruch 1970; Turcotte & Schubert §4-8: ~10 km)
     crustHeatConductivity: 2.5, // W/m/K: the crust's (Turcotte & Schubert §4-8)
     crustSurfaceC: 10,          // °C at the ground (the geotherm's top)
+    crustChannelLag: true,      // thickened crust heats over its diffusion time before its channel flows (England & Thompson 1984; step/crust-flow.js);
+                                // false: the steady geotherm at once (an active belt flows as soon as it thickens)
+    crustThermalDiffusivity: 1e-6, // m²/s: rock's (Turcotte & Schubert §4-15) — τ = h² ÷ π²κ: ~16 Myr for 70 km of crust, ~8 for 50
     collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
                                 // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
                                 // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)
