@@ -2297,6 +2297,23 @@ moved lake share by more than the noise, and that no parallel solver can repeat.
 seed under different tie-breaks still vary** (lake share ±0.07 on 831576, ±0.13 on 626225, standard errors of four runs): the figures
 below are single runs from before this rule; with it, on Upwell, they are 2.27 / 3.61 / 2.47 %.
 
+**Closed basins' load** (lane hollowfix, 2026-11-11; `closedOutlets` / `layClosed`, CPU and GPU alike). A closed basin's rivers
+end at its water-balance lakes (`closedBasins`' water, each at the level its balance holds) or, in a dry basin, at its lowest
+cell, the playa. The rest of the hollow is ground like any other: its rivers erode it and lay their load down on it by the stream
+power and G, so its floor aggrades into fans graded to the lake. A lake's load is laid as its delta, up to the lake's level. What is
+left raises the hollow from its lowest cell, the lake shallowing over a rising floor, up to its **rim** at most. A basin filled
+to its rim is judged open at the next judge and drains through (overfilled lake basins become through-flowing: Carroll & Bohacs
+1999, Geology 27: 99). **Until 2026-11-11** the whole hollow was the outlet, and its load was laid flat to the rim, the hollow's
+spill level, not its lake's. That made dead-level slabs at sill height with cliffs at their rims, and the next judge decided their
+drainage by ties. At 831576@430 2.5M (GPU), level patches dropped 562 → 512 and cliff-edge cells 41 → 9; at 716130 they dropped
+891 → 835 and 30 → 9. The level area at 831 grew 6.29 → 8.56 Mkm², all of it a lake's graded plain (`level-fills.mjs --classify`;
+the slab part, 4.61 → 4.54, is unchanged). One consequence is correct physics rather than a regression: at 831 the cut-off sea
+(3.5 Mkm², floor −4.6 km, rim 2.05 km) fills and becomes a through-flowing plain with a few pans, so salt lakes drop
+2.87 → 0.06 Mkm². **What it skips:** the load a full basin can't hold (`budget.overRimKm3PerYr`, 42 % of the closed load at 831)
+is dropped, not carried over the sill. A closed basin's water evaporates, so nothing crosses its sill while it is closed. The
+open item is to let that load raise the hollow past its rim and open it (four designs that moved the surplus to an outlet or its mouths failed: towers where G·Qs/A laid it on one cell, or a diverging budget).
+Open lakes are still laid flat to their spill (the slab).
+
 A mesh at or under a ladder level (within 10 %) runs that level's span itself, so 640K takes 160K then 0.2 Myr / 4 steps. To
 compare, or to override any setting:
 ```
