@@ -257,6 +257,8 @@ export const EARTH_VEI_PER_YR = Object.freeze({ 2: 15.2, 3: 4.55, 4: 0.544, 5: 0
 export const EXPLOSIVITY = Object.freeze({ arc: 1, andean: 1, rift: 0.3, plume: 0.1 }), EARTH_WEIGHT = 0.6;
 /** Bulk volume of an eruption of a VEI class, km³ (VEI 4 ≥ 0.1, each class ×10; Newhall & Self 1982). */
 export const veiKm3 = v => 10 ** (v - 5);
+/** Earth's eruption sizes: cumulative count N(> V) ∝ V^−0.8 (log₁₀ of Papale 2018's per-class rate ratios, VEI 4→5→6: 0.87, 0.72). */
+export const SIZE_SLOPE = 0.8;
 
 function poisson(rng, mean) {
     if (mean <= 0) return 0;
@@ -286,7 +288,9 @@ export function recentEruptions(volc, seed, kyr, { minVei = 4, near = null } = {
             const rng = makeRng((Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(s.w + 1, 0x85ebca6b) ^ Math.imul(v, 0xc2b2ae35) ^ Math.round(volc.time * 16)) >>> 0);
             const k = poisson(rng, rate * weight(s) / Wv * kyr * 1e3);
             for (let i = 0; i < k; i++) {
-                const km3 = veiKm3(v) * (1 + 9 * rng());
+                // (within its class the size falls off as Earth's rates do between classes — ~×6 fewer per tenfold volume,
+                // Papale 2018's VEI 4–6 — so N(> V) ∝ V^−SIZE_SLOPE, cut at the class's tenfold top)
+                const km3 = veiKm3(v) * (1 - rng() * (1 - 10 ** -SIZE_SLOPE)) ** (-1 / SIZE_SLOPE);
                 // (SO₂ by size, Tg: 3 × km³^0.6 through Pinatubo's ~15–20 Tg for ~10 km³ bulk and Tambora's 53–58 for ~150
                 // (Self et al. 2004): the big silicic eruptions are S-poor, so it grows slower than the volume)
                 out.push({ w: s.w, kind: s.kind, vei: v, ageYr: rng() * kyr * 1e3, km3, so2Tg: 3 * km3 ** 0.6 });

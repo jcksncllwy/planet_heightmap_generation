@@ -169,8 +169,11 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
                 add(w, rc, rng, 35, cfg.coneKm.andean * (0.75 + 0.5 * rng()), cfg.coneRadiusKm.andean * (0.85 + 0.3 * rng()), 20 * rng(), strikeAt(w), 'andean');
         }
         // rift volcanoes: as many as the cell's lava builds (a share of it in central edifices; the chance carries the remainder)
+        // (each world cell's lava and eruption are drawn once: a moved plate's raster can land several crust cells on it)
         if (riftSite[w] >= 0) {
-            const site = volc.sites[riftSite[w]], rng = cellRng(seed, rc, SALT.rift), lava = site.km3Myr * volc.dt / (1 + IE.rift);
+            const site = volc.sites[riftSite[w]];
+            riftSite[w] = -1;
+            const rng = cellRng(seed, rc, SALT.rift), lava = site.km3Myr * volc.dt / (1 + IE.rift);
             const age = Math.max(0, time - frame.riftThinAt[w]);
             for (let i = 0; i < 3; i++) {
                 const h = cfg.coneKm.rift * (0.6 + 0.8 * rng()), r = cfg.coneRadiusKm.rift * (0.8 + 0.4 * rng());
@@ -181,6 +184,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
         // a caldera where this centre's largest recent eruption collapsed its roof
         const big = bigOne.get(w);
         if (big) {
+            bigOne.delete(w);
             const rng = cellRng(seed, rc, SALT.caldera), { c, local, toWorld } = homeOf(w, rc, rng, 30);
             const area = big.km3 / cfg.calderaBulkPerDre / cfg.calderaSubsideKm, a = 1 + 0.8 * rng() ** 2;   // (some long: Toba 30 × 100 km)
             const rad = Math.sqrt(area / Math.PI), along = strikeAt(w), fill = Math.exp(-big.ageYr / 1e6 / cfg.calderaFillMyr);
@@ -283,13 +287,13 @@ export function coneAt(V, c0, px, py, pz, groundKm = 0) {
 
 /**
  * How much the calderas change terrain point p (nearest sim cell c0): the floor sunk below the surroundings, a low rim and
- * its apron, a resurgent dome — summed (they rarely meet). Signed, km.
+ * its apron, a resurgent dome. Signed, km.
  */
 export function calderaAt(V, c0, px, py, pz) {
     const C = V.calderas;
     if (!C || !C.count) return 0;
     const { offset, items } = C.near, { pos, radius, axis, aspect, depth, rim, dome, domeR, offs } = C, noise = V.noise;
-    let dh = 0;
+    let low = 0, high = 0;
     for (let j = offset[c0]; j < offset[c0 + 1]; j++) {
         const k = items[j], cx = pos[3 * k], cy = pos[3 * k + 1], cz = pos[3 * k + 2], dx = px - cx, dy = py - cy, dz = pz - cz;
         const sa = Math.sqrt(aspect[k]), rk = radius[k] * sa * 1.7 / R;
@@ -302,7 +306,8 @@ export function calderaAt(V, c0, px, py, pz) {
         const rho = Math.hypot(a, b), wall = smooth(0.8, 1.0, rho);
         let h = rho <= 1 ? -depth[k] * (1 - wall) + rim[k] * wall : rim[k] * (1 - smooth(1, 1.5, rho));
         if (dome[k] > 0 && rho < domeR[k]) h += dome[k] * (1 - (rho / domeR[k]) ** 2) ** 2;
-        dh += h;
+        if (h < low) low = h; else if (h > high) high = h;
     }
-    return dh;
+    // (where two meet — neighbouring centres, a caldera cut into another's rim — the deeper floor wins: collapses don't stack)
+    return low < 0 ? low : high;
 }
