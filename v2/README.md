@@ -275,6 +275,7 @@ node v2/tools/history.mjs frame --latest --out f.bin   # …that very frame; als
 node v2/tools/check-history-cache.mjs         # the cache: frames bit for bit, the key, concurrent writers, damaged files
 node v2/tools/finish-latest.mjs [--png]       # the finish cache: the finished moment the user is looking at, loaded in seconds (see "The finish cache")
 node v2/tools/check-finish-cache.mjs          # the finish cache: bit for bit, the key, damaged files, the page's upload path
+node v2/tools/check-analogues.mjs             # the analogue library: well-formed, every role sourced, the matcher on Earth points
 ```
 
 After an engine change run `check-invariants.mjs`, `check-scale.mjs` and the check scripts of the phases the change
@@ -398,6 +399,11 @@ js/civ/            the civ layer (plans/CIV_PLAN.md): civ-config (its constants,
                    disease (vector fever and snail fever from the months, standing water and the cold filter),
                    civ-page + civ-worker (the Evolution page's People layer: a finish's world resampled to 160K cells, run in a
                    worker, one byte per cell and frame), civ-finish (what the finish gathers for it, only when asked)
+js/ecology/analogues/  the analogue library (no UI yet): keys (the ecology layer's shared vocabulary: habitats, grades,
+                   roles, sizes, isolation; the matcher's input typedef), grades (when each grade opened on Earth, cited),
+                   cards-*.js (248 Earth assemblages by era and realm) + cards (joined, normalized), sources (generated:
+                   each role's PBDB/GBIF evidence and the present cards' climate), paleoenv (generated: PaleoClim envelopes),
+                   match (the matcher: a cell → ranked cards and filled roles; pure)
 js/app/            the lab: shell (lab-main), globe, canvas overlays, phases/ (one module per phase + phase-kit),
                    history-runner / history-worker (a scene's history off the page's thread, frames streamed back),
                    helper-pool / helper-worker (a few workers the history's worker starts: the start world's layout
@@ -3048,3 +3054,44 @@ judged on that world (lane landheight, 2026-11-10). The default is now **0.41**,
 - **The start frame** stands at 2.25 km (cont 29: 2.95): the placeholder ocean is uniformly old. A separate lane gives it Earth's
   age spread.
 - Gate land-height numbers before this change measured the 29 % world; compare against the cont41 baseline.
+
+## The analogue library: Earth look-alikes for a world's life (2026-11-11, lane analogues; ecodesign L5)
+
+`js/ecology/analogues/` holds 248 real Earth assemblages ("cards"), each ONE place and time, from the Ediacaran (Mistaken
+Point) to today. Each card has its habitats, azonal settings, Köppen codes, isolation class (connected, long-isolated,
+island), age, and 3–9 roles (grazer, big predator, reef builder, …) filled by a genus, plain words and a body-size class.
+The matcher (`match.js`) is a pure function from one cell to the cards most like it and the cell's roles filled with
+look-alikes, labelled as such: "a giant ground sloth …, like Megatherium (Luján, Pleistocene)". There are no invented names
+yet (Jackson, 2026-11-10). A moment past Earth's present on the world's clock gets "no Earth precedent" look-alikes by role.
+
+- **Input** (`keys.js` typedef): realm, habitat or biome, Köppen, annual temperature and rain, SST for the sea, the world's
+  open grades, and the landmass's isolation (endemic share, time isolated, area). The score is a product of likenesses:
+  grade (a card needing a grade the world lacks is out), habitat (a hand affinity table), climate, isolation. A card's
+  climate envelope is read as a normalized likelihood, so a narrow envelope is stronger evidence. The scales are fixed
+  (6 °C, 0.5 in ln mm, 4 °C SST) and nothing is fitted.
+- **Roles come only from the landmass's own isolation class.** A long-isolated continent never borrows a connected
+  continent's Caracal. A role only cards of another class fill stays a plain role word, with no look-alike.
+- **Grades** (`grades.js`): when each kind of life opened on Earth, read from the cited papers' abstracts (DOIs inline).
+  The matcher compares grades, never dates.
+- **Sources.** Every role was checked against a source, and a role with no support was dropped, never kept as "probably".
+  - Fossil cards: a Paleobiology Database occurrence of the genus in the card's formation, or else within ~3° and the
+    card's age window. A Quaternary card's window is padded only ±max(50 kyr, 20 %).
+  - Present cards: GBIF occurrences within ~3°.
+  - Body sizes are checked against PHYLACINE 1.2.
+  - Present climate comes from Beck et al. 2023 (1991–2020 temperature, rain and Köppen) and NOAA OISST v2 for the sea,
+    read over 3×3 1° cells at the site (the climate tuning's own references).
+  - Quaternary and Pliocene land cards get climate envelopes from PaleoClim (Brown et al. 2018: LGM, Last Interglacial,
+    MIS19, mPWP, M2).
+  - The verifier and generators live in the lane's tool directory, outside the product; `sources.js` and `paleoenv.js`
+    are their outputs.
+- **Limits.**
+  - Cards older than the Pliocene, and all fossil sea cards, have no climate envelope yet. The next source is Valdes et
+    al. 2021 (HadCM3L) at PBDB palaeocoordinates.
+  - About 9 % of the area-sourced roles (32 of 342) have their nearest PBDB support more than 100 km from the card's site.
+    Some of these are at the site in other databases (Trafalgar Square's in the NHM collections); site-level checks of
+    these 18 cards are still to do.
+  - Coverage (≥ 3 cards per habitat × grade band) is 40 of 230 cells. 74 of the 190 gaps have no Earth record to fill
+    them: the habitat's defining life form didn't exist yet, or the habitat leaves no recognisable fossils. 18 are
+    present-day habitats a GBIF card can fill. 98 are fossil gaps.
+  - Provinciality (South America's sloths and not Florida's) is left to the life record's per-landmass lineage pools (L4).
+

@@ -46,20 +46,21 @@ export const FRESH_HABITATS = Object.freeze(['lake', 'river', 'saline-lake']);
 /** Realms: which habitat list a cell's `habitat` comes from. */
 export const REALMS = Object.freeze(['land', 'sea', 'fresh']);
 
-/** Grades: the kinds of life a world has opened (ecodesign §4.2, §5 `life.grades`). A card lists the grades it needs. */
+/** Grades: the kinds of life a world has opened (ecodesign §4.2, §5 `life.grades`). A card lists the grades it needs.
+ *  The dates are Earth's first good evidence of each, from the cited abstracts in ./grades.js (GRADE_OPENS_MA). */
 export const GRADES = Object.freeze([
-    'algae',        // eukaryotic algae (present at the anchor, ~750 Ma-like)
-    'animals',      // animals in the sea (Ediacaran–Cambrian)
-    'landPlants',   // plants on land (cryptospores ~470 Ma; vascular ~430)
-    'landAnimals',  // arthropods and then tetrapods ashore (~420; ~375–365 Ma)
-    'forests',      // trees and forests (~385 Ma)
-    'seeds',        // seed plants: dry interiors open (~365 Ma)
-    'woodRot',      // lignin-degrading (white-rot) fungi (~295 Ma by molecular clock; Floudas et al. 2012)
-    'flowers',      // flowering plants and their pollinators (~140–125 Ma)
-    'grasses',      // grasses and open grassland (grasses ~70–55 Ma; open grassland Miocene)
-    'c4',           // C4 grassland (expansion 8–6 Ma)
-    'primates',     // primates (~66–56 Ma)
-    'hominins',     // hominins (~7–6 Ma)
+    'algae',        // eukaryotic algae (Bangiomorpha, 1047 Ma; present at the page's anchors)
+    'animals',      // animals in the sea (Mistaken Point, 574 Ma)
+    'landPlants',   // plants on land (cryptospores, 475 Ma)
+    'landAnimals',  // animals ashore (Ludford Lane arthropods, 423 Ma; tetrapods later)
+    'forests',      // trees and forests (Gilboa, 385 Ma)
+    'seeds',        // seed plants: dry interiors open (Elkinsia, end Devonian 359 Ma)
+    'woodRot',      // lignin-degrading (white-rot) fungi (end Carboniferous 299 Ma, molecular clock; Floudas et al. 2012)
+    'flowers',      // flowering plants and their pollinators (Valanginian pollen, 133 Ma)
+    'grasses',      // grasses and open grassland (open-habitat grasses dominant 27–23 Ma: 25)
+    'c4',           // C4 grassland (expansion 8–6 Ma: 8)
+    'primates',     // primates (Teilhardina, 55.5 Ma)
+    'hominins',     // hominins (Sahelanthropus, 7 Ma)
 ]);
 
 /** Roles (ecodesign §2.3's guild table plus the sea's). A card fills the roles its assemblage had. */
