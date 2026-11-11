@@ -14,6 +14,7 @@ import { lifeSectionHTML, HABITAT_WORDS } from '../js/ecology/life-panel.js';
 import { classifyCell } from '../js/climate/koppen.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { BoundaryKind } from '../js/tectonics/model/world.js';
+import { matchAnalogues } from '../js/ecology/analogues/match.js';
 
 section('the vocabulary');
 for (const [list, keys] of [['land', KEYS.LAND_HABITATS], ['azonal', KEYS.AZONAL_HABITATS], ['sea', KEYS.SEA_HABITATS], ['fresh', KEYS.FRESH_HABITATS]]) {
@@ -69,7 +70,7 @@ for (const sst of [-1, 6, 14, 22, 28])
 section('the sweep');
 const finite = x => typeof x !== 'number' || Number.isFinite(x);
 const seen = { land: new Set(), sea: new Set(), floor: new Set(), fresh: new Set() }, seenAz = new Set();
-let nulls = 0, badKey = [], nonFinite = [], notPyramid = [], badShare = [], badHtml = [];
+let nulls = 0, matchBad = [], matched = 0, badKey = [], nonFinite = [], notPyramid = [], badShare = [], badHtml = [];
 for (const { F, frame: fr } of places) {
     const L = lifeFacts(F, null, fr);
     if (!L) { nulls++; continue; }
@@ -91,6 +92,8 @@ for (const { F, frame: fr } of places) {
         if (L.crust < 0 || L.crust > 1 || (fs > 0 && Math.abs(fs - 1) > 1e-6) || L.grazeShare < 0 || L.grazeShare > 1) badShare.push(tag);
     }
     if (!Object.values(L.match ?? {}).every(v => finite(v))) nonFinite.push(`${tag} (match)`);
+    // (the analogue lane's matcher takes what this core hands it: the contract, end to end)
+    try { const m = matchAnalogues(L.match); if (m?.ranked?.length) matched++; else matchBad.push(`${tag} (nothing ranked)`); } catch (e) { matchBad.push(`${tag}: ${e.message}`); }
     const html = lifeSectionHTML(L, true);
     if (/NaN|undefined|Infinity/.test(html) || !html.includes('today\'s grade')) badHtml.push(tag);
 }
@@ -102,6 +105,7 @@ check('shares stay shares (mycorrhizae sum to 1, crust and grazing in 0–1)', b
 check('the panel draws every place without NaN or undefined, and says the grade', badHtml.length === 0, badHtml.slice(0, 5).join('; '));
 check('the sweep reaches a spread of habitats (≥ 10 land, ≥ 6 sea, all three floors)', seen.land.size >= 10 && seen.sea.size >= 6 && seen.floor.size === 3,
     `land ${[...seen.land].join(' ')} | sea ${[...seen.sea].join(' ')} | floor ${[...seen.floor].join(' ')}`);
+check('the analogue matcher takes every place\'s match input and ranks cards for it', matchBad.length === 0, `${matched} matched${matchBad.length ? `; ${matchBad.slice(0, 3).join('; ')}` : ''}`);
 check('a lake is fresh water with its land around it', seen.fresh.has('lake'));
 check('azonal overlays without a river (karst, young lava, salt flat) are named', ['karst', 'young-lava', 'salt-flat'].every(a => seenAz.has(a)), [...seenAz].join(' '));
 check('the panel asks for detail on a preview moment', /Add detail/.test(lifeSectionHTML(null, false)));
