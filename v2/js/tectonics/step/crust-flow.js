@@ -1,4 +1,4 @@
-// Lower-crustal flow (lane crustmass S3, config.crustFlow; off until S5): thick crust spreads because its hot lower crust
+// Lower-crustal flow (lane crustmass S3, config.crustFlow; on since S5): thick crust spreads because its hot lower crust
 // flows out from under it, toward where the ground stands lower (Bird 1991; Clark & Royden 2000, "topographic ooze"). It
 // replaces heights.js's gravitational collapse (a threshold, collapseKm 5, and a hand-set rate, 2000 km²/Myr) with one law:
 //

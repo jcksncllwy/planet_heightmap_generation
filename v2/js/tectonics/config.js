@@ -175,7 +175,7 @@ export const TECTONICS = {
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
-    crustPaidRelief: false,     // (lane crustmass, S1; off until S5) a belt's relief is the isostatic face of a root that was paid for, not rock of
+    crustPaidRelief: true,      // (lane crustmass, S1; on since S5) a belt's relief is the isostatic face of a root that was paid for, not rock of
                                 // its own: belts no longer raise the broad uplift (measure.js counts it as crust, uplift ÷ column slope — ~5 Gkm³
                                 // a 1200 Myr cycle made from nothing, about the planet's whole continental crust: crustmass/report.md §0, F4–F6),
                                 // only their root stands them up. The roots a rigid upper plate cannot pay for in area are bounded by arc
@@ -183,13 +183,13 @@ export const TECTONICS = {
                                 // arcRootAddedKm3, a mantle source — Jackson's ruling 4: Andean thickening counted as arc magmatism only);
                                 // a transpression belt's or a sutured terrane's thickens nothing (no shortened area pays for it); an arc welded
                                 // on as continent keeps its rock (a relabel: its root is set so the column holds what the arc held, F2)
-    prismAccretion: false,      // (lane crustmass, S2; off until S5) the rock a trench scrapes off — what its subduction channel does not take of the
+    prismAccretion: true,       // (lane crustmass, S2; on since S5) the rock a trench scrapes off — what its subduction channel does not take of the
                                 // rise, the sea fill and the fans' rock (accretionSedimentKm × sedimentSubductionShare) — is the overriding plate's
                                 // prism, laid on its fore-arc as continental crust (Jackson's ruling 3; Cawood et al. 2009; step/prism-accretion.js),
                                 // not a book of rock gone (~0.4–1 Gkm³ a cycle, crustmass/report.md F15); its fore-arc islands rise out of it
-    crustFlow: false,           // (lane crustmass, S3; off until S5) thick crust spreads by lower-crustal channel flow, ∂h/∂t = ∇·(K∇s), K = ρc g h_ch³ ÷ 12η
-                                // (Bird 1991; Clark & Royden 2000; step/crust-flow.js), in place of heights.js's collapse (collapseKm, collapseKm2PerMyr,
-                                // which then do not run): no threshold, the channel h_ch from a geotherm, so thick and hot crust flows and a cold shield blocks it
+    crustFlow: true,            // (lane crustmass, S3; on since S5) thick crust spreads by lower-crustal channel flow, ∂h/∂t = ∇·(K∇s), K = ρc g h_ch³ ÷ 12η
+                                // (Bird 1991; Clark & Royden 2000; step/crust-flow.js), in place of heights.js's old collapse (a 5 km threshold and a
+                                // hand-set rate, removed at S5): no threshold, the channel h_ch from a geotherm, so thick and hot crust flows and a cold shield blocks it
     crustChannelC: 700,         // °C: the channel is the crust hotter than this — where melt-weakening brings it to a channel's viscosity (700–750 °C,
                                 // Beaumont et al. 2004, JGR 109 B06406: crustal channels form only with that drop, not with wet-quartz creep alone)
     crustChannelViscosity: null, // Pa s; null: Clark & Royden 2000's fitted flux (1e18 for an assumed 15 km channel, Tibet's gentle margins) carried to the
@@ -201,9 +201,6 @@ export const TECTONICS = {
     crustChannelLag: true,      // thickened crust heats over its diffusion time before its channel flows (England & Thompson 1984; step/crust-flow.js);
                                 // false: the steady geotherm at once (an active belt flows as soon as it thickens)
     crustThermalDiffusivity: 1e-6, // m²/s: rock's (Turcotte & Schubert §4-15) — τ = h² ÷ π²κ: ~16 Myr for 70 km of crust, ~8 for 50
-    collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
-                                // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
-                                // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)
     subductionErosionKm3PerKmMyr: 0,   // OFF by default (gjallar's ruling, 2026-11-05; built and measured at 36). With beltStrainRate off
                                 // it holds the Andes down: check 8a's main range stands only 0.21 km over the coast (needs 0.3) and the
                                 // collision's upper-plate plateau 0.56 km over the foreland (needs 0.75); at 0 both pass (Upwell, crust7).

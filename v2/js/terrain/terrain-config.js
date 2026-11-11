@@ -400,12 +400,9 @@ export const TERRAIN = {
     // shows: a shield 0.5 km up loses ~8 m of rock a Myr (cratons 1–10 m/Myr, cosmogenic: Bierman & Caffee 2001 — recalled),
     // an old range 1 km up ~30 (the Appalachians ~20–30: Matmon et al. 2003 — recalled), an active one 4 km up ~400
     erosionHeight: { refKm: 2, floor: 0, max: 1.8 },
-    collapseKm: 5,              // ground raised past this collapses under its own weight — its lower crust flows out and it
-                                // extends — so a plateau levels off here and widens instead (Tibet ~5 km, the Altiplano ~4 km;
-                                // Molnar & Lyon-Caen 1988, Dewey 1988; tectonics/step/heights.js)…
-    collapseKm2PerMyr: 2000,    // …its uplift and root spreading at this rate (lower-crustal flow built eastern Tibet's
-                                // ~300 km margin over ~10–15 Myr: Clark & Royden 2000 — ~6,000–9,000 km²/Myr; a third of that,
-                                // as the flow is confined to the hottest crust). (Re-runs the history.) 0: none
+    collapseKm: 5,              // the most a thickened root reads as lift in the terrain's synthesis (terrain/synthesize.js rootRatio): a
+                                // plateau stands at ~4–5 km (Tibet ~5, the Altiplano ~4; Molnar & Lyon-Caen 1988). The history's
+                                // collapse it once also set is gone: thick crust spreads by channel flow (tectonics/step/crust-flow.js)
     diffusionKm2PerMyr: 80,     // hillslope smoothing of the uplift: range edges spread and blend over time (not onto cratons)
     // A belt's crests need room: a scrap of a belt — a few sim cells left of a collision — cannot hold its cross-section
     // (the suture valley, ranges 40–130 km off it), and drawn anyway its valley sank into the uplift around it as a pit

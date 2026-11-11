@@ -507,9 +507,9 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    the convergence its front absorbs, never lowered by a newer belt; foreland basins sink below 0), the size of its
    belts' crests (`rugged`, `prevRugged`) and a hotspot volcano's wear (`volcWornKm`). Every step erodes them at the
    latitude the cell is at then (faster where it rains more, and poleward under ice) and smooths the uplift sideways a
-   little, never into the sea. Ground raised past `collapseKm` (5 km) collapses under its own weight — its uplift and
-   root flow out to its neighbours at `collapseKm2PerMyr`, crust moved, not lost — so plateaus level off at Tibet's and
-   the Altiplano's heights and widen instead of rising on. A belt's reach is spent against the strength of the ground
+   little, never into the sea. Thick crust spreads by lower-crustal channel flow (`crustFlow`, `step/crust-flow.js`; see
+   "One crust model" below) — crust moved, not lost — so plateaus level off and widen instead of rising on; it replaced
+   a 5 km collapse threshold with a hand-set spreading rate (crustmass S5). A belt's reach is spent against the strength of the ground
    it crosses (the thin viscous sheet: a deforming zone widens as the lithosphere weakens): crust a belt has already
    thickened, and island-arc crust, is hot and weak (`beltHotStrength` × an ordinary continent's), so a long-lived margin
    widens over the crust it thickened — each column there thickening by that share as much, so the same shortening
@@ -2802,8 +2802,8 @@ What this does not do (open):
   0.41 since cont41, 2026-11-10: "The world the targets describe"). Progradation
   was measured and refuted as a crust maker (a filled sea floor carries ~14.6 km of sediment on ocean crust; Cogley 1984
   ends continental crust at the slope's foot).
-- `collapseMakesArea` (a collapsing range spreading over its own plate's sea floor) stays off: +0.8 Mkm² a cycle, within
-  noise.
+- `collapseMakesArea` (a collapsing range spreading over its own plate's sea floor) was measured at +0.8 Mkm² a cycle,
+  within noise, and removed with the old collapse at crustmass S5.
 - Intra-oceanic fore-arcs do not erode; the fore-arc reach (250 km) is recalled, not sourced.
 
 ## One water ledger (2026-11-06, lane water; model review U1)
@@ -3230,3 +3230,32 @@ landmass's own lineages and body sizes: ecodesign L1–L4) comes later, and unti
   vocabulary, every number finite, the pyramid narrowing upward, shares in range, the panel drawn without NaN, and the
   relations' shapes (more growth → more herbivores; predators' share falling as prey thickens; upwelling > coastal >
   open ocean in fish).
+
+## One crust model (2026-11-11, lane crustmass S0–S3; on by default since S5)
+
+Continental crust leaked over a history (volume ~0.8× in 1200 Myr, area more). Lane crustmass put every reservoir of rock
+in one ledger and fixed the leaks process by process (design and measurements: `lanes-2026-10-29/crustmass/report.md`).
+- **The balance sheet (S0)**: `tools/crustlevel-measure.mjs --sheet` prints every reservoir (crust, relief, basin fill, arc,
+  ocean sediment, transit, prism) per 100 Myr and each stage's rock closure; the trench length subducting is measured from
+  the boundaries.
+- **Paid relief (S1, `crustPaidRelief`)**: a belt's relief is the isostatic face of a root that was paid for, not rock from
+  nowhere; roots grow only under the arc-magmatism cap (one cap per margin). Unsupported mountains stand lower.
+- **Prism accretion (S2, `prismAccretion`)**: the rock a trench scrapes off (the rise, sea fill, the fans' rock the channel
+  does not take) builds the overriding plate's accretionary prism, which counts as continental crust.
+- **Lower-crustal flow (S3, `crustFlow`, `step/crust-flow.js`)**: ∂h/∂t = ∇·(K∇s), K = ρc g h_ch³ ÷ 12η, the channel h_ch the
+  crust above 700 °C on the model's geotherm, η derived from Clark & Royden 2000's fit (~2.3e19 Pa s); implicit CG, flux
+  form, harmonic K (no flow onto ocean or into cold shields); volume-neutral. `crustChannelLag`: thickened crust heats over
+  h²/π²κ from its belt's last activity before it flows (England & Thompson 1984), so active belts keep their relief.
+  Replaces the old collapse (5 km threshold, 2000 km²/Myr). `collapseKm` now only caps how much a root lifts the ground in
+  the terrain's synthesis.
+- **Limits, and what is not fixed** (measured at cont 41, 4 seeds × 1200 Myr):
+  - Mean continental thickness is not flat: collisions consume area (keep 85 %) faster than volume.
+  - **The late sea fall at cont 41 is not fixed**: L p50 for t ≥ 900 stays −200 to −800 m (Earth's raw band −50…+250).
+  - **Belts barely thicken**: crust p99 39–54 km against Earth's orogens at 60–70 km (and active belts' 95th-percentile height
+    3.1 km at cont 0.41). The cause is upstream, in how belts build crust: the Andean arc cap (60 km³/km/Myr) binds and
+    collisions keep 85 % of their area, spending area instead of stacking crust.
+  - **Extension from strain (S4) is not in.** A thin-sheet strain law driven by the stress field made continental area run
+    away (peaks 46–52 % from 41 %): its crust-only GPE lacks the lithospheric mantle's term, which keeps Earth's ~40 km
+    continents from extending as a whole. It is parked (branch `crustmass-s4-parked`) for a full deforming sheet (O5).
+    Subduction erosion stays off.
+

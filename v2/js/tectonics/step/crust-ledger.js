@@ -15,11 +15,11 @@ import { arcCrustKm } from './collision.js';
  *  every other stage to 0. (riftStage, lane pstress: a young rift's halves part through continent stretched thin, not new
  *  ocean, for their first riftBreakupKm — step/rifting.js evolveRiftStages spreads the zone's crust over more area, so the
  *  area ledger sees land made, the volume being the margins' thinning. subductionErosion, lane crust: a closing overriding
- *  trench eats its fore-arc continent until it founders — step/subduction-erosion.js. heights, lane crust: only with
- *  config.collapseMakesArea, a collapsing range's root spreading over its plate's own sea floor — step/heights.js.
+ *  trench eats its fore-arc continent until it founders — step/subduction-erosion.js. (heights made land only through the
+ *  old collapse's collapseMakesArea, removed at crustmass S5: it is held to 0 again.)
  *  hiddenRemnants, lane crust: a plate subducted to its last arc or continent cells, hidden under its neighbours, accretes
  *  to the plate over it, and land landing on the host's own land is absorbed — step/ocean-plates.js accreteHiddenRemnants.) */
-export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'prismAccretion', 'subductionErosion', 'arcMaturation', 'tidy', 'riftStage', 'heights', 'hiddenRemnants'];
+export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'prismAccretion', 'subductionErosion', 'arcMaturation', 'tidy', 'riftStage', 'hiddenRemnants'];
 
 /** The planet's continental and arc crust now, in cells (every live plate's raster). */
 export function crustTally(world) {
