@@ -27,6 +27,7 @@ import { broadProfile } from '../../terrain/profiles.js';
 import { FastNoise } from '../../core/fast-noise.js';
 import { recordWear, thickenCover } from './geology.js';
 import { bookRock } from '../rock-book.js';
+import { flowCrust } from './crust-flow.js';
 
 const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -100,6 +101,9 @@ export function evolveHeights(world, dt) {
     // created cell's 0 never reads as "the step before")
     const epoch = world.heightsEpoch = (world.heightsEpoch ?? 1) + 1;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
+    // (config.crustFlow, lane crustmass S3: the lower crust flows by its own law — step/crust-flow.js — and the collapse below,
+    // its threshold and its hand-set rate, does not run)
+    if (config.crustFlow) flowCrust(world, dt, H);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
         const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm, basinFillKm, tectKm, tectRefKm, tectAt } = crust;
@@ -116,7 +120,7 @@ export function evolveHeights(world, dt) {
         // at ~4–5 km and widen instead (Tibet, the Altiplano; Molnar & Lyon-Caen 1988). Where a cell stands that high, its
         // uplift and its thickened crust spread to its neighbours at collapseKm2PerMyr — crust moved, not lost: a plateau
         // levels off and grows outward (sub-stepped where a step is too long for that rate on this mesh)
-        const collapse = H.collapseKm2PerMyr > 0, kc = collapse ? H.collapseKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm) : 0;
+        const collapse = !config.crustFlow && H.collapseKm2PerMyr > 0, kc = collapse ? H.collapseKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm) : 0;
         const spill = collapse && config.collapseMakesArea ? (plate.collapseSpill ??= new Map()) : null;
         if (collapse) {
             let hi = scratch.hi;

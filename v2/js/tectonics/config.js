@@ -187,6 +187,17 @@ export const TECTONICS = {
                                 // rise, the sea fill and the fans' rock (accretionSedimentKm × sedimentSubductionShare) — is the overriding plate's
                                 // prism, laid on its fore-arc as continental crust (Jackson's ruling 3; Cawood et al. 2009; step/prism-accretion.js),
                                 // not a book of rock gone (~0.4–1 Gkm³ a cycle, crustmass/report.md F15); its fore-arc islands rise out of it
+    crustFlow: false,           // (lane crustmass, S3; off until S5) thick crust spreads by lower-crustal channel flow, ∂h/∂t = ∇·(K∇s), K = ρc g h_ch³ ÷ 12η
+                                // (Bird 1991; Clark & Royden 2000; step/crust-flow.js), in place of heights.js's collapse (collapseKm, collapseKm2PerMyr,
+                                // which then do not run): no threshold, the channel h_ch from a geotherm, so thick and hot crust flows and a cold shield blocks it
+    crustChannelC: 700,         // °C: the channel is the crust hotter than this — where melt-weakening brings it to a channel's viscosity (700–750 °C,
+                                // Beaumont et al. 2004, JGR 109 B06406: crustal channels form only with that drop, not with wet-quartz creep alone)
+    crustChannelViscosity: null, // Pa s; null: Clark & Royden 2000's fitted flux (1e18 for an assumed 15 km channel, Tibet's gentle margins) carried to the
+                                // geotherm's own channel under crustChannelRefKm of crust — η = 1e18 × (h_ch ÷ 15 km)³, ~2.6e19 (Hilley et al. 2005 ~1e19)
+    crustChannelRefKm: 70,      // km: Tibet's crust, where that fit was made (~65–70 km: Owens & Zandt 1997 — recalled)
+    crustHeatDepthKm: 10,       // km: the crust's heat production decays with depth over this (Lachenbruch 1970; Turcotte & Schubert §4-8: ~10 km)
+    crustHeatConductivity: 2.5, // W/m/K: the crust's (Turcotte & Schubert §4-8)
+    crustSurfaceC: 10,          // °C at the ground (the geotherm's top)
     collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
                                 // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
                                 // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)
