@@ -856,7 +856,19 @@ channel within ~1e-5 of a half level rounds the other way: Relief differs by 1 l
 A step's paint and upload in headless Chrome (four real moments, Relief and Heightmap; median): 68–159 → 5–7 ms on a 2048-px
 texture, 173–594 → 12–18 ms at 4096 (p95 ≤ 20 ms); on the page the paint takes 0.3–0.6 ms of its thread, and the longest
 frame after a step fell from 167–550 ms to 67–83 ms (the same machine, under load). Without WebGPU (or `?gpu=0`), the CPU's.
-Layers with their own colouring — the climate layers, People and Satellite — are still painted on the CPU (their colourings
+The Satellite layer is painted on the GPU too (2026-11-11, developer: "Satellite next"): its own colour pass (WGSL, after
+`climate-view.js` satelliteColor — the sea by its depth, turquoise over warm shallows, the sea ice's ragged edge from
+`core/fast-noise.js`'s simplex noise, the lakes open or frozen, the land's styled colours blended where enlarged, the
+relief's shading), fed by `satelliteSource`, the one source of its inputs for both painters. The land's styled colours
+(`sat-style.js`) are still made on the CPU, once per moment and season (2.5–4.4 s at a 4096-px climate picture: the
+first look at a moment in a season is still slow). Against the CPU's: the light, the sea's ramp, the 1° grids and the
+ice's noise are in f32, so a channel within a hair of a half level rounds the other way — mostly on the ice's edge: on
+four real moments in three seasons, by 1 level (2 on one pixel) on ≤ 0.032 % of the pixels; `check-finish-paint`'s
+synthetic climate (an ice edge over 30° of latitude a hemisphere) holds it within 2 levels on < 0.1 % (0.053 % measured);
+the glint's mask exact. A step's Satellite paint on the page (headless Chrome, two moments at 160K and two at 2.5M, the
+year and January; median): 202–253 → 17–22 ms on the 2048-px texture (most of it the new moment's climate picture going
+to the GPU) and 629–936 → 0.5 ms at 4096; the longest frame after a step 600–900 → 133–150 ms.
+The other layers with their own colouring — the climate layers and People — are still painted on the CPU (their colourings
 are JS; a port means each in WGSL), as are the exports (`export.js`, byte for byte as before). Without WebGL 2 everything
 is painted as before (`?gpu=0` forces it, for comparison; it also keeps the detailed paint on the CPU). The map view is the same texture drawn flat by the globe's
 renderer, letterboxed under the `#mapCanvas` frame. Zoom is V1's (`app/globe-view.js`): a wheel's notch is 14 % nearer
