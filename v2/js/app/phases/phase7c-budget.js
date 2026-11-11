@@ -21,6 +21,7 @@ const TUNABLES = [
     { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast while its slab feeds it', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
     { id: 'subductionErosionKm3PerKmMyr', label: 'Every closing trench eats its fore-arc continent at', min: 0, max: 115, step: 1, unit: ' km³/km/Myr' },
     { id: 'arcAdditionKm3PerKmMyr', label: 'An Andean belt adds at most this much crust (0 = unbounded)', min: 0, max: 150, step: 5, unit: ' km³/km/Myr' },
+    { id: 'andeanShorteningShare', label: '…and its upper plate shortens behind the arc at this share of its push toward the trench (0 = off)', min: 0, max: 0.6, step: 0.05 },
     { id: 'marginIsleRatePerMyr', label: 'Fore-arc islands born per 1000 km of accretionary coast per Myr', min: 0, max: 3, step: 0.1 },
 ];
 const CHECKLISTS = {

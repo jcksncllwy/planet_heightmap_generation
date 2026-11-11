@@ -3257,11 +3257,36 @@ in one ledger and fixed the leaks process by process (design and measurements: `
 - **Limits, and what is not fixed** (measured at cont 41, 4 seeds × 1200 Myr):
   - Mean continental thickness is not flat: collisions consume area (keep 85 %) faster than volume.
   - **The late sea fall at cont 41 is not fixed**: L p50 for t ≥ 900 stays −200 to −800 m (Earth's raw band −50…+250).
-  - **Belts barely thicken**: crust p99 39–54 km against Earth's orogens at 60–70 km (and active belts' 95th-percentile height
-    3.1 km at cont 0.41). The cause is upstream, in how belts build crust: the Andean arc cap (60 km³/km/Myr) binds and
-    collisions keep 85 % of their area, spending area instead of stacking crust.
+  - **Belts thicken now (lane beltthick, below).** Before it: crust p99 39–54 km against Earth's orogens at 60–70 km.
   - **Extension from strain (S4) is not in.** A thin-sheet strain law driven by the stress field made continental area run
     away (peaks 46–52 % from 41 %): its crust-only GPE lacks the lithospheric mantle's term, which keeps Earth's ~40 km
     continents from extending as a whole. It is parked (branch `crustmass-s4-parked`) for a full deforming sheet (O5).
     Subduction erosion stays off.
 
+
+## Belts that thicken, and collapse when they go quiet (2026-11-11, lane beltthick; with crustmass S1)
+
+With paid relief (S1) a belt stands only on its root, so the root has to be built by physics. Three processes, all default-on,
+none with a tuned parameter (measurements: `lanes-2026-10-29/beltthick/report.md`):
+- **A collision's crust stays where it was consumed (`collisionKeepLocal`, F7)**: `collision.js keepConsumed` lays the
+  consumed crust on belt cells within their own belt's reach of the stretch of front that consumed it (Δh = S·h₀ ÷ W; Tibet:
+  ~1000–1500 km shortened over a ~1000 km plateau, ~35 → ~70 km), not over every belt cell the plate has stamped since the
+  collision began. `collisionLostShare` 0.15 still returns to the mantle.
+- **Retro-arc shortening (`andeanShorteningShare` 0.25, `step/andean-shortening.js`, ledger stage `andeanShortening`)**: an
+  upper plate pressed toward its trench shortens behind its arc at Vd = share × Vup (Heuret & Lallemand 2005). Its edge's
+  area folds into the belt as root, so the volume is kept. The share comes from the Central Andes (300–350 km since ~45 Ma
+  against SA's 2–3 cm/yr drift); that is Earth's strongest segment, and the stage applies it to every such margin. Andean
+  thickening is arc magmatism (the arc cap) plus this shortening (Jackson's ruling 4); the shortening carries most of it.
+- **Orogenic collapse (`orogenicCollapse`, `step/orogenic-collapse.js`, ledger stage `orogenicCollapse`)**: once a belt has
+  been quiet for `orogenyQuietMyr`, crust-flow's channel (`crust-flow.js`) spreads its root. Outflow that crosses its coast,
+  or that leaves the belt's footprint inland, is owed as area: one ordinary continental cell per h₀ of root. The cell is made
+  on the plate's nearest sea face, because a raster can only add land at an edge, so interior widening shows as the coast
+  moving out. Only root is spent (G1); only post-active shortening belts give it, never arcs, rifts or cratons (G2). Flow
+  inside a belt is its own redistribution and makes no area: the no-root control showed sediment- and base-driven flow
+  circling between a belt's thinned and thickened cells (`collapse-guard.md`).
+
+Measured at cont 41, 40K × 1200 Myr, 4 seeds (Chroma x64): belt crust p99 (median of 50-Myr samples) collision 58–61 km,
+Andean 65–68 km (was 46–51 / 43–46). **Continental area still drifts down: cont% Δ 200→1200 −10.5 to −13.8 pts against
+−4.5 to −10 before** (bar |Δ| ≤ 4). Collapse returns 9–11 Mkm² per 1200 Myr, ×0.2–0.3 of Earth's ~36–48 (Basin and Range,
+Aegean): only ~0.25 Gkm³ of crust-flow leaves a quiet belt; the rest moves within belts. The missing area-maker is open:
+e.g. rifts that reopen old belts (the Wilson cycle). `check-invariants` reports both rates against Earth.

@@ -183,6 +183,12 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
         `${B.sealedLandCells ?? 0} cells of sea filled with continent at welds and docks, ${B.sealPaidCells ?? 0} of continental coast given back; ${B.sealedArcCells ?? 0} filled with arc, ${B.arcPaidCells ?? 0} of coast given back for them`);
     const per100 = cells => cells * ledgerMesh.cellAreaKm2 / 1e6 / (LEDGER_MYR / 100);
     for (const stage of LAND_STAGES) report(`net continental crust from ${stage}`, per100(stages[stage]?.land ?? 0), { unit: ' Mkm²/100 Myr', digits: 1 });
+    // (lane beltthick: the area shortening takes and the area a quiet belt's collapse gives back, against Earth's rates)
+    report('area taken by retro-arc shortening (andeanShortening)', -per100(stages.andeanShortening?.land ?? 0), { earth: [2.5, 3.5], unit: ' Mkm²/100 Myr', digits: 1,
+        source: 'the Central Andes ~300–350 km since ~45 Ma along ~1500 km, ~100 km elsewhere, with the Cordillera’s (Oncken et al. 2006; Kley & Monaldi 1998)' });
+    report('area made by orogenic collapse (orogenicCollapse)', per100(stages.orogenicCollapse?.land ?? 0), { earth: [3, 4], unit: ' Mkm²/100 Myr', digits: 1,
+        source: 'Basin and Range ~1.9 Mkm² extended since ~30 Ma by 50–200 % (Henry & Aranda-Gomez 1992; McQuarrie & Wernicke 2005), the Aegean (Jolivet & Brun 2010)',
+        detail: `of which owed inland (a belt's outflow, made at its nearest coast) ${((world.budget.collapseInlandOwedKm3 ?? 0) / Math.max(1, world.budget.collapseOwedKm3 ?? 0) * 100).toFixed(0)} % of the volume` });
     report('net continental crust, all sources', per100(booked), { unit: ' Mkm²/100 Myr', digits: 1, source: 'Earth: near zero today — arc additions ≈ losses to subduction erosion and sediment subduction, ~3 km³/yr each (Scholl & von Huene 2009; Dhuime et al. 2012)',
         detail: `of which underthrust −${per100(world.budget.underthrustCells ?? 0).toFixed(1)}, eroded −${per100(world.budget.erodedCells ?? 0).toFixed(1)}, sediment subducted −${per100(world.budget.sedimentCells ?? 0).toFixed(1)}, sea sealed at welds +${per100(world.budget.sealedLandCells ?? 0).toFixed(1)} and paid −${per100(world.budget.sealPaidCells ?? 0).toFixed(1)}, arcs matured +${per100(world.budget.arcMaturedCells ?? 0).toFixed(1)}` });
     // (the rivers' rock on the ocean floor — the rise, step/trench-fans.js layRise; an enclosed sea's fill, step/sea-fill.js —
