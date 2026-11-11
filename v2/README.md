@@ -2990,3 +2990,26 @@ writes to the world: the history and its hash are unchanged.
   calderas only at silicic centres and shaped as depressions, no rift volcano without melt), plus report lines
   against Crisp 1984, Fischer et al. 2019 and Wong et al. 2019.
 
+
+## The world the targets describe: continental crust 41 % (2026-11-10, lane cont41)
+
+`continentalFraction` (tectonics config) is the start world's continental **crust**, shelves and drowned margins included, not its
+land. Its default was 0.29, Earth's *land* share, a leftover from before the water inventory, when the crust stood almost all
+above a reckoned sea. Under the poured sea (Earth's 1.332e9 km³) a 29 % crust leaves ~360 Mkm² of deep floor and no margin to
+flood, so the sea stood 0.60–0.85 km below datum at every moment ≥ 300 Myr on every seed. Every Earth land-height target was
+judged on that world (lane landheight, 2026-11-10). The default is now **0.41**, Earth's continental crust incl. shelves
+(Cogley 1984; ~41 % crust under ~29 % land), on Jackson's ruling (2026-11-10). It is a world setting, not a tuning.
+
+- **One source.** The Evolution page's Crust slider starts at the config default (`evolution-main.js`; a link's `crust=` still
+  wins), the lab's start-world panel reads it, and the tools take `DEFAULT_CONT` from `tools/lib/moment-frame.mjs`
+  (`pageWorld`/`momentFrame` default to it). Every check and study tool that hard-coded 29 or 30 (`cont: 30`, `--cont 30`,
+  `continentalFraction: 0.3`, check-basins included) now follows it. Deliberate values stay: check-phase3's variant
+  worlds, check-history-cache's 0.35 key test, check-waterbooks' explicit 41.
+- **What moves** (landheight's probe on the 3 seeds, sim 40K, finish CPU 160K; `cont41/probe-table.txt` in the lane folder):
+  finished land mean above the poured sea at 300 Myr 1.28 / 1.29 / 1.04 km (cont 29) → 1.08 / 0.65 / 0.90 (cont 41; Earth
+  0.81 on the same mesh); finished land below 500 m 25–30 % → 36–42 % (Earth 54 %); the poured sea at 300 Myr −0.64…−0.76
+  → −0.04…+0.06 km. Late frames still fall where continental area is lost (716130 at 1200 Myr: 124 Mkm² of crust, sea
+  −1.09, land 2.96 km): that is the crust budget's to hold (crustmass S3/S4), not the datum's.
+- **The start frame** stands at 2.25 km (cont 29: 2.95): the placeholder ocean is uniformly old. A separate lane gives it Earth's
+  age spread.
+- Gate land-height numbers before this change measured the 29 % world; compare against the cont41 baseline.
