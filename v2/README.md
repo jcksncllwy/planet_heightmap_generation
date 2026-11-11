@@ -363,7 +363,7 @@ js/terrain/        heights from a Frame (Phase 8), in km, on a terrain mesh of a
                    plate's raster and carried to the points between (stripeCarry; ~3 waves a point instead of ~28, the
                    same ridges to the eye); crossAt, the distance across a
                    belt as its kernels carry it (smooth, bending with the front) that the ridge noise is read at
-  volcanoes        cones: hotspot islands / seamounts, island-arc chains, Andean stratovolcanoes
+  volcanoes        cones: hotspot islands / seamounts, island-arc chains, Andean stratovolcanoes, rift volcanoes; calderas
   lips             flood basalts on land: each province's pieces (centre, radius, age) and its radiating dyke swarm
   near-lists       which point features can reach a sim cell's terrain points
   synthesize       synthesizeTerrain(frame, simMesh, terrainMesh) → heightKm (+ components) = preparePlan (per frame)
@@ -2946,3 +2946,45 @@ Lake share (640K replicates) stays at or below base's range for 831576@420–440
 **Open.** rake-compress loses on M1; hillD/diffD at physical D are inert; 'even' still dissects plateaus hard over 10 Myr
 (a K question); the span's GPU cost; mean land is 2× Earth's; scattered 30–50 km hills on the lowland east of the 831576@430
 belt that base lacks (seen in the 2.5M crops, not yet measured).
+
+## Volcanism: fluxes, rift volcanoes, calderas and eruptions (2026-11-10, lane volcano)
+
+Design and numbers: `lanes-2026-10-29/volcano/report.md`. The history already placed its volcanoes (arcs, plume tracks,
+flood basalts, ridges) but kept no rates. `tectonics/volcanism.js` reads them off the frames, as records, and never
+writes to the world: the history and its hash are unchanged.
+
+- **`volcStep(prev, frame, mesh, H)`** gives a frame's `volc` record: magma and erupted km³/Myr by setting, gas (CO₂,
+  H₂O, SO₂, Cl) in Mt/yr from a cited yield table, the frame's LIPs (volume, pulses, sills, thermogenic CO₂ from the
+  cover's coal, organic and salt facies), and its live centres (arc front, rift, plume) with a VEI cap.
+  `tools/volc-flux.mjs` prints a cached history's record against Earth's ranges.
+  - **ridge:** new floor × 7 km of melt.
+  - **arc:** the history's arc book (net crust growth) × **ARC_GROSS = 3**, since ~⅔ of arc melt founders as cumulates
+    (Jagoutz & Kelemen 2015). The melt is what degasses and erupts.
+  - **plume:** strength × Earth's mean tail.
+  - **rift:** decompression melting under the stretch (`riftMeltKm(β, ΔT)`, McKenzie & Bickle 1988). The mantle's
+    excess heat comes from insulation and nearby plumes, so hot rifts melt and cold ones stay dry.
+  - **LIP:** the model's own volume (~2–3× Earth's per area; a LIP-volume lane is queued).
+- **`recentEruptions(volc, seed, kyr)`** draws a finished moment's eruptions by VEI: Earth's rates (Papale 2018;
+  Newhall et al. 2018; Rougier et al. 2018) scaled by the world's explosive arc weight, and shared only among centres
+  whose cap allows the class. A world without thick-crust arcs or continental plumes has no super-eruptions. Sizes
+  within a class follow N(> V) ∝ V^−0.8. Eruptions never enter the history; LIP pulses stay in-frame records.
+- **Drawn at a finished moment (default on; `terrain/volcanoes.js`, `momentVolc` on the moment's own frame):**
+  - **Rift volcanoes:** where a rift melts in the last 10 Myr, as many cones as `riftConeShare` (0.5, declared) of the
+    erupted lava builds, ridges along the rift. Satellite cones are common.
+  - **Calderas:** at silicic centres, the largest eruption of the last 2 Myr leaves a collapse whose area is its
+    dense-rock volume ÷ 1.5 km of subsidence (Lipman 1997). Each has a floor ~0.7 km down, filling with age (e-fold
+    1 Myr), a low rim, and sometimes a resurgent dome. Only the VEI classes whose caldera spans two terrain cells are
+    drawn: VEI 8 at the gallery's 2.5M cells, VEI 7 from ~3 km cells.
+  - The finish floods the closed floors into lakes by itself.
+- **Limits:**
+  - A rift cell stretched over several frames is credited its whole melt in each (an exit is `riftThinPrev`).
+  - Silicic caps are rules on crust thickness and setting (tier 3).
+  - A caldera is its single largest eruption's (nested collapses are not summed).
+  - At a moment the arc rate is the history's mean so far (one frame has no window book).
+  - No subducted carbonate or metamorphic CO₂: the carbon box's.
+  - No ash or andisols yet (V7).
+  - The history's trench record (`budget.trenchKmMyr`, ~10 500 km) is ~4–5× short of Earth's, so it isn't used.
+- **Checks:** `tools/check-volcano.mjs` (the melt law, the Earth-rate eruption draw, records-only, the arc factor,
+  calderas only at silicic centres and shaped as depressions, no rift volcano without melt), plus report lines
+  against Crisp 1984, Fischer et al. 2019 and Wong et al. 2019.
+

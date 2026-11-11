@@ -8,7 +8,9 @@ import { check, report, section, finish, labMesh } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
-import { volcStep, riftMeltKm, recentEruptions, EARTH_VEI_PER_YR, EARTH_WEIGHT, RIDGE_MELT_KM, ARC_GROSS } from '../js/tectonics/volcanism.js';
+import { volcStep, riftMeltKm, recentEruptions, momentVolc, EARTH_VEI_PER_YR, EARTH_WEIGHT, RIDGE_MELT_KM, ARC_GROSS } from '../js/tectonics/volcanism.js';
+import { preparePlan } from '../js/terrain/synthesize.js';
+import { calderaAt } from '../js/terrain/volcanoes.js';
 
 const SEED = 12345, SIM = 20000, UNTIL = 400;
 const mesh = labMesh(SIM), H = terrainConfig({});
@@ -71,4 +73,29 @@ const lips = rows.flatMap(v => v.lips);
 report('flood basalts per 100 Myr', lips.length / (UNTIL / 100), { earth: [3, 6], source: 'Ernst 2014; Bryan & Ernst 2008 (big LIPs ~1 per 20–30 Myr)' });
 report('rift frames with melt', rows.filter(v => v.magma.rift > 0).length / rows.length, { source: 'share; Earth: rifts on hot mantle erupt (Kenya ~10 km³/km/Myr, Guth 2016), on cold mantle not (Iberia)' });
 report('volcStep cost a frame', ms / rows.length, { unit: 'ms', source: 'records pass, off the history\'s path' });
+
+section(`drawn at a finished moment (rift volcanoes and calderas; ${UNTIL} Myr)`);
+{
+    const edgeKm = 15, t0 = performance.now(), V = preparePlan(prev, mesh, H, SEED, edgeKm).V, planMs = performance.now() - t0;
+    const V0 = preparePlan(prev, mesh, { ...H, riftConeShare: 0 }, SEED, edgeKm).V, C = V.calderas, mv = momentVolc(prev, mesh, H, SEED);
+    const silicic = new Set(mv.sites.filter(s => s.veiMax >= C.minVei).map(s => s.w)), melting = mv.sites.filter(s => s.kind === 'rift').length;
+    // (a caldera's home is the world cell of a centre whose VEI cap reaches the classes drawn)
+    const homeOf = k => { let best = -1, bc = -2; for (let w = 0; w < mesh.numCells; w++) { const c = mesh.xyz[3 * w] * C.pos[3 * k] + mesh.xyz[3 * w + 1] * C.pos[3 * k + 1] + mesh.xyz[3 * w + 2] * C.pos[3 * k + 2]; if (c > bc) { bc = c; best = w; } } return best; };
+    let atSilicic = 0, shaped = 0;
+    for (let k = 0; k < C.count; k++) {
+        const w = homeOf(k);
+        let near = silicic.has(w);
+        for (let j = mesh.adjOffset[w]; !near && j < mesh.adjOffset[w + 1]; j++) near = silicic.has(mesh.adjList[j]);     // (its 30-km jitter)
+        if (near) atSilicic++;
+        const [x, y, z] = [C.pos[3 * k], C.pos[3 * k + 1], C.pos[3 * k + 2]], e = [C.axis[3 * k], C.axis[3 * k + 1], C.axis[3 * k + 2]];
+        const out = C.radius[k] * Math.sqrt(C.aspect[k]) * 1.1 / 6371, p = [x + e[0] * out, y + e[1] * out, z + e[2] * out], l = Math.hypot(...p);
+        if (calderaAt(V, w, x, y, z) < 0 && calderaAt(V, w, p[0] / l, p[1] / l, p[2] / l) >= 0) shaped++;
+    }
+    check('calderas only at silicic centres', atSilicic === C.count, `${atSilicic} of ${C.count} (VEI ≥ ${C.minVei} drawn at a ${edgeKm}-km mesh)`);
+    check('a caldera\'s floor below its surroundings, its rim not', shaped >= 0.9 * C.count, `${shaped} of ${C.count}`);
+    check('no melting rift, no rift volcano', melting > 0 || V.count === V0.count, `${melting} melting rift cells, ${V.count - V0.count} rift volcanoes`);
+    report('calderas drawn at the moment', C.count, { source: `VEI ≥ ${C.minVei} in the last 2 Myr; Earth ~480 Quaternary calderas of all sizes (Geyer & Martí 2008)` });
+    report('rift volcanoes drawn at the moment', V.count - V0.count, { source: `${melting} melting rift cells` });
+    report('plan time with rift volcanoes and calderas', planMs, { unit: 'ms', source: 'preparePlan at the moment (the finish\'s plan)' });
+}
 finish('volcano');
