@@ -20,6 +20,7 @@ const sets = argv.flatMap((a, i) => a === '--set' ? [argv[i + 1]] : []);
 const sim = buildSimMesh(SIM, MESH_SEED), n = sim.numCells, cfg = terrainConfig({});
 const { scene, world } = pageWorld({ seed: SEED, cont: CONT, sim: SIM });
 world.config.crustLedger = true;
+if (argv.includes('--vol')) world.config.crustLedgerVolume = true;   // (slow: every cell's column each stage)
 for (const s of sets) {
     const [k, v] = s.split('=');
     if (!(k in world.config)) throw new Error(`unknown config key ${k}`);
@@ -68,9 +69,19 @@ function measure(f) {
         contDry: p(cDry), contShelf: p(cShelf), contMargin: p(cMargin), contDeep: p(cDeep), shelfAll: p(shelfAll), contThinned: p(contThin),
         floorAge: +(ageSum / Math.max(1, ageN)).toFixed(1) };
 }
+// The balance sheet at the end: each stage's area (Mkm²) and volume (Gkm³; with --vol) of continental crust, and every
+// numeric book in world.budget (the rock book's km³ and the collisions' cells), as they stand.
+function endBooks() {
+    const a = sim.cellAreaKm2, st = {};
+    for (const [k, e] of Object.entries(world.ledger?.stages ?? {})) st[k] = { landMkm2: +(e.land * a / 1e6).toFixed(3), arcMkm2: +(e.arc * a / 1e6).toFixed(3), ...(e.vol !== undefined ? { volGkm3: +(e.vol * a / 1e9).toFixed(4) } : {}) };
+    const budget = Object.fromEntries(Object.entries(world.budget ?? {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => [k, +v.toPrecision(6)]));
+    return { books: st, budget, cellKm2: a };
+}
 const fmt = r => `${String(r.t).padStart(5)} L ${String(r.L).padStart(7)} cont ${r.cont} arc ${r.arc} land ${r.land} low<400 ${r.landLow400}% | cont dry ${r.contDry} shelf ${r.contShelf} margin ${r.contMargin} deep ${r.contDeep} | shelfAll ${r.shelfAll} thinned ${r.contThinned} age ${r.floorAge}`;
 for (const r of rows) console.log(fmt(r));
 for (const l of ledger) console.log('LEDGER', l.t, JSON.stringify(l.stages), 'underthrust', l.underthrust);
-if (OUT) fs.writeFileSync(OUT, [...rows.map(r => JSON.stringify({ seed: SEED, cont: CONT, sets, ...r })), JSON.stringify({ seed: SEED, cont: CONT, sets, ledger, secs })].join('\n') + '\n');
+if (OUT) fs.writeFileSync(OUT, [...rows.map(r => JSON.stringify({ seed: SEED, cont: CONT, sets, ...r })), JSON.stringify({ seed: SEED, cont: CONT, sets, ledger, secs, breakups: world.riftBreakupLog ?? [], ...endBooks() })].join('\n') + '\n');
+const bk = world.riftBreakupLog ?? [], med = (a) => { const v = a.slice().sort((x, y) => x - y); return v.length ? v[v.length >> 1] : NaN; };
+console.log(`BREAKUPS ${bk.length}: line h0 p50 ${med(bk.map(b => b[0]))} km, at breakup ${med(bk.map(b => b[1]))} km, opening p50 ${med(bk.map(b => b[2]))} km`);
 const c0 = rows.find(r => r.t === 0)?.cont, cEnd = rows.at(-1)?.cont;
 console.log(`SUMMARY seed ${SEED} cont ${CONT} ${sets.join(' ')}: crust ${c0} → ${cEnd} % (×${(cEnd / c0).toFixed(3)}), ${secs.toFixed(0)} s`);
