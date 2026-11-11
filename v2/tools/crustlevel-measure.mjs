@@ -76,21 +76,26 @@ function reservoirsNow(w) {
 
 // High ground (lane crustmass S3: what the lower crust's flow is for — plateaus stop rising at ~4–5 km and widen; Tibet ~5 km,
 // the Altiplano ~4 km): continental area whose column stands above 3, 4 and 5 km (Mkm²; the isostatic column with its relief
-// and swells, the mantle's swell aside), the highest such column (km), and the crust's 99th-percentile thickness (km).
+// and swells, the mantle's swell aside), the highest such column (km), and the crust's 99th-percentile thickness (km); the
+// craton's share of that continent and its median column (km).
 function highGround(w) {
-    const H = heightsOf(w.config), C = columnModel(H), a = sim.cellAreaKm2, th = [];
+    const H = heightsOf(w.config), C = columnModel(H), a = sim.cellAreaKm2, th = [], crat = [];
     let h3 = 0, h4 = 0, h5 = 0, top = 0;
     for (let c = 0; c < n; c++) {
         const p = w.plates[w.owner[c]]; if (!p) continue;
         const k = w.ownerCell[c], cr = p.crust, t = cr.type[k];
         if (t !== CrustType.CONTINENT && t !== CrustType.CRATON) continue;
         const s = C.ref[t] + C.slope[t] * cr.rootKm[k] + Math.max(0, cr.upliftKm[k]) + cr.baseKm[k];
+        if (t === CrustType.CRATON) crat.push(s);
         if (s > 3) h3++; if (s > 4) h4++; if (s > 5) h5++; if (s > top) top = s;
         th.push(crustThicknessKm(H, t, cr.rootKm[k], cr.upliftKm[k], cr.baseKm[k]));
     }
     th.sort((x, y) => x - y);
+    crat.sort((x, y) => x - y);
     const M = v => +(v * a / 1e6).toFixed(3);
-    return { hi3Mkm2: M(h3), hi4Mkm2: M(h4), hi5Mkm2: M(h5), topKm: +top.toFixed(2), crustP99Km: +(th[Math.floor(0.99 * (th.length - 1))] ?? 0).toFixed(1) };
+    return { hi3Mkm2: M(h3), hi4Mkm2: M(h4), hi5Mkm2: M(h5), topKm: +top.toFixed(2), crustP99Km: +(th[Math.floor(0.99 * (th.length - 1))] ?? 0).toFixed(1),
+        // (cratoncheck, 2026-11-10: craton area is conserved while ordinary continent falls, so its share rises and lifts the land)
+        cratonShare: +(crat.length / Math.max(1, th.length)).toFixed(4), cratonMedKm: +(crat[crat.length >> 1] ?? 0).toFixed(3) };
 }
 
 // The subducting trench's length, measured from the boundaries themselves (lane crustmass S0; glitnir's note: volcano-run
@@ -186,7 +191,7 @@ if (SHEET) printSheet(endBooks());
 function printSheet(e) {
     const f = (v, d = 3) => (v >= 0 ? ' ' : '') + v.toFixed(d);
     console.log('SHEET reservoirs (Gkm³; areas Mkm²):   t   crust  relief    fill     arc oceanSed transit   prism | contVol contMkm2 arcMkm2');
-    for (const r of e.reservoirs) console.log(`SHEET res ${String(r.t).padStart(5)} ${[r.crust, r.relief, r.fill, r.arc, r.oceanSed, r.transit, r.prism ?? 0].map(v => f(v).padStart(7)).join(' ')} | ${f(r.contVol).padStart(7)} ${f(r.contMkm2, 2).padStart(8)} ${f(r.arcMkm2, 2).padStart(7)} | hi3/4/5 ${r.hi3Mkm2?.toFixed(2)}/${r.hi4Mkm2?.toFixed(2)}/${r.hi5Mkm2?.toFixed(2)} top ${r.topKm} p99 ${r.crustP99Km}`);
+    for (const r of e.reservoirs) console.log(`SHEET res ${String(r.t).padStart(5)} ${[r.crust, r.relief, r.fill, r.arc, r.oceanSed, r.transit, r.prism ?? 0].map(v => f(v).padStart(7)).join(' ')} | ${f(r.contVol).padStart(7)} ${f(r.contMkm2, 2).padStart(8)} ${f(r.arcMkm2, 2).padStart(7)} | hi3/4/5 ${r.hi3Mkm2?.toFixed(2)}/${r.hi4Mkm2?.toFixed(2)}/${r.hi5Mkm2?.toFixed(2)} top ${r.topKm} p99 ${r.crustP99Km} craton ${(100 * (r.cratonShare ?? 0)).toFixed(1)} % med ${r.cratonMedKm} km`);
     console.log('SHEET stage (Gkm³ over the run): Δrock booked residual (gross, residual/gross) Δcont | flows');
     for (const [k, u] of Object.entries(e.closure)) {
         const cont = Object.entries(e.books).filter(([s]) => (s === k) || (k === 'rivers+fans' && (s === 'rivers' || s === 'fans'))).reduce((a, [, b]) => a + (b.volGkm3 ?? 0), 0);
