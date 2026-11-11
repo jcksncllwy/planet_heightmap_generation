@@ -26,7 +26,10 @@ export function subductSediment(world, dt) {
     const { mesh, plates, config, owner, rngSediment: rng } = world, { adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
     const share = config.sedimentSubductionShare, channel = config.accretionSedimentKm;
     const prism = config.prismAccretion;
-    if (!(share > 0) || dt <= 0) return 0;
+    // (sedimentSubductionShare 0: the channels take nothing — but with prismAccretion on, all the fans' rock is still
+    // scraped off into the prisms, so the books below run; was: an early return that credited no prism at all, and a
+    // scene with this sink off — phase 7c's margins — raised no fore-arc island, crustmass8)
+    if (dt <= 0 || !(share > 0 || prism)) return 0;
     const { deliveries } = trenchFans(world);
     if (!deliveries.length) return 0;
     // the share of what a trench cell receives that goes down its channel: v × min(h, channel) × (terrigenous share of
