@@ -27,7 +27,7 @@
 //     instead — underplating and the prism's own stacking (rootKm, evenly over those cells): the rock is kept, none made
 //     or lost. A plate with no accretionary margin of its own holds its prism until it has one again.
 // Books (rock-book.js, the stage 'prismAccretion'): prismAccretedKm3, every cell's rock after less before; prismInKm3
-// what was credited; the sheet holds the rest as the prism reservoir (Σ prismKm3 over the living plates).
+// what was credited, prismUnderKm3 the share of it underplated (the fore-arc full); the sheet holds the rest as the prism reservoir (Σ prismKm3 over the living plates).
 // Limits (reduced physics): the prism is one number per plate, not a wedge along each trench — the rock scraped off one
 // trench may be laid by another trench of the same plate; no taper (Davis, Suppe & Dahlen 1983) bounds how far out it
 // builds or how thick it stacks; its rock is laid in steps of a whole cell, and an island stands at a continent's
@@ -110,7 +110,7 @@ export function accretePrisms(world) {
             if (land.length) {
                 const km = plate.prismKm3 / (land.length * A);
                 for (const c of land) crust.rootKm[c] += km;
-                accreted += plate.prismKm3; plate.prismKm3 = 0;
+                accreted += plate.prismKm3; world.budget.prismUnderKm3 = (world.budget.prismUnderKm3 ?? 0) + plate.prismKm3; plate.prismKm3 = 0;
             }
         }
         if (here) { plate.dirty = true; laid += here; world.budget.isleRaisedCells = (world.budget.isleRaisedCells ?? 0) + here; }
