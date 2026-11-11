@@ -105,7 +105,35 @@ for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)
 // see the coast without the lookup's warps)
 const TSET = Object.fromEntries((arg('--tset', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v)]; }));
 const TCFG = terrainConfig(TSET);
-const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !arg('--set', '') && !arg('--tset', '') && !process.argv.includes('--no-cache');
+// --dump <dir>: each finish stage's ground written there as raw files, NN-stage.z.f32 (km), .sea.u8 and .lake.u8 (the last
+// stage's), and each erosion rung's on its own mesh under rungs/ with its cells' lat/lon (Float32 pairs) once: for the
+// level-fills and locality tools (lane hollowfix). Always finishes.
+const DUMP = arg('--dump', null);
+const observe = DUMP && (() => {
+    let i = 0;
+    fs.mkdirSync(path.join(DUMP, 'rungs'), { recursive: true });
+    const put = (file, T, v) => fs.writeFileSync(file, Buffer.from(T.from(v).buffer));
+    const latLon = (d, m) => {
+        const ll = path.join(d, `ll-${m.numCells}.f32`);
+        if (fs.existsSync(ll)) return;
+        const x = m.xyz, o = new Float32Array(2 * m.numCells);
+        for (let c = 0; c < m.numCells; c++) { o[2 * c] = Math.asin(x[3 * c + 2]) * 180 / Math.PI; o[2 * c + 1] = Math.atan2(x[3 * c + 1], x[3 * c]) * 180 / Math.PI; }
+        fs.writeFileSync(ll, Buffer.from(o.buffer));
+    };
+    return (name, m, g, sea, lake) => {
+        if (name.startsWith('rung ')) {
+            const d = path.join(DUMP, 'rungs'), tag = name.replace(/ /g, '-');
+            put(path.join(d, `${tag}.z.f32`), Float32Array, g); put(path.join(d, `${tag}.sea.u8`), Uint8Array, sea);
+            latLon(d, m);
+            return;
+        }
+        latLon(DUMP, m);
+        const tag = path.join(DUMP, `${String(i++).padStart(2, '0')}-${name.replace(/[^a-z0-9]+/gi, '_')}`);
+        put(`${tag}.z.f32`, Float32Array, g); put(`${tag}.sea.u8`, Uint8Array, sea);
+        if (lake) put(`${tag}.lake.u8`, Uint8Array, lake);
+    };
+})();
+const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !DUMP && !arg('--set', '') && !arg('--tset', '') && !process.argv.includes('--no-cache');
 let fin, raster = null;
 const fromCache = (page, cells, mesh) => ({ mesh, z: cells.z, ocean: cells.ocean, lake: cells.lake, lakeLevel: cells.lakeLevel, glaciated: cells.glaciated, rivers: page.rivers, stats: page.stats, ms: page.ms, layers: null, climate: null });
 const pageFin = CACHEABLE && PAGE_FIN ? await loadFinish(LATEST.finish, { mesh: true, waitMs: 5 * 60e3 }) : null;
@@ -117,7 +145,7 @@ if (pageFin) {
     const { spec, key } = CACHEABLE ? nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: W, erosion: await erosionEngine(F) }) : { spec: null, key: null };
     let full = null;
     const r = await finishCached(spec, key, async () => {
-        full = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, cfg: TCFG, onStage: s => process.stdout.write(`${s}… `) });
+        full = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, cfg: TCFG, observe, onStage: s => process.stdout.write(`${s}… `) });
         return CACHEABLE ? finishResult(full, { width: W }) : { page: null, cells: null };
     }, { seed: SEED, cont: CONT, sim: SIM });
     if (r.cached) { pool.terminate(); fin = fromCache(r.page, r.cells, terrainMesh(CELLS)); console.log(`finish read from the finish cache (${r.key})`); }

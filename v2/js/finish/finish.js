@@ -86,10 +86,11 @@ export async function finishPlanet(o) {
     try { return await finishStages(o); } finally { if (o.closePool && !o.pool.closed) o.pool.terminate(); }
 }
 
-async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {}, civ = false }) {
+async function finishStages({ frame, simMesh, seed, cells, pool, closePool = false, onStage = () => {}, F = FINISH, cfg = terrainConfig(), debug = false, climateOptions = {}, civ = false, observe = null }) {
     const ms = {}, stats = {};
-    // (a study's census of the land's hollows after a stage: F.erode.trace)
-    const census = (name, sea) => { if (F.erode?.trace) (stats.census ??= {})[name] = hollowCensus(mesh, z, sea, null, F.lakeMinKm2, 1e-3 * F.lakeMinDepthM); };
+    // (a study's census of the land's hollows after a stage: F.erode.trace. `observe(name, mesh, z, sea, lake?)`: a tool's look at
+    // the ground after each stage — render-moment --dump — read only, never kept)
+    const census = (name, sea) => { observe?.(name, mesh, z, sea); if (F.erode?.trace) (stats.census ??= {})[name] = hollowCensus(mesh, z, sea, null, F.lakeMinKm2, 1e-3 * F.lakeMinDepthM); };
     let mesh, z;
     let t0 = performance.now();
     const lap = name => { const t = performance.now(); ms[name] = (ms[name] ?? 0) + t - t0; t0 = t; };
@@ -261,6 +262,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, liquid.rain[c]) / meanP) ** F.wetPower);
     const straits0 = openStraits(mesh, z, ocean0, F);
     if (straits0.opened) ocean0 = oceanMask(mesh, z);
+    observe?.('surface', mesh, z, ocean0);
     const B = closedBasins(mesh, z, runoff, pet, skyKept, cellKm2, F, ocean0);
     stats.closedBasins = B.basins;
     stats.cutOffSeas = B.seas;
@@ -308,7 +310,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low ? 1 : 0;
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm) }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
+        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm), observe }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
             : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low) }, EP);
         const { outflow, ...erodeStats } = ER;
         stats.erode = erodeStats;
@@ -418,6 +420,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (the sea again, after the rivers' gorges)
     ocean = oceanMask(mesh, C.z);
+    observe?.('after water', mesh, C.z, ocean, Hy.lake);
     lap('water');
 
     // ── the finished moment's climate, at its detail: the grid's climate as calculated above, each cell's own (its
