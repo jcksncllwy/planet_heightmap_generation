@@ -7,7 +7,9 @@
 //   tropics, ocean.js), sstAnom (sea temperature minus its latitude's sea average, °C),
 //   seaIce (sea-ice fraction), upwelling (m/day); and sea (1 = sea), ice (the year's sea ice), orographic (the year's
 //   rain with the mountains over it without them), iceSheet (0–1: the ice sheets' domes), snow (0–1, on land: year, January, July), itcz (per 1° of longitude,
-//   the ITCZ's latitude — year, January, July).
+//   the ITCZ's latitude — year, January, July); and months, the twelve months on the grid (T at sea level, °C × 100,
+//   Int16; P, mm × 10, Uint16; 12 × 64 800 each, month-major: ~3 MB) — for a place's climograph (cell-panel.js
+//   placeMonths: a land cell's own months are these, bilinear, shifted and scaled to its year's mean and total).
 
 import { CORE_DEFAULTS } from '../climate/core.js';
 import { PARAMS } from '../climate/config.js';
@@ -65,18 +67,26 @@ export function pageClimate(res, { cells = true } = {}) {
     for (let i = 0; i < 12 * G; i++) { const x = (w0 - months.T[i]) / (w0 - w1); snowAll[i] = x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); }
     const snow = seasons(snowAll, G);
     const itcz = seasons(circ.itczLat, w);
+    // (the twelve months, packed: what a place's climograph is drawn from)
+    const mT = new Int16Array(12 * G), mP = new Uint16Array(12 * G);
+    for (let i = 0; i < 12 * G; i++) {
+        mT[i] = Tsl[i] === Tsl[i] ? Math.max(-32767, Math.min(32767, Math.round(100 * Tsl[i]))) : -32768;
+        mP[i] = Math.min(65535, Math.max(0, Math.round(10 * (months.P[i] || 0))));
+    }
     return {
         grid: { w, h },
         ...(cells ? { cell: { koppen: cell.koppen, tAnnual: cell.tAnnual, pAnnual: cell.pAnnual } } : {}),
         T, Tsea, P, slp, u, v,
         currentU, currentV, sea, sstAnom, ice, seaIce,
         upwelling, orographic, iceSheet, snow, itcz,
+        months: { T: mT, P: mP },
     };
 }
 
 /** The buffers of the page's climate to hand over (its cells' and its raster's too, where it has them). */
 export function climateTransfers(out) {
     const list = [out.sea.buffer, out.ice.buffer, out.orographic.buffer, out.iceSheet.buffer];
+    if (out.months) list.push(out.months.T.buffer, out.months.P.buffer);
     if (out.cell) list.push(out.cell.koppen.buffer, out.cell.tAnnual.buffer, out.cell.pAnnual.buffer);
     if (out.cell?.stats) for (const a of Object.values(out.cell.stats)) list.push(a.buffer);
     if (out.raster?.stats) for (const a of Object.values(out.raster.stats)) list.push(a.buffer);

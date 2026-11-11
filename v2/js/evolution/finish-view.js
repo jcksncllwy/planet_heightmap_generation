@@ -305,7 +305,7 @@ export function riverAt(fin, q0, u, v, px = 3) {
             if (d2 < bd) { bd = d2; best = i; }
         }
     }
-    return best < 0 ? null : { q: R.q[best], regime: R.regime[best], floodFrom: R.floodFrom[best], floodTo: R.floodTo[best], farFed: R.farFed[best] };
+    return best < 0 ? null : { i: best, q: R.q[best], regime: R.regime[best], floodFrom: R.floodFrom[best], floodTo: R.floodTo[best], farFed: R.farFed[best] };
 }
 
 /** The finished picture's height (m) and lake kind at a point of the map (u, v as riverAt). */

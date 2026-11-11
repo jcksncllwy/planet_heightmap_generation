@@ -1300,12 +1300,22 @@ for (const el of [ui.canvas, ui.map]) {
     });
     el.addEventListener('pointerup', e => {
         // (a click or a tap, not a drag: a town under it opens its card)
-        if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) <= 5) { if (view.layer === 'people' && peopleView.show in PV.TRAVEL_SHOWS) pickTravel(e); else pickTown(e); }
-        if (e.pointerType !== 'mouse' && down) readout(e);
+        if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) <= 5) { if (view.layer === 'people' && peopleView.show in PV.TRAVEL_SHOWS) pickTravel(e); else { pickTown(e); cellPanel?.pick(view.town && settlementsShown() ? null : painted && placeUnder(e)); } }
+        if (e.pointerType !== 'mouse' && down) { if (cellPanel?.open) ui.hover.style.display = 'none'; else readout(e); }
         down = null;
     });
     el.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ui.hover.style.display = 'none'; });
 }
+// ── the place's panel (cell-panel.js): a click or a tap on the planet opens everything the page knows of the place
+// (a town's card takes its slot instead; off the planet closes it) — drawn again as the moment or what it shows changes ──
+let cellPanel = null;
+import('./cell-panel.js').then(({ CellPanel }) => {
+    cellPanel = new CellPanel(() => {
+        const fin = painted && view.finished ? B?.finishes.get(painted) ?? null : null, people = view.civ ? fin?.people ?? null : null;
+        return { b: B, frame: painted, T: paintedT, mesh: paintedMesh, fin, climate: painted && paintedMesh === B?.tMesh ? climateOf(painted) : null, people, PV, peopleFrame,
+            seaLevelKm: SHADING.seaLevelKm, civ: view.civ, key: [B, painted, paintedT, fin, fin?.climate, people, people && peopleFrame(people), painted && B?.climates.get(painted), view.civ] };
+    });
+});
 
 // ── the side panel: collapse on desktop, a draggable bottom sheet on phones (as V1's) ──
 $('sidebarToggle').addEventListener('click', () => { ui.panel.classList.toggle('collapsed'); updateClimateUi(); });
