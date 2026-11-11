@@ -11,6 +11,7 @@
 // eclogite foundering beyond the lost share.
 
 import { CrustType } from '../model/crust.js';
+import { spreadKm } from '../../core/min-heap.js';
 
 /** The crust (km) of a continental cell of raster `cr`: its kind's as formed plus its root (measure.js columnModel C). */
 export const crustOf = (cr, c, C) => Math.max(0, C.crust[cr.type[c]] + cr.rootKm[c]);
@@ -75,3 +76,16 @@ export function layThickening(plate, mesh, seeds, volKm, maxRootKm, maxHops = 64
     plate.dirty = true;
     return Math.max(0, volKm);
 }
+
+/**
+ * The distance (km, along `plate`'s land) of each of its raster cells from the nearest of `seeds`, out to `maxKm` (Infinity
+ * beyond, or across sea): where the crust a front shortened is laid (lane beltthick). A scratch array, valid until the next call.
+ */
+export function landDistanceKm(mesh, plate, seeds, maxKm) {
+    const { mask, type } = plate.crust, n = mask.length;
+    if (!nearScratch || nearScratch.length !== n) nearScratch = new Float32Array(n);
+    const dist = nearScratch.fill(Infinity);
+    for (const c of seeds) if (c >= 0 && c < n) dist[c] = 0;
+    return spreadKm(mesh, dist, { canEnter: (a, b) => mask[b] && type[b] !== CrustType.OCEAN, maxKm });
+}
+let nearScratch = null;

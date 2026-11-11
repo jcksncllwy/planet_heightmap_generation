@@ -25,7 +25,7 @@ import { scrapeArc } from '../ops/scrape-arc.js';
 import { EventKind } from '../model/world.js';
 import { centroidOfCells } from '../../core/sphere-geom.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
-import { continentVolume, crustOf, layThickening, layProfile } from '../ops/thicken.js';
+import { continentVolume, crustOf, layThickening, layProfile, landDistanceKm } from '../ops/thicken.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
 import { seamHold } from './torque-balance.js';
@@ -619,10 +619,17 @@ function keepConsumed(world, U, seeds, volKm, since) {
     // after the seam has stalled, a step that stamps no belt at all (on seeds 1 and 2 of phase5's India the weld found no
     // cell stamped that step and ring-filled ~100 cells to the ceiling: a spike, not a plateau) — in its plateau profile
     // (1 − u²); the rest ring by ring from the front
-    const cr = U.crust, belt = [], weights = [];
+    // (config.collisionKeepLocal, lane beltthick: only the belt cells within their own belt's reach of where this step's crust
+    // was consumed — the crust shortened at a stretch of front thickens the belt behind that stretch, mass balance per km of
+    // front: Δh = S·h₀ ÷ W. Was every collision-belt cell the upper plate had stamped since the collision began, wherever it
+    // stood: a supercontinent's whole stock of belts, up to ~6,600 cells (~85 Mkm²) for one front, so a Tibet's worth of
+    // shortening thickened each by a few hundred metres — lanes-2026-10-29/beltthick/report.md)
+    const cr = U.crust, belt = [], weights = [], local = !!config.collisionKeepLocal;
+    const near = local ? landDistanceKm(world.mesh, U, seeds, Math.max(config.belts.himalayan.maxKm, config.belts.ural.maxKm) * config.beltSpeedFactorMax) : null;
     for (let c = 0; c < cr.mask.length; c++) {
         if (!cr.mask[c] || cr.type[c] !== CrustType.CONTINENT || !(cr.beltAt[c] >= since) || !(cr.beltReach[c] > 0)) continue;
         if (cr.oroType[c] !== OrogenyType.HIMALAYAN && cr.oroType[c] !== OrogenyType.URAL) continue;
+        if (local && !(near[c] <= cr.beltReach[c])) continue;
         belt.push(c); weights.push(1 - Math.min(1, cr.beltU[c]) ** 2);
     }
     const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);

@@ -25,6 +25,8 @@
 //   collisionConsumedKm3  rock a collision takes off the map — the lower plate's edge underthrust, a weld's overlap and
 //                   the sea it seals; collisionKeptKm3 what keepConsumed lays back as thickness (step/collision.js): their
 //                   sum is the collision's loss (collisionLostShare, and the unplaced)
+//   shortenedKm3    (< 0) an Andean margin's edge shortened away; shortenKeptKm3 what step/andean-shortening.js lays back as
+//                   its belt's root: their sum is the unplaced (normally 0)
 //   movedLostKm3    a piece moved to another plate: land with no room left on its host, the host's floor sediment it
 //                   buries (ops/tidy-plates.js transferCells, ops/scrape-arc.js, ops/accrete-terrane.js)
 //   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them

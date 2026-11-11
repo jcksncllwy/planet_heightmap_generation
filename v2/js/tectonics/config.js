@@ -175,6 +175,12 @@ export const TECTONICS = {
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
+    andeanShorteningShare: 0.25, // (lane beltthick; Jackson's ruling 4 as amended 2026-11-11; 0 = off) an upper plate pressed toward its trench
+                                // shortens behind its arc at this share of that velocity, Vd = share × Vup (Heuret & Lallemand 2005, PEPI 149:
+                                // Vd + Vt = Vup, the rest the trench's own retreat), its edge's area folded into its belt as root
+                                // (step/andean-shortening.js). Derived from the Central Andes: ~300–350 km of shortening since ~45 Ma
+                                // (Oncken et al. 2006; Kley & Monaldi 1998), ~7–8 mm/yr, against South America's westward drift of ~3 cm/yr
+                                // in the hotspot frame that drove it (Silver et al. 1998, Science 279 — the figure TO VERIFY; my arithmetic)
     crustPaidRelief: true,      // (lane crustmass, S1; on since S5) a belt's relief is the isostatic face of a root that was paid for, not rock of
                                 // its own: belts no longer raise the broad uplift (measure.js counts it as crust, uplift ÷ column slope — ~5 Gkm³
                                 // a 1200 Myr cycle made from nothing, about the planet's whole continental crust: crustmass/report.md §0, F4–F6),
@@ -291,6 +297,10 @@ export const TECTONICS = {
                                 // crust (Scholl & von Huene 2009, GSL Spec. Pub. 318) out of ~4.8 km³/yr they consume today — India
                                 // ~4 cm/yr over ~2400 km (Copley et al. 2010) and Arabia ~2 cm/yr over ~2000 km (McQuarrie et al.
                                 // 2003), × ~35 km of crust (my arithmetic): 0.7 ÷ 4.8 ≈ 0.15
+    collisionKeepLocal: true,   // (lane beltthick, F7) …laid only on belt cells within their own belt's reach of where the crust was consumed:
+                                // the shortening at a stretch of front thickens the belt behind it (Δh = S·h₀ ÷ W; Tibet: ~1000–1500 km of
+                                // Asia and India shortened over a ~1000 km plateau, crust ~35 → ~70 km). false: every collision belt the upper
+                                // plate stamped since the collision began (a supercontinent's whole stock; the control)
     underthrustMaxThickKm: 40,  // …up to this (Tibet: crust ~70 km, about 35 km thicker than normal)
     collisionForgetMyr: 8,      // a collision record whose plates have not touched for this long is forgotten: the next meeting starts afresh
     collisionJitterFrontKm: 845, // a brand-new contact of parting plates no bigger than a one-cell sliver this long is jitter, not a collision
