@@ -320,18 +320,30 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         const p = parent[c];
         if (p >= 0 && done[p] === 1) q[p] += q[c];
     }
+    // (whether a hollow at the sea's level reaches the ocean under the sea's surface — ground below it all the way, a channel
+    // the sea fills — rather than over a shore graded to it exactly, the flood's level clamped at the sea's: a dip behind a
+    // beach is not breached)
+    function underSea(cells, sea) {
+        const seen = new Set(cells), q = cells.slice();
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) {
+            const nb = adjList[k];
+            if (ocean[nb]) return true;
+            if (!seen.has(nb) && z[nb] < sea) { seen.add(nb); q.push(nb); }
+        }
+        return false;
+    }
     // (one hollow: its lakes by the tree — hollowLakes — closed where its whole water balance cannot fill it to its rim)
     function closeHollow(L, id) {
         let low = L.cells[0];
         for (const c of L.cells) if (z[c] < z[low]) low = c;
         const floor = z[low], cutOff = floor < seaKm, area = L.cells.length * cellKm2;
-        // (a hollow whose spill level is the sea's own surface — its sill at or below it, the flood's level clamped there —
-        // is no lake: the sea pours in over the sill and fills it, whatever its rivers bring. Not before the erosion, where the
+        // (a hollow whose spill level is the sea's own surface — its sill below it, ground under the sea's surface all the
+        // way to the ocean (underSea) — is no lake: the sea pours in over the sill and fills it, whatever its rivers bring. Not before the erosion, where the
         // world ocean is the flood at its level and no such hollow is left out of it; during it, when the rivers have cut a
         // cut-off sea's rim down below the sea: the breach — the Zanclean flood refilling the Messinian Mediterranean through
         // Gibraltar, 5.33 Ma, in months to two years (Garcia-Castellanos et al. 2009). Lane reflood, 2026-11-11: the caller
         // (finish.js) makes it ocean from then on. Its water passes on, all of it, to the sea)
-        if (cutOff && !(L.level > Math.fround(seaKm))) {
+        if (cutOff && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm))) {
             let inflow = 0;
             for (const c of L.cells) inflow += q[c];
             seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: inflow * 1e-6, open: true });
