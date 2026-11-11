@@ -24,7 +24,7 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TECTONICS } from '../tectonics/config.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
-import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
+import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines, satelliteSource } from './climate-view.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords, lakeColor } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -182,8 +182,8 @@ globe.controls.autoRotateSpeed = 0.6;
 const gpu = url.get('gpu') !== '0' && GpuPainter.available(globe.renderer) ? new GpuPainter(globe.renderer, GPU_WIDTH, MAP_WIDTH) : null;
 console.info(`[evolution] painting ${gpu ? `on the GPU at ${GPU_WIDTH} px` : 'on the CPU'}`);
 // (a detailed moment's picture painted on the GPU too, where WebGPU is — gpu/finish-paint.js: ~20 ms a step where the
-// CPU's paintFinished took ~0.3–1 s at 2.5M cells; until its device is open, without one, or on a layer with a colouring
-// of its own, the CPU's)
+// CPU's paintFinished took ~0.3–1 s at 2.5M cells — the Satellite layer too, ~0.25–1.8 s on the CPU; until its device is
+// open, without one, or on another layer with a colouring of its own — climate, People — the CPU's)
 let finishPainter = null;
 if (url.get('gpu') !== '0' && navigator.gpu) FinishPainter.open(navigator.gpu).then(p => { finishPainter = p; if (p) { console.info('[evolution] detailed moments painted on the GPU (WebGPU)'); dirty = true; } });
 const seaMask = texture(MAP_WIDTH);     // where the sea is, for the glint (the lighter resolution is enough for a glint)
@@ -608,17 +608,19 @@ function paintFinishedFrame(frame, fin, T, sharp) {
     glint(view.layer === 'terrain' || view.layer === 'satellite');
     // (the satellite view shows the lakes always — they are its ground — the rivers with Rivers & Lakes)
     const exaggeration = SHADING.exaggeration * (view.layer === 'satellite' ? 1.25 : 1), lakes = water || view.layer === 'satellite';
-    const colorAt = C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? PV.landColor(P, pf, t.width, lut) : trip ? PV.travelColor(P, travelShown(P), t.width, lut) : ground ? PV.groundColor(P, ground, t.width, lut) : food ? PV.foodColor(P, food, t.width, lut) : PV.peopleColor(P, pf, t.width, lut)) : null;
+    // (the Satellite layer: painted on the GPU from its source, where there is a painter — else coloured per pixel on the CPU)
+    const satellite = C && view.layer === 'satellite' && finishPainter ? satelliteSource(view.season, C, fin) : null;
+    const colorAt = satellite ? null : C ? finishedClimateColor(view.layer, view.season, C, t.width, lut, fin) : P ? (land ? PV.landColor(P, pf, t.width, lut) : trip ? PV.travelColor(P, travelShown(P), t.width, lut) : ground ? PV.groundColor(P, ground, t.width, lut) : food ? PV.foodColor(P, food, t.width, lut) : PV.peopleColor(P, pf, t.width, lut)) : null;
     const started = performance.now();
-    if (finishPainter?.can({ colorAt })) {
-        finishPainter.paint(fin.raster, t, lut, { seaCanvas: glinting ? seaMask.canvas : null, seaWidth: MAP_WIDTH, exaggeration, lakes, lakeColor });
+    if (finishPainter?.can({ colorAt, satellite })) {
+        finishPainter.paint(fin.raster, t, lut, { seaCanvas: glinting ? seaMask.canvas : null, seaWidth: MAP_WIDTH, exaggeration, lakes, lakeColor, satellite });
         if (glinting) globe.seaMaskChanged();
     } else {
-        paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration, lakes, colorAt });
+        paintFinished(fin.raster, t, lut, { seaImage: glinting ? seaMask.image.data : null, seaWidth: MAP_WIDTH, exaggeration, lakes, colorAt: colorAt ?? (satellite && finishedClimateColor(view.layer, view.season, C, t.width, lut, fin)) });
         if (glinting) { seaMask.ctx.putImageData(seaMask.image, 0, 0); globe.seaMaskChanged(); }
         t.ctx.putImageData(t.image, 0, 0);
     }
-    performance.measure('finish-paint', { start: started, detail: { gpu: !!finishPainter?.can({ colorAt }), width: t.width } });
+    performance.measure('finish-paint', { start: started, detail: { gpu: !!finishPainter?.can({ colorAt, satellite }), layer: view.layer, width: t.width } });
     // (the rivers, on the Terrain view: drawn at a 2048-wide texture's scale — as thick on the sharper one)
     // (the rivers' lines on the Terrain view; from space they are ground, not lines — the Satellite view draws none)
     if (water && view.layer === 'terrain' && fin.rivers) { const k = t.width / MAP_WIDTH * (MAP_WIDTH / 2048); t.ctx.save(); t.ctx.scale(k, k); drawRivers(t.ctx, riverPaths(fin, view.riverQ), view.byRegime); t.ctx.restore(); }

@@ -16,6 +16,12 @@
 // - The hillshade in f32 (the CPU's in f64): a channel whose light lands within ~1e-5 of a half level rounds the
 //   other way — a difference of 1 on a few pixels in 10⁴ (up to 4: smooth ground repeats one light over many pixels). Unshaded palettes (Heightmap) are exact.
 // - The lakes' colours and the glint: exact.
+// The Satellite layer (its own pass 2, SATELLITE — climate-view.js satelliteColor's work; its land colours, sat-style.js,
+// still made on the CPU, once per moment and season): the same light in f32, and the sea's depth ramp, the 1° grids'
+// bilinear sums and the sea ice's simplex noise (core/fast-noise.js, its coordinates up to ~200: ~1e-5 off in f32) in
+// f32 where the CPU's are f64 — a channel that lands within a hair of a half level rounds the other way, mostly on the
+// ice's ragged edge: by 1 (2 on one pixel) on ≤ 0.032 % of the pixels on four real moments in three seasons
+// (2026-11-11); check-finish-paint holds it within 2 levels on < 0.1 % (its synthetic ice edge is far longer).
 
 import { openDevice, storage, readBack } from './gpu-device.js';
 
@@ -132,6 +138,176 @@ fn main(@builtin(global_invocation_id) g: vec3u) {
     outC[i] = pack(byte(min(255.0, lut[k3] * kk)), byte(min(255.0, lut[k3 + 1] * kk)), byte(min(255.0, lut[k3 + 2] * kk)));
 }`;
 
+// ── pass 2, the Satellite layer's (climate-view.js satelliteColor, per pixel): the sea by its depth, turquoise over warm
+// shallows, its ice in its season with a ragged edge (the simplex noise of core/fast-noise.js, in f32); the lakes open or
+// frozen; the land the styled picture's colours (made on the CPU, sat-style.js, kept per moment and season), enlarged by
+// the four nearest land pixels' blend, shaded by the relief ──
+const SATELLITE = /* wgsl */ `
+struct P { W: u32, H: u32, rw: u32, rh: u32, enlarged: u32, lakes: u32, bgra: u32, month: u32, shadeAmp: f32, ex: f32, exSea: f32, den2: f32 }
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> h: array<f32>;
+@group(0) @binding(2) var<storage, read> fl: array<u32>;
+// the colours and the noise's tables (see SAT_AUX), then the 1° grids: the sea's temperature, its ice, the air's in the
+// season and in the year
+@group(0) @binding(3) var<storage, read> aux: array<f32>;
+// per column and row of the texture: the grid's cell and weight, the longitude's and latitude's cos and sin, the light's
+// row denominators (see satTables)
+@group(0) @binding(4) var<storage, read> tab: array<f32>;
+@group(0) @binding(5) var<storage, read> kt: array<u32>;      // per pixel of the climate picture: its Köppen class | its year's °C × 100 << 16
+@group(0) @binding(6) var<storage, read> sc: array<u32>;      // its land colours, 3 bytes a pixel
+@group(0) @binding(7) var<storage, read_write> outC: array<u32>;
+
+const PERM = 48u; const PM12 = 560u; const GRID = 1072u; const GN = 64800u;
+const GRAD = array<vec3f, 12>(vec3f(1, 1, 0), vec3f(-1, 1, 0), vec3f(1, -1, 0), vec3f(-1, -1, 0), vec3f(1, 0, 1), vec3f(-1, 0, 1),
+    vec3f(1, 0, -1), vec3f(-1, 0, -1), vec3f(0, 1, 1), vec3f(0, -1, 1), vec3f(0, 1, -1), vec3f(0, -1, -1));
+
+fn byte(v: f32) -> u32 { return u32(round(clamp(v, 0.0, 255.0))); }
+fn pack(c: vec3f) -> u32 {
+    let r = byte(c.x); let g = byte(c.y); let b = byte(c.z);
+    return select(r | (b << 16u), b | (r << 16u), p.bgra == 1u) | (g << 8u) | (255u << 24u);
+}
+fn rgbAt(o: u32) -> vec3f { return vec3f(aux[o], aux[o + 1u], aux[o + 2u]); }
+fn pm(i: i32) -> i32 { return i32(aux[PERM + u32(i)]); }
+fn corner(d: vec3f, gi: i32) -> f32 {
+    var a = 0.6 - d.x * d.x - d.y * d.y - d.z * d.z;
+    if (a <= 0.0) { return 0.0; }
+    a *= a;
+    let g = GRAD[u32(aux[PM12 + u32(gi)])];
+    return a * a * (g.x * d.x + g.y * d.y + g.z * d.z);
+}
+// (FastNoise.noise3D, operation for operation, in f32)
+fn noise3(x: f32, y: f32, z: f32) -> f32 {
+    let F = 1.0 / 3.0; let G = 1.0 / 6.0; let s = (x + y + z) * F;
+    let i = floor(x + s); let j = floor(y + s); let k = floor(z + s);
+    let t = (i + j + k) * G; let x0 = x - i + t; let y0 = y - j + t; let z0 = z - k + t;
+    var o1 = vec3i(0, 0, 0); var o2 = vec3i(0, 0, 0);
+    if (x0 >= y0) {
+        if (y0 >= z0) { o1 = vec3i(1, 0, 0); o2 = vec3i(1, 1, 0); } else if (x0 >= z0) { o1 = vec3i(1, 0, 0); o2 = vec3i(1, 0, 1); } else { o1 = vec3i(0, 0, 1); o2 = vec3i(1, 0, 1); }
+    } else {
+        if (y0 < z0) { o1 = vec3i(0, 0, 1); o2 = vec3i(0, 1, 1); } else if (x0 < z0) { o1 = vec3i(0, 1, 0); o2 = vec3i(0, 1, 1); } else { o1 = vec3i(0, 1, 0); o2 = vec3i(1, 1, 0); }
+    }
+    let d0 = vec3f(x0, y0, z0);
+    let d1 = vec3f(x0 - f32(o1.x) + G, y0 - f32(o1.y) + G, z0 - f32(o1.z) + G);
+    let d2 = vec3f(x0 - f32(o2.x) + 2.0 * G, y0 - f32(o2.y) + 2.0 * G, z0 - f32(o2.z) + 2.0 * G);
+    let d3 = vec3f(x0 - 1.0 + 3.0 * G, y0 - 1.0 + 3.0 * G, z0 - 1.0 + 3.0 * G);
+    let ii = i32(i) & 255; let jj = i32(j) & 255; let kk = i32(k) & 255;
+    let n0 = corner(d0, ii + pm(jj + pm(kk)));
+    let n1 = corner(d1, ii + o1.x + pm(jj + o1.y + pm(kk + o1.z)));
+    let n2 = corner(d2, ii + o2.x + pm(jj + o2.y + pm(kk + o2.z)));
+    let n3 = corner(d3, ii + 1 + pm(jj + 1 + pm(kk + 1)));
+    return 32.0 * (n0 + n1 + n2 + n3);
+}
+fn fbm3(x: f32, y: f32, z: f32) -> f32 {
+    var sum = 0.0; var mx = 0.0; var amp = 1.0;
+    for (var o = 0u; o < 3u; o++) { let f = f32(1u << o); sum += amp * noise3(x * f, y * f, z * f); mx += amp; amp *= 0.5; }
+    return sum / mx;
+}
+// (the 1° grid's field q (0: the sea's temperature, 1: its ice, 2: the air's in the season, 3: in the year), bilinear)
+fn grid(q: u32, x: u32, y: u32) -> f32 {
+    let W = p.W; let H = p.H;
+    let a = u32(tab[x]); let b = select(a + 1u, 0u, a == 359u); let tx = tab[W + x];
+    let r0 = u32(tab[2u * W + y]) * 360u; let r1 = r0 + 360u; let ty = tab[2u * W + H + y];
+    let f = GRID + q * GN;
+    return (aux[f + r0 + a] * (1.0 - tx) + aux[f + r0 + b] * tx) * (1.0 - ty) + (aux[f + r1 + a] * (1.0 - tx) + aux[f + r1 + b] * tx) * ty;
+}
+fn seaIce(c: f32, x: u32, y: u32) -> f32 {
+    if (!(c > 0.04)) { return 0.0; }
+    if (c > 0.96) { return 1.0; }
+    let W = p.W; let H = p.H; let cl = tab[2u * W + 2u * H + 2u * W + y];
+    let px = cl * tab[2u * W + 2u * H + x]; let py = cl * tab[3u * W + 2u * H + x]; let pz = tab[4u * W + 3u * H + y];
+    let fE = 6371.0 / aux[45]; let fF = 6371.0 / aux[46];
+    let n = 0.7 * fbm3(fE * px, fE * py, fE * pz) + 0.3 * noise3(fF * px + 5.1, fF * py - 2.7, fF * pz + 8.3);
+    let e = clamp((c + aux[47] * n - 0.47) / 0.06, 0.0, 1.0);
+    return e * e * (3.0 - 2.0 * e);
+}
+fn koppenAt(i: u32) -> u32 { return kt[i] & 0xFFu; }
+fn landPixel(x: u32, y: u32) -> i32 {
+    let s = f32(p.rw) / f32(p.W);
+    let cx = min(p.rw - 1u, u32(floor((f32(x) + 0.5) * s))); let cy = min(p.rh - 1u, u32(floor((f32(y) + 0.5) * s)));
+    let i = cy * p.rw + cx;
+    if (koppenAt(i) != 0u) { return i32(i); }
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let yy = i32(cy) + dy;
+            if (yy < 0 || yy >= i32(p.rh)) { continue; }
+            let j = u32(yy) * p.rw + u32((i32(cx) + dx + i32(p.rw)) % i32(p.rw));
+            if (koppenAt(j) != 0u) { return i32(j); }
+        }
+    }
+    return -1;
+}
+fn landRgb(i: u32) -> vec3f {
+    let b = 3u * i;
+    var c = vec3f(0.0);
+    for (var ch = 0u; ch < 3u; ch++) { let q = b + ch; c[ch] = f32((sc[q >> 2u] >> ((q & 3u) * 8u)) & 0xFFu); }
+    return c;
+}
+
+@compute @workgroup_size(${WG}, ${WG})
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+    let x = gid.x; let y = gid.y; let W = p.W; let H = p.H;
+    if (x >= W || y >= H) { return; }
+    let i = y * W + x; let f = fl[i]; let wet = (f & 1u) == 1u; let lake = select(0u, (f >> 1u) & 3u, p.lakes == 1u);
+    let v = h[i];
+    // (the live terrain's light, as the palette's pass: always, the climate layers being shaded)
+    let up = max(i32(y) - 1, 0); let dn = min(i32(y) + 1, i32(H) - 1);
+    let ex = select(p.ex, p.exSea, wet);
+    let ge = (h[y * W + (x + 1u) % W] - h[y * W + (x + W - 1u) % W]) / tab[2u * W + 2u * H + 2u * W + 2u * H + y];
+    let gn = (h[u32(up) * W + x] - h[u32(dn) * W + x]) / p.den2;
+    let px = -ex * ge; let py = -ex * gn; let len = sqrt(px * px + py * py + 1.0);
+    let Lu = 0.70710678118654752;
+    let kk = 0.35 + 0.65 * max(0.0, (px * -0.5 + py * 0.5 + Lu) / len) / Lu;
+    if (wet) {
+        // (the sea: its depth's colour, the 6 stops' ramp)
+        var s = 0u;
+        while (s < 4u && v > aux[4u * (s + 1u)]) { s++; }
+        let a = aux[4u * s]; let b = aux[4u * (s + 1u)];
+        let t = clamp((v - a) / (b - a), 0.0, 1.0);
+        let lo = rgbAt(4u * s + 1u); let hi = rgbAt(4u * (s + 1u) + 1u);
+        let rgb = lo + (hi - lo) * t;
+        let warm = 0.7 * clamp((grid(0u, x, y) - 20.0) / 6.0, 0.0, 1.0) * clamp((v + 0.12) / 0.1, 0.0, 1.0);
+        let fi = seaIce(grid(1u, x, y), x, y);
+        let ks = 0.8 + 0.2 * (0.45 + 0.55 * (kk - 0.35) / 0.65);
+        var c = rgb + (rgbAt(24u) - rgb) * warm;
+        c += (rgbAt(27u) - c) * fi;
+        outC[i] = pack(min(vec3f(255.0), c * ks));
+        return;
+    }
+    let li = landPixel(x, y);
+    if (lake != 0u) {
+        // (a lake: open water, or frozen in a cold month — in the year's view, where it is frozen most of the year)
+        let L = rgbAt(30u + 3u * lake);
+        var t = 0.0; var fz = 0.0;
+        if (li >= 0) { t = f32(bitcast<i32>(kt[u32(li)]) >> 16u) / 100.0; }
+        if (li >= 0 && lake != 3u) {
+            if (p.month == 1u) { t += grid(2u, x, y) - grid(3u, x, y); fz = clamp((-1.0 - t) / 5.0, 0.0, 1.0); }
+            else { fz = clamp((-2.0 - t) / 8.0, 0.0, 1.0); }
+        }
+        outC[i] = pack(L + (rgbAt(42u) - L) * fz);
+        return;
+    }
+    if (li < 0) { outC[i] = pack(vec3f(90.0)); return; }
+    let k = 1.0 + p.shadeAmp * (0.37 + 0.68 * (kk - 0.35) / 0.65 - 1.0);
+    if (p.enlarged == 1u) {
+        // (enlarged: blended from the four nearest land pixels by their bilinear weights)
+        let s = f32(p.rw) / f32(W);
+        let u = (f32(x) + 0.5) * s - 0.5; let vv = (f32(y) + 0.5) * s - 0.5;
+        let x0 = i32(floor(u)); let y0 = i32(floor(vv)); let fx = u - f32(x0); let fy = vv - f32(y0);
+        var ws = 0.0; var c = vec3f(0.0);
+        for (var j = 0; j < 2; j++) {
+            let yy = min(i32(p.rh) - 1, max(0, y0 + j));
+            for (var q = 0; q < 2; q++) {
+                let pp = u32(yy) * p.rw + u32(((x0 + q) % i32(p.rw) + i32(p.rw)) % i32(p.rw));
+                if (koppenAt(pp) == 0u) { continue; }
+                let w = select(1.0 - fx, fx, q == 1) * select(1.0 - fy, fy, j == 1);
+                c += w * landRgb(pp); ws += w;
+            }
+        }
+        if (ws > 0.0) { outC[i] = pack(min(vec3f(255.0), c / ws * k)); return; }
+    }
+    outC[i] = pack(min(vec3f(255.0), landRgb(u32(li)) * k));
+}`;
+
 // ── pass 3: the glint's mask at its own width: the sea and the lakes (not the pans) 255 ──
 const GLINT = /* wgsl */ `
 struct P { W: u32, H: u32, SW: u32, SH: u32, f: f32, pad0: u32, pad1: u32, pad2: u32 }
@@ -164,6 +340,34 @@ export function heightTable(n, minM, stepM) {
     return { sMin, t };
 }
 
+/**
+ * The Satellite pass's colours and tables (SAT_AUX's layout: the WGSL's constants PERM, PM12, GRID), from a satellite
+ * source (climate-view.js satelliteSource) and the layer's constants (its SAT_SEA): the sea's 6 depth stops (km, r, g, b),
+ * the warm shallows', the sea ice's, the lakes' 4 and the frozen lakes' colours, the ice edge's and floes' sizes (km) and
+ * the noise's weight; the noise's permutation and its gradient index (perm % 12); then the four 1° grids.
+ */
+export function satelliteAux(src, K) {
+    const a = new Float32Array(1072 + 4 * 64800);
+    K.SEA_DEPTH.forEach(([km, c], s) => a.set([km, ...c], 4 * s));
+    a.set(K.SHALLOW_WARM, 24); a.set(K.SEA_ICE, 27); a.set(K.SAT_LAKE.flat(), 30); a.set(K.LAKE_ICE, 42);
+    a[45] = K.SEA_ICE_EDGE_KM; a[46] = K.SEA_ICE_FLOE_KM; a[47] = K.SEA_ICE_NOISE;
+    const perm = K.iceNoise.perm;
+    for (let i = 0; i < 512; i++) { a[48 + i] = perm[i]; a[560 + i] = perm[i] % 12; }
+    [src.tsea, src.ice, src.T, src.Tyear].forEach((f, q) => a.set(f, 1072 + q * 64800));
+    return a;
+}
+
+/** Per column and row of a texture W wide: the 1° grid's cells and weights (climate-view.js gridTables), the longitude's
+ *  cos and sin, the latitude's, and the light's row denominators (rowDen). */
+export function satelliteTables(W, gridTables, rowDen) {
+    const H = W >> 1, { i0, fx, j0, fy } = gridTables(W), t = new Float32Array(4 * W + 5 * H);
+    t.set(i0, 0); t.set(fx, W); t.set(j0, 2 * W); t.set(fy, 2 * W + H);
+    for (let x = 0; x < W; x++) { const lon = ((x + 0.5) / W - 0.5) * 2 * Math.PI; t[2 * W + 2 * H + x] = Math.cos(lon); t[3 * W + 2 * H + x] = Math.sin(lon); }
+    for (let y = 0; y < H; y++) { const lat = (0.5 - (y + 0.5) / H) * Math.PI; t[4 * W + 2 * H + y] = Math.cos(lat); t[4 * W + 3 * H + y] = Math.sin(lat); }
+    t.set(rowDen, 4 * W + 4 * H);
+    return t;
+}
+
 export class FinishPainter {
     /** A painter on its own device, or null where WebGPU is not to be had. `gpu`: navigator.gpu or Dawn's. */
     static async open(gpu) {
@@ -180,15 +384,16 @@ export class FinishPainter {
         this.device = device; this.lost = false;
         device.lost?.then(() => { this.lost = true; });
         const make = code => device.createComputePipelineAsync({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'main' } });
-        this.ready = Promise.all([make(FIELDS), make(COLOUR), make(GLINT)]).then(([a, b, c]) => { this.fields = a; this.colour = b; this.glintPipe = c; });
+        this.ready = Promise.all([make(FIELDS), make(COLOUR), make(GLINT), make(SATELLITE)]).then(([a, b, c, e]) => { this.fields = a; this.colour = b; this.glintPipe = c; this.satPipe = e; });
         this.rasters = [];            // the pictures' buffers, the two used last
         this.tables = new Map();      // heightTable's, per block size
         this.luts = new WeakMap();    // the palettes' buffers
         this.sized = null;            // the per-width buffers and canvases
     }
 
-    /** Whether this painter does the picture asked for: a palette's (no colorAt — a climate or People layer is the CPU's). */
-    can(o = {}) { return !this.lost && !o.colorAt; }
+    /** Whether this painter does the picture asked for: a palette's, or the Satellite layer's (`satellite`: its source); any
+     *  other colouring (colorAt: a climate or People layer's) is the CPU's. */
+    can(o = {}) { return !this.lost && (!o.colorAt || !!o.satellite); }
 
     rasterBuffers(r) {
         let e = this.rasters.find(e => e.r === r);
@@ -216,11 +421,11 @@ export class FinishPainter {
     sizedFor(W, SW) {
         const s = this.sized;
         if (s && s.W === W && s.SW === SW) return s;
-        if (s) for (const b of [s.h, s.f, s.c, s.g, s.rowDen]) b.destroy();
+        if (s) for (const b of [s.h, s.f, s.c, s.g, s.rowDen, s.satTab]) b?.destroy();
         const d = this.device, H = W >> 1, n = W * H, SH = SW >> 1;
         const pxKm = 2 * Math.PI * 6371 / W, rowDen = new Float32Array(H);
         for (let y = 0; y < H; y++) rowDen[y] = 2 * pxKm * Math.max(0.05, Math.cos(((y + 0.5) / H - 0.5) * Math.PI));
-        return (this.sized = { W, SW, h: storage(d, 4 * n), f: storage(d, 4 * n), c: storage(d, 4 * n), g: storage(d, 4 * Math.max(1, SW * SH)), rowDen: storage(d, rowDen), pxKm, enlarged: new Map() });
+        return (this.sized = { W, SW, h: storage(d, 4 * n), f: storage(d, 4 * n), c: storage(d, 4 * n), g: storage(d, 4 * Math.max(1, SW * SH)), rowDen: storage(d, rowDen), rowDenArr: rowDen, pxKm, enlarged: new Map(), satTab: null });
     }
 
     /** The enlarged picture's columns, rows and weights for a picture rw wide on a texture W wide (as rasterAt's). */
@@ -248,12 +453,38 @@ export class FinishPainter {
         return e;
     }
 
+    /** The Satellite pass's buffers for a source (climate-view.js satelliteSource) on a texture s.W wide: the climate
+     *  picture's classes and temperatures and its land colours (kept for the picture shown last), the grids and tables. */
+    satelliteBuffers(s, src) {
+        const d = this.device, R = src.R, K = src.consts;
+        let e = this.sat;
+        if (e?.R !== R) {
+            if (e) { e.kt.destroy(); for (const b of e.S.values()) b.destroy(); }
+            const n = R.w * R.h, kt = new Uint32Array(n);
+            for (let i = 0; i < n; i++) kt[i] = R.koppen[i] | (R.tAnnual[i] << 16);
+            e = this.sat = { R, kt: storage(d, kt), S: new Map(), aux: null, auxKey: null };
+        }
+        if (!e.S.has(src.S)) {
+            for (const b of e.S.values()) b.destroy();
+            e.S.clear();
+            const S = src.S, padded = new Uint8Array(Math.ceil(S.length / 4) * 4);
+            padded.set(S);
+            e.S.set(S, storage(d, padded));
+        }
+        if (e.auxKey?.some((f, q) => f !== [src.tsea, src.ice, src.T, src.Tyear][q]) ?? true) {
+            e.aux?.destroy();
+            e.aux = storage(d, satelliteAux(src, K)); e.auxKey = [src.tsea, src.ice, src.T, src.Tyear];
+        }
+        s.satTab ??= storage(d, satelliteTables(s.W, src.gridTables, s.rowDenArr));
+        return { kt: e.kt, S: e.S.get(src.S), aux: e.aux, tab: s.satTab };
+    }
+
     /**
      * Paint a finished picture (finish-view.js paintFinished's arguments: r, a texture W wide, the palette, and
      * {exaggeration, lakes, seaWidth}) into the painter's buffers, on the GPU: `glint` makes the sea mask too.
      * Returns the sized buffers (s.c the picture, RGBA; s.g the mask).
      */
-    encode(r, W, lut, { exaggeration = 20, lakes = false, seaWidth = 0, lakeColor = null, bgra = false } = {}) {
+    encode(r, W, lut, { exaggeration = 20, lakes = false, seaWidth = 0, lakeColor = null, bgra = false, satellite = null } = {}) {
         const d = this.device, H = W >> 1, s = this.sizedFor(W, seaWidth || 2), rb = this.rasterBuffers(r), k = r.w / W;
         const enlarge = k < 1, K = enlarge ? 1 : Math.round(k), wantLakes = lakes && !!r.water && !!lakeColor;
         const tbl = this.tableOf(enlarge ? 1 : K * K, lut), en = enlarge ? this.enlargeOf(s, r) : null;
@@ -275,8 +506,17 @@ export class FinishPainter {
         pass.setPipeline(this.fields);
         pass.setBindGroup(0, group(this.fields, [u1, rb.h, rb.o, rb.w, tbl.buf, en ? en.gi : placeholder, en ? en.gf : placeholder, s.h, s.f]));
         pass.dispatchWorkgroups(gx, gy);
-        pass.setPipeline(this.colour);
-        pass.setBindGroup(0, group(this.colour, [u2, s.h, s.f, this.lutOf(lut), s.rowDen, lakeBuf, s.c]));
+        if (satellite) {
+            const sb = this.satelliteBuffers(s, satellite), p4 = new ArrayBuffer(48), v4 = new DataView(p4);
+            [W, H, satellite.R.w, satellite.R.h, satellite.R.w < W ? 1 : 0, wantLakes ? 1 : 0, bgra ? 1 : 0, satellite.season !== 'year' ? 1 : 0].forEach((v, i) => v4.setUint32(4 * i, v, true));
+            v4.setFloat32(32, satellite.shadeAmp, true); v4.setFloat32(36, exaggeration, true); v4.setFloat32(40, exaggeration * 0.35, true); v4.setFloat32(44, 2 * s.pxKm, true);
+            const u4 = U(p4); uniforms.push(u4);
+            pass.setPipeline(this.satPipe);
+            pass.setBindGroup(0, group(this.satPipe, [u4, s.h, s.f, sb.aux, sb.tab, sb.kt, sb.S, s.c]));
+        } else {
+            pass.setPipeline(this.colour);
+            pass.setBindGroup(0, group(this.colour, [u2, s.h, s.f, this.lutOf(lut), s.rowDen, lakeBuf, s.c]));
+        }
         pass.dispatchWorkgroups(gx, gy);
         if (seaWidth) {
             const p3 = new ArrayBuffer(32), v3 = new DataView(p3);
@@ -320,9 +560,9 @@ export class FinishPainter {
      * On the page: paint a finished picture onto texture t ({canvas, ctx, width}) — and, with seaCanvas, the glint's mask
      * onto it (seaWidth wide) — on the GPU, then drawn onto the canvases (synchronously, as the CPU's putImageData).
      */
-    paint(r, t, lut, { seaCanvas = null, seaWidth = 0, exaggeration = 20, lakes = false, lakeColor = null } = {}) {
+    paint(r, t, lut, { seaCanvas = null, seaWidth = 0, exaggeration = 20, lakes = false, lakeColor = null, satellite = null } = {}) {
         const W = t.width, glint = !!seaCanvas, pc = this.canvasOf('picture', W);
-        const { s, enc, uniforms, H } = this.encode(r, W, lut, { exaggeration, lakes, lakeColor, seaWidth: glint ? seaWidth : 0, bgra: pc.bgra });
+        const { s, enc, uniforms, H } = this.encode(r, W, lut, { exaggeration, lakes, lakeColor, seaWidth: glint ? seaWidth : 0, bgra: pc.bgra, satellite });
         enc.copyBufferToTexture({ buffer: s.c, bytesPerRow: 4 * W }, { texture: pc.ctx.getCurrentTexture() }, [W, H]);
         let sc = null;
         if (glint) {

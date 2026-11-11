@@ -315,11 +315,17 @@ export function drawLegend(el, layer, season, C, terrain) {
 
 // ── a finished moment's climate (its own, at its detail — climate-fields.js, with a picture of the land's climate:
 // raster {w, h, koppen, tAnnual (°C × 100, the sea −32768), pAnnual (mm)}) — drawn per pixel of the finished picture ──
-/** Where a texture W wide samples the 1° grid (bilinear; longitude wraps): per column and per row. */
-function gridSampler(W) {
+/** The 1° grid's cell and weight per column (i0, fx) and per row (j0, fy) of a texture W wide (gridSampler's, and the
+ *  GPU's Satellite paint's: the same f32 weights). */
+export function gridTables(W) {
     const H = W >> 1, i0 = new Uint16Array(W), fx = new Float32Array(W), j0 = new Uint8Array(H), fy = new Float32Array(H);
     for (let x = 0; x < W; x++) { const g = (x + 0.5) / W * 360 - 0.5, i = Math.floor(g); i0[x] = (i + 360) % 360; fx[x] = g - i; }
     for (let y = 0; y < H; y++) { const g = Math.min(178.999, Math.max(0, (y + 0.5) / H * 180 - 0.5)); j0[y] = Math.floor(g); fy[y] = g - j0[y]; }
+    return { i0, fx, j0, fy };
+}
+/** Where a texture W wide samples the 1° grid (bilinear; longitude wraps): per column and per row. */
+function gridSampler(W) {
+    const { i0, fx, j0, fy } = gridTables(W);
     return (field, x, y) => {
         const a = i0[x], b = a === 359 ? 0 : a + 1, r0 = j0[y] * 360, r1 = r0 + 360, tx = fx[x], ty = fy[y];
         return (field[r0 + a] * (1 - tx) + field[r0 + b] * tx) * (1 - ty) + (field[r1 + a] * (1 - tx) + field[r1 + b] * tx) * ty;
@@ -442,20 +448,32 @@ function seaIceAt(c, x, y, W) {
     const t = c + SEA_ICE_NOISE * n, e = Math.max(0, Math.min(1, (t - 0.47) / 0.06));
     return e * e * (3 - 2 * e);
 }
-function satelliteColor(season, C, W, fin = null) {
-    const R = C.raster, g = gridSampler(W), rgb = [0, 0, 0], ice = C.seaIce?.[season] ?? C.ice;
+/** The Satellite layer's constants, for its GPU painter (gpu/finish-paint.js) to colour with the same numbers. */
+export const SAT_SEA = { SEA_DEPTH, SHALLOW_WARM, SEA_ICE, SAT_LAKE, LAKE_ICE, SEA_ICE_EDGE_KM, SEA_ICE_FLOE_KM, SEA_ICE_NOISE, iceNoise };
+/**
+ * What the Satellite layer colours a finished moment's picture from, in a season: the climate picture R, its land colours
+ * S (3 bytes per pixel of R), the relief shading's strength, and the 1° grids — the sea's temperature, its ice, the air's
+ * temperature in the season and the year's (the lakes' ice); with the layer's constants and the grid's tables, for the
+ * GPU's colouring (finish-paint.js), which cannot import this module's page-side dependencies. The CPU's colouring too.
+ */
+export function satelliteSource(season, C, fin = null) {
+    const R = C.raster;
     // (the land: the climates' colours by height with the realistic picture's texture — sat-style.js — where the finished
     // heights are at hand; else the realistic picture itself)
     const styled = !!fin?.raster?.heightM;
     const S = styled ? styledSatellite(R, season, fin.raster.heightM, fin.raster.w, fin.rivers) : R.sat[season];
-    const shadeAmp = styled ? SAT_SHADE : 1, enlarged = R.w < W, blend = [0, 0, 0];
+    return { R, S, season, shadeAmp: styled ? SAT_SHADE : 1, tsea: (C.Tsea ?? C.T)[season], ice: C.seaIce?.[season] ?? C.ice, T: C.T[season], Tyear: C.T.year, consts: SAT_SEA, gridTables };
+}
+function satelliteColor(season, C, W, fin = null) {
+    const { R, S, shadeAmp, tsea, ice, T, Tyear } = satelliteSource(season, C, fin), g = gridSampler(W), rgb = [0, 0, 0];
+    const enlarged = R.w < W, blend = [0, 0, 0];
     return (out, o, x, y, wet, kk, k3, v, lake) => {
         // (the land's relief shading deeper than the other layers': the mountains stand out, as on a satellite image)
         const k = wet ? shadeK(kk) : 1 + shadeAmp * (0.37 + 0.68 * (kk - 0.35) / 0.65 - 1);      // (0.28–1.08: "the hillshading is too strong")
         if (wet) {
             // (the sea: a gentler light on its floor's relief; shallow warm water turquoise; its ice in its season)
             seaDepthRgb(v, rgb);
-            const warmShallow = 0.7 * Math.max(0, Math.min(1, (g((C.Tsea ?? C.T)[season], x, y) - 20) / 6)) * Math.max(0, Math.min(1, (v + 0.12) / 0.1));
+            const warmShallow = 0.7 * Math.max(0, Math.min(1, (g(tsea, x, y) - 20) / 6)) * Math.max(0, Math.min(1, (v + 0.12) / 0.1));
             const fi = seaIceAt(g(ice, x, y), x, y, W);
             const ks = 0.8 + 0.2 * k;
             for (let ch = 0; ch < 3; ch++) {
@@ -472,7 +490,7 @@ function satelliteColor(season, C, W, fin = null) {
             const L = SAT_LAKE[lake];
             let t = i >= 0 ? R.tAnnual[i] / 100 : 0, f = 0;
             if (i >= 0 && lake !== 3) {
-                if (season !== 'year') t += g(C.T[season], x, y) - g(C.T.year, x, y);
+                if (season !== 'year') t += g(T, x, y) - g(Tyear, x, y);
                 f = season === 'year' ? Math.max(0, Math.min(1, (-2 - t) / 8)) : Math.max(0, Math.min(1, (-1 - t) / 5));
             }
             for (let ch = 0; ch < 3; ch++) out[o + ch] = L[ch] + (LAKE_ICE[ch] - L[ch]) * f;

@@ -6,6 +6,7 @@
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { paintFinished, lakeColor } from '../js/evolution/finish-view.js';
 import { heightLutOf } from '../js/evolution/looks.js';
+import { finishedClimateColor, satelliteSource } from '../js/evolution/climate-view.js';
 
 let gpu = null;
 try { ({ gpu } = await import('./gpu-harness/dawn.mjs')); } catch (e) { console.log(`no Dawn: ${e.code ?? e.message}`); }
@@ -70,5 +71,51 @@ else {
     let off = 0;
     for (let i = 0; i < a.rgba.length; i += 4) if (a.rgba[i] !== b.rgba[i + 2] || a.rgba[i + 1] !== b.rgba[i + 1] || a.rgba[i + 2] !== b.rgba[i] || b.rgba[i + 3] !== 255) off++;
     check(`BGRA: the RGBA picture with red and blue swapped (${off} pixels otherwise)`, off === 0);
+
+    // (the Satellite layer — climate-view.js satelliteColor — on a synthetic climate: its land colours, a sea warm in the
+    // tropics, ice from the poles to the mid-latitudes (every fraction, so the noise's ragged edge is met), lakes open and
+    // frozen; its climate picture averaged down and enlarged)
+    for (const [what, r, rw] of [['a 4096-px climate picture (2.5M cells)', picture(4096, 1), 4096], ['a 1024-px climate picture (160K cells), enlarged', picture(1024, 2), 1024]]) {
+        section(`the Satellite layer, the GPU's against the CPU's: ${what}`);
+        const C = climateOf(r, rw), lut = heightLutOf('relief');
+        for (const season of ['year', 'jan']) for (const W of [2048, 4096]) {
+            const o = { exaggeration: 25, lakes: true, seaWidth: 2048 };
+            const img = { data: new Uint8ClampedArray(4 * W * (W >> 1)) };
+            paintFinished(r, { width: W, image: img }, lut, { ...o, colorAt: finishedClimateColor('satellite', season, C, W, lut) });
+            const g = await P.paintToArrays(r, W, lut, { ...o, lakeColor, satellite: satelliteSource(season, C) });
+            let px = 0, max = 0;
+            for (let i = 0; i < img.data.length; i += 4) {
+                let m = 0;
+                for (let c = 0; c < 4; c++) m = Math.max(m, Math.abs(img.data[i + c] - g.rgba[i + c]));
+                if (m) { px++; max = Math.max(max, m); }
+            }
+            const share = 100 * px / (W * (W >> 1)), label = `${season} on ${W} px`;
+            console.log(`  ${label}: ${px} pixels differ (${share.toFixed(4)} %), by ${max} at most`);
+            // (finish-paint.js's header: the light, the sea's ramp, the grids and the ice's noise in f32 move a level on a
+            // few pixels in 10⁴ — 0.032 % at most, by 2 at most, on four real moments in three seasons, 2026-11-11; here
+            // ~0.05 %, nearly all on the ice's ragged edge, which this climate draws over 30° of latitude a hemisphere)
+            check(`${label}: within 2 levels, on under 0.1 % of the pixels (${share.toFixed(4)} %, ${max})`, max <= 2 && share < 0.1);
+        }
+    }
+}
+
+/** A climate for picture r, its climate picture rw wide (rw × rw/2, from r's own pixels): land Köppen classes and year
+ *  temperatures by latitude, the realistic picture's colours by height, and the 1° grids — the air's and the sea's
+ *  temperature (warm at the equator, cold at the poles; a January and a July), the sea ice (1 at the poles, 0 by 50°). */
+function climateOf(r, rw) {
+    const rh = rw >> 1, n = rw * rh, f = r.w / rw, koppen = new Uint8Array(n), tAnnual = new Int16Array(n), sat = {};
+    for (const s of ['year', 'jan', 'jul']) sat[s] = new Uint8Array(3 * n);
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {
+        const i = y * rw + x, j = y * f * r.w + x * f, lat = 90 - 180 * (y + 0.5) / rh, m = r.heightM[j];
+        if (r.ocean[j]) { tAnnual[i] = -32768; continue; }
+        koppen[i] = 1 + (x * 7 + y * 3) % 29;
+        tAnnual[i] = Math.round(100 * (28 - 0.55 * Math.abs(lat) - 6.5 * Math.max(0, m) / 1000));
+        for (const [s, k] of [['year', 0], ['jan', 9], ['jul', 17]]) sat[s].set([60 + (m >> 5) % 140 + k, 90 + (x % 50), 50 + (y % 70)], 3 * i);
+    }
+    const grid = (fn) => { const g = new Float32Array(64800); for (let j = 0; j < 180; j++) for (let i = 0; i < 360; i++) g[j * 360 + i] = fn(89.5 - j, i - 179.5); return g; };
+    const T = { year: grid((la, lo) => 28 - 0.6 * Math.abs(la) + 2 * Math.sin(lo / 20)), jan: grid(la => 28 - 0.6 * Math.abs(la) - 0.3 * la), jul: grid(la => 28 - 0.6 * Math.abs(la) + 0.3 * la) };
+    const ice = la => Math.max(0, Math.min(1, (Math.abs(la) - 50) / 30));
+    const seaIce = { year: grid(ice), jan: grid(la => ice(la + 8)), jul: grid(la => ice(la - 8)) };
+    return { T, Tsea: T, seaIce, ice: seaIce.year, raster: { w: rw, h: rh, koppen, tAnnual, sat } };
 }
 finish('Finish paint (GPU)');
