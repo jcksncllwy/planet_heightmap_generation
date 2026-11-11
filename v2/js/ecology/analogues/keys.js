@@ -85,7 +85,9 @@ export const ISOLATION = Object.freeze(['connected', 'long-isolated', 'island'])
  * @typedef {Object} MatchInput
  * @property {'land'|'sea'|'fresh'} realm
  * @property {string} [habitat]        one of LAND_HABITATS / SEA_HABITATS / FRESH_HABITATS by realm
- * @property {string[]} [azonal]       AZONAL_HABITATS present in the cell
+ * @property {'deep-sea'|'vent'|'seep'} [floor]  sea only: the sea floor's habitat beside the surface one (ruling, amendment 1)
+ * @property {string[]} [azonal]       AZONAL_HABITATS present in the cell (optional: lake-shore, wetland, dune, ultramafic and
+ *                                     cave aren't derivable from the panel's fields yet, so the matcher works without them)
  * @property {number} [biome]          finish-cover Biome id (1–16), used when `habitat` is absent
  * @property {string} [koppen]         Köppen–Geiger code ('Aw', 'BWh', …), likewise
  * @property {number} [tAnnual]        annual mean temperature, °C
