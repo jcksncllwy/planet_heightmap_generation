@@ -23,6 +23,8 @@ import { BoundaryKind } from '../js/tectonics/model/world.js';
 import { rockParts, crustVolume, crustTally } from '../js/tectonics/step/crust-ledger.js';
 import { prismHeldKm3 } from '../js/tectonics/step/prism-accretion.js';
 import { rockClosure } from './lib/volume-books.mjs';
+import { columnModel, crustThicknessKm } from '../js/tectonics/measure.js';
+import { heightsOf } from '../js/tectonics/step/heights.js';
 setDelaunator(Delaunator);
 const argv = process.argv, arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const SEED = +arg('--seed'), CONT = +arg('--cont', 29), EVERY = +arg('--every', 10), OUT = arg('--out', null), SIM = +arg('--sim', 40000), UNTIL = +arg('--until', 1200);
@@ -69,7 +71,26 @@ if (SHEET && !reservoirs.some(x => x.t === Math.round(world.time))) reservoirs.p
 function reservoirsNow(w) {
     const a = sim.cellAreaKm2, P = rockParts(w), g = v => +(v * a / 1e9).toFixed(4), T = crustTally(w);
     return { crust: g(P.crust), relief: g(P.relief), fill: g(P.fill), arc: g(P.arc), oceanSed: g(P.oceanSed), transit: g(P.transit),
-        prism: g(prismHeldKm3(w) / a), contVol: g(crustVolume(w)), contMkm2: +(T.land * a / 1e6).toFixed(3), arcMkm2: +(T.arc * a / 1e6).toFixed(3) };
+        prism: g(prismHeldKm3(w) / a), contVol: g(crustVolume(w)), contMkm2: +(T.land * a / 1e6).toFixed(3), arcMkm2: +(T.arc * a / 1e6).toFixed(3), ...highGround(w) };
+}
+
+// High ground (lane crustmass S3: what the lower crust's flow is for — plateaus stop rising at ~4–5 km and widen; Tibet ~5 km,
+// the Altiplano ~4 km): continental area whose column stands above 3, 4 and 5 km (Mkm²; the isostatic column with its relief
+// and swells, the mantle's swell aside), the highest such column (km), and the crust's 99th-percentile thickness (km).
+function highGround(w) {
+    const H = heightsOf(w.config), C = columnModel(H), a = sim.cellAreaKm2, th = [];
+    let h3 = 0, h4 = 0, h5 = 0, top = 0;
+    for (let c = 0; c < n; c++) {
+        const p = w.plates[w.owner[c]]; if (!p) continue;
+        const k = w.ownerCell[c], cr = p.crust, t = cr.type[k];
+        if (t !== CrustType.CONTINENT && t !== CrustType.CRATON) continue;
+        const s = C.ref[t] + C.slope[t] * cr.rootKm[k] + Math.max(0, cr.upliftKm[k]) + cr.baseKm[k];
+        if (s > 3) h3++; if (s > 4) h4++; if (s > 5) h5++; if (s > top) top = s;
+        th.push(crustThicknessKm(H, t, cr.rootKm[k], cr.upliftKm[k], cr.baseKm[k]));
+    }
+    th.sort((x, y) => x - y);
+    const M = v => +(v * a / 1e6).toFixed(3);
+    return { hi3Mkm2: M(h3), hi4Mkm2: M(h4), hi5Mkm2: M(h5), topKm: +top.toFixed(2), crustP99Km: +(th[Math.floor(0.99 * (th.length - 1))] ?? 0).toFixed(1) };
 }
 
 // The subducting trench's length, measured from the boundaries themselves (lane crustmass S0; glitnir's note: volcano-run
@@ -165,7 +186,7 @@ if (SHEET) printSheet(endBooks());
 function printSheet(e) {
     const f = (v, d = 3) => (v >= 0 ? ' ' : '') + v.toFixed(d);
     console.log('SHEET reservoirs (Gkm³; areas Mkm²):   t   crust  relief    fill     arc oceanSed transit   prism | contVol contMkm2 arcMkm2');
-    for (const r of e.reservoirs) console.log(`SHEET res ${String(r.t).padStart(5)} ${[r.crust, r.relief, r.fill, r.arc, r.oceanSed, r.transit, r.prism ?? 0].map(v => f(v).padStart(7)).join(' ')} | ${f(r.contVol).padStart(7)} ${f(r.contMkm2, 2).padStart(8)} ${f(r.arcMkm2, 2).padStart(7)}`);
+    for (const r of e.reservoirs) console.log(`SHEET res ${String(r.t).padStart(5)} ${[r.crust, r.relief, r.fill, r.arc, r.oceanSed, r.transit, r.prism ?? 0].map(v => f(v).padStart(7)).join(' ')} | ${f(r.contVol).padStart(7)} ${f(r.contMkm2, 2).padStart(8)} ${f(r.arcMkm2, 2).padStart(7)} | hi3/4/5 ${r.hi3Mkm2?.toFixed(2)}/${r.hi4Mkm2?.toFixed(2)}/${r.hi5Mkm2?.toFixed(2)} top ${r.topKm} p99 ${r.crustP99Km}`);
     console.log('SHEET stage (Gkm³ over the run): Δrock booked residual (gross, residual/gross) Δcont | flows');
     for (const [k, u] of Object.entries(e.closure)) {
         const cont = Object.entries(e.books).filter(([s]) => (s === k) || (k === 'rivers+fans' && (s === 'rivers' || s === 'fans'))).reduce((a, [, b]) => a + (b.volGkm3 ?? 0), 0);
