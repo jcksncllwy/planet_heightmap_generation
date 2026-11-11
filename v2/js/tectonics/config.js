@@ -215,8 +215,8 @@ export const TECTONICS = {
     cratonStrainShare: 0.35,    // a belt crosses onto a craton as a thin-skinned fold-thrust belt — the cover folds and thrusts over the
                                 // shield's edge, as the sub-Andean zone and the Canadian Rockies' foothills do — with this share of
                                 // the belt's uplift and crests. How far in it gets is not drawn: each km of craton costs the belt's
-                                // reach cratonStrength km (a 1000 km plateau belt gets ~170 km in, an Andean one a few tens), and
-                                // the shield thickens by only 1/cratonStrength as much (Jordan 1978: cratons are strong, not rigid —
+                                // reach as many km as its column is stronger (field/stress-step.js cratonStrengthRatio, ~3.5: a 1000 km
+                                // plateau belt gets ~290 km in, an Andean one a few tens), and the shield thickens by only that much less (Jordan 1978: cratons are strong, not rigid —
                                 // the Laramide uplifts stand inside the Wyoming craton). 0: a craton takes no belt
     beltHotStrength: 0.5,       // crust a belt has thickened to crustMaxThickKm, and island-arc crust, is this strong against ordinary
                                 // continent (1) for a belt crossing it — hot, its lower crust ductile (Te 10–20 km against 30–50:
@@ -614,12 +614,10 @@ export const TECTONICS = {
                                 // (below; 0.04 before the pace kept each piece's breakups apart: most then rifted only when forced)
     riftSizeCap: 4,             // a supercontinent (8× the minimum) at tension 0.35 rifts within ~20 Myr on average (developer: ~30 Myr);
                                 // a continent of twice the minimum at tension 0.5 waits ~50 Myr beyond its tenure
-    cratonStrength: 6,          // a craton's lithosphere is this many times as hard to break as ordinary continent's, per km: a rift
-                                // path crossing one costs this much (ops/rift-path.js), a back-arc strip whose break line runs through
-                                // one opens that much less readily (step/backarc.js). Its keel is 200–250 km deep and cold, two to
-                                // three times ordinary lithosphere (Jordan 1978), and strength grows faster than thickness: rifts go
-                                // round cratons — but not always (the South Atlantic split the Congo and São Francisco cratons).
-                                // Was: never cut (∞)
+    // (a craton's strength: no constant — its column's, field/stress-step.js rockStrength: Buck's curve at the surface heat
+    // flow its 250 km keel lets through (terrain-config.js cratonLithKm against riftLithKm), ~5× ordinary continent's at rest,
+    // ~3.5× ordinary crust as formed; a rift goes round one where it can, through it only where every way round costs more
+    // (the South Atlantic split the Congo and São Francisco cratons). Was: cratonStrength 6, before that never cut (∞).)
     riftWeaknessCost: 0.8,      // (also the strength there: field/stress-step.js — strain softening, the friction and cohesion of a zone that
                                 // took strain halving, Naliboff et al. 2017 Nat. Commun. 8, over brittle strain 0–0.1, on the brittle ~20–40 %
                                 // of the strength: 0.8–0.9) a rift path costs this much per km along old sutures / failed rifts (1 elsewhere): a real

@@ -18,6 +18,7 @@ import { frameTallies } from '../js/tectonics/measure.js';
 import { CrustType, CrustFlag, OrogenyType } from '../js/tectonics/model/crust.js';
 import { NO_WINGS } from '../js/app/phases/phase5-collisions.js';
 import { EventKind } from '../js/tectonics/model/world.js';
+import { cratonStrengthRatio } from '../js/tectonics/field/stress-step.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];       // (the Earth reports also look at a few other seeds)
 // (India meets Asia at ~50 Myr and keeps converging until the seam stalls, ~55 Myr later: the scene runs on past that)
@@ -143,7 +144,7 @@ for (const seed of SEEDS) {
     keep('upper', [Math.max(...upperSide.map(w => nearestKm(mesh, w, seam))), upperSide.length, median(upperSide.map(w => nearestKm(mesh, w, seam)))]);
     keep('lower', [Math.max(...lowerSide.map(w => nearestKm(mesh, w, seam))), lowerSide.length, median(lowerSide.map(w => nearestKm(mesh, w, seam)))]);
     // how far the belts reach into a craton, and how much less the shield thickens than the belt beside it: deformation per
-    // unit stress scales with strength (a craton cratonStrength × as hard to deform; cratons do deform — the Laramide uplifts)
+    // unit stress scales with strength (a craton as many times as hard to deform as its column is strong, stress-step.js cratonStrengthRatio; cratons do deform — the Laramide uplifts)
     const notCraton = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] !== CrustType.CRATON);
     const rimCells = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] === CrustType.CRATON && last.oroType[w] !== 0);
     const deepest = rimCells.length ? Math.max(...rimCells.map(w => nearestKm(mesh, w, notCraton))) : 0, thickRim = rimCells.filter(w => last.thickKm[w] > 0).length;
@@ -175,7 +176,7 @@ for (const [name, samples] of judged) checkAcross(name, samples, name === INDIA_
     report('collision belt width on the lower plate (the foreland)', per('lower').map(x => x[0]), { earth: [100, 350], unit: ' km', source: 'fold-thrust belts', digits: 0,
         detail: `pending model rewrite (belt width from strength); seeds ${formed.join(', ')}: ${per('lower').map(x => `${x[1]} cells, median ${x[2].toFixed(0)} km from the seam`).join(' · ')}` });
     report('deepest reach of a collision belt into a craton', per('deepest').map(x => x[0]), { unit: ' km', digits: 0, source: 'thin-skinned belts over shield edges: the sub-Andean zone 50–100 km',
-        detail: `${per('deepest').map(x => `${x[1]} craton cells carry a record, ${x[2]} of them thickened`).join(' · ')} (cratonStrength ${cfg.cratonStrength})` });
+        detail: `${per('deepest').map(x => `${x[1]} craton cells carry a record, ${x[2]} of them thickened`).join(' · ')} (craton strength ×${cratonStrengthRatio(cfg).toFixed(2)})` });
     report('peak crustal thickening', per('thick'), { earth: [30, 40], unit: ' km', source: 'Tibet ≈ +35 km, Molnar & Lyon-Caen 1988', digits: 1 });
 
     const off = run('india', INDIA_MYR, {}, false);

@@ -156,7 +156,7 @@ section('a strip of coast rifts off a continent (japan)');
         check('the strip is a coherent arc of land, not a sliver', stripLand.length > 0 && largestPiece(mesh, stripLand) >= 0.9 * stripLand.length,
             `${stripLand.length} land cells, ${largestPiece(mesh, stripLand) === stripLand.length ? 'in one piece' : `largest piece ${largestPiece(mesh, stripLand)}`}`);
         report('land on the strip', stripLand.length * cellAreaKm2 / 1e6, { unit: ' Mkm²', digits: 2, source: 'Japan’s arc ~0.38 Mkm², one example' });
-        // a craton is not vetoed: a break line through it opens cratonStrength times less readily (step/backarc.js)
+        // a craton is not vetoed: a break line through it opens as many times less readily as its column is stronger (step/backarc.js)
         const cratons = cellsWhere(numCells, w => f0.owner[w] >= 0 && f0.type[w] === CrustType.CRATON), offAsia = cratons.filter(w => f0.owner[w] !== asia.id).length;
         report('share of the craton that goes with the strip', 100 * offAsia / Math.max(1, cratons.length), { unit: ' %', digits: 0, source: 'cratons are rarely split (Lenardic & Moresi 1999)', detail: `${offAsia} of ${cratons.length} craton cells off Asiana` });
         const young = cellsWhere(numCells, w => fOpen.owner[w] >= 0 && fOpen.type[w] === CrustType.OCEAN && fOpen.formedAt[w] > split.time);

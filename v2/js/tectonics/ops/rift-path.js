@@ -1,4 +1,4 @@
-// Finding a rift (WBP Part Va): from a junction, the cheapest arms to the coast — round cratons (cratonStrength: through
+// Finding a rift (WBP Part Va): from a junction, the cheapest arms to the coast — round cratons (their column's strength, field/stress-step.js: through
 // one only where every way round costs more), along old sutures —
 // and, of the cuts they make, the one the plate's own stress is likeliest to break; one arm fails. See ops/rift.js.
 
@@ -10,6 +10,7 @@ import { FastNoise } from '../../core/fast-noise.js';
 import { edgeKmOf } from '../../core/min-heap.js';
 import { netTorques, stressAcross, cutAlong } from '../step/plate-stress.js';
 import { riftStressContext, stressPaths, bandForce } from '../field/rift-stress.js';
+import { cratonStrengthRatio } from '../field/stress-step.js';
 
 /**
  * The grain of the crust a rift follows (developer: rifts "on way too straight lines … should curve a bit and be jagged";
@@ -60,10 +61,11 @@ export function findRift(world, plate, junction, pullAxis, needCratonsBothSides 
     if (!land(junction) || crust.type[junction] === CrustType.CRATON) return null;
     ctx ??= riftContext(world, plate);
 
-    // cheapest paths from the junction across the land: weak lines cost riftWeaknessCost, a craton cratonStrength
+    // cheapest paths from the junction across the land: weak lines cost riftWeaknessCost, a craton its column's strength
+    // (field/stress-step.js cratonStrengthRatio: a 250 km keel against ordinary continent's, each as formed)
     const weak = CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN;
     const grain = ctx.grain;
-    const strength = c => crust.type[c] === CrustType.CRATON ? config.cratonStrength : 1;
+    const shield = cratonStrengthRatio(config), strength = c => crust.type[c] === CrustType.CRATON ? shield : 1;
     // (or, by the stress: strength over the tension across each step — field/rift-stress.js; the weak lines and cratons are in the strength)
     const { cost, from } = ctx.stress ? stressPaths(mesh, crust, junction, ctx.stress, grain)
         : cheapestPaths(mesh, crust, junction, c => ((crust.flags[c] & weak) ? config.riftWeaknessCost : 1) * strength(c) * grain(c));

@@ -14,7 +14,7 @@
 // Each strength variant searches its own paths (a weaker zone draws the cut to it).
 //
 // The strength variants (offline formulas; the model's own is 'decl' on the 3e12 history and 'cold+d' on the 1e13 one):
-//   T_y = Y × craton (cratonStrength) × inherited (riftWeaknessCost on SUTURE/FAILED_RIFT/RIFT_MARGIN; with dmg)
+//   T_y = Y × craton (its column at rest: stress-step.js cratonStrengthRatio) × inherited (riftWeaknessCost on SUTURE/FAILED_RIFT/RIFT_MARGIN; with dmg)
 //         × damage (1 − (1 − plateDamageKeep) D; with dmg) × heat W^(−h) × magma 1/m (within a plume head, below)
 //   h: world.mantleHeat (0…1, insulation under a continent over mantleInsulateMyr) — W the strength lost under fully insulated
 //      mantle; W 3–10 from creep's Arrhenius law for a ~100 K warmer mantle (see l1-report.md §2)
@@ -32,7 +32,7 @@ import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
 import { stressAt, solvePlateStress } from '../js/tectonics/field/plate-stress-field.js';
-import { strengthOf } from '../js/tectonics/field/stress-step.js';
+import { strengthOf, cratonStrengthRatio } from '../js/tectonics/field/stress-step.js';
 import { searchJunctions } from '../js/tectonics/step/rifting.js';
 import { MinHeap } from '../js/core/min-heap.js';
 
@@ -71,7 +71,7 @@ function fields(w) {
         if (stressAt(w, c, s)) { s1[c] = s.s1; s2[c] = s.s2; dir[3 * c] = s.dir[0]; dir[3 * c + 1] = s.dir[1]; dir[3 * c + 2] = s.dir[2]; }
         model[c] = strengthOf(cr, k, time, config, mantleHeat[c]);
         for (const h of heads) if (h.xyz[0] * xyz[3 * c] + h.xyz[1] * xyz[3 * c + 1] + h.xyz[2] * xyz[3 * c + 2] >= h.cos) { magma[c] = 1; break; }
-        const craton = t === CrustType.CRATON ? config.cratonStrength : 1, inh = cr.flags[k] & WEAK ? config.riftWeaknessCost : 1;
+        const craton = t === CrustType.CRATON ? cratonStrengthRatio(config) : 1, inh = cr.flags[k] & WEAK ? config.riftWeaknessCost : 1;
         const dmg = 1 - (1 - config.plateDamageKeep) * cr.damage[k], heat = mantleHeat[c];
         VARIANTS.forEach((v, i) => { T[i][c] = v.Y * craton * (v.dmg ? inh * dmg : 1) * Math.pow(v.W, -heat) / (magma[c] ? v.m : 1); });
     }

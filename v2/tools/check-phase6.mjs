@@ -105,7 +105,7 @@ section('the start world breaks up');
     // (each half is named by the craton letters it holds: rifting.js namesAfterSplit, when both hold cratons)
     check('the first rift’s pieces are named by their cratons', firsts.every(x => x && x.pieces.length === 2 && x.pieces.every(p => /^[A-Z]+$/.test(p.name))),
         firsts.map(x => x ? x.pieces.map(p => p.name).join(' and ') : 'no rift').join(' · '));
-    // how much of the rift length crosses cratons (finitely strong — cratonStrength — so rarely, but the Congo–São Francisco
+    // how much of the rift length crosses cratons (finitely strong — its column's strength, field/stress-step.js — so rarely, but the Congo–São Francisco
     // craton was split by the South Atlantic) and how much follows old weak lines (sutures, failed arms, rifted margins)
     const shareOf = (rr, key) => { const rs = rifts(rr), km = rs.reduce((s, e) => s + e.data.lengthKm, 0); return km ? 100 * rs.reduce((s, e) => s + (e.data[key] ?? 0), 0) / km : null; };
     report('rift length through cratons', runs.map(rr => shareOf(rr, 'cratonKm')), { earth: [1, 10], unit: ' %', source: 'small but non-zero: the Congo–São Francisco and North Atlantic cratons', digits: 1 });
@@ -114,7 +114,7 @@ section('the start world breaks up');
     const divided = runs.map(rr => {
         let unbooked = 0, firstSeen = null;
         for (const f of rr.frames) {
-            // (a rift, or the rift behind a back-arc strip — step/backarc.js, which may cut a craton cratonStrength times less readily)
+            // (a rift, or the rift behind a back-arc strip — step/backarc.js, which may cut a craton as many times less readily as its column is stronger)
             const booked = new Set(rr.events.filter(e => (e.kind === EventKind.RIFT || e.kind === EventKind.BACKARC_OPEN) && e.time <= f.time + 1e-9).flatMap(e => e.data.splitCratons ?? []));
             const holder = new Map(), split = new Set();
             for (let w = 0; w < numCells; w++) { if (f.owner[w] < 0 || f.type[w] !== CrustType.CRATON) continue; const prev = holder.get(f.terrane[w]); if (prev !== undefined && prev !== f.owner[w]) split.add(f.terrane[w]); holder.set(f.terrane[w], f.owner[w]); }

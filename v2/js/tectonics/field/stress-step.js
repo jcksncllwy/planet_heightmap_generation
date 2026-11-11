@@ -5,7 +5,7 @@
 //
 //   strength T_y = T_rock × (old weak line: riftWeaknessCost)                                     (N/m, vertically integrated)
 //     T_rock: old ocean plateYieldOcean × √(age ÷ plateYieldOceanAgeMyr) (to 1; half-space cooling thickens it); continent
-//       plateYieldContinent (a craton × cratonStrength) × heat H(h) × magma (÷ magmaWeakening on a fresh LIP)
+//       plateYieldContinent × heat H(h, its crust, its lithosphere: a craton's keel) × magma (÷ magmaWeakening on a fresh LIP)
 //   breaks in tension where s1 > T_y, in compression where −s2 > plateYieldCompression × T_y
 //   broken: D = 1; after, D falls as e^(−t ÷ plateDamageHealMyr)
 //   with plateStressRifts, continental crust broken in tension is also logged as stretched: a RIFT record with no work
@@ -91,18 +91,30 @@ export function heatFlowRise(h, config) {
     return config.plateHeatMantleFlow * ((1 + dT / config.plateHeatLidK) * Math.exp(eR * (1 / T - 1 / (T + dT))) - 1);
 }
 const HEAT_STEPS = 64, KM_STEPS = 20;           // (h by 1/64; crust by 1 km across the figure's 30–50)
-let heatTable = null, heatKey = '';
+const heatTables = new Map();                   // (one table per lithosphere: ordinary continent's and a craton's)
+let heatKey = '';
 /**
- * The share of plateYieldContinent a continent of `km` crust keeps over mantle warmed by h (0…1), along Buck's curves:
- * B(qRef + Δq(h), km) ÷ B(qRef, plateCrustRefKm). (km omitted: the reference crust, i.e. the heat weakening alone.)
+ * The share of plateYieldContinent a continent of `km` crust on `lithKm` of lithosphere keeps over mantle warmed by h (0…1),
+ * along Buck's curves: B(q(h, lithKm), km) ÷ B(qRef, plateCrustRefKm). (km omitted: the reference crust; lithKm omitted:
+ * the reference lithosphere, the column model's riftLithKm — i.e. the heat weakening alone.)
+ *
+ * The lithosphere (lane cratoncol): the mantle's share of the surface heat flow is conducted up through the lid, so it falls
+ * as 1 ÷ its thickness (steady conduction, q = k ΔT ÷ L): q = (qRef − qMantle) + (qMantle + Δq(h)) × riftLithKm ÷ lithKm.
+ * A craton's 250 km keel (cratonLithKm) halves it: 42.5 mW/m² at rest — Archean provinces average 41 ± 11 (Nyblade &
+ * Pollack 1993 via Rudnick et al. 1998; 41, Michaut, Jaupart & Mareschal 2009, Lithos 109) — and only half of a swell's rise
+ * reaches its surface. (The split is the model's, not a craton's: Earth's cratons take 12–17 of it from the mantle, Jaupart &
+ * Mareschal 1999, and more from their crust; the sum is what Buck's curve reads.) Below the figure's 44 mW/m² it is held at 44.
  */
-export function heatWeakening(h, config, km = config.plateCrustRefKm) {
-    const key = `${config.plateHeatWarmK},${config.plateHeatMantleK},${config.plateHeatCreepKJ},${config.plateHeatMantleFlow},${config.plateHeatLidK},${config.plateHeatFlowRef},${config.plateCrustRefKm}`;
-    if (key !== heatKey) {
-        heatKey = key; heatTable = new Float64Array((HEAT_STEPS + 1) * (KM_STEPS + 1));
-        const q0 = config.plateHeatFlowRef, b0 = lnBuck(q0, config.plateCrustRefKm);
+export function heatWeakening(h, config, km = config.plateCrustRefKm, lithKm = heightsOf(config).riftLithKm) {
+    const key = `${config.plateHeatWarmK},${config.plateHeatMantleK},${config.plateHeatCreepKJ},${config.plateHeatMantleFlow},${config.plateHeatLidK},${config.plateHeatFlowRef},${config.plateCrustRefKm},${heightsOf(config).riftLithKm}`;
+    if (key !== heatKey) { heatKey = key; heatTables.clear(); }
+    let heatTable = heatTables.get(lithKm);
+    if (!heatTable) {
+        heatTable = new Float64Array((HEAT_STEPS + 1) * (KM_STEPS + 1));
+        heatTables.set(lithKm, heatTable);
+        const q0 = config.plateHeatFlowRef, b0 = lnBuck(q0, config.plateCrustRefKm), qm = config.plateHeatMantleFlow, thin = heightsOf(config).riftLithKm / lithKm;
         for (let i = 0; i <= HEAT_STEPS; i++) {
-            const q = q0 + heatFlowRise(i / HEAT_STEPS, config);
+            const rise = heatFlowRise(i / HEAT_STEPS, config), q = thin === 1 ? q0 + rise : q0 - qm + (qm + rise) * thin;
             for (let j = 0; j <= KM_STEPS; j++) heatTable[i * (KM_STEPS + 1) + j] = lnBuck(q, BUCK_KM[0] + (BUCK_KM[1] - BUCK_KM[0]) * j / KM_STEPS) - b0;
         }
     }
@@ -110,6 +122,18 @@ export function heatWeakening(h, config, km = config.plateCrustRefKm) {
     const y = Math.max(0, Math.min(1, (km - BUCK_KM[0]) / (BUCK_KM[1] - BUCK_KM[0]))) * KM_STEPS, j = Math.min(KM_STEPS - 1, Math.floor(y)), fy = y - j;
     const K = KM_STEPS + 1, a = heatTable[i * K + j], b = heatTable[i * K + j + 1], c = heatTable[(i + 1) * K + j], d = heatTable[(i + 1) * K + j + 1];
     return Math.exp((1 - fx) * ((1 - fy) * a + fy * b) + fx * ((1 - fy) * c + fy * d));
+}
+/** The lithosphere under a continental cell (km): the column model's (step/measure.js columnModel) — a craton's keel or ordinary continent's. */
+export function lithKmOf(type, config) { const H = heightsOf(config); return type === CrustType.CRATON ? H.cratonLithKm : H.riftLithKm; }
+/**
+ * How many times as hard to break a craton is as ordinary continent, each column as formed (cratonCrustKm on cratonLithKm,
+ * riftCrustKm on riftLithKm) over mantle no continent has warmed: ~3.5 by default (Buck's curves; was the constant 6). For
+ * the processes that weigh a craton against ordinary ground without a stress field of their own (step/orogeny.js a belt's reach
+ * into a shield, step/backarc.js a strip's break line, ops/rift-path.js a failed arm).
+ */
+export function cratonStrengthRatio(config) {
+    const H = heightsOf(config);
+    return heatWeakening(0, config, H.cratonCrustKm, H.cratonLithKm) / heatWeakening(0, config, H.riftCrustKm, H.riftLithKm);
 }
 /** The crust's thickness at raster cell c (km): a continent's as formed, thickened or thinned, with the crust its relief stands for. */
 function crustKmAt(crust, c, time, config) {
@@ -124,7 +148,7 @@ export function rockStrength(crust, c, time, config, h = 0) {
     let T;
     if (t === CrustType.OCEAN) T = config.plateYieldOcean * Math.max(config.plateYieldOceanFloor, Math.min(1, Math.sqrt(Math.max(0, time - crust.formedAt[c]) / config.plateYieldOceanAgeMyr)));
     else {
-        T = config.plateYieldContinent * (t === CrustType.CRATON ? config.cratonStrength : 1) * heatWeakening(h, config, config.plateStrengthCrust ? crustKmAt(crust, c, time, config) : config.plateCrustRefKm);
+        T = config.plateYieldContinent * heatWeakening(h, config, config.plateStrengthCrust ? crustKmAt(crust, c, time, config) : config.plateCrustRefKm, lithKmOf(t, config));
         if (crust.volcType[c] === VolcanicType.LIP && time - crust.volcAt[c] <= config.magmaWeakMyr) T /= config.magmaWeakening;
     }
     if (crust.flags[c] & WEAK) T *= config.riftWeaknessCost;

@@ -11,6 +11,7 @@ import { CrustType, CrustFlag, OrogenyType, BeltSide } from '../model/crust.js';
 import { edgeKmOf } from '../../core/min-heap.js';
 import { buildHeights, heightsOf } from './heights.js';
 import { columnModel } from '../measure.js';
+import { cratonStrengthRatio } from '../field/stress-step.js';
 import { bookRock } from '../rock-book.js';
 
 /**
@@ -103,7 +104,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
     const hotS = config.beltHotStrength ?? 1, thickFull = config.crustMaxThickKm;
     const strength = c => type[c] === CrustType.CRATON ? shieldCost
         : 1 - (1 - hotS) * Math.max(type[c] === CrustType.ARC ? 1 : 0, Math.min(1, crust.thickKm[c] / thickFull));
-    const shieldShare = config.cratonStrainShare ?? 0, shieldCost = shieldShare > 0 ? config.cratonStrength : Infinity;
+    const shieldShare = config.cratonStrainShare ?? 0, shieldCost = shieldShare > 0 ? cratonStrengthRatio(config) : Infinity;
     const seaLimit = config.apronKm * 1.5 + edgeKm;
     const queue = [];                                   // Dijkstra would be exact; costs are ≥ 0 and few-valued, so a
     sources.forEach((c, i) => {                         // relaxing breadth-first pass is close enough for a record
@@ -124,7 +125,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
                 u[nb] = 0; src[nb] = src[c]; seaKm[nb] = sea; queue.push(nb);
                 continue;
             }
-            // (each cell's strength over half the hop: a craton cratonStrength times as hard to deform — half the hop onto it,
+            // (each cell's strength over half the hop: a craton cratonStrengthRatio times as hard to deform — half the hop onto it,
             // all of a hop within it; an old weak line carries the belt further)
             const hop = edge[k] * ((flags[nb] & (CrustFlag.SUTURE | CrustFlag.FAILED_RIFT | CrustFlag.RIFT_MARGIN)) ? config.weakCellCost : 1)
                 * (shieldCost === Infinity && (type[c] === CrustType.CRATON || type[nb] === CrustType.CRATON) ? Infinity : 0.5 * (strength(c) + strength(nb)));
@@ -147,7 +148,7 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         const rimCell = type[c] === CrustType.CRATON;
         if (rimCell && !(shieldShare > 0)) return 0;
         const workKm = workOf(src[c]) * (rimCell ? shieldShare : 1), cap = config.crustMaxThickKm, room = Math.max(0, cap - crust.thickKm[c]), share = rimCell ? 1 : strength(c);
-        return room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * config.cratonStrength : 1) / cap));
+        return room * (1 - Math.exp(-workKm * share * config.beltWorkShare * (1 - u[c] ** 2) * config.thickeningPerWorkKm / (rimCell ? shieldShare * shieldCost : 1) / cap));
     };
     // (belt.volCapKm3: the most crust this step's belt may add — a margin's arc magmatism, config.arcAdditionKm3PerKmMyr — the
     // rest of its relief being the margin's own crust shortened, which this raster does not take away: lane crust, 1c(ii)).

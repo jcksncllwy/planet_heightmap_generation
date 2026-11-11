@@ -1,5 +1,5 @@
 // Rifting (WBP Part Va): a continent breaks along a zig-zag line that goes AROUND cratons (a craton is
-// cratonStrength times as hard to break: cut only where every way round costs more — the Congo and São Francisco
+// as many times as hard to break as its column is strong (field/stress-step.js): cut only where every way round costs more — the Congo and São Francisco
 // cratons were split by the South Atlantic) and
 // REUSES old sutures and failed rifts. Rifts begin at a junction — a plume head, or simply the weakest
 // point deep in the interior — from which three arms run to the coast; the two cheapest become the

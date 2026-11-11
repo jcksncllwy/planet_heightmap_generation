@@ -14,6 +14,7 @@ import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, OrogenyType } from '../js/tectonics/model/crust.js';
 import { riftStressContext } from '../js/tectonics/field/rift-stress.js';
+import { cratonStrengthRatio } from '../js/tectonics/field/stress-step.js';
 
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const seeds = arg('--seeds', '831576').split(',').map(Number), len = Number(arg('--len', 600)), tag = arg('--tag', 'base');
@@ -66,7 +67,7 @@ for (const seed of seeds) {
                 const t = world.plates[o].crust.type[world.ownerCell[w]];
                 if (t !== CrustType.CONTINENT && t !== CrustType.CRATON) continue;
                 nl++;
-                const m = t === CrustType.CRATON ? world.config.cratonStrength : 1;
+                const m = t === CrustType.CRATON ? cratonStrengthRatio(world.config) : 1;   // (a craton's column, field/stress-step.js)
                 SWEEP.forEach((x, i) => { if (S.s1[k] > x * m) ten[i]++; else if (-S.s2[k] > world.config.plateYieldCompression * x * m) com[i]++; });
             }
             sweep = { ten: ten.map(v => +(v / Math.max(1, nl)).toFixed(4)), com: com.map(v => +(v / Math.max(1, nl)).toFixed(4)) };

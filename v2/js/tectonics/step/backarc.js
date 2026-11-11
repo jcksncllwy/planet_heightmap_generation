@@ -12,7 +12,7 @@
 // When: by chance (world.rngBackArc), per Myr, more readily on a long trench; a continental margin more
 // rarely than an arc at sea. The strip is everything of the plate within backArcWidthKm of that trench,
 // so its inner edge — the new rift — runs parallel to the trench (no ragged tails); where that edge runs through a
-// craton it opens cratonStrength times less readily along that share of it; a continental strip must hold backArcMinLandKm2 of land in one piece — a coherent
+// craton it opens cratonStrengthRatio times less readily (field/stress-step.js: its column's strength) along that share of it; a continental strip must hold backArcMinLandKm2 of land in one piece — a coherent
 // arc of islands, not a sliver (developer).
 //
 // The split itself is the 6a one in spirit: two plates, rifted margins between them, a push that drives
@@ -26,6 +26,7 @@ import { contactAt } from './contact.js';
 import { transferCells, bridgePieces } from '../ops/tidy-plates.js';
 import { largestPieceOf } from '../../core/mesh-bfs.js';
 import { clampSpeed } from './torque-balance.js';
+import { cratonStrengthRatio } from '../field/stress-step.js';
 
 /** @returns {number} back-arc basins opened or closed this step (either changes the world view) */
 export function openBackArcs(world, dt) {
@@ -65,8 +66,9 @@ export function openBackArcs(world, dt) {
         const strip = stripBehind(world, A, segment);
         if (!strip) continue;
         if (strip.continental && world.rngBackArc() >= config.backArcContinentalShare) continue;
-        // (a break line through a craton is cratonStrength times as hard to open, along that share of it)
-        if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (config.cratonStrength - 1) * strip.cratonShare)) continue;
+        // (a break line through a craton is as many times as hard to open as its column is strong — field/stress-step.js
+        // cratonStrengthRatio — along that share of it)
+        if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (cratonStrengthRatio(config) - 1) * strip.cratonShare)) continue;
         const fresh = splitStrip(world, A, strip, dir, rollbackCmYr(ages / cells.length, config));
         opened++;
         const splitCratons = cratonsSplitBy(A, fresh, numCells);
@@ -120,7 +122,7 @@ function pullArcsAfterTrenches(world) {
         if (lengthKm < config.backArcMinLengthKm) continue;
         const strip = stripBehind(world, A, segment);
         if (!strip) continue;
-        if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (config.cratonStrength - 1) * strip.cratonShare)) continue;
+        if (strip.cratonShare > 0 && world.rngBackArc() >= 1 / (1 + (cratonStrengthRatio(config) - 1) * strip.cratonShare)) continue;
         const slabAge = ages / cells.length, rate = Math.max(rollbackCmYr(slabAge, config), opening / cells.length);
         const fresh = splitStrip(world, A, strip, dir, rate);
         opened++;

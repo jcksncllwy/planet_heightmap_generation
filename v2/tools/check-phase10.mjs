@@ -16,6 +16,7 @@ import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { synthesizeTerrain, flexuralLengthKm } from '../js/terrain/synthesize.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide } from '../js/terrain/records.js';
+import { cratonStrengthRatio } from '../js/tectonics/field/stress-step.js';
 import { spreadKm } from '../js/core/min-heap.js';
 import { buildAnchor } from '../js/terrain/anchor.js';
 
@@ -70,10 +71,10 @@ const cr = run('cratons'), cfg = cr.world.config;
         for (const w of rim) deepest = Math.max(deepest, kmTo(w));
     }
     check('the collision\'s belt rides onto the shield\'s rim', most > 0 && deepest > 0, `up to ${most} craton cells carry a belt before the weld (${weldAt} Myr)`);
-    // (how deep, and how much a shield thickens, comes from its strength: each km of craton costs a belt cratonStrength km of
-    // its reach, and it thickens 1/cratonStrength as much. On Earth craton cores rarely deform, but the Laramide reached into
+    // (how deep, and how much a shield thickens, comes from its strength: each km of craton costs a belt as many km of its
+    // reach as its column is stronger — stress-step.js cratonStrengthRatio — and it thickens that much less. On Earth craton cores rarely deform, but the Laramide reached into
     // Wyoming and the North China craton was destroyed)
-    report('deepest a belt reaches into a craton before the weld', deepest, { unit: ' km', digits: 0, source: 'cratons resist deformation (Lenardic & Moresi 1999); the sub-Andean zone 50–100 km', detail: `cratonStrength ${cfg.cratonStrength}` });
+    report('deepest a belt reaches into a craton before the weld', deepest, { unit: ' km', digits: 0, source: 'cratons resist deformation (Lenardic & Moresi 1999); the sub-Andean zone 50–100 km', detail: `craton strength ×${cratonStrengthRatio(cfg).toFixed(2)}` });
     report('craton cells thickened by a belt (summed over frames)', thick, { digits: 0, source: 'craton cores rarely thicken' });
     const off = run('cratons', null, { cratonStrainShare: 0 }), log = w => w.events.map(e => `${e.time}|${e.kind}|${e.text}`).join('\n');
     check('…and it changes no event of the history: only its records', log(off) === log(cr), `${cr.events.length} events, the same with and without the rim belts`);
