@@ -251,7 +251,7 @@ function treeScratch(n, m) {
  * @param {boolean} [breach]  whether a hollow at the sea's surface opens (`open`): on the finest level only — a coarser level's
  *   ground is the finest's averaged, which shaves a narrow sill below the sea that the finest still holds above it
  * @param {Uint8Array|null} [histSea]  the seas the history left cut off (the first judge's `seaCells`, on the history's own
- *   surface): only a hollow whose lowest point is one of them opens — a hollow the erosion dug is not a sea the history held
+ *   surface): only a hollow most of whose ground below the sea lay in them opens — a hollow the erosion dug is not a sea the history held
  * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], open: Int32Array[], seaCells: Uint8Array}}
  *   sink: 1 on every cell of a closed hollow (its rivers end there); base: the level a river ending there is graded to
  *   (the ground, or a lake's level); water: each lake's level on the cells under it (NaN elsewhere) — a closed hollow's
@@ -337,6 +337,13 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         }
         return false;
     }
+    // (whether most of a hollow's ground below the sea lay in a sea the history left cut off: histSea, null = any)
+    function heldSea(cells, hist, sea) {
+        if (!hist) return true;
+        let below = 0, held = 0;
+        for (const c of cells) if (z[c] < sea) { below++; held += hist[c]; }
+        return 2 * held >= below;
+    }
     // (one hollow: its lakes by the tree — hollowLakes — closed where its whole water balance cannot fill it to its rim)
     function closeHollow(L, id) {
         let low = L.cells[0];
@@ -349,11 +356,13 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         // Gibraltar, 5.33 Ma, in months to two years (Garcia-Castellanos et al. 2009). Lane reflood, 2026-11-11: the caller
         // (finish.js) makes it ocean from then on. Its water passes on, all of it, to the sea)
         if (cutOff) for (const c of L.cells) if (z[c] < seaKm) seaCells[c] = 1;
-        // (and only a sea the history held: a hollow whose lowest point lay in one of the history's cut-off seas (histSea).
+        // (and only a sea the history held: a hollow most of whose ground below the sea lay in the history's cut-off seas
+        // (histSea; by share, not by its lowest point — the carve and the erosion move that point, at 2.5M 243751@730's onto
+        // a cell the history's sea did not hold).
         // The erosion also digs hollows below the sea on low coastal plains — at 2.5M some 300 a finish, 2.2–2.7 Mkm², floors
         // 0.6–0.9 km down, very likely its known overcut (erosionrate: 2–3× Earth's lowering) — and joining those to the sea
         // would turn that defect into coastline; they keep their fill, as before. gladsheim's ruling, 2026-11-11)
-        if (breach && cutOff && (!histSea || histSea[low]) && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm))) {
+        if (breach && cutOff && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm)) && heldSea(L.cells, histSea, seaKm)) {
             let inflow = 0;
             for (const c of L.cells) inflow += q[c];
             seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: inflow * 1e-6, open: true });
