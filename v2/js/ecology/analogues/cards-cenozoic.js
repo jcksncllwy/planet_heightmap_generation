@@ -313,9 +313,9 @@ export default [
         },
         note: 'Humid tropical forest and swampy river plains extended inland from a low coastal margin.' },
 
-    { id: 'ellesmere-eocene', place: 'Eureka Sound beds, Ellesmere Island', at: [79.6, -83.5], ageMa: [53.0, 50.0],
+    { id: 'ellesmere-eocene', place: 'Margaret Formation (Eureka Sound Group), Ellesmere Island', at: [78.6, -81.95], ageMa: [53.0, 50.0],
         realm: 'land', habitats: ['temperate-rainforest'], azonal: ['wetland', 'floodplain'], koppen: ['Cfb'],
-        isolation: 'connected', area: 'continent', pbdb: { radiusDeg: 3 },
+        isolation: 'connected', area: 'continent', pbdb: { formation: 'Margaret' },
         roles: {
             megaherbivore: ['Coryphodon', 'a heavy short-legged mammal browsing wet forest vegetation', 'l'],
             browser: ['Gastornis', 'a large flightless bird with a deep bill for plant foods', 'l'],
