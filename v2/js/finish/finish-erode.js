@@ -97,14 +97,23 @@ export function erodeLandscape(o, P) {
     // (the last step's load each cell passes on, km³/Myr, and to which cell: the rivers' supply for bayheadFill)
     const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);
     const A = new Float32Array(n), e = new Float32Array(n), dropped = new Float32Array(n), gross = new Float32Array(n), Qs = new Float32Array(n), Qf = column ? new Float32Array(n) : null, cap = new Float32Array(n), lid = new Int32Array(n), zNew = new Float32Array(n), heap = new MinHeap(1 << 16);
-    // (the sea's edge, once: the cells beside the outlets, and the outlet each is beside)
+    // (the sea's edge: the cells beside the outlets, and the outlet each is beside — again when a judge has joined a cut-off
+    // sea to the ocean, its rim breached: closedBasins' open, joinOpenSeas)
     const coast = [], coastFrom = [];
-    for (let c = 0; c < n; c++) {
-        if (ocean[c]) continue;
-        for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) if (ocean[adjList[j]]) { coast.push(c); coastFrom.push(adjList[j]); break; }
-    }
+    const coastline = () => {
+        coast.length = 0; coastFrom.length = 0;
+        for (let c = 0; c < n; c++) {
+            if (ocean[c]) continue;
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) if (ocean[adjList[j]]) { coast.push(c); coastFrom.push(adjList[j]); break; }
+        }
+    };
+    coastline();
     let sink = null, base = null, sinkAt = null, basins = [], count = 0;
-    const closed = () => ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z), z, n, sinkAt));
+    const closed = () => {
+        const B = o.closed(z);
+        if (B.open?.length) coastline();
+        ({ sink, base, sinkAt, basins } = closedOutlets(B, z, n, sinkAt));
+    };
     const route = () => {
         rank.fill(-1); parent.fill(-1);
         for (let c = 0; c < n; c++) if (ocean[c] || sink[c]) rank[c] = -2;

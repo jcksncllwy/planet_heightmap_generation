@@ -247,12 +247,13 @@ function treeScratch(n, m) {
  * @param {Uint8Array} ocean      the world ocean (finish.js oceanMask): the flood starts there, and only there
  * @param {{fill: Float32Array, parent: Int32Array, order: Int32Array, count: number}|null} [flood]  that flood, already done (the
  *   GPU's, gpu/erode-gpu.js): each cell's spill level, the neighbour it drains to, and the land with each cell after its parent
- * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[]}}
+ * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], open: Int32Array[]}}
  *   sink: 1 on every cell of a closed hollow (its rivers end there); base: the level a river ending there is graded to
  *   (the ground, or a lake's level); water: each lake's level on the cells under it (NaN elsewhere) — a closed hollow's
  *   lakes, terminal and full; tectonic: the tectonic surface's hollows, closed hollows included; seas: each sea cut off from the ocean (a basin with ground below sea level, at least basinMinKm2): its area (km²),
  *   floor and sill (km), its water's level (km) and area (km²), inflow and what it would evaporate full (km³/yr), and
- *   whether it spills (full) or keeps a lake (wet) or a playa
+ *   whether it spills (full) or keeps a lake (wet) or a playa — or `open`: its sill below the sea's surface, the sea's; open:
+ *   those seas' cells, one array each (joinOpenSeas)
  */
 export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0) {
     const { adjOffset, adjList, numCells: n } = mesh;
@@ -303,7 +304,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
     // feeds the hollow below it (km² · mm / year). What open water loses: its potential evaporation (F.lakeEvapShare of
     // the land's), less the sky water its ground keeps (rain less its own runoff: the runoff is in q already) ──
     const evap = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c])) * cellKm2;
-    const q = new Float64Array(n), sink = new Uint8Array(n), base = new Float32Array(n), water = new Float32Array(n).fill(NaN), seas = [];
+    const q = new Float64Array(n), sink = new Uint8Array(n), base = new Float32Array(n), water = new Float32Array(n).fill(NaN), seas = [], open = [];
     const minCells = F.basinMinKm2 / cellKm2;
     let basins = 0, levelled = 0;
     for (let i = count - 1; i >= 0; i--) {
@@ -324,6 +325,19 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         let low = L.cells[0];
         for (const c of L.cells) if (z[c] < z[low]) low = c;
         const floor = z[low], cutOff = floor < seaKm, area = L.cells.length * cellKm2;
+        // (a hollow whose spill level is the sea's own surface — its sill at or below it, the flood's level clamped there —
+        // is no lake: the sea pours in over the sill and fills it, whatever its rivers bring. Not before the erosion, where the
+        // world ocean is the flood at its level and no such hollow is left out of it; during it, when the rivers have cut a
+        // cut-off sea's rim down below the sea: the breach — the Zanclean flood refilling the Messinian Mediterranean through
+        // Gibraltar, 5.33 Ma, in months to two years (Garcia-Castellanos et al. 2009). Lane reflood, 2026-11-11: the caller
+        // (finish.js) makes it ocean from then on. Its water passes on, all of it, to the sea)
+        if (cutOff && !(L.level > Math.fround(seaKm))) {
+            let inflow = 0;
+            for (const c of L.cells) inflow += q[c];
+            seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: inflow * 1e-6, open: true });
+            open.push(L.cells);
+            return inflow;
+        }
         const S = hollowLakes(mesh, L.cells, z, c => q[c], evap, minCells, L.level);
         L.inflow = S.inflow;
         const shows = W => W.cells.length >= 2 && W.cells.length * cellKm2 >= F.lakeMinKm2;
@@ -349,5 +363,17 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         basins++;
         return 0;
     }
-    return { sink, base, water, basins, levelled, tectonic, seas, lakes };
+    return { sink, base, water, basins, levelled, tectonic, seas, lakes, open };
+}
+
+/**
+ * The seas a judge found open to the ocean below its surface (closedBasins' `open`: each hollow whose spill level is the sea's)
+ * joined to it — `ocean` set in place on their cells, so the erosion takes them as the sea from then on: its rivers end at its
+ * surface and its floor is no longer laid on or cut. Lane reflood, 2026-11-11.
+ * @returns {number} the cells joined
+ */
+export function joinOpenSeas(B, ocean) {
+    let joined = 0;
+    for (const cells of B.open ?? []) for (const c of cells) if (!ocean[c]) { ocean[c] = 1; joined++; }
+    return joined;
 }
