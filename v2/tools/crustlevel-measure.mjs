@@ -80,7 +80,9 @@ function endBooks() {
 const fmt = r => `${String(r.t).padStart(5)} L ${String(r.L).padStart(7)} cont ${r.cont} arc ${r.arc} land ${r.land} low<400 ${r.landLow400}% | cont dry ${r.contDry} shelf ${r.contShelf} margin ${r.contMargin} deep ${r.contDeep} | shelfAll ${r.shelfAll} thinned ${r.contThinned} age ${r.floorAge}`;
 for (const r of rows) console.log(fmt(r));
 for (const l of ledger) console.log('LEDGER', l.t, JSON.stringify(l.stages), 'underthrust', l.underthrust);
-if (OUT) fs.writeFileSync(OUT, [...rows.map(r => JSON.stringify({ seed: SEED, cont: CONT, sets, ...r })), JSON.stringify({ seed: SEED, cont: CONT, sets, ledger, secs, breakups: world.riftBreakupLog ?? [], ...endBooks() })].join('\n') + '\n');
+const jsonl = [...rows.map(r => JSON.stringify({ seed: SEED, cont: CONT, sets, ...r })), JSON.stringify({ seed: SEED, cont: CONT, sets, ledger, secs, breakups: world.riftBreakupLog ?? [], ...endBooks() })];
+if (OUT) fs.writeFileSync(OUT, jsonl.join('\n') + '\n');
+for (const l of jsonl) console.log('CL_JSON ' + l);   // (a remote run's stdout is what comes back: grep '^CL_JSON ' | cut -c9-)
 const bk = world.riftBreakupLog ?? [], med = (a) => { const v = a.slice().sort((x, y) => x - y); return v.length ? v[v.length >> 1] : NaN; };
 console.log(`BREAKUPS ${bk.length}: line h0 p50 ${med(bk.map(b => b[0]))} km, at breakup ${med(bk.map(b => b[1]))} km, opening p50 ${med(bk.map(b => b[2]))} km`);
 const c0 = rows.find(r => r.t === 0)?.cont, cEnd = rows.at(-1)?.cont;
