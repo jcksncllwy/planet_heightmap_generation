@@ -81,7 +81,9 @@ export function channelViscosity(config) {
     return FIT_ETA * Math.pow(Math.max(h, 1e-3) / FIT_CHANNEL_KM, 3);
 }
 
-const scratch = { heat: new Map(), n: 0 };
+// the mantle heat each plate cell last saw, per world: module-level state keyed by plate id leaked one history's heat into the
+// next in the same process (plate ids repeat), so the same seed did not replay (crustmass S5 gate, 2026-11-11)
+const heatByWorld = new WeakMap();
 
 /**
  * Lower-crustal flow over every plate for dt (Myr): the thickness (rootKm) of continental and craton cells moves down the
@@ -95,8 +97,8 @@ export function flowCrust(world, dt, H) {
     const coef = dt * (2 / 3) / (edgeKm * edgeKm);      // (hexagonal-lattice Laplacian, as the heights' smoothing)
     const lid = H.riftLithKm / H.cratonLithKm;
     // the mantle's heat under each plate cell: world.mantleHeat at the world cell it shows at (a hidden cell keeps its last)
-    if (scratch.n !== numCells) { scratch.heat.clear(); scratch.n = numCells; }
-    const heatOf = p => { let a = scratch.heat.get(p.id); if (!a) scratch.heat.set(p.id, a = new Float32Array(numCells)); return a; };
+    let heatMap = heatByWorld.get(world); if (!heatMap) heatByWorld.set(world, heatMap = new Map());
+    const heatOf = p => { let a = heatMap.get(p.id); if (!a) heatMap.set(p.id, a = new Float32Array(numCells)); return a; };
     if (world.mantleHeat) for (let w = 0; w < numCells; w++) { const p = plates[world.owner[w]]; if (p) heatOf(p)[world.ownerCell[w]] = world.mantleHeat[w]; }
     let moved = 0, iters = 0;
     for (const plate of plates) {
