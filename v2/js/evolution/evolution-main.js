@@ -31,6 +31,7 @@ import { exportTypes, exportWidths, exportFileName, exportMap, exportAll, EXPORT
 import { downloadBlob } from '../view/png.js';
 import { SMALL_DEVICE } from '../core/device.js';
 import { watchView } from './history-view.js';
+import { finishKey } from '../app/finish-key.js';
 
 setDelaunator(Delaunator);
 
@@ -56,7 +57,7 @@ const $ = id => document.getElementById(id);
 const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), water: $('sWater'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
     seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
     timeLabel: $('timeLabel'), rate: $('rate'), extend: $('extendBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
-    railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), quality: $('quality'), world: $('worldSection'), tmp: $('sTmp'), prc: $('sPrc') };
+    railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), marks: $('detailMarks'), quality: $('quality'), world: $('worldSection'), tmp: $('sTmp'), prc: $('sPrc') };
 
 // ── settings ──
 ui.ending.innerHTML = ENDINGS.map(e => `<option value="${e.id}">${e.label}</option>`).join('');
@@ -144,9 +145,9 @@ ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
 const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&water=${ui.water.value}&crust=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
     (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : '') +
-    (detailedOf(B) ? `&detail=${detailedOf(B)[0].time}&dcells=${detailedOf(B)[1].cells}` : ''));
+    (linkedDetailOf(B) ? `&detail=${linkedDetailOf(B)[0].time}&dcells=${linkedDetailOf(B)[1].cells}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
-// (detail: the moment kept in detail when the link was made, at dcells — on a reload, brought back from the finish cache
+// (detail: the detailed moment on screen when the link was made — else the one viewed last — at dcells; on a reload, brought back from the finish cache
 // as soon as the history reaches it, never finished again unasked: the first build only)
 let linkedDetail = url.get('detail') != null && Number.isFinite(Number(url.get('detail'))) ? { t: Number(url.get('detail')), cells: Number(url.get('dcells')) || null } : null;
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
@@ -200,8 +201,15 @@ const loadCiv = () => (civLoading ??= Promise.all([import('./people-view.js'), i
 const peopleOption = $('mobileViewSwitch').querySelector('option[value="people"]');     // (taken out of the phone's list while People is off)
 // (the People layer's own timeline: the frame shown — years BP every 500 years — and its playback)
 const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, what the land offers before anyone (PV.GROUND_SHOWS), a food (people-view.js FOOD_SHOWS) or a craft's days to travel (PV.TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
-// (one detailed moment per history — its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a desktop,
-// ~320 MB at 10M; the one before is kept until the next is done, so a cancel loses nothing: at most two at once)
+// (the detailed moments kept per history — each its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a
+// desktop, ~320 MB at 10M — so stepping back onto one shows it at once (Jackson, 2026-11-10: "step between a handful of
+// detailed moments"): up to KEEP_DETAILED, and on a desktop no more than DETAILED_BYTES between them — four at 2.5M, two
+// at 10M; one on a small device, whose tab is closed at well under 2 GB. The one viewed longest ago goes once a new one is
+// done — never the moment on screen, and a finish under way lets nothing go, so a cancel loses nothing. Letting one go is
+// dropping its arrays: the finishing worker holds nothing per moment, only the detail's mesh (finisher.finish keep))
+const KEEP_DETAILED = SMALL_DEVICE ? 1 : 4, DETAILED_BYTES = SMALL_DEVICE ? Infinity : 800e6;
+/** The finished picture's width at a detail (its key's width too: finish-key.js). */
+const finishWidth = cells => (IS_TOUCH ? 2048 : cells >= 5e6 ? 8192 : 4096);
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
 function bytesOf(x, seen = new Set(), depth = 0) {
     if (!x || typeof x !== 'object' || depth > 4) return 0;
@@ -254,7 +262,8 @@ async function build() {
     const b = B = { heights, controller: new AbortController(), player: null, frames: [], simMesh: null, simCells, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
         climates: new Map(), climateJob: null, problem: null,         // (climates: frame → {tMesh, data}, while this history is open)
         run: null, going: false, wantGo: false, moreTo: linkedMore,        // (keep going: the history's run, kept to run on)
-        finishes: new Map(), finishJob: null, finishNote: null,           // (finishes: frame → {cells, raster, secs} — the one detailed moment)
+        finishes: new Map(), finishJob: null, finishNote: null,           // (finishes: frame → {cells, raster, secs, seen} — the detailed moments kept)
+        known: null, linked: null,                                      // (known: the moments the finish cache holds at the page's settings — knownDetail)
         restore: linkedDetail };                                        // (a link's detailed moment, to bring back from the finish cache)
     linkedMore = 0; linkedDetail = null;
     saveUrl(); labels();
@@ -449,6 +458,15 @@ function rail() {
     const max = Number(ui.time.max) || 1, built = B?.frames.length ? B.frames.at(-1).time : 0, shown = painted ? painted.time : Number(ui.time.value);
     ui.railBuilt.style.width = `${(100 * Math.min(1, built / max)).toFixed(2)}%`;
     ui.railShown.style.width = `${(100 * Math.min(1, shown / max)).toFixed(2)}%`;
+    // (the detailed moments at the page's settings: kept — shown at once — or held by the finish cache — back in seconds)
+    const marks = new Map(), K = B?.known?.sig === (B?.cache ? detailSig(B) : null) ? B.known : null;
+    for (const t of K?.times ?? []) marks.set(t, 'cached');
+    for (const [f, fin] of B?.finishes ?? []) if (detailedNow(fin)) marks.set(f.time, 'kept');
+    const key = `${max}|${[...marks].join(',')}`;
+    if (ui.marks.dataset.key !== key) {
+        ui.marks.dataset.key = key;
+        ui.marks.innerHTML = [...marks].map(([t, kind]) => `<i class="${kind}" style="left:${(100 * Math.min(1, t / max)).toFixed(2)}%"></i>`).join('');
+    }
 }
 /** Latest time the history has reached (a scrub may not go past it while it is still building). */
 const builtTo = () => (B?.frames.length ? B.frames.at(-1).time : 0);
@@ -624,17 +642,18 @@ async function restoreDetail(b, frame, ready) {
     setPlaying(false); playTime = frame.time; ui.time.value = playTime; dirty = true; rail();
     await finishMoment(null, { frame, cachedOnly: true });
 }
-async function finishMoment(again = null, { frame: asked = null, cachedOnly = false } = {}) {
+// (auto: a moment stepped onto, looked up in the finish cache — knownDetail, lookUpDetail — and shown as the view stands)
+async function finishMoment(again = null, { frame: asked = null, cachedOnly = false, auto = false } = {}) {
     const b = B, frame = again ?? asked ?? painted;
     if (!b?.simMesh || !frame) return;
     // (the button cancels a finish under way — but not in its first moments: it turns into Cancel where Add detail was,
     // so a double click would otherwise start a finish and stop it at once)
     if (b.finishJob) { if (performance.now() - b.finishJob.startedAt >= CANCEL_GRACE_MS) finisher.cancel(); return; }
     setPlaying(false);
-    const cells = Number($('finishCells').value), width = IS_TOUCH ? 2048 : cells >= 5e6 ? 8192 : 4096;
+    const cells = Number($('finishCells').value), width = finishWidth(cells);
     const started = performance.now(), done = new Map(FINISH_STAGES);
     b.finishNote = null; b.finishOk = false;
-    b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now() };
+    b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), lookup: cachedOnly };
     updateClimateUi();
     const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
     slim.plates = frame.plates.map(p => p && { quat: p.quat });
@@ -655,15 +674,16 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
             { onStage, onProgress, keep: !SMALL_DEVICE && cells >= 2.5e6 });
         if (B !== b) return;
         const secs = (performance.now() - started) / 1000;
-        // (one detailed moment: this one replaces the one before, now that it is done)
-        b.finishes.clear();
-        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key, cacheKey: res.cacheKey ?? null, cached: !!res.cached });
+        // (kept with the others; now that it is done, the one viewed longest ago goes if there are too many — never this
+        // one nor the one on screen)
+        b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key, cacheKey: res.cacheKey ?? null, cached: !!res.cached, seen: performance.now() });
+        letGoDetailed(b, [frame, painted]);
+        if (res.cacheKey && b.known?.sig === detailSig(b, cells, key)) b.known.times?.add(frame.time);
         b.finishOk = true;
-        b.finishNote = res.cached ? `Detail brought back from the finish cache in ${secs.toFixed(1)} s` : `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moment kept in detail before was let go to make room)' : '');
+        b.finishNote = res.cached ? `Detail brought back from the finish cache in ${secs.toFixed(1)} s` : `Detail added in ${secs.toFixed(0)} s` + (again ? ' (after running short of memory: the moments kept in detail before were let go to make room)' : '');
         console.info(`[evolution] ${res.cached ? 'finish read from the finish cache' : 'finish'} of ${frame.time.toFixed(0)} Myr at ${cells} cells: ${secs.toFixed(1)} s, ${(finishBytes(b.finishes.get(frame)) / 2 ** 20).toFixed(0)} MB kept, erosion on ${res.stats.erodeOn ?? 'off'}${res.cacheKey ? `, finish-cache key ${res.cacheKey}` : ''}`, Object.fromEntries(Object.entries(res.ms).map(([k, v]) => [k, +(v / 1000).toFixed(1)])), res.stats);
         saveUrl();
-        view.finished = true;
-        if (view.layer === 'plates') setLayer('terrain');
+        if (!auto) { view.finished = true; if (view.layer === 'plates') setLayer('terrain'); }
     } catch (err) {
         // (out of memory — every worker of a page shares one browser process: the finishing worker is let go, its memory
         // with it, and the finer details are named as the likely cause)
@@ -673,18 +693,90 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
         // one's memory gone with it)
         if (oom && !again && B === b) {
             b.finishes.clear(); b.finishJob = null; dirty = true;
-            console.warn('[evolution] out of memory finishing: the detailed moment kept and the old worker let go, trying again');
+            console.warn('[evolution] out of memory finishing: the detailed moments kept and the old worker let go, trying again');
             setTimeout(() => finishMoment(frame), 300);
             return;
         }
         if (B === b) b.finishNote = err.miss ? null : err.name === 'AbortError' ? 'Adding detail cancelled'
             : oom ? 'Not enough memory for this detail — try a coarser one, or close other tabs (other World Orogen tabs can share this one’s memory)' : `Could not add detail: ${String(err.message).split('\n')[0]}`;
-        if (err.miss) console.info(`[evolution] the detailed moment of the link (${frame.time.toFixed(0)} Myr) is not in the finish cache: Add detail makes it`);
+        if (err.miss) {
+            b.known?.times?.delete(frame.time);
+            console.info(`[evolution] ${auto ? 'the moment stepped onto' : 'the detailed moment of the link'} (${frame.time.toFixed(0)} Myr) is not in the finish cache: Add detail makes it`);
+        }
         else if (err.name !== 'AbortError') console.error(err);
     } finally {
         b.player?.wake();
         if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; updateClimateUi(); }
     }
+}
+
+/** Let go of the detailed moments over KEEP_DETAILED and DETAILED_BYTES, the one viewed longest ago first — never those in `keep`. */
+function letGoDetailed(b, keep) {
+    const order = [...b.finishes].sort((x, y) => x[1].seen - y[1].seen);
+    let n = order.length, bytes = order.reduce((v, [, f]) => v + finishBytes(f), 0);
+    for (const [frame, fin] of order) {
+        if (n <= KEEP_DETAILED && bytes <= DETAILED_BYTES) break;
+        if (keep.includes(frame)) continue;
+        b.finishes.delete(frame); n--; bytes -= finishBytes(fin);
+        console.info(`[evolution] the detailed ${frame.time.toFixed(0)} Myr let go (viewed longest ago): ${n} kept, ${(bytes / 2 ** 20).toFixed(0)} MB`);
+    }
+}
+/** The detailed moment that adding detail to `frame` would let go once done (letGoDetailed), or null — for the card. */
+function wouldLetGo(b, frame) {
+    const order = [...b.finishes].filter(([f]) => f !== frame).sort((x, y) => x[1].seen - y[1].seen);
+    // (the new one's weight: as the kept ones at its detail weigh, else as the heaviest kept)
+    const cells = Number($('finishCells').value), like = order.filter(([, f]) => f.cells === cells);
+    const est = (like.length ? like : order).reduce((m, [, f]) => Math.max(m, finishBytes(f)), 0);
+    let n = order.length + 1, bytes = order.reduce((v, [, f]) => v + finishBytes(f), 0) + est;
+    for (const [f, fin] of order) {
+        if (n <= KEEP_DETAILED && bytes <= DETAILED_BYTES) return null;
+        if (f !== painted) return f;
+        n--; bytes -= finishBytes(fin);
+    }
+    return null;
+}
+
+// ── the detailed moments the finish cache holds, at the page's settings: marked on the timeline (rail), and brought back
+// when the timeline settles on one (lookUpDetail). The key's own parts come from the finishing worker once (keyBase:
+// the finish code it loaded, its maths, its erosion engine); the page keys every moment of the history with them
+// (app/finish-key.js) and asks the dev server which are whole (/api/finish/has) — every few seconds at most, again
+// when the settings change or the history grows ──
+const KNOWN_EVERY_MS = 3000;
+let keyBase = null;                     // (a promise of {code, math, erosion}, once per page)
+/** The settings a moment's finish-cache key depends on beyond its time (the engine's parts are the page's own). */
+const detailSig = (b, cells = Number($('finishCells').value), climate = climateKey()) => `${b.cache?.key}|${cells}|${climate}|${view.civ ? 1 : 0}`;
+/** Is this kept moment detailed at the page's settings now (the key the timeline marks)? */
+const detailedNow = fin => fin.cells === Number($('finishCells').value) && fin.climateKey === climateKey() && !!fin.civ === !!view.civ;
+async function knownDetail(b) {
+    const sig = detailSig(b), n = b.frames.length;
+    if (!b.cache || b.knownBusy || (b.known?.sig === sig && b.known.n === n) || (b.known?.failed && b.known.sig === sig)) return;
+    b.knownBusy = true; b.knownAt = performance.now();
+    try {
+        const base = await (keyBase ??= finisher.keyBase());
+        if (!base.code) throw new Error('no finish code: the page was not served by the dev server');
+        const cells = Number($('finishCells').value), spec = { history: b.cache.key, code: base.code, cells, width: finishWidth(cells), climate: climateOptions(), civ: view.civ, host: 'page', math: base.math, erosion: base.erosion };
+        const byKey = new Map(b.frames.slice(0, n).map(f => [finishKey({ ...spec, timeMyr: f.time }), f.time]));
+        const r = await fetch('/api/finish/has', { method: 'POST', body: JSON.stringify({ keys: [...byKey.keys()] }) });
+        if (!r.ok) throw new Error(`the dev server answered ${r.status}`);
+        const times = new Set((await r.json()).has.map(k => byKey.get(k)));
+        if (detailSig(b) === sig) b.known = { sig, n, times };
+    } catch (err) {
+        // (no list: a moment stepped onto is still looked up, once each — lookUpDetail)
+        if (!b.known?.failed) console.info(`[evolution] which moments the finish cache holds is not known (${err.message}): each is looked up when stepped onto`);
+        b.known = { sig, n, failed: true };
+        if (err.name === 'AbortError') keyBase = null;            // (a cancel took the worker: ask again)
+    } finally { b.knownBusy = false; rail(); }
+}
+/** The moment the timeline settled on, brought back from the finish cache when it holds it at the page's settings (never
+ *  finished unasked: a miss leaves the preview, with Add detail to press). Once per moment and settings. */
+function lookUpDetail(b, frame) {
+    if (b.finishes.has(frame) || b.finishJob || !b.cache || b.restore) return;
+    const sig = detailSig(b), K = b.known?.sig === sig ? b.known : null;
+    if (!K || (K.times ? !K.times.has(frame.time) : !K.failed)) return;     // (not held — or not known yet)
+    const tried = `${sig}|${frame.time}`;
+    if ((b.looked ??= new Set()).has(tried)) return;
+    b.looked.add(tried);
+    finishMoment(null, { frame, cachedOnly: true, auto: true });
 }
 
 // ── the People layer: the detailed moment's people, worked out once, when the layer is first shown on it ──
@@ -709,24 +801,29 @@ const peopleFrame = P => Math.max(0, Math.min(P.bp.length - 1, Math.round(people
 
 // ── the context card (plans/V2_EVOLUTION_UI_PLAN.md; developer, 2026-10-13: the page was "too sparse and confusing. It
 // isn't intuitive what a user should be doing"): one card that says what is on screen and the one thing to do next —
-// Add detail, Cancel, Export — its button mirrored on the timeline, beside the moment chosen. One moment of a history is
-// kept in detail; the timeline's moments are previews — the card says when adding detail replaces the one kept (the
-// button says what it does, not what it costs: developer, "the 'replace' wording on the timeline is a bit confusing") ──
+// Add detail, Cancel, Export — its button mirrored on the timeline, beside the moment chosen. A handful of a history's
+// moments are kept in detail (KEEP_DETAILED), marked on the timeline; the rest are previews — the card lists the detailed
+// ones and says when adding detail lets one go (the button says what it does, not what it costs: developer, "the
+// 'replace' wording on the timeline is a bit confusing") ──
 const cellsWords = n => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1e3}K`);
-/** The history's one detailed moment, as [frame, finished], or null. */
+/** The detailed moment the link names, as [frame, finished], or null: the one on screen, else the one viewed last. */
 // (a declaration, hoisted: saveUrl reads it)
-function detailedOf(b) { return b?.finishes.size ? b.finishes.entries().next().value : null; }
+function linkedDetailOf(b) {
+    if (!b?.finishes.size) return null;
+    const on = painted && b.finishes.get(painted);
+    return on ? [painted, on] : [...b.finishes].reduce((a, e) => (e[1].seen > a[1].seen ? e : a));
+}
 const showIf = (el, on) => { el.hidden = !on; return on; };
 /** The card, the timeline's button and badge, the Extend history button, the sheet's line and the Satellite tab's lock. */
 function updateCard() {
-    const b = B, frame = painted, job = b?.finishJob, det = detailedOf(b), detFrame = det?.[0], fin = det?.[1];
-    const isDet = !!frame && frame === detFrame, cells = Number($('finishCells').value);
-    const t = frame ? frame.time.toFixed(0) : '', dt = detFrame?.time.toFixed(0), pct = job ? (100 * Math.min(1, job.share)).toFixed(0) : 0;
+    const b = B, frame = painted, job = b?.finishJob, fin = frame && b?.finishes.get(frame);
+    const isDet = !!fin, cells = Number($('finishCells').value), goes = b && frame && !isDet ? wouldLetGo(b, frame) : null;
+    const t = frame ? frame.time.toFixed(0) : '', dt = goes?.time.toFixed(0), pct = job ? (100 * Math.min(1, job.share)).toFixed(0) : 0;
     // the one thing to do next: the card's button and the timeline's
     let main = 'Add detail', short = main, title = 'Sculpt the moment shown again, in detail: its rivers, lakes and glaciers, its own climate and the Satellite view (seconds to a minute)';
-    if (job) { main = short = `Cancel · ${pct}%`; title = `Adding detail to ${job.frame.time.toFixed(0)} Myr (${job.stage}) — click to cancel`; }
+    if (job) { main = short = `Cancel · ${pct}%`; title = job.lookup ? `Bringing back the detail of ${job.frame.time.toFixed(0)} Myr from the finish cache — click to cancel` : `Adding detail to ${job.frame.time.toFixed(0)} Myr (${job.stage}) — click to cancel`; }
     else if (isDet) { main = short = 'Export'; title = 'Save this detailed moment as map files: heightmaps (the sea floor too), a land mask and the colour map'; }
-    else if (detFrame) title = `Add detail to ${t} Myr — it replaces the detailed ${dt} Myr once it is done (one moment is kept in detail)`;
+    else if (goes) title = `Add detail to ${t} Myr — the detailed ${dt} Myr (viewed longest ago) is let go once it is done (${KEEP_DETAILED > 1 ? `up to ${KEEP_DETAILED}` : 'one'} kept in detail)`;
     for (const [btn, label] of [[$('cardAction'), main], [$('timelineAction'), short]]) {
         btn.disabled = !frame || !b?.simMesh;
         btn.textContent = label; btn.title = title;
@@ -742,7 +839,7 @@ function updateCard() {
     $('cardTitle').textContent = frame ? `${t} Myr` : 'Starting…';
     const computing = !!b?.live && !b.going;
     $('cardText').textContent = !frame ? 'A new world is starting…'
-        : job ? `Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`
+        : job ? (job.lookup ? `Bringing back the detail of ${job.frame.time.toFixed(0)} Myr from the finish cache…` : `Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`)
         : isDet ? 'This moment, sculpted in detail. Look around — Satellite and Climate show it at its detail — then export it as map files.'
         : playing ? (computing ? 'Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail.' : 'Pause on a moment you like, then add detail.')
         : 'This is a preview. Add detail sculpts it again, finely: rivers and lakes, glaciers, its own climate and the Satellite view — ready to export.';
@@ -750,9 +847,11 @@ function updateCard() {
     showIf($('waterGroup'), isDet && !job);
     const again = $('cardAgain'), stale = isDet && fin.climateKey !== climateKey();
     if (showIf(again, isDet && !job && (fin.cells !== cells || stale))) again.textContent = stale ? 'Add detail again with the new climate' : `Add detail again at ${cellsWords(cells)}`;
-    if (showIf($('cardDetailed'), !!detFrame && !isDet)) {
-        $('cardDetailed').innerHTML = (job ? `Replaces the detailed ${dt} Myr once it is done.` : `Replaces the detailed ${dt} Myr — one moment is kept in detail.`) +
-            ` <a href="#" data-t="${detFrame.time}">Go to ${dt} Myr</a>`;
+    // (the moments kept in detail, to step back to — and the one adding detail here would let go)
+    const kept = b && !isDet ? [...b.finishes.keys()].sort((x, y) => x.time - y.time) : [];
+    if (showIf($('cardDetailed'), kept.length > 0)) {
+        $('cardDetailed').innerHTML = 'Detailed: ' + kept.map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ') +
+            (goes && !job ? `. Adding detail here lets ${dt} Myr go once it is done.` : '');
     }
     const note = b?.problem ? b.problem
         : stale && !job ? 'Detailed with the Temperature and Precipitation as they were — its rivers, ice and Satellite view too.'
@@ -781,6 +880,7 @@ function updateCard() {
     legend.hidden = !(view.byRegime && view.water && view.layer === 'terrain' && isDet);
     if (!legend.childElementCount) legend.innerHTML = REGIME_STYLE.map(s => `<span><i style="background:${s.rgb}"></i>${s.name}</span>`).join('');
     $('legendCard').hidden = !$('climateLegend').innerHTML.trim() && legend.hidden;
+    rail();                                                     // (the timeline's marks: the settings may have changed)
 }
 /** The card's and the timeline's button: Cancel while adding detail; Export on the detailed moment; else Add detail. */
 function mainAction() {
@@ -1009,6 +1109,14 @@ function tick(now) {
         if (B.player.isReady(frame)) {
             if (frame !== painted || dirty || sharp !== paintedSharp) { paint(frame, sharpTable, sharp); dirty = false; }
             balanceClimate(frame);
+            // (the detailed moments: the one on screen marked as viewed now; once settled, one the finish cache holds
+            // brought back; the link naming the one on screen; the cache's list kept up to date)
+            const fin = B.finishes.get(frame);
+            if (fin) fin.seen = now;
+            else if (settled && painted === frame) lookUpDetail(B, frame);
+            const linked = linkedDetailOf(B)?.[0] ?? null;
+            if (linked !== B.linked) { B.linked = linked; saveUrl(); }
+            if (B.cache && now - (B.knownAt ?? -Infinity) > KNOWN_EVERY_MS) knownDetail(B);
         }
         else if (!preparing && !(B.drawFailed?.frame === frame && now < B.drawFailed.retryAt)) {
             const b = B;

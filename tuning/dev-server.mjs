@@ -18,6 +18,8 @@
  *   POST /api/finish/begin?key=…           {spec, …}: a finished moment is coming (meta.json, state 'uploading')
  *   POST /api/finish/part?key=…&part=page|cells&raw=N   a part, deflated (zlib) by the worker: checked and kept
  *   POST /api/finish/done?key=…            the entry is whole (state 'complete')
+ *   POST /api/finish/has                   {keys: […]} → {has: […]}: those whole in the cache (the timeline's marks of the
+ *                                          moments kept in detail: evolution-main.js knownDetail)
  * Only from this machine (loopback). JavaScript is served with Cache-Control: no-cache, so a new worker never runs a
  * module the browser kept from before an edit.
  *
@@ -94,6 +96,12 @@ async function finishApi(req, res, url) {
     const what = url.pathname.slice('/api/finish/'.length), key = url.searchParams.get('key');
     if (what === 'code' && req.method === 'GET') { const h = FC.finishCodeHash(ROOT); return json(res, 200, { code: h.hash, files: h.files.length, cache: FC.CACHE_DIR }); }
     if (!FC.ENABLED) return json(res, 404, { error: 'the finish cache is off' });
+    // (many keys at once — a history's every moment at the page's settings: only looked at, not marked used)
+    if (what === 'has' && req.method === 'POST') {
+        const keys = JSON.parse((await body(req, 4e6)).toString('utf8')).keys;
+        if (!Array.isArray(keys) || keys.length > 1e5 || !keys.every(k => KEY.test(k))) return json(res, 400, { error: 'keys' });
+        return json(res, 200, { has: keys.filter(k => FC.isComplete(k)) });
+    }
     if (!KEY.test(key ?? '')) return json(res, 400, { error: 'key' });
     if (what === 'page' && req.method === 'GET') {
         const raw = FC.isComplete(key) ? await FC.readPartBytesAsync(key, 'page') : null;

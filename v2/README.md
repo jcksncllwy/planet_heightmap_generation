@@ -136,7 +136,10 @@ from 16 directions so headlands take them from all round and bays from their mou
 low coasts fastest) and drift the sand of the cliffs and the rivers along the shore as they meet it slantwise, laying it
 where the drift slows: beaches, barriers and filled bays; the sand below the shoreface lost offshore. It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
-like the live terrain; one moment is kept in detail per history (the one before is let go once the next is done, so a cancel loses nothing). A finished moment brings **its own
+like the live terrain; a handful of moments are kept in detail per history — up to four on a desktop (and no more than
+800 MB between them: two at 10M), one on a small device — so stepping back onto one shows it at once; the one viewed
+longest ago is let go once a new one is done (never the one on screen, so a cancel loses nothing). See "The finish cache"
+for the moments detailed before. A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
 again on the finished surface — the climate tabs (Köppen, temperature, rain, wind, currents, and More…'s layers) and the
 readout use it, drawn per pixel of the finished picture (the land's measures — temperature range, aridity, growing season,
@@ -1487,6 +1490,12 @@ the page erodes on the GPU, with Chromium's maths).
   the finish cache") and after a finish compresses and uploads it in the background (`/api/finish/*`). The view it posts
   to `latest.json` names the finished moment on screen (`finish`, `finishSpec`). The link gains `&detail=<Myr>&dcells=…`:
   a reload brings that moment back from the cache as soon as the history reaches it (never finished again unasked).
+  **Stepping between detailed moments (2026-11-10, branch multimoment):** the page asks the worker once for its part of the
+  key (`keyBase`: the code, the maths, the erosion engine), keys every moment of the history itself and asks the dev
+  server which are whole (`POST /api/finish/has`, every few seconds at most while the history grows or the settings
+  change). Those are marked faint on the timeline (the moments kept in memory solid); when the timeline settles (300 ms
+  paused) on one, it is loaded with `cachedOnly` — never finished unasked. The link's `&detail=` names the detailed
+  moment on screen, else the one viewed last.
 - **Node:** `render-moment.mjs` goes through the cache (not with `--debug`, `--network`, `--overlay`, `--set`; `--no-cache`),
   and with `--latest` uses the page's own finish when the moment shown is detailed.
 

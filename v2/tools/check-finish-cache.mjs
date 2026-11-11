@@ -192,6 +192,9 @@ section('the dev server (the page\'s path)');
         const latest = await FC.loadLatestFinish();
         check('the view the page posts names the finish on screen in latest.json, with its spec, and loadLatestFinish loads it', latest?.key === key && latest.latest.finishSpec?.host === 'page' && differ(latest.raster, page.raster) === null);
         check('a malformed key is refused', (await fetch(at('/api/finish/page?key=nothex'))).status === 400);
+        const has = await (await fetch(at('/api/finish/has'), { method: 'POST', body: JSON.stringify({ keys: [key, 'f'.repeat(32)] }) })).json();
+        check('asked which of many keys are there, it names the whole entries only (the timeline\'s marks)', has.has?.length === 1 && has.has[0] === key, JSON.stringify(has));
+        check('…and refuses a malformed one among them', (await fetch(at('/api/finish/has'), { method: 'POST', body: JSON.stringify({ keys: [key, 'nothex'] }) })).status === 400);
     } finally { server.kill(); }
 }
 

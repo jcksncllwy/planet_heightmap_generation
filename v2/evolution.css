@@ -42,6 +42,10 @@
 .evo-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .evo-ticks span:first-child { transform: none; }
 .evo-ticks span:last-child { transform: translateX(-100%); }
+/* the detailed moments: kept (shown at once), or held by the finish cache (back in seconds) — the Detailed badge's green */
+.evo-marks { position: absolute; left: 8px; right: 8px; top: 7px; height: 14px; pointer-events: none; }
+.evo-marks i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; border-radius: 1.5px; background: #ad8; }
+.evo-marks i.cached { opacity: 0.4; }
 .evo-play {
     width: 36px; height: 36px; flex: none; border-radius: 50%;
     border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.6);

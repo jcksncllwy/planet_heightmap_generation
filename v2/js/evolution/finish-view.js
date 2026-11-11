@@ -23,6 +23,16 @@ export class FinishService {
         });
     }
 
+    /** The parts of a finish-cache key that are the worker's: {code, math, erosion} (finish-worker.js 'keyBase'). */
+    keyBase() {
+        // (a worker kept with its mesh stays so; one started for this goes after)
+        const keep = !!this.worker, w = this.start(), id = this.next++;
+        return new Promise((resolve, reject) => {
+            this.jobs.set(id, { resolve, reject, keep });
+            w.postMessage({ type: 'keyBase', id });
+        });
+    }
+
     /** Stop a finish under way (the worker goes, and with it the meshes it held). */
     cancel() {
         if (!this.worker) return;

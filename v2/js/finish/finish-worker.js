@@ -18,6 +18,9 @@
 // true, no finishing — else finished and then kept: 'done' carries cacheKey and saving: true, and the upload (compressed
 // here, off the page's thread) ends with {type: 'saved', id, ok}. cachedOnly: a miss is not finished ({type: 'error',
 // miss: true}).
+// {type: 'keyBase', id} → {type: 'done', id, code, math, erosion}: the parts of a finish-cache key that are this worker's
+// (the finish code it loaded, its maths, what would run its erosion), so the page can key every moment of a history
+// itself and ask the cache which it holds (evolution-main.js knownDetail); code null: no finish cache.
 
 import { finishPlanet, erosionEngine } from './finish.js';
 import { finishResult, pageTransfers } from './finish-result.js';
@@ -33,6 +36,10 @@ import { treeChunks, readTree } from '../app/finish-wire.js';
 let sim = null, simCells = 0, delaunatorSet = false;
 
 self.onmessage = async ({ data }) => {
+    if (data.type === 'keyBase') {
+        self.postMessage({ type: 'done', id: data.id, code: FINISH_CODE ?? null, math: mathFingerprint(), erosion: await erosionEngine() });
+        return;
+    }
     if (data.type !== 'finish') return;
     const { id, frame, seed, cells, width, poolSize = null, climateOptions = {}, civ: wantCiv = false, cache = null, cachedOnly = false } = data;
     try {
