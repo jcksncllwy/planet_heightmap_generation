@@ -247,7 +247,7 @@ export function lifeFacts(F, C, frame) {
         out.why = out.why.filter(Boolean);
         return out;
     }
-    if (!K.land && !freshKind) return null;
+    if (!K.land && !freshKind && F.kind !== 'saltPan') return null;          // (a salt pan is dry ground: the finish draws it as water, so the climate may not call it land)
     if (!K.T12) return null;
 
     // the cover, as the finish works it out from the place's months (finish-cover.js)
@@ -275,7 +275,8 @@ export function lifeFacts(F, C, frame) {
     out.why.push(`${KOPPEN_CLASSES[K.koppen]?.code ?? '?'} · ${K.tAnnual.toFixed(0)} °C · ${Math.round(K.pAnnual)} mm`, `cover ${Math.round(100 * cv.V)} % (trees ${Math.round(100 * cv.tree)} %)`,
         heightKm > 0.5 ? `${Math.round(F.heightM)} m up` : null,
         fog ? `a cold sea ${Math.round(seaBeside.km)} km away (${seaBeside.anom.toFixed(1)} °C against its latitude${seaBeside.upwelling > 0.05 ? `, upwelling ${seaBeside.upwelling.toFixed(2)} m/day` : ''})` : null,
-        ...azonal.map(a => ({ riparian: `a river of ${Math.round(r.q)} m³/s`, floodplain: 'its river floods', 'salt-flat': 'a closed basin\'s salt', karst: 'limestone at the surface', 'young-lava': 'young flood basalt' }[a])));
+        ...azonal.map(a => ({ riparian: () => `a river of ${Math.round(r.q)} m³/s`, floodplain: () => 'its river floods', 'salt-flat': () => 'a closed basin\'s salt',
+            karst: () => 'limestone at the surface', 'young-lava': () => 'young flood basalt' }[a]())));      // (thunks: only the river's line reads the river)
     out.why = out.why.filter(Boolean);
     out.match = { realm: out.realm, habitat: out.realm === 'fresh' ? freshKind : out.habitat, azonal, biome: cv.biome, koppen: KOPPEN_CLASSES[K.koppen]?.code,
         tAnnual: K.tAnnual, pAnnual: K.pAnnual, warmest: cv.warmest, coldest: cv.coldest, npp, tree: cv.tree, grass: cv.grass, zKm: heightKm, grades: null, isolation: null, bodyCapKg: null, earthLikeMa: null };

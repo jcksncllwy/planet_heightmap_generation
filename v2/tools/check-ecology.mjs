@@ -56,6 +56,10 @@ for (const tMean of [-20, -8, 0, 6, 12, 18, 24, 27])
                 for (const heightM of [100, 3500]) places.push({ F: landPlace({ tMean, swing, rain, summerRain, heightM }), frame: frame(0, CrustType.CONTINENT) });
 places.push({ F: landPlace({ tMean: 25, swing: 4, rain: 1200, river: { q: 3000, regime: 0, km: 2 } }), frame: frame(0, CrustType.CONTINENT) });
 places.push({ F: landPlace({ tMean: 14, swing: 14, rain: 600, kind: 'lake' }), frame: frame(0, CrustType.CONTINENT) });
+// (azonal overlays without a river: limestone, a salt pan, young basalt — the why-line must not read the absent river)
+for (const ground of [{ facies: { carb: 0.9 } }, { volcanic: { kind: 'lip', atMyr: 995 } }])
+    places.push({ F: { ...landPlace({ tMean: 16, swing: 10, rain: 700 }), ground }, frame: frame(0, CrustType.CONTINENT) });
+places.push({ F: landPlace({ tMean: 20, swing: 14, rain: 60, kind: 'saltPan' }), frame: frame(0, CrustType.CONTINENT) });
 for (const sst of [-1, 6, 14, 22, 28])
     for (const depthM of [30, 150, 800, 4000])
         for (const [ice, upwelling, coastKm] of [[0, 0, 1000], [0, 1, 100], [0.3, 0, 600], [0.8, 0, 600]])
@@ -64,7 +68,7 @@ for (const sst of [-1, 6, 14, 22, 28])
 
 section('the sweep');
 const finite = x => typeof x !== 'number' || Number.isFinite(x);
-const seen = { land: new Set(), sea: new Set(), floor: new Set(), fresh: new Set() };
+const seen = { land: new Set(), sea: new Set(), floor: new Set(), fresh: new Set() }, seenAz = new Set();
 let nulls = 0, badKey = [], nonFinite = [], notPyramid = [], badShare = [], badHtml = [];
 for (const { F, frame: fr } of places) {
     const L = lifeFacts(F, null, fr);
@@ -78,6 +82,7 @@ for (const { F, frame: fr } of places) {
         if (!(w.fishWetTkm2 * 1000 < w.nppC * 1000 / LIFE.carbonPerDm)) notPyramid.push(tag);    // (fish's wet weight under the plankton's dry growth)
     } else {
         (L.realm === 'fresh' ? seen.fresh : seen.land).add(L.habitat);
+        for (const a of L.azonal) seenAz.add(a);
         if (L.realm === 'fresh') seen.fresh.add(L.freshHabitat);
         if (!EMITS.land.includes(L.habitat) || L.azonal.some(a => !EMITS.azonal.includes(a)) || (L.freshHabitat && !EMITS.fresh.includes(L.freshHabitat))) badKey.push(tag);
         if (![L.npp, L.herbivores, L.predators, L.grazeShare, L.crust, L.fungi.am, L.fungi.ecm, L.fungi.eric].every(Number.isFinite)) nonFinite.push(tag);
@@ -98,6 +103,7 @@ check('the panel draws every place without NaN or undefined, and says the grade'
 check('the sweep reaches a spread of habitats (≥ 10 land, ≥ 6 sea, all three floors)', seen.land.size >= 10 && seen.sea.size >= 6 && seen.floor.size === 3,
     `land ${[...seen.land].join(' ')} | sea ${[...seen.sea].join(' ')} | floor ${[...seen.floor].join(' ')}`);
 check('a lake is fresh water with its land around it', seen.fresh.has('lake'));
+check('azonal overlays without a river (karst, young lava, salt flat) are named', ['karst', 'young-lava', 'salt-flat'].every(a => seenAz.has(a)), [...seenAz].join(' '));
 check('the panel asks for detail on a preview moment', /Add detail/.test(lifeSectionHTML(null, false)));
 
 section('the measured relations keep their shape');

@@ -3095,3 +3095,57 @@ yet (Jackson, 2026-11-10). A moment past Earth's present on the world's clock ge
     present-day habitats a GBIF card can fill. 98 are fossil gaps.
   - Provinciality (South America's sloths and not Florida's) is left to the life record's per-landmass lineage pools (L4).
 
+## The Life section: life at today's grade (2026-11-11, lane econow; ecodesign L0)
+
+A click on the planet opens the place's panel (`evolution/cell-panel.js`); its **Life** section, on a detailed moment, says
+what a **modern, Earth-like biosphere** would make of the place: its habitat, how much grows, the large herbivores and
+predators that growth feeds, its fungi and soil crusts, and at sea the plankton's yield and the steps from it to fish. It says
+so on the panel too: the history of life (which kinds of life a world has opened and when, its extinctions, each
+landmass's own lineages and body sizes: ecodesign L1–L4) comes later, and until then every world is read at today's grade.
+
+- **Where:** `js/ecology/now.js` `lifeFacts(F, C, frame)` works it out from the panel's own facts (`placeFacts`: the
+  finish's coast, river, ground, and the place's twelve months, rebuilt by `placeMonths`) on click; `js/ecology/life-panel.js`
+  draws it. No finish stage and no stored field: the finish's code and its time are untouched, and a click pays the cost
+  (the panel's whole draw, measured on 831576@430 at 2.5M: see the lane report).
+- **Habitat** (the analogue cards' keys, `js/ecology/analogues/keys.js`): the finish's ground cover (`finish-cover.js
+  landCover`, recomputed from the months as the finish does), with Köppen deciding what the cover's shares leave open
+  (dry-summer → Mediterranean; cold needle woodland → boreal; very wet cool-summer forest coasts → temperate rainforest).
+  Height against latitude splits the treeless cold: a place whose months would grow trees at sea level (warmest month
+  + 6.5 °C/km × height ≥ 10 °C) is alpine, or tropical high grassland where the year is aseasonal. A desert within 150 km
+  of a cold or upwelling sea is a fog desert; a low tropical sedimentary coast by a sea above 20 °C all year grows
+  mangroves. Overlaid: a river's gallery forest (≥ 10 m³/s within 20 km), its floodplain, salt flats, limestone karst,
+  young flood basalt. At sea: ice, the ice edge, upwelling (below), reefs (coldest-month sea ≥ 18 °C, Kleypas et al.
+  1999), kelp (warmest ≤ 20 °C on an active margin, Steneck et al. 2002), seagrass and salt marsh, epeiric seas, shelf,
+  the open sea's gyre and productive water; and the floor apart from the surface (`floor`: deep sea below 1 km, vents
+  where the frame's plate edge is a ridge, seeps where it subducts).
+- **Upwelling** counts from 0.14 m/day: 0.5 m²/s of water driven offshore per metre of coast (a Bakun index of 50 m³/s
+  per 100 m, about where the main upwelling seasons begin; recalled) spread over the climate's own coastal zone
+  (`OCEAN_COAST_KM`, 300 km), which is how the climate's 1° field is defined.
+- **The food web**, from measured relations, not tables by biome: NPP by the Miami model (Lieth 1975; `civ/substrate.js
+  miamiNpp`); large-herbivore biomass from NPP across Africa's intact faunas (Fløjgaard et al. 2022, J. Appl. Ecol.:
+  ln B = −2.66 + 1.26 ln N, N in 0.1 g C/m²/yr, dry matter → carbon by 0.47); large predators 0.094 · prey^0.73
+  (Hatton et al. 2015, Science: the pyramid grows bottom-heavy as prey thickens); grazers and browsers split by the
+  cover's grass share. At sea, Ryther 1969: the province's yield (open ocean 50, coastal 100, upwelling 300 g C/m²/yr),
+  its steps to fish (5, 3, 1.5) and each step's efficiency (10, 15, 20 %). Mycorrhizae (arbuscular, ecto-, ericoid) by
+  where decomposition is slow (Steidinger et al. 2019); lichens and soil crusts on the ground plants leave bare where
+  dew, fog or snowmelt water them (Belnap & Lange 2001).
+- **The panel:** a headline (habitat, how much grows), the grade, the pyramid of roles top-down with bars on one log scale
+  (1 kg to 10,000 t per km²: a tenfold step is the same length at every level, so the shape is the transfer between
+  levels), fungi and soil, and a folded **why** (the facts it read and the sources). Each role has a slot for a
+  look-alike from Earth's history; the analogue lane (L5) fills it.
+- **Against Earth** (`tools/ecology-earth.mjs`, a report on the observed 1° climate; needs the gitignored references):
+  land NPP 65 Pg C/yr (Field et al. 1998: 56; the Miami model runs high); habitat NPP medians inside the biome bands
+  (Whittaker & Likens, recalled) except dry scrub and polar desert; African savanna herbivores median 2.5 t/km²
+  (Fløjgaard's African mean 7.1 ± 6.4), predators 1.1 % of their prey (Hatton 0.6–1.4 %); 13 of 15 named places and
+  6 of 7 named seas read right.
+- **Its limits:** one grade; no landmass size or isolation (body-size caps, endemics, island dwarfs); the herbivore line
+  is Africa's, with its megafauna (it reads the "present-natural" world: no people, no lost megafauna), and closed forest
+  sits on it as savanna does; the sea is Ryther's three provinces, not a nutrient model (reefs and kelp read the coastal
+  tier though they grow far more); the fungi and crust thresholds are recalled, not fitted; no richness or endemism (they
+  need the history). Six keys of the shared vocabulary are not emitted yet: lake-shore, wetland, dune, ultramafic and
+  cave, and fresh water's river (a river is an overlay on its land here, `riparian`; the finish has no dune field, the frame no ophiolite flag, and lake shores and wetlands want the lake and
+  water-table fields at the place, which the panel does not carry).
+- **Checks:** `tools/check-ecology.mjs` sweeps ~800 made-up places through the same calls: every key in the frozen
+  vocabulary, every number finite, the pyramid narrowing upward, shares in range, the panel drawn without NaN, and the
+  relations' shapes (more growth → more herbivores; predators' share falling as prey thickens; upwelling > coastal >
+  open ocean in fish).
