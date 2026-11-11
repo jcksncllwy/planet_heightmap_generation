@@ -89,7 +89,8 @@ section(`drawn at a finished moment (rift volcanoes and calderas; ${UNTIL} Myr)`
         if (near) atSilicic++;
         const [x, y, z] = [C.pos[3 * k], C.pos[3 * k + 1], C.pos[3 * k + 2]], e = [C.axis[3 * k], C.axis[3 * k + 1], C.axis[3 * k + 2]];
         const out = C.radius[k] * Math.sqrt(C.aspect[k]) * 1.1 / 6371, p = [x + e[0] * out, y + e[1] * out, z + e[2] * out], l = Math.hypot(...p);
-        if (calderaAt(V, w, x, y, z) < 0 && calderaAt(V, w, p[0] / l, p[1] / l, p[2] / l) >= 0) shaped++;
+        const inn = C.radius[k] * Math.sqrt(C.aspect[k]) * 0.6 / 6371, f = [x + e[0] * inn, y + e[1] * inn, z + e[2] * inn], fl = Math.hypot(...f);   // (the floor beside a dome)
+        if (calderaAt(V, w, f[0] / fl, f[1] / fl, f[2] / fl) < 0 && calderaAt(V, w, p[0] / l, p[1] / l, p[2] / l) >= 0) shaped++;
     }
     check('calderas only at silicic centres', atSilicic === C.count, `${atSilicic} of ${C.count} (VEI ≥ ${C.minVei} drawn at a ${edgeKm}-km mesh)`);
     check('a caldera\'s floor below its surroundings, its rim not', shaped >= 0.9 * C.count, `${shaped} of ${C.count}`);

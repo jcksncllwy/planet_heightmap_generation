@@ -194,7 +194,7 @@ export function buildVolcanoes(frame, rec, simMesh, cfg, seed, anchor, edgeKm) {
             cHomes.push(w); cPos.push(c[0], c[1], c[2]); cRad.push(rad); cAxis.push(e[0], e[1], e[2]); cAspect.push(a);
             cDepth.push(cfg.calderaDepthKm * fill); cRim.push(cfg.calderaRimKm * (0.5 + 0.5 * fill));
             const dome = 2 * rad >= 8 && rng() < cfg.calderaDome;
-            cDome.push(dome ? cfg.calderaDepthKm * (0.4 + 0.5 * rng()) : 0); cDomeR.push(0.25 + 0.15 * rng()); cNoise.push(rng() * 200, rng() * 200);
+            cDome.push(dome ? cfg.calderaDepthKm * fill * (0.4 + 0.5 * rng()) : 0);   // (it stands in the floor, buried as that fills) cDomeR.push(0.25 + 0.15 * rng()); cNoise.push(rng() * 200, rng() * 200);
         }
     });
     const cReach = i => cRad[i] * Math.sqrt(cAspect[i]) * 1.7;
