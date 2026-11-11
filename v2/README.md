@@ -201,7 +201,21 @@ little flows in for a lake the map can show, a playa: a flat on its floor, the b
 cut off (`tectonics/step/sea-fill.js`); it is no longer filled here as well (until 2026-10-27: toward ≤ 1 km below its rim,
 a playa toward 120 m, and any body over 250 000 km² with water below 1 km counted as the ocean, full at sea level). The
 rivers carve down its dry slopes to its water — their base level its level, not sea level (the carve's sea is the world
-ocean) — and the fans spread on its dry floor. Checked against Earth (`check-basins.mjs`): the balance gives the
+ocean) — and the fans spread on its dry floor. **When the erosion breaches it** (2026-11-11, lane reflood): at each of the erosion's
+closed-basin judges, a cut-off sea whose sill the rivers have cut below the sea's surface — ground below it all the way to
+the ocean, a channel the sea fills, not a beach graded to it — joins the ocean then and there (`closedBasins` `open`,
+`joinOpenSeas`): its rivers end at the sea from that moment, and its floor stops filling (the Zanclean flood refilled the
+Messinian Mediterranean through Gibraltar in months to two years, Garcia-Castellanos et al. 2009). Until then the erosion
+graded a breached sea's rivers to its dry floor for the rest of its window and the sea flooded in only after it. What it
+skips: a sea the erosion never breaches stays dry however long ago it was cut off (243751@1080's sea: sill +0.43 km, never
+breached); the dry time capped by the time since closure is an open question. **The finished sea's climate**: the climate
+runs once, on the surface before the erosion, and reads a cut-off sea's dry floor as land at its own height — the lapse
+rate warming it ~6.5 K a km (a 5 km pit kept 53 °C air). When such a pit ends under the world ocean (a breach, or the flood
+after the erosion), the climate runs again on that first surface and sea with only those pits turned to sea, and every
+stage after reads it (`stats.climateRerun`; 243751@730 at 160k: the sea's air 52.9 → 23.6 °C, land cells over 35 °C
+566 → 0; elsewhere the 1° grid moves 0.01 °C on average). It is not re-run on the eroded surface: the ground the erosion
+lowered or raised, and coasts it moved, keep the first climate (re-run there, the grid moved 0.8–1.3 °C on average, up to
+21 °C). Cost: one more climate run when a pit floods (7–9 s at 160k, about the first climate's own time). Checked against Earth (`check-basins.mjs`): the balance gives the
 Caspian's 371 000 km² from the Volga's inflow within ×1.5, the Dead Sea's ~1000 km² before its river was drawn off, and
 the Messinian's drawdown in ~1 000 years; reported over three histories against Earth's closed seas. Drawn on the Terrain view as a flow map (hairlines, stronger for bigger
 rivers, seasonal ones dashed; a River Density choice; a Rivers & Lakes toggle; Colour by Regime with a legend; the readout
