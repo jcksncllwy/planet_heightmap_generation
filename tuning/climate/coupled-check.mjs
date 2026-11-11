@@ -166,7 +166,9 @@ if (TUNE) {
     // the rarer regimes count too (Cs, Cw, Am, Dw — as V1's tuner counted macro-F1): big classes must not drown them
     const regimeMean = (e) => ['Cs (Mediterranean)', 'Cw (dry-winter temperate)', 'Am (tropical monsoon)', 'Dw (dry-winter continental)'].reduce((s, k) => s + (e.regimes[k].recall || 0), 0) / 4;
     // mostly the near match (a climate like the real one is what reads as right), the exact match second
-    const ev = (p) => { setParams(p); const e = evaluate(); return { e, total: -2 * e.meanContNear - e.meanCont - REGIME_WEIGHT * regimeMean(e) + prior(p) }; };
+    // (LANDT_WEIGHT, SST_WEIGHT: also the land's and the sea's temperature errors, per °C — a re-tune that moves the temperature stage keeps its own score)
+    const LANDT_WEIGHT = +(process.env.LANDT_WEIGHT ?? 0), SST_WEIGHT = +(process.env.SST_WEIGHT ?? 0);
+    const ev = (p) => { setParams(p); const e = evaluate(); return { e, total: -2 * e.meanContNear - e.meanCont - REGIME_WEIGHT * regimeMean(e) + prior(p) + LANDT_WEIGHT * guardSummary(e.guard).temperature + SST_WEIGHT * e.guard.sst }; };
     let bestE = ev(best);
     const start = { ...bestE.e.perContNear }, g0 = guardSummary(bestE.e.guard);
     const okGuard = (e) => { const g = guardSummary(e.guard); return g.temperature <= g0.temperature + GUARD.temperature && g.rain <= g0.rain + GUARD.rain && g.sst <= g0.sst + GUARD.sst
@@ -213,6 +215,40 @@ console.log(`  Köppen vs Beck: ${pc(main.exact)} of land exact, ${pc(main.near)
 console.log('  per continent, exact / near: ' + TUNED_CONTINENTS.map(k => `${k} ${pc(main.perCont[k])} / ${pc(main.perContNear[k])}`).join(', '));
 console.log('  regimes (recall, area new ÷ real): ' + Object.entries(main.regimes).map(([k, r]) => `${k.split(' ')[0]} ${pc(r.recall)} ×${f2(r.areaRatio)}`).join(', '));
 console.log(`  guardrails: land temperature ${f2(g.temperature)} °C (${f2(gn.temperature)} without clouds), rain ${f2(g.rain)} (${f2(gn.rain)}), sea temperature ${f2(g.sst)} °C (${f2(gn.sst)}), pressure ${f2(g.pressure)} hPa, wind within 45° ${pc(g.wind45)}`);
+if (process.argv.includes('--zonal')) {
+    // land temperature bias against ERA by 10° band (all continents' land): January, July, the year's mean
+    const T = main.res.stages.temperature.monthly, bands = [];
+    for (let b = -90; b < 90; b += 10) {
+        let sJ = 0, sJl = 0, sY = 0, sw = 0;
+        for (let c = 0; c < G; c++) {
+            const la = cellLat(c); if (la < b || la >= b + 10 || !obsLand[c] || surface.landFrac[c] < 0.5) continue;
+            let y = 0, ok = true; for (let m = 0; m < 12; m++) { const d = T[m * G + c] - obs.t2m[m * G + c]; if (!(d === d)) ok = false; y += d / 12; }
+            if (!ok) continue;
+            sJ += W[c] * (T[c] - obs.t2m[c]); sJl += W[c] * (T[6 * G + c] - obs.t2m[6 * G + c]); sY += W[c] * y; sw += W[c];
+        }
+        if (sw > 0) bands.push(`${b}…${b + 10}: ${f1(sJ / sw)}/${f1(sJl / sw)}/${f1(sY / sw)}`);
+    }
+    console.log('  land T bias by band, Jan/Jul/year °C: ' + bands.join(' · '));
+    {   // the sea's surface temperature against OISST by 10° band (the guardrail's own mask: open sea, no ice): Jan/Jul/year
+        const Ts = main.res.stages.temperature.monthlySL, sb = [];
+        for (let b = -80; b < 90; b += 10) {
+            let sJ = 0, sJl = 0, sY = 0, sR = 0, sw = 0;
+            for (let c = 0; c < G; c++) {
+                const la = cellLat(c); if (la < b || la >= b + 10 || !sstMask[c]) continue;
+                let y = 0, r2 = 0; for (let m = 0; m < 12; m++) { const d = Ts[m * G + c] - obs.sst[m * G + c]; y += d / 12; r2 += d * d / 12; }
+                sJ += W[c] * (Ts[c] - obs.sst[c]); sJl += W[c] * (Ts[6 * G + c] - obs.sst[6 * G + c]); sY += W[c] * y; sR += W[c] * r2; sw += W[c];
+            }
+            if (sw > 0) sb.push(`${b}…${b + 10}: ${f1(sJ / sw)}/${f1(sJl / sw)}/${f1(sY / sw)} rms ${f1(Math.sqrt(sR / sw))}`);
+        }
+        console.log('  sea T bias by band, Jan/Jul/year °C: ' + sb.join(' · '));
+    }
+    console.log('  land T error by continent °C: ' + Object.entries(main.guard.temperature).map(([k, v]) => `${k} ${f2(v)}`).join(', '));
+    // and Europe's own costliest confusions (its share of Europe's land)
+    const { koppen } = main.res.cell, eu = new Map(); let euN = 0;
+    for (let r = 0; r < E160.n; r++) { if (E160.cont[r] !== 'Europe' || !E160.truth[r]) continue; euN++; const t = E160.truth[r], s = koppen[r]; if (t === s) continue;
+        const k = `${KOPPEN_CLASSES[t].code}→${s ? KOPPEN_CLASSES[s].code : 'sea'}`; eu.set(k, (eu.get(k) ?? 0) + 1); }
+    console.log('  Europe confusions (% of its land): ' + [...eu].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, v]) => `${k} ${(100 * v / euN).toFixed(1)}`).join(' · '));
+}
 const big = Object.entries(main.cmp.perClass).filter(([, p]) => p.truthArea > 0.02).sort((a, b) => b[1].truthArea - a[1].truthArea);
 console.log('  largest classes (real share → new share, recall): ' + big.map(([k, p]) => `${k} ${(100 * p.truthArea).toFixed(0)}→${(100 * p.simArea).toFixed(0)} % (${(100 * p.recall).toFixed(0)})`).join(', '));
 {

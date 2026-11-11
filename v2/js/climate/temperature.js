@@ -3,11 +3,13 @@
 //   C·∂T/∂t = S·(1 − α) − (A + B·T) + D·∇²T − γ·(u·∇)T
 //
 //   S       sunlight (insolation.js; any axial tilt)
-//   α       albedo: a base value rising toward the poles, and snow / sea ice where it is cold (smooth ramp)
+//   α       planetary albedo: the atmosphere's own reflection R (clouds, the low sun; rising toward the poles) plus the
+//           surface's — sea, land, snow, ice sheets, sea ice where it is cold — seen through it (Donohoe & Battisti 2011)
 //   A + B·T heat radiated to space
 //   C       heat stored per degree: small over land, a mixed-layer ocean at sea — the source of continental
 //           seasons, maritime mildness and the seasonal lag. Frozen sea stores little (ice insulates it).
-//   D·∇²T   heat spread by weather and ocean
+//   D·∇²T   heat spread by weather (moist static energy: D grows with the latent heat warm air carries,
+//           D·(1 + (L/c_p)·RH·dq_s/dT) by latitude, Hwang & Frierson 2010) and by the ocean (a dry diffusivity)
 //   γ·u·∇T  heat carried by the winds (mild coasts downwind of the sea, cold coasts downwind of a continent)
 //
 // In the tropics, evaporation from wet ground and sea steadies the seasons (a larger B for the seasonal harmonics),
@@ -17,6 +19,13 @@
 // each harmonic is one steady problem (solver.js). What depends on temperature itself (snow and ice, the seasonal
 // swing of the winds) is updated over a few outer iterations. T is the sea-level temperature; the stage reports it
 // at each grid cell's reference height (its mean land height), and the core lifts it to each terrain cell.
+//
+// Limits of the reduced physics (what it skips): one atmosphere layer for the albedo, its absorption fixed by latitude
+// (no water-vapour feedback on it); no sun-angle dependence of the sea's albedo; deserts' bright soil not modelled
+// (snow-free land is one value plus the variety noise); sea ice follows the month's temperature, not a thickness
+// budget, and keeps one annual-mean albedo (no melt-season darkening); the storm-track cloud deck at 50–60° S is
+// only the P₂ shape (Donohoe & Battisti's R is brighter there), so the Southern Ocean runs warm; moist transport's
+// RH is one constant, not the circulation's.
 
 import { LatLonGrid, coarsenField, refineField, refineForDrawing, fillAcross } from './grid.js';
 import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
@@ -24,6 +33,7 @@ import { HelmholtzSolver } from './solver.js';
 import { PARAMS } from './config.js';
 import { tropicsWeight, gaussianSmooth } from './circulation.js';
 import { FastNoise } from '../core/fast-noise.js';
+import { ALBEDO_LAND } from './water.js';     // snow-free land's surface albedo (the rain stage's too)
 
 const SECONDS_PER_YEAR = 3.156e7;
 const OMEGA = 2 * Math.PI / SECONDS_PER_YEAR;
@@ -45,6 +55,10 @@ const AIR_STABLE_SUN = SOLAR_CONSTANT / 10; // W/m² daily sunlight (top of the 
 const AIR_MIXED_SUN = SOLAR_CONSTANT / 5;   // … and above which convection mixes it (≈ 25° in midwinter)
 const WET_MONTH_MM = 100;                   // mm/month of rain at which the ground is ~63 % wet
 const WET_SUN_REF = 400;                    // W/m² of daily sunlight (top of the air) at which TEMP_WET_COOL_C applies
+// The surface under the atmosphere's reflection (the planetary albedo, see Donohoe & Battisti below):
+const LV_OVER_CP = 2.5e6 / 1004;          // K: latent heat of vaporisation ÷ the air's heat capacity (q in kg/kg)
+const ALBEDO_SEA = 0.06;                    // open sea, the year's mean over all sun angles (Payne 1972: 0.06)
+const ABSORB_LOW = 0.25, ABSORB_HIGH = 0.15; // one pass's absorption, equator → pole, 0.25 − 0.10·sin²φ (Donohoe & Battisti 2011 §2: ≈ 0.25 tropics, ≈ 0.15 high latitudes)
 /** Δ/(Δ+γ): the share of the available energy a wet surface evaporates (equilibrium evaporation), relative to 25 °C. */
 const evapShareRaw = (T) => { const t = Math.max(-40, Math.min(45, T)), d = 4098 * 0.6108 * Math.exp(17.27 * t / (t + 237.3)) / ((t + 237.3) ** 2); return d / (d + 0.0665); };
 const EVAP_SHARE_25 = evapShareRaw(25);
@@ -65,6 +79,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
     return (ctx, winds, init = null, qflux = null, rain = null, ocean = null) => {
         const t0 = performance.now();
         const P = { ...PARAMS };
+        const dg = ctx.options?.ebmDiag ?? null;
         // (the pages' Greenhouse: a radiative forcing, W/m² — the planet's heat to space lowered (or raised) as more (or
         // less) greenhouse gas would; ≈ 0.5 °C per W/m² before the snow, ice and seas answer. They amplify a cooling far
         // more than a warming — on Earth −10 W/m² cools the planet ≈ 8 °C, +10 warms it ≈ 6 °C — and past −20 W/m² the
@@ -74,6 +89,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const ratio = Math.round(P.TEMP_GRID_DEG / core.step);
         const g = ratio > 1 ? new LatLonGrid(core.step * ratio) : core;
         const G = g.size, w = g.w, h = g.h;
+        if (dg?.record) dg.rec = { ice: new Float64Array(NT * G), cloud: new Float64Array(NT * G), q: new Float64Array(NT * G), alb: new Float64Array(NT * G), lat: g.lat, w, h, G, NT, c0: null };
 
         // Surface and winds on the energy-balance grid
         const landFrac = coarsen(core, g, ratio, ctx.surface.landFrac);
@@ -131,10 +147,25 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             }
         }
 
-        // Sunlight and base albedo per row
+        // Sunlight, and the planetary albedo as the atmosphere's reflection plus the surface's seen through it — Donohoe &
+        // Battisti's (2011, J. Climate 24: 4402) single layer: α_P = R + α_s·(1 − R − A)² / (1 − R·α_s). R, the air's
+        // own reflection (clouds and the low sun, no ice: their CERES partition, Fig. 3a, is R₀ + R₂·P₂(sin φ) with
+        // R₀ ≈ 0.3, R₂ ≈ 0.15), per row; A, the share of the sunlight one pass through the air absorbs (its water
+        // vapour: ≈ 0.25 in the tropics, ≈ 0.15 at high latitudes, their §2). The surface's α_s is each surface's own —
+        // so the snow and the ice brighten the planet only as far as they are there, through ~70–85 % of attenuation by
+        // the air above them, and a warmer world that melts them darkens it. (Before: one planetary base held every
+        // surface's mean, and the snow replaced it — darker than the base poleward of ~45°: snow darkened the planet.)
+        // What it skips: one layer; A fixed by latitude (no absorption by the warmer air's extra vapour); the sea's
+        // brightness under a low sun; deserts' bright soil (snow-free land is one value and the variety noise).
         const Q = insolationTable(g.lat, tiltDeg, NT);
-        const albBase = new Float64Array(h);
-        for (let j = 0; j < h; j++) { const x = Math.sin(g.lat[j] * Math.PI / 180); albBase[j] = P.TEMP_ALBEDO + P.TEMP_ALBEDO_LAT * (1.5 * x * x - 0.5); }
+        const albBase = new Float64Array(h), absorb = new Float64Array(h);
+        for (let j = 0; j < h; j++) {
+            const x = Math.sin(g.lat[j] * Math.PI / 180);
+            albBase[j] = P.TEMP_ALBEDO + P.TEMP_ALBEDO_LAT * (1.5 * x * x - 0.5);
+            absorb[j] = ABSORB_LOW - (ABSORB_LOW - ABSORB_HIGH) * x * x;
+        }
+        // the planetary albedo over a surface of albedo as, under air that reflects r and absorbs a in one pass
+        const planetary = (r, as, a) => { const t = Math.max(0, 1 - r - a); return r + as * t * t / (1 - r * as); };
         // (and the surface's own variety about that: smooth fractal noise by geographic position, a fixed size in km — an
         // input like the rest, which the heat's spread and the snow and ice then work through)
         const albVary = new Float64Array(G);
@@ -173,7 +204,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         const c0 = new Float64Array(G), c1r = new Float64Array(G), c1i = new Float64Array(G), c2r = new Float64Array(G), c2i = new Float64Array(G);
         for (let j = 0; j < h; j++) {
             let q = 0; for (let k = 0; k < NT; k++) q += Q[k * h + j] / NT;
-            const t = Math.max(-40, Math.min(35, (q * (1 - albBase[j]) - P.TEMP_OLR_A) / P.TEMP_OLR_B));
+            const t = Math.max(-40, Math.min(35, (q * (1 - planetary(albBase[j], ALBEDO_SEA, absorb[j])) - P.TEMP_OLR_A) / P.TEMP_OLR_B));
             for (let i = 0; i < w; i++) c0[j * w + i] = t;
         }
         const snowYear = new Float64Array(G), snowYearPrev = new Float64Array(G);   // share of the year the land is snowy
@@ -284,19 +315,30 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 const th = 2 * Math.PI * k / NT, co = Math.cos(th), sn = Math.sin(th), co2 = Math.cos(2 * th), sn2 = Math.sin(2 * th);
                 for (let c = 0; c < G; c++) Tk[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
                 for (let j = 0; j < h; j++) {
-                    const q = Q[k * h + j], ab = albBase[j];
+                    const q = Q[k * h + j], ab = albBase[j], ar = absorb[j];
                     const sx = 1 / (R_PLANET * Math.cos(g.lat[j] * Math.PI / 180) * dRad), sy = 1 / (R_PLANET * dRad);
                     for (let i = 0; i < w; i++) {
                         const c = j * w + i, T = Tk[c], f = landFrac[c];
                         const sL = iceRamp(T - lapseEff[c] * surfKm[c]), sO = iceRamp(T);
-                        // snow on land: patchy seasonal snow reflects little; snow that survives the summer — an ice
-                        // sheet — like sea ice, and all year: a sheet stays white through its summer melt (by the month's
-                        // own snow alone, a sheet went dark the first month above freezing and melted away)
+                        // snow on land: patchy seasonal snow (forests stand through it) reflects less than open snow;
+                        // snow that survives the summer — an ice sheet — like a sheet, and all year: a sheet stays white
+                        // through its summer melt (by the month's own snow alone, a sheet went dark the first month above
+                        // freezing and melted away)
                         const albSnow = P.TEMP_ALBEDO_SNOW + (P.TEMP_ALBEDO_ICE - P.TEMP_ALBEDO_SNOW) * perennial[c];
                         const sLa = Math.max(sL, perennial[c]);
-                        const abc = ab + albVary[c];
-                        let alb = abc + f * sLa * (albSnow - abc) + (1 - f) * sO * (P.TEMP_ALBEDO_ICE - abc);
-                        if (cloudT) alb += f * (1 - sLa) * cloudT[k * G + c];          // clouds over snow-free land
+                        const cloP = cloudT ? f * (1 - sLa) * cloudT[k * G + c] : 0;    // clouds over snow-free land
+                        const r = ab + albVary[c] + cloP;
+                        const asBare = f * ALBEDO_LAND + (1 - f) * ALBEDO_SEA;
+                        const asSurf = asBare + f * sLa * (albSnow - ALBEDO_LAND) + (1 - f) * sO * (P.TEMP_ALBEDO_SEA_ICE - ALBEDO_SEA);
+                        let alb = planetary(r, asSurf, ar);
+                        if (dg) {                               // (climsens diagnostics: record or hold the albedo's parts)
+                            const iceP = alb - planetary(r, asBare, ar), kc = k * G + c;
+                            const cloA = cloP ? alb - planetary(r - cloP, asSurf, ar) : 0;
+                            if (dg.rec) { dg.rec.ice[kc] = iceP; dg.rec.cloud[kc] = cloA; dg.rec.q[kc] = q; }
+                            if (dg.fixIce) alb += dg.fixIce[kc] - iceP;
+                            if (dg.fixCloud) alb += dg.fixCloud[kc] - cloA;
+                            if (dg.rec) dg.rec.alb[kc] = alb;
+                        }
                         snowYear[c] += sL / NT;
                         let gF = q * (1 - alb);
                         if (winds && gamma) {                   // the seasonal part of the winds' heat carrying
@@ -340,6 +382,24 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                     srSeason[c] = P.TEMP_OLR_B + P.TEMP_EVAP_DAMPING * wt * cc * wet;
                 }
             } else srSeason.fill(P.TEMP_OLR_B);
+            // The weather's heat transport diffuses moist static energy c_p·T + L·q, q = RH·q_s(T), not T alone (Frierson
+            // et al. 2007; Hwang & Frierson 2010; Roe et al. 2015): the diffusivity on T is D·(1 + χ), χ = (L/c_p)·RH·dq_s/dT
+            // — ≈ 2.9 in the tropics, ≈ 0.2 at the poles on today's Earth. So a warmer world carries more heat poleward as
+            // latent heat (Clausius–Clapeyron), the poles warm more than the tropics (polar amplification), and a colder
+            // one less. What it skips: χ from each row's mean temperature (the zonal mean), one RH everywhere, the same
+            // diffusivity for the seasons as for the year's mean.
+            {
+                const rh = dg?.moist?.rh ?? P.TEMP_MOIST_RH, Dy = new Float64Array(h), Dx = new Float64Array(h);
+                for (let j = 0; j < h; j++) {
+                    let t = 0; for (let i = 0; i < w; i++) t += c0[j * w + i] / w;
+                    t = Math.max(-60, Math.min(45, t));
+                    const qs = 0.622 * 6.112 * Math.exp(17.67 * t / (t + 243.5)) / 1000, dq = qs * 17.67 * 243.5 / ((t + 243.5) ** 2);
+                    const chi = LV_OVER_CP * rh * dq;
+                    Dy[j] = P.TEMP_DIFFUSIVITY_OCEAN + P.TEMP_DIFFUSIVITY * (1 + chi); Dx[j] = P.TEMP_DIFFUSIVITY_EW * (1 + chi);
+                    if (dg?.rec) (dg.rec.chi ??= new Float64Array(h))[j] = chi;
+                }
+                solver.setRowDiffusion(Dx, Dy);
+            }
             const relax = it === 0 && !warm ? 1 : 0.8;
             const tol = it === outer - 1 ? 1e-4 : 1e-3;
             prof.forcing += performance.now() - tp;
@@ -517,16 +577,6 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
                 let x = 1 - q / WEAK_SUN; x = x <= 0 ? 0 : x >= 1 ? 1 : x;
                 const dark = x * x * (3 - 2 * x);
-                // Polar summers held back, by the ground like the inversion: near the poles the summer's heat goes into
-                // melting snow and ice (and the sea under the pack) rather than warming the air by the ground, while nothing
-                // holds the winter up — so above the yearly mean that air keeps only (1 − TEMP_POLAR_SUMMER_DAMP) of its
-                // rise, fully from TEMP_POLAR_FULL_DEG, none equatorward of TEMP_POLAR_FROM_DEG (smooth between). Below the
-                // yearly mean it is left alone. (In the air the circulation reads, it moved the summer's storm tracks and
-                // cost Europe's climate.)
-                let px = withInversion && P.TEMP_POLAR_SUMMER_DAMP > 0 ? (Math.abs(g.lat[j]) - P.TEMP_POLAR_FROM_DEG) / (P.TEMP_POLAR_FULL_DEG - P.TEMP_POLAR_FROM_DEG) : 0;
-                px = px <= 0 ? 0 : px >= 1 ? 1 : px * px * (3 - 2 * px);
-                const keep = 1 - P.TEMP_POLAR_SUMMER_DAMP * px;
-                if (px > 0) for (let i = 0; i < w; i++) { const c = j * w + i; if (tmp[c] > c0[c]) tmp[c] = c0[c] + (tmp[c] - c0[c]) * keep; }
                 for (let i = 0; i < w; i++) {
                     const c = j * w + i;
                     let T = tmp[c];
@@ -659,6 +709,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             return (drawn = { seaSL, seaIceOpen, domeDraw });
         };
         const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial };
+        if (dg?.rec) dg.rec.c0 = Float64Array.from(c0);
         const out = { T, monthly, monthlySL, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
         return Object.defineProperties(out, {
             seaIce: { get: seaIceOf, enumerable: true },

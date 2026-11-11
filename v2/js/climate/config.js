@@ -10,26 +10,27 @@ export const PARAMS_DEFAULTS = Object.freeze({
     // ── Temperature (energy balance, temperature.js) ──
     TEMP_OLR_A: 203.3,          // W/m²       outgoing heat to space at 0 °C (sets the planet's overall warmth)
     TEMP_OLR_B: 2.09,           // W/m²/K     extra outgoing heat per degree warmer
-    TEMP_DIFFUSIVITY: 0.65,     // W/m²/K     heat spread toward the poles by weather and ocean (unit-sphere diffusivity)
-    TEMP_DIFFUSIVITY_EW: 0.3,   // W/m²/K     heat spread east–west: weaker — weather systems carry heat mainly poleward,
+    TEMP_MOIST_RH: 0.7,         // –          the air's relative humidity for the moist static energy the weather carries
+    TEMP_DIFFUSIVITY: 0.18,     // W/m²/K     heat spread toward the poles by weather and ocean, on moist static energy (unit-
+                                //            sphere diffusivity; × 1 + (L/c_p)·RH·dq_s/dT on temperature: ≈ 3.5 tropics, 1.2 poles)
+    TEMP_DIFFUSIVITY_OCEAN: 0.3,  // W/m²/K   … plus the ocean's eddies' heat spread toward the poles: dry (not moistened; the
+                                //            gyres, upwelling and the overturning are the ocean stage's own)
+    TEMP_DIFFUSIVITY_EW: 0.25,  // W/m²/K     heat spread east–west: weaker — weather systems carry heat mainly poleward,
                                 //            and land and sea exchange air mostly through the prevailing winds
-    TEMP_ALBEDO: 0.30,          // –          share of sunlight reflected (clouds, surface) …
-    TEMP_ALBEDO_LAT: 0.15,      // –          … plus this × P2(sin latitude): more at high latitudes (low sun, cloud)
-    TEMP_ALBEDO_ICE: 0.60,      // –          reflected by sea ice, and by ground that stays snow-covered all year
-    TEMP_ALBEDO_SNOW: 0.325,    // –          reflected by seasonal snow on land (forests and patchy snow keep it low);
+    TEMP_ALBEDO: 0.288,         // –          share of sunlight the atmosphere itself reflects (clouds, the air; no surface) …
+    TEMP_ALBEDO_LAT: 0.2,       // –          … plus this × P2(sin latitude): more at high latitudes (low sun, cloud)
+    TEMP_ALBEDO_ICE: 0.7875,    // –          surface albedo of ground that stays snow-covered all year (an ice sheet)
+    TEMP_ALBEDO_SEA_ICE: 0.5,   // –          surface albedo of sea ice, the year's mean (snowy in winter, melt ponds in summer)
+    TEMP_ALBEDO_SNOW: 0.3,      // –          surface albedo of seasonal snow on land (forests standing through it keep it low);
                                 //            it rises toward the ice value the longer the snow stays each year
     TEMP_ICE_WARM_C: 0,         // °C         snow / ice starts to appear below this …
     TEMP_ICE_COLD_C: -10,       // °C         … and covers everything below this (smooth in between)
     TEMP_LAND_HEAT_CAP: 8.93e6, // J/m²/K     how much heat land stores per degree (air column + top soil)
     TEMP_OCEAN_MIX_M: 50,       // m          depth of the sea's mixed layer (its heat store)
     TEMP_WIND_CARRY: 0.068,     // –          share of the air column's heat the wind carries along (mild west coasts)
-    TEMP_INVERSION_C: 10,       // °C         how much colder the air near snowy ground gets than the air above it
+    TEMP_INVERSION_C: 7.5,      // °C         how much colder the air near snowy ground gets than the air above it
                                 //            when the sun is weak and the air calm (winter inversions over snow and ice)
     TEMP_INVERSION_WIND: 4.69,  // m/s        wind speed at which that inversion is half mixed away
-    TEMP_POLAR_SUMMER_DAMP: 0.5,// –          near the poles, the share of the rise above the yearly mean that melting snow and
-                                //            ice take from the summer (winters untouched; issue #74) …
-    TEMP_POLAR_FROM_DEG: 65,    // °          … none equatorward of this latitude …
-    TEMP_POLAR_FULL_DEG: 85,    // °          … fully poleward of this one
     TEMP_PLATEAU_LAPSE: 4.84,   // °C/km     how much colder a large region is per km of its mean height (sunlit
                                 //            plateaus heat the air above them, so less than the free air's 6.5;
                                 //            the terrain cells below the grid still use the standard rate) …
@@ -61,7 +62,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     TEMP_EVAP_DAMPING: 15,      // W/m²/K     evaporation's damping of the seasons over a wet surface at 25 °C
     TEMP_WET_COOL_C: 2,         // °C         how much cooler fully wet tropical ground is than dry, at 25 °C under a strong sun
     TEMP_SEA_SWING: 0.3,        // –          the sea's seasonal swing as a share of the land's (continentality below the grid)
-    TEMP_CLOUD_ALBEDO: 0.262,   // –          albedo of land's clouds beyond the average (with the rain stage's rain)
+    TEMP_CLOUD_ALBEDO: 0.3,     // –          albedo of land's clouds beyond the average (with the rain stage's rain)
     TEMP_CLOUD_LW_CANCEL: 0.8,  // –          … less this share of it in the rainy tropics (deep clouds trap about the heat they reflect)
     TEMP_ALBEDO_VARY: 0.025,    // –          the surface's own variety of brightness (soils, cover, cloudiness): smooth fractal
     TEMP_ALBEDO_VARY_KM: 900,   // km         noise up to ± this, its largest features this big — an input the energy balance
@@ -143,7 +144,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
     RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
-    RAIN_STORM_RH: 0.263,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
+    RAIN_STORM_RH: 0.287,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
     RAIN_TROPICAL_RH: 0.3,      // day        … and by tropical disturbances (monsoon depressions, easterly waves), per unit of the
     RAIN_TROPICAL_KM: 600,      // km         low-level winds' cyclonic vorticity (1/day), smoothed over this, within the tropics
                                 //            (the derived winds are smooth: their vorticity is ≈ ¼ of a real monsoon trough's)
@@ -152,7 +153,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_WIND_DIV_MOIST: 0.6,   //            wind: under dry air (a shallow layer), and in moist convecting air (a deep one)
     RAIN_DEEP_R0: 0.6,          // –          column relative humidity where the converging layer starts to deepen …
     RAIN_DEEP_R1: 0.9,          //            … and where it is fully deep (moist convection)
-    RAIN_STABILITY: 0.0225,     // 1/K        humidity effectively lost per K the surface is colder than its region (stable air) …
+    RAIN_STABILITY: 0,          // 1/K        humidity effectively lost per K the surface is colder than its region (stable air) …
     RAIN_STABLE_REF_KM: 1500,   // km         … the region: the surface's mean within this (Gaussian σ; the air mass's scale)
     RAIN_TERRAIN_HEAT_K: 6,     // K          … over ground this much warmer than its latitude (at sea level); none if 0
     RAIN_HIGH_K_PER_HPA: 0.6,     // K/hPa      stability counted per hPa of pressure above the latitude's mean (sinking air)
@@ -161,9 +162,9 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_FRONT_POS: 0.5,        // –          … the front this share of the way from each hemisphere's subtropical high to its subpolar low …
     RAIN_FRONT_DEG: 10,         // °          … its band (Gaussian σ) …
     RAIN_FRONT_HIGH_HPA: 4,     // hPa        … faded by e per this much pressure above the latitude's mean (the highs)
-    RAIN_SOIL_MM: 87.5,         // mm         water the soil holds for evaporation in dry months
+    RAIN_SOIL_MM: 118.75,       // mm         water the soil holds for evaporation in dry months
     RAIN_LAND_CONVECTION: 0.065, // –         spread of the column's relative humidity by afternoon storms over sunlit, wet land
-    RAIN_COLUMN_LOCAL: 0.2,     // –          share of the surface's departure from its latitude's temperature felt through the air column
+    RAIN_COLUMN_LOCAL: 0.4625,  // –          share of the surface's departure from its latitude's temperature felt through the air column
     RAIN_OROG_STORM: 1,         // –          share of the storms' wind speed (Eady rate × their size) in the lift over mountains
     RAIN_LEE_PER_KM: 1,         // 1/km       rain shadows on the 1° grid: rain × e^{−this × km the air has come down from higher ground}
     RAIN_LEE_RECOVER_KM: 400,   // km         … a drop counted less with distance (the air takes up moisture again)
@@ -188,14 +189,17 @@ export const PARAMS = { ...PARAMS_DEFAULTS };
 export const PARAM_PRIORS = Object.freeze({
     TEMP_OLR_A:         { value: 203.3, min: 195, max: 215, source: 'North & Coakley 1979, satellite OLR fit' },
     TEMP_OLR_B:         { value: 2.09, min: 1.6, max: 2.4, source: 'North & Coakley 1979; Graves et al. 1993 (1.5–2.2)' },
-    TEMP_DIFFUSIVITY:   { value: 0.65, min: 0.3, max: 1.0, source: 'North 1981 (0.649); North, Mengel & Short 1983 (≈0.67)' },
-    TEMP_ALBEDO:        { value: 0.30, min: 0.25, max: 0.35, source: "Earth's planetary albedo ≈ 0.30" },
-    TEMP_ALBEDO_LAT:    { value: 0.15, min: 0.0, max: 0.25, source: 'North 1975 P2 albedo term (0.2 incl. ice)' },
-    TEMP_ALBEDO_ICE:    { value: 0.60, min: 0.45, max: 0.70, source: 'North 1975 ice-cap albedo 0.62' },
-    TEMP_ALBEDO_SNOW:   { value: 0.40, min: 0.30, max: 0.60, source: 'snow-covered forest ≈ 0.2–0.35, open snow 0.6–0.8; seasonal snow is patchy' },
+    TEMP_DIFFUSIVITY:   { value: 0.26, min: 0.18, max: 0.36, source: 'moist static energy diffusivity 1.06e6 m²/s (Hwang & Frierson 2010) = p_s/g·c_p·D/a² ≈ 0.26 W m⁻² K⁻¹; dry EBMs 0.65 (North 1981) ÷ today\'s mean 1 + χ ≈ 2.2' },
+    TEMP_MOIST_RH:      { value: 0.8, min: 0.7, max: 0.85, source: 'near-surface relative humidity of moist EBMs (Frierson et al. 2007; Hwang & Frierson 2010: 0.8)' },
+    TEMP_ALBEDO:        { value: 0.29, min: 0.27, max: 0.31, source: 'atmospheric part of planetary albedo, solar-weighted CERES 0.277, CMIP3 2σ 0.258–0.297 (Donohoe & Battisti 2011); the P2 mean is that + 0.096·TEMP_ALBEDO_LAT (annual sunlight ∝ 1 − 0.48·P2)' },
+    TEMP_DIFFUSIVITY_OCEAN: { value: 0.15, min: 0.05, max: 0.3, source: 'ocean heat transport ≈ 1/4–1/3 of the total poleward at 20–40° (Trenberth & Caron 2001); of a dry total ≈ 0.65 (North 1981), ≈ 0.15–0.2, less the gyres the ocean stage resolves' },
+    TEMP_ALBEDO_SEA_ICE: { value: 0.65, min: 0.5, max: 0.75, source: 'sea ice: snow-covered 0.8–0.85, bare 0.65, ponded 0.2–0.5; seasonal mean ≈ 0.6–0.7 (Perovich et al. 2002, SHEBA)' },
+    TEMP_ALBEDO_LAT:    { value: 0.15, min: 0.10, max: 0.20, source: 'P2 fit to the atmospheric part of CERES planetary albedo, ≈ 0.24 equator → 0.40 at 60° (Donohoe & Battisti 2011 Fig. 3a)' },
+    TEMP_ALBEDO_ICE:    { value: 0.80, min: 0.75, max: 0.85, source: 'ice-sheet surface albedo: Antarctic plateau 0.80–0.85, Greenland 0.75–0.85 outside its ablation zone (MODIS)' },
+    TEMP_ALBEDO_SNOW:   { value: 0.50, min: 0.30, max: 0.70, source: 'surface albedo of snow-covered land: boreal forest 0.2–0.35, tundra and open snow 0.7–0.8 (Moody et al. 2007; Barlage et al. 2005)' },
     TEMP_LAND_HEAT_CAP: { value: 8.4e6, min: 3e6, max: 2e7, source: '≈ 2 m water equivalent (air column + top soil)' },
     TEMP_OCEAN_MIX_M:   { value: 50, min: 25, max: 100, source: 'ocean mixed layer, 30–100 m' },
-    TEMP_DIFFUSIVITY_EW: { value: 0.3, min: 0.05, max: 1.0, source: 'eddy heat flux is mainly meridional (v′T′ ≫ u′T′); east–west exchange by the mean winds' },
+    TEMP_DIFFUSIVITY_EW: { value: 0.12, min: 0.02, max: 0.4, source: '(on moist static energy, as TEMP_DIFFUSIVITY) eddy heat flux is mainly meridional (v′T′ ≫ u′T′); east–west exchange by the mean winds' },
     TEMP_WIND_CARRY:    { value: 0.05, min: 0.0, max: 0.30, source: 'share of the air column\'s heat the (near-surface) wind carries; no direct literature value — bounded by the whole column moving at about the surface wind' },
     TEMP_INVERSION_C:   { value: 10, min: 5, max: 15, source: 'Arctic winter surface inversions ≈ 10–15 K (Serreze et al. 1992); strongest in the dark over snow' },
     TEMP_INVERSION_WIND: { value: 5, min: 3, max: 8, source: 'stable boundary layers break down above ≈ 5–7 m/s near-surface wind' },
@@ -222,7 +226,6 @@ export const PARAM_PRIORS = Object.freeze({
     TEMP_SEA_ICE_MELT:  { value: 0.003, min: 0.002, max: 0.006, source: 'summer surface melt ≈ 0.5–1.5 m over a season of a few hundred positive degree-days (Perovich et al. 2003)' },
     TEMP_SEA_ICE_H0:    { value: 0.5, min: 0.3, max: 1, source: 'ice ≈ 0.3–1 m thick closes the sea (consolidated pack vs new ice and leads)' },
     TEMP_SEA_ICE_SPREAD_KM: { value: 700, min: 300, max: 1200, source: 'sea-ice drift ≈ 5–10 km/day — a few hundred to a thousand km over a season (IABP buoys)' },
-    TEMP_POLAR_SUMMER_DAMP: { value: 0.5, min: 0.2, max: 0.7, source: 'Arctic summers: the surface stays near 0 °C while snow and sea ice melt, and the July 10 °C isotherm (the tree line) lies near 65–72°N on every continent; land poleward of 75° is tundra or ice everywhere on Earth (Beck et al. 2023). No direct value — set so the model\'s 66–80°N summers match, winters untouched' },
     TEMP_ICE_START_C:   { value: -30, min: -40, max: -20, source: 'ice-sheet hysteresis: once grown, polar ice sheets persist under climates that would not grow them (e.g. DeConto & Pollard 2003; Abe-Ouchi et al. 2013)' },
 
     CIRC_HADLEY_SCALE:  { value: 1.2, min: 0.9, max: 1.5, source: 'Held & Hou 1980 underestimates the observed Hadley edge by ~20 % (e.g. Frierson et al. 2007)' },

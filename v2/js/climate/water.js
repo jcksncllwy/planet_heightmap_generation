@@ -40,7 +40,10 @@ export const LATENT = 2.5e6;                         // J/kg, latent heat of vap
 export const PT_ALPHA = 1.26;                        // Priestley–Taylor coefficient
 export const SURFACE_SW = 0.55;                      // share of the top-of-atmosphere sunlight reaching the ground (clouds, air)
 export const NET_LW = 50;                            // W/m², net longwave the ground loses
-export const ALBEDO_LAND = 0.15, ALBEDO_SNOW = 0.6;
+export const ALBEDO_LAND = 0.15, ALBEDO_SNOW = 0.6;    // surface albedos: snow-free land (MODIS land ≈ 0.12 forest … 0.35 desert), snow
+// The zonal estimate's planetary albedo: Earth's, 0.30 — it has no clouds or surfaces of its own (the energy balance's
+// is the atmosphere's reflection plus each surface's, temperature.js; its TEMP_ALBEDO is the atmosphere's part alone)
+const ZONAL_ALBEDO = 0.30;
 /** The slope Δ (hPa/K) of the saturation vapour pressure at air temperature T (°C) — Clausius–Clapeyron in Magnus'
  * form. Priestley–Taylor evaporates Δ/(Δ + γ) of the net radiation (γ = PSYCHRO: ~0.4 at 0 °C, ~0.6 at 15 °C, ~0.75 at
  * 25 °C); the finish's ice age cools its potential evaporation by it (finish-ice.js). */
@@ -69,7 +72,7 @@ export function zonalPET(latDeg, Tc, tiltDeg = 23.44) {
         a += Q[m] * Math.cos(t) / 6; b += Q[m] * Math.sin(t) / 6;
     }
     // (the seasons: T' = Re[F̂ e^{iωt} / (B + K + iωC)], F̂ = (1 − albedo)(a − ib))
-    const absorbed = 1 - PARAMS.TEMP_ALBEDO, re = PARAMS.TEMP_OLR_B + PARAMS.TEMP_LOCAL_K, im = 2 * Math.PI / (365.25 * 86400) * PARAMS.TEMP_LAND_HEAT_CAP;
+    const absorbed = 1 - ZONAL_ALBEDO, re = PARAMS.TEMP_OLR_B + PARAMS.TEMP_LOCAL_K, im = 2 * Math.PI / (365.25 * 86400) * PARAMS.TEMP_LAND_HEAT_CAP;
     const d = re * re + im * im, fr = absorbed * a, fi = -absorbed * b, xr = (fr * re + fi * im) / d, xi = (fi * re - fr * im) / d;
     let e = 0;
     for (let m = 0; m < 12; m++) { const t = 2 * Math.PI * (m + 0.5) / 12; e += pt(Q[m], Tc + xr * Math.cos(t) - xi * Math.sin(t)); }
