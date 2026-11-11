@@ -250,15 +250,17 @@ function treeScratch(n, m) {
  * @param {number} [seaKm]  the sea's surface (km): the erosion's lowstand
  * @param {boolean} [breach]  whether a hollow at the sea's surface opens (`open`): on the finest level only — a coarser level's
  *   ground is the finest's averaged, which shaves a narrow sill below the sea that the finest still holds above it
- * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], open: Int32Array[]}}
+ * @param {Uint8Array|null} [histSea]  the seas the history left cut off (the first judge's `seaCells`, on the history's own
+ *   surface): only a hollow whose lowest point is one of them opens — a hollow the erosion dug is not a sea the history held
+ * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], open: Int32Array[], seaCells: Uint8Array}}
  *   sink: 1 on every cell of a closed hollow (its rivers end there); base: the level a river ending there is graded to
  *   (the ground, or a lake's level); water: each lake's level on the cells under it (NaN elsewhere) — a closed hollow's
  *   lakes, terminal and full; tectonic: the tectonic surface's hollows, closed hollows included; seas: each sea cut off from the ocean (a basin with ground below sea level, at least basinMinKm2): its area (km²),
  *   floor and sill (km), its water's level (km) and area (km²), inflow and what it would evaporate full (km³/yr), and
  *   whether it spills (full) or keeps a lake (wet) or a playa — or `open`: its sill below the sea's surface, the sea's; open:
- *   those seas' cells, one array each (joinOpenSeas)
+ *   those seas' cells, one array each (joinOpenSeas); seaCells: 1 on each cut-off sea's cells below the sea's surface
  */
-export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0, breach = true) {
+export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0, breach = true, histSea = null) {
     const { adjOffset, adjList, numCells: n } = mesh;
     // ── the priority flood from the world ocean: each other cell's spill level, and the way it was reached (toward the
     // ocean) — a sea cut off from it is crossed as any hollow is, its spill level its sill ──
@@ -307,7 +309,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
     // feeds the hollow below it (km² · mm / year). What open water loses: its potential evaporation (F.lakeEvapShare of
     // the land's), less the sky water its ground keeps (rain less its own runoff: the runoff is in q already) ──
     const evap = c => Math.max(0, F.lakeEvapShare * pet[c] - Math.max(0, rain[c])) * cellKm2;
-    const q = new Float64Array(n), sink = new Uint8Array(n), base = new Float32Array(n), water = new Float32Array(n).fill(NaN), seas = [], open = [];
+    const q = new Float64Array(n), sink = new Uint8Array(n), base = new Float32Array(n), water = new Float32Array(n).fill(NaN), seas = [], open = [], seaCells = new Uint8Array(n);
     const minCells = F.basinMinKm2 / cellKm2;
     let basins = 0, levelled = 0;
     for (let i = count - 1; i >= 0; i--) {
@@ -346,7 +348,12 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         // cut-off sea's rim down below the sea: the breach — the Zanclean flood refilling the Messinian Mediterranean through
         // Gibraltar, 5.33 Ma, in months to two years (Garcia-Castellanos et al. 2009). Lane reflood, 2026-11-11: the caller
         // (finish.js) makes it ocean from then on. Its water passes on, all of it, to the sea)
-        if (breach && cutOff && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm))) {
+        if (cutOff) for (const c of L.cells) if (z[c] < seaKm) seaCells[c] = 1;
+        // (and only a sea the history held: a hollow whose lowest point lay in one of the history's cut-off seas (histSea).
+        // The erosion also digs hollows below the sea on low coastal plains — at 2.5M some 300 a finish, 2.2–2.7 Mkm², floors
+        // 0.6–0.9 km down, very likely its known overcut (erosionrate: 2–3× Earth's lowering) — and joining those to the sea
+        // would turn that defect into coastline; they keep their fill, as before. gladsheim's ruling, 2026-11-11)
+        if (breach && cutOff && (!histSea || histSea[low]) && !(L.level > Math.fround(seaKm)) && underSea(L.cells, Math.fround(seaKm))) {
             let inflow = 0;
             for (const c of L.cells) inflow += q[c];
             seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: inflow * 1e-6, open: true });
@@ -378,7 +385,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         basins++;
         return 0;
     }
-    return { sink, base, water, basins, levelled, tectonic, seas, lakes, open };
+    return { sink, base, water, basins, levelled, tectonic, seas, lakes, open, seaCells };
 }
 
 /**
