@@ -46,7 +46,7 @@ for (const v of rows) {
     if (v.time % 50 !== 0 && !v.lips.length) continue;
     const air = v.gas.co2.arc + v.gas.co2.plume + v.gas.co2.rift + v.gas.co2.lip + v.gas.co2.thermo, so2 = S.reduce((a, s) => a + (s === 'ridge' ? 0 : v.gas.so2[s]), 0);
     const er = S.reduce((a, s) => a + v.erupted[s], 0), rs = v.sites.filter(s => s.kind === 'rift').length, sil = v.sites.filter(s => s.silicic).length;
-    console.log(`${String(v.time).padStart(4)} | ${' '.repeat(14)}${S.map(s => fmt(v.magma[s]).padStart(6)).join(' ')} | ${fmt(er).padStart(6)} | ${air.toFixed(0).padStart(6)} (${v.gas.co2.ridge.toFixed(0)}) | ${so2.toFixed(1).padStart(5)} | ${String(rs).padStart(5)} ${String(sil).padStart(5)} | ${v.lips.map(l => `${l.name} ${l.areaMkm2.toFixed(1)}Mkm² ${(l.earthKm3 / 1e6).toFixed(2)}Mkm³ ${l.durMyr.toFixed(2)}Myr peak ${l.peakKm3yr.toFixed(0)}km³/yr sills ${l.sillMkm2.toFixed(2)}Mkm² thermo ${l.thermoGtCO2.toFixed(0)}Gt${l.haloTag ? ' HALO' : ''}`).join('; ')}`);
+    console.log(`${String(v.time).padStart(4)} | ${' '.repeat(14)}${S.map(s => fmt(v.magma[s]).padStart(6)).join(' ')} | ${fmt(er).padStart(6)} | ${air.toFixed(0).padStart(6)} (${v.gas.co2.ridge.toFixed(0)}) | ${so2.toFixed(1).padStart(5)} | ${String(rs).padStart(5)} ${String(sil).padStart(5)} | ${v.lips.map(l => `${l.name} ${l.areaMkm2.toFixed(1)}Mkm² ${(l.volKm3 / 1e6).toFixed(2)}Mkm³ ${l.durMyr.toFixed(2)}Myr peak ${l.peakKm3yr.toFixed(0)}km³/yr sills ${l.sillMkm2.toFixed(2)}Mkm² thermo ${l.thermoGtCO2.toFixed(0)}Gt${l.haloTag ? ' HALO' : ''}`).join('; ')}`);
 }
 
 const mean = g => rows.reduce((a, v) => a + g(v), 0) / rows.length;
@@ -70,7 +70,7 @@ console.log(`  rifts: melt in ${riftFrames.length} of ${rows.length} frames; mea
     `${riftSites.filter(s => s.veiMax >= 6).length} peralkaline-capable, ${riftSites.filter(s => s.carbonatite).length} carbonatite`);
 const stretched = rows.reduce((a, v) => a + v.sites.filter(s => s.kind === 'rift').length, 0);
 const lips = rows.flatMap(v => v.lips);
-console.log(`  LIPs: ${lips.length} in ${rows.at(-1).time - rows[0].time + rows[0].dt} Myr (Earth's big ones ~1 per 20–30 Myr, Ernst 2014); Earth-scaled volume ${median(lips.map(l => l.earthKm3 / 1e6)).toFixed(2)} Mkm³ median ` +
+console.log(`  LIPs: ${lips.length} in ${rows.at(-1).time - rows[0].time + rows[0].dt} Myr (Earth's big ones ~1 per 20–30 Myr, Ernst 2014); volume (model's own, ~2–3× Earth per area) ${median(lips.map(l => l.volKm3 / 1e6)).toFixed(2)} Mkm³ median ` +
     `(Earth 0.1–4, Bryan & Ernst 2008); thermogenic ${median(lips.map(l => l.thermoGtCO2)).toFixed(0)} Gt CO₂ median, max ${Math.max(0, ...lips.map(l => l.thermoGtCO2)).toFixed(0)} (Siberia ~0.8–4 × 10⁵ Gt CO₂)`);
 const sil = rows.map(v => v.sites.filter(s => s.silicic).length);
 console.log(`  silicic centres a frame: median ${median(sil)}, range ${Math.min(...sil)}–${Math.max(...sil)}; VEI-8-capable a frame: median ${median(rows.map(v => v.sites.filter(s => s.veiMax >= 8).length))}`);

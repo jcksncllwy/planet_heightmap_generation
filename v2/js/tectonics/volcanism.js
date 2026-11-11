@@ -20,7 +20,7 @@
 //           (mantleHeat × 100 K, a plume within PLUME_REACH_KM up to +150 K × strength) — nothing tells a rift to erupt;
 //           cold-mantle rifts stay dry (Iberia), hot ones flood (Afar)
 //   lip     a plume head's flood basalt (the `lip` event): the volcKm the history piled over its cells, and as much again
-//           intruded (I:E ~1 for flood basalts, White et al. 2006); `earthKm3` is it × LIP_EARTH_SCALE (report Q5)
+//           intruded (I:E ~1 for flood basalts, White et al. 2006) — the model's own volume, ~2–3× Earth's per area (Q5: kept, flagged)
 //
 // What this skips (limits of a reduced model, tier 2 unless marked):
 //   · A rift cell stretched over several frames is credited its whole melt H(β) in each, not the increment (a frame pair
@@ -35,7 +35,7 @@
 
 import { CrustType, VolcanicType, OrogenyType } from './model/crust.js';
 import { BoundaryKind } from './model/world.js';
-import { decodeFacies, decodeCoverKm } from './model/geology.js';
+import { decodeFacies, decodeCoverKm, decodeArcMyr } from './model/geology.js';
 import { crustThicknessKm } from './measure.js';
 import { makeRng } from '../../../js/rng.js';
 
@@ -82,12 +82,13 @@ const ARC_LIVE_MYR = 10;
  * Melt under a rift stretched by β over mantle ΔT kelvin hotter than normal, km of melt column (McKenzie & Bickle 1988;
  * White & McKenzie 1989, Fig. 5, reduced): upwelling mantle crosses the solidus at z_s and melts up to the thinned
  * lithosphere's base a/β; the melt fraction grows about linearly with the decompression, so the column as its square.
- * H∞(ΔT) is the full column of a ridge on that mantle — 7 km normal, ~14 at +100 K, ~23 at +200 K (Iceland 20–25).
+ * H∞(ΔT) is the full column of a ridge on that mantle: 7 km × (1 + ΔT/80 K) — ~16 km at +100 K (about doubled: White &
+ * McKenzie 1995), ~22 at +175 K (Iceland's 20–25 km at ~+150–200 K; a square law gave 42 km there, check-volcano).
  * z_s = 60 km + 0.3 km/K × ΔT: the dry solidus (~3.3 K/km) against the adiabat (~0.5 K/km).
  */
 export function riftMeltKm(beta, dT) {
     if (!(beta > 1)) return 0;
-    const t = Math.max(0, dT), zs = 60 + 0.3 * t, Hinf = RIDGE_MELT_KM * (1 + t / 120) ** 2, d = zs - LITH_KM / beta;
+    const t = Math.max(0, dT), zs = 60 + 0.3 * t, Hinf = RIDGE_MELT_KM * (1 + t / 80), d = zs - LITH_KM / beta;
     return d > 0 ? Hinf * (d / zs) ** 2 : 0;
 }
 
@@ -172,9 +173,10 @@ export function volcStep(prev, frame, mesh, H, { seed = 0, arcGross = 1 } = {}) 
         const share = v => sillKm2 > 0 ? v / sillKm2 : 0, f = { coal: share(coal), organic: share(organic), salt: share(salt), carb: share(carb) };
         // (Gt CO₂: km² × 10⁶ m² × t/m² ÷ 10⁹)
         const thermoGtCO2 = sillKm2 * 1e6 * THERMO_T_M2 * (Math.min(1, f.coal + f.organic) + THERMO_CARB_SHARE * f.carb) / 1e9;
-        const pul = lipPulses(seed, e.data.name, volKm3 * LIP_EARTH_SCALE);
+        const pul = lipPulses(seed, e.data.name, volKm3);
         magma.lip += volKm3 * (1 + LIP_IE) / dt;
-        lips.push({ name: e.data.name, t: e.time, onLand: e.data.onLand, areaMkm2: e.data.areaMkm2, volKm3, earthKm3: volKm3 * LIP_EARTH_SCALE,
+        lips.push({ name: e.data.name, t: e.time, onLand: e.data.onLand, areaMkm2: e.data.areaMkm2, volKm3, overEarth: 1 / LIP_EARTH_SCALE,   // (the model's own volume, flagged ~2–3× Earth's per area: Jackson, Q5 — a LIP-volume lane is queued)
+           
             ...pul, sillMkm2: sillKm2 / 1e6, facies: f, thermoGtCO2, haloTag: f.salt > 0.2 });
     }
 
@@ -196,7 +198,7 @@ export function volcStep(prev, frame, mesh, H, { seed = 0, arcGross = 1 } = {}) 
         const cont = continental(w), km = crustKm(w), riftedArc = frame.riftThin[w] > 0 && frame.riftThinAt[w] > t0;
         // (thickened continental arcs — the Altiplano–Puna, La Garita — and rifted arcs — Taupō — reach M8; ordinary
         // continental arcs and mature island arcs VEI 7 — Tambora, on ~20 km of crust; young island arcs VEI 5)
-        const veiMax = (cont && km >= 45) || riftedArc ? 8 : cont || frame.arcMyr[w] >= 20 ? 7 : 5;
+        const veiMax = (cont && km >= 45) || riftedArc ? 8 : cont || decodeArcMyr(frame.arcMyr[w]) >= 20 ? 7 : 5;
         sites.push({ w, kind: cont ? 'andean' : 'arc', km3Myr: perArc, silicic: veiMax >= 7, veiMax, crustKm: km });
     }
     for (const h of hs) {
