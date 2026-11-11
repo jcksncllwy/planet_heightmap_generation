@@ -102,8 +102,9 @@ export function evolveHeights(world, dt) {
     const epoch = world.heightsEpoch = (world.heightsEpoch ?? 1) + 1;
     if (!flux || flux.length !== mesh.numCells) flux = scratch.flux = new Float32Array(mesh.numCells), scratch.rootFlux = new Float32Array(mesh.numCells);
     // Thick crust spreads by lower-crustal channel flow (step/crust-flow.js, lane crustmass S3): one law, ∂h/∂t = ∇·(K∇s), in place
-    // of the old gravitational collapse (a 5 km threshold and a hand-set 2000 km²/Myr spread, removed at crustmass S5)
-    flowCrust(world, dt, H);
+    // of the old gravitational collapse (a 5 km threshold and a hand-set 2000 km²/Myr spread, removed at crustmass S5). config.crustFlow
+    // false stops it (the crust then never spreads: a control, not a model)
+    if (world.config.crustFlow) flowCrust(world, dt, H);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
         const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm, basinFillKm, tectKm, tectRefKm, tectAt } = crust;
