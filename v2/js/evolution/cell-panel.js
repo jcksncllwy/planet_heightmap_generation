@@ -439,6 +439,7 @@ export class CellPanel {
         const F = this.facts = placeFacts(s, this.place.lat, this.place.lon);
         this.body.innerHTML = F ? panelHTML(F, s) : '<p class="evo-cell-quiet">Nothing drawn here yet.</p>';
         this.key = key; this.ms = performance.now() - t0; this.lastDraw = performance.now();
+        this.el.dataset.ms = this.ms.toFixed(1);                 // (how long it took: for a smoke to read)
         this.el.hidden = false;
     }
     /** While open: drawn again when the moment (or what it shows) changes — at most every REFRESH_MS. */
