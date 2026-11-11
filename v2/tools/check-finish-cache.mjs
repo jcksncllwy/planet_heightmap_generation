@@ -195,6 +195,12 @@ section('the dev server (the page\'s path)');
         const has = await (await fetch(at('/api/finish/has'), { method: 'POST', body: JSON.stringify({ keys: [key, 'f'.repeat(32)] }) })).json();
         check('asked which of many keys are there, it names the whole entries only (the timeline\'s marks)', has.has?.length === 1 && has.has[0] === key, JSON.stringify(has));
         check('…and refuses a malformed one among them', (await fetch(at('/api/finish/has'), { method: 'POST', body: JSON.stringify({ keys: [key, 'nothex'] }) })).status === 400);
+        // (a reload after the parts went up but before 'done': the page that comes back asks for it — and gets it)
+        const k2 = 'e'.repeat(32), post2 = (what, body, extra = '') => fetch(at(`/api/finish/${what}?key=${k2}${extra}`), { method: 'POST', body });
+        await post2('begin', JSON.stringify({ spec }));
+        for (const [part, tree] of [['page', page], ['cells', cells]]) { const raw = treeBytes(tree); await post2('part', zlib.deflateSync(raw), `&part=${part}&raw=${raw.length}`); }
+        const has2 = await (await fetch(at('/api/finish/has'), { method: 'POST', body: JSON.stringify({ keys: [k2] }) })).json(), got2 = await fetch(at(`/api/finish/page?key=${k2}`));
+        check('an upload cut off before its done (the page reloaded), its parts whole: listed and served after all, settled complete', has2.has?.[0] === k2 && got2.ok && differ(readTree(new Uint8Array(await got2.arrayBuffer())), page) === null && FC.readMeta(k2)?.state === 'complete');
     } finally { server.kill(); }
 }
 
@@ -204,6 +210,26 @@ section('eviction');
     const entries = FC.listEntries(), total = entries.reduce((s, e) => s + e.bytes, 0), oldest = entries.at(-1);
     const r = FC.gc({ capBytes: total - 1 });
     check('over the cap, the entry used longest ago goes first, and only as many as must', r.removed.length === 1 && r.removed[0] === oldest.key, `${entries.length} entries, ${(total / 1e6).toFixed(1)} MB → removed ${r.removed.length}`);
+}
+
+// ── an upload its page never finished (a reload mid-upload): settled where it is read, not 'uploading' for good ──
+section('an upload left unfinished');
+{
+    const page = { raster: { w: 2, h: 1, heightM: new Int16Array([5, -5]) }, stats: {} }, cells = { numCells: 1, z: new Float32Array([1]) };
+    const ago = ms => new Date(Date.now() - ms).toISOString(), old = FC.UPLOAD_STALE_MS + 60e3;
+    const whole = '1'.repeat(32), fresh = '2'.repeat(32), gone = '3'.repeat(32);
+    FC.writeMeta(whole, { spec: { cells: 1 }, state: 'uploading', at: ago(old) }); FC.putPart(whole, 'page', page); FC.putPart(whole, 'cells', cells);
+    check('both parts there and sound: whole after all ("complete"), and read', FC.isComplete(whole) && FC.readMeta(whole).state === 'complete' && differ((await FC.loadFinish(whole))?.cells, cells) === null);
+    FC.writeMeta(fresh, { spec: { cells: 1 }, state: 'uploading', at: ago(1000) }); FC.putPart(fresh, 'page', page);
+    check('a part missing, the upload a moment ago: still under way — not whole, not given up', !FC.isComplete(fresh) && FC.readMeta(fresh).state === 'uploading');
+    FC.writeMeta(gone, { spec: { cells: 1 }, state: 'uploading', at: ago(old) }); FC.putPart(gone, 'page', page);
+    const t = new Date(Date.now() - old); fs.utimesSync(FC.partPath(gone, 'page'), t, t);
+    const t0 = Date.now(), waited = await FC.waitComplete(gone, 20e3), ms = Date.now() - t0;
+    check(`a part missing and nothing arrived for ${FC.UPLOAD_STALE_MS / 60e3} min: given up ("abandoned"), not waited for`, !waited && ms < 2000 && FC.readMeta(gone).state === 'abandoned', `${ms} ms`);
+    const r = FC.gc({ capBytes: 0 });
+    check('…and evicted like any other, while the upload under way is kept', r.removed.includes(gone) && !r.removed.includes(fresh) && fs.existsSync(FC.partPath(fresh, 'page')));
+    FC.writeMeta(gone, { state: 'uploading', at: new Date().toISOString() }); FC.putPart(gone, 'page', page); FC.putPart(gone, 'cells', cells); FC.writeMeta(gone, { state: 'complete' });
+    check('detailed again, it is kept whole as any other', FC.isComplete(gone) && differ((await FC.loadFinish(gone))?.cells, cells) === null);
 }
 
 fs.rmSync(TMP, { recursive: true, force: true });

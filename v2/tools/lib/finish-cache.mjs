@@ -12,7 +12,7 @@
 // Entry:  <key>/ holds page.bin (what the page shows: the picture, rivers, climate, the People layer's world, stats —
 //         finish-result.js page), cells.bin (the per-cell fields on the finish's mesh: z, ocean, lake, lakeLevel,
 //         glaciated), meta.json (the spec it is keyed by, who made it and when, its state: 'uploading' until whole,
-//         then 'complete') and, while a Node process builds it, build.lock.
+//         then 'complete'; an upload its page left unfinished is settled where read: settleUpload) and, while a Node process builds it, build.lock.
 // Files:  'GSFC' · u32 version · u32 bytes · u32 0 · SHA-256 of the bytes · the bytes deflated, the bytes being the tree
 //         in app/finish-wire.js's format. Every read checks the length and the digest: a file cut short or damaged is
 //         deleted, never trusted (and the moment finished again by whoever wants it).
@@ -112,10 +112,33 @@ export function readPart(key, part) {
     catch { try { fs.unlinkSync(partPath(key, part)); } catch { /* */ } return null; }
 }
 
-/** Whether an entry is whole (both parts there, its meta 'complete'). */
+/** Whether an entry is whole (both parts there, its meta 'complete'; one left 'uploading' is settled first: settleUpload). */
 export function isComplete(key) {
-    const m = readMeta(key);
+    const m = settleUpload(key);
     return m?.state === 'complete' && PARTS.every(p => fs.existsSync(partPath(key, p)));
+}
+
+// ── an upload its page never finished (a reload, a closed tab, the worker let go mid-upload): its meta was left
+// 'uploading' for good — waited for by every tool that asked (finish-latest, render-moment), kept from eviction for an
+// hour, and its parts, often both there, never read. Settled where it is read instead. ──
+/** How long an upload may go without a part arriving before it is taken for gone: a part is sent within seconds of the
+ *  last (the worker deflates it first: ~1–2 s at 2.5M cells, under ~10 s at 10M); the finish itself comes before 'begin'. */
+export const UPLOAD_STALE_MS = 2 * 60e3;
+/**
+ * An entry left 'uploading', settled: whole after all when both its parts are there and sound (the parts are written
+ * whole or not at all — atomicWrite — and checked here as any read checks them) — 'complete', as 'done' would have made
+ * it; else, no part having arrived for UPLOAD_STALE_MS, 'abandoned': not waited for, not kept from eviction, finished
+ * again by whoever wants it (a new upload's 'begin' makes it 'uploading' again). Any other entry is left as it is.
+ * @returns the entry's meta after (null: none)
+ */
+export function settleUpload(key) {
+    const m = readMeta(key);
+    if (m?.state !== 'uploading' || lockHolder(key)) return m;          // (a Node process building it holds its lock)
+    if (PARTS.every(p => fs.existsSync(partPath(key, p))) && PARTS.every(p => readSealed(partPath(key, p), MAGIC) !== null))
+        return writeMeta(key, { state: 'complete', completedAt: new Date().toISOString(), settled: 'its parts were whole: the upload stopped before its done' });
+    let last = Date.parse(m.at ?? m.created) || 0;
+    for (const p of PARTS) try { last = Math.max(last, fs.statSync(partPath(key, p)).mtimeMs); } catch { /* (not there) */ }
+    return Date.now() - last > UPLOAD_STALE_MS ? writeMeta(key, { state: 'abandoned', abandonedAt: new Date().toISOString() }) : m;
 }
 
 /** Mark an entry used (its folder's time: what eviction goes by). */
@@ -145,9 +168,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 export async function waitComplete(key, ms = 15 * 60e3) {
     for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) {
         if (isComplete(key)) return true;
-        const m = readMeta(key);
-        // (no build under way and no upload under way — or one that stopped long ago: nothing to wait for)
-        if (!lockHolder(key) && !(m?.state === 'uploading' && Date.now() - Date.parse(m.at ?? m.created) < 10 * 60e3)) return isComplete(key);
+        // (no build under way and no upload under way — one that stopped is settled by isComplete: nothing to wait for)
+        if (!lockHolder(key) && readMeta(key)?.state !== 'uploading') return isComplete(key);
     }
     return isComplete(key);
 }
@@ -230,7 +252,7 @@ export function gc({ capBytes = CAP_BYTES } = {}) {
     }
     for (const e of [...entries].reverse()) {
         if (total <= capBytes) break;
-        if (lockHolder(e.key) || (e.meta?.state === 'uploading' && Date.now() - Date.parse(e.meta.at ?? e.meta.created) < 3600e3)) continue;
+        if (lockHolder(e.key) || settleUpload(e.key)?.state === 'uploading') continue;
         fs.rmSync(e.dir, { recursive: true, force: true });
         total -= e.bytes; removed.push(e.key);
     }
