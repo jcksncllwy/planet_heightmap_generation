@@ -26,6 +26,7 @@ import { spreadBelt, beltWidthKm, OrogenyType, BeltSide } from '../step/orogeny.
 import { tangentToward } from '../../core/sphere-geom.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { centroidOfCells } from '../../core/sphere-geom.js';
+import { handOverPrism } from '../step/prism-accretion.js';
 
 /**
  * @param {import('../model/plate.js').Plate} upper   survives, with the merged crust
@@ -192,6 +193,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     upper.born = time;                    // a continent just assembled is NEW: its tenure (riftTenureMyr) starts again here,
     upper.bornOfRift = false;
                                           // or it would come apart the moment it welded (developer)
+    handOverPrism(lower, upper);          // (its accretionary prism: step/prism-accretion.js)
     lower.alive = false;
     upper.hue = hue;
     lower.crust = new CrustRaster(numCells);

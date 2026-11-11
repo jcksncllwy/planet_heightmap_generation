@@ -21,6 +21,7 @@ import { landMask } from '../js/terrain/land-mask.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { BoundaryKind } from '../js/tectonics/model/world.js';
 import { rockParts, crustVolume, crustTally } from '../js/tectonics/step/crust-ledger.js';
+import { prismHeldKm3 } from '../js/tectonics/step/prism-accretion.js';
 import { rockClosure } from './lib/volume-books.mjs';
 setDelaunator(Delaunator);
 const argv = process.argv, arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
@@ -68,7 +69,7 @@ if (SHEET && !reservoirs.some(x => x.t === Math.round(world.time))) reservoirs.p
 function reservoirsNow(w) {
     const a = sim.cellAreaKm2, P = rockParts(w), g = v => +(v * a / 1e9).toFixed(4), T = crustTally(w);
     return { crust: g(P.crust), relief: g(P.relief), fill: g(P.fill), arc: g(P.arc), oceanSed: g(P.oceanSed), transit: g(P.transit),
-        contVol: g(crustVolume(w)), contMkm2: +(T.land * a / 1e6).toFixed(3), arcMkm2: +(T.arc * a / 1e6).toFixed(3) };
+        prism: g(prismHeldKm3(w) / a), contVol: g(crustVolume(w)), contMkm2: +(T.land * a / 1e6).toFixed(3), arcMkm2: +(T.arc * a / 1e6).toFixed(3) };
 }
 
 // The subducting trench's length, measured from the boundaries themselves (lane crustmass S0; glitnir's note: volcano-run
@@ -163,8 +164,8 @@ console.log(`BREAKUPS ${bk.length}: line h0 p50 ${med(bk.map(b => b[0]))} km, at
 if (SHEET) printSheet(endBooks());
 function printSheet(e) {
     const f = (v, d = 3) => (v >= 0 ? ' ' : '') + v.toFixed(d);
-    console.log('SHEET reservoirs (Gkm³; areas Mkm²):   t   crust  relief    fill     arc oceanSed transit | contVol contMkm2 arcMkm2');
-    for (const r of e.reservoirs) console.log(`SHEET res ${String(r.t).padStart(5)} ${[r.crust, r.relief, r.fill, r.arc, r.oceanSed, r.transit].map(v => f(v).padStart(7)).join(' ')} | ${f(r.contVol).padStart(7)} ${f(r.contMkm2, 2).padStart(8)} ${f(r.arcMkm2, 2).padStart(7)}`);
+    console.log('SHEET reservoirs (Gkm³; areas Mkm²):   t   crust  relief    fill     arc oceanSed transit   prism | contVol contMkm2 arcMkm2');
+    for (const r of e.reservoirs) console.log(`SHEET res ${String(r.t).padStart(5)} ${[r.crust, r.relief, r.fill, r.arc, r.oceanSed, r.transit, r.prism ?? 0].map(v => f(v).padStart(7)).join(' ')} | ${f(r.contVol).padStart(7)} ${f(r.contMkm2, 2).padStart(8)} ${f(r.arcMkm2, 2).padStart(7)}`);
     console.log('SHEET stage (Gkm³ over the run): Δrock booked residual (gross, residual/gross) Δcont | flows');
     for (const [k, u] of Object.entries(e.closure)) {
         const cont = Object.entries(e.books).filter(([s]) => (s === k) || (k === 'rivers+fans' && (s === 'rivers' || s === 'fans'))).reduce((a, [, b]) => a + (b.volGkm3 ?? 0), 0);

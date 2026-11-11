@@ -183,6 +183,10 @@ export const TECTONICS = {
                                 // arcRootAddedKm3, a mantle source — Jackson's ruling 4: Andean thickening counted as arc magmatism only);
                                 // a transpression belt's or a sutured terrane's thickens nothing (no shortened area pays for it); an arc welded
                                 // on as continent keeps its rock (a relabel: its root is set so the column holds what the arc held, F2)
+    prismAccretion: false,      // (lane crustmass, S2; off until S5) the rock a trench scrapes off — what its subduction channel does not take of the
+                                // rise, the sea fill and the fans' rock (accretionSedimentKm × sedimentSubductionShare) — is the overriding plate's
+                                // prism, laid on its fore-arc as continental crust (Jackson's ruling 3; Cawood et al. 2009; step/prism-accretion.js),
+                                // not a book of rock gone (~0.4–1 Gkm³ a cycle, crustmass/report.md F15); its fore-arc islands rise out of it
     collapseMakesArea: false,   // (lane crust, 2; off — measured +0.8 Mkm²/cycle on 3 seeds, within the area's ±8 Mkm² noise: a collapsing
                                 // plateau almost never stands beside its own plate's open sea, so this makes no area worth its code) a collapsing range's hot root spreads over its plate's own sea floor too, and stands there as
                                 // thinned, drowned continent (step/heights.js spillToArea): thickness back into area (Dewey 1988)

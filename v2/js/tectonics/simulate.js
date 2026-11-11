@@ -32,6 +32,7 @@ import { seedGeology, evolveGeology } from './step/geology.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
 import { crustLedger, handLaidArcKm3 } from './step/crust-ledger.js';
 import { stepPlateStress } from './field/stress-step.js';
+import { accretePrisms } from './step/prism-accretion.js';
 
 /**
  * @param {import('./model/world.js').TectonicWorld} world
@@ -126,6 +127,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             if (slow) changed += led('arcCollapse', collapseArcs(world));  // an arc near its own coast lands on it
             if (slow) changed += led('marginIsles', growMarginIsles(world, slowDt)); // fore-arc islands rise and join the coast (cell types only)
             if (slow) changed += led('sedimentSubduction', subductSediment(world, slowDt)); // trench sediment goes down the subduction channel: the land it came from is lost
+            if (slow) changed += led('prismAccretion', accretePrisms(world));   // (config.prismAccretion) the rock the trenches scraped off builds the fore-arc as continent
             if (slow) changed += led('subductionErosion', erodeForeArcs(world, slowDt));     // the trench abrades the fore-arc's base: the coast steps back (config.subductionErosionKm3PerKmMyr)
             if (slow) led('fans', bookFans(world, slowDt));                      // (the books: where the rivers' rock went — fans or the rise)
             world.foreArcs = world.fans = null;                    // (the margins and fans those two shared: rebuilt next time)

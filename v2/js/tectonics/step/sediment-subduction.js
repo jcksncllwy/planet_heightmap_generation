@@ -19,11 +19,13 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { trenchFans } from './trench-fans.js';
 import { trenchSediment } from './margin-isles.js';
+import { creditPrism } from './prism-accretion.js';
 
 /** @returns {number} continental cells lost to the trenches this step */
 export function subductSediment(world, dt) {
     const { mesh, plates, config, owner, rngSediment: rng } = world, { adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
     const share = config.sedimentSubductionShare, channel = config.accretionSedimentKm;
+    const prism = config.prismAccretion;
     if (!(share > 0) || dt <= 0) return 0;
     const { deliveries } = trenchFans(world);
     if (!deliveries.length) return 0;
@@ -46,6 +48,9 @@ export function subductSediment(world, dt) {
         for (let i = 0; i < cells.length; i++) f += weights[i] * shareAt(cells[i]);
         allKm3 += mouth.km3 * f * dt;               // (all the rivers' rock that goes down, arcs' and islands' too: Earth's figure)
         keptKm3 += mouth.km3 * (1 - f) * dt;        // (…and what stays at the margin: the prism, or a full trench overtopping)
+        // (config.prismAccretion: what the channels do not take is the overriding plates' prisms, trench cell by trench cell —
+        // the share each takes of the mouth's rock, less what goes down there: step/prism-accretion.js)
+        if (prism) for (let i = 0; i < cells.length; i++) creditPrism(world, plates[owner[cells[i]]], mouth.km3 * weights[i] * (1 - shareAt(cells[i])) * dt);
         const lost = mouth.contKm3 * f;
         if (!(lost > 0)) continue;
         km3 += lost * dt;

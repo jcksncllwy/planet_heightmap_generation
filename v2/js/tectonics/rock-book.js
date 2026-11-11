@@ -18,6 +18,8 @@
 //                   crust, ARC_ROOT_SHARE of its root kept (step/arc-maturation.js)
 //   isleMergedKm3   …the same for a fore-arc island joining its coast; isleRaisedKm3 the island the prism raises, less the
 //                   floor sediment under it; marginErodedKm3 the coast an erosive margin eats (step/margin-isles.js)
+//   prismAccretedKm3 (config.prismAccretion) the trenches' scraped-off rock laid on a fore-arc as continent, or stacked under
+//                   its land (step/prism-accretion.js; it left the books as riseKeptKm3 / seaFillKeptKm3 / fanKm3)
 //   arcRecycledKm3  thin arc going down a trench, or with its slab at a collision (step/resolve.js, step/collision.js)
 //   arcCollapseKm3  an arc landing on its coast: the floor sediment it lands on (ops/collapse-arc.js)
 //   collisionConsumedKm3  rock a collision takes off the map — the lower plate's edge underthrust, a weld's overlap and

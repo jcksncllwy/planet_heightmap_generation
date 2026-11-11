@@ -113,8 +113,12 @@ export function growMarginIsles(world, dt) {
         // channel cannot take — and of the fore-arc's own ocean crust beneath, oceanCrustKm of it; a cell of island costs
         // continentCrustKm − oceanCrustKm of scraped sediment over its area. The prism keeps what it has not yet raised.
         // Where the islands' rates would raise more than the prism holds, those to rise are drawn at random among them)
-        if (config.wedgeConservation) {
-            plate.wedgeDue = (plate.wedgeDue ?? 0) + wedgeKm3 / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
+        // (config.prismAccretion: one prism per upper plate — the islands rise out of the rock its trenches really scraped
+        // off, plate.prismKm3, step/prism-accretion.js, not out of this estimate; what they leave it lays on the fore-arc)
+        const prism = config.prismAccretion;
+        if (prism) plate.wedgeDue = (plate.prismKm3 ?? 0) / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
+        if (config.wedgeConservation || prism) {
+            if (!prism) plate.wedgeDue = (plate.wedgeDue ?? 0) + wedgeKm3 / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
             if (raise.length > plate.wedgeDue) {
                 for (let i = raise.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [raise[i], raise[j]] = [raise[j], raise[i]]; }
                 raise.length = Math.floor(plate.wedgeDue);
@@ -133,6 +137,10 @@ export function growMarginIsles(world, dt) {
                 crust.terrane[c] = plate.marginIsleTerrane;
             }
             bookRock('isleRaisedKm3', raisedKm3);
+            if (prism) {                                             // (each island its rock less the floor it rises from)
+                const draw = Math.min(plate.prismKm3 ?? 0, Math.max(0, raisedKm3 - raise.length * config.oceanCrustKm * cellAreaKm2));
+                plate.prismKm3 = (plate.prismKm3 ?? 0) - draw; world.budget.prismIsleKm3 = (world.budget.prismIsleKm3 ?? 0) + draw;
+            }
             changed += raise.length;
             plate.dirty = true;
         }

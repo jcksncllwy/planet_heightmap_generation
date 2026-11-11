@@ -54,9 +54,9 @@ function gatherAndSubduct(world, removed, gaps, tally) {
     const { owner, ownerCell, claimCount, landClaims, consumedAt, collider, plates } = world;
     let consumed = 0;
     const budget = world.budget;
-    const subduct = (plate, cell, w) => {
+    const subduct = (plate, cell, w, over) => {
         if (plate.crust.type[cell] === CrustType.ARC) { budget.recycledCells++; bookRock('arcRecycledKm3', -cellRockKm3(world, plate.crust, cell)); }   // (thin arc crust going down a trench: polarity.js; its rock, rock-book.js)
-        else bookSubductedFloorRock(world, plate.crust, cell);    // (the rivers' rock on it: step/floor-rock.js)
+        else bookSubductedFloorRock(world, plate.crust, cell, over);    // (the rivers' rock on it, its scraped share the overrider's prism: step/floor-rock.js)
         plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++;
         (removed.get(plate) ?? removed.set(plate, []).get(plate)).push(cell);
     };
@@ -78,10 +78,10 @@ function gatherAndSubduct(world, removed, gaps, tally) {
             claimCount[w]++; landClaims[w]++;
             if (collider[w] < 0) collider[w] = plate.id;
         } else if (wins) {                              // the holder's crust goes down
-            subduct(holder, ownerCell[w], w);
+            subduct(holder, ownerCell[w], w, plate);
             owner[w] = plate.id; ownerCell[w] = cell;
             landClaims[w] = land ? 1 : 0;              // (a thin arc can go down under ocean now: polarity.js)
-        } else subduct(plate, cell, w);                 // this plate's crust goes down
+        } else subduct(plate, cell, w, holder);                 // this plate's crust goes down
     });
 
     // A raster cell can be the nearest one for two world cells; if it was subducted through one of them,

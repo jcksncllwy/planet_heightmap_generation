@@ -61,6 +61,7 @@ export const STAGE_FLOWS = {
     arcMaturation: { arcMaturedKm3: +1 },
     'rivers+fans': { seaOverflowKm3: -1, fanKm3: -1, riseUnlaidKm3: -1, cutFillKm3: -1 },
     marginIsles: { marginErodedKm3: +1, isleRaisedKm3: +1, isleMergedKm3: +1 },
+    prismAccretion: { prismAccretedKm3: +1 },
     arcCollapse: { arcCollapseKm3: +1, beltReliefKm3: +1, beltRootKm3: +1 },
     heights: { fillWornKm3: +1 },
 };

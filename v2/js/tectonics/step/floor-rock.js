@@ -16,14 +16,17 @@
 
 import { CrustType } from '../model/crust.js';
 import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { creditPrism } from './prism-accretion.js';
 
 /** The rivers' rock on crust cell `c` (km³): its rise, and an ocean cell's sea fill. */
 export function floorRockKm3(crust, c, cellAreaKm2) {
     return crust.riseKm3[c] + (crust.type[c] === CrustType.OCEAN ? crust.seaFillKm[c] * cellAreaKm2 : 0);
 }
 
-/** Book the rock on ocean cell `c` as it goes down a trench (call before the cell is removed). */
-export function bookSubductedFloorRock(world, crust, c) {
+/** Book the rock on ocean cell `c` as it goes down a trench (call before the cell is removed). `over`, the plate overriding
+ * it there (null where a plate runs out of floor): with config.prismAccretion the rock scraped off is its prism's
+ * (step/prism-accretion.js creditPrism), laid on its fore-arc as continental crust — not a book of rock gone. */
+export function bookSubductedFloorRock(world, crust, c, over = null) {
     if (crust.type[c] !== CrustType.OCEAN) return;
     const A = world.mesh.cellAreaKm2, rise = crust.riseKm3[c], fill = crust.seaFillKm[c] * A;
     if (!(rise > 0) && !(fill > 0)) return;
@@ -32,6 +35,7 @@ export function bookSubductedFloorRock(world, crust, c) {
     B.riseKeptKm3 = (B.riseKeptKm3 ?? 0) + rise * (1 - down);
     B.seaFillDownKm3 = (B.seaFillDownKm3 ?? 0) + fill * down;
     B.seaFillKeptKm3 = (B.seaFillKeptKm3 ?? 0) + fill * (1 - down);
+    if (over) creditPrism(world, over, (rise + fill) * (1 - down));
 }
 
 /** Cell `c` of `from` is dropped where `to` already has crust at `q`: its rock goes onto `q` (as rise rock). */

@@ -19,7 +19,7 @@ import { arcCrustKm } from './collision.js';
  *  config.collapseMakesArea, a collapsing range's root spreading over its plate's own sea floor — step/heights.js.
  *  hiddenRemnants, lane crust: a plate subducted to its last arc or continent cells, hidden under its neighbours, accretes
  *  to the plate over it, and land landing on the host's own land is absorbed — step/ocean-plates.js accreteHiddenRemnants.) */
-export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'subductionErosion', 'arcMaturation', 'tidy', 'riftStage', 'heights', 'hiddenRemnants'];
+export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'prismAccretion', 'subductionErosion', 'arcMaturation', 'tidy', 'riftStage', 'heights', 'hiddenRemnants'];
 
 /** The planet's continental and arc crust now, in cells (every live plate's raster). */
 export function crustTally(world) {
