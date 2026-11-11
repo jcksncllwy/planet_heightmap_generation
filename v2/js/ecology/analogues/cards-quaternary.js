@@ -121,7 +121,7 @@ export default [
     pbdb: { radiusDeg: 3 },
     roles: {
       megaherbivore: ['Palaeoloxodon', 'a huge straight-tusked elephant that browsed trees and shrubs', 'xxl'],
-      grazer: ['Bos', 'a large wild ox that grazed open patches beside the river', 'l'],
+      grazer: ['Cervus', 'a red deer that grazed open patches beside the river', 'l'],
       browser: ['Dama', 'a fallow deer that fed on leaves and grasses', 'm'],
       aquaticGrazer: ['Hippopotamus', 'a large hippo that rested in rivers and fed on land', 'xl'],
       bigPredator: ['Panthera', 'a lion that hunted large plant-eating mammals', 'l'],
@@ -226,8 +226,7 @@ export default [
     roles: {
       megaherbivore: ['Dinornis', 'a very tall flightless moa that browsed leaves and twigs', 'l'],
       browser: ['Emeus', 'a stocky flightless moa that fed on low shrubs and leaves', 'm'],
-      grazer: ['Pachyornis', 'a heavy-legged moa that ate low plants in open patches', 'm'],
-      granivore: ['Strigops', 'a flightless parrot that ate seeds, fruit and other plant foods', 's'],
+      frugivore: ['Euryapteryx', 'a broad-billed moa that plucked fruit and leaves from trees and shrubs', 'm'],
     },
     note: 'Forest and dense shrubs bordered a small lake and mire where browsing moa became trapped.' },
 
