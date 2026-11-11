@@ -62,7 +62,7 @@ function measure(w) {
 
 for (const seed of seeds) {
     const t0 = performance.now();
-    const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
+    const world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     const solves = []; let seenSolves = 0;
     const drive = w => { scene.drive(w); const n = w.stressLog?.length ?? 0; if (n > seenSolves) { seenSolves = n; solves.push(measure(w)); } };

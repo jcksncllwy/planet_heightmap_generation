@@ -18,7 +18,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { simulateCached } from './lib/history-cache.mjs';
-import { pageWorld, MESH_SEED } from './lib/moment-frame.mjs';
+import { pageWorld, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { FRAME_FIELDS } from '../js/terrain/terrain-pool.js';
 import { CrustType, VolcanicType } from '../js/tectonics/model/crust.js';
 import { mantleWarmth } from '../js/terrain/sea-level.js';
@@ -29,7 +29,7 @@ import { surfaceKm, pourOcean, EARTH_OCEAN_KM3 } from '../js/tectonics/ocean/inv
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const seeds = flag('--seeds', '626225,777,12345').split(',').map(Number), until = Number(flag('--until', 1200));
-const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 29)), jsonOut = flag('--json', null);
+const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT)), jsonOut = flag('--json', null);
 const H = terrainConfig({});
 
 const gdh1 = t => t < 20 ? 2.6 + 0.365 * Math.sqrt(t) : 5.651 - 2.473 * Math.exp(-0.0278 * t);

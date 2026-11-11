@@ -175,7 +175,7 @@ const neighbours = (w, p) => { const { adjOffset, adjList } = mesh, s = new Set(
 
 for (const seed of seeds) {
     const t0 = performance.now();
-    const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
+    const world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     let seenSolves = 0, seenEvents = 0, pre = null, surveyMs = 0, splitMs = 0;
     const helpers = { async searchJunctions(w, req) {

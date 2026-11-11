@@ -7,10 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from './gpu-harness/browser.mjs';
+import { DEFAULT_CONT } from './lib/moment-frame.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; }, has = k => process.argv.includes(k);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SEED = arg('--seed', '831576'), CONT = arg('--cont', '30'), SIM = arg('--sim', '40000'), TIME = arg('--time', '310'), CELLS = arg('--cells', '2500000'), PORT = Number(arg('--port', 8000 + (process.pid % 900)));
+const SEED = arg('--seed', '831576'), CONT = arg('--cont', String(DEFAULT_CONT)), SIM = arg('--sim', '40000'), TIME = arg('--time', '310'), CELLS = arg('--cells', '2500000'), PORT = Number(arg('--port', 8000 + (process.pid % 900)));
 const server = spawn(process.execPath, [path.join(ROOT, 'tuning/dev-server.mjs'), String(PORT)], { cwd: ROOT, stdio: 'ignore' });
 process.on('exit', () => server.kill());
 await new Promise(r => setTimeout(r, 1500));

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { civWorldFromFinish } from '../js/civ/civ-page.js';
 import { civSubstrate, cellLife, stormCV, Staple, STAPLES, WAYS, Way, Parent, SoilMod } from '../js/civ/substrate.js';
@@ -25,7 +25,7 @@ import { FOOD } from '../js/civ/food-config.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const DETAILS = arg('--cells', '40000,160000').split(',').map(Number), SEED = Number(arg('--seed', 13)), CONT = Number(arg('--cont', 30)), TIME = Number(arg('--time', 500));
+const DETAILS = arg('--cells', '40000,160000').split(',').map(Number), SEED = Number(arg('--seed', 13)), CONT = Number(arg('--cont', DEFAULT_CONT)), TIME = Number(arg('--time', 500));
 
 const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: 40000, time: TIME });
 const simMesh = buildSimMesh(40000, MESH_SEED), pool = await TerrainPool.create(simMesh);

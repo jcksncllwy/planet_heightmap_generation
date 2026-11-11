@@ -26,7 +26,7 @@ import { PNG } from 'pngjs';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { readLatest } from './lib/history-cache.mjs';
 import { nodeKey, finishCached, loadFinish } from './lib/finish-cache.mjs';
 import { historyKeyOf } from './lib/moment-frame.mjs';
@@ -61,7 +61,7 @@ const LATEST = process.argv.includes('--latest') ? readLatest() : null;
 if (process.argv.includes('--latest') && !LATEST) throw new Error('--latest: nothing viewed yet (the history cache has no latest.json)');
 const fromLatest = { '--seed': LATEST?.seed, '--cont': LATEST?.cont, '--sim': LATEST?.sim, '--time': LATEST?.timeMyr };
 const argOrLatest = (k, d) => arg(k, fromLatest[k] ?? d);
-const SEED = Number(argOrLatest('--seed', 12345)), CONT = Number(argOrLatest('--cont', 30)), SIM = Number(argOrLatest('--sim', 40000)), TIME = Number(argOrLatest('--time', 300));
+const SEED = Number(argOrLatest('--seed', 12345)), CONT = Number(argOrLatest('--cont', DEFAULT_CONT)), SIM = Number(argOrLatest('--sim', 40000)), TIME = Number(argOrLatest('--time', 300));
 // (--latest with the moment shown in detail: the page's finish, at its detail and width — unless asked for others)
 const PAGE_FIN = LATEST?.finish && LATEST.finishSpec && !process.argv.includes('--cells') && !process.argv.includes('--width') && !process.argv.includes('--time') ? LATEST.finishSpec : null;
 const CELLS = Number(arg('--cells', PAGE_FIN?.cells ?? 2500000)), W = Number(arg('--width', PAGE_FIN?.width ?? 4096)), PALETTE = arg('--palette', 'relief');

@@ -22,7 +22,7 @@ const mesh = labMesh(cells), scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
 const all = [];
 for (const seed of seeds) {
     const t0 = performance.now();
-    const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
+    const world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     onPath(world);
     const plateCounts = [];

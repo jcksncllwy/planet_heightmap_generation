@@ -14,7 +14,7 @@ const AGES = [2, 5, 10, 15, 20, 30, 45], STATIONS = [0, 0.25, 0.5, 0.75, 1];
 const R = 6371;
 
 for (const seed of seeds) {
-    const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
+    const world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     const seen = new Set(), watch = [];
     const drive = w => {

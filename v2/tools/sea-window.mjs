@@ -8,7 +8,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { simulateCached } from './lib/history-cache.mjs';
-import { pageWorld, MESH_SEED } from './lib/moment-frame.mjs';
+import { pageWorld, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { FRAME_FIELDS } from '../js/terrain/terrain-pool.js';
 import { terrainConfig, TERRAIN } from '../js/terrain/terrain-config.js';
 import { landMask } from '../js/terrain/land-mask.js';
@@ -16,7 +16,7 @@ import { landMask } from '../js/terrain/land-mask.js';
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const seeds = flag('--seeds', '831576,12345,777').split(',').map(Number), until = Number(flag('--until', 600));
-const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 30)), every = Number(flag('--every', 2));
+const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT)), every = Number(flag('--every', 2));
 const windowMyr = TERRAIN.carveTimeMyr, H = terrainConfig();
 for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), simMesh = buildSimMesh(sim, MESH_SEED), mask = {}, rows = [];

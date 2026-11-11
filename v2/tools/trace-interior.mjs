@@ -7,7 +7,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 
@@ -18,7 +18,7 @@ const SEED = Number(arg('--seed', 831576)), TIME = Number(arg('--time', 430)), C
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z_])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
 if (arg('--erode', null) !== null) F.erode = JSON.parse(arg('--erode'));
-const frame = await momentFrame(ROOT, { seed: SEED, cont: Number(arg('--cont', 30)), sim: SIM, time: TIME, key: arg('--key', null) });
+const frame = await momentFrame(ROOT, { seed: SEED, cont: Number(arg('--cont', DEFAULT_CONT)), sim: SIM, time: TIME, key: arg('--key', null) });
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh);
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: true, F, onStage: () => {} });
 const { mesh, z, ocean, lake, lakeLevel } = fin, { lat, lon, hollow, hollowInfo, lakeSrc } = fin.layers, { adjOffset, adjList, numCells: n } = mesh, a = 4 * Math.PI * 6371 ** 2 / n;

@@ -27,7 +27,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import * as HC from './lib/history-cache.mjs';
 import { mathFingerprint } from '../js/app/history-key.js';
-import { momentFrame, pageWorld } from './lib/moment-frame.mjs';
+import { momentFrame, pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { frameHash, fieldHashes } from './lib/frame-hash.mjs';
 
 setDelaunator(Delaunator);
@@ -61,7 +61,7 @@ if (cmd === 'latest') {
         if (!frame) { console.error(`not cached: ${key} at ${time} Myr (frames there: ${HC.entryTimes(key).join(', ') || 'none'})`); process.exit(1); }
         writeFrame(frame, arg('--out', defaultOut(HC.readMeta(key)?.spec?.seed ?? key, time)));
     } else {
-        const seed = Number(arg('--seed', NaN)), time = Number(arg('--time', NaN)), cont = Number(arg('--cont', 30)), sim = Number(arg('--sim', 40000));
+        const seed = Number(arg('--seed', NaN)), time = Number(arg('--time', NaN)), cont = Number(arg('--cont', DEFAULT_CONT)), sim = Number(arg('--sim', 40000));
         if (!Number.isFinite(seed) || !Number.isFinite(time)) { console.error('frame needs --latest, or --seed and --time'); process.exit(1); }
         if (has('--no-build')) {
             const { key } = pageWorld({ seed, cont, sim }), frame = HC.getFrame(key, time);

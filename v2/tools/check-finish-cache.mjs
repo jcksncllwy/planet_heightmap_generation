@@ -115,7 +115,7 @@ section('the store');
 
 // ── through the cache: a real finish ──
 section('a finish through the cache');
-const { momentFrame, historyKeyOf, MESH_SEED } = await import('./lib/moment-frame.mjs');
+const { momentFrame, historyKeyOf, MESH_SEED, DEFAULT_CONT } = await import('./lib/moment-frame.mjs');
 const { buildSimMesh } = await import('../js/core/sim-mesh.js');
 const { TerrainPool } = await import('../js/terrain/terrain-pool.js');
 const { finishPlanet } = await import('../js/finish/finish.js');
@@ -123,7 +123,7 @@ const { finishResult } = await import('../js/finish/finish-result.js');
 const { setDelaunator } = await import('../../js/sphere-mesh.js');
 setDelaunator((await import('delaunator')).default);
 const SEED = 4242, SIM = 10000, TIME = 60, CELLS = 40000, WIDTH = 512;
-const frame = await momentFrame(ROOT, { seed: SEED, cont: 30, sim: SIM, time: TIME }), simMesh = buildSimMesh(SIM, MESH_SEED);
+const frame = await momentFrame(ROOT, { seed: SEED, cont: DEFAULT_CONT, sim: SIM, time: TIME }), simMesh = buildSimMesh(SIM, MESH_SEED);
 let builds = 0;
 const finishNow = async (poolSize = null) => {
     builds++;

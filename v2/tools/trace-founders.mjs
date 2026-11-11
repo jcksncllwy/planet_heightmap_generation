@@ -56,7 +56,7 @@ function plateShape(world) {
 
 for (const seed of seeds) {
     const t0 = performance.now();
-    const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
+    const world = scene.build(mesh, seed);
     Object.assign(world.config, { crustLedger: true }, overrides);
     world.founderTrace = { between: {}, inside: {} };                  // (subduction-init.js tallies where candidates are lost)
     const seas = [], shape = [];

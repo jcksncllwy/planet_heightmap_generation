@@ -13,7 +13,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { simulateCached } from './lib/history-cache.mjs';
-import { pageWorld, MESH_SEED } from './lib/moment-frame.mjs';
+import { pageWorld, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { stageOf } from './lib/cycle-stage.mjs';
 import { landWater } from './lib/land-water.mjs';
 import { FRAME_FIELDS, TerrainPool } from '../js/terrain/terrain-pool.js';
@@ -26,7 +26,7 @@ import { columnModel } from '../js/tectonics/measure.js';
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const seeds = flag('--seeds', '626225,777,12345').split(',').map(Number), moments = flag('--moments', '300,600,950').split(',').map(Number);
-const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 30)), cells = Number(flag('--cells', 640000)), jsonOut = flag('--json', null);
+const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT)), cells = Number(flag('--cells', 640000)), jsonOut = flag('--json', null);
 // (--terrain k=v,k=v: the finish's terrain config changed on the same frames, the history untouched: e.g. mantleSwellKm=0)
 const terrainOver = Object.fromEntries((flag('--terrain', '') || '').split(',').filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number(v)]; }));
 // (--config k=v,k=v: the history's config changed, a new path: e.g. trenchDenudationKmPerMyr=0.10001, the no-physics control)

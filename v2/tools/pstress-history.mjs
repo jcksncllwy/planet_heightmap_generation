@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
-import { pageWorld } from './lib/moment-frame.mjs';
+import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { EventKind } from '../js/tectonics/model/world.js';
@@ -20,7 +20,7 @@ const seeds = arg('--seeds', '831576').split(',').map(Number), len = Number(arg(
 const set = arg('--set', ''), overrides = set ? Object.fromEntries(set.split(',').map(kv => { const [k, v] = kv.split('='); return [k, Number(v)]; })) : {};
 const probe = arg('--probe', '') ? arg('--probe', '').split(',').map(Number) : [], scale = Number(arg('--scale', 0.2));
 const out = arg('--out', path.join(process.env.HOME, '.cache/geo-sim/lanes-2026-10-29/pstress/history.jsonl'));
-const sim = Number(arg('--sim', 40000)), cont = Number(arg('--cont', 30));
+const sim = Number(arg('--sim', 40000)), cont = Number(arg('--cont', DEFAULT_CONT));
 // (every constant in the history's force unit: the forces, the resistances, and the strengths and floors stresses are held
 // against. mobility divides the drag, so it goes the other way; riftHingeLock is already ÷ mobility)
 export const FORCE_KEYS = ['slabPull', 'slabSuction', 'ridgePush', 'riftPush', 'mantleOutflow', 'mantleInflow', 'dispersalRepulsion',

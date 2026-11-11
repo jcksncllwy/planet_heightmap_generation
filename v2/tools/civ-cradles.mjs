@@ -18,10 +18,11 @@ import { heightLutOf } from '../js/evolution/looks.js';
 import { civSubstrate } from '../js/civ/substrate.js';
 import { civResources, Res } from '../js/civ/resources.js';
 import { findCradles } from '../js/civ/cradles.js';
+import { DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { ROOT, OUT, MESH_SEED, worldOf, writePng, pixelCells, ramp, drawText } from './lib/civ-world.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 300));
+const CONT = Number(arg('--cont', DEFAULT_CONT)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 300));
 const CELLS = Number(arg('--cells', 640000)), W = Number(arg('--width', 2048)), TOP = Number(arg('--top', 8));
 const SEEDS = arg('--seeds', null)?.split(',').map(Number) ?? [Number(arg('--seed', 12345))];
 const t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;

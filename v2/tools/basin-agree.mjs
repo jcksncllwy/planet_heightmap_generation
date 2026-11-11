@@ -18,7 +18,7 @@ import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { estimateCutOff } from '../js/terrain/basin-estimate.js';
 import { finishPlanet } from '../js/finish/finish.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,7 +31,7 @@ const R = 6371, cfg = terrainConfig(), simMesh = buildSimMesh(SIM, MESH_SEED), t
 const kmBetween = (a, i, b, j) => R * Math.acos(Math.min(1, a[3 * i] * b[3 * j] + a[3 * i + 1] * b[3 * j + 1] + a[3 * i + 2] * b[3 * j + 2]));
 const tot = { agree: 0, matched: 0, km2: 0, agreeKm2: 0, onlyT: 0, onlyF: 0, tWet: 0, fWet: 0 };
 for (const seed of SEEDS) for (const time of TIMES) {
-    const frame = await momentFrame(ROOT, { seed, cont: 30, sim: SIM, time });
+    const frame = await momentFrame(ROOT, { seed, cont: DEFAULT_CONT, sim: SIM, time });
     const T = synthesizeTerrain(frame, simMesh, tm, { seed });
     const est = estimateCutOff(tm, T.heightKm, worldOcean(tm, T.heightKm, 0), cfg).seas;
     const pool = await TerrainPool.create(simMesh);

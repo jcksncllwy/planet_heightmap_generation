@@ -8,7 +8,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 
@@ -46,7 +46,7 @@ globalThis.__erodeEnter = (o, P) => {
     console.log('captured', JSON.stringify(runs[runs.length - 1]));
     return { ...o, closed };
 };
-const frame = await momentFrame(ROOT, { seed: SEED, cont: 30, sim: SIM, time: TIME });
+const frame = await momentFrame(ROOT, { seed: SEED, cont: DEFAULT_CONT, sim: SIM, time: TIME });
 const simMesh = buildSimMesh(SIM, MESH_SEED), pool = await TerrainPool.create(simMesh), t0 = performance.now();
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: true, F: { ...FINISH, erode: DESIGN }, onStage: () => {} });
 fs.writeFileSync(path.join(OUT, 'capture.json'), JSON.stringify({ runs, seconds: (performance.now() - t0) / 1000, ms: fin.ms, erodeLevels: fin.stats.erode?.levels, polishMs: fin.stats.erodeLate?.ms }));

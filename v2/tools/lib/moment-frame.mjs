@@ -9,12 +9,16 @@ import { TERRAIN_SCENES } from '../../js/tectonics/scenarios/terrain-scenes.js';
 import { FRAME_FIELDS } from '../../js/terrain/terrain-pool.js';
 import { terrainConfig } from '../../js/terrain/terrain-config.js';
 import { keyOf, getFrame, simulateCached } from './history-cache.mjs';
+import { TECTONICS } from '../../js/tectonics/config.js';
 
 export const MESH_SEED = 12345;                       // (the page's: every planet's sim mesh is the same; the seed shapes the world)
 export const PAGE_SCENE = 'cycle';
+/** The start world's continental crust, % of the surface: the tectonics default (the page's Crust slider starts there too).
+ *  Tools and checks take this, not a number of their own, so the world they measure is the one the page builds. */
+export const DEFAULT_CONT = Math.round(TECTONICS.continentalFraction * 100);
 
 /** The start world the page's worker runs for these settings (app/history-worker.js), and its cache key. */
-export function pageWorld({ seed, cont, sim, heights = {} }) {
+export function pageWorld({ seed, cont = DEFAULT_CONT, sim, heights = {} }) {
     const scene = TERRAIN_SCENES.find(s => s.id === PAGE_SCENE), world = scene.build(buildSimMesh(sim, MESH_SEED), seed, { continentalFraction: cont / 100 });
     world.config.heights = terrainConfig(heights);   // (as the worker sets them: the page's own, e.g. the water slider's waterInventory)
     return { scene, world, key: keyOf(world, scene.drive) };
@@ -28,7 +32,7 @@ export const historyKeyOf = frame => frame.historyKey ?? null;
  * the terrain reads (FRAME_FIELDS) and each plate's rotation. `{ full: true }`: the whole frame; `{ key }`: read that
  * entry's frame first (the page's history, as the user saw it).
  */
-export async function momentFrame(root, { seed, cont, sim, time, full = false, key: theirs = null }) {
+export async function momentFrame(root, { seed, cont = DEFAULT_CONT, sim, time, full = false, key: theirs = null }) {
     // (key: an entry to read first — the page's own, from latest.json: built by the browser's engine, whose maths differ
     // from Node's in the last bit, so Node's key for the same settings is another entry: history-key.js)
     // (the frame's history-cache key goes with it, unlisted — historyKeyOf: the finish cache files a finish under it)

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 
@@ -31,7 +31,7 @@ if (!gpu) report('GPU erosion not checked: run npm ci in v2/tools/gpu-harness', 
 else {
     const rows = [];
     for (const seed of SEEDS) {
-        const frame = await momentFrame(ROOT, { seed, cont: 30, sim: SIM, time: TIME });
+        const frame = await momentFrame(ROOT, { seed, cont: DEFAULT_CONT, sim: SIM, time: TIME });
         const C = await finishOn(frame, seed, false), G = await finishOn(frame, seed, true);
         // (land only: the sea's floor is not eroded, and its cells, most of the planet, would hold every low quantile at 0)
         const dz = [];

@@ -15,11 +15,12 @@ import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
 import { runCivSim, byteDensity, farms } from '../js/civ/sim.js';
 import { TownFlag } from '../js/civ/polity.js';
 import { CIV } from '../js/civ/civ-config.js';
+import { DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { OUT, MESH_SEED, worldOf, writePng, pixelCells, ramp, warmRamp, drawText } from './lib/civ-world.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const EARTH = process.argv.includes('--earth');
-const CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 300)), CELLS = Number(arg('--cells', 640000));
+const CONT = Number(arg('--cont', DEFAULT_CONT)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 300)), CELLS = Number(arg('--cells', 640000));
 const SEED = Number(arg('--seed', 12345)), END = Number(arg('--end', 0));
 const ORIGIN = arg('--origin', EARTH ? '5,36' : null)?.split(',').map(Number) ?? null;
 const sets = process.argv.flatMap((a, i) => (a === '--set' ? [process.argv[i + 1]] : []));

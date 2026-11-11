@@ -141,7 +141,7 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     // trench's sediment came from −), arc maturation (arc → continent) and tidy (fragments). Every other stage of every
     // step must leave it exactly as it found it.
     const ledgerMesh = labMesh(LEDGER_CELLS), scene = TERRAIN_SCENES.find(s => s.id === 'cycle');
-    const world = scene.build(ledgerMesh, LEDGER_SEED, { continentalFraction: 0.3 });
+    const world = scene.build(ledgerMesh, LEDGER_SEED);
     world.config.crustLedger = true; world.config.crustLedgerVolume = true;     // (the rock book's volume too: lane rockbook, below)
     const landNow = w => { let n = 0; for (const p of w.plates) if (p.alive) { const { mask, type } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) n++; } return n; };
     const landAtStart = landNow(world);

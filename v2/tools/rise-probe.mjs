@@ -3,12 +3,12 @@
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { simulate } from '../js/tectonics/simulate.js';
-import { pageWorld } from './lib/moment-frame.mjs';
+import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../js/tectonics/measure.js';
 setDelaunator(Delaunator);
 const [seed = 831576, until = 450] = process.argv.slice(2).map(Number);
-const { scene, world } = pageWorld({ seed, cont: 29, sim: 40000 }), A = world.mesh.cellAreaKm2;
+const { scene, world } = pageWorld({ seed, cont: DEFAULT_CONT, sim: 40000 }), A = world.mesh.cellAreaKm2;
 simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 50, keepFrames: false, onFrame: () => {
     let over = 0, overVol = 0, mx = 0;
     for (const p of world.plates) if (p.alive) { const k = p.crust; for (let c = 0; c < k.mask.length; c++) if (k.mask[c] && k.type[c] === CrustType.OCEAN) {

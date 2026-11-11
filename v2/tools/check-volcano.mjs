@@ -48,7 +48,7 @@ const basaltic = { time: 1000, sites: earthLike.sites.map(s => ({ ...s, veiMax: 
 check('no silicic centres, no VEI ≥ 6', recentEruptions(basaltic, 7, kyr).every(e => e.vei <= 5));
 
 section(`a history's record (cycle, seed ${SEED}, ${SIM} cells, 0–${UNTIL} Myr)`);
-const world = scene.build(mesh, SEED, { continentalFraction: 0.3 });
+const world = scene.build(mesh, SEED);
 world.config.heights = H;
 const rows = [];
 let prev = null, pure = true, ms = 0;

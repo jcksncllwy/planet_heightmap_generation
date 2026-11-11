@@ -3,7 +3,7 @@
 // over land. Usage: node v2/tools/pstress-field.mjs --seed 831576 --times 2,100,200,300,400,500,600 [--cells 10000] [--sim 40000]
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
-import { pageWorld } from './lib/moment-frame.mjs';
+import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { solvePlateStress } from '../js/tectonics/field/plate-stress-field.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
@@ -11,7 +11,7 @@ import { CrustType } from '../js/tectonics/model/crust.js';
 setDelaunator(Delaunator);
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const seed = Number(arg('--seed', 831576)), times = arg('--times', '100,200,300,400,500').split(',').map(Number), sim = Number(arg('--sim', 40000));
-const { scene, world } = pageWorld({ seed, cont: 30, sim });
+const { scene, world } = pageWorld({ seed, cont: DEFAULT_CONT, sim });
 if (arg('--cells')) world.config.plateStressCells = Number(arg('--cells'));
 if (arg('--set')) for (const kv of arg('--set').split(',')) { const [k, v] = kv.split('='); world.config[k] = Number(v); }
 const q = (a, p) => a.length ? +a[Math.floor(p * (a.length - 1))].toExponential(2) : NaN;

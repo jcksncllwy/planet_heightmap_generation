@@ -16,12 +16,12 @@ import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { deriveRecords } from '../js/terrain/records.js';
 import { landMask } from '../js/terrain/land-mask.js';
 import { locate } from '../js/core/mesh-locate.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const SEED = Number(arg('--seed', 831576)), CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 430));
+const SEED = Number(arg('--seed', 831576)), CONT = Number(arg('--cont', DEFAULT_CONT)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 430));
 const SET = Object.fromEntries((arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v)]; }));
 const cfg = terrainConfig(SET), D2R = Math.PI / 180;
 

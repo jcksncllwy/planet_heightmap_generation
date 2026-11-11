@@ -254,10 +254,10 @@ node v2/tools/check-waterbooks.mjs     # the water conserved: the history's pour
 node v2/tools/trace-forces.mjs india mobility=3.5     # speeds / force-balance targets / situations over time
 node v2/tools/trace-collisions.mjs wilson 160          # collision records, events, belt statistics
 node v2/tools/render-frames.mjs tug plates            # PNG frames of a scene → v2/out/
-node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--rivers [q0]] [--set key=value,…] [--debug] [--live [--plain]]
+node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 [--cont 41] --time 290 [--cells 2500000] [--crop lon0,lon1,lat0,lat1] [--probe lat,lon;…] [--lakes] [--rivers [q0]] [--set key=value,…] [--debug] [--live [--plain]]
                                        # a detailed moment (Add detail) headlessly, painted as the page paints it → v2/out/moments/; its lakes, its cut-off seas, any empty basins, its coast's shape
                                        # (--live: the timeline's frame before any detail, at --cells, its cut-off seas tinted; --plain: as before they were)
-node v2/tools/coast-shape.mjs --seed 626225 --cont 30 --time 950 [--cells 1000000] [--bands] [--finish]
+node v2/tools/coast-shape.mjs --seed 626225 [--cont 41] --time 950 [--cells 1000000] [--bands] [--finish]
                                        # the coastline's divider dimension D and L(50 km)/L(500 km) by kind of margin, against Earth; --bands: by source of its shape
 node --max-old-space-size=16000 v2/tools/civ-cradles.mjs --seed 12345 --time 300 [--cells 640000] [--seeds 1,2,3]
                                        # the civ layer (plans/CIV_PLAN.md): a finished moment's substrate, resources and ranked
@@ -620,8 +620,9 @@ erosion, rivers, the sea's fill and the ledger), and the Evolution timeline alre
 (terrain-player, world-ocean.js), so flooded continental crust shows there as shallow sea; the lab's crust palettes
 stay crust maps. Phase 13 reports the continental crust under the sea by stage of the cycle, the shelves' width by kind
 of margin and the break's depth (`tools/lib/shelf-stats.mjs`). The sim's coasts are mostly active, and its continental
-crust's area was set to Earth's land area (tectonics' `continentalFraction`), so its submerged share stays small (~5–15 %
-against Earth's ~20–30 % today). Crust whose platform lies below the shelf break — a submerged arc ridge, a drowned plateau — has no shelf graded up to
+crust's area was set to Earth's land area (tectonics' `continentalFraction` 0.29), so its submerged share stayed small (~5–15 %
+against Earth's ~20–30 % today). Since cont41 (2026-11-10) the default is Earth's crust share, 0.41 (below, "The world the
+targets describe"). Crust whose platform lies below the shelf break — a submerged arc ridge, a drowned plateau — has no shelf graded up to
 the sea at its edge (wave base never planed it): its edge falls from its own depth, with no rim of islets at sea level
 around it or its holes (Kyushu–Palau, West Mariana and Lau ridges, Karig 1972; before, every hole in a submerged arc
 field drew as a ring of islands).
@@ -2552,7 +2553,7 @@ Limits (reduced physics): the rock is a total per coast cell, not a wedge on the
 - The largest term in the land's height is the belts' uplift: 0.54 km averaged over all continental crust, on a column of about 0.30 km. 33–49 % of continental crust was worked by a belt in the last 50 Myr. Older ground has worn down (over 200 Myr: 0.16–0.28 km), so the excess is how much is active, not slow wear.
 - The swell's amplitude is within Earth's range (p10–p90 about ±0.3 km against ~±500 m observed at long wavelength, Hoggard et al. 2016). Removing it lowers the land's mean by 0.13 km and its median by 0.21 km, and the craton swells and sags that read the same field account for almost none of that.
 - Downwelling over slabs (Mitrovica et al. 1989; Gurnis 1992), tried at the sourced ~300 m over 1400 km, moved continental crust under the sea only from 3.8 to 4.0 %. It is not in the model. `tools/trace-lowland.mjs --slab` repeats the test. It is an overlay on finished frames, with no feedback on the history.
-- Continental crust is about 28 % of the planet against Earth's ~41 %, so flooding 15–30 % of it would leave land under Earth's ~29 %.
+- Continental crust is about 28 % of the planet against Earth's ~41 %, so flooding 15–30 % of it would leave land under Earth's ~29 %. (Then; the default is 0.41 since cont41, 2026-11-10.)
 - The sea stays where it was. A sea reckoned from Earth's water volume would need the history's sea floor to be right first (`seaLevelFloorAge` in `terrain-config.js`).
 - Shelf area is ~0.7 % of the planet against ~7.5 %, while passive shelves are of a fair width: only about 35 % of the coast is passive (20 % late in a run), which comes back to how much trench there is.
 
@@ -2675,7 +2676,8 @@ What this does not do (open):
   kept share ~1.7–2.2, enclosed-sea overflow ~0.7) lies on ocean crust, where on Earth most stays on the continents as
   recycled cover. Rock on the rise rides its floor to a trench; the raster does not carry it (no field), so its fate
   there — subducted or accreted — is not modelled.
-- **The 41-vs-29 gap is the start inventory**, not geometry: `continentalFraction` 0.29 is in effect land. Progradation
+- **The 41-vs-29 gap is the start inventory**, not geometry: `continentalFraction` 0.29 was in effect land (the default is
+  0.41 since cont41, 2026-11-10: "The world the targets describe"). Progradation
   was measured and refuted as a crust maker (a filled sea floor carries ~14.6 km of sediment on ocean crust; Cogley 1984
   ends continental crust at the slope's foot).
 - `collapseMakesArea` (a collapsing range spreading over its own plate's sea floor) stays off: +0.8 Mkm² a cycle, within

@@ -11,7 +11,7 @@ import { fieldHashes } from './lib/frame-hash.mjs';
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { simulate } from '../js/tectonics/simulate.js';
-import { pageWorld } from './lib/moment-frame.mjs';
+import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 
 setDelaunator(Delaunator);
 const argv = process.argv.slice(2);
@@ -29,7 +29,7 @@ if (argv[0] === '--diff') {
     process.exit(0);
 }
 
-const seed = Number(arg('--seed', 12345)), sim = Number(arg('--sim', 10000)), cont = Number(arg('--cont', 30));
+const seed = Number(arg('--seed', 12345)), sim = Number(arg('--sim', 10000)), cont = Number(arg('--cont', DEFAULT_CONT));
 const until = Number(arg('--until', 200)), every = Number(arg('--every', 10)), repeat = Number(arg('--repeat', 1));
 const out = arg('--out', null), lines = [];
 const emit = o => { const s = JSON.stringify(o); lines.push(s); if (!out) console.log(s); };

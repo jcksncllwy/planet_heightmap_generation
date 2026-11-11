@@ -13,7 +13,7 @@
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { simulate } from '../js/tectonics/simulate.js';
-import { pageWorld } from './lib/moment-frame.mjs';
+import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { lastDrainage } from '../js/tectonics/step/rivers.js';
 import { heightsOf } from '../js/tectonics/step/heights.js';
 import { columnModel } from '../js/tectonics/measure.js';
@@ -25,7 +25,7 @@ import { landWater } from './lib/land-water.mjs';
 
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-const seeds = flag('--seeds', '831576').split(',').map(Number), sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 30));
+const seeds = flag('--seeds', '831576').split(',').map(Number), sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT));
 // (--terrain k=v,k=v: the finish's terrain config changed — e.g. cratonSagKm=0 to see what the terrain's own sags make)
 const terrainOver = Object.fromEntries((flag('--terrain', '') || '').split(',').filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number(v)]; }));
 const until = Number(flag('--until', 1200)), every = Number(flag('--every', 100)), cells = Number(flag('--cells', 160000));

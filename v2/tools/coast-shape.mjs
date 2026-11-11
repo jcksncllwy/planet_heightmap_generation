@@ -19,13 +19,13 @@ import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { deriveRecords } from '../js/terrain/records.js';
 import { finishPlanet } from '../js/finish/finish.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { coastLoops, coastFractal, kindOf, COAST_KINDS, EARTH_D } from './lib/coast-fractal.mjs';
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const SEED = Number(arg('--seed', 626225)), CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 950));
+const SEED = Number(arg('--seed', 626225)), CONT = Number(arg('--cont', DEFAULT_CONT)), SIM = Number(arg('--sim', 40000)), TIME = Number(arg('--time', 950));
 const CELLS = Number(arg('--cells', 1000000));
 const parseSet = s => Object.fromEntries((s || '').split(/,(?=[A-Za-z])/).filter(Boolean).map(kv => { const [k, v] = kv.split('='); return [k, Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v)]; }));
 const SET = parseSet(arg('--set', ''));

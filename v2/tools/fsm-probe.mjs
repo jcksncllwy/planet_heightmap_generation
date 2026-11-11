@@ -6,7 +6,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 
@@ -16,7 +16,7 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const SEED = Number(arg('--seed', 831576)), TIME = Number(arg('--time', 310)), CELLS = Number(arg('--cells', 640000));
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z_])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
-const frame = await momentFrame(ROOT, { seed: SEED, cont: 30, sim: 40000, time: TIME });
+const frame = await momentFrame(ROOT, { seed: SEED, cont: DEFAULT_CONT, sim: 40000, time: TIME });
 const simMesh = buildSimMesh(40000, MESH_SEED), pool = await TerrainPool.create(simMesh);
 const fin = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: true, F, onStage: () => {} });
 const W = fin.stats.water;

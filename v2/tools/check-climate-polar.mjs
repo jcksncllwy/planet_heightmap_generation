@@ -21,7 +21,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { CORE_DEFAULTS } from '../js/climate/core.js';
 import { planetClimate } from '../js/climate/climate.js';
@@ -29,7 +29,7 @@ import { planetClimate } from '../js/climate/climate.js';
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), CELLS = Number(arg('--cells', 160000));
+const CONT = Number(arg('--cont', DEFAULT_CONT)), SIM = Number(arg('--sim', 40000)), CELLS = Number(arg('--cells', 160000));
 const gamma = CORE_DEFAULTS.lapseRateCPerKm;
 const TRANSITION_MIN = 0.05, MARGIN_MAX_C = 12, POLAR_SUMMER_OVER_MEAN_K = 0;
 

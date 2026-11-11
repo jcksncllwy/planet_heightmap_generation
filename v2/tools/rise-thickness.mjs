@@ -10,14 +10,14 @@
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { simulateCached } from './lib/history-cache.mjs';
-import { pageWorld } from './lib/moment-frame.mjs';
+import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { seaDepthKm } from '../js/tectonics/measure.js';
 
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const seeds = flag('--seeds', '831576,626225,12345').split(',').map(Number), at = flag('--at', '430,800,1200').split(',').map(Number);
-const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 29)), marginKm = Number(flag('--margin', 400));
+const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT)), marginKm = Number(flag('--margin', 400));
 const q = (a, p) => a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0, f1 = x => x.toFixed(1);
 for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), mesh = world.mesh, n = mesh.numCells, A = 4 * Math.PI * 6371 * 6371 / n;

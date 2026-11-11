@@ -12,7 +12,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { CORE_DEFAULTS } from '../js/climate/core.js';
@@ -20,7 +20,7 @@ import { CORE_DEFAULTS } from '../js/climate/core.js';
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const CONT = Number(arg('--cont', 30)), SIM = Number(arg('--sim', 40000)), CELLS = Number(arg('--cells', 640000));
+const CONT = Number(arg('--cont', DEFAULT_CONT)), SIM = Number(arg('--sim', 40000)), CELLS = Number(arg('--cells', 640000));
 const F = { ...FINISH };
 for (const kv of (arg('--set', '') || '').split(/,(?=[A-Za-z])/).filter(Boolean)) { const [k, v] = kv.split('='); F[k] = Number.isFinite(Number(v)) ? Number(v) : JSON.parse(v); }
 const simMesh = buildSimMesh(SIM, MESH_SEED), gamma = CORE_DEFAULTS.lapseRateCPerKm;

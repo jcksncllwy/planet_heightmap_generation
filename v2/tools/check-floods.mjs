@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
@@ -64,7 +64,7 @@ section('ice-dammed lakes on finished worlds (finished at 160K cells)');
 const MOMENTS = [[831576, 310], [626225, 300], [626225, 950], [777, 300], [777, 950], [12345, 300], [12345, 950]];
 const SIM = 40000, CELLS = 160000, simMesh = buildSimMesh(SIM, MESH_SEED), rows = [];
 for (const [seed, time] of MOMENTS) {
-    const frame = await momentFrame(ROOT, { seed, cont: 30, sim: SIM, time });
+    const frame = await momentFrame(ROOT, { seed, cont: DEFAULT_CONT, sim: SIM, time });
     const pool = await TerrainPool.create(simMesh);
     const fin = await finishPlanet({ frame, simMesh, seed, cells: CELLS, pool, closePool: true });
     const fl = fin.stats.floods, g = fl.guard ?? { unheld: NaN, lats: [] };

@@ -12,7 +12,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { simulateCached } from './lib/history-cache.mjs';
-import { pageWorld, MESH_SEED } from './lib/moment-frame.mjs';
+import { pageWorld, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { FRAME_FIELDS, TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { CrustType, OrogenyType } from '../js/tectonics/model/crust.js';
@@ -23,7 +23,7 @@ import { columnModel } from '../js/tectonics/measure.js';
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const seed = Number(flag('--seed', 831576)), moments = flag('--moments', '340,430').split(',').map(Number);
-const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', 30)), cells = Number(flag('--cells', 640000));
+const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT)), cells = Number(flag('--cells', 640000));
 const cfg = terrainConfig({}), C = columnModel(cfg), until = Math.max(...moments);
 const { scene, world } = pageWorld({ seed, cont, sim }), simMesh = buildSimMesh(sim, MESH_SEED), frames = new Map();
 simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {

@@ -29,12 +29,16 @@ export const TECTONICS = {
     // ── Initial supercontinent [WBP] (init/) ──
     cratonCount: 14,            // [WBP: 8–12] more, smaller cores than that: a supercontinent reads as an assembly of many
                                 // old pieces, and there are more seams for a later rift to choose between (developer)
-    continentalFraction: 0.29,  // the start world's continental CRUST (incl. shelves and margins) as a share of the surface — not
+    continentalFraction: 0.41,  // the start world's continental CRUST (incl. shelves and margins) as a share of the surface — not
                                 // its land: how much stands above the sea is the water's (terrain/land-mask.js, the water
-                                // inventory, terrain-config waterInventory). Earth: ~41 % crust under ~29 % land (Cogley 1984);
-                                // the page's Earth preset is 0.41 (lane sliders: 3 seeds started at 0.41 met it, 42–44 %).
-                                // Before the inventory this stood in for the land's area (its crust stood almost all above the
-                                // reckoned sea). HONOURED FIRST: if the spacing rules need more room, cratons get smaller, not the crust bigger
+                                // inventory, terrain-config waterInventory). Earth: ~41 % crust under ~29 % land (Cogley 1984).
+                                // ONE source: the Evolution page's Crust slider, the lab and the tools (tools/lib/moment-frame.mjs
+                                // DEFAULT_CONT) all start here. Was 0.29 (Earth's LAND share, from before the inventory, when the
+                                // crust stood almost all above the reckoned sea); under the poured sea a 29 % crust spreads Earth's
+                                // 1.332e9 km³ over ~360 Mkm² of deep floor with no margin to flood, so the sea stood 0.60–0.85 km
+                                // low on every seed and every Earth land-height target measured that mismatch (landheight report,
+                                // 2026-11-10; Jackson's ruling Q1, 2026-11-10). HONOURED FIRST: if the spacing rules need more
+                                // room, cratons get smaller, not the crust bigger
     cratonShare: 0.24,          // REQUESTED fraction of continental crust that is craton (an upper bound, see above)
     cratonMinAreaScale: 0.3,    // cratons shrink down to this share of their requested area before anything else gives
     cratonSizeRatio: 3.4,       // largest craton diameter ÷ smallest — guarantees a mix of big and small cores

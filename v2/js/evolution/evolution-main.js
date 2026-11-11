@@ -20,6 +20,7 @@ import { drawGraticule } from '../app/overlays.js';
 import { runHistory } from '../app/history-runner.js';
 import { TERRAIN_SCENES } from '../tectonics/scenarios/terrain-scenes.js';
 import { ENDINGS } from '../tectonics/ending.js';
+import { TECTONICS } from '../tectonics/config.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
 import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines } from './climate-view.js';
@@ -65,6 +66,8 @@ const url = new URLSearchParams(location.search);
 const setIf = (el, v) => { if (v !== null && [...(el.options ?? [])].some(o => o.value === v)) el.value = v; };
 // (water: the ocean × Earth's; crust: the continental crust %. An older link's cont= was the land-size slider — a different
 // quantity, retired with the water inventory (lane sliders) — so it takes the defaults, Earth's)
+// (the Crust slider starts at the tectonics default — one source with the lab and the tools — not the markup's value)
+ui.cont.value = String(Math.round(TECTONICS.continentalFraction * 100));
 if (url.get('water')) ui.water.value = url.get('water');
 if (url.get('crust')) ui.cont.value = url.get('crust');
 if (url.get('len')) ui.len.value = url.get('len');

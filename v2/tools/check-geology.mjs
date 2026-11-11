@@ -14,7 +14,7 @@ import { CrustType, OrogenyType } from '../js/tectonics/model/crust.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSimMesh } from '../js/core/sim-mesh.js';
-import { momentFrame, MESH_SEED } from './lib/moment-frame.mjs';
+import { momentFrame, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { ROCK_COUNT, ROCK_FAMILY } from '../js/geology/rocks.js';
@@ -29,7 +29,7 @@ const fieldBytes = f => (f.bits?.byteLength ?? 0) + (f.values?.byteLength ?? 0) 
 /** The Evolution page's history, record kept or not: each frame's fingerprint of everything but the record, the record's
  *  share of the packed frames, and the first and last frames. */
 function run(seed, records) {
-    const world = scene.build(mesh, seed, { continentalFraction: 0.3 });
+    const world = scene.build(mesh, seed);
     world.config.heights = terrainConfig({});
     world.config.geology = { ...world.config.geology, records };
     const prints = [];
@@ -102,7 +102,7 @@ const DETAILS = (process.env.LITHO_CELLS ?? '160000,640000').split(',').map(Numb
 const simMesh = buildSimMesh(FSIM, MESH_SEED), FAMILIES = ['loose', 'sedimentary', 'volcanic', 'plutonic', 'metamorphic'];
 for (const [seed, time] of MOMENTS) {
     section(`the finish's rock, seed ${seed} at ${time} Myr`);
-    const frame = await momentFrame(ROOT, { seed, cont: 30, sim: FSIM, time }), shares = [];
+    const frame = await momentFrame(ROOT, { seed, cont: DEFAULT_CONT, sim: FSIM, time }), shares = [];
     for (const cells of DETAILS) {
         const pool = await TerrainPool.create(simMesh);
         const fin = await finishPlanet({ frame, simMesh, seed, cells, pool, closePool: true }), { rock, kRock, coarse, shares: sh } = fin.litho;
