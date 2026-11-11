@@ -24,7 +24,8 @@ import { ENDINGS } from '../tectonics/ending.js';
 import { TECTONICS } from '../tectonics/config.js';
 import { TerrainPlayer } from './terrain-player.js';
 import { paintPalette, heightLutOf, PALETTES, CRUST_WORDS, settingOf } from './looks.js';
-import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, ARROW_LAYERS, paintClimate, paintUnavailable, drawArrows, drawItcz, drawLegend, readoutLines, finishedClimateColor, finishedClimateLines, satelliteSource } from './climate-view.js';
+import { ClimateService, CLIMATE_LAYERS, SEASONAL_LAYERS, FINISHED_ONLY_LAYERS, FLOW_LAYERS, LINE_LAYERS, climateOptions as climateViewOptions, paintClimate, paintUnavailable, drawLegend, setLegendPin, readoutLines, finishedClimateColor, finishedClimateLines, flowFieldOf, liveLineSource, finishedLineSource, drawClimateLines, linesKey as climateLinesKey, satelliteSource } from './climate-view.js';
+import { FlowLayer, FlowClock } from './climate-flow.js';
 import { FinishService, paintFinished, riverPaths, drawRivers, riverAt, finishedAt, REGIME_STYLE, riverYearWords, lakeColor } from './finish-view.js';
 import { FRAME_FIELDS } from '../terrain/terrain-pool.js';
 import { STAGES as FINISH_STAGES } from '../finish/finish.js';
@@ -191,7 +192,13 @@ let finishPainter = null;
 if (url.get('gpu') !== '0' && navigator.gpu) FinishPainter.open(navigator.gpu).then(p => { finishPainter = p; if (p) { console.info('[evolution] detailed moments painted on the GPU (WebGPU)'); dirty = true; } });
 const seaMask = texture(MAP_WIDTH);     // where the sea is, for the glint (the lighter resolution is enough for a glint)
 let glinting = false, glintFrom = null;
-let lines = null, linesKey = null;      // the GPU's overlay: the grid and a climate layer's arrows, drawn again only when they change
+let lines = null, linesKey = null;      // the GPU's overlay: the grid and a climate layer's lines, drawn again only when they change
+// The Wind and Currents layers' moving particles (climate-flow.js), stepped in the render loop only while one shows and the
+// page is not busy (a history building, a detail being made); `flowKey`: the climate, layer and season they follow.
+let flow = null, flowKey = null;
+const flowClock = new FlowClock({ busy: () => !!(B?.finishJob || B?.live || playing) });
+// (the legend card's toggles and Köppen's opened group: the picture again, its lines with it)
+climateViewOptions.onChange = () => { dirty = true; flowClock.touch(); };
 const PALETTE_KEY = 'orogen.evolution.palette';
 const storedPalette = (() => { try { return localStorage.getItem(PALETTE_KEY); } catch { return null; } })();
 const SETTLEMENTS_KEY = 'orogen.evolution.settlements', CIV_KEY = 'orogen.evolution.civ';
@@ -533,10 +540,11 @@ function paint(frame, sharpTable = null, sharp = !!sharpTable) {
     else if (CLIMATE_LAYERS.has(view.layer)) {
         // the climate of this moment, if it has been calculated; else the terrain greyed (and the chip offers it)
         const C = FINISHED_ONLY_LAYERS.has(view.layer) ? null : climateOf(frame);
-        if (C) paintClimate(view.layer, view.season, C, T, B.tMesh, out, o => tint(T.paintKm ?? T.heightKm, T.shade, o, T.water.cut));
+        if (C) { paintClimate(view.layer, view.season, C, T, B.tMesh, out, o => tint(T.paintKm ?? T.heightKm, T.shade, o, T.water.cut)); lineSrcTerrain = T; }
         else { tint(T.paintKm ?? T.heightKm, T.shade, out, T.water.cut); paintUnavailable(out, B.tMesh.numCells); }
     } else byHeight = heightLutOf(view.palette);
     const C = CLIMATE_LAYERS.has(view.layer) && !FINISHED_ONLY_LAYERS.has(view.layer) ? climateOf(frame) : null;
+    setFlow(C);
     // the sun glints off the sea on the Terrain view (V1's water shows there only) — the world ocean's: a sea cut off from
     // it is drawn apart, its level its water balance's, which a frame has no climate for (terrain/world-ocean.js)
     const cut = T.water.cut;
@@ -589,27 +597,47 @@ function drawLines(t, C) {
 /** The GPU's overlay for the picture painted next: the lines drawn on a transparent canvas — again only when they change (a
  *  4096-pixel canvas is 32 MB to send) — or none. */
 function layLines(C) {
-    const arrows = C && (ARROW_LAYERS[view.layer] || view.layer === 'pressure') ? C : null;
-    if (!view.grid && !arrows) { gpu.setOverlay(null); return; }
-    const key = [view.grid && view.gridStep, arrows, arrows && view.layer, arrows && view.season];
+    const climateLines = C && LINE_LAYERS.has(view.layer) ? C : null;
+    if (!view.grid && !climateLines) { gpu.setOverlay(null); return; }
+    const key = [view.grid && view.gridStep, climateLines, climateLines && view.layer, climateLines && view.season, climateLines && climateLinesKey(view.layer), climateLines && paintedTFor(C)];
     const changed = !linesKey || key.some((v, i) => v !== linesKey[i]);
     if (changed) {
         if (!lines) { const canvas = document.createElement('canvas'); canvas.width = GPU_WIDTH; canvas.height = GPU_WIDTH >> 1; lines = { canvas, ctx: canvas.getContext('2d'), width: GPU_WIDTH }; }
         lines.ctx.clearRect(0, 0, GPU_WIDTH, GPU_WIDTH >> 1);
-        drawLines(lines, arrows);
+        drawLines(lines, climateLines);
         linesKey = key;
     }
     gpu.setOverlay(lines.canvas, changed);
 }
 
-/** A climate layer's lines over its colours (on texture t): the winds' or the currents' arrows, and the ITCZ. */
+// (where a climate's lines are drawn from: a finished moment's climate picture, or the live terrain through the map's
+// table — kept for the climate and the terrain it was painted on)
+let lineSrc = null;
+const paintedTFor = C => (C.raster ? null : lineSrcTerrain);
+let lineSrcTerrain = null;
+function lineSourceOf(C) {
+    const T = C.raster ? null : lineSrcTerrain;
+    if (lineSrc?.C === C && lineSrc.T === T) return lineSrc.src;
+    const src = C.raster ? finishedLineSource(C) : T ? liveLineSource(C, T, B.tMesh, rasterOf(B.tMesh)) : null;
+    lineSrc = { C, T, src };
+    return src;
+}
+/** A climate layer's lines over its colours (on texture t): climate-view.js drawClimateLines. */
 function climateOverlays(t, C) {
-    if (!ARROW_LAYERS[view.layer] && view.layer !== 'pressure') return;
-    const k = t.width / MAP_WIDTH;
-    t.ctx.save(); t.ctx.scale(k, k);
-    if (view.layer === 'pressure') drawItcz(t.ctx, MAP_WIDTH, view.season, C);
-    if (ARROW_LAYERS[view.layer]) drawArrows(t.ctx, MAP_WIDTH, view.layer, view.season, C);
-    t.ctx.restore();
+    if (!LINE_LAYERS.has(view.layer)) return;
+    drawClimateLines(t.ctx, t.width, view.layer, view.season, C, lineSourceOf(C));
+}
+
+/** The flow shown (the Wind and Currents layers' particles) for climate C on the layer shown — or none. */
+function setFlow(C) {
+    const key = C && FLOW_LAYERS[view.layer] ? [C, view.layer, view.season] : null;
+    if (key && flowKey && key.every((v, i) => v === flowKey[i])) return;
+    flowKey = key;
+    if (!key) { flow?.clear(); globe._dirty = true; return; }
+    flow ??= new FlowLayer(Math.round(Math.max(2000, Math.min(8000, innerWidth * innerHeight / 320))));
+    flow.setField(flowFieldOf(view.layer, view.season, C));
+    flow.attach(globe);
+    flowClock.touch();
 }
 
 /** The finished moment shown for a frame on the layer shown, if any: on the height layers, and on the climate layers
@@ -624,7 +652,8 @@ function finishedShown(frame) {
 function paintFinishedFrame(frame, fin, T, sharp) {
     const t = sharp ? (tex.sharp ??= texture(SHARP_WIDTH)) : tex.lo;
     const lut = heightLutOf(view.layer === 'heightmap' ? 'heightmap' : view.palette), water = view.water && (view.layer === 'terrain' || view.layer === 'satellite');
-    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null, P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in PV.TRAVEL_SHOWS, ground = P?.ground && peopleView.show in PV.GROUND_SHOWS ? peopleView.show : null, food = P?.food && !land && !trip && !ground && !(peopleView.show in PV.GROUND_SHOWS) && peopleView.show !== 'people' ? peopleView.show : null;
+    const C = CLIMATE_LAYERS.has(view.layer) ? fin.climate : null; setFlow(C);
+    const P = view.layer === 'people' ? fin.people : null, land = P && peopleView.show === 'land', trip = P && peopleView.show in PV.TRAVEL_SHOWS, ground = P?.ground && peopleView.show in PV.GROUND_SHOWS ? peopleView.show : null, food = P?.food && !land && !trip && !ground && !(peopleView.show in PV.GROUND_SHOWS) && peopleView.show !== 'people' ? peopleView.show : null;
     // (the settlements: on the People layer, or over any other with Settlements on — the people worked out on request)
     const S = settlementsShown() ? fin.people : null;
     if (settlementsShown() && !fin.people) runPeople(fin);
@@ -1177,6 +1206,7 @@ function tick(now) {
                 .finally(() => { if (preparing === p) preparing = null; dirty = true; });
         }
     }
+    if (flow?.field) { flow.attach(globe); for (const step of flowClock.due(now)) flow.step(globe, step); }
     globe.controls.autoRotate = $('chkRotate').checked && view.mode === 'globe';
     globe.resize(); globe.renderIfNeeded();                 // (the globe, or the map: the same renderer draws both)
 }
@@ -1436,8 +1466,11 @@ function readout(e) {
     else if (settlementsShown() && fin?.people && !at.ocean) lines.push(...(view.layer === 'people' && peopleView.show === 'land' ? PV.landLines(fin.people, peopleFrame(fin.people), p[0], p[1])
         : view.layer === 'people' && peopleView.show in PV.GROUND_SHOWS ? PV.groundLines(fin.people, p[0], p[1])
         : view.layer === 'people' && peopleView.show !== 'people' && peopleView.show !== 'land' && fin.people.food ? PV.foodLines(fin.people, p[0], p[1]) : PV.peopleLines(fin.people, peopleFrame(fin.people), p[0], p[1])));
-    if (fin?.climate) lines.push(...finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season));
-    else if (C && paintedMesh === B.tMesh) lines.push(...readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season));
+    const cl = fin?.climate ? finishedClimateLines(fin.climate, p[0], p[1], !!at.ocean, view.layer, view.season)
+        : C && paintedMesh === B.tMesh ? readoutLines(C, paintedT, B.tMesh, t, view.layer, view.season) : null;
+    if (cl) lines.push(...cl);
+    // (the legend's pin at the value read out: the same number the colour there was painted from)
+    setLegendPin($('climateLegend'), cl ? cl.pin : null);
     ui.hover.innerHTML = lines.join('<br>');
     ui.hover.style.display = 'block';
 }

@@ -80,7 +80,10 @@
 /* the Climate view's legend (lane climviewA): the quantity, its units and the season as the title; the bar with ticks and
    a pin at the value under the cursor; a key for each kind of line or mark drawn over the colour */
 .evo-legend-title { font-size: 12px; color: #dde3ee; font-weight: 600; margin-bottom: 2px; }
-#climateLegend canvas.evo-legend-bar { height: 40px; }
+#climateLegend canvas.evo-legend-bar { height: 46px; }
+.evo-legend-toggles { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: #c9d1e0; margin-top: 5px; padding-top: 4px; border-top: 1px solid #2c3446; }
+.evo-legend-toggles label { cursor: pointer; white-space: nowrap; }
+.evo-legend-toggles input { vertical-align: -2px; margin: 0 3px 0 0; }
 .evo-legend-keys { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: #9ab; margin-top: 3px; }
 .evo-legend-keys i { display: inline-block; width: 16px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 1px; }
 .evo-legend-keys i.dot { width: 8px; height: 8px; border-radius: 50%; }
