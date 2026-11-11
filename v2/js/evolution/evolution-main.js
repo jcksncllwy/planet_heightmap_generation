@@ -100,12 +100,15 @@ ui.quality.addEventListener('change', () => {
     labels(); saveUrl();
 });
 ui.sim.addEventListener('change', () => { labels(); saveUrl(); });
+/** Temperature (Greenhouse, W/m²) and Precipitation (the slider's value, ±1 = ±50 %) in the World section's words. */
+function tmpWords(t) { t = Number(t); return t ? `${t > 0 ? '+' : '−'}${Math.abs(t)} W/m²` : '±0 W/m²'; }
+function prcWords(v) { const p = Math.round(50 * Number(v)); return p ? `${p > 0 ? '+' : '−'}${Math.abs(p)}%` : '±0%'; }
 /** The World section's values, and its one-line summary (shown while it is folded). */
 function labels() {
     $('vCont').textContent = `${ui.cont.value}%`; $('vWater').textContent = `${Number(ui.water.value).toFixed(2)}× Earth`; $('vLen').textContent = `${ui.len.value} Myr`;
     const t = Number(ui.tmp.value), p = Math.round(50 * Number(ui.prc.value));
-    $('vTmp').textContent = t ? `${t > 0 ? '+' : '−'}${Math.abs(t)} W/m²` : '±0 W/m²';
-    $('vPrc').textContent = p ? `${p > 0 ? '+' : '−'}${Math.abs(p)}%` : '±0%';
+    $('vTmp').textContent = tmpWords(t);
+    $('vPrc').textContent = prcWords(ui.prc.value);
     $('worldSummary').textContent = `Seed ${Number(ui.seed.value) || 0} · ${ui.len.value} Myr · ${QUALITY_WORDS[ui.quality.value]}` +
         (t ? ` · temperature ${$('vTmp').textContent}` : '') + (p ? ` · ${$('vPrc').textContent} rain` : '');
     // (the plates' resolution is the one setting a history cannot change: it waits for a build)
@@ -122,11 +125,11 @@ const tipEl = document.createElement('div');
 tipEl.className = 'evo-tooltip'; tipEl.hidden = true;
 document.body.appendChild(tipEl);
 let tipFor = null;
-function showTip(el) {
+function showTip(el, above = false) {
     tipFor = el; tipEl.textContent = el.dataset.tip; tipEl.hidden = false;
     const r = el.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight, m = 8;
     let x = r.right + m, y = r.top + r.height / 2 - h / 2;
-    if (innerWidth <= 768 || x + w > innerWidth - m) {
+    if (above || innerWidth <= 768 || x + w > innerWidth - m) {
         x = Math.max(m, Math.min(innerWidth - w - m, r.left + r.width / 2 - w / 2));
         y = r.top - h - m;
         if (y < m) y = r.bottom + m;
@@ -467,16 +470,37 @@ function rail() {
     const max = Number(ui.time.max) || 1, built = B?.frames.length ? B.frames.at(-1).time : 0, shown = painted ? painted.time : Number(ui.time.value);
     ui.railBuilt.style.width = `${(100 * Math.min(1, built / max)).toFixed(2)}%`;
     ui.railShown.style.width = `${(100 * Math.min(1, shown / max)).toFixed(2)}%`;
-    // (the detailed moments at the page's settings: kept — shown at once — or held by the finish cache — back in seconds)
+    // (the detailed moments at the page's settings: kept — shown at once — or held by the finish cache — back in seconds;
+    // and kept ones detailed at other settings — another resolution, climate or People — hollow, their settings in the tip)
     const marks = new Map(), K = B?.known?.sig === (B?.cache ? detailSig(B) : null) ? B.known : null;
-    for (const t of K?.times ?? []) marks.set(t, 'cached');
-    for (const [f, fin] of B?.finishes ?? []) if (detailedNow(fin)) marks.set(f.time, 'kept');
-    const key = `${max}|${[...marks].join(',')}`;
+    for (const [f, fin] of B?.finishes ?? []) if (!detailedNow(fin)) marks.set(f.time, ['other', `Detailed at other settings: ${finSettingsWords(fin)}`]);
+    for (const t of K?.times ?? []) marks.set(t, ['cached', 'Detailed at these settings before: back in seconds']);
+    for (const [f, fin] of B?.finishes ?? []) if (detailedNow(fin)) marks.set(f.time, ['kept', 'Detailed at these settings']);
+    const key = `${max}|${[...marks].map(([t, [kind, tip]]) => `${t}:${kind}:${tip}`).join(',')}`;
     if (ui.marks.dataset.key !== key) {
         ui.marks.dataset.key = key;
-        ui.marks.innerHTML = [...marks].map(([t, kind]) => `<i class="${kind}" style="left:${(100 * Math.min(1, t / max)).toFixed(2)}%"></i>`).join('');
+        ui.marks.innerHTML = [...marks].map(([t, [kind, tip]]) =>
+            `<i class="${kind}" data-tip="${Math.round(t)} Myr · ${tip}" style="left:${(100 * Math.min(1, t / max)).toFixed(2)}%"></i>`).join('');
     }
 }
+/** A detailed moment's settings in words: its resolution, its climate (Temperature, Precipitation) and People. */
+function finSettingsWords(fin) {
+    const [t = 0, p = 0] = String(fin.climateKey ?? '').split('|');
+    const cells = fin.cells >= 1e6 ? `${fin.cells / 1e6}M` : `${fin.cells / 1e3}K`;
+    return `${cells} cells · temperature ${tmpWords(t)} · rain ${prcWords(p)} · People ${fin.civ ? 'on' : 'off'}`;
+}
+// (the marks sit under the slider, which takes the pointer: a mark's tip shows while the pointer is within 5 px of it)
+ui.time.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    let near = null, best = 5;
+    for (const m of ui.marks.children) {
+        const r = m.getBoundingClientRect(), d = Math.abs(e.clientX - (r.left + r.width / 2));
+        if (d <= best) { best = d; near = m; }
+    }
+    if (near && near !== tipFor) showTip(near, true);
+    else if (!near && tipFor?.parentElement === ui.marks) hideTip();
+});
+ui.time.addEventListener('pointerleave', () => { if (tipFor?.parentElement === ui.marks) hideTip(); });
 /** Latest time the history has reached (a scrub may not go past it while it is still building). */
 const builtTo = () => (B?.frames.length ? B.frames.at(-1).time : 0);
 
