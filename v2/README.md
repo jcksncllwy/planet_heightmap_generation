@@ -137,7 +137,7 @@ low coasts fastest) and drift the sand of the cliffs and the rivers along the sh
 where the drift slows: beaches, barriers and filled bays; the sand below the shoreface lost offshore. It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
 like the live terrain; a handful of moments are kept in detail per history — up to four on a desktop (and no more than
-800 MB between them: two at 10M), one on a small device — so stepping back onto one shows it at once; the one viewed
+1 GB between them: 209 MB each at 2.5M, measured; two at 10M), one on a small device — so stepping back onto one shows it at once; the one viewed
 longest ago is let go once a new one is done (never the one on screen, so a cancel loses nothing). See "The finish cache"
 for the moments detailed before. A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)

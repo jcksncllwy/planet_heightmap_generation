@@ -203,11 +203,11 @@ const peopleOption = $('mobileViewSwitch').querySelector('option[value="people"]
 const peopleView = { f: Infinity, playing: false, at: 0, runOn: false, busy: false, show: 'people', month: 0, travel: null, travelNote: null };      // (show: the People layer's view — the people, the land in use, what the land offers before anyone (PV.GROUND_SHOWS), a food (people-view.js FOOD_SHOWS) or a craft's days to travel (PV.TRAVEL_SHOWS); travel: the days from the place clicked, for P, show and month)
 // (the detailed moments kept per history — each its pictures, rivers and climate: ~50 MB on a phone, ~190 MB at 2.5M on a
 // desktop, ~320 MB at 10M — so stepping back onto one shows it at once (Jackson, 2026-11-10: "step between a handful of
-// detailed moments"): up to KEEP_DETAILED, and on a desktop no more than DETAILED_BYTES between them — four at 2.5M, two
-// at 10M; one on a small device, whose tab is closed at well under 2 GB. The one viewed longest ago goes once a new one is
+// detailed moments"): up to KEEP_DETAILED, and on a desktop no more than DETAILED_BYTES between them — four at 2.5M
+// (measured 209 MB each, 2026-11-10), two at 10M; one on a small device, whose tab is closed at well under 2 GB. The one viewed longest ago goes once a new one is
 // done — never the moment on screen, and a finish under way lets nothing go, so a cancel loses nothing. Letting one go is
 // dropping its arrays: the finishing worker holds nothing per moment, only the detail's mesh (finisher.finish keep))
-const KEEP_DETAILED = SMALL_DEVICE ? 1 : 4, DETAILED_BYTES = SMALL_DEVICE ? Infinity : 800e6;
+const KEEP_DETAILED = SMALL_DEVICE ? 1 : 4, DETAILED_BYTES = SMALL_DEVICE ? Infinity : 1e9;
 /** The finished picture's width at a detail (its key's width too: finish-key.js). */
 const finishWidth = cells => (IS_TOUCH ? 2048 : cells >= 5e6 ? 8192 : 4096);
 /** The bytes of the typed arrays in a finished moment (each buffer once). */
