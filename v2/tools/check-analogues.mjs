@@ -3,7 +3,8 @@
 // a second spelling of a habitat that no card answers to.
 // The cards (js/ecology/analogues/cards*.js) are checked for well-formed keys and for a source behind every role (the lane's
 // verifier wrote sources.js from PBDB and GBIF; a role it could not support was dropped). The matcher (match.js) is checked on
-// Earth points it must get right: the Serengeti, the Amazon, the Peru upwelling and the Pleistocene Pampas (ecodesign §7).
+// Earth points it must get right: the Serengeti, the Amazon, the Peru upwelling, the Pleistocene Pampas (ecodesign §7) and a long-isolated
+// continent (Australia).
 // Usage: node v2/tools/check-analogues.mjs
 
 import { check, report, section, finish } from './lib/check-kit.mjs';
@@ -69,8 +70,22 @@ const peru = top({ realm: 'sea', marine: { sstC: 17, sstColdC: 15, depthKm: 0.1,
 check('Peru-like upwelling shelf → an upwelling card, with forage fish', peru.habitat === 'upwelling-shelf' && peru.ranked[0]?.card.habitats.includes('upwelling-shelf') && !!peru.roles.forageFish,
     `${peru.ranked.map(r => r.card.id).join(', ')}; forage fish ${peru.roles.forageFish?.label}`);
 const pampas = top({ realm: 'land', biome: 13, koppen: 'Cfa', tAnnual: 15, pAnnual: 900, zKm: 0.05 }, 3);
-check('Pampas-like grassland, no people → Megatherium-like among its animals', likes(pampas).includes('Megatherium'),
-    `${pampas.ranked.map(r => r.card.id).join(', ')}; ${likes(pampas).join(', ')}`);
+// The gate's intent (Jackson: "a habitat for something like a giant ground sloth"): a ground-sloth-like megaherbivore leads
+// that role and the Pampas card is among the top three. Not "Megatherium" literally: nothing in a cell's fields makes it South
+// American (no generated world has a South America), and on climate alone Late Pleistocene Florida (Megalonyx) fits a 15 °C,
+// 900 mm Cfa grassland as well as Luján does (gladsheim ruling, 2026-11-11). Provinciality comes from L4's lineage pools.
+const sloth = pampas.roles.megaherbivore?.like;
+check('Pampas-like grassland, no people → a giant ground sloth leads the megaherbivores, the Pampas card in the top 3',
+    (sloth === 'Megatherium' || sloth === 'Megalonyx') && pampas.ranked.some(r => r.card.id === 'lujan-pampas'),
+    `${pampas.ranked.map(r => r.card.id).join(', ')}; megaherbivore ${sloth}; ${likes(pampas).join(', ')}`);
+
+// A long-isolated continent (Australia-like: endemic lineages, isolated ≫ 30 Myr, 7.7 Mkm²) must draw on long-isolated
+// cards, not on the connected continents' faunas with the same climate.
+const oz = top({ realm: 'land', habitat: 'xeric-shrubland', koppen: 'BSh', tAnnual: 21, pAnnual: 350,
+    isolation: { endemic: 0.8, isolatedMyr: 45, areaMkm2: 7.7 } }, 3);
+check('a long-isolated dry continent → long-isolated cards lead (Australia-like, not Africa-like)',
+    oz.ranked[0]?.card.isolation === 'long-isolated' && oz.ranked.filter(r => r.card.isolation === 'long-isolated').length >= 2,
+    `${oz.ranked.map(r => `${r.card.id} (${r.card.isolation})`).join(', ')}; ${likes(oz).join(', ')}`);
 
 const ventCell = top({ realm: 'sea', habitat: 'open-gyre', floor: 'vent', marine: { sstC: 25, depthKm: 2.6 } }, 3);
 check('a gyre surface over a vent field gets both: the gyre above, the vent fauna on the floor', ventCell.habitat === 'open-gyre' && ventCell.floor?.habitat === 'vent' && ventCell.floor.ranked[0]?.card.habitats.includes('vent'),
