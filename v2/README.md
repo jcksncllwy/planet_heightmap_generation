@@ -3087,9 +3087,9 @@ yet (Jackson, 2026-11-10). A moment past Earth's present on the world's clock ge
 - **Limits.**
   - Cards older than the Pliocene, and all fossil sea cards, have no climate envelope yet. The next source is Valdes et
     al. 2021 (HadCM3L) at PBDB palaeocoordinates.
-  - About 9 % of the area-sourced roles (32 of 342) have their nearest PBDB support more than 100 km from the card's site.
+  - About 8 % of the area-sourced roles (28 of 338) have their nearest PBDB support more than 100 km from the card's site.
     Some of these are at the site in other databases (Trafalgar Square's in the NHM collections); site-level checks of
-    these 18 cards are still to do.
+    these 17 cards are still to do.
   - Coverage (≥ 3 cards per habitat × grade band) is 40 of 230 cells. 74 of the 190 gaps have no Earth record to fill
     them: the habitat's defining life form didn't exist yet, or the habitat leaves no recognisable fossils. 18 are
     present-day habitats a GBIF card can fill. 98 are fossil gaps.
