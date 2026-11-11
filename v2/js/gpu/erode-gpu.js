@@ -147,7 +147,9 @@ const KERNELS = {
         if (r == NONE) { recv[c] = NONE; ptrA[c] = c; depthA[c] = 1u; return; }
         ptrA[c] = r; depthA[c] = 1u;
         if (outlet[r] != 0u) { recv[c] = r | 0x80000000u; }` },
-    depthJump: { b: { depthA: 'u', depthB: 'u+', ptrA: 'u', ptrB: 'u+' }, body: 'depthB[c] = depthA[c] + depthA[ptrA[c]]; ptrB[c] = ptrA[ptrA[c]];' },
+    // (a root points at itself and adds nothing: an unresolved flat cell, recv NONE, is one. Adding its own depth doubled it every
+    // jump, to 4096 levels and the network's throw, whenever a flat stayed unresolved: crustmass S5's flatter land, 2026-11-11)
+    depthJump: { b: { depthA: 'u', depthB: 'u+', ptrA: 'u', ptrB: 'u+' }, body: 'let p = ptrA[c]; depthB[c] = depthA[c] + select(depthA[p], 0u, p == c); ptrB[c] = ptrA[p];' },
     histogram: { b: { depthA: 'u', hist: 'a' }, body: 'atomicAdd(&hist[depthA[c]], 1u);' },
     place: { b: { depthA: 'u', cursor: 'a', order: 'u+' }, body: 'order[atomicAdd(&cursor[depthA[c]], 1u)] = c;' },
     water: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', water: 'f', cells: 'C+' }, body: `
