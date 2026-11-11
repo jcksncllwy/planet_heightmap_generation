@@ -11,6 +11,7 @@ import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { volcStep, riftMeltKm, recentEruptions, momentVolc, EARTH_VEI_PER_YR, EARTH_WEIGHT, RIDGE_MELT_KM, ARC_GROSS } from '../js/tectonics/volcanism.js';
 import { preparePlan } from '../js/terrain/synthesize.js';
 import { calderaAt } from '../js/terrain/volcanoes.js';
+import { FRAME_FIELDS } from '../js/terrain/terrain-pool.js';
 
 const SEED = 12345, SIM = 20000, UNTIL = 400;
 const mesh = labMesh(SIM), H = terrainConfig({});
@@ -94,6 +95,13 @@ section(`drawn at a finished moment (rift volcanoes and calderas; ${UNTIL} Myr)`
     }
     check('calderas only at silicic centres', atSilicic === C.count, `${atSilicic} of ${C.count} (VEI ≥ ${C.minVei} drawn at a ${edgeKm}-km mesh)`);
     check('a caldera\'s floor below its surroundings, its rim not', shaped >= 0.9 * C.count, `${shaped} of ${C.count}`);
+    // (the workers plan from a slim frame, terrain-pool.js FRAME_FIELDS: it must carry everything the drawing reads)
+    const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, prev[k]]));
+    slim.plates = prev.plates.map(p => p && { quat: p.quat });
+    let Vs = null, err = '';
+    try { Vs = preparePlan(slim, mesh, H, SEED, edgeKm).V; } catch (e) { err = e.message; }
+    check('the workers\' slim frame draws the same volcanoes and calderas', Vs && Vs.count === V.count && Vs.calderas.count === C.count,
+        Vs ? `${Vs.count} vs ${V.count} volcanoes, ${Vs.calderas.count} vs ${C.count} calderas` : err);
     check('no melting rift, no rift volcano', melting > 0 || V.count === V0.count, `${melting} melting rift cells, ${V.count - V0.count} rift volcanoes`);
     report('calderas drawn at the moment', C.count, { source: `VEI ≥ ${C.minVei} in the last 2 Myr; Earth ~480 Quaternary calderas of all sizes (Geyer & Martí 2008)` });
     report('rift volcanoes drawn at the moment', V.count - V0.count, { source: `${melting} melting rift cells` });
