@@ -1,6 +1,6 @@
 // The place's panel: a click (or a tap) on the planet opens everything the page knows of that place, at the moment shown —
 // far more than the hover readout's few lines, in sections: Place, Climate (with its climograph), Water, Ground, People,
-// and Life (a placeholder: the ecology lane fills it — lanes ecodesign §8).
+// and Life (at today's grade: ecology/now.js and life-panel.js — lanes ecodesign §8).
 //
 // It reads only what the page already holds (no new physics):
 //   the moment's frame (the sim cell under the place: its crust, plate and history — tectonics/snapshot.js),
@@ -12,7 +12,7 @@
 // A section that needs a detailed moment says "add detail to see …".
 //
 // placeFacts(state, lat, lon) gathers the facts of a place into one plain object, and the panel draws them; the ecology
-// section (to come) reads the same object — what ecodesign §1 lists per cell, as far as the page has it.
+// section reads the same object — what ecodesign §1 lists per cell, as far as the page has it.
 //
 // Where it sits: on the right, in the town card's slot (one card there at a time), never following the pointer; on a
 // phone, a sheet above the timeline. It keeps the PLACE (its latitude and longitude), not a cell: when the moment changes
@@ -33,6 +33,8 @@ import { classLabel } from '../../../js/climate-layers.js';
 import { finishedAt, riverAt, riverYearWords, REGIME_STYLE } from './finish-view.js';
 import { landPixel } from './climate-view.js';
 import { CRUST_WORDS, settingOf } from './looks.js';
+import { lifeFacts } from '../ecology/now.js';
+import { lifeSectionHTML } from '../ecology/life-panel.js';
 
 const MONTHS = 'JFMAMJJASOND';
 const R_KM = 6371;
@@ -271,6 +273,9 @@ export function placeFacts(state, lat, lon) {
 
     // ── people ──
     F.people = P && state.PV && !at?.ocean ? { lines: [...state.PV.peopleLines(P, state.peopleFrame(P), u, v), ...(P.food ? state.PV.foodLines(P, u, v) : [])] } : null;
+
+    // ── life, at today's grade (ecology/now.js; on a detailed moment only: it reads the finish's coast, rivers and cover) ──
+    F.life = fin ? lifeFacts(F, C, f) : null;
     return F;
 }
 
@@ -390,11 +395,8 @@ function peopleHTML(F, state) {
     return `<p class="evo-cell-need">${state.civ ? 'Show the People layer or Settlements to work the people out.' : 'Turn on Civilisation to see the people.'}</p>`;
 }
 
-/** The Life section: kept for the ecology lane (lanes ecodesign §8 — a headline, the food web as a pyramid of roles, and
- *  why). It will read placeFacts' object; until then, a placeholder. */
-export function lifeHTML(F) {
-    return `<p class="evo-cell-life">Coming: plants, animals, the food web${F.detailed ? '' : ' — add detail to see what will live here'}.</p>`;
-}
+/** The Life section (lanes ecodesign §8): what lives here at today's grade — ecology/life-panel.js draws it. */
+export const lifeHTML = F => lifeSectionHTML(F.life, F.detailed);
 
 const SECTIONS = [['place', 'Place', placeHTML], ['climate', 'Climate', climateHTML], ['water', 'Water', waterHTML], ['ground', 'Ground', groundHTML], ['people', 'People', peopleHTML], ['life', 'Life', lifeHTML]];
 export function panelHTML(F, state) {

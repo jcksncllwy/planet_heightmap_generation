@@ -29,7 +29,27 @@
 .evo-cell-chart-key .p { color: #6aa8ff; }
 /* the ecology lane's section, to come (lanes ecodesign §8) */
 .evo-cell-sec[data-sec="life"] { border-top-style: dashed; }
-.evo-cell-life { margin: 0; color: #9c9; font-style: italic; }
+.evo-life-head { margin: 0 0 3px; color: #dde; }
+.evo-life-head b { color: #bfe8a8; }
+.evo-life-floor { margin: 0 0 3px; color: #9ab; }
+.evo-life-grade { margin: 0 0 6px; color: #8a9; font-size: 11px; font-style: italic; }
+.evo-life-web { display: grid; gap: 3px; margin: 2px 0 5px; }
+.evo-life-tier { display: grid; grid-template-columns: 6.2em 1fr; gap: 0 8px; align-items: center; }
+.evo-life-role { color: #89a; font-size: 10px; letter-spacing: 0.05em; }
+.evo-life-amount { position: relative; color: #dde; }
+.evo-life-amount > span { position: relative; padding-left: 3px; }
+.evo-life-bar { position: absolute; left: 0; top: 1px; bottom: 1px; border-radius: 2px; opacity: 0.32; }
+.evo-life-bar.plant { background: #6cc35a; }
+.evo-life-bar.herb { background: #d8b04a; }
+.evo-life-bar.pred { background: #e0674e; }
+.evo-life-like { grid-column: 2; color: #9c9; font-size: 11px; font-style: italic; }
+.evo-life-steps { margin-left: 6.2em; padding-left: 11px; color: #789; font-size: 11px; }
+.evo-life-soil, .evo-life-sum { margin: 2px 0 0; color: #bbc; }
+.evo-life-soil .evo-life-role { display: inline-block; width: 7.4em; }
+.evo-life-why { margin-top: 4px; color: #9ab; }
+.evo-life-why summary { cursor: pointer; color: #7cd8ee; }
+.evo-life-why p { margin: 3px 0 0; }
+.evo-life-src { font-size: 11px; color: #789; }
 
 @media (max-width: 768px) {
     .evo-cell-panel { left: 8px; right: 8px; top: auto; bottom: 180px; width: auto; max-height: 30vh; font-size: 13px; }

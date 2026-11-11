@@ -243,7 +243,7 @@ export function lifeFacts(F, C, frame) {
         Object.assign(out, { realm: 'sea', habitat, floor, depthKm, sea: K.sea, web });
         out.why.push(`${depthKm < 1 ? `${Math.round(depthKm * 1000)} m` : `${depthKm.toFixed(1)} km`} deep`, `the sea ${K.sea.tYear.toFixed(0)} °C (${Math.min(K.sea.tJan, K.sea.tJul).toFixed(0)}–${Math.max(K.sea.tJan, K.sea.tJul).toFixed(0)})`,
             K.sea.upwelling > 0.05 ? `upwelling ${K.sea.upwelling.toFixed(2)} m/day` : 'little upwelling', K.sea.ice > 0.05 ? `ice ${Math.round(100 * K.sea.ice)} % of the year` : null);
-        out.match = { realm: 'sea', habitat, zKm: -depthKm, marine: { sstC: K.sea.tYear, sstColdC: Math.min(K.sea.tJan, K.sea.tJul), depthKm, upwellingMd: K.sea.upwelling ?? 0, seaIce: K.sea.ice ?? 0 }, grades: null };
+        out.match = { realm: 'sea', habitat, floor, zKm: -depthKm, marine: { sstC: K.sea.tYear, sstColdC: Math.min(K.sea.tJan, K.sea.tJul), depthKm, upwellingMd: K.sea.upwelling ?? 0, seaIce: K.sea.ice ?? 0 }, grades: null };
         out.why = out.why.filter(Boolean);
         return out;
     }
