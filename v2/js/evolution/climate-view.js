@@ -161,6 +161,7 @@ function koppenRgb(id) {
     return g === open ? KOPPEN_RGB[id] : DIMMED(GROUP_RGB[g]);
 }
 const ICE_RGB = [232, 238, 244];
+// (Köppen's sea too: a land question, its sea flat and dark — the sea ice over it)
 const SEA_FLAT = SEA_UNDER_LAND, ICE_SHEET = ICE_SHEET_RGB.map(v => 255 * v), SNOW = SNOW_RGB.map(v => 255 * v);
 const windSpeed = (C, season, g) => Math.hypot(g(C.u[season]), g(C.v[season]));
 /** The land under the wind: a touch lighter (10 % toward white), no relief — the wind does not live on the ground. */
@@ -210,7 +211,7 @@ export function paintClimate(layer, season, C, terrain, tMesh, out, relief) {
     if (layer === 'koppen') {
         for (let c = 0; c < n; c++) {
             const land = isLand(c), k = land ? shadeOf(terrain, c) : 1;
-            let rgb = land ? koppenRgb(C.cell.koppen[c]) : KOPPEN_RGB[0];
+            let rgb = land ? koppenRgb(C.cell.koppen[c]) : SEA_FLAT;
             if (!land) { const ice = Math.min(1, Math.max(0, at(C.ice, p, c))); if (ice > 0.02) rgb = rgb.map((v, ch) => v + (ICE_RGB[ch] - v) * ice); }
             out[3 * c] = Math.min(255, rgb[0] * k); out[3 * c + 1] = Math.min(255, rgb[1] * k); out[3 * c + 2] = Math.min(255, rgb[2] * k);
         }
@@ -607,7 +608,7 @@ export function finishedClimateColor(layer, season, C, W, lut, fin = null) {
     return (out, o, x, y, wet, kk, k3) => {
         const i = wet ? -1 : landPixel(R, W, x, y), land = i >= 0;
         if (layer === 'koppen') {
-            let rgb = land ? koppenRgb(R.koppen[i]) : KOPPEN_RGB[0];
+            let rgb = land ? koppenRgb(R.koppen[i]) : SEA_FLAT;
             if (!land) { const ice = Math.min(1, Math.max(0, g(C.ice, x, y))); if (ice > 0.02) { for (let ch = 0; ch < 3; ch++) px[ch] = rgb[ch] + (ICE_RGB[ch] - rgb[ch]) * ice; rgb = px; } }
             rgbPx(out, o, land ? shadeK(kk) : 1, rgb);
         } else if (layer === 'temperature') putPx(out, o, land ? shadeK(kk) : 1, pixelValue(layer, season, C, g, i, x, y));
