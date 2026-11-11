@@ -23,8 +23,10 @@
 //     on, margin-isles raises no islands of its own (was: margin-isles drew islands from the prism at its own rates, but
 //     ran before this stage, which laid the whole prism beside the coast each step and left it under a cell's worth — so
 //     no island ever rose: phase 7c, crustmass8);
-//   · where the fore-arc is full (laid to the coast), the prism thickens the land within marginIsleReachKm of the trench
-//     instead — underplating and the prism's own stacking (rootKm, evenly over those cells): the rock is kept, none made
+//   · where the fore-arc is full (laid to the coast), or the plate's margins are all erosive (their trenches eat the
+//     fore-arc: no frontal prism stands there, and what is scraped off is underplated beneath the fore-arc and arc —
+//     von Huene & Scholl 1991, Rev. Geophys. 29; Clift & Vannucchi 2004), the prism thickens the land within
+//     marginIsleReachKm of the trench instead — underplating and the prism's own stacking (rootKm, evenly over those cells): the rock is kept, none made
 //     or lost. A plate with no accretionary margin of its own holds its prism until it has one again.
 // Books (rock-book.js, the stage 'prismAccretion'): prismAccretedKm3, every cell's rock after less before; prismInKm3
 // what was credited, prismUnderKm3 the share of it underplated (the fore-arc full); the sheet holds the rest as the prism reservoir (Σ prismKm3 over the living plates).
