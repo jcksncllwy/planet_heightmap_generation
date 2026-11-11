@@ -4,6 +4,8 @@
 // mainland, until the land reaches almost to the trench. Each island is born at random along a mature, active
 // trench, grows outward at a steady rate, and the coast itself creeps seaward more slowly (the accretionary
 // wedge); an island that touches the mainland becomes part of it — continental crust, its own terrane.
+// (config.prismAccretion, on by default: the islands are laid out of the rock the trenches really scraped off, from the
+// trench side in, by step/prism-accretion.js; this step then only erodes the erosive margins and joins islands to the coast.)
 // A strip of sea, marginIsleGapKm wide, is always left in front of the trench: the gap closes almost, never quite.
 // Rates are per area and per km, not per cell: the same margin looks the same at every resolution.
 //
@@ -95,9 +97,11 @@ export function growMarginIsles(world, dt) {
             bookRock('marginErodedKm3', erodedKm3);
             if (eaten.length) { plate.dirty = true; changed += eaten.length; world.budget.erodedCells += eaten.length; }
         }
-        // the fore-arc: sea between this coast and its trench, keeping the gap in front of the trench
-        const raise = [];
-        for (let c = 0; c < numCells; c++) {
+        // the fore-arc: sea between this coast and its trench, keeping the gap in front of the trench. (config.prismAccretion:
+        // the islands are the rock its trenches really scraped off, laid from the trench side in by step/prism-accretion.js —
+        // the one place prism rock becomes cells; here they only join the coast)
+        const prism = config.prismAccretion, raise = [];
+        for (let c = 0; c < numCells && !prism; c++) {
             if (!mask[c] || type[c] !== CrustType.OCEAN || (flags[c] & CrustFlag.TRENCH) || trenchD[c] < gapHops || landD[c] < 1 || landD[c] + trenchD[c] > reachHops + 1 || erosive(c)) continue;
             let island = false, coast = false, edge = false;
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
@@ -113,12 +117,8 @@ export function growMarginIsles(world, dt) {
         // channel cannot take — and of the fore-arc's own ocean crust beneath, oceanCrustKm of it; a cell of island costs
         // continentCrustKm − oceanCrustKm of scraped sediment over its area. The prism keeps what it has not yet raised.
         // Where the islands' rates would raise more than the prism holds, those to rise are drawn at random among them)
-        // (config.prismAccretion: one prism per upper plate — the islands rise out of the rock its trenches really scraped
-        // off, plate.prismKm3, step/prism-accretion.js, not out of this estimate; what they leave it lays on the fore-arc)
-        const prism = config.prismAccretion;
-        if (prism) plate.wedgeDue = (plate.prismKm3 ?? 0) / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
-        if (config.wedgeConservation || prism) {
-            if (!prism) plate.wedgeDue = (plate.wedgeDue ?? 0) + wedgeKm3 / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
+        if (config.wedgeConservation && !prism) {
+            plate.wedgeDue = (plate.wedgeDue ?? 0) + wedgeKm3 / ((config.continentCrustKm - config.oceanCrustKm) * cellAreaKm2);
             if (raise.length > plate.wedgeDue) {
                 for (let i = raise.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [raise[i], raise[j]] = [raise[j], raise[i]]; }
                 raise.length = Math.floor(plate.wedgeDue);
@@ -137,10 +137,6 @@ export function growMarginIsles(world, dt) {
                 crust.terrane[c] = plate.marginIsleTerrane;
             }
             bookRock('isleRaisedKm3', raisedKm3);
-            if (prism) {                                             // (each island its rock less the floor it rises from)
-                const draw = Math.min(plate.prismKm3 ?? 0, Math.max(0, raisedKm3 - raise.length * config.oceanCrustKm * cellAreaKm2));
-                plate.prismKm3 = (plate.prismKm3 ?? 0) - draw; world.budget.prismIsleKm3 = (world.budget.prismIsleKm3 ?? 0) + draw;
-            }
             changed += raise.length;
             plate.dirty = true;
         }

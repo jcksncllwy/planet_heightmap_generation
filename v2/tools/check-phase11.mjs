@@ -1,7 +1,7 @@
 // Headless acceptance checks for Phase 11 (natural collisions — plans/V2_ROADMAP_PHASES_9_13.md): a contact is a pivot,
 // and two continents weld only once the ocean between them has closed (or stopped closing), so a collision closes the
 // ocean between them like a zipper instead of sealing it inside one plate. A sea sealed inside one plate makes no
-// continental crust: old and big enough, its floor founders as an ocean plate of its own under a trench along the shore
+// continental crust (only the prism its founder's trench scrapes off, paid in rock): old and big enough, its floor founders as an ocean plate of its own under a trench along the shore
 // (step/subduction-init.js founderWithinPlates); young and unsqueezed, it stays open. Over whole histories (three seeds)
 // belt records stay consistent and island arcs still stand; the seas caught between continents and the continents'
 // shapes (thinness, elongation — measured on continental crust) are reported against Earth's.
@@ -17,6 +17,7 @@ import { onlyMechanisms, TECTONICS } from '../js/tectonics/config.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { TectonicWorld, EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
+import { heightsOf } from '../js/tectonics/step/heights.js';
 import { sceneCanvas, addContinent, fillBackground } from '../js/tectonics/scenarios/scene-kit.js';
 import { spreadKm } from '../js/core/min-heap.js';
 import { SimplexNoise } from '../../js/simplex-noise.js';
@@ -79,11 +80,18 @@ section('a sea sealed inside one plate');
         const born = founders.find(e => e.kind === EventKind.PLATE_BORN), init = founders.find(e => e.kind === EventKind.SUBDUCTION_INIT);
         // (the plate's own raster: its continental crust and its ocean, frame by frame)
         const land = frames.map(f => f.plates[solo.id]?.landCells ?? 0), sea = frames.map(f => { const p = f.plates[solo.id]; return p ? (p.cells - p.landCells) * cellKm2 : 0; });
-        let landRose = 0;
-        for (let i = 1; i < frames.length; i++) if (sea[i - 1] > 0 && land[i] > land[i - 1]) landRose = Math.max(landRose, land[i] - land[i - 1]);
-        // (stages whose process may change the land: collisions, marginIsles, arcMaturation, tidy — none of them a sealed sea's)
-        const MAY = new Set(['collisions', 'marginIsles', 'arcMaturation', 'tidy']);
+        let landRose = 0, landGained = 0;
+        for (let i = 1; i < frames.length; i++) if (sea[i - 1] > 0 && land[i] > land[i - 1]) { landRose = Math.max(landRose, land[i] - land[i - 1]); landGained += land[i] - land[i - 1]; }
+        // (stages whose process may change the land: collisions, marginIsles, arcMaturation, tidy — and prismAccretion, the
+        // fore-arc a founder's trench builds out of the floor rock it scrapes off: step/prism-accretion.js. A closing small
+        // ocean builds an accretionary complex on its rim — the Makran on the Gulf of Oman's remnant ocean, Platt et al. 1985,
+        // J. Geol. Soc. 142; Cawood et al. 2009, Geol. Soc. Spec. Pub. 318 — paid for in rock, not made: held below)
+        const MAY = new Set(['collisions', 'marginIsles', 'arcMaturation', 'tidy', 'prismAccretion']);
         const gained = world.ledger ? Object.entries(world.ledger.stages).filter(([st, b]) => !MAY.has(st) && b.land > 0).map(([st, b]) => `${st} +${b.land}`) : ['no ledger kept'];
+        // (the land the prism may pay for: the rock credited to this plate's prism, at an island's cost per cell — a
+        // continent's crust less the ocean crust it stands on, prism-accretion.js)
+        const isleCostKm3 = (heightsOf(world.config).riftCrustKm - world.config.oceanCrustKm) * cellKm2;
+        const prismCells = (world.budget.prismInKm3 ?? 0) / isleCostKm3, prismLand = world.ledger?.stages.prismAccretion ?? { land: 0, arc: 0 };
         // after the founder: the new plate's floor, and the trench on the rim plate's shore (its ocean beside its land)
         const after = born && frames.find(f => f.time >= born.time);
         let trench = 0, freshKm2 = 0;
@@ -95,12 +103,17 @@ section('a sea sealed inside one plate');
             }
             freshKm2 = (after.plates[born.data.plate]?.cells ?? 0) * cellKm2;
         }
-        return { seaKm2, frames, land, sea, landRose, gained, founders, born, init, trench, freshKm2, minKm2: world.config.oceanPlateMinAreaKm2 };
+        return { seaKm2, frames, land, sea, landRose, landGained, prismCells, prismLaid: prismLand.land + prismLand.arc, gained, founders, born, init, trench, freshKm2, minKm2: world.config.oceanPlateMinAreaKm2 };
     };
     const old = sealed(300, 120), young = sealed(10, 120);
-    const ok = r => r.landRose === 0 && r.gained.length === 0;
-    check('a sealed sea makes no continental crust: its plate’s land never grows while the sea is there, and no stage books land it may not',
-        ok(old) && ok(young), [['old', old], ['young', young]].map(([k, r]) => `${k}: land ${r.land[0]} → ${r.land.at(-1)} cells (largest rise ${r.landRose}); ${r.gained.length ? r.gained.join(', ') : 'no stage gained'}`).join(' · '));
+    // (the land may grow only by the prism of a trench the sea's own founder opened, and only as far as its rock pays —
+    // the fore-arc cells it laid, and the land they grew into, at most the cells its credited rock buys, one cell's
+    // rounding allowed; a young sea, with no founder and so no trench, may gain nothing at all)
+    const paid = r => r.prismLaid <= r.prismCells + 1 && r.landGained <= r.prismCells + 1;
+    const ok = r => r.gained.length === 0 && (r.landRose === 0 || paid(r));
+    check('a sealed sea makes no continental crust: its plate’s land grows only by the prism its founder’s trench scrapes off, paid in rock; a young one gains none, and no stage books land it may not',
+        ok(old) && ok(young) && young.landRose === 0 && young.prismCells === 0,
+        [['old', old], ['young', young]].map(([k, r]) => `${k}: land ${r.land[0]} → ${r.land.at(-1)} cells (largest rise ${r.landRose}, ${r.landGained} in all; the prism laid ${r.prismLaid} cells of the ${r.prismCells.toFixed(1)} its rock buys); ${r.gained.length ? r.gained.join(', ') : 'no stage gained'}`).join(' · '));
     check('an old sealed sea big enough to be a plate founders: its floor breaks away as an ocean plate, under a trench along the shore',
         old.born && old.init && old.freshKm2 >= 0.5 * old.seaKm2 && old.trench * mesh.edgeKm >= 0.5 * old.init.data.lengthKm,
         old.born ? `${(old.seaKm2 / 1e6).toFixed(2)} Mkm² sea, 300 Myr old (plates from ${(old.minKm2 / 1e6).toFixed(2)} Mkm²): founders at ${old.born.time.toFixed(0)} Myr; the new plate holds ${(old.freshKm2 / 1e6).toFixed(2)} Mkm²; ${old.trench} cells (${(old.trench * mesh.edgeKm).toFixed(0)} km) of trench along the shore (the founder's run ${old.init.data.lengthKm.toFixed(0)} km)`
