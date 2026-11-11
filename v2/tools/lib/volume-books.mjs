@@ -63,6 +63,7 @@ export const STAGE_FLOWS = {
     marginIsles: { marginErodedKm3: +1, isleRaisedKm3: +1, isleMergedKm3: +1 },
     prismAccretion: { prismAccretedKm3: +1 },
     andeanShortening: { shortenedKm3: +1, shortenKeptKm3: +1 },
+    orogenicCollapse: { collapseNetKm3: +1 },
     arcCollapse: { arcCollapseKm3: +1, beltReliefKm3: +1, beltRootKm3: +1 },
     heights: { fillWornKm3: +1 },
 };

@@ -27,6 +27,8 @@
 //                   sum is the collision's loss (collisionLostShare, and the unplaced)
 //   shortenedKm3    (< 0) an Andean margin's edge shortened away; shortenKeptKm3 what step/andean-shortening.js lays back as
 //                   its belt's root: their sum is the unplaced (normally 0)
+//   collapseNetKm3  orogenicCollapse's rock change (≈ 0: a quiet belt's root moved into the continental cell it makes on its
+//                   coast, step/orogenic-collapse.js; the sea floor's sediment stays on the new cell)
 //   movedLostKm3    a piece moved to another plate: land with no room left on its host, the host's floor sediment it
 //                   buries (ops/tidy-plates.js transferCells, ops/scrape-arc.js, ops/accrete-terrane.js)
 //   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them

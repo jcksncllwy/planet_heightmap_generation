@@ -53,7 +53,10 @@ simulate(world, {
         }
         if (t % 100 === 0 && !ledger.some(x => x.t === t))
             ledger.push({ t, stages: Object.fromEntries(Object.entries(w.ledger?.stages ?? {}).map(([k, e]) => [k, +(e.land / n).toFixed(5)])),
-                underthrust: +((w.budget?.underthrustCells ?? 0) / n).toFixed(5) });
+                underthrust: +((w.budget?.underthrustCells ?? 0) / n).toFixed(5),
+                // (lane beltthick: the root volume put in and the collapse made back, cumulative — collapse-guard R2/R3)
+                collapseByKind: { ...(w.budget?.collapseCellsByKind ?? {}) }, collapseOwedKm3: w.budget?.collapseOwedKm3 ?? 0,
+                rootIn: { shortenKept: w.budget?.andeanShortenKeptKm3 ?? 0, collisionKept: w.budget?.collisionKeptKm3 ?? 0, arcRoot: w.budget?.arcRootAddedKm3 ?? 0 } });
     },
     onFrame: f => {
         if (Math.round(f.time) % EVERY) return;

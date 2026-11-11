@@ -18,10 +18,12 @@ import { arcCrustKm } from './collision.js';
  *  trench eats its fore-arc continent until it founders — step/subduction-erosion.js. (heights made land only through the
  *  old collapse's collapseMakesArea, removed at crustmass S5: it is held to 0 again.)
  *  andeanShortening, lane beltthick: an upper plate pressed against its trench loses its edge's area to the belt behind it,
- *  its volume kept as that belt's root — step/andean-shortening.js.
+ *  its volume kept as that belt's root — step/andean-shortening.js. orogenicCollapse, lane beltthick: a quiet belt on its coast
+ *  spreads its root over the sea beside it as ordinary continent (area = the root's volume ÷ an ordinary crust) —
+ *  step/orogenic-collapse.js.
  *  hiddenRemnants, lane crust: a plate subducted to its last arc or continent cells, hidden under its neighbours, accretes
  *  to the plate over it, and land landing on the host's own land is absorbed — step/ocean-plates.js accreteHiddenRemnants.) */
-export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'prismAccretion', 'subductionErosion', 'andeanShortening', 'arcMaturation', 'tidy', 'riftStage', 'hiddenRemnants'];
+export const LAND_STAGES = ['collisions', 'marginIsles', 'sedimentSubduction', 'prismAccretion', 'subductionErosion', 'andeanShortening', 'orogenicCollapse', 'arcMaturation', 'tidy', 'riftStage', 'hiddenRemnants'];
 
 /** The planet's continental and arc crust now, in cells (every live plate's raster). */
 export function crustTally(world) {

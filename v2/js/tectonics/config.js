@@ -175,12 +175,17 @@ export const TECTONICS = {
                                 // Myr; its thickening beyond is the margin's own shortened crust, which this raster cannot take away. ~60:
                                 // arc addition at ocean-margin subduction zones 2.5 AU (1.5 intra-oceanic + 1.0 continental margins) over
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
+    orogenicCollapse: true,     // (lane beltthick) a quiet belt on its own coast spreads its root over the sea beside it as continent: crust-flow's
+                                // channel carried across the coast, area = volume ÷ an ordinary continent's crust (Dewey 1988; step/orogenic-collapse.js). No parameter of its own
     andeanShorteningShare: 0.25, // (lane beltthick; Jackson's ruling 4 as amended 2026-11-11; 0 = off) an upper plate pressed toward its trench
                                 // shortens behind its arc at this share of that velocity, Vd = share × Vup (Heuret & Lallemand 2005, PEPI 149:
                                 // Vd + Vt = Vup, the rest the trench's own retreat), its edge's area folded into its belt as root
                                 // (step/andean-shortening.js). Derived from the Central Andes: ~300–350 km of shortening since ~45 Ma
-                                // (Oncken et al. 2006; Kley & Monaldi 1998), ~7–8 mm/yr, against South America's westward drift of ~3 cm/yr
-                                // in the hotspot frame that drove it (Silver et al. 1998, Science 279 — the figure TO VERIFY; my arithmetic)
+                                // (Oncken et al. 2006; Kley & Monaldi 1998), ~7–8 mm/yr, against South America's westward drift in the
+                                // hotspot frame, risen from ~1–2 to ~2–3 cm/yr since ~30–25 Ma (Silver, Russo & Lithgow-Bertelloni 1998,
+                                // Science 279; the 2–3 cm/yr as reviews of it quote, e.g. Oncken et al. 2006; O'Driscoll et al. 2012, Tectonics 31,
+                                // date the speed-up ~25–24 Ma): 7–8 ÷ 20–30 = 0.25–0.4. The low end: the Altiplano's shortening also took
+                                // the slab's retreat (~2 cm/yr since ~50 Ma, Schepers et al. 2017, Nat. Commun. 8), and a higher share only takes more area
     crustPaidRelief: true,      // (lane crustmass, S1; on since S5) a belt's relief is the isostatic face of a root that was paid for, not rock of
                                 // its own: belts no longer raise the broad uplift (measure.js counts it as crust, uplift ÷ column slope — ~5 Gkm³
                                 // a 1200 Myr cycle made from nothing, about the planet's whole continental crust: crustmass/report.md §0, F4–F6),

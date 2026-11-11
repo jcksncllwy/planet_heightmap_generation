@@ -129,11 +129,27 @@ export function flowCrust(world, dt, H) {
         }
         // edges (CSR): the channel's conductance between two cells in series, its harmonic mean (none where either has no channel)
         const off = new Int32Array(m + 1), nbs = [], as = [];
+        // the free edge (config.orogenicCollapse, lane beltthick: step/orogenic-collapse.js): a post-active belt's channel on the
+        // coast flows out over its own plate's sea floor toward the ground an ordinary continent stands at, s0 = C.ref (its root
+        // spent: never the ordinary crust's own) — a sink of conductance coef × K_i per sea face (the channel ends at the wall)
+        const collapse = !!config.orogenicCollapse, s0 = C.ref[CrustType.CONTINENT], sink = collapse ? new Float64Array(m) : null, faces = collapse ? [] : null;
+        // the sources (G1 root only, G2 post-active belts only: collapse-guard.md): a quiet belt's cell with root to give
+        // (2), and the belt they stand in (1: a quiet belt's cell of any root) — crust moving within the belt is the belt's own
+        // redistribution (the ground's sediment and base drive it as much as the root: R1's no-root control found crust
+        // circling between a belt's thinned and thickened cells); only what leaves the belt's footprint is the belt extending
+        const src = collapse ? new Uint8Array(m) : null;
+        if (src) for (let i = 0; i < m; i++) {
+            const c = cells[i];
+            if (type[c] !== CrustType.CONTINENT || !collapseSource(oroType[c], world.time - oroLast[c], config)) continue;
+            src[i] = K[i] > 0 && rootKm[c] > 0 && s[i] > s0 ? 2 : 1;
+        }
         let any = false;
         for (let i = 0; i < m; i++) {
             const c = cells[i];
+            const edge = collapse && src[i] === 2;
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-                const j = loc[adjList[k]] - 1;
+                const nb = adjList[k], j = loc[nb] - 1;
+                if (edge && j < 0 && mask[nb] && type[nb] === CrustType.OCEAN) { sink[i] += coef * K[i]; faces.push(i, nb); any = true; continue; }
                 if (j < 0 || !(K[i] > 0) || !(K[j] > 0)) continue;
                 const a = coef * 2 * K[i] * K[j] / (K[i] + K[j]);
                 if (a > 1e-12) { nbs.push(j); as.push(a); any = true; }
@@ -142,15 +158,48 @@ export function flowCrust(world, dt, H) {
         }
         for (let i = 0; i < m; i++) loc[cells[i]] = 0;
         if (!any) continue;
-        // backward Euler on s: s_i ÷ slope_i + Σ a_ij (s_i − s_j) = s_i,old ÷ slope_i (symmetric, positive definite)
-        const x = solve(m, off, nbs, as, sl, s);
+        // backward Euler on s: s_i ÷ slope_i + Σ a_ij (s_i − s_j) [+ b_i (s_i − s0)] = s_i,old ÷ slope_i (symmetric, positive definite)
+        const x = solve(m, off, nbs, as, sl, s, sink, s0);
         iters += x.iters;
-        // applied as fluxes between cells: whatever the solve's last digits, crust is only moved
+        // applied as fluxes between cells: whatever the solve's last digits, crust is only moved. A quiet belt's outflow into
+        // ordinary crust (B2, gladsheim 2026-11-11) is not moved: it is the belt extending, owed as area (below) and taken from
+        // the belt's root by the collapse stage — its rock never left the source; each edge is read the same from both ends
+        const out = src ? new Float64Array(m) : null;
         for (let i = 0; i < m; i++) {
             let d = 0;
-            for (let e = off[i]; e < off[i + 1]; e++) d += as[e] * (x.s[nbs[e]] - x.s[i]);
+            for (let e = off[i]; e < off[i + 1]; e++) {
+                const j = nbs[e], f = as[e] * (x.s[j] - x.s[i]);
+                if (src && f < 0 && src[i] === 2 && !src[j]) { out[i] -= f; continue; }   // (the belt's outflow: extension)
+                if (src && f > 0 && src[j] === 2 && !src[i]) continue;                     // (the same edge, from the far end)
+                d += f;
+            }
             rootKm[cells[i]] += d;
             if (d > 0) moved += d;
+        }
+        // what crossed the coast is not moved here (a cell of land is made only by a ledger stage): it is owed, in cells of an
+        // ordinary continent's crust (area = volume ÷ the crust it spreads at), to the next orogenicCollapse stage, which takes it
+        // from the sources' roots then; each sea face remembers its source and how much it was fed (the most-fed spread first)
+        if (src) {
+            const h0 = C.crust[CrustType.CONTINENT], at = plate.collapseFaces ??= new Map(), B = world.budget;
+            const owe = (i, q, inland) => {
+                plate.collapseDue = (plate.collapseDue ?? 0) + q / h0;
+                (plate.collapseSrc ??= new Set()).add(cells[i]);                  // (every owing cell gives root at conversion)
+                const kind = oroType[cells[i]];
+                B.collapseOwedKm3 = (B.collapseOwedKm3 ?? 0) + q * cellKm2;
+                if (inland) B.collapseInlandOwedKm3 = (B.collapseInlandOwedKm3 ?? 0) + q * cellKm2;
+                (B.collapseOwedByKind ??= {})[kind] = (B.collapseOwedByKind[kind] ?? 0) + q * cellKm2;
+            };
+            for (let f = 0; f < faces.length; f += 2) {
+                const i = faces[f], q = coef * K[i] * Math.max(0, x.s[i] - s0);        // (root km, as the fluxes above)
+                if (!(q > 0)) continue;
+                const e = at.get(faces[f + 1]);
+                if (e) { e.km += q; if (q > e.top) { e.top = q; e.src = cells[i]; } } else at.set(faces[f + 1], { km: q, top: q, src: cells[i], hops: 0 });
+                owe(i, q, false);
+            }
+            // the belt's outflow inland (no more than its root: G1), owed as area at the plate's nearest coast
+            let inland = 0;
+            for (let i = 0; i < m; i++) if (out[i] > 0) { out[i] = Math.min(out[i], rootKm[cells[i]]); if (out[i] > 0) { owe(i, out[i], true); inland += out[i]; } }
+            if (inland > 0) nearestCoast(plate, mesh, cells, out, Math.ceil(plate.collapseDue) + 1, at, B);
         }
     }
     world.budget.crustFlowKm3 = (world.budget.crustFlowKm3 ?? 0) + moved * cellKm2;
@@ -158,18 +207,49 @@ export function flowCrust(world, dt, H) {
     return moved * cellKm2;
 }
 
+/** Whether a continental cell may spread over the sea beside it (orogenic collapse): a shortening belt (not a rift's shoulder,
+ * not an arc) gone quiet — post-active, as config.orogenyQuietMyr reads a record's end (Dewey 1988: extension follows the
+ * thickening once the push that held it stops). */
+export function collapseSource(kind, quietMyr, config) {
+    return kind !== OrogenyType.NONE && kind !== OrogenyType.RIFT && kind !== OrogenyType.ARC && quietMyr >= config.orogenyQuietMyr;
+}
+
+/** The sea faces nearest the belt (B2: a raster can add land only at an edge, so the area a belt's interior widening makes
+ * shows as its continent's coast moving out): a breadth-first search over the plate's continent from the cells that owe
+ * (`out`), each sea cell it touches a face, labelled with the source it was reached from, nearest first (`hops`), until
+ * `want` faces are found. Faces already fed at the coast keep their own entry. */
+function nearestCoast(plate, mesh, cells, out, want, at, B) {
+    const { adjOffset, adjList } = mesh, { mask, type } = plate.crust, n = mask.length;
+    const seen = new Uint8Array(n), lab = new Int32Array(n), q = [];
+    for (let i = 0; i < cells.length; i++) if (out[i] > 0) { const c = cells[i]; seen[c] = 1; lab[c] = i; q.push(c, 0); }
+    let found = 0;
+    for (let h = 0; h < q.length && found < want; h += 2) {
+        const c = q[h], d = q[h + 1];
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k];
+            if (seen[nb] || !mask[nb]) continue;
+            seen[nb] = 1;
+            if (type[nb] === CrustType.OCEAN) {
+                if (!at.has(nb)) { at.set(nb, { km: out[lab[c]], top: 0, src: cells[lab[c]], hops: d + 1 }); found++; B.collapseFaceHops = (B.collapseFaceHops ?? 0) + d + 1; B.collapseFaceCount = (B.collapseFaceCount ?? 0) + 1; }
+            } else if (type[nb] === CrustType.CONTINENT || type[nb] === CrustType.CRATON) { lab[nb] = lab[c]; q.push(nb, d + 1); }
+        }
+    }
+}
+
 let locBuf = null;
 function localIndex(n) { if (!locBuf || locBuf.length !== n) locBuf = new Int32Array(n); return locBuf; }
 
 /** Jacobi-preconditioned conjugate gradients for (D + L) x = D s0, D = 1/slope, L the edges' Laplacian; starts from s0. */
-function solve(m, off, nbs, as, sl, s0) {
+function solve(m, off, nbs, as, sl, s0, sink = null, sEdge = 0) {
     const x = Float64Array.from(s0), r = new Float64Array(m), z = new Float64Array(m), p = new Float64Array(m), q = new Float64Array(m), dg = new Float64Array(m);
-    const Ax = (v, out) => { for (let i = 0; i < m; i++) { let a = v[i] / sl[i]; for (let e = off[i]; e < off[i + 1]; e++) a += as[e] * (v[i] - v[nbs[e]]); out[i] = a; } };
+    const b = i => sink ? sink[i] : 0;
+    const Ax = (v, out) => { for (let i = 0; i < m; i++) { let a = v[i] / sl[i] + b(i) * v[i]; for (let e = off[i]; e < off[i + 1]; e++) a += as[e] * (v[i] - v[nbs[e]]); out[i] = a; } };
     let bn = 0;
-    for (let i = 0; i < m; i++) { let d = 1 / sl[i]; for (let e = off[i]; e < off[i + 1]; e++) d += as[e]; dg[i] = d; bn += (s0[i] / sl[i]) ** 2; }
+    const rhs = i => s0[i] / sl[i] + b(i) * sEdge;
+    for (let i = 0; i < m; i++) { let d = 1 / sl[i] + b(i); for (let e = off[i]; e < off[i + 1]; e++) d += as[e]; dg[i] = d; bn += rhs(i) ** 2; }
     Ax(x, q);
     let rz = 0;
-    for (let i = 0; i < m; i++) { r[i] = s0[i] / sl[i] - q[i]; z[i] = r[i] / dg[i]; p[i] = z[i]; rz += r[i] * z[i]; }
+    for (let i = 0; i < m; i++) { r[i] = rhs(i) - q[i]; z[i] = r[i] / dg[i]; p[i] = z[i]; rz += r[i] * z[i]; }
     const tol = 1e-20 * bn;
     let it = 0;
     for (; it < 500; it++) {
