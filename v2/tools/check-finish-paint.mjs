@@ -63,5 +63,12 @@ else {
             else check(`${label}: within 2 levels, on under 0.05 % of the pixels (${share.toFixed(4)} %, ${max})`, max <= 2 && share < 0.05);
         }
     }
+    // (on the page the picture goes to a canvas in the device's preferred format — BGRA on most: red and blue swapped)
+    section('the bytes in BGRA order (a canvas in the bgra8unorm format)');
+    const r = picture(1024, 2), lut = heightLutOf('relief'), o = { exaggeration: 20, lakes: true, lakeColor };
+    const a = await P.paintToArrays(r, 2048, lut, o), b = await P.paintToArrays(r, 2048, lut, { ...o, bgra: true });
+    let off = 0;
+    for (let i = 0; i < a.rgba.length; i += 4) if (a.rgba[i] !== b.rgba[i + 2] || a.rgba[i + 1] !== b.rgba[i + 1] || a.rgba[i + 2] !== b.rgba[i] || b.rgba[i + 3] !== 255) off++;
+    check(`BGRA: the RGBA picture with red and blue swapped (${off} pixels otherwise)`, off === 0);
 }
 finish('Finish paint (GPU)');

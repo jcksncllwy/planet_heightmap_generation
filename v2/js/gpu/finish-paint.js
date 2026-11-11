@@ -97,7 +97,7 @@ fn main(@builtin(global_invocation_id) g: vec3u) {
 
 // ── pass 2: each pixel coloured by the palette, shaded by the relief (the live terrain's light), a lake flat water ──
 const COLOUR = /* wgsl */ `
-struct P { W: u32, H: u32, zero: i32, top: i32, shaded: u32, lakes: u32, ex: f32, exSea: f32, den2: f32, pad0: u32, pad1: u32, pad2: u32 }
+struct P { W: u32, H: u32, zero: i32, top: i32, shaded: u32, lakes: u32, ex: f32, exSea: f32, den2: f32, bgra: u32, pad1: u32, pad2: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> h: array<f32>;
 @group(0) @binding(2) var<storage, read> fl: array<u32>;
@@ -108,6 +108,8 @@ struct P { W: u32, H: u32, zero: i32, top: i32, shaded: u32, lakes: u32, ex: f32
 
 // (a Uint8ClampedArray's store: clamped, then rounded half to even — WGSL's round)
 fn byte(v: f32) -> u32 { return u32(round(clamp(v, 0.0, 255.0))); }
+// (the bytes in the canvas's order: RGBA, or BGRA where that is the device's preferred canvas format)
+fn pack(r: u32, g: u32, b: u32) -> u32 { return select(r | (b << 16u), b | (r << 16u), p.bgra == 1u) | (g << 8u) | (255u << 24u); }
 
 @compute @workgroup_size(${WG}, ${WG})
 fn main(@builtin(global_invocation_id) g: vec3u) {
@@ -127,7 +129,7 @@ fn main(@builtin(global_invocation_id) g: vec3u) {
     }
     let j = i32(f >> 16u) - 32768;
     let k3 = 3 * select(clamp(j, p.zero, p.top), clamp(j, 0, p.zero - 1), wet);
-    outC[i] = byte(min(255.0, lut[k3] * kk)) | (byte(min(255.0, lut[k3 + 1] * kk)) << 8u) | (byte(min(255.0, lut[k3 + 2] * kk)) << 16u) | (255u << 24u);
+    outC[i] = pack(byte(min(255.0, lut[k3] * kk)), byte(min(255.0, lut[k3 + 1] * kk)), byte(min(255.0, lut[k3 + 2] * kk)));
 }`;
 
 // ── pass 3: the glint's mask at its own width: the sea and the lakes (not the pans) 255 ──
@@ -251,7 +253,7 @@ export class FinishPainter {
      * {exaggeration, lakes, seaWidth}) into the painter's buffers, on the GPU: `glint` makes the sea mask too.
      * Returns the sized buffers (s.c the picture, RGBA; s.g the mask).
      */
-    encode(r, W, lut, { exaggeration = 20, lakes = false, seaWidth = 0, lakeColor = null } = {}) {
+    encode(r, W, lut, { exaggeration = 20, lakes = false, seaWidth = 0, lakeColor = null, bgra = false } = {}) {
         const d = this.device, H = W >> 1, s = this.sizedFor(W, seaWidth || 2), rb = this.rasterBuffers(r), k = r.w / W;
         const enlarge = k < 1, K = enlarge ? 1 : Math.round(k), wantLakes = lakes && !!r.water && !!lakeColor;
         const tbl = this.tableOf(enlarge ? 1 : K * K, lut), en = enlarge ? this.enlargeOf(s, r) : null;
@@ -262,9 +264,9 @@ export class FinishPainter {
         const p2 = new ArrayBuffer(48), v2 = new DataView(p2);
         v2.setUint32(0, W, true); v2.setUint32(4, H, true); v2.setInt32(8, lut.zero, true); v2.setInt32(12, lut.n - 1, true);
         v2.setUint32(16, lut.shaded ? 1 : 0, true); v2.setUint32(20, wantLakes ? 1 : 0, true);
-        v2.setFloat32(24, exaggeration, true); v2.setFloat32(28, exaggeration * 0.35, true); v2.setFloat32(32, 2 * s.pxKm, true);
+        v2.setFloat32(24, exaggeration, true); v2.setFloat32(28, exaggeration * 0.35, true); v2.setFloat32(32, 2 * s.pxKm, true); v2.setUint32(36, bgra ? 1 : 0, true);
         const lake = new Uint32Array(4);
-        if (wantLakes) for (let kind = 1; kind < 4; kind++) { const c = lakeColor(lut, kind); lake[kind] = clampByte(c[0]) | (clampByte(c[1]) << 8) | (clampByte(c[2]) << 16) | (255 << 24) >>> 0; }
+        if (wantLakes) for (let kind = 1; kind < 4; kind++) { const c = lakeColor(lut, kind); const [R, G, B] = [0, 1, 2].map(j => clampByte(c[j])); lake[kind] = ((bgra ? B | (R << 16) : R | (B << 16)) | (G << 8) | (255 << 24)) >>> 0; }
         const placeholder = this.placeholder ??= storage(d, new Uint32Array(4));
         const u1 = U(p1), u2 = U(p2), lakeBuf = storage(d, lake), uniforms = [u1, u2, lakeBuf];
         const group = (pipe, bufs) => d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: bufs.map((buffer, binding) => ({ binding, resource: { buffer } })) });
@@ -306,8 +308,10 @@ export class FinishPainter {
             const canvas = document.createElement('canvas');
             canvas.width = W; canvas.height = W >> 1;
             const ctx = canvas.getContext('webgpu');
-            ctx.configure({ device: this.device, format: 'rgba8unorm', usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT, alphaMode: 'opaque' });
-            this.canvases.set(key, c = { canvas, ctx });
+            // (the device's preferred format — BGRA on most — so the browser composites it with no extra copy)
+            const format = navigator.gpu.getPreferredCanvasFormat() === 'bgra8unorm' ? 'bgra8unorm' : 'rgba8unorm';
+            ctx.configure({ device: this.device, format, usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT, alphaMode: 'opaque' });
+            this.canvases.set(key, c = { canvas, ctx, bgra: format === 'bgra8unorm' });
         }
         return c;
     }
@@ -317,9 +321,8 @@ export class FinishPainter {
      * onto it (seaWidth wide) — on the GPU, then drawn onto the canvases (synchronously, as the CPU's putImageData).
      */
     paint(r, t, lut, { seaCanvas = null, seaWidth = 0, exaggeration = 20, lakes = false, lakeColor = null } = {}) {
-        const W = t.width, glint = !!seaCanvas;
-        const { s, enc, uniforms, H } = this.encode(r, W, lut, { exaggeration, lakes, lakeColor, seaWidth: glint ? seaWidth : 0 });
-        const pc = this.canvasOf('picture', W);
+        const W = t.width, glint = !!seaCanvas, pc = this.canvasOf('picture', W);
+        const { s, enc, uniforms, H } = this.encode(r, W, lut, { exaggeration, lakes, lakeColor, seaWidth: glint ? seaWidth : 0, bgra: pc.bgra });
         enc.copyBufferToTexture({ buffer: s.c, bytesPerRow: 4 * W }, { texture: pc.ctx.getCurrentTexture() }, [W, H]);
         let sc = null;
         if (glint) {
