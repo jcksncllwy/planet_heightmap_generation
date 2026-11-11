@@ -78,7 +78,10 @@ const gridValue = (field, g) => g.k[0] * field[g.c[0]] + g.k[1] * field[g.c[1]] 
  * A place's twelve months (°C, mm), from the climate's twelve months on its 1° grid (climate-fields.js months). On land,
  * shifted and scaled to the place's own year (tAnnual, pAnnual): the climate makes a cell's months from the same four grid
  * cells, then lowers them all by one lapse (its height) and scales them all by one factor (its relief's rain, the
- * texture), so the shifted and scaled months ARE the cell's (finishCells) — the Köppen class drawn from them is the map's.
+ * texture), so for ONE cell the shifted and scaled months are that cell's (finishCells). A detailed moment's raster is
+ * not one cell: its year (tAnnual, pAnnual) blends the pixel's three cells, its Köppen class is the weightiest one's —
+ * so at a class border or on steep relief the months can read as a neighbouring class (smoke 2026-11-10: 182 of 193
+ * land clicks agree; the 11 others mostly next-door classes). The panel names the map's class, as the map and hover do.
  * At sea: the grid's own months at sea level. null where the climate has no months (a climate from before they were kept).
  */
 export function placeMonths(C, lat, lon, tAnnual = NaN, pAnnual = NaN) {
@@ -223,7 +226,7 @@ export function placeFacts(state, lat, lon) {
         if (mo) {
             K.T12 = Array.from(mo.T12, x => +x.toFixed(2)); K.P12 = Array.from(mo.P12, x => +x.toFixed(1));
             K.snowMonths = land ? mo.T12.reduce((n, x) => n + (snowAt(x) >= 0.5 ? 1 : 0), 0) : null;
-            // (the class from these months: the map's, if they are the cell's — a check, shown nowhere)
+            // (the class from these months — the map's for one cell; a check for smokes, shown nowhere)
             K.koppenFromMonths = land ? classifyCell(mo.T12, mo.P12) : null;
             if (!land) { let s = 0; for (const x of mo.T12) s += x; K.tAnnual = s / 12; K.pAnnual = mo.P12.reduce((a, x) => a + x, 0); }
         }
