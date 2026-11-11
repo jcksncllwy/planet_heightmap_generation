@@ -398,6 +398,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         if (pit.length) {
             onStage('climate');
             const was = { T: pageC.T.year, sea: pageC.sea }, t1 = performance.now(), pits = pit.length;
+            climateLand = climateLand.slice();                        // (a new mask: the first climate's results keep theirs)
             for (const c of pit) { climateLand[c] = 0; climSea[c] = 1; }
             ({ koppen, tAnn, pAnn, lat, lon, G, climGrid, warmSl, waveIn, wind, travelFlow, petM, wetMonths, liquid, monthly, waterGrid, pageC, gridClimate,
                 runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = climateOn(climZ, climateLand, climSea));
