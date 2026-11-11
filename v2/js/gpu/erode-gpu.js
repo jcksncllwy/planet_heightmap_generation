@@ -16,10 +16,10 @@
 // what lakes kept, closed basins and rebound stay on the CPU, with a readback a step.
 
 import { openDevice, readBack } from './gpu-device.js';
-import { deltaLayer, rebounder, layUp } from '../finish/finish-erode.js';
+import { deltaLayer, rebounder, layUp, closedOutlets, topsetSlope, layClosed } from '../finish/finish-erode.js';
 import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
-const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
+const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 10;
 
@@ -27,7 +27,7 @@ const HEAD = /* wgsl */`
 struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32 }
 struct Rg { start: u32, count: u32 }
 struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32, area: f32 }
-struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32 }
+struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32, A: f32 }
 const NONE = 0x7FFFFFFFu; const INF = 0xFFFFFFFFu; const M = 0x7FFFFFFFu;
 const EPS = ${EPS}f; const R_EARTH = ${R_EARTH}f; const BIG = 1e30f;
 ${CLAMP_AFFINE_WGSL}
@@ -219,7 +219,7 @@ const KERNELS = {
         dB[c] = num / den;` },
     exportCells: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+' }, index: 'i', body: `
         let v = cells[c];
-        exp[i] = Out(v.lid, v.e, v.inlet, trap[c], v.q, recv[c], v.gross);` },
+        exp[i] = Out(v.lid, v.e, v.inlet, trap[c], v.q, recv[c], v.gross, v.A);` },
 };
 
 function wgsl(name, spec) {
@@ -345,11 +345,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         return { fill, parent, order, count: listLen };
     };
     const closed = async () => {
-        const C = o.closed(z, gpuClosed ? await flood() : null);
-        sink = C.sink; base = C.base; basins = [];
-        sinkAt = sinkAt ?? new Int32Array(n);
-        sinkAt.fill(-1);
-        for (const L of C.lakes) if (sink[L.cells[0]]) { for (const c of L.cells) sinkAt[c] = basins.length; basins.push({ cells: L.cells, level: L.level, load: 0 }); }
+        ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z, gpuClosed ? await flood() : null), z, n, sinkAt));
     };
     const outlets = (seaOnly = false) => {
         const out = new Uint32Array(n), surf = new Float32Array(n), Zs = new Float32Array(n), self = new Uint32Array(n), d0 = new Uint32Array(n), rec = new Uint32Array(n), lab = new Uint32Array(n);
@@ -491,8 +487,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const R = { route: [], toSea: 0, inClosed: 0 };
     const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);       // (the last step's load out, km³/Myr, and its receiver: finish-erode.js bayheadFill)
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
+    // (each mouth's delta plain: topsetSlope from what came in, the drainage it came from and the loose layer's k, as finish-erode.js)
+    const Ain = P.delta ? new Float64Array(n) : null, AF = P.delta ? new Float32Array(n) : null, topset = c => topsetSlope(P, inlet[c] / dt, Ain[c], K[c] * (column ? column.loose[c] : 1), m);
     const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaLvl, o.uplift ?? null, o.flex ?? null) : null, curve = [];
-    let reboundKm3 = 0;
+    let reboundKm3 = 0, overKm3 = 0;
     try {
         put('dropped', new Float32Array(n));
         await device.queue.onSubmittedWorkDone();
@@ -514,22 +512,25 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             lidF.fill(-1);
             if (inlet) inlet.fill(0);
             const last = s === P.steps - 1;
+            if (Ain) { Ain.fill(0); AF.fill(0); }
             for (let i = 0; i < listLen; i++) {
                 const c = list[i], w = EXPORT_WORDS * i, lid = ex[w], rr = ex[w + 5], q = exF[w + 4];
                 eF[c] = exF[w + 1];
                 if (last) { outQ[c] = q / dt; outR[c] = rr & NONE; }
                 eroded += exF[w + 6] * a;
                 if (lid !== NONE) { lidF[c] = lid; lakeCells++; if (inlet) inlet[c] += exF[w + 2]; if (!lakesCells.has(lid)) lakesCells.set(lid, { cells: [], trap: 0 }); const L = lakesCells.get(lid); L.cells.push(c); const tr = exF[w + 3]; if (tr > 0) L.trap = tr; }
-                if (rr >>> 31) { const r = rr & NONE; if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; R.inClosed += q; if (inlet) inlet[r] += q; } else R.toSea += q; }
+                if (Ain) AF[c] = exF[w + 7];
+                if (rr >>> 31) { const r = rr & NONE; if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; R.inClosed += q; if (inlet) { inlet[r] += q; Ain[r] += exF[w + 7]; } } else R.toSea += q; }
             }
+            // (the drainage come in at each lake's mouths, from outside it: topsetSlope's A)
+            if (Ain) for (let i = 0; i < listLen; i++) { const c = list[i], w = EXPORT_WORDS * i, r = ex[w + 5] & NONE; if (!(ex[w + 5] >>> 31) && lidF[r] >= 0 && lidF[r] !== lidF[c]) Ain[r] += AF[c]; }
             for (const [L, v] of lakesCells) if (v.trap > 0) {
-                if (P.delta) layDeltas(v.cells, v.trap / a, c => eF[c], c => lidF[c] === L);
+                if (P.delta) layDeltas(v.cells, v.trap / a, c => eF[c], c => lidF[c] === L, topset);
                 else layUp(z, v.cells, v.trap / a, Infinity);
             }
             basins.forEach((Bn, b) => {
                 if (!(Bn.load > 0)) return;
-                if (P.delta) layDeltas(Bn.cells, Bn.load / a, () => Bn.level, c => sinkAt[c] === b);
-                else layUp(z, Bn.cells, Bn.load / a, Bn.level);
+                overKm3 += layClosed(z, Bn, Bn.load / a, layDeltas, topset) * a;
                 Bn.load = 0;
             });
             ms.lay += performance.now() - t;
@@ -550,6 +551,6 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     let seaKm3 = 0, closedKm3 = 0, grossKm3 = 0;
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
-    const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3) };
+    const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3), overRimKm3PerYr: perYr(overKm3) };
     return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, toSeaKm3: R.toSea, closedKm3: R.inClosed, outflow: { q: outQ, recv: outR } };
 }

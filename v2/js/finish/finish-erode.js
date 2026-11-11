@@ -50,6 +50,7 @@ export const ERODE = {
     reboundKm: 350,             // …spread by the lithosphere over this (σ, as finish-config reboundKm), on the coarsest level
     bury: true,                 // a level's fill buries the finer relief under it, not rides on it
     delta: true,                // a lake's load is laid from where the rivers come in, out to the lake's level, not flat from its floor up
+    topset: true,               // …its delta plain graded at the bed material's slope above the water (topsetSlope), not dead level (hollowfix WIP)
     lastClean: false,           // the last step lays nothing on the channels: no levee left behind to dam a level plain
     playaYears: 1,              // a salt body shallower on average than this many years of its net evaporation is a playa (0: off)
     polishMyr: 0.3,             // at 'both': after the wind and the coast, this long more…
@@ -104,13 +105,7 @@ export function erodeLandscape(o, P) {
         for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) if (ocean[adjList[j]]) { coast.push(c); coastFrom.push(adjList[j]); break; }
     }
     let sink = null, base = null, sinkAt = null, basins = [], count = 0;
-    const closed = () => {
-        const B = o.closed(z);
-        sink = B.sink; base = B.base; basins = [];
-        sinkAt = sinkAt ?? new Int32Array(n);
-        sinkAt.fill(-1);
-        for (const L of B.lakes) if (sink[L.cells[0]]) { for (const c of L.cells) sinkAt[c] = basins.length; basins.push({ cells: L.cells, level: L.level, load: 0 }); }
-    };
+    const closed = () => ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z), z, n, sinkAt));
     const route = () => {
         rank.fill(-1); parent.fill(-1);
         for (let c = 0; c < n; c++) if (ocean[c] || sink[c]) rank[c] = -2;
@@ -205,8 +200,10 @@ export function erodeLandscape(o, P) {
     // (a delta: what came in by each mouth fills the water nearest that mouth up to `surface`, so a filling lake shrinks and
     // stays deep beyond the front. Laid flat from the floor, it would keep all its area until the last metre: a wide sheet)
     const inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
+    // (each mouth's delta plain: the bed material's graded slope, topsetSlope, from what came in and the drainage it came from)
+    const Ain = P.delta ? new Float64Array(n) : null, topset = c => topsetSlope(P, inlet[c] / dt, Ain[c], P.kScale * k[c] * (column ? column.loose[c] : 1) * (slow ? slow[c] : 1), m);
     const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaKm, uplift, o.flex ?? null) : null;
-    let reboundKm3 = 0;
+    let reboundKm3 = 0, overKm3 = 0;
     const curve = [], t = { route: 0, closed: 0, solve: 0, load: 0, lay: 0 };
     for (let s = 0; s < P.steps; s++) {
         let t0 = performance.now();
@@ -240,7 +237,7 @@ export function erodeLandscape(o, P) {
         lap('solve');
         // ── the load, from the headwaters down ──
         Qs.fill(0); cap.fill(0); Qf?.fill(0);
-        inlet?.fill(0);
+        inlet?.fill(0); Ain?.fill(0);
         const trap = new Float64Array(lakes), last = s === P.steps - 1;
         let eroded = 0, toSea = 0, kept = 0, inClosed = 0;
         for (let i = count - 1; i >= 0; i--) {
@@ -259,8 +256,8 @@ export function erodeLandscape(o, P) {
                 dropped[c] = d / a; q -= d; mud -= dMud; kept += d;
             }
             if (Qf && !out) Qf[r] += mud;
-            if (!out) { Qs[r] += q; if (inlet && lid[r] >= 0 && lid[r] !== lid[c]) inlet[r] += q; }
-            else if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; inClosed += q; if (inlet) inlet[r] += q; }
+            if (!out) { Qs[r] += q; if (inlet && lid[r] >= 0 && lid[r] !== lid[c]) { inlet[r] += q; Ain[r] += A[c]; } }
+            else if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; inClosed += q; if (inlet) { inlet[r] += q; Ain[r] += A[c]; } }
             else toSea += q;
             if (last) { outQ[c] = q / dt; outR[c] = r; }
         }
@@ -273,13 +270,12 @@ export function erodeLandscape(o, P) {
         const cells = new Int32Array(at[lakes]), put = at.slice(0, lakes);
         for (let i = 0; i < count; i++) { const c = order[i], L = lid[c]; if (L >= 0 && trap[L] > 0) cells[put[L]++] = c; }
         for (let L = 0; L < lakes; L++) if (trap[L] > 0) {
-            if (P.delta) layDeltas(cells.subarray(at[L], at[L + 1]), trap[L] / a, c => e[c], c => lid[c] === L);
+            if (P.delta) layDeltas(cells.subarray(at[L], at[L + 1]), trap[L] / a, c => e[c], c => lid[c] === L, topset);
             else layUp(z, cells.subarray(at[L], at[L + 1]), trap[L] / a, Infinity);
         }
         basins.forEach((B, b) => {
             if (!(B.load > 0)) return;
-            if (P.delta) layDeltas(B.cells, B.load / a, () => B.level, c => sinkAt[c] === b);
-            else layUp(z, B.cells, B.load / a, B.level);
+            overKm3 += layClosed(z, B, B.load / a, layDeltas, topset) * a;
             B.load = 0;
         });
         lap('lay');
@@ -317,7 +313,7 @@ export function erodeLandscape(o, P) {
     let seaKm3 = 0, closedKm3 = 0, grossKm3 = 0;
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
-    const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3) };
+    const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3), overRimKm3PerYr: perYr(overKm3) };
     return { curve, survivors, budget, ms: Object.fromEntries(Object.entries(t).map(([key, v]) => [key, Math.round(v)])), outflow: { q: outQ, recv: outR } };
 }
 
@@ -329,9 +325,10 @@ export function erodeLandscape(o, P) {
  *   lays in place; returns what found no room (km³ ÷ a cell's area)
  */
 export function deltaLayer(mesh, z, inlet) {
-    const { adjOffset, adjList, numCells: n } = mesh, been = new Int32Array(n).fill(-1);
+    const { adjOffset, adjList, numCells: n, xyz } = mesh, been = new Int32Array(n).fill(-1), dist = new Float64Array(n);
     let walk = 0;
-    return (cells, vol, surface, inside) => {
+    const hop = (c, y) => R * Math.hypot(xyz[3 * y] - xyz[3 * c], xyz[3 * y + 1] - xyz[3 * c + 1], xyz[3 * y + 2] - xyz[3 * c + 2]);
+    return (cells, vol, surface, inside, slope = null) => {
         const mouths = [];
         let all = 0;
         for (const c of cells) if (inlet[c] > 0) { mouths.push(c); all += inlet[c]; }
@@ -340,17 +337,102 @@ export function deltaLayer(mesh, z, inlet) {
         let spilt = 0;
         for (const c0 of mouths) {
             let left = vol * inlet[c0] / all;
-            const q = [c0], id = walk++;
-            been[c0] = id;
-            for (let i = 0; i < q.length && left > 0; i++) {
-                const c = q[i], room = surface(c) - z[c];
-                if (room > 0) { const put = room < left ? room : left; z[c] += put; left -= put; }
-                for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (been[y] !== id && inside(y)) { been[y] = id; q.push(y); } }
+            const q = [c0], id = walk++, S = slope ? slope(c0) : 0;
+            been[c0] = id; dist[c0] = 0;
+            const grow = i => { const c = q[i]; for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (been[y] !== id && inside(y)) { been[y] = id; dist[y] = dist[c] + hop(c, y); q.push(y); } } };
+            if (!(S > 0)) {
+                // (no slope: each cell up to the surface, nearest the mouth first — a delta plain at the water's level)
+                for (let i = 0; i < q.length && left > 0; i++) {
+                    const c = q[i], room = surface(c) - z[c];
+                    if (room > 0) { const put = room < left ? room : left; z[c] += put; left -= put; }
+                    grow(i);
+                }
+                spilt += left;
+                continue;
             }
-            spilt += left;
+            // (graded: the delta plain meets the water's surface at its front, D from the mouth, and rises toward the mouth at
+            // the bed material's graded slope S, never above the land it builds from (the mouth's lowest neighbour outside the
+            // water): top(c) = surface + S·(D − dist). D solved for the volume, by bisection; what is left at the front goes
+            // into the next cells out to the surface, as the flat delta's front does)
+            let cap = Infinity;
+            for (let j = adjOffset[c0]; j < adjOffset[c0 + 1]; j++) { const y = adjList[j]; if (!inside(y) && z[y] < cap) cap = z[y]; }
+            const room = (c, D) => { const d = dist[c]; if (d >= D) return 0; let t = surface(c) + S * (D - d); if (t > cap) t = cap; return t > z[c] ? t - z[c] : 0; };
+            const V = D => { let v = 0; for (let i = 0; i < q.length; i++) v += room(q[i], D); return v; };
+            let grown = 0, Dmax = 0;
+            for (let want = 64; ; want *= 2) {
+                for (; grown < q.length && q.length < want; grown++) grow(grown);
+                Dmax = 0; for (let i = 0; i < q.length; i++) if (dist[q[i]] > Dmax) Dmax = dist[q[i]];
+                if (grown >= q.length || V(Dmax) >= left) break;
+            }
+            // (all of it built: the plain may rise past its farthest cell, up to the cap)
+            let lo = 0, hi = Dmax;
+            if (V(hi) < left && Number.isFinite(cap)) { let top = 0; for (const c of q) top = Math.max(top, cap - surface(c)); hi = Dmax + Math.max(0, top) / S; }
+            if (V(hi) <= left) lo = hi;
+            else for (let it = 0; it < 40; it++) { const mid = 0.5 * (lo + hi); if (V(mid) <= left) lo = mid; else hi = mid; }
+            for (const c of q) { const put = room(c, lo); z[c] += put; left -= put; }
+            if (left > 0) {
+                const front = q.filter(c => dist[c] >= lo).sort((x, y) => dist[x] - dist[y]);
+                for (let i = 0; i < front.length && left > 0; i++) { const c = front[i], r = surface(c) - z[c]; if (r > 0) { const put = r < left ? r : left; z[c] += put; left -= put; } }
+            }
+            spilt += left > 0 ? left : 0;
         }
         return spilt;
     };
+}
+
+/**
+ * The bed material's graded slope where a river meets standing water: the slope at which the ξ-q law's erosion, k·A^m·S,
+ * balances its deposition, G·Qs/A (Davy & Lague 2009; Yuan et al. 2019's form, as erodeLandscape's): S = G·Qs / (k·A^(m+1)).
+ * A delta plain built from the river's own load stands at this slope above the water it fills (a transport surface, not a
+ * level one), so a filled hollow is a plain graded to its outlet. Qs km³/Myr arriving, A km² it drained, k the loose layer's
+ * (km/Myr at 1 km²). The mud is not in it: it settles beyond the front (bottomsets), so G is the bed material's.
+ */
+export function topsetSlope(P, Qs, A, k, m) {
+    return P.topset !== false && Qs > 0 && A > 0 && k > 0 ? P.G * Qs / (k * A ** (m + 1)) : 0;
+}
+
+/** What reached a closed basin, laid: in a lake, as its delta to the lake's level; on a playa (a dry basin), from its floor up,
+ *  as a playa's floor is (the flattest ground there is: its water spreads each wet season's mud level; Briere 2000, recalled) */
+export function layClosed(z, B, vol, layDeltas, topset) {
+    // (a lake full to its level: what is left raises it, the lake shallowing over its floor, from the hollow's lowest up. Up to its
+    // rim at most: a hollow full to its rim spills, and is judged open at the next judge; what overflows before then is returned)
+    let left = B.dry || !layDeltas ? vol : layDeltas(B.hollow, vol, () => B.level, B.inHollow, topset);
+    if (left > 0) left = layUp(z, B.all, left, B.rim);
+    return left;
+}
+
+/**
+ * A closed basin's outlets (lane hollowfix, 2026-11-10): its rivers end in its water-balance lakes (closedBasins' water: each
+ * lake at the level its balance holds), or, a dry basin, at its lowest cell, the playa. The rest of the hollow is ground like
+ * any other: its rivers erode and lay down on it by the stream power and G, so its floor aggrades into fans graded to the
+ * lake. (Until 2026-11-10 the whole hollow was the outlet and its load was laid flat to its RIM, the hollow's spill level, not
+ * its lake's: a dead-level slab at sill height whose drainage the next judge decided by ties — hollowfix/report.md.)
+ * @returns {{sink: Uint8Array, base: Float32Array, sinkAt: Int32Array, basins: Array}} each basin { cells (its outlets), level,
+ *   hollow (where its load may be laid), inHollow(c), load }
+ */
+export function closedOutlets(B, z, n, sinkAt = null) {
+    const sink = new Uint8Array(n), basins = [];
+    sinkAt = sinkAt ?? new Int32Array(n);
+    sinkAt.fill(-1);
+    for (const L of B.lakes) {
+        if (!B.sink[L.cells[0]]) continue;
+        const byLevel = new Map();
+        for (const c of L.cells) { const w = B.water[c]; if (w === w) { if (!byLevel.has(w)) byLevel.set(w, []); byLevel.get(w).push(c); } }
+        if (!byLevel.size) {
+            let low = L.cells[0];
+            for (const c of L.cells) if (z[c] < z[low]) low = c;
+            const b = basins.length, inH = new Set(L.cells);
+            sink[low] = 1; sinkAt[low] = b;
+            basins.push({ cells: [low], level: z[low], hollow: L.cells, all: L.cells, rim: L.level, inHollow: c => inH.has(c), dry: true, load: 0 });
+            continue;
+        }
+        for (const [level, cells] of byLevel) {
+            const b = basins.length;
+            for (const c of cells) { sink[c] = 1; sinkAt[c] = b; }
+            basins.push({ cells, level, hollow: cells, all: L.cells, rim: L.level, inHollow: c => sinkAt[c] === b, load: 0 });
+        }
+    }
+    return { sink, base: B.base, sinkAt, basins };
 }
 
 /**
@@ -620,7 +702,9 @@ export function layUp(z, cells, vol, top) {
         left -= need; level = h[i];
     }
     level += left / i;
-    if (level > top) level = top;
+    let over = 0;
+    if (level > top) { over = (level - top) * i; level = top; }
     const m = cells.length;
     for (let j = 0; j < m; j++) if (z[cells[j]] < level) z[cells[j]] = level;
+    return over;
 }
