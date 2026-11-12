@@ -81,7 +81,7 @@ for (const [seed, time] of MOMENTS) {
         oc.lip += o >= 0 && frame.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, frame.volcKm[w]) : 0;
         oc.fill += o >= 0 ? (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR : 0;
         const b = AGE_EDGES.findIndex(e => age < e); oc.ageHist[b]++;
-        const r = oc.bin[b] ??= { n: 0, gdh1: 0, sed: 0, swell: 0, z: 0 }; r.n++; r.gdh1 += gdh1BasementKm(age); r.sed += gdh1BasementKm(age) - filledSeaDepthKm(age, rock); r.swell += sl.swellKm[w] - seaRef - seaRef; r.z += -z[w];
+        const r = oc.bin[b] ??= { n: 0, gdh1: 0, sed: 0, swell: 0, z: 0 }; r.n++; r.gdh1 += gdh1BasementKm(age); r.sed += gdh1BasementKm(age) - filledSeaDepthKm(age, rock); r.swell += sl.swellKm[w] - seaRef; r.z += -z[w];
         oc.heat.push(sl.swellKm[w] / H.mantleSwellKm);
     }
     let v0 = 0, cells0 = 0; for (const k in kinds) { v0 += kinds[k].km3; cells0 += kinds[k].cells; }
