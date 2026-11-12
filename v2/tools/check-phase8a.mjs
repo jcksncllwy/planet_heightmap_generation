@@ -279,9 +279,13 @@ section('the sea floor, island arcs and hotspots');
     // conditions gate). The depths under the seed's own sea are reported below (sliders4, himinbjorg's ruling 2026-11-07).
     const atSea = a => median(a) - rec.seaKm;
     check('mid-ocean ridges stand about 2.5 km deep', median(ridge) >= -3.2 && median(ridge) <= -2.2, `median ${median(ridge).toFixed(2)} km over ${ridge.length} cells of crust under 4 Myr old`);
-    check('old floor lies 5–6.5 km deep', median(old) >= -6.6 && median(old) <= -5.2, `median ${median(old).toFixed(2)} km over ${old.length} cells of crust over 100 Myr old`);
+    // Old floor: Earth's OBSERVED depth, not GDH1's basement. Over crust older than 100 Myr and more than 300 km from land
+    // (Seton et al. 2020 age grid on ETOPO1), the floor's median is 5.09 km with p25 4.33 and p75 5.46 (GDH1 there: 5.57);
+    // its pelagic drape and its swells lift it off the plate curve (sealevel lane, earth-floor-p8a.py; sessrumnir's
+    // ruling 2026-11-12). The band is that observed interquartile range; the 5–6.5 km GDH1-basement target is retired.
+    check('old floor lies about 5 km deep, as Earth\'s observed old floor', median(old) >= -5.46 && median(old) <= -4.33, `median ${median(old).toFixed(2)} km over ${old.length} cells of crust over 100 Myr old (Earth: 5.09, p25 4.33, p75 5.46)`);
     report('mid-ocean ridges under this history\'s own sea', atSea(ridge), { earth: [-3.2, -2.2], unit: ' km', digits: 2, source: 'Earth ~2.5 km (Stein & Stein 1992); the seed\'s poured level moves it', detail: `the sea ${(rec.seaKm * 1000).toFixed(0)} m against the datum` });
-    report('old floor under this history\'s own sea', atSea(old), { earth: [-6.6, -5.2], unit: ' km', digits: 2, source: 'Earth 5–6.5 km (Stein & Stein 1992); the seed\'s poured level moves it' });
+    report('old floor under this history\'s own sea', atSea(old), { earth: [-5.46, -4.33], unit: ' km', digits: 2, source: 'Earth observed 5.09 km, p25–p75 4.33–5.46 (ETOPO1 on Seton et al. 2020, >100 Myr, >300 km from land); the seed\'s poured level moves it' });
     {   // what the basins hold to the datum, against Earth's ocean: the water the seed would need for Earth's sea level
         const out = {}, F = history.frame;
         landMask(F, mesh, TERRAIN, out);
