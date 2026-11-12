@@ -62,7 +62,7 @@ for (const [seed, time] of MOMENTS) {
     const simMesh = buildSimMesh(SIM, MESH_SEED), n = simMesh.numCells, a = AREA / n;
     const m = landMask(frame, simMesh, H), sl = m.sl, z = surfaceKm(frame, simMesh, H, new Float32Array(n), sl.swellKm);
     const P = pourOcean(simMesh, z, H.waterInventory * EARTH_OCEAN_KM3, null, { fromOcean: true });
-    const seaRef = 0;                                           // (the floor's swell is from fully cooled mantle)
+    const seaRef = sl.seaRefKm;                                  // (the floor's swell against the mantle under its young floor: sea-level.js youngFloorSwellKm)
     // V(0): the room under the datum the ocean reaches at the datum (spill < 0), and who holds it
     const kinds = {}, add = (k, w) => { const r = kinds[k] ??= { cells: 0, km3: 0 }; r.cells++; r.km3 += -z[w] * a; };
     // the ocean crust's mean depth below the datum, split: −z = gdh1(age) − sediment (the pelagic drape and the rivers' rock, loaded) − swell − lip − fill
@@ -81,7 +81,7 @@ for (const [seed, time] of MOMENTS) {
         oc.lip += o >= 0 && frame.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, frame.volcKm[w]) : 0;
         oc.fill += o >= 0 ? (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR : 0;
         const b = AGE_EDGES.findIndex(e => age < e); oc.ageHist[b]++;
-        const r = oc.bin[b] ??= { n: 0, gdh1: 0, sed: 0, swell: 0, z: 0 }; r.n++; r.gdh1 += gdh1BasementKm(age); r.sed += gdh1BasementKm(age) - filledSeaDepthKm(age, rock); r.swell += sl.swellKm[w] - seaRef; r.z += -z[w];
+        const r = oc.bin[b] ??= { n: 0, gdh1: 0, sed: 0, swell: 0, z: 0 }; r.n++; r.gdh1 += gdh1BasementKm(age); r.sed += gdh1BasementKm(age) - filledSeaDepthKm(age, rock); r.swell += sl.swellKm[w] - seaRef - seaRef; r.z += -z[w];
         oc.heat.push(sl.swellKm[w] / H.mantleSwellKm);
     }
     let v0 = 0, cells0 = 0; for (const k in kinds) { v0 += kinds[k].km3; cells0 += kinds[k].cells; }

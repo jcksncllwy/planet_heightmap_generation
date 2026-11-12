@@ -445,7 +445,7 @@ export const TECTONICS = {
                                 // (a trench's fill from the land around it: trenchDenudationKmPerMyr, in the crust-sink block below)
                                 // (trenchSedimentReachKm, the land within 300 km of a trench, is gone: whole river basins feed the
                                 // trenches their fans reach — trenchFanReachKm, in the crust-sink block below)
-                                // (…plus what the incoming ocean floor carries, its pelagic drape: tectonics/measure.js PELAGIC_KM_PER_MYR —
+                                // (…plus what the incoming ocean floor carries, its pelagic drape: tectonics/measure.js pelagicDrapeKm —
                                 // the floor's own depth carries it too, so it is one constant there, not a setting here)
     marginErosionKmPerMyr: 2,   // an erosive margin's coast retreats this fast…
     marginErosionMaxGapKm: 500, // …until it lies this far from its trench (the Andes: ~250 km of coast lost since the Jurassic)

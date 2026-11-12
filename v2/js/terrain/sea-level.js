@@ -233,7 +233,7 @@ function reckonSea(frame, simMesh, cfg, isLand, H, swellKm) {
     }
     heatSea /= Math.max(1, sea); depth /= Math.max(1, sea); heatLand /= Math.max(1, land);
     const swellSeaKm = A * (heatSea - cfg.seaHeatToday), ridgeSeaKm = cfg.seaDepthRefKm - depth;
-    return { swellKm, seaKm: swellSeaKm + (cfg.seaLevelFloorAge > 0 ? ridgeSeaKm : 0), swellSeaKm, ridgeSeaKm, heatLand, heatSea, depthKm: depth };
+    return { swellKm, seaRefKm: youngFloorSwellKm(frame, swellKm), seaKm: swellSeaKm + (cfg.seaLevelFloorAge > 0 ? ridgeSeaKm : 0), swellSeaKm, ridgeSeaKm, heatLand, heatSea, depthKm: depth };
 }
 
 /**
@@ -242,10 +242,34 @@ function reckonSea(frame, simMesh, cfg, isLand, H, swellKm) {
  * stands on the sea floor's law (measure.js arcSurfaceKm: the floor of its age, over cool mantle) — from fully cooled
  * mantle, as the sea floor itself does.
  */
-export function liftRefKm(cfg, arcShare) {
+export function liftRefKm(cfg, arcShare, seaRefKm = 0) {
     const a = Math.min(1, Math.max(0, arcShare));
-    return cfg.mantleSwellKm * (1 - a) * cfg.mantleSwellLandRef;
+    return cfg.mantleSwellKm * (1 - a) * cfg.mantleSwellLandRef + a * seaRefKm;
 }
+
+/**
+ * The sea floor's swell reference (km): the mantle's swell under this frame's young floor (< YOUNG_FLOOR_MYR old).
+ * GDH1 is the floor's depth over the mantle its ridges stand on — Earth's crests sit on it (ridge < 4 Myr, > 300 km
+ * from land: 3.08 km observed against GDH1's 3.12, lane sealevel earth-floor-p8a.py; the residual over GDH1 and its
+ * sediment is +0.11 km at 0–10 Myr) — so the floor stands on its swell against that mantle's: the residual dynamic
+ * topography only, A × (heat − heat under the young floor) (sessrumnir's ruling, 2026-11-12). A swell counted from fully
+ * cooled mantle (sealevel's first pass) lifted the crests ~0.25 km above Earth's (3.10–3.24 km at 0–20 Myr against
+ * Earth's 3.42), because the history's heat — the continents' insulation, spread under the ocean — is nearly flat with
+ * the floor's age. Earth's residual grows with age instead (+0.11 at 0–10 Myr to +0.45 at 120–140: superswells and plume
+ * swells on old floor, the South Pacific +0.52), which the model has no process for: the level it leaves out.
+ * Without young floor (a frame with no ridge), the mean over all ocean floor.
+ */
+export function youngFloorSwellKm(frame, swellKm) {
+    const n = swellKm.length, time = frame.time ?? 0;
+    let s = 0, k = 0, sAll = 0, kAll = 0;
+    for (let w = 0; w < n; w++) {
+        if (frame.owner[w] < 0 || frame.type[w] !== CrustType.OCEAN) continue;
+        sAll += swellKm[w]; kAll++;
+        if (frame.formedAt[w] >= 0 && time - frame.formedAt[w] < YOUNG_FLOOR_MYR) { s += swellKm[w]; k++; }
+    }
+    return k ? s / k : kAll ? sAll / kAll : 0;
+}
+const YOUNG_FLOOR_MYR = 10;
 
 /**
  * A sea floor its sediment fills that the mantle's swell holds up at or above the sea: dry land (records.js deriveRecords;
@@ -254,7 +278,7 @@ export function liftRefKm(cfg, arcShare) {
  */
 export function liftedDry(frame, w, sl, cfg) {
     return frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 && frame.formedAt[w] >= 0
-        && sl.swellKm[w] - (seaDepthKm(frame.time - frame.formedAt[w]) - frame.seaFillKm[w] / SEDIMENT_LOAD_FACTOR) >= sl.seaKm;
+        && sl.swellKm[w] - sl.seaRefKm - (seaDepthKm(frame.time - frame.formedAt[w]) - frame.seaFillKm[w] / SEDIMENT_LOAD_FACTOR) >= sl.seaKm;
 }
 
 /** A frame's sea level as its records carry it, small enough to post from a worker (null without records). */

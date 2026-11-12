@@ -111,23 +111,37 @@ export function seaDepthKm(crustAgeMyr) { return gdh1BasementKm(crustAgeMyr) - p
 /**
  * Pelagic sediment rains on the open floor from the day it forms — ooze and clay out of the water column, not what the
  * rivers bring (records.js, step/floor-rock.js: the rise and enclosed seas' fill, on top of it) — and the floor carries
- * its drape to the trench (step/margin-isles.js trenchSediment: what the incoming floor brings). ~3 m per Myr of age:
- * GlobSed (Straume et al. 2019, G³ 20: 1756) on Seton et al. 2020's ages, ocean crust ≥ ~500 km from any margin: 0.07 km
- * at 0–10 Myr, 0.17 at 20–40, 0.30 at 60–80, 0.43 at 100–120, 0.34 at 120–160 (the old Pacific's red clay, below the
- * carbonate compensation depth, comes slower); a least-squares rate through the origin 2.6 m/Myr, 3–4 m/Myr to 110 Myr
- * (lane sealevel earth-floor.py). Olson et al. 2016: 0.4–1.8 km typical over 60–120 Myr crust, margins included.
+ * its drape to the trench (step/margin-isles.js trenchSediment: what the incoming floor brings). How fast depends on the
+ * floor's depth against the carbonate compensation depth (CCD): above it calcareous ooze accumulates at ~1 cm/kyr
+ * (CALCAREOUS_KM_PER_MYR; 0.3–3 cm/kyr, Berger 1974, in Goldberg ed. The Sea 5; Kennett 1982, Marine Geology ch. 16);
+ * below it the carbonate dissolves and only red clay settles, ~0.5 m/Myr (CLAY_KM_PER_MYR; 0.1–1 mm/kyr, Glasby 1991;
+ * the central North Pacific's LL44-GPC3 ~0.4 m/Myr, Kyte et al. 1993, GSA Bull. 105: 1311). The floor sinks with age
+ * (GDH1), so it crosses the CCD (CCD_KM, the Pacific's 4.6 km today, Pälike et al. 2012, Nature 488: 609; the Atlantic's
+ * deeper, ~5 km) at CCD_AGE_MYR (~31 Myr) and its drape all but stops: s(t) = ooze × min(t, t_ccd) + clay × (t − t_ccd)⁺.
+ * Read on the basement's depth from the datum, not on the floor's own swell or drape (a swollen floor would stay above the
+ * CCD longer: not modelled). Earth is the check, not the input: GlobSed (Straume et al. 2019, G³ 20: 1756) on Seton et
+ * al. 2020's ages, ocean crust ≥ ~500 km from any margin, 0.07 km at 0–10 Myr, 0.17 at 20–40, 0.30 at 60–80, 0.43 at
+ * 100–120, 0.34 at 120–160 (lane sealevel earth-floor.py); this law gives 0.05 / 0.30 / 0.33 / 0.35 / 0.37. Until
+ * 2026-11-12 (sealevel, first pass) the rate was 3 m/Myr at every age, which drew 2.3 km on 780-Myr floor.
  */
-export const PELAGIC_KM_PER_MYR = 0.003;
+export const CALCAREOUS_KM_PER_MYR = 0.010, CLAY_KM_PER_MYR = 0.0005, CCD_KM = 4.6;
+export const CCD_AGE_MYR = (() => { let lo = 0, hi = 400; for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (gdh1BasementKm(m) < CCD_KM) lo = m; else hi = m; } return lo; })();
+
+/** The pelagic drape's thickness (km) on open floor of this age. */
+export function pelagicDrapeKm(crustAgeMyr) {
+    const t = Math.max(0, crustAgeMyr);
+    return CALCAREOUS_KM_PER_MYR * Math.min(t, CCD_AGE_MYR) + CLAY_KM_PER_MYR * Math.max(0, t - CCD_AGE_MYR);
+}
 
 /**
- * How much the pelagic drape of a floor this old lifts it (km): the drape s = PELAGIC_KM_PER_MYR × age, Airy-loaded at
+ * How much the pelagic drape of a floor this old lifts it (km): the drape s (pelagicDrapeKm), Airy-loaded at
  * its own mean density — porous where thin (Athy's law φ(z) = φ0 e^(−z/λ), φ0 0.6 and λ 2 km: Sclater & Christie 1980,
  * JGR 85: 3711, their shale's 0.63 and 0.51 km⁻¹; grains 2.65 g/cm³), so a 0.3 km drape (ρ̄ ≈ 1.75) lifts the floor
  * 0.2 km where a compacted basin fill (SEDIMENT_LOAD_FACTOR, 2.5) would lift it 0.11. The same law and constants measured
  * Earth's sediment load above (earth-floor.py), so the two sides of the budget are reckoned alike.
  */
 export function pelagicLiftKm(crustAgeMyr) {
-    const s = PELAGIC_KM_PER_MYR * Math.max(0, crustAgeMyr);
+    const s = pelagicDrapeKm(crustAgeMyr);
     if (!(s > 0)) return 0;
     const phi = DRAPE_PHI0 * DRAPE_LAMBDA_KM / s * (1 - Math.exp(-s / DRAPE_LAMBDA_KM)), rho = phi * 1.03 + (1 - phi) * DRAPE_GRAIN_RHO;
     return s * (3.3 - rho) / (3.3 - 1.03);

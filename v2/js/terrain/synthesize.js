@@ -613,7 +613,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 : (n0 * platformKm[c0] + n1 * platformKm[c1] + n2 * platformKm[c2]) / lw) : refKm;
             // (the mantle's swell under it, against the reference for continental crust — or, on an island arc, the sea floor's:
             // sea-level.js liftRefKm)
-            if (swellKm) platform += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
+            if (swellKm) platform += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2], rec.seaRefKm ?? 0);
             // (how much of the ground here is a filled sea's sediment — records.js fillLand: a graded plain, kilometres of fresh
             // sediment over the buried floor, with no bedrock basins and arches on it and no shelf at its shore but the delta front)
             const dep = lw > 0 ? (n0 * fillLand[c0] + n1 * fillLand[c1] + n2 * fillLand[c2]) / lw : 0;
@@ -947,7 +947,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const lwS = (land[c0] ? w0 : 0) + (land[c1] ? w1 : 0) + (land[c2] ? w2 : 0);
             if (lwS > 0) {
                 let landP = ((land[c0] ? w0 * platformKm[c0] : 0) + (land[c1] ? w1 * platformKm[c1] : 0) + (land[c2] ? w2 * platformKm[c2] : 0)) / lwS;
-                if (swellKm) landP += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2]);
+                if (swellKm) landP += swellAt - liftRefKm(cfg, w0 * arcCrust[c0] + w1 * arcCrust[c1] + w2 * arcCrust[c2], rec.seaRefKm ?? 0);
                 if (landP < brkKm) top = Math.max(landP, -floor);
             }
             // (and never below the floor it falls to: a sea shallower than a shelf break — nearly filled, its floor lifted by

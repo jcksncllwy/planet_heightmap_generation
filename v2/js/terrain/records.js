@@ -345,11 +345,11 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // Read as time − formedAt it was 780+ Myr old, and its pelagic drape, linear in age, stood it up to ~1.3 km above the
         // history's: check-waterbooks' view against V, −4 to −6 %, lane sealevel. The fabric keeps the age above.)
         const dAge = frame.owner[w] >= 0 && frame.formedAt[w] < 0 ? 100 : age;
-        const swellK = sl.swellKm[w], bareKm = Math.max(0, seaDepthKm(dAge) - swellK);
+        const swellK = sl.swellKm[w] - sl.seaRefKm, bareKm = Math.max(0, seaDepthKm(dAge) - swellK);
         depthKm[w] = Math.min(bareKm, Math.max(filledSeaDepthKm(dAge, rockKm) - swellK, -sl.seaKm - cfg.shelfEdgeKm));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
         // (drowned crust's floor: its own column, not a ridge's by age — and the swell as its crust takes it: liftRefKm, the
         // reference it was flooded against above)
-        if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0)));
+        if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0, sl.seaRefKm)));
     }
     // oceanic plateaus (a flood basalt on the sea floor): read from the world view, where at any moment ~15 % of a moving
     // plate's cells show a neighbour's crust, then smoothed over lipSeaSmoothKm and never lowered inside — one broad rise
@@ -684,7 +684,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
 
     return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, shieldKm, fillLand, dryHollow, basinCover, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
-        seaKm: sl.seaKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
+        seaKm: sl.seaKm, seaRefKm: sl.seaRefKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }
 
 /**

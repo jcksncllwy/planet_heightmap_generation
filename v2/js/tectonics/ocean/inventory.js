@@ -15,7 +15,7 @@
 
 import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { columnModel, filledSeaDepthKm, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
-import { mantleWarmth } from '../../terrain/sea-level.js';
+import { mantleWarmth, youngFloorSwellKm } from '../../terrain/sea-level.js';
 import { MinHeap } from '../../core/min-heap.js';
 
 /** Earth's ocean, km³: 1.332e9 (Charette & Smith 2010, Oceanography 23(2): 112–114, from ETOPO1/Eakins & Sharman 2010's
@@ -33,9 +33,11 @@ const R = 6371;
  * extracts one per-cell surface for rivers.js, records.js and this. `swellKm`: the mantle's swell per cell, when the caller
  * has it (terrain/land-mask.js: sea-level.js seaLevel's sl.swellKm, the same mantleSwellKm × smoothed heat).
  */
-export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells), swellKm = null) {
+export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells), swellKm = null, seaRefKm = null) {
     const n = simMesh.numCells, C = columnModel(H), heat = swellKm ? null : mantleWarmth(frame, simMesh, H), time = frame.time;
-    const landRef = H.mantleSwellKm * H.mantleSwellLandRef;       // (the sea floor and an arc: the swell from fully cooled mantle)
+    const landRef = H.mantleSwellKm * H.mantleSwellLandRef;
+    // (the sea floor and an arc: the swell against the mantle under the young floor, terrain/sea-level.js youngFloorSwellKm)
+    const seaRef = seaRefKm ?? youngFloorSwellKm(frame, swellKm ?? Float32Array.from(heat, h => H.mantleSwellKm * h));
     for (let w = 0; w < n; w++) {
         const swell = swellKm ? swellKm[w] : H.mantleSwellKm * heat[w], o = frame.owner[w], type = frame.type[w];
         if (o < 0 || type === CrustType.OCEAN) {
@@ -43,7 +45,7 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
             const lip = o >= 0 && frame.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, frame.volcKm[w]) : 0;
             // (the rivers' rock on it, Airy-loaded: an enclosed sea's fill and an open margin's rise, riseKm3 spread over its cell)
             const rockKm = o >= 0 ? (frame.seaFillKm?.[w] ?? 0) + (frame.riseKm3?.[w] ?? 0) / simMesh.cellAreaKm2 : 0;
-            out[w] = -filledSeaDepthKm(age, rockKm) + lip + swell
+            out[w] = -filledSeaDepthKm(age, rockKm) + lip + swell - seaRef
                 + (o >= 0 ? (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR : 0);
             continue;
         }
@@ -56,7 +58,7 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
             + (frame.volcType[w] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, frame.volcKm[w]) - frame.volcWornKm[w]) : 0);
         const relief = Math.max(0, full - Math.min(b, full)), laid = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;
         out[w] = full + laid - Math.min(frame.riverIncKm?.[w] ?? 0, relief + laid + H.riverPlainKm)
-            + swell - (type === CrustType.ARC ? 0 : landRef);
+            + swell - (type === CrustType.ARC ? seaRef : landRef);
     }
     return out;
 }

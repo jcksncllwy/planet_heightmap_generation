@@ -54,7 +54,7 @@ export function fillEnclosedSeas(world, mouths, span, land, sea) {
         if (o < 0) return 0;
         const crust = plates[o].crust, c = ownerCell[w];
         if (crust.type[c] !== CrustType.OCEAN || (crust.flags[c] & CrustFlag.TRENCH)) return 0;
-        const water = seaDepthKm(time - crust.formedAt[c]) - sea.swellKm[w] + sea.seaKm + DELTA_TOP_KM;
+        const water = seaDepthKm(time - crust.formedAt[c]) - (sea.swellKm[w] - sea.seaRefKm) + sea.seaKm + DELTA_TOP_KM;
         return Math.max(0, SEDIMENT_LOAD_FACTOR * water - crust.seaFillKm[c]);
     };
     let mark = s.mark;

@@ -109,9 +109,9 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = 
     // level, and a filled sea lifted dry is judged on the same ground against it (below). (The pour's own sea differs from the mask's where ocean crust behind a sill stands above the level — land to
     // the pour, sea to the mask: an enclosed sea drawn at a continent's reference if it were made land, ~5 km too high)
     let pour = null;
-    if (cfg.waterInventory > 0 && fixed) out.groundKm = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : new Float32Array(n), sl.swellKm);
+    if (cfg.waterInventory > 0 && fixed) out.groundKm = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : new Float32Array(n), sl.swellKm, sl.seaRefKm);
     else if (cfg.waterInventory > 0) {
-        const z = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : (out.groundKm = new Float32Array(n)), sl.swellKm);
+        const z = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : (out.groundKm = new Float32Array(n)), sl.swellKm, sl.seaRefKm);
         // (from the ocean's side, and at a pinned sill the basin's water balance decides which side is short: pinnedHumid —
         // terrain-config pourFromOcean)
         const fromOcean = !!cfg.pourFromOcean;
@@ -151,7 +151,7 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = 
         for (let w = 0; w < n; w++) {
             if (!land[w] || frame.owner[w] < 0 || fillAt(w)) continue;          // (a filled sea's plain is graded to the sea's level)
             const col = crustColumnKm(frame, cfg, CM0, w).h, top = col + Math.max(0, frame.upliftKm[w]);
-            if (top + sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0) < sl.seaKm) below[w] = col;
+            if (top + sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0, sl.seaRefKm) < sl.seaKm) below[w] = col;
         }
         const queue = []; let drowned = 0;
         for (let w = 0; w < n; w++) if (!land[w]) queue.push(w);
