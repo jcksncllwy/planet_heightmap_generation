@@ -227,7 +227,7 @@ section('arcs between closing continents');
         const r = run('arc-collision', {}, seed, closing);
         const scraped = [...r.world.arcScrapes.values()], firstScrape = scraped.length ? Math.min(...scraped.map(s => s.since)) : null;
         const suture = r.events.find(e => e.kind === EventKind.SUTURE), collision = r.events.find(e => e.kind === EventKind.COLLISION), shortening = suture?.data.shorteningKm ?? 0;
-        const L = r.world.ledger, stages = Object.entries(L.stages), made = stages.reduce((sum, [, e]) => sum + Math.max(0, e.land), 0), net = stages.reduce((sum, [, e]) => sum + e.land, 0), myr = r.frames.at(-1).time;
+        const L = r.world.ledger, stages = Object.entries(L.stages), made = stages.reduce((sum, [k, e]) => sum + (k === 'orogenicCollapse' ? 0 : Math.max(0, e.land)), 0), net = stages.reduce((sum, [, e]) => sum + e.land, 0), myr = r.frames.at(-1).time;
         return { seed, r, scraped, firstScrape, suture, collision, shortening, L, made, net, myr, booked: key => stages.reduce((sum, [, e]) => sum + e[key], 0) };
     });
     // (the scene formed where an arc was scraped at all; a history where neither arc was is the scene's chance, counted)
@@ -243,6 +243,10 @@ section('arcs between closing continents');
     // collision absorbs overlap — the stage books it as a loss (the km² converged, taken up at the weld, Phase 5a) — so only
     // a gain is a fault here; the net loss is in the text. Island arcs do grow — reported against Earth, where arc addition and
     // recycling roughly balance (Clift et al. 2009)
+    // (lane beltthick: orogenic collapse's area is not made — it is a quiet belt's own thickened root, spread out as a crust of
+    // normal thickness at its plate's coast; the rock books close (check-invariants). Gravitational collapse of thickened crust
+    // moves it, it does not add any: Dewey 1988, Tectonics 7; Rey, Vanderhaeghe & Teyssier 2001, Tectonophysics 342. So it is
+    // left out of `made` here and shown in the text with the other stages)
     across('continental crust is not manufactured at the contact', e => e.made <= 0.01 * e.L.start.land,
         e => `continent+craton ${e.L.start.land} → ${e.L.start.land + e.net} raster cells over ${e.myr} Myr (${Object.entries(e.L.stages).filter(([, st]) => st.land).map(([k, st]) => `${k} ${st.land > 0 ? '+' : ''}${st.land}`).join(', ') || 'no stage changed it'}); made ${e.made}`);
     report('net island-arc growth, as a share of the continent', each.map(e => 100 * e.booked('arc') / e.L.start.land * 100 / e.myr), { earth: [-1, 1], unit: ' %/100 Myr', source: 'addition ≈ recycling, Clift et al. 2009', digits: 1,
