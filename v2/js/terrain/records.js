@@ -308,7 +308,6 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const arc = new Uint8Array(n), craton = new Uint8Array(n);
     // the land and the sea, and the sea's level (terrain/land-mask.js: the one mask the history's rivers read too)
     let { land, sl, seaColKm, dryHollow } = landMask(frame, simMesh, cfg);
-    const swellSeaRef = cfg.mantleSwellKm * cfg.mantleSwellSeaRef;
     for (let w = 0; w < n; w++) {
         arc[w] = land[w] && frame.type[w] === CrustType.ARC ? 1 : 0;
         craton[w] = land[w] && frame.type[w] === CrustType.CRATON ? 1 : 0;
@@ -341,7 +340,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // datum: marine fill has no room above it, and a fill clamped at the datum stood dry under a sea poured below it, flat
         // banks far offshore (coasts2, 831576@430: a rise 28–51 km thick per cell). Crust shallower than that without its
         // fill keeps its own depth: a floor the swell lifts out of a low sea is exposed ground)
-        const swellK = sl.swellKm[w] - swellSeaRef, bareKm = Math.max(0, seaDepthKm(age) - swellK);
+        const swellK = sl.swellKm[w], bareKm = Math.max(0, seaDepthKm(age) - swellK);
         depthKm[w] = Math.min(bareKm, Math.max(filledSeaDepthKm(age, rockKm) - swellK, -sl.seaKm - cfg.shelfEdgeKm));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
         // (drowned crust's floor: its own column, not a ridge's by age — and the swell as its crust takes it: liftRefKm, the
         // reference it was flooded against above)

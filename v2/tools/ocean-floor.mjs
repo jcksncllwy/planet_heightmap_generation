@@ -48,7 +48,7 @@ for (const seed of seeds) {
         if (f.time < 100) return;
         const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]]));
         surfaceKm(fr, simMesh, H, z);
-        const heat = mantleWarmth(fr, simMesh, H), seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
+        const heat = mantleWarmth(fr, simMesh, H);
         const P = pourOcean(simMesh, z, EARTH_OCEAN_KM3, scratch); scratch = P.scratch;
         let N = 0, ownerless = 0, sZ = 0, sAge = 0, sLaw = 0, sFill = 0, sSwell = 0, sLip = 0, sBasin = 0, sG = 0, sP = 0, old = 0, sRise = 0, riseVol = 0, hasRise = !!f.riseKm3;
         const cellKm2 = 4 * Math.PI * 6371 * 6371 / n;
@@ -60,7 +60,7 @@ for (const seed of seeds) {
             const age = o >= 0 && fr.formedAt[w] >= 0 ? Math.max(0, fr.time - fr.formedAt[w]) : 100;
             const law = seaDepthKm(age), fill = o >= 0 ? Math.min(law, (fr.seaFillKm[w] ?? 0) / SEDIMENT_LOAD_FACTOR) : 0;
             N++; if (o < 0) ownerless++;
-            sZ += z[w]; sAge += age; sLaw += law; sFill += fill; sSwell += H.mantleSwellKm * heat[w] - seaRef;
+            sZ += z[w]; sAge += age; sLaw += law; sFill += fill; sSwell += H.mantleSwellKm * heat[w];
             sLip += o >= 0 && fr.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, fr.volcKm[w]) : 0;
             sBasin += o >= 0 ? (fr.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR : 0;
             if (hasRise && o >= 0) { riseVol += f.riseKm3[w]; sRise += f.riseKm3[w] / cellKm2 / SEDIMENT_LOAD_FACTOR; }

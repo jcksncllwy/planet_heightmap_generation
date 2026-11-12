@@ -56,7 +56,7 @@ export function evolveRivers(world, dt) {
     // logged: one entry a river step)
     world.riverSea = { time, seaKm, swellKm: Float32Array.from(swellKm) };
     (world.seaLog ??= []).push({ t: time, kind: 'level', seaKm });
-    const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
+    const landRef = H.mantleSwellKm * H.mantleSwellLandRef;      // (an arc's swell from fully cooled mantle, as the sea floor's: sea-level.js liftRefKm)
     // ── the land's height against the sea: its evolved height (as records.js draws the platform: the column of its crust,
     // the uplift; the mantle's swell under it, against its side's reference; the sea's level) less what rivers have cut;
     // `base` is what it stands on without the relief belts gave it ──
@@ -80,7 +80,7 @@ export function evolveRivers(world, dt) {
         b = Math.min(b, full);
         const l = Math.max(0, full - b);
         // (the swell is the mantle's, broad: it tilts the land and its rivers with it, not the relief they cut into)
-        b += swellKm[w] - (type === CrustType.ARC ? seaRef : landRef) - seaKm;
+        b += swellKm[w] - (type === CrustType.ARC ? 0 : landRef) - seaKm;
         // (and the sediment its rivers have laid in it, if it lay in a hollow — below: relief too, the softest there is,
         // which its rivers cut into as soon as its outlet lies lower)
         const laid = crust.basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;

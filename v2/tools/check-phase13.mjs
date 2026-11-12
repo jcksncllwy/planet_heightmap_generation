@@ -358,8 +358,8 @@ section('heights from the crust (branch unified)');
     // lithosphere, and erosion takes the whole height down, thinning the crust (tectonics/step/heights.js). What comes out:
     const H = (r, k, from = 300) => r.heights.filter(x => x.time >= from && Number.isFinite(x[k]));
     const meanH = (r, k, stage, from) => { const a = H(r, k, from).filter(x => !stage || x.stage === stage).map(x => x[k]); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; };
-    report('land: mean height above the sea, late dispersal', rows.map(r => meanH(r, 'land', 'late dispersal', 100)), { earth: [0.75, 0.95], unit: ' km', digits: 2,
-        source: 'Earth\'s land 797 m on average (ETOPO-era, 2012), 840 m in Kossinna\'s 1921 hypsometry (the compilation in arXiv 1810.08658, on the mass of the atmosphere) — today only: the late-dispersal frames',
+    report('land: mean height above the sea, late dispersal', rows.map(r => meanH(r, 'land', 'late dispersal', 100)), { earth: [0.58, 0.78], unit: ' km', digits: 2,
+        source: 'Earth\'s ice-free land 0.66 km on average (ETOPO1, Amante & Eakins 2009, less Antarctica and Greenland: 25.8 % of the surface; 0.68 on ETOPO5 binned to the mesh, lane reliefcheck) — the model grows no ice sheets, so its land is set against Earth\'s without them; with the ice surface it is 0.80 km (797 m, ETOPO-era 2012; 840 m in Kossinna\'s 1921 hypsometry), the target until 2026-11-12 (lane sealevel; supervisor sessrumnir\'s ruling). ±0.1 km as before — today only: the late-dispersal frames',
         detail: txt(r => `by stage ${['supercontinent', 'early dispersal', 'late dispersal'].map(st => meanH(r, 'land', st, 100).toFixed(2)).join(' / ')} km`) });
     report('cratons: median height above the sea', rows.map(r => meanH(r, 'craton', null, 300)), { earth: [0.4, 0.6], unit: ' km', digits: 2,
         source: 'shields stand ~400–600 m (their freeboard: a thick crust on a cold, depleted root — Jordan 1978; Kaban et al. 2003) — holds through the cycle; frames from 300 Myr' });

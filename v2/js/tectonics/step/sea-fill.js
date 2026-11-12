@@ -47,15 +47,14 @@ export function fillEnclosedSeas(world, mouths, span, land, sea) {
         id++;
     }
     // each mouth on an enclosed sea fills it nearest its mouth first, up to the sea's level: the water over the floor —
-    // its depth by age, raised or lowered by the mantle's swell against the sea floor's reference, under the sea's level
+    // its depth by age, raised by the mantle's swell (from fully cooled mantle: terrain/sea-level.js), under the sea's level
     // against today's datum — filled by SEDIMENT_LOAD_FACTOR times as much sediment (the floor sinks under it: Airy)
-    const H = heightsOf(config), ref = H.mantleSwellKm * H.mantleSwellSeaRef;
-    const room = w => {
+        const room = w => {
         const o = owner[w];
         if (o < 0) return 0;
         const crust = plates[o].crust, c = ownerCell[w];
         if (crust.type[c] !== CrustType.OCEAN || (crust.flags[c] & CrustFlag.TRENCH)) return 0;
-        const water = seaDepthKm(time - crust.formedAt[c]) - (sea.swellKm[w] - ref) + sea.seaKm + DELTA_TOP_KM;
+        const water = seaDepthKm(time - crust.formedAt[c]) - sea.swellKm[w] + sea.seaKm + DELTA_TOP_KM;
         return Math.max(0, SEDIMENT_LOAD_FACTOR * water - crust.seaFillKm[c]);
     };
     let mark = s.mark;

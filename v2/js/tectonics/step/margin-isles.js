@@ -30,6 +30,7 @@ import { CM_PER_YR_TO_KM_PER_MYR } from '../config.js';
 import { trenchFans } from './trench-fans.js';
 import { bookRock } from '../rock-book.js';
 import { cellRockKm3 } from './crust-ledger.js';
+import { PELAGIC_KM_PER_MYR } from '../measure.js';
 
 /** @returns {number} cells raised or merged this step */
 export function growMarginIsles(world, dt) {
@@ -228,7 +229,7 @@ export function trenchSediment(world, plateId, w) {
     // arrives; a trench holds at most TRENCH_FILL_MAX_KM)
     const supply = trenchFans(world).supply[w];
     const v = Math.max(0, world.convergence[w]) * CM_PER_YR_TO_KM_PER_MYR;
-    return { terrKm: supply > 0 ? Math.min(TRENCH_FILL_MAX_KM, supply / Math.max(v, 1e-6)) : 0, pelKm: config.trenchPelagicKmPerMyr * incomingAge, supply };
+    return { terrKm: supply > 0 ? Math.min(TRENCH_FILL_MAX_KM, supply / Math.max(v, 1e-6)) : 0, pelKm: PELAGIC_KM_PER_MYR * incomingAge, supply };
 }
 const TRENCH_FILL_MAX_KM = 8;      // (a trench is filled to its rim at most: ~8 km of fill in the Makran, Cascadia and Barbados' wedges are ~3–7)
 

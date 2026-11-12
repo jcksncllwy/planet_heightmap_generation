@@ -90,11 +90,49 @@ export const ISLAND_EROSION_KM_PER_MYR = 0.15;
  * stood 0.2–0.8 km deeper than either plate model, and the open floor's mean 0.20–0.22 km deeper than GDH1 at its own
  * ages (tools/ocean-floor.mjs, 3 seeds × 1200 Myr). The ridge, seaDepthKm(0) = 2.6 km, is unchanged, and with it the
  * column's reference (columnModel's H0).
+ *
+ * GDH1 is BASEMENT on normal floor: sediment-corrected (the sediment's load taken off) and fitted where the floor is
+ * neither swollen nor built on — over cool mantle. The floor the water stands on is higher: it carries its pelagic
+ * drape (below), and over warm mantle it stands on the swell (terrain/sea-level.js, from fully cooled mantle). Until
+ * 2026-11-12 (lane sealevel) the floor was bare GDH1 against the sea's mean heat, and Earth's water poured onto it stood
+ * 0.40–0.57 km below the datum: on Earth (ETOPO1 on Seton et al. 2020's ages, GlobSed's sediment; lane sealevel
+ * earth-floor.py) the ocean crust's mean depth is 4.26 km against GDH1's 4.87 at its ages — 0.31 km of it the sediment's
+ * load, 0.23 km broad (swells), 0.08 km edifices — and GDH1's own fitting regions sit on it (North Pacific median
+ * residual −0.07 km, northwest Atlantic −0.21), the superswells above it (South Pacific +0.5, Indian Ocean +0.2–0.4).
  */
-export function seaDepthKm(crustAgeMyr) {
+export function gdh1BasementKm(crustAgeMyr) {
     const t = Math.max(0, crustAgeMyr);
     return t < 20 ? 2.6 + 0.365 * Math.sqrt(t) : 5.651 - 2.473 * Math.exp(-0.0278 * t);
 }
+
+/** The open sea floor's depth (km) at an age: GDH1's basement less its pelagic drape (pelagicLiftKm). */
+export function seaDepthKm(crustAgeMyr) { return gdh1BasementKm(crustAgeMyr) - pelagicLiftKm(crustAgeMyr); }
+
+/**
+ * Pelagic sediment rains on the open floor from the day it forms — ooze and clay out of the water column, not what the
+ * rivers bring (records.js, step/floor-rock.js: the rise and enclosed seas' fill, on top of it) — and the floor carries
+ * its drape to the trench (step/margin-isles.js trenchSediment: what the incoming floor brings). ~3 m per Myr of age:
+ * GlobSed (Straume et al. 2019, G³ 20: 1756) on Seton et al. 2020's ages, ocean crust ≥ ~500 km from any margin: 0.07 km
+ * at 0–10 Myr, 0.17 at 20–40, 0.30 at 60–80, 0.43 at 100–120, 0.34 at 120–160 (the old Pacific's red clay, below the
+ * carbonate compensation depth, comes slower); a least-squares rate through the origin 2.6 m/Myr, 3–4 m/Myr to 110 Myr
+ * (lane sealevel earth-floor.py). Olson et al. 2016: 0.4–1.8 km typical over 60–120 Myr crust, margins included.
+ */
+export const PELAGIC_KM_PER_MYR = 0.003;
+
+/**
+ * How much the pelagic drape of a floor this old lifts it (km): the drape s = PELAGIC_KM_PER_MYR × age, Airy-loaded at
+ * its own mean density — porous where thin (Athy's law φ(z) = φ0 e^(−z/λ), φ0 0.6 and λ 2 km: Sclater & Christie 1980,
+ * JGR 85: 3711, their shale's 0.63 and 0.51 km⁻¹; grains 2.65 g/cm³), so a 0.3 km drape (ρ̄ ≈ 1.75) lifts the floor
+ * 0.2 km where a compacted basin fill (SEDIMENT_LOAD_FACTOR, 2.5) would lift it 0.11. The same law and constants measured
+ * Earth's sediment load above (earth-floor.py), so the two sides of the budget are reckoned alike.
+ */
+export function pelagicLiftKm(crustAgeMyr) {
+    const s = PELAGIC_KM_PER_MYR * Math.max(0, crustAgeMyr);
+    if (!(s > 0)) return 0;
+    const phi = DRAPE_PHI0 * DRAPE_LAMBDA_KM / s * (1 - Math.exp(-s / DRAPE_LAMBDA_KM)), rho = phi * 1.03 + (1 - phi) * DRAPE_GRAIN_RHO;
+    return s * (3.3 - rho) / (3.3 - 1.03);
+}
+const DRAPE_PHI0 = 0.6, DRAPE_LAMBDA_KM = 2, DRAPE_GRAIN_RHO = 2.65;
 
 // ── An island arc's crest, from its crust (2026-10-28, branch arcs). An arc is ocean lithosphere with crust added to it by
 // its volcanoes while its slab feeds them — 8 km at birth, 0.4 km/Myr while active, up to ~35 km (tectonics/config.js
