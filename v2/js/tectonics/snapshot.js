@@ -208,7 +208,9 @@ export function captureFrame(world, reuse = null) {
     }
     if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustFill = f.crustFill.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
     f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
-    f.budget = { ...world.budget };
+    // (one level deeper than the budget's own: a book kept per kind — orogenic collapse's — is an object the history goes
+    // on adding to, and a frame that shared it would read the later sums: a cached frame and a fresh one would differ)
+    f.budget = Object.fromEntries(Object.entries(world.budget).map(([k, v]) => [k, v && typeof v === 'object' ? (Array.isArray(v) ? v.slice() : { ...v }) : v]));
     // (when each sea was cut off, Myr — NaN off the cut-off seas; −Infinity: never open — and the sea's log since the frame
     // before: step/sea-age.js. Copies, entries included: the world's go on changing)
     f.seaCutAt = world.seaCutAt ? world.seaCutAt.slice() : null;
