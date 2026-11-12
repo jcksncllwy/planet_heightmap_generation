@@ -213,7 +213,28 @@ history's own surface — a hollow the erosion dug below the sea on a low coasta
 Messinian Mediterranean through Gibraltar in months to two years, Garcia-Castellanos et al. 2009). Until then the erosion
 graded a breached sea's rivers to its dry floor for the rest of its window and the sea flooded in only after it. What it
 skips: a sea the erosion never breaches stays dry however long ago it was cut off (243751@1080's sea: sill +0.43 km, never
-breached); the dry time capped by the time since closure is the seaage lane's. At 2.5M, 243751@730's sill comes down only to −31 m by the erosion's end, short of the lowstand (−53 m), so it floods after the erosion there; at 160K it breaches. **The finished sea's climate**: the climate
+breached) — and how long a sea has been dry is below (seaage). At 2.5M, 243751@730's sill comes down only to −31 m by the erosion's end, short of the lowstand (−53 m), so it floods after the erosion there; at 160K it breaches. **How long a cut-off sea has been dry** (2026-11-12, lane seaage; Jackson's
+ruling C(ii): its dry time in the finish = min(window, time since closure)). The history records it
+(`tectonics/step/sea-age.js`, after the rivers each step): every step it labels the sea parts of one land mask against
+the sea's level at the last river step (`rivers.js seaMaskNow`: the level is recorded every river step, `riverEveryMyr`
+4 Myr; the cut-off seas are labelled every step, ~1 Myr), the largest part being the world ocean. `world.seaOpenAt`: when
+each cell last lay in the world ocean; a cut-off part's `cutOffAt` = the first labelled step after its latest open cell
+(−∞: never open) → `world.seaCutAt` (NaN off the cut-off seas; a frame field, `FRAME_FIELDS`, so the page's and Node's
+finishes see it). `world.seaLog`: the level each river step, and each cut-off and rejoin of a sea ≥ `pocketSeaKm2`
+(`{cut: km2, lat, lon, cutOffAt}`, `{rejoin: km2, cutOffAt}`; each frame carries the entries since the last, deep-copied).
+Additive: every other frame field is unchanged. The finish reads it (`finish.js seaDrying`, after the first judge): a
+first-judge sea not full, most of whose ground below the sea lies on sim cells with a `seaCutAt`, closed at their median
+`cutOffAt`, falls from the sea's level as fast as its evaporation outruns its inflow (`drawdownMyr`: its hypsometry
+slice by slice, each slice's water over the open-water loss closedBasins nets for the cells then covered, less the
+inflow; it stops at its balance — a lake from there — or its floor). Its dry time D = clamp(since − drawdown, 0, window).
+D ≥ window: as before, byte for byte. Else it is held as sea — ocean for the carve, the sediment's sinks and the erosion —
+until window time window − D, when the erosion's judge releases it (`release`: each ladder level's cells, a coarse level's
+by each held cell's nearest; the CPU solver redraws its coastline, the GPU reads the ocean live), once per sea per level
+(a later breach joins it again — reflood — and that stands). The Messinian Mediterranean fell ~1.5 km in ~1–10 kyr
+(Krijgsman et al. 1999 for the closure, Ryan 2009, Blanc 2002); 243751@730's 8.6 Mkm² sea drains in 3.1 kyr. So a
+sea closed longer ago than the window (730's: 8.7 Myr, against 6.25 Myr at 160K) is dry for the whole window either way;
+the hold changes only seas closed within it. `stats.seaDrying`: each sea's why / cutOffAt / sinceMyr / drawdownMyr /
+dryMyr / releasedAtMyr. **The finished sea's climate**: the climate
 runs once, on the surface before the erosion, and reads a cut-off sea's dry floor as land at its own height — the lapse
 rate warming it ~6.5 K a km (a 5 km pit kept 53 °C air). When such a pit ends under the world ocean (a breach, or the flood
 after the erosion), the climate runs again on that first surface and sea with only those pits turned to sea, and every
@@ -350,6 +371,8 @@ js/tectonics/
                                     their erosion by latitude — records only, the history never reads them
                      rivers:        the history's rivers: drained every few Myr, cutting as they go (gorges
                                     where land rose under them) — records only too
+                     sea-age:       when each cut-off sea was cut off (seaCutAt, seaLog) — records only, for
+                                    the finish's dry time (seaDrying)
   ops/             plate surgery, called by the event stages: rift (path + split), merge-plates (suture with the
                    outline redraw), accrete-terrane (docking), scrape-arc, collapse-arc (fore-arc closure),
                    birth-ocean-plate (a plate carved out of the passive ocean), tidy-plates (integrity: fragments,

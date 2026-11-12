@@ -19,7 +19,8 @@ const WAVES_NEAR_MAX_CELLS = 3e6;     // the coast's waves near the shore on the
 export const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'terrane', 'formedAt', 'boundary', 'margin', 'mantleHeat', 'oroType', 'oroLast', 'thickKm',
     'beltU', 'beltReach', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide', 'prevShear', 'volcType', 'volcAt', 'volcKm', 'volcSource',
     'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'riverKm2', 'seaFillKm', 'riseKm3', 'basinFillKm', 'shelfKm3', 'fzU', 'arcKm', 'arcAt', 'riftThin', 'tectRateKm', 'tectSpanMyr',
-    'riftThinAt', 'hotspots', 'budget', ...GEO_FRAME_FIELDS];   // (riftThinAt, hotspots, budget: the moment's volcanic record, tectonics/volcanism.js momentVolc)
+    'riftThinAt', 'hotspots', 'budget', 'seaCutAt', ...GEO_FRAME_FIELDS];   // (riftThinAt, hotspots, budget: the moment's volcanic record, tectonics/volcanism.js momentVolc;
+    // seaCutAt: when each cut-off sea's cells last lay in the world ocean, tectonics/step/sea-age.js — the finish's seaDrying)
 
 /** The Frame fields terrain synthesis reads, and the plates' rotations (detail is anchored to the crust): what the planner is sent. */
 function slimFrame(frame) {
