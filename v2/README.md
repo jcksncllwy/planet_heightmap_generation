@@ -696,7 +696,9 @@ above the other shields, Nyblade & Robinson 1994). The swell is absolute, under 
 (`mantleSwellKm` 1 km from fully cooled to fully insulated mantle, the heat smoothed over `mantleSwellSmoothKm` 400 km),
 and the sea answers it. Reckoned (`sea-level.js seaLevel`; no water volume is kept, and `waterInventory: 0` selects it), the sea's level is the swell's mean under the sea floor; by default the level is instead where Earth's water stands when poured onto the ground ("The water inventory" below; `land-mask.js:103`).
 Heights are today's, so each part is measured from what a dispersed world shows on average (`mantleSwellLandRef`,
-`mantleSwellSeaRef`, measured over three histories' dispersed frames): a dispersed world's sea stands at 0 on average,
+`seaHeatToday`, measured over three histories' dispersed frames; since 2026-11-12 the sea floor and its arcs instead stand
+on their swell from fully cooled mantle, and `seaHeatToday` is only the reckoned level's datum: "The floor the water
+stands on" below): a dispersed world's sea stands at 0 on average,
 a supercontinent on its own warm mantle stands high as a whole and the sea falls against it (a lowstand, a dry, high
 interior), and after the breakup the pieces ride onto mantle the ocean has cooled and sink, and shallow seas spread over
 their low ground (Gurnis 1990). The sea floor's age would move the sea too — a young ocean, its ridges long and hot, is
@@ -740,6 +742,32 @@ plateaus: `tools/ocean-floor.mjs`). The rivers' rise is drawn (2026-11-06): the 
 same frames it lifts the poured sea 165–182 m on average (183–241 m at 900–1200 Myr) and takes 0.4–0.9 points of land and its drowned margins are a fraction of Earth's shelves — the missing physics, not
 the water. Limits: one water body at equilibrium; no water held on land (ice sheets, ~2 % of the ocean, are not taken
 out yet); the ground is the history's per-cell column, not the finish's shelves.
+
+**The floor the water stands on** (2026-11-12, lane sealevel; `tectonics/measure.js seaDepthKm`, `pelagicLiftKm`,
+`terrain/sea-level.js`, `tools/ocean-budget.mjs`). Earth's water poured on the history's ground stood 0.40–0.57 km below
+the datum at the five gallery moments, while on Earth's own ground (check-ocean-earth) it stands at the datum: the floor
+was too deep, not the water too little. The depth–age law (GDH1, Stein & Stein 1992) is *basement* over cool mantle —
+sediment-corrected and fitted where the floor is neither swollen nor built on — and the floor was drawn as that bare
+basement, its swell counted from the ocean's mean heat. Measured on Earth (ETOPO1 on Seton et al. 2020's ages, GlobSed v3;
+lane sealevel's `earth-floor.py`): ocean crust is 57 % of the planet at 4.26 km mean depth against GDH1's 4.87 at its
+ages — 0.31 km of it the sediment's load, 0.23 km broad swells (GDH1's own fitting regions sit on the law: North Pacific
+−0.07, northwest Atlantic −0.21; the South Pacific superswell +0.52), 0.08 km edifices. Two changes, both at the source:
+- **The pelagic drape.** The open floor carries `PELAGIC_KM_PER_MYR` (3 m/Myr; GlobSed far from margins: 0.07 km at
+  5 Myr, 0.30 at 70, 0.43 at 110) × its age of ooze and clay, Airy-loaded at its Athy-compacted density (φ0 0.6,
+  λ 2 km; Sclater & Christie 1980): `seaDepthKm` = `gdh1BasementKm` − `pelagicLiftKm`. One law for the pour, the drawn
+  floor, the history's sea fill and rise room, and the trench's incoming cover (`trenchPelagicKmPerMyr` is gone; the
+  rivers' rise and enclosed seas' fill lie on top of the drape).
+- **The swell from cool mantle.** The sea floor and the island arcs on it stand on `mantleSwellKm` × their mantle's heat,
+  from 0 (`mantleSwellSeaRef` is gone), as the land's swell already did against its own reference.
+
+The water inventory is unchanged and nothing offsets the level. The poured sea at the gallery moments
+(831576@430, 243751@720, 716130@430/660/1060): −0.57/−0.40/−0.51/−0.46/−0.40 → +0.23/−0.05/+0.06/−0.01/−0.18 km;
+land 24–33 %. The rest of the budget, term by term in km of level (`node v2/tools/ocean-budget.mjs`, against Earth's
+ETOPO5): the floor still runs old (+0.09: trench initiation), seamounts and plateaus have no process (+0.07), and the
+sim's swell follows the continents' insulation where Earth's Pacific superswell is plume-driven. Phase 8a judges the old
+floor (> 100 Myr, > 300 km from land) against Earth's *observed* old floor — median 5.09 km, p25–p75 4.33–5.46 — not
+GDH1's basement 5–6.5; Phase 13 judges the land's mean height against ice-free Earth (0.66 km, ETOPO1). The drape costs
+nothing measurable (closed form).
 
 **The pour starts in the ocean** (2026-11-10, lane pourstart; `pourOcean`, `land-mask.js pinnedHumid`; flag `pourFromOcean`, on). The pour above began in the lowest cell, assuming the ocean is where the deepest floor is; when a cut-off basin held that floor, it filled first and a water-poor pour stopped at the basin's sill with the ocean's share unspent (831576 at 360 Myr: +270 m, against −166 m poured from the ocean's side). Now, when the sweep pins at the start body's sill and the far side (the cells tied at that spill, below it) has more cells than the near side, it re-floods from the far side's lowest cell (up to 4 times), so the first body is the larger one, the world ocean. At a pinned sill the basin's climate decides who takes the shortfall (Jackson, 2026-11-10): `pinnedHumid` balances the basin on the zonal P − E the history already erodes by (`closedBasins` with the sea at the sill); a humid basin is brim-full and the ocean stands below the sill by the shortfall, an arid one keeps today's answer (the ocean at the sill, the basin's share stood from its bottom, `standFromBottom`). `landMask(frame, mesh, cfg, out, climate)` takes the computed climate when cutoff's real-climate balance lands. The pour also returns `topKm`, each wet cell's own surface, which the view's `standPoured` reads. No water is carried between frames: every body re-equilibrates in 10²–10⁴ yr against a 10-Myr frame (waterflow report), so memory belongs in rock (evaporites, sill incision: later lanes). Measured: on the same frozen ground only 831576 at 360 Myr moves (−436 m) of 484 frames in four histories; all 7 pinned frames are arid (the waterflow probe's "humid" 1070 was a 0.04 Mkm² pond read as the basin). On rebuilt histories, the level moves on 85 of 121 frames of 831576 (its tail diverges after 360), 15 of 626225 (≤ 1.2 m), 0 of 777, 40 of 12345 (≤ 4.7 m). Cost: the whole history 62 s against 63 s; the pour +0.4 ms at 40K, +2.2 ms at 160K, +61 ms at 2.5M, the humid judge ~40 ms per pinned call. `tools/check-pour.mjs` (suite `pour`) holds it. Limits: after a humid drawdown the ocean re-sweep can pin again at an inner sill and then settles arid (not seen); the mask is still crust-based (the pour sets only the level).
 
