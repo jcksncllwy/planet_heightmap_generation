@@ -14,7 +14,7 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const SEED = 12345, mesh = labMesh(), cells = Number(arg('--cells', 640000));
 for (const id of arg('--scenes', 'andes,japan').split(',')) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
-    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });
+    const { frames } = await simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });
     const tm = terrainMesh(cells), n = tm.numCells;
     const DB = globalThis.__coastDbg = { rs: new Float32Array(n).fill(NaN), floor: new Float32Array(n).fill(NaN), c: new Int32Array(3 * n), w: new Float32Array(3 * n), slope: new Float32Array(n), top: new Float32Array(n), coast: new Float32Array(n), act: new Float32Array(n), lift: new Float32Array(n), tk: new Float32Array(n).fill(NaN), rk: new Float32Array(n).fill(NaN) };
     const T = synthesizeTerrain(frames.at(-1), mesh, tm, { seed: SEED, cfg: sceneTerrainConfig(scene) });

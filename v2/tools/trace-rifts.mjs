@@ -38,7 +38,7 @@ for (const seed of seeds) {
             if (gathering?.has(p.id)) oldestGathering = Math.max(oldestGathering, a); else oldest = Math.max(oldest, a);
         }
     };
-    simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 10 });
+    await simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 10 });
     const rifts = world.events.filter(e => e.kind === EventKind.RIFT).map(e => ({ t: e.time, cause: e.data.cause, age: e.data.ageMyr }));
     const ages = rifts.map(r => r.age).filter(a => a !== undefined && a < 1e5).sort((a, b) => a - b);
     const cycle = world.events.filter(e => e.kind === EventKind.SUPERCONTINENT || e.kind === EventKind.DISPERSED).map(e => ({ t: e.time, kind: e.kind }));

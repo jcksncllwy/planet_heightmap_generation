@@ -51,7 +51,7 @@ function infoOf(mesh) {
  * @param {Object} mesh
  * @param {Object} f       per-cell fields on this mesh: z (tectonic surface, km), u (rock uplift, km/Myr), k (the
  *                         wave speed at 1 km² of drainage, km/Myr), rain (drainage weight), micro (km: the crust's
- *                         micro-relief, for the routing only), inc (km: how deep the history's rivers cut here); optionally sink (> 0.5: the floor of a closed basin — rivers
+ *                         micro-relief, for the routing only); optionally sink (> 0.5: the floor of a closed basin — rivers
  *                         end there as at the sea) and base (km: that floor's level, their base level instead of 0)
  * @param {Float32Array} route   the surface the rivers are routed over (the current estimate, micro-relief included)
  * @param {Object} cfg     { timeMyr, m, valleyKm }
@@ -271,7 +271,7 @@ function mapBetween(coarse, fine) {
     return M;
 }
 
-const FIELDS = ['z', 'u', 'k', 'rain', 'micro', 'inc', 'hold', 'lip', 'lipBase', 'lipTop'];
+const FIELDS = ['z', 'u', 'k', 'rain', 'micro', 'hold', 'lip', 'lipBase', 'lipTop'];
 /** Fine fields averaged onto a coarse mesh (each fine cell counts for its nearest coarse cell). */
 function downsample(coarse, fine, f) {
     const M = mapBetween(coarse, fine), n = coarse.numCells, near = M.nearest, count = new Uint32Array(n), sum = new Float64Array(n);
@@ -317,7 +317,7 @@ function upsample(coarse, fine, values) {
 
 /**
  * Carve the finest mesh's surface, coarse to fine. `meshes`: coarsest first, the finest last (a factor ~4 apart);
- * `fields`: per-cell z, u, k, rain, micro, inc on the finest. cfg: { timeMyr, m, rounds: [coarsest, …, finest] }.
+ * `fields`: per-cell z, u, k, rain, micro on the finest. cfg: { timeMyr, m, rounds: [coarsest, …, finest] }.
  * @returns {{z: Float32Array, recv: Int32Array, area: Float32Array}} on the finest mesh
  */
 export function carveTerrain(meshes, fields, cfg, given = null) {
@@ -330,9 +330,9 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
     for (let l = 0; l < L; l++) {
         const mesh = meshes[l], f = F[l];
         // route over this level's surface plus the carving the coarser level found, and the crust's micro-relief
-        const n = mesh.numCells, { z, micro, inc } = f;
+        const n = mesh.numCells, { z, micro } = f;
         let route = new Float32Array(n);
-        for (let i = 0; i < n; i++) route[i] = z[i] + micro[i] - inc[i];
+        for (let i = 0; i < n; i++) route[i] = z[i] + micro[i];
         if (delta) { const up = upsample(meshes[l - 1], mesh, delta); for (let i = 0; i < n; i++) route[i] += up[i]; }
         const rounds = cfg.rounds[Math.min(l, cfg.rounds.length - 1)];
         for (let r = 0; r < rounds; r++) {
@@ -340,7 +340,7 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
             // (the next round routes over an average of the old estimate and the new heights: no oscillation)
             if (r < rounds - 1) {
                 const next = new Float32Array(n), rz = result.z;
-                for (let i = 0; i < n; i++) next[i] = 0.5 * route[i] + 0.5 * (rz[i] + micro[i] - inc[i]);
+                for (let i = 0; i < n; i++) next[i] = 0.5 * route[i] + 0.5 * (rz[i] + micro[i]);
                 route = next;
             }
         }

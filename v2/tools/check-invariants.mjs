@@ -52,7 +52,7 @@ for (const seed of SEEDS) {
     const overlapSince = new Map();          // plate pair → since when its land has overlapped by more than BIG_OVERLAP_KM2
     let biggestOverlap = { cells: 0 }, longestOverlap = { myr: 0 }, longestStall = { myr: 0 };
     const waitedAt = new Map();              // plate pair → when its stalled seam last waited for the sea between to close
-    simulate(world, {
+    await simulate(world, {
         untilMyr: HISTORY_MYR, snapshotEveryMyr: 50,
         drive: w => {
             scene.drive(w);
@@ -148,7 +148,7 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     // (the ledger sums each stage over the whole history; the drive, called once a step after the event stages, also
     // catches a forbidden stage that made land in one step and lost it in another)
     const seen = {}, offending = new Map();
-    simulate(world, {
+    await simulate(world, {
         untilMyr: LEDGER_MYR, snapshotEveryMyr: 50, keepFrames: false,
         drive: w => {
             scene.drive(w);
@@ -170,14 +170,12 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     check('…and arc maturation gains exactly the arc cells it turned continental', matured === (world.budget.arcMaturedCells ?? 0),
         `arcMaturation booked ${matured} cells of land; world.budget.arcMaturedCells ${world.budget.arcMaturedCells ?? 0}`);
     const sunk = stages.sedimentSubduction ?? { land: 0, arc: 0 };
-    // (config.rockBook, lane crust: the trench's terrigenous sediment is the rock the heights already wore off the crust —
-    // crust.wornKm, thinning it as it wore — so sediment subduction takes it down without eating the coast a second time:
-    // it books no cells, and the trenches must still have taken sediment. Without the book it eats exactly the coast it
-    // booked. The recycled volume, ~1.65 km³/yr on Earth (Scholl & von Huene 2009), is then the wear's, not cells')
-    if (world.config.rockBook) check('…and sediment subduction takes its rock down without eating the coast again (the heights wore it off the crust already), and touches no arc', sunk.land === 0 && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) === 0 && (world.budget.sedimentKm3 ?? 0) > 0,
+    // (the trench's terrigenous sediment is the rock the history's erosion already took off the crust — crust.wornKm, thinning it
+    // as it went, step/surface-erosion.js — so sediment subduction takes it down without eating the coast a second time: it books
+    // no cells, and the trenches must still have taken sediment. The recycled volume, ~1.65 km³/yr on Earth (Scholl & von Huene
+    // 2009), is then the erosion's, not cells')
+    check('…and sediment subduction takes its rock down without eating the coast again (the erosion took it off the crust already), and touches no arc', sunk.land === 0 && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) === 0 && (world.budget.sedimentKm3 ?? 0) > 0,
         `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}; ${((world.budget.sedimentKm3 ?? 0) / 1e6).toFixed(2)} Mkm³ of terrigenous sediment subducted`);
-    else check('…and sediment subduction only loses continental crust, exactly the cells it booked, and touches no arc', sunk.land === -(world.budget.sedimentCells ?? 0) && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) > 0,
-        `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}`);
     const B = world.budget;
     check('…and a weld or a dock makes no crust: every cell of sea it fills is paid for with a cell of its coast', (B.sealPaidCells ?? 0) === (B.sealedLandCells ?? 0) && (B.arcPaidCells ?? 0) === (B.sealedArcCells ?? 0),
         `${B.sealedLandCells ?? 0} cells of sea filled with continent at welds and docks, ${B.sealPaidCells ?? 0} of continental coast given back; ${B.sealedArcCells ?? 0} filled with arc, ${B.arcPaidCells ?? 0} of coast given back for them`);

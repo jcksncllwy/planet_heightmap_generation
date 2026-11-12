@@ -29,10 +29,10 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? 
 
 // ── the zipper: first contact at an angle; the lower plate turns about it; the weld waits for the seam ──
 section('two continents meeting at an angle');
-const zipper = (overrides, seed = LAB_MESH_SEED) => {
+const zipper = async (overrides, seed = LAB_MESH_SEED) => {
     const world = onPath(COLLISION_SCENES.find(s => s.id === 'zipper').build(mesh, seed));      // (on path GEO_SIM_PATH: lib/paths.mjs)
     Object.assign(world.config, onlyMechanisms(), overrides);
-    const { frames } = simulate(world, { untilMyr: 100, drive: updatePlateMotion, snapshotEveryMyr: 2 });
+    const { frames } = await simulate(world, { untilMyr: 100, drive: updatePlateMotion, snapshotEveryMyr: 2 });
     const turn = f => { const a = f.plates[0].quat, b = f.plates[1].quat; return 2 * Math.acos(Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]))) * 180 / Math.PI; };
     const at = t => frames.reduce((b, f) => Math.abs(f.time - t) < Math.abs(b.time - t) ? f : b);
     const contact = world.events.find(e => e.kind === EventKind.COLLISION)?.time, weld = world.events.find(e => e.kind === EventKind.SUTURE);
@@ -40,14 +40,14 @@ const zipper = (overrides, seed = LAB_MESH_SEED) => {
     return { contact, weld, turned: turn(at(weld.time - 2)) - turn(at(contact)), gapMkm2: weld.data.gapKm2 / 1e6, widestKm: weld.data.gapWidestKm, limitKm: world.config.sutureGapWidthKm + mesh.edgeKm };
 };
 {
-    const now = zipper({});
+    const now = await zipper({});
     // (audit 2026-10-30: this asked the sea to be closed to within sutureGapWidthKm at its widest, on one seed. The widest gap is
     // unstable — 607 · 121 · 849 · 364 · 364 · 121 km over six seeds, and 243 → 728 → 607 km across commits on one — while the
     // gap's area is steady, 0.38–0.55 Mkm². And waiting does not close it: with both give-up rules off there was no weld by
     // 160 Myr, the seam closing at −0.13 to 0.24 cm/yr, the sea 0.1–1.0 Mkm². So the claim held is the mechanism's: the weld
     // comes after first contact, and as the seam stalling — the sea stopped closing — not as a stack forced to give up (collision.js
     // `why`). How much sea is left is Earth's to judge: reported, against the Black Sea and the Mediterranean)
-    const seeds = [LAB_MESH_SEED, 1, 2, 3], runs = [now, ...seeds.slice(1).map(seed => zipper({}, seed))];
+    const seeds = [LAB_MESH_SEED, 1, 2, 3], runs = [now, ...(await Promise.all(seeds.slice(1).map(async seed => await zipper({}, seed))))];
     checkAcross('after first contact the two weld once the seam has stalled, not before', runs.map((z, i) => ({ label: seeds[i], formed: z.contact !== undefined, ok: !!z.weld && z.weld.time > z.contact && z.weld.data.why === 'stalled',
         text: z.weld ? `contact at ${z.contact.toFixed(0)} Myr, weld at ${z.weld.time.toFixed(0)} Myr as ${z.weld.data.why}` : z.contact === undefined ? 'no contact' : `contact at ${z.contact.toFixed(0)} Myr, no weld` })));
     // (a weld the stack forced (why 'stacked') measures no gap — collision.js books gapKm2 Infinity and no widest gap: named in
@@ -64,7 +64,7 @@ section('a sea sealed inside one plate');
 {
     // a round sea, 700 km in radius, in the middle of a continent; its floor formed `ageMyr` before the run. The sea is made
     // big enough to be a plate of its own: oceanPlateMinAreaKm2 set below its area (the scene's, at any mesh resolution)
-    const sealed = (ageMyr, untilMyr) => {
+    const sealed = async (ageMyr, untilMyr) => {
         const world = onPath(new TectonicWorld(mesh, LAB_MESH_SEED)), canvas = sceneCanvas(mesh, world.config);
         const solo = world.addPlate('Solo');
         addContinent(canvas, new SimplexNoise(LAB_MESH_SEED), { plate: solo, centre: [10, 20], radiusKm: 2600, cratonKm: 0 });
@@ -75,7 +75,7 @@ section('a sea sealed inside one plate');
         solo.refreshExtent(mesh.xyz);
         const seaKm2 = seaCells * cellKm2;
         Object.assign(world.config, onlyMechanisms('marginFounder'), { crustLedger: true, oceanPlateMinAreaKm2: 0.6 * seaKm2 });
-        const { frames } = simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: 5 });
+        const { frames } = await simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: 5 });
         const founders = world.events.filter(e => (e.kind === EventKind.SUBDUCTION_INIT && e.data?.upper === solo.id) || (e.kind === EventKind.PLATE_BORN && e.time > 0));
         const born = founders.find(e => e.kind === EventKind.PLATE_BORN), init = founders.find(e => e.kind === EventKind.SUBDUCTION_INIT);
         // (the plate's own raster: its continental crust and its ocean, frame by frame)
@@ -105,7 +105,7 @@ section('a sea sealed inside one plate');
         }
         return { seaKm2, frames, land, sea, landRose, landGained, prismCells, prismLaid: prismLand.land + prismLand.arc, gained, founders, born, init, trench, freshKm2, minKm2: world.config.oceanPlateMinAreaKm2 };
     };
-    const old = sealed(300, 120), young = sealed(10, 120);
+    const old = await sealed(300, 120), young = await sealed(10, 120);
     // (the land may grow only by the prism of a trench the sea's own founder opened, and only as far as its rock pays —
     // the fore-arc cells it laid, and the land they grew into, at most the cells its credited rock buys, one cell's
     // rounding allowed; a young sea, with no founder and so no trench, may gain nothing at all)
@@ -181,7 +181,7 @@ section('whole histories (600 Myr, three seeds)');
     for (const seed of [12345, 777, 4242]) {
         const world = onPath(buildStartWorld(mesh, seed).world), frames = [];
         let staleMax = 0;
-        simulate(world, { untilMyr: 600, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: 50, onFrame: f => {
+        await simulate(world, { untilMyr: 600, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: 50, onFrame: f => {
             if (f.time > 0) frames.push(f);
             if (f.time > 0 && f.time % 100 === 0) staleMax = Math.max(staleMax, staleShare(world));
         } });

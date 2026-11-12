@@ -51,7 +51,7 @@ for (const seed of seeds) {
     let traceIds = 0;
     const t0 = Date.now();
     const pullLog = [];                                           // (--pull) per step: time, plate id → [trench km, pull force]
-    simulate(world, { untilMyr, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: C.stepGridMyr, keepFrames: false, stopAt: w => {
+    await simulate(world, { untilMyr, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: C.stepGridMyr, keepFrames: false, stopAt: w => {
         if (wantPull && w.loads) { const m = new Map(); for (const [id, l] of w.loads) m.set(id, [Math.round(l.cells[0] * edgeKm), +Math.hypot(...l.forceByKind[0]).toPrecision(3)]); pullLog.push({ t: w.time, m }); }
         const seen = new Set();
         for (const r of w.collisions?.values() ?? []) {

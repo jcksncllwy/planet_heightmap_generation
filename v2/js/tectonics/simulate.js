@@ -35,6 +35,8 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
 import { crustLedger, handLaidArcKm3 } from './step/crust-ledger.js';
 import { stepPlateStress } from './field/stress-step.js';
 import { accretePrisms } from './step/prism-accretion.js';
+import { erodeGPU } from '../gpu/erode-gpu.js';
+import { sharedDevice } from '../gpu/gpu-device.js';
 
 /**
  * @param {import('./model/world.js').TectonicWorld} world
@@ -55,26 +57,50 @@ import { accretePrisms } from './step/prism-accretion.js';
  *                                              one history run in one go, to the bit (the Evolution page's "Keep going")
  * @param {boolean} [opts.keepFrames]           false: the frames go only to onFrame and are not kept (a worker that streams
  *                                              them out would otherwise hold the whole history twice — ~2 MB a frame at 20K)
- * @returns {{frames: import('./snapshot.js').Frame[], steps: number, stepLog: Object[], stopped: boolean}}
+ * @param {Object|null} [helpers]               app/helper-pool.js: each rift's junction searches side by side (the answers come
+ *                                              back in order, so it is the same history); null: searched here
+ * @returns {Promise<{frames: import('./snapshot.js').Frame[], steps: number, stepLog: Object[], stopped: boolean}>}
  *          frames[0] is the world as handed in (time 0 for a new world — a world can also be run on from
  *          where an earlier call stopped); then one frame per snapshot interval; the last is exactly untilMyr,
  *          or the snapshot where stopAt said stop (stopped: true). Empty with keepFrames false
  */
-export function simulate(world, opts) {
+export function simulate(world, opts, helpers = null) {
+    const run = queue.then(() => simulateNow(world, opts, helpers));
+    queue = run.catch(() => {});
+    return run;
+}
+// (one history at a time in a thread: a history waits on the GPU in the middle of its rivers' step, and the steps keep
+// working state of their own between their calls — step/rivers.js's scratch, the rock book's active budget — so two run
+// side by side, each through the other's waits, would trample it. Callers may still start several: they take turns)
+let queue = Promise.resolve();
+
+async function simulateNow(world, opts, helpers) {
+    const gpu = await historyGPU();
     const run = stepsOf(world, opts);
-    for (let r = run.next(); ; r = run.next(searchJunctions(world, r.value))) if (r.done) return r.value;
+    let r = run.next();
+    while (!r.done) {
+        const job = r.value;
+        const answer = job?.kind === 'erode' ? await erodeGPU(gpu.gpu, job.o, job.P, { device: gpu.opened })
+            : helpers ? await helpers.searchJunctions(world, job) : searchJunctions(world, job);
+        useRockBook(world.budget);                      // (this history's book again after the wait: rock-book.js)
+        r = run.next(answer);
+    }
+    return r.value;
 }
 
-/**
- * simulate, with each rift's search over its junctions handed to `helpers` (app/helper-pool.js: workers side by side) —
- * the junctions' answers come back in order, so it is the same history. @returns {Promise} simulate's result
- */
-export async function simulateAsync(world, opts, helpers) {
-    const run = stepsOf(world, opts);
-    for (let r = run.next(); ; r = run.next(await helpers.searchJunctions(world, r.value))) if (r.done) return r.value;
+/** The refusal a history gives where there is no GPU (agent-brief "A GPU is required", 2026-11-12). */
+export const GPU_REQUIRED = 'A GPU is required: the history erodes its land on the GPU (WebGPU; in Node, Dawn: v2/tools/gpu-harness/history-dawn.mjs, which the tools\' history cache and check-kit load). There is no CPU path.';
+
+/** The GPU the history erodes on: this page's or worker's navigator.gpu, or Dawn's in Node (v2/tools/gpu-harness/history-dawn.mjs, or
+ *  use-dawn.mjs) — refused clearly where there is none. */
+export async function historyGPU(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU) {
+    const opened = gpu ? await sharedDevice(gpu) : null;
+    if (!opened) throw new Error(GPU_REQUIRED);
+    return { gpu, opened };
 }
 
-// The history's steps, as a generator: it yields each rift's request for its junctions' searches (step/rifting.js).
+// The history's steps, as a generator: it yields each rift's request for its junctions' searches (step/rifting.js) and
+// each river step's erosion job ({kind: 'erode'}: step/rivers.js), and simulate answers them.
 const SLOW_ROTATION_MYR = 20;        // (a plate's averaged rotation: in the step loop)
 
 function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snapshotEveryMyr, events = true, onFrame = null, stopAt = null, resume = false, keepFrames = true }) {
@@ -163,7 +189,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
             }
         }
         if (slow) led('heights', evolveHeights(world, slowDt)); // heights wear down and spread (records only: nothing below reads them)
-        led('rivers', evolveRivers(world, dt));                         // rivers drain the land and cut into it (records only too; on a clock of their own)
+        led('rivers', yield* evolveRivers(world, dt));                         // rivers drain the land and cut into it (records only too; on a clock of their own)
         led('seaAge', evolveSeaAge(world));                             // when each sea was cut off from the world ocean (records only)
         led('geology', evolveGeology(world, dt));                                       // the geological record (records only; on a clock of its own)
         led('drive', drive(world));

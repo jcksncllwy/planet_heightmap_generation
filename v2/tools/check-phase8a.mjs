@@ -33,11 +33,11 @@ const quantile = (a, p) => { if (!a.length) return NaN; const s = Float64Array.f
 const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
 const sceneOf = new WeakMap();     // (frame → its scene: a scene of one mechanism keeps the reckoned sea — terrain-scenes.js fixtureOcean)
-function run(id, heights = null, overrides = null, seed = SEED) {
+async function run(id, heights = null, overrides = null, seed = SEED) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     if (heights) world.config.heights = sceneTerrainConfig(scene, heights);           // (the heights evolve with these — and, through the rivers' sediment, so does the history: below)
     if (overrides) Object.assign(world.config, overrides);
-    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
+    const { frames } = await simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     for (const f of frames) sceneOf.set(f, scene);
     return { world, frame: frames.at(-1), first: frames[0], frames };
 }
@@ -140,7 +140,7 @@ function frameAt(c) {
 
 // ── the records the ridges are laid out from ──
 section('belt geometry is recorded');
-const history = run('history');
+const history = await run('history');
 {
     const f = history.frame;
     let belt = 0, withGeometry = 0, sideWrong = 0;
@@ -178,7 +178,7 @@ const history = run('history');
 // ── an Andean margin ──
 section('an Andean margin');
 {
-    const { frame } = run('andes'), T = terrain(frame), { rec, heightKm } = T;
+    const { frame } = await run('andes'), T = terrain(frame), { rec, heightKm } = T;
     // (by position across the belt — a young belt is narrow, a mature one wide — read at each terrain cell as the terrain
     // reads it: over its sim corners of the belt, by their weights. Not its nearest corner's: an Andean belt 150–250 km
     // wide spans one or two sim cells (121 km), so the nearest corner's position jumps from 0 to 0.5 and the main range,
@@ -214,7 +214,7 @@ section('an Andean margin');
 // ── a continental collision ──
 section('a continental collision');
 {
-    const { frame } = run('india'), T = terrain(frame), { rec, heightKm } = T;
+    const { frame } = await run('india'), T = terrain(frame), { rec, heightKm } = T;
     const band = (side, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t); const u = rec.dKm[c] / Math.max(1, rec.reach[c]); if (kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && kindSide(rec.kind[c]) === side && u >= lo && u < hi && heightKm[t] > -0.2) a.push(heightKm[t]); } return a; };
     const plateau = mean(band(BeltSide.UPPER, 0.2, 0.8)), range = mean(band(BeltSide.LOWER, 0.1, 0.35)), foreland = mean(band(BeltSide.LOWER, 0.75, 1.01));
     // (0.75 km: heights evolve — this collision welded 30 Myr ago and has worn down in the tropics since)
@@ -293,11 +293,11 @@ section('the sea floor, island arcs and hotspots');
         report('the basins\' room to the datum against Earth\'s ocean', 100 * (room / EARTH_OCEAN_KM3 - 1), { earth: [-1.6, 1.6], unit: ' %', digits: 1, source: 'Earth 0: its ocean fills its basins to its sea (Charette & Smith 2010, 1.332e9 km³); ± check-ocean-earth\'s 60 m over 3.61e8 km² of ocean',
             detail: `${(room / 1e9).toFixed(3)}e9 km³ below the datum; Earth's water stands at ${(P.levelKm * 1000).toFixed(0)} m` });
     }
-    const arcs = run('mariana'), A = terrain(arcs.frame);
+    const arcs = await run('mariana'), A = terrain(arcs.frame);
     let arcCells = 0, arcLand = 0;
     for (let t = 0; t < A.tm.numCells; t++) { const c = corner(A, t); if (arcs.frame.type[c] === CrustType.ARC && arcs.frame.owner[c] >= 0) { arcCells++; if (A.heightKm[t] > 0) arcLand++; } }
     report('ocean arc above the sea', 100 * arcLand / Math.max(1, arcCells), { unit: ' %', digits: 1, source: 'no Earth figure: the Marianas are mostly submerged', detail: `${arcLand} of ${arcCells} terrain cells of arc crust` });
-    const hawaii = run('hawaii'), H = terrain(hawaii.frame);
+    const hawaii = await run('hawaii'), H = terrain(hawaii.frame);
     let islands = 0, seamounts = 0;
     for (let t = 0; t < H.tm.numCells; t++) if (H.parts.cones[t] > 1 && !H.rec.land[corner(H, t)]) { if (H.heightKm[t] > 0) islands++; else seamounts++; }
     check('a hotspot track has islands near the plume and drowned seamounts downstream', islands > 0 && seamounts > islands, `${islands} terrain cells of volcanic island, ${seamounts} of seamount`);
@@ -306,7 +306,7 @@ section('the sea floor, island arcs and hotspots');
 // ── a continent splits ──
 section('a continent splits');
 {
-    const { frame } = run('rift'), T = terrain(frame), { rec, heightKm } = T;
+    const { frame } = await run('rift'), T = terrain(frame), { rec, heightKm } = T;
     // (the plume that split the continent also left flood basalt inland — a plateau of its own, left out here)
     const rift = (lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t); if (kindType(rec.kind[c]) === OrogenyType.RIFT && frame.volcType[c] !== VolcanicType.LIP && rec.dKm[c] >= lo * rec.reach[c] && rec.dKm[c] < hi * rec.reach[c] && heightKm[t] > 0) a.push(heightKm[t]); } return median(a); };
     const shoulder = rift(0.05, 0.35), inland = rift(0.7, 1.01);
@@ -330,11 +330,11 @@ section('a continent splits');
         }
         return { young: median(young), armGap: median(arm) - median(around) };
     };
-    const across = [riftFigures(frame, T), ...RIFT_SEEDS.filter(s => s !== SEED).map(seed => {
+    const across = [riftFigures(frame, T), ...(await Promise.all(RIFT_SEEDS.filter(s => s !== SEED).map(async seed => {
         const scene = TERRAIN_SCENES.find(s => s.id === 'rift'), world = scene.build(mesh, seed), tm = terrainMesh(640000);
-        const F = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames.at(-1);
+        const F = (await simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive })).frames.at(-1);
         return riftFigures(F, { ...synthesizeTerrain(F, mesh, tm, { seed, parts: true, cfg: sceneTerrainConfig(scene) }), tm });
-    })];
+    })))];
     // (lower, not necessarily dry: an aulacogen can be a seaway — the Benue Trough was. A report, not a check: main itself failed
     // 5 of these 8 seeds on it, a knife-edge on a process the model lacks. Owner: the rift-stage lane)
     report('the failed arm against the land 150–400 km from it, mean of the rift seeds', mean(across.map(a => a.armGap)), { unit: ' km', source: 'no Earth figure: a low corridor should read below 0',
@@ -357,24 +357,12 @@ section('erosion by rainfall');
         detail: `×${e(80).toFixed(2)} at 80°, ×${e(50).toFixed(2)} at 50°` });
     // (belts quiet 40–250 Myr: after Phase 13's quicker erosion a belt quiet 100+ Myr is worn to ~0.15 km wherever it stood)
     // and it shows: old belts are worn lower in the wet tropics, and kept higher in the dry subtropics, than in the same
-    // history evolved with erosion alike everywhere (heights evolve through the history: it has to be run again). Like for
-    // like: the evolving heights are records the history never reads but for one path — the rock its rivers wear off the
-    // land, by the latitude's erosion, goes to the trenches (step/rivers.js → trench-fans.js: sediment subduction, erosive
-    // margins, filled seas) — so the two runs diverge from ~50 Myr (a third of the cells differ by 100 Myr, all by 200).
-    // Both are run with no terrigenous fill reaching the trenches (trenchDenudationKmPerMyr 0, and rockBook off: under the
-    // rock book the rivers carry the very rock the heights wore — crust.wornKm, lane crust — so the erosion under test would
-    // be the fill; and subduction erosion off: it eats the fore-arc's root as the heights left it, so the wear would steer
-    // where it founders) — then the two are one history, cell for cell and event for event (checked below), and differ
-    // only in how their heights wore. And the collision lock as a force (collisionLockGpe, opt-in) off: it resists with the
-    // weight of the thickened crust, which wear thins (Willett 1999, J. Geophys. Res.: erosion steers how an orogen deforms) —
-    // the two runs' crust differs by ~1e-7 from ~180 Myr through the root's room the wear leaves (ops/thicken.js), and the
-    // lock carries it into the plates' motion (lane belts5: 1092 vs 1095 events). Likewise the continents' strength read from
-    // each cell's crust (plateStrengthCrust, lane riftstrength: Buck's thick crust is weak, and wear thins it) off: on, the two
-    // runs' rifts part where the wear left the crust differently
-    const decoupled = { trenchDenudationKmPerMyr: 0, rockBook: false, subductionErosionKm3PerKmMyr: 0, collisionLockGpe: false, plateStrengthCrust: false }, rainy = run('history', null, decoupled), alike = run('history', { rainErosionExponent: 0 }, decoupled);
-    const sameHistory = rainy.frames.every((f, i) => f.owner.every((o, w) => o === alike.frames[i].owner[w] && f.type[w] === alike.frames[i].type[w])) && rainy.frame.events.length === alike.frame.events.length;
-    check('…the two histories compared are one: only the heights\' erosion differs', sameHistory, `${rainy.frames.length} frames to ${rainy.frame.time} Myr, every cell's plate and crust the same; ${rainy.frame.events.length} events in each (no terrigenous trench fill in either)`);
-    const on = terrain(rainy.frame, 160000), off = terrainWith(alike.frame, 160000, { rainErosionExponent: 0 });
+    // (lane graded, 2026-11-12: the history's erosion feeds its dynamics — the rock it takes thins the crust collisions, rifts and
+    // the flow read — so a run with erosion alike everywhere is another history, and its cells cannot be paired with this one's
+    // (the decoupled pair this check ran retired with the height rule). Judged within one history instead, on five: belts quiet
+    // 40–250 Myr stand lower the wetter the latitudes their crust drifted through since it went quiet)
+    const rainy = await run('history');
+    const on = terrain(rainy.frame, 160000);
     // Like for like in climate too: a belt quiet 40–250 Myr has drifted while it wore — a belt in the subtropics today may
     // have spent its quiet life under the equator's rain — so each terrain cell is judged by the climate its crust lived
     // in: the mean erosion factor at its latitude in the frames since it went quiet (carried back on its plate's rotation;
@@ -387,9 +375,9 @@ section('erosion by rainfall');
     // against the path's factor is negative on all five (−192 · −257 · −388 · −131 · −140 m per unit of factor). So the claim is
     // read as that: over five histories, the dry class is higher and the relief change falls with the path's erosion)
     const eAt = l => erosionAtLatitude(l, TERRAIN);
-    const rainPair = (seed, rainyRun = null, alikeRun = null) => {
-        const rainyH = rainyRun ?? run('history', null, decoupled, seed), alikeH = alikeRun ?? run('history', { rainErosionExponent: 0 }, decoupled, seed);
-        const onT = seed === SEED ? on : { ...synthesizeTerrain(rainyH.frame, mesh, tm160, { seed, parts: true }), tm: tm160 }, offT = seed === SEED ? off : { ...synthesizeTerrain(alikeH.frame, mesh, tm160, { seed, parts: true, cfg: terrainConfig({ rainErosionExponent: 0 }) }), tm: tm160 };
+    const rainPair = async (seed, rainyRun = null) => {
+        const rainyH = rainyRun ?? await run('history', null, null, seed);
+        const onT = seed === SEED ? on : { ...synthesizeTerrain(rainyH.frame, mesh, tm160, { seed, parts: true }), tm: tm160 };
         const Fm = rainyH.frame, Rm = new Float64Array(9), Rtm = new Float64Array(9);
         const pathEs = (t, c) => {
             const pl = Fm.owner[c]; if (pl < 0 || !Fm.plates[pl]?.alive) return NaN;
@@ -406,29 +394,29 @@ section('erosion by rainfall');
         const wet = [], dry = [], xs = [], ys = [];
         for (let t = 0; t < onT.tm.numCells; t++) {
             const c = corner(onT, t);
-            if (!onT.rec.kind[c] || !(onT.rec.quietMyr[c] > 40 && onT.rec.quietMyr[c] < 250) || !(onT.heightKm[t] > 0 && offT.heightKm[t] > 0)) continue;
+            if (!onT.rec.kind[c] || !(onT.rec.quietMyr[c] > 40 && onT.rec.quietMyr[c] < 250) || !(onT.heightKm[t] > 0)) continue;
             const e = pathEs(t, c); if (!(e === e)) continue;
-            const d = onT.parts.relief[t] - offT.parts.relief[t];
+            const d = onT.parts.relief[t];
             (e > 1 ? wet : dry).push(d); xs.push(e - 1); ys.push(d);
         }
         const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
         const slope = sxx > 0 ? sxy / sxx : NaN;
-        return { label: seed, formed: wet.length > 0 && dry.length > 0 && slope === slope, ok: slope < 0 && mean(dry) > 0,
-            text: `${(1000 * mean(wet)).toFixed(0)} m where their path was wetter than the reference (${wet.length} cells), ${(1000 * mean(dry)).toFixed(0)} m where drier (${dry.length}); ${(1000 * slope).toFixed(0)} m per unit of the path's erosion factor` };
+        return { label: seed, formed: wet.length > 0 && dry.length > 0 && slope === slope, ok: slope < 0 && mean(dry) > mean(wet),
+            text: `relief ${(1000 * mean(wet)).toFixed(0)} m where their path was wetter than the reference (${wet.length} cells), ${(1000 * mean(dry)).toFixed(0)} m where drier (${dry.length}); ${(1000 * slope).toFixed(0)} m per unit of the path's erosion factor` };
     };
     const tm160 = on.tm;
-    const rain = [rainPair(SEED, rainy, alike), ...[777, 4242, 1, 2].map(seed => rainPair(seed))];
+    const rain = [await rainPair(SEED, rainy), ...(await Promise.all([777, 4242, 1, 2].map(async seed => await rainPair(seed))))];
     const band = (T, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t), lat = Math.abs(Math.asin(T.tm.xyz[3 * t + 2])) * 180 / Math.PI; if (lat >= lo && lat < hi && T.rec.kind[c] && T.rec.quietMyr[c] > 40 && T.rec.quietMyr[c] < 250 && T.heightKm[t] > 0) a.push(T.parts.relief[t]); } return mean(a); };
-    const wetOn = band(on, 0, 12), wetOff = band(off, 0, 12), dryOn = band(on, 20, 32), dryOff = band(off, 20, 32);
-    checkAcross('old belts are worn more where their path was wetter: the dry class is higher, and the relief change falls with the path\'s erosion factor, than with erosion alike everywhere', rain,
-        { detail: `relief of belts quiet 40–250 Myr, the same cell with rain's erosion less with erosion alike; seed 12345 by today's latitude: tropics ${wetOn.toFixed(2)} km (${wetOff.toFixed(2)} without), subtropics ${dryOn.toFixed(2)} km (${dryOff.toFixed(2)} without)` });
+    const wetOn = band(on, 0, 12), dryOn = band(on, 20, 32);
+    checkAcross('old belts are worn more where their path was wetter: the dry class stands higher, and the relief falls with the path\'s erosion factor', rain,
+        { detail: `relief of belts quiet 40–250 Myr, within one history (lane graded); seed 12345 by today's latitude: tropics ${wetOn.toFixed(2)} km, subtropics ${dryOn.toFixed(2)} km` });
 }
 
 // ── the fine detail belongs to the crust (anchor.js): a moving plate carries its detail with it ──
 section('fine detail moves with the crust');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'history'), tm = terrainMesh(640000);
-    const framesOf = seed => simulateCached(onPath(scene.build(mesh, seed)), { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames;
+    const framesOf = async seed => (await simulateCached(onPath(scene.build(mesh, seed)), { untilMyr: 110, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive })).frames;
     const carriedDetail = (seed, A, B) => {
         // the noise-driven detail of the land: the platform minus its smooth interpolation from the records, in plate
         // interiors (no coast, no belt, no flood basalt — records shape those) where the records barely change in 10 Myr
@@ -508,7 +496,7 @@ section('fine detail moves with the crust');
 section('flood basalts through time');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'traps'), world = scene.build(mesh, SEED);
-    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
+    const { frames } = await simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
     for (const f of frames) sceneOf.set(f, scene);
     const lipCells = f => { const a = []; for (let w = 0; w < mesh.numCells; w++) if (f.owner[w] >= 0 && f.type[w] !== CrustType.OCEAN && f.volcType[w] === VolcanicType.LIP) a.push(w); return a; };
     const erupted = frames.find(f => lipCells(f).length > 0).time, at = age => frames.find(f => f.time >= erupted + age - 1e-6);

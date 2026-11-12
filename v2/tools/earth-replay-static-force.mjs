@@ -39,7 +39,7 @@ const mesh = labMesh(CELLS), rot = loadMullerRotations(), earthShare = 1 / 100;
 for (const t0 of T0S) {
     const inputs = await loadStartInputs(mesh, t0), { world, start } = buildEarthStart(mesh, 12345, inputs), cfg = world.config;
     // (lastDt = ∞-ish makes the relaxation blend 1: the balance's target, not a first step from rest)
-    simulate(world, { untilMyr: 0, events: false, drive: w => { w.lastDt = 1e9; updatePlateMotion(w); } });
+    await simulate(world, { untilMyr: 0, events: false, drive: w => { w.lastDt = 1e9; updatePlateMotion(w); } });
     const earthOmega = id => omegaOf(quatMul(rot.total(id, t0 - 0.5 < 0 ? 0 : t0 - 0.5), quatConj(rot.total(id, t0 + 0.5))), t0 < 0.5 ? 0.5 : 1);
     section(`Static force test, Earth at ${t0} Ma, ${CELLS / 1000}K cells (report-only; tunes nothing)`);
     console.log(`caps: continental ${cfg.maxSpeedContinental}, oceanic ${cfg.maxSpeedOceanic} cm/yr; softened at ${cfg.continentalSoftCmYr} / ${cfg.oceanicSoftCmYr}`);

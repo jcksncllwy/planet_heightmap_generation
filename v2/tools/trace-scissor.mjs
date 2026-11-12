@@ -39,7 +39,7 @@ for (const seed of seeds) {
             W.rows.push({ age: due, gaps, alive: W.a.alive && W.b.alive });
         }
     };
-    simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 50 });
+    await simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 50 });
     console.log(`seed ${seed}`);
     for (const W of watch) {
         console.log(`  rift at ${W.t0.toFixed(0)} Myr, ${Math.round(R * Math.acos(W.hinge.from[0] * W.hinge.to[0] + W.hinge.from[1] * W.hinge.to[1] + W.hinge.from[2] * W.hinge.to[2]))} km long — separation (km) at stations ${STATIONS.join(' ')}`);

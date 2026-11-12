@@ -411,3 +411,13 @@ export const COVER = {
     // this hue, saturation and brightness times these — golds, browns, greys and snow as Blue Marble has them
     climateGreen: { from: [40, 58], to: [150, 175], hue: 105, share: 0.5, sat: 1.4, value: 1.3 },
 };
+
+/** The finish's erosion at F.erosionStrength (erosionLevels, linear between the levels): the stream power's m, and its k as a
+ *  multiple of the terrain's (a river draining F.erosionPivotKm2 cuts as fast as before), and the crests' hardness. The
+ *  history's erosion reads it too (tectonics/step/surface-erosion.js): it lives here, not in finish.js, so the history's code
+ *  hash does not take in the whole finish. */
+export function erosionAt(F, cfg) {
+    const L = F.erosionLevels, s = Math.min(L.carveM.length - 1, Math.max(0, F.erosionStrength ?? 0)), i = Math.min(L.carveM.length - 2, Math.floor(s)), f = s - i;
+    const at = a => a[i] + (a[i + 1] - a[i]) * f, m = at(L.carveM);
+    return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), crestHardness: at(L.crestHardness) };
+}

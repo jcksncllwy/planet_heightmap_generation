@@ -66,7 +66,7 @@ for (const seed of seeds) {
     Object.assign(world.config, overrides);
     const solves = []; let seenSolves = 0;
     const drive = w => { scene.drive(w); const n = w.stressLog?.length ?? 0; if (n > seenSolves) { seenSolves = n; solves.push(measure(w)); } };
-    simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 10 });
+    await simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 10 });
     const rifts = world.events.filter(e => e.kind === EventKind.RIFT).length;
     const col = k => solves.map(x => x[k]);
     const per100 = 100 / len;

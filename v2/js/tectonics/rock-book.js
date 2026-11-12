@@ -33,7 +33,8 @@
 //                   buries (ops/tidy-plates.js transferCells, ops/scrape-arc.js, ops/accrete-terrane.js)
 //   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them
 //                   (ops/tidy-plates.js giveToBackground)
-//   fillWornKm3     a hollow's fill worn away with its land — not handed to the rivers (step/heights.js)
+//   erodeClampedKm3 sediment the history's erosion laid where the rivers' own network after it brought no load to take it from
+//                   (step/rivers.js: the GPU routes the erosion, the rivers route again on the eroded ground)
 //   arcAgeingKm3    a hand-laid arc's measure thickening with its age: a term of the measure, booked only while the
 //                   volume ledger runs (simulate.js; crust-ledger.js handLaidArcKm3)
 // Each of these is the cell's rock after less before, in crust-ledger.js cellRockKm3 — the record's own measure — so a

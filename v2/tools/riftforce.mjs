@@ -27,7 +27,7 @@
 
 import { writeFileSync, appendFileSync } from 'node:fs';
 import { labMesh } from './lib/check-kit.mjs';
-import { simulateAsync } from '../js/tectonics/simulate.js';
+import { simulate } from '../js/tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
@@ -204,7 +204,7 @@ for (const seed of seeds) {
             emit({ kind: 'solve', seed, t: r3(w.time), heat: r3(w.mantleHeat.reduce((s, h, c) => s + (F.land[c] ? h : 0), 0) / Math.max(1, F.land.reduce((s, x) => s + x, 0))), plates: res });
         }
     };
-    await simulateAsync(world, { untilMyr: len, drive, snapshotEveryMyr: 10, keepFrames: false }, helpers);
+    await simulate(world, { untilMyr: len, drive, snapshotEveryMyr: 10, keepFrames: false }, helpers);
     const ev = world.events.filter(e => e.kind === EventKind.RIFT || e.kind === EventKind.SUPERCONTINENT).map(e => e.kind === EventKind.RIFT ? ['R', r3(e.time), e.data.cause] : [e.data.up ? 'S' : 'D', r3(e.time)]);
     emit({ kind: 'done', label, seed, cells, len, secs: +((performance.now() - t0) / 1000).toFixed(1), surveySecs: +(surveyMs / 1000).toFixed(1), splitSecs: +(splitMs / 1000).toFixed(1),
         rifts: world.events.filter(e => e.kind === EventKind.RIFT).length, solves: seenSolves, events: ev, config: { plateYieldContinent: world.config.plateYieldContinent } });

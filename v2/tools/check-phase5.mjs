@@ -25,12 +25,12 @@ const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];       // (the Earth r
 const INDIA_MYR = 130;
 const mesh = labMesh(), { xyz, numCells } = mesh;
 
-function run(id, untilMyr, overrides = {}, events = true, seed = SEED) {
+async function run(id, untilMyr, overrides = {}, events = true, seed = SEED) {
     const world = FORCE_SCENES.find(s => s.id === id).build(mesh, seed);
     Object.assign(world.config, NO_WINGS, overrides);           // collisions alone: wings and arcs are Phase 5b
     // what each collision record had booked at each snapshot (its shortening so far, and its closing rate across the seam)
     const booked = [];
-    const { frames, steps } = simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events,
+    const { frames, steps } = await simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events,
         stopAt: w => { booked.push([w.time, new Map([...w.collisions.values()].map(c => [`${c.upper}:${c.lower}`, { km: c.shorteningKm, closing: c.closingCmYr, frontKm: c.frontKm }]))]); return false; } });
     const at = t => frames.find(f => Math.abs(f.time - t) < 1e-6);
     const bookedAt = (t, rec) => booked.find(([bt]) => Math.abs(bt - t) < 1e-6)?.[1].get(`${rec.upper}:${rec.lower}`);
@@ -60,9 +60,9 @@ section('India meets Asia');
 const SEEDS = [SEED, ...MORE_SEEDS], indents = [], judged = new Map(), reported = new Map();      // judged: check name → per-seed samples
 const judge = (seed, name, formed, ok = false, text = '') => (judged.get(name) ?? judged.set(name, []).get(name)).push({ label: seed, formed, ok: formed && ok, text });
 const keep = (name, v) => (reported.get(name) ?? reported.set(name, []).get(name)).push(v);
-const india = run('india', INDIA_MYR), cfg = india.world.config;      // (seed 12345: the ablation and the other sections' config)
+const india = await run('india', INDIA_MYR), cfg = india.world.config;      // (seed 12345: the ablation and the other sections' config)
 for (const seed of SEEDS) {
-    const r = seed === SEED ? india : run('india', INDIA_MYR, {}, true, seed);
+    const r = seed === SEED ? india : await run('india', INDIA_MYR, {}, true, seed);
     const contact = r.events.find(e => e.kind === EventKind.COLLISION), suture = r.sutures[0];
     judge(seed, 'collision and suture events are logged in order', !!contact, suture && suture.time > contact.time, `${r.events.length} events${suture ? `, suture at ${suture.time.toFixed(0)} Myr` : contact ? ', no suture' : ', no collision'}`);
     const J = (name, ok, text) => judge(seed, name, !!suture, ok, text);
@@ -179,7 +179,7 @@ for (const [name, samples] of judged) checkAcross(name, samples, name === INDIA_
         detail: `${per('deepest').map(x => `${x[1]} craton cells carry a record, ${x[2]} of them thickened`).join(' · ')} (craton strength ×${cratonStrengthRatio(cfg).toFixed(2)})` });
     report('peak crustal thickening', per('thick'), { earth: [30, 40], unit: ' km', source: 'Tibet ≈ +35 km, Molnar & Lyon-Caen 1988', digits: 1 });
 
-    const off = run('india', INDIA_MYR, {}, false);
+    const off = await run('india', INDIA_MYR, {}, false);
     check('with the event rules off, the Phase 4 behaviour is unchanged (overlap persists, no suture)', off.sutures.length === 0 && off.collision.at(-1) > 0, `overlap at ${INDIA_MYR} Myr: ${off.collision.at(-1)} cells, ${off.events.length} events`);
 }
 
@@ -190,7 +190,7 @@ section('self-driven Wilson cycle');
     const W = new Map(), J = (seed, name, formed, ok, text) => (W.get(name) ?? W.set(name, []).get(name)).push({ label: seed, formed, ok: formed && ok, text });
     const STALL = 'a seam jammed by buoyant continent stalls — its convergence falls away — and then welds', AFTER = ['East and Far become one plate; West stays separate', 'West carries only its Andean belt', 'no gaps, overlap closed'];
     for (const seed of SEEDS) {
-        const r = run('wilson', 200, {}, true, seed), suture = r.sutures[0];
+        const r = await run('wilson', 200, {}, true, seed), suture = r.sutures[0];
         // buoyant continent does not go down, so once the two jam the seam its convergence falls away (Cloos 1993) — and then
         // the seam welds — once it has stalled: nothing else ends a collision.
         const contact = suture && r.events.find(e => e.kind === EventKind.COLLISION && e.data.upper === suture.data.upper && e.data.lower === suture.data.lower);
@@ -213,7 +213,7 @@ section('self-driven Wilson cycle');
 
 section('Andean margin');
 {
-    const r = run('one-sided', 80), last = r.frames.at(-1), solo = last.plates.find(p => p.name === 'Solo');
+    const r = await run('one-sided', 80), last = r.frames.at(-1), solo = last.plates.find(p => p.name === 'Solo');
     const coast = cellsWhere(numCells, w => last.owner[w] === solo.id && last.type[w] === CrustType.OCEAN && mesh.adjList.subarray(mesh.adjOffset[w], mesh.adjOffset[w + 1]).some(nb => isLand(last, nb)));
     const belt = cellsWhere(numCells, w => isLand(last, w) && last.oroType[w] === OrogenyType.ANDEAN);
     const reach = Math.max(...belt.map(w => nearestKm(mesh, w, coast)));
@@ -227,11 +227,11 @@ section('Andean margin');
         const coastCells = coastOf(frame, plate), d = cellsWhere(numCells, w => isLand(frame, w) && frame.oroType[w] === OrogenyType.ANDEAN).map(w => nearestKm(mesh, w, coastCells)).sort((a, b) => a - b);
         return { p90: d.length ? d[Math.min(d.length - 1, Math.floor(0.9 * d.length))] : NaN, cells: d.length };
     };
-    const widening = [SEED, ...MORE_SEEDS, 3].map(seed => {
-        const q = seed === SEED ? r : run('one-sided', 80, {}, true, seed), a = q.at(40), b = q.at(80), plate = f => f.plates.find(x => x.name === 'Solo');
+    const widening = (await Promise.all([SEED, ...MORE_SEEDS, 3].map(async seed => {
+        const q = seed === SEED ? r : await run('one-sided', 80, {}, true, seed), a = q.at(40), b = q.at(80), plate = f => f.plates.find(x => x.name === 'Solo');
         const w40 = widthP90(a, plate(a)), w80 = widthP90(b, plate(b));
         return { label: seed, formed: w40.cells > 0 && w80.cells > 0, ok: w80.p90 > w40.p90, w40, w80, text: `${w40.cells} belt cells reaching ${w40.p90.toFixed(0)} km (90th percentile) at 40 Myr → ${w80.cells} cells, ${w80.p90.toFixed(0)} km at 80 Myr` };
-    });
+    })));
     checkAcross('the belt widens the longer subduction goes on', widening);
     report('Andean belt width growth: 90th-percentile inland distance, 40 → 80 Myr', widening.filter(x => x.formed).map(x => x.w80.p90 - x.w40.p90), { unit: ' km', digits: 0, source: 'no Earth figure for the rate: the Andes widen as the slab is consumed (Oncken 2006), a process rate not measured here', detail: `seeds ${widening.map(x => x.label).join(', ')}` });
     // the upper plate driving at its trench is what shortens it (Heuret & Lallemand 2005; Oncken 2006 — the convergence rate
@@ -246,7 +246,7 @@ section('Andean margin');
         return (v[0] * out[0] + v[1] * out[1] + v[2] * out[2]) / ol / CM_PER_YR_TO_RAD_PER_MYR;
     };
     const halfDrag = { dragContinent: cfg.dragContinent / 2, dragCraton: cfg.dragCraton / 2 };
-    const fast = run('one-sided', 80, halfDrag), fastLast = fast.frames.at(-1), fastSolo = fastLast.plates.find(p => p.name === 'Solo');
+    const fast = await run('one-sided', 80, halfDrag), fastLast = fast.frames.at(-1), fastSolo = fastLast.plates.find(p => p.name === 'Solo');
     const fastBelt = cellsWhere(numCells, w => isLand(fastLast, w) && fastLast.oroType[w] === OrogenyType.ANDEAN), fastReach = reachAt(fastLast, fastBelt);
     const advance = advanceCmYr(last, solo, belt), fastAdvance = advanceCmYr(fastLast, fastSolo, fastBelt);
     // (checkfix2 2026-11-03: was the single farthest belt cell on one seed, 421 vs 414 km, 7 km under the ~110 km cell: the
@@ -255,14 +255,14 @@ section('Andean margin');
     // 248→310, 261→348, 250→323, 233→351), with 27–46 more cells; the farthest cell alone reverses on 12345 only (421→414; the
     // other five rise by 36–157 km): it is the noisy summary. The history has no spread to perturb here — a no-physics nudge
     // of trenchDenudation leaves the scene bit-identical — so the seed-to-seed spread is the band)
-    const forced = [SEED, ...MORE_SEEDS, 3].map(seed => {
+    const forced = (await Promise.all([SEED, ...MORE_SEEDS, 3].map(async seed => {
         const q = seed === SEED ? { base: last, soloB: solo, baseBelt: belt, fastFrame: fastLast, soloF: fastSolo, fastCells: fastBelt }
-            : (() => { const b = run('one-sided', 80, {}, true, seed).frames.at(-1), f = run('one-sided', 80, halfDrag, true, seed).frames.at(-1), pl = fr => fr.plates.find(x => x.name === 'Solo');
+            : await (async () => { const b = (await run('one-sided', 80, {}, true, seed)).frames.at(-1), f = (await run('one-sided', 80, halfDrag, true, seed)).frames.at(-1), pl = fr => fr.plates.find(x => x.name === 'Solo');
                 return { base: b, soloB: pl(b), baseBelt: cellsWhere(numCells, w => isLand(b, w) && b.oroType[w] === OrogenyType.ANDEAN), fastFrame: f, soloF: pl(f), fastCells: cellsWhere(numCells, w => isLand(f, w) && f.oroType[w] === OrogenyType.ANDEAN) }; })();
         const wb = widthP90(q.base, q.soloB), wf = widthP90(q.fastFrame, q.soloF), advB = advanceCmYr(q.base, q.soloB, q.baseBelt), advF = advanceCmYr(q.fastFrame, q.soloF, q.fastCells);
         return { label: seed, formed: wb.cells > 0 && wf.cells > 0, ok: advF > advB && wf.cells > wb.cells && wf.p90 > wb.p90,
             text: `${advB.toFixed(1)} → ${advF.toFixed(1)} cm/yr: ${wb.cells} → ${wf.cells} cells, 90th percentile ${wb.p90.toFixed(0)} → ${wf.p90.toFixed(0)} km` };
-    });
+    })));
     checkAcross('…and further the faster the upper plate advances on its trench', forced, { detail: 'Solo with half the drag against as built; reach = 90th-percentile distance inland' });
     // the trailing coast (within ±40° of due east of the centre) must carry nothing; a slight rotation may let the rim
     // override old ocean near the tips of the trench, which is a real (small) trench and is allowed

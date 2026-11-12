@@ -175,7 +175,7 @@ async function runNewClimateWith({ planet, N, anchors, lapse, temperature, winds
         // an Evolution world: the V2 engine's whole-planet history (≈ a minute, kept for the next run), its last
         // frame's terrain at N cells — z north, heights in km — exactly what Evolution would hand the climate
         const ending = planet === 'evolutionSuper' ? 'supercontinent' : 'none', key = `${ending}|${N}`;
-        evo = evoWorlds.get(key) ?? evolutionWorld({ ending, cells: N });
+        evo = evoWorlds.get(key) ?? await evolutionWorld({ ending, cells: N });
         evoWorlds.set(key, evo);
         xyz = evo.xyz; elevKm = evo.heightKm; mesh = evo.terrain; axes = 'z-up'; index = evo.terrain.index;
     } else if (planet === 'earth') {

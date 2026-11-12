@@ -23,7 +23,7 @@ for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), mesh = world.mesh, n = mesh.numCells, A = 4 * Math.PI * 6371 * 6371 / n;
     const { adjOffset, adjList } = mesh, edgeKm = mesh.edgeKm, maxHops = Math.round(marginKm / edgeKm), out = [];
     const want = new Set(at.map(t => Math.round(t)));
-    simulateCached(world, { untilMyr: Math.max(...at), drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: Math.max(...at), drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         const t = Math.round(f.time);
         if (!want.has(t)) return;
         const ocean = w => f.owner[w] >= 0 && f.type[w] === CrustType.OCEAN && !(f.seaFillKm[w] > 0);

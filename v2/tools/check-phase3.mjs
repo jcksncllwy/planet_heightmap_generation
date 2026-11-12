@@ -100,10 +100,10 @@ function headingCos(xyz, i, centre, heading) {
     const t = [p[0] - k * centre[0], p[1] - k * centre[1], p[2] - k * centre[2]], length = Math.hypot(t[0], t[1], t[2]) || 1;
     return (t[0] * heading[0] + t[1] * heading[1] + t[2] * heading[2]) / length;
 }
-function nudge(seed, overrides) {
+async function nudge(seed, overrides) {
     const scene = buildNudgeScene(mesh, seed, overrides), continent = scene.world.plates[scene.start.continentId];
     const landBefore = Uint8Array.from(continent.crust.mask, (m, c) => (m && continent.crust.type[c] !== CrustType.OCEAN ? 1 : 0));
-    const { frames } = simulate(scene.world, { untilMyr: NUDGE_MAX_MYR, drive: scene.drive, snapshotEveryMyr: 10, events: false });
+    const { frames } = await simulate(scene.world, { untilMyr: NUDGE_MAX_MYR, drive: scene.drive, snapshotEveryMyr: 10, events: false });
     let landChanged = 0, ahead = 0, behind = 0;
     const { xyz, numCells } = mesh, h = scene.heading, mid = scene.start.centre;
     for (let c = 0; c < numCells; c++) {
@@ -134,7 +134,7 @@ function nudge(seed, overrides) {
 }
 const MIN_TRENCH_KM = 4000;      // a leading rim's worth of trench: the trench must be there before "offshore" means anything
 for (const seed of [2, 12345]) {
-    const withApron = nudge(seed, {});
+    const withApron = await nudge(seed, {});
     check(`nudge, seed ${seed}: crust rules hold`, withApron.gaps === 0 && withApron.landChanged === 0, `${withApron.gaps} gap cells, ${withApron.landChanged} land cells changed`);
     const trenchKm = cells => cells * mesh.edgeKm * Math.sqrt(3) / 2;     // (a line of cells: one per row spacing)
     check(`nudge, seed ${seed}: the trench is offshore`, trenchKm(withApron.trenchOnApron) >= MIN_TRENCH_KM && withApron.trenchOnLand <= 0.05 * withApron.trenchOnApron,

@@ -286,8 +286,8 @@ const plainOf = (m, mature) => (m.youngPlainKm === undefined ? m.plainKm : m.you
 
 /**
  * @returns {Object} per-sim-cell fields (typed arrays of length numCells unless noted):
- *   land (1 = non-ocean crust) · arc (1 = island-arc crust) · craton · riverIncKm / riverKm2 (the history's rivers:
- *   how deep they cut, what they drain; tectonics/step/rivers.js) · coastKm (signed distance to the edge of the continental crust, + inland) ·
+ *   land (1 = non-ocean crust) · arc (1 = island-arc crust) · craton · riverKm2 (the history's rivers: what they drain;
+ *   tectonics/step/rivers.js) · coastKm (signed distance to the edge of the continental crust, + inland) ·
  *   shelfKm / plainKm / slopeKm (from the nearest coast's kind; shelfKm: the datum shoreline's distance from the crust's
  *   edge) · breakKm (the shelf break's: 0 at the crust's edge, a rifted margin's far out on its thinned crust) · thinKm /
  *   riftShare / footKm / openSea (a rifted margin's thinned width, how much of the nearest coast rifted, the sea floor's
@@ -682,7 +682,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         }
     }
 
-    return { coastRaster, land, arc, craton, riverIncKm: frame.riverIncKm, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
+    return { coastRaster, land, arc, craton, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, shieldKm, fillLand, dryHollow, basinCover, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
         seaKm: sl.seaKm, seaRefKm: sl.seaRefKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
 }

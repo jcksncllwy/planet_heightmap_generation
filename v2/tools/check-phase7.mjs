@@ -28,10 +28,10 @@ const pos = w => [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]];
 const kmBetween = (a, b) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * PLANET_RADIUS_KM;
 const continental = (f, w) => f.owner[w] >= 0 && (f.type[w] === CrustType.CONTINENT || f.type[w] === CrustType.CRATON);
 
-function run(id, overrides = {}, seed = SEED) {
+async function run(id, overrides = {}, seed = SEED) {
     const scene = HOTSPOT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
     return { scene, world, frames, steps, events: world.events, last: frames.at(-1) };
 }
 
@@ -46,7 +46,7 @@ function spearman(a, b) {
 
 section('a plate slides over a fixed plume (Hawaii–Emperor)');
 {
-    const r = run('hawaii'), { last, scene } = r, H = last.hotspots[0]?.xyz;
+    const r = await run('hawaii'), { last, scene } = r, H = last.hotspots[0]?.xyz;
     check('one plume, and it stays put in the mantle', !!H && r.frames.filter(f => f.hotspots.length).every(f => f.hotspots.length === 1 && kmBetween(f.hotspots[0].xyz, H) < 1e-6),
         H ? `${last.hotspots[0].name}, at the same mantle position in every frame` : 'no plume');
     const track = cellsWhere(numCells, w => last.volcType[w] === VolcanicType.TRACK && last.owner[w] >= 0);
@@ -109,7 +109,7 @@ section('a plate slides over a fixed plume (Hawaii–Emperor)');
 
 section('a plume head reaches a drifting continent (Deccan)');
 {
-    const r = run('deccan'), { last, scene, world } = r, cfg = world.config, H = last.hotspots[0]?.xyz;
+    const r = await run('deccan'), { last, scene, world } = r, cfg = world.config, H = last.hotspots[0]?.xyz;
     const lipEvent = r.events.find(e => e.kind === EventKind.LIP);
     check('the head floods the continent with basalt the moment it arrives', !!lipEvent && Math.abs(lipEvent.time - scene.arrivesMyr) < SNAPSHOT_MYR + 1e-6 && lipEvent.data.onLand,
         lipEvent ? `${lipEvent.time.toFixed(0)} Myr: ${lipEvent.text}` : 'no LIP');
@@ -166,9 +166,9 @@ section('plumes favour insulated mantle — but not only');
     check('the plume sampler draws under continent at its analytic weight (unit test)', Math.abs(share - analytic) <= 4 * sigma,
         `${(100 * share).toFixed(1)} % of ${draws} draws under continent, which covers ${(100 * landShare).toFixed(0)} % of the planet; weight ${cool} at sea gives ${(100 * analytic).toFixed(1)} % (± ${(100 * sigma).toFixed(1)})`);
 
-    const r = run('history'), { last, frames } = r;
+    const r = await run('history'), { last, frames } = r;
     // (the counts across seeds: the scene's own seed and two more)
-    const others = [SEED + 1, SEED + 2].map(seed => run('history', {}, seed)), runs = [r, ...others];
+    const others = await Promise.all([SEED + 1, SEED + 2].map(seed => run('history', {}, seed))), runs = [r, ...others];
     const headsOf = x => x.events.filter(e => e.kind === EventKind.LIP), onLandShare = x => headsOf(x).filter(e => e.data.onLand).length / Math.max(1, headsOf(x).length);
     report('share of plume heads rising under continent (the rest under open ocean)', runs.map(x => 100 * onLandShare(x)), { digits: 0, unit: ' %', source: 'Earth has both: Deccan, Siberia on land; Ontong Java, Kerguelen at sea',
         detail: runs.map(x => `${headsOf(x).filter(e => e.data.onLand).length} traps, ${headsOf(x).filter(e => !e.data.onLand).length} plateaus`).join(' · ') });
@@ -191,14 +191,14 @@ section('plumes favour insulated mantle — but not only');
 
 section('the plumes of 6a and of 7a are one and the same');
 {
-    const r = run('history', { plumeRiftChance: 1 });
+    const r = await run('history', { plumeRiftChance: 1 });
     const plumeRifts = r.events.filter(e => e.kind === EventKind.RIFT && e.data.cause === 'plume');
     // (a head under a piece of continent too young to rift waits for it — plumeRiftWaitMyr; its LIP erupts on arrival)
     const wait = TECTONICS.plumeRiftWaitMyr;
     const matched = plumeRifts.filter(rift => r.events.some(e => e.kind === EventKind.LIP && e.data.hotspot === rift.data.hotspot && rift.time - e.time > -1e-6 && rift.time - e.time < wait + 1e-6));
     check('a plume head that splits a continent is the same plume that floods it with basalt', plumeRifts.length >= 1 && matched.length === plumeRifts.length,
         `${plumeRifts.length} plume rifts (every head allowed to split); ${matched.length} of them erupted their own LIP when it arrived, at most ${wait} Myr before the rift`);
-    const b = run('history', { plumeRiftChance: 1 });                       // (a replay of r)
+    const b = await run('history', { plumeRiftChance: 1 });                       // (a replay of r)
     check('the same seed replays the same history', r.events.length === b.events.length && r.events.every((e, i) => e.text === b.events[i].text) && r.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
 }
 

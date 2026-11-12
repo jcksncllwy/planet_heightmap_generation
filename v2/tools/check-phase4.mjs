@@ -29,11 +29,11 @@ function landCells(world) {
 }
 
 /** Simulate one Phase 4 scene with the force model as the only source of motion. */
-function run(id, overrides = {}, onMesh = mesh) {
+async function run(id, overrides = {}, onMesh = mesh) {
     const scene = FORCE_SCENES.find(s => s.id === id), world = scene.build(onMesh, SEED);
     Object.assign(world.config, overrides);
     const landBefore = landCells(world);
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // forces alone: collision events are Phase 5
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // forces alone: collision events are Phase 5
     const idOf = Object.fromEntries(frames[0].plates.map(p => [p.name, p.id]));
     const tallies = frames.map(frameTallies);
     return {
@@ -74,7 +74,7 @@ section('the solver');
 }
 
 section('every scene');
-const runs = Object.fromEntries(FORCE_SCENES.map(s => [s.id, run(s.id)]));
+const runs = Object.fromEntries(await Promise.all(FORCE_SCENES.map(async s => [s.id, await run(s.id)])));
 const settled = { continental: [], oceanic: [] };       // per scene: mean settled speed of its continental / oceanic plates
 for (const r of Object.values(runs)) {
     const id = r.scene.id;
@@ -169,7 +169,7 @@ section('India');
     check('it slows sharply on contact', contact > 0 && after < 0.65 * peak, `contact at ${contact} Myr: ${peak.toFixed(1)} → ${after.toFixed(1)} cm/yr (the real India: 20 → 6)`);
     // (the overlap turned into belt, as a budget in km²: Phase 5, with the event rules on)
     report('India: land-on-land overlap at its peak', Math.max(...r.collision) * mesh.cellAreaKm2 / 1e6, { unit: ' Mkm²', detail: 'forces alone, nothing takes it up (the km² budget: Phase 5)' });
-    const stiff = run('india', { slabResistance: 2 * r.world.config.slabResistance }), stiffPeak = Math.max(...stiff.track('India'));
+    const stiff = await run('india', { slabResistance: 2 * r.world.config.slabResistance }), stiffPeak = Math.max(...stiff.track('India'));
     check('its speed is set by slab pull against the mantle’s resistance', stiffPeak < 0.75 * peak, `doubling the slab resistance: peak ${peak.toFixed(1)} → ${stiffPeak.toFixed(1)} cm/yr (×${(stiffPeak / peak).toFixed(2)}; ×0.5 if the resistance were all of it, v ∝ F/η)`);
 }
 
@@ -184,7 +184,7 @@ section('the start world');
 section('the physics responds the way it should');
 {
     const cruise = r => mean(r.track('Solo').slice(frameIndex(30)));
-    const cfg = solo.world.config, heavy = run('one-sided', { dragContinent: 2 * cfg.dragContinent, dragCraton: 2 * cfg.dragCraton }), none = run('one-sided', { slabSuction: 0 });
+    const cfg = solo.world.config, heavy = await run('one-sided', { dragContinent: 2 * cfg.dragContinent, dragCraton: 2 * cfg.dragCraton }), none = await run('one-sided', { slabSuction: 0 });
     check('more continental drag → slower continent', cruise(heavy) < 0.7 * cruise(solo), `${cruise(solo).toFixed(2)} → ${cruise(heavy).toFixed(2)} cm/yr with drag doubled`);
     check('no suction → no motion', Math.max(...none.track('Solo')) < 0.05, `fastest speed with suction off: ${Math.max(...none.track('Solo')).toFixed(3)} cm/yr`);
     // the forces themselves must not depend on the mesh …
@@ -197,7 +197,7 @@ section('the physics responds the way it should');
     const spread = (Math.max(...pulls) - Math.min(...pulls)) / mean(pulls);
     check('forces do not depend on mesh resolution', spread < 0.1, `total trench torque on the same continent at 16K / 40K / 90K cells: ${pulls.map(v => v.toFixed(1)).join(' / ')} (spread ${(spread * 100).toFixed(0)} %)`);
     // … the speed that emerges over time is allowed a wider margin (it also depends on how newly formed trench cells mature)
-    const coarse = run('one-sided', {}, labMesh(16000));
+    const coarse = await run('one-sided', {}, labMesh(16000));
     check('emergent speed is similar on a coarser mesh', Math.abs(cruise(coarse) - cruise(solo)) / cruise(solo) < 0.3,
         `${cruise(solo).toFixed(2)} cm/yr on 40K cells vs ${cruise(coarse).toFixed(2)} on 16K cells (the history always runs on the fixed 40K mesh, whatever the render detail)`);
     report('mesh convergence: emergent speed, 16K against 40K cells', 100 * Math.abs(cruise(coarse) - cruise(solo)) / cruise(solo), { unit: ' %', digits: 0 });

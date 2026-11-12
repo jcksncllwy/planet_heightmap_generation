@@ -24,7 +24,7 @@ const sim = buildSimMesh(40000, 12345), tm = terrainMesh(160000), n = tm.numCell
 const rows = [], seasOf = W => W.seas.filter(s => !s.history && s.km2 >= CLIMATE_MIN_KM2).map(s => ({ Mkm2: +(s.km2 / 1e6).toFixed(2), floorKm: +s.floorKm.toFixed(2), sillKm: +s.sillKm.toFixed(3), levelKm: +s.levelKm.toFixed(3), state: s.full ? 'full' : s.wet ? 'wet' : 'dry', heldKm3: Math.round(s.heldKm3) }));
 for (const [seed, cont, heights] of runs) {
     const cfg = terrainConfig(heights), { world, scene } = pageWorld({ seed, cont, sim: 40000, heights }), frames = [];
-    simulateCached(world, { untilMyr: 1200, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.round(f.time) % EVERY) return; const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time; frames.push(fr); } },
+    await simulateCached(world, { untilMyr: 1200, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.round(f.time) % EVERY) return; const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time; frames.push(fr); } },
         { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim: 40000, by: 'climate-balance-study' } });
     const sampler = sampleOnto(sim, tm, cfg, seed);
     let k = 0;

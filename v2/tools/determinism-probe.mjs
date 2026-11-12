@@ -36,7 +36,7 @@ const emit = o => { const s = JSON.stringify(o); lines.push(s); if (!out) consol
 for (let run = 0; run < repeat; run++) {
     const { scene, world } = pageWorld({ seed, cont, sim });
     const all = crypto.createHash('sha1'), t0 = Date.now();
-    simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: every, keepFrames: false, onFrame: f => {
+    await simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: every, keepFrames: false, onFrame: f => {
         const fields = fieldHashes(f), fh = crypto.createHash('sha1').update(JSON.stringify(fields)).digest('hex').slice(0, 12);
         all.update(fh);
         emit({ run, time: f.time, all: fh, fields });

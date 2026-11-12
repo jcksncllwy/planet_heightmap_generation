@@ -14,8 +14,7 @@ const TUNABLES = [
     { id: 'erosiveConvergenceCmYr', label: 'A margin converging faster than this erodes', min: 2, max: 12, step: 0.5, unit: ' cm/yr' },
     { id: 'accretionSedimentKm', label: '…as does one with less sediment in its trench than', min: 0, max: 3, step: 0.1, unit: ' km' },
     { id: 'marginErosionKmPerMyr', label: '…their coast retreating at', min: 0, max: 10, step: 0.5, unit: ' km/Myr' },
-    { id: 'trenchDenudationKmPerMyr', label: 'Every river basin wears down at', min: 0, max: 0.5, step: 0.01, unit: ' km/Myr' },
-    { id: 'trenchFanReachKm', label: '…its rock running out down its fan to a trench up to', min: 0, max: 5000, step: 100, unit: ' km' },
+    { id: 'trenchFanReachKm', label: 'Every river basin’s rock runs out down its fan to a trench up to', min: 0, max: 5000, step: 100, unit: ' km' },
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
     { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
     { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast while its slab feeds it', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
@@ -44,16 +43,16 @@ const CHECKLISTS = {
     history: [
         'The start world over 600 Myr with every rule on (building takes a while).',
         'The land chart rises — arcs and fore-arc islands add crust — but levels off rather than climbing without end: erosive margins, subduction erosion at every closing trench, sediment carried down the trenches, underthrusting and recycled arcs take some back (stats: the budget so far).',
-        'One rock book (rockBook): the rivers carry only the rock the heights actually wear off the crust, and what basins, seas and shelves keep on continental crust still counts as the continents’ — so sediment going down a trench costs volume, not the coast’s area a second time.',
+        'One rock book: the rivers carry only the rock the history’s erosion actually takes off the crust, and what basins, seas and shelves keep on continental crust still counts as the continents’ — so sediment going down a trench costs volume, not the coast’s area a second time.',
     ],
 };
 
-export function createPhase(simMesh, seed, overrides = {}) {
+export async function createPhase(simMesh, seed, overrides = {}) {
     const scene = BUDGET_SCENES.find(s => s.id === overrides.scene) ?? BUDGET_SCENES[0];
     const world = scene.build(simMesh, seed);
     for (const t of TUNABLES) if (overrides[t.id] !== undefined) world.config[t.id] = overrides[t.id];
     const started = performance.now();
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
     const simMs = performance.now() - started, { cellAreaKm2 } = simMesh;
     const landMkm2 = f => { let n = 0; for (let w = 0; w < f.owner.length; w++) if (f.owner[w] >= 0 && f.type[w] !== CrustType.OCEAN) n++; return n * cellAreaKm2 / 1e6; };
     const series = [{ name: 'land', color: css([200, 190, 150]), points: frames.map(f => [f.time, landMkm2(f)]) }];

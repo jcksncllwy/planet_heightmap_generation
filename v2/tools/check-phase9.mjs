@@ -27,14 +27,14 @@ const SEEDS = [12345, 777, 4242];
 const mesh = labMesh(), n = mesh.numCells;
 const corr = (xs, ys) => { const mx = xs.reduce((s, v) => s + v, 0) / xs.length, my = ys.reduce((s, v) => s + v, 0) / ys.length; let a = 0, b = 0, c = 0; for (let i = 0; i < xs.length; i++) { a += (xs[i] - mx) * (ys[i] - my); b += (xs[i] - mx) ** 2; c += (ys[i] - my) ** 2; } return a / Math.sqrt(b * c); };
 const scene = TERRAIN_SCENES.find(s => s.id === 'history');
-const history = (seed, until) => { const world = onPath(scene.build(mesh, seed)); return simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames; };     // (the history cache: tools/lib/history-cache.mjs)
+const history = async (seed, until) => { const world = onPath(scene.build(mesh, seed)); return (await simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive })).frames; };     // (the history cache: tools/lib/history-cache.mjs)
 const tm = terrainMesh(640000);
 const f2 = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : String(v)), pct = v => f2(100 * v, 1);
 const bySeed = (rows, fn) => rows.map(r => `${r.seed}${r.t ? `@${r.t}` : ''}: ${fn(r)}`).join(' · ');
 
 // ── the frame carries every plate's crust ──
 section('each plate\'s crust in the frame');
-const frames300 = new Map(SEEDS.map(seed => [seed, history(seed, 300)]));
+const frames300 = new Map(await Promise.all(SEEDS.map(async seed => [seed, await history(seed, 300)])));
 const at = (seed, t) => frames300.get(seed).find(f => Math.abs(f.time - t) < 1e-6);
 {
     // (bookkeeping: it must hold in every history)

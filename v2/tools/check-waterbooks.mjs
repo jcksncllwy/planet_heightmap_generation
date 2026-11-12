@@ -44,7 +44,7 @@ section('the books, every frame (history and view)');
 const held = [], falls = [], gaps = [];
 for (const seed of SEEDS) {
     const frames = [], { world } = pageWorld({ seed, cont: CONT, sim: SIM });
-    simulateCached(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         if (Math.round(f.time) % EVERY) return;
         const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]]));
         fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time; frames.push(fr);
@@ -89,7 +89,7 @@ section('the history\'s water, where the view closes a seaway it keeps (831576, 
 {
     const seed = 831576, cont = 41, t = 290, heights = { waterInventory: 1 }, cfg41 = terrainConfig(heights), { world } = pageWorld({ seed, cont, sim: SIM, heights });
     let fr = null;
-    simulateCached(world, { untilMyr: t, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: t, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         if (Math.round(f.time) !== t) return;
         fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time;
     } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim: SIM, by: 'check-waterbooks' } });

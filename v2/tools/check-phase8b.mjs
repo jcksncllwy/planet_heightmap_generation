@@ -17,6 +17,8 @@ import { floodSea } from '../js/terrain/carve.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide } from '../js/terrain/records.js';
+import { surfaceKm } from '../js/tectonics/ocean/inventory.js';
+import { heightsOf } from '../js/tectonics/step/heights.js';
 import { buildAnchor } from '../js/terrain/anchor.js';
 import { locate } from '../js/core/mesh-locate.js';
 import { quatToMat3 } from '../js/core/rotation.js';
@@ -30,9 +32,9 @@ const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).
 const quantile = (a, p) => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
 
-function run(id) {
+async function run(id) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
-    const { frames } = simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
+    const { frames } = await simulateCached(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: scene.maxMyr > 200 ? 50 : 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     return { world, frame: frames.at(-1), frames };
 }
 function carved(frame, cells = 640000) {
@@ -41,7 +43,7 @@ function carved(frame, cells = 640000) {
     return { ...T, tm, seconds: (performance.now() - started) / 1000 };
 }
 
-const history = run('history'), T = carved(history.frame);
+const history = await run('history'), T = carved(history.frame);
 const n = T.tm.numCells, land = t => T.tectonicKm[t] > 0, channelKm2 = 5000;          // (what the checks call a river)
 
 // ── the river network ──
@@ -170,7 +172,7 @@ section('carving');
 // ── plateaus are eaten from their edges ──
 section('a collision plateau');
 {
-    const { frame } = run('india'), I = carved(frame);
+    const { frame } = await run('india'), I = carved(frame);
     // the plateau on the upper plate (u 0.3–0.7 across the belt): most of it keeps most of its height, while gorges cut deep
     const kept = [], cut = [];
     for (let t = 0; t < I.tm.numCells; t++) {
@@ -188,7 +190,7 @@ section('a collision plateau');
 section('rivers through the history');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'history'), world = scene.build(mesh, SEED);
-    const { frames } = simulateCached(world, { untilMyr: 150, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
+    const { frames } = await simulateCached(world, { untilMyr: 150, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
     // big rivers keep their courses: as crust identities (plate, raster cell), still a big river — or beside one — 10 Myr on
     const riverSet = fr => { const A = buildAnchor(fr, mesh), s = new Set(); for (let w = 0; w < mesh.numCells; w++) if (fr.riverKm2[w] >= 5e4) s.add(fr.owner[w] * 1e6 + A.cell[w]); return s; };
     let kept = 0, total = 0;
@@ -207,10 +209,10 @@ section('rivers through the history');
         for (let w = 0; w < mesh.numCells; w++) { if (f.owner[w] < 0 || f.type[w] === 0) continue; if (f.riverKm2[w] >= 1e5) big.push(f.baseKm[w]); else if (f.riverKm2[w] < 3 * cellKm2 && !(f.basinFillKm[w] > 0)) divide.push(f.baseKm[w]); }
         return { seed, time: f.time, big: big.length, ratio: mean(big) / mean(divide), under: mean(big), over: mean(divide) };
     };
-    const own = steer(SEED, frames), others = [1, 2, 777, 4242].map(seed => {
+    const own = steer(SEED, frames), others = (await Promise.all([1, 2, 777, 4242].map(async seed => {
         const sc = TERRAIN_SCENES.find(s => s.id === 'history');
-        return steer(seed, simulateCached(sc.build(mesh, seed), { untilMyr: 50, drive: w => sc.drive(w), snapshotEveryMyr: 10 }, { drive: sc.drive }).frames);
-    }), all = [own, ...others], ratios = all.map(r => r.ratio), mid = median(ratios);
+        return steer(seed, (await simulateCached(sc.build(mesh, seed), { untilMyr: 50, drive: w => sc.drive(w), snapshotEveryMyr: 10 }, { drive: sc.drive })).frames);
+    }))), all = [own, ...others], ratios = all.map(r => r.ratio), mid = median(ratios);
     check('the first continents’ swells steer the history’s rivers into the lowlands between them', all.every(r => r.big >= 100) && mid <= 0.6,
         `at ${own.time} Myr over ${all.length} histories: the swells under big rivers (≥ 100,000 km²) ÷ at the unfilled divides, median ${mid.toFixed(2)} (${all.map(r => `${r.seed}: ${r.ratio.toFixed(2)}`).join(', ')}); ${SEED}: ${own.under.toFixed(2)} km under big rivers, ${own.over.toFixed(2)} km at the divides`);
     // (a floor against flicker only: large drainages persist for tens of Myr on Earth, though they reorganise — the Amazon reversed)
@@ -256,25 +258,34 @@ section('rivers through the history');
         `plate ${p} turned ${(turned * 180 / Math.PI).toFixed(1)}° in 10 Myr: small catchments' drainage correlates ${rides.corr.toFixed(2)} with the same crust 10 Myr before over ${rides.cells} cells; ${fixed.corr.toFixed(2)} over ${fixed.cells} with the records on the world grid`);
 }
 {
-    // gorges: in the India collision, the history's rivers cut through the rising belt, and the terrain shows it
-    const { frame } = run('india');
+    // gorges: in the India collision, the history's rivers cut through the rising belt, and the terrain shows it. Since lane graded
+    // (2026-11-12) the cut is no record of its own (riverIncKm retired): the history's erosion lowers the ground itself, so a gorge
+    // is ground on a great river (≥ 10⁵ km² drained) standing below the land around it (the mean of its land neighbours less
+    // its own height, ocean/inventory.js surfaceKm). Thresholds from main a083057's own figures, measured the same way
+    // (lanes-2026-10-29/graded/gorge.mjs): belt 0.25 km at the 90th percentile, plains 0.03; the terrain on the belt's great
+    // rivers 0.14 km below the belt off them (median)
+    const { frame, world } = await run('india');
+    const z = surfaceKm(frame, mesh, heightsOf(world.config)), { adjOffset, adjList } = mesh, isLand = w => frame.owner[w] >= 0 && frame.type[w] !== 0;
     const inBelt = [], plain = [];
-    for (let w = 0; w < mesh.numCells; w++) { if (frame.owner[w] < 0 || frame.type[w] === 0) continue; (frame.oroType[w] === OrogenyType.HIMALAYAN ? inBelt : frame.oroType[w] ? [] : plain).push(frame.riverIncKm[w]); }
-    check('the history’s rivers cut gorges through the rising belt, not the plains', quantile(inBelt, 0.9) >= 0.5 && quantile(plain, 0.9) < 0.2,
-        `how deep they cut (90th percentile): ${quantile(inBelt, 0.9).toFixed(2)} km in the collision belt, ${quantile(plain, 0.9).toFixed(2)} km on the plains; deepest ${Math.max(...inBelt).toFixed(2)} km`);
-    const tm = terrainMesh(640000), H = synthesizeTerrain(frame, mesh, tm, { seed: SEED, carve: true });
-    const N = synthesizeTerrain({ ...frame, riverIncKm: new Float32Array(frame.riverIncKm.length) }, mesh, tm, { seed: SEED, carve: true });
-    let deeper = 0, most = 0;
-    for (let q = 0; q < tm.numCells; q++) { const d = N.heightKm[q] - H.heightKm[q]; if (d > 0.1) deeper++; most = Math.max(most, d); }
-    check('the terrain draws them: canyons where the history’s rivers held their ways', deeper >= 300 && most >= 1,
-        `${deeper} terrain cells cut more than 100 m deeper than without the history’s rivers; the deepest by ${most.toFixed(2)} km`);
+    for (let w = 0; w < mesh.numCells; w++) {
+        if (!isLand(w) || frame.riverKm2[w] < 1e5) continue;
+        let s = 0, k = 0;
+        for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) if (isLand(adjList[j])) { s += z[adjList[j]]; k++; }
+        if (k) (frame.oroType[w] === OrogenyType.HIMALAYAN ? inBelt : frame.oroType[w] ? [] : plain).push(s / k - z[w]);
+    }
+    check('the history’s rivers cut gorges through the rising belt, deeper than on the plains', quantile(inBelt, 0.9) >= 0.15 && quantile(plain, 0.9) < quantile(inBelt, 0.9),
+        `how far its great rivers stand below the land around them (90th percentile): ${quantile(inBelt, 0.9).toFixed(2)} km in the collision belt (${inBelt.length} cells), ${quantile(plain, 0.9).toFixed(2)} km on the plains (${plain.length})`);
+    const tm = terrainMesh(640000), H = synthesizeTerrain(frame, mesh, tm, { seed: SEED, carve: true }), on = [], off = [];
+    for (let t = 0; t < tm.numCells; t++) { const c = H.sampler.cells[3 * t]; if (frame.oroType[c] === OrogenyType.HIMALAYAN && H.heightKm[t] > 0) (frame.riverKm2[c] >= 1e5 ? on : off).push(H.heightKm[t]); }
+    check('the terrain draws them: canyons where the history’s rivers held their ways', on.length >= 300 && median(off) - median(on) >= 0.1,
+        `in the collision belt, the terrain on the history's great rivers stands ${(median(off) - median(on)).toFixed(2)} km below the belt off them (medians; ${on.length} terrain cells on them)`);
 }
 
 // ── flood basalt is cut into a stair (8b round 6) ──
 section('flood basalt');
 {
     const scene = TERRAIN_SCENES.find(s => s.id === 'traps'), world = scene.build(mesh, SEED);
-    const { frames } = simulateCached(world, { untilMyr: 112, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }), f = frames.at(-1), tm = terrainMesh(640000);
+    const { frames } = await simulateCached(world, { untilMyr: 112, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }), f = frames.at(-1), tm = terrainMesh(640000);
     const A = synthesizeTerrain(f, mesh, tm, { seed: SEED, carve: true, parts: true }), B = synthesizeTerrain(f, mesh, tm, { seed: SEED, carve: true, cfg: { ...TERRAIN, lipStepKm: 0 } });
     // where the stair acted (in the basalt, where it is cut into): cells nearly level (within 20 m) with a neighbour —
     // the treads — measured above the ground under the pile (which has its own swells and grain); with and without the

@@ -44,7 +44,7 @@ export async function momentFrame(root, { seed, cont = DEFAULT_CONT, sim, time, 
     if (cached) return pick(cached, key);
     if (Math.abs(time / 10 - Math.round(time / 10)) > 1e-9) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
     let frame;
-    simulateCached(world, { untilMyr: time, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.abs(f.time - time) < 1e-6) frame = f; } },
+    await simulateCached(world, { untilMyr: time, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.abs(f.time - time) < 1e-6) frame = f; } },
         { drive: scene.drive, spec: { scene: PAGE_SCENE, seed, cont, sim, meshSeed: MESH_SEED, heights: {}, by: 'momentFrame' } });
     if (!frame) throw new Error(`no frame at ${time} Myr (moments come every 10 Myr)`);
     return pick(frame, key);

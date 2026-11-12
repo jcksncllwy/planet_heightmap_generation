@@ -14,7 +14,7 @@ for (const scene of FORCE_SCENES) {
     const world = scene.build(mesh, SEED);
     Object.assign(world.config, over);
     const t0 = Date.now();
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: 2 });
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: 2 });
     console.log(`\n== ${scene.id}  (${steps} steps, ${Date.now() - t0} ms)`);
     for (const f of frames) {
         if (Math.round(f.time) % 10 !== 0) continue;

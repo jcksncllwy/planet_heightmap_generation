@@ -18,7 +18,7 @@ const sim = buildSimMesh(40000, 12345), tm = terrainMesh(CELLS), a = 4*Math.PI*6
 const rows = [];
 for (const [seed, cont, heights] of runs) {
   const cfg = terrainConfig(heights), { world, scene } = pageWorld({ seed, cont, sim: 40000, heights }), frames = [];
-  simulateCached(world, { untilMyr: 1200, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.round(f.time) % EVERY) return; const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time; frames.push(fr); } },
+  await simulateCached(world, { untilMyr: 1200, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (Math.round(f.time) % EVERY) return; const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); fr.time = f.time; frames.push(fr); } },
     { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim: 40000, by: 'dryocean-ratio' } });
   const sampler = sampleOnto(sim, tm, cfg, seed);
   const hv = new Int32Array(tm.numCells); for (let c=0;c<tm.numCells;c++){let k=3*c; if(sampler.weights[k+1]>sampler.weights[k])k++; if(sampler.weights[3*c+2]>sampler.weights[k])k=3*c+2; hv[c]=sampler.cells[k];}

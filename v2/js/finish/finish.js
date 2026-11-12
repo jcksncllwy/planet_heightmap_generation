@@ -6,7 +6,7 @@
 
 import { MinHeap } from '../core/min-heap.js';
 import { cutOffShare, STACK_KYR } from './sea-level-stack.js';
-import { FINISH, COVER } from './finish-config.js';
+import { FINISH, COVER, erosionAt } from './finish-config.js';
 import { LatLonGrid } from './finish-grid.js';
 import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
 import { closedBasins, joinOpenSeas } from './finish-basins.js';
@@ -44,15 +44,6 @@ const R = 6371;
 // third (640K, 2026-10-28)
 const COAST_WORKERS = 3;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-
-/** The finish's erosion at F.erosionStrength (finish-config.js erosionLevels, linear between the levels): the stream power's
- *  m, and its k as a multiple of the terrain's (a river draining F.erosionPivotKm2 cuts as fast as before), and the crests'
- *  hardness. */
-export function erosionAt(F, cfg) {
-    const L = F.erosionLevels, s = Math.min(L.carveM.length - 1, Math.max(0, F.erosionStrength ?? 0)), i = Math.min(L.carveM.length - 2, Math.floor(s)), f = s - i;
-    const at = a => a[i] + (a[i + 1] - a[i]) * f, m = at(L.carveM);
-    return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), crestHardness: at(L.crestHardness) };
-}
 
 /** What runs erosion: the GPU's solver where this page (or Node, with v2/tools/gpu-harness/use-dawn.mjs) has a device, else the CPU's.
  *  Both take the same arguments; `on` says which ran. Below EP.gpuFloodCells closed basins flood on the CPU. */

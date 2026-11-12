@@ -89,7 +89,7 @@ for (const seed of seeds) {
         const m = on.reduce((a, c) => a + st.s1[c], 0) / on.length, mr = on.reduce((a, c) => a + st.s1[c] / st.strength[c], 0) / on.length;
         riftLines.push({ t: Math.round(W.time), pct: +(land.filter(v => v < m).length / land.length).toFixed(3), pctRatio: +(ratio.filter(v => v < mr).length / ratio.length).toFixed(3), s1: +m.toExponential(2) });
     };
-    const run = simulate(world, { untilMyr: len, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame });
+    const run = await simulate(world, { untilMyr: len, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame });
     const ev = world.events, count = k => ev.filter(e => e.kind === k).length;
     const rifts = ev.filter(e => e.kind === EventKind.RIFT);
     const row = { tag, seed, len, sim, set: overrides, s: +((performance.now() - t0) / 1000).toFixed(1), steps: run.steps,

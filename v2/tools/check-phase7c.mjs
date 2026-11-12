@@ -19,18 +19,18 @@ const SEED = 12345, SNAPSHOT_MYR = 2;
 const mesh = labMesh(), { numCells, cellAreaKm2 } = mesh;
 const Mkm2 = cells => cells * cellAreaKm2 / 1e6;
 
-function run(id, overrides = {}, untilMyr = null) {
+async function run(id, overrides = {}, untilMyr = null) {
     const scene = BUDGET_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     Object.assign(world.config, overrides);
     const started = performance.now();
-    const { frames, steps } = simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
+    const { frames, steps } = await simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
     return { world, frames, steps, last: frames.at(-1), seconds: (performance.now() - started) / 1000, events: world.events, budget: world.budget };
 }
 const land = f => countWhere(numCells, w => isLand(f, w));
 
 section('erosive and accretionary margins');
 {
-    const r = run('erosion'), off = run('erosion', { marginErosionKmPerMyr: 0 });
+    const r = await run('erosion'), off = await run('erosion', { marginErosionKmPerMyr: 0 });
     let erosive = 0, accretionary = 0;
     for (const f of r.frames) for (let w = 0; w < numCells; w++) if ((f.margin[w] & Margin.TYPE) === Margin.ACTIVE) { if (f.margin[w] & Margin.EROSIVE) erosive++; else accretionary++; }
     const share = erosive / Math.max(1, erosive + accretionary);
@@ -57,7 +57,7 @@ section('erosive and accretionary margins');
 
 section('a continent slides under another (underthrusting)');
 {
-    const r = run('india'), off = run('india', { underthrustShare: 0 });
+    const r = await run('india'), off = await run('india', { underthrustShare: 0 });
     const sutureOf = x => x.events.find(e => e.kind === EventKind.SUTURE);
     const suture = sutureOf(r);
     check('India reaches Asia and they weld', !!suture, suture ? suture.text.slice(0, 120) : 'no suture');
@@ -79,7 +79,7 @@ section('a continent slides under another (underthrusting)');
 
 section('small arcs go down, big arcs accrete');
 {
-    const r = run('arcs'), off = run('arcs', { arcAccreteThickKm: 0 });
+    const r = await run('arcs'), off = await run('arcs', { arcAccreteThickKm: 0 });
     const recycled = r.events.filter(e => e.kind === EventKind.ARC_RECYCLED);
     check('small arc pieces reaching a continent go down with their slab', r.budget.recycledCells > 0, `${Mkm2(r.budget.recycledCells).toFixed(2)} Mkm² of arc recycled; ${recycled.length} pieces worth naming`);
     const docked = r.events.filter(e => e.kind === EventKind.DOCK && e.data.arc);
@@ -92,7 +92,7 @@ section('small arcs go down, big arcs accrete');
 
 section('the budget over 1000 Myr');
 {
-    const r = run('history', { crustLedger: true }, 1000), at = t => land(nearestFrame(r.frames, t));
+    const r = await run('history', { crustLedger: true }, 1000), at = t => land(nearestFrame(r.frames, t));
     const start = at(0), t300 = at(300), end = at(1000);
     // net growth of continental crust (continent and craton, on the plates' own rasters), from the crust ledger: what
     // each stage made or lost. Earth: near steady state since ~3 Ga — 60–80 % of today's crust by then (Dhuime et al.
@@ -116,7 +116,7 @@ section('the budget over 1000 Myr');
     // use. Speed belongs to timing runs on a quiet machine (SIM_REMOTE=0), not a pass/fail on any machine. Reported: the wall
     // time of the run users make, and the step count, which is deterministic and tracks the work done)
     const user = TERRAIN_SCENES.find(x => x.id === 'history'), uw = user.build(mesh, SEED), started = performance.now();
-    const { steps: userSteps } = simulate(uw, { untilMyr: 1000, drive: w => user.drive(w), snapshotEveryMyr: 50, keepFrames: false });
+    const { steps: userSteps } = await simulate(uw, { untilMyr: 1000, drive: w => user.drive(w), snapshotEveryMyr: 50, keepFrames: false });
     report('1000 Myr wall time, whole-planet pace, ledger off', (performance.now() - started) / 1000, { unit: ' s', digits: 0, source: 'no Earth figure: the time a user\'s history takes on this machine under whatever else is running; the step count below is the deterministic measure',
         detail: `${userSteps} steps; the run above (ledger on, fine pace) took ${r.seconds.toFixed(0)} s in ${r.steps} steps` });
     report('1000 Myr steps, whole-planet pace', userSteps, { digits: 0, source: 'no Earth figure: a deterministic count of the work a whole history takes (983 on 12345 at 40K cells, 2026-10-30)' });

@@ -23,7 +23,7 @@ const r = x => Math.round(x), r2 = x => Math.round(100 * x) / 100;
 
 for (const seed of seeds) {
     const world = onPath(scene.build(mesh, seed));
-    const { frames } = simulateCached(world, { untilMyr: Math.max(...times), drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
+    const { frames } = await simulateCached(world, { untilMyr: Math.max(...times), drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
     const H = heightsOf(world.config);
     for (const time of times) {
         const F = frames.find(f => f.time === time);

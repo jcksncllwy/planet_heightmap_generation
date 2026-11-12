@@ -35,7 +35,7 @@ await checkLabPhaseLoads('../../js/app/phases/phase8b-rivers.js', mesh, LAB_MESH
 
 section('slider ranges');
 {   // The spacing promises hold at both ends of every slider the lab offers (read from the lab module, so the two cannot drift apart).
-    const sliders = createPhase(mesh, LAB_MESH_SEED).params.filter(p => !p.options);
+    const sliders = (await createPhase(mesh, LAB_MESH_SEED)).params.filter(p => !p.options);
     const settings = sliders.flatMap(p => [{ [p.id]: p.min }, { [p.id]: p.max }]);
     for (const end of ['min', 'max']) settings.push(Object.fromEntries(sliders.filter(p => /^cratonMin/.test(p.id)).map(p => [p.id, p[end]])));
     const bad = [];

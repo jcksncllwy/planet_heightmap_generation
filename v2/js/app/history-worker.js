@@ -5,7 +5,7 @@
 // Where it can start workers of its own, a few helpers (app/helper-pool.js) take the pieces of the work that do not depend
 // on one another — the start world's layout attempts, each rift's junctions — side by side: the same history, sooner.
 
-import { simulate, simulateAsync } from '../tectonics/simulate.js';
+import { simulate } from '../tectonics/simulate.js';
 import { TERRAIN_SCENES } from '../tectonics/scenarios/terrain-scenes.js';
 import { meshFromArrays } from '../core/sim-mesh.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
@@ -13,7 +13,7 @@ import { packFrame } from '../tectonics/frame-pack.js';
 import { historyEnding } from '../tectonics/ending.js';
 import { HelperPool } from './helper-pool.js';
 import { HISTORY_CODE } from './history-code.js';
-import { historyKey, mathFingerprint } from './history-key.js';
+import { historyKey, mathFingerprint, gpuFingerprint } from './history-key.js';
 import { HistoryUpload } from './history-upload.js';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
 
@@ -35,7 +35,7 @@ const send = frame => {
     self.postMessage({ type: 'frame', frame: packed }, transfer);
 };
 // (with helpers, or right here — the same history either way)
-const run = (world, opts) => (helpers ? simulateAsync(world, opts, helpers) : simulate(world, opts));
+const run = (world, opts) => simulate(world, opts, helpers);
 
 async function helpersFor(simMesh) {
     if (helpers || typeof Worker === 'undefined') return helpers;
@@ -67,8 +67,9 @@ self.onmessage = async ({ data }) => {
         const world = helpers && scene.buildAsync ? await scene.buildAsync(simMesh, seed, start, helpers) : scene.build(simMesh, seed, start);
         world.config.heights = terrainConfig(heights);                 // (the heights evolve with these; the history itself ignores them)
         const { untilMyr, stopAt } = historyEnding(lengthMyr ?? scene.maxMyr, ending, world.config);      // (a chosen ending: it may run on)
+        const gpu = await gpuFingerprint();                                  // (a GPU is required: refuses clearly here, before anything runs)
         const key = data.save && HISTORY_CODE ? historyKey(HISTORY_CODE, world, scene.drive) : null;      // (the start world, as it will run)
-        upload = key ? new HistoryUpload(key, { scene: sceneId, list, seed, start, heights, cells: simMesh.numCells, code: HISTORY_CODE, math: mathFingerprint(), engine: self.navigator?.userAgent ?? null, ...data.saveSpec }) : null;
+        upload = key ? new HistoryUpload(key, { scene: sceneId, list, seed, start, heights, cells: simMesh.numCells, code: HISTORY_CODE, math: mathFingerprint(), gpu, engine: self.navigator?.userAgent ?? null, ...data.saveSpec }) : null;
         grid = world.config.stepGridMyr;
         if (key) self.postMessage({ type: 'cache', key, code: HISTORY_CODE });
         packMs = 0;

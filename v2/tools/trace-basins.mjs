@@ -46,11 +46,11 @@ function historyHollows(world) {
     for (let i = 0; i < q0.length; i++) for (let k = adjOffset[q0[i]]; k < adjOffset[q0[i] + 1]; k++) { const nb = adjList[k]; if (D.land[nb] && D.height[nb] < 0 && !drowned[nb]) { drowned[nb] = 1; q0.push(nb); } }
     let landKm2 = 0;
     for (let w = 0; w < n; w++) if (D.land[w] && !drowned[w]) { landKm2 += cellKm2; depth[w] = Math.max(0, D.fill[w] - D.height[w]); }
-    // the parts of a cell's height (km): its column, belts' uplift, the start's swells, the mantle's swell, the cut
+    // the parts of a cell's height (km): its column, belts' uplift, the start's swells, the mantle's swell
     const parts = w => {
         const crust = plates[owner[w]].crust, c = ownerCell[w], t = crust.type[c];
-        if (t === CrustType.OCEAN) return { col: 0, up: 0, base: 0, swell: D.swellKm[w] - landRef, cut: 0 };
-        return { col: t === CrustType.ARC ? 0 : C.ref[t] + C.slope[t] * crust.rootKm[c], up: crust.upliftKm[c], base: crust.baseKm[c], swell: D.swellKm[w] - landRef, cut: -crust.riverIncKm[c] };
+        if (t === CrustType.OCEAN) return { col: 0, up: 0, base: 0, swell: D.swellKm[w] - landRef };
+        return { col: t === CrustType.ARC ? 0 : C.ref[t] + C.slope[t] * crust.rootKm[c], up: crust.upliftKm[c], base: crust.baseKm[c], swell: D.swellKm[w] - landRef };
     };
     const comp = new Int32Array(n).fill(-1), list = [];
     let belowKm2 = 0, volKm3 = 0;
@@ -82,8 +82,8 @@ for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim });
     const frames = new Map(), depths = new Map(), t0 = Date.now();
     console.log(`\n── seed ${seed} (cont ${cont}, sim ${sim}) ──`);
-    console.log('  Myr   land Mkm²  below spill Mkm² (% land)  volume Mkm³  hollows≥1e4km²  largest: Mkm², deepest km, at · why (rim − floor, km: col up base swell cut) · age (crust, since belt) ');
-    simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    console.log('  Myr   land Mkm²  below spill Mkm² (% land)  volume Mkm³  hollows≥1e4km²  largest: Mkm², deepest km, at · why (rim − floor, km: col up base swell) · age (crust, since belt) ');
+    await simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         const t = Math.round(f.time);
         if (t === 0) return;
         const fin = finishAt.includes(t);

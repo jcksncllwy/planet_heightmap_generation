@@ -29,6 +29,7 @@ import { appendFileSync } from 'node:fs';
 // browser, instead of on the frozen CPU path. A GEO_SIM_ variable, so sim-slots carries it to Chroma, whose jobs find the
 // `webgpu` package in its shared node_modules (a D3D12 adapter). The finish's suites run with it; the GCP gate VMs have no GPU.
 if (process.env.GEO_SIM_DAWN === '1') await import('../gpu-harness/use-dawn.mjs');
+import '../gpu-harness/history-dawn.mjs';      // (the history's erosion: a GPU always — lane graded; the finish's engine as above)
 
 setDelaunator(Delaunator);      // the browser gets Delaunator from a <script> tag; Node has to hand it over
 

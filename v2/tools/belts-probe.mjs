@@ -41,7 +41,7 @@ for (const seed of seeds) {
         return Object.fromEntries(Object.entries(b).map(([k, t]) => [k, +((t[0] * f.a[0] + t[1] * f.a[1] + t[2] * f.a[2]) * EN).toFixed(2)]).filter(([, v]) => v !== 0)); };
     const speed = p => p?.alive === false ? null : Math.hypot(...(p.omega ?? [0, 0, 0])) / CM_PER_YR_TO_RAD_PER_MYR;
     const cmyr = (w, x) => +((w[0] * x[0] + w[1] * x[1] + w[2] * x[2]) / CM_PER_YR_TO_RAD_PER_MYR).toFixed(2);
-    simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: 1, events: true, stopAt: w => {
+    await simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: 1, events: true, stopAt: w => {
         const rec = [...w.collisions.values()].find(c => [c.upper, c.lower].includes(india.id) && [c.upper, c.lower].includes(asia.id));
         rows.push({ t: w.time, vI: speed(india), vA: speed(asia), closing: rec?.closingCmYr ?? null, km: rec?.shorteningKm ?? null,
             front: rec?.frontKm ?? null, stalled: rec?.stalledMyr ?? null, started: rec?.startedAt ?? null, sutured: !!rec?.sutured });

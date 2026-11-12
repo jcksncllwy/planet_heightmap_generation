@@ -13,12 +13,12 @@ import { colorByCrustType, colorByTerrane, colorByWeakness, colorByPlate, colorB
 import { BoundaryKind } from '../../tectonics/model/world.js';
 
 
-export function createPhase(simMesh, seed, overrides = {}) {
+export async function createPhase(simMesh, seed, overrides = {}) {
     const t0 = performance.now();
     const { world, start, drive, pole } = buildNudgeScene(simMesh, seed, overrides);
     const measured = measureStartWorld(world, start);       // before anything moves
     const genMs = performance.now() - t0;
-    const { frames } = simulate(world, { untilMyr: NUDGE_MAX_MYR, drive, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
+    const { frames } = await simulate(world, { untilMyr: NUDGE_MAX_MYR, drive, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
     const cfg = start.config, centre = xyzToLatLon(start.centre[0], start.centre[1], start.centre[2]);
     const letterOf = id => start.cratons[id - 1]?.letter ?? '?';
     const mat = new Float64Array(9);

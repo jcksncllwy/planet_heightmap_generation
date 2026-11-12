@@ -5,7 +5,7 @@
 // recorded, simulate.js), and report, per group of fields, the first frame at which the two differ and by how much:
 //   mask   the land and the sea as the terrain stands them (terrain/land-mask.js, under each variant's own heights)
 //   rivers the drained area (riverKm2)
-//   rock   what the rivers and the sea lay down and cut (riverIncKm, basinFillKm, seaFillKm, shelfKm3, riseKm3)
+//   rock   what the rivers and the sea lay down (basinFillKm, seaFillKm, shelfKm3, riseKm3)
 //   crust  the crust itself (type, thickKm, rootKm, upliftKm)
 //   owner  which plate holds each cell
 //   forces each plate's rotation (omega) — the torque balance's outcome
@@ -25,7 +25,7 @@ const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ?
 const SCENE = arg('scene', 'breakup'), SEED = Number(arg('seed', 12345)), A = arg('a', 'path=0'), B = arg('b', 'water=0');
 const mesh = labMesh(), n = mesh.numCells;
 const scenes = {
-    breakup: { build: seed => RIFT_SCENES.find(s => s.id === 'breakup').build(mesh, seed), drive: updatePlateMotion, maxMyr: 300, config: { crustLedger: true } },   // (phase 6's run('breakup'))
+    breakup: { build: seed => RIFT_SCENES.find(s => s.id === 'breakup').build(mesh, seed), drive: updatePlateMotion, maxMyr: 300, config: { crustLedger: true } },   // (phase 6's await run('breakup'))
     start: { build: seed => BUDGET_SCENES.find(s => s.id === 'history').build(mesh, seed), drive: BUDGET_SCENES.find(s => s.id === 'history').drive, maxMyr: 600, config: {} },   // (phase 11's whole histories)
 };
 const sc = scenes[SCENE], UNTIL = Number(arg('until', sc.maxMyr));
@@ -42,10 +42,10 @@ function variantWorld(spec) {
     return world;
 }
 
-const GROUPS = { rivers: ['riverKm2'], rock: ['riverIncKm', 'basinFillKm', 'seaFillKm', 'shelfKm3', 'riseKm3'], crust: ['type', 'thickKm', 'rootKm', 'upliftKm'], owner: ['owner'] };
-function run(spec) {
+const GROUPS = { rivers: ['riverKm2'], rock: ['basinFillKm', 'seaFillKm', 'shelfKm3', 'riseKm3'], crust: ['type', 'thickKm', 'rootKm', 'upliftKm'], owner: ['owner'] };
+async function run(spec) {
     const world = variantWorld(spec), H = heightsOf(world.config), out = {}, frames = [];
-    simulate(world, { untilMyr: UNTIL, drive: sc.drive, snapshotEveryMyr: world.config.stepGridMyr, keepFrames: false, onFrame: f => {
+    await simulate(world, { untilMyr: UNTIL, drive: sc.drive, snapshotEveryMyr: world.config.stepGridMyr, keepFrames: false, onFrame: f => {
         const keep = { time: f.time, mask: landMask(f, mesh, H, out).land.slice(), omega: f.plates.map(p => p.alive ? [...p.omega] : null), names: f.plates.map(p => p.name) };
         for (const fields of Object.values(GROUPS)) for (const k of fields) keep[k] = f[k].slice();
         frames.push(keep);
@@ -55,7 +55,7 @@ function run(spec) {
     return { frames, contacts, events: world.events.length };
 }
 
-const t0 = performance.now(), a = run(A), b = run(B);
+const t0 = performance.now(), a = await run(A), b = await run(B);
 const differs = (x, y) => { let c = 0, m = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) { c++; m = Math.max(m, Math.abs(x[i] - y[i])); } return { c, m }; };
 const first = {};
 for (let i = 0; i < Math.min(a.frames.length, b.frames.length); i++) {

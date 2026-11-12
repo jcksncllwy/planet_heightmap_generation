@@ -60,7 +60,7 @@ for (const seed of seeds) {
     Object.assign(world.config, { crustLedger: true }, overrides);
     world.founderTrace = { between: {}, inside: {} };                  // (subduction-init.js tallies where candidates are lost)
     const seas = [], shape = [];
-    simulate(world, { untilMyr: len, drive: scene.drive, snapshotEveryMyr: 50, onFrame: f => { if (f.time > 0) { seas.push({ t: f.time, s: caughtSeas(world) }); shape.push({ t: f.time, ...plateShape(world) }); } } });
+    await simulate(world, { untilMyr: len, drive: scene.drive, snapshotEveryMyr: 50, onFrame: f => { if (f.time > 0) { seas.push({ t: f.time, s: caughtSeas(world) }); shape.push({ t: f.time, ...plateShape(world) }); } } });
     const inits = world.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT);
     const kind = e => e.data.sealed ? 'sealed' : e.data.across ? 'across' : e.data.stress !== undefined ? 'inside' : 'between';
     console.log(`seed ${seed}: ${((performance.now() - t0) / 1000).toFixed(0)} s, ${inits.length} trenches born`);

@@ -78,13 +78,13 @@ const SCENES = [
     },
 ];
 
-export function createPhase(simMesh, seed, overrides = {}) {
+export async function createPhase(simMesh, seed, overrides = {}) {
     const scene = SCENES.find(s => s.id === overrides.scene) ?? SCENES[0], base = FORCE_SCENES.find(s => s.id === scene.base) ?? COLLISION_SCENES.find(s => s.id === scene.base);
     const world = base.build(simMesh, seed);
     Object.assign(world.config, NO_WINGS);
     for (const t of TUNABLES) if (overrides[t.id] !== undefined) world.config[t.id] = overrides[t.id];
     const started = performance.now();
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });
     const simMs = performance.now() - started;
     const last = frames.at(-1);
     const movers = frames[0].plates.filter(p => !p.isBackground);

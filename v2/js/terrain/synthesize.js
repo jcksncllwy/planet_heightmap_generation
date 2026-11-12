@@ -88,10 +88,10 @@ export function surfaceParts(n) {
     return { platform: new Float32Array(n), relief: new Float32Array(n), stripes: new Float32Array(n), cones: new Float32Array(n), lip: new Float32Array(n), dcoast: new Float32Array(n), dshelf: new Float32Array(n), dplain: new Float32Array(n), dcoastRaw: new Float32Array(n) };
 }
 
-/** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro, inc; carve.js), and the history's
+/** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro; carve.js), and the history's
  *  tectonic rise for the finish's erosion (lift, km/Myr). */
 export function carveInputs(n) {
-    return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), inc: new Float32Array(n), hold: new Float32Array(n),
+    return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), hold: new Float32Array(n),
         lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n), soft: new Float32Array(n), lift: new Float32Array(n) };
 }
 
@@ -433,7 +433,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
     // (each shield's mantle: the swell under its craton cells, on average, against the land's reference — +1 over fully
     // insulated mantle, −1 over fully cooled, 0 without a swell; the same in every chunk: read from the records)
     const shieldMantle = shieldMantleOf(rec, cfg);
-    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, riverIncKm, platformKm, shieldKm, fillLand, basinCover, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm, thinShare, stretchShare } = rec;
+    const { coastKm, coastKind, land, arc: arcCrust, craton, quietMyr, kind: beltKind, platformKm, shieldKm, fillLand, basinCover, upliftKm, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, depthKm, shelfKm, plainKm, maturity, slopeKm, breakKm, thinKm, riftShare, footKm, openSea, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, armKm, iceSoft, fractureU, coastRugged, envShape, rootShape, isoKm, thinShare, stretchShare } = rec;
     const seaKm = rec.seaKm ?? 0;
     // a rifted margin's cross-section (margins.js): its thinned crust's subsidence, and the sediment's top — the shelf, graded
     // from the datum shoreline down to its break, then the prism's front down the slope (an enclosed sea's rim filled to a
@@ -1035,9 +1035,6 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             carve.lipNoise[i] = basalt > 0 ? 1.6 * noise.fbm(x * lipNoiseF + 2.9, y * lipNoiseF + 1.3, z * lipNoiseF + 6.1, 3, 0.5) : 0;
             if (basalt > 0) carve.k[i] *= 1 - cfg.lipHardness * basalt;
             carve.micro[i] = cfg.carveMicroKm * noise.fbm(x * microF + 7.3, y * microF + 2.9, z * microF + 5.1, 3, 0.5) * 1.6;
-            // how deep the history's rivers cut here (8b-2), over the land corners
-            const l0 = land[c0] ? w0 : 0, l1 = land[c1] ? w1 : 0, l2 = land[c2] ? w2 : 0, lw2 = l0 + l1 + l2;
-            carve.inc[i] = coast >= 0 && lw2 > 0 ? (l0 * riverIncKm[c0] + l1 * riverIncKm[c1] + l2 * riverIncKm[c2]) / lw2 : 0;
             // how soft the rock is to the ice (records.js iceSoft), a shield by its edge line
             const soft = w0 * iceSoft[c0] + w1 * iceSoft[c1] + w2 * iceSoft[c2];
             carve.soft[i] = soft + (cfg.iceSoftShield - soft) * shield;

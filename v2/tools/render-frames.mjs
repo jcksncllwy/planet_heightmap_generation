@@ -35,7 +35,7 @@ if (!paint || (!forceScene && sceneId !== 'wilson2')) {
 const mesh = labMesh();
 const world = forceScene ? forceScene.build(mesh, LAB_MESH_SEED) : buildWilsonWorld(mesh, LAB_MESH_SEED);
 const started = performance.now();
-const { frames, steps } = simulate(world, { untilMyr: forceScene ? forceScene.maxMyr : WILSON_MAX_MYR, drive: forceScene ? (forceScene.drive ? w => forceScene.drive(w) : updatePlateMotion) : driveWilson, snapshotEveryMyr: 2, events });
+const { frames, steps } = await simulate(world, { untilMyr: forceScene ? forceScene.maxMyr : WILSON_MAX_MYR, drive: forceScene ? (forceScene.drive ? w => forceScene.drive(w) : updatePlateMotion) : driveWilson, snapshotEveryMyr: 2, events });
 console.log(`${steps} steps, ${frames.length} frames in ${(performance.now() - started).toFixed(0)} ms; budget`, world.budget);
 
 const raster = new MapRaster(mesh, 1024), rgb = new Uint8Array(mesh.numCells * 3);

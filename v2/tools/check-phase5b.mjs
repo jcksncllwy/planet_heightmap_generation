@@ -23,10 +23,10 @@ import { EventKind } from '../js/tectonics/model/world.js';
 const SEED = 12345, SNAPSHOT_MYR = 2, MORE_SEEDS = [1, 2];      // (the Earth reports also look at a few other seeds)
 const mesh = labMesh(), { xyz, numCells, adjOffset, adjList } = mesh;
 
-function run(id, overrides = {}, seed = SEED, drive = updatePlateMotion) {
+async function run(id, overrides = {}, seed = SEED, drive = updatePlateMotion) {
     const scene = EVENT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, NO_RIFTS, { crustLedger: true }, overrides);   // wings, arcs and terranes alone: rifting is Phase 6 (the ledger books the crust)
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive, snapshotEveryMyr: SNAPSHOT_MYR });
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive, snapshotEveryMyr: SNAPSHOT_MYR });
     const idOf = Object.fromEntries(frames[0].plates.map(p => [p.name, p.id]));
     return { scene, world, frames, steps, idOf, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6), events: world.events, plate: (name, t) => frames.find(f => Math.abs(f.time - t) < 1e-6).plates[idOf[name]] };
 }
@@ -42,7 +42,7 @@ function overridingAgainst(f, a, b) {
 
 section('trench wings & island arc');
 {
-    const r = run('wings'), cfg = r.world.config, last = r.frames.at(-1), solo = r.idOf.Solo;
+    const r = await run('wings'), cfg = r.world.config, last = r.frames.at(-1), solo = r.idOf.Solo;
     const wingsAt = t => tallies(r.at(t), mesh).wingCells;
     check('the trench reaches past the land and stays there (arcs accreting bring the land closer, so the count need not rise)', wingsAt(0) === 0 && wingsAt(40) > 0 && wingsAt(100) > 0,
         `trench cells more than 600 km from any land: ${wingsAt(0)} at 0 Myr, ${wingsAt(40)} at 40, ${wingsAt(100)} at 100`);
@@ -61,7 +61,7 @@ section('trench wings & island arc');
         const cells = cellsWhere(numCells, w => f100.owner[w] === id).length, land = cellsWhere(numCells, w => f100.owner[w] === id && isLand(f100, w)).length;
         return { mean: mean(sp), lo: Math.min(...sp), hi: Math.max(...sp), landShare: land / cells };
     };
-    const speeds = [speedOf(r), ...MORE_SEEDS.map(seed => speedOf(run('wings', {}, seed)))];
+    const speeds = [speedOf(r), ...(await Promise.all(MORE_SEEDS.map(async seed => speedOf(await run('wings', {}, seed)))))];
     report('the continent’s mean speed over 30–150 Myr', speeds.map(s => s.mean), { earth: [1, 4], unit: ' cm/yr', source: 'plates carrying much continent, Forsyth & Uyeda 1975',
         detail: `seeds ${[SEED, ...MORE_SEEDS].join(', ')}: ${speeds.map(s => `${s.lo.toFixed(1)}–${s.hi.toFixed(1)} cm/yr with ${(100 * s.landShare).toFixed(0)} % of the plate land`).join(' · ')}` });
     const arcs = cellsWhere(numCells, w => last.owner[w] >= 0 && last.type[w] === CrustType.ARC);
@@ -115,7 +115,7 @@ section('microcontinent docks');
     // (terrane or suture is the hand-set terraneMaxAreaKm2 — 1.2 Mkm², no physical basis: width and buoyancy decide, Yan et
     // al. 2024 — the mechanism is what is tested: a small buoyant block clogs the trench and accretes, Tetreault & Buiter 2012)
     // (the microcontinent's own docking — an island arc Rider builds at its own trench may dock before it)
-    const r = run('terrane'), dock = r.events.find(e => e.kind === EventKind.DOCK && !e.data.arc);
+    const r = await run('terrane'), dock = r.events.find(e => e.kind === EventKind.DOCK && !e.data.arc);
     check('the microcontinent accretes as a terrane (no suture, no plateau)', !!dock && !r.events.some(e => e.kind === EventKind.SUTURE), dock ? dock.text : 'no accretion event');
     if (dock) {
         const before = r.frames.filter(f => f.time < dock.time).at(-1), after = r.frames.find(f => f.time >= dock.time + 4), last = r.frames.at(-1);
@@ -137,7 +137,7 @@ section('microcontinent docks');
 
 section('arc meets a passive margin');
 {
-    const r = run('arc'), dock = r.events.find(e => e.kind === EventKind.DOCK);
+    const r = await run('arc'), dock = r.events.find(e => e.kind === EventKind.DOCK);
     check('the arc accretes onto the continent', !!dock && dock.data.arc && dock.data.host === r.idOf.Austral, dock ? dock.text : 'no accretion event');
     if (dock) {
         const austral = r.idOf.Austral, oceanica = r.idOf.Oceanica;
@@ -200,7 +200,7 @@ section('the accreted arc is joined to the coast');
         return { label: seed, formed: near.length >= 30, ok: share >= JOINED_FLOOR, share, all: arcAll.length ? arcAll.filter(w => joined.has(w)).length / arcAll.length : NaN,
             text: `${attached} of ${near.length} arc cells within ${reach} km of the mainland joined to it at ${end.time} Myr (${(100 * share).toFixed(0)} %; of all ${arcAll.length} cells ${(100 * (arcAll.filter(w => joined.has(w)).length / Math.max(1, arcAll.length))).toFixed(0)} %)` };
     };
-    const seeds = [SEED, 1, 2, 3, 4, 5], samples = seeds.map(seed => joinedShare(run('arc', {}, seed), seed));
+    const seeds = [SEED, 1, 2, 3, 4, 5], samples = (await Promise.all(seeds.map(async seed => joinedShare(await run('arc', {}, seed), seed))));
     checkAcross(`the accreted arc ends up joined to the coast: at least ${100 * JOINED_FLOOR} % of the arc within reach of it`, samples, { detail: 'the floor is a mechanism test, not an Earth figure' });
     report('accreted arc joined to the mainland (arc cells within arcCollapseKm of it)', samples.filter(x => x.formed).map(x => 100 * x.share), { unit: ' %', digits: 0, source: 'no Earth figure: a process the sim\'s own collapse rule governs',
         detail: `seeds ${seeds.join(', ')} at the end of the scene` });
@@ -223,13 +223,13 @@ section('arcs between closing continents');
         if (W?.alive) W.omega = [0, 0, rate];
         if (E?.alive) E.omega = [0, 0, -rate];
     };
-    const each = SCENE_SEEDS.map(seed => {
-        const r = run('arc-collision', {}, seed, closing);
+    const each = (await Promise.all(SCENE_SEEDS.map(async seed => {
+        const r = await run('arc-collision', {}, seed, closing);
         const scraped = [...r.world.arcScrapes.values()], firstScrape = scraped.length ? Math.min(...scraped.map(s => s.since)) : null;
         const suture = r.events.find(e => e.kind === EventKind.SUTURE), collision = r.events.find(e => e.kind === EventKind.COLLISION), shortening = suture?.data.shorteningKm ?? 0;
         const L = r.world.ledger, stages = Object.entries(L.stages), made = stages.reduce((sum, [k, e]) => sum + (k === 'orogenicCollapse' ? 0 : Math.max(0, e.land)), 0), net = stages.reduce((sum, [, e]) => sum + e.land, 0), myr = r.frames.at(-1).time;
         return { seed, r, scraped, firstScrape, suture, collision, shortening, L, made, net, myr, booked: key => stages.reduce((sum, [, e]) => sum + e[key], 0) };
-    });
+    })));
     // (the scene formed where an arc was scraped at all; a history where neither arc was is the scene's chance, counted)
     const across = (name, ok, text) => checkAcross(name, each.map(e => ({ label: e.seed, formed: e.scraped.length > 0, ok: ok(e), text: text(e) })), { scene: name === 'arc crust is scraped off at the contact, not welded there' ? 'arcs between closing continents' : null });
     across('arc crust is scraped off at the contact, not welded there', e => e.scraped.length === 2 && e.scraped.every(s => s.cells > 0),

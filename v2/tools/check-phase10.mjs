@@ -24,10 +24,10 @@ import { buildAnchor } from '../js/terrain/anchor.js';
 const SEED = 12345, SCENE_SEEDS = [SEED, 1, 2], PLANET_SEEDS = [SEED, 777, 4242];
 const mesh = labMesh(), n = mesh.numCells;
 const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[s.length >> 1]; };
-const run = (id, until, overrides = null, seed = SEED) => {
+const run = async (id, until, overrides = null, seed = SEED) => {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = onPath(scene.build(mesh, seed));
     if (overrides) Object.assign(world.config, overrides);
-    const { frames } = simulateCached(world, { untilMyr: until ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
+    const { frames } = await simulateCached(world, { untilMyr: until ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });     // (the history cache: tools/lib/history-cache.mjs)
     // (events: the last frame's — the world is not run when the history comes from the cache)
     return { world, frames, frame: frames.at(-1), events: frames.at(-1).events };
 };
@@ -53,7 +53,7 @@ function crossSection(F, T, tm, pressed, mine) {
 
 // ── the rim belts: onto a craton's rim, never its core; records only ──
 section('a belt rides onto a craton\'s rim');
-const cr = run('cratons'), cfg = cr.world.config;
+const cr = await run('cratons'), cfg = cr.world.config;
 {
     // (every frame while the collision builds, up to the weld. After it the records reach a cell or two further in —
     // 344 km at most on the plate's own raster, 165 km in the India scene (Phase 11): the weld's belt is spread from the
@@ -76,7 +76,7 @@ const cr = run('cratons'), cfg = cr.world.config;
     // Wyoming and the North China craton was destroyed)
     report('deepest a belt reaches into a craton before the weld', deepest, { unit: ' km', digits: 0, source: 'cratons resist deformation (Lenardic & Moresi 1999); the sub-Andean zone 50–100 km', detail: `craton strength ×${cratonStrengthRatio(cfg).toFixed(2)}` });
     report('craton cells thickened by a belt (summed over frames)', thick, { digits: 0, source: 'craton cores rarely thicken' });
-    const off = run('cratons', null, { cratonStrainShare: 0 }), log = w => w.events.map(e => `${e.time}|${e.kind}|${e.text}`).join('\n');
+    const off = await run('cratons', null, { cratonStrainShare: 0 }), log = w => w.events.map(e => `${e.time}|${e.kind}|${e.text}`).join('\n');
     check('…and it changes no event of the history: only its records', log(off) === log(cr), `${cr.events.length} events, the same with and without the rim belts`);
 }
 
@@ -87,8 +87,8 @@ const tm640 = terrainMesh(640000);
     // (the scene on three seeds — its coasts and shields drawn from each seed's noise: a range's foreland is a mechanism,
     // but where the shield's edge falls under the range, and whether a shield edge lies under a belt at all, is the
     // collision's chance. A seed whose cross-section finds no shield edge under a belt is counted as the scene not forming)
-    const sides = SCENE_SEEDS.map(seed => {
-        const r = seed === SEED ? cr : run('cratons', null, null, seed), F = r.frame, T = synthesizeTerrain(F, mesh, tm640, { seed, carve: true });
+    const sides = (await Promise.all(SCENE_SEEDS.map(async seed => {
+        const r = seed === SEED ? cr : await run('cratons', null, null, seed), F = r.frame, T = synthesizeTerrain(F, mesh, tm640, { seed, carve: true });
         const Tflat = synthesizeTerrain(F, mesh, tm640, { seed, carve: true, cfg: terrainConfig({ foredeepPerKm: 0 }) });     // (no foreland at all)
         // (India's shield is the one further south; a pressed edge: the belt outside it — on India's, any collision belt: its
         // own lower side's, or the upper plate's front where that overrides it (since Phase 11's collisions most of India's
@@ -111,7 +111,7 @@ const tm640 = terrainMesh(640000);
         const medOf = (TT, tm, ter) => { const h = []; for (let t = 0; t < tm.numCells; t++) { const c = TT.sampler.cells[3 * t]; if (isC(F, c) && F.terrane[c] === ter && TT.heightKm[t] > 0) h.push(TT.heightKm[t]); } return median(h); };
         const res = [india, asia].map(ter => [medOf(T, tm640, ter), medOf(T160, tm160, ter)]);
         return { seed, lowRange, lowFore, lowShield, lowBent, upBack, upEdge, upBent, res };
-    });
+    })));
     const fin = (...v) => v.every(Number.isFinite);
     // (the 0.05 km margins are a smoke test of the foreland: its width is the flexural solution's, α = (4D/Δρg)^¼ for the
     // shield's elastic thickness (reported below) — and flexure also predicts a forebulge ~3πα/4 out, which the "shield
@@ -147,8 +147,8 @@ section('cratons across a whole planet (600 Myr)');
     // 150→156: 119 m against 101 on seed 12345; over four nudges × three planets the ratio ran 0.99–1.36, median ~1.15): the
     // median over the three planets, each at 400, 500 and 600 Myr — frames 100 Myr apart, as far apart as a history forgets
     // (the drift of phase 9 renews the fine detail in 150) — nine samples against the 10 %, the frames from the same history)
-    const planet = (seed, t) => {
-        const { frames } = run('history', 600, null, seed), F = nearestFrame(frames, t), tm = tm640;
+    const planet = async (seed, t) => {
+        const { frames } = await run('history', 600, null, seed), F = nearestFrame(frames, t), tm = tm640;
         const T = synthesizeTerrain(F, mesh, tm, { seed, carve: true });
         // (without the cratons' characters: only at 600 Myr, for the listing — the check reads T)
         const T0 = t === 600 ? synthesizeTerrain(F, mesh, tm, { seed, carve: true, cfg: terrainConfig({ cratonCharacter: 0 }) }) : null;
@@ -194,7 +194,7 @@ section('cratons across a whole planet (600 Myr)');
         }
         return { seed, t, rc: median(withC), r0: median(without), rl: median(low), spread, meds };
     };
-    const samples = PLANET_SEEDS.flatMap(seed => [400, 500, 600].map(t => planet(seed, t))), planets = samples.filter(x => x.t === 600);
+    const samples = (await Promise.all(PLANET_SEEDS.map(async seed => (await Promise.all([400, 500, 600].map(async t => await planet(seed, t))))))).flat(), planets = samples.filter(x => x.t === 600);
     const each = fn => planets.map(x => `${x.seed}: ${fn(x)}`).join(' · '), eachT = fn => samples.map(x => `${x.seed}@${x.t}: ${fn(x)}`).join(' · ');
     report('spread of craton heights (standard deviation of their medians)', planets.map(x => x.spread), { earth: [0.2, 0.5], unit: ' km', digits: 2, source: 'cratons vary by ~±0.5 km: African swells, Congo sag, low Canadian Shield (Hager 1985; Flament et al. 2013)',
         detail: `the median heights of the cratons — ${each(x => x.meds.map(v => v.toFixed(2)).join(', ') + ' km')}` });
@@ -260,7 +260,7 @@ section('scraps of craton');
     const SCRAP_FLOOR = 5, scraps = [], coastal = [];
     for (const [i, sceneSeed] of SCENE_SEEDS.entries()) {
         for (const [id, seed, times] of [['india', sceneSeed, [50, 60, 70, 80, 90]], ['history', PLANET_SEEDS[i], Array.from({ length: 30 }, (_, j) => 20 * (j + 1))]]) {
-            const { frames } = run(id, Math.max(...times), null, seed);
+            const { frames } = await run(id, Math.max(...times), null, seed);
             for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) (g.coast ? coastal : scraps).push({ gap: g.gap, drowned: g.drowned, where: `${id} ${seed} @${F.time} (${g.note})` });
         }
     }
@@ -284,10 +284,10 @@ section('the plate that owned the trench rides up');
     // gets it wrong puts the plateau on the wrong continent. Asia is looked up by name in the first frame, before a weld
     // renames it: the scenes' own truth, read from how they are built, not from the slab the rule itself reads)
     const seeds = [SEED, 1, 2, 3, 4, 5], scenes = ['india', 'cratons'];
-    const rows = scenes.flatMap(id => seeds.map(seed => {
-        const r = run(id, null, null, seed), asia = r.frames[0].plates.find(p => p.name === 'Asia').id, first = r.events.find(e => e.kind === 'collision');
+    const rows = (await Promise.all(scenes.map(async id => (await Promise.all(seeds.map(async seed => {
+        const r = await run(id, null, null, seed), asia = r.frames[0].plates.find(p => p.name === 'Asia').id, first = r.events.find(e => e.kind === 'collision');
         return { label: `${id} ${seed}`, formed: !!first, ok: first?.data.upper === asia };
-    }));
+    })))))).flat();
     const formed = rows.filter(x => x.formed), wrong = formed.filter(x => !x.ok);
     check('the plate that owned the trench is the upper plate', formed.length > rows.length / 2 && !wrong.length,
         `${formed.length - wrong.length} of ${formed.length} collisions have Asia upper (${rows.length} runs: ${scenes.join(' and ')} on seeds ${seeds.join(', ')})${wrong.length ? ` — wrong: ${wrong.map(x => x.label).join(', ')}` : ''}`);

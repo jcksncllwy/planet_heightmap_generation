@@ -19,14 +19,14 @@ const SIM_MESH_SEED = 12345;          // the V2 lab's sim mesh (v2/js/app/lab-ma
  * @returns {{xyz: Float32Array, heightKm: Float32Array, terrain: Object, timeMyr: number, reachedEnding: boolean,
  *           landShare: number, ms: {history: number, terrain: number}}}
  */
-export function evolutionWorld({ seed = 12345, ending = 'none', cells = 160000 } = {}) {
+export async function evolutionWorld({ seed = 12345, ending = 'none', cells = 160000 } = {}) {
     let t = performance.now();
     const mesh = buildSimMesh(TECTONICS.simCells, SIM_MESH_SEED);
     const scene = TERRAIN_SCENES.find(s => s.id === 'history');
     const world = scene.build(mesh, seed);
     world.config.heights = terrainConfig();
     const { untilMyr, stopAt } = historyEnding(scene.maxMyr, ending, world.config);
-    const run = simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
+    const run = await simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
     const frame = run.frames.at(-1);
     const historyMs = performance.now() - t;
     t = performance.now();

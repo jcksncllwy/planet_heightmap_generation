@@ -31,7 +31,7 @@ for (const water of waters) for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim, heights }), simMesh = buildSimMesh(sim, MESH_SEED), n = simMesh.numCells;
     const rows = [], mask = {}, t0 = performance.now();
     let maskMs = 0;
-    simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])), m0 = performance.now();
         const { land, sl } = landMask(fr, simMesh, H, mask);
         maskMs += performance.now() - m0;

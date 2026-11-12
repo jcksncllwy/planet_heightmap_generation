@@ -26,7 +26,7 @@ const seed = Number(flag('--seed', 831576)), moments = flag('--moments', '340,43
 const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT)), cells = Number(flag('--cells', 640000));
 const cfg = terrainConfig({}), C = columnModel(cfg), until = Math.max(...moments);
 const { scene, world } = pageWorld({ seed, cont, sim }), simMesh = buildSimMesh(sim, MESH_SEED), frames = new Map();
-simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+await simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
     if (!moments.some(t => Math.abs(f.time - t) < 1e-6)) return;
     const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]]));
     fr.plates = f.plates.map(p => p && { quat: p.quat });

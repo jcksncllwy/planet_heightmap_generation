@@ -25,20 +25,20 @@ const flagged = (f, flag) => countWhere(numCells, w => f.owner[w] >= 0 && (f.fla
 // the plates carrying continent (a plate of ocean that broke away at an old margin — step/subduction-init.js — is not a half)
 const continental = f => f.plates.filter(p => p.alive && !p.isBackground && p.landCells > 0);
 
-function run(id, overrides = {}, untilMyr = null, prepare = null, seed = SEED) {
+async function run(id, overrides = {}, untilMyr = null, prepare = null, seed = SEED) {
     const scene = RIFT_SCENES.find(s => s.id === id), world = onPath(scene.build(mesh, seed));      // (on path GEO_SIM_PATH: lib/paths.mjs)
     Object.assign(world.config, overrides);
     prepare?.(world);
     // each collision record's deepest stacking (its overlap's area over its front) while in contact, sampled at each snapshot
     const stacked = new Map();
-    const { frames, steps } = simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR,
+    const { frames, steps } = await simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR,
         stopAt: w => { for (const rec of w.collisions.values()) if (!rec.sutured && rec.lastActive === w.time) stacked.set(rec, Math.max(stacked.get(rec) ?? 0, rec.cells * mesh.cellAreaKm2 / Math.max(rec.frontKm, mesh.edgeKm))); return false; } });
     return { scene, world, frames, steps, stacked, events: world.events, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6) };
 }
 
 section('a plume splits a continent');
 {
-    const r = run('plume'), rift = r.events.find(e => e.kind === EventKind.RIFT);
+    const r = await run('plume'), rift = r.events.find(e => e.kind === EventKind.RIFT);
     check('the plume forces a rift at 20 Myr', !!rift && Math.abs(rift.time - 20) < 1e-6 && rift.data.cause === 'plume', rift ? rift.text : 'no rift');
     if (rift) {
         const before = r.at(18), after = r.at(22), last = r.frames.at(-1);
@@ -75,8 +75,8 @@ section('a plume splits a continent');
             `${halves.map((p, i) => `${p?.name ?? '—'} ${Number.isFinite(speeds[i]) ? speeds[i].toFixed(2) : 'gone'}`).join(' / ')} cm/yr at ${last.time} Myr (all continental plates then: ${continental(last).map(p => `${p.name} ${p.speedCmYr.toFixed(2)}`).join(' / ')})`);
         check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
     }
-    const scheduledOnly = run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60);
-    const noPlume = run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60, world => { world.plumes.length = 0; });
+    const scheduledOnly = await run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60);
+    const noPlume = await run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60, world => { world.plumes.length = 0; });
     check('no plume and no chance → no rift; a scheduled plume alone → one', scheduledOnly.events.filter(e => e.kind === EventKind.RIFT).length === 1 && noPlume.events.filter(e => e.kind === EventKind.RIFT).length === 0 && continental(noPlume.frames.at(-1)).length === 1,
         `scheduled plume alone: ${scheduledOnly.events.filter(e => e.kind === EventKind.RIFT).length} rift; no plume: ${noPlume.events.filter(e => e.kind === EventKind.RIFT).length}, ending as ${continental(noPlume.frames.at(-1)).map(p => p.name).join(' + ')}`);
 }
@@ -133,7 +133,7 @@ section('the start world breaks up');
             : `${rr.world.ledger.start.land} → ${rr.world.ledger.start.land + Object.values(rr.world.ledger.stages).reduce((s, e) => s + e.land, 0)} continent cells (${LAND_STAGES.map(k => `${k} ${rr.world.ledger.stages[k]?.land ?? 0}`).join(', ')})`));
     const arcGrowth = rr => { const L = rr.world.ledger, myr = rr.frames.at(-1).time; return 100 * Object.values(L.stages).reduce((s, e) => s + e.arc, 0) / L.start.land * 100 / myr; };
     report('net island-arc growth, as a share of the continent', runs.map(arcGrowth), { earth: [-1, 1], unit: ' %/100 Myr', source: 'addition ≈ recycling, Clift et al. 2009', digits: 1 });
-    const replay = run('breakup', { crustLedger: true });
+    const replay = await run('breakup', { crustLedger: true });
     check('the same seed replays the same history', replay.events.length === r.events.length && replay.events.every((e, i) => e.text === r.events[i].text) && replay.frames.at(-1).owner.every((o, w) => o === r.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
     // Land cannot subduct far (Cloos 1993), so a collision stays bounded — the overlap stays a seam a few cells deep (its
     // area over its front) — and the convergence across a lasting contact falls away. (India has pressed on Asia for ~50 Myr

@@ -28,14 +28,14 @@ const fieldBytes = f => (f.bits?.byteLength ?? 0) + (f.values?.byteLength ?? 0) 
 
 /** The Evolution page's history, record kept or not: each frame's fingerprint of everything but the record, the record's
  *  share of the packed frames, and the first and last frames. */
-function run(seed, records) {
+async function run(seed, records) {
     const world = scene.build(mesh, seed);
     world.config.heights = terrainConfig({});
     world.config.geology = { ...world.config.geology, records };
     const prints = [];
     let bytes = 0, geoBytes = 0, first = null, last = null;
     const t0 = process.cpuUsage();
-    simulate(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulate(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         const h = createHash('md5');
         for (const [k, v] of Object.entries(f)) if (ArrayBuffer.isView(v) && !GEO_FRAME_FIELDS.includes(k)) { h.update(k); h.update(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)); }
         h.update(JSON.stringify([f.budget, f.events.map(e => [e.time, e.kind])]));
@@ -52,7 +52,7 @@ function run(seed, records) {
 
 for (const seed of SEEDS) {
     section(`records only, seed ${seed}`);
-    const off = run(seed, false), on = run(seed, true), { first, last } = on;
+    const off = await run(seed, false), on = await run(seed, true), { first, last } = on;
     check('every frame of the history is the same, record or not (the tectonics never read it)', on.prints.length === off.prints.length && on.prints.every((p, i) => p === off.prints[i]),
         `${on.prints.length} frames, ${on.prints.filter((p, i) => p !== off.prints[i]).length} differ`);
     check('…and the record is kept only when asked for', GEO_FRAME_FIELDS.some(k => last[k].some(v => v !== 0)) && GEO_FRAME_FIELDS.every(k => !off.last[k].some(v => v !== 0)) && off.last.geoBook === null, 'records on: written · off: all zero');

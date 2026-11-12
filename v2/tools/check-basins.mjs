@@ -147,7 +147,7 @@ for (const seed of SEEDS) {
     const frames = new Map();
     // (the page's history for these settings, through the history cache — tools/lib/history-cache.mjs: the page's own, if it built it)
     const { world } = pageWorld({ seed, cont: DEFAULT_CONT, sim: SIM });
-    simulateCached(world, { untilMyr: Math.max(...MOMENTS) + 10, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: Math.max(...MOMENTS) + 10, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         if (MOMENTS.some(t => Math.abs(f.time - t) < 1e-6)) { const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]])); fr.plates = f.plates.map(p => p && { quat: p.quat }); frames.set(Math.round(f.time), fr); }
     } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont: DEFAULT_CONT, sim: SIM, by: 'check-basins' } });
     const per = [];

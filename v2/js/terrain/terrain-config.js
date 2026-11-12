@@ -380,29 +380,11 @@ export const TERRAIN = {
     // (tectonics/config.js belts): 32–41 % below 400 m before rivers carve — the rivers take it toward the developer's
     // "like 40% usually is a sweeter spot" (130 / 100 with round 3's balanced crust budget: 28–37 %; with the old budget 90 / 60
     // wore India's young plateau to 0.6 km above its foreland — now, with less underthrusting, 100 / 70 leaves it 0.9 km)
-    // (branch unified, 2026-10-28: one clock for the whole height — the column, the belts' relief, the swells — with the
-    // rebound in it: the rock worn off thins the crust (tectonics/step/heights.js), and the ground comes down by the
-    // column's slope of it, ~1/6. Relief standing 1–2 km e-folds over 100–200 Myr (old orogens, with isostasy: Baldwin et
-    // al. 2003, JGR 108)
-    reliefTauMyr: 100,          // the land's height wears away over this e-folding time (at erosionHeight.refKm)…
-    riftReliefTauMyr: 450,      // …except a rifted margin's shoulders: the great escarpment retreats rather than wears down
-                                // (the Drakensberg ~180 Myr, the Brazilian highlands ~130 Myr, the Western Ghats ~90 Myr)
-    ruggedTauMyr: 368,          // the crests and ridges of a belt wear away more slowly: an old belt keeps its grain (the Appalachians)
+    // (the land's wear: the history's erosion, the finish's stream power on the GPU — tectonics/step/surface-erosion.js, lane
+    // graded. The height rule that was here — reliefTauMyr, riftReliefTauMyr, ruggedTauMyr, erosionHeight — retired with it)
     rootGain: { [OrogenyType.ANDEAN]: 1.25 },  // a belt's root grows this many times its recorded thickening (1 if not listed):
                                 // an Andean margin's crust is thickened by magma added from below as well as by the
                                 // shortening the history records — the Altiplano's 70 km crust
-    // High ground wears fast, low ground slowly (developer: "wear down higher places faster — really slower on lower
-    // places"): denudation rises with relief (Ahnert 1970; Montgomery & Brandon 2002), which is also why old ranges
-    // persist as low hills for hundreds of Myr (Baldwin et al. 2003). Every clock above runs × (H / refKm) below refKm
-    // (never under floor) and × (H / refKm)^0.5 above it (at most max) — H: the land's whole height above the sea (its
-    // column, the belts' relief, the swells: branch unified; was the belt's height above a fixed plain).
-    // (a 600 Myr planet: median land 0.71 → 0.87 km, belts quiet 300+ Myr keep ~0.4 km of uplift instead of 0.2; the floor
-    // 0.5 → 0.75 after Phase 13, low ground still wearing slower than high: old ranges lingered at 0.4–0.8 km everywhere.)
-    // With the whole height wearing (branch unified), no floor: the clock × H / refKm on low ground — the rock worn off a
-    // surface H high goes as H² (relief grows with height; Montgomery & Brandon 2002, EPSL 201), which sets the rates Earth
-    // shows: a shield 0.5 km up loses ~8 m of rock a Myr (cratons 1–10 m/Myr, cosmogenic: Bierman & Caffee 2001 — recalled),
-    // an old range 1 km up ~30 (the Appalachians ~20–30: Matmon et al. 2003 — recalled), an active one 4 km up ~400
-    erosionHeight: { refKm: 2, floor: 0, max: 1.8 },
     collapseKm: 5,              // the most a thickened root reads as lift in the terrain's synthesis (terrain/synthesize.js rootRatio): a
                                 // plateau stands at ~4–5 km (Tibet ~5, the Altiplano ~4; Molnar & Lyon-Caen 1988). The history's
                                 // collapse it once also set is gone: thick crust spreads by channel flow (tectonics/step/crust-flow.js)
@@ -605,15 +587,8 @@ export const TERRAIN = {
     carveActiveMyr: 15,         // …fading with the time since the belt was active, over this
     carveCratonHardness: 0.5,   // shields erode this much slower (k × 1 − this)…
     carveCrestHardness: 0.5,    // …and so do the crests of a fold belt's ridges: rivers follow the strike valleys (trellis)
-    // ── 8b-2: the rivers of the history (tectonics/step/rivers.js) — drained on the sim mesh as the history runs; their
-    // cuts are records of the crust that the carving draws (developer: "a history of rivers in the terrain") ──
-    riverEveryMyr: 4,           // the land is drained this often
-    riverCutK: 0.5,             // k of the history's rivers: they cut E = k A^m S (km/Myr; A km², S km per km) — a river
-                                // that keeps up with the land rising under it holds its course and cuts a gorge…
-    riverHalfKm2: 250000,       // …toward a share A / (A + this) of the relief it crosses: a stream notches its valley, a
-                                // great river (10⁶ km²) cuts ~75 % of the way through the range…
-    riverActiveHold: 0.45,       // …less by this share where the belt is still active (it rises as fast as they cut)…
-    riverPlainKm: 0.08,         // …plus a valley of its own even on flat land (a great river's floodplain below its bluffs)
+    // ── 8b-2: the rivers of the history (tectonics/step/rivers.js) — eroded and drained on the sim mesh as the history runs ──
+    riverEveryMyr: 4,           // the land is eroded and drained this often
     // (lane basins, 2026-10-29: the land's hollows trap their rivers' load — tectonics/step/rivers.js. How much of a
     // hollow's inflow it keeps goes by how long its water stays: its volume below the spill ÷ the river's discharge, the
     // discharge the rain over its catchment times this share of it that runs off — the continents' ~40 000 km³ a year of
@@ -663,15 +638,6 @@ export function erosionAtLatitude(latDeg, cfg) {
     let ice = 0;
     if (a > g[0][0]) for (let i = 1; i < g.length; i++) if (a <= g[i][0]) { const [l0, v0] = g[i - 1], [l1, v1] = g[i]; ice = v0 + (v1 - v0) * (a - l0) / (l1 - l0); break; }
     return Math.max(rain, ice);
-}
-
-/**
- * How many times faster than the reference a belt standing `heightKm` above its plain wears down (cfg.erosionHeight):
- * slower on low ground, faster on high.
- */
-export function erosionAtHeight(heightKm, cfg) {
-    const { refKm, floor, max } = cfg.erosionHeight, x = heightKm / refKm;
-    return x <= 1 ? Math.max(floor, x) : Math.min(max, Math.sqrt(x));
 }
 
 /** Terrain constants with the given overrides (shallow for scalars, one level deep for grouped tables). */

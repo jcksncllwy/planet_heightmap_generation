@@ -31,10 +31,11 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import '../gpu-harness/history-dawn.mjs';
 import { simulate } from '../../js/tectonics/simulate.js';
 import { packFrame, unpack } from '../../js/tectonics/frame-pack.js';
 import { frameBytes, readFrameBytes } from '../../js/app/frame-wire.js';
-import { historyKey, mathFingerprint } from '../../js/app/history-key.js';
+import { historyKey, mathFingerprint, gpuFingerprint } from '../../js/app/history-key.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..', '..', '..');
@@ -103,6 +104,8 @@ let codeMemo = null;
 /** This checkout's history code hash, worked out once per process (a tool's code does not change while it runs). */
 export const codeHash = () => (codeMemo ??= historyCodeHash(REPO_ROOT).hash);
 
+// (the GPU's fingerprint joins the key — history-key.js; worked out once here, where there is a GPU, so keyOf can stay sync)
+if (ENABLED) await gpuFingerprint().catch(() => null);
 /** The cache key of the history this fresh world would run (null: not cacheable). */
 export const keyOf = (world, drive, events = true) => (ENABLED ? historyKey(codeHash(), world, drive, events) : null);
 
@@ -286,9 +289,10 @@ function schedule(every, untilMyr) {
  *                         pass scene.drive); spec: what to note in the entry's meta.json (seed, scene, settings)
  * @returns {{frames: Object[], steps: number|null, stepLog: Object[], stopped: boolean, cached: boolean, key: string|null}}
  */
-export function simulateCached(world, opts, { drive = opts.drive, spec = null } = {}) {
+export async function simulateCached(world, opts, { drive = opts.drive, spec = null } = {}) {
+    if (ENABLED) await gpuFingerprint();             // (refuses clearly where there is no GPU)
     const events = opts.events !== false, key = opts.stopAt || opts.resume ? null : keyOf(world, drive, events);
-    if (!key) { stats.bypassed++; return { ...simulate(world, opts), cached: false, key: null }; }
+    if (!key) { stats.bypassed++; return { ...(await simulate(world, opts)), cached: false, key: null }; }
     const every = opts.snapshotEveryMyr ?? world.config.snapshotEveryMyr, grid = world.config.stepGridMyr, untilMyr = opts.untilMyr;
     const onGrid = t => Math.abs(t / grid - Math.round(t / grid)) < 1e-6;
     const want = schedule(every, untilMyr), wantSet = new Set(want.map(milli)), keepFrames = opts.keepFrames !== false;
@@ -324,7 +328,7 @@ export function simulateCached(world, opts, { drive = opts.drive, spec = null } 
     try {
         const frames = [], present = new Set(entryTimes(key).map(milli)), stepsAt = {};
         let kept = 0;
-        const r = simulate(world, { ...opts, snapshotEveryMyr: rec, keepFrames: false, onFrame: f => {
+        const r = await simulate(world, { ...opts, snapshotEveryMyr: rec, keepFrames: false, onFrame: f => {
             if (onGrid(f.time)) { stepsAt[milli(f.time)] = world.step; if (!present.has(milli(f.time))) { writeLater(key, f); kept++; } }
             if (!wantSet.has(milli(f.time))) return;
             if (keepFrames) frames.push(f);
@@ -333,7 +337,7 @@ export function simulateCached(world, opts, { drive = opts.drive, spec = null } 
         writesDone();
         const ms = performance.now() - t0;
         stats.built++; stats.builtMs += ms;
-        writeMeta(key, { code: codeHash(), math: mathFingerprint(), engine: `node ${process.version}`, spec: spec ?? { seed: world.seed, cells: world.mesh.numCells }, steps: { ...stepsAt, [milli(world.time)]: r.steps }, builtBy: suite, builtAt: new Date().toISOString() });
+        writeMeta(key, { code: codeHash(), math: mathFingerprint(), gpu: await gpuFingerprint(), engine: `node ${process.version}`, spec: spec ?? { seed: world.seed, cells: world.mesh.numCells }, steps: { ...stepsAt, [milli(world.time)]: r.steps }, builtBy: suite, builtAt: new Date().toISOString() });
         logEvent({ event: 'build', key, untilMyr, every, rec, kept, ms: Math.round(ms) });
         return { frames, steps: r.steps, stepLog: r.stepLog, stopped: r.stopped, cached: false, key };
     } finally {

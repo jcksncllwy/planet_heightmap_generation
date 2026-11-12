@@ -72,7 +72,7 @@ if (CrustType.OCEAN !== 0 || CrustType.CONTINENT !== 1 || CrustType.CRATON !== 2
  * the area ledger sees a belt thicken, a weld absorb its overlap or erosion thin a shield as nothing (lane crust, stage 0:
  * config.crustLedgerVolume, a diagnostic for tools/trace-crust.mjs — slow, every cell's column each stage). */
 export function crustVolume(world) {
-    const H = heightsOf(world.config), fills = !!world.config.rockBook, cellKm2 = world.mesh.cellAreaKm2;
+    const H = heightsOf(world.config), cellKm2 = world.mesh.cellAreaKm2;
     let v = 0;
     for (const p of world.plates) {
         if (!p.alive) continue;
@@ -81,7 +81,7 @@ export function crustVolume(world) {
             if (!mask[c]) continue;
             const t = type[c];
             if (t === CrustType.CONTINENT || t === CrustType.CRATON) v += crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c])
-                + (fills ? basinFillKm[c] + seaFillKm[c] + shelfKm3[c] / cellKm2 : 0);   // (rockBook: the rock laid on it is the continent's)
+                + basinFillKm[c] + seaFillKm[c] + shelfKm3[c] / cellKm2;   // (the rock laid on it is the continent's: one rock book)
         }
     }
     return v;
@@ -112,7 +112,7 @@ function rockMeasure(world) {
  * and an arc its root and relief as well as its own crust (heights.js wears them into crust.wornKm like a continent's). */
 function addCellRock(parts, R, k, c) {
     const t = k.type[c], C = R.C, sed = k.basinFillKm[c] + k.seaFillKm[c] + (k.shelfKm3[c] + k.riseKm3[c]) / R.cellKm2;
-    parts.transit += k.wornKm[c];               // (worn off, not yet carried by the rivers: rockBook)
+    parts.transit += k.wornKm[c];               // (eroded, not yet carried by the rivers)
     if (t === CrustType.OCEAN) { parts.oceanSed += sed; return; }
     parts.fill += sed;
     const relief = (Math.max(0, k.upliftKm[c]) + k.baseKm[c]) / C.slope[t];

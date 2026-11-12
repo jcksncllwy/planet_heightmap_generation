@@ -12,21 +12,18 @@
 //   · volcWornKm — how far a hotspot volcano, or a flood basalt on land, has been worn down since it erupted;
 //   · baseKm — the start world's own swells (seedBaseRelief): broad uplands and the lowlands between them, worn down
 //     like the rest — so the first continents are not flat, and their rivers have somewhere to run from.
-// Erosion takes the whole height down, every step, at the latitude the cell is at THEN (plates move: a range that
-// drifted out of the tropics keeps the wear it took there), faster where it rains more (terrain-config.js
-// erosionAtLatitude), and faster the higher the land stands — hardly at all on low ground (erosionAtHeight), so old
-// ranges linger as low hills and shields sink toward the sea only over Gyr. The rock it takes thins the crust and the
-// ground rebounds (~5/6 of it). Records only, but for the rivers, which run over these heights (step/rivers.js). Constants
+// Erosion (step/surface-erosion.js, every river step) takes the height down by the land's slope, drainage and base level —
+// the finish's stream power, on the GPU — each part by one share: the rock it takes thins the crust and the ground
+// rebounds (~5/6 of it). Records only, but for the rivers, which run over these heights (step/rivers.js). Constants
 // live with the terrain's (terrain-config.js); a world may carry its own in world.config.heights.
 
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../model/crust.js';
-import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE } from '../measure.js';
 import { arcCrustKm } from './collision.js';
-import { TERRAIN, erosionAtLatitude, erosionAtHeight } from '../../terrain/terrain-config.js';
+import { TERRAIN, erosionAtLatitude } from '../../terrain/terrain-config.js';
 import { broadProfile } from '../../terrain/profiles.js';
 import { FastNoise } from '../../core/fast-noise.js';
 import { recordWear, thickenCover } from './geology.js';
-import { bookRock } from '../rock-book.js';
 import { flowCrust } from './crust-flow.js';
 
 const R = 6371;
@@ -87,13 +84,12 @@ export function seedBaseRelief(world) {
     }
 }
 
-/** Erosion and hillslope smoothing, once per step over every plate. @returns {number} 0 (it never changes crust) */
+/** Hillslope smoothing, crustal flow and the volcanoes' wear, once per step over every plate. @returns {number} 0 (it never changes crust) */
 export function evolveHeights(world, dt) {
     if (dt <= 0) return 0;
     const { mesh, plates, time, config } = world, H = heightsOf(config);
     const { adjOffset, adjList, xyz, edgeKm } = mesh;
-    const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null, book = !!config.rockBook;
-    let fillWorn = 0;                                   // (the rock book: hollows' fill worn away with their land — not handed to the rivers: rock-book.js fillWornKm3)
+    const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null;
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux, made = 0;
     // (records only: the tectonic rise accumulator below. Each heights step is numbered; a cell whose reference height is
@@ -107,7 +103,7 @@ export function evolveHeights(world, dt) {
     if (world.config.crustFlow) flowCrust(world, dt, H);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, riverIncKm, basinFillKm, tectKm, tectRefKm, tectAt } = crust;
+        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, tectKm, tectRefKm, tectAt } = crust;
         const m = plate.mat, n = mask.length;
         // the column a cell stands on (km above the sea, the mantle's swell aside: tectonics/measure.js): a continent's
         // and a craton's from their crust; an island arc's thickening only — its own crust stands by arcSurfaceKm, which
@@ -132,49 +128,25 @@ export function evolveHeights(world, dt) {
             if (type[c] === CrustType.OCEAN) continue;
             // a flood basalt on land wears too — slowly (a hard cap), from its eruption on (terrain/lips.js cuts it up by it)
             if (volcType[c] === VolcanicType.LIP) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + H.lipWearKmPerMyr * dt * rate[bin];
-            // The whole height wears (branch unified, 2026-10-28): how fast, by the latitude's rain (or ice) × how high the
-            // land stands above the sea — its column, its belts' relief, its swells (and an arc's own crest). Each part
-            // comes down by the same share: the relief and the swells as they stand, the column by thinning its crust —
-            // the rock worn off is that share of the column ÷ its slope, ~6 times what the ground loses (Airy rebound,
-            // Molnar & England 1990): an old range wears down and its root rebounds; a shield thins and sinks toward the
-            // sea, slowly (erosionAtHeight: low ground hardly wears). A basin (below 0) fills back at the reference rate; a
-            // rift's shoulders are an escarpment that retreats at its own pace, whatever its height.
-            const rift = oroType[c] === OrogenyType.RIFT, up = upliftKm[c] + flux[c], arc = type[c] === CrustType.ARC;
-            const col = colOf(c), r0 = rootKm[c], c0 = rugged[c] + prevRugged[c], b0 = baseKm[c];
+            // (the land's wear is the history's erosion's, every river step: step/surface-erosion.js. Here the uplift spreads, and a
+            // foreland basin below 0 stays a hollow until its rivers fill it)
+            const up = upliftKm[c] + flux[c], arc = type[c] === CrustType.ARC;
+            const col = colOf(c);
             const arcTop = arc && !(flags[c] & CrustFlag.MARGIN_ISLE) ? Math.max(0, arcSurfaceKm(arcCrustKm(crust, c, time, config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0)) : 0;
             // The tectonic rise (records only; the finish's uplift U, lane fluvial): what the ground's height did since this
             // cell's last heights step, and this step's collapse, with erosion left out. Every change between two heights
             // steps is tectonic (belts building and their foreland basins sinking, rifts thinning, collapse, underthrusting,
-            // subduction erosion, an arc growing): the only other writers of these heights are this step's wear and
-            // spreading, and those run after the reference is read below and before it is taken again. Signed: a basin's
-            // sinking below the sea counts. Left out: the rivers' fill and cuts and the volcanoes' own edifices (their
-            // records are their own), and the mantle's swell (no record here).
+            // subduction erosion, an arc growing) but the erosion's, which moves the reference with it (surface-erosion.js) and
+            // this step's spreading, which runs after the reference is read below and before it is taken again. Signed: a
+            // basin's sinking below the sea counts. Left out: the rivers' fill and the volcanoes' own edifices (their records
+            // are their own), and the mantle's swell (no record here).
             const tectNow = upliftKm[c] + baseKm[c] + col + arcTop;
             if (tectAt[c] === epoch - 1) tectKm[c] += tectNow - tectRefKm[c];
-            // (with the sediment laid in its hollow, as the rivers stand it: step/rivers.js)
-            const height = Math.max(0, up) + baseKm[c] + Math.max(0, col) + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR + arcTop;
-            // (a shield's crystalline basement wears slower than the cover and the young rock of a range, by the carving's
-            // own hardness of it: terrain-config.js carveCratonHardness — bedrock erodibility spans orders of magnitude by
-            // lithology, crystalline the least: Stock & Montgomery 1999; cratons 1–10 m/Myr, Bierman & Caffee 2001)
-            const hard = type[c] === CrustType.CRATON ? 1 - (H.carveCratonHardness ?? 0) : 1;
-            const e = rate[bin] * dt * hard * erosionAtHeight(height, H), keep = wear(e / H.reliefTauMyr);
-            upliftKm[c] = up * (up < 0 ? wear(rate[bin] * dt / H.reliefTauMyr) : rift ? wear(e / H.riftReliefTauMyr) : keep);     // (a basin fills back toward 0 as a range wears down to it)
-            if (col > 0) rootKm[c] -= col * (1 - keep) / (arc ? C.slope[1] * ARC_ROOT_SHARE : C.slope[type[c]]);
-            rugged[c] *= wear(e / (rift ? H.riftReliefTauMyr : H.ruggedTauMyr));
-            prevRugged[c] *= wear(e / H.ruggedTauMyr);
-            riverIncKm[c] *= wear(e / H.ruggedTauMyr);              // (a gorge's walls wear back like the belt's crests)
-            if (baseKm[c] > 0) baseKm[c] *= keep;
-            // (a hollow's fill wears with the land it lies in — hardly at all while it lies low (erosionAtHeight sets the
-            // pace); it is sediment, so a shield's hardness does not hold it: it wears as the cover does)
-            if (book) crust.wornKm[c] += Math.max(0, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]]);
-            if (basinFillKm[c] > 0) { const f0 = basinFillKm[c]; basinFillKm[c] *= hard < 1 ? wear(rate[bin] * dt * erosionAtHeight(height, H) / H.reliefTauMyr) : keep; fillWorn += f0 - basinFillKm[c]; }
-            // (the geological record, step/geology.js: the rock this wear took off — the root as it stands, the relief and the
-            // swells as the crust they stand for (measure.js crustThicknessKm), a share of the crests)
-            if (geo) recordWear(crust, c, r0 - rootKm[c] + (Math.max(0, up) - Math.max(0, upliftKm[c]) + b0 - baseKm[c]) / C.slope[type[c]] + geo.crestShare * (c0 - rugged[c] - prevRugged[c]), Math.max(0, -up), time, dt, geo);
+            upliftKm[c] = up;
+            if (geo) recordWear(crust, c, 0, Math.max(0, -up), time, dt, geo);     // (the geological record: a foreland's basin; the wear is the erosion's)
             tectRefKm[c] = upliftKm[c] + baseKm[c] + colOf(c) + arcTop; tectAt[c] = epoch;
         }
     }
-    bookRock('fillWornKm3', -fillWorn * world.mesh.cellAreaKm2);
     return made;
 }
 

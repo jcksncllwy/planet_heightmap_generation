@@ -29,7 +29,7 @@ for (const seed of seeds) {
     // would first appear long after contact with all its km in it, as weld-trace.mjs found on 4242: "2933 of 2939 km in 50
     // Myr" was 1479. A weld whose record first appears after contact is `handed`, its km50 not counted.)
     const idOf = new Map(), first = new Map(), at50 = new Map(); let ids = 0;
-    simulate(world, { untilMyr, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: world.config.stepGridMyr, keepFrames: false, stopAt: w => {
+    await simulate(world, { untilMyr, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: world.config.stepGridMyr, keepFrames: false, stopAt: w => {
         const seen = new Set();
         for (const c of w.collisions?.values() ?? []) {
             if (c.traceId == null || seen.has(c.traceId)) c.traceId = ++ids;

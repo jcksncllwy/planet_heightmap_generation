@@ -18,7 +18,7 @@ const seeds = flag('--seeds', '626225,777,12345').split(',').map(Number), until 
 const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_CONT));
 for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), n = world.mesh.numCells, A = 4 * Math.PI * 6371 * 6371 / n, rows = [];
-    simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 100, keepFrames: false, onFrame: () => {
+    await simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 100, keepFrames: false, onFrame: () => {
         let N = 0, vol = 0, sh = 0, all = 0;
         for (let w = 0; w < n; w++) {
             const o = world.owner[w]; if (o < 0) continue;

@@ -53,7 +53,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverIncKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
     'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage']);
 
 export class CrustRaster {
@@ -98,10 +98,9 @@ export class CrustRaster {
         this.rugged = new Float32Array(numCells);      // how high the current belt's crests stand (km)
         this.prevRugged = new Float32Array(numCells);  // …and the overprinted belt's
         this.volcWornKm = new Float32Array(numCells);  // how far a hotspot volcano has worn down since it last erupted (km)
-        this.riverIncKm = new Float32Array(numCells);  // how deep the history's rivers have cut into this crust (km; step/rivers.js)
         this.seaFillKm = new Float32Array(numCells);   // sediment the rivers have laid on this sea floor, an enclosed sea's (km; step/sea-fill.js)
         this.basinFillKm = new Float32Array(numCells); // sediment the rivers have laid in a hollow of the land, below its spill (km; step/rivers.js)
-        this.wornKm = new Float32Array(numCells);      // crust the heights have worn here since the rivers last drained (km; config.rockBook)
+        this.wornKm = new Float32Array(numCells);      // rock the history's erosion took off here since the rivers last drained (km; step/surface-erosion.js)
         // The ground's tectonic rise (+) or sinking (−) over the window since the last frame, erosion left out (km; records
         // only: step/heights.js), the height it stood at after the last heights step, and that step's number (0 = none yet)
         this.tectKm = new Float32Array(numCells);

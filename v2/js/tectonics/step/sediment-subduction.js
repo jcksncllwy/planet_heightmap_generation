@@ -9,21 +9,16 @@
 // crust lost; the pelagic share was never the continent's. Earth: ~40 % of the ~60 km³/Myr per km recycled at
 // ocean-margin subduction zones (Scholl & von Huene 2009), i.e. ~24 km³/Myr per km — about 1 km³/yr in all.
 //
-// The engine's crust is area, not volume: what goes down is booked as continental area, its volume over
-// continentCrustKm, and taken where the sediment came from — the river basins whose fans fed that trench
-// (step/trench-fans.js), each losing what share of its rock the trenches it reaches send down, at the coast around its
-// mouth: within half its basin's breadth (√area ÷ 2) of the mouth, never a craton (a basin that loses its rock column
-// founders below the sea first at its edge). The coast cells eaten are drawn at random, each weighted by its basins'
-// losses; a cell owed that no coast is there to pay is not carried. Its own ledger stage, `sedimentSubduction`.
+// The rock that goes down was the continents': the erosion took it off their crust as it wore (crust.wornKm), so it is
+// booked here (budget.sedimentKm3), not taken from the coast a second time. Its own ledger stage, `sedimentSubduction`.
 
-import { CrustType, CrustFlag } from '../model/crust.js';
 import { trenchFans } from './trench-fans.js';
 import { trenchSediment } from './margin-isles.js';
 import { creditPrism } from './prism-accretion.js';
 
-/** @returns {number} continental cells lost to the trenches this step */
+/** @returns {number} 0 (the rock is booked; no crust changes) */
 export function subductSediment(world, dt) {
-    const { mesh, plates, config, owner, rngSediment: rng } = world, { adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
+    const { plates, config, owner } = world;
     const share = config.sedimentSubductionShare, channel = config.accretionSedimentKm;
     const prism = config.prismAccretion;
     // (sedimentSubductionShare 0: the channels take nothing — but with prismAccretion on, all the fans' rock is still
@@ -43,8 +38,6 @@ export function subductSediment(world, dt) {
         downShare.set(w, f);
         return f;
     };
-    // each basin's continental rock lost, km³/Myr, gathered per source plate onto the coast around its mouth
-    const byPlate = new Map();
     let km3 = 0, allKm3 = 0, keptKm3 = 0;
     for (const { mouth, cells, weights } of deliveries) {
         let f = 0;
@@ -54,11 +47,7 @@ export function subductSediment(world, dt) {
         // (config.prismAccretion: what the channels do not take is the overriding plates' prisms, trench cell by trench cell —
         // the share each takes of the mouth's rock, less what goes down there: step/prism-accretion.js)
         if (prism) for (let i = 0; i < cells.length; i++) creditPrism(world, plates[owner[cells[i]]], mouth.km3 * weights[i] * (1 - shareAt(cells[i])) * dt);
-        const lost = mouth.contKm3 * f;
-        if (!(lost > 0)) continue;
-        km3 += lost * dt;
-        if (!byPlate.has(mouth.plate)) byPlate.set(mouth.plate, []);
-        byPlate.get(mouth.plate).push([mouth, lost]);
+        km3 += mouth.contKm3 * f * dt;
     }
     world.budget.sedimentKm3 = (world.budget.sedimentKm3 ?? 0) + km3;
     world.budget.sedimentAllKm3 = (world.budget.sedimentAllKm3 ?? 0) + allKm3;
@@ -67,47 +56,8 @@ export function subductSediment(world, dt) {
     // crust. budget.wedgeKm3 is the prism's own estimate (fill above the channel × convergence, step/margin-isles.js): the
     // rest of trenchKeptKm3 is overtopping. fanKm3 = sedimentAllKm3 + trenchKeptKm3, step/trench-fans.js bookFans)
     world.budget.trenchKeptKm3 = (world.budget.trenchKeptKm3 ?? 0) + keptKm3;
-    // (config.rockBook: the rivers' rock is what the heights already wore off the crust (crust.wornKm) — it left the
-    // continent's books as it wore, so eating the coast for it again would lose it twice: booked, not taken. Lane crust)
-    if (config.rockBook) return 0;
-    let lost = 0;
-    for (const [id, list] of byPlate) {
-        const plate = plates[id], crust = plate.crust, { mask, type } = crust;
-        plate.sedimentDue = (plate.sedimentDue ?? 0) + list.reduce((a, [, l]) => a + l, 0) * dt / (config.continentCrustKm * cellAreaKm2);
-        if (plate.sedimentDue < 1) continue;
-        // the coast around each mouth: continent (never a craton) beside the plate's own sea, within half the basin's breadth
-        const weight = new Map();
-        const coastSea = c => { for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (mask[nb] && type[nb] === CrustType.OCEAN) return nb; } return -1; };
-        for (const [mouth, l] of list) {
-            if (!mask[mouth.cell]) continue;
-            const hops = Math.round(0.5 * Math.sqrt(mouth.basinKm2) / edgeKm), ring = [mouth.cell], coast = [];
-            const mark = new Set([mouth.cell]);
-            for (let h = 0, from = 0; ; h++) {
-                const to = ring.length;
-                for (let i = from; i < to; i++) { const c = ring[i]; if (type[c] === CrustType.CONTINENT && coastSea(c) >= 0) coast.push(c); }
-                if (h >= hops) break;
-                for (let i = from; i < to; i++) for (let k = adjOffset[ring[i]]; k < adjOffset[ring[i] + 1]; k++) {
-                    const nb = adjList[k];
-                    if (mask[nb] && type[nb] !== CrustType.OCEAN && !mark.has(nb)) { mark.add(nb); ring.push(nb); }
-                }
-                from = to;
-                if (ring.length === to) break;
-            }
-            for (const c of coast) weight.set(c, (weight.get(c) ?? 0) + l / coast.length);
-        }
-        const coast = [...weight.keys()], w = coast.map(c => weight.get(c));
-        if (!coast.length) { plate.sedimentDue = 0; continue; }
-        let sum = w.reduce((a, b) => a + b, 0);
-        const n = Math.min(Math.floor(plate.sedimentDue), coast.length), eaten = [];
-        for (let k = 0; k < n && sum > 0; k++) {
-            let r = rng() * sum, j = 0;
-            while (j < coast.length - 1 && (w[j] === 0 || (r -= w[j]) > 0)) j++;
-            if (w[j] === 0) break;
-            eaten.push(coast[j]); sum -= w[j]; w[j] = 0;
-        }
-        for (const c of eaten) { crust.create(c, CrustType.OCEAN, crust.formedAt[coastSea(c)]); crust.flags[c] = CrustFlag.APRON; }
-        plate.sedimentDue = Math.min(1, plate.sedimentDue - eaten.length);     // (what found no coast is not carried)
-        if (eaten.length) { plate.dirty = true; lost += eaten.length; world.budget.sedimentCells = (world.budget.sedimentCells ?? 0) + eaten.length; }
-    }
-    return lost;
+    // (the rivers' rock is what the erosion already took off the crust (crust.wornKm, step/surface-erosion.js) — it left the
+    // continent's books as it wore, so it is booked here, not taken from the coast again. Lane crust; the coast-eating flux
+    // this once ran, config.rockBook false, retired at lane graded)
+    return 0;
 }

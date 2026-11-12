@@ -225,9 +225,6 @@ export const TECTONICS = {
                                 // 2009, GSL SP 318; the 36 is my arithmetic); measured long-term rates 30–115 (von Huene et al. 2004)
     subductionErosionReachKm: 250,   // …from the continent nearest the trench within this: the fore-arc, trench to volcanic front
                                 // ~150–300 km (recalled, not sourced: a margin farther than this from its trench has an oceanic fore-arc)
-    rockBook: true,             // (lane crust; false = the old separate flux) the rivers carry the rock the heights wear off the crust (crust.wornKm), not a flux of their
-                                // own (trenchDenudationKmPerMyr, ~5× the crust's own wear over the first 200 Myr): one book, so what
-                                // the basins, seas and shelves keep is the continents' rock, and only what leaves them is lost
     beltStrainRate: 0,          // OFF by default (gjallar's ruling, 2026-11-05; 1e-15 is the value it was built and measured at). It took
                                 // compressive records < 240 Myr 61 → 55 % (3 seeds), but its live width makes Andean belts sub-cell
                                 // (median 44 km against one ~121 km cell at 160K; Earth's Andes 300–700 km): the per-step Andean work
@@ -460,14 +457,6 @@ export const TECTONICS = {
     sedimentSubductionShare: 1, // the share of the sediment in the channel that leaves the continent for good (Scholl & von Huene
                                 // count all of it lost; relamination under the arc — Hacker et al. 2011 — would return some: 1 is
                                 // the upper bound, 0 switches the sink off)
-    trenchDenudationKmPerMyr: 0.1, // a trench's terrigenous fill is a FLUX, not a thickness: every river basin wears down this fast
-                                // (× how fast its latitude erodes: terrain-config.js erosionAtLatitude, rain or ice; step/rivers.js)
-                                // and its fan delivers that rock to the trenches it reaches, which the downgoing plate carries away at the
-                                // convergence rate — so the fill stands at supply ÷ convergence: a slow trench off wet land fills
-                                // (Cascadia, southern Chile), a fast one starves (Tonga, northern Chile), as Clift & Vannucchi
-                                // (2004) find. River basins worldwide by ¹⁰Be: median 0.054, mean 0.218 km/Myr (Portenga &
-                                // Bierman 2011); an active margin's seaward slope lies between. (Was trenchTerrigenousKm 2.5: a
-                                // thickness, × the land's share × the latitude's erosion, whatever the convergence)
     trenchFanReachKm: 3000,     // a river's rock runs out across the ocean floor this far, as turbidity currents down its submarine
                                 // fan, to the nearest trench in reach (step/trench-fans.js): the Bengal–Nicobar fan, the longest, runs
                                 // ~3000 km from the Ganges–Brahmaputra mouth to the Sumatra–Andaman trench (Curray et al. 2003).

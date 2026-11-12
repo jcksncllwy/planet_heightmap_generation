@@ -26,10 +26,10 @@ const coreCount = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.own
 const trenchCells = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.boundary[w] === BoundaryKind.OVERRIDING) n++; return n; };
 const movers = f => f.plates.filter(p => p.alive && !p.isBackground);
 
-function run(id, overrides = {}, untilMyr = null, seed = SEED) {
+async function run(id, overrides = {}, untilMyr = null, seed = SEED) {
     const scene = RIFT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
-    const { frames, steps } = simulateCached(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });     // (the history cache: tools/lib/history-cache.mjs)
+    const { frames, steps } = await simulateCached(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });     // (the history cache: tools/lib/history-cache.mjs)
     // (events: the last frame's — the world is not run when the history comes from the cache)
     return { scene, world, frames, steps, events: frames.at(-1).events, at: t => frames.find(f => Math.abs(f.time - t) < 1e-6) };
 }
@@ -55,7 +55,7 @@ const plateCellsHalfBg = (f, id, f0, bgId) => { let n = 0, fromBg = 0; for (let 
 
 section('an old passive margin founders');
 {
-    const r = run('founder'), started = r.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT);
+    const r = await run('founder'), started = r.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT);
     const cfg = r.world.config, first = started[0];
     const ids = ['Westland', 'Eastland'].map(name => r.frames[0].plates.find(p => p.name === name).id);
     check('the scene begins wholly passive: no trench anywhere', trenchCells(r.frames[0]) === 0 && movers(r.frames[0]).every(p => p.speedCmYr < 0.05),
@@ -105,11 +105,11 @@ section('an old passive margin founders');
 
 section('it is a rule, not an accident');
 {
-    const off = run('founder', { subductionInitRatePerMyr: 0 });
+    const off = await run('founder', { subductionInitRatePerMyr: 0 });
     check('with the rule off, nothing founders and the basin stays open', off.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0 && off.events.every(e => e.kind !== EventKind.SUTURE) && movers(off.frames.at(-1)).every(p => p.speedCmYr < 0.5),
         `0 margins founder, no collision; ${movers(off.frames.at(-1)).map(p => p.speedCmYr.toFixed(2)).join('/')} cm/yr after ${off.frames.at(-1).time} Myr`);
     // spontaneous: unsqueezed (this scene starts at rest), ocean short of the age threshold never founders
-    const young = run('founder', { subductionInitAgeMyr: 10000 });
+    const young = await run('founder', { subductionInitAgeMyr: 10000 });
     check('unsqueezed, crust too young to founder never does', young.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0,
         `age threshold 10000 Myr: ${young.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length} margins founder`);
     // induced (Stern 2004; it dominates on Earth, Crameri et al. 2020): the founder law itself. Squeezed hard — twice the
@@ -122,7 +122,7 @@ section('it is a rule, not an accident');
     const tooYoung = [5, 15, cfg.oceanNeutralAgeMyr - 1].map(age => ({ age, urge: founderUrge(age, crush, cfg) }));
     check(`under ${cfg.oceanNeutralAgeMyr} Myr, ocean never founders, however hard it is squeezed`, tooYoung.every(x => x.urge === 0),
         tooYoung.map(x => `${x.age} Myr at ${crush / cfg.founderStrength}× the margin's strength: urge ${x.urge.toFixed(2)}`).join(' · '));
-    const a = run('founder'), b = run('founder');
+    const a = await run('founder'), b = await run('founder');
     check('the same seed replays the same history', a.events.length === b.events.length && a.events.every((e, i) => e.text === b.events[i].text) && a.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${a.events.length} events and the final world, identical`);
 }
 
@@ -159,7 +159,7 @@ section('a plate is carved out of the passive ocean');
 {
     // the founder scene with birth switched back ON: its continents face the passive ocean all round, so a
     // margin there must carve a plate out of it before any trench can found
-    const r = run('founder', { oceanPlateMinAreaKm2: 8e6 }), born = r.events.filter(e => e.kind === EventKind.PLATE_BORN);
+    const r = await run('founder', { oceanPlateMinAreaKm2: 8e6 }), born = r.events.filter(e => e.kind === EventKind.PLATE_BORN);
     check('a trench against the passive ocean first makes a plate of it', born.length >= 1 && r.events.some(e => e.kind === EventKind.SUBDUCTION_INIT && born.some(b => b.data.plate === e.data.upper || b.data.plate === e.data.lower)),
         born.length ? born.map(e => `${e.time.toFixed(0)} Myr: ${e.text}`).join(' | ').slice(0, 190) : 'no plate born in 300 Myr');
     if (born.length) {
@@ -204,7 +204,7 @@ section('one polarity per stretch of boundary');
         }
         return { flips, pairs, share: pairs ? flips / pairs : 0 };
     };
-    const on = ragged(histories[0]), off = ragged(run('breakup', { segmentPolarity: false }));
+    const on = ragged(histories[0]), off = ragged(await run('breakup', { segmentPolarity: false }));
     // the hard check is the mechanism: the vote must reduce the raggedness. The absolute share has no source
     // (the 6 % was the design doc's own measurement, 4.1 % on the start world, with headroom) and drifts with
     // whatever else moves the history, so it is a report

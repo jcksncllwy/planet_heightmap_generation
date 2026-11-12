@@ -15,10 +15,10 @@ import { hillshade } from '../js/view/terrain-shade.js';
 
 const [cells = '2500000', until = '600', seed = '12345'] = process.argv.slice(2);
 const hash = a => createHash('md5').update(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)).digest('hex').slice(0, 12);
-const time = (label, fn) => { const t = performance.now(), r = fn(); console.log(`${label.padEnd(34)} ${((performance.now() - t) / 1000).toFixed(2)} s`); return r; };
+const time = async (label, fn) => { const t = performance.now(), r = await fn(); console.log(`${label.padEnd(34)} ${((performance.now() - t) / 1000).toFixed(2)} s`); return r; };
 
 const mesh = labMesh(), scene = TERRAIN_SCENES.find(s => s.id === 'history');
-const frames = time(`history ${until} Myr (every 10 Myr)`, () => simulate(scene.build(mesh, Number(seed)), { untilMyr: Number(until), drive: w => scene.drive(w), snapshotEveryMyr: 10 }).frames);
+const frames = await time(`history ${until} Myr (every 10 Myr)`, async () => (await simulate(scene.build(mesh, Number(seed)), { untilMyr: Number(until), drive: w => scene.drive(w), snapshotEveryMyr: 10 })).frames);
 const F = frames.at(-1), cfg = terrainConfig();
 const tm = time(`terrain mesh ${cells}`, () => terrainMesh(Number(cells)));
 const S = time('sampling (once per mesh)', () => sampleOnto(mesh, tm, cfg, Number(seed)));

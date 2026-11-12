@@ -12,7 +12,7 @@ const SEEDS = [12345], MYR = 1200;
 const f1 = v => (Number.isFinite(v) ? v.toFixed(2) : String(v));
 
 section(`rock volume over the supercontinent cycle (${MYR} Myr, per 1200 Myr)`);
-const runs = SEEDS.map(seed => ({ seed, ...closure(volumeBooks({ seed, myr: MYR }), 1200) }));
+const runs = await Promise.all(SEEDS.map(async seed => ({ seed, ...closure(await volumeBooks({ seed, myr: MYR }), 1200) })));
 const stageNames = [...new Set(runs.flatMap(r => Object.keys(r.stageGkm3)))];
 // (a stage that booked nothing in volume or area is named once, not reported: 37 lines of zeros hid the books)
 const booked = name => runs.some(r => Math.abs(r.stageGkm3[name] ?? 0) > 0.005 || r.cells[name]?.land || r.cells[name]?.arc);
@@ -21,7 +21,7 @@ for (const name of stageNames.filter(booked))
 console.log(`(stages that booked nothing: ${stageNames.filter(n => !booked(n)).join(', ') || 'none'})`);
 report('rock worn off the crust by the heights, Gkm³ per cycle', runs.map(r => r.worn), { digits: 2,
     earth: [5, 9], source: 'continental denudation ~12–20 Gt/yr of solids to the ocean ÷ 2.5 t/m³ ≈ 5–8 km³/yr, ×1.2 Gyr ≈ 6–10 Gkm³ per 1200 Myr (Milliman & Syvitski 1992; Syvitski et al. 2005 — recalled, not opened here; the figure depends on the cycle through relief and area)' });
-report('rock the rivers carry to the sea, Gkm³ per cycle', runs.map(r => r.supplied), { digits: 2, detail: 'rivers.js riverSupplyKm3; with rockBook on it should equal the rock worn off the crust' });
+report('rock the rivers carry to the sea, Gkm³ per cycle', runs.map(r => r.supplied), { digits: 2, detail: 'rivers.js riverSupplyKm3: the rock the history\'s erosion took off the crust' });
 for (const key of Object.keys(runs[0].sinks))
     report(`…set down: ${key}, Gkm³ per cycle`, runs.map(r => r.sinks[key]), { digits: 2 });
 report('…set down, all books, Gkm³ per cycle', runs.map(r => r.placed), { digits: 2 });

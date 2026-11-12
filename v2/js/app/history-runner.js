@@ -29,13 +29,14 @@ export function runHistory({ list, scene, heights = {}, ending = 'none', start =
         const { untilMyr, stopAt } = historyEnding(lengthMyr ?? scene.maxMyr, ending, world.config);
         let n = 0;
         const each = onFrame ? f => onFrame(f, n++) : null;
-        const r = simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each });
-        const out = { ...r, complete: !r.stopped && ending !== 'none', time: world.time };
-        if (keep) {
-            out.more = to => { const m = simulate(world, { untilMyr: to, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }); out.frames.push(...m.frames); return Promise.resolve({ steps: m.steps, time: world.time }); };
-            out.close = () => {};
-        }
-        return Promise.resolve(out);
+        return simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }).then(r => {
+            const out = { ...r, complete: !r.stopped && ending !== 'none', time: world.time };
+            if (keep) {
+                out.more = async to => { const m = await simulate(world, { untilMyr: to, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }); out.frames.push(...m.frames); return { steps: m.steps, time: world.time }; };
+                out.close = () => {};
+            }
+            return out;
+        });
     }
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL('./history-worker.js', import.meta.url), { type: 'module' }), frames = [];

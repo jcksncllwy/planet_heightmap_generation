@@ -30,7 +30,7 @@ for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), simMesh = buildSimMesh(sim, MESH_SEED), n = simMesh.numCells;
     const z = new Float32Array(n), rows = [];
     let scratch = null;
-    simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
         const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]]));
         const t0 = performance.now();
         surfaceKm(fr, simMesh, H, z);

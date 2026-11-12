@@ -45,12 +45,12 @@ const CHECKLISTS = {
     ],
 };
 
-export function createPhase(simMesh, seed, overrides = {}) {
+export async function createPhase(simMesh, seed, overrides = {}) {
     const scene = HOTSPOT_SCENES.find(s => s.id === overrides.scene) ?? HOTSPOT_SCENES[0];
     const world = scene.build(simMesh, seed);
     for (const t of TUNABLES) if (overrides[t.id] !== undefined) world.config[t.id] = overrides[t.id];
     const started = performance.now();
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
     const simMs = performance.now() - started;
     const last = frames.at(-1);
     const plumeName = new Map(world.hotspots.map(h => [h.id + 1, h.name]));      // every plume that ever rose, live or dead

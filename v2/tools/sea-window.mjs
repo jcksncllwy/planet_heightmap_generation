@@ -20,7 +20,7 @@ const sim = Number(flag('--sim', 40000)), cont = Number(flag('--cont', DEFAULT_C
 const windowMyr = TERRAIN.carveTimeMyr, H = terrainConfig();
 for (const seed of seeds) {
     const { scene, world } = pageWorld({ seed, cont, sim }), simMesh = buildSimMesh(sim, MESH_SEED), mask = {}, rows = [];
-    simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: every, keepFrames: false, onFrame: f => {
+    await simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: every, keepFrames: false, onFrame: f => {
         const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]]));
         rows.push({ t: f.time, seaKm: landMask(fr, simMesh, H, mask).sl.seaKm });
     } }, { drive: scene.drive, spec: { scene: 'cycle', seed, cont, sim, meshSeed: MESH_SEED, by: 'sea-window' } });

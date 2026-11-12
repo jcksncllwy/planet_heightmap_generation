@@ -25,15 +25,15 @@ const rasterCells = w => w.plates.reduce((n, p) => n + p.crust.count, 0), raster
 const plateNamed = name => world.plates.find(p => p.name === name);
 const west = plateNamed('West'), east = plateNamed('East'), far = plateNamed('Far'), ocean = world.plates.find(p => p.isBackground);
 const started = performance.now();
-const firstLeg = simulate(world, { untilMyr: FIRST_LEG_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
+const firstLeg = await simulate(world, { untilMyr: FIRST_LEG_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
 const westLandFlagsAt50 = Uint8Array.from(west.crust.mask, (m, c) => (m && west.crust.type[c] !== CrustType.OCEAN && (west.crust.flags[c] & CrustFlag.TRENCH) ? 1 : 0));
-const secondLeg = simulate(world, { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false, resume: true });
+const secondLeg = await simulate(world, { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false, resume: true });
 const frames = [...firstLeg.frames, ...secondLeg.frames], stepLog = [...firstLeg.stepLog, ...secondLeg.stepLog], steps = world.step;
 console.log(`${steps} steps → ${frames.length} frames in ${(performance.now() - started).toFixed(0)} ms (${((performance.now() - started) / steps).toFixed(1)} ms/step)`);
 const frameAt = myr => frames.find(f => Math.abs(f.time - myr) < 1e-6);
 const last = frames.at(-1), mid = frameAt(100);      // 100 Myr: a wide interior ocean, the East–Far collision still shallow
 {   // the resumed run is the unbroken run, cell for cell
-    const unbroken = simulate(buildWilsonWorld(mesh, SEED), { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false }).frames.at(-1), resumed = frames.at(-1);
+    const unbroken = (await simulate(buildWilsonWorld(mesh, SEED), { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false })).frames.at(-1), resumed = frames.at(-1);
     const fields = ['owner', 'type', 'formedAt', 'flags', 'trench', 'slabKm'], differ = fields.map(k => [k, resumed[k].reduce((n, v, w) => n + (v !== unbroken[k][w] ? 1 : 0), 0)]).filter(([, n]) => n);
     check('a run can be stopped and resumed', differ.length === 0 && frames.every((f, i) => Math.abs(f.time - Math.min(i * SNAPSHOT_MYR, WILSON_MAX_MYR)) < 1e-6),
         `${frames.length} frames, evenly spaced across the two legs; at ${WILSON_MAX_MYR} Myr ${differ.length ? `differs from an unbroken run in ${differ.map(([k, n]) => `${k} ${n} cells`).join(', ')}` : `identical to an unbroken run in ${fields.join(', ')}`}`);

@@ -19,6 +19,10 @@
 // The hash is 128 bits from four 32-bit murmur3 lanes — not cryptographic, only a cache key over the world's own data —
 // the same in Node and in a browser worker (no async digest), ~40 ms for a 40K-cell start world.
 
+import { historyGPU } from '../tectonics/simulate.js';
+import { erodeGPU } from '../gpu/erode-gpu.js';
+import { historyErodeSettings } from '../tectonics/step/surface-erosion.js';
+
 const C1 = 0xcc9e2d51, C2 = 0x1b873593;
 const f64 = new Float64Array(1), f64Words = new Uint32Array(f64.buffer);
 
@@ -103,11 +107,57 @@ export function mathFingerprint() {
     return (mathMemo = H.hex().slice(0, 12));
 }
 
+let gpuMemo = null, gpuMemoOf = null;
+/**
+ * What this machine's GPU answers the history's erosion with (lane graded): the erosion kernels (gpu/erode-gpu.js, with the
+ * history's own settings, tectonics/step/surface-erosion.js) run on a fixed patch of ground, the ground they leave hashed.
+ * float32 rounding and fused multiply-adds are the vendor's, and the history's erosion feeds its dynamics, so two GPUs that
+ * answer differently build different histories: the key keeps them apart (historyKey). The patch is built with no
+ * transcendental function (a cube face's grid, normalised by sqrt, which IEEE rounds exactly): Math's own answers are
+ * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none. @returns {Promise<string>} 12 hex digits
+ */
+export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU) {
+    if (gpuMemo && gpuMemoOf === gpu) return gpuMemo;
+    const { gpu: g, opened } = await historyGPU(gpu);
+    const N = 48, n = N * N, xyz = new Float32Array(3 * n), off = [0], list = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const c = j * N + i, x = 2 * (i + 0.5) / N - 1, y = 2 * (j + 0.5) / N - 1, r = Math.sqrt(1 + x * x + y * y);
+        xyz[3 * c] = x / r; xyz[3 * c + 1] = y / r; xyz[3 * c + 2] = 1 / r;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+            if ((di || dj) && i + di >= 0 && i + di < N && j + dj >= 0 && j + dj < N) list.push((j + dj) * N + i + di);
+        }
+        off.push(list.length);
+    }
+    // (the ground: integer hash noise, km; the patch's rim is the sea)
+    const z = new Float32Array(n), ocean = new Uint8Array(n), water = new Float32Array(n).fill(1), k = new Float32Array(n);
+    for (let c = 0; c < n; c++) {
+        const i = c % N, j = (c - i) / N;
+        if (i === 0 || j === 0 || i === N - 1 || j === N - 1) { ocean[c] = 1; continue; }
+        let h = Math.imul(c ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+        z[c] = Math.fround(0.2 + 3 * Math.min(i, j, N - 1 - i, N - 1 - j) / N + (h >>> 8) / (1 << 24));
+        k[c] = 20 * (1 + (h & 3));
+    }
+    const mesh = { numCells: n, xyz, adjOffset: Uint32Array.from(off), adjList: Uint32Array.from(list), edgeKm: 6371 * 2 / N };
+    const none = { lakes: [], sink: new Uint8Array(n), base: new Float32Array(n) };
+    await erodeGPU(g, { mesh, z, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4 }, { device: opened });
+    const H = new Hash128();
+    H.str('gpu erosion v1'); H.view(z);
+    gpuMemoOf = gpu;
+    return (gpuMemo = H.hex().slice(0, 12));
+}
+
+/** gpuFingerprint's answer, once it has been worked out (await gpuFingerprint() first): historyKey's, which is not async. */
+export function gpuFingerprintNow() {
+    if (!gpuMemo) throw new Error('the history key needs the GPU\'s fingerprint: await gpuFingerprint() first (app/history-key.js)');
+    return gpuMemo;
+}
+
 /** A drive's identity: its name and its source (what it does with the world is in the code hash). */
 export function driveId(drive) { const H = new Hash128(); H.str(drive?.name ?? ''); H.str(String(drive)); return `${drive?.name || 'drive'}:${H.hex().slice(0, 12)}`; }
 
 /**
- * The key of a history: the code, the start world, the drive, the event rules, the engine's maths. Null for a world that is not at its
+ * The key of a history: the code, the start world, the drive, the event rules, the engine's maths and its GPU's (gpuFingerprint:
+ * await it once first). Null for a world that is not at its
  * start (a resumed world's random streams are past the seed's).
  * @param {string} codeHash   tools/lib/history-cache.mjs historyCodeHash (in the page: app/history-code.js, as served)
  * @returns {string|null} 32 hex digits
@@ -115,6 +165,6 @@ export function driveId(drive) { const H = new Hash128(); H.str(drive?.name ?? '
 export function historyKey(codeHash, world, drive, events = true) {
     if (!codeHash || world.time !== 0 || world.step !== 0) return null;
     const H = new Hash128();
-    H.str('geo-sim history v1'); H.str(codeHash); H.str(worldFingerprint(world)); H.str(driveId(drive)); H.word(events ? 1 : 0); H.str(mathFingerprint());
+    H.str('geo-sim history v1'); H.str(codeHash); H.str(worldFingerprint(world)); H.str(driveId(drive)); H.word(events ? 1 : 0); H.str(mathFingerprint()); H.str(gpuFingerprintNow());
     return H.hex();
 }

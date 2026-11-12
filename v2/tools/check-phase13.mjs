@@ -114,7 +114,7 @@ function trenchLines(f, meanAge) {
     return { totalKm: all * edgeKm, longestKm: longest * edgeKm, old2: 100 * old / Math.max(1, ocean), stage: stageOf(f) };
 }
 
-function run(seed, overrides = {}, { terrain = true } = {}) {
+async function run(seed, overrides = {}, { terrain = true } = {}) {
     const world = scene.build(mesh, seed);
     Object.assign(world.config, { crustLedger: true }, overrides);
     const kept = [], arcs = [], largestShares = [];
@@ -124,7 +124,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
     const plateCounts = [], bigPlates = [], floorAges = [], sealedOld = [], sea = [], staged = [], trenches = [];
     const heights = [], decay = new Map();       // (branch unified: the land's heights and crust, and old belts as they wear)
     const started = performance.now();
-    simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
+    await simulate(world, { untilMyr: scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, onFrame: f => {
         const cont = new Uint8Array(n), ocean = new Uint8Array(n);
         for (let w = 0; w < n; w++) { if (f.owner[w] < 0) continue; const t = f.type[w]; if (t === CrustType.CONTINENT || t === CrustType.CRATON) cont[w] = 1; else if (t === CrustType.OCEAN) ocean[w] = 1; }
         const sizes = comps(w => cont[w] === 1).map(c => c.length), total = sizes.reduce((x, y) => x + y, 0);
@@ -274,7 +274,7 @@ function run(seed, overrides = {}, { terrain = true } = {}) {
 }
 
 section('the cycle, three seeds over 1200 Myr');
-const rows = SEEDS.map(seed => run(seed));
+const rows = await Promise.all(SEEDS.map(seed => run(seed)));
 const txt = f => rows.map(r => `${r.seed}: ${f(r)}`).join(' · ');
 for (const r of rows) console.log(`    seed ${r.seed} (${r.secs.toFixed(0)} s): supercontinents at ${r.supers.map(t => t.toFixed(0)).join(', ')} Myr; broken up at ${r.broken.map(t => t.toFixed(0)).join(', ')}; ${r.rifts} rifts; largest landmass every 100 Myr ${r.shares.join(' ')} %`);
 
@@ -504,7 +504,7 @@ report('sea floor older than twice its mean age: median of the frames from 100 M
 section('the switches');
 {
     // with the heat and the mantle flow switched off, the pieces are left to their trenches: the Phase 12 engine
-    const off = run(12345, { ...MECHANISMS.mantleHeatRifts, ...MECHANISMS.mantleFlow }, { terrain: false });
+    const off = await run(12345, { ...MECHANISMS.mantleHeatRifts, ...MECHANISMS.mantleFlow }, { terrain: false });
     check('switched off (mantleHeatRifts, mantleFlow), seed 12345 runs as before them: no cycle tracked, no mantle flow',
         off.supers.length === 0, `${off.supers.length} supercontinent events; largest landmass every 100 Myr ${off.shares.join(' ')} %`);
 }
@@ -514,7 +514,7 @@ section('choose your ending');
     // one history run on as far as a history may (1200 + endingExtraMyr): where each ending would stop it
     const seed = 12345, world = scene.build(mesh, seed), light = [];
     // (through the history cache, tools/lib/history-cache.mjs: the run with the ending below is built afresh, and must agree)
-    simulateCached(world, { untilMyr: scene.maxMyr + TECTONICS.endingExtraMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false,
+    await simulateCached(world, { untilMyr: scene.maxMyr + TECTONICS.endingExtraMyr, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false,
         onFrame: f => light.push({ time: f.time, cycle: f.cycle, events: f.events, owner: f.owner }) }, { drive: scene.drive });
     const ends = ENDINGS.filter(e => e.id !== 'none').map(e => ({ ...e, frames: framesEnding(light, scene.maxMyr, e.id, TECTONICS) }));
     // (the cycle's pace is the mantle's, so a stage need not come round within endingExtraMyr: an ending not reached is
@@ -531,7 +531,7 @@ section('choose your ending');
     const pick = ends.filter(e => e.frames).sort((a, b) => a.frames.at(-1).time - b.frames.at(-1).time)[0];
     if (pick) {
         const w2 = scene.build(mesh, seed), { untilMyr, stopAt } = historyEnding(scene.maxMyr, pick.id, w2.config);
-        const r = simulate(w2, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
+        const r = await simulate(w2, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr: 10 });
         const same = r.frames.length === pick.frames.length && r.frames.every((f, i) => f.time === pick.frames[i].time && f.owner.every((o, w) => o === pick.frames[i].owner[w]));
         check(`run with the ending "${pick.id}", the history stops there, and is the same history up to it`, r.stopped && same,
             `stopped at ${r.frames.at(-1).time.toFixed(0)} Myr (expected ${pick.frames.at(-1).time.toFixed(0)}); ${same ? 'every frame the same' : 'frames differ'}`);

@@ -54,25 +54,20 @@ export const createPhase = terrainPhase({
         { id: 'carveTimeMyr', label: 'How long the rivers have worked', min: 0.1, max: 5, step: 0.1, unit: ' Myr' },
         { id: 'carveUpliftPerKm', label: 'Active ranges keep steep rivers (uplift per km of relief)', min: 0, max: 1, step: 0.05, unit: ' km/Myr' },
         { id: 'lipStepKm', label: 'Flood basalts: height of the steps they are cut into (0 = none)', min: 0, max: 0.6, step: 0.02, unit: ' km' },
-        { id: 'riverCutK', label: 'The history’s rivers: how fast they cut (re-runs the history)', min: 0, max: 2, step: 0.05, evolves: true },
         { id: 'basinRunoffShare', label: 'The history’s hollows: share of the rain that runs off, setting how long a lake’s water stays and so how much load it traps (0 = they trap none; re-runs the history)', min: 0, max: 1, step: 0.05, evolves: true },
-        { id: 'riverHalfKm2', label: 'The history’s rivers: drainage that cuts half through a range (re-runs the history)', min: 10000, max: 1000000, step: 10000, unit: ' km²', evolves: true },
     ],
     extraLayers: ({ terrainOf, tMesh, view }) => [
         {
-            // the history's rivers (tectonics/step/rivers.js), on the sim mesh: blue by what they drain, red where they
-            // have cut (how deep: through the ranges they held their ways across)
+            // the history's rivers (tectonics/step/rivers.js), on the sim mesh: blue by what they drain
             label: 'Rivers through time', paint(frame, out) {
                 const T = terrainOf(frame), { cells: sc, weights: sw } = T.sampler;
                 paintRelief(T.heightKm, T.shade, out, { seaLevelKm: view.seaLevelKm, cut: T.water?.cut });
                 for (let t = 0; t < tMesh.numCells; t++) {
                     if (T.heightKm[t] <= view.seaLevelKm) continue;
-                    let a = 0, inc = 0;
-                    for (let j = 0; j < 3; j++) { const c = sc[3 * t + j], w = sw[3 * t + j]; a += w * frame.riverKm2[c]; inc += w * frame.riverIncKm[c]; }
+                    let a = 0;
+                    for (let j = 0; j < 3; j++) a += sw[3 * t + j] * frame.riverKm2[sc[3 * t + j]];
                     const g = 0.6;                                   // (dim the terrain under the overlay)
                     out[3 * t] *= g; out[3 * t + 1] *= g; out[3 * t + 2] *= g;
-                    const cut = Math.min(1, inc / 1.5);
-                    if (cut > 0.03) { out[3 * t] += (230 - out[3 * t]) * cut; out[3 * t + 1] += (40 - out[3 * t + 1]) * cut * 0.8; out[3 * t + 2] += (40 - out[3 * t + 2]) * cut * 0.8; }
                     if (a > 2e4) { const s = Math.min(1, Math.log10(a / 2e4) / 2); out[3 * t] += (40 - out[3 * t]) * s; out[3 * t + 1] += (140 - out[3 * t + 1]) * s; out[3 * t + 2] += (255 - out[3 * t + 2]) * s; }
                 }
             },

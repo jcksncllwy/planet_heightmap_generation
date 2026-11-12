@@ -30,12 +30,12 @@ const r0cfg = () => TECTONICS;
 const mesh = labMesh(), { numCells, xyz, adjOffset, adjList, edgeKm, cellAreaKm2 } = mesh;
 const pos = w => [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]];
 
-function run(id, overrides = {}, drive = null, seed = SEED) {
+async function run(id, overrides = {}, drive = null, seed = SEED) {
     const scene = MARGIN_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
     Object.assign(world.config, overrides);
     // (the history cache — tools/lib/history-cache.mjs — for the scene's own drive; a drive made here is a closure the key cannot see into)
     const opts = { untilMyr: scene.maxMyr, drive: drive ?? (w => scene.drive(w)), snapshotEveryMyr: SNAPSHOT_MYR };
-    const { frames, steps } = drive ? simulate(world, opts) : simulateCached(world, opts, { drive: scene.drive });
+    const { frames, steps } = drive ? await simulate(world, opts) : await simulateCached(world, opts, { drive: scene.drive });
     // (events: the last frame's — the world is not run when the history comes from the cache)
     return { scene, world, frames, steps, events: frames.at(-1).events, last: frames.at(-1), cfg: world.config };
 }
@@ -55,7 +55,7 @@ function inlandKm(f, plateId) {
 
 section('coasts are classified (margins)');
 {
-    const r = run('margins'), f = r.last, drift = plateNamed(f, 'Driftia');
+    const r = await run('margins'), f = r.last, drift = plateNamed(f, 'Driftia');
     const coast = cellsWhere(numCells, w => f.owner[w] === drift.id && f.margin[w]);
     // which way each coast cell faces, from the continent's middle
     const lc = cellsWhere(numCells, w => f.owner[w] === drift.id && isLand(f, w)).reduce((s, w) => [s[0] + xyz[3 * w], s[1] + xyz[3 * w + 1], s[2] + xyz[3 * w + 2]], [0, 0, 0]);
@@ -71,7 +71,7 @@ section('coasts are classified (margins)');
 
 section('a young slab goes in flat (laramide)');
 {
-    const flat = run('laramide'), steep = run('laramide', { flatSlabMaxAgeMyr: 0 });
+    const flat = await run('laramide'), steep = await run('laramide', { flatSlabMaxAgeMyr: 0 });
     const count = (r, type) => { const id = plateNamed(r.last, 'Laurentia').id; return cellsWhere(numCells, w => r.last.owner[w] === id && r.last.oroType[w] === type).length; };
     const lar = count(flat, OrogenyType.LARAMIDE), and = count(flat, OrogenyType.ANDEAN), andSteep = count(steep, OrogenyType.ANDEAN), larSteep = count(steep, OrogenyType.LARAMIDE);
     // (the trigger is the slab's buoyancy under a plate advancing on it: young, or carrying a plateau or a ridge, whose crust
@@ -100,7 +100,7 @@ section('how the plates meet shapes the belt');
         w.plates.find(p => p.name === 'Laurentia').omega = omegaFor(P, heading(P, -90 + turn), 5);
         w.plates.find(p => p.name === 'Farallona').omega = omegaFor(P, heading(P, 90 + turn), 5);
     };
-    const steep = { flatSlabMaxAgeMyr: 0, marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 }, headOn = run('laramide', steep, driven(0)), oblique = run('laramide', steep, driven(50));
+    const steep = { flatSlabMaxAgeMyr: 0, marginIsleRatePerMyr: 0, marginIsleGrowKmPerMyr: 0 }, headOn = await run('laramide', steep, driven(0)), oblique = await run('laramide', steep, driven(50));
     const beltCells = r => { const f = nearestFrame(r.frames, 30), id = plateNamed(f, 'Laurentia').id; return cellsWhere(numCells, w => f.owner[w] === id && f.oroType[w] === OrogenyType.ANDEAN).length; };
     const nHead = beltCells(headOn), nObl = beltCells(oblique);
     // strain partitioning: only the margin-normal component of convergence shortens the margin (McCaffrey 1992) — so the
@@ -117,7 +117,7 @@ section('how the plates meet shapes the belt');
 
 section('an arc rifts off its ocean plate (mariana)');
 {
-    const r = run('mariana'), cfg = r.cfg, split = r.events.find(e => e.kind === EventKind.BACKARC_OPEN);
+    const r = await run('mariana'), cfg = r.cfg, split = r.events.find(e => e.kind === EventKind.BACKARC_OPEN);
     // (in time to run its course before the scene ends)
     check('the old slab rolls back and the arc rifts off', !!split && split.time <= r.scene.maxMyr - cfg.backArcActiveMyr && !split.data.continental && r.last.plates[split.data.parent].name === 'Philippina',
         split ? `${split.time.toFixed(0)} Myr: ${split.text.slice(0, 150)}` : 'no back-arc');
@@ -146,7 +146,7 @@ section('an arc rifts off its ocean plate (mariana)');
 
 section('a strip of coast rifts off a continent (japan)');
 {
-    const r = run('japan'), cfg = r.cfg, split = r.events.find(e => e.kind === EventKind.BACKARC_OPEN);
+    const r = await run('japan'), cfg = r.cfg, split = r.events.find(e => e.kind === EventKind.BACKARC_OPEN);
     check('the old slab rolls back from under the continent: a strip of its coast rifts off', !!split && split.data.continental && r.last.plates[split.data.parent].name === 'Asiana',
         split ? `${split.time.toFixed(0)} Myr: ${split.text.slice(0, 150)}` : 'no back-arc');
     if (split) {
@@ -174,7 +174,7 @@ section('a strip of coast rifts off a continent (japan)');
 
 section('in a whole history');
 {
-    const r = run('history'), cfg = r.cfg;
+    const r = await run('history'), cfg = r.cfg;
     const opened = r.events.filter(e => e.kind === EventKind.BACKARC_OPEN), closed = r.events.filter(e => e.kind === EventKind.BACKARC_CLOSE);
     report('back-arc seas opened per 100 Myr', 100 * opened.length / r.last.time, { earth: [20, 40], digits: 1, source: 'a rate: ~10–15 active today; ~15–25 opened in the Cenozoic (Lau, Mariana, Okinawa, Tyrrhenian, Scotia, Japan, Shikoku…; count recalled, unconfirmed)',
         detail: `${opened.length} in ${r.last.time} Myr (${opened.map(e => e.time.toFixed(0)).join(', ')} Myr)` });
@@ -230,7 +230,7 @@ section('in a whole history');
     // fore-arc islands: they rise off active coasts and grow into the mainland — land grows, but not without bound
     // (the islands alone: both runs with erosive margins off, which eat about as much as the islands add — Phase 7c)
     const landAt = x => cellsWhere(numCells, w => isLand(x.last, w)).length, noErosion = mechanismsOff('marginErosion');
-    const withIsles = run('history', noErosion), bare = run('history', { ...noErosion, ...mechanismsOff('marginIsles') });
+    const withIsles = await run('history', noErosion), bare = await run('history', { ...noErosion, ...mechanismsOff('marginIsles') });
     const growth = landAt(withIsles) / landAt(bare);
     // (audit 2026-10-30: the check counted ISLE_MERGE events, only those whose island passed the terrane area cut-off
     // (terraneMinAreaKm2, ~5 cells) — 1 · 0 · 3 · 0 · 1 · 0 over six seeds, while the crust ledger shows 1.6–2.4 Mkm² of land
@@ -240,7 +240,7 @@ section('in a whole history');
     // the ledger's 142 · 127 · 190 net cells made by the margin-isles stage. Some island must have joined, on most seeds)
     const isleCells = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] >= 0 && f.type[w] === CrustType.CONTINENT && (f.flags[w] & CrustFlag.MARGIN_ISLE)) n++; return n; };
     const cellKm2 = 4 * Math.PI * PLANET_RADIUS_KM ** 2 / numCells;
-    const isleSeeds = [{ seed: SEED, last: r.last }, ...MORE_SEEDS.map(seed => ({ seed, last: run('history', {}, null, seed).last }))].map(({ seed, last }) => ({ label: seed, n: isleCells(last) }));
+    const isleSeeds = [{ seed: SEED, last: r.last }, ...await Promise.all(MORE_SEEDS.map(async seed => ({ seed, last: (await run('history', {}, null, seed)).last })))].map(({ seed, last }) => ({ label: seed, n: isleCells(last) }));
     checkAcross('islands rise off active coasts and grow into the mainland', isleSeeds.map(x => ({ label: x.label, ok: x.n > 0, text: `${x.n} cells of fore-arc island crust now continent` })), { detail: `at ${r.last.time} Myr` });
     report('land made of fore-arc islands joined to their mainland', isleSeeds.map(x => x.n * cellKm2 / 1e6), { unit: ' Mkm²', digits: 2, source: 'no Earth figure: accreted arc crust adds ~1.5–3 km³/yr worldwide (Scholl & von Huene 2007) — a volume, not an area',
         detail: `fore-arc island crust that is continent at ${r.last.time} Myr, seeds ${isleSeeds.map(x => x.label).join(', ')}` });
@@ -248,7 +248,7 @@ section('in a whole history');
         detail: `land at ${r.last.time} Myr: ${landAt(withIsles)} cells with fore-arc islands, ${landAt(bare)} without (erosive margins off in both)` });
     const transp = cellsWhere(numCells, w => r.last.owner[w] >= 0 && r.last.oroType[w] === OrogenyType.TRANSPRESSION).length;
     check('transforms pressed together raise narrow ridges', transp > 0, `${transp} cells of transpression ridge at ${r.last.time} Myr`);
-    const b = run('history');                                                  // (a replay of r)
+    const b = await run('history');                                                  // (a replay of r)
     check('the same seed replays the same history', r.events.length === b.events.length && r.events.every((e, i) => e.text === b.events[i].text) && r.frames.at(-1).owner.every((o, w) => o === b.frames.at(-1).owner[w]), `${r.events.length} events and the final world, identical`);
 }
 

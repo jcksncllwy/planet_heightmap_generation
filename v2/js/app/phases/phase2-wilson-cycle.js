@@ -18,10 +18,10 @@ function expectedRidgeTurn(timeMyr) {   // West moves west until it reverses, th
 }
 function turnToKm(deg) { return deg * Math.PI / 180 * Math.sin(WILSON_HOME.poleDistanceDeg * Math.PI / 180) * 6371; }
 
-export function createPhase(simMesh, seed) {
+export async function createPhase(simMesh, seed) {
     const world = buildWilsonWorld(simMesh, seed);
     const t0 = performance.now();
-    const { frames, steps } = simulate(world, { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
+    const { frames, steps } = await simulate(world, { untilMyr: WILSON_MAX_MYR, drive: driveWilson, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
     const simMs = performance.now() - t0;
     const notes = world.plates.map(p => p.scene.motion.note);
     const kmPerCell2 = simMesh.cellAreaKm2 / 1e6;   // million km² per cell

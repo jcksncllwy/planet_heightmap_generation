@@ -30,12 +30,12 @@ const SHARED_CHECKLIST = [
     'The Phase 2–3 crust rules still hold under computed motion: no gaps, continents keep their shape, trench bands sit on the overriding edge.',
 ];
 
-export function createPhase(simMesh, seed, overrides = {}) {
+export async function createPhase(simMesh, seed, overrides = {}) {
     const scene = FORCE_SCENES.find(s => s.id === overrides.scene) ?? FORCE_SCENES[0];
     const world = scene.build(simMesh, seed);
     for (const t of TUNABLES) if (overrides[t.id] !== undefined) world.config[t.id] = overrides[t.id];
     const started = performance.now();
-    const { frames, steps } = simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
+    const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // kinematics and crust rules only: events are Phase 5
     const simMs = performance.now() - started;
 
     const movers = frames[0].plates.filter(p => !p.isBackground);
