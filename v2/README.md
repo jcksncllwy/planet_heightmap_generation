@@ -769,11 +769,17 @@ ages — 0.31 km of it the sediment's load, 0.23 km broad swells (GDH1's own fit
 - **Pre-history ocean** (formedAt < 0) is 100 Myr old in the pour and, now, in the drawn floor (`records.js`). Read as
   time − formedAt it was 780+ Myr old under the drape and stood above the pour's ground (check-waterbooks).
 
-The water inventory is unchanged and nothing offsets the level. The level that is still missing is named, not offset.
-(i) Earth's floor stands ever higher over GDH1 as it ages (+0.11 km at 0–10 Myr to +0.45 at 120–140: superswells and
-plume swells, the South Pacific +0.52), and the model has no process for it. (ii) The history's floor runs old (10–20 % of
-it older than 180 Myr, where Earth has none). Their shares in km of level, at the gallery moments, are in lane sealevel's
-report (`tools/ocean-budget.mjs`, term by term against ETOPO5). Seamounts and plateaus have no process either (+0.07).
+The water inventory is unchanged and nothing offsets the level, so the sea still stands 0.40–0.72 km below the datum
+at the gallery moments. The source fixes moved the floor's terms onto Earth's: the drape now carries Earth's sediment load
+and the crests sit on GDH1 (0–20 Myr floor 3.30–3.43 km against Earth's 3.42). The level that is still missing is named,
+not offset (lane sealevel's report, `tools/ocean-budget.mjs` term by term, as volume over the sea's area against Earth's
+1334e6 km³). (i) **The old-floor swell**: Earth's floor stands higher over GDH1 as it ages (+0.11 km at 0–10 Myr to +0.45
+at 120–140: superswells and plume swells, the South Pacific +0.52), and the model has no process for it: 0.09–0.19 km.
+(ii) **The old floor**: 10–24 % of the history's ocean crust is older than 180 Myr, where Earth has 0.6 %: −0.01…+0.10 km
+(its clay drape keeps it near the younger floor's depth); the rest of the floor's age mix adds −0.12…+0.13. (iii) **More
+ocean crust than Earth's**: 59–66 % of the planet against 57.4 %, the continents' area, not the floor: +0.13…+0.59 km,
+the largest term at three moments. Seamounts and plateaus have no process either (≤ 0.1 km with the drape's misfit);
+the flooded margins hold less than Earth's (−0.08…−0.16).
 Phase 8a judges the old floor (> 100 Myr, > 300 km from land) against Earth's *observed* old floor, median 5.09 km with
 p25–p75 4.33–5.46, not GDH1's basement 5–6.5. Phase 13 judges the land's mean height against ice-free Earth (0.66 km,
 ETOPO1). The drape and the reference cost nothing measurable (closed form; 0.3 % of a history's profile).
