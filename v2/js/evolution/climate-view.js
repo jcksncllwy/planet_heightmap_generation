@@ -682,12 +682,15 @@ export function satelliteSource(season, C, fin = null) {
     const S = styled ? styledSatellite(R, season, fin.raster.heightM, fin.raster.w, fin.rivers) : R.sat[season];
     return { R, S, season, shadeAmp: styled ? SAT_SHADE : 1, tsea: (C.Tsea ?? C.T)[season], ice: C.seaIce?.[season] ?? C.ice, T: C.T[season], Tyear: C.T.year, consts: SAT_SEA, gridTables };
 }
+// (the Satellite's sea keeps the full 0.45–1 relief light, as finish-paint.js's shader does: it is a picture, not a
+// field read by colour, so the climate layers' soft relief (shadeK) is not its)
+const SAT_SEA_SHADE = kk => 0.45 + 0.55 * (kk - 0.35) / 0.65;
 function satelliteColor(season, C, W, fin = null) {
     const { R, S, shadeAmp, tsea, ice, T, Tyear } = satelliteSource(season, C, fin), g = gridSampler(W), rgb = [0, 0, 0];
     const enlarged = R.w < W, blend = [0, 0, 0];
     return (out, o, x, y, wet, kk, k3, v, lake) => {
         // (the land's relief shading deeper than the other layers': the mountains stand out, as on a satellite image)
-        const k = wet ? shadeK(kk) : 1 + shadeAmp * (0.37 + 0.68 * (kk - 0.35) / 0.65 - 1);      // (0.28–1.08: "the hillshading is too strong")
+        const k = wet ? SAT_SEA_SHADE(kk) : 1 + shadeAmp * (0.37 + 0.68 * (kk - 0.35) / 0.65 - 1);      // (0.28–1.08: "the hillshading is too strong")
         if (wet) {
             // (the sea: a gentler light on its floor's relief; shallow warm water turquoise; its ice in its season)
             seaDepthRgb(v, rgb);
