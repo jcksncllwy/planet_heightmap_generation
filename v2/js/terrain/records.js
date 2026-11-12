@@ -340,8 +340,13 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         // datum: marine fill has no room above it, and a fill clamped at the datum stood dry under a sea poured below it, flat
         // banks far offshore (coasts2, 831576@430: a rise 28–51 km thick per cell). Crust shallower than that without its
         // fill keeps its own depth: a floor the swell lifts out of a low sea is exposed ground)
-        const swellK = sl.swellKm[w], bareKm = Math.max(0, seaDepthKm(age) - swellK);
-        depthKm[w] = Math.min(bareKm, Math.max(filledSeaDepthKm(age, rockKm) - swellK, -sl.seaKm - cfg.shelfEdgeKm));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
+        // (the floor's depth by the history's own age rule — tectonics/ocean/inventory.js surfaceKm, which the pour stands
+        // the water on: pre-history ocean, formedAt < 0, at 100 Myr — so the drawn floor holds the water the history poured.
+        // Read as time − formedAt it was 780+ Myr old, and its pelagic drape, linear in age, stood it up to ~1.3 km above the
+        // history's: check-waterbooks' view against V, −4 to −6 %, lane sealevel. The fabric keeps the age above.)
+        const dAge = frame.owner[w] >= 0 && frame.formedAt[w] < 0 ? 100 : age;
+        const swellK = sl.swellKm[w], bareKm = Math.max(0, seaDepthKm(dAge) - swellK);
+        depthKm[w] = Math.min(bareKm, Math.max(filledSeaDepthKm(dAge, rockKm) - swellK, -sl.seaKm - cfg.shelfEdgeKm));    // (less the sediment the rivers laid on it, Airy-loaded: an enclosed sea's, step/sea-fill.js, and an open margin's rise, riseKm3 over its cell, step/trench-fans.js layRise — 229–494 m mean over the open floor at 900–1200 Myr, tools/ocean-rise.mjs; raised or lowered by the mantle's swell)
         // (drowned crust's floor: its own column, not a ridge's by age — and the swell as its crust takes it: liftRefKm, the
         // reference it was flooded against above)
         if (seaColKm[w] === seaColKm[w]) depthKm[w] = Math.max(0, -seaColKm[w] - (sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0)));
