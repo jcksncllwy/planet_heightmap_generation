@@ -27,7 +27,7 @@ const R = 6371;
 /**
  * Every cell's surface against today's datum (km, + up): what the water would stand on. Continental and arc crust as the
  * history's rivers stand it (tectonics/step/rivers.js: its column, uplift, start swells, flood basalt, the sediment in its
- * hollows, less what its rivers cut), sea floor as the terrain's records do (records.js: the depth–age law less the
+ * hollows — as the history's erosion left them), sea floor as the terrain's records do (records.js: the depth–age law less the
  * sediment an enclosed sea laid and the rise its rivers laid off an open margin, riseKm3; an oceanic plateau aside), both on the mantle's swell against their side's reference.
  * Read from a frame (FRAME_FIELDS). PROTOTYPE: ports the two formulas rather than sharing them — a wired version
  * extracts one per-cell surface for rivers.js, records.js and this. `swellKm`: the mantle's swell per cell, when the caller
@@ -56,8 +56,8 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
         } else { b = C.ref[type]; full = b + C.slope[type] * frame.rootKm[w]; }
         full += frame.upliftKm[w] + frame.baseKm[w]
             + (frame.volcType[w] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, frame.volcKm[w]) - frame.volcWornKm[w]) : 0);
-        const relief = Math.max(0, full - Math.min(b, full)), laid = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;
-        out[w] = full + laid - Math.min(frame.riverIncKm?.[w] ?? 0, relief + laid + H.riverPlainKm)
+        const laid = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;     // (the history's erosion lowered the records themselves: no cut to take off, lane graded)
+        out[w] = full + laid
             + swell - (type === CrustType.ARC ? seaRef : landRef);
     }
     return out;
