@@ -570,11 +570,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
  * Ryan et al. 1997) is closedBasins' lake, untouched here.
  *
  * Its closure: frame.seaCutAt (tectonics/step/sea-age.js) on the sim cells under its ground below the sea — the median of
- * them, if most carry one; the time it could stand dry D = clamp(since − drawdown, 0, window). One the history did not hold
- * cut off (no seaCutAt there: a hollow below the sea it kept as land — at 160K 243751@660 and @1060 have a dozen, sills
- * a few hundred metres up that the erosion cuts to tens of metres below the sea — or as ocean) is not a sea here: it keeps
- * its fill through the early erosion, as erosion-dug hollows do (closedBasins' histSea, gladsheim 2026-11-11), and the
- * polish's judge at today's sea and the flood after it decide it.
+ * them, if most carry one; the time it could stand dry D = clamp(since − drawdown, 0, window). A hollow below the sea the
+ * history did not hold cut off (no seaCutAt there: land in the history, or ocean) has stood so the whole window, D =
+ * window: its sill against the glacial sea is judged as any sea's (sessrumnir's ruling, 2026-11-12 — at 160K 243751@660 and
+ * @1060 have a dozen such coastal hollows, sills a few hundred metres up that the erosion cuts to tens of metres below
+ * the sea, so open at the highstands).
  *
  * The glacial cycle: the sea stands below a sill for a share f of the time (sea-level-stack.js: the Spratt & Lisiecki 2016
  * stack, 0–798 ka; the Bosporus's −35 m 0.67), so only then is the sea behind it cut off, and every fall below the sill
@@ -594,7 +594,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
  */
 function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr) {
     const out = { held: null, seas: [], release: null, adopt: () => {}, dropReleased: () => {} };
-    if (!frame.seaCutAt || !(windowMyr > 0) || !B.seas.length) return out;
+    if (!(windowMyr > 0) || !B.seas.length) return out;
     const n = mesh.numCells, { xyz } = mesh, c3 = [0, 0, 0], w3 = [0, 0, 0];
     const nearest = (M, c) => { locate(M, xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], c3, w3); return c3[w3[1] > w3[0] ? (w3[2] > w3[1] ? 2 : 1) : (w3[2] > w3[0] ? 2 : 0)]; };
     // (a sea's dry share at a sill: the cycle's share below it, less the drawdown each fall below it costs)
@@ -603,15 +603,22 @@ function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr)
     for (const S of B.seas) {
         if (S.open) continue;
         const cells = B.lakes[S.id].cells.filter(c => z[c] < 0), cut = [];
-        for (const c of cells) { const v = frame.seaCutAt[nearest(simMesh, c)]; if (v === v) cut.push(v); }
-        const rec = { km2: Math.round(S.km2), floorKm: +S.floorKm.toFixed(3), levelKm: +S.levelKm.toFixed(3), historyShare: +(cut.length / Math.max(1, cells.length)).toFixed(2), windowMyr: +windowMyr.toFixed(3), dryMyr: +windowMyr.toFixed(3) };
+        if (frame.seaCutAt) for (const c of cells) { const v = frame.seaCutAt[nearest(simMesh, c)]; if (v === v) cut.push(v); }
+        const lat = Math.asin(xyz[3 * S.low + 2]) * 180 / Math.PI, lon = Math.atan2(xyz[3 * S.low + 1], xyz[3 * S.low]) * 180 / Math.PI;
+        const rec = { km2: Math.round(S.km2), floorKm: +S.floorKm.toFixed(3), levelKm: +S.levelKm.toFixed(3), at: [+lat.toFixed(2), +lon.toFixed(2)], historyShare: +(cut.length / Math.max(1, cells.length)).toFixed(2), windowMyr: +windowMyr.toFixed(3), dryMyr: +windowMyr.toFixed(3) };
         out.seas.push(rec);
         if (S.full) { rec.why = 'its balance fills it: it spills'; continue; }
-        if (2 * cut.length < cells.length) { rec.why = 'not a sea the history cut off'; continue; }
-        cut.sort((a, b) => a - b);
-        const cutOffAt = cut[cut.length >> 1], since = frame.time - cutOffAt, tau = drawdownMyr(cells, z, pet, rain, cellKm2, F, S.inflowKm3);
-        const d = Math.min(windowMyr, Math.max(0, since - tau)), { f, fDry } = dryShare(S.sillKm, tau);
-        Object.assign(rec, { cutOffAt: +cutOffAt.toFixed(2), sinceMyr: +since.toFixed(2), drawdownMyr: +tau.toPrecision(3), sillKm: +S.sillKm.toFixed(3), f: +f.toFixed(3), fDry: +fDry.toFixed(3), dryMyr: +(d * fDry).toFixed(3), judges: [] });
+        const tau = drawdownMyr(cells, z, pet, rain, cellKm2, F, S.inflowKm3);
+        let d = windowMyr;
+        if (2 * cut.length < cells.length) rec.why = 'not a sea the history cut off: dry the whole window';
+        else {
+            cut.sort((a, b) => a - b);
+            const cutOffAt = cut[cut.length >> 1], since = frame.time - cutOffAt;
+            d = Math.min(windowMyr, Math.max(0, since - tau));
+            Object.assign(rec, { cutOffAt: +cutOffAt.toFixed(2), sinceMyr: +since.toFixed(2) });
+        }
+        const { f, fDry } = dryShare(S.sillKm, tau);
+        Object.assign(rec, { drawdownMyr: +tau.toPrecision(3), sillKm: +S.sillKm.toFixed(3), f: +f.toFixed(3), fDry: +fDry.toFixed(3), dryMyr: +(d * fDry).toFixed(3), judges: [] });
         cellsOf.push(cells); D.push(d); tauOf.push(tau); relAt.push(windowMyr - d * fDry); recOf.push(rec); wet0.push(windowMyr - d * fDry > 1e-9 ? 1 : 0);
     }
     if (!cellsOf.length) return out;

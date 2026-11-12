@@ -243,8 +243,8 @@ dry time D·f_dry: held as sea until window − D·f_dry, dry after. A sill abov
 falls: as seaage, byte for byte. Each judge on the finest level measures its sill again (the spill level of its lowest
 cell from the world ocean) and moves its time: a sea already dry is water again if a lower sill moves it later — its
 ground under the erosion's sea joined to its own — and a sill below −130 m (the record's lowest) holds it to the end, as
-the breach did. A sea the history did not hold cut off keeps its fill through the early erosion (at 160K 243751@660
-and @1060 have a dozen such hollows, unchanged). A sea whose balance fills it (the Black Sea's kind) is closedBasins'
+the breach did. A hollow below the sea the history did not hold cut off is judged the same way with D = window (at 160K
+243751@660 and @1060 have a dozen, coastal, whose sills the erosion cuts to tens of metres below the sea). A sea whose balance fills it (the Black Sea's kind) is closedBasins'
 lake, unchanged. Drawn as one state: the result is the share of the erosion on its dry floor, not both pictures.
 `stats.seaDrying` adds each sea's sillKm / f / fDry and `judges` (each fine judge's time, sill, f, f_dry, dry time,
 water). The cycle is the Pleistocene's (an Earth-now assumption, as the lowstand is). **The finished sea's climate**: the climate
