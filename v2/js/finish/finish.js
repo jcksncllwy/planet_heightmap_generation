@@ -5,6 +5,7 @@
 // slices, everything else runs here, on a mesh of any size — 10M cells included, which only this worker holds.
 
 import { MinHeap } from '../core/min-heap.js';
+import { cutOffShare, STACK_KYR } from './sea-level-stack.js';
 import { FINISH, COVER } from './finish-config.js';
 import { LatLonGrid } from './finish-grid.js';
 import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
@@ -279,9 +280,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const B = closedBasins(mesh, z, runoff, pet, skyKept, cellKm2, F, ocean0);
     stats.closedBasins = B.basins;
     stats.cutOffSeas = B.seas;
-    // (each cut-off sea the history closed lately is still water for part of the window: held as sea from its start until
-    // its evaporation has drawn it down — seaDrying, below. The carve and the sediment see it as sea, and its own judge
-    // (Bc) as the rest of the ground beside it)
+    // (a cut-off sea is still water for part of the window — closed lately, or behind a sill the glacial cycle's highstands
+    // pour over: held as sea from its start until its dry time is left — seaDrying, below. The carve and the sediment see it
+    // as sea, and its own judge (Bc) as the rest of the ground beside it)
     const EP = F.erode ? { ...ERODE, ...F.erode } : null, early = EP?.at === 'early' || EP?.at === 'both';
     const Dry = seaDrying(mesh, z, B, frame, simMesh, pet, skyKept, cellKm2, F, early ? erosionSpanMyr(ladderOverWindow(EP, frame.tectSpanMyr), n) : 0);
     stats.seaDrying = Dry.seas;
@@ -311,19 +312,16 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const young = new Uint8Array(n);
     for (let c = 0; c < n; c++) young[c] = Math.round(255 * Math.max(0, Math.min(1, carveIn.hold[c])));
     const soft = carveIn.soft;                                        // (how soft the rock is to the ice: the ice age's)
-    // (a cut-off sea the erosion breaches refloods then: at each closed-basin judge, one whose rim the rivers have cut below
-    // the sea's surface joins the ocean, in place — closedBasins' open, joinOpenSeas — so its rivers end at the sea from that
-    // moment, not at its dry floor kilometres down for the rest of the window, and its floor stops filling. Lane reflood,
-    // 2026-11-11 (inlandsea/report.md: 243751@730's trapped ocean, graded dry for the whole window and flooded only after it,
-    // drowned 4.2 Mkm² of the history's land). Judged on the finest level only (closedBasins' breach): the ladder's coarser
-    // levels average the ground, which cuts a narrow sill below the sea — at 2.5M, 243751@730's sea "breached" at the 640K
-    // level's first judge with its 2.5M sill still above the sea, and, held as sea through the 2.5M level, ended dry behind it.
-    // Only a sea the history left cut off (B.seaCells, the judge above on the history's own surface): a hollow the erosion
-    // dug below the sea on a low coastal plain keeps its fill (closedBasins' histSea). stats.reflood: each, by the judge's
-    // mesh and count)
+    // (a cut-off sea the polish breaches refloods then: at each of its closed-basin judges, one whose rim the rivers have cut
+    // below today's sea joins the ocean, in place — closedBasins' open, joinOpenSeas — so its rivers end at the sea from that
+    // moment and its floor stops filling. Lane reflood, 2026-11-11. Only a sea the history left cut off (B.seaCells, the judge
+    // above on the history's own surface): a hollow the erosion dug below the sea on a low coastal plain keeps its fill
+    // (closedBasins' histSea). The early erosion's judges no longer breach at the lowstand (−53 m): a sill between the
+    // glacial cycle's highstand and lowstand cuts its sea off for a share of the time only, and seaDrying's judge holds it as
+    // sea for the rest — lane highstand, 2026-11-12. stats.reflood: each, by the judge's mesh and count)
     const judges = new Map();
     stats.reflood = [];
-    const reflooded = (lm, sea, B, at = 'early') => {
+    const reflooded = (lm, sea, B, at) => {
         const k = `${at} ${lm.numCells}`, judge = judges.get(k) ?? 0;
         judges.set(k, judge + 1);
         if (B.open.length && joinOpenSeas(B, sea)) for (const S of B.seas) if (S.open) stats.reflood.push({ at, cells: lm.numCells, judge,
@@ -357,11 +355,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low ? 1 : 0;
         onStage('erosion');
         stats.erodeOn = eroder.on;
-        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => reflooded(lm, sea, closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm, lm === mesh, B.seaCells)), observe,
-                releaseOf: Dry.held ? (lm, sea, t) => Dry.release(lm, sea, t, lowOcean) : null }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
-            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => reflooded(mesh, lowOcean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low, true, B.seaCells)),
-                release: Dry.held ? t => Dry.release(mesh, lowOcean, t, lowOcean) : null }, EP);
-        // (a sea that went dry in the window is land from here on: today's flood and the bayhead fill see its floor)
+        const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm, false), observe,
+                releaseOf: Dry.release ? (lm, sea, t, g) => Dry.release(lm, sea, t, lowOcean, g, low) : null }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
+            : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low, false),
+                release: Dry.release ? (t, g) => Dry.release(mesh, lowOcean, t, lowOcean, g, low) : null }, EP);
+        // (a held sea dry at the window's end is land from here on: today's flood and the bayhead fill see its floor)
         Dry.dropReleased(ocean0, worldOcean);
         const { outflow, ...erodeStats } = ER;
         stats.erode = erodeStats;
@@ -555,34 +553,53 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
  * whether re-running only near the change would do. Lane reflood, 2026-11-11.
  */
 /**
- * How long each sea the history cut off has stood dry by the moment, and the cells of each still water at the window's start
- * (lane seaage, 2026-11-12; Jackson's ruling C(ii): its dry time is the window or the time since its closure, whichever is
- * shorter). Until then every cut-off sea the finish found was dry for the whole window — graded and eroded down to its
- * water-balance lake from the window's first step — however lately the history had closed it.
+ * How long each sea cut off from the ocean stands dry in the window, and when (lane seaage, 2026-11-12, Jackson's ruling
+ * C(ii); the glacial cycle's share, lane highstand, 2026-11-12, Jackson's option (a)). Until seaage every cut-off sea the
+ * finish found was dry for the whole window — graded and eroded down to its water-balance lake from the window's first
+ * step — however lately the history had closed it; until highstand the erosion's judges then joined it to the ocean once
+ * its sill was cut below the lowstand, the cycle's time-weighted mean sea (−53 m), and held it dry while the sill stood
+ * above that, at every stand of the cycle alike.
  *
- * A cut-off sea (the first judge's, on the history's own surface: closedBasins' seas) is the world ocean's water when it is
- * closed off, at the sea's level, and falls only as fast as its evaporation outruns what flows in: drawdownMyr, from its
- * ground's hypsometry and the water balance closedBasins nets (each cell's open-water loss, lakeEvapShare × pet less the sky
- * water it keeps; the inflow its catchment sends). The Messinian Mediterranean, closed ~5.97 Ma (Krijgsman et al. 1999), fell
- * ~1.5 km in roughly a thousand to ten thousand years (Ryan 2009; Blanc 2002 ~1–3 kyr): a deficit of ~3,300 km³/yr against
- * ~3.7 Mkm³. A sea whose inflow balances its loss before it is empty stays a lake at that level (closedBasins' lake: the
- * Black Sea's Neoeuxine lake through its lowstand isolation, Ryan et al. 1997), and one whose balance holds it at or above the
- * sea's level never falls (unchanged here: closedBasins keeps it full).
+ * A cut-off sea (the first judge's, on the history's own surface: closedBasins' seas, not full) is the world ocean's water
+ * when it is closed off, at the sea's level, and falls only as fast as its evaporation outruns what flows in: drawdownMyr,
+ * from its ground's hypsometry and the water balance closedBasins nets (each cell's open-water loss, lakeEvapShare × pet
+ * less the sky water it keeps; the inflow its catchment sends). The Messinian Mediterranean, closed ~5.97 Ma (Krijgsman et
+ * al. 1999), fell ~1.5 km in roughly a thousand to ten thousand years (Ryan 2009; Blanc 2002 ~1–3 kyr): a deficit of
+ * ~3,300 km³/yr against ~3.7 Mkm³. A sea whose inflow balances its loss before it is empty stays a lake at that level, and
+ * one whose balance fills it to its sill (`full`: the Black Sea's kind, a lake through each lowstand — the Neoeuxine,
+ * Ryan et al. 1997) is closedBasins' lake, untouched here.
  *
  * Its closure: frame.seaCutAt (tectonics/step/sea-age.js) on the sim cells under its ground below the sea — the median of
- * them, if most carry one (else the history did not hold it as a cut-off sea, and it stays as it was: reflood's breach
- * decides). Its dry time D = clamp(since − drawdown, 0, window). D ≥ window: as before, byte for byte. Else it is held as
- * sea — ocean for the carve, the sediment and the erosion — until the window's time window − D, when `release` takes it out
- * of the erosion's ocean (each ladder level's, mapped by each held cell's nearest cell there) and the judges after see its
- * floor; never released (D = 0), it ends the finish as sea.
- * @returns {{held: Uint8Array|null, seas: Object[], release: Function, adopt: Function, dropReleased: Function}}
+ * them, if most carry one; the time it could stand dry D = clamp(since − drawdown, 0, window). One the history did not hold
+ * cut off (no seaCutAt there: a hollow below the sea it kept as land — at 160K 243751@660 and @1060 have a dozen, sills
+ * a few hundred metres up that the erosion cuts to tens of metres below the sea — or as ocean) is not a sea here: it keeps
+ * its fill through the early erosion, as erosion-dug hollows do (closedBasins' histSea, gladsheim 2026-11-11), and the
+ * polish's judge at today's sea and the flood after it decide it.
+ *
+ * The glacial cycle: the sea stands below a sill for a share f of the time (sea-level-stack.js: the Spratt & Lisiecki 2016
+ * stack, 0–798 ka; the Bosporus's −35 m 0.67), so only then is the sea behind it cut off, and every fall below the sill
+ * isolates it afresh, full, to be drawn down again — at each highstand the ocean pours back over the sill in months (the
+ * Zanclean flood, Garcia-Castellanos et al. 2009). Its dry share f_dry = f − drawdown × falls ÷ 798 kyr (0 at least), and
+ * its dry time D·f_dry. A sill above the record's highest stand (+19 m) is cut off throughout (f 1, no falls: as seaage);
+ * one below its lowest (−130 m) never (f 0: the ocean's). Drawn as one state, not both: held as sea — ocean for the carve,
+ * the sediment and the erosion — from the window's start to window − D·f_dry, and dry after; D·f_dry ≥ window: never held,
+ * as before, byte for byte. The erosion lowers the sill, so each judge on the finest level (a coarser level's ground is
+ * averaged, which shaves a narrow sill: reflood) measures it again — the spill level of the sea's lowest cell from the
+ * world ocean (sillsOn) — and moves its time: `release` takes it out of the erosion's ocean once the window's time passes it
+ * (each ladder level's, a coarse level's by each cell's nearest there) and gives it back if a lower sill moves it later. A
+ * sill cut below −130 m holds it to the window's end: the old breach, now where the cycle never isolates it.
+ * stats.seaDrying: each sea's why / cutOffAt / sinceMyr / drawdownMyr / sillKm / f / fDry / dryMyr / releasedAtMyr, and
+ * `judges`: each fine judge's time, sill, f, f_dry, dry time and whether it is water.
+ * @returns {{held: Uint8Array|null, seas: Object[], release: Function|null, adopt: Function, dropReleased: Function}}
  */
 function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr) {
-    const out = { held: null, seas: [], release: () => false, adopt: () => {}, dropReleased: () => {} };
+    const out = { held: null, seas: [], release: null, adopt: () => {}, dropReleased: () => {} };
     if (!frame.seaCutAt || !(windowMyr > 0) || !B.seas.length) return out;
     const n = mesh.numCells, { xyz } = mesh, c3 = [0, 0, 0], w3 = [0, 0, 0];
     const nearest = (M, c) => { locate(M, xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], c3, w3); return c3[w3[1] > w3[0] ? (w3[2] > w3[1] ? 2 : 1) : (w3[2] > w3[0] ? 2 : 0)]; };
-    const cellsOf = [], relAt = [], recOf = [];
+    // (a sea's dry share at a sill: the cycle's share below it, less the drawdown each fall below it costs)
+    const dryShare = (sillKm, tau) => { const s = cutOffShare(sillKm); return { f: s.f, fDry: Math.max(0, s.f - 1000 * tau * s.falls / STACK_KYR) }; };
+    const cellsOf = [], D = [], tauOf = [], relAt = [], recOf = [], wet0 = [];
     for (const S of B.seas) {
         if (S.open) continue;
         const cells = B.lakes[S.id].cells.filter(c => z[c] < 0), cut = [];
@@ -593,47 +610,110 @@ function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr)
         if (2 * cut.length < cells.length) { rec.why = 'not a sea the history cut off'; continue; }
         cut.sort((a, b) => a - b);
         const cutOffAt = cut[cut.length >> 1], since = frame.time - cutOffAt, tau = drawdownMyr(cells, z, pet, rain, cellKm2, F, S.inflowKm3);
-        const dry = Math.min(windowMyr, Math.max(0, since - tau));
-        Object.assign(rec, { cutOffAt: +cutOffAt.toFixed(2), sinceMyr: +since.toFixed(2), drawdownMyr: +tau.toPrecision(3), dryMyr: +dry.toFixed(3) });
-        if (dry >= windowMyr) continue;
-        cellsOf.push(cells); relAt.push(windowMyr - dry); recOf.push(rec);
+        const d = Math.min(windowMyr, Math.max(0, since - tau)), { f, fDry } = dryShare(S.sillKm, tau);
+        Object.assign(rec, { cutOffAt: +cutOffAt.toFixed(2), sinceMyr: +since.toFixed(2), drawdownMyr: +tau.toPrecision(3), sillKm: +S.sillKm.toFixed(3), f: +f.toFixed(3), fDry: +fDry.toFixed(3), dryMyr: +(d * fDry).toFixed(3), judges: [] });
+        cellsOf.push(cells); D.push(d); tauOf.push(tau); relAt.push(windowMyr - d * fDry); recOf.push(rec); wet0.push(windowMyr - d * fDry > 1e-9 ? 1 : 0);
     }
     if (!cellsOf.length) return out;
-    out.held = new Uint8Array(n);
-    for (const cells of cellsOf) for (const c of cells) out.held[c] = 1;
-    // (each held sea's cells on a coarser ladder level: each held cell's nearest there)
+    const m = cellsOf.length;
+    if (wet0.some(w => w)) {
+        out.held = new Uint8Array(n);
+        for (let k = 0; k < m; k++) if (wet0[k]) for (const c of cellsOf[k]) out.held[c] = 1;
+    }
+    // (each sea's cells on a coarser ladder level: each of its cells' nearest there)
     const coarse = new Map(), on = lm => {
         if (lm === mesh) return cellsOf;
         if (!coarse.has(lm)) coarse.set(lm, cellsOf.map(cells => [...new Set(cells.map(c => nearest(lm, c)))]));
         return coarse.get(lm);
     };
-    // (once per sea on each level: a judge after may join it to the ocean again, breached — reflood — and that stands)
-    const gone = new Uint8Array(cellsOf.length), goneOn = new Map();
-    out.release = (lm, sea, t, fineSea) => {
+    // (each sea's spill level from the world ocean — the erosion's ocean less the seas' own cells — on the finest level's ground
+    // g: a priority flood from the ocean's edge over the rest, until each sea's lowest cell is reached)
+    const mine = new Uint8Array(n);
+    for (const cells of cellsOf) for (const c of cells) mine[c] = 1;
+    const sillsOn = (g, sea) => {
+        const { adjOffset, adjList } = mesh, fill = new Float32Array(n).fill(Infinity), heap = new MinHeap(1 << 12), lowest = cellsOf.map(cells => cells.reduce((a, c) => (g[c] < g[a] ? c : a), cells[0]));
+        const open = c => sea[c] && !mine[c];
+        for (let c = 0; c < n; c++) if (open(c)) for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) if (!open(adjList[j])) { fill[c] = g[c]; heap.push(g[c], c); break; }
+        let left = new Set(lowest).size;
+        while (heap.size && left) {
+            const c = heap.pop();
+            if (heap.lastKey > fill[c]) continue;
+            if (mine[c] && lowest.includes(c)) left--;
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+                const d = adjList[j];
+                if (open(d)) continue;
+                const v = Math.max(fill[c], g[d]);
+                if (v < fill[d]) { fill[d] = v; heap.push(v, d); }
+            }
+        }
+        return lowest.map(c => fill[c]);
+    };
+    // (each sea's state on each level — 1 water, 0 dry — the cells its going dry took out of that level's sea, to give back,
+    // and those its water took beyond its own when it came back)
+    const stateOn = new Map(), takenOn = new Map(), grownOn = new Map(), last = wet0.slice();
+    const level = lm => {
+        if (!stateOn.has(lm)) { stateOn.set(lm, Uint8Array.from(wet0)); takenOn.set(lm, cellsOf.map(() => [])); grownOn.set(lm, cellsOf.map(() => [])); }
+        return [stateOn.get(lm), takenOn.get(lm), grownOn.get(lm)];
+    };
+    // (its water back: what it gave up, and the ground under the erosion's sea joined to its own cells there — the hollow the
+    // ocean fills, as the breach did, the erosion's cuts below the sea in its floor and shores included)
+    const under = (lm, sea, k, g, seaKm, grown) => {
+        const { adjOffset, adjList } = lm, seen = new Set(), queue = on(lm)[k].filter(c => g[c] <= seaKm);
+        for (const c of queue) seen.add(c);
+        for (let h = 0; h < queue.length; h++) for (let j = adjOffset[queue[h]]; j < adjOffset[queue[h] + 1]; j++) {
+            const d = adjList[j];
+            if (!seen.has(d) && !sea[d] && g[d] <= seaKm) { seen.add(d); queue.push(d); }
+        }
+        for (const c of queue) if (!sea[c]) { sea[c] = 1; grown.push(c); if (lm === mesh) mine[c] = 1; }
+    };
+    // (before each judge, at the window's time t; on the finest level its ground g first moves each sea's time by its sill.
+    // fineSea: the finest level's sea, which a coarser level's going dry empties too — the next level's sea is made from it)
+    out.release = (lm, sea, t, fineSea, g, seaKm) => {
+        if (lm === mesh && g) {
+            const sills = sillsOn(g, sea);
+            for (let k = 0; k < m; k++) {
+                const { f, fDry } = dryShare(sills[k], tauOf[k]);
+                relAt[k] = windowMyr - D[k] * fDry;
+                Object.assign(recOf[k], { sillKm: +sills[k].toFixed(3), f: +f.toFixed(3), fDry: +fDry.toFixed(3), dryMyr: +(D[k] * fDry).toFixed(3) });
+                recOf[k].judges.push({ t: +t.toFixed(3), sillKm: +sills[k].toFixed(3), f: +f.toFixed(3), fDry: +fDry.toFixed(3), dryMyr: +(D[k] * fDry).toFixed(3), water: t < relAt[k] - 1e-9 ? 1 : 0 });
+            }
+        }
+        const [state, taken, grown] = level(lm), [fineState, fineTaken] = level(mesh);
         let changed = false;
-        if (!goneOn.has(lm)) goneOn.set(lm, new Uint8Array(cellsOf.length));
-        const here = goneOn.get(lm);
-        for (let k = 0; k < cellsOf.length; k++) {
-            if (here[k] || !(t >= relAt[k] - 1e-9)) continue;
-            here[k] = 1;
-            for (const c of on(lm)[k]) if (sea[c]) { sea[c] = 0; changed = true; }
-            if (!gone[k]) { gone[k] = 1; recOf[k].releasedAtMyr = +t.toFixed(3); for (const c of cellsOf[k]) fineSea[c] = 0; }
+        for (let k = 0; k < m; k++) {
+            const want = t < relAt[k] - 1e-9 ? 1 : 0;
+            if (state[k] === want) continue;
+            state[k] = want; last[k] = want;
+            if (!want) {
+                for (const c of on(lm)[k]) if (sea[c]) { sea[c] = 0; taken[k].push(c); changed = true; }
+                for (const c of grown[k]) if (sea[c]) { sea[c] = 0; changed = true; }
+                grown[k] = [];
+                if (lm !== mesh && fineState[k]) { fineState[k] = 0; for (const c of cellsOf[k]) if (fineSea[c]) { fineSea[c] = 0; fineTaken[k].push(c); } }
+                recOf[k].releasedAtMyr ??= +t.toFixed(3);
+            } else {
+                for (const c of taken[k]) sea[c] = 1;
+                taken[k] = [];
+                if (g) under(lm, sea, k, g, seaKm, grown[k]);
+                changed = true;
+                recOf[k].waterAgainAtMyr = +t.toFixed(3);
+            }
         }
         return changed;
     };
     // (the held seas' water over the carved ground: each sea takes the cells of `water` not in `world` joined to its own)
     out.adopt = (water, world) => {
         const { adjOffset, adjList } = mesh, own = new Int32Array(n).fill(-1), queue = [];
-        for (let k = 0; k < cellsOf.length; k++) for (const c of cellsOf[k]) { own[c] = k; queue.push(c); }
+        for (let k = 0; k < m; k++) if (wet0[k]) for (const c of cellsOf[k]) { own[c] = k; queue.push(c); }
         for (let h = 0; h < queue.length; h++) {
             const c = queue[h], k = own[c];
             for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
                 const d = adjList[j];
-                if (own[d] < 0 && water[d] && !world[d]) { own[d] = k; out.held[d] = 1; cellsOf[k].push(d); queue.push(d); }
+                if (own[d] < 0 && water[d] && !world[d]) { own[d] = k; out.held[d] = 1; mine[d] = 1; cellsOf[k].push(d); queue.push(d); }
             }
         }
     };
-    out.dropReleased = (...masks) => { for (let k = 0; k < cellsOf.length; k++) if (gone[k]) for (const m of masks) for (const c of cellsOf[k]) m[c] = 0; };
+    // (a held sea dry at the window's end is land from there: today's flood and the bayhead fill see its floor)
+    out.dropReleased = (...masks) => { for (let k = 0; k < m; k++) if (wet0[k] && !last[k]) for (const sk of masks) for (const c of cellsOf[k]) sk[c] = 0; };
     return out;
 }
 

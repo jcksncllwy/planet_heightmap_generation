@@ -204,7 +204,8 @@ little flows in for a lake the map can show, a playa: a flat on its floor, the b
 cut off (`tectonics/step/sea-fill.js`); it is no longer filled here as well (until 2026-10-27: toward ≤ 1 km below its rim,
 a playa toward 120 m, and any body over 250 000 km² with water below 1 km counted as the ocean, full at sea level). The
 rivers carve down its dry slopes to its water — their base level its level, not sea level (the carve's sea is the world
-ocean) — and the fans spread on its dry floor. **When the erosion breaches it** (2026-11-11, lane reflood): at each of the erosion's
+ocean) — and the fans spread on its dry floor. **When the erosion breaches it** (2026-11-11, lane reflood; since 2026-11-12, lane highstand, the polish's judges only — the
+early erosion's are seaDrying's glacial-cycle share, below): at each of the erosion's
 closed-basin judges, a cut-off sea whose sill the rivers have cut below the sea's surface — ground below it all the way to
 the ocean, a channel the sea fills, not a beach graded to it — joins the ocean then and there (`closedBasins` `open`,
 `joinOpenSeas`), judged on the erosion's finest level only (a coarser level's ground is averaged, which cuts a narrow
@@ -213,7 +214,7 @@ history's own surface — a hollow the erosion dug below the sea on a low coasta
 Messinian Mediterranean through Gibraltar in months to two years, Garcia-Castellanos et al. 2009). Until then the erosion
 graded a breached sea's rivers to its dry floor for the rest of its window and the sea flooded in only after it. What it
 skips: a sea the erosion never breaches stays dry however long ago it was cut off (243751@1080's sea: sill +0.43 km, never
-breached) — and how long a sea has been dry is below (seaage). At 2.5M, 243751@730's sill comes down only to −31 m by the erosion's end, short of the lowstand (−53 m), so it floods after the erosion there; at 160K it breaches. **How long a cut-off sea has been dry** (2026-11-12, lane seaage; Jackson's
+breached) — and how long a sea has been dry is below (seaage), and for what share of the glacial cycle (highstand). **How long a cut-off sea has been dry** (2026-11-12, lane seaage; Jackson's
 ruling C(ii): its dry time in the finish = min(window, time since closure)). The history records it
 (`tectonics/step/sea-age.js`, after the rivers each step): every step it labels the sea parts of one land mask against
 the sea's level at the last river step (`rivers.js seaMaskNow`: the level is recorded every river step, `riverEveryMyr`
@@ -229,12 +230,24 @@ slice by slice, each slice's water over the open-water loss closedBasins nets fo
 inflow; it stops at its balance — a lake from there — or its floor). Its dry time D = clamp(since − drawdown, 0, window).
 D ≥ window: as before, byte for byte. Else it is held as sea — ocean for the carve, the sediment's sinks and the erosion —
 until window time window − D, when the erosion's judge releases it (`release`: each ladder level's cells, a coarse level's
-by each held cell's nearest; the CPU solver redraws its coastline, the GPU reads the ocean live), once per sea per level
-(a later breach joins it again — reflood — and that stands). The Messinian Mediterranean fell ~1.5 km in ~1–10 kyr
+by each held cell's nearest; the CPU solver redraws its coastline, the GPU reads the ocean live). The Messinian Mediterranean fell ~1.5 km in ~1–10 kyr
 (Krijgsman et al. 1999 for the closure, Ryan 2009, Blanc 2002); 243751@730's 8.6 Mkm² sea drains in 3.1 kyr. So a
 sea closed longer ago than the window (730's: 8.7 Myr, against 6.25 Myr at 160K) is dry for the whole window either way;
 the hold changes only seas closed within it. `stats.seaDrying`: each sea's why / cutOffAt / sinceMyr / drawdownMyr /
-dryMyr / releasedAtMyr. **The finished sea's climate**: the climate
+dryMyr / releasedAtMyr. **For what share of the glacial cycle** (2026-11-12, lane highstand; Jackson's option (a),
+replacing the early erosion's breach at the lowstand, −53 m): a sill between the cycle's highest and lowest stands cuts
+its sea off only while the sea stands below it — a share f of the time, from the Spratt & Lisiecki 2016 stack (0–798 ka;
+`finish/sea-level-stack.js`: the Bosporus's −35 m 0.67, Bab-el-Mandeb's −137 m and Gibraltar's −284 m 0) — and each fall
+below it isolates the sea afresh, full, to be drawn down again. Its dry share f_dry = f − drawdown × falls ÷ 798 kyr, its
+dry time D·f_dry: held as sea until window − D·f_dry, dry after. A sill above +19 m (the record's highest) gives f 1 and no
+falls: as seaage, byte for byte. Each judge on the finest level measures its sill again (the spill level of its lowest
+cell from the world ocean) and moves its time: a sea already dry is water again if a lower sill moves it later — its
+ground under the erosion's sea joined to its own — and a sill below −130 m (the record's lowest) holds it to the end, as
+the breach did. A sea the history did not hold cut off keeps its fill through the early erosion (at 160K 243751@660
+and @1060 have a dozen such hollows, unchanged). A sea whose balance fills it (the Black Sea's kind) is closedBasins'
+lake, unchanged. Drawn as one state: the result is the share of the erosion on its dry floor, not both pictures.
+`stats.seaDrying` adds each sea's sillKm / f / fDry and `judges` (each fine judge's time, sill, f, f_dry, dry time,
+water). The cycle is the Pleistocene's (an Earth-now assumption, as the lowstand is). **The finished sea's climate**: the climate
 runs once, on the surface before the erosion, and reads a cut-off sea's dry floor as land at its own height — the lapse
 rate warming it ~6.5 K a km (a 5 km pit kept 53 °C air). When such a pit ends under the world ocean (a breach, or the flood
 after the erosion), the climate runs again on that first surface and sea with only those pits turned to sea, and every

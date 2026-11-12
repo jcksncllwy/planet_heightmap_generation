@@ -25,6 +25,7 @@ import { TERRAIN } from '../js/terrain/terrain-config.js';
 import { Water } from '../js/finish/finish-hydro.js';
 import { landWater } from './lib/land-water.mjs';
 import { trapEfficiency } from '../js/tectonics/step/rivers.js';
+import { cutOffShare, STACK_KYR } from '../js/finish/sea-level-stack.js';
 
 const SEEDS = [626225, 777, 12345], MOMENTS = [300, 600, 950], SIM = 40000, MESH_SEED = 12345, CELLS = 160000;
 // (the land's potential evaporation, mm/yr: the water ledger's Priestley–Taylor at the latitude and temperature —
@@ -60,6 +61,20 @@ section('the balance against Earth’s closed seas');
     const med = balance(400, 38, 19, 500), loss = 2.5e6 * openWater(38, 19, 500) * 1e-6 - 400, years = 2.5e6 * 0.7 * 1.5 / loss;
     check('the Messinian Mediterranean: cut off, it balances at under a third of its 2.5 Mkm², drawn down 1.5 km in 10³–10⁴ years',
         med < 2.5e6 / 3 && years > 1e3 && years < 1e4, `balance ${Math.round(med / 1e3)}K km²; net loss full ${Math.round(loss)} km³/yr → 1.5 km (×0.7 for its narrowing) in ${Math.round(years).toLocaleString()} years`);
+}
+
+section('the glacial cycle cuts a sea off for its share of the time (lane highstand)');
+// The share of the last 798 kyr the sea stood below a sill (sea-level-stack.js: Spratt & Lisiecki 2016), against Earth's
+// straits: the Bosporus (−35 m) cut the Black Sea off through each glacial — the Neoeuxine lake (Ryan et al. 1997), ~2/3 of
+// the cycle; Bab-el-Mandeb (−137 m) never closed, even at the LGM (Siddall et al. 2003); Gibraltar's Camarinal sill (−284 m)
+// never by sea level (the Messinian closure was tectonic: Krijgsman et al. 1999)
+{
+    const bos = cutOffShare(-0.035), bab = cutOffShare(-0.137), gib = cutOffShare(-0.284), top = cutOffShare(0.03);
+    check('the Bosporus (−35 m) is cut off ~2/3 of the cycle; Bab-el-Mandeb (−137 m) and Gibraltar (−284 m) never',
+        Math.abs(bos.f - 0.67) < 0.02 && bab.f === 0 && gib.f === 0, `Bosporus ${bos.f.toFixed(3)} (${bos.falls} falls in ${STACK_KYR} kyr) · Bab-el-Mandeb ${bab.f} · Gibraltar ${gib.f}`);
+    // a sill above the record's highest stand (+19 m) is cut off throughout, and the sea never falls below it afresh: a sea
+    // behind it dries as seaage did, byte for byte
+    check('a sill above the highest stand: cut off throughout, no falls', top.f === 1 && top.falls === 0, `f ${top.f}, falls ${top.falls}`);
 }
 
 section('a hollow’s sub-basins, inside out');
