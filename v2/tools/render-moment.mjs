@@ -293,6 +293,8 @@ if (fin.stats?.coast) {
     let edges = 0;
     for (let c = 0; c < n; c++) if (!fin.ocean[c]) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (fin.ocean[adjList[k]]) edges++;
     if (fin.stats.lowstand) console.log(`lowstand carve: ${JSON.stringify(fin.stats.lowstand)}`);
+    const dried = (fin.stats.seaDrying ?? []).filter(S => S.cutOffAt != null);   // (the history's cut-off seas: closure, drawdown, dry time — finish.js seaDrying)
+    if (dried.length) console.log(`sea drying: ${JSON.stringify(dried)}`);
     console.log(`coast: ${JSON.stringify(fin.stats.coast)} · coastline ${Math.round(edges * Math.sqrt(cellKm2) * 0.58).toLocaleString()} km at the mesh's scale`);
     // (--debug: the coastline of the surface before the finish's carving too — what the terrain made, what the finish did)
     if (fin.layers?.before) {
