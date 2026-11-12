@@ -325,9 +325,6 @@ export const COVER = {
     basaltTint: [0.5, 0.48, 0.47],
 
     // ── the terrain in the satellite view (S2, plans/V2_SATELLITE_PLAN.md) ──
-    // the cover's temperatures at each place's own full height (the climate takes only part of a place's height above
-    // its surroundings — CORE_DEFAULTS.terrainRelief — so its classes are not speckled; tree and snow lines follow it all)
-    fullLapse: true,
     // rock and scree where the ground is rugged: from none to rockMax as the height varies this much (km, its standard
     // deviation within valleyKm) — or, where the detail shows cliffs, as steep as this (m per km, over a picture's pixel;
     // a pixel's slope is broad: the land's 99th percentile is ~60 at 640K)…

@@ -517,26 +517,13 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const rainTarget = coverRain(pAnn, lat, lon, c => land[c] === 1, new LatLonGrid(0.5), seed), P12c = new Float64Array(12);
     // (and its variety: tints between a few natural colours, by noise — its own stream)
     const varyNoise = new FastNoise(((seed | 0) * 0x51f3 + 0x3a9) >>> 0), vy = newVariety(), xyz = mesh.xyz;
-    // (and its temperatures at its own full height — the climate takes only part of a place's height above its
-    // surroundings: tree and snow lines follow all of it — its surroundings' height as the climate has it, the 1° grid's
-    // mean land height)
-    const relief = COVER.fullLapse ? (1 - CORE_DEFAULTS.terrainRelief) * gamma : 0, hLand = gridClimate.surface.meanLandKm, T12c = new Float64Array(12);
     // (and its measures beyond Köppen — cell-stats.js, one byte each — from the climate's own twelve months)
     const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true });
     const civCells = CF?.civCollector(n, c => lat[c] * Math.PI / 180);
     const cellsClimate = cellClimate(gridClimate, mesh.xyz, C.z, land, {}, (c, T12, P12) => {
         cellStats.add(c, T12, P12);
         civCells?.add(c, T12, P12);
-        let T = T12;
-        if (relief) {
-            corners(climGrid, lat[c], lon[c], bi, bw);
-            let s = 0, k = 0;
-            for (let j = 0; j < 4; j++) { const v = hLand[bi[j]]; if (v === v) { s += bw[j] * Math.max(0, v); k += bw[j]; } }
-            const dT = k > 0 ? relief * (Math.max(0, C.z[c]) - s / k) : 0;
-            for (let m = 0; m < 12; m++) T12c[m] = T12[m] - dT;
-            T = T12c;
-        }
-        landCover(T, coverRainScale(P12, rainTarget[c], P12c), cv, F, COVER, lat[c]);
+        landCover(T12, coverRainScale(P12, rainTarget[c], P12c), cv, F, COVER, lat[c]);
         placeVariety(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], varyNoise, vy);
         // (the floods' scoured ground: bare rock, dark as the flood basalt's — finish-floods.js)
         placeGround(vy, W.erg[c], W.loess[c] / F.loessKm, Math.max(basalt[c], F.floodRock * I.floods.flood[c]) / 255);
@@ -544,7 +531,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         if (cv.wetness < COVER.ripWetness) {
             const k = COVER.ripWetness / Math.max(0.02, cv.wetness);
             for (let m = 0; m < 12; m++) PW[m] = P12c[m] * k;
-            landCover(T, PW, cvWet, F, COVER, lat[c]);
+            landCover(T12, PW, cvWet, F, COVER, lat[c]);
             for (let v = 0; v < 3; v++) coverRgb(cvWet, v, ripSat[v], 3 * c, undefined, vy);
         } else for (let v = 0; v < 3; v++) { const S = sat[v], D = ripSat[v], o = 3 * c; D[o] = S[o]; D[o + 1] = S[o + 1]; D[o + 2] = S[o + 2]; }
         cover[c] = cv.biome | (cv.snow[1] >= 0.5 ? 32 : 0) | (cv.snow[2] >= 0.5 ? 64 : 0);
