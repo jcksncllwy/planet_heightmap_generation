@@ -298,6 +298,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // water's level, their base level there)
     census('before carve', ocean0);
     const C = carveTerrain(carveLadder(simMesh, mesh, terrainMesh), { ...carveIn, z, sink: Bc.sink, base: Bc.base, ocean: oceanC }, settings);
+    // (a held sea's water is all the carve's sea the world ocean alone would not flood: its own cells and the valleys the carve
+    // cut below the sea at its shores — released with it, so no pond of it is left as the erosion's ocean on the dry floor)
+    if (Dry.held) Dry.adopt(C.sea, floodSea(mesh, C.z, ocean0).sea);
     const low = settings.lowstandKm, worldOcean = oceanC;               // (the world ocean before the carve: the bayhead fill's open sea)
     ocean0 = C.sea;                                                   // (today's sea over the carved ground: bayhead deltas lie in the rias it drowned)
     stats.lowstand = { baseKm: low, ...C.flood };   // (the lowstand's valleys today's sea drowned, km²; the hollows below it it did not reach)
@@ -585,10 +588,10 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
  * sea — ocean for the carve, the sediment and the erosion — until the window's time window − D, when `release` takes it out
  * of the erosion's ocean (each ladder level's, mapped by each held cell's nearest cell there) and the judges after see its
  * floor; never released (D = 0), it ends the finish as sea.
- * @returns {{held: Uint8Array|null, seas: Object[], release: Function, dropReleased: Function}}
+ * @returns {{held: Uint8Array|null, seas: Object[], release: Function, adopt: Function, dropReleased: Function}}
  */
 function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr) {
-    const out = { held: null, seas: [], release: () => false, dropReleased: () => {} };
+    const out = { held: null, seas: [], release: () => false, adopt: () => {}, dropReleased: () => {} };
     if (!frame.seaCutAt || !(windowMyr > 0) || !B.seas.length) return out;
     const n = mesh.numCells, { xyz } = mesh, c3 = [0, 0, 0], w3 = [0, 0, 0];
     const nearest = (M, c) => { locate(M, xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], c3, w3); return c3[w3[1] > w3[0] ? (w3[2] > w3[1] ? 2 : 1) : (w3[2] > w3[0] ? 2 : 0)]; };
@@ -630,6 +633,18 @@ function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr)
             if (!gone[k]) { gone[k] = 1; recOf[k].releasedAtMyr = +t.toFixed(3); for (const c of cellsOf[k]) fineSea[c] = 0; }
         }
         return changed;
+    };
+    // (the held seas' water over the carved ground: each sea takes the cells of `water` not in `world` joined to its own)
+    out.adopt = (water, world) => {
+        const { adjOffset, adjList } = mesh, own = new Int32Array(n).fill(-1), queue = [];
+        for (let k = 0; k < cellsOf.length; k++) for (const c of cellsOf[k]) { own[c] = k; queue.push(c); }
+        for (let h = 0; h < queue.length; h++) {
+            const c = queue[h], k = own[c];
+            for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+                const d = adjList[j];
+                if (own[d] < 0 && water[d] && !world[d]) { own[d] = k; out.held[d] = 1; cellsOf[k].push(d); queue.push(d); }
+            }
+        }
     };
     out.dropReleased = (...masks) => { for (let k = 0; k < cellsOf.length; k++) if (gone[k]) for (const m of masks) for (const c of cellsOf[k]) m[c] = 0; };
     return out;
