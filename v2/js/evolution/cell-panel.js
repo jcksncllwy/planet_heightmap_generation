@@ -80,7 +80,7 @@ const gridValue = (field, g) => g.k[0] * field[g.c[0]] + g.k[1] * field[g.c[1]] 
  * A place's twelve months (°C, mm), from the climate's twelve months on its 1° grid (climate-fields.js months). On land,
  * shifted and scaled to the place's own year (tAnnual, pAnnual): the climate makes a cell's months from the same four grid
  * cells, then lowers them all by one lapse (its height) and scales them all by one factor (its relief's rain, the
- * texture), so for ONE cell the shifted and scaled months are that cell's (finishCells). A detailed moment's raster is
+ * rain's texture), so for ONE cell the shifted and scaled months are that cell's (finishCells). A detailed moment's raster is
  * not one cell: its year (tAnnual, pAnnual) blends the pixel's three cells, its Köppen class is the weightiest one's —
  * so at a class border or on steep relief the months can read as a neighbouring class (smoke 2026-11-10: 182 of 193
  * land clicks agree; the 11 others mostly next-door classes). The panel names the map's class, as the map and hover do.

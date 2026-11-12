@@ -31,11 +31,21 @@ export const CORE_DEFAULTS = Object.freeze({
     greenhouseWm2: 0,           // radiative forcing (W/m²): the pages' Greenhouse — in the energy balance (temperature.js)
     precipScale: 1,
     rainPerKm: 1.0,             // rain × e^{this × (cell height − its surroundings’ mean, km)}, bounded 0.4–2.5
-    terrainRelief: 0.5,         // share of a cell's own relief (its height beyond its surroundings' 1° mean) the climate
-                                //   follows — for the lapse rate and rain by height: the air near the ground mixes over
-                                //   small hills; 1 = every cell's own height (speckled on rough terrain)
-    texture: { tempC: 1.2, rain: 0.35, km: 200 },   // local variety the grid can't resolve (lakes, soils, mesoscale weather):
-                                //   smooth noise at a fixed size in km — °C, and rain × e^{±rain}; null = none
+    terrainRelief: 1,           // share of a cell's own relief (its height beyond its surroundings' 1° mean) the lapse rate
+                                //   follows: all of it — the air at a place is as cold as its own height (near-surface
+                                //   lapse on slopes 5–6.5 °C/km; CHELSA lowers its grid by the lapse onto every 1 km
+                                //   pixel's own height, Karger et al. 2017). Was 0.5 until climC1 (2026-11-12: the air
+                                //   "mixing over small hills" left a 1.5 km ridge ~4 °C too warm against its valley;
+                                //   climview §1.2 measured −3.7…−4.0 °C/km below 1°). The grid's 1° means are kept: the
+                                //   grid's own height is its land's mean (surface.meanLandKm), so a box's cells lose on
+                                //   average what the reduction to sea level gave back
+    rainRelief: 0.5,            // share of that relief rain by height (rainPerKm) follows — the old terrainRelief's, kept
+                                //   for rain alone until upslope rain (climC3) replaces the factor
+    texture: { rain: 0.35, km: 200 },   // local variety in rain the grid can't resolve (mesoscale weather): smooth noise at
+                                //   a fixed size in km, rain × e^{±rain}; null = none. (Its ±1.2 °C temperature twin is
+                                //   gone with climC1: the relief now gives temperature its sub-grid variety from the
+                                //   terrain, and a noise drawing it on flat land was detail no field implies; rain's
+                                //   goes with climC3.) A `tempC` (°C) still adds a temperature noise if asked for.
     seed: 1,
     couplings: 2,               // rounds of temperature ↔ winds when the winds are derived …
     couplingsWithOcean: 2,      // … and with the ocean too (a third round changed nothing once clouds came in, Phase 6)
@@ -231,10 +241,10 @@ function synthesizeGrid(grid, anchors, K, o) {
 // ── 5 ─────────────────────────────────────────────────────────────────────────
 /**
  * Terrain-cell finishing. Temperature is reduced to sea level on the grid (T + Γ·h_ref), interpolated, then lifted to
- * the cell's own height (− Γ·h): mountains colder than their grid cell, valleys warmer. Rain is interpolated and
- * scaled by the cell's height above its surroundings (o.rainPerKm: ridges wetter, valleys drier; windward and lee
- * slopes come with the rain stage). o.texture adds smooth noise of a fixed size in km to both — the local variety the
- * grid can't resolve. Grid cells without data (e.g. land-only observations over the sea) are filled from the nearest
+ * the cell's own height (− Γ·h, o.terrainRelief of its relief above its surroundings — all of it): mountains colder
+ * than their grid cell, valleys warmer. Rain is interpolated and scaled by the cell's height above its surroundings
+ * (o.rainPerKm on o.rainRelief of it: ridges wetter, valleys drier; windward and lee slopes come with the rain stage).
+ * o.texture adds smooth noise of a fixed size in km to the rain — the local variety the grid can't resolve. Grid cells without data (e.g. land-only observations over the sea) are filled from the nearest
  * grid cell that has data. Only land cells are classified; the sea gets class 0.
  */
 function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCell = null) {
@@ -253,9 +263,9 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCe
 
     const hLand = new Float32Array(G);
     for (let c = 0; c < G; c++) { const s = redirect[c]; const v = s >= 0 ? surface.meanLandKm[s] : NaN; hLand[c] = v === v ? v : 0; }
-    // texture: two smooth noise fields on the unit sphere, a fixed size in km (so the same at every terrain resolution)
+    // texture: smooth noise fields on the unit sphere, a fixed size in km (so the same at every terrain resolution)
     const tex = o.texture && (o.texture.tempC || o.texture.rain) ? o.texture : null;
-    const noiseT = tex ? new FastNoise(o.seed * 7919 + 17) : null, noiseP = tex ? new FastNoise(o.seed * 7919 + 29) : null;
+    const noiseT = tex?.tempC ? new FastNoise(o.seed * 7919 + 17) : null, noiseP = tex?.rain ? new FastNoise(o.seed * 7919 + 29) : null;
     const texScale = tex ? 6371 / tex.km : 0;
     const koppen = new Uint8Array(n);
     const tAnnual = new Float32Array(n).fill(NaN), pAnnual = new Float32Array(n).fill(NaN);
@@ -273,14 +283,14 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCe
         const hAround = w00 * hLand[c00] + w10 * hLand[c10] + w01 * hLand[c01] + w11 * hLand[c11];
         // (below sea level too — land the world ocean does not reach, a sunk basin's floor, warmer by the lapse rate as air
         // sinking into it is compressed; until 2026-11-10 heights were taken ≥ 0 here and in the reduction above, upstream's)
-        const hc = hAround + o.terrainRelief * (elevKm[r] - hAround);
+        const relief = elevKm[r] - hAround, hc = hAround + o.terrainRelief * relief, hr = hAround + o.rainRelief * relief;
         // rain grows with the cell's height above its surroundings (orographic enhancement: ridges wetter, valleys
         // drier), bounded — so rain, like temperature, follows the terrain below the grid's scale
-        let pf = o.rainPerKm ? Math.max(0.4, Math.min(2.5, Math.exp(o.rainPerKm * (hc - hAround)))) : 1, dt = 0;
+        let pf = o.rainPerKm ? Math.max(0.4, Math.min(2.5, Math.exp(o.rainPerKm * (hr - hAround)))) : 1, dt = 0;
         if (tex) {
             const x = xyz[3 * r] * texScale, y = xyz[3 * r + 1] * texScale, z = xyz[3 * r + 2] * texScale;
-            dt = tex.tempC * noiseT.fbm(x, y, z, 3, 0.5);
-            pf *= Math.exp(tex.rain * noiseP.fbm(x + 31.7, y - 12.3, z + 5.1, 3, 0.5));
+            if (noiseT) dt = tex.tempC * noiseT.fbm(x, y, z, 3, 0.5);
+            if (noiseP) pf *= Math.exp(tex.rain * noiseP.fbm(x + 31.7, y - 12.3, z + 5.1, 3, 0.5));
         }
         let ts = 0, ps = 0;
         for (let m = 0, off = 0; m < 12; m++, off += G) {
