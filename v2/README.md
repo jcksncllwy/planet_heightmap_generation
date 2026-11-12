@@ -3273,9 +3273,11 @@ none with a tuned parameter (measurements: `lanes-2026-10-29/beltthick/report.md
   ~1000–1500 km shortened over a ~1000 km plateau, ~35 → ~70 km), not over every belt cell the plate has stamped since the
   collision began. `collisionLostShare` 0.15 still returns to the mantle.
 - **Retro-arc shortening (`andeanShorteningShare` 0.25, `step/andean-shortening.js`, ledger stage `andeanShortening`)**: an
-  upper plate pressed toward its trench shortens behind its arc at Vd = share × Vup (Heuret & Lallemand 2005). Its edge's
+  upper plate advancing on its trench shortens behind its arc at Vd = share × (Vup − Vt), Vt the slab's rollback
+  (`rollbackCmYr`); a plate that retreats from its trench or lags its rolling-back slab does not shorten, and is
+  `backarc.js`'s to extend (Heuret & Lallemand 2005). Its edge's
   area folds into the belt as root, so the volume is kept. The share comes from the Central Andes (300–350 km since ~45 Ma
-  against SA's 2–3 cm/yr drift); that is Earth's strongest segment, and the stage applies it to every such margin. Andean
+  against SA's 2–3 cm/yr drift); that is Earth's strongest segment, applied to every advancing margin. Andean
   thickening is arc magmatism (the arc cap) plus this shortening (Jackson's ruling 4); the shortening carries most of it.
 - **Orogenic collapse (`orogenicCollapse`, `step/orogenic-collapse.js`, ledger stage `orogenicCollapse`)**: once a belt has
   been quiet for `orogenyQuietMyr`, crust-flow's channel (`crust-flow.js`) spreads its root. Outflow that crosses its coast,

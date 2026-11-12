@@ -8,9 +8,14 @@
 // The rate: what moves the upper plate toward its trench faster than the trench itself retreats, Vd + Vt = Vup (Heuret &
 // Lallemand 2005, PEPI 149): an upper plate driven trenchward over a slab anchored in the mantle shortens; one moving away
 // extends (the back-arc basins, step/backarc.js). Oncken et al. 2006 (The Andes, Springer) find the Central Andes' shortening
-// rate follows that velocity difference and not the convergence rate. This rigid-plate model has no trench motion of its own
-// (the trench rides the plate's edge), so the split is one share, Vd = andeanShorteningShare × Vup, Vup the upper plate's
-// velocity toward the trench in the world frame (the mantle's: the torque balance's drag is against it). The share is derived
+// rate follows that velocity difference and not the convergence rate. The trench's own motion is the slab's: an old slab rolls
+// back at rollbackCmYr(age) (step/backarc.js; a young one, or a continent going down, holds its trench still), so the upper
+// plate's advance on its trench is Vup − Vt, Vup its velocity toward the trench in the mantle frame (the torque balance's drag
+// is against it; measured as backarc.js measures it, along the contact's normal). Only an advancing plate shortens, at
+// Vd = andeanShorteningShare × (Vup − Vt); where the plate retreats from its trench or lags its rolling-back slab there is no
+// shortening at all: that margin extends instead and is backarc.js's to open (Heuret & Lallemand 2005: back-arc deformation
+// follows the upper plate's absolute motion, shortening where it advances, extension where it moves away). The two stages
+// split every overriding front by the same inequality, so no margin both shortens and rolls back. The share is derived
 // in config.js.
 //
 // The geometry (a reduced model, its limits): in a rigid raster the shortened width can only come off the plate's edge, so
@@ -27,8 +32,9 @@
 import { CrustType, CrustFlag, OrogenyType } from '../model/crust.js';
 import { BoundaryKind } from '../model/world.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
-import { tangentToward } from '../../core/sphere-geom.js';
-import { surfaceVelocity } from './kinematics.js';
+import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
+import { contactAt } from './contact.js';
+import { rollbackCmYr } from './backarc.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
 import { crustOf, layProfile, layThickening, landDistanceKm } from '../ops/thicken.js';
@@ -41,20 +47,24 @@ export function shortenMargins(world, dt) {
     const share = config.andeanShorteningShare;
     if (!(share > 0) || dt <= 0) return 0;
     const { adjOffset, adjList, xyz, edgeKm, cellAreaKm2 } = mesh;
-    const hops = Math.max(1, Math.round(config.subductionErosionReachKm / edgeKm)), v = [0, 0, 0];
+    const hops = Math.max(1, Math.round(config.subductionErosionReachKm / edgeKm)), normal = [0, 0, 0, 0];
+    const kmPerMyrPerCmYr = CM_PER_YR_TO_RAD_PER_MYR * PLANET_RADIUS_KM;
     const due = new Map();                                    // plate id → { cells: owed, at: Map(raster cell → its share) }
     for (let w = 0; w < owner.length; w++) {
         if (boundaryKind[w] !== BoundaryKind.OVERRIDING || !(convergence[w] > 0)) continue;
         const id = owner[w];
         if (id < 0) continue;
-        // the trench's side: a neighbour across the boundary (the plate going down)
-        let across = -1;
-        for (let k = adjOffset[w]; k < adjOffset[w + 1] && across < 0; k++) { const nb = adjList[k]; if (owner[nb] >= 0 && owner[nb] !== id) across = nb; }
-        if (across < 0) continue;
-        const p = [xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]], q = [xyz[3 * across], xyz[3 * across + 1], xyz[3 * across + 2]];
-        surfaceVelocity(plates[id].omega, p[0], p[1], p[2], v);
-        const t = tangentToward(p, p, q), vup = PLANET_RADIUS_KM * (v[0] * t[0] + v[1] * t[1] + v[2] * t[2]);   // km/Myr toward the trench
-        if (!(vup > 0)) continue;
+        // the trench's side: the plate going down, straight across the contact
+        const across = contactAt(world, w, normal);
+        if (across < 0 || owner[across] < 0) continue;
+        // the upper plate's advance toward its trench in the mantle frame (cm/yr), less the trench's own retreat: an old
+        // oceanic slab rolls back (backarc.js); a young one or a continent going down holds its trench
+        const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2], om = plates[id].omega;
+        const vup = ((om[1] * z - om[2] * y) * normal[0] + (om[2] * x - om[0] * z) * normal[1] + (om[0] * y - om[1] * x) * normal[2]) / CM_PER_YR_TO_RAD_PER_MYR;
+        const B = plates[owner[across]], cellB = ownerCell[across];
+        const vt = B?.crust.type[cellB] === CrustType.OCEAN ? rollbackCmYr(time - B.crust.formedAt[cellB], config) : 0;
+        if (!(vup - vt > 0)) continue;                                           // retreating, or lagging its slab: no shortening
+        const advance = (vup - vt) * kmPerMyrPerCmYr;                            // km/Myr
         // the nearest ring of ordinary continent within the fore-arc's reach (as subduction erosion finds it)
         const crust = plates[id].crust, { mask, type } = crust;
         let ring = [ownerCell[w]], seen = new Set(ring), hit = [];
@@ -68,7 +78,7 @@ export function shortenMargins(world, dt) {
         if (!hit.length) continue;
         let d = due.get(id);
         if (!d) due.set(id, d = { cells: 0, at: new Map() });
-        d.cells += share * vup * dt * edgeKm / cellAreaKm2;                     // (Vd × dt × a cell's width of front, in cells)
+        d.cells += share * advance * dt * edgeKm / cellAreaKm2;                 // (Vd × dt × a cell's width of front, in cells)
         for (const c of hit) d.at.set(c, (d.at.get(c) ?? 0) + 1 / hit.length);
     }
     const C = columnModel(heightsOf(config)), B = config.belts, reach = Math.max(B.andean.maxKm, B.laramide.maxKm) * config.beltSpeedFactorMax;

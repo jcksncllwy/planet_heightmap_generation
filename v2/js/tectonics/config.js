@@ -177,9 +177,10 @@ export const TECTONICS = {
                                 // ~41,700 km — their recycling 2.5 AU ÷ 60 km³ Myr⁻¹ km⁻¹ (Scholl & von Huene 2009; the length is my arithmetic)
     orogenicCollapse: true,     // (lane beltthick) a quiet belt on its own coast spreads its root over the sea beside it as continent: crust-flow's
                                 // channel carried across the coast, area = volume ÷ an ordinary continent's crust (Dewey 1988; step/orogenic-collapse.js). No parameter of its own
-    andeanShorteningShare: 0.25, // (lane beltthick; Jackson's ruling 4 as amended 2026-11-11; 0 = off) an upper plate pressed toward its trench
-                                // shortens behind its arc at this share of that velocity, Vd = share × Vup (Heuret & Lallemand 2005, PEPI 149:
-                                // Vd + Vt = Vup, the rest the trench's own retreat), its edge's area folded into its belt as root
+    andeanShorteningShare: 0.25, // (lane beltthick; Jackson's ruling 4 as amended 2026-11-11; 0 = off) an upper plate advancing on its trench
+                                // shortens behind its arc at this share of that advance, Vd = share × (Vup − Vt), Vt the slab's rollback
+                                // (backarc.js rollbackCmYr); a plate that retreats from or lags its trench does not shorten (gladsheim's
+                                // ruling A, 2026-11-11; Heuret & Lallemand 2005, PEPI 149: Vd + Vt = Vup), its edge's area folded into its belt as root
                                 // (step/andean-shortening.js). Derived from the Central Andes: ~300–350 km of shortening since ~45 Ma
                                 // (Oncken et al. 2006; Kley & Monaldi 1998), ~7–8 mm/yr, against South America's westward drift in the
                                 // hotspot frame, risen from ~1–2 to ~2–3 cm/yr since ~30–25 Ma (Silver, Russo & Lithgow-Bertelloni 1998,
