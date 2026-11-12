@@ -24,11 +24,12 @@
 // Heights are calibrated against today's sea — a dispersed world's — so each part is measured from what a dispersed
 // world shows on average (terrain-config.js mantleSwellLandRef, seaHeatToday, seaDepthRefKm): today's land stands
 // where it does with today's mantle under it, and today's sea is at 0. The sea floor is not: its depth–age law (GDH1,
-// tectonics/measure.js) is the floor over cool mantle — fitted where no swell lifts it — so its swell counts from fully
-// cooled mantle (heat 0), and a dispersed world's sea floor, on mantle of mean heat ~0.26, stands ~0.26 km above the law
-// (Earth's ocean crust: 0.23 km above GDH1 and its sediment on 5° blocks, the superswells +0.2–0.5, GDH1's own North
-// Pacific −0.07: lane sealevel). Until 2026-11-12 it counted from the dispersed sea's mean heat, as if GDH1 were the
-// mean floor, and the poured sea stood ~0.25 km lower for it.
+// tectonics/measure.js) is the floor over the mantle its ridges stand on — Earth's crests sit on it — so its swell counts
+// from the heat under the frame's young floor (youngFloorSwellKm: the residual dynamic topography only). Earth's floor
+// rises over GDH1 as it ages (+0.11 km at 0–10 Myr to +0.45 at 120–140: superswells, plume swells; lane sealevel), which
+// the history's heat, nearly flat with the floor's age, does not make: that level is missing physics, not offset. Until
+// 2026-11-12 the swell counted from the dispersed sea's mean heat (mantleSwellSeaRef 0.26); lane sealevel's first pass
+// counted it from fully cooled mantle, which lifted the crests ~0.25 km above Earth's.
 
 import { CrustType } from '../tectonics/model/crust.js';
 import { filledSeaDepthKm, seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
@@ -190,8 +191,8 @@ function coarseGraph(mesh) {
  *   · swellKm[w]: mantleSwellKm × the smoothed heat — a smooth field of the mantle, fixed under the world. What a point
  *     stands at is read from it there (synthesize.js: interpolated at the point itself, not through the land's corners, so
  *     the swell has no cell-scale steps), less the reference for its side (liftRefKm): continental crust against the heat
- *     a dispersed world's continents stand on (its platform is today's), the sea floor — and an island arc on it — from
- *     fully cooled mantle (the depth–age law is the floor over cool mantle: tectonics/measure.js gdh1BasementKm);
+ *     a dispersed world's continents stand on (its platform is today's), the sea floor — and an island arc on it — against
+ *     the heat under the frame's young floor (sl.seaRefKm: youngFloorSwellKm; GDH1 is the ridges' floor);
  *   · seaKm: how far the sea stands above today's datum, reckoned (no water volume is kept here; the poured sea of
  *     waterInventory > 0, land-mask.js pourOcean, replaces it): the swell's
  *     mean over the sea floor (mantleSwellKm × (the ocean's mean heat − today's, seaHeatToday)) and the floor's mean depth's
@@ -274,7 +275,7 @@ const YOUNG_FLOOR_MYR = 10;
 /**
  * A sea floor its sediment fills that the mantle's swell holds up at or above the sea: dry land (records.js deriveRecords;
  * the history's rivers: terrain/land-mask.js landMask) — the floor of seaDepthKm(age), shallowed by its fill (Airy: SEDIMENT_LOAD_FACTOR),
- * raised by the swell (from fully cooled mantle), against the sea's level.
+ * raised by the swell (against the young floor's mantle, sl.seaRefKm), against the sea's level.
  */
 export function liftedDry(frame, w, sl, cfg) {
     return frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 && frame.formedAt[w] >= 0

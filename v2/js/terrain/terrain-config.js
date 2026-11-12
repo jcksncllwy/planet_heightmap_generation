@@ -250,8 +250,8 @@ export const TERRAIN = {
     seaHeatToday: 0.26,         // …and its sea floor's: 0.246–0.265 by seed (0.18 under a supercontinent: the ocean's mantle
                                 // cools while the land keeps its heat) — the RECKONED level's datum only (waterInventory 0:
                                 // the sea moves by the sea floor's swell against today's). The floor itself stands on its
-                                // swell from fully cooled mantle (sea-level.js; until 2026-11-12, mantleSwellSeaRef, it
-                                // stood against this heat, as if GDH1 were the mean floor and not the cool mantle's)
+                                // swell against the mantle under the frame's young floor (sea-level.js youngFloorSwellKm;
+                                // until 2026-11-12, mantleSwellSeaRef, it stood against this heat)
     seaDepthRefKm: 4.55,        // …and the sea floor's mean depth (measure.js seaDepthKm, less the sediment of sealed seas):
                                 // 4.45–4.61 by seed (4.60–4.73 under a supercontinent: its ocean is old). The ocean's water
                                 // is the volume that holds the sea at today's datum over a dispersed world's floor

@@ -93,7 +93,7 @@ export const ISLAND_EROSION_KM_PER_MYR = 0.15;
  *
  * GDH1 is BASEMENT on normal floor: sediment-corrected (the sediment's load taken off) and fitted where the floor is
  * neither swollen nor built on — over cool mantle. The floor the water stands on is higher: it carries its pelagic
- * drape (below), and over warm mantle it stands on the swell (terrain/sea-level.js, from fully cooled mantle). Until
+ * drape (below), and over mantle warmer than its ridges' it stands on the swell (terrain/sea-level.js youngFloorSwellKm). Until
  * 2026-11-12 (lane sealevel) the floor was bare GDH1 against the sea's mean heat, and Earth's water poured onto it stood
  * 0.40–0.57 km below the datum: on Earth (ETOPO1 on Seton et al. 2020's ages, GlobSed's sediment; lane sealevel
  * earth-floor.py) the ocean crust's mean depth is 4.26 km against GDH1's 4.87 at its ages — 0.31 km of it the sediment's

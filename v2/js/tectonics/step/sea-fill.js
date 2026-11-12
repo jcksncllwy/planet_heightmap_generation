@@ -47,7 +47,7 @@ export function fillEnclosedSeas(world, mouths, span, land, sea) {
         id++;
     }
     // each mouth on an enclosed sea fills it nearest its mouth first, up to the sea's level: the water over the floor —
-    // its depth by age, raised by the mantle's swell (from fully cooled mantle: terrain/sea-level.js), under the sea's level
+    // its depth by age, raised by the mantle's swell (against the young floor's mantle, sea.seaRefKm: terrain/sea-level.js), under the sea's level
     // against today's datum — filled by SEDIMENT_LOAD_FACTOR times as much sediment (the floor sinks under it: Airy)
         const room = w => {
         const o = owner[w];
