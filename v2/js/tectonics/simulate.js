@@ -27,6 +27,7 @@ import { bookFans } from './step/trench-fans.js';
 import { captureFrame } from './snapshot.js';
 import { evolveHeights, seedBaseRelief } from './step/heights.js';
 import { evolveRivers } from './step/rivers.js';
+import { evolveSeaAge } from './step/sea-age.js';
 import { seedGeology, evolveGeology } from './step/geology.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from './config.js';
 import { crustLedger, handLaidArcKm3 } from './step/crust-ledger.js';
@@ -157,6 +158,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         }
         if (slow) led('heights', evolveHeights(world, slowDt)); // heights wear down and spread (records only: nothing below reads them)
         led('rivers', evolveRivers(world, dt));                         // rivers drain the land and cut into it (records only too; on a clock of their own)
+        led('seaAge', evolveSeaAge(world));                             // when each sea was cut off from the world ocean (records only)
         led('geology', evolveGeology(world, dt));                                       // the geological record (records only; on a clock of its own)
         led('drive', drive(world));
         led('backArcStrips', steerBackArcStrips(world));                          // a back-arc strip follows its retreating trench, whatever drives the rest

@@ -209,6 +209,11 @@ export function captureFrame(world, reuse = null) {
     if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustFill = f.crustFill.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
     f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
     f.budget = { ...world.budget };
+    // (when each sea was cut off, Myr — NaN off the cut-off seas; −Infinity: never open — and the sea's log since the frame
+    // before: step/sea-age.js. Copies, entries included: the world's go on changing)
+    f.seaCutAt = world.seaCutAt ? world.seaCutAt.slice() : null;
+    f.seaLog = (world.seaLog ?? []).slice(world.seaLogShipped ?? 0).map(e => ({ ...e }));
+    world.seaLogShipped = world.seaLog?.length ?? 0;
     f.geoBook = world.geoBook ? { ...world.geoBook } : null;
     f.events = world.events.slice();
     openTectWindow(world);

@@ -81,11 +81,14 @@ export function fillPockets(simMesh, land, maxKm2) {
  * @param {Object} [climate]  the frame's computed water per sim cell, mm/yr — {rain, pet, runoff} — to judge a pinned
  *                        sill by (pinnedHumid); without it the zonal climate the history erodes by (the seam for the
  *                        real-climate balance, cutoff lane)
+ * @param {{seaKm: number, swellKm: Float32Array}|null} [fixed]  the sea's level and the swell as an earlier call found them
+ *                        (its `sl`): the land against them, the level neither reckoned nor poured again — the history's
+ *                        seas between its river steps (tectonics/step/sea-age.js), the level kept from the last
  * @returns {{land: Uint8Array, sl: Object, seaColKm: Float32Array, dryHollow: Uint8Array}}
  *   land 1 / sea 0; sl the sea's level and the swell (sea-level.js seaLevel); seaColKm the column of crust drowned (NaN
  *   elsewhere); dryHollow 1 on land standing below the sea with no way to it
  */
-export function landMask(frame, simMesh, cfg, out = {}, climate = null) {
+export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = null) {
     const n = simMesh.numCells, { adjOffset, adjList } = simMesh;
     const land = out.land?.length === n ? out.land : new Uint8Array(n);
     for (let w = 0; w < n; w++) {
@@ -97,7 +100,7 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null) {
     // and the sea falls against it (developer, 8b round 6, had it relative to the land's mean, so that a continent sitting
     // still did not lift every height; today's heights are now its datum instead)
     const swellKm = out.swellKm?.length === n ? out.swellKm : null, heat = out.heat?.length === n ? out.heat : (out.heat = new Float32Array(n));
-    let sl = seaLevel(frame, simMesh, cfg, w => land[w] === 1, swellKm, heat);
+    let sl = fixed ?? seaLevel(frame, simMesh, cfg, w => land[w] === 1, swellKm, heat);
     // the water inventory (cfg.waterInventory × Earth's ocean; lane sliders, Jackson 2026-11-03: "pouring an earth-like amount
     // of water onto the planet and letting it settle"): the sea's level is where that volume stands, poured onto every cell's
     // ground (tectonics/ocean/inventory.js surfaceKm, on the same swell) from the lowest — not reckoned from the mantle's
@@ -106,7 +109,8 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null) {
     // level, and a filled sea lifted dry is judged on the same ground against it (below). (The pour's own sea differs from the mask's where ocean crust behind a sill stands above the level — land to
     // the pour, sea to the mask: an enclosed sea drawn at a continent's reference if it were made land, ~5 km too high)
     let pour = null;
-    if (cfg.waterInventory > 0) {
+    if (cfg.waterInventory > 0 && fixed) out.groundKm = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : new Float32Array(n), sl.swellKm);
+    else if (cfg.waterInventory > 0) {
         const z = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : (out.groundKm = new Float32Array(n)), sl.swellKm);
         // (from the ocean's side, and at a pinned sill the basin's water balance decides which side is short: pinnedHumid —
         // terrain-config pourFromOcean)
@@ -123,9 +127,9 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null) {
     // (poured: its ground — the pour's own surface, fill and rise on it — at or above the poured level; reckoned: liftedDry's
     // floor against the reckoned level, which then moves with them as land. Until 2026-11-06 the pour came after this and
     // judged them against the reckoned level)
-    const groundKm = pour ? out.groundKm : null;
+    const poured = !!pour || (cfg.waterInventory > 0 && !!fixed), groundKm = poured ? out.groundKm : null;
     for (let w = 0; w < n; w++) if (!land[w] && (groundKm ? frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 && groundKm[w] >= sl.seaKm : liftedDry(frame, w, sl, cfg))) { land[w] = 1; raised++; }
-    if (raised && !pour) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);         // (the sea's level, with them as land)
+    if (raised && !poured) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);         // (the sea's level, with them as land)
     // land is decided by height, not by the kind of crust (Jackson's ruling, 2026-11-03): any crust — continent, arc or
     // rifted floor — whose own column (crustColumnKm, with the mantle's swell) stands below the sea's level is sea where
     // it joins the open ocean: flooded from the sea over the cells below it. The threshold is the sea's level itself, not
@@ -159,7 +163,7 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null) {
             }
         }
         for (let w = 0; w < n; w++) if (land[w] && below[w] === below[w]) dryHollow[w] = 1;
-        if (drowned && !pour) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);
+        if (drowned && !poured) sl = seaLevelAgain(frame, simMesh, cfg, w => land[w] === 1, heat, sl.swellKm);
     }
     return { land, sl, seaColKm, dryHollow };
 }

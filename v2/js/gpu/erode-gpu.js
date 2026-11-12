@@ -346,7 +346,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         ms.flood += performance.now() - t;
         return { fill, parent, order, count: listLen };
     };
-    const closed = async () => {
+    const closed = async tMyr => {
+        o.release?.(tMyr);                            // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after)
         ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z, gpuClosed ? await flood() : null), z, n, sinkAt));
     };
     const outlets = (seaOnly = false) => {
@@ -508,7 +509,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         for (let s = 0; s < P.steps; s++) {
             let t = performance.now();
             if (settle && s > 0 && s % P.closedEvery === 0) { reboundKm3 += settle(s * dt); if (column) { packK(); put('Kv', Kv); } }
-            if (s % P.closedEvery === 0) { await closed(); ms.closed += performance.now() - t; t = performance.now(); outlets(); }
+            if (s % P.closedEvery === 0) { await closed(s * dt); ms.closed += performance.now() - t; t = performance.now(); outlets(); }
             put('z', z);
             ms.upload += performance.now() - t;
             R.route.push(await route());

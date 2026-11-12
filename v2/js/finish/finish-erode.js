@@ -78,6 +78,8 @@ export const ERODE = {
  * @param {Float32Array} o.water    each cell's drainage weight (the carve's rain)
  * @param {Float32Array} o.k        the wave's speed at 1 km² drained (km/Myr)
  * @param {(z: Float32Array, flood?: Object) => Object} o.closed   closedBasins on this ground (flood: the GPU path's, finish-basins.js)
+ * @param {((tMyr: number) => boolean)|null} [o.release]  asked before each judge with the time since this solve began (Myr):
+ *                                       true when it has taken cells out of `ocean` (a cut-off sea gone dry: finish.js seaDrying)
  * @param {Float32Array|null} [o.slow]   a multiple of the rate, per cell (the ice's young ground)
  * @param {Object|null} [o.column]       the rock column on this mesh (loose, zBed, fine: rockColumn)
  * @param {Float32Array|null} [o.uplift] the history's surface uplift here, km/Myr, signed (its frame's tectRateKm: the rise its
@@ -109,7 +111,10 @@ export function erodeLandscape(o, P) {
     };
     coastline();
     let sink = null, base = null, sinkAt = null, basins = [], count = 0;
-    const closed = () => {
+    const closed = s => {
+        // (a cut-off sea held as water from the window's start goes dry once its evaporation has drawn it down: o.release —
+        // finish.js seaDrying — takes it out of the ocean at the judge after its time, and the coast is drawn again)
+        if (o.release?.(s * dt)) coastline();
         const B = o.closed(z);
         if (B.open?.length) coastline();
         ({ sink, base, sinkAt, basins } = closedOutlets(B, z, n, sinkAt));
@@ -215,7 +220,7 @@ export function erodeLandscape(o, P) {
         let t0 = performance.now();
         const lap = name => { const t1 = performance.now(); t[name] += t1 - t0; t0 = t1; };
         if (settle && s > 0 && s % P.closedEvery === 0) reboundKm3 += settle(s * dt);
-        if (s % P.closedEvery === 0) { closed(); lap('closed'); route(); lap('route'); } else if (s % P.routeEvery === 0) { route(); lap('route'); }
+        if (s % P.closedEvery === 0) { closed(s); lap('closed'); route(); lap('route'); } else if (s % P.routeEvery === 0) { route(); lap('route'); }
         // ── the water, headwaters first ──
         A.fill(0);
         for (let i = count - 1; i >= 0; i--) { const c = order[i], r = recv[c]; A[c] += a * water[c]; if (rank[r] >= 0) A[r] += A[c]; }
@@ -596,6 +601,11 @@ export function ladderOverWindow(P, windowMyr) {
     return { ...P, ladder: [{ ...first, timeMyr: T, steps: Math.ceil(T / dt - 1e-9) }, ...rest] };
 }
 
+/** How long the erosion runs on a mesh of N cells (Myr): its ladder's levels for that mesh (ladderFor), or its one span. */
+export function erosionSpanMyr(P, N) {
+    return P.ladder ? ladderFor(P.ladder, N).reduce((t, L) => t + L.timeMyr, 0) : P.timeMyr;
+}
+
 /** The ladder for a mesh of N cells: levels at or finer than it are one, the coarsest of them, run on the mesh itself. */
 function ladderFor(ladder, N) {
     const here = ladder.findIndex(L => !L.cells || L.cells >= 0.9 * N);
@@ -623,6 +633,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         return { mesh: base.mesh, map: base.maps.get(lm.numCells) };
     };
     let prev = null, delta = null, prevZ = null, outflow = null;         // (the level below, the change it found, its surface; the finest's load out)
+    let tStart = 0;                                                      // (the window's time when this level begins: o.releaseOf's clock)
     for (const L of levels) {
         const fine = !L.cells || L.cells >= 0.9 * N, lm = fine ? mesh : meshOf(L.cells), t0 = performance.now();
         let M = coarse.get(lm.numCells), f;
@@ -651,7 +662,9 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         }
         o.observe?.(`rung ${lm.numCells} start`, lm, f.z, f.ocean);
         const t1 = performance.now();
-        const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, column: f.column, uplift: f.uplift, flex: flexOf(lm), closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea) }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] || f.uplift ? P.rebound : 0 });
+        const t0Myr = tStart, release = o.releaseOf ? t => o.releaseOf(lm, f.ocean, t0Myr + t) : null;
+        const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, column: f.column, uplift: f.uplift, flex: flexOf(lm), closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea), release }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] || f.uplift ? P.rebound : 0 });
+        tStart += L.timeMyr;
         o.observe?.(`rung ${lm.numCells} end`, lm, f.z, f.ocean);
         if (fine) outflow = r.outflow ?? null;
         out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });

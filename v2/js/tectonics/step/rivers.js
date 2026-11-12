@@ -42,7 +42,7 @@ export function evolveRivers(world, dt) {
     const { mesh, plates, owner, ownerCell, time } = world, { adjOffset, adjList, xyz, numCells: n } = mesh;
     const { dist } = meshInfo(mesh), cellArea = 4 * Math.PI * R * R / n;
     const s = scratchFor(n);
-    const { land, base, lift, height, fill, rank, order, recv, recvKm, area, cutNow, hold, sed, sedCont, basin, seaOf, view, hol, holKm, holCells } = s;
+    const { land, base, lift, height, fill, rank, order, recv, recvKm, area, cutNow, hold, sed, sedCont, basin, seaOf, hol, holKm, holCells } = s;
     world.riverKm2 ??= new Float32Array(n);
     // ── the land and the sea as the terrain stands them: the one mask (terrain/land-mask.js), on the world's own view of
     // the crust and its mantle as a frame carries them (tectonics/snapshot.js) — continental crust and island arcs whose
@@ -50,20 +50,12 @@ export function evolveRivers(world, dt) {
     // and a filled sea the mantle's swell holds up above the sea. (Until 2026-11-06 the rivers took every continent and
     // arc as land however low — sea-level.js landAndSea — and ran 11–36 % of their water over what the terrain draws as
     // sea, on a sea level 11–22 m off its own: tools/datum-study.mjs) ──
-    view.time = time; view.owner = owner;
-    const pouring = H.waterInventory > 0;          // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm)
-    if (pouring && !view.volcType) Object.assign(view, { volcType: new Uint8Array(n), volcKm: new Float32Array(n), volcWornKm: new Float32Array(n), riverIncKm: new Float32Array(n), riseKm3: new Float32Array(n) });
-    for (let w = 0; w < n; w++) {
-        const o = owner[w];
-        view.mantleHeat[w] = Math.round(255 * world.mantleHeat[w]);
-        if (o < 0) { view.type[w] = CrustType.OCEAN; view.formedAt[w] = -1; view.seaFillKm[w] = 0; continue; }       // (no plate: never land)
-        const crust = plates[o].crust, c = ownerCell[w], type = crust.type[c];
-        view.type[w] = type; view.formedAt[w] = crust.formedAt[c]; view.seaFillKm[w] = crust.seaFillKm[c];
-        view.flags[w] = crust.flags[c]; view.rootKm[w] = crust.rootKm[c]; view.baseKm[w] = crust.baseKm[c]; view.upliftKm[w] = crust.upliftKm[c]; view.basinFillKm[w] = crust.basinFillKm[c];
-        if (type === CrustType.ARC) { view.arcKm[w] = arcCrustKm(crust, c, time, world.config); view.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : time; }
-        if (pouring) { view.volcType[w] = crust.volcType[c]; view.volcKm[w] = crust.volcKm[c]; view.volcWornKm[w] = crust.volcWornKm[c]; view.riverIncKm[w] = crust.riverIncKm[c]; view.riseKm3[w] = crust.riseKm3[c]; }
-    }
-    const sl = landMask(view, mesh, H, s.mask).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
+    viewOf(world, s.view, H);
+    const sl = landMask(s.view, mesh, H, s.mask).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
+    // (the level and the swell kept for the history's seas between river steps — step/sea-age.js seaMaskNow — and the level
+    // logged: one entry a river step)
+    world.riverSea = { time, seaKm, swellKm: Float32Array.from(swellKm) };
+    (world.seaLog ??= []).push({ t: time, kind: 'level', seaKm });
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = H.mantleSwellKm * H.mantleSwellSeaRef;
     // ── the land's height against the sea: its evolved height (as records.js draws the platform: the column of its crust,
     // the uplift; the mantle's swell under it, against its side's reference; the sea's level) less what rivers have cut;
@@ -327,6 +319,40 @@ export function trapEfficiency(tau) { return tau === Infinity ? 1 : Math.max(0, 
 export function lastDrainage() { return scratch; }
 
 let scratch = null;
+/** The world's own view of the crust and its mantle, as a frame carries them (tectonics/snapshot.js), on `view`: what the
+ *  one mask (terrain/land-mask.js) reads. @returns {Object} view */
+function viewOf(world, view, H) {
+    const { plates, owner, ownerCell, time } = world, n = world.mesh.numCells;
+    view.time = time; view.owner = owner;
+    const pouring = H.waterInventory > 0;          // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm)
+    if (pouring && !view.volcType) Object.assign(view, { volcType: new Uint8Array(n), volcKm: new Float32Array(n), volcWornKm: new Float32Array(n), riverIncKm: new Float32Array(n), riseKm3: new Float32Array(n) });
+    for (let w = 0; w < n; w++) {
+        const o = owner[w];
+        view.mantleHeat[w] = Math.round(255 * world.mantleHeat[w]);
+        if (o < 0) { view.type[w] = CrustType.OCEAN; view.formedAt[w] = -1; view.seaFillKm[w] = 0; continue; }       // (no plate: never land)
+        const crust = plates[o].crust, c = ownerCell[w], type = crust.type[c];
+        view.type[w] = type; view.formedAt[w] = crust.formedAt[c]; view.seaFillKm[w] = crust.seaFillKm[c];
+        view.flags[w] = crust.flags[c]; view.rootKm[w] = crust.rootKm[c]; view.baseKm[w] = crust.baseKm[c]; view.upliftKm[w] = crust.upliftKm[c]; view.basinFillKm[w] = crust.basinFillKm[c];
+        if (type === CrustType.ARC) { view.arcKm[w] = arcCrustKm(crust, c, time, world.config); view.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : time; }
+        if (pouring) { view.volcType[w] = crust.volcType[c]; view.volcKm[w] = crust.volcKm[c]; view.volcWornKm[w] = crust.volcWornKm[c]; view.riverIncKm[w] = crust.riverIncKm[c]; view.riseKm3[w] = crust.riseKm3[c]; }
+    }
+    return view;
+}
+
+/**
+ * The land and the sea now, between river steps: the one mask on the crust as it stands, against the sea's level and the
+ * swell the last river step found (world.riverSea) — neither reckoned nor poured again (the level moves with the mantle and
+ * the water's room, slowly; the coast with the plates, every step). @returns {Uint8Array|null} land 1 / sea 0, on a
+ * scratch of its own (the rivers' mask stays theirs: lastDrainage), overwritten by the next call; null before the
+ * history's first river step
+ */
+export function seaMaskNow(world) {
+    if (!world.riverSea) return null;
+    const H = heightsOf(world.config), n = world.mesh.numCells, s = scratchFor(n);
+    s.nowMask ??= { land: new Uint8Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n) };
+    return landMask(viewOf(world, s.view, H), world.mesh, H, s.nowMask, null, world.riverSea).land;
+}
+
 function scratchFor(n) {
     if (scratch?.n === n) return scratch;
     scratch = { n, land: new Uint8Array(n), base: new Float32Array(n), lift: new Float32Array(n), cutNow: new Float32Array(n), hold: new Float32Array(n), height: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
