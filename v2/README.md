@@ -141,7 +141,10 @@ like the live terrain; a handful of moments are kept in detail per history — u
 longest ago is let go once a new one is done (never the one on screen, so a cancel loses nothing). See "The finish cache"
 for the moments detailed before. A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
-again on the finished surface — the climate tabs (Köppen, temperature, rain, wind, currents, and More…'s layers) and the
+again on the finished surface (the lapse rate on all of a cell's height, so a ridge is 6.5 °C a km colder than its valley and
+each 1° box keeps its mean; until climC1, 2026-11-12, only half of the relief above the 1° surroundings, plus a ±1.2 °C noise
+that is now gone; rain still follows half the relief, and keeps its noise until upslope rain replaces both — `climate/core.js`
+`terrainRelief`, `rainRelief`) — the climate tabs (Köppen, temperature, rain, wind, currents, and More…'s layers) and the
 readout use it, drawn per pixel of the finished picture (the land's measures — temperature range, aridity, growing season,
 rain seasonality, from each cell's twelve months by `js/climate/cell-stats.js` — kept a byte each on its climate picture). **Satellite** (finished moments only; plans/V2_SATELLITE_PLAN.md): the planet as
 from space, cloud-free, for the Year, January or July — each cell's cover from its twelve months (`finish-cover.js`: tree,
