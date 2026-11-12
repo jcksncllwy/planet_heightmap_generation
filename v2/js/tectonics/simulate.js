@@ -80,8 +80,9 @@ async function simulateNow(world, opts, helpers) {
     let r = run.next();
     while (!r.done) {
         const job = r.value;
-        const answer = job?.kind === 'erode' ? await erodeGPU(gpu.gpu, job.o, job.P, { device: gpu.opened })
+        const t = performance.now(), answer = job?.kind === 'erode' ? await erodeGPU(gpu.gpu, job.o, job.P, { device: gpu.opened })
             : helpers ? await helpers.searchJunctions(world, job) : searchJunctions(world, job);
+        if (job?.kind === 'erode') { const T = world.erodeTiming ??= { calls: 0, ms: 0, setupMs: 0 }; T.calls++; T.ms += performance.now() - t; T.setupMs += answer.ms.setup; }   // (records only: tools/probe-graded.mjs)
         useRockBook(world.budget);                      // (this history's book again after the wait: rock-book.js)
         r = run.next(answer);
     }
