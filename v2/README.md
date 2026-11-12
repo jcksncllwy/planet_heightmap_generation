@@ -205,11 +205,12 @@ ocean) — and the fans spread on its dry floor. **When the erosion breaches it*
 closed-basin judges, a cut-off sea whose sill the rivers have cut below the sea's surface — ground below it all the way to
 the ocean, a channel the sea fills, not a beach graded to it — joins the ocean then and there (`closedBasins` `open`,
 `joinOpenSeas`), judged on the erosion's finest level only (a coarser level's ground is averaged, which cuts a narrow
-sill below the sea): its rivers end at the sea from that moment, and its floor stops filling (the Zanclean flood refilled the
+sill below the sea), and only a sea the history left cut off (most of the hollow's ground below the sea lay in one on the
+history's own surface — a hollow the erosion dug below the sea on a low coastal plain keeps its fill): its rivers end at the sea from that moment, and its floor stops filling (the Zanclean flood refilled the
 Messinian Mediterranean through Gibraltar in months to two years, Garcia-Castellanos et al. 2009). Until then the erosion
 graded a breached sea's rivers to its dry floor for the rest of its window and the sea flooded in only after it. What it
 skips: a sea the erosion never breaches stays dry however long ago it was cut off (243751@1080's sea: sill +0.43 km, never
-breached); the dry time capped by the time since closure is an open question. **The finished sea's climate**: the climate
+breached); the dry time capped by the time since closure is the seaage lane's. At 2.5M, 243751@730's sill comes down only to −31 m by the erosion's end, short of the lowstand (−53 m), so it floods after the erosion there; at 160K it breaches. **The finished sea's climate**: the climate
 runs once, on the surface before the erosion, and reads a cut-off sea's dry floor as land at its own height — the lapse
 rate warming it ~6.5 K a km (a 5 km pit kept 53 °C air). When such a pit ends under the world ocean (a breach, or the flood
 after the erosion), the climate runs again on that first surface and sea with only those pits turned to sea, and every
