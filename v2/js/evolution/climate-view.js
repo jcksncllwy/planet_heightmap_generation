@@ -10,7 +10,7 @@ import { KOPPEN_CLASSES } from '../climate/koppen.js';
 import { BIOME_WORDS } from '../finish/finish-cover.js';
 import { rampColor, VIEW_RAMPS, SEA_UNDER_LAND, drawLegendBar } from '../climate-lab/palettes.js';
 import { cubicLonLat, layerIsoline, isolineCoverage, ISOLINES, blurRaster, highsAndLows } from './climate-isolines.js';
-import { carriedOf } from './climate-flow.js';
+import { carriedOf } from './climate-carried.js';
 import { statValue } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { styledSatellite, SAT_SHADE } from './sat-style.js';
