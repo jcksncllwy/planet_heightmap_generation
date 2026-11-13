@@ -264,6 +264,13 @@ section('rivers through the history');
     // its own height, ocean/inventory.js surfaceKm). Thresholds from main a083057's own figures, measured the same way
     // (lanes-2026-10-29/graded/gorge.mjs): belt 0.25 km at the 90th percentile, plains 0.03; the terrain on the belt's great
     // rivers 0.14 km below the belt off them (median)
+    // (no 'deeper than on the plains' at this scale — sessrumnir's ruling, 2026-11-12. A gorge is sub-cell: Earth's Himalayan
+    // transverse gorges are ~5–20 km wide and 2–5 km deep (Lavé & Avouac 2001), the history's cells ~120 km across. Here a great
+    // river's cell standing below its neighbours is a regional low; on the plains that is mostly coastal and escarpment relief,
+    // not a canyon. And the history's lower crust flows back under the column the erosion thins (crustFlow; graded2's test: with
+    // the flow off the belt's figure is 0.70 km, on all the belt's cells alike), which is right at 100 km and more and would be
+    // wrong for a canyon. So the history is held to its belt's great rivers standing below the land around them; the canyon's
+    // depth belongs to the finished surface, where its scale exists (check-finish-gorges, the gorge target there))
     const { frame, world } = await run('india');
     const z = surfaceKm(frame, mesh, heightsOf(world.config)), { adjOffset, adjList } = mesh, isLand = w => frame.owner[w] >= 0 && frame.type[w] !== 0;
     const inBelt = [], plain = [];
@@ -273,8 +280,8 @@ section('rivers through the history');
         for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) if (isLand(adjList[j])) { s += z[adjList[j]]; k++; }
         if (k) (frame.oroType[w] === OrogenyType.HIMALAYAN ? inBelt : frame.oroType[w] ? [] : plain).push(s / k - z[w]);
     }
-    check('the history’s rivers cut gorges through the rising belt, deeper than on the plains', quantile(inBelt, 0.9) >= 0.15 && quantile(plain, 0.9) < quantile(inBelt, 0.9),
-        `how far its great rivers stand below the land around them (90th percentile): ${quantile(inBelt, 0.9).toFixed(2)} km in the collision belt (${inBelt.length} cells), ${quantile(plain, 0.9).toFixed(2)} km on the plains (${plain.length})`);
+    check('the history’s rivers cut down into the rising belt', quantile(inBelt, 0.9) >= 0.15,
+        `how far its great rivers stand below the land around them (90th percentile): ${quantile(inBelt, 0.9).toFixed(2)} km in the collision belt (${inBelt.length} cells); on the plains ${quantile(plain, 0.9).toFixed(2)} km (${plain.length}; not judged at this scale)`);
     const tm = terrainMesh(640000), H = synthesizeTerrain(frame, mesh, tm, { seed: SEED, carve: true }), on = [], off = [];
     for (let t = 0; t < tm.numCells; t++) { const c = H.sampler.cells[3 * t]; if (frame.oroType[c] === OrogenyType.HIMALAYAN && H.heightKm[t] > 0) (frame.riverKm2[c] >= 1e5 ? on : off).push(H.heightKm[t]); }
     check('the terrain draws them: canyons where the history’s rivers held their ways', on.length >= 300 && median(off) - median(on) >= 0.1,
