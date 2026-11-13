@@ -17,6 +17,8 @@ import { setDelaunator } from '../../js/sphere-mesh.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
 import { crustTally, crustVolume } from '../js/tectonics/step/crust-ledger.js';
+import { arcCrustKm } from '../js/tectonics/step/collision.js';
+import { BoundaryKind } from '../js/tectonics/model/world.js';
 import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { onPath, PATH_K } from './lib/paths.mjs';
 
@@ -39,6 +41,38 @@ for (const s of sets) {
 }
 const n = world.mesh.numCells;
 const pct = c => +(100 * c / n).toFixed(3);
+const { adjOffset, adjList } = world.mesh, rowKm = world.mesh.edgeKm * Math.sqrt(3) / 2;   // (a line of cells' length: check-phase2's kmOf)
+
+/** The trench front this frame, km, by the upper plate's crust where it meets the slab: an OVERRIDING cell with a SUBDUCTING
+ *  neighbour of another plate is one cell of front (its row length, rowKm). */
+function trenchFront(f) {
+    const km = { cont: 0, arc: 0, ocean: 0 };
+    for (let w = 0; w < n; w++) {
+        if (f.boundary[w] !== BoundaryKind.OVERRIDING) continue;
+        let front = false;
+        for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const u = adjList[j]; if (f.owner[u] !== f.owner[w] && f.boundary[u] === BoundaryKind.SUBDUCTING) { front = true; break; } }
+        if (!front) continue;
+        const t = f.type[w];
+        if (t === CrustType.CONTINENT || t === CrustType.CRATON) km.cont += rowKm; else if (t === CrustType.ARC) km.arc += rowKm; else km.ocean += rowKm;
+    }
+    return { cont: Math.round(km.cont), arc: Math.round(km.arc), ocean: Math.round(km.ocean) };
+}
+/** The island arcs' crust now (every raster): cells, their mean thickness, the share under arcAccreteThickKm (they go down
+ *  whole at a trench: collision.js recycleThinArc, resolve.js overrides), and the mean age of the arc cells. */
+function arcCrust() {
+    let c = 0, km = 0, thin = 0, age = 0;
+    for (const p of world.plates) {
+        if (!p.alive) continue;
+        const k = p.crust, { mask, type } = k;
+        for (let i = 0; i < mask.length; i++) {
+            if (!mask[i] || type[i] !== CrustType.ARC) continue;
+            const h = arcCrustKm(k, i, world.time, world.config);
+            c++; km += h; age += world.time - k.formedAt[i];
+            if (h < world.config.arcAccreteThickKm) thin++;
+        }
+    }
+    return { cells: c, meanKm: c ? +(km / c).toFixed(2) : 0, thinShare: c ? +(thin / c).toFixed(3) : 0, ageMyr: c ? +(age / c).toFixed(1) : 0 };
+}
 
 let lastStages = {}, lastBudget = {};
 const frames = [];
@@ -69,7 +103,7 @@ simulate(world, {
         lastBudget = Object.fromEntries(Object.entries(world.budget ?? {}).filter(([, v]) => typeof v === 'number'));
         frames.push({
             t: Math.round(f.time), land: pct(s.cont + s.craton), craton: pct(s.craton), arc: pct(s.arc), ocean: pct(s.ocean), none: pct(s.none),
-            rasterLand: pct(tally.land), volKm3: +(vol * world.mesh.cellAreaKm2).toPrecision(5), meanKm: +(vol / Math.max(1, tally.land)).toFixed(2), rasterArc: pct(tally.arc), plates: world.plates.filter(p => p.alive).length, stages: d, budget: db,
+            rasterLand: pct(tally.land), volKm3: +(vol * world.mesh.cellAreaKm2).toPrecision(5), meanKm: +(vol / Math.max(1, tally.land)).toFixed(2), rasterArc: pct(tally.arc), trench: trenchFront(f), arcs: arcCrust(), plates: world.plates.filter(p => p.alive).length, stages: d, budget: db,
         });
         const fr = frames.at(-1);
         process.stderr.write(`t ${fr.t}  land ${fr.land}  arc ${fr.arc}  ocean ${fr.ocean}  raster ${fr.rasterLand}  ${fr.meanKm} km  (${((performance.now() - t0) / 1000).toFixed(0)} s)\n`);
