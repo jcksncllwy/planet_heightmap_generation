@@ -9,7 +9,7 @@
 //   - each ledger stage's change in continental and arc cells since the last frame (the books: which process made or lost
 //     the land), and world.budget's counters' change (underthrust, recycled, eroded cells …).
 // GEO_SIM_PATH=k runs the perturbed path (lib/paths.mjs); the series itself shows whether the nudge reached the history.
-//   node v2/tools/trace-contarea.mjs --seed 716130 [--myr 1100] [--sim 40000] [--set key=value …] [--out file.json]
+//   node v2/tools/trace-contarea.mjs --seed 716130 [--myr 1100] [--sim 40000] [--vol] [--set key=value …] [--out file.json]
 // Prints one line `CONTAREA_JSON {…}` (the whole series).
 import fs from 'node:fs';
 import Delaunator from 'delaunator';
@@ -29,6 +29,9 @@ const sets = argv.flatMap((a, i) => a === '--set' ? [argv[i + 1]] : []);
 const { scene, world } = pageWorld({ seed, cont, sim: SIM });
 onPath(world);
 world.config.crustLedger = true;
+// (--vol: the volume ledger too — each stage's change in continental crust VOLUME and in each rock part: slow, every cell's
+// column at every stage; crust-ledger.js crustLedgerVolume)
+if (argv.includes('--vol')) world.config.crustLedgerVolume = true;
 for (const s of sets) {
     const [k, v] = s.split('=');
     if (!(k in world.config)) throw new Error(`unknown config key ${k}`);
@@ -55,10 +58,12 @@ simulate(world, {
         // to thickness, or off the continental books?)
         const vol = crustVolume(world), tally = crustTally(world), stages = world.ledger?.stages ?? {}, d = {};
         for (const [k, e] of Object.entries(stages)) {
-            const p = lastStages[k] ?? { land: 0, arc: 0 }, dl = e.land - p.land, da = e.arc - p.arc;
-            if (dl || da) d[k] = [dl, da];
+            const p = lastStages[k] ?? { land: 0, arc: 0, vol: 0, parts: {} }, dl = e.land - p.land, da = e.arc - p.arc;
+            const dv = ((e.vol ?? 0) - (p.vol ?? 0)) * world.mesh.cellAreaKm2;      // km³ of continental crust
+            const dp = e.parts ? Object.fromEntries(Object.keys(e.parts).map(q => [q, +(((e.parts[q] ?? 0) - (p.parts?.[q] ?? 0)) * world.mesh.cellAreaKm2).toPrecision(5)])) : null;
+            if (dl || da || dv) d[k] = dp ? [dl, da, +dv.toPrecision(5), dp] : [dl, da];
         }
-        lastStages = Object.fromEntries(Object.entries(stages).map(([k, e]) => [k, { land: e.land, arc: e.arc }]));
+        lastStages = Object.fromEntries(Object.entries(stages).map(([k, e]) => [k, { land: e.land, arc: e.arc, vol: e.vol, parts: e.parts ? { ...e.parts } : null }]));
         const db = {};
         for (const [k, v] of Object.entries(world.budget ?? {})) { if (typeof v !== 'number') continue; const dv = v - (lastBudget[k] ?? 0); if (dv) db[k] = +dv.toPrecision(6); }
         lastBudget = Object.fromEntries(Object.entries(world.budget ?? {}).filter(([, v]) => typeof v === 'number'));
