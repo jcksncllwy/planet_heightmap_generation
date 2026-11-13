@@ -16,7 +16,7 @@ import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { CrustType } from '../js/tectonics/model/crust.js';
-import { crustTally, crustVolume } from '../js/tectonics/step/crust-ledger.js';
+import { crustTally, crustVolume, rockParts } from '../js/tectonics/step/crust-ledger.js';
 import { arcCrustKm } from '../js/tectonics/step/collision.js';
 import { BoundaryKind } from '../js/tectonics/model/world.js';
 import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
@@ -74,6 +74,27 @@ function arcsGoingDown(f) {
     if (out.cells) out.meanKm = +(out.meanKm / out.cells).toFixed(2);
     return out;
 }
+/** The rivers' rock on the ocean floor now (crust.riseKm3 and an ocean cell's seaFillKm, the surface's cells): km³ in all, the
+ *  share on ocean cells next to continent (a passive or active margin's foot), and those cells' column (km, p50 / p90). */
+function floorRock() {
+    const cellKm2 = world.mesh.cellAreaKm2, cols = [];
+    let all = 0, margin = 0;
+    for (let w = 0; w < n; w++) {
+        const o = world.owner[w];
+        if (o < 0) continue;
+        const k = world.plates[o].crust, c = world.ownerCell[w];
+        if (k.type[c] !== CrustType.OCEAN) continue;
+        const km3 = k.riseKm3[c] + k.seaFillKm[c] * cellKm2;
+        if (!(km3 > 0)) continue;
+        all += km3;
+        let byLand = false;
+        for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const u = adjList[j], ou = world.owner[u]; if (ou < 0) continue; const t = world.plates[ou].crust.type[world.ownerCell[u]]; if (t === CrustType.CONTINENT || t === CrustType.CRATON) { byLand = true; break; } }
+        if (byLand) { margin += km3; cols.push(km3 / cellKm2); }
+    }
+    cols.sort((a, b) => a - b);
+    const q = x => cols.length ? +cols[Math.floor(x * (cols.length - 1))].toFixed(2) : 0;
+    return { km3: +all.toPrecision(4), marginShare: all ? +(margin / all).toFixed(3) : 0, marginCells: cols.length, colP50: q(0.5), colP90: q(0.9) };
+}
 /** The island arcs' crust now (every raster): cells, their mean thickness, the share under arcAccreteThickKm (they go down
  *  whole at a trench: collision.js recycleThinArc, resolve.js overrides), and the mean age of the arc cells. */
 function arcCrust() {
@@ -120,7 +141,7 @@ simulate(world, {
         lastBudget = Object.fromEntries(Object.entries(world.budget ?? {}).filter(([, v]) => typeof v === 'number'));
         frames.push({
             t: Math.round(f.time), land: pct(s.cont + s.craton), craton: pct(s.craton), arc: pct(s.arc), ocean: pct(s.ocean), none: pct(s.none),
-            rasterLand: pct(tally.land), volKm3: +(vol * world.mesh.cellAreaKm2).toPrecision(5), meanKm: +(vol / Math.max(1, tally.land)).toFixed(2), rasterArc: pct(tally.arc), trench: trenchFront(f), arcs: arcCrust(), arcsDown: arcsGoingDown(f), plates: world.plates.filter(p => p.alive).length, stages: d, budget: db,
+            rasterLand: pct(tally.land), volKm3: +(vol * world.mesh.cellAreaKm2).toPrecision(5), meanKm: +(vol / Math.max(1, tally.land)).toFixed(2), rasterArc: pct(tally.arc), trench: trenchFront(f), arcs: arcCrust(), arcsDown: arcsGoingDown(f), floor: floorRock(), ...(world.config.crustLedgerVolume ? { parts: Object.fromEntries(Object.entries(rockParts(world)).map(([q, v]) => [q, +(v * world.mesh.cellAreaKm2).toPrecision(5)])) } : {}), plates: world.plates.filter(p => p.alive).length, stages: d, budget: db,
         });
         const fr = frames.at(-1);
         process.stderr.write(`t ${fr.t}  land ${fr.land}  arc ${fr.arc}  ocean ${fr.ocean}  raster ${fr.rasterLand}  ${fr.meanKm} km  (${((performance.now() - t0) / 1000).toFixed(0)} s)\n`);
