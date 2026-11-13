@@ -127,7 +127,7 @@ section('it is a rule, not an accident');
 }
 
 section('in a whole history');
-const histories = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', {}, null, seed) }));
+const histories = await Promise.all([SEED, ...MORE_SEEDS].map(async seed => ({ seed, ...(await run('breakup', {}, null, seed)) })));
 {
     const cfg = histories[0].world.config, perSeed = fn => histories.map(h => `${h.seed}: ${fn(h)}`).join(' · ');
     // initiation events — between plates, and at a margin inside one — per 100 Myr; induced where the ocean's age alone would

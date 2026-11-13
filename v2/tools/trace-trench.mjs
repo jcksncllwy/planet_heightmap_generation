@@ -176,7 +176,7 @@ function sample(f) {
 }
 
 const t0 = performance.now();
-simulate(world, { untilMyr: len, drive: w => { sweep(w); scene.drive(w); }, snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (f.time >= from && f.time % every === 0) { sweep(world); sample(f); } } });
+await simulate(world, { untilMyr: len, drive: w => { sweep(w); scene.drive(w); }, snapshotEveryMyr: 10, keepFrames: false, onFrame: f => { if (f.time >= from && f.time % every === 0) { sweep(world); sample(f); } } });
 
 const avg = (rs, get) => rs.length ? rs.reduce((s, r) => s + get(r), 0) / rs.length : NaN;
 const k = x => (x / 1000).toFixed(1).padStart(6);

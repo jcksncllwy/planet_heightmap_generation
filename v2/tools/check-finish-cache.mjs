@@ -157,9 +157,10 @@ section('several processes');
 const key = process.argv[2], spec = { cells: 3 };
 const r = await FC.finishCached(spec, key, async () => { await new Promise(r => setTimeout(r, 1500)); return { page: { raster: { w: 1, h: 1, heightM: new Int16Array([${process.pid % 1000}]) }, stats: { pid: process.pid } }, cells: { z: new Float32Array([1]) } }; });
 console.log(JSON.stringify({ cached: r.cached, pid: r.page.stats.pid }));`);
-    const run = k => new Promise(res => { let out = ''; const c = spawn(process.execPath, [script, k], { env: process.env }); c.stdout.on('data', d => { out += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => res({ code, out })); });
+    // (the JSON is read from stdout alone: the history's GPU erosion prints Dawn warnings unterminated; its last line from its first brace, lane graded)
+    const run = k => new Promise(res => { let out = '', said = ''; const c = spawn(process.execPath, [script, k], { env: process.env }); c.stdout.on('data', d => { out += d; said += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => res({ code, out, said })); });
     const k = 'e'.repeat(32), rs = await Promise.all([run(k), run(k), run(k)]);
-    const parsed = rs.map(r => { try { return JSON.parse(r.out.trim().split('\n').at(-1)); } catch { return null; } });
+    const parsed = rs.map(r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } });
     check('three processes asking for one finish at once: one finishes it, the others wait and read the same one', parsed.every(Boolean) && parsed.filter(p => !p.cached).length === 1 && new Set(parsed.map(p => p.pid)).size === 1,
         rs.map(r => r.out.trim()).join(' | '));
 }

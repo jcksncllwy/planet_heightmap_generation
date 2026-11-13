@@ -466,8 +466,8 @@ section('fine detail moves with the crust');
     // (with the noise fixed to the world, as before: 0.3–0.6 here — only because the platform noise is broad. On three
     // histories, the ones of phases 9 and 10: whether the plate that turned most has 2,000 interior cells is the history's
     // chance — a seed where it has not is the scene not forming)
-    const frames = framesOf(SEED), A = frames.at(-2), B = frames.at(-1);
-    checkAcross('a moving continent carries its fine detail with it', [carriedDetail(SEED, A, B), ...[777, 4242].map(seed => { const f = framesOf(seed); return carriedDetail(seed, f.at(-2), f.at(-1)); })],
+    const frames = await framesOf(SEED), A = frames.at(-2), B = frames.at(-1);
+    checkAcross('a moving continent carries its fine detail with it', [carriedDetail(SEED, A, B), ...(await Promise.all([777, 4242].map(async seed => { const f = await framesOf(seed); return carriedDetail(seed, f.at(-2), f.at(-1)); })))],
         { scene: 'a moving continent with 2,000 interior cells', detail: '100→110 Myr' });
     // volcanoes: the same crust cell gives the same volcano — the same shape, carried exactly with its plate
     const key = (V, k) => `${V.plate[k]}|${V.crust[k]}`, firstOf = V => { const m = new Map(); for (let k = V.count - 1; k >= 0; k--) m.set(key(V, k), k); return m; };

@@ -15,7 +15,7 @@ const { scene, world } = pageWorld({ seed, cont: DEFAULT_CONT, sim });
 if (arg('--cells')) world.config.plateStressCells = Number(arg('--cells'));
 if (arg('--set')) for (const kv of arg('--set').split(',')) { const [k, v] = kv.split('='); world.config[k] = Number(v); }
 const q = (a, p) => a.length ? +a[Math.floor(p * (a.length - 1))].toExponential(2) : NaN;
-simulate(world, { untilMyr: Math.max(...times), drive: w => scene.drive(w), snapshotEveryMyr: 2, keepFrames: false, onFrame: f => {
+await simulate(world, { untilMyr: Math.max(...times), drive: w => scene.drive(w), snapshotEveryMyr: 2, keepFrames: false, onFrame: f => {
     if (!times.includes(Math.round(f.time)) || Math.abs(f.time - Math.round(f.time)) > 1e-9) return;
     for (const v of (arg('--variants', '') || '-').split(';')) {
     if (v !== '-') for (const kv of v.split(',')) { const [k, x] = kv.split('='); world.config[k] = Number(x); }

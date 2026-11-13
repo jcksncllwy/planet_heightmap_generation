@@ -42,7 +42,7 @@ for (const s of sets) {
 const rows = [], ledger = [], reservoirs = [];
 const trench = trenchGauge();
 const t0 = performance.now();
-simulate(world, {
+await simulate(world, {
     untilMyr: UNTIL, snapshotEveryMyr: 10, keepFrames: false,
     drive: w => {
         scene.drive(w);

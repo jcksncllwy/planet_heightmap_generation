@@ -84,7 +84,7 @@ section('a plume splits a continent');
 section('the start world breaks up');
 {
     // the start world's history on several seeds: the invariants are held on every one, the Earth statistics reported per seed
-    const runs = [SEED, ...MORE_SEEDS].map(seed => ({ seed, ...run('breakup', { crustLedger: true }, null, null, seed) }));
+    const runs = await Promise.all([SEED, ...MORE_SEEDS].map(async seed => ({ seed, ...(await run('breakup', { crustLedger: true }, null, null, seed)) })));
     const r = runs[0], cfg = r.world.config, rifts = rr => rr.events.filter(e => e.kind === EventKind.RIFT);
     const perSeed = fn => runs.map(rr => `${rr.seed}: ${fn(rr)}`).join(' · ');
     const firstOf = rr => {

@@ -9,7 +9,7 @@ import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../js/tectonics/measure.js';
 setDelaunator(Delaunator);
 const [seed = 831576, until = 450] = process.argv.slice(2).map(Number);
 const { scene, world } = pageWorld({ seed, cont: DEFAULT_CONT, sim: 40000 }), A = world.mesh.cellAreaKm2;
-simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 50, keepFrames: false, onFrame: () => {
+await simulate(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 50, keepFrames: false, onFrame: () => {
     let over = 0, overVol = 0, mx = 0;
     for (const p of world.plates) if (p.alive) { const k = p.crust; for (let c = 0; c < k.mask.length; c++) if (k.mask[c] && k.type[c] === CrustType.OCEAN) {
         const r = k.riseKm3[c] / A, cap = SEDIMENT_LOAD_FACTOR * seaDepthKm(world.time - k.formedAt[c]);

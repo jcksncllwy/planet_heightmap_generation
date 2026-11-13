@@ -20,7 +20,7 @@ import { columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } 
 import { arcCrustKm } from './collision.js';
 import { recordWear } from './geology.js';
 import { erosionAtLatitude, rainAtLatitude } from '../../terrain/terrain-config.js';
-import { ERODE } from '../../finish/finish-erode.js';
+import { historyErodeSettings } from './erode-settings.js';
 import { FINISH, erosionAt } from '../../finish/finish-config.js';
 
 const R = 6371;
@@ -28,10 +28,8 @@ const R = 6371;
 // reliefTauMyr 100 against ruggedTauMyr 368 — an old belt keeps its grain, the Appalachians)
 export const CREST_WEAR = 100 / 368;
 
-/** The settings one history erosion step runs with, for a span of `spanMyr`. */
-export function historyErodeSettings(spanMyr) {
-    return { ...ERODE, timeMyr: spanMyr, steps: 1, closedEvery: 1, rebound: 0, delta: false, column: false, hillD: 0, diffD: 0, kScale: 1, trace: false };
-}
+
+export { historyErodeSettings };
 
 const fields = new WeakMap();
 /** Per mesh and constants: each world cell's drainage weight (rain ÷ rainRefMm) and its k without the rock's hardness. */

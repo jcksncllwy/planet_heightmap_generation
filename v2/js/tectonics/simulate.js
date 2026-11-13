@@ -36,7 +36,7 @@ import { crustLedger, handLaidArcKm3 } from './step/crust-ledger.js';
 import { stepPlateStress } from './field/stress-step.js';
 import { accretePrisms } from './step/prism-accretion.js';
 import { erodeGPU } from '../gpu/erode-gpu.js';
-import { sharedDevice } from '../gpu/gpu-device.js';
+import { historyGPU } from '../gpu/history-gpu.js';
 
 /**
  * @param {import('./model/world.js').TectonicWorld} world
@@ -89,16 +89,6 @@ async function simulateNow(world, opts, helpers) {
     return r.value;
 }
 
-/** The refusal a history gives where there is no GPU (agent-brief "A GPU is required", 2026-11-12). */
-export const GPU_REQUIRED = 'A GPU is required: the history erodes its land on the GPU (WebGPU; in Node, Dawn: v2/tools/gpu-harness/history-dawn.mjs, which the tools\' history cache and check-kit load). There is no CPU path.';
-
-/** The GPU the history erodes on: this page's or worker's navigator.gpu, or Dawn's in Node (v2/tools/gpu-harness/history-dawn.mjs, or
- *  use-dawn.mjs) — refused clearly where there is none. */
-export async function historyGPU(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU) {
-    const opened = gpu ? await sharedDevice(gpu) : null;
-    if (!opened) throw new Error(GPU_REQUIRED);
-    return { gpu, opened };
-}
 
 // The history's steps, as a generator: it yields each rift's request for its junctions' searches (step/rifting.js) and
 // each river step's erosion job ({kind: 'erode'}: step/rivers.js), and simulate answers them.
@@ -243,3 +233,5 @@ export function chooseStep(world) {
     if (rate < 1e-12) return maxStepMyr;
     return Math.max(floor, Math.min(maxStepMyr, maxCellsPerStep * world.mesh.edgeRad / rate));
 }
+
+export { historyGPU, GPU_REQUIRED } from '../gpu/history-gpu.js';

@@ -19,9 +19,9 @@
 // The hash is 128 bits from four 32-bit murmur3 lanes — not cryptographic, only a cache key over the world's own data —
 // the same in Node and in a browser worker (no async digest), ~40 ms for a 40K-cell start world.
 
-import { historyGPU } from '../tectonics/simulate.js';
+import { historyGPU } from '../gpu/history-gpu.js';
 import { erodeGPU } from '../gpu/erode-gpu.js';
-import { historyErodeSettings } from '../tectonics/step/surface-erosion.js';
+import { historyErodeSettings } from '../tectonics/step/erode-settings.js';
 
 const C1 = 0xcc9e2d51, C2 = 0x1b873593;
 const f64 = new Float64Array(1), f64Words = new Uint32Array(f64.buffer);

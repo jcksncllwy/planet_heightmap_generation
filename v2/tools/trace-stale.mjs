@@ -52,7 +52,7 @@ const look = time => {
     return { time, belt, stale, share: +(stale / Math.max(1, belt) * 100).toFixed(2), byKind, lag, dir };
 };
 const rows = [];
-simulate(world, { untilMyr: MYR, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: 50, onFrame: f => {
+await simulate(world, { untilMyr: MYR, drive: BUDGET_SCENES.find(s => s.id === 'history').drive, snapshotEveryMyr: 50, onFrame: f => {
     if (f.time > 0 && f.time % 100 === 0) { const r = look(f.time); rows.push(r); console.log(JSON.stringify(r)); }
 } });
 console.log(`STALE_JSON ${JSON.stringify({ seed, sets, max: Math.max(...rows.map(r => r.share)), rows })}`);

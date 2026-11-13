@@ -50,21 +50,21 @@ function differ(a, b, at = 'frame') {
 const firstDiff = (A, B) => (A.length !== B.length ? `${A.length} frames against ${B.length}` : A.map((f, i) => differ(f, B[i], `t=${f.time}`)).find(Boolean) ?? null);
 
 section('a cached frame is the frame built, to the bit');
-const truth = simulate(fresh(), run(null)).frames, truth50 = truth.filter((f, i) => i === 0 || f.time % 50 === 0 || i === truth.length - 1);
+const truth = (await simulate(fresh(), run(null))).frames, truth50 = truth.filter((f, i) => i === 0 || f.time % 50 === 0 || i === truth.length - 1);
 {
-    const t0 = performance.now(), built = HC.simulateCached(fresh(), run(null), { drive: scene.drive }), buildMs = performance.now() - t0;
-    const t1 = performance.now(), again = HC.simulateCached(fresh(), run(null), { drive: scene.drive }), readMs = performance.now() - t1;
+    const t0 = performance.now(), built = await HC.simulateCached(fresh(), run(null), { drive: scene.drive }), buildMs = performance.now() - t0;
+    const t1 = performance.now(), again = await HC.simulateCached(fresh(), run(null), { drive: scene.drive }), readMs = performance.now() - t1;
     check('the first run builds the history and keeps it; its frames are simulate()\'s', !built.cached && built.key && firstDiff(built.frames, truth) === null && HC.entryTimes(built.key).length === truth.length,
         `${built.frames.length} frames; ${HC.entryTimes(built.key ?? '').length} kept; ${firstDiff(built.frames, truth) ?? 'identical'}`);
     check('the second is read from the cache: every frame equal to a fresh build, every field byte for byte, every number bit for bit', again.cached && firstDiff(again.frames, truth) === null,
         `${again.cached ? 'cached' : 'built again'}; ${firstDiff(again.frames, truth) ?? 'identical'} (built in ${(buildMs / 1000).toFixed(1)} s, read in ${(readMs / 1000).toFixed(2)} s)`);
-    const coarse = HC.simulateCached(fresh(), run(null, 50), { drive: scene.drive });
+    const coarse = await HC.simulateCached(fresh(), run(null, 50), { drive: scene.drive });
     check('a caller recording every 50 Myr is served from the frames kept every 10 — the frames simulate() would give it', coarse.cached && firstDiff(coarse.frames, truth50) === null,
         `${coarse.frames.map(f => f.time).join(', ')} Myr; ${firstDiff(coarse.frames, truth50) ?? 'identical'}`);
-    const shorter = HC.simulateCached(fresh(), run(null, 10, 30), { drive: scene.drive });
+    const shorter = await HC.simulateCached(fresh(), run(null, 10, 30), { drive: scene.drive });
     check('a shorter history is the first part of a longer one: served from the same entry', shorter.cached && shorter.key === built.key && firstDiff(shorter.frames, truth.slice(0, 4)) === null, `${shorter.frames.length} frames to 30 Myr`);
     const seen = [];
-    HC.simulateCached(fresh(), { ...run(null), keepFrames: false, onFrame: f => seen.push(f) }, { drive: scene.drive });
+    await HC.simulateCached(fresh(), { ...run(null), keepFrames: false, onFrame: f => seen.push(f) }, { drive: scene.drive });
     check('…and onFrame sees each frame in order, as simulate() would call it', firstDiff(seen, truth) === null, `${seen.length} frames`);
     // the wire format alone, on the values JSON loses
     const odd = { ...truth.at(-1), time: truth.at(-1).time, weird: [NaN, -0, Infinity, -Infinity, undefined, 1e-310], tagged: new Float64Array([NaN, -0]), map: new Map([[1, 'a']]) };
@@ -92,7 +92,7 @@ section('the key: the history\'s code and its settings, and nothing else');
     };
     const same = Object.entries(changed).filter(([, v]) => v === base || v === null).map(([n]) => n);
     check('the key changes with the seed, the start world, any config override (the crust ledger, the heights\' sliders), the mesh, the drive and the event rules', same.length === 0, same.length ? `unchanged by: ${same.join(', ')}` : `${Object.keys(changed).length} changes, ${new Set(Object.values(changed)).size} distinct keys`);
-    const ran = fresh(); simulate(ran, run(null, 10, 10));
+    const ran = fresh(); await simulate(ran, run(null, 10, 10));
     check('a world that has already run is never keyed (its random streams are past the seed\'s)', k(ran) === null);
 
     // the code: a copy of the checkout's code, changed one file at a time
@@ -116,8 +116,9 @@ section('the key: the history\'s code and its settings, and nothing else');
     check('…and terrain synthesis, the finish and app/history-code.js (the hash\'s own output) are not in it', after.terrain === steady && after.finish === steady && after.self === steady,
         `terrain ${after.terrain === steady ? 'out' : 'IN'}, finish ${after.finish === steady ? 'out' : 'IN'}, history-code.js ${after.self === steady ? 'out' : 'IN'}`);
     // (the two finish files the history's sea reads since pourstart, 2026-11-10: land-mask's pinnedHumid judges a pinned sill's basin by the
-    // finish's closed-basin balance and its constants, so an edit to them changes the history and rightly changes its hash; finish.js and the rest stay out)
-    const HISTORY_FINISH = new Set(['v2/js/finish/finish-basins.js', 'v2/js/finish/finish-config.js']);
+    // finish's closed-basin balance and its constants, so an edit to them changes the history and rightly changes its hash; since lane graded the history
+    // erodes by the finish's own law, its settings in finish-erode.js (ERODE); finish.js and the rest stay out)
+    const HISTORY_FINISH = new Set(['v2/js/finish/finish-basins.js', 'v2/js/finish/finish-config.js', 'v2/js/finish/finish-erode.js']);
     check('the files are found from the import graph: the steps, the scenes, the start world, the model, config, and the helpers', ['v2/js/tectonics/simulate.js', 'v2/js/tectonics/config.js', 'v2/js/tectonics/step/rifting.js', 'v2/js/tectonics/init/start-world.js', 'v2/js/app/helper-worker.js', 'v2/js/terrain/terrain-config.js', 'js/rng.js'].every(f => here0.files.includes(f)) && !here0.files.some(f => (f.startsWith('v2/js/finish/') && !HISTORY_FINISH.has(f)) || f === 'v2/js/terrain/synthesize.js'),
         `${here0.files.filter(f => f.startsWith('package:')).join(', ') || 'no packages'}`);
 }
@@ -132,10 +133,10 @@ section('writers at once, and one build for many');
         const [mode, cells, seed, until] = process.argv.slice(2).map((v, i) => i ? Number(v) : v);
         const scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), world = scene.build(labMesh(cells), seed);
         if (mode === 'build') {
-            const r = HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
+            const r = await HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
             console.log(JSON.stringify({ cached: r.cached, n: r.frames.length, owner: r.frames.map(f => Array.from(f.owner.subarray(0, 64))) }));
         } else {                                           // hammer: write and read the same frames over and over
-            const key = HC.keyOf(world, scene.drive), frames = HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive }).frames;
+            const key = HC.keyOf(world, scene.drive), frames = (await HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive })).frames;
             const fs = await import('node:fs');
             let bad = 0, reads = 0;
             for (let i = 0; i < 40; i++) for (const f of frames) {
@@ -147,20 +148,21 @@ section('writers at once, and one build for many');
             console.log(JSON.stringify({ bad, reads }));
         }
     `);
-    const child = (...args) => new Promise(res => { let out = ''; const c = spawn(process.execPath, [script, ...args.map(String)], { env: process.env }); c.stdout.on('data', d => { out += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => res({ code, out })); });
+    // (the JSON is read from stdout alone: its last line from its first brace: Dawn's warnings from the GPU erosion print unterminated, lane graded)
+    const child = (...args) => new Promise(res => { let out = '', said = ''; const c = spawn(process.execPath, [script, ...args.map(String)], { env: process.env }); c.stdout.on('data', d => { out += d; said += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => res({ code, out, said })); });
     // three processes ask for the same history at once (a fresh one: seed 99)
     fs.writeFileSync(process.env.GEO_SIM_HISTORY_LOG, '');
     const three = await Promise.all([child('build', CELLS, 99, 40), child('build', CELLS, 99, 40), child('build', CELLS, 99, 40)]);
-    const parsed = three.map(r => { try { return JSON.parse(r.out.trim().split('\n').at(-1)); } catch { return null; } });
+    const parsed = three.map(r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } });
     const events = log(), builds = events.filter(e => e.event === 'build' && e.untilMyr === 40).length, waits = events.filter(e => e.event === 'wait-hit' || e.event === 'hit').length;
     check('three processes asking for one history at once: one builds it, the others wait for its frames — and all three get the same frames',
         parsed.every(Boolean) && builds === 1 && waits === 2 && parsed.every(p => JSON.stringify(p.owner) === JSON.stringify(parsed[0].owner)),
         parsed.every(Boolean) ? `${builds} build, ${waits} served from the cache (${parsed.map(p => (p.cached ? 'cached' : 'built')).join(', ')})` : three.map(r => r.out.slice(-300)).join(' | '));
     // four processes writing, deleting and reading the same frames over and over, as fast as they can
     const four = await Promise.all([0, 1, 2, 3].map(() => child('hammer', CELLS, 99, 40)));
-    const res = four.map(r => { try { return JSON.parse(r.out.trim().split('\n').at(-1)); } catch { return null; } });
+    const res = four.map(r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } });
     const w = scene.build(mesh, 99), key = HC.keyOf(w, scene.drive), whole = HC.entryTimes(key).map(t => HC.getFrame(key, t)).filter(Boolean);
-    const ref = simulate(scene.build(mesh, 99), { untilMyr: 40, drive: x => scene.drive(x), snapshotEveryMyr: 10 }).frames;
+    const ref = (await simulate(scene.build(mesh, 99), { untilMyr: 40, drive: x => scene.drive(x), snapshotEveryMyr: 10 })).frames;
     const leftovers = fs.readdirSync(path.join(HC.CACHE_DIR, key)).filter(f => f.includes('.tmp-'));
     check('four writers at once, each deleting and rewriting every frame 40 times while reading it back: never half a frame read, and the entry whole and right after',
         res.every(r => r && r.bad === 0) && firstDiff(whole, ref) === null && leftovers.length === 0 && log().filter(e => e.event === 'corrupt').length === 0,
@@ -180,7 +182,7 @@ section('a damaged file is found and built again, never trusted');
     check('a frame cut short, one with a byte flipped and an empty one are each refused, logged and deleted', reads.every(r => r === null) && ![cut, flip, empty].some(f => fs.existsSync(f)) && log().filter(e => e.event === 'corrupt').length === 3,
         `${reads.filter(r => r === null).length} of 3 refused; ${log().filter(e => e.event === 'corrupt').map(e => e.error).join(' · ')}`);
     fs.truncateSync(file(times[1]), 60);                         // (and one more, damaged where only a read will find it)
-    const again = HC.simulateCached(fresh(), run(null), { drive: scene.drive });
+    const again = await HC.simulateCached(fresh(), run(null), { drive: scene.drive });
     check('…and the history is built again in their place: its frames those of a fresh build', !again.cached && firstDiff(again.frames, truth) === null && HC.entryTimes(key).length === truth.length,
         `${again.cached ? 'served from the damaged cache!' : 'built again'}; ${firstDiff(again.frames, truth) ?? 'identical'}; ${HC.entryTimes(key).length} frames kept`);
 }

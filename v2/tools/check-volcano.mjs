@@ -52,7 +52,7 @@ const world = scene.build(mesh, SEED);
 world.config.heights = H;
 const rows = [];
 let prev = null, pure = true, ms = 0;
-simulate(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
+await simulate(world, { untilMyr: UNTIL, drive: w => scene.drive(w), snapshotEveryMyr: 10, keepFrames: false, onFrame: f => {
     const copy = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, ArrayBuffer.isView(v) ? v.slice() : v && typeof v === 'object' ? structuredClone(v) : v]));
     if (prev) {
         const before = print(copy), t0 = performance.now();

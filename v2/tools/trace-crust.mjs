@@ -41,7 +41,7 @@ const H_EDGES = [-4, -2, -1, -0.5, -0.2, 0, 0.2, 0.4, 1, 2, Infinity];   // km, 
 
 const frames = [], ledgerAt = [], hyps = [];
 const t0 = performance.now();
-simulate(world, {
+await simulate(world, {
     untilMyr: MYR, snapshotEveryMyr: 10, keepFrames: false,
     drive: w => {
         scene.drive(w);
