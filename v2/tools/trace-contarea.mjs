@@ -57,6 +57,23 @@ function trenchFront(f) {
     }
     return { cont: Math.round(km.cont), arc: Math.round(km.arc), ocean: Math.round(km.ocean) };
 }
+/** Island-arc crust on the LOWER plate at a trench this frame (an ARC cell marked SUBDUCTING with an OVERRIDING neighbour of
+ *  another plate): how much, how thick (the plate raster's arcCrustKm), and what the upper plate is there — continent (an
+ *  arc–continent collision), arc or ocean (a back-arc closing, a polarity flip). The arcs the resolve pass deletes come from here. */
+function arcsGoingDown(f) {
+    const out = { cells: 0, thin: 0, meanKm: 0, upper: { cont: 0, arc: 0, ocean: 0 } };
+    for (let w = 0; w < n; w++) {
+        if (f.type[w] !== CrustType.ARC || f.boundary[w] !== BoundaryKind.SUBDUCTING) continue;
+        let up = -1;
+        for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const u = adjList[j]; if (f.owner[u] !== f.owner[w] && f.owner[u] >= 0 && f.boundary[u] === BoundaryKind.OVERRIDING) { up = f.type[u]; break; } }
+        if (up < 0) continue;
+        const p = world.plates[f.owner[w]], c = world.ownerCell[w], h = p?.alive ? arcCrustKm(p.crust, c, world.time, world.config) : 0;
+        out.cells++; out.meanKm += h; if (h < world.config.arcAccreteThickKm) out.thin++;
+        if (up === CrustType.CONTINENT || up === CrustType.CRATON) out.upper.cont++; else if (up === CrustType.ARC) out.upper.arc++; else out.upper.ocean++;
+    }
+    if (out.cells) out.meanKm = +(out.meanKm / out.cells).toFixed(2);
+    return out;
+}
 /** The island arcs' crust now (every raster): cells, their mean thickness, the share under arcAccreteThickKm (they go down
  *  whole at a trench: collision.js recycleThinArc, resolve.js overrides), and the mean age of the arc cells. */
 function arcCrust() {
@@ -103,7 +120,7 @@ simulate(world, {
         lastBudget = Object.fromEntries(Object.entries(world.budget ?? {}).filter(([, v]) => typeof v === 'number'));
         frames.push({
             t: Math.round(f.time), land: pct(s.cont + s.craton), craton: pct(s.craton), arc: pct(s.arc), ocean: pct(s.ocean), none: pct(s.none),
-            rasterLand: pct(tally.land), volKm3: +(vol * world.mesh.cellAreaKm2).toPrecision(5), meanKm: +(vol / Math.max(1, tally.land)).toFixed(2), rasterArc: pct(tally.arc), trench: trenchFront(f), arcs: arcCrust(), plates: world.plates.filter(p => p.alive).length, stages: d, budget: db,
+            rasterLand: pct(tally.land), volKm3: +(vol * world.mesh.cellAreaKm2).toPrecision(5), meanKm: +(vol / Math.max(1, tally.land)).toFixed(2), rasterArc: pct(tally.arc), trench: trenchFront(f), arcs: arcCrust(), arcsDown: arcsGoingDown(f), plates: world.plates.filter(p => p.alive).length, stages: d, budget: db,
         });
         const fr = frames.at(-1);
         process.stderr.write(`t ${fr.t}  land ${fr.land}  arc ${fr.arc}  ocean ${fr.ocean}  raster ${fr.rasterLand}  ${fr.meanKm} km  (${((performance.now() - t0) / 1000).toFixed(0)} s)\n`);
