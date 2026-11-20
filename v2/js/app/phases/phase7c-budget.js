@@ -1,6 +1,6 @@
 // Lab phase 7c — the crust budget. Continents gain area (island arcs, fore-arc islands) and now also lose it: erosive
 // margins eat their coasts, trench sediment goes down the subduction channel, a continent driven into another slides
-// under it, and small arcs go down with their slabs instead of accreting. Each scene isolates one; the last runs them all over a long history.
+// under it, and heavy arcs go down with their slabs (their light crust scraped onto the upper plate) instead of accreting. Each scene isolates one; the last runs them all over a long history.
 
 import { BUDGET_SCENES } from '../../tectonics/scenarios/budget-scenes.js';
 import { simulate } from '../../tectonics/simulate.js';

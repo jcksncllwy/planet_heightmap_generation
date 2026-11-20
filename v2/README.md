@@ -1539,12 +1539,21 @@ high as live ones, never sank, and were never consumed. The arc's life is now it
   20 km 25 Myr silent: 2.4 km down (the Kyushu–Palau Ridge, 2–3 km down ~25 Myr after the Shikoku Basin split it off,
   Ishizuka et al. 2011). The distance-to-continent rule (`arcOceanMatureKm`, `arcCoastKm`, `arcOceanKm`), `arcYoungKm`,
   `arcMatureKm` and `arcMatureMyr` are gone; arc cones grow with the crust (`measure.js arcGrowth`).
-- **A thin arc subducts** (`step/polarity.js floats`): arc crust under `arcAccreteThickKm` (17 km; Cloos 1993) is no longer
-  land to the polarity rule — it goes down a trench like ocean, under ocean, arc or continent — and the docking and
-  scraping rules judge an arc by its recorded crust, not its age (`collision.js arcCrustKm`), so a remnant left silent
-  stays thin and goes down at the next trench it meets — the arc cells at the contact going down as they arrive, not
-  the whole arc at once. (A scene's hand-laid arc, never grown, still floats and is read by
-  its age.)
+- **A heavy arc subducts, its light crust stays up** (`step/polarity.js floats`, `measure.js arcBuoyancyKm`,
+  `arcScrapedShare`; lane contarea, replacing the fixed 17 km `arcAccreteThickKm`): an island arc goes down a trench when
+  its column — its crust (the ocean's 7 km at 2.9 g/cm³, the rest at the arc's 2.97) against the cold of the mantle lid
+  under it since its slab last fed it (GDH1's basement subsidence) — is denser than the asthenosphere (Cloos 1993); a
+  buoyant one jams the trench and docks whole. Nothing is set to an outcome: plain ocean crust turns heavy at ~11 Myr,
+  an arc silent 80 Myr floats from ~18 km of crust, one silent 20 Myr from ~10 km, and a live arc (its lithosphere kept
+  hot by the wedge) always floats. When an arc goes down, its light upper and middle crust is scraped onto the upper
+  plate's prism (`collision.js sinkArc`, booked `arcScrapedKm3`, laid on its fore-arc by `prism-accretion.js`): the
+  share is the model's own densities, (ρm − ρarc) ÷ (ρm − ρcont) ≈ 0.70 of the crust above the ocean's 7 km — the arc's
+  mean density split into a part as light as continent and a part as dense as mantle (the Izu collision: the Tanzawa and
+  Misaka blocks' upper and middle crust on Honshu, their lower crust subducted; no published share). The rest, and the
+  ocean crust it stood on, goes down (`arcRecycledKm3`). Limits: a two-part split of one mean density; no eclogite in the
+  jam test; no slab pull weighed against the buoyancy; the lid's age is the arc's silence, not the floor's age before it.
+  Docking and scraping judge the arcs the same way; a scene's hand-laid arc, never grown, still floats. `config.arcRecycling`
+  (off in the mechanism table) lets every arc float.
 - **A plate pulling away from its trench splits at its arc** (`backarc.js pullArcsAfterTrenches`): the history grew new
   floor at the trench itself as the plate retreated (`resolve.js`), stranding the arc and building another in front of it.
   Those births are now reported (`world.rollbackBirths`), and a run of them `backArcMinLengthKm` long splits off its arc
