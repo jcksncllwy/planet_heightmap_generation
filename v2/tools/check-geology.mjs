@@ -69,9 +69,14 @@ for (const seed of SEEDS) {
         if (km + 0.3 < Math.min(f, 25) - 1.5) short++;
     }
     check('the cover holds the fill the heights stand on', short === 0, `${short} cells short`);
-    check('no more cover laid than the rivers left: laid ≤ basin + sea fill', book.laidKm3 <= sink * (1 + 1e-6), `${(book.laidKm3 / 1e6).toFixed(2)} of ${(sink / 1e6).toFixed(2)} Mkm³`);
+    // (net against net: the books are what the rivers laid less what they took back up (rivers.js books the erosion's `moved`
+    // net), the cover's laid is every rise of a cell's fill it saw and its wornFill every fall — since lane graded's history
+    // erosion lays fill and wears it again in later ticks, gross laid runs ~2× the net books, which is not over-laying)
+    const netLaid = book.laidKm3 - book.wornFillKm3;
+    check('no more cover laid than the rivers left: laid less worn ≤ basin + sea fill', netLaid <= sink * (1 + 1e-6),
+        `${(netLaid / 1e6).toFixed(2)} of ${(sink / 1e6).toFixed(2)} Mkm³ (laid ${(book.laidKm3 / 1e6).toFixed(2)}, worn ${(book.wornFillKm3 / 1e6).toFixed(2)})`);
     check('something was laid (the books feed the cover)', book.laidKm3 > 0, `${(book.laidKm3 / 1e6).toFixed(2)} Mkm³`);
-    report('laid against the books', sink ? book.laidKm3 / sink : 0, { detail: 'see the README: the gap measured' });
+    report('laid less worn against the books', sink ? netLaid / sink : 0, { detail: 'see the README: the gap measured' });
     report('cover now, Mkm³', stock / 1e6, { detail: `seeded ${(book.seededKm3 / 1e6).toFixed(1)}, laid ${(book.laidKm3 / 1e6).toFixed(1)}, fill standing ${(fill / 1e6).toFixed(1)}, fill worn ${(book.wornFillKm3 / 1e6).toFixed(1)}` });
 
     section(`what the record says, seed ${seed}`);
