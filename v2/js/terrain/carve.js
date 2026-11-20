@@ -12,9 +12,10 @@
 //     plus a faint micro-relief of the crust's own (the hummocks every real surface has, below this mesh; developer:
 //     small rivers should hold their courses from frame to frame and shift only as the land changes — the paper's
 //     random receivers were drawn afresh wherever the crust moved under the mesh);
-//   · the rivers of the history (8b-2, tectonics/step/rivers.js): the routing runs over the surface less what the
-//     history's rivers cut, so rivers follow the old courses — through ranges they cut as those rose — and a river bed
-//     is at least as deep as the history cut it: gorges and canyons where big rivers held their ways;
+//   · the rivers of the history (8b-2, tectonics/step/rivers.js, step/surface-erosion.js): the history erodes the ground
+//     itself (lane graded), so the surface the routing runs over is already graded and rivers follow the old courses —
+//     through ranges they wore down as those rose; no cut record of its own (riverIncKm retired: a gorge is sub-cell at
+//     the history's resolution, its depth the carving's and the finish's);
 //   · drainage area in km², weighted by rainfall (a river from wet mountains keeps cutting across a desert);
 //   · every river carves its bed; a cell drops by the share of it its valley takes — valleys widen with the square root
 //     of discharge (hydraulic geometry) — so great rivers cut whole cells and streams barely mark theirs, smoothly;

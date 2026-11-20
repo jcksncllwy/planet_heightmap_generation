@@ -797,12 +797,24 @@ wide at 10⁴ km²), so great rivers cut whole cells and streams barely mark the
 `carveHillSlope`. Solved coarse to fine (sim mesh, then the terrain meshes up to the one shown), so the big
 rivers are the same at every resolution. The lab's 8b phase shows every frame carved (the surface first, then its
 carving from a worker); the Drainage layer shows the network, which is not drawn on the terrain by default.
-**Rivers through the history (8b-2, `step/rivers.js`).** Every 4 Myr the history drains its land on the sim mesh, over the
-evolved height less what rivers already cut there — so a river keeps a course it has cut — and each river cuts by stream
-power toward a share A / (A + `riverHalfKm2`) of the relief it crosses. The cut is a crust record (`riverIncKm`); where
-land rose under a river that kept up, it is a gorge. The carving routes over the surface less that record and makes
-every river bed at least as deep, so rivers follow their historical courses and canyons show where they held them. Small
-rivers are routed over a micro-relief of the crust's own, so they ride with their continent between frames.
+**Erosion through the history (8b-2, lane graded: `step/rivers.js`, `step/surface-erosion.js`, `gpu/erode-gpu.js`).** Every
+`riverEveryMyr` (4 Myr) the history erodes its land on the sim mesh with the finish's own law, on the GPU: Braun & Willett
+(2013)'s implicit stream power (n = 1) with Yuan et al. (2019)'s deposition, at the finish's k and m, base level the sea as
+the one land mask finds it. So the finish starts from ground already graded at the history's resolution, and the land wears
+by its slope, drainage and base level, not by how high it stands. What the solve takes comes first out of a hollow's
+sediment (`basinFillKm`), then out of the rock: the belts' uplift and the swells by one share, the column by thinning its
+crust (Airy: the ground falls ~0.15 of the rock taken, the column's slope); the bedrock goes to `wornKm`, which the rivers
+route to the basins, seas and trenches. What it lays goes to `basinFillKm`. Small rivers are routed over a micro-relief of
+the crust's own, so they ride with their continent between frames. **A GPU is required** for a history now (WGSL through
+gpu-device.js; Node runs it headless through Dawn, tools/gpu-harness/history-dawn.mjs); a build without one refuses with a
+clear message. The erosion feeds the dynamics (the roots and uplift it thins), so a history depends on its GPU's float
+rounding: the history cache keys it by `gpuFingerprint` (app/history-key.js), and Metal and D3D12 histories differ.
+Retired with it: the height-based wear rule (heights.js erosionAtHeight), the river cut record `riverIncKm` and the carving's
+"at least as deep" bed (a gorge is sub-cell at the history's ~120 km cells: its depth belongs to the finished surface,
+`tools/finish-gorges.mjs`), the basin fill-back and the separate rock flux (`rockBook`, `trenchDenudationKmPerMyr`).
+Limits: one solve per river step at the sim mesh's resolution (sub-cell valleys are the finish's); a world whose land stands
+far above its sea (the founder scene: ~6 % land under an Earth ocean, ~2.3 km of freeboard) is graded down at the full
+Airy cost, ~6 km of crust per km of ground, and its thinned crust carries no lower-crustal channel (crust-flow.js).
 **At high terrain detail (Evolution, 2026-09-29; plans/V2_FULL_PLANET_PLAN.md).** The coast distance is read with each
 sim cell's slope (`coastCurve`: Σ wᵢ (dᵢ + ∇dᵢ·(q − pᵢ)) — exact at the cells, seamless along edges), so coastlines
 curve between the sim cells instead of running straight across each triangle; on a rugged coast (an island arc's, a young
@@ -2977,7 +2989,9 @@ bit-identical (crust fields and the budget's other counters hash the same at 123
   held as one unit (the fans spend over the next steps what the rivers deliver) to 5 %: −3.2 … −4.0 %. The gap is in
   step/rivers.js. trapLoad books the rock that refills a valley cut as `basinFillKm3`, but the cut (`crust.riverIncKm`) is a
   record with no volume (0.029 Gkm³ on 12345). Some supply also reaches no sink: ~0.015 Gkm³, ~10 Myr of the mouths' rate
-  against a 4 Myr river span. The tolerance tightens to 1 % when rivers.js books `cutFillKm3`.
+  against a 4 Myr river span. The tolerance tightens to 1 % when rivers.js books `cutFillKm3`. (Lane graded: the cut record
+  is retired — the history's erosion takes real rock off the column into `wornKm` and lays real fill — so the first half of
+  this gap is gone; these figures predate it.)
 - **Unpaid sources, named:** a belt's relief and root (`beltReliefKm3`, `beltRootKm3`: the rigid upper plate loses nothing for
   them; review row 10, "belts from shortening"). A rift's shoulders are among them: `beltReliefKm3` booked in the rifts stage.
   An arc welded on as continent is reworked up to an ordinary continent's crust (`arcMaturedKm3`).
