@@ -173,6 +173,46 @@ export function arcSurfaceKm(crustKm, quietMyr) {
     return arcStandKm(crustKm, q) - Math.min(ISLAND_EROSION_KM_PER_MYR * q, Math.max(0, up));
 }
 
+// ── Does an island arc arriving at a trench go down? (lane contarea, 2026-11-12; replaces the fixed 17 km arcAccreteThickKm)
+// The same column as arcStandKm, asked another question: is the arc's lithosphere — its crust and the mantle lid under it —
+// lighter than the asthenosphere it would sink into (Cloos 1993, GSA Bull. 105: 715, "Lithospheric buoyancy and
+// collisional orogenesis")? Against a column of asthenosphere alone (columnModel's H0, read off the ridge), a column's
+// buoyancy shows as how much higher it stands; under water, in km of that relief:
+//   B = 7 × (ρm − ρoc) ÷ (ρm − ρw)          the ocean crust it was built on (the ridge's 7 km, oceanCrustRho)
+//     + (Hc − 7) × (ρm − ρarc) ÷ (ρm − ρw)  the crust its volcanoes added (ARC_RHO, as arcStandKm)
+//     − (gdh1(q) − gdh1(0))                 its mantle lid's cold, the basement's subsidence since its arc fell silent q Myr ago
+// (While its slab feeds it the wedge keeps its lithosphere hot — Hyndman et al. 2005, as arcStandKm — so q is the time since
+// it was last fed, crust.arcAt.) B > 0: the column floats, and the arc jams its trench (a collision: it docks). B ≤ 0: it
+// goes down. Nothing in it is set to an outcome: plain ocean crust (Hc 7) turns heavy at ~11 Myr, Cloos's oceanic
+// lithosphere turning negatively buoyant ~10 Myr after it forms (recalled); an arc silent 80 Myr floats from ~18 km of crust and one silent
+// 20 Myr from ~10 km, about Cloos's ">~15 km, built over ~20 Myr" for an arc on ordinary floor; a live arc always floats.
+// Limits (reduced): no eclogite (Cloos's plateaus need > 30 km because their basalt turns dense as it goes down: an arc's
+// lower crust does too, which is the split below, not part of the jam); no slab pull against the buoyancy (a column only
+// just negative is dragged down like any floor); the lid's age is its arc's silence, not the floor's age before the arc.
+/** An island arc column's buoyancy against the asthenosphere, km of relief under water (> 0: it floats and jams a trench):
+ *  its crust (km) and how long since its slab last fed it (Myr). H: the terrain constants (oceanCrustRho). */
+export function arcBuoyancyKm(crustKm, quietMyr, H) {
+    const oc = H.oceanCrustRho / 1000;
+    return OCEAN_CRUST_KM * (MANTLE_RHO - oc) / (MANTLE_RHO - WATER_RHO) + (crustKm - OCEAN_CRUST_KM) * ARC_LIFT_WET
+        - (gdh1BasementKm(Math.max(0, quietMyr)) - gdh1BasementKm(0));
+}
+// ── …and what of a sinking arc stays up. An arc's crust is not one rock: its volcanoes build a felsic-to-intermediate upper and
+// middle crust (the Izu–Bonin tonalites, Vp 6.0–6.5) over a mafic lower crust that turns dense as it goes down (garnet
+// granulite to eclogite, denser than the mantle). Where an arc goes down a trench, the light part is scraped off onto the
+// upper plate and the dense part goes down with the slab (the Izu collision: the Tanzawa and Misaka blocks' upper and middle
+// crust accreted to Honshu, their lower crust subducted beneath it; Tamura et al. 2010 make the split how arcs become
+// continent; Arc–continent collisions keep the upper arc and lose its lower crust: Taiwan, Kohistan, Draut & Clift 2006).
+// No published share: it is derived from the model's own densities. The added crust (ARC_RHO, the arc's mean) is split into
+// a part as light as continental crust (riftCrustRho, which is what it becomes) and a part as dense as the mantle (which
+// goes down with it), keeping its mass: share = (ρm − ρarc) ÷ (ρm − ρcont) = (3.3 − 2.97) ÷ (3.3 − 2.83) ≈ 0.70 of the added
+// crust (Hc − 7). The ocean crust it was built on goes down as floor does. Limits: a two-part split of one mean density (no
+// layered column); the split happens at the trench (no later delamination of an accreted root); the scraped crust is the
+// upper plate's prism (step/prism-accretion.js), laid as its fore-arc's crust like the trench's other scrapings.
+/** The share of a sinking arc's added crust (crust − 7 km) scraped onto the upper plate (the rest goes down). H: terrain constants. */
+export const arcScrapedShare = H => (MANTLE_RHO - ARC_RHO) / (MANTLE_RHO - H.riftCrustRho / 1000);
+/** The km³ of a sinking arc cell scraped off: arcScrapedShare of its crust above the ocean's 7 km, over the cell's area. */
+export const arcScrapedKm3 = (crustKm, cellAreaKm2, H) => arcScrapedShare(H) * Math.max(0, crustKm - OCEAN_CRUST_KM) * cellAreaKm2;
+
 // ── A continent's surface, from its crust and its lithosphere (2026-10-28, branch unified) ── one isostatic column for
 // every continental cell, in place of a fixed height per kind of crust. A column is its crust (thickness Hc, density ρc)
 // and the mantle lithosphere under it down to its base a, both cooler toward the top along a linear geotherm from 0 °C to

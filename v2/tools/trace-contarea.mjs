@@ -19,6 +19,7 @@ import { CrustType } from '../js/tectonics/model/crust.js';
 import { crustTally, crustVolume, rockParts } from '../js/tectonics/step/crust-ledger.js';
 import { arcCrustKm } from '../js/tectonics/step/collision.js';
 import { BoundaryKind } from '../js/tectonics/model/world.js';
+import { arcFloats } from '../js/tectonics/step/polarity.js';
 import { pageWorld, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { onPath, PATH_K } from './lib/paths.mjs';
 
@@ -68,7 +69,7 @@ function arcsGoingDown(f) {
         for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) { const u = adjList[j]; if (f.owner[u] !== f.owner[w] && f.owner[u] >= 0 && f.boundary[u] === BoundaryKind.OVERRIDING) { up = f.type[u]; break; } }
         if (up < 0) continue;
         const p = world.plates[f.owner[w]], c = world.ownerCell[w], h = p?.alive ? arcCrustKm(p.crust, c, world.time, world.config) : 0;
-        out.cells++; out.meanKm += h; if (h < world.config.arcAccreteThickKm) out.thin++;
+        out.cells++; out.meanKm += h; if (p?.alive && p.crust.arcKm[c] > 0 && !arcFloats(p.crust, c, world)) out.thin++;
         if (up === CrustType.CONTINENT || up === CrustType.CRATON) out.upper.cont++; else if (up === CrustType.ARC) out.upper.arc++; else out.upper.ocean++;
     }
     if (out.cells) out.meanKm = +(out.meanKm / out.cells).toFixed(2);
@@ -95,8 +96,8 @@ function floorRock() {
     const q = x => cols.length ? +cols[Math.floor(x * (cols.length - 1))].toFixed(2) : 0;
     return { km3: +all.toPrecision(4), marginShare: all ? +(margin / all).toFixed(3) : 0, marginCells: cols.length, colP50: q(0.5), colP90: q(0.9) };
 }
-/** The island arcs' crust now (every raster): cells, their mean thickness, the share under arcAccreteThickKm (they go down
- *  whole at a trench: collision.js recycleThinArc, resolve.js overrides), and the mean age of the arc cells. */
+/** The island arcs' crust now (every raster): cells, their mean thickness, the share too heavy to float (they go down at a
+ *  trench, their light crust scraped off: polarity.js arcFloats, collision.js sinkArc), and the mean age of the arc cells. */
 function arcCrust() {
     let c = 0, km = 0, thin = 0, age = 0;
     for (const p of world.plates) {
@@ -106,7 +107,7 @@ function arcCrust() {
             if (!mask[i] || type[i] !== CrustType.ARC) continue;
             const h = arcCrustKm(k, i, world.time, world.config);
             c++; km += h; age += world.time - k.formedAt[i];
-            if (h < world.config.arcAccreteThickKm) thin++;
+            if (k.arcKm[i] > 0 && !arcFloats(k, i, world)) thin++;
         }
     }
     return { cells: c, meanKm: c ? +(km / c).toFixed(2) : 0, thinShare: c ? +(thin / c).toFixed(3) : 0, ageMyr: c ? +(age / c).toFixed(1) : 0 };

@@ -348,10 +348,11 @@ export const TECTONICS = {
                                 // here as made: which part LASTS is for the sinks to decide (subduction erosion, sediment subduction,
                                 // underthrusting) — taking a lasting share here as well would count the losses twice. (Was 3: "a
                                 // 300 km arc in ~100 Myr", twice Earth's addition)
-    arcAccreteThickKm: 17,      // (Phase 7c) arc crust thinner than this arriving at a trench goes down with its slab instead of
-                                // accreting: too little buoyant crust to hold up the lithosphere under it (Cloos 1993: ~15–17 km
-                                // of crust makes young lithosphere unsubductable; Clift & Vannucchi 2004). Was by area: a piece
-                                // smaller than 3e4 km² went down
+    arcRecycling: true,         // (Phase 7c; lane contarea) an island arc whose column — its crust and the mantle lid under it, cooled
+                                // since its slab last fed it — is denser than the asthenosphere goes down a trench, its light upper
+                                // crust scraped onto the upper plate's prism; a buoyant one jams the trench and docks (Cloos 1993:
+                                // measure.js arcBuoyancyKm, arcScrapedShare — no parameter, the model's own densities). Was a fixed
+                                // arcAccreteThickKm 17 km of crust, the whole arc down below it; before that by area (3e4 km²)
     arcBirthKm: 8,              // …an arc's crust is this thick when it forms (ocean crust and its first volcanoes)…
     arcThickenKmPerMyr: 0.4,    // …and thickens this fast as magma adds to it (Izu-Bonin-Mariana: 20–35 km after ~50 Myr)…
     arcMaxKm: 35,               // …up to this (a mature arc's crust: the Aleutians, Izu ~30–35 km)
@@ -850,7 +851,7 @@ export const MECHANISMS = Object.freeze({
     sedimentSubduction: { sedimentSubductionShare: 0 },
     seaFill: { enclosedSeaFill: false },                                       // enclosed seas filled by their rivers (step/sea-fill.js)                      // trench sediment down the subduction channel (step/sediment-subduction.js)
     underthrust:    { underthrustShare: 0 },                                 // continental underthrusting at collisions (step/collision.js)
-    arcRecycling:   { arcAccreteThickKm: 0 },                                // thin (young) arcs go down instead of accreting (step/collision.js)
+    arcRecycling:   { arcRecycling: false },                                 // heavy arcs go down (light crust scraped off) instead of accreting (step/collision.js, polarity.js)
     arcMaturation:  { arcContinentKmPerMyr: 0 },                             // arcs welded onto a continent become continent (step/arc-maturation.js)
     mantleHeatRifts: { riftHeatGain: 0, riftHeatFloor: 1, dispersalRiftBoost: 1, riftHeatTension: 0 },                  // continents rift readily over mantle they have insulated (step/rifting.js)
     mantleFlow:     { mantleOutflow: 0, mantleInflow: 0, dispersalRepulsion: 0, disperseFounderFactor: 1 }, // the mantle's flow drags continents apart and together again (step/supercontinent.js)

@@ -77,16 +77,16 @@ section('a continent slides under another (underthrusting)');
     check('with underthrusting off, nothing is consumed', off.budget.underthrustCells === 0, `${off.budget.underthrustCells} cells`);
 }
 
-section('small arcs go down, big arcs accrete');
+section('heavy arcs go down, buoyant arcs accrete');
 {
-    const r = await run('arcs'), off = await run('arcs', { arcAccreteThickKm: 0 });
+    const r = await run('arcs'), off = await run('arcs', { arcRecycling: false });
     const recycled = r.events.filter(e => e.kind === EventKind.ARC_RECYCLED);
     check('small arc pieces reaching a continent go down with their slab', r.budget.recycledCells > 0, `${Mkm2(r.budget.recycledCells).toFixed(2)} Mkm² of arc recycled; ${recycled.length} pieces worth naming`);
     const docked = r.events.filter(e => e.kind === EventKind.DOCK && e.data.arc);
-    // (an arc docks whole once its crust is thick enough to resist subduction, arcAccreteThickKm — Cloos 1993; thinner, it goes
-    // down with its slab)
+    // (an arc docks whole once its column floats — its crust against its mantle lid's cold, measure.js arcBuoyancyKm, Cloos 1993;
+    // heavier, it goes down with its slab, its light crust scraped onto the upper plate)
     report('smallest arc that docks whole', docked.length ? Math.min(...docked.map(e => e.data.areaMkm2 * 1e6)) : NaN, { unit: ' km²', digits: 0, source: 'on Earth set by thickness, not area (Cloos 1993)',
-        detail: `${docked.length} arc dockings: ${docked.map(e => `${(e.data.areaMkm2 * 1000).toFixed(0)}k km²`).join(', ') || 'none'}; an arc docks whole from ${r.world.config.arcAccreteThickKm} km thick` });
+        detail: `${docked.length} arc dockings: ${docked.map(e => `${(e.data.areaMkm2 * 1000).toFixed(0)}k km²`).join(', ') || 'none'}; an arc docks whole once its column floats; scraped onto upper plates ${((r.budget.arcScrapedKm3 ?? 0) / -1e6).toFixed(2)} Mkm³` });
     check('with recycling off, every scrap accretes', off.budget.recycledCells === 0 && !off.events.some(e => e.kind === EventKind.ARC_RECYCLED), `recycling off: ${off.budget.recycledCells} cells recycled`);
 }
 

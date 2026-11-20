@@ -26,7 +26,9 @@ import { EventKind } from '../model/world.js';
 import { centroidOfCells } from '../../core/sphere-geom.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { continentVolume, crustOf, layThickening, layProfile, landDistanceKm } from '../ops/thicken.js';
-import { columnModel } from '../measure.js';
+import { columnModel, arcBuoyancyKm, arcScrapedKm3 } from '../measure.js';
+import { arcFloats } from './polarity.js';
+import { creditPrism } from './prism-accretion.js';
 import { heightsOf } from './heights.js';
 import { seamHold } from './torque-balance.js';
 import { bookRock } from '../rock-book.js';
@@ -394,9 +396,10 @@ function accreteArcs(world, A, B, overlap) {
     let accreted = 0;
     for (const [donor, host, arriving] of [[A, B, fromA], [B, A, fromB]]) {
         if (!arriving.length || !donor.alive || !host.alive) continue;
-        // a small arc does not accrete: it goes down with its slab (Phase 7c) — what continents gain from arcs is
-        // fewer, bigger pieces (Japan, Kohistan), not every islet
-        const seeds = [...new Set(arriving)].filter(c => !recycleThinArc(world, donor, c));
+        // a heavy arc does not accrete whole: its column goes down with its slab, its light crust scraped onto the host
+        // (sinkHeavyArc; Phase 7c, lane contarea) — what continents gain from arcs is the buoyant pieces whole (Japan,
+        // Kohistan) and every sinking arc's upper crust, not every islet whole
+        const seeds = [...new Set(arriving)].filter(c => !sinkHeavyArc(world, donor, c, host));
         if (!seeds.length) { accreted++; continue; }
         const { moved } = scrapeArc(world, host, donor, seeds);
         accreted += moved;
@@ -450,13 +453,14 @@ function dockIfTerrane(world, A, B, cells) {
     const o = [donor.omega[0] - host.omega[0], donor.omega[1] - host.omega[1], donor.omega[2] - host.omega[2]];
     const c = centroidOfCells(xyz, cells), rate = Math.hypot(o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0]) / CM_PER_YR_TO_RAD_PER_MYR;
     const kind = mass.filter(q => donor.crust.type[q] === CrustType.ARC).length * 2 > mass.length ? 'island arc' : 'terrane';
-    // too thin to float: it goes down (Phase 7c) — as it arrives, its front first: the arc at the contact goes down now
-    // (a thicker patch in a thin chain dragged down with it), the rest as the convergence brings it (polarity.js lets thin
-    // arc crust go down a trench). (Was the whole arc at once: with arcs judged by the crust they grew, remnant chains of
-    // 1–2 % of the world's land vanished in a step)
-    if (kind === 'island arc' && meanArcThickKm(donor, mass, world.time, config) < config.arcAccreteThickKm) {
+    // too heavy to float (its column, on the whole, denser than the asthenosphere: measure.js arcBuoyancyKm): it goes down
+    // (Phase 7c; lane contarea: was a mean crust under a fixed arcAccreteThickKm) — as it arrives, its front first: the arc at
+    // the contact goes down now (a lighter patch in a heavy chain dragged down with it), the rest as the convergence brings
+    // it (polarity.js lets a heavy arc go down a trench); its light crust is scraped onto the host (sinkArc). (Was the whole
+    // arc at once: remnant chains of 1–2 % of the world's land vanished in a step)
+    if (kind === 'island arc' && config.arcRecycling && meanArcBuoyancyKm(donor, mass, world) <= 0) {
         const front = uniq(under(donor)).filter(q => donor.crust.mask[q] && donor.crust.type[q] === CrustType.ARC);
-        if (front.length) { recycle(world, donor, front); return true; }
+        if (front.length) { recycle(world, donor, front, host); return true; }
     }
     const donorName = donor.name, result = accreteTerrane(world, host, donor, mass, rate);
     world.budget.sealedCells = (world.budget.sealedCells ?? 0) + (result.sealed ?? 0);
@@ -575,29 +579,46 @@ export const arcThickKm = (ageMyr, config) => Math.min(config.arcMaxKm, config.a
  */
 export const arcCrustKm = (crust, c, time, config) => crust.arcKm[c] > 0 ? crust.arcKm[c] : arcThickKm(time - crust.formedAt[c], config);
 
-/** The mean crustal thickness of the arc cells among `cells` of `plate` (km; Infinity with none). */
-function meanArcThickKm(plate, cells, time, config) {
+/** The mean column buoyancy of the grown arc cells among `cells` of `plate` (km, measure.js arcBuoyancyKm; Infinity with none:
+ *  a scene's hand-laid arc, arcKm 0, floats as polarity.js has it). */
+function meanArcBuoyancyKm(plate, cells, world) {
+    const k = plate.crust, H = heightsOf(world.config);
     let sum = 0, n = 0;
-    for (const c of cells) if (plate.crust.type[c] === CrustType.ARC) { sum += arcCrustKm(plate.crust, c, time, config); n++; }
+    for (const c of cells) if (k.type[c] === CrustType.ARC && k.arcKm[c] > 0) { sum += arcBuoyancyKm(k.arcKm[c], world.time - k.arcAt[c], H); n++; }
     return n ? sum / n : Infinity;
 }
 
 /**
- * If raster cell `cell` of `donor` is island arc thinner than arcAccreteThickKm, it goes down with the slab instead of
- * accreting — the arc is consumed as it arrives where it is thin (young, or a remnant left silent), and its long-fed, thick
- * parts dock — and true is returned.
+ * If raster cell `cell` of `donor` is a grown island arc whose column is too heavy to float (polarity.js arcFloats), it goes
+ * down with the slab instead of accreting — its light crust scraped onto `host` (sinkArc) — and true is returned. Its
+ * buoyant parts (long fed, or still hot) dock.
  */
-function recycleThinArc(world, donor, cell) {
-    const { config, time } = world, { mask, type } = donor.crust;
-    if (!mask[cell] || type[cell] !== CrustType.ARC || arcCrustKm(donor.crust, cell, time, config) >= config.arcAccreteThickKm) return false;
-    recycle(world, donor, [cell]);
+function sinkHeavyArc(world, donor, cell, host) {
+    const { mask, type, arcKm, flags } = donor.crust;
+    if (!world.config.arcRecycling || !mask[cell] || type[cell] !== CrustType.ARC || !(arcKm[cell] > 0) || (flags[cell] & CrustFlag.MARGIN_ISLE) || arcFloats(donor.crust, cell, world)) return false;
+    recycle(world, donor, [cell], host);
     return true;
 }
 
-/** Remove arc cells of `donor` into the mantle (they go down with the slab), logging it if the piece is worth naming. */
-function recycle(world, donor, cells) {
+/**
+ * Book arc cell `c` of `crust` going down a trench, before it is removed (lane contarea): its light upper crust (measure.js
+ * arcScrapedKm3: the share of its added crust as light as continental crust) is scraped onto the upper plate `over` as its
+ * prism (prism-accretion.js creditPrism: laid on its fore-arc like the trench's other scrapings; booked arcScrapedKm3), and
+ * the rest goes down with the slab (arcRecycledKm3). With no upper plate to take it (none, the passive background, or
+ * config.prismAccretion off) all of it goes down.
+ */
+export function sinkArc(world, crust, c, over) {
+    const rock = cellRockKm3(world, crust, c);
+    const scraped = over && !over.isBackground && world.config.prismAccretion
+        ? Math.min(rock, arcScrapedKm3(arcCrustKm(crust, c, world.time, world.config), world.mesh.cellAreaKm2, heightsOf(world.config))) : 0;
+    if (scraped > 0) { bookRock('arcScrapedKm3', -scraped); creditPrism(world, over, scraped); }
+    bookRock('arcRecycledKm3', -(rock - scraped));
+}
+
+/** Remove arc cells of `donor` into the mantle (they go down with the slab, their light crust scraped onto `over`: sinkArc), logging it if the piece is worth naming. */
+function recycle(world, donor, cells, over) {
     const { cellAreaKm2 } = world.mesh;
-    for (const c of cells) { bookRock('arcRecycledKm3', -cellRockKm3(world, donor.crust, c)); donor.crust.remove(c); }   // (its rock: rock-book.js)
+    for (const c of cells) { sinkArc(world, donor.crust, c, over); donor.crust.remove(c); }   // (its rock: rock-book.js)
     donor.markReshaped();
     world.budget.recycledCells += cells.length;
     if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `an island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting: its crust is too thin to float`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });

@@ -2,18 +2,27 @@
 // pass (which crust to delete) and boundary classification (which side is the trench).
 
 import { CrustType, CrustFlag } from '../model/crust.js';
+import { arcBuoyancyKm } from '../measure.js';
+import { TERRAIN } from '../../terrain/terrain-config.js';
 
 /**
- * Is this crust too buoyant to subduct? Continental crust always; island-arc crust once its volcanoes have built it
- * floatKm thick (config.arcAccreteThickKm) — thinner, a young arc or a remnant left silent, it is little more than ocean
- * crust and goes down a trench like it (Cloos 1993: ~15–17 km of crust holds young lithosphere up; the remnant arcs of
- * the Pacific's back-arc basins go down where they meet a trench). An arc the history never grew (arcKm 0: a scene's)
- * floats as before.
+ * Is this crust too buoyant to subduct? Continental crust always; island-arc crust when its column — its crust and the
+ * mantle lid under it, cooled since its slab last fed it — is lighter than the asthenosphere (measure.js arcBuoyancyKm,
+ * Cloos 1993; lane contarea: was a fixed 17 km of crust, arcAccreteThickKm). A heavy arc goes down a trench like floor,
+ * its light upper crust scraped off onto the upper plate (resolve.js, collision.js: measure.js arcScrapedKm3). A fore-arc
+ * isle floats, and so does an arc the history never grew (arcKm 0: a scene's). `arcs`: the world (its time and terrain
+ * constants) when arcs are judged by their column (config.arcRecycling); null, every arc floats.
  */
-function floats(crust, cell, floatKm) {
+function floats(crust, cell, arcs) {
     const t = crust.type[cell];
     if (t === CrustType.OCEAN) return false;
-    return t !== CrustType.ARC || !(crust.arcKm[cell] > 0) || crust.arcKm[cell] >= floatKm || (crust.flags[cell] & CrustFlag.MARGIN_ISLE) !== 0;
+    if (t !== CrustType.ARC || !arcs || !(crust.arcKm[cell] > 0) || (crust.flags[cell] & CrustFlag.MARGIN_ISLE) !== 0) return true;
+    return arcFloats(crust, cell, arcs);
+}
+
+/** Does arc cell `cell` of `crust` float (its column lighter than the asthenosphere)? `world`: its time and terrain constants. */
+export function arcFloats(crust, cell, world) {
+    return arcBuoyancyKm(crust.arcKm[cell], world.time - crust.arcAt[cell], world.config.heights ?? TERRAIN) > 0;   // (heights.js heightsOf)
 }
 
 /**
@@ -23,9 +32,9 @@ function floats(crust, cell, floatKm) {
  * segment-wise vote in boundaries.js (−1 = no decision yet); it settles ocean against ocean, where
  * the per-cell rules below would otherwise interleave and leave the front ragged.
  */
-export function overrides(plateA, cellA, plateB, cellB, decided = -1, floatKm = 0) {
+export function overrides(plateA, cellA, plateB, cellB, decided = -1, arcs = null) {
     const a = plateA.crust, b = plateB.crust;
-    const landA = floats(a, cellA, floatKm), landB = floats(b, cellB, floatKm);
+    const landA = floats(a, cellA, arcs), landB = floats(b, cellB, arcs);
     if (landA && landB) return null;              // continental crust never subducts
     if (landA !== landB) return landA;            // ocean always goes under land
 

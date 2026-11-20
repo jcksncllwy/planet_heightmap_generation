@@ -16,7 +16,6 @@ const TUNABLES = [
     { id: 'marginErosionKmPerMyr', label: '…their coast retreating at', min: 0, max: 10, step: 0.5, unit: ' km/Myr' },
     { id: 'trenchFanReachKm', label: 'Every river basin’s rock runs out down its fan to a trench up to', min: 0, max: 5000, step: 100, unit: ' km' },
     { id: 'underthrustShare', label: 'Share of a collision’s convergence consumed by underthrusting', min: 0, max: 1, step: 0.05 },
-    { id: 'arcAccreteThickKm', label: 'Arc crust thinner than this goes down instead of accreting', min: 0, max: 35, step: 1, unit: ' km' },
     { id: 'arcThickenKmPerMyr', label: '…an arc thickening this fast while its slab feeds it', min: 0.1, max: 1.5, step: 0.05, unit: ' km/Myr' },
     { id: 'subductionErosionKm3PerKmMyr', label: 'Every closing trench eats its fore-arc continent at', min: 0, max: 115, step: 1, unit: ' km³/km/Myr' },
     { id: 'arcAdditionKm3PerKmMyr', label: 'An Andean belt adds at most this much crust (0 = unbounded)', min: 0, max: 150, step: 5, unit: ' km³/km/Myr' },

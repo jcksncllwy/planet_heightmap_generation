@@ -20,7 +20,9 @@
 //                   floor sediment under it; marginErodedKm3 the coast an erosive margin eats (step/margin-isles.js)
 //   prismAccretedKm3 (config.prismAccretion) the trenches' scraped-off rock laid on a fore-arc as continent, or stacked under
 //                   its land (step/prism-accretion.js; it left the books as riseKeptKm3 / seaFillKeptKm3 / fanKm3)
-//   arcRecycledKm3  thin arc going down a trench, or with its slab at a collision (step/resolve.js, step/collision.js)
+//   arcRecycledKm3  a heavy arc going down a trench, or with its slab at a collision (step/resolve.js, step/collision.js),
+//                   less arcScrapedKm3: its light upper crust scraped onto the upper plate's prism (collision.js sinkArc;
+//                   it returns as prismAccretedKm3 when the prism is laid)
 //   arcCollapseKm3  an arc landing on its coast: the floor sediment it lands on (ops/collapse-arc.js)
 //   collisionConsumedKm3  rock a collision takes off the map — the lower plate's edge underthrust, a weld's overlap and
 //                   the sea it seals; collisionKeptKm3 what keepConsumed lays back as thickness (step/collision.js): their

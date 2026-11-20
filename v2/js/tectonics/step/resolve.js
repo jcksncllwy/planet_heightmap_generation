@@ -7,13 +7,12 @@
 // that may not be filled yet are flagged in `world.provisional` (see assignGapOwners).
 
 import { bookSubductedFloorRock } from './floor-rock.js';
-import { bookRock } from '../rock-book.js';
-import { cellRockKm3 } from './crust-ledger.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { Provisional } from '../model/world.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
 import { forEachClaim, clearWorldView, nearEdge, currentClaimMap, rasterCellUnder } from './gather.js';
 import { overrides } from './polarity.js';
+import { sinkArc } from './collision.js';
 import { binIndex, markBin, mayHaveCrustNear } from './occupancy.js';
 import { ringsOf, RING_COUNT } from '../../core/mesh-rings.js';
 import { fractureCoordinate } from '../model/segments.js';
@@ -55,12 +54,12 @@ function gatherAndSubduct(world, removed, gaps, tally) {
     let consumed = 0;
     const budget = world.budget;
     const subduct = (plate, cell, w, over) => {
-        if (plate.crust.type[cell] === CrustType.ARC) { budget.recycledCells++; bookRock('arcRecycledKm3', -cellRockKm3(world, plate.crust, cell)); }   // (thin arc crust going down a trench: polarity.js; its rock, rock-book.js)
+        if (plate.crust.type[cell] === CrustType.ARC) { budget.recycledCells++; sinkArc(world, plate.crust, cell, over); }   // (a heavy arc going down a trench: polarity.js; its light crust scraped off, collision.js sinkArc)
         else bookSubductedFloorRock(world, plate.crust, cell, over);    // (the rivers' rock on it, its scraped share the overrider's prism: step/floor-rock.js)
         plate.crust.remove(cell); plate.dirty = true; consumedAt[w] = 1; consumed++;
         (removed.get(plate) ?? removed.set(plate, []).get(plate)).push(cell);
     };
-    const bins = binIndex(world.mesh), stamp = world.occupancyStamp, floatKm = world.config.arcAccreteThickKm;
+    const bins = binIndex(world.mesh), stamp = world.occupancyStamp, arcs = world.config.arcRecycling ? world : null;
     clearWorldView(world);
 
     forEachClaim(world, (w, plate, cell) => {
@@ -73,7 +72,7 @@ function gatherAndSubduct(world, removed, gaps, tally) {
             claimCount[w] = 1; landClaims[w] = land ? 1 : 0;
             return;
         }
-        const wins = overrides(plate, cell, holder, ownerCell[w], world.oceanOverrider[w], floatKm);
+        const wins = overrides(plate, cell, holder, ownerCell[w], world.oceanOverrider[w], arcs);
         if (wins === null) {                            // land on land — unresolved collision
             claimCount[w]++; landClaims[w]++;
             if (collider[w] < 0) collider[w] = plate.id;
