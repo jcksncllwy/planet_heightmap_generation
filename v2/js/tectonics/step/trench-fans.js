@@ -17,6 +17,9 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { BoundaryKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { landHeightKm } from './surface-erosion.js';
+import { heightsOf } from './heights.js';
+import { WAVE_BASE_KM } from '../../finish/marine-config.js';
 
 /**
  * The trenches' supply this step: per world cell of an overriding trench, km³/Myr per km of trench (`supply`); and per
@@ -94,13 +97,15 @@ export function bookFans(world, dt) {
     if (!mouths?.length || !(dt > 0)) return;
     const { deliveries } = trenchFans(world), fed = new Set(deliveries.map(d => d.mouth)), B = world.budget;
     riseScratch.call++;                                 // (layRise's facts about each cell hold for this call: see riseFacts)
-    let fan = 0, rise = 0, lost = 0, over = 0;
+    let fan = 0, rise = 0, lost = 0, over = 0, shelf = 0;
     for (const m of mouths) {
         if (m.enclosed || !(m.km3 > 0)) continue;
         if (fed.has(m)) { fan += m.km3 * dt; continue; }
-        const left = layRise(world, m, m.km3 * dt);
-        if (left < 0) { rise += m.km3 * dt; lost += m.km3 * dt; } else { rise += m.km3 * dt - left; over += left; }
+        const s0 = riseScratch.drowned, left = layRise(world, m, m.km3 * dt), onShelf = riseScratch.drowned - s0;
+        shelf += onShelf;
+        if (left < 0) { rise += m.km3 * dt; lost += m.km3 * dt; } else { rise += m.km3 * dt - onShelf - left; over += left; }
     }
+    B.drownedShelfKm3 = (B.drownedShelfKm3 ?? 0) + shelf;   // (laid on drowned continental crust, to wave base: layOnDrownedShelf — the continent's rock, not the floor's)
     B.fanKm3 = (B.fanKm3 ?? 0) + fan;
     B.riseKm3 = (B.riseKm3 ?? 0) + rise;
     B.seaOverflowKm3 = (B.seaOverflowKm3 ?? 0) + over;   // (a sea floor filled to its brim all the way round: step/sea-fill.js's fate)
@@ -162,7 +167,15 @@ function layRise(world, m, km3) {
         if (d >= reach || (!sea && d >= R.coastKm)) continue;
         for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (seen[nb] !== tick) { seen[nb] = tick; ring.push(nb); } }
     }
-    if (!cells.length) return -1;
+    if (!cells.length) {
+        // (no ocean floor within coastKm of the mouth: its sea lies over drowned continental crust — an epicontinental sea, a
+        // wide drowned margin. The rock settles there, to wave base, nearest first; what it has no room for runs on, past
+        // coastKm, to the nearest ocean floor, and is laid there as the rise's. Was: dropped from the books, riseUnlaidKm3,
+        // 0.83 km³/yr, 30 % of the rivers' supply — lane contarea)
+        left -= layOnDrownedShelf(world, ring, left);
+        if (left > 0) left = runOnToFloor(world, ring, left);
+        return left;
+    }
     if (left > 0) {
         // (the reach is at grade: the margin builds up toward the sea's surface — each cell takes a like share of the room
         // left between it and the surface…)
@@ -201,7 +214,7 @@ function graded(R, x) {
     const xToe = xFoot + (R.toeKm - R.footKm) / R.rise;
     return x <= xToe ? R.footKm + R.rise * (x - xFoot) : R.toeKm + R.plain * (x - xToe);
 }
-const riseScratch = { P: [0, 0, 0], seen: null, tick: 0, ring: [], cells: [], on: [], call: 0, facts: null };
+const riseScratch = { P: [0, 0, 0], seen: null, tick: 0, ring: [], cells: [], on: [], call: 0, facts: null, drowned: 0 };
 /**
  * What layRise asks of a world cell again and again — its distance's norm, whether it is ocean floor on the map, and that
  * floor's depth (measure.js seaDepthKm; brimKm3 is SEDIMENT_LOAD_FACTOR × it × A) — worked out once a bookFans call: none of
@@ -231,4 +244,53 @@ function riseFacts(world) {
         return floor[w];
     };
     return F;
+}
+
+/**
+ * Lay `km3` of a mouth's rock on the drowned continental crust among `cells` (world cells, nearest the mouth first): each
+ * continent or craton cell under the sea is filled toward wave base (marine-config.js WAVE_BASE_KM), water-loaded
+ * (SEDIMENT_LOAD_FACTOR: the crust sinks under the fill, Airy), as crust.seaFillKm — rock km over the cell, the record the
+ * terrain draws a sea's fill from. The water's depth is the history's own: the river step's sea level and swell
+ * (world.riverSea) and the column's height against them (surface-erosion.js landHeightKm, which leaves sea fill out).
+ * A routing rule, not shelf physics: marine-run's M3 (Kaufman et al. 1991's depth-dependent diffusion over the same stock)
+ * replaces this function. @returns {number} the km³ it laid (also added to riseScratch.drowned)
+ */
+function layOnDrownedShelf(world, cells, km3) {
+    const sea = world.riverSea;
+    if (!sea || !(km3 > 0)) return 0;
+    const { plates, owner, ownerCell, mesh } = world, A = mesh.cellAreaKm2, H = heightsOf(world.config);
+    const landRef = H.mantleSwellKm * H.mantleSwellLandRef;
+    let laid = 0;
+    for (const w of cells) {
+        if (laid >= km3) break;
+        if (owner[w] < 0) continue;
+        const k = plates[owner[w]].crust, c = ownerCell[w];
+        if (!k.mask[c] || (k.type[c] !== CrustType.CONTINENT && k.type[c] !== CrustType.CRATON)) continue;
+        const depth = -landHeightKm(world, w, H, sea.swellKm, sea.seaKm, landRef, sea.seaRefKm);
+        const room = (SEDIMENT_LOAD_FACTOR * (depth - WAVE_BASE_KM) - k.seaFillKm[c]) * A;
+        if (!(room > 0)) continue;
+        const v = Math.min(room, km3 - laid);
+        k.seaFillKm[c] += v / A; laid += v;
+    }
+    riseScratch.drowned += laid;
+    return laid;
+}
+
+/** What a drowned shelf had no room for runs on from `cells` (a mouth's walk) across any cell, nearest first, to the nearest
+ *  ocean floor on the map, and is laid there as rise, each floor cell to its brim. @returns {number} km³ no floor took */
+function runOnToFloor(world, cells, km3) {
+    const { plates, owner, ownerCell, mesh } = world, { adjOffset, adjList, cellAreaKm2: A } = mesh, { isFloor, depth } = riseFacts(world);
+    const seen = riseScratch.seen, tick = ++riseScratch.tick, on = riseScratch.on;
+    on.length = 0;
+    for (const w of cells) { seen[w] = tick; on.push(w); }
+    let left = km3;
+    for (let i = 0; i < on.length && left > 0; i++) {
+        const w = on[i];
+        if (isFloor(w) === 1) {
+            const k = plates[owner[w]].crust, c = ownerCell[w], room = SEDIMENT_LOAD_FACTOR * depth[w] * A - (k.riseKm3[c] + k.seaFillKm[c] * A);
+            if (room > 0) { const v = Math.min(room, left); k.riseKm3[c] += v; left -= v; }
+        }
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (seen[nb] !== tick) { seen[nb] = tick; on.push(nb); } }
+    }
+    return left;
 }

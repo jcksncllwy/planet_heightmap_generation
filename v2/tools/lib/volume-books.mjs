@@ -36,7 +36,7 @@ export function closure(r, per = 1200) {
     const closed = 'fanKm3' in B;
     const sinks = closed
         ? { 'basin fill (hollows)': g(B.basinFillKm3 ?? 0), 'enclosed-sea fill': g(B.seaFillKm3 ?? 0), 'enclosed-sea overflow': g(B.seaOverflowKm3 ?? 0), 'shelves': g(B.shelfKm3 ?? 0),
-            'trench fans': g(B.fanKm3 ?? 0), 'continental rise': g(B.riseKm3 ?? 0) }
+            'trench fans': g(B.fanKm3 ?? 0), 'continental rise': g(B.riseKm3 ?? 0), 'drowned continental shelf': g(B.drownedShelfKm3 ?? 0) }
         : { 'basin fill (hollows)': g(B.basinFillKm3 ?? 0), 'enclosed-sea fill': g(B.seaFillKm3 ?? 0), 'shelves': g(B.shelfKm3 ?? 0),
             'trench wedge (prisms)': g(B.wedgeKm3 ?? 0), 'terrigenous sediment subducted': g(B.sedimentKm3 ?? 0) };
     const placed = Object.values(sinks).reduce((a, v) => a + v, 0);

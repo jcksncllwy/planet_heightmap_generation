@@ -114,10 +114,11 @@ for (const seed of SEEDS) {
     check('land never vanishes: no step loses more than a sliver of it beyond what its welds absorb', worstDrop <= MAX_LAND_DROP_PER_STEP,
         `worst step: ${(100 * worstDrop).toFixed(2)} % of the land at ${worstAt.toFixed(1)} Myr, beyond ${worstAbsorbed} cells its welds booked as absorbed (limit ${100 * MAX_LAND_DROP_PER_STEP} %); ${landOf(world)} land cells at the end`);
     // (an enclosed sea's fill is ocean floor's: a cell made arc or continent in place folds it into its column —
-    // model/crust.js foldSeaFill; lane contarea, marine-run's 14 km towers at 831576)
+    // model/crust.js foldSeaFill; lane contarea, marine-run's 14 km towers at 831576. Sea fill on continent is the drowned
+    // shelf's own, laid there to wave base: step/trench-fans.js layOnDrownedShelf — never on an arc)
     const fillOnLand = [];
-    for (const p of world.plates) if (p.alive) { const { mask, type, seaFillKm } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && type[c] !== CrustType.OCEAN && seaFillKm[c] > 0) fillOnLand.push(seaFillKm[c]); }
-    check('an enclosed sea\'s fill lies on ocean floor only: no arc or continent cell carries sea fill', fillOnLand.length === 0,
+    for (const p of world.plates) if (p.alive) { const { mask, type, seaFillKm } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && type[c] === CrustType.ARC && seaFillKm[c] > 0) fillOnLand.push(seaFillKm[c]); }
+    check('an enclosed sea\'s fill does not ride onto an arc: no arc cell carries sea fill (an arc made in place folds it into its column)', fillOnLand.length === 0,
         fillOnLand.length ? `${fillOnLand.length} cells, up to ${Math.max(...fillOnLand).toFixed(2)} km` : 'none at the end of the history');
     check('a plate that is gone holds no crust (nothing was welded onto a dead plate)', deadWithCrust.length === 0, deadWithCrust.join('; ') || `${world.plates.filter(p => !p.alive).length} plates gone, all empty`);
     const idsPerMyr = (maxTerrane - firstTerrane) / HISTORY_MYR;
@@ -204,6 +205,15 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     for (const p of world.plates) if (p.alive) { const k = p.crust; for (let c = 0; c < k.mask.length; c++) if (k.mask[c]) { riseNow += k.riseKm3[c]; if (k.type[c] === CrustType.OCEAN) fillNow += k.seaFillKm[c] * A; } }
     const laid = (B.riseKm3 ?? 0) - (B.riseUnlaidKm3 ?? 0) + (B.seaFillKm3 ?? 0), down = (B.riseDownKm3 ?? 0) + (B.seaFillDownKm3 ?? 0), kept = (B.riseKeptKm3 ?? 0) + (B.seaFillKeptKm3 ?? 0);
     const G = v => (v / 1e9).toFixed(2);
+    // (the drowned shelf's book: rock laid on drowned continental crust to wave base, trench-fans.js layOnDrownedShelf — the
+    // continent's, not the floor's — against what continent cells hold of it now; the rest wore, rode a piece away, or went
+    // down with its crust)
+    let shelfNow = 0;
+    for (const p of world.plates) if (p.alive) { const k = p.crust; for (let c = 0; c < k.mask.length; c++) if (k.mask[c] && (k.type[c] === CrustType.CONTINENT || k.type[c] === CrustType.CRATON)) shelfNow += k.seaFillKm[c] * A; }
+    report('the rivers\' rock on drowned continental shelf: laid, and held now', [(B.drownedShelfKm3 ?? 0) / 1e9, shelfNow / 1e9], { unit: ' Gkm³', digits: 2,
+        source: 'a book, not an Earth figure: held ≤ laid', detail: `laid ${G(B.drownedShelfKm3 ?? 0)} Gkm³, held on continent now ${G(shelfNow)}` });
+    check('the drowned shelf holds no more rock than was laid on it', shelfNow <= (B.drownedShelfKm3 ?? 0) * 1.001 + 1e3,
+        `held ${G(shelfNow)} of ${G(B.drownedShelfKm3 ?? 0)} Gkm³ laid`);
     report('the rivers\' rock on the ocean floor: share the books lose', laid > 0 ? 100 * (laid - down - kept - riseNow - fillNow) / laid : 0, { unit: ' %', digits: 1, earth: [0, 10],
         source: 'a book, not an Earth figure: 0 is closure', detail: `laid ${G(laid)} Gkm³ (rise ${G((B.riseKm3 ?? 0) - (B.riseUnlaidKm3 ?? 0))}, unlaid ${G(B.riseUnlaidKm3 ?? 0)}; enclosed seas ${G(B.seaFillKm3 ?? 0)}) = down the channel ${G(down)} + into the prism ${G(kept)} + on the floor now ${G(riseNow + fillNow)} + lost ${G(laid - down - kept - riseNow - fillNow)}` });
     // The rock book (lane rockbook, review U2): each stage's change in all the rock the planet holds — crust, relief, fill,
