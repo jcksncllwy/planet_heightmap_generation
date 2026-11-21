@@ -267,14 +267,59 @@ const pipelinesOf = device => {
             const entries = [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true } }, { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }];
             Object.values(spec.b).forEach((t, i) => entries.push({ binding: i + 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: t.endsWith('+') || t === 'a' ? 'storage' : 'read-only-storage' } }));
             const layout = device.createBindGroupLayout({ entries }), module = device.createShaderModule({ code: wgsl(name, spec) });
-            const info = await module.getCompilationInfo?.(), bad = info?.messages?.filter(x => x.type === 'error') ?? [];
+            const info = module.getCompilationInfo ? await gpuWait(device, module.getCompilationInfo(), `erosion: compiling ${name}`) : null, bad = info?.messages?.filter(x => x.type === 'error') ?? [];
             if (bad.length) throw new Error(`${name}: ` + bad.map(x => `${x.lineNum}:${x.linePos} ${x.message}`).join('\n'));
-            out[name] = { pipe: await device.createComputePipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }), compute: { module, entryPoint: 'main' } }), layout, spec };
+            out[name] = { pipe: await gpuWait(device, device.createComputePipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }), compute: { module, entryPoint: 'main' } }), `erosion: building ${name}`), layout, spec };
         }));
         return out;
     })());
     return pipelines.get(device);
 };
+
+// ── Buffers kept from run to run on small meshes (lane histprof) ──
+// The history erodes its 40K mesh 107 times to 430 Myr, and each run made its ~50 buffers and ~60 bind groups afresh: ~1 s
+// of a history on Chroma, ~0.5 s on Upwell. On a mesh of up to POOL_MAX_CELLS cells (the history's, the ladder's coarse
+// rungs) they are kept per device and mesh and handed to the next run CLEARED TO ZERO, in one submit before any upload — as
+// a new buffer starts — so a run sees what it always saw. Larger meshes' buffers (a 10M mesh's are a couple of GB) go when
+// their run ends, as before. A run that finds the pool in use (two at once on one device) takes fresh buffers.
+const POOL_MAX_CELLS = 250000, pools = new WeakMap();
+function poolFor(device, mesh) {
+    if (mesh.numCells > POOL_MAX_CELLS) return null;
+    let byMesh = pools.get(device);
+    if (!byMesh) pools.set(device, byMesh = new WeakMap());
+    let pool = byMesh.get(mesh);
+    if (!pool) byMesh.set(mesh, pool = makePool(device));
+    if (pool.busy) return null;
+    pool.open();
+    return pool;
+}
+function makePool(device) {
+    const kept = new Map(), cached = new Map();
+    let pipes = null;
+    const pool = {
+        busy: false,
+        open() {
+            pool.busy = true;
+            if (!kept.size) return;
+            const e = device.createCommandEncoder();
+            for (const b of kept.values()) e.clearBuffer(b);
+            device.queue.submit([e.finish()]);
+        },
+        take(desc) {
+            const b = kept.get(desc.label);
+            if (b && b.size === desc.size && b.usage === desc.usage) return b;
+            b?.destroy();
+            cached.clear();                                  // (a bind group names its buffers: a new one wants new groups)
+            const fresh = device.createBuffer(desc);
+            kept.set(desc.label, fresh);
+            return fresh;
+        },
+        groups: (key, P_) => (pipes === P_ ? cached.get(key) : null) ?? null,
+        keepGroups(key, P_, G) { if (pipes !== P_) { cached.clear(); pipes = P_; } cached.set(key, G); },
+        release() { pool.busy = false; },
+    };
+    return pool;
+}
 
 /** Settings this solver does not have: a run asking for one goes to the CPU's. */
 export const gpuCanRun = P => P.flatRule !== false && !P.lastClean && (P.routeEvery ?? 1) === 1 && !P.trace;
@@ -286,7 +331,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const { device } = shared ?? await openDevice(gpu);
     const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, rebound: 0, release: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
     const U32 = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
-    const B = {}, mk = (name, bytes) => (B[name] = device.createBuffer({ label: name, size: Math.max(4, bytes), usage: U32 }));
+    const pool = poolFor(device, mesh), buffer = desc => pool ? pool.take(desc) : device.createBuffer(desc);
+    const B = {}, mk = (name, bytes) => (B[name] = buffer({ label: name, size: Math.max(4, bytes), usage: U32 }));
     const put = (name, arr) => device.queue.writeBuffer(B[name], 0, arr.buffer, arr.byteOffset, arr.byteLength);
     const up = (name, arr) => { mk(name, arr.byteLength); put(name, arr); };
     // (the mesh's adjacency and xyz are resident, kept across runs by fields.js: the store owns them, not this run)
@@ -312,13 +358,13 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1));
     for (const name of ['compA', 'compB']) device.queue.writeBuffer(B[name], 4 * n, Uint32Array.of(n));      // (the ocean's own component: its slot n)
     mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 4 * CELL_WORDS * n); mk('exp', 4 * EXPORT_WORDS * n); mk('gsum', 4 * n);
-    const rangeBuf = device.createBuffer({ size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const uniform = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const rangeBuf = buffer({ label: 'ranges', size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const uniform = buffer({ label: 'uniform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const ub = new ArrayBuffer(64), uv = new DataView(ub);
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
     [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
-    const stage = device.createBuffer({ size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const stage = buffer({ label: 'stage', size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = buffer({ label: 'count', size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);
     /** A bind group: `ix` the index buffer, `swap` renames buffers (ping-pong). */
     const group = (name, ix, swap = {}) => {
@@ -329,7 +375,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const run = (pass, g, slot, cnt) => { pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(Math.ceil(cnt / WG)); };
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
     const SL = { list: 0, roots: 1, flats: 2, all: 3 };
-    const G = {
+    const groupsKey = `${DIFF}|${(P.hillD ?? 0) > 0}`, G = pool?.groups(groupsKey, P_) ?? {
         ...(DIFF ? { edgeCond: group('edgeCond', 'list'), jacAB: group('jacobi', 'list'), jacBA: group('jacobi', 'list', { dA: 'dB', dB: 'dA' }) } : {}),
         outletA: group('outletA', 'all'), outletB: group('outletB', 'all'),
         copyZ: group('copyZ', 'list'), descend: group('descend', 'list'), jumpAB: group('jump', 'list'), jumpBA: group('jump', 'list', { ptrA: 'ptrB', ptrB: 'ptrA' }), findRoots: group('findRoots', 'list'), label: group('label', 'list'),
@@ -344,6 +390,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         applyA: group('affineApply', 'list', { jpA: 'ptrB', lpA: 'hiA' }), applyB: group('affineApply', 'list', { fA: 'fB', jpA: 'ptrC', lpA: 'hiB' }),
         water: group('water', 'order'), load: group('load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'), exportSome: group('exportSome', 'list'),
     };
+    pool?.keepGroups(groupsKey, P_, G);
     const readCount = async () => {
         const e = device.createCommandEncoder();
         e.copyBufferToBuffer(B.counter, 0, count, 0, 4);
@@ -617,7 +664,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     } finally {
         // (a 10M mesh's buffers are a couple of GB: they go now, not when a collector gets to them, the next run being about to want its own)
         settle?.destroy(); gsum.destroy();
-        for (const b of [...Object.values(B), rangeBuf, uniform, stage, count]) if (!resident.has(b)) b.destroy();
+        if (pool) pool.release();
+        else for (const b of [...Object.values(B), rangeBuf, uniform, stage, count]) if (!resident.has(b)) b.destroy();
     }
     let seaKm3 = 0, closedKm3 = 0, grossKm3 = 0;
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
