@@ -353,9 +353,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         return { fill, parent, order, count: listLen };
     };
     const closed = async tMyr => {
-        // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after, the rebound too)
-        if (o.release?.(tMyr, z) && settle) settle.setOcean(ocean);
+        o.release?.(tMyr, z);                         // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after)
         ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z, gpuClosed ? await flood() : null), z, n, sinkAt));
+        // (the rebound's copy of the ocean: the release, and the judge itself (a breached sea joined: finish.js reflooded), change it in place)
+        settle?.setOcean(ocean);
     };
     const outlets = (seaOnly = false) => {
         const out = new Uint32Array(n), surf = new Float32Array(n), Zs = new Float32Array(n), self = new Uint32Array(n), d0 = new Uint32Array(n), rec = new Uint32Array(n), lab = new Uint32Array(n);
