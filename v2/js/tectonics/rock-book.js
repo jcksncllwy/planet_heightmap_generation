@@ -25,14 +25,15 @@
 //                   it returns as prismAccretedKm3 when the prism is laid)
 //   arcCollapseKm3  an arc landing on its coast: the floor sediment it lands on (ops/collapse-arc.js)
 //   collisionConsumedKm3  rock a collision takes off the map — the lower plate's edge underthrust, a weld's overlap and
-//                   the sea it seals; collisionKeptKm3 what keepConsumed lays back as thickness (step/collision.js): their
-//                   sum is the collision's loss (collisionLostShare, and the unplaced)
+//                   the sea it seals, an arriving arc or a moved piece's land with no room beside it on its host (ops/scrape-arc.js,
+//                   ops/tidy-plates.js transferCells, ops/accrete-terrane.js); collisionKeptKm3 what keepConsumed lays back as
+//                   thickness (ops/thicken.js): their sum is the collision's loss (collisionLostShare, and the unplaced)
 //   shortenedKm3    (< 0) an Andean margin's edge shortened away; shortenKeptKm3 what step/andean-shortening.js lays back as
 //                   its belt's root: their sum is the unplaced (normally 0)
 //   collapseNetKm3  orogenicCollapse's rock change (≈ 0: a quiet belt's root moved into the continental cell it makes on its
 //                   coast, step/orogenic-collapse.js; the sea floor's sediment stays on the new cell)
-//   movedLostKm3    a piece moved to another plate: land with no room left on its host, the host's floor sediment it
-//                   buries (ops/tidy-plates.js transferCells, ops/scrape-arc.js, ops/accrete-terrane.js)
+//   movedLostKm3    a piece moved to another plate: the host's floor sediment it buries (ops/tidy-plates.js transferCells,
+//                   ops/scrape-arc.js, ops/accrete-terrane.js); land with no room on its host is consumed (collisionConsumedKm3)
 //   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them
 //                   (ops/tidy-plates.js giveToBackground)
 //   erodeClampedKm3 sediment the history's erosion laid where the rivers' own network after it brought no load to take it from

@@ -10,7 +10,8 @@
 // rest (a plateau widening as it fills: Tibet grew outward, its edges the youngest); where it stands then is heights.js's (its collapse spreads it further); no lower-crustal channel flow, no
 // eclogite foundering beyond the lost share.
 
-import { CrustType } from '../model/crust.js';
+import { CrustType, OrogenyType } from '../model/crust.js';
+import { bookRock } from '../rock-book.js';
 import { spreadKm } from '../../core/min-heap.js';
 
 /** The crust (km) of a continental cell of raster `cr`: its kind's as formed plus its root (measure.js columnModel C). */
@@ -89,3 +90,38 @@ export function landDistanceKm(mesh, plate, seeds, maxKm) {
     return spreadKm(mesh, dist, { canEnter: (a, b) => mask[b] && type[b] !== CrustType.OCEAN, maxKm });
 }
 let nearScratch = null;
+
+/**
+ * (config.collisionVolume, lane crust 1b) Crust a collision took out of the map — `volKm` cell-km, underthrust or absorbed
+ * at a weld — goes into the upper plate's crust from `seeds` outward (ops/thicken.js), less collisionLostShare of it,
+ * which goes back to the mantle. Booked in world.budget (cell-km): collisionKeptKm, collisionLostKm, collisionUnplacedKm.
+ * `since` (Myr): the collision's start — its belt is every collision-belt cell it has stamped since.
+ */
+export function keepConsumed(world, U, seeds, volKm, since) {
+    const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
+    // across the collision's belt on the upper plate — every cell it has stamped since it began, not only this step's: the
+    // deforming zone is the belt the convergence built (England & Houseman 1986), and the weld, which absorbs the most, comes
+    // after the seam has stalled, a step that stamps no belt at all (on seeds 1 and 2 of phase5's India the weld found no
+    // cell stamped that step and ring-filled ~100 cells to the ceiling: a spike, not a plateau) — in its plateau profile
+    // (1 − u²); the rest ring by ring from the front
+    // (config.collisionKeepLocal, lane beltthick: only the belt cells within their own belt's reach of where this step's crust
+    // was consumed — the crust shortened at a stretch of front thickens the belt behind that stretch, mass balance per km of
+    // front: Δh = S·h₀ ÷ W. Was every collision-belt cell the upper plate had stamped since the collision began, wherever it
+    // stood: a supercontinent's whole stock of belts, up to ~6,600 cells (~85 Mkm²) for one front, so a Tibet's worth of
+    // shortening thickened each by a few hundred metres — lanes-2026-10-29/beltthick/report.md)
+    const cr = U.crust, belt = [], weights = [], local = !!config.collisionKeepLocal;
+    const near = local ? landDistanceKm(world.mesh, U, seeds, Math.max(config.belts.himalayan.maxKm, config.belts.ural.maxKm) * config.beltSpeedFactorMax) : null;
+    for (let c = 0; c < cr.mask.length; c++) {
+        if (!cr.mask[c] || cr.type[c] !== CrustType.CONTINENT || !(cr.beltAt[c] >= since) || !(cr.beltReach[c] > 0)) continue;
+        if (cr.oroType[c] !== OrogenyType.HIMALAYAN && cr.oroType[c] !== OrogenyType.URAL) continue;
+        if (local && !(near[c] <= cr.beltReach[c])) continue;
+        belt.push(c); weights.push(1 - Math.min(1, cr.beltU[c]) ** 2);
+    }
+    const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
+    const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm);
+    bookRock('collisionKeptKm3', (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
+    budget.collisionKeptKm = (budget.collisionKeptKm ?? 0) + kept - left;
+    budget.collisionLostKm = (budget.collisionLostKm ?? 0) + lost;
+    budget.collisionUnplacedKm = (budget.collisionUnplacedKm ?? 0) + left;
+    U.dirty = true;
+}

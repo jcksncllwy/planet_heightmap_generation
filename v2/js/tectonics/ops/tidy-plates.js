@@ -34,6 +34,7 @@ import { hopsFrom } from '../../core/mesh-bfs.js';
 import { landContacts, handCollisions } from './hand-collisions.js';
 import { bookRock } from '../rock-book.js';
 import { cellRockKm3 } from '../step/crust-ledger.js';
+import { keepConsumed } from './thicken.js';
 
 /** @returns {number} pieces dealt with */
 export function tidyPlates(world) {
@@ -212,8 +213,9 @@ export function componentsOf(crust, mesh) {
 /**
  * Move raster cells of `from` onto `to` (resampled once into `to`'s frame); `to` keeps its own land where
  * the two overlap — moved land there goes onto the nearest free cell beside it (stacked, as an arc collapse
- * does), or failing that is absorbed: it is the same ground, already land on the host, and left behind it would
- * sit under the host's land for ever as a piece that can never join. Trench flags on moved land are dropped
+ * does), or failing that is consumed into the host's land, as a collision consumes crust (ops/thicken.js keepConsumed: laid
+ * into the host's land from that contact outward, less collisionLostShare): left behind it would sit under the host's land
+ * for ever as a piece that can never join. (It was absorbed and its rock deleted: lane contarea (2).) Trench flags on moved land are dropped
  * (the polarity rule re-establishes them). `reachHops` > 1 looks further for a free cell, through the host's land, before
  * absorbing — for a move that only resamples ground that does not overlap the host's (a back-arc strip rejoining its
  * parent: two of its cells can fall on one of the parent's, and that is the lattice, not a collision).
@@ -222,8 +224,8 @@ export function componentsOf(crust, mesh) {
 export function transferCells(world, from, to, cells, reachHops = 1) {
     const { mesh } = world, { xyz, index, adjOffset, adjList } = mesh, F = from.crust, T = to.crust;
     const P = [0, 0, 0];
-    let moved = 0;
-    const isHostLand = q => T.mask[q] && T.type[q] !== CrustType.OCEAN;
+    let moved = 0, consumedKm = 0;
+    const isHostLand = q => T.mask[q] && T.type[q] !== CrustType.OCEAN, contact = [];
     for (const c of cells) {
         from.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
         let q = to.cellAt(index, P[0], P[1], P[2]);
@@ -232,9 +234,16 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
             const at = q;
             q = freeCellBeside(to, mesh, at, P, isHostLand);
             if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, isHostLand);
+            if (q < 0) {                                                                 // no room: consumed into the host's land
+                const rock = cellRockKm3(world, F, c);
+                bookRock('collisionConsumedKm3', -rock);                                 // (keepConsumed books back what is kept)
+                consumedKm += rock / mesh.cellAreaKm2; contact.push(at);
+                F.remove(c);
+                continue;
+            }
         }
-        // (the rock book: what the move lost — land with no room left on the host, the host's own floor sediment a cell
-        // landing on it buried — rock-book.js movedLostKm3)
+        // (the rock book: what the move lost — the host's own floor sediment a cell landing on it buried — rock-book.js
+        // movedLostKm3)
         const before = cellRockKm3(world, F, c) + (q >= 0 ? cellRockKm3(world, T, q) : 0);
         if (q >= 0 && (land || !T.mask[q])) {
             T.copyFrom(q, F, c);
@@ -244,6 +253,7 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
         bookRock('movedLostKm3', (q >= 0 ? cellRockKm3(world, T, q) : 0) - before);
         F.remove(c);
     }
+    if (consumedKm > 0) keepConsumed(world, to, [...new Set(contact)], consumedKm, world.time);
     from.markReshaped(); to.markReshaped();
     from.refreshExtent(xyz); to.refreshExtent(xyz);
     return moved;

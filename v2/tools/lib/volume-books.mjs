@@ -68,7 +68,9 @@ export const STAGE_FLOWS = {
 };
 // (the ops several stages share — a piece moved to another plate, cells handed back to the passive ocean, ops/tidy-plates.js;
 // the rivers' rock on sea floor going down a trench, step/floor-rock.js — book what they lose wherever they run)
-const ANY_STAGE = { movedLostKm3: +1, givenBackLostKm3: +1, riseDownKm3: -1, riseKeptKm3: -1, seaFillDownKm3: -1, seaFillKeptKm3: -1 };
+// (and land a move finds no room for is consumed into its host as a collision's crust is — collisionConsumedKm3 and
+// collisionKeptKm3 (ops/thicken.js keepConsumed), from tidy's moves as well as the collisions stage's scrapes and terranes)
+const ANY_STAGE = { movedLostKm3: +1, givenBackLostKm3: +1, collisionConsumedKm3: +1, collisionKeptKm3: +1, riseDownKm3: -1, riseKeptKm3: -1, seaFillDownKm3: -1, seaFillKeptKm3: -1 };
 const UNITS = { rivers: 'rivers+fans', fans: 'rivers+fans' };
 /** Each unit's tolerance on its residual, as a share of its gross movement (else 1 %). rivers+fans: some supply reaches no
  * sink (the datum lane's #8, measured 3.2–4.0 % at 20K, 300 Myr, seeds 12345/777/4242, with the river cut since retired: lane

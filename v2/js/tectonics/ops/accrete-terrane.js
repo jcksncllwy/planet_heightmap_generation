@@ -13,11 +13,14 @@ import { spreadBelt, beltWidthKm, OrogenyType, BeltSide } from '../step/orogeny.
 import { closeSeasBetween } from './merge-plates.js';
 import { freeCellBeside } from './tidy-plates.js';
 import { bookRock } from '../rock-book.js';
+import { keepConsumed } from './thicken.js';
 import { cellRockKm3 } from '../step/crust-ledger.js';
 
 /**
  * Move the land cells `terrane` (raster cells of `donor`) onto `host`. Terrane land that would land on land already
- * there goes onto the nearest free cell beside it; only when there is none is it absorbed (counted in `absorbed`).
+ * there goes onto the nearest free cell beside it; only when there is none is it consumed into the host's land, as a collision
+ * consumes crust (ops/thicken.js keepConsumed, after the belt is spread; counted in `absorbed`; its rock was deleted before
+ * lane contarea (2)).
  * @returns {{cells: number, sealed: number, landSealed?: number, sealPaid?: number, absorbed: number, scrap?: boolean}}   (sealed: strait cells closed; landSealed of them continent; sealPaid: coast cells given back for them)
  */
 export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
@@ -45,14 +48,20 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     }
 
     const P = [0, 0, 0];
-    let moved = 0, absorbed = 0;
+    let moved = 0, absorbed = 0, consumedKm = 0;
+    const contact = [];
     for (const c of [...terrane, ...foreArc]) {
         donor.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
         let q = host.cellAt(index, P[0], P[1], P[2]);
         const land = isTerrane[c] === 1;
         if (land && origin[q]) {                                          // land (the host's, or terrane already placed) is here
+            const at = q;
             q = freeCellBeside(host, mesh, q, P, n => origin[n] !== 0);
-            if (q < 0) { absorbed++; bookRock('movedLostKm3', -cellRockKm3(world, D, c)); D.remove(c); continue; }
+            if (q < 0) {                                                  // no room: consumed into the host's land (keepConsumed, below)
+                const rock = cellRockKm3(world, D, c);
+                absorbed++; bookRock('collisionConsumedKm3', -rock); consumedKm += rock / mesh.cellAreaKm2; contact.push(at);
+                D.remove(c); continue;
+            }
         }
         const before = cellRockKm3(world, D, c) + cellRockKm3(world, H, q);   // (the rock book: what the move loses, rock-book.js movedLostKm3)
         if (origin[q] !== 1 && (land || !H.mask[q])) {                   // the host keeps its own land, and its own crust over the fore-arc
@@ -67,7 +76,8 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     donor.markReshaped();
     host.markReshaped();
     if (D.count === 0) { donor.alive = false; donor.omega = [0, 0, 0]; donor.dynamics = null; }
-    if (terrane.length * mesh.cellAreaKm2 < config.terraneMinAreaKm2) { host.refreshExtent(xyz); donor.refreshExtent(xyz); return { cells: moved, sealed: 0, absorbed, scrap: true }; }
+    const keep = () => { if (consumedKm > 0) keepConsumed(world, host, [...new Set(contact)], consumedKm, time); };   // (after the belt, which it thickens)
+    if (terrane.length * mesh.cellAreaKm2 < config.terraneMinAreaKm2) { keep(); host.refreshExtent(xyz); donor.refreshExtent(xyz); return { cells: moved, sealed: 0, absorbed, scrap: true }; }
 
     // the strait between terrane and host closes; the seam is a suture; a short belt on both sides
     const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid, remnant } = closeSeasBetween(H, origin, mesh, host, config, time);
@@ -80,6 +90,7 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     const width = beltWidthKm('ural', 0, rateCmYr, config), work = config.belts.ural.baseKm * 0.5;
     spreadBelt(host, mesh, seam.filter(q => origin[q] === 1), { type: OrogenyType.URAL, widthKm: width, workKm: work, time, side: BeltSide.UPPER }, config, q => origin[q] === 1);
     spreadBelt(host, mesh, seam.filter(q => origin[q] !== 1), { type: OrogenyType.URAL, widthKm: width, workKm: work, time, side: BeltSide.LOWER }, config, q => origin[q] !== 1);
+    keep();
     host.refreshExtent(xyz);
     donor.refreshExtent(xyz);
     return { cells: moved, sealed, remnant, landSealed, sealPaid, arcSealed, arcPaid, absorbed };

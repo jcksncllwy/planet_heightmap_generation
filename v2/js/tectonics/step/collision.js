@@ -25,7 +25,7 @@ import { scrapeArc } from '../ops/scrape-arc.js';
 import { EventKind } from '../model/world.js';
 import { centroidOfCells } from '../../core/sphere-geom.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
-import { continentVolume, crustOf, layThickening, layProfile, landDistanceKm } from '../ops/thicken.js';
+import { continentVolume, crustOf, layThickening, layProfile, landDistanceKm, keepConsumed } from '../ops/thicken.js';
 import { columnModel, arcBuoyancyKm, arcScrapedKm3 } from '../measure.js';
 import { arcFloats } from './polarity.js';
 import { creditPrism } from './prism-accretion.js';
@@ -402,7 +402,7 @@ function accreteArcs(world, A, B, overlap) {
         // Kohistan) and every sinking arc's upper crust, not every islet whole
         const seeds = [...new Set(arriving)].filter(c => !sinkHeavyArc(world, donor, c, host));
         if (!seeds.length) { accreted++; continue; }
-        const { moved } = scrapeArc(world, host, donor, seeds);
+        const { moved } = scrapeArc(world, host, donor, seeds, world.arcScrapes.get(`${donor.id}:${host.id}`)?.since ?? world.time);
         accreted += moved;
         const at = world.arcScrapes.get(`${donor.id}:${host.id}`) ?? { cells: 0, since: world.time, donorName: donor.name };
         at.cells += moved; at.last = world.time;
@@ -629,37 +629,3 @@ function recycle(world, donor, cells, over) {
 
 const uniq = list => [...new Set(list)];
 
-/**
- * (config.collisionVolume, lane crust 1b) Crust a collision took out of the map — `volKm` cell-km, underthrust or absorbed
- * at a weld — goes into the upper plate's crust from `seeds` outward (ops/thicken.js), less collisionLostShare of it,
- * which goes back to the mantle. Booked in world.budget (cell-km): collisionKeptKm, collisionLostKm, collisionUnplacedKm.
- * `since` (Myr): the collision's start — its belt is every collision-belt cell it has stamped since.
- */
-function keepConsumed(world, U, seeds, volKm, since) {
-    const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
-    // across the collision's belt on the upper plate — every cell it has stamped since it began, not only this step's: the
-    // deforming zone is the belt the convergence built (England & Houseman 1986), and the weld, which absorbs the most, comes
-    // after the seam has stalled, a step that stamps no belt at all (on seeds 1 and 2 of phase5's India the weld found no
-    // cell stamped that step and ring-filled ~100 cells to the ceiling: a spike, not a plateau) — in its plateau profile
-    // (1 − u²); the rest ring by ring from the front
-    // (config.collisionKeepLocal, lane beltthick: only the belt cells within their own belt's reach of where this step's crust
-    // was consumed — the crust shortened at a stretch of front thickens the belt behind that stretch, mass balance per km of
-    // front: Δh = S·h₀ ÷ W. Was every collision-belt cell the upper plate had stamped since the collision began, wherever it
-    // stood: a supercontinent's whole stock of belts, up to ~6,600 cells (~85 Mkm²) for one front, so a Tibet's worth of
-    // shortening thickened each by a few hundred metres — lanes-2026-10-29/beltthick/report.md)
-    const cr = U.crust, belt = [], weights = [], local = !!config.collisionKeepLocal;
-    const near = local ? landDistanceKm(world.mesh, U, seeds, Math.max(config.belts.himalayan.maxKm, config.belts.ural.maxKm) * config.beltSpeedFactorMax) : null;
-    for (let c = 0; c < cr.mask.length; c++) {
-        if (!cr.mask[c] || cr.type[c] !== CrustType.CONTINENT || !(cr.beltAt[c] >= since) || !(cr.beltReach[c] > 0)) continue;
-        if (cr.oroType[c] !== OrogenyType.HIMALAYAN && cr.oroType[c] !== OrogenyType.URAL) continue;
-        if (local && !(near[c] <= cr.beltReach[c])) continue;
-        belt.push(c); weights.push(1 - Math.min(1, cr.beltU[c]) ** 2);
-    }
-    const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
-    const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm);
-    bookRock('collisionKeptKm3', (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
-    budget.collisionKeptKm = (budget.collisionKeptKm ?? 0) + kept - left;
-    budget.collisionLostKm = (budget.collisionLostKm ?? 0) + lost;
-    budget.collisionUnplacedKm = (budget.collisionUnplacedKm ?? 0) + left;
-    U.dirty = true;
-}
