@@ -17,7 +17,6 @@ import { CrustType, CrustFlag } from '../model/crust.js';
 import { BoundaryKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
 import { seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../measure.js';
-import { brimKm3 } from './floor-rock.js';
 
 /**
  * The trenches' supply this step: per world cell of an overriding trench, km³/Myr per km of trench (`supply`); and per
@@ -94,6 +93,7 @@ export function bookFans(world, dt) {
     const mouths = world.riverMouths;
     if (!mouths?.length || !(dt > 0)) return;
     const { deliveries } = trenchFans(world), fed = new Set(deliveries.map(d => d.mouth)), B = world.budget;
+    riseScratch.call++;                                 // (layRise's facts about each cell hold for this call: see riseFacts)
     let fan = 0, rise = 0, lost = 0, over = 0;
     for (const m of mouths) {
         if (m.enclosed || !(m.km3 > 0)) continue;
@@ -131,7 +131,7 @@ export function bookFans(world, dt) {
  */
 function layRise(world, m, km3) {
     const { mesh, plates, owner, ownerCell, config } = world, { xyz, index, adjOffset, adjList, numCells: n } = mesh;
-    const A = mesh.cellAreaKm2, R = config.riseProfile, reach = config.trenchFanReachKm, now = world.time;
+    const A = mesh.cellAreaKm2, R = config.riseProfile, reach = config.trenchFanReachKm;
     // (where the mouth is now, if its crust is still there: the rivers drain on a clock of their own, and their mouths' plates
     // can merge or break before the books close; else the sea cell beside it when they drained)
     const plate = plates[m.plate], P = riseScratch.P;
@@ -139,11 +139,11 @@ function layRise(world, m, km3) {
     if (plate?.alive && plate.crust.mask[m.cell]) { plate.toWorld(xyz[3 * m.cell], xyz[3 * m.cell + 1], xyz[3 * m.cell + 2], P); w0 = index.nearest(P[0], P[1], P[2]); }
     else if (m.sea >= 0) { P[0] = xyz[3 * m.sea]; P[1] = xyz[3 * m.sea + 1]; P[2] = xyz[3 * m.sea + 2]; }
     else return -1;
-    const pr = Math.hypot(P[0], P[1], P[2]);
-    const kmFrom = w => 6371 * Math.acos(Math.max(-1, Math.min(1, (xyz[3 * w] * P[0] + xyz[3 * w + 1] * P[1] + xyz[3 * w + 2] * P[2]) / (pr * Math.hypot(xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2])))));
+    const pr = Math.hypot(P[0], P[1], P[2]), { norm, isFloor, depth } = riseFacts(world);
+    const kmFrom = w => 6371 * Math.acos(Math.max(-1, Math.min(1, (xyz[3 * w] * P[0] + xyz[3 * w + 1] * P[1] + xyz[3 * w + 2] * P[2]) / (pr * norm[w]))));
     // (ocean floor on the map now: the owner map is the step's, and a stage since may have taken the cell off its plate —
     // subducted, or handed back — so rock laid on it would ride a cell no book counts, crust-ledger.js rockParts)
-    const floor = w => { if (owner[w] < 0) return false; const k = plates[owner[w]].crust, c = ownerCell[w]; return k.mask[c] && k.type[c] === CrustType.OCEAN; };
+    const floor = w => isFloor(w) === 1;
     if (riseScratch.seen?.length !== n) { riseScratch.seen = new Int32Array(n); riseScratch.tick = 0; }
     const seen = riseScratch.seen, tick = ++riseScratch.tick, ring = riseScratch.ring, cells = riseScratch.cells;
     ring.length = 0; cells.length = 0;
@@ -156,7 +156,7 @@ function layRise(world, m, km3) {
         if (sea) {
             cells.push(w);
             const k = plates[owner[w]].crust, c = ownerCell[w];
-            const room = SEDIMENT_LOAD_FACTOR * (seaDepthKm(now - k.formedAt[c]) - graded(R, d - R.shelfKm)) * A - (k.riseKm3[c] + k.seaFillKm[c] * A);
+            const room = SEDIMENT_LOAD_FACTOR * (depth[w] - graded(R, d - R.shelfKm)) * A - (k.riseKm3[c] + k.seaFillKm[c] * A);
             if (room > 0) { const v = Math.min(room, left); k.riseKm3[c] += v; left -= v; }
         }
         if (d >= reach || (!sea && d >= R.coastKm)) continue;
@@ -168,7 +168,7 @@ function layRise(world, m, km3) {
         // left between it and the surface…)
         world.riseOverKm3 = (world.riseOverKm3 ?? 0) + left;
         let roomAll = 0;
-        const brim = cells.map(w => { const k = plates[owner[w]].crust, c = ownerCell[w]; const r = Math.max(0, brimKm3(world, k, c) - (k.riseKm3[c] + k.seaFillKm[c] * A)); roomAll += r; return r; });
+        const brim = cells.map(w => { const k = plates[owner[w]].crust, c = ownerCell[w]; const r = Math.max(0, SEDIMENT_LOAD_FACTOR * depth[w] * A - (k.riseKm3[c] + k.seaFillKm[c] * A)); roomAll += r; return r; });
         const f = roomAll > 0 ? Math.min(1, left / roomAll) : 0;
         for (let i = 0; i < cells.length; i++) plates[owner[cells[i]]].crust.riseKm3[ownerCell[cells[i]]] += f * brim[i];
         left -= f * roomAll;
@@ -182,7 +182,7 @@ function layRise(world, m, km3) {
         for (let i = 0; i < on.length && left > 0; i++) {
             const w = on[i];
             if (i >= cells.length) {
-                const k = plates[owner[w]].crust, c = ownerCell[w], room = brimKm3(world, k, c) - (k.riseKm3[c] + k.seaFillKm[c] * A);
+                const k = plates[owner[w]].crust, c = ownerCell[w], room = SEDIMENT_LOAD_FACTOR * depth[w] * A - (k.riseKm3[c] + k.seaFillKm[c] * A);
                 if (room > 0) { const v = Math.min(room, left); k.riseKm3[c] += v; left -= v; }
             }
             for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (seen[nb] !== tick2 && floor(nb)) { seen[nb] = tick2; on.push(nb); } }
@@ -201,4 +201,34 @@ function graded(R, x) {
     const xToe = xFoot + (R.toeKm - R.footKm) / R.rise;
     return x <= xToe ? R.footKm + R.rise * (x - xFoot) : R.toeKm + R.plain * (x - xToe);
 }
-const riseScratch = { P: [0, 0, 0], seen: null, tick: 0, ring: [], cells: [], on: [] };
+const riseScratch = { P: [0, 0, 0], seen: null, tick: 0, ring: [], cells: [], on: [], call: 0, facts: null };
+/**
+ * What layRise asks of a world cell again and again — its distance's norm, whether it is ocean floor on the map, and that
+ * floor's depth (measure.js seaDepthKm; brimKm3 is SEDIMENT_LOAD_FACTOR × it × A) — worked out once a bookFans call: none of
+ * it changes while the mouths lay their rock (only riseKm3 does), and the walks cross the same full cells mouth after mouth
+ * (~11M visits in a 430 Myr history at 40K since the history erodes, lane graded). The same numbers as computed in place.
+ * (lane histprof)
+ */
+function riseFacts(world) {
+    const { mesh, plates, owner, ownerCell } = world, n = mesh.numCells, now = world.time;
+    let F = riseScratch.facts;
+    if (F?.mesh !== mesh) {
+        const norm = new Float64Array(n), xyz = mesh.xyz;
+        for (let w = 0; w < n; w++) norm[w] = Math.hypot(xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
+        F = riseScratch.facts = { mesh, norm, at: new Int32Array(n).fill(-1), floor: new Int8Array(n), depth: new Float64Array(n), isFloor: null };
+    }
+    const { at, floor, depth } = F, call = riseScratch.call;
+    F.isFloor = w => {
+        if (at[w] !== call) {
+            at[w] = call;
+            let f = 0;
+            if (owner[w] >= 0) {
+                const k = plates[owner[w]].crust, c = ownerCell[w];
+                if (k.mask[c] && k.type[c] === CrustType.OCEAN) { f = 1; depth[w] = seaDepthKm(now - k.formedAt[c]); }
+            }
+            floor[w] = f;
+        }
+        return floor[w];
+    };
+    return F;
+}
