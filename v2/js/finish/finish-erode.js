@@ -70,8 +70,8 @@ export const ERODE = {
                                 // interfluves as isolated mounds on the plains — fluvial5 A/B, 2026-11-10)
     tectUplift: true,           // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
-    // ── the sea's floor (lane marine, 2026-11-21; GPU only): the rivers' load is laid where they meet the sea, not counted, and the
-    // waves move it: q = −K(d)·∇z between sea cells, K(d) = marineK down to wave base and K·e^(−(d − wb)/wb) below (Kaufman et al.
+    // ── the sea's floor (lane marine, 2026-11-21; GPU only): the rivers' load is laid as a delta from where they meet the sea (each
+    // mouth's fills the nearest sea up to its level: erode-gpu.js seaDelta), not counted, and the waves move it: q = −K(d)·∇z between sea cells, K(d) = marineK down to wave base and K·e^(−(d − wb)/wb) below (Kaufman et al.
     // 1991, Kansas Geol. Survey Bull. 233: wave energy, and the sediment it moves, falls off with depth as Airy waves' orbits do;
     // Landlab's SimpleSubmarineDiffuser has the same form). So the load spreads offshore by depth and distance — the sand near,
     // the mud far, in a diffusion's reduced form — fills the hollows under the waves, planes their highs, and builds a clinoform

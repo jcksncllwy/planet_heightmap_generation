@@ -843,23 +843,31 @@ Holocene's own load (it uses the lowstand's), the tide carrying mud out of a val
 would build onto the open shelf (counted, `stats.lowstand.bayhead.spiltKm3`). The sea is flooded once more after it.
 **The sea's floor under the waves** (lane marine, 2026-11-21; `ERODE.marine`, GPU only). Until then every finish erosion
 treated the sea as an outlet: what its rivers carried to the sea (~12 km³/yr over the moment's window at 831576@430, 92 % of it
-arriving over drowned continental crust at 50–500 m) was counted and dropped, bar the 3 % deltas and the bayhead fill. Now each
-erosion step lays that load on the sea cell its river reaches, and the waves move it: q = −K(d)·∇z between sea cells, with
-K(d) = `marineK` (3·10⁴ km²/Myr) down to storm wave base `marineWaveBaseKm` (60 m) and falling off as e^(−(d − wb)/wb) below.
-This is Kaufman et al. (1991)'s depth-dependent diffusion for wave-dominated shelves, the form of Landlab's
-SimpleSubmarineDiffuser. The constants live in `finish/marine-config.js`, shared with the history. K is derived from Earth's
-river load crossing its shelves at their topset slope.
+arriving over drowned continental crust at 50–500 m) was counted and dropped, bar the 3 % deltas and the bayhead fill. Now the
+load is laid in the sea and the waves move it: q = −K(d)·∇z between sea cells, with K(d) = `marineK` (3·10⁴ km²/Myr) down to
+storm wave base `marineWaveBaseKm` (60 m) and falling off as e^(−(d − wb)/wb) below. This is Kaufman et al. (1991)'s
+depth-dependent diffusion for wave-dominated shelves, the form of Landlab's SimpleSubmarineDiffuser. The constants live in
+`finish/marine-config.js`, shared with the history. K is derived from Earth's river load crossing its shelves at their topset slope.
+- **Laying (a delta):** each mouth's load fills the sea nearest it up to the sea's level, all mouths in one walk (two fronts that
+  meet pool their load), crossing the delta's own plain as the river does; a sea cell filled to the level is land, so the coast
+  builds out. A pocket of sea full to its level behind higher ground passes what it cannot hold on to the nearest open sea;
+  what no walk places is booked (`marineSpiltKm3`), not laid. (A step's load laid in its one receiving cell stood hundreds of
+  metres over the sea before the waves could spread it: the ragged coast and dry pits of the first version.)
+- **Which sea:** the lowstand's ocean is the sea the world ocean joins at −53 m; a hollow of today's shelf deeper than that but
+  cut off is the lowstand's lake. Each level drops the pockets of sea its coarser level left on its finer ground.
 - **Shape:** the load spreads offshore by depth and distance, fills hollows under the waves, planes their highs and builds a
-  clinoform out. The break stands where K falls off.
-- **Isostasy:** the rebound settles it at its water-loaded share, 1 − 1/`SEDIMENT_LOAD_FACTOR` ≈ 0.65 (rebound-gpu.js `U_.sea`),
-  so a shelf makes its own room.
-- **Coast:** the polish runs it at today's sea, which straightens the shoreface: low islands and shallow inlets inside wave base
-  are worked flat.
+  clinoform out. Laid sediment steeper than 0.05 fails down the slope at any depth. The break stands where K falls off below the
+  lowstand: 831576@430 at 2.5M, 195–220 m (the lowstand's −53 m plus ~2.5–3 e-folds of wave base). Earth's ~130 m was cut at the
+  glacial maxima (−120 m), when the rivers fed the shelf edge; the finish works at the cycle's time-weighted mean.
+- **When:** every `closedEvery` steps over the span since, and in the polish at the cycle's time-weighted sea (the lowstand),
+  not 0.3 Myr of today's highstand, which filled the inner shelf to the brim and walled lagoons off.
 - **Solver:** RKL1 super-time-stepping (Meyer, Balsara & Aslam 2012), flux-form, so the sea's sediment is conserved to float
-  rounding (`marineDriftKm3` in each rung's stats). Water deeper than 26 wave bases is a wall.
+  rounding (`marineDriftKm3` in each rung's stats). It works only cells above the waves' reach on the mesh (exchange per span
+  under 10⁻³ of a difference on the shortest edge) or holding laid sediment, and their neighbours (`marineActive`, ~20 %).
 - **Reduced (what it skips):** one grain size; no tides or along-shelf currents; no turbidity currents down the slope, so the
   deep sea gets only K's tail and the shelf edge is overfed; one wave base, not the local wave climate's; the shore is a wall
-  for it (the coast's own waves on land are finish-coast.js's).
+  for it (the coast's own waves on land are finish-coast.js's). The sea floor does not sink under its fill (the rebound is a
+  blur with no forebulge, and blurred onto the coast it drowned 3.7 % of the land); its flexure waits for the flexure lane.
 Fjords are the ice's (finish-ice.js). Nothing draws a ria: no `drownValleys`, no coast-band warp, no `ria*` or `drown*` keys. Also
 submarine canyons from big
 rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
