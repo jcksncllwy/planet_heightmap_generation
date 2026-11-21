@@ -6,21 +6,18 @@
 // It was 66–77 % of the GPU erosion's own time at every rung on the CPU (~132 passes over the mesh, 26 times a 160K finish:
 // gpuscan); here each pass is one dispatch.
 // Reduced model, as rebounder's: a Gaussian load blur, not thin-plate flexure (no elastic thickness, no forebulge); the sea's
-// floor doesn't move under the land's unloading — but with ERODE marine (lane marine) it settles under its own load, in a second pass: sediment laid under water sinks the floor by
-// 1 − 1/SEDIMENT_LOAD_FACTOR of itself (water-loaded Airy, ρs 2.5 against water 1.03 over mantle 3.3: ~0.65), the land's share
-// ρc/ρm by the same blur, so a shelf's fill makes its own room as Earth's do (Steckler & Watts 1978). Thin-plate flexure with Te from the column is a separate later lane.
+// floor doesn't move. Thin-plate flexure with Te from the column is a separate later lane.
 // Determinism: no atomics; the coarse mean gathers each coarse cell's fine cells in index order (as meanOnto adds them), and
 // the km³ it moved is a fixed-tree sum (fields.js). float32 throughout, where rebounder's per-cell sums are doubles:
 // tools/rebound-gpu-test.mjs measures the difference against a float64 reference.
 
 import { pipeline, readBack } from './gpu-device.js';
 import { WG, INDEX_WGSL, dispatch, meshFields, sumPartials } from './fields.js';
-import { SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 
 const R_EARTH = 6371;
 
 const HEAD = /* wgsl */`
-struct U { share: f32, lifted: f32, w: f32, column: u32, sea: f32, mode: u32 }
+struct U { share: f32, lifted: f32, w: f32, column: u32 }
 ${INDEX_WGSL}`;
 const MAIN = `@compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) id: vec3u, @builtin(num_workgroups) nwg: vec3u) {
     let c = flatIndex(id, nwg);`;
@@ -36,11 +33,7 @@ const KERNELS = {
 @group(0) @binding(5) var<storage, read_write> d: array<f32>;
 ${MAIN}
     if (c >= arrayLength(&anchor)) { return; }
-    // (mode 0: the land's own load, the sea's floor none — it holds under the land's unloading, as it always has; mode 1, with ERODE
-    // marine: the sea's sediment, what the waves laid or took, at its water-loaded share against the land's (U_.sea), the land none)
-    let sea = ocean[c] != 0u;
-    if (U_.mode == 0u) { d[c] = select(z[c] - anchor[c] - lift[c] * U_.lifted, 0.0, sea); }
-    else { d[c] = select(0.0, (z[c] - anchor[c]) * U_.sea, sea); }
+    d[c] = select(z[c] - anchor[c] - lift[c] * U_.lifted, 0.0, ocean[c] != 0u);
 }`,
     // (a fine field's mean over each coarse cell, its fine cells in index order; a coarse cell none fell in takes 0: meanOnto)
     mean: `${HEAD}
@@ -92,7 +85,7 @@ ${MAIN}
 @group(0) @binding(6) var<storage, read_write> Kv: array<vec4f>;
 ${MAIN}
     if (c >= arrayLength(&anchor)) { return; }
-    if (ocean[c] != 0u && U_.mode == 0u) { moved[c] = 0.0; return; }     // (mode 1: the sea's load sinks the floor and the coast beside it)
+    if (ocean[c] != 0u) { moved[c] = 0.0; return; }
     let was = z[c]; let now = was - U_.share * d[c]; let dz = now - was;
     z[c] = now; anchor[c] = now; moved[c] = dz;
     if (U_.column != 0u) { Kv[c].y += dz; }
@@ -139,7 +132,7 @@ export async function reboundGPU(device, { mesh, z, lift = null, Kv = null, ocea
     const up = (label, arr) => { const b = mk(label, arr.byteLength); device.queue.writeBuffer(b, 0, arr.buffer, arr.byteOffset, arr.byteLength); return b; };
     const anchor = mk('anchor', 4 * n), d = mk('d', 4 * n), moved = mk('moved', 4 * n), oc = mk('ocean', 4 * n);
     const liftB = lift ?? up('lift0', new Float32Array(n)), KvB = Kv ?? mk('Kv0', 16);
-    const uniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     own.push(uniform);
     const setOcean = o => device.queue.writeBuffer(oc, 0, Uint32Array.from(o));
     setOcean(ocean);
@@ -157,19 +150,12 @@ export async function reboundGPU(device, { mesh, z, lift = null, Kv = null, ocea
         G.mean = g('mean', [up('invOff', inv.off), up('invList', inv.list), d, src]);
         G.carry = g('carry', [up('cells', Uint32Array.from(flex.map.cells)), up('weights', Float32Array.from(flex.map.weights)), src, d]);
     }
-    const sum = await sumPartials(device, moved, n), ub = new ArrayBuffer(32), uv = new DataView(ub);
-    // (the sea floor's load against the land's share, so that share × it is its own water-loaded share: 0 with no marine work)
-    const seaRatio = P.marine && P.rebound > 0 ? (1 - 1 / SEDIMENT_LOAD_FACTOR) / P.rebound : 0;
+    const sum = await sumPartials(device, moved, n), ub = new ArrayBuffer(16), uv = new DataView(ub);
     let since = 0;
     const settle = async (at = 0) => {
-        let km3 = await settleOnce(at, 0);
-        if (seaRatio > 0) km3 += await settleOnce(at, 1);
-        since = at;
-        return km3;
-    };
-    const settleOnce = async (at, mode) => {
-        uv.setFloat32(0, P.rebound, true); uv.setFloat32(4, at - since, true); uv.setFloat32(8, w, true); uv.setUint32(12, Kv ? 1 : 0, true); uv.setFloat32(16, seaRatio, true); uv.setUint32(20, mode, true);
+        uv.setFloat32(0, P.rebound, true); uv.setFloat32(4, at - since, true); uv.setFloat32(8, w, true); uv.setUint32(12, Kv ? 1 : 0, true);
         device.queue.writeBuffer(uniform, 0, ub);
+        since = at;
         // (one pass a stretch: WebGPU orders a pass's dispatches, each seeing the last one's writes)
         const e = device.createCommandEncoder();
         let p = e.beginComputePass();

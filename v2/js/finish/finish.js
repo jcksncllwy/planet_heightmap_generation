@@ -35,6 +35,7 @@ import { pageClimate } from '../evolution/climate-fields.js';
 import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { worldOcean } from '../terrain/world-ocean.js';
+import { worldOcean as openSeaAt } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
 import { GEOLOGY } from '../geology/geology-config.js';
 
@@ -343,7 +344,11 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     if (EP?.at === 'early' || EP?.at === 'both') {
         // (the lowstand's ocean: the sea where it was still deeper than the lowstand; the shelf between is land the erosion grades to it)
         const lowOcean = new Uint8Array(n);
-        for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low ? 1 : 0;
+        // With the sea's own law (ERODE marine) only the sea the lowstand's shore still joins to the world ocean: a hollow of today's
+        // shelf deeper than the lowstand is the lowstand's lake, judged as any closed hollow is — an outlet at the sea's level, it
+        // took a river's whole load in one step and stood it in towers once full (marine2, 2026-11-21: a third of the 640K rung's sea load)
+        const joined = EP.marine ? openSeaAt(mesh, C.z, low).ocean : null;
+        for (let c = 0; c < n; c++) lowOcean[c] = ocean0[c] && C.z[c] <= low && (!joined || joined[c]) ? 1 : 0;
         onStage('erosion');
         stats.erodeOn = eroder.on;
         const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm, false), observe,
@@ -468,7 +473,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, flex: erodeIn.uplift && EP.rebound ? flexOnto(mesh, EP, terrainMesh) : null, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: low, flex: erodeIn.uplift && EP.rebound ? flexOnto(mesh, EP, terrainMesh) : null, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
         delete late.outflow;                                          // (per cell: bayheadFill's, after the early run only — not stats)
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
