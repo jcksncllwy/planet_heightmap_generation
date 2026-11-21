@@ -270,7 +270,7 @@ section('rivers through the history');
     // not a canyon. And the history's lower crust flows back under the column the erosion thins (crustFlow; graded2's test: with
     // the flow off the belt's figure is 0.70 km, on all the belt's cells alike), which is right at 100 km and more and would be
     // wrong for a canyon. So the history is held to its belt's great rivers standing below the land around them; the canyon's
-    // depth belongs to the finished surface, where its scale exists (check-finish-gorges, the gorge target there))
+    // depth belongs to the finished surface, where its scale exists (tools/finish-gorges.mjs, the gorge target there))
     const { frame, world } = await run('india');
     const z = surfaceKm(frame, mesh, heightsOf(world.config)), { adjOffset, adjList } = mesh, isLand = w => frame.owner[w] >= 0 && frame.type[w] !== 0;
     const inBelt = [], plain = [];

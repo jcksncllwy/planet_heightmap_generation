@@ -859,6 +859,11 @@ high (`stripeShare`, `stripeLowGain`). The history is unchanged (its uplift uses
 faded out, not aliased. `check-phase8a.mjs` compares 160K, 640K and 2.5M cells sim cell by sim cell.
 A phase that draws terrain sets `displayMesh` (its layers paint terrain cells) and may offer `profileAlong` (the
 cross-section tool); see the `Phase` typedef in phase-kit.js.
+Gorges are sub-cell at the history's ~120 km cells, so the history is held only to its belt's great rivers standing below
+their neighbours (check-phase8b). Their depth is measured on the finished surface by `tools/finish-gorges.mjs --key <finish>`.
+It reports the local relief within 20 km of great rivers (≥ 1e5 km²) crossing active belts, against Earth's 2–5 km (Lavé &
+Avouac 2001); the target is a median ≥ 1 km. Measured at 2.5M, seed 831576: median 0.42 km at 430 and 0.38 at 340 (p90 1.06,
+max 3.0–3.6). Before the history erosion: 0.14 / 0.15. A named gap: the finish's canyons are a third of Earth's.
 
 ## Performance
 
