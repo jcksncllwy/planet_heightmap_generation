@@ -2630,10 +2630,12 @@ without (`check-geology.mjs` hashes every frame both ways, two seeds).
   fill, and its width depends on the sim mesh (about one cell at 20K). The old single flag read 49-58 % because it added
   these and the belts' own outer cells, a third of its new cells.
 
-**The budget, measured** (20K, 400 Myr; Mkm³; seeds 12345 / 777): booked basin + sea fill 1004 / 1178, cover laid 666 / 858.
-The gap is three things, each measured: river cuts refilled, which never enter `basinFillKm` (122 / 114); wear of fill inside
-a tick (6 / 6); and over-booking in `rivers.js` `trapLoad` (212 / 200): `cutNow[c] -= u` runs before `vol(c, r)`, so `kept`
-is computed on the reduced cut. Laid + those three matches the books to within 0.3 Mkm³.
+**The budget, measured** (20K, 400 Myr; Mkm³; seeds 12345 / 777; lane graded, 2026-11-20): the cover laid less the fill it saw
+worn equals the booked basin + sea fill — 100.76 of 100.76 and 57.01 of 57.01 (laid 182.5 / 137.1, worn 81.7 / 80.1: the history's
+erosion lays fill and takes it back up in later ticks, so `check-geology` judges net against net). The old gap's three parts are
+gone: the river cut and its refill retired with the history's erosion (8b-2), and `trapLoad` books what it lays. A fourth, hidden
+under them, was a double count: orogenic collapse remade a cell keeping its fill but not its cover record, so geology laid the
+kept fill again (`step/orogenic-collapse.js` now keeps the cover fields with the fill).
 
 ## Rock at the finish: k_rock (2026-10-31, branch litho, L2)
 
