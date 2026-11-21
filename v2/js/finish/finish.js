@@ -354,6 +354,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         Dry.dropReleased(ocean0, worldOcean);
         const { outflow, ...erodeStats } = ER;
         stats.erode = erodeStats;
+        observe?.('erosion outflow', mesh, C.z, lowOcean, null, outflow);   // (a tool's look at where the rivers' load leaves the land)
         lap('erosion');
         // (one flood at today's sea over what the erosion left: the lowstand's valleys it reaches are the rias; then the rivers
         // fill them from their heads through the transgression and the highstand — finish-erode.js bayheadFill — and the sea

@@ -678,7 +678,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         tStart += L.timeMyr;
         o.observe?.(`rung ${lm.numCells} end`, lm, f.z, f.ocean);
         if (fine) outflow = r.outflow ?? null;
-        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
+        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, toSeaKm3: Math.round(r.toSeaKm3 ?? NaN), seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
         delta = new Float32Array(lm.numCells);
         for (let c = 0; c < lm.numCells; c++) delta[c] = f.z[c] - start[c];
         prev = lm; prevZ = f.z;
