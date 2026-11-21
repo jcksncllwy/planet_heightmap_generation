@@ -27,7 +27,7 @@
 // absorbed (craton never: a scrap with craton is a collision too). A plate that has just received a piece is
 // not itself tidied again in the same pass (the piece is not joined to it until the next resolve).
 
-import { mergeFloorRock } from '../step/floor-rock.js';
+import { mergeFloorRock, buriedFloorKm } from '../step/floor-rock.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { EventKind } from '../model/world.js';
 import { hopsFrom } from '../../core/mesh-bfs.js';
@@ -246,7 +246,9 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
         // movedLostKm3)
         const before = cellRockKm3(world, F, c) + (q >= 0 ? cellRockKm3(world, T, q) : 0);
         if (q >= 0 && (land || !T.mask[q])) {
+            const buried = buriedFloorKm(T, q, mesh.cellAreaKm2);                      // (the host's floor under it: into its column)
             T.copyFrom(q, F, c);
+            if (T.type[q] !== CrustType.OCEAN) T.rootKm[q] += buried;
             if (land) T.flags[q] &= ~CrustFlag.TRENCH;
             moved++;
         } else if (q >= 0 && T.mask[q]) mergeFloorRock(world, T, q, F, c);           // (dropped onto crust it has: the rivers' rock on it stays)

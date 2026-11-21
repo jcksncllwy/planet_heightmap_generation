@@ -11,6 +11,7 @@ import { giveToBackground } from './tidy-plates.js';
 import { EventKind } from '../model/world.js';
 import { bookRock } from '../rock-book.js';
 import { cellRockKm3 } from '../step/crust-ledger.js';
+import { buriedFloorKm } from '../step/floor-rock.js';
 
 /** @returns {number} arc cells collapsed onto coasts this step */
 export function collapseArcs(world) {
@@ -111,15 +112,16 @@ function collapseChain(world, plate, background, chain, dist, coastCell, parent)
         ring = next;
     }
     // land the arc on the coast (read every source before writing, since sources and destinations overlap)
-    // (the rock book, arcCollapseKm3: the cells it rewrites, sources and landings, after less before — the floor sediment a
-    // landing arc buries; the arc cell left behind is given back below, and its loss booked there: rock-book.js)
+    // (the rock book, arcCollapseKm3: the cells it rewrites, sources and landings, after less before — ≈ 0: the floor a landing
+    // arc buries goes into its column; the arc cell left behind is given back below, and its loss booked there: rock-book.js)
     const touched = new Set([...landed.keys(), ...landed.values()]);
     let rockKm3 = 0;
     for (const c of touched) rockKm3 -= cellRockKm3(world, crust, c);
-    const moved = [...landed].map(([dest, a]) => [dest, crust.snapshot(a)]);
+    const moved = [...landed].map(([dest, a]) => [dest, crust.snapshot(a), buriedFloorKm(crust, dest, mesh.cellAreaKm2)]);   // (the floor a landing buries: into its column)
     for (const [dest, a] of landed) { giveBack.delete(dest); if (!landed.has(a)) giveBack.add(a); }
-    for (const [dest, snap] of moved) {
+    for (const [dest, snap, buried] of moved) {
         crust.restore(dest, snap);
+        crust.rootKm[dest] += buried;
         crust.slabKm[dest] = 0; crust.wingKm[dest] = 0;                                  // (it is land now, no trench)
         crust.flags[dest] = (crust.flags[dest] & ~(CrustFlag.TRENCH | CrustFlag.APRON)) | CrustFlag.SUTURE;
     }

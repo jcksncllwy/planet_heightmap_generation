@@ -7,7 +7,7 @@
 // fore-arc with it: the trench-flagged ocean right in front of it moves to the host too, flags and
 // all, so the trench line is continuous and its new polarity holds from the first step.
 
-import { mergeFloorRock } from '../step/floor-rock.js';
+import { mergeFloorRock, buriedFloorKm } from '../step/floor-rock.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { spreadBelt, beltWidthKm, OrogenyType, BeltSide } from '../step/orogeny.js';
 import { closeSeasBetween } from './merge-plates.js';
@@ -65,7 +65,9 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
         }
         const before = cellRockKm3(world, D, c) + cellRockKm3(world, H, q);   // (the rock book: what the move loses, rock-book.js movedLostKm3)
         if (origin[q] !== 1 && (land || !H.mask[q])) {                   // the host keeps its own land, and its own crust over the fore-arc
+            const buried = land ? buriedFloorKm(H, q, mesh.cellAreaKm2) : 0;   // (the host's floor under it: into its column)
             H.copyFrom(q, D, c);
+            if (land) H.rootKm[q] += buried;
             if (land) H.flags[q] &= ~CrustFlag.TRENCH;                     // on land the polarity rule re-establishes the trench where it belongs
             if (land) origin[q] = 2;
             if (land) moved++;

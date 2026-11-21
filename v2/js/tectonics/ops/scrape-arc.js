@@ -11,6 +11,7 @@
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { bookRock } from '../rock-book.js';
 import { cellRockKm3 } from '../step/crust-ledger.js';
+import { buriedFloorKm } from '../step/floor-rock.js';
 import { freeCellBeside } from './tidy-plates.js';
 import { keepConsumed } from './thicken.js';
 
@@ -47,7 +48,9 @@ export function scrapeArc(world, host, donor, cells, since = world.time) {
             }
         }
         const before = cellRockKm3(world, D, c) + cellRockKm3(world, H, q);   // (the rock book: what the scrape loses, rock-book.js movedLostKm3)
+        const buried = buriedFloorKm(H, q, cellAreaKm2);                  // (the host's floor under it: into its column)
         H.copyFrom(q, D, c);
+        H.rootKm[q] += buried;
         H.flags[q] = (H.flags[q] & ~CrustFlag.TRENCH) | CrustFlag.SUTURE;   // scraped on: a weak seam, and the trench is re-established outboard by the polarity rule
         moved++;
         bookRock('movedLostKm3', cellRockKm3(world, H, q) - before);

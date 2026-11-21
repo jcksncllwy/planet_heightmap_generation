@@ -38,6 +38,18 @@ export function bookSubductedFloorRock(world, crust, c, over = null) {
     if (over) creditPrism(world, over, (rise + fill) * (1 - down));
 }
 
+/**
+ * The sediment on ocean cell `c` of `crust` (km, as a column over the cell: the rivers' rise and shelf rock, a sea's and a
+ * basin's fill, worn rock not yet carried), 0 on any other cell. Land written over an ocean cell (a moved piece, a docking
+ * arc or terrane, an arc collapsing onto its coast) buries it: the caller adds this to the new land column's rootKm, as
+ * CrustRaster.foldSeaFill does for a cell made land in place, so the strata stay in the column instead of leaving the books
+ * (lane contarea (2): ~0.05 km³/yr was overwritten).
+ */
+export function buriedFloorKm(crust, c, cellAreaKm2) {
+    if (!(c >= 0) || !crust.mask[c] || crust.type[c] !== CrustType.OCEAN) return 0;
+    return (crust.riseKm3[c] + crust.shelfKm3[c]) / cellAreaKm2 + crust.seaFillKm[c] + crust.basinFillKm[c] + crust.wornKm[c];
+}
+
 /** Cell `c` of `from` is dropped where `to` already has crust at `q`: its rock goes onto `q` (as rise rock). */
 export function mergeFloorRock(world, to, q, from, c) {
     const v = floorRockKm3(from, c, world.mesh.cellAreaKm2);

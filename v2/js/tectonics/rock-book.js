@@ -23,7 +23,7 @@
 //   arcRecycledKm3  a heavy arc going down a trench, or with its slab at a collision (step/resolve.js, step/collision.js),
 //                   less arcScrapedKm3: its light upper crust scraped onto the upper plate's prism (collision.js sinkArc;
 //                   it returns as prismAccretedKm3 when the prism is laid)
-//   arcCollapseKm3  an arc landing on its coast: the floor sediment it lands on (ops/collapse-arc.js)
+//   arcCollapseKm3  an arc landing on its coast: ≈ 0, the floor sediment it lands on goes into its column (ops/collapse-arc.js)
 //   collisionConsumedKm3  rock a collision takes off the map — the lower plate's edge underthrust, a weld's overlap and
 //                   the sea it seals, an arriving arc or a moved piece's land with no room beside it on its host (ops/scrape-arc.js,
 //                   ops/tidy-plates.js transferCells, ops/accrete-terrane.js); collisionKeptKm3 what keepConsumed lays back as
@@ -32,7 +32,7 @@
 //                   its belt's root: their sum is the unplaced (normally 0)
 //   collapseNetKm3  orogenicCollapse's rock change (≈ 0: a quiet belt's root moved into the continental cell it makes on its
 //                   coast, step/orogenic-collapse.js; the sea floor's sediment stays on the new cell)
-//   movedLostKm3    a piece moved to another plate: the host's floor sediment it buries (ops/tidy-plates.js transferCells,
+//   movedLostKm3    a piece moved to another plate: ≈ 0 (the host's floor sediment it buries goes into its column, floor-rock.js buriedFloorKm; ops/tidy-plates.js transferCells,
 //                   ops/scrape-arc.js, ops/accrete-terrane.js); land with no room on its host is consumed (collisionConsumedKm3)
 //   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them
 //                   (ops/tidy-plates.js giveToBackground)
