@@ -234,7 +234,10 @@ const KERNELS = {
     // diffusivity K(d) = K0 down to wave base and falling off below it as e^(−(d − wb)/wb), d the water's depth at the edge
     // (Kaufman et al. 1991; finish-erode.js). Each edge's exchange is the same number both ways (its depth and length are
     // symmetric in the pair), so what one cell gives its neighbour takes: the sea's sediment is conserved. A shore is a wall ──
-    marine: { b: { adjOffset: 'u', adjList: 'u', xyz: 'f', seaF: 'u', mA: 'f', mB: 'f+' }, body: `
+    // One stage of RKL1 super-time-stepping (Meyer, Balsara & Aslam 2012, MNRAS 422): Y_j = μ Y_{j−1} + ν Y_{j−2} + μ̃ dt·L(Y_{j−1}),
+    // μ + ν = 1 and L in flux form, so every stage conserves the sea's sediment as the plain explicit step does, and s stages
+    // span (s² + s)/2 of its stable steps: ~90 stages, not ~3800, at 2.5M (cur: μ, ν, μ̃ of this stage)
+    marine: { b: { adjOffset: 'u', adjList: 'u', xyz: 'f', seaF: 'u', cur: 'f', mA: 'f', mP: 'f', mB: 'f+' }, body: `
         let zc = mA[c]; let pc = vec3f(xyz[3u * c], xyz[3u * c + 1u], xyz[3u * c + 2u]); var acc = 0.0;
         for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
             let y = adjList[j];
@@ -243,7 +246,7 @@ const KERNELS = {
             let depth = U_.sea - 0.5 * (zc + zy);
             acc += (2.0 / (3.0 * d * d)) * U_.Kd * exp(-max(0.0, depth - U_.wb) / U_.wb) * (zy - zc);
         }
-        mB[c] = zc + acc;` },
+        mB[c] = cur[0] * zc + cur[1] * mP[c] + cur[2] * acc;` },
     exportCells: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+' }, index: 'i', body: `
         let v = cells[c];
         exp[i] = Out(v.lid, v.e, v.inlet, trap[c], v.q, recv[c], v.gross, i);` },
@@ -389,9 +392,12 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const MAR = !!P.marine && P.marineK > 0 && P.marineWaveBaseKm > 0;
     let marSub = 0, marKd = 0;
     if (MAR) {
-        mk('seaF', 4 * n); mk('seaList', 4 * n); mk('mB', 4 * n);
+        mk('seaF', 4 * n); mk('seaList', 4 * n); mk('mB', 4 * n); mk('mC', 4 * n); mk('cur', 16);
         const { dMin, degMax } = edgeFacts(mesh), most = 0.5 * 3 * dMin * dMin / (2 * degMax * P.marineK);
-        marSub = 2 * Math.ceil(dt / most / 2); marKd = P.marineK * dt / marSub;
+        marSub = Math.max(1, Math.ceil((Math.sqrt(1 + 8 * dt / most) - 1) / 2)); marKd = P.marineK * dt;     // ((s² + s)/2 ≥ dt / most)
+        const st = new Float32Array(4 * marSub), w1 = 2 / (marSub * marSub + marSub);
+        for (let j = 1; j <= marSub; j++) { const mu = j === 1 ? 1 : (2 * j - 1) / j, nu = j === 1 ? 0 : -(j - 1) / j; st.set([mu, nu, mu * w1, 0], 4 * (j - 1)); }
+        up('stc', st);
     }
     mk('isOut', 4 * n); mk('lvl', 4 * n);
     mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1));
@@ -416,7 +422,9 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
     const SL = { list: 0, roots: 1, flats: 2, all: 3, sea: 4 };
     const groupsKey = `${DIFF}|${(P.hillD ?? 0) > 0}|${MAR}`, G = pool?.groups(groupsKey, P_) ?? {
-        ...(MAR ? { marAB: group('marine', 'seaList', { mA: 'z', mB: 'mB' }), marBA: group('marine', 'seaList', { mA: 'mB', mB: 'z' }) } : {}),
+        // (RKL's three rotating fields, z = X0, mB = X1, mC = X2: the first stage X0 → X1, then (A, P → out) by j mod 3)
+        ...(MAR ? { mar1: group('marine', 'seaList', { mA: 'z', mP: 'z', mB: 'mB' }), mar2: group('marine', 'seaList', { mA: 'mB', mP: 'z', mB: 'mC' }),
+            mar0: group('marine', 'seaList', { mA: 'mC', mP: 'mB', mB: 'z' }), mar4: group('marine', 'seaList', { mA: 'z', mP: 'mC', mB: 'mB' }) } : {}),
         ...(DIFF ? { edgeCond: group('edgeCond', 'list'), jacAB: group('jacobi', 'list'), jacBA: group('jacobi', 'list', { dA: 'dB', dB: 'dA' }) } : {}),
         outletA: group('outletA', 'all'), outletB: group('outletB', 'all'),
         copyZ: group('copyZ', 'list'), descend: group('descend', 'list'), jumpAB: group('jump', 'list'), jumpBA: group('jump', 'list', { ptrA: 'ptrB', ptrB: 'ptrA' }), findRoots: group('findRoots', 'list'), label: group('label', 'list'),
@@ -525,12 +533,15 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         seaIn.fill(0);
         put('z', z);
         const e = device.createCommandEncoder();
-        e.copyBufferToBuffer(B.z, 0, B.mB, 0, 4 * n);
-        const p = e.beginComputePass();
-        for (let i = 0; i < marSub; i++) run(p, i % 2 ? G.marBA : G.marAB, SL.sea, seaLen);
-        p.end();
+        e.copyBufferToBuffer(B.z, 0, B.mB, 0, 4 * n); e.copyBufferToBuffer(B.z, 0, B.mC, 0, 4 * n);
+        for (let j = 1; j <= marSub; j++) {
+            e.copyBufferToBuffer(B.stc, 16 * (j - 1), B.cur, 0, 16);
+            const p = e.beginComputePass();
+            run(p, j === 1 ? G.mar1 : j % 3 === 2 ? G.mar2 : j % 3 === 0 ? G.mar0 : G.mar4, SL.sea, seaLen);
+            p.end();
+        }
         device.queue.submit([e.finish()]);
-        z.set(await readBack(device, B.z));
+        z.set(await readBack(device, marSub % 3 === 0 ? B.z : marSub % 3 === 1 ? B.mB : B.mC));
         let after = 0;
         for (let c = 0; c < n; c++) if (ocean[c]) after += z[c];
         R.marineKm3 += laid; R.marineDriftKm3 += (after - before) * a;
