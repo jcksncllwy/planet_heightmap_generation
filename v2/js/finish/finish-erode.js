@@ -57,7 +57,8 @@ export const ERODE = {
     polishG: 1,                 // …with this deposition
     showKm2: 1600,              // the census's least lake (two cells at 640K: finish-config lakeMinKm2's reach)
     gpu: true,                  // on the GPU where there is one (gpu/erode-gpu.js; a browser's navigator.gpu, or Dawn under the tools: finish.js)…
-    gpuFloodCells: 500000,      // …and closed basins' flood with it from this many cells: below them, it costs more than it saves (gpu-report.md)
+    gpuFloodCells: 0,           // …and closed basins' flood with it from this many cells: 0, every size (lane gpuerode: at 160K it saves ~30 % of the judges' time
+                                // now the network is resident; it was 500000 when it cost more than it saved, gpu-report.md)
     hillD: 0,                   // GPU only: the hillslopes' and landslides' diffusivity, km²/Myr, as a stream-power term k_h·A^−0.6 (k_h = D/1.4: erode-gpu.js)
     diffD: 0,                   // GPU only: nonlinear threshold diffusion's D, km²/Myr (Roering et al. 1999; 0.01 is a soil's), 0: none…
     diffSc: 1.25,               // …its critical slope…
