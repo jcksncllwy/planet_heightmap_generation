@@ -68,6 +68,20 @@ export class Plate {
         this.isOceanBorn = false;                 // carved out of the passive ocean when a trench founded there (ops/birth-ocean-plate.js)
         /** Free-form data a test scene attaches to its plates (prescribed motion, labels…). The engine never reads it. */
         this.scene = {};
+        // Fields the steps add as they first need them, declared here (undefined, so every `??`, `?.` and `> 0` reads as it
+        // did) so that every plate has the same shape: added one by one, in whatever order a plate first met each step, they
+        // gave each plate a hidden class of its own, and every plate.x in the steps' loops went megamorphic (lane histprof)
+        this.netTorque = undefined;               // step/plate-stress.js
+        this.riftStress = undefined;              // field/rift-stress.js
+        this.omegaSlow = undefined;               // simulate.js
+        this._claimMap = undefined;               // step/gather.js
+        this._nearEdge = undefined;               // step/gather.js
+        this.shortenDue = undefined;              // step/andean-shortening.js
+        this.collapseSrc = undefined;             // step/crust-flow.js, step/orogenic-collapse.js
+        this.collapseFaces = undefined;
+        this.collapseDue = undefined;
+        this.arcMatureKm = undefined;             // step/arc-maturation.js
+        this.prismKm3 = undefined;                // step/prism-accretion.js
     }
 
     setQuat(q) {
