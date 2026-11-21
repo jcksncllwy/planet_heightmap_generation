@@ -110,7 +110,7 @@ export function flowCrust(world, dt, H) {
         const m = cells.length;
         if (m < 2) continue;
         const loc = localIndex(mask.length);
-        const K = new Float64Array(m), s = new Float64Array(m), sl = new Float64Array(m);
+        const K = new Float64Array(m), s = new Float64Array(m), sl = new Float64Array(m), hc = new Float64Array(m), kmc = new Float64Array(m);
         for (let i = 0; i < m; i++) {
             const c = cells[i], t = type[c];
             loc[c] = i + 1;
@@ -124,10 +124,29 @@ export function flowCrust(world, dt, H) {
                 h += (start - h) * Math.exp(-Math.max(0, world.time - oroLast[c]) / tau);
             }
             K[i] = kPerKm3 * h * h * h;
+            hc[i] = h; kmc[i] = km;
             sl[i] = C.slope[t];
             s[i] = C.ref[t] + C.slope[t] * rootKm[c] + Math.max(0, upliftKm[c]) + baseKm[c] + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
         }
-        // edges (CSR): the channel's conductance between two cells in series, its harmonic mean (none where either has no channel)
+        // edges (CSR): the channel's conductance between two cells in series, its harmonic mean where both have a channel. At
+        // the channel's FRONT — downhill from a channel, ordinary continent with none of its own (crust too thin or too cold to
+        // reach crustChannelC) — the series law would make that face a wall, and a collision root ringed by such crust (history
+        // erosion grades ordinary continent thin: graded/attribution.md) could only stack: 300 → 6469 km on graded's founder.
+        // A hot channel pushed into colder crust carries its heat and makes its own path: the dry front of h³ diffusion,
+        // upwinded as in thin-film and ice-sheet flow (the face takes the upstream thickness: Jarosch, Schoof & Anslow 2013's
+        // mass-conserving flux at an ice margin). The face carries the upstream channel, no thicker than the crust downstream has:
+        // h_face = min(h_up, km_down), K_face = ρgh_face³/12η. Upstream is read from the ground before the step, so both ends
+        // of the face see the same conductance and the system stays symmetric. A craton downstream stays a wall: its thick,
+        // cold lid is a strong block (the steep margin against Sichuan: Clark & Royden 2000), not merely crust too thin for a
+        // channel.
+        const faceA = (i, j) => {
+            if (K[i] > 0 && K[j] > 0) return coef * 2 * K[i] * K[j] / (K[i] + K[j]);
+            if (s[i] === s[j]) return 0;
+            const up = s[i] > s[j] ? i : j, dn = up === i ? j : i;
+            if (!(K[up] > 0) || type[cells[dn]] !== CrustType.CONTINENT) return 0;
+            const h = Math.min(hc[up], kmc[dn]);
+            return coef * kPerKm3 * h * h * h;
+        };
         const off = new Int32Array(m + 1), nbs = [], as = [];
         // the free edge (config.orogenicCollapse, lane beltthick: step/orogenic-collapse.js): a post-active belt's channel on the
         // coast flows out over its own plate's sea floor toward the ground an ordinary continent stands at, s0 = C.ref (its root
@@ -150,8 +169,8 @@ export function flowCrust(world, dt, H) {
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
                 const nb = adjList[k], j = loc[nb] - 1;
                 if (edge && j < 0 && mask[nb] && type[nb] === CrustType.OCEAN) { sink[i] += coef * K[i]; faces.push(i, nb); any = true; continue; }
-                if (j < 0 || !(K[i] > 0) || !(K[j] > 0)) continue;
-                const a = coef * 2 * K[i] * K[j] / (K[i] + K[j]);
+                if (j < 0) continue;
+                const a = faceA(i, j);
                 if (a > 1e-12) { nbs.push(j); as.push(a); any = true; }
             }
             off[i + 1] = nbs.length;
