@@ -246,6 +246,7 @@ const KERNELS = {
         for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
             let y = adjList[j];
             if (seaF[y] == 0u) { continue; }
+            if (seaF[c] < 2u && seaF[y] < 2u) { continue; }     // (an edge cold at both ends: seaWork's active set)
             let zy = zb[y] + mA[y]; let d = R_EARTH * length(vec3f(xyz[3u * y], xyz[3u * y + 1u], xyz[3u * y + 2u]) - pc);
             let depth = U_.sea - 0.5 * (zc + zy);
             // (and the sediment's failure: a deposit steeper than the continental slope's gradient slides and flows on down it, at any
@@ -376,7 +377,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const marSea = Math.fround(o.marineSeaKm ?? seaLvl);     // (a float32, as the CPU's: finish-erode.js)
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
-    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, marine: 0, marLay: 0, marGpu: 0, marCoast: 0, flood: 0, upload: 0, rebound: 0, release: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
+    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, marine: 0, marLay: 0, marGpu: 0, marWait: 0, marCoast: 0, flood: 0, upload: 0, rebound: 0, release: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
     const U32 = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     const pool = poolFor(device, mesh), buffer = desc => pool ? pool.take(desc) : device.createBuffer(desc);
     const B = {}, mk = (name, bytes) => (B[name] = buffer({ label: name, size: Math.max(4, bytes), usage: U32 }));
@@ -404,14 +405,31 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // (the sea floor's waves, ERODE marine: the sea's cells as a list and a flag, the ping-pong's other half; the explicit step's
     // length kept under its stability bound on this mesh — every cell's exchanges at the shore's K0 summing to at most a half)
     const MAR = !!P.marine && P.marineK > 0 && P.marineWaveBaseKm > 0;
-    let marSub = 0, marKd = 0, zb0 = null;
+    let marSub = 0, marEvery = 1, spanOf = null, zb0 = null, spanNow = 0;
+    const spans = new Map();
     if (MAR) {
         mk('seaF', 4 * n); mk('seaList', 4 * n); mk('mB', 4 * n); mk('mC', 4 * n); mk('cur', 16); mk('mH', 4 * n); up('zb', zb0 = Float32Array.from(z));
         const { dMin, degMax } = edgeFacts(mesh), most = 0.5 * 3 * dMin * dMin / (2 * degMax * P.marineK * (1 + MARINE_FAIL / (1 - 0.99 * 0.99)));
-        marSub = Math.max(1, Math.ceil((Math.sqrt(1 + 8 * dt / most) - 1) / 2)); marKd = P.marineK * dt;     // ((s² + s)/2 ≥ dt / most)
-        const st = new Float32Array(4 * marSub), w1 = 2 / (marSub * marSub + marSub);
-        for (let j = 1; j <= marSub; j++) { const mu = j === 1 ? 1 : (2 * j - 1) / j, nu = j === 1 ? 0 : -(j - 1) / j; st.set([mu, nu, mu * w1, 0], 4 * (j - 1)); }
-        up('stc', st);
+        // (the waves work every marEvery steps — the closed basins' judge's beat — over the span since: their reach in a step is
+        // short of the shelf's width (√(K0·dt) ~40 km at 2.5M), and a span's load waits in seaIn for the delta. RKL's stages grow as the
+        // span's square root, so a span of 5 costs ~half the GPU work of 5 single steps and a fifth of the lay, the books and the coast)
+        marEvery = Math.max(1, P.marineEvery ?? P.closedEvery ?? 1);
+        spanOf = steps => {
+            let f = spans.get(steps);
+            if (f) return f;
+            const span = steps * dt, sub = Math.max(1, Math.ceil((Math.sqrt(1 + 8 * span / most) - 1) / 2)), Kd = P.marineK * span;     // ((s² + s)/2 ≥ span / most)
+            // (the waves' reach: below this depth an edge's exchange in a span is under a thousandth of its cells' difference on
+            // this mesh's shortest edge, K0·e^(−(d − wb)/wb)·span < 10⁻³·dMin² — the deep floor the waves leave as it is. seaWork works
+            // only the cells above it or holding the sea's sediment (they or a neighbour 'hot'), and an edge cold at both ends not at
+            // all: what one side of an edge gives the other takes, so the books close as on the whole ocean)
+            const deep = P.marineWaveBaseKm * (1 + Math.log(Math.max(1, Kd / (1e-3 * dMin * dMin))));
+            const st = new Float32Array(4 * sub), w1 = 2 / (sub * sub + sub);
+            for (let j = 1; j <= sub; j++) { const mu = j === 1 ? 1 : (2 * j - 1) / j, nu = j === 1 ? 0 : -(j - 1) / j; st.set([mu, nu, mu * w1, 0], 4 * (j - 1)); }
+            spans.set(steps, f = { sub, Kd, deep, st });
+            return f;
+        };
+        marSub = spanOf(marEvery).sub;
+        mk('stc', 16 * marSub);
     }
     mk('isOut', 4 * n); mk('lvl', 4 * n);
     mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1));
@@ -421,7 +439,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const uniform = buffer({ label: 'uniform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const ub = new ArrayBuffer(64), uv = new DataView(ub);
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
-    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25, marKd, P.marineWaveBaseKm ?? 1, marSea, P.marineFailSlope ?? 0.05, MARINE_FAIL].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
+    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25, 0, P.marineWaveBaseKm ?? 1, marSea, P.marineFailSlope ?? 0.05, MARINE_FAIL].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
     const stage = buffer({ label: 'stage', size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = buffer({ label: 'count', size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);
@@ -607,9 +625,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // before the waves could spread it, an island the rivers then cut (marine2, 2026-11-21: 3.8 km with no moving coast, dry land
     // below the sea ×7 with it). Above the water a delta's top is the river's, not the sea's. The walk crosses the delta's own
     // plain, filled to the sea's level, as the river does to the open sea; never a closed basin's ground)
-    const seaIn = MAR ? new Float64Array(n) : null, spillIn = MAR ? new Float64Array(n) : null;
-    const seaWork = async () => {
-        const t = performance.now();
+    const seaIn = MAR ? new Float64Array(n) : null, spillIn = MAR ? new Float64Array(n) : null, actList = MAR ? new Uint32Array(n) : null;
+    const seaWork = async steps => {
+        const t = performance.now(), F = spanOf(steps);
+        if (steps !== spanNow) { device.queue.writeBuffer(B.stc, 0, F.st); device.queue.writeBuffer(uniform, 8 + 4 * 9, Float32Array.of(F.Kd)); spanNow = steps; }
         let laid = 0;
         const mouths = [], load = [];
         for (let i = 0; i < seaLen; i++) { const c = seaList[i]; if (seaIn[c] > 0) { laid += seaIn[c]; mouths.push(c); load.push(seaIn[c] / a); } }
@@ -633,19 +652,33 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         const h = new Float32Array(n);
         for (let c = 0; c < n; c++) h[c] = z[c] - zb0[c];
         put('mH', h);
+        // (the active set: hot cells — above the waves' reach, or holding sediment the sea laid (h > 0, the failure's own test) — and
+        // their sea neighbours; seaF 2 hot, 1 cold sea)
+        for (let i = 0; i < seaLen; i++) { const c = seaList[i]; seaF[c] = marSea - z[c] < F.deep || h[c] > 0 ? 2 : 1; }
+        let actLen = 0;
+        for (let i = 0; i < seaLen; i++) {
+            const c = seaList[i];
+            let on = seaF[c] === 2;
+            for (let j = adjOffset[c]; !on && j < adjOffset[c + 1]; j++) on = seaF[adjList[j]] === 2;
+            if (on) actList[actLen++] = c;
+        }
+        put('seaF', seaF); device.queue.writeBuffer(B.seaList, 0, actList.buffer, 0, 4 * Math.max(1, actLen)); setRange(SL.sea, 0, actLen);
+        R.marineActive += actLen / Math.max(1, seaLen);
         const e = device.createCommandEncoder();
         e.copyBufferToBuffer(B.mH, 0, B.mB, 0, 4 * n); e.copyBufferToBuffer(B.mH, 0, B.mC, 0, 4 * n);
-        for (let j = 1; j <= marSub; j++) {
+        for (let j = 1; j <= F.sub; j++) {
             e.copyBufferToBuffer(B.stc, 16 * (j - 1), B.cur, 0, 16);
             const p = e.beginComputePass();
-            run(p, j === 1 ? G.mar1 : j % 3 === 2 ? G.mar2 : j % 3 === 0 ? G.mar0 : G.mar4, SL.sea, seaLen);
+            run(p, j === 1 ? G.mar1 : j % 3 === 2 ? G.mar2 : j % 3 === 0 ? G.mar0 : G.mar4, SL.sea, actLen);
             p.end();
         }
         device.queue.submit([e.finish()]);
-        const hN = await readBack(device, marSub % 3 === 0 ? B.mH : marSub % 3 === 1 ? B.mB : B.mC);
+        const tW = performance.now();
+        const hN = await readBack(device, F.sub % 3 === 0 ? B.mH : F.sub % 3 === 1 ? B.mB : B.mC);
+        ms.marWait += performance.now() - tW;
         let after = 0;
         for (let c = 0; c < n; c++) if (ocean[c]) { after += hN[c] - h[c]; z[c] = zb0[c] + hN[c]; }
-        R.marineKm3 += laid; R.marineDriftKm3 += after * a;
+        R.marineKm3 += laid; R.marineDriftKm3 += after * a; R.marineSteps++;
         const tC = performance.now(); ms.marGpu += tC - tL;
         moveCoast();
         ms.marCoast += performance.now() - tC;
@@ -787,7 +820,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         await gpuWait(device, device.queue.onSubmittedWorkDone(), 'erosion: the sweeps');
         ms.sweep += performance.now() - t0;
     };
-    const R = { route: [], toSea: 0, inClosed: 0, marineKm3: 0, marineDriftKm3: 0, coastMoved: 0, marineSpiltKm3: 0, pocketCells: 0 }, recAt = new Uint32Array(n), gsum = await sumPartials(device, B.gsum, n);
+    const R = { route: [], toSea: 0, inClosed: 0, marineKm3: 0, marineDriftKm3: 0, coastMoved: 0, marineSpiltKm3: 0, pocketCells: 0, marineActive: 0, marineSteps: 0 }, recAt = new Uint32Array(n), gsum = await sumPartials(device, B.gsum, n);
     const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);       // (the last step's load out, km³/Myr, and its receiver: finish-erode.js bayheadFill)
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
     const curve = [];
@@ -801,6 +834,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         const settleNow = async at => { put('z', z); reboundKm3 += await settle.settle(at); z.set(await readBack(device, B.z)); };
         await gpuWait(device, device.queue.onSubmittedWorkDone(), 'erosion: setting up');
         ms.setup = performance.now() - t00;
+        let marDone = 0;
         for (let s = 0; s < P.steps; s++) {
             let t = performance.now();
             let zUp = false;
@@ -843,7 +877,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
                 Bn.load = 0;
             });
             ms.lay += performance.now() - t;
-            if (MAR) await seaWork();
+            if (MAR && ((s + 1) % marEvery === 0 || s === P.steps - 1)) { await seaWork(s + 1 - marDone); marDone = s + 1; }
             // (the census erodeLandscape keeps. What was eroded went to the sea, to a closed basin, or stayed: the three add up)
             let shown = 0, shownKm2 = 0, one = 0;
             for (const v of lakesCells.values()) { const km2 = v.cells.length * a; if (km2 >= P.showKm2) { shown++; shownKm2 += km2; } if (v.cells.length === 1) one++; }
@@ -865,5 +899,5 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3), overRimKm3PerYr: perYr(overKm3) };
-    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, ...undone, toSeaKm3: R.toSea, closedKm3: R.inClosed, ...(MAR ? { marineKm3: R.marineKm3, marineDriftKm3: R.marineDriftKm3, marineSub: marSub, coastMovedCells: R.coastMoved, marineSpiltKm3: R.marineSpiltKm3, pocketCells: R.pocketCells } : {}), outflow: { q: outQ, recv: outR } };
+    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, ...undone, toSeaKm3: R.toSea, closedKm3: R.inClosed, ...(MAR ? { marineKm3: R.marineKm3, marineDriftKm3: R.marineDriftKm3, marineSub: marSub, coastMovedCells: R.coastMoved, marineSpiltKm3: R.marineSpiltKm3, pocketCells: R.pocketCells, marineActive: +(R.marineActive / Math.max(1, R.marineSteps)).toFixed(3) } : {}), outflow: { q: outQ, recv: outR } };
 }
