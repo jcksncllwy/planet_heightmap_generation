@@ -94,10 +94,12 @@ let nearScratch = null;
 /**
  * (config.collisionVolume, lane crust 1b) Crust a collision took out of the map — `volKm` cell-km, underthrust or absorbed
  * at a weld — goes into the upper plate's crust from `seeds` outward (ops/thicken.js), less collisionLostShare of it,
- * which goes back to the mantle. Booked in world.budget (cell-km): collisionKeptKm, collisionLostKm, collisionUnplacedKm.
+ * which goes back to the mantle. Booked in world.budget (cell-km) under `book` ('collision'; 'dock' for land the ops dock with no
+ * room beside it: ops/scrape-arc.js, tidy-plates.js, accrete-terrane.js): <book>KeptKm, <book>LostKm, <book>UnplacedKm, and
+ * the rock book <book>KeptKm3.
  * `since` (Myr): the collision's start — its belt is every collision-belt cell it has stamped since.
  */
-export function keepConsumed(world, U, seeds, volKm, since) {
+export function keepConsumed(world, U, seeds, volKm, since, book = 'collision') {
     const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
     // across the collision's belt on the upper plate — every cell it has stamped since it began, not only this step's: the
     // deforming zone is the belt the convergence built (England & Houseman 1986), and the weld, which absorbs the most, comes
@@ -119,9 +121,9 @@ export function keepConsumed(world, U, seeds, volKm, since) {
     }
     const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
     const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm);
-    bookRock('collisionKeptKm3', (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
-    budget.collisionKeptKm = (budget.collisionKeptKm ?? 0) + kept - left;
-    budget.collisionLostKm = (budget.collisionLostKm ?? 0) + lost;
-    budget.collisionUnplacedKm = (budget.collisionUnplacedKm ?? 0) + left;
+    bookRock(`${book}KeptKm3`, (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
+    budget[`${book}KeptKm`] = (budget[`${book}KeptKm`] ?? 0) + kept - left;
+    budget[`${book}LostKm`] = (budget[`${book}LostKm`] ?? 0) + lost;
+    budget[`${book}UnplacedKm`] = (budget[`${book}UnplacedKm`] ?? 0) + left;
     U.dirty = true;
 }

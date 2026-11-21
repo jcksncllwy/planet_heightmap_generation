@@ -236,7 +236,7 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
             if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, isHostLand);
             if (q < 0) {                                                                 // no room: consumed into the host's land
                 const rock = cellRockKm3(world, F, c);
-                bookRock('collisionConsumedKm3', -rock);                                 // (keepConsumed books back what is kept)
+                bookRock('dockConsumedKm3', -rock);                                 // (keepConsumed books back what is kept)
                 consumedKm += rock / mesh.cellAreaKm2; contact.push(at);
                 F.remove(c);
                 continue;
@@ -255,7 +255,7 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
         bookRock('movedLostKm3', (q >= 0 ? cellRockKm3(world, T, q) : 0) - before);
         F.remove(c);
     }
-    if (consumedKm > 0) keepConsumed(world, to, [...new Set(contact)], consumedKm, world.time);
+    if (consumedKm > 0) keepConsumed(world, to, [...new Set(contact)], consumedKm, world.time, 'dock');
     from.markReshaped(); to.markReshaped();
     from.refreshExtent(xyz); to.refreshExtent(xyz);
     return moved;

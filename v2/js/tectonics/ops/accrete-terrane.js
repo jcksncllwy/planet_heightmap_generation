@@ -59,7 +59,7 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
             q = freeCellBeside(host, mesh, q, P, n => origin[n] !== 0);
             if (q < 0) {                                                  // no room: consumed into the host's land (keepConsumed, below)
                 const rock = cellRockKm3(world, D, c);
-                absorbed++; bookRock('collisionConsumedKm3', -rock); consumedKm += rock / mesh.cellAreaKm2; contact.push(at);
+                absorbed++; bookRock('dockConsumedKm3', -rock); consumedKm += rock / mesh.cellAreaKm2; contact.push(at);
                 D.remove(c); continue;
             }
         }
@@ -78,7 +78,7 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     donor.markReshaped();
     host.markReshaped();
     if (D.count === 0) { donor.alive = false; donor.omega = [0, 0, 0]; donor.dynamics = null; }
-    const keep = () => { if (consumedKm > 0) keepConsumed(world, host, [...new Set(contact)], consumedKm, time); };   // (after the belt, which it thickens)
+    const keep = () => { if (consumedKm > 0) keepConsumed(world, host, [...new Set(contact)], consumedKm, time, 'dock'); };   // (after the belt, which it thickens)
     if (terrane.length * mesh.cellAreaKm2 < config.terraneMinAreaKm2) { keep(); host.refreshExtent(xyz); donor.refreshExtent(xyz); return { cells: moved, sealed: 0, absorbed, scrap: true }; }
 
     // the strait between terrane and host closes; the seam is a suture; a short belt on both sides

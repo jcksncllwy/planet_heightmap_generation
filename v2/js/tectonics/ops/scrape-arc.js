@@ -41,7 +41,7 @@ export function scrapeArc(world, host, donor, cells, since = world.time) {
             q = freeCellBeside(host, mesh, at, P, isHostLand);
             if (q < 0) {                                                   // no room: consumed into the host's land
                 const rock = cellRockKm3(world, D, c);
-                bookRock('collisionConsumedKm3', -rock);                   // (all its rock off the map: keepConsumed books back what is kept)
+                bookRock('dockConsumedKm3', -rock);                   // (all its rock off the map: keepConsumed books back what is kept)
                 consumedKm += rock / cellAreaKm2; contact.push(at); absorbed++;
                 D.remove(c);
                 continue;
@@ -56,7 +56,7 @@ export function scrapeArc(world, host, donor, cells, since = world.time) {
         bookRock('movedLostKm3', cellRockKm3(world, H, q) - before);
         D.remove(c);
     }
-    if (consumedKm > 0) keepConsumed(world, host, [...new Set(contact)], consumedKm, since);
+    if (consumedKm > 0) keepConsumed(world, host, [...new Set(contact)], consumedKm, since, 'dock');
     donor.markReshaped(); host.markReshaped();
     if (D.count === 0) { donor.alive = false; donor.omega = [0, 0, 0]; donor.dynamics = null; }
     host.refreshExtent(xyz); donor.refreshExtent(xyz);
