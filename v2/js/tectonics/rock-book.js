@@ -32,10 +32,11 @@
 //                   its belt's root: their sum is the unplaced (normally 0)
 //   collapseNetKm3  orogenicCollapse's rock change (≈ 0: a quiet belt's root moved into the continental cell it makes on its
 //                   coast, step/orogenic-collapse.js; the sea floor's sediment stays on the new cell)
-//   movedLostKm3    a piece moved to another plate: ≈ 0 (the host's floor sediment it buries goes into its column, floor-rock.js buriedFloorKm; ops/tidy-plates.js transferCells,
-//                   ops/scrape-arc.js, ops/accrete-terrane.js); land with no room on its host is consumed (collisionConsumedKm3)
+//   movedLostKm3    a piece moved to another plate: ≈ 0 — the host's floor sediment it buries goes into its column
+//                   (step/floor-rock.js buriedFloorKm), land with no room on its host is consumed (collisionConsumedKm3)
+//                   (ops/tidy-plates.js transferCells, ops/scrape-arc.js, ops/accrete-terrane.js)
 //   givenBackLostKm3  cells handed back to the passive ocean: their crust, the rivers' rock on them going with them
-//                   (ops/tidy-plates.js giveToBackground)
+//                   (ops/tidy-plates.js giveToBackground; ≈ 0: what is handed back is ocean, an arc collapse's source bare)
 //   erodeClampedKm3 sediment the history's erosion laid where the rivers' own network after it brought no load to take it from
 //                   (step/rivers.js: the GPU routes the erosion, the rivers route again on the eroded ground)
 //   arcAgeingKm3    a hand-laid arc's measure thickening with its age: a term of the measure, booked only while the

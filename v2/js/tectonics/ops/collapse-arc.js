@@ -112,8 +112,10 @@ function collapseChain(world, plate, background, chain, dist, coastCell, parent)
         ring = next;
     }
     // land the arc on the coast (read every source before writing, since sources and destinations overlap)
-    // (the rock book, arcCollapseKm3: the cells it rewrites, sources and landings, after less before — ≈ 0: the floor a landing
-    // arc buries goes into its column; the arc cell left behind is given back below, and its loss booked there: rock-book.js)
+    // (the rock book, arcCollapseKm3: the cells it rewrites, sources and landings, after less before — ≈ 0: the arc moves, the
+    // floor a landing arc buries goes into its column, and the cell it left is bare floor before it is given back below. It
+    // was given back still carrying the arc it had been copied from, booked givenBackLostKm3 against this book's gain:
+    // 0.23 km³/yr of a move shown as a loss, lane contarea (2). rock-book.js)
     const touched = new Set([...landed.keys(), ...landed.values()]);
     let rockKm3 = 0;
     for (const c of touched) rockKm3 -= cellRockKm3(world, crust, c);
@@ -125,6 +127,7 @@ function collapseChain(world, plate, background, chain, dist, coastCell, parent)
         crust.slabKm[dest] = 0; crust.wingKm[dest] = 0;                                  // (it is land now, no trench)
         crust.flags[dest] = (crust.flags[dest] & ~(CrustFlag.TRENCH | CrustFlag.APRON)) | CrustFlag.SUTURE;
     }
+    for (const [dest, a] of landed) if (!landed.has(a) && a !== dest) crust.create(a, CrustType.OCEAN, crust.formedAt[a]);   // (the arc left: bare floor)
     for (const c of touched) rockKm3 += cellRockKm3(world, crust, c);
     bookRock('arcCollapseKm3', rockKm3);
     // give the fore-arc back to the open ocean in front of the trench
