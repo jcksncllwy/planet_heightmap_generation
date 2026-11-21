@@ -156,6 +156,23 @@ export class CrustRaster {
         this.terrane[cell] = terrane;
     }
 
+    /**
+     * Cell `cell` has just stopped being ocean floor (an arc, a fore-arc island, a rift's or a collapse's continent made in
+     * place): the sediment an enclosed sea laid on that floor (seaFillKm, rock km over the cell) is now part of its column,
+     * folded into its root (rootKm: the column's crust for continent and arc alike — step/crust-ledger.js addCellRock counts
+     * it so, so the rock book sees fill become crust, none made or lost). Left as sea fill it read as rock still under a sea
+     * on crust that stands, and drew as a tower once the terrain drew it water-loaded (marine-run, 831576 at 430 Myr: two
+     * cells with 14 km; lane contarea). seaFillKm is ocean floor's alone.
+     */
+    foldSeaFill(cell) {
+        const f = this.seaFillKm[cell];
+        if (!(f > 0) || this.type[cell] === CrustType.OCEAN) return;
+        this.rootKm[cell] += f; this.seaFillKm[cell] = 0;
+        // (the cover it laid stays laid — the strata are still there, in the column now: step/geology.js reads a fall in a
+        // cell's fill as wear, so what it has fed is lowered with it)
+        this.coverFedKm[cell] = Math.max(0, this.coverFedKm[cell] - f);
+    }
+
     /** Copy every field of `cell` from another raster's `from` cell. */
     copyFrom(cell, other, from) {
         if (!this.mask[cell]) { this.count++; this.version++; }

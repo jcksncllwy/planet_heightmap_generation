@@ -103,6 +103,7 @@ export function accretePrisms(world) {
             const made = cellRockKm3(world, crust, c) - before, cost = made - basement;
             if (cost > plate.prismKm3) { [type[c], crust.formedAt[c], crust.terrane[c], flags[c], crust.arcKm[c]] = was; full = false; break; }   // (the rest waits for more rock)
             plate.prismKm3 -= Math.max(0, cost); accreted += made; here++;
+            crust.foldSeaFill(c);                                  // (an enclosed sea's fill under it: now its column; rock unchanged)
         }
         if (full && plate.prismKm3 > 0) {
             // the fore-arc is laid to the coast: the prism stacks and underplates the land within reach of the trench instead

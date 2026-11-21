@@ -132,7 +132,7 @@ export function growMarginIsles(world, dt) {
             let raisedKm3 = 0;                                       // (the rock book: the prism's rock raised as an island, less the floor's sediment it stands on)
             for (const c of raise) {
                 raisedKm3 -= cellRockKm3(world, crust, c);
-                type[c] = CrustType.ARC; crust.formedAt[c] = time;
+                type[c] = CrustType.ARC; crust.formedAt[c] = time; crust.foldSeaFill(c);
                 raisedKm3 += cellRockKm3(world, crust, c);
                 flags[c] = (flags[c] & ~CrustFlag.APRON) | CrustFlag.MARGIN_ISLE;
                 crust.terrane[c] = plate.marginIsleTerrane;

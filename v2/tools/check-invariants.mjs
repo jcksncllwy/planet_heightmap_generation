@@ -113,6 +113,12 @@ for (const seed of SEEDS) {
     });
     check('land never vanishes: no step loses more than a sliver of it beyond what its welds absorb', worstDrop <= MAX_LAND_DROP_PER_STEP,
         `worst step: ${(100 * worstDrop).toFixed(2)} % of the land at ${worstAt.toFixed(1)} Myr, beyond ${worstAbsorbed} cells its welds booked as absorbed (limit ${100 * MAX_LAND_DROP_PER_STEP} %); ${landOf(world)} land cells at the end`);
+    // (an enclosed sea's fill is ocean floor's: a cell made arc or continent in place folds it into its column —
+    // model/crust.js foldSeaFill; lane contarea, marine-run's 14 km towers at 831576)
+    const fillOnLand = [];
+    for (const p of world.plates) if (p.alive) { const { mask, type, seaFillKm } = p.crust; for (let c = 0; c < mask.length; c++) if (mask[c] && type[c] !== CrustType.OCEAN && seaFillKm[c] > 0) fillOnLand.push(seaFillKm[c]); }
+    check('an enclosed sea\'s fill lies on ocean floor only: no arc or continent cell carries sea fill', fillOnLand.length === 0,
+        fillOnLand.length ? `${fillOnLand.length} cells, up to ${Math.max(...fillOnLand).toFixed(2)} km` : 'none at the end of the history');
     check('a plate that is gone holds no crust (nothing was welded onto a dead plate)', deadWithCrust.length === 0, deadWithCrust.join('; ') || `${world.plates.filter(p => !p.alive).length} plates gone, all empty`);
     const idsPerMyr = (maxTerrane - firstTerrane) / HISTORY_MYR;
     check('terrane ids stay few: crust keeps its id whichever plate carries it', idsPerMyr <= MAX_TERRANE_IDS_PER_MYR,

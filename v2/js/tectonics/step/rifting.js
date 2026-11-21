@@ -266,6 +266,7 @@ export function evolveRiftStages(world) {
                 if (!cr.mask[c] || cr.type[c] !== CrustType.OCEAN || cr.formedAt[c] < st.born) continue;
                 cr.type[c] = CrustType.CONTINENT;
                 cr.rootKm[c] = -crustKm * lost;
+                cr.foldSeaFill(c);
                 cr.riftThin[c] = lost; cr.riftThinAt[c] = time;     // (the stretch record: its crust, a continent's less `lost`)
                 cr.flags[c] |= CrustFlag.RIFT_MARGIN;
                 cr.recordOrogeny(c, OrogenyType.RIFT, 0, time, config.orogenyQuietMyr);
@@ -353,6 +354,7 @@ function stretchConserving(world, st, A, B, C, time, config, cellKm2) {
         const j = take[t], P = fresh[j], c = fresh[j + 1], cr = P.crust;
         cr.type[c] = CrustType.CONTINENT;
         cr.rootKm[c] = each - crustKm;
+        cr.foldSeaFill(c);
         // (the stretch record of crust the opening made: a continent's crust, as formed, thinned to `each` — β = crustKm ÷ each)
         cr.riftThin[c] = Math.max(0, 1 - each / crustKm); cr.riftThinAt[c] = time;
         cr.flags[c] |= CrustFlag.RIFT_MARGIN;

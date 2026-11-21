@@ -196,7 +196,7 @@ export function buildArcs(world, dt = 0) {
         for (const c of born) {
             if (type[c] !== CrustType.OCEAN) continue;
             const { formedAt } = plate.crust, before = cellRockKm3(world, plate.crust, c);
-            type[c] = CrustType.ARC; formedAt[c] = time; plate.crust.terrane[c] = plate.arcTerraneId;
+            type[c] = CrustType.ARC; formedAt[c] = time; plate.crust.terrane[c] = plate.arcTerraneId; plate.crust.foldSeaFill(c);
             plate.crust.arcKm[c] = config.arcBirthKm; plate.crust.arcAt[c] = time;      // (its crust grows while its trench feeds it: above)
             bookRock('arcAddedKm3', cellRockKm3(world, plate.crust, c) - before);          // (its new crust, less the floor's sediment it buries)
             flags[c] &= ~CrustFlag.APRON;

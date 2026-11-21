@@ -69,6 +69,7 @@ export function collapseOrogens(world) {
             const F = crust.fields, keepIdx = ['basinFillKm', 'seaFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm'].map(name => F.indexOf(crust[name]));
             crust.create(c, CrustType.CONTINENT, time, terrane[f.src]);
             for (const i of keepIdx) if (i >= 0) F[i][c] = keep[i];
+            crust.foldSeaFill(c);                                            // (the sea's fill is its column now: model/crust.js)
             rock += cellRockKm3(world, crust, c);
             n++;
             const kind = oroType[f.src];
