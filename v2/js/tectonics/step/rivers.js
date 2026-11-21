@@ -282,15 +282,21 @@ function viewOf(world, view, H) {
     view.time = time; view.owner = owner;
     const pouring = H.waterInventory > 0;          // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm)
     if (pouring && !view.volcType) Object.assign(view, { volcType: new Uint8Array(n), volcKm: new Float32Array(n), volcWornKm: new Float32Array(n), riseKm3: new Float32Array(n) });
+    // (each plate's crust fields fetched once a call, not once a cell: the history asks for this view every step, sea-age.js
+    // seaMaskNow — lane gpuerode M4; the same values copied)
+    const P = plates.map(p => p.crust), field = k => P.map(cr => cr?.[k]);
+    const T = field('type'), FA = field('formedAt'), SF = field('seaFillKm'), FL = field('flags'), RO = field('rootKm'), BA = field('baseKm'), UP = field('upliftKm'), BF = field('basinFillKm'), AK = field('arcKm'), AT = field('arcAt');
+    const VT = pouring ? field('volcType') : null, VK = pouring ? field('volcKm') : null, VW = pouring ? field('volcWornKm') : null, RK = pouring ? field('riseKm3') : null;
+    const { type: vType, formedAt: vFormed, seaFillKm: vSea, flags: vFlags, rootKm: vRoot, baseKm: vBase, upliftKm: vUp, basinFillKm: vBasin, arcKm: vArc, arcAt: vArcAt, mantleHeat: vHeat } = view, heat = world.mantleHeat;
     for (let w = 0; w < n; w++) {
         const o = owner[w];
-        view.mantleHeat[w] = Math.round(255 * world.mantleHeat[w]);
-        if (o < 0) { view.type[w] = CrustType.OCEAN; view.formedAt[w] = -1; view.seaFillKm[w] = 0; continue; }       // (no plate: never land)
-        const crust = plates[o].crust, c = ownerCell[w], type = crust.type[c];
-        view.type[w] = type; view.formedAt[w] = crust.formedAt[c]; view.seaFillKm[w] = crust.seaFillKm[c];
-        view.flags[w] = crust.flags[c]; view.rootKm[w] = crust.rootKm[c]; view.baseKm[w] = crust.baseKm[c]; view.upliftKm[w] = crust.upliftKm[c]; view.basinFillKm[w] = crust.basinFillKm[c];
-        if (type === CrustType.ARC) { view.arcKm[w] = arcCrustKm(crust, c, time, world.config); view.arcAt[w] = crust.arcKm[c] > 0 ? crust.arcAt[c] : time; }
-        if (pouring) { view.volcType[w] = crust.volcType[c]; view.volcKm[w] = crust.volcKm[c]; view.volcWornKm[w] = crust.volcWornKm[c]; view.riseKm3[w] = crust.riseKm3[c]; }
+        vHeat[w] = Math.round(255 * heat[w]);
+        if (o < 0) { vType[w] = CrustType.OCEAN; vFormed[w] = -1; vSea[w] = 0; continue; }       // (no plate: never land)
+        const c = ownerCell[w], type = T[o][c];
+        vType[w] = type; vFormed[w] = FA[o][c]; vSea[w] = SF[o][c];
+        vFlags[w] = FL[o][c]; vRoot[w] = RO[o][c]; vBase[w] = BA[o][c]; vUp[w] = UP[o][c]; vBasin[w] = BF[o][c];
+        if (type === CrustType.ARC) { vArc[w] = arcCrustKm(P[o], c, time, world.config); vArcAt[w] = AK[o][c] > 0 ? AT[o][c] : time; }
+        if (pouring) { view.volcType[w] = VT[o][c]; view.volcKm[w] = VK[o][c]; view.volcWornKm[w] = VW[o][c]; view.riseKm3[w] = RK[o][c]; }
     }
     return view;
 }

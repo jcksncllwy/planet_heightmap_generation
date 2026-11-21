@@ -33,12 +33,15 @@ const R = 6371;
  * extracts one per-cell surface for rivers.js, records.js and this. `swellKm`: the mantle's swell per cell, when the caller
  * has it (terrain/land-mask.js: sea-level.js seaLevel's sl.swellKm, the same mantleSwellKm × smoothed heat).
  */
-export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells), swellKm = null, seaRefKm = null) {
+// `only(w)`: a caller that reads a few cells (terrain/land-mask.js between river steps) has only those reckoned; the rest of
+// `out` keeps what it held (lane gpuerode M4: the same arithmetic a cell, ~70 % of that mask's surface work skipped)
+export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells), swellKm = null, seaRefKm = null, only = null) {
     const n = simMesh.numCells, C = columnModel(H), heat = swellKm ? null : mantleWarmth(frame, simMesh, H), time = frame.time;
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef;
     // (the sea floor and an arc: the swell against the mantle under the young floor, terrain/sea-level.js youngFloorSwellKm)
     const seaRef = seaRefKm ?? youngFloorSwellKm(frame, swellKm ?? Float32Array.from(heat, h => H.mantleSwellKm * h));
     for (let w = 0; w < n; w++) {
+        if (only && !only(w)) continue;
         const swell = swellKm ? swellKm[w] : H.mantleSwellKm * heat[w], o = frame.owner[w], type = frame.type[w];
         if (o < 0 || type === CrustType.OCEAN) {
             const age = o >= 0 && frame.formedAt[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;

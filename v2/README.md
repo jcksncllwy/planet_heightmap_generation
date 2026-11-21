@@ -2488,8 +2488,8 @@ sea-level bug below. Its rivers once graded to the seabed at the coast; they now
 
 **On the GPU (2026-11-01, branch gpu-wire).** Add detail's whole erosion stage runs on WebGPU where the browser has it:
 `js/gpu/erode-gpu.js` holds FastFlow's depression routing (Jain et al. 2024, Cordonnier et al. 2019) for the network, then the CPU's own
-arithmetic swept level by level over cells sorted by depth. The ladder and the polish both run on it, from 500K cells (`ERODE.gpuFloodCells`)
-with closed basins' flood too. Laying lakes' load, the closed basins' water balance and the ladder's maps stay on the CPU, and
+arithmetic swept level by level over cells sorted by depth. The ladder and the polish both run on it, with closed basins' flood too, at every size (`ERODE.gpuFloodCells` 0 since
+lane gpuerode; it was 500K while a flood cost more than it saved below that). Laying lakes' load, the closed basins' water balance and the ladder's maps stay on the CPU, and
 the lay code is the CPU solver's own. The rebound runs on the GPU (lane gpuerode M1, 2026-11-20: `js/gpu/rebound-gpu.js`): `rebounder`'s
 arithmetic — the load since the last settling, averaged onto the coarsest rung on a fine rung, blurred by σ = `reboundKm` in
 neighbour-mean passes, its Airy share taken back, the rock's top moved with the ground — one dispatch a pass, with the ground left in
@@ -2497,7 +2497,17 @@ the solver's buffer. On the CPU it was 66–77 % of the GPU erosion's time (gpus
 ~300 ms (`tools/rebound-gpu-test.mjs`: float64 reference, ground and rock top within 1 mm p99 / 5 mm max, as close as the f32 CPU
 rebounder comes; bit-repeatable). The mesh's adjacency and xyz are resident across runs (`js/gpu/fields.js`, which also holds the
 fixed-tree sum the rebound's km³ uses). gpuFingerprint ('gpu erosion v2') now runs a rebound too, so a GPU that answers the finish
-differently keys its histories, and so its finishes, apart. `ERODE.gpu: false` turns it off. With no adapter, the finish runs the CPU solver; a device
+differently keys its histories, and so its finishes, apart.
+The loop around it is resident too (lane gpuerode M2, 2026-11-20). The seas a finish holds cut off (finish.js `seaDrying`) take
+their sills at every fine judge from the erosion network's own flood (`sills` in erode-gpu.js: the minimax path from the open sea,
+its cells at their own ground; the same max of the same float32 heights as the CPU's priority flood, checked equal at every judge
+of 831576@430 at 2.5M), not a CPU flood over the whole mesh. A network's start (outlets, levels, pointers, components) is filled by
+two kernels from an outlet flag and level. Each step but the last reads back only the cells the CPU lays or books (lake cells,
+cells draining to an outlet: appended, then sorted back into the list's order so the books add in the same order) and the total
+cut by a fixed-tree sum. The ladder's mesh maps are kept per mesh pair. Closed basins' water balance (`closedBasins`,
+`hollowLakes`) stays on the CPU: at 2.5M it is ~0.5 s a finish, under the cost of moving its sub-basin tree to the GPU. The finish
+picture is pixel-identical to M1's through all of this; the GPU flood at every size moves the 160K picture by flood ties (4 %
+of pixels). `ERODE.gpu: false` turns it off. With no adapter, the finish runs the CPU solver; a device
 lost mid-run fails that finish and the next one opens a new device. Each network's stats (`stats.erode`, per ladder level) count the basins that never joined their way downhill (`unjoined`) and the flat cells left with no receiver (`unresolved`); both are 0, and check-floods holds them there on the GPU. A network with no inland minimum once made every later one skip the basins' hooking (hollowfix6, 2026-11-11: crustmass's flatter worlds, up to 3518 basins unjoined over a finish); the level jump's rounds now follow the basin count (⌈log₂ roots⌉, at least 12), exact by construction. `stats.erodeOn` says which ran, and the page logs it. Limits: float32
 throughout, so a near-tie between slopes can fall the other way; a machine repeats its own result bit for bit, but two GPUs can differ
 slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.

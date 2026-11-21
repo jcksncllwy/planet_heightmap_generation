@@ -56,18 +56,21 @@ export function crustColumnKm(frame, cfg, CM, w) {
 }
 
 /** Sea pockets smaller than `maxKm2` (connected non-land cells enclosed by land) become land, in place. */
-export function fillPockets(simMesh, land, maxKm2) {
+// (`scratch`: an object to keep its buffers on between calls — landMask's `out`; the history calls it every step)
+export function fillPockets(simMesh, land, maxKm2, scratch = {}) {
     const { adjOffset, adjList, numCells: n } = simMesh, maxCells = maxKm2 / (4 * Math.PI * 6371 * 6371 / n);
     if (maxCells < 1) return;
-    const seen = new Uint8Array(n), members = [];
+    const seen = scratch.pocketSeen?.length === n ? scratch.pocketSeen.fill(0) : (scratch.pocketSeen = new Uint8Array(n));
+    const members = scratch.pocketQueue?.length === n ? scratch.pocketQueue : (scratch.pocketQueue = new Int32Array(n));
     for (let s = 0; s < n; s++) {
         if (land[s] || seen[s]) continue;
-        members.length = 0; members.push(s); seen[s] = 1;
-        for (let i = 0; i < members.length; i++) {
+        let len = 1;
+        members[0] = s; seen[s] = 1;
+        for (let i = 0; i < len; i++) {
             const c = members[i];
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!land[nb] && !seen[nb]) { seen[nb] = 1; members.push(nb); } }
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!land[nb] && !seen[nb]) { seen[nb] = 1; members[len++] = nb; } }
         }
-        if (members.length < maxCells) for (const c of members) land[c] = 1;
+        if (len < maxCells) for (let i = 0; i < len; i++) land[members[i]] = 1;
     }
 }
 
@@ -94,7 +97,7 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = 
     for (let w = 0; w < n; w++) {
         land[w] = frame.owner[w] >= 0 && (frame.type[w] !== CrustType.OCEAN || filledUp(frame, w)) ? 1 : 0;   // (an enclosed sea filled to sea level is lowland)
     }
-    fillPockets(simMesh, land, cfg.pocketSeaKm2);
+    fillPockets(simMesh, land, cfg.pocketSeaKm2, out);
     // the mantle's swell under every cell, the land's and the sea floor's, and the sea's level that answers it and the
     // sea floor's age (terrain/sea-level.js): absolute — a supercontinent on its own warm mantle stands high as a whole,
     // and the sea falls against it (developer, 8b round 6, had it relative to the land's mean, so that a continent sitting
@@ -109,7 +112,9 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = 
     // level, and a filled sea lifted dry is judged on the same ground against it (below). (The pour's own sea differs from the mask's where ocean crust behind a sill stands above the level — land to
     // the pour, sea to the mask: an enclosed sea drawn at a continent's reference if it were made land, ~5 km too high)
     let pour = null;
-    if (cfg.waterInventory > 0 && fixed) out.groundKm = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : new Float32Array(n), sl.swellKm, sl.seaRefKm);
+    // (between river steps only the filled seas below need their ground, and only those not already land: surfaceKm's `only`)
+    if (cfg.waterInventory > 0 && fixed) out.groundKm = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : new Float32Array(n), sl.swellKm, sl.seaRefKm,
+        w => !land[w] && frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0);
     else if (cfg.waterInventory > 0) {
         const z = surfaceKm(frame, simMesh, cfg, out.groundKm?.length === n ? out.groundKm : (out.groundKm = new Float32Array(n)), sl.swellKm, sl.seaRefKm);
         // (from the ocean's side, and at a pinned sill the basin's water balance decides which side is short: pinnedHumid —
@@ -147,19 +152,20 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = 
         // against the sea floor's, the rest against the land's; until 2026-11-05 every cell was held to the land's, so a pure
         // arc was flooded as if it stood mantleSwellKm × (land − sea ref) ≈ 0.27 km lower than it is drawn)
         const CM0 = columnModel(cfg), fillAt = w => frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0;
-        const below = new Float32Array(n).fill(NaN);           // (the column, for land standing below the sea; NaN elsewhere)
+        const below = out.below?.length === n ? out.below.fill(NaN) : (out.below = new Float32Array(n).fill(NaN));    // (the column, for land standing below the sea; NaN elsewhere)
         for (let w = 0; w < n; w++) {
             if (!land[w] || frame.owner[w] < 0 || fillAt(w)) continue;          // (a filled sea's plain is graded to the sea's level)
             const col = crustColumnKm(frame, cfg, CM0, w).h, top = col + Math.max(0, frame.upliftKm[w]);
             if (top + sl.swellKm[w] - liftRefKm(cfg, frame.type[w] === CrustType.ARC ? 1 : 0, sl.seaRefKm) < sl.seaKm) below[w] = col;
         }
-        const queue = []; let drowned = 0;
-        for (let w = 0; w < n; w++) if (!land[w]) queue.push(w);
-        for (let i = 0; i < queue.length; i++) {
+        const queue = out.pocketQueue?.length === n ? out.pocketQueue : (out.pocketQueue = new Int32Array(n));
+        let len = 0, drowned = 0;
+        for (let w = 0; w < n; w++) if (!land[w]) queue[len++] = w;
+        for (let i = 0; i < len; i++) {
             const c = queue[i];
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
                 const q = adjList[k];
-                if (land[q] && below[q] === below[q]) { land[q] = 0; seaColKm[q] = below[q]; queue.push(q); drowned++; }
+                if (land[q] && below[q] === below[q]) { land[q] = 0; seaColKm[q] = below[q]; queue[len++] = q; drowned++; }
             }
         }
         for (let w = 0; w < n; w++) if (land[w] && below[w] === below[w]) dryHollow[w] = 1;
