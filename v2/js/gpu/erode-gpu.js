@@ -16,7 +16,9 @@
 // what lakes kept, closed basins and rebound stay on the CPU, with a readback a step.
 
 import { openDevice, readBack } from './gpu-device.js';
-import { deltaLayer, rebounder, layUp, closedOutlets, layClosed } from '../finish/finish-erode.js';
+import { deltaLayer, layUp, closedOutlets, layClosed } from '../finish/finish-erode.js';
+import { meshFields } from './fields.js';
+import { reboundGPU, zBedBack } from './rebound-gpu.js';
 import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
 const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
@@ -267,18 +269,22 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const { mesh, z, ocean, water, k, slow = null, m, column = null } = o, seaLvl = Math.fround(o.seaKm ?? 0);     // (a float32, as the CPU's: finish-erode.js)
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
-    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
+    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, rebound: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
     const U32 = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     const B = {}, mk = (name, bytes) => (B[name] = device.createBuffer({ label: name, size: Math.max(4, bytes), usage: U32 }));
     const put = (name, arr) => device.queue.writeBuffer(B[name], 0, arr.buffer, arr.byteOffset, arr.byteLength);
     const up = (name, arr) => { mk(name, arr.byteLength); put(name, arr); };
-    up('adjOffset', Uint32Array.from(adjOffset)); up('adjList', adjList instanceof Uint32Array ? adjList : Uint32Array.from(adjList)); up('xyz', xyz instanceof Float32Array ? xyz : Float32Array.from(xyz)); up('water', water);
+    // (the mesh's adjacency and xyz are resident, kept across runs by fields.js: the store owns them, not this run)
+    const MF = meshFields(device, mesh), resident = new Set([MF.adjOffset, MF.adjList, MF.xyz]);
+    B.adjOffset = MF.adjOffset; B.adjList = MF.adjList; B.xyz = MF.xyz;
+    up('water', water);
     const K = new Float32Array(n);
     for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (slow ? slow[c] : 1);
-    // (with the rock column, finish-lithology.js rockColumn: the rock's top, kept on the CPU as the rebound moves it, the
-    // sediment's k against the rock's, and the mud's share of what is cut)
-    const Kv = new Float32Array(4 * n), packK = () => { for (let c = 0; c < n; c++) { Kv[4 * c] = K[c]; Kv[4 * c + 1] = column ? column.zBed[c] : 1e30; Kv[4 * c + 2] = column ? column.loose[c] : 1; Kv[4 * c + 3] = column ? column.fine[c] : 0; } };
-    packK(); up('Kv', Kv);
+    // (with the rock column, finish-lithology.js rockColumn: the rock's top, which the rebound moves on the GPU (rebound-gpu.js:
+    // column.zBed is written back after the run), the sediment's k against the rock's, and the mud's share of what is cut)
+    const Kv = new Float32Array(4 * n);
+    for (let c = 0; c < n; c++) { Kv[4 * c] = K[c]; Kv[4 * c + 1] = column ? column.zBed[c] : 1e30; Kv[4 * c + 2] = column ? column.loose[c] : 1; Kv[4 * c + 3] = column ? column.fine[c] : 0; }
+    up('Kv', Kv);
     // (the history's surface uplift, km/Myr, signed: o.uplift, finish-erode.js; none: zeros)
     up('lift', o.uplift ? Float32Array.from(o.uplift) : new Float32Array(n));
     mk('fA', 16 * n); mk('fB', 16 * n);
@@ -347,7 +353,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         return { fill, parent, order, count: listLen };
     };
     const closed = async tMyr => {
-        o.release?.(tMyr, z);                         // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after)
+        // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after, the rebound too)
+        if (o.release?.(tMyr, z) && settle) settle.setOcean(ocean);
         ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z, gpuClosed ? await flood() : null), z, n, sinkAt));
     };
     const outlets = (seaOnly = false) => {
@@ -500,17 +507,22 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const R = { route: [], toSea: 0, inClosed: 0 };
     const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);       // (the last step's load out, km³/Myr, and its receiver: finish-erode.js bayheadFill)
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
-    const settle = P.rebound > 0 ? rebounder(mesh, z, ocean, P, column, seaLvl, o.uplift ?? null, o.flex ?? null) : null, curve = [];
-    let reboundKm3 = 0, overKm3 = 0;
+    const curve = [];
+    let reboundKm3 = 0, overKm3 = 0, settle = null;
     try {
         put('dropped', new Float32Array(n));
+        // (the rebound settles the ground where it lies, on the GPU (rebound-gpu.js); its anchor is the ground as the run begins)
+        if (P.rebound > 0) { put('z', z); settle = await reboundGPU(device, { mesh, z: B.z, lift: B.lift, Kv: column ? B.Kv : null, ocean, flex: o.flex ?? null, P }); }
+        // (the GPU settles the ground and hands it back for the CPU's closed-basin judge: z on both sides agree, no upload needed)
+        const settleNow = async at => { put('z', z); reboundKm3 += await settle.settle(at); z.set(await readBack(device, B.z)); };
         await device.queue.onSubmittedWorkDone();
         ms.setup = performance.now() - t00;
         for (let s = 0; s < P.steps; s++) {
             let t = performance.now();
-            if (settle && s > 0 && s % P.closedEvery === 0) { reboundKm3 += settle(s * dt); if (column) { packK(); put('Kv', Kv); } }
+            let zUp = false;
+            if (settle && s > 0 && s % P.closedEvery === 0) { await settleNow(s * dt); zUp = true; ms.rebound += performance.now() - t; t = performance.now(); }
             if (s % P.closedEvery === 0) { await closed(s * dt); ms.closed += performance.now() - t; t = performance.now(); outlets(); }
-            put('z', z);
+            if (!zUp) put('z', z);
             ms.upload += performance.now() - t;
             R.route.push(await route());
             await sweeps(hist0);
@@ -550,11 +562,13 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         }
         const dr = await readBack(device, B.dropped);
         for (let c = 0; c < n; c++) if (dr[c] > 0) z[c] += dr[c];
+        if (settle && P.steps > 0) { const t = performance.now(); await settleNow(P.timeMyr); ms.rebound += performance.now() - t; }
+        if (settle && column) await zBedBack(device, B.Kv, column);
     } finally {
         // (a 10M mesh's buffers are a couple of GB: they go now, not when a collector gets to them, the next run being about to want its own)
-        for (const b of [...Object.values(B), rangeBuf, uniform, stage, count]) b.destroy();
+        settle?.destroy();
+        for (const b of [...Object.values(B), rangeBuf, uniform, stage, count]) if (!resident.has(b)) b.destroy();
     }
-    if (settle && P.steps > 0) reboundKm3 += settle(P.timeMyr);
     let seaKm3 = 0, closedKm3 = 0, grossKm3 = 0;
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);

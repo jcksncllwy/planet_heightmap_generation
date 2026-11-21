@@ -140,8 +140,13 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     const mesh = { numCells: n, xyz, adjOffset: Uint32Array.from(off), adjList: Uint32Array.from(list), edgeKm: 6371 * 2 / N };
     const none = { lakes: [], sink: new Uint8Array(n), base: new Float32Array(n) };
     await erodeGPU(g, { mesh, z, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4 }, { device: opened });
+    // (and the finish's GPU kernels the history's settings leave out, on the same patch: the rebound (gpu/rebound-gpu.js), with
+    // closed basins judged every other step. The finish's cache is keyed by this history's key, so a GPU that answers the
+    // finish differently must key apart too, not only one that answers the history differently)
+    const z2 = z.slice();
+    await erodeGPU(g, { mesh, z: z2, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
     const H = new Hash128();
-    H.str('gpu erosion v1'); H.view(z);
+    H.str('gpu erosion v2'); H.view(z); H.view(z2);
     gpuMemoOf = gpu;
     return (gpuMemo = H.hex().slice(0, 12));
 }

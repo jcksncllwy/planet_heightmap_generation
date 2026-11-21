@@ -2489,14 +2489,21 @@ sea-level bug below. Its rivers once graded to the seabed at the coast; they now
 **On the GPU (2026-11-01, branch gpu-wire).** Add detail's whole erosion stage runs on WebGPU where the browser has it:
 `js/gpu/erode-gpu.js` holds FastFlow's depression routing (Jain et al. 2024, Cordonnier et al. 2019) for the network, then the CPU's own
 arithmetic swept level by level over cells sorted by depth. The ladder and the polish both run on it, from 500K cells (`ERODE.gpuFloodCells`)
-with closed basins' flood too. Laying lakes' load, the closed basins' water balance, the rebound and the ladder's maps stay on the CPU, and
-the lay and rebound code is the CPU solver's own. `ERODE.gpu: false` turns it off. With no adapter, the finish runs the CPU solver; a device
+with closed basins' flood too. Laying lakes' load, the closed basins' water balance and the ladder's maps stay on the CPU, and
+the lay code is the CPU solver's own. The rebound runs on the GPU (lane gpuerode M1, 2026-11-20: `js/gpu/rebound-gpu.js`): `rebounder`'s
+arithmetic — the load since the last settling, averaged onto the coarsest rung on a fine rung, blurred by σ = `reboundKm` in
+neighbour-mean passes, its Airy share taken back, the rock's top moved with the ground — one dispatch a pass, with the ground left in
+the solver's buffer. On the CPU it was 66–77 % of the GPU erosion's time (gpuscan); a settling at 160K now takes ~15 ms against
+~300 ms (`tools/rebound-gpu-test.mjs`: float64 reference, ground and rock top within 1 mm p99 / 5 mm max, as close as the f32 CPU
+rebounder comes; bit-repeatable). The mesh's adjacency and xyz are resident across runs (`js/gpu/fields.js`, which also holds the
+fixed-tree sum the rebound's km³ uses). gpuFingerprint ('gpu erosion v2') now runs a rebound too, so a GPU that answers the finish
+differently keys its histories, and so its finishes, apart. `ERODE.gpu: false` turns it off. With no adapter, the finish runs the CPU solver; a device
 lost mid-run fails that finish and the next one opens a new device. Each network's stats (`stats.erode`, per ladder level) count the basins that never joined their way downhill (`unjoined`) and the flat cells left with no receiver (`unresolved`); both are 0, and check-floods holds them there on the GPU. A network with no inland minimum once made every later one skip the basins' hooking (hollowfix6, 2026-11-11: crustmass's flatter worlds, up to 3518 basins unjoined over a finish); the level jump's rounds now follow the basin count (⌈log₂ roots⌉, at least 12), exact by construction. `stats.erodeOn` says which ran, and the page logs it. Limits: float32
 throughout, so a near-tie between slopes can fall the other way; a machine repeats its own result bit for bit, but two GPUs can differ
 slightly; a study's `trace`, `flatRule: false`, `lastClean` and `routeEvery` above 1 exist only on the CPU, and asking for one uses it.
 The GPU mirrors the rock column (L3, below): the solve kernel cuts ground above the rock's top at the sediment's k and the rock under
 it at the rock's, from one packed vec4 a cell (k, the rock's top, the sediment's k, so no extra binding; 12 bytes a cell more, ~120 MB
-at 10M), and the rock's top follows the rebound as `settle` does on the CPU. The bed/mud split runs on the GPU too (lane spread): the
+at 10M), and the rock's top follows the rebound on the GPU (rebound-gpu.js moves the vec4's second word; `column.zBed` is written back after the run). The bed/mud split runs on the GPU too (lane spread): the
 load kernel carries the mud beside the load, its share of each cut from the vec4's fourth word (`column.fine`) and its own
 coefficient `Gf` in the uniform's spare slot, so still no extra binding beyond the load kernel reading the vec4; a Cell is 36 bytes.
 On a captured 160K level (`gpu-capture`, which now saves the column; 12345@310) the GPU's first step matches the CPU's to float
