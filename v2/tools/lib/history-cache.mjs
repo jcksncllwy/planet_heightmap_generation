@@ -242,7 +242,12 @@ function takeLock(key, untilMyr, everyMyr) {
     return false;
 }
 const dropLock = key => { try { const h = JSON.parse(fs.readFileSync(lockFile(key), 'utf8')); if (h.pid === process.pid) fs.unlinkSync(lockFile(key)); } catch { /* */ } };
-const sleepMs = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+// (a wait for another build yields: a process may be building other histories at the same time — the history awaits its
+// GPU — and a thread blocked here would stall them, or deadlock with a process waiting on one of them in turn)
+const sleepMs = ms => new Promise(res => setTimeout(res, ms));
+/** This process's builds in progress, by key: a second call for one awaits it, never the lock (its own pid holds the lock,
+ *  alive, and the build it waits for could not run on). */
+const building = new Map();
 
 // ── the writer thread (history-writer.mjs): frames are packed, compressed and written beside the build, not in its way ──
 let writer = null;
@@ -316,15 +321,22 @@ export async function simulateCached(world, opts, { drive = opts.drive, spec = n
     // frames handed back: recording more often never changes a history), else at the caller's
     const rec = every % PAGE_EVERY_MYR === 0 && PAGE_EVERY_MYR % grid === 0 ? PAGE_EVERY_MYR : every;
     for (;;) {
+        if (building.has(key)) {                         // (this process is building it: wait for that, then read or build)
+            await building.get(key);
+            if (want.every(onGrid) && have()) { const r = fromCache('waited'); if (r) return r; }
+            continue;
+        }
         if (takeLock(key, untilMyr, rec)) break;
         // another process is building it: wait for the frames if its run will record them, else build alongside
         const h = lockHolder(key);
         if (!h) continue;
         if (!(h.untilMyr >= untilMyr - 1e-9 && want.every(t => Math.abs(t / h.everyMyr - Math.round(t / h.everyMyr)) < 1e-6 || Math.abs(t - h.untilMyr) < 1e-6) && want.every(onGrid))) break;
         logEvent({ event: 'wait', key, holder: h.pid, untilMyr });
-        while (lockHolder(key) && !have()) sleepMs(1000);
+        while (lockHolder(key) && !have()) await sleepMs(1000);
         if (have()) { const r = fromCache('waited'); if (r) return r; }
     }
+    let built;
+    building.set(key, new Promise(res => (built = res)));
     try {
         const frames = [], present = new Set(entryTimes(key).map(milli)), stepsAt = {};
         let kept = 0;
@@ -343,6 +355,7 @@ export async function simulateCached(world, opts, { drive = opts.drive, spec = n
     } finally {
         writesDone();
         dropLock(key);
+        building.delete(key); built();
         gcSometimes();
     }
 }
