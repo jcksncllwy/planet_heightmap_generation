@@ -69,6 +69,22 @@ export const ERODE = {
                                 // interfluves as isolated mounds on the plains — fluvial5 A/B, 2026-11-10)
     tectUplift: true,           // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
+    // ── the sea's floor (lane marine, 2026-11-21; GPU only): the rivers' load is laid where they meet the sea, not counted, and the
+    // waves move it: q = −K(d)·∇z between sea cells, K(d) = marineK down to wave base and K·e^(−(d − wb)/wb) below (Kaufman et al.
+    // 1991, Kansas Geol. Survey Bull. 233: wave energy, and the sediment it moves, falls off with depth as Airy waves' orbits do;
+    // Landlab's SimpleSubmarineDiffuser has the same form). So the load spreads offshore by depth and distance — the sand near,
+    // the mud far, in a diffusion's reduced form — fills the hollows under the waves, planes their highs, and builds a clinoform
+    // out whose break stands where K falls off. Reduced (what it skips): one grain size; no tide, no currents along the shelf, no
+    // turbidity currents down the slope (the deep sea gets only K's tail); the shore is a wall (the coast's waves on land are
+    // finish-coast.js's); wave base is one number, not the local wave climate's.
+    marine: true,
+    marineK: 3e4,               // km²/Myr, the shelf's diffusivity above wave base. Derived: at grade a shelf carries its rivers' load
+                                // across at its topset's slope, q = K·S. Earth's ~10 km³/yr over ~3.5·10⁵ km of coast is q ≈ 3·10⁻⁵
+                                // km²/yr; at S ≈ 10⁻³ (130 m over 100–150 km of shelf) K ≈ 0.03 km²/yr. (The Amazon's mud belt,
+                                // ~1 km³/yr along ~1500 km, reads ~0.7 km²/yr: the range runs up to ~20× this mean)
+    marineWaveBaseKm: 0.06,     // storm wave base: about half a storm wave's deep-water length, L = gT²/2π, T 8–10 s → 50–80 m
+                                // (Immenhauser 2009, Earth-Sci. Rev. 96: 20–200 m by setting; Peters & Loss 2012, Geology 40: one wave
+                                // population, no separate fair-weather base — so one exponential, not two)
 };
 
 /**
@@ -678,7 +694,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         tStart += L.timeMyr;
         o.observe?.(`rung ${lm.numCells} end`, lm, f.z, f.ocean);
         if (fine) outflow = r.outflow ?? null;
-        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, toSeaKm3: Math.round(r.toSeaKm3 ?? NaN), seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
+        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, toSeaKm3: Math.round(r.toSeaKm3 ?? NaN), ...(r.marineKm3 != null ? { marineKm3: Math.round(r.marineKm3), marineDriftKm3: +r.marineDriftKm3.toFixed(1), marineSub: r.marineSub } : {}), seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
         delta = new Float32Array(lm.numCells);
         for (let c = 0; c < lm.numCells; c++) delta[c] = f.z[c] - start[c];
         prev = lm; prevZ = f.z;

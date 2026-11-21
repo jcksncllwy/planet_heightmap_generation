@@ -123,7 +123,7 @@ const toSea = binNames.map((name, i) => ({ depth: name, contKm3PerMyr: Math.roun
 const S = fin.stats;
 const row = {
     seed, time, sim, cells, historyS: +historyS.toFixed(1), finishS: +finishS.toFixed(1), books,
-    finishErosion: { keys: Object.keys(S.erode ?? {}), budget: S.erode?.budget ?? null, levels: (S.erode?.levels ?? []).map(l => ({ cells: l.cells, timeMyr: l.timeMyr, toSeaKm3: l.toSeaKm3 })) },
+    finishErosion: { keys: Object.keys(S.erode ?? {}), budget: S.erode?.budget ?? null, levels: (S.erode?.levels ?? []).map(l => ({ cells: l.cells, timeMyr: l.timeMyr, toSeaKm3: l.toSeaKm3, marineKm3: l.marineKm3, marineDriftKm3: l.marineDriftKm3, marineSub: l.marineSub, ms: l.ms?.marine })), late: S.erodeLate ? { toSeaKm3: Math.round(S.erodeLate.toSeaKm3 ?? NaN), marineKm3: Math.round(S.erodeLate.marineKm3 ?? NaN), marineDriftKm3: S.erodeLate.marineDriftKm3, marineSub: S.erodeLate.marineSub, ms: S.erodeLate.ms?.marine } : null },
     toSeaByDepth: toSea, deltas: S.deltas ?? null, bayhead: S.lowstand?.bayhead ?? null, coastStats: S.coast ?? null,
     surface: surface ? { land: landStats(surface.z, surface.sea), shelfPct: shelfShare(surface.z, surface.sea), breakM: breakM(surface.z, surface.sea), seaFloor: seaFloor(surface.z, surface.sea) } : null,
     finished: { land: landStats(z, ocean), shelfPct: shelfShare(z, ocean), breakM: breakM(z, ocean), coast: coast(ocean), seaFloor: seaFloor(z, ocean) },
