@@ -46,7 +46,7 @@ const CHECKLISTS = {
     ],
     'arc-collision': [
         'Westland and Eastland close on each other, each with an island arc on its facing margin (Crust type layer: rust-brown).',
-        'Where the arcs meet they do NOT weld the two plates: arc crust is thin, so it is scraped onto whichever continent it hits (event log: “island arc … is scraped onto …”) and the ocean behind it keeps going down. The continents go on closing.',
+        'Where the arcs meet they do NOT weld the two plates: arc crust is thin, so it is scraped onto whichever continent it hits (event log: “island arc … is scraped onto …”) and the ocean behind it keeps going down. The continents go on closing. An arc that arrives where the continent already stands stacks against its margin, widening it; with no room left it thickens the margin instead (the collision keeps all but ~15 % of it) — never deleted.',
         'The collision proper — the overlap (magenta), the shortening, the belts and finally the suture — comes only when the two CONTINENTAL cores meet, tens of Myr later.',
     ],
 };

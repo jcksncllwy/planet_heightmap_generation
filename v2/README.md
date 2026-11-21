@@ -543,8 +543,14 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
   (an arc, an island) only sets `dirty`.
 - **Dead plates.** A merged / swallowed plate has `alive = false` and an empty raster; a stage that works on pairs it
   found at the start of the step re-checks `alive` before using either plate.
-- **Land is never deleted.** Moving land onto land stacks it beside (`freeCellBeside`) or, only if there is no
-  room, absorbs it — counted and reported. `check-invariants.mjs` fails on a step that loses land.
+- **Land is never deleted.** Moving land onto land stacks it beside (`freeCellBeside`) — room is a cell free on the
+  host's raster over ground no other plate's land holds — or, only if there is no room, the host consumes it as a
+  collision consumes crust (`ops/thicken.js keepConsumed`: laid into the host's land from the contact, less
+  `collisionLostShare`; booked `dockConsumedKm3` / `dockKeptKm3`). A docking arc (`ops/scrape-arc.js`), a terrane and a
+  moved piece (`ops/tidy-plates.js transferCells`) all follow it. Land written over ocean floor folds the floor's
+  sediment into its column (`step/floor-rock.js buriedFloorKm`). (Lane contarea (2): the arc a collision scraped onto land
+  was deleted, 0.37 km³/yr; stacked on raster-free cells over the donor's land it made overlap the collisions consumed
+  again.) `check-invariants.mjs` fails on a step that loses land.
 - **Every per-cell field** is in `CELL_FIELDS` (model/crust.js); copy cells with `copyFrom` / `snapshot` / `restore`,
   never field by field.
 - **Terrane ids** are unique in a world and never remapped: new ones come from `world.nextTerraneId()`.
@@ -1579,7 +1585,8 @@ high as live ones, never sank, and were never consumed. The arc's life is now it
   Misaka blocks' upper and middle crust on Honshu, their lower crust subducted; no published share). The rest, and the
   ocean crust it stood on, goes down (`arcRecycledKm3`). Limits: a two-part split of one mean density; no eclogite in the
   jam test; no slab pull weighed against the buoyancy; the lid's age is the arc's silence, not the floor's age before it.
-  Docking and scraping judge the arcs the same way; a scene's hand-laid arc, never grown, still floats. `config.arcRecycling`
+  A buoyant arc scraped onto land stacks against the margin, or is consumed into it (above, "Land is never deleted"):
+  Taiwan, Kohistan and the Banda arc thicken and widen their margins. Docking and scraping judge the arcs the same way; a scene's hand-laid arc, never grown, still floats. `config.arcRecycling`
   (off in the mechanism table) lets every arc float.
 - **A plate pulling away from its trench splits at its arc** (`backarc.js pullArcsAfterTrenches`): the history grew new
   floor at the trench itself as the plate retreated (`resolve.js`), stranding the arc and building another in front of it.
