@@ -21,13 +21,15 @@ import { meshFields, sumPartials } from './fields.js';
 import { reboundGPU, zBedBack } from './rebound-gpu.js';
 import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
-const MARINE_DEEP_WB = 26;
+// (the failure term's rate against the waves' K0: a slope failure is instant on a Myr step, so any rate that clears an
+// oversteepened deposit within the step is the same; this one costs the solver no more than the waves' own at the cap, 1/(1 − 0.99²) ≈ 50)
+const MARINE_FAIL = 0.02;     // (× r²/(1 − r²): 0 on a flat floor, ~0.97 of K0 at the cap)
 const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 10;
 
 const HEAD = /* wgsl */`
-struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32, Kd: f32, wb: f32, sea: f32 }
+struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32, Kd: f32, wb: f32, sea: f32, mSc: f32, mFail: f32 }
 struct Rg { start: u32, count: u32 }
 struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32, area: f32 }
 struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32, at: u32 }
@@ -237,14 +239,20 @@ const KERNELS = {
     // One stage of RKL1 super-time-stepping (Meyer, Balsara & Aslam 2012, MNRAS 422): Y_j = μ Y_{j−1} + ν Y_{j−2} + μ̃ dt·L(Y_{j−1}),
     // μ + ν = 1 and L in flux form, so every stage conserves the sea's sediment as the plain explicit step does, and s stages
     // span (s² + s)/2 of its stable steps: ~90 stages, not ~3800, at 2.5M (cur: μ, ν, μ̃ of this stage)
-    marine: { b: { adjOffset: 'u', adjList: 'u', xyz: 'f', seaF: 'u', cur: 'f', mA: 'f', mP: 'f', mB: 'f+' }, body: `
+    marine: { b: { adjOffset: 'u', adjList: 'u', xyz: 'f', seaF: 'u', cur: 'f', zb: 'f', mA: 'f', mP: 'f', mB: 'f+' }, body: `
         let zc = mA[c]; let pc = vec3f(xyz[3u * c], xyz[3u * c + 1u], xyz[3u * c + 2u]); var acc = 0.0;
         for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
             let y = adjList[j];
             if (seaF[y] == 0u) { continue; }
             let zy = mA[y]; let d = R_EARTH * length(vec3f(xyz[3u * y], xyz[3u * y + 1u], xyz[3u * y + 2u]) - pc);
             let depth = U_.sea - 0.5 * (zc + zy);
-            acc += (2.0 / (3.0 * d * d)) * U_.Kd * exp(-max(0.0, depth - U_.wb) / U_.wb) * (zy - zc);
+            // (and the sediment's failure: a deposit steeper than the continental slope's gradient slides and flows on down it, at any
+            // depth — Roering et al. 1999's threshold form less its linear part, so a gentle floor feels nothing; and only sediment
+            // the sea laid fails (the higher cell above where it started the run, zb), never the bedrock of a seamount or a trench wall)
+            let r = min(abs(zy - zc) / d, 0.99 * U_.mSc) / U_.mSc;
+            let laid = select(zy > zb[y], zc > zb[c], zc > zy);
+            let fail = select(0.0, U_.mFail * r * r / (1.0 - r * r), laid);
+            acc += (2.0 / (3.0 * d * d)) * U_.Kd * (exp(-max(0.0, depth - U_.wb) / U_.wb) + fail) * (zy - zc);
         }
         mB[c] = cur[0] * zc + cur[1] * mP[c] + cur[2] * acc;` },
     exportCells: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+' }, index: 'i', body: `
@@ -392,8 +400,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const MAR = !!P.marine && P.marineK > 0 && P.marineWaveBaseKm > 0;
     let marSub = 0, marKd = 0;
     if (MAR) {
-        mk('seaF', 4 * n); mk('seaList', 4 * n); mk('mB', 4 * n); mk('mC', 4 * n); mk('cur', 16);
-        const { dMin, degMax } = edgeFacts(mesh), most = 0.5 * 3 * dMin * dMin / (2 * degMax * P.marineK);
+        mk('seaF', 4 * n); mk('seaList', 4 * n); mk('mB', 4 * n); mk('mC', 4 * n); mk('cur', 16); up('zb', Float32Array.from(z));
+        const { dMin, degMax } = edgeFacts(mesh), most = 0.5 * 3 * dMin * dMin / (2 * degMax * P.marineK * (1 + MARINE_FAIL / (1 - 0.99 * 0.99)));
         marSub = Math.max(1, Math.ceil((Math.sqrt(1 + 8 * dt / most) - 1) / 2)); marKd = P.marineK * dt;     // ((s² + s)/2 ≥ dt / most)
         const st = new Float32Array(4 * marSub), w1 = 2 / (marSub * marSub + marSub);
         for (let j = 1; j <= marSub; j++) { const mu = j === 1 ? 1 : (2 * j - 1) / j, nu = j === 1 ? 0 : -(j - 1) / j; st.set([mu, nu, mu * w1, 0], 4 * (j - 1)); }
@@ -407,7 +415,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const uniform = buffer({ label: 'uniform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const ub = new ArrayBuffer(64), uv = new DataView(ub);
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
-    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25, marKd, P.marineWaveBaseKm ?? 1, seaLvl].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
+    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25, marKd, P.marineWaveBaseKm ?? 1, seaLvl, P.marineFailSlope ?? 0.05, MARINE_FAIL].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
     const stage = buffer({ label: 'stage', size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = buffer({ label: 'count', size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);
@@ -516,10 +524,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const seaF = MAR ? new Uint32Array(n) : null, seaList = MAR ? new Uint32Array(n) : null;
     const seaUp = () => {
         seaLen = 0;
-        // (only water the waves reach: below MARINE_DEEP_WB wave bases K is e^−25 ≈ 10⁻¹¹ of the shore's, so the abyss neither gives
-        // nor takes — a wall, as the shore is — and the steps skip it: ~85 % of the sea)
-        const deep = seaLvl - MARINE_DEEP_WB * P.marineWaveBaseKm;
-        for (let c = 0; c < n; c++) { const on = ocean[c] && z[c] > deep; seaF[c] = on ? 1 : 0; if (on) seaList[seaLen++] = c; }
+        for (let c = 0; c < n; c++) { seaF[c] = ocean[c] ? 1 : 0; if (ocean[c]) seaList[seaLen++] = c; }
         put('seaF', seaF); device.queue.writeBuffer(B.seaList, 0, seaList.buffer, 0, 4 * Math.max(1, seaLen)); setRange(SL.sea, 0, seaLen);
     };
     // (the step's sea load, laid where each river meets the sea (seaIn, km³), then worked by the waves on the GPU: marSub explicit
