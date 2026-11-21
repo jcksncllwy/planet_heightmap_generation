@@ -30,6 +30,16 @@ export function scrapeArc(world, host, donor, cells, since = world.time) {
     const H = host.crust, D = donor.crust;
     const P = [0, 0, 0];
     const isHostLand = q => H.mask[q] && H.type[q] !== CrustType.OCEAN;
+    // room beside the margin is ground no plate's land holds: a free cell of the host's raster that lies over another plate's
+    // land (the arriving arc's own chain, the donor's continent behind it) is not room — stacked there it would make an
+    // overlap the collisions consume again (lane contarea (2): 80 % of stacked arc cells did, and the underthrust doubled)
+    const W = [0, 0, 0], { owner, ownerCell, plates } = world;
+    const heldByOther = q => {
+        host.toWorld(xyz[3 * q], xyz[3 * q + 1], xyz[3 * q + 2], W);
+        const w = index.nearest(W[0], W[1], W[2]), o = owner[w];
+        return o >= 0 && o !== host.id && plates[o].crust.type[ownerCell[w]] !== CrustType.OCEAN;
+    };
+    const noRoom = q => isHostLand(q) || heldByOther(q);
     let moved = 0, absorbed = 0, consumedKm = 0;
     const contact = [];
     for (const c of cells) {
@@ -38,7 +48,7 @@ export function scrapeArc(world, host, donor, cells, since = world.time) {
         let q = host.cellAt(index, P[0], P[1], P[2]);
         if (isHostLand(q)) {                                               // the host's land is already here
             const at = q;
-            q = freeCellBeside(host, mesh, at, P, isHostLand);
+            q = freeCellBeside(host, mesh, at, P, noRoom);
             if (q < 0) {                                                   // no room: consumed into the host's land
                 const rock = cellRockKm3(world, D, c);
                 bookRock('dockConsumedKm3', -rock);                   // (all its rock off the map: keepConsumed books back what is kept)

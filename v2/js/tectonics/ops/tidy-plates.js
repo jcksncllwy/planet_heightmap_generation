@@ -226,14 +226,24 @@ export function transferCells(world, from, to, cells, reachHops = 1) {
     const P = [0, 0, 0];
     let moved = 0, consumedKm = 0;
     const isHostLand = q => T.mask[q] && T.type[q] !== CrustType.OCEAN, contact = [];
+    // room is ground no third plate's land holds (the moving piece's own plate's land there is the piece, leaving): a cell of
+    // `to` free on its raster over another plate's land would be two plates' land on one ground (lane contarea (2), as
+    // ops/scrape-arc.js — 7–23 cells a history here)
+    const W = [0, 0, 0], { owner, ownerCell, plates } = world;
+    const heldByOther = q => {
+        to.toWorld(xyz[3 * q], xyz[3 * q + 1], xyz[3 * q + 2], W);
+        const w = index.nearest(W[0], W[1], W[2]), o = owner[w];
+        return o >= 0 && o !== to.id && o !== from.id && plates[o].crust.type[ownerCell[w]] !== CrustType.OCEAN;
+    };
+    const noRoom = q => isHostLand(q) || heldByOther(q);
     for (const c of cells) {
         from.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
         let q = to.cellAt(index, P[0], P[1], P[2]);
         const land = F.type[c] !== CrustType.OCEAN;
         if (land && isHostLand(q)) {                                                    // the host's own land is here
             const at = q;
-            q = freeCellBeside(to, mesh, at, P, isHostLand);
-            if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, isHostLand);
+            q = freeCellBeside(to, mesh, at, P, noRoom);
+            if (q < 0 && reachHops > 1) q = freeCellWithin(to, mesh, at, reachHops, noRoom);
             if (q < 0) {                                                                 // no room: consumed into the host's land
                 const rock = cellRockKm3(world, F, c);
                 bookRock('dockConsumedKm3', -rock);                                 // (keepConsumed books back what is kept)
