@@ -24,6 +24,7 @@
 
 import { MinHeap } from '../core/min-heap.js';
 import { locate } from '../core/mesh-locate.js';
+import { WAVE_BASE_KM, MARINE_K } from './marine-config.js';
 
 const R = 6371, EPS = 1e-5, FLAT_KEY = 1e-11;
 
@@ -78,13 +79,8 @@ export const ERODE = {
     // turbidity currents down the slope (the deep sea gets only K's tail); the shore is a wall (the coast's waves on land are
     // finish-coast.js's); wave base is one number, not the local wave climate's.
     marine: true,
-    marineK: 3e4,               // km²/Myr, the shelf's diffusivity above wave base. Derived: at grade a shelf carries its rivers' load
-                                // across at its topset's slope, q = K·S. Earth's ~10 km³/yr over ~3.5·10⁵ km of coast is q ≈ 3·10⁻⁵
-                                // km²/yr; at S ≈ 10⁻³ (130 m over 100–150 km of shelf) K ≈ 0.03 km²/yr. (The Amazon's mud belt,
-                                // ~1 km³/yr along ~1500 km, reads ~0.7 km²/yr: the range runs up to ~20× this mean)
-    marineWaveBaseKm: 0.06,     // storm wave base: about half a storm wave's deep-water length, L = gT²/2π, T 8–10 s → 50–80 m
-                                // (Immenhauser 2009, Earth-Sci. Rev. 96: 20–200 m by setting; Peters & Loss 2012, Geology 40: one wave
-                                // population, no separate fair-weather base — so one exponential, not two)
+    marineK: MARINE_K,          // km²/Myr, the shelf's diffusivity above wave base (marine-config.js: derived from Earth's load and shelves)
+    marineWaveBaseKm: WAVE_BASE_KM, // storm wave base (marine-config.js)
 };
 
 /**
