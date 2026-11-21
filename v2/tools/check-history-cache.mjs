@@ -118,7 +118,7 @@ section('the key: the history\'s code and its settings, and nothing else');
     // (the two finish files the history's sea reads since pourstart, 2026-11-10: land-mask's pinnedHumid judges a pinned sill's basin by the
     // finish's closed-basin balance and its constants, so an edit to them changes the history and rightly changes its hash; since lane graded the history
     // erodes by the finish's own law, its settings in finish-erode.js (ERODE); finish.js and the rest stay out)
-    const HISTORY_FINISH = new Set(['v2/js/finish/finish-basins.js', 'v2/js/finish/finish-config.js', 'v2/js/finish/finish-erode.js']);
+    const HISTORY_FINISH = new Set(['v2/js/finish/finish-basins.js', 'v2/js/finish/finish-config.js', 'v2/js/finish/finish-erode.js', 'v2/js/finish/marine-config.js']);
     check('the files are found from the import graph: the steps, the scenes, the start world, the model, config, and the helpers', ['v2/js/tectonics/simulate.js', 'v2/js/tectonics/config.js', 'v2/js/tectonics/step/rifting.js', 'v2/js/tectonics/init/start-world.js', 'v2/js/app/helper-worker.js', 'v2/js/terrain/terrain-config.js', 'js/rng.js'].every(f => here0.files.includes(f)) && !here0.files.some(f => (f.startsWith('v2/js/finish/') && !HISTORY_FINISH.has(f)) || f === 'v2/js/terrain/synthesize.js'),
         `${here0.files.filter(f => f.startsWith('package:')).join(', ') || 'no packages'}`);
 }

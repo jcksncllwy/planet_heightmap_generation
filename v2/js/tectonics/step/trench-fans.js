@@ -101,7 +101,8 @@ export function bookFans(world, dt) {
     for (const m of mouths) {
         if (m.enclosed || !(m.km3 > 0)) continue;
         if (fed.has(m)) { fan += m.km3 * dt; continue; }
-        const s0 = riseScratch.drowned, left = layRise(world, m, m.km3 * dt), onShelf = riseScratch.drowned - s0;
+        riseScratch.drowned = 0;                        // (per mouth, not a running total: a difference of totals rounds by the process's past worlds)
+        const left = layRise(world, m, m.km3 * dt), onShelf = riseScratch.drowned;
         shelf += onShelf;
         if (left < 0) { rise += m.km3 * dt; lost += m.km3 * dt; } else { rise += m.km3 * dt - onShelf - left; over += left; }
     }
@@ -253,7 +254,7 @@ function riseFacts(world) {
  * terrain draws a sea's fill from. The water's depth is the history's own: the river step's sea level and swell
  * (world.riverSea) and the column's height against them (surface-erosion.js landHeightKm, which leaves sea fill out).
  * A routing rule, not shelf physics: marine-run's M3 (Kaufman et al. 1991's depth-dependent diffusion over the same stock)
- * replaces this function. @returns {number} the km³ it laid (also added to riseScratch.drowned)
+ * replaces this function. @returns {number} the km³ it laid (also added to riseScratch.drowned, zeroed per mouth by bookFans)
  */
 function layOnDrownedShelf(world, cells, km3) {
     const sea = world.riverSea;
