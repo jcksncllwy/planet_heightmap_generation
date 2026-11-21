@@ -2534,10 +2534,18 @@ agree bit for bit. Against the CPU the lake share differs by −0.003 points at 
 831576@430 alone swings fresh lakes 1.8–2.7 Mkm² and fills or empties the largest cut-off sea (183–531K km² of water). A planet's
 biggest lakes can therefore look different on the GPU, as they would on the CPU with its neighbours listed in another order.
 
+**A GPU that stops answering fails loudly.** Every wait on the GPU (a buffer's map, the queue's done, a pipeline, the adapter and
+device themselves) goes through `gpu-device.js` `gpuWait`: it throws, naming its stage, when the device is lost (logged as it happens) or
+the wait outlasts `GEO_SIM_GPU_TIMEOUT_S` (120 s by default; `globalThis.geoSimGpuTimeoutS` on a page). Nothing retries it: the history or
+finish that asked fails and is rerun by its caller. Two check runs once sat 3.5 h at 0 % CPU on a promise that never settled while the GPU
+was shared with a game; `gpu-wait-test.mjs` (part of `check-gpu`) holds the guard to a hang and a lost device.
+
 **Headless runs stay on the CPU.** Check suites and `render-moment` run the CPU solver: no GPU contention between suites, and no dependency
 in a worktree without `npm ci` in `v2/tools/gpu-harness/`. So a render can differ slightly from what the page shows for the same moment.
-What ties the two together: `check-gpu` (whole finishes, GPU against CPU: lake share, land |dz|, a bit-identical repeat; ⚑ if Dawn is not
-installed), `gpu-browser.mjs` (Chrome against Dawn, bit for bit) and `gpu-detail.mjs` (the real page in Chrome, Add detail pressed). To run
+What ties the two together: `check-gpu` (deterministic tests only: each GPU kernel against a float64 CPU reference of its arithmetic
+with stated tolerances — `fluvial-kernels-test.mjs`, `rebound-gpu-test.mjs` — the GPU's waits failing loudly, `gpu-wait-test.mjs`, and
+whole GPU finishes: on the GPU, no NaN, a bit-identical repeat; ⚑ if Dawn is not installed. It no longer compares a GPU finish with a CPU
+one cell by cell: the paths' float32 tie-breaks compound, so that |dz| measures chaos, not error — a 1e-7 km nudge alone gives p99 278 m), `gpu-browser.mjs` (Chrome against Dawn, bit for bit) and `gpu-detail.mjs` (the real page in Chrome, Add detail pressed). To run
 any tool or suite on Dawn, as a browser would:
 
 ```bash
