@@ -347,9 +347,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         onStage('erosion');
         stats.erodeOn = eroder.on;
         const ER = EP.ladder ? await erodeLadder({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, runoff, pet, rain: skyKept, closedOf: (lm, g, f, sea, flood, seaKm) => closedBasins(lm, g, f.runoff, f.pet, f.rain, 4 * Math.PI * R * R / lm.numCells, F, sea, flood, seaKm, false), observe,
-                releaseOf: Dry.release ? (lm, sea, t, g) => Dry.release(lm, sea, t, lowOcean, g, low) : null }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
+                releaseOf: Dry.release ? (lm, sea, t, g, sillsOf) => Dry.release(lm, sea, t, lowOcean, g, low, sillsOf) : null }, ladderOverWindow(EP, frame.tectSpanMyr), terrainMesh, eroder.solve)
             : await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean: lowOcean, seaKm: low, closed: (g, flood) => closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, lowOcean, flood, low, false),
-                release: Dry.release ? (t, g) => Dry.release(mesh, lowOcean, t, lowOcean, g, low) : null }, EP);
+                release: Dry.release ? (t, g, sillsOf) => Dry.release(mesh, lowOcean, t, lowOcean, g, low, sillsOf) : null }, EP);
         // (a held sea dry at the window's end is land from here on: today's flood and the bayhead fill see its floor)
         Dry.dropReleased(ocean0, worldOcean);
         const { outflow, ...erodeStats } = ER;
@@ -628,8 +628,17 @@ function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr)
     // g: a priority flood from the ocean's edge over the rest, until each sea's lowest cell is reached)
     const mine = new Uint8Array(n);
     for (const cells of cellsOf) for (const c of cells) mine[c] = 1;
+    const lowestOn = g => cellsOf.map(cells => cells.reduce((a, c) => (g[c] < g[a] ? c : a), cells[0]));
+    // (the same spill levels by the GPU erosion's own flood, where it gives one (erode-gpu.js `sills`: the minimax path from the
+    // open sea, its cells at their own ground — the same max of the same float32 heights, so the same levels; ~0.4 s → ~30 ms a
+    // judge at 2.5M, lane gpuerode). Async; the CPU's flood below is the fallback)
+    const sillsBy = async (sillsOf, g, sea) => {
+        const open = new Uint8Array(n);
+        for (let c = 0; c < n; c++) open[c] = sea[c] && !mine[c] ? 1 : 0;
+        return Array.from(await sillsOf(open, lowestOn(g)));
+    };
     const sillsOn = (g, sea) => {
-        const { adjOffset, adjList } = mesh, fill = new Float32Array(n).fill(Infinity), heap = new MinHeap(1 << 12), lowest = cellsOf.map(cells => cells.reduce((a, c) => (g[c] < g[a] ? c : a), cells[0]));
+        const { adjOffset, adjList } = mesh, fill = new Float32Array(n).fill(Infinity), heap = new MinHeap(1 << 12), lowest = lowestOn(g);
         const open = c => sea[c] && !mine[c];
         for (let c = 0; c < n; c++) if (open(c)) for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) if (!open(adjList[j])) { fill[c] = g[c]; heap.push(g[c], c); break; }
         let left = new Set(lowest).size;
@@ -665,10 +674,14 @@ function seaDrying(mesh, z, B, frame, simMesh, pet, rain, cellKm2, F, windowMyr)
         for (const c of queue) if (!sea[c]) { sea[c] = 1; grown.push(c); if (lm === mesh) mine[c] = 1; }
     };
     // (before each judge, at the window's time t; on the finest level its ground g first moves each sea's time by its sill.
-    // fineSea: the finest level's sea, which a coarser level's going dry empties too — the next level's sea is made from it)
-    out.release = (lm, sea, t, fineSea, g, seaKm) => {
-        if (lm === mesh && g) {
-            const sills = sillsOn(g, sea);
+    // fineSea: the finest level's sea, which a coarser level's going dry empties too — the next level's sea is made from it.
+    // sillsOf: the GPU's spill levels (erode-gpu.js); with it the answer is a promise)
+    out.release = (lm, sea, t, fineSea, g, seaKm, sillsOf = null) => {
+        if (lm === mesh && g && sillsOf) return sillsBy(sillsOf, g, sea).then(sills => judged(lm, sea, t, fineSea, g, seaKm, sills));
+        return judged(lm, sea, t, fineSea, g, seaKm, lm === mesh && g ? sillsOn(g, sea) : null);
+    };
+    const judged = (lm, sea, t, fineSea, g, seaKm, sills) => {
+        if (sills) {
             for (let k = 0; k < m; k++) {
                 const { f, fDry } = dryShare(sills[k], tauOf[k]);
                 relAt[k] = windowMyr - D[k] * fDry;

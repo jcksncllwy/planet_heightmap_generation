@@ -562,8 +562,17 @@ function flexBlur(mesh, d, reachKm, next = new Float32Array(mesh.numCells)) {
     }
 }
 
-/** For each cell of `fine`: the 3 cells of `coarse` around it, their weights, and the nearest of them. */
+// (the maps between two meshes, kept while both are: the terrain meshes are fixed, so a finish's ladder, its polish and the next
+// finish ask for the same few, and each costs a point location a fine cell — ~1 s at 2.5M (gpuerode's profile))
+const maps = new WeakMap();
+/** For each cell of `fine`: the 3 cells of `coarse` around it, their weights, and the nearest of them. Read-only: shared. */
 function mapOnto(coarse, fine) {
+    if (!maps.has(coarse)) maps.set(coarse, new WeakMap());
+    const of = maps.get(coarse);
+    if (!of.has(fine)) of.set(fine, locateAll(coarse, fine));
+    return of.get(fine);
+}
+function locateAll(coarse, fine) {
     const n = fine.numCells, cells = new Int32Array(3 * n), weights = new Float32Array(3 * n), nearest = new Int32Array(n), c3 = [0, 0, 0], w3 = [0, 0, 0], { xyz } = fine;
     for (let i = 0; i < n; i++) {
         locate(coarse, xyz[3 * i], xyz[3 * i + 1], xyz[3 * i + 2], c3, w3);
@@ -663,7 +672,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         }
         o.observe?.(`rung ${lm.numCells} start`, lm, f.z, f.ocean);
         const t1 = performance.now();
-        const t0Myr = tStart, release = o.releaseOf ? (t, g) => o.releaseOf(lm, f.ocean, t0Myr + t, g) : null;
+        const t0Myr = tStart, release = o.releaseOf ? (t, g, sillsOf) => o.releaseOf(lm, f.ocean, t0Myr + t, g, sillsOf) : null;
         const r = await solve({ ...o, mesh: lm, z: f.z, ocean: f.ocean, water: f.water, k: f.k, column: f.column, uplift: f.uplift, flex: flexOf(lm), closed: (g, flood) => closedOf(lm, g, f, f.ocean, flood, sea), release }, { ...P, timeMyr: L.timeMyr, steps: L.steps, rebound: L === levels[0] || f.uplift ? P.rebound : 0 });
         tStart += L.timeMyr;
         o.observe?.(`rung ${lm.numCells} end`, lm, f.z, f.ocean);

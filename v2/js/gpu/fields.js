@@ -34,7 +34,7 @@ function upload(device, label, arr) {
 }
 
 /**
- * A mesh's resident buffers on `device`: { adjOffset, adjList (u32), xyz (f32), n }. Made on first use and kept; don't destroy
+ * A mesh's resident buffers on `device`: { adjOffset, adjList (u32), xyz (f32), identity (u32 0…n−1: an index list of every cell), n }. Made on first use and kept; don't destroy
  * them (the store does, when it drops the mesh).
  */
 export function meshFields(device, mesh) {
@@ -46,9 +46,10 @@ export function meshFields(device, mesh) {
         adjOffset: upload(device, 'adjOffset', mesh.adjOffset instanceof Uint32Array ? mesh.adjOffset : Uint32Array.from(mesh.adjOffset)),
         adjList: upload(device, 'adjList', mesh.adjList instanceof Uint32Array ? mesh.adjList : Uint32Array.from(mesh.adjList)),
         xyz: upload(device, 'xyz', mesh.xyz instanceof Float32Array ? mesh.xyz : Float32Array.from(mesh.xyz)),
+        identity: upload(device, 'identity', Uint32Array.from({ length: mesh.numCells }, (_, i) => i)),       // (an index list of every cell)
     };
     kept.push({ mesh, fields });
-    while (kept.length > MESHES) { const { fields: f } = kept.shift(); f.adjOffset.destroy(); f.adjList.destroy(); f.xyz.destroy(); }
+    while (kept.length > MESHES) { const { fields: f } = kept.shift(); f.adjOffset.destroy(); f.adjList.destroy(); f.xyz.destroy(); f.identity.destroy(); }
     return fields;
 }
 

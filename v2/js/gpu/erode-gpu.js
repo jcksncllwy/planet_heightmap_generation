@@ -17,11 +17,11 @@
 
 import { openDevice, readBack } from './gpu-device.js';
 import { deltaLayer, layUp, closedOutlets, layClosed } from '../finish/finish-erode.js';
-import { meshFields } from './fields.js';
+import { meshFields, sumPartials } from './fields.js';
 import { reboundGPU, zBedBack } from './rebound-gpu.js';
 import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
-const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 7;
+const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 10;
 
@@ -29,7 +29,7 @@ const HEAD = /* wgsl */`
 struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32 }
 struct Rg { start: u32, count: u32 }
 struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32, area: f32 }
-struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32 }
+struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32, at: u32 }
 const NONE = 0x7FFFFFFFu; const INF = 0xFFFFFFFFu; const M = 0x7FFFFFFFu;
 const EPS = ${EPS}f; const R_EARTH = ${R_EARTH}f; const BIG = 1e30f;
 ${CLAMP_AFFINE_WGSL}
@@ -61,6 +61,14 @@ const affineInitOf = HILL => ({ b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz:
         else { fA[c] = vec4f(-BIG, old / (1.0 + F), F / (1.0 + F), old); }` });
 
 const KERNELS = {
+    // (a network's start, from its outlets (isOut) and the level each holds (lvl): outlets() fills the rest here, not with a dozen
+    // n-sized uploads. Run over every cell (ix: the identity). Two kernels, to keep each under the storage-binding count)
+    outletA: { b: { isOut: 'u', lvl: 'f', outlet: 'u+', surf: 'f+', Zt: 'f+', valA: 'f+', valB: 'f+', label: 'u+' }, body: `
+        let o = isOut[c]; let v = select(0.0, lvl[c], o != 0u);
+        outlet[c] = o; surf[c] = v; Zt[c] = v; valA[c] = v; valB[c] = v; label[c] = select(0u, U_.n, o != 0u);` },
+    outletB: { b: { isOut: 'u', ptrA: 'u+', ptrB: 'u+', ptrC: 'u+', recv: 'u+', depthA: 'u+', depthB: 'u+', compA: 'u+', compB: 'u+' }, body: `
+        let k = select(c, U_.n, isOut[c] != 0u);
+        ptrA[c] = c; ptrB[c] = c; ptrC[c] = c; recv[c] = c; depthA[c] = 0u; depthB[c] = 0u; compA[c] = k; compB[c] = k;` },
     copyZ: { b: { z: 'f', Zt: 'f+' }, body: 'Zt[c] = z[c];' },
     descend: { b: { adjOffset: 'u', adjList: 'u', Zt: 'f', ptrA: 'u+' }, body: `
         var bz = Zt[c]; var best = c;
@@ -223,7 +231,14 @@ const KERNELS = {
         dB[c] = num / den;` },
     exportCells: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+' }, index: 'i', body: `
         let v = cells[c];
-        exp[i] = Out(v.lid, v.e, v.inlet, trap[c], v.q, recv[c], v.gross);` },
+        exp[i] = Out(v.lid, v.e, v.inlet, trap[c], v.q, recv[c], v.gross, i);` },
+    // (a step's export but the last's: only what the CPU lays or books — lake cells and cells draining to an outlet — appended
+    // (their order is the scheduler's: the CPU sorts them back into the list's by `at`), and every cell's cut for a fixed-tree sum)
+    exportSome: { b: { cells: 'C', recv: 'u', trap: 'f', exp: 'X+', counter: 'a', gsum: 'f+' }, body: `
+        let v = cells[c]; let rr = recv[c];
+        gsum[i] = v.gross;
+        if (v.lid == NONE && (rr >> 31u) == 0u) { return; }
+        exp[atomicAdd(&counter[0], 1u)] = Out(v.lid, v.e, v.inlet, trap[c], v.q, rr, v.gross, i);` },
 };
 
 function wgsl(name, spec) {
@@ -269,14 +284,14 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const { mesh, z, ocean, water, k, slow = null, m, column = null } = o, seaLvl = Math.fround(o.seaKm ?? 0);     // (a float32, as the CPU's: finish-erode.js)
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
-    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, rebound: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
+    const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, flood: 0, upload: 0, rebound: 0, release: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
     const U32 = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     const B = {}, mk = (name, bytes) => (B[name] = device.createBuffer({ label: name, size: Math.max(4, bytes), usage: U32 }));
     const put = (name, arr) => device.queue.writeBuffer(B[name], 0, arr.buffer, arr.byteOffset, arr.byteLength);
     const up = (name, arr) => { mk(name, arr.byteLength); put(name, arr); };
     // (the mesh's adjacency and xyz are resident, kept across runs by fields.js: the store owns them, not this run)
-    const MF = meshFields(device, mesh), resident = new Set([MF.adjOffset, MF.adjList, MF.xyz]);
-    B.adjOffset = MF.adjOffset; B.adjList = MF.adjList; B.xyz = MF.xyz;
+    const MF = meshFields(device, mesh), resident = new Set([MF.adjOffset, MF.adjList, MF.xyz, MF.identity]);
+    B.adjOffset = MF.adjOffset; B.adjList = MF.adjList; B.xyz = MF.xyz; B.all = MF.identity;
     up('water', water);
     const K = new Float32Array(n);
     for (let c = 0; c < n; c++) K[c] = (P.kScale ?? 1) * k[c] * (slow ? slow[c] : 1);
@@ -293,7 +308,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // (threshold diffusion, ERODE diffD > 0: its edge conductances and the Jacobi pair; an even number of sweeps)
     const DIFF = (P.diffD ?? 0) > 0 ? 2 * Math.ceil((P.diffSweeps ?? 20) / 2) : 0;
     if (DIFF) { mk('gE', 4 * adjList.length); mk('dA', 4 * n); mk('dB', 4 * n); }
-    mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1)); mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 4 * CELL_WORDS * n); mk('exp', 4 * EXPORT_WORDS * n);
+    mk('isOut', 4 * n); mk('lvl', 4 * n);
+    mk('compA', 4 * (n + 1)); mk('compB', 4 * (n + 1));
+    for (const name of ['compA', 'compB']) device.queue.writeBuffer(B[name], 4 * n, Uint32Array.of(n));      // (the ocean's own component: its slot n)
+    mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 4 * CELL_WORDS * n); mk('exp', 4 * EXPORT_WORDS * n); mk('gsum', 4 * n);
     const rangeBuf = device.createBuffer({ size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const uniform = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const ub = new ArrayBuffer(64), uv = new DataView(ub);
@@ -310,9 +328,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     };
     const run = (pass, g, slot, cnt) => { pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(Math.ceil(cnt / WG)); };
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
-    const SL = { list: 0, roots: 1, flats: 2 };
+    const SL = { list: 0, roots: 1, flats: 2, all: 3 };
     const G = {
         ...(DIFF ? { edgeCond: group('edgeCond', 'list'), jacAB: group('jacobi', 'list'), jacBA: group('jacobi', 'list', { dA: 'dB', dB: 'dA' }) } : {}),
+        outletA: group('outletA', 'all'), outletB: group('outletB', 'all'),
         copyZ: group('copyZ', 'list'), descend: group('descend', 'list'), jumpAB: group('jump', 'list'), jumpBA: group('jump', 'list', { ptrA: 'ptrB', ptrB: 'ptrA' }), findRoots: group('findRoots', 'list'), label: group('label', 'list'),
         resetBest: group('resetBest', 'roots'), minWeight: group('minWeight', 'list'), minEdge: group('minEdge', 'list'), pickEdge: group('pickEdge', 'list'), hook: group('hook', 'roots'),
         flatAB: group('flatten', 'roots', { compA: 'compB', compB: 'compA' }), flatBA: group('flatten', 'roots'), active: group('active', 'roots'),
@@ -323,7 +342,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         prep: group('prep', 'list', { lpA: 'hiA', jpA: 'ptrB' }), affineInit: group((P.hillD ?? 0) > 0 ? 'affineInitHill' : 'affineInit', 'list', { lpA: 'hiA' }),
         jumpAB2: group('affineJump', 'list', { jpA: 'ptrB', jpB: 'ptrC', lpA: 'hiA', lpB: 'hiB' }), jumpBA2: group('affineJump', 'list', { fA: 'fB', fB: 'fA', jpA: 'ptrC', jpB: 'ptrB', lpA: 'hiB', lpB: 'hiA' }),
         applyA: group('affineApply', 'list', { jpA: 'ptrB', lpA: 'hiA' }), applyB: group('affineApply', 'list', { fA: 'fB', jpA: 'ptrC', lpA: 'hiB' }),
-        water: group('water', 'order'), load: group('load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'),
+        water: group('water', 'order'), load: group('load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'), exportSome: group('exportSome', 'list'),
     };
     const readCount = async () => {
         const e = device.createCommandEncoder();
@@ -337,7 +356,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const clearCounter = e => e.clearBuffer(B.counter);
 
     // ── the CPU's share: closed basins, and laying what lakes kept (as finish-erode.js does) ──
-    let sink = null, base = null, sinkAt = null, basins = [], list = null, listLen = 0;
+    let sink = null, base = null, sinkAt = null, basins = [], listLen = 0;
+    const list = new Uint32Array(n), outF = new Uint32Array(n), outL = new Float32Array(n);
     // (closedBasins' flood, from the world ocean alone: the same network with its sinks not yet sinks. Its parent is the receiver here:
     // the lowest neighbour on the filled surface, as a flood's first relaxation is. Sorted on this side so that its order is deterministic)
     const flood = async () => {
@@ -352,24 +372,47 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         ms.flood += performance.now() - t;
         return { fill, parent, order, count: listLen };
     };
+    // (each target cell's spill level from the cells of `open`, each at its own ground: the minimax path, from this network's
+    // basins and their spanning tree — finish.js seaDrying's sills, as its CPU flood finds them, the same max of the same heights.
+    // A target no open cell reaches: Infinity, as there. The counts of what the network left undone are the run's, not this)
+    const sills = async (open, targets) => {
+        let any = false;
+        for (let c = 0; c < n && !any; c++) any = open[c] === 1;
+        if (!any) return Float32Array.from(targets, () => Infinity);
+        const kept = { ...undone }, msRoute = ms.route, msSort = ms.sort;
+        put('z', z); outlets(false, open, c => z[c]);
+        const r = await route(), fill = await readBack(device, B.fill);
+        Object.assign(undone, kept); ms.route = msRoute; ms.sort = msSort;
+        return Float32Array.from(targets, c => (r.unjoined ? reaches(open, c, fill) : fill[c]));
+    };
+    // (whether an open cell reaches c at all: only asked when the network left a basin unjoined, i.e. never on a connected sphere)
+    const reaches = (open, c0, fill) => {
+        const seen = new Uint8Array(n), q = [c0];
+        seen[c0] = 1;
+        for (let i = 0; i < q.length; i++) for (let j = adjOffset[q[i]]; j < adjOffset[q[i] + 1]; j++) { const y = adjList[j]; if (open[y]) return fill[c0]; if (!seen[y]) { seen[y] = 1; q.push(y); } }
+        return Infinity;
+    };
     const closed = async tMyr => {
-        o.release?.(tMyr, z);                         // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after)
+        // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after. Its sills come
+        // from this network's flood: `sills`)
+        if (o.release) { const t = performance.now(); await o.release(tMyr, z, sills); ms.release += performance.now() - t; }
         ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z, gpuClosed ? await flood() : null), z, n, sinkAt));
         // (the rebound's copy of the ocean: the release, and the judge itself (a breached sea joined: finish.js reflooded), change it in place)
         settle?.setOcean(ocean);
     };
-    const outlets = (seaOnly = false) => {
-        const out = new Uint32Array(n), surf = new Float32Array(n), Zs = new Float32Array(n), self = new Uint32Array(n), d0 = new Uint32Array(n), rec = new Uint32Array(n), lab = new Uint32Array(n);
-        list = new Uint32Array(n); listLen = 0;
+    // (the cells that end the network, at the level each holds: the world ocean at the sea's surface and, but for a flood from the
+    // sea alone, closed basins' outlets at their base. `at(c)`: another set's levels (sills: the open sea at its own ground))
+    const outlets = (seaOnly = false, isOut = null, at = null) => {
+        listLen = 0;
         for (let c = 0; c < n; c++) {
-            if (ocean[c] || (!seaOnly && sink[c])) { out[c] = 1; surf[c] = ocean[c] ? seaLvl : base[c]; Zs[c] = ocean[c] ? seaLvl : base[c]; lab[c] = n; } else list[listLen++] = c;
-            self[c] = c; rec[c] = c;
+            if (isOut ? isOut[c] : ocean[c] || (!seaOnly && sink[c])) { outF[c] = 1; outL[c] = at ? at(c) : ocean[c] ? seaLvl : base[c]; } else { outF[c] = 0; outL[c] = 0; list[listLen++] = c; }
         }
-        put('outlet', out); put('surf', surf); put('Zt', Zs); put('list', list); put('ptrA', self); put('ptrB', self); put('ptrC', self); put('label', lab); put('recv', rec); put('depthA', d0); put('depthB', d0); put('valA', Zs); put('valB', Zs);
-        const comp = new Uint32Array(n + 1);
-        for (let c = 0; c <= n; c++) comp[c] = c < n && out[c] ? n : c;
-        put('compA', comp); put('compB', comp);
-        setRange(SL.list, 0, listLen);
+        put('isOut', outF); put('lvl', outL); device.queue.writeBuffer(B.list, 0, list.buffer, 0, 4 * listLen);
+        setRange(SL.list, 0, listLen); setRange(SL.all, 0, n);
+        const e = device.createCommandEncoder(), p = e.beginComputePass();
+        run(p, G.outletA, SL.all, n); run(p, G.outletB, SL.all, n);
+        p.end();
+        device.queue.submit([e.finish()]);
     };
     // ── a network: basins, their spanning tree, the filled surface, the receivers, the depth order ──
     let levels = 0, hist0 = null, guessRounds = 6, guessPasses = 8, guessHigh = 8;
@@ -480,7 +523,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         undone.unjoined += left; undone.unresolved += pending;
         return { roots, rounds, flats, passes, levels, placed: at, unjoined: left, unresolved: pending };
     };
-    const sweeps = async hist0 => {
+    const sweeps = async (hist0, all) => {
         const t0 = performance.now(), e = device.createCommandEncoder();
         let p = e.beginComputePass();
         run(p, G.place, SL.list, listLen);
@@ -498,14 +541,16 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             for (let i = 0; i < DIFF; i++) run(p, i % 2 ? G.jacBA : G.jacAB, SL.list, listLen);
             p.end(); e.copyBufferToBuffer(B.dA, 0, B.z, 0, 4 * n); p = e.beginComputePass();
         }
-        run(p, G.exportCells, SL.list, listLen);
+        if (all) run(p, G.exportCells, SL.list, listLen);
+        else { p.end(); e.clearBuffer(B.counter); e.clearBuffer(B.gsum); p = e.beginComputePass(); run(p, G.exportSome, SL.list, listLen); }
         p.end();
+        if (!all) gsum.encode(e);
         device.queue.submit([e.finish()]);
         ms.encode += performance.now() - t0;
         await device.queue.onSubmittedWorkDone();
         ms.sweep += performance.now() - t0;
     };
-    const R = { route: [], toSea: 0, inClosed: 0 };
+    const R = { route: [], toSea: 0, inClosed: 0 }, recAt = new Uint32Array(n), gsum = await sumPartials(device, B.gsum, n);
     const outQ = new Float32Array(n), outR = new Int32Array(n).fill(-1);       // (the last step's load out, km³/Myr, and its receiver: finish-erode.js bayheadFill)
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
     const curve = [];
@@ -526,21 +571,25 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             if (!zUp) put('z', z);
             ms.upload += performance.now() - t;
             R.route.push(await route());
-            await sweeps(hist0);
+            const last = s === P.steps - 1;
+            await sweeps(hist0, last);
             t = performance.now();
-            const zGPU = await readBack(device, B.z), ex = await readBack(device, B.exp, Uint32Array, 4 * EXPORT_WORDS * listLen), exF = new Float32Array(ex.buffer);
+            // (the last step reads every cell back (the load out: outflow); the others only what exportSome kept, sorted back into
+            // the list's order so that every sum below runs in the order it always did)
+            const kept = last ? listLen : await readCount(), zGPU = await readBack(device, B.z), ex = await readBack(device, B.exp, Uint32Array, Math.max(4, 4 * EXPORT_WORDS * kept)), exF = new Float32Array(ex.buffer);
+            const at = new Uint32Array(kept);
+            for (let r = 0; r < kept; r++) { const i = ex[EXPORT_WORDS * r + 7]; at[r] = i; recAt[i] = r; }
+            if (!last) at.sort();
             ms.readback += performance.now() - t; t = performance.now();
             z.set(zGPU);
             const lakesCells = new Map(), sea0 = R.toSea, closed0 = R.inClosed;
-            let eroded = 0, lakeCells = 0;
+            let eroded = last ? 0 : (await gsum.read()) * a, lakeCells = 0;
             lidF.fill(-1);
             if (inlet) inlet.fill(0);
-            const last = s === P.steps - 1;
-            for (let i = 0; i < listLen; i++) {
-                const c = list[i], w = EXPORT_WORDS * i, lid = ex[w], rr = ex[w + 5], q = exF[w + 4];
+            for (let k = 0; k < kept; k++) {
+                const i = at[k], c = list[i], w = EXPORT_WORDS * recAt[i], lid = ex[w], rr = ex[w + 5], q = exF[w + 4];
                 eF[c] = exF[w + 1];
-                if (last) { outQ[c] = q / dt; outR[c] = rr & NONE; }
-                eroded += exF[w + 6] * a;
+                if (last) { outQ[c] = q / dt; outR[c] = rr & NONE; eroded += exF[w + 6] * a; }
                 if (lid !== NONE) { lidF[c] = lid; lakeCells++; if (inlet) inlet[c] += exF[w + 2]; if (!lakesCells.has(lid)) lakesCells.set(lid, { cells: [], trap: 0 }); const L = lakesCells.get(lid); L.cells.push(c); const tr = exF[w + 3]; if (tr > 0) L.trap = tr; }
                 if (rr >>> 31) { const r = rr & NONE; if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; R.inClosed += q; if (inlet) inlet[r] += q; } else R.toSea += q; }
             }
@@ -567,7 +616,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         if (settle && column) await zBedBack(device, B.Kv, column);
     } finally {
         // (a 10M mesh's buffers are a couple of GB: they go now, not when a collector gets to them, the next run being about to want its own)
-        settle?.destroy();
+        settle?.destroy(); gsum.destroy();
         for (const b of [...Object.values(B), rangeBuf, uniform, stage, count]) if (!resident.has(b)) b.destroy();
     }
     let seaKm3 = 0, closedKm3 = 0, grossKm3 = 0;
