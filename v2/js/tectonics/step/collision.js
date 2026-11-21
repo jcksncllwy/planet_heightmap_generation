@@ -621,7 +621,7 @@ function recycle(world, donor, cells, over) {
     for (const c of cells) { sinkArc(world, donor.crust, c, over); donor.crust.remove(c); }   // (its rock: rock-book.js)
     donor.markReshaped();
     world.budget.recycledCells += cells.length;
-    if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `an island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting: its crust is too thin to float`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });
+    if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `an island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting: its column is too heavy to float, its light crust scraped off`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });
     if (donor.crust.count === 0) { donor.alive = false; donor.omega = [0, 0, 0]; donor.dynamics = null; }
 }
 

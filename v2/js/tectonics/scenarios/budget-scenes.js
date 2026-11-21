@@ -44,7 +44,7 @@ export const BUDGET_SCENES = [
         drive: updatePlateMotion,
     },
     {
-        id: 'arcs', label: 'Small arcs go down, big arcs accrete', maxMyr: 220, view: [0, 0],
+        id: 'arcs', label: 'Heavy arcs go down, buoyant arcs accrete', maxMyr: 220, view: [0, 0],
         about: 'Two continents close on each other, each with island arcs on its facing margin (the Phase 5b scene). Where an arc arrives at a continent, the parts whose column — their crust against the cold of the mantle lid under them since their slab last fed them — is denser than the asthenosphere go down with the slab (event log: “arc recycled”), their light upper crust scraped onto the continent’s fore-arc; the buoyant parts dock whole. So continents grow from mature arcs whole — a Japan, a Kohistan — and from every sinking arc’s upper crust.',
         build(simMesh, seed) {
             const world = scene(EVENT_SCENES, 'arc-collision').build(simMesh, seed);

@@ -12,8 +12,9 @@ import { simulate } from '../js/tectonics/simulate.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { frameTallies, Margin } from '../js/tectonics/measure.js';
-import { CrustFlag } from '../js/tectonics/model/crust.js';
+import { CrustFlag, CrustType } from '../js/tectonics/model/crust.js';
 import { EventKind } from '../js/tectonics/model/world.js';
+import { arcFloats } from '../js/tectonics/step/polarity.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2;
 const mesh = labMesh(), { numCells, cellAreaKm2 } = mesh;
@@ -81,7 +82,16 @@ section('heavy arcs go down, buoyant arcs accrete');
 {
     const r = await run('arcs'), off = await run('arcs', { arcRecycling: false });
     const recycled = r.events.filter(e => e.kind === EventKind.ARC_RECYCLED);
-    check('small arc pieces reaching a continent go down with their slab', r.budget.recycledCells > 0, `${Mkm2(r.budget.recycledCells).toFixed(2)} Mkm² of arc recycled; ${recycled.length} pieces worth naming`);
+    // (two continents close with island arcs on their facing margins, each fed by the trench in front of it until the ocean
+    // between is gone: a live arc's column floats (measure.js arcBuoyancyKm), so none goes down — Izu–Bonin–Mariana and Tonga
+    // are young and stay up; Cloos 1993. The arcs left behind in the back-arc go quiet and turn heavy, but they meet no trench
+    // here: where they do, over a whole history, see 'the budget over 1000 Myr'. Was: small pieces go down, by a 17 km
+    // threshold that sent live 11–12 km arcs down whole — lane contarea)
+    const live = [], heavy = [];
+    for (const p of r.world.plates) if (p.alive && p.crust) for (let c = 0; c < p.crust.type.length; c++)
+        if (p.crust.mask[c] && p.crust.type[c] === CrustType.ARC && p.crust.arcKm[c] > 0) (arcFloats(p.crust, c, r.world) ? live : heavy).push(c);
+    check('arcs fed by their slab float: none goes down at the closing margin', r.budget.recycledCells === 0 && live.length > 0,
+        `${Mkm2(r.budget.recycledCells).toFixed(2)} Mkm² of arc recycled (${recycled.length} pieces worth naming); at ${r.last.time} Myr ${Mkm2(live.length).toFixed(2)} Mkm² of arc floats, ${Mkm2(heavy.length).toFixed(2)} Mkm² gone quiet and heavy behind it`);
     const docked = r.events.filter(e => e.kind === EventKind.DOCK && e.data.arc);
     // (an arc docks whole once its column floats — its crust against its mantle lid's cold, measure.js arcBuoyancyKm, Cloos 1993;
     // heavier, it goes down with its slab, its light crust scraped onto the upper plate)
@@ -109,6 +119,11 @@ section('the budget over 1000 Myr');
         source: '~57 % of margins (Clift & Vannucchi 2004, Rev. Geophys. 42: "57 % of the global active margins seem to be of the erosive type"; checked) — today\'s margins', detail: `erosive above ${r.world.config.erosiveConvergenceCmYr} cm/yr or under ${r.world.config.accretionSedimentKm} km of trench sediment` });
     check('all three sinks are at work in a whole history', b.erodedCells > 0 && b.underthrustCells > 0 && b.recycledCells > 0,
         `eroded ${Mkm2(b.erodedCells).toFixed(1)}, underthrust ${Mkm2(b.underthrustCells).toFixed(1)}, arcs recycled ${Mkm2(b.recycledCells).toFixed(1)} Mkm²`);
+    // (a heavy arc — gone quiet, its lid cooled, polarity.js arcFloats — goes down a trench, and the light share of the crust
+    // it grew, (ρm − ρarc)/(ρm − ρcc) ≈ 0.70 by the model's densities (measure.js arcScrapedShare), is scraped onto the upper
+    // plate's prism; lane contarea)
+    check('arcs gone heavy go down a trench, their light crust scraped onto the upper plate', b.recycledCells > 0 && (b.arcScrapedKm3 ?? 0) < 0,
+        `${Mkm2(b.recycledCells).toFixed(2)} Mkm² of arc down; ${((b.arcScrapedKm3 ?? 0) / -1e6).toFixed(2)} Mkm³ scraped onto upper plates, ${((b.arcRecycledKm3 ?? 0) / -1e6).toFixed(2)} Mkm³ into the mantle (with the 7 km of ocean crust under each arc)`);
     check('no gaps', r.frames.every(f => frameTallies(f).gaps === 0), 'every frame');
     // (audit 2026-10-30: was a hard check, 1000 Myr under two minutes. A wall clock on a shared machine, set 09-25, and it timed a
     // run no user makes: the ledger on, at the single-mechanism scenes' fine pace. Saved runs of that range 176–498 s with the load.
