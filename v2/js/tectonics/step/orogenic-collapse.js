@@ -63,9 +63,10 @@ export function collapseOrogens(world) {
             if (have < h0 - 1e-9) break;                                     // (the belts' root is spent: no more area)
             rock -= cellRockKm3(world, crust, c);
             for (const [s, k] of take) { rock -= cellRockKm3(world, crust, s); rootKm[s] -= k; rock += cellRockKm3(world, crust, s); }
-            // the sea's own sediment stays where it lay (now on land): the cell is remade around it
+            // the sea's own sediment stays where it lay (now on land): the cell is remade around it — and its cover record with it
+            // (the record fed from that fill: dropping it made geology lay the kept fill twice; lane graded)
             const keep = crust.fields.map(a => a[c]);
-            const F = crust.fields, keepIdx = ['basinFillKm', 'seaFillKm', 'shelfKm3', 'riseKm3', 'wornKm'].map(name => F.indexOf(crust[name]));
+            const F = crust.fields, keepIdx = ['basinFillKm', 'seaFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm'].map(name => F.indexOf(crust[name]));
             crust.create(c, CrustType.CONTINENT, time, terrane[f.src]);
             for (const i of keepIdx) if (i >= 0) F[i][c] = keep[i];
             rock += cellRockKm3(world, crust, c);
