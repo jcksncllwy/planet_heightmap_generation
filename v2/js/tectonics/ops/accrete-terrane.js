@@ -70,7 +70,7 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     if (terrane.length * mesh.cellAreaKm2 < config.terraneMinAreaKm2) { host.refreshExtent(xyz); donor.refreshExtent(xyz); return { cells: moved, sealed: 0, absorbed, scrap: true }; }
 
     // the strait between terrane and host closes; the seam is a suture; a short belt on both sides
-    const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid } = closeSeasBetween(H, origin, mesh, host, config, time);
+    const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid, remnant } = closeSeasBetween(H, origin, mesh, host, config, time);
     const seam = [];
     for (let q = 0; q < numCells; q++) {
         if (!H.mask[q] || H.type[q] === CrustType.OCEAN) continue;
@@ -82,7 +82,7 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     spreadBelt(host, mesh, seam.filter(q => origin[q] !== 1), { type: OrogenyType.URAL, widthKm: width, workKm: work, time, side: BeltSide.LOWER }, config, q => origin[q] !== 1);
     host.refreshExtent(xyz);
     donor.refreshExtent(xyz);
-    return { cells: moved, sealed, landSealed, sealPaid, arcSealed, arcPaid, absorbed };
+    return { cells: moved, sealed, remnant, landSealed, sealPaid, arcSealed, arcPaid, absorbed };
 }
 
 /** The connected landmass of `plate` that contains any of the given raster cells. */

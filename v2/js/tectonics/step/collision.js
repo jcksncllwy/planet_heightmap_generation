@@ -238,6 +238,7 @@ export function trackCollisions(world, dt) {
                 }
             }
             world.budget.sealedCells = (world.budget.sealedCells ?? 0) + result.sealedCells;
+            world.budget.remnantSeaCells = (world.budget.remnantSeaCells ?? 0) + (result.remnantSeaCells ?? 0);   // (unpaid sea left as a remnant basin: merge-plates.js closeSeasBetween)
             world.budget.sealedLandCells = (world.budget.sealedLandCells ?? 0) + result.sealedLandCells;
             world.budget.sealPaidCells = (world.budget.sealPaidCells ?? 0) + result.sealPaidCells;
             world.budget.sealedArcCells = (world.budget.sealedArcCells ?? 0) + result.sealedArcCells;
@@ -464,6 +465,7 @@ function dockIfTerrane(world, A, B, cells) {
     }
     const donorName = donor.name, result = accreteTerrane(world, host, donor, mass, rate);
     world.budget.sealedCells = (world.budget.sealedCells ?? 0) + (result.sealed ?? 0);
+    world.budget.remnantSeaCells = (world.budget.remnantSeaCells ?? 0) + (result.remnant ?? 0);
     world.budget.sealedLandCells = (world.budget.sealedLandCells ?? 0) + (result.landSealed ?? 0);
     world.budget.sealPaidCells = (world.budget.sealPaidCells ?? 0) + (result.sealPaid ?? 0);
     world.budget.sealedArcCells = (world.budget.sealedArcCells ?? 0) + (result.arcSealed ?? 0);

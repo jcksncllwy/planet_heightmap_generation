@@ -178,7 +178,8 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
         `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}; ${((world.budget.sedimentKm3 ?? 0) / 1e6).toFixed(2)} Mkm³ of terrigenous sediment subducted`);
     const B = world.budget;
     check('…and a weld or a dock makes no crust: every cell of sea it fills is paid for with a cell of its coast', (B.sealPaidCells ?? 0) === (B.sealedLandCells ?? 0) && (B.arcPaidCells ?? 0) === (B.sealedArcCells ?? 0),
-        `${B.sealedLandCells ?? 0} cells of sea filled with continent at welds and docks, ${B.sealPaidCells ?? 0} of continental coast given back; ${B.sealedArcCells ?? 0} filled with arc, ${B.arcPaidCells ?? 0} of coast given back for them`);
+        `${B.sealedLandCells ?? 0} cells of sea filled with continent at welds and docks, ${B.sealPaidCells ?? 0} of continental coast given back; ${B.sealedArcCells ?? 0} filled with arc, ${B.arcPaidCells ?? 0} of coast given back for them; ${B.remnantSeaCells ?? 0} left sea, unpaid, as remnant basins`);
+    report('weld and dock sea left as remnant basins (no coast of the plate\'s own to pay for it)', B.remnantSeaCells ?? 0, { unit: ' cells' });
     const per100 = cells => cells * ledgerMesh.cellAreaKm2 / 1e6 / (LEDGER_MYR / 100);
     for (const stage of LAND_STAGES) report(`net continental crust from ${stage}`, per100(stages[stage]?.land ?? 0), { unit: ' Mkm²/100 Myr', digits: 1 });
     // (lane beltthick: the area shortening takes and the area a quiet belt's collapse gives back, against Earth's rates)

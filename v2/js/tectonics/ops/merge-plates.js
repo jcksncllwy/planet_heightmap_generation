@@ -166,7 +166,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     }
 
     // ── sea caught between the two plates closes: narrow straits, and small enclosed seas ──
-    const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid } = closeSeasBetween(out, origin, mesh, upper, config, time);
+    const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid, remnant } = closeSeasBetween(out, origin, mesh, upper, config, time);
 
     // ── the seam becomes a suture belt ──
     const seam = [];
@@ -200,7 +200,7 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
     lower.omega = [0, 0, 0];
     lower.dynamics = null;
     lower.refreshExtent(xyz);
-    return { landLostCells: landBefore - (upper.stats.continentalCells - sealed + sealPaid + arcPaid), maxIndentKm: maxIndent, meanIndentKm: meanIndent, overlapCells: oCount, sealedCells: sealed, sealedLandCells: landSealed, sealPaidCells: sealPaid, sealedArcCells: arcSealed, arcPaidCells: arcPaid };
+    return { landLostCells: landBefore - (upper.stats.continentalCells - sealed + sealPaid + arcPaid), maxIndentKm: maxIndent, meanIndentKm: meanIndent, overlapCells: oCount, sealedCells: sealed, remnantSeaCells: remnant, sealedLandCells: landSealed, sealPaidCells: sealPaid, sealedArcCells: arcSealed, arcPaidCells: arcPaid };
 }
 
 /**
@@ -208,8 +208,11 @@ export function mergePlates(world, upper, lower, overlapWorldCells, collision) {
  * 2 × sealStraitKm, and any enclosed sea smaller than inlandSeaMaxKm2. Filled cells become continental
  * crust of the nearer plate, marked origin 3 so the seam runs round them — and every cell filled in is paid for with a
  * cell of coast of its kind from the land beside it (the lower plate's leading edge first).
- * @returns {{sealed: number, landSealed: number, paid: number, arcSealed: number, arcPaid: number}} cells closed; of them continent,
- *   and the continent's coast cells given back for them; of them arc, and the coast cells (arc, else continent) given back for those
+ * Where the land beside has no coast of the plate's own to give (its sea all outside the plate's raster), the sea it
+ * cannot pay for stays sea: a trapped remnant basin (the Black Sea, the South Caspian, the Tarim's early history).
+ * @returns {{sealed: number, landSealed: number, paid: number, arcSealed: number, arcPaid: number, remnant: number}} cells
+ *   closed; of them continent, and the continent's coast cells given back for them; of them arc, and the coast cells (arc,
+ *   else continent) given back for those; cells left sea as a remnant basin (not in the others)
  */
 export function closeSeasBetween(out, origin, mesh, upper, config, time) {
     const { numCells, adjOffset, adjList, edgeKm, xyz, index } = mesh;
@@ -245,6 +248,7 @@ export function closeSeasBetween(out, origin, mesh, upper, config, time) {
     for (let q = 0; q < numCells; q++) if (fill[q]) toFill.push(q);
     if (!toFill.length) return 0;
     const nearestLand = hopsFrom(mesh, [...land1, ...land2], q => fill[q] === 1);
+    const before = toFill.map(q => out.mask[q] ? out.snapshot(q) : null), originBefore = toFill.map(q => origin[q]);
     for (const q of toFill) {
         const s = nearestLand.source[q] >= 0 ? nearestLand.source[q] : land1[0];
         out.copyFrom(q, out, s);
@@ -290,7 +294,24 @@ export function closeSeasBetween(out, origin, mesh, upper, config, time) {
         arcPaid = give(coastOf[CrustType.ARC], owedOf[CrustType.ARC]);
         arcPaid += give(coastOf[CrustType.CONTINENT], owedOf[CrustType.ARC] - arcPaid);
     }
-    return { sealed: toFill.length, landSealed: owed, paid, arcSealed: owedOf[CrustType.ARC], arcPaid };
+    // ── …and what no coast paid for stays sea (lane contarea; sessrumnir's ruling): a plate whose sea lies all outside its
+    // own raster has no coast of its own to give, and turning its edge into new ocean would invent a rift where nothing
+    // rifts. So the unpaid cells go back to what they were, the basin's middle first (farthest from the land that would
+    // have filled it): a remnant ocean basin trapped in the weld. (Was: filled anyway, the weld making continent from
+    // nothing; check-invariants caught 4 cells at one weld, seed 12345 on Chroma's path.) ──
+    const unpaid = { [CrustType.CONTINENT]: owed - paid, [CrustType.ARC]: owedOf[CrustType.ARC] - arcPaid };
+    let remnant = 0;
+    if (unpaid[CrustType.CONTINENT] > 0 || unpaid[CrustType.ARC] > 0) {
+        const order = toFill.map((q, i) => i).sort((i, j) => nearestLand.dist[toFill[j]] - nearestLand.dist[toFill[i]] || toFill[i] - toFill[j]);
+        for (const i of order) {
+            const q = toFill[i], kind = out.type[q];
+            if (!(unpaid[kind] > 0)) continue;
+            if (before[i]) out.restore(q, before[i]); else out.remove(q);
+            origin[q] = originBefore[i];
+            unpaid[kind]--; remnant++;
+        }
+    }
+    return { sealed: toFill.length - remnant, landSealed: paid, paid, arcSealed: arcPaid, arcPaid, remnant };
 }
 
 /** Each craton of the (pre-warp) raster moves as one block by the field at its cells' mean, and is written back cell-for-cell. */
