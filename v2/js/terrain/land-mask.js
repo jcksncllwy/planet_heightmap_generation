@@ -19,7 +19,7 @@
 // every stage applies it alike until a coastal sediment surface fills them.
 
 import { CrustType, CrustFlag } from '../tectonics/model/crust.js';
-import { seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
+import { seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR, SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { seaLevel, seaLevelAgain, liftRefKm, liftedDry } from './sea-level.js';
 import { surfaceKm, pourOcean, EARTH_OCEAN_KM3 } from '../tectonics/ocean/inventory.js';
 import { zonalWater } from './basin-estimate.js';
@@ -52,7 +52,11 @@ export function crustColumnKm(frame, cfg, CM, w) {
         lift = CM.slope[type] * frame.rootKm[w];
     }
     lift = Math.fround(lift + frame.baseKm[w]);                         // (the start world's swells, as worn so far; as the platform stores it)
-    return { h: h + lift + (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR, lift };
+    // (and the sediment a sea laid on it — an epeiric sea's or a drowned margin's fill, step/trench-fans.js and the marine lane:
+    // crust.seaFillKm on continental or arc crust — at its water-loaded share, as on the ocean's floor: SEDIMENT_LOAD_FACTOR.
+    // Reduced: drawn so when the sea has left it too)
+    const marine = type === CrustType.OCEAN ? 0 : (frame.seaFillKm?.[w] ?? 0) / SEDIMENT_LOAD_FACTOR;
+    return { h: h + lift + (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR + marine, lift };
 }
 
 /** Sea pockets smaller than `maxKm2` (connected non-land cells enclosed by land) become land, in place. */
