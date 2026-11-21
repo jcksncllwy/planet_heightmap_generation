@@ -16,7 +16,7 @@
 // history depends on its GPU: app/history-key.js gpuFingerprint keys the cache by it.
 
 import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
-import { columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR, SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { arcCrustKm } from './collision.js';
 import { recordWear } from './geology.js';
 import { erosionAtLatitude, rainAtLatitude } from '../../terrain/terrain-config.js';
@@ -127,8 +127,6 @@ export function landHeightKm(world, w, H, swellKm, seaKm, landRef, seaRef) {
             : arcSurfaceKm(arcCrustKm(crust, c, time, world.config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0);     // (as the terrain stands it: records.js)
         full = b + C.slope[1] * ARC_ROOT_SHARE * Math.max(0, crust.rootKm[c]);
     } else full = C.ref[type] + C.slope[type] * crust.rootKm[c];
-    // (a sea's fill on it — an epeiric sea's, a drowned margin's: crust.seaFillKm — at its water-loaded share, as land-mask.js draws it)
-    full += crust.seaFillKm[c] / SEDIMENT_LOAD_FACTOR;
     full += crust.upliftKm[c] + crust.baseKm[c] + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0);
     // (the swell is the mantle's, broad: it tilts the land and its rivers with it)
     return full + swellKm[w] - (type === CrustType.ARC ? seaRef : landRef) - seaKm + laid;
