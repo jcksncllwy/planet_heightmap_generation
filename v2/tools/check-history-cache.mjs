@@ -135,6 +135,10 @@ section('writers at once, and one build for many');
         if (mode === 'build') {
             const r = await HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
             console.log(JSON.stringify({ cached: r.cached, n: r.frames.length, owner: r.frames.map(f => Array.from(f.owner.subarray(0, 64))) }));
+        } else if (mode === 'same' || mode === 'pair') {  // same: one history three times at once (phase 10's planets); pair: two, both orders
+            const seeds = mode === 'same' ? [seed, seed, seed] : [seed, Number(process.argv[6])];
+            const rs = await Promise.all(seeds.map(s => { const w = scene.build(labMesh(cells), s); return HC.simulateCached(w, { untilMyr: until, drive: x => scene.drive(x), snapshotEveryMyr: 10 }, { drive: scene.drive }); }));
+            console.log(JSON.stringify({ cached: rs.map(r => r.cached), owner: rs.map(r => Array.from(r.frames.at(-1).owner.subarray(0, 64))) }));
         } else {                                           // hammer: write and read the same frames over and over
             const key = HC.keyOf(world, scene.drive), frames = (await HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive })).frames;
             const fs = await import('node:fs');
@@ -149,7 +153,10 @@ section('writers at once, and one build for many');
         }
     `);
     // (the JSON is read from stdout alone: its last line from its first brace: Dawn's warnings from the GPU erosion print unterminated, lane graded)
-    const child = (...args) => new Promise(res => { let out = '', said = ''; const c = spawn(process.execPath, [script, ...args.map(String)], { env: process.env }); c.stdout.on('data', d => { out += d; said += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => res({ code, out, said })); });
+    // (a child that has not answered in DEADLINE_S is killed and reported: a deadlock fails the check instead of hanging the suite)
+    const DEADLINE_S = 300;
+    const child = (...args) => new Promise(res => { let out = '', said = '', late = false; const c = spawn(process.execPath, [script, ...args.map(String)], { env: process.env }); const t = setTimeout(() => { late = true; c.kill(); }, DEADLINE_S * 1e3); c.stdout.on('data', d => { out += d; said += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => { clearTimeout(t); res({ code, out: late ? `killed after ${DEADLINE_S} s with no answer (deadlocked?) ${out}` : out, said: late ? '' : said }); }); });
+    const lastJson = r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } };
     // three processes ask for the same history at once (a fresh one: seed 99)
     fs.writeFileSync(process.env.GEO_SIM_HISTORY_LOG, '');
     const three = await Promise.all([child('build', CELLS, 99, 40), child('build', CELLS, 99, 40), child('build', CELLS, 99, 40)]);
@@ -158,6 +165,22 @@ section('writers at once, and one build for many');
     check('three processes asking for one history at once: one builds it, the others wait for its frames — and all three get the same frames',
         parsed.every(Boolean) && builds === 1 && waits === 2 && parsed.every(p => JSON.stringify(p.owner) === JSON.stringify(parsed[0].owner)),
         parsed.every(Boolean) ? `${builds} build, ${waits} served from the cache (${parsed.map(p => (p.cached ? 'cached' : 'built')).join(', ')})` : three.map(r => r.out.slice(-300)).join(' | '));
+    // one process asking for one history three times at once (phase 10's planets: each seed at 400, 500 and 600 Myr). The
+    // history awaits its GPU mid-build, so the second ask came while the first was building — and found the lock held by
+    // its own pid, alive, and slept on it with the thread blocked: the build it waited for could never run on (hours at 0 %)
+    fs.writeFileSync(process.env.GEO_SIM_HISTORY_LOG, '');
+    const same = await child('same', CELLS, 98, 40), sp = lastJson(same), sameBuilds = log().filter(e => e.event === 'build').length;
+    check('one process asking for one history three times at once: it builds it once and all three get its frames — never waiting on its own lock',
+        sp !== null && sameBuilds === 1 && sp.owner.every(o => JSON.stringify(o) === JSON.stringify(sp.owner[0])),
+        sp ? `${sameBuilds} build, answers ${sp.cached.map(c => (c ? 'cached' : 'built')).join(', ')}` : same.out.slice(-300));
+    // two processes each asking for two histories at once, in opposite orders: each may build one and wait for the other's —
+    // a wait that blocked the thread would stall its own build, and the other process's wait on that, for good
+    fs.writeFileSync(process.env.GEO_SIM_HISTORY_LOG, '');
+    const pair = await Promise.all([child('pair', CELLS, 96, 40, 97), child('pair', CELLS, 97, 40, 96)]), pp = pair.map(lastJson);
+    const pairBuilds = log().filter(e => e.event === 'build').length;
+    check('two processes asking for the same two histories at once, in opposite orders: both answer, each history built once, the same frames to each',
+        pp.every(Boolean) && pairBuilds === 2 && JSON.stringify(pp[0].owner[0]) === JSON.stringify(pp[1].owner[1]) && JSON.stringify(pp[0].owner[1]) === JSON.stringify(pp[1].owner[0]),
+        pp.every(Boolean) ? `${pairBuilds} builds; answers ${pp.map(p => p.cached.map(c => (c ? 'cached' : 'built')).join('/')).join(' · ')}` : pair.map(r => r.out.slice(-300)).join(' | '));
     // four processes writing, deleting and reading the same frames over and over, as fast as they can
     const four = await Promise.all([0, 1, 2, 3].map(() => child('hammer', CELLS, 99, 40)));
     const res = four.map(r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } });
