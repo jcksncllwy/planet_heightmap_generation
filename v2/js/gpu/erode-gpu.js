@@ -15,7 +15,7 @@
 // Limits: float32 throughout (the CPU's intermediates are doubles), so a near-tie between two slopes can fall the other way. Laying
 // what lakes kept, closed basins and rebound stay on the CPU, with a readback a step.
 
-import { openDevice, readBack } from './gpu-device.js';
+import { openDevice, readBack, gpuWait } from './gpu-device.js';
 import { deltaLayer, layUp, closedOutlets, layClosed } from '../finish/finish-erode.js';
 import { meshFields, sumPartials } from './fields.js';
 import { reboundGPU, zBedBack } from './rebound-gpu.js';
@@ -348,7 +348,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         const e = device.createCommandEncoder();
         e.copyBufferToBuffer(B.counter, 0, count, 0, 4);
         device.queue.submit([e.finish()]);
-        await count.mapAsync(GPUMapMode.READ);
+        await gpuWait(device, count.mapAsync(GPUMapMode.READ), 'erosion: reading a count');
         const v = new Uint32Array(count.getMappedRange().slice(0))[0];
         count.unmap();
         return v;
@@ -508,7 +508,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         p.end();
         e.copyBufferToBuffer(B.hist, 0, stage, 0, 4 * MAX_LEVELS);
         device.queue.submit([e.finish()]);
-        await stage.mapAsync(GPUMapMode.READ);
+        await gpuWait(device, stage.mapAsync(GPUMapMode.READ), 'erosion: reading the levels\' histogram');
         const hist = new Uint32Array(stage.getMappedRange().slice(0));
         stage.unmap();
         const t1 = performance.now();
@@ -547,7 +547,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         if (!all) gsum.encode(e);
         device.queue.submit([e.finish()]);
         ms.encode += performance.now() - t0;
-        await device.queue.onSubmittedWorkDone();
+        await gpuWait(device, device.queue.onSubmittedWorkDone(), 'erosion: the sweeps');
         ms.sweep += performance.now() - t0;
     };
     const R = { route: [], toSea: 0, inClosed: 0 }, recAt = new Uint32Array(n), gsum = await sumPartials(device, B.gsum, n);
@@ -561,7 +561,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         if (P.rebound > 0) { put('z', z); settle = await reboundGPU(device, { mesh, z: B.z, lift: B.lift, Kv: column ? B.Kv : null, ocean, flex: o.flex ?? null, P }); }
         // (the GPU settles the ground and hands it back for the CPU's closed-basin judge: z on both sides agree, no upload needed)
         const settleNow = async at => { put('z', z); reboundKm3 += await settle.settle(at); z.set(await readBack(device, B.z)); };
-        await device.queue.onSubmittedWorkDone();
+        await gpuWait(device, device.queue.onSubmittedWorkDone(), 'erosion: setting up');
         ms.setup = performance.now() - t00;
         for (let s = 0; s < P.steps; s++) {
             let t = performance.now();
