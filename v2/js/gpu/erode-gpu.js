@@ -372,7 +372,8 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         Object.keys(spec.b).forEach((bn, i) => entries.push({ binding: i + 3, resource: { buffer: B[swap[bn] ?? bn] } }));
         return { pipe, bg: device.createBindGroup({ layout, entries }) };
     };
-    const run = (pass, g, slot, cnt) => { pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(Math.ceil(cnt / WG)); };
+    // (an empty range — no flats, no roots at a level — is skipped: a dispatch of 0 workgroups does nothing, and Dawn warns of each)
+    const run = (pass, g, slot, cnt) => { if (!(cnt > 0)) return; pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(Math.ceil(cnt / WG)); };
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
     const SL = { list: 0, roots: 1, flats: 2, all: 3 };
     const groupsKey = `${DIFF}|${(P.hillD ?? 0) > 0}`, G = pool?.groups(groupsKey, P_) ?? {
