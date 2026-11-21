@@ -134,11 +134,11 @@ section('writers at once, and one build for many');
         const scene = TERRAIN_SCENES.find(s => s.id === 'cycle'), world = scene.build(labMesh(cells), seed);
         if (mode === 'build') {
             const r = await HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive });
-            console.log(JSON.stringify({ cached: r.cached, n: r.frames.length, owner: r.frames.map(f => Array.from(f.owner.subarray(0, 64))) }));
+            console.log('\\n@answer ' + JSON.stringify({ cached: r.cached, n: r.frames.length, owner: r.frames.map(f => Array.from(f.owner.subarray(0, 64))) }));
         } else if (mode === 'same' || mode === 'pair') {  // same: one history three times at once (phase 10's planets); pair: two, both orders
             const seeds = mode === 'same' ? [seed, seed, seed] : [seed, Number(process.argv[6])];
             const rs = await Promise.all(seeds.map(s => { const w = scene.build(labMesh(cells), s); return HC.simulateCached(w, { untilMyr: until, drive: x => scene.drive(x), snapshotEveryMyr: 10 }, { drive: scene.drive }); }));
-            console.log(JSON.stringify({ cached: rs.map(r => r.cached), owner: rs.map(r => Array.from(r.frames.at(-1).owner.subarray(0, 64))) }));
+            console.log('\\n@answer ' + JSON.stringify({ cached: rs.map(r => r.cached), owner: rs.map(r => Array.from(r.frames.at(-1).owner.subarray(0, 64))) }));
         } else {                                           // hammer: write and read the same frames over and over
             const key = HC.keyOf(world, scene.drive), frames = (await HC.simulateCached(world, { untilMyr: until, drive: w => scene.drive(w), snapshotEveryMyr: 10 }, { drive: scene.drive })).frames;
             const fs = await import('node:fs');
@@ -149,18 +149,19 @@ section('writers at once, and one build for many');
                 const back = HC.getPacked(key, f.time); reads++;
                 if (back && back.meta.time !== f.time) bad++;
             }
-            console.log(JSON.stringify({ bad, reads }));
+            console.log('\\n@answer ' + JSON.stringify({ bad, reads }));
         }
     `);
-    // (the JSON is read from stdout alone: its last line from its first brace: Dawn's warnings from the GPU erosion print unterminated, lane graded)
+    // (the answer is read from stdout alone, after its marker: Dawn's warnings from the GPU erosion print unterminated, before
+    // the answer or — on D3D12, Chroma — after it, so neither the last line nor its first brace is the answer)
     // (a child that has not answered in DEADLINE_S is killed and reported: a deadlock fails the check instead of hanging the suite)
     const DEADLINE_S = 300;
     const child = (...args) => new Promise(res => { let out = '', said = '', late = false; const c = spawn(process.execPath, [script, ...args.map(String)], { env: process.env }); const t = setTimeout(() => { late = true; c.kill(); }, DEADLINE_S * 1e3); c.stdout.on('data', d => { out += d; said += d; }); c.stderr.on('data', d => { out += d; }); c.on('close', code => { clearTimeout(t); res({ code, out: late ? `killed after ${DEADLINE_S} s with no answer (deadlocked?) ${out}` : out, said: late ? '' : said }); }); });
-    const lastJson = r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } };
+    const lastJson = r => { const i = r.said.lastIndexOf('@answer '); try { return i < 0 ? null : JSON.parse(r.said.slice(i + 8).split('\n')[0]); } catch { return null; } };
     // three processes ask for the same history at once (a fresh one: seed 99)
     fs.writeFileSync(process.env.GEO_SIM_HISTORY_LOG, '');
     const three = await Promise.all([child('build', CELLS, 99, 40), child('build', CELLS, 99, 40), child('build', CELLS, 99, 40)]);
-    const parsed = three.map(r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } });
+    const parsed = three.map(lastJson);
     const events = log(), builds = events.filter(e => e.event === 'build' && e.untilMyr === 40).length, waits = events.filter(e => e.event === 'wait-hit' || e.event === 'hit').length;
     check('three processes asking for one history at once: one builds it, the others wait for its frames — and all three get the same frames',
         parsed.every(Boolean) && builds === 1 && waits === 2 && parsed.every(p => JSON.stringify(p.owner) === JSON.stringify(parsed[0].owner)),
@@ -183,7 +184,7 @@ section('writers at once, and one build for many');
         pp.every(Boolean) ? `${pairBuilds} builds; answers ${pp.map(p => p.cached.map(c => (c ? 'cached' : 'built')).join('/')).join(' · ')}` : pair.map(r => r.out.slice(-300)).join(' | '));
     // four processes writing, deleting and reading the same frames over and over, as fast as they can
     const four = await Promise.all([0, 1, 2, 3].map(() => child('hammer', CELLS, 99, 40)));
-    const res = four.map(r => { try { return JSON.parse(r.said.trim().split('\n').at(-1).replace(/^[^{]*/, '')); } catch { return null; } });
+    const res = four.map(lastJson);
     const w = scene.build(mesh, 99), key = HC.keyOf(w, scene.drive), whole = HC.entryTimes(key).map(t => HC.getFrame(key, t)).filter(Boolean);
     const ref = (await simulate(scene.build(mesh, 99), { untilMyr: 40, drive: x => scene.drive(x), snapshotEveryMyr: 10 })).frames;
     const leftovers = fs.readdirSync(path.join(HC.CACHE_DIR, key)).filter(f => f.includes('.tmp-'));
