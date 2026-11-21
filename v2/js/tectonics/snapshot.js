@@ -101,20 +101,60 @@ export function captureFrame(world, reuse = null) {
     const tectSpan = tectWindowMyr(world);
     f.time = world.time;
     f.tectSpanMyr = tectSpan;                           // (the window tectRateKm is over, Myr: the finish erodes over it, ERODE spanWindow)
-    // mark every raster cell that is some world cell's nearest; the rest are hidden between world cells (see below)
-    const epoch = ++captureEpoch;
-    for (let w = 0; w < n; w++) {
-        if (owner[w] < 0) continue;
-        const p = plates[owner[w]];
-        let stamp = shownStamps.get(p);
-        if (!stamp || stamp.length !== n) { stamp = new Uint32Array(n); shownStamps.set(p, stamp); }
-        stamp[ownerCell[w]] = epoch;
-    }
-    f.owner.set(owner);
+    frameCells(f, world, tectSpan);
+    markTrenchState(f, mesh);
+    // the live plumes, where they are in the mantle (they never move)
+    f.hotspots = (world.hotspots ?? []).filter(h => h.alive).map(h => ({ id: h.id, name: h.name, xyz: h.xyz.slice(), strength: h.strength, bornAt: h.bornAt }));
+    // the supercontinent cycle (step/supercontinent.js): where the mantle wells up and goes down, how gathered the land is
+    const cy = world.cycle;
+    f.cycle = cy ? { up: cy.up?.slice() ?? null, down: cy.down?.slice() ?? null, upHeat: cy.upHeat, gather: cy.gather, hold: cy.hold, holdKm: cy.holdKm, share: cy.share, landmasses: cy.landmasses, state: cy.state, since: cy.since,
+        phase: cy.phase, formedAt: cy.formedAt, breakupAt: cy.breakupAt, gatherAt: cy.gatherAt } : null;
+    f.plates = plates.map(p => {
+        const centre = p.toWorld(p.capCenter[0], p.capCenter[1], p.capCenter[2], [0, 0, 0]);
+        return {
+            id: p.id, name: p.name, alive: p.alive, isBackground: p.isBackground,
+            omega: p.omega.slice(), quat: p.quat.slice(), centre, hue: p.hue,
+            cells: p.stats.cells, landCells: p.stats.continentalCells, keelCells: p.stats.keelCells,
+            speedCmYr: speedCmYrAt(p.omega, centre[0], centre[1], centre[2]),
+            dynamics: p.dynamics ? JSON.parse(JSON.stringify(p.dynamics)) : null,
+        };
+    });
+    // each plate's crust itself (Phase 9, developer: steady detail): which raster cells it has and what they are. A world
+    // cell shows only the crust cell nearest it, and at any moment ~15 % of a moving plate's cells are nobody's nearest;
+    // the terrain measures coasts on the plates' own rasters (terrain/records.js plateCoasts). Records only.
+    frameCrust(f, world);
+    f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
+    // (one level deeper than the budget's own: a book kept per kind — orogenic collapse's — is an object the history goes
+    // on adding to, and a frame that shared it would read the later sums: a cached frame and a fresh one would differ)
+    f.budget = Object.fromEntries(Object.entries(world.budget).map(([k, v]) => [k, v && typeof v === 'object' ? (Array.isArray(v) ? v.slice() : { ...v }) : v]));
+    // (when each sea was cut off, Myr — NaN off the cut-off seas; −Infinity: never open — and the sea's log since the frame
+    // before: step/sea-age.js. Copies, entries included: the world's go on changing)
+    f.seaCutAt = world.seaCutAt ? world.seaCutAt.slice() : null;
+    f.seaLog = (world.seaLog ?? []).slice(world.seaLogShipped ?? 0).map(e => ({ ...e }));
+    world.seaLogShipped = world.seaLog?.length ?? 0;
+    f.geoBook = world.geoBook ? { ...world.geoBook } : null;
+    f.events = world.events.slice();
+    openTectWindow(world);
+    return f;
+}
+
+// (captureFrame's per-cell loops are functions of their own, lane histprof: a frame is taken once a snapshot, too rarely for
+// V8 to optimize captureFrame whole, so its loops ran on on-stack replacement, recompiled every frame and dropped back to
+// the interpreter at each inner loop's exit — ~40 ms a frame at 40K, ~2 s of a 430 Myr history. Same arithmetic, same order.)
+function frameCells(f, world, tectSpan) {
+    const n = world.mesh.numCells, epoch = stampShown(world);
+    f.owner.set(world.owner);
     f.collider.set(world.collider);
-    f.boundary.set(boundaryKind);
-    f.provisional.set(provisional);
-    for (let w = 0; w < n; w++) {
+    f.boundary.set(world.boundaryKind);
+    f.provisional.set(world.provisional);
+    for (let w0 = 0; w0 < n; w0 += FRAME_CHUNK) frameCellRange(f, world, tectSpan, epoch, w0, Math.min(n, w0 + FRAME_CHUNK));
+}
+// (in runs of cells: a function called ~20 times a frame is optimized whole, where one loop over every cell called once a
+// frame ran on OSR code V8 compiled afresh each frame — ~3× slower, lane histprof)
+const FRAME_CHUNK = 2048;
+function frameCellRange(f, world, tectSpan, epoch, w0, w1) {
+    const { mesh, owner, ownerCell, claimCount, landClaims, provisional, plates } = world, { adjOffset, adjList } = mesh;
+    for (let w = w0; w < w1; w++) {
         f.overlap[w] = landClaims[w] > 1 ? 2 : claimCount[w] > 1 ? 1 : 0;
         f.mantleHeat[w] = Math.round(255 * (world.mantleHeat ? world.mantleHeat[w] : 0));
         f.volcType[w] = 0; f.volcAt[w] = 0; f.volcKm[w] = 0; f.volcSource[w] = 0;
@@ -156,35 +196,38 @@ export function captureFrame(world, reuse = null) {
         // as dashes. Such a HIDDEN track cell is shown instead by a world cell next to it whose own raster cell carries
         // nothing — so every track cell is seen, and none is shown twice over.
         if (!crust.volcType[c]) {
-            const stamp = shownStamps.get(plates[owner[w]]);
-            let best = -1;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
-                const nb = adjList[k];
-                if (crust.mask[nb] && crust.volcType[nb] === VolcanicType.TRACK && stamp[nb] !== epoch && (best < 0 || crust.volcAt[nb] > crust.volcAt[best])) best = nb;
-            }
+            const best = hiddenTrackBeside(crust, c, shownStamps.get(plates[owner[w]]), epoch, adjOffset, adjList);
             if (best >= 0) { f.volcType[w] = VolcanicType.TRACK; f.volcAt[w] = crust.volcAt[best]; f.volcKm[w] = crust.volcKm[best]; f.volcSource[w] = crust.volcSource[best]; }
         }
     }
-    markTrenchState(f, mesh);
-    // the live plumes, where they are in the mantle (they never move)
-    f.hotspots = (world.hotspots ?? []).filter(h => h.alive).map(h => ({ id: h.id, name: h.name, xyz: h.xyz.slice(), strength: h.strength, bornAt: h.bornAt }));
-    // the supercontinent cycle (step/supercontinent.js): where the mantle wells up and goes down, how gathered the land is
-    const cy = world.cycle;
-    f.cycle = cy ? { up: cy.up?.slice() ?? null, down: cy.down?.slice() ?? null, upHeat: cy.upHeat, gather: cy.gather, hold: cy.hold, holdKm: cy.holdKm, share: cy.share, landmasses: cy.landmasses, state: cy.state, since: cy.since,
-        phase: cy.phase, formedAt: cy.formedAt, breakupAt: cy.breakupAt, gatherAt: cy.gatherAt } : null;
-    f.plates = plates.map(p => {
-        const centre = p.toWorld(p.capCenter[0], p.capCenter[1], p.capCenter[2], [0, 0, 0]);
-        return {
-            id: p.id, name: p.name, alive: p.alive, isBackground: p.isBackground,
-            omega: p.omega.slice(), quat: p.quat.slice(), centre, hue: p.hue,
-            cells: p.stats.cells, landCells: p.stats.continentalCells, keelCells: p.stats.keelCells,
-            speedCmYr: speedCmYrAt(p.omega, centre[0], centre[1], centre[2]),
-            dynamics: p.dynamics ? JSON.parse(JSON.stringify(p.dynamics)) : null,
-        };
-    });
-    // each plate's crust itself (Phase 9, developer: steady detail): which raster cells it has and what they are. A world
-    // cell shows only the crust cell nearest it, and at any moment ~15 % of a moving plate's cells are nobody's nearest;
-    // the terrain measures coasts on the plates' own rasters (terrain/records.js plateCoasts). Records only.
+}
+
+/** Stamp every raster cell this capture shows. @returns {number} the capture's epoch */
+function stampShown(world) {
+    // mark every raster cell that is some world cell's nearest; the rest are hidden between world cells (see below)
+    const { owner, ownerCell, plates } = world, n = world.mesh.numCells, epoch = ++captureEpoch;
+    for (let w = 0; w < n; w++) {
+        if (owner[w] < 0) continue;
+        const p = plates[owner[w]];
+        let stamp = shownStamps.get(p);
+        if (!stamp || stamp.length !== n) { stamp = new Uint32Array(n); shownStamps.set(p, stamp); }
+        stamp[ownerCell[w]] = epoch;
+    }
+    return epoch;
+}
+
+/** The hidden track cell beside raster cell `c` that the world cell showing `c` shows instead (see frameCells), or −1. */
+function hiddenTrackBeside(crust, c, stamp, epoch, adjOffset, adjList) {
+    let best = -1;
+    for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+        const nb = adjList[k];
+        if (crust.mask[nb] && crust.volcType[nb] === VolcanicType.TRACK && stamp[nb] !== epoch && (best < 0 || crust.volcAt[nb] > crust.volcAt[best])) best = nb;
+    }
+    return best;
+}
+
+function frameCrust(f, world) {
+    const { plates } = world, n = world.mesh.numCells;
     let crustCount = 0;
     for (const p of plates) if (p.alive) crustCount += p.crust.count;
     f.crustCells = new Int32Array(crustCount); f.crustType = new Uint8Array(crustCount); f.crustFill = new Uint8Array(crustCount);
@@ -206,19 +249,6 @@ export function captureFrame(world, reuse = null) {
         }
     }
     if (ci < crustCount) { f.crustCells = f.crustCells.slice(0, ci); f.crustType = f.crustType.slice(0, ci); f.crustFill = f.crustFill.slice(0, ci); f.crustBelt = f.crustBelt.slice(0, 6 * ci); f.crustReach = f.crustReach.slice(0, 2 * ci); }
-    f.margin.set(classifyMargins(f, mesh, world.config));      // (needs the plates’ motion, so last)
-    // (one level deeper than the budget's own: a book kept per kind — orogenic collapse's — is an object the history goes
-    // on adding to, and a frame that shared it would read the later sums: a cached frame and a fresh one would differ)
-    f.budget = Object.fromEntries(Object.entries(world.budget).map(([k, v]) => [k, v && typeof v === 'object' ? (Array.isArray(v) ? v.slice() : { ...v }) : v]));
-    // (when each sea was cut off, Myr — NaN off the cut-off seas; −Infinity: never open — and the sea's log since the frame
-    // before: step/sea-age.js. Copies, entries included: the world's go on changing)
-    f.seaCutAt = world.seaCutAt ? world.seaCutAt.slice() : null;
-    f.seaLog = (world.seaLog ?? []).slice(world.seaLogShipped ?? 0).map(e => ({ ...e }));
-    world.seaLogShipped = world.seaLog?.length ?? 0;
-    f.geoBook = world.geoBook ? { ...world.geoBook } : null;
-    f.events = world.events.slice();
-    openTectWindow(world);
-    return f;
 }
 
 // A flagged cell is "live" if it is an overriding edge now, or within a couple of hops of one; otherwise dormant.
