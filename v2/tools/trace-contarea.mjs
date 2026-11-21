@@ -116,7 +116,7 @@ function arcCrust() {
 let lastStages = {}, lastBudget = {};
 const frames = [];
 const t0 = performance.now();
-simulate(world, {
+await simulate(world, {
     untilMyr: MYR, snapshotEveryMyr: 10, keepFrames: false,
     drive: w => scene.drive(w),
     onFrame: f => {
