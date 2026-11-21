@@ -224,12 +224,9 @@ function swellPush(world, loadOf, cellTorque) {
     for (let w = 0; w < numCells; w++) {
         const a = owner[w];
         if (a < 0 || !loadOf[a]) continue;
-        const r0 = xyz[3 * w], r1 = xyz[3 * w + 1], r2 = xyz[3 * w + 2], s = S[w];
-        let fx = 0, fy = 0, fz = 0;
-        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
-            const push = -(S[adjList[k]] - s) * scale;
-            fx += push * T[3 * k]; fy += push * T[3 * k + 1]; fz += push * T[3 * k + 2];
-        }
+        const r0 = xyz[3 * w], r1 = xyz[3 * w + 1], r2 = xyz[3 * w + 2];
+        swellForce(w, S, scale, T, adjOffset, adjList, PUSH);
+        const fx = PUSH[0], fy = PUSH[1], fz = PUSH[2];
         const tx = r1 * fz - r2 * fy, ty = r2 * fx - r0 * fz, tz = r0 * fy - r1 * fx;
         tau[3 * w] = tx; tau[3 * w + 1] = ty; tau[3 * w + 2] = tz;
         const m = net.get(a) ?? net.set(a, [0, 0, 0, 0]).get(a);
@@ -238,9 +235,21 @@ function swellPush(world, loadOf, cellTorque) {
     for (let w = 0; w < numCells; w++) {
         const a = owner[w], m = a >= 0 ? net.get(a) : null;
         if (!m) continue;
-        for (let i = 0; i < 3; i++) cellTorque[3 * w + i] += tau[3 * w + i] - m[i] / m[3];
+        cellTorque[3 * w] += tau[3 * w] - m[0] / m[3]; cellTorque[3 * w + 1] += tau[3 * w + 1] - m[1] / m[3]; cellTorque[3 * w + 2] += tau[3 * w + 2] - m[2] / m[3];
         loadOf[a].cells[SWELL]++;
     }
+}
+// (a cell's swell push summed over its edges, into out: its own function, so that swellPush's loop over the cells is not
+// V8 OSR code for this inner loop, dropped back to the interpreter at each of its ~40K exits a step — lane histprof)
+const PUSH = new Float64Array(3);
+function swellForce(w, S, scale, T, adjOffset, adjList, out) {
+    const s = S[w];
+    let fx = 0, fy = 0, fz = 0;
+    for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+        const push = -(S[adjList[k]] - s) * scale;
+        fx += push * T[3 * k]; fy += push * T[3 * k + 1]; fz += push * T[3 * k + 2];
+    }
+    out[0] = fx; out[1] = fy; out[2] = fz;
 }
 
 /**
