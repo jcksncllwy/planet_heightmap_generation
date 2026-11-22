@@ -14,7 +14,7 @@ import { closeSeasBetween } from './merge-plates.js';
 import { freeCellBeside } from './tidy-plates.js';
 import { bookRock } from '../rock-book.js';
 import { keepConsumed } from './thicken.js';
-import { cellRockKm3 } from '../step/crust-ledger.js';
+import { cellRockKm3, plateRockKm3 } from '../step/crust-ledger.js';
 
 /**
  * Move the land cells `terrane` (raster cells of `donor`) onto `host`. Terrane land that would land on land already
@@ -82,7 +82,12 @@ export function accreteTerrane(world, host, donor, terrane, rateCmYr) {
     if (terrane.length * mesh.cellAreaKm2 < config.terraneMinAreaKm2) { keep(); host.refreshExtent(xyz); donor.refreshExtent(xyz); return { cells: moved, sealed: 0, absorbed, scrap: true }; }
 
     // the strait between terrane and host closes; the seam is a suture; a short belt on both sides
+    // (the rock book: the sea it seals and the coast that pays for it change the host's rock — booked as the dock's loss, the
+    // host's rock after less before, as a weld books its seal in collisionConsumedKm3: step/collision.js. Unbooked until lane
+    // oldfloor, 2026-11-22: the invariants' collisions residual, −0.006 Gkm³ at path 0)
+    const sealRock0 = plateRockKm3(world, host);
     const { sealed, landSealed, paid: sealPaid, arcSealed, arcPaid, remnant } = closeSeasBetween(H, origin, mesh, host, config, time);
+    bookRock('dockConsumedKm3', plateRockKm3(world, host) - sealRock0);
     const seam = [];
     for (let q = 0; q < numCells; q++) {
         if (!H.mask[q] || H.type[q] === CrustType.OCEAN) continue;
