@@ -61,7 +61,7 @@ export function classifyBoundaries(world, dt) {
         const motion = classifyMotion(closing, shear, activeSpeed, config.obliqueLimit);
         // (an edge at rest keeps its slab: forces come from a boundary's state, so a world at rest can start itself; and an oblique
         // edge that still closes, SLIDING here, is a trench all the same, as Sumatra's and the western Aleutians' are)
-        if (config.trenchEstablishKm > 0 && real && closing < 0 && motion !== Motion.LOCKED) idleSlab(A.crust, cellA, dt, config);
+        if (config.trenchEstablishKm > 0 && real && closing < 0 && motion !== Motion.LOCKED) idleSlab(A.crust, cellA, dt, -closing * dt * PLANET_RADIUS_KM, config);
         if (motion === Motion.OPENING) boundaryKind[w] = BoundaryKind.RIDGE;
         else if (motion === Motion.SLIDING) {
             boundaryKind[w] = BoundaryKind.TRANSFORM;
@@ -93,7 +93,7 @@ export function classifyBoundaries(world, dt) {
             if (aOverrides === false && real && A.crust.type[cellA] === CrustType.OCEAN && B.crust.type[ownerCell[otherW]] !== CrustType.OCEAN) A.crust.flags[cellA] &= ~CrustFlag.TRENCH;
             if (aOverrides && real) {
                 const km = closing * dt * PLANET_RADIUS_KM;
-                if (feedTrench(world, w, A, cellA, B, ownerCell[otherW], km, closing / CM_PER_YR_TO_RAD_PER_MYR)) {
+                if (feedTrench(world, w, A, cellA, B, ownerCell[otherW], km)) {
                     const f = fed.get(A) ?? fed.set(A, { cells: [], kms: [], headOn: [], shear: [], age: [], isFlat: [], km: 0, flat: 0 }).get(A);
                     const slabAge = world.time - B.crust.formedAt[ownerCell[otherW]];
                     f.cells.push(cellA); f.kms.push(km); f.headOn.push(closing / Math.hypot(closing, shear)); f.age.push(slabAge); f.km += km;
@@ -223,13 +223,13 @@ function nearLand(plate, mesh, cell, config) {
 // The overriding edge of a closing contact: establish the trench here if crust has really gone down —
 // at this cell or right next door — and lengthen its slab. Kinematics alone is not enough to establish
 // one: cell-scale jitter at ridge offsets looks like closing for a step. @returns whether the slab grew
-function feedTrench(world, w, A, cell, B, cellB, subductedKm, closingCmYr) {
+function feedTrench(world, w, A, cell, B, cellB, subductedKm) {
     const { consumedAt, mesh, config, time } = world, { adjOffset, adjList } = mesh, crust = A.crust;
     if (!(crust.flags[cell] & CrustFlag.TRENCH)) {
         let fed = consumedAt[w];
         for (let k = adjOffset[w]; !fed && k < adjOffset[w + 1]; k++) fed = consumedAt[adjList[k]];
         if (!fed) return false;
-        if (config.trenchEstablishKm > 0 && !establishes(world, A, cell, B, cellB, subductedKm, closingCmYr)) return false;
+        if (config.trenchEstablishKm > 0 && !establishes(world, A, cell, B, cellB, subductedKm)) return false;
         crust.flags[cell] |= CrustFlag.TRENCH;
     }
     crust.recordSubduction(cell, subductedKm);
@@ -237,9 +237,12 @@ function feedTrench(world, w, A, cell, B, cellB, subductedKm, closingCmYr) {
 }
 
 /** A plate edge moving but not closing: its slab, or the start of one, fades over the time a slab takes to sink on its own (founderSlabMyr; slab
- * break-off: a slab no plate feeds detaches), and the trench ends. A choice of scale, not a measured rate. */
-function idleSlab(crust, cell, dt, config) {
+ * break-off: a slab no plate feeds detaches), and the trench ends. A choice of scale, not a measured rate. The start of one — a
+ * contact not yet a trench, still taking its trenchEstablishKm (subduction-init.js establishes) — first pays back the `openedKm`
+ * it opens by: the tally is net convergence, so cell-scale jitter that closes one step and opens the next sums to nothing. */
+function idleSlab(crust, cell, dt, openedKm, config) {
     if (!(crust.slabKm[cell] > 0) || crust.type[cell] !== CrustType.OCEAN) return;      // (land keeps its record: collisions read it)
+    if (!(crust.flags[cell] & CrustFlag.TRENCH)) crust.slabKm[cell] = Math.max(0, crust.slabKm[cell] - Math.max(0, openedKm));
     crust.slabKm[cell] *= Math.exp(-dt / config.founderSlabMyr);
     if ((crust.flags[cell] & CrustFlag.TRENCH) && crust.slabKm[cell] < config.trenchEstablishKm) { crust.flags[cell] &= ~CrustFlag.TRENCH; crust.slabKm[cell] = 0; }
 }
