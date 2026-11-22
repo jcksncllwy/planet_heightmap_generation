@@ -810,7 +810,19 @@ the one land mask finds it. So the finish starts from ground already graded at t
 by its slope, drainage and base level, not by how high it stands. What the solve takes comes first out of a hollow's
 sediment (`basinFillKm`), then out of the rock: the belts' uplift and the swells by one share, the column by thinning its
 crust (Airy: the ground falls ~0.15 of the rock taken, the column's slope); the bedrock goes to `wornKm`, which the rivers
-route to the basins, seas and trenches. What it lays goes to `basinFillKm`. Small rivers are routed over a micro-relief of
+route to the basins, seas and trenches. What it lays goes to `basinFillKm`. **The epeiric seas fill and plane (lane marine3,
+M3):** drowned continental crust (continent and craton below the sea, the mask's sea) is in the solve as the sea's floor at
+its depth, not an outlet, and the finish's marine law works it (`ERODE.marine`: Kaufman et al. 1991's depth-dependent
+diffusion, K0 to wave base and e^(−(d − wb)/wb) below; `finish/marine-config.js`). A river meeting such a sea lays its load
+as a delta there, the waves spread it, and a high on the platform is planed toward wave base into the lows. The sea's fill
+is `seaFillKm` on the continent, drawn water-loaded (÷ `SEDIMENT_LOAD_FACTOR` 2.84: terrain/land-mask.js crustColumnKm and
+the pour's ground, ocean/inventory.js surfaceKm); when the sea leaves, the land's erosion takes it (after a hollow's fill)
+before the rock. The mouths give up what the waves laid, first those whose sea is that continent (`budget.marineShelfKm3`;
+a mismatch of the two networks goes to `erodeClampedKm3`), so a mouth's load reaching drowned continent off the GPU's
+network still goes through trench-fans.js layOnDrownedShelf. The ocean floor stays the rivers' outlet (its edge is where the
+rock leaves for the rise and the fans), and so does a flooded island arc (it carries no sea fill). Limits: the sea's level
+is the history's own, held over each 4 Myr step — no glacial cycle (the finish's lowstand), no thermal subsidence of the
+platform. Small rivers are routed over a micro-relief of
 the crust's own, so they ride with their continent between frames. **A GPU is required** for a history now (WGSL through
 gpu-device.js; Node runs it headless through Dawn, tools/gpu-harness/history-dawn.mjs); a build without one refuses with a
 clear message. The erosion feeds the dynamics (the roots and uplift it thins), so a history depends on its GPU's float
