@@ -14,7 +14,7 @@
 // finish's shelves and slopes: the history has no drowned margin of its own beyond its crust's thinning.
 
 import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
-import { columnModel, filledSeaDepthKm, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
+import { columnModel, filledSeaDepthKm, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR, SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { mantleWarmth, youngFloorSwellKm } from '../../terrain/sea-level.js';
 import { MinHeap } from '../../core/min-heap.js';
 
@@ -59,7 +59,8 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
         } else { b = C.ref[type]; full = b + C.slope[type] * frame.rootKm[w]; }
         full += frame.upliftKm[w] + frame.baseKm[w]
             + (frame.volcType[w] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, frame.volcKm[w]) - frame.volcWornKm[w]) : 0);
-        const laid = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR;     // (the history's erosion lowered the records themselves: no cut to take off, lane graded)
+        const laid = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR     // (the history's erosion lowered the records themselves: no cut to take off, lane graded)
+            + (type !== CrustType.ARC ? (frame.seaFillKm?.[w] ?? 0) / SEDIMENT_LOAD_FACTOR : 0);   // (a sea's fill on a continent, water-loaded: terrain/land-mask.js crustColumnKm)
         out[w] = full + laid
             + swell - (type === CrustType.ARC ? seaRef : landRef);
     }

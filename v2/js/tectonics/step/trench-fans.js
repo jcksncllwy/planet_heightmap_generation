@@ -267,8 +267,9 @@ function layOnDrownedShelf(world, cells, km3) {
         if (owner[w] < 0) continue;
         const k = plates[owner[w]].crust, c = ownerCell[w];
         if (!k.mask[c] || (k.type[c] !== CrustType.CONTINENT && k.type[c] !== CrustType.CRATON)) continue;
+        // (the depth over the fill already laid: landHeightKm stands a continent's sea fill, water-loaded — lane marine3)
         const depth = -landHeightKm(world, w, H, sea.swellKm, sea.seaKm, landRef, sea.seaRefKm);
-        const room = (SEDIMENT_LOAD_FACTOR * (depth - WAVE_BASE_KM) - k.seaFillKm[c]) * A;
+        const room = SEDIMENT_LOAD_FACTOR * (depth - WAVE_BASE_KM) * A;
         if (!(room > 0)) continue;
         const v = Math.min(room, km3 - laid);
         k.seaFillKm[c] += v / A; laid += v;

@@ -17,7 +17,7 @@ import { heightsOf } from './heights.js';
 import { fillEnclosedSeas, buildShelves } from './sea-fill.js';
 import { arcCrustKm } from './collision.js';
 import { LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
-import { erosionRequest, applyErosion, landHeightKm } from './surface-erosion.js';
+import { erosionRequest, applyErosion, landHeightKm, continental } from './surface-erosion.js';
 import { landMask } from '../../terrain/land-mask.js';
 import { rainAtLatitude } from '../../terrain/terrain-config.js';
 
@@ -49,15 +49,16 @@ export function* evolveRivers(world, dt) {
     world.riverSea = { time, seaKm, seaRefKm: sl.seaRefKm, swellKm: Float32Array.from(swellKm) };
     (world.seaLog ??= []).push({ t: time, kind: 'level', seaKm });
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef, seaRef = sl.seaRefKm;     // (an arc's swell against the young floor's mantle, as the sea floor's: sea-level.js liftRefKm)
-    // ── the land's height against the sea (surface-erosion.js landHeightKm) ──
-    const stand = () => { for (let w = 0; w < n; w++) if (land[w]) height[w] = landHeightKm(world, w, H, swellKm, seaKm, landRef, seaRef); };
+    // ── the land's height against the sea (surface-erosion.js landHeightKm), and the drowned continent's: the epeiric seas' floor,
+    // which the waves work (M3) ──
+    const stand = () => { for (let w = 0; w < n; w++) if (land[w] || continental(world, w)) height[w] = landHeightKm(world, w, H, swellKm, seaKm, landRef, seaRef); };
     stand();
     // ── the land erodes, on the GPU (surface-erosion.js: the finish's stream power and deposition, over the span), and stands
     // again on its records: the crust thinned and rebounded, the sediment laid in its hollows ──
     const req = erosionRequest(world, land, height, span, H);
     yield { kind: 'erode', o: req.o, P: req.P };
     const done = applyErosion(world, req, land, s.moved, H);
-    for (const key of ['eroded', 'laid', 'fillTaken', 'unplaced']) world.budget[`erode${key[0].toUpperCase()}${key.slice(1)}Km3`] = (world.budget[`erode${key[0].toUpperCase()}${key.slice(1)}Km3`] ?? 0) + done[key];
+    for (const key of ['eroded', 'laid', 'fillTaken', 'unplaced', 'seaLaid', 'seaReworked', 'planed', 'seaTaken']) world.budget[`erode${key[0].toUpperCase()}${key.slice(1)}Km3`] = (world.budget[`erode${key[0].toUpperCase()}${key.slice(1)}Km3`] ?? 0) + done[key];
     stand();
     // ── the priority flood from the sea, lowest spill first; each cell's receiver its steepest way down ──
     const heap = s.heap;
@@ -138,10 +139,14 @@ export function* evolveRivers(world, dt) {
         else if (pass && sed[c] > 0) mouths.push({ plate: owner[c], cell: ownerCell[c], world: c, km3: sed[c], contKm3: sedCont[c], basinKm2: basin[c], sea: seaOf[c] });
     }
     world.riverMouths = mouths;
-    // (the hollows' sediment, net: what the erosion laid less what it took up — the rock book's basinFillKm3, beside trapLoad's)
+    // (the hollows' sediment, net: what the erosion laid less what it took up — the rock book's basinFillKm3, beside trapLoad's;
+    // a drained sea's fill the land's erosion took up (applyErosion seaTaken) is the epeiric seas' book's, not the hollows')
     let net = 0;
     for (let i = 0; i < count; i++) net -= moved[order[i]];
-    world.budget.basinFillKm3 = (world.budget.basinFillKm3 ?? 0) + net * cellArea;
+    world.budget.basinFillKm3 = (world.budget.basinFillKm3 ?? 0) + net * cellArea + done.seaTaken;
+    // ── the epeiric seas (M3): what the waves laid of the rivers' load is the mouths' no more ──
+    shelfTake(world, mouths, done.seaLaid - done.seaReworked - done.planed, span, req.field);
+    world.budget.marineShelfKm3 = (world.budget.marineShelfKm3 ?? 0) - done.seaTaken;
     if (clamped > 0) world.budget.erodeClampedKm3 = (world.budget.erodeClampedKm3 ?? 0) + clamped * span;
     world.budget.riverSupplyKm3 = (world.budget.riverSupplyKm3 ?? 0) + supplied * span;
     world.budget.riverContSupplyKm3 = (world.budget.riverContSupplyKm3 ?? 0) + suppliedCont * span;
@@ -149,6 +154,27 @@ export function* evolveRivers(world, dt) {
     buildShelves(world, mouths, span, land);           // (…less what their own passive margin has room for)
     for (let w = 0; w < n; w++) world.riverKm2[w] = land[w] ? area[w] : 0;
     return 0;
+}
+
+/** The rivers' load the waves laid on the drowned continent this step (`km3`: the sea's fill gained less what it lost, the rock they
+ *  planed aside — the solve's own net) comes off the mouths, first those whose sea is that continent (the solve and the rivers drain
+ *  the same ground, but each on its own network: step/surface-erosion.js), in proportion to their load, then any mouth's; what the
+ *  mouths do not carry is the network's mismatch, budget.erodeClampedKm3's book. The sea's fill booked, budget.marineShelfKm3. */
+function shelfTake(world, mouths, km3, span, field) {
+    const B = world.budget;
+    B.marineShelfKm3 = (B.marineShelfKm3 ?? 0) + km3;
+    if (!(km3 > 0)) { if (km3 < 0) B.marineDriftKm3 = (B.marineDriftKm3 ?? 0) + km3; return; }
+    let want = km3 / span;
+    for (const shelf of [true, false]) {
+        let have = 0;
+        for (const m of mouths) if ((m.sea >= 0 && field[m.sea] === 1) === shelf) have += m.km3;
+        if (!(have > 0)) continue;
+        const f = Math.min(1, want / have);
+        for (const m of mouths) if ((m.sea >= 0 && field[m.sea] === 1) === shelf) { m.km3 *= 1 - f; m.contKm3 *= 1 - f; }
+        want -= f * have;
+        if (!(want > 1e-12)) return;
+    }
+    B.erodeClampedKm3 = (B.erodeClampedKm3 ?? 0) + want * span;
 }
 
 // per mesh and climate: each world cell's rain (mm) — fixed, as the cells are (computed once, not every drainage)

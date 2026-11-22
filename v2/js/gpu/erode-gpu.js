@@ -23,8 +23,7 @@ import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
 // (the failure term's rate against the waves' K0: a slope failure is instant on a Myr step, so any rate that clears an
 // oversteepened deposit within the step is the same; this one costs the solver no more than the waves' own at the cap, 1/(1 − 0.99²) ≈ 50)
-const MARINE_FAIL = 0.02;
-const X = k => (globalThis.process?.env?.MARINE_X ?? '').split(',').includes(k); // TEMP marine2 test hook     // (× r²/(1 − r²): 0 on a flat floor, ~0.97 of K0 at the cap)
+const MARINE_FAIL = 0.02;     // (× r²/(1 − r²): 0 on a flat floor, ~0.97 of K0 at the cap)
 const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 10;
@@ -375,6 +374,11 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // rivers run to today's coast, but 0.3 Myr of waves at today's level is a highstand forty Holocenes long: it filled the inner shelf
     // to the brim and walled lagoons off behind it. Land and sea are still today's: seaLvl)
     const marSea = Math.fround(o.marineSeaKm ?? seaLvl);     // (a float32, as the CPU's: finish-erode.js)
+    // (the waves' own ground, o.marineField (1/0 per cell; none: the whole sea): the history's sea (step/surface-erosion.js, lane
+    // marine3) is its drowned continent — an epeiric sea, a drowned margin — while the ocean floor stays the rivers' outlet as it
+    // was: what a river carries there is the mouths' (step/trench-fans.js), not laid here. A cell outside the field is a wall to the
+    // waves and to the delta's walk; o.joinOcean false keeps every sea an outlet (the history's enclosed seas are seas, not lakes))
+    const field = o.marineField ?? null, wet = c => ocean[c] === 1 && (!field || field[c] === 1);
     const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R_EARTH * R_EARTH / n, dt = P.timeMyr / P.steps;
     const { device } = shared ?? await openDevice(gpu);
     const t00 = performance.now(), align = device.limits.minUniformBufferOffsetAlignment, ms = { setup: 0, marine: 0, marLay: 0, marGpu: 0, marWait: 0, marCoast: 0, flood: 0, upload: 0, rebound: 0, release: 0, closed: 0, route: 0, sort: 0, sweep: 0, readback: 0, lay: 0, encode: 0 };
@@ -548,7 +552,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const seaF = MAR ? new Uint32Array(n) : null, seaList = MAR ? new Uint32Array(n) : null;
     const seaUp = () => {
         seaLen = 0;
-        for (let c = 0; c < n; c++) { seaF[c] = ocean[c] ? 1 : 0; if (ocean[c]) seaList[seaLen++] = c; }
+        for (let c = 0; c < n; c++) { const s = wet(c); seaF[c] = s ? 1 : 0; if (s) seaList[seaLen++] = c; }
         put('seaF', seaF); device.queue.writeBuffer(B.seaList, 0, seaList.buffer, 0, 4 * Math.max(1, seaLen)); setRange(SL.sea, 0, seaLen);
     };
     // (the coast moves with the sea's floor: a sea cell its fill has built above the sea's level is land — the rivers carry their
@@ -632,7 +636,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         let laid = 0;
         const mouths = [], load = [];
         for (let i = 0; i < seaLen; i++) { const c = seaList[i]; if (seaIn[c] > 0) { laid += seaIn[c]; mouths.push(c); load.push(seaIn[c] / a); } }
-        let left = laid > 0 ? seaDelta(mouths, load, () => marSea, c => ocean[c] === 1 || (Math.abs(z[c] - seaLvl) <= AT_SEA && !(sink && sink[c])), spillIn) : 0;
+        let left = laid > 0 ? seaDelta(mouths, load, () => marSea, c => wet(c) || (Math.abs(z[c] - seaLvl) <= AT_SEA && !(sink && sink[c]) && !(field && !field[c])), spillIn) : 0;
         // (a pocket of sea full to its level behind ground above it — a lagoon its delta closed — holds no more: its river goes on to
         // the open sea, so what it could not hold goes to the nearest sea with room, over any ground but a closed basin's. In rounds:
         // a front that ran into one still laying merged with it, and ground a spent one held is free the next round)
@@ -640,7 +644,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             const from = [], more = [];
             for (let i = 0; i < seaLen; i++) { const c = seaList[i]; if (spillIn[c] > 0) { from.push(c); more.push(spillIn[c]); spillIn[c] = 0; } }
             const was = left;
-            left = seaDelta(from, more, c => ocean[c] === 1 ? marSea : -Infinity, c => !(sink && sink[c]), spillIn);
+            left = seaDelta(from, more, c => wet(c) ? marSea : -Infinity, c => !(sink && sink[c]) && !(field && !field[c]), spillIn);
             if (left > 0.98 * was) break;
         }
         spillIn.fill(0);
@@ -677,7 +681,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         const hN = await readBack(device, F.sub % 3 === 0 ? B.mH : F.sub % 3 === 1 ? B.mB : B.mC);
         ms.marWait += performance.now() - tW;
         let after = 0;
-        for (let c = 0; c < n; c++) if (ocean[c]) { after += hN[c] - h[c]; z[c] = zb0[c] + hN[c]; }
+        for (let c = 0; c < n; c++) if (wet(c)) { after += hN[c] - h[c]; z[c] = zb0[c] + hN[c]; }
         R.marineKm3 += laid; R.marineDriftKm3 += after * a; R.marineSteps++;
         const tC = performance.now(); ms.marGpu += tC - tL;
         moveCoast();
@@ -825,7 +829,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const lidF = new Int32Array(n), eF = new Float32Array(n), inlet = P.delta ? new Float64Array(n) : null, layDeltas = P.delta ? deltaLayer(mesh, z, inlet) : null;
     const curve = [];
     let reboundKm3 = 0, overKm3 = 0, settle = null;
-    if (MAR) joinOcean();
+    if (MAR && o.joinOcean !== false) joinOcean();
     try {
         put('dropped', new Float32Array(n));
         // (the rebound settles the ground where it lies, on the GPU (rebound-gpu.js); its anchor is the ground as the run begins)
@@ -865,7 +869,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
                 eF[c] = exF[w + 1];
                 if (last) { outQ[c] = q / dt; outR[c] = rr & NONE; eroded += exF[w + 6] * a; }
                 if (lid !== NONE) { lidF[c] = lid; lakeCells++; if (inlet) inlet[c] += exF[w + 2]; if (!lakesCells.has(lid)) lakesCells.set(lid, { cells: [], trap: 0 }); const L = lakesCells.get(lid); L.cells.push(c); const tr = exF[w + 3]; if (tr > 0) L.trap = tr; }
-                if (rr >>> 31) { const r = rr & NONE; if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; R.inClosed += q; if (inlet) inlet[r] += q; } else { R.toSea += q; if (seaIn) seaIn[r] += q; } }
+                if (rr >>> 31) { const r = rr & NONE; if (sinkAt[r] >= 0) { basins[sinkAt[r]].load += q; R.inClosed += q; if (inlet) inlet[r] += q; } else { R.toSea += q; if (seaIn && (!field || field[r])) seaIn[r] += q; } }
             }
             for (const [L, v] of lakesCells) if (v.trap > 0) {
                 if (P.delta) layDeltas(v.cells, v.trap / a, c => eF[c], c => lidF[c] === L);

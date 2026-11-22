@@ -210,10 +210,13 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     // down with its crust)
     let shelfNow = 0;
     for (const p of world.plates) if (p.alive) { const k = p.crust; for (let c = 0; c < k.mask.length; c++) if (k.mask[c] && (k.type[c] === CrustType.CONTINENT || k.type[c] === CrustType.CRATON)) shelfNow += k.seaFillKm[c] * A; }
-    report('the rivers\' rock on drowned continental shelf: laid, and held now', [(B.drownedShelfKm3 ?? 0) / 1e9, shelfNow / 1e9], { unit: ' Gkm³', digits: 2,
-        source: 'a book, not an Earth figure: held ≤ laid', detail: `laid ${G(B.drownedShelfKm3 ?? 0)} Gkm³, held on continent now ${G(shelfNow)}` });
-    check('the drowned shelf holds no more rock than was laid on it', shelfNow <= (B.drownedShelfKm3 ?? 0) * 1.001 + 1e3,
-        `held ${G(shelfNow)} of ${G(B.drownedShelfKm3 ?? 0)} Gkm³ laid`);
+    // (and the epeiric seas', lane marine3: the rivers' load the waves laid on drowned continent, net of what the land's erosion
+    // took back once the sea left — budget.marineShelfKm3 — and the platform rock they planed into it, erodePlanedKm3)
+    const shelfLaid = (B.drownedShelfKm3 ?? 0) + (B.marineShelfKm3 ?? 0) + (B.erodePlanedKm3 ?? 0);
+    report('the rivers\' rock on drowned continental shelf: laid, and held now', [shelfLaid / 1e9, shelfNow / 1e9], { unit: ' Gkm³', digits: 2,
+        source: 'a book, not an Earth figure: held ≤ laid', detail: `laid ${G(shelfLaid)} Gkm³ (off a mouth ${G(B.drownedShelfKm3 ?? 0)}, by the waves ${G(B.marineShelfKm3 ?? 0)}, planed ${G(B.erodePlanedKm3 ?? 0)}), held on continent now ${G(shelfNow)}` });
+    check('the drowned shelf holds no more rock than was laid on it', shelfNow <= shelfLaid * 1.001 + 1e3,
+        `held ${G(shelfNow)} of ${G(shelfLaid)} Gkm³ laid`);
     report('the rivers\' rock on the ocean floor: share the books lose', laid > 0 ? 100 * (laid - down - kept - riseNow - fillNow) / laid : 0, { unit: ' %', digits: 1, earth: [0, 10],
         source: 'a book, not an Earth figure: 0 is closure', detail: `laid ${G(laid)} Gkm³ (rise ${G((B.riseKm3 ?? 0) - (B.riseUnlaidKm3 ?? 0))}, unlaid ${G(B.riseUnlaidKm3 ?? 0)}; enclosed seas ${G(B.seaFillKm3 ?? 0)}) = down the channel ${G(down)} + into the prism ${G(kept)} + on the floor now ${G(riseNow + fillNow)} + lost ${G(laid - down - kept - riseNow - fillNow)}` });
     // The rock book (lane rockbook, review U2): each stage's change in all the rock the planet holds — crust, relief, fill,

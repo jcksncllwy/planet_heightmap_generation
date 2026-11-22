@@ -135,11 +135,12 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
         }
         off.push(list.length);
     }
-    // (the ground: integer hash noise, km; the patch's rim is the sea)
+    // (the ground: integer hash noise, km; the patch's rim is the sea, a shallow one the waves work — the history's sea law runs
+    // where the sea is over continent (lane marine3), so its kernel's rounding is the GPU's too)
     const z = new Float32Array(n), ocean = new Uint8Array(n), water = new Float32Array(n).fill(1), k = new Float32Array(n);
     for (let c = 0; c < n; c++) {
         const i = c % N, j = (c - i) / N;
-        if (i === 0 || j === 0 || i === N - 1 || j === N - 1) { ocean[c] = 1; continue; }
+        if (i === 0 || j === 0 || i === N - 1 || j === N - 1) { ocean[c] = 1; z[c] = -0.05 - 0.01 * ((i + j) % 4); continue; }
         let h = Math.imul(c ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
         z[c] = Math.fround(0.2 + 3 * Math.min(i, j, N - 1 - i, N - 1 - j) / N + (h >>> 8) / (1 << 24));
         k[c] = 20 * (1 + (h & 3));
@@ -153,7 +154,7 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     const z2 = z.slice();
     await erodeGPU(g, { mesh, z: z2, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
     const H = new Hash128();
-    H.str('gpu erosion v2'); H.view(z); H.view(z2);
+    H.str('gpu erosion v3'); H.view(z); H.view(z2);
     // (the finish's scope adds the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their f32
     // exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
     if (scope === 'finish') {
