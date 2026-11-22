@@ -64,6 +64,26 @@ export const ERODE = {
     diffD: 0,                   // GPU only: nonlinear threshold diffusion's D, km²/Myr (Roering et al. 1999; 0.01 is a soil's), 0: none…
     diffSc: 1.25,               // …its critical slope…
     diffSweeps: 20,             // …and the Jacobi sweeps of its implicit step
+    // ── threshold hillslopes at the mesh's scale (lane erosionfix, 2026-11-22; GPU only): where the ground stands near the relief
+    // landslides allow, erosion rises steeply. Montgomery & Brandon 2002 (EPSL 201:481, eq. 2, fig. 4) fit Earth's ranges with
+    // E = E₀ + K·Rz/(1 − (Rz/Rc)²), Rz the mean local relief (max − min in a 10-km-diameter window), Rc = 1.5 km the relief
+    // tectonically active ranges pile up against (their 1–2 km; Taiwan, the Himalaya, the Olympics, the Alps), K = 0.25 /Myr
+    // (2.5·10⁻⁴ mm/yr per m: Ahnert's linear relation's slope on quiet ground). Roering et al. 1999's critical slope (~0.6–1.25 on
+    // a hillslope) never binds on 14–56 km cells; the window's relief does: a cell's tilt S over the window is relief Rz ≥ S·D
+    // (the window's max − min is at least its mean surface's drop across it), so the mesh resolves Rz ≥ S·D on every mesh
+    // whose cells are wider than D = 10 km (all of ours), and the threshold is the slope S_c = Rc/D = 0.15 on each of them —
+    // the same number at 160K, 640K and 2.5M (a coarse mesh's slopes are gentler, so it binds there later: its cells average
+    // the peaks away). The sub-cell valleys, which carry most of a real range's Rz, the cell does not have: Rz = S·D counts
+    // the resolved relief only, a lower bound, so the law binds no earlier than Earth's would. Only the nonlinear excess is
+    // added, K·Rz·r²/(1 − r²), r = Rz/Rc: the linear part on low ground is the stream power's (its quiet-ground rates already
+    // sit at Earth's median, erosionrate report 1c). The cut joins the rivers' load (a landslide feeds its channel), and the
+    // rate goes into the implicit solve as a multiple of the cell's drop to its receiver, its factor read at the step's start
+    // (erode-gpu.js thr). The landslides' part of the cut goes to the receiver whole: laid back on the cell, as a headwater lays all
+    // it carries (Yuan et al.'s G·a/A ≥ 1), it would be cut again next step and the peak would not erode at all (load THR). Reduced (what it skips): no landslide sizes or frequency (M&B: the rate adjusts by frequency, which
+    // this averages), one Rc everywhere (their material strength sets it: rock k is not read), and Rz from the tilt only
+    reliefK: 0.25,              // K, /Myr (km/Myr of erosion per km of relief); 0: off
+    reliefKm: 1.5,              // Rc, km
+    reliefWindowKm: 10,         // D, km: the window's diameter Rc was measured over
     spanWindow: true,           // the ladder's coarsest rung stretched to the moment's window (frame tectSpanMyr), at its own dt…
     spanMaxMyr: 20,             // …up to this long (a history's first frame counts its window from the start: a cost cap)
     spanSplit: 'even',          // …every rung stretched alike ('even'), or all of it on the coarsest ('coarse': leaves the 160K rung's ~100 km

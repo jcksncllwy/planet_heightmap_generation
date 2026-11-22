@@ -120,7 +120,7 @@ const gpuMemo = new Map();      // (scope → {gpu, hex})
  * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none.
  * `scope` (lane gpucells; sessrumnir's ruling 2026-11-22): 'history' names only the kernels a history runs (the erosion's), so
  * a GPU that differs only in the finish's kernels neither splits nor invalidates the history cache (gpuscan: keep the history's
- * GPU footprint small) — 'gpu erosion v4' since lane marine3 (the waves are the history's now); 'finish' adds the finish's own — the climate per cell, the coast's rays, the climate's solver (lane gpuclimate) —
+ * GPU footprint small) — 'gpu erosion v5' since lane erosionfix (the rivers' and the waves' runs only); 'finish' adds the finish's own — the rebound, the threshold hillslopes, the climate per cell, the coast's rays, the climate's solver (lane gpuclimate) —
  * for the finish cache's key (app/finish-key.js `gpu`). @returns {Promise<string>} 12 hex digits
  */
 export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU, scope = 'history') {
@@ -157,17 +157,17 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     await erodeGPU(g, { mesh, z, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4 }, { device: opened });
     const z1 = z.slice();
     await erodeGPU(g, { mesh, z: z1, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, steps: 1 }, { device: opened });
-    // (and the finish's GPU kernels the history's settings leave out, on the same patch: the rebound (gpu/rebound-gpu.js), with
-    // closed basins judged every other step — kept in the history's scope as main has had it since gpuerode ('gpu erosion v2'; lane
-    // marine3 moved the history's caches anyway: the waves are in its erosion))
-    const z2 = z.slice();
-    await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
     const H = new Hash128();
-    H.str('gpu erosion v4'); H.view(z); H.view(z1); H.view(z2);
-    // (the finish's scope adds the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their f32
-    // exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
+    H.str('gpu erosion v5'); H.view(z); H.view(z1);
+    // (the finish's scope adds the finish's own kernels: the erosion's rebound, with closed basins judged every other step, and the
+    // threshold hillslopes' solve and load (ERODE reliefK, erode-gpu.js THR) — in the history's scope until lane erosionfix
+    // (2026-11-22; 'gpu erosion v4' hashed the rebound, though the history's erosion runs rebound 0), so a finish kernel's change no
+    // longer splits the history cache; the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their
+    // f32 exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
     if (scope === 'finish') {
-        H.str('finish: climate cells v1 + coast rays v1 + climate solver v1');
+        const z2 = z.slice();
+        await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reliefK: 0.25, reboundKm: 3 * mesh.edgeKm }, { device: opened });
+        H.str('finish: climate cells v1 + coast rays v1 + climate solver v1 + rebound v2 + threshold hillslopes v1'); H.view(z2);
         for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z), ...await climateSolverProbe(opened.device)]) H.view(a);
     } else if (scope !== 'history') throw new Error(`gpuFingerprint: unknown scope '${scope}'`);
     const hex = H.hex().slice(0, 12);

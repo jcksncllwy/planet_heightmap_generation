@@ -24,12 +24,20 @@ import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 // (the failure term's rate against the waves' K0: a slope failure is instant on a Myr step, so any rate that clears an
 // oversteepened deposit within the step is the same; this one costs the solver no more than the waves' own at the cap, 1/(1 − 0.99²) ≈ 50)
 const MARINE_FAIL = 0.02;     // (× r²/(1 − r²): 0 on a flat floor, ~0.97 of K0 at the cap)
+// (the threshold hillslopes' landslides, ERODE reliefK > 0: Montgomery & Brandon 2002's E = K·Rz/(1 − (Rz/Rc)²) less its linear
+// part, Rz the relief in a 10 km window read off the cell's slope to its receiver, Rz = S·D: finish-erode.js. As a rate on the
+// cell's own drop, K·D·g(r)·S with g = r²/(1 − r²) at the step's start, r = S/S_c (capped at 0.99), so it joins the stream power's F)
+const THR_WGSL = /* wgsl */`
+fn thr(zc: f32, zr: f32, d: f32) -> f32 {
+    let r = min(max(zc - zr, 0.0) / (d * U_.tS), 0.99);
+    return U_.tK * (r * r / (1.0 - r * r)) * U_.dt / d;
+}`;
 const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 10;
 
 const HEAD = /* wgsl */`
-struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32, Kd: f32, wb: f32, sea: f32, mSc: f32, mFail: f32 }
+struct U { n: u32, O: u32, a: f32, dt: f32, G: f32, m: f32, Gf: f32, kh: f32, h: f32, D: f32, Sc: f32, Kd: f32, wb: f32, sea: f32, mSc: f32, mFail: f32, tK: f32, tS: f32, pad0: f32, pad1: f32 }
 struct Rg { start: u32, count: u32 }
 struct Cell { A: f32, e: f32, gross: f32, zNew: f32, q: f32, cap: f32, lid: u32, inlet: f32, qf: f32, area: f32 }
 struct Out { lid: u32, e: f32, inlet: f32, trap: f32, q: f32, recv: u32, gross: f32, at: u32 }
@@ -43,8 +51,8 @@ fn enc(w: f32) -> u32 { let b = bitcast<u32>(w); return select(b ^ 0x80000000u, 
 const T = { u: 'array<u32>', f: 'array<f32>', v: 'array<vec4f>', a: 'array<atomic<u32>>', C: 'array<Cell>', X: 'array<Out>' };
 // (the solve's first map, with or without the hillslope term: a separate kernel, not a k_h of 0 — any hillslope expression in it
 // changes how the compiler rounds the stream power's F, and the run with ERODE hillD 0 must be the one before it, to the bit)
-const affineInitOf = HILL => ({ b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz: 'f', surf: 'f', cells: 'C', fA: 'v+' }, body: `
-        let rr = recv[c]; let r = rr & M; let old = Zt[c];
+const affineInitOf = (HILL, THR = false) => ({ fn: THR ? THR_WGSL : '', b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz: 'f', surf: 'f', cells: 'C', fA: 'v+', ...(THR ? { slide: 'f+' } : {}) }, body: `
+        let rr = recv[c]; let r = rr & M; let old = Zt[c];${THR ? ' slide[c] = 0.0;' : ''}
         if (r == NONE) { fA[c] = vec4f(old, old, 0.0, old); return; }      // (an unresolved flat: it holds)
         let toOut = (rr >> 31u) != 0u;
         if (lpA[c] != NONE) {
@@ -56,12 +64,42 @@ const affineInitOf = HILL => ({ b: { recv: 'u', Zt: 'f', lpA: 'u', Kv: 'v', xyz:
         // (the layer it cuts: its own sediment above the rock's top, or the rock: finish-erode.js. Kv: k, the rock's top, the
         // sediment's k against the rock's, and the share of what it cuts that is mud; packed, so the kernel binds no more buffers.
         // No column: the top is out of reach, and no mud)
-        let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);
+        let kv = Kv[c]; let layer = select(1.0, kv.z, old > kv.y + 1e-4);${THR ? `
+        // (the landslides' part of the step's cut, as a share of F: it goes to the receiver whole (load THR), none laid back here)
+        let Ft = thr(old, select(Zt[r], surf[r], toOut), R_EARTH * length(d));` : ''}
         // (and the hillslopes and landslides the cell's slope stands for: Tzathas et al. 2024's k_h·A^−h, as FastFlow §5 —
         // a diffusivity D over Hack's flow length L ≈ 1.4·A^0.6 km (Hack 1957), a wave speed D/L: k_h = D/1.4, h = 0.6. ERODE hillD)
-        let F = ${HILL ? '(kv.x * layer * pow(Ac, U_.m) + U_.kh * pow(cells[c].area, -U_.h))' : 'kv.x * layer * pow(Ac, U_.m)'} * U_.dt / (R_EARTH * length(d));
-        if (toOut) { let v = min(old, (old + F * surf[r]) / (1.0 + F)); fA[c] = vec4f(v, v, 0.0, v); }
+        let F = ${HILL ? '(kv.x * layer * pow(Ac, U_.m) + U_.kh * pow(cells[c].area, -U_.h))' : 'kv.x * layer * pow(Ac, U_.m)'} * U_.dt / (R_EARTH * length(d))${THR ? ' + Ft' : ''};
+${THR ? '        slide[c] = Ft / max(F, 1e-30);\n' : ''}        if (toOut) { let v = min(old, (old + F * surf[r]) / (1.0 + F)); fA[c] = vec4f(v, v, 0.0, v); }
         else { fA[c] = vec4f(-BIG, old / (1.0 + F), F / (1.0 + F), old); }` });
+
+// (the load from the headwaters down: with THR, the landslides' share of each cell's cut passes its own deposition)
+const loadOf = THR => ({ b: { adjOffset: 'u', adjList: 'u', recv: 'u', z: 'f', dropped: 'f+', trap: 'f+', Kv: 'v', cells: 'C+', ...(THR ? { slide: 'f' } : {}) }, body: `
+        let lid = cells[c].lid; let rr = recv[c]; let r = rr & M; let toOut = (rr >> 31u) != 0u;
+        let cut = cells[c].gross * U_.a;
+        var q = cut; var qf = cut * Kv[c].w; var capIn = 0.0; var inlet = 0.0;
+        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
+            let y = adjList[j];
+            if ((recv[y] & M) != c) { continue; }
+            q += cells[y].q; qf += cells[y].qf;
+            if (lid != NONE) { if (cells[y].lid == lid) { capIn += cells[y].cap; } else { inlet += cells[y].q; } }
+        }
+        cells[c].inlet = inlet; cells[c].cap = 0.0; dropped[c] = 0.0; trap[c] = 0.0;
+        if (lid != NONE) {
+            let room = capIn + max(0.0, cells[c].e - z[c]) * U_.a;
+            if (!toOut && cells[r].lid == lid) { cells[c].q = q; cells[c].qf = qf; cells[c].cap = room; return; }
+            let hold = min(q, room);
+            if (q > 0.0) { qf *= 1.0 - hold / q; }
+            trap[c] = hold; q -= hold;
+        } else {
+            let per = U_.a / max(cells[c].A, U_.a * 1e-3);${THR ? `
+            // (the landslides' share of this cell's own cut rides past its deposition, to the receiver: a slide feeds its channel. Laid
+            // back where it was cut, as a headwater lays all it carries (G·a/A ≥ 1), it would be cut again next step, net nothing)
+            let sl = cut * slide[c]; let slf = sl * Kv[c].w; q -= sl; qf -= slf;` : ''}
+            let dm = qf * min(1.0, U_.Gf * per); let d = (q - qf) * min(1.0, U_.G * per) + dm;
+            dropped[c] = d / U_.a; q -= d; qf -= dm;${THR ? ' q += sl; qf += slf;' : ''}
+        }
+        cells[c].q = q; cells[c].qf = qf;` });
 
 const KERNELS = {
     // (a network's start, from its outlets (isOut) and the level each holds (lvl): outlets() fills the rest here, not with a dozen
@@ -183,7 +221,7 @@ const KERNELS = {
             if (!root) { same = fill[r] - z[r] > EPS && fill[r] == fill[c]; }
             lpA[c] = select(c, r, same);
         } else { lpA[c] = NONE; }` },
-    affineInit: affineInitOf(false), affineInitHill: affineInitOf(true),
+    affineInit: affineInitOf(false), affineInitHill: affineInitOf(true), affineInitThr: affineInitOf(false, true), affineInitHillThr: affineInitOf(true, true),
     affineJump: { b: { fA: 'v', jpA: 'u', lpA: 'u', fB: 'v+', jpB: 'u+', lpB: 'u+' }, body: `
         let p = jpA[c]; fB[c] = compose(fA[c], fA[p]); jpB[c] = jpA[p];
         let l = lpA[c];
@@ -195,29 +233,7 @@ const KERNELS = {
         else { cells[c].zNew = h; cells[c].gross = max(old - h, 0.0); cells[c].lid = NONE; }` },
     // (the load and, of it, the mud, qf: finish-erode.js's Qs and Qf. A lake keeps mud in proportion; a reach drops the bed
     // material by G and the mud by Gf. No column: no mud, and the drop is q·G's, as it was before the split)
-    load: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', z: 'f', dropped: 'f+', trap: 'f+', Kv: 'v', cells: 'C+' }, body: `
-        let lid = cells[c].lid; let rr = recv[c]; let r = rr & M; let toOut = (rr >> 31u) != 0u;
-        let cut = cells[c].gross * U_.a;
-        var q = cut; var qf = cut * Kv[c].w; var capIn = 0.0; var inlet = 0.0;
-        for (var j = adjOffset[c]; j < adjOffset[c + 1u]; j++) {
-            let y = adjList[j];
-            if ((recv[y] & M) != c) { continue; }
-            q += cells[y].q; qf += cells[y].qf;
-            if (lid != NONE) { if (cells[y].lid == lid) { capIn += cells[y].cap; } else { inlet += cells[y].q; } }
-        }
-        cells[c].inlet = inlet; cells[c].cap = 0.0; dropped[c] = 0.0; trap[c] = 0.0;
-        if (lid != NONE) {
-            let room = capIn + max(0.0, cells[c].e - z[c]) * U_.a;
-            if (!toOut && cells[r].lid == lid) { cells[c].q = q; cells[c].qf = qf; cells[c].cap = room; return; }
-            let hold = min(q, room);
-            if (q > 0.0) { qf *= 1.0 - hold / q; }
-            trap[c] = hold; q -= hold;
-        } else {
-            let per = U_.a / max(cells[c].A, U_.a * 1e-3);
-            let dm = qf * min(1.0, U_.Gf * per); let d = (q - qf) * min(1.0, U_.G * per) + dm;
-            dropped[c] = d / U_.a; q -= d; qf -= dm;
-        }
-        cells[c].q = q; cells[c].qf = qf;` },
+    load: loadOf(false), loadThr: loadOf(true),
     commit: { b: { cells: 'C', z: 'f+' }, body: 'z[c] = cells[c].zNew;' },
     // ── nonlinear threshold diffusion (Roering et al. 1999: q = −D·S/(1 − (S/S_c)²)), one implicit step: each edge's
     // conductance at the step's slopes (capped at 0.99 S_c), then Jacobi sweeps of (I − dt·L)z′ = z. The outlets hold ──
@@ -279,6 +295,7 @@ function wgsl(name, spec) {
 @group(0) @binding(1) var<uniform> R_: Rg;
 @group(0) @binding(2) var<storage, read> ix: array<u32>;
 ${decl}
+${spec.fn ?? ''}
 @compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) id: vec3u) {
     if (id.x >= R_.count) { return; }
     let i = R_.start + id.x; let c = ix[i];
@@ -407,6 +424,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // (threshold diffusion, ERODE diffD > 0: its edge conductances and the Jacobi pair; an even number of sweeps)
     const DIFF = (P.diffD ?? 0) > 0 ? 2 * Math.ceil((P.diffSweeps ?? 20) / 2) : 0;
     if (DIFF) { mk('gE', 4 * adjList.length); mk('dA', 4 * n); mk('dB', 4 * n); }
+    if ((P.reliefK ?? 0) > 0) mk('slide', 4 * n);
     // (the sea floor's waves, ERODE marine: the sea's cells as a list and a flag, the ping-pong's other half; the explicit step's
     // length kept under its stability bound on this mesh — every cell's exchanges at the shore's K0 summing to at most a half)
     const MAR = !!P.marine && P.marineK > 0 && P.marineWaveBaseKm > 0;
@@ -441,10 +459,11 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (const name of ['compA', 'compB']) device.queue.writeBuffer(B[name], 4 * n, Uint32Array.of(n));      // (the ocean's own component: its slot n)
     mk('counter', 16); mk('hist', 4 * MAX_LEVELS); mk('cursor', 4 * MAX_LEVELS); mk('cells', 4 * CELL_WORDS * n); mk('exp', 4 * EXPORT_WORDS * n); mk('gsum', 4 * n);
     const rangeBuf = buffer({ label: 'ranges', size: align * (MAX_LEVELS + 8), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const uniform = buffer({ label: 'uniform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const ub = new ArrayBuffer(64), uv = new DataView(ub);
+    const uniform = buffer({ label: 'uniform', size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const ub = new ArrayBuffer(80), uv = new DataView(ub), THR = (P.reliefK ?? 0) > 0;
     [n, n].forEach((v, i) => uv.setUint32(4 * i, v, true));
-    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25, 0, P.marineWaveBaseKm ?? 1, marSea, P.marineFailSlope ?? 0.05, MARINE_FAIL].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
+    [a, dt, P.G, m, P.GFine ?? P.G, (P.hillD ?? 0) / 1.4, 0.6, P.diffD ?? 0, P.diffSc ?? 1.25, 0, P.marineWaveBaseKm ?? 1, marSea, P.marineFailSlope ?? 0.05, MARINE_FAIL,
+        THR ? P.reliefK * P.reliefWindowKm : 0, THR ? P.reliefKm / P.reliefWindowKm : 1].forEach((v, i) => uv.setFloat32(8 + 4 * i, v, true));
     device.queue.writeBuffer(uniform, 0, ub);
     const stage = buffer({ label: 'stage', size: 4 * MAX_LEVELS, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), count = buffer({ label: 'count', size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const P_ = await pipelinesOf(device);
@@ -458,7 +477,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     const run = (pass, g, slot, cnt) => { if (!(cnt > 0)) return; pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(Math.ceil(cnt / WG)); };
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
     const SL = { list: 0, roots: 1, flats: 2, all: 3, sea: 4 };
-    const groupsKey = `${DIFF}|${(P.hillD ?? 0) > 0}|${MAR}`, G = pool?.groups(groupsKey, P_) ?? {
+    const groupsKey = `${DIFF}|${(P.hillD ?? 0) > 0}|${MAR}|${THR}`, G = pool?.groups(groupsKey, P_) ?? {
         // (RKL's three rotating fields, z = X0, mB = X1, mC = X2: the first stage X0 → X1, then (A, P → out) by j mod 3)
         ...(MAR ? { mar1: group('marine', 'seaList', { mA: 'mH', mP: 'mH', mB: 'mB' }), mar2: group('marine', 'seaList', { mA: 'mB', mP: 'mH', mB: 'mC' }),
             mar0: group('marine', 'seaList', { mA: 'mC', mP: 'mB', mB: 'mH' }), mar4: group('marine', 'seaList', { mA: 'mH', mP: 'mC', mB: 'mB' }) } : {}),
@@ -471,10 +490,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         fillIn: group('fillIn', 'list'), receive: group('receive', 'list'), findFlat: group('findFlat', 'list'), flatAB2: group('flat', 'flats'), flatBA2: group('flat', 'flats', { distA: 'distB', distB: 'distA' }), highInit: group('highInit', 'flats'), highAB: group('high', 'flats'), highBA: group('high', 'flats', { hiA: 'hiB', hiB: 'hiA' }), pickFlat: group('pickFlat', 'flats'),
         flagRecv: group('flagRecv', 'list'), depthAB: group('depthJump', 'list'), depthBA: group('depthJump', 'list', { depthA: 'depthB', depthB: 'depthA', ptrA: 'ptrB', ptrB: 'ptrA' }), histogram: group('histogram', 'list'), place: group('place', 'list'),
         // (the solve's chains reuse the route's ptrB/ptrC and hiA/hiB: the route is done with them by then)
-        prep: group('prep', 'list', { lpA: 'hiA', jpA: 'ptrB' }), affineInit: group((P.hillD ?? 0) > 0 ? 'affineInitHill' : 'affineInit', 'list', { lpA: 'hiA' }),
+        prep: group('prep', 'list', { lpA: 'hiA', jpA: 'ptrB' }), affineInit: group(`affineInit${(P.hillD ?? 0) > 0 ? 'Hill' : ''}${THR ? 'Thr' : ''}`, 'list', { lpA: 'hiA' }),
         jumpAB2: group('affineJump', 'list', { jpA: 'ptrB', jpB: 'ptrC', lpA: 'hiA', lpB: 'hiB' }), jumpBA2: group('affineJump', 'list', { fA: 'fB', fB: 'fA', jpA: 'ptrC', jpB: 'ptrB', lpA: 'hiB', lpB: 'hiA' }),
         applyA: group('affineApply', 'list', { jpA: 'ptrB', lpA: 'hiA' }), applyB: group('affineApply', 'list', { fA: 'fB', jpA: 'ptrC', lpA: 'hiB' }),
-        water: group('water', 'order'), load: group('load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'), exportSome: group('exportSome', 'list'),
+        water: group('water', 'order'), load: group(THR ? 'loadThr' : 'load', 'order'), commit: group('commit', 'list'), exportCells: group('exportCells', 'list'), exportSome: group('exportSome', 'list'),
     };
     pool?.keepGroups(groupsKey, P_, G);
     const readCount = async () => {
@@ -836,7 +855,16 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         // (the rebound settles the ground where it lies, on the GPU (rebound-gpu.js); its anchor is the ground as the run begins)
         if (P.rebound > 0) { put('z', z); settle = await reboundGPU(device, { mesh, z: B.z, lift: B.lift, Kv: column ? B.Kv : null, ocean, flex: o.flex ?? null, P }); }
         // (the GPU settles the ground and hands it back for the CPU's closed-basin judge: z on both sides agree, no upload needed)
-        const settleNow = async at => { put('z', z); reboundKm3 += await settle.settle(at); z.set(await readBack(device, B.z)); };
+        // (the plate loads what the ground holds: the ground and what the last step dropped on it, which the next step's solve takes up
+        // (Zt). Settled on the bare ground, a headwater's deposit — all it cut, laid back (G·a/A ≥ 1), F·its drop high: kilometres on a
+        // peak — read as taken off at every settling and put back at the end, and a near-local plate lifted the peak and then sank it
+        // into pits beside it (lane erosionfix, 2026-11-22). `pending` false: the deposit is already on z, the run's last settling)
+        const settleNow = async (at, pending = true) => {
+            const dr = pending ? await readBack(device, B.dropped) : null;
+            if (dr) for (let c = 0; c < n; c++) z[c] += dr[c];
+            put('z', z); reboundKm3 += await settle.settle(at); z.set(await readBack(device, B.z));
+            if (dr) for (let c = 0; c < n; c++) z[c] -= dr[c];
+        };
         await gpuWait(device, device.queue.onSubmittedWorkDone(), 'erosion: setting up');
         ms.setup = performance.now() - t00;
         let marDone = 0;
@@ -892,7 +920,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         }
         const dr = await readBack(device, B.dropped);
         for (let c = 0; c < n; c++) if (dr[c] > 0) z[c] += dr[c];
-        if (settle && P.steps > 0) { const t = performance.now(); await settleNow(P.timeMyr); ms.rebound += performance.now() - t; }
+        if (settle && P.steps > 0) { const t = performance.now(); await settleNow(P.timeMyr, false); ms.rebound += performance.now() - t; }
         if (settle && column) await zBedBack(device, B.Kv, column);
     } finally {
         // (a 10M mesh's buffers are a couple of GB: they go now, not when a collector gets to them, the next run being about to want its own)

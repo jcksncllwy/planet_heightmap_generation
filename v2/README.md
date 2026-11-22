@@ -3275,6 +3275,23 @@ scalar, so the span never engaged before c92d61f). Processes, all in `finish-ero
   ~56 km spacing printed as ~100 km mounds (spectral power ×2.7–3.6 at 50–240 km; U added only ×1.2–2). With 'even' the
   mounds become dendritic dissection.
 - `hillD` / `diffD`: hillslope and channel diffusion, 0.01; inert at physical D, pinned to 0 in check-gpu.
+- `reliefK` / `reliefKm` / `reliefWindowKm` (0.25 /Myr, 1.5 km, 10 km; lane erosionfix, 2026-11-22, GPU only): **threshold
+  hillslopes at the mesh's scale.** Roering's critical slope (~0.6–1.25) never binds on 14–56 km cells. Montgomery & Brandon 2002
+  (EPSL 201:481, eq. 2) fit Earth's ranges with E = E₀ + K·Rz/(1 − (Rz/Rc)²): Rz the relief in a 10-km-diameter window, Rc = 1.5 km
+  (active ranges pile up 1–2 km and no more: landslides), K = 2.5·10⁻⁴ mm/yr per m. A cell's tilt S across the window is relief
+  Rz ≥ S·D, so on every mesh whose cells are wider than D (all of ours) the threshold is the slope S_c = Rc/D = 0.15, the same at
+  160K, 640K and 2.5M (a coarse mesh's slopes are gentler, so it binds later there). Only the nonlinear excess K·Rz·r²/(1 − r²) is
+  added (the stream power already gives the linear part), as a rate on the cell's drop to its receiver inside the implicit
+  solve; its cut goes to the receiver as load, never laid back on the cell. Reduced: no landslide sizes or frequencies, one Rc
+  everywhere (rock strength not read), and Rz from the resolved tilt only (sub-cell valleys, most of a real range's Rz, are not
+  there: a lower bound, so the law binds no earlier than Earth's). 831576 at 2.5M: cells steeper than 0.15 0.22 → 0.01 % (430)
+  and 0.56 → 0.04 % (340); land max 8.24 → 7.16 km and 11.33 → 8.43 km; p99 −86 / −233 m; p50 and p90 within 11 m.
+- **Headwater deposits and the rebound** (lane erosionfix): a headwater cell (G·a/A ≥ 1) lays all it carries back on itself, and
+  the next step's implicit solve cuts it again, so on a peak the deposit in hand is F × its drop — kilometres. The rebound used
+  to settle the bare ground between steps and the ground plus that deposit at the end, so it read the deposit as taken off and
+  then put back: under a near-local plate (lane flexure) peaks rose and then sank into pits beside them (831576@430 640K, a
+  10.3 km cell beside a −1.4 km land cell at 160K). Every settling now loads the ground with the deposit in hand. The same
+  deposit is why stream power never lowers a peak on its own: the threshold's slides bypass it.
 
 **Kept on purpose.** R5 (a bed stands at least at its receiver's, never above the tectonic surface): without it 7770 river
 cells were carved below their receiver and 8b's downhill check failed. R6 (a cell drops by its valley's share,
