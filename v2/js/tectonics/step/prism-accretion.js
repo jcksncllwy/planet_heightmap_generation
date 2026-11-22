@@ -26,13 +26,15 @@
 //   · where the fore-arc is full (laid to the coast), or the plate's margins are all erosive (their trenches eat the
 //     fore-arc: no frontal prism stands there, and what is scraped off is underplated beneath the fore-arc and arc —
 //     von Huene & Scholl 1991, Rev. Geophys. 29; Clift & Vannucchi 2004), the prism thickens the land within
-//     marginIsleReachKm of the trench instead — underplating and the prism's own stacking (rootKm, evenly over those cells): the rock is kept, none made
-//     or lost. A plate with no accretionary margin of its own holds its prism until it has one again.
+//     marginIsleReachKm of the trench instead — underplating and the prism's own stacking, laid as shortening lays its
+//     crust (ops/thicken.js layThickening: those cells first, then ring by ring inland, each root up to
+//     underthrustMaxThickKm, cratons none): the rock is kept, none made or lost; what finds no room stays in the prism.
+//     A plate with no accretionary margin of its own holds its prism until it has one again.
 // Books (rock-book.js, the stage 'prismAccretion'): prismAccretedKm3, every cell's rock after less before; prismInKm3
 // what was credited, prismUnderKm3 the share of it underplated (the fore-arc full); the sheet holds the rest as the prism reservoir (Σ prismKm3 over the living plates).
 // Limits (reduced physics): the prism is one number per plate, not a wedge along each trench — the rock scraped off one
 // trench may be laid by another trench of the same plate; no taper (Davis, Suppe & Dahlen 1983) bounds how far out it
-// builds or how thick it stacks; its rock is laid in steps of a whole cell, and an island stands at a continent's
+// builds (its stacking is held to underthrustMaxThickKm, the shortening law's ceiling); its rock is laid in steps of a whole cell, and an island stands at a continent's
 // thickness from the step it is laid (the wedge's slow rise from the sea floor is not followed); a fore-arc's erosion (subduction erosion,
 // off until S5 — ruling 6) does not draw it down.
 
@@ -42,6 +44,7 @@ import { bookRock } from '../rock-book.js';
 import { cellRockKm3 } from './crust-ledger.js';
 import { marginTrenches } from './margin-isles.js';
 import { heightsOf } from './heights.js';
+import { layThickening } from '../ops/thicken.js';
 
 /** Credit `km3` of scraped-off trench rock to plate `over`'s prism (config.prismAccretion; the background ocean has no
  * fore-arc, so what it overrides stays a book of rock kept). */
@@ -111,9 +114,13 @@ export function accretePrisms(world) {
             const land = [];
             for (let c = 0; c < n; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON) && trenchD[c] >= 0 && trenchD[c] <= reachHops) land.push(c);
             if (land.length) {
-                const km = plate.prismKm3 / (land.length * A);
-                for (const c of land) crust.rootKm[c] += km;
-                accreted += plate.prismKm3; world.budget.prismUnderKm3 = (world.budget.prismUnderKm3 ?? 0) + plate.prismKm3; plate.prismKm3 = 0;
+                // (through the law shortening and a collision's kept crust use, ops/thicken.js layThickening: the land within
+                // reach first, then ring by ring inland, each root up to underthrustMaxThickKm, cratons none. Was: the whole
+                // prism evenly over those cells with no ceiling, 100–200 km of root where a margin had 1–6 of them, roots no
+                // channel could drain. What finds no room stays in the prism, the reservoir on the balance sheet)
+                const volKm = plate.prismKm3 / A, left = layThickening(plate, mesh, land, volKm, config.underthrustMaxThickKm);
+                const km3 = (volKm - left) * A;
+                accreted += km3; world.budget.prismUnderKm3 = (world.budget.prismUnderKm3 ?? 0) + km3; plate.prismKm3 = left * A;
             }
         }
         if (here) { plate.dirty = true; laid += here; world.budget.isleRaisedCells = (world.budget.isleRaisedCells ?? 0) + here; }
