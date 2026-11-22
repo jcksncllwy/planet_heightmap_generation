@@ -2630,6 +2630,28 @@ both kernels on a small fixed climate and the coast's two ray kernels (M2, below
 differently files its finishes apart. The history's key keeps `gpuFingerprint`'s 'history' scope, main's 'gpu erosion v2'
 unchanged: a GPU that differs only in the finish's kernels neither splits nor invalidates the history cache.
 
+**The climate's solves run on the GPU in the finish (lane gpuclimate, 2026-11-22).** Every Helmholtz solve of the climate (the
+temperature's months and air masses, the ocean's gyres, the rain's divergent part and anchors: `climate/solver.js`'s complex
+σT − D∇²T + γu·∇T = f) runs in WGSL (`js/gpu/climate-solver.js`, float32). Main's smoother, line Gauss–Seidel row after row, is
+serial in its rows; the GPU's is **zebra line Gauss–Seidel** — the even rows at once, then the odd — with each row's periodic
+tridiagonal solved by parallel cyclic reduction (one workgroup a row), because it parallelises over rows and columns alike and
+keeps the line smoother's robustness to the grid's anisotropy near the poles (point smoothers stall there); it costs ~2× the
+cycles of the lexicographic order, cheap on the GPU. Float32 is held to float64's answer by: the finest level in correction
+form (iterative refinement) with a difference-form residual on float64 row sums; cyclic reduction carrying each equation's
+excess over its diagonal (so the polar rows' small damping survives elimination); a deep hierarchy (factors 2 and 3 to 5
+rows) whose coarsest level is solved exactly by a float64-built inverse; and a stopping test that counts only the residual
+beyond each cell's float32 floor. Every solve runs to `CONVERGED_TOL` (1e-5): main's per-call tolerances, looser, move the
+climate by up to 10 °C at the ice edges against converged, so the finish's climate changes there by design, the page's not.
+The stages are generators that `yield` their solves, so one stage code runs synchronously on the CPU (`computeClimate`: the
+page, civ, the tools; Earth's hash unchanged) and asynchronously on the GPU (`planetClimateAsync`: the finish). The CPU solver
+keeps main's defaults and gains opt-in `deep`, `zebra`, `converged`, the GPU's algorithm in float64: the reference of
+`tools/climate-solver-test.mjs` (part of `check-gpu`; `--world earth|finish:<key>`), whose tolerances are set from the float64
+climate's own sensitivity (`--control`) and hold on Earth and three finished worlds: months' |ΔT| mean ≤ 1e-3 °C, a few
+ice-edge cell-months up to ~0.6 °C where the sea ice's albedo carries the noise across its threshold, sea ice, ice sheets and
+Köppen classes (EF and BW included) differing on ≤ 1e-3 of their cells; bit-repeatable. `gpuFingerprint`'s finish scope adds
+the solver on a small fixed problem. The operator's build and the stages' own loops stay on the CPU, which now dominates the
+climate's time (`tools/climate-finish-time.mjs`, `climate-solver-bench.mjs`).
+
 **The coast's waves and the world ocean's flood run on the GPU too (lane gpucells M2, 2026-11-22).** The coast (`finish-coast.js`)
 traces its waves as one GPU thread a ray (`js/gpu/coast-rays.js`): the far field on the climate grid (every sea grid cell × 16
 directions marched up-wave 4500 km to the first land, the seas grown back along the path, each season) once a coast, and at each of

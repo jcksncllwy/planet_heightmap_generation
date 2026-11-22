@@ -8,11 +8,12 @@
 // finished moment from the finish cache (tools/lib/finish-cache.mjs; its key). Exit 1 if a tolerance is missed or the GPU
 // doesn't repeat itself.
 // Tolerances (float32 against float64, each converged to CONVERGED_TOL), set against the float64 climate's own noise — the
-// reference against itself solved to 3e-6 (--control): |ΔT| mean 4e-5–6e-5 °C, max 0.03–0.07 °C, |ΔP|/P max 1e-3–0.07,
-// Köppen 2–15 cells (Earth, 716130@600). Float32's means are the same; its maxima, 0.1–0.6 °C and 0.04–0.23 of the rain,
-// are single cell-months where a sea-ice edge carries its noise across the ice threshold and grows it (716130@600: 6
-// flips in 478K sea cell-months, the 0.58 °C one among them). So the bulk is held tight and the max only bounded:
-//   · months: |ΔT| mean ≤ 1e-3 °C, 99.9th percentile ≤ 0.02 °C, max ≤ 1 °C; |ΔP| as a share of max(1 mm, P): mean ≤ 1e-3,
+// reference against itself solved to 3e-6 (--control): |ΔT| mean 4e-5–6e-5 °C, 99.9th percentile 2e-3, max 0.04–0.07 °C,
+// |ΔP|/P max 0.04–0.07, Köppen 0–15 cells (test, Earth, 716130@600). Float32, where no ice decision flips (Earth, 831576@430,
+// 12345@560): the same mean, p99.9 2e-3–8e-3 °C. Where one does (test: 1 sea-ice cell-month and 2 ice-sheet cells;
+// 716130@600: 6 sea-ice cell-months), the flipped cell's albedo moves its region by hundredths: mean 3e-4, p99.9 0.015–0.027,
+// max 0.3–0.6 °C. So the bulk is held tight, the tail to the flips' reach, and the decisions themselves counted:
+//   · months: |ΔT| mean ≤ 1e-3 °C, 99.9th percentile ≤ 0.05 °C, max ≤ 1 °C; |ΔP| as a share of max(1 mm, P): mean ≤ 1e-3,
 //     99.9th percentile ≤ 0.02, max ≤ 0.25;
 //   · the decisions — the snow and ice albedo feedback can carry a hair across a threshold and grow it: sea ice (a month's
 //     ice ≥ ½) on ≤ 1e-3 of the sea's cell-months, the ice sheets (perennial ≥ ½) on ≤ 1e-3 of the land's cells, and
@@ -123,7 +124,7 @@ function compare(label, ref, got, reportOnly = false) {
         let wT = 0, wP = 0;
         for (let i = 0; i < N; i++) { if (Math.abs(a.T[i] - b.T[i]) === dT) wT = i; if (Math.abs(a.P[i] - b.P[i]) / Math.max(1, a.P[i]) === dP) wP = i; }
         console.log(`     worst T: cell-month ${wT} ${a.T[wT].toFixed(3)} vs ${b.T[wT].toFixed(3)} °C; worst P: ${a.P[wP].toFixed(2)} vs ${b.P[wP].toFixed(2)} mm`);
-    chk(sT / N <= 1e-3 && q999(eT) <= 0.02 && dT <= 1, `months' temperature: |ΔT| mean ${fmt(sT / N)} p99.9 ${fmt(q999(eT))} max ${fmt(dT)} °C (≤ 1e-3, 0.02, 1)`);
+    chk(sT / N <= 1e-3 && q999(eT) <= 0.05 && dT <= 1, `months' temperature: |ΔT| mean ${fmt(sT / N)} p99.9 ${fmt(q999(eT))} max ${fmt(dT)} °C (≤ 1e-3, 0.05, 1)`);
     chk(sP / N <= 1e-3 && q999(eP) <= 0.02 && dP <= 0.25, `months' rain: |ΔP|/P mean ${fmt(sP / N)} p99.9 ${fmt(q999(eP))} max ${fmt(dP)} (≤ 1e-3, 0.02, 0.25)`);
     // (sea ice by month and the ice sheets, on the climate's grids)
     const ra = ref.stages.temperature, rb = got.stages.temperature, G = ref.grid.size, lf = ref.surface.landFrac;
