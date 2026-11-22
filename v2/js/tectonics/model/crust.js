@@ -158,7 +158,7 @@ export class CrustRaster {
 
     /**
      * Cell `cell` has just stopped being ocean floor (an arc, a fore-arc island, a rift's or a collapse's continent made in
-     * place), or its continent thickens in a belt or a collision (step/heights.js buildHeights, ops/thicken.js — lane marine3:
+     * place), or its continent thickens in a belt or a collision (step/orogeny.js spreadBelt, ops/thicken.js — lane marine3:
      * an epeiric sea's fill caught in a belt stood on it as free height, water-loaded, 9.6 km in phase 8a's history scene): the
      * sediment a sea laid on it (seaFillKm, rock km over the cell) is now part of its column,
      * folded into its root (rootKm: the column's crust for continent and arc alike — step/crust-ledger.js addCellRock counts
