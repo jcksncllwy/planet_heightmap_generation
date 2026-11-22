@@ -38,8 +38,11 @@ const KERNELS = {
 @group(0) @binding(6) var<storage, read_write> b: array<f32>;
 ${MAIN}
     if (c >= arrayLength(&anchor)) { return; }
-    let share = select(U_.land, U_.sea, ocean[c] != 0u);
-    b[c] = M[c] * share * (z[c] - anchor[c] - lift[c] * U_.lifted);
+    // (the history's uplift is the solver's on land only — the sea's cells are its outlets, never raised — so only there is it
+    // discounted: discounted under the sea too, it read as unloading every settling, and a hotspot's sea floor rose kilometres)
+    let sea = ocean[c] != 0u;
+    let share = select(U_.land, U_.sea, sea);
+    b[c] = M[c] * share * (z[c] - anchor[c] - select(lift[c] * U_.lifted, 0.0, sea));
 }`,
     // (the ground moves by the plate's deflection, up where unloaded; the rock's top with it; the anchor is the ground now)
     apply: `${HEAD}

@@ -535,8 +535,8 @@ export function rebounder(mesh, z, ocean, P, column = null, seaKm = 0, uplift = 
         const load = new Float64Array(n), s = new Float64Array(n), lifted = at - since;
         since = at;
         let km3 = 0;
-        for (let c = 0; c < n; c++) { load[c] = (ocean[c] ? sea : P.rebound) * (z[c] - anchor[c] - (uplift ? uplift[c] * lifted : 0)); s[c] = ocean[c] ? buoy : 1; }
-        const { w } = solvePlateCPU(mesh, B, s, load, { tol: FLEX.mgTol });
+        for (let c = 0; c < n; c++) { load[c] = ocean[c] ? sea * (z[c] - anchor[c]) : P.rebound * (z[c] - anchor[c] - (uplift ? uplift[c] * lifted : 0)); s[c] = ocean[c] ? buoy : 1; }   // (the uplift: the solver's on land only)
+        const { w } = solvePlateCPU(mesh, B, s, load, { tol: 1e-8 });     // (float64: the reference the GPU is held to)
         for (let c = 0; c < n; c++) {
             const was = z[c];
             z[c] -= w[c];

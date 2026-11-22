@@ -288,11 +288,15 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
         }
     };
     const readS = async () => readBack(device, S);
+    let lastOcean = null;
 
     return {
         b: bIn, w, M: Mf, levels: L.map(v => v.n),
         setOcean(o) {
-            // (the buoyancy: Δρ/ρm, air or the sea's water filling the trough; coarse levels the mean by the transpose's weights)
+            // (the buoyancy: Δρ/ρm, air or the sea's water filling the trough; coarse levels the mean by the transpose's weights.
+            // Asked at every closed-basin judge: nothing to do when the sea has not moved)
+            if (lastOcean && lastOcean.length === n && lastOcean.every((v, c) => v === (o[c] ? 1 : 0))) return;
+            lastOcean = Uint8Array.from(o, v => (v ? 1 : 0));
             const sea = (F.mantleRho - F.waterRho) / F.mantleRho;
             let s = new Float32Array(n);
             for (let c = 0; c < n; c++) s[c] = o[c] ? sea : 1;
