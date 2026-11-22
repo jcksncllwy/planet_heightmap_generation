@@ -29,7 +29,9 @@
 //                   sum is the collision's loss (collisionLostShare, and the unplaced)
 //   dockConsumedKm3 the same for land an op docks with no room beside it on its host — an arriving arc, a moved piece, a
 //                   terrane (ops/scrape-arc.js, ops/tidy-plates.js transferCells, ops/accrete-terrane.js); dockKeptKm3 its
-//                   keepConsumed (was deleted as movedLostKm3: lane contarea (2))
+//                   keepConsumed (was deleted as movedLostKm3: lane contarea (2)); and a terrane's dock's seal — the strait it
+//                   closes and the coast that pays for it, the host's rock after less before (accrete-terrane.js, as a weld's
+//                   in collisionConsumedKm3; lane oldfloor)
 //   shortenedKm3    (< 0) an Andean margin's edge shortened away; shortenKeptKm3 what step/andean-shortening.js lays back as
 //                   its belt's root: their sum is the unplaced (normally 0)
 //   collapseNetKm3  orogenicCollapse's rock change (≈ 0: a quiet belt's root moved into the continental cell it makes on its
