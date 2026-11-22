@@ -16,12 +16,14 @@ import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
 import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { fillSpillMerge } from './finish-fsm.js';
-import { ERODE, windowUplift, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, flexOnto, hollowCensus, playas, bayheadFill } from './finish-erode.js';
+import { ERODE, windowUplift, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, hollowCensus, playas, bayheadFill } from './finish-erode.js';
 import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
 import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
 import { terrainMesh, terrainEdgeKm } from '../terrain/terrain-mesh.js';
+import { mapOnto } from '../core/mesh-maps.js';
+import { elasticThicknessKm } from '../gpu/flexure.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { carveLadder, carveSettings } from '../terrain/synthesize.js';
 import { floodSea } from '../terrain/carve.js';
@@ -335,8 +337,12 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         return B;
     };
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
+    // (the plate the erosion's rebound bends, its elastic thickness under each mesh the erosion runs on — the ladder's rungs, the
+    // polish: elasticOn)
+    const teSim = EP?.rebound ? elasticThicknessKm(frame) : null;
     const eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, m: E.m,
-        uplift: windowUplift(EP, carveIn) } : null;                  // (km/Myr: ERODE histLower)
+        uplift: windowUplift(EP, carveIn),                          // (km/Myr: ERODE histLower)
+        teOf: teSim ? m => elasticOn(simMesh, teSim, m) : null } : null;
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     lap('rivers');
@@ -487,7 +493,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: low, flex: erodeIn.uplift && EP.rebound ? flexOnto(mesh, EP, terrainMesh) : null, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: low, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
         delete late.outflow;                                          // (per cell: bayheadFill's, after the early run only — not stats)
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
@@ -1082,3 +1088,22 @@ export function finishRaster(mesh, z, ocean, w, onRow = null, lake = null, lakeL
 
 /** The widest climate picture a finish makes: the page's sharpest texture (finer would not be seen). */
 const CLIMATE_WIDTH_MAX = 4096;
+
+// (Te on each mesh the erosion asks for, kept while the mesh is)
+const elastic = new WeakMap();
+/**
+ * The plate's elastic thickness (km) on mesh `m`: the history's crust's (gpu/flexure.js elasticThicknessKm, on `simMesh`),
+ * carried from its ~110 km cells by the 3 around each, in log (D goes as Te³). Te varies smoothly at that scale, as a
+ * lithosphere's does over its own flexural length — and as the plate's multigrid needs (gpu/flexure-gpu.js: a one-cell step
+ * from 70 to 5 km slows it fivefold).
+ */
+function elasticOn(simMesh, teSim, m) {
+    if (!elastic.has(teSim)) elastic.set(teSim, new WeakMap());
+    const of = elastic.get(teSim);
+    if (!of.has(m)) {
+        const { cells, weights } = mapOnto(simMesh, m), n = m.numCells, te = new Float32Array(n);
+        for (let i = 0; i < n; i++) te[i] = Math.exp(weights[3 * i] * Math.log(teSim[cells[3 * i]]) + weights[3 * i + 1] * Math.log(teSim[cells[3 * i + 1]]) + weights[3 * i + 2] * Math.log(teSim[cells[3 * i + 2]]));
+        of.set(m, te);
+    }
+    return of.get(m);
+}

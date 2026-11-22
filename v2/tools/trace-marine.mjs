@@ -100,7 +100,19 @@ const landStats = (zz, sea) => {
     for (let c = 0; c < n; c++) if (!sea[c]) h.push(zz[c]);
     h.sort((a, b) => a - b);
     const below = km => +(100 * h.filter(v => v < km).length / Math.max(1, h.length)).toFixed(1);
-    return { landPct: +(100 * h.length / n).toFixed(1), below200: below(0.2), below500: below(0.5), medianM: Math.round(1000 * (h[h.length >> 1] ?? NaN)) };
+    // (the relief: the land's high percentiles, and its mean slope between land neighbours, m/km — lane flexure)
+    const { adjOffset, adjList, xyz } = mesh, at = q => Math.round(1000 * (h[Math.min(h.length - 1, Math.floor(q * h.length))] ?? NaN));
+    let slope = 0, k = 0;
+    for (let c = 0; c < n; c++) {
+        if (sea[c]) continue;
+        for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+            const d = adjList[j];
+            if (d < c || sea[d]) continue;
+            const km = 6371 * Math.acos(Math.min(1, xyz[3 * c] * xyz[3 * d] + xyz[3 * c + 1] * xyz[3 * d + 1] + xyz[3 * c + 2] * xyz[3 * d + 2]));
+            slope += Math.abs(zz[c] - zz[d]) * 1000 / km; k++;
+        }
+    }
+    return { landPct: +(100 * h.length / n).toFixed(1), below200: below(0.2), below500: below(0.5), medianM: Math.round(1000 * (h[h.length >> 1] ?? NaN)), p90M: at(0.9), p99M: at(0.99), maxM: at(1), slopeMKm: +(slope / Math.max(1, k)).toFixed(2) };
 };
 // the shelf break: a sea cell under 800 m steeper than 0.009 km/km whose shallowest sea neighbour is gentler (lib/shelf-stats.mjs's
 // rule, every coast: the median depth over such cells, m)

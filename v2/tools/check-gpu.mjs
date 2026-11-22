@@ -1,7 +1,7 @@
 // The GPU's finish on this machine: deterministic tests, no comparison of chaotic results (lane histprof, 2026-11-21).
 //   · each GPU kernel against a float64 CPU reference of its own arithmetic, with stated tolerances (fluvial-kernels-test.mjs:
-//     the affine solve, the drainage sum, the diffusion; rebound-gpu-test.mjs: the rebound's settling, on the mesh and through a
-//     coarser rung; climate-cells-test.mjs: the climate per cell — step 5, Köppen, the stats' bytes, the thaw gate and the
+//     the affine solve, the drainage sum, the diffusion; flexure-test.mjs: the plate against its analytic solutions, the GPU's solve and rebound
+//     against float64; climate-cells-test.mjs: the climate per cell — step 5, Köppen, the stats' bytes, the thaw gate and the
 //     runoff; climate-solver-test.mjs: the climate's Helmholtz solves (gpu/climate-solver.js), the whole climate against
 //     its float64 reference; coast-rays-test.mjs: the coast's waves, far and near, and the world ocean's flood by connected labels, equal to
 //     the CPU's to the cell), each run twice and repeating itself bit for bit; and the GPU's waits failing loudly (gpu-wait-test.mjs);
@@ -34,7 +34,7 @@ else {
     // (each in a process of its own, as run by hand: its own device, its own exit code; every ok/FAIL line it prints is shown)
     for (const [file, args, what] of [
         ['fluvial-kernels-test.mjs', [], 'the fluvial kernels (affine solve, drainage, diffusion)'],
-        ['rebound-gpu-test.mjs', ['--cells', '160000', '--coarse', '40000', '--reps', '2'], 'the rebound (on its mesh and through a coarser rung)'],
+        ['flexure-test.mjs', ['--cells', '160000', '--analytic', '640000', '--reps', '2'], 'the plate (analytic loads, the GPU solve, the rebound)'],
         ['climate-cells-test.mjs', ['--cells', '160000', '--reps', '2'], 'the climate per cell (step 5, Köppen, the stats, the thaw gate and the runoff)'],
         ['coast-rays-test.mjs', ['--cells', '160000', '--reps', '2'], 'the coast\'s waves (far and near field) and the world ocean\'s flood (labels: equal to the CPU\'s)'],
         ['climate-solver-test.mjs', ['--world', 'test', '--reps', '2'], 'the climate\'s solves (the whole climate, float32 against float64 converged: months, sea ice, ice sheets, Köppen)'],
