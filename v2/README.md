@@ -819,10 +819,13 @@ is `seaFillKm` on the continent, drawn water-loaded (÷ `SEDIMENT_LOAD_FACTOR` 2
 the pour's ground, ocean/inventory.js surfaceKm); when the sea leaves, the land's erosion takes it (after a hollow's fill)
 before the rock. The mouths give up what the waves laid, first those whose sea is that continent (`budget.marineShelfKm3`;
 a mismatch of the two networks goes to `erodeClampedKm3`), so a mouth's load reaching drowned continent off the GPU's
-network still goes through trench-fans.js layOnDrownedShelf. The ocean floor stays the rivers' outlet (its edge is where the
-rock leaves for the rise and the fans), and so does a flooded island arc (it carries no sea fill). Limits: the sea's level
-is the history's own, held over each 4 Myr step — no glacial cycle (the finish's lowstand), no thermal subsidence of the
-platform. Small rivers are routed over a micro-relief of
+network still goes through trench-fans.js layOnDrownedShelf. The platform's edge is open: the ocean floor beyond it is in the
+waves' field at the pour's ground (inventory.js surfaceKm), so what they carry off a drowned continent goes down the slope
+and settles as its rise (the plate's `riseKm3`, `budget.marineRiseKm3`); a delta is laid only on drowned continent, and a
+river reaching the ocean floor stays the mouths' (the rise and the fans). A flooded island arc is not in the field (a
+fore-arc basin's fill is a named gap). Limits: the sea's level is the history's own, held over each 4 Myr step — no
+glacial cycle (the finish's lowstand), no thermal subsidence of the platform (a supercontinent's interior seas run
+shallower and fewer than Earth's: lane marine3 M4). Small rivers are routed over a micro-relief of
 the crust's own, so they ride with their continent between frames. **A GPU is required** for a history now (WGSL through
 gpu-device.js; Node runs it headless through Dawn, tools/gpu-harness/history-dawn.mjs); a build without one refuses with a
 clear message. The erosion feeds the dynamics (the roots and uplift it thins), so a history depends on its GPU's float
