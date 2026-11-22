@@ -151,6 +151,11 @@ for (let c = 0; c < n; c++) {
 }
 console.log(`water: worst |Δ| as a share of its tolerance — rain ${worst.rain.toFixed(3)} · kept ${worst.store.toFixed(3)} · PET ${worst.pet.toFixed(3)} · runoff ${worst.runoff.toFixed(3)}; ${wNear} cells off by a month at freezing, ${wBad} otherwise`);
 check(wBad === 0 && wNear <= TOL.nearShare * n && nan === 0, `water within ${TOL.waterAbs} mm + ${TOL.waterRel} relative, thawed months equal (but ≤ ${TOL.nearShare} at freezing); none where no rain`);
+{
+    let frozenN = 0, wet = 0;
+    for (let c = 0; c < W.frozen.length; c++) if (W.frozen[c]) { frozenN++; if (W.rain[c] !== 0 || W.runoff[c] !== 0) wet++; }
+    check(frozenN > 0 && wet === 0, `where no month thaws, no rain and no runoff, exactly (check-phase8b's thaw gate): ${wet} of ${frozenN} frozen cells wet`);
+}
 check(wruns.every(({ w }) => ['rain', 'store', 'pet', 'runoff', 'thaw', 'frozen'].every(k => same(w[k], W[k]))), `water repeats itself to the bit (${REPS} runs)`);
 device.destroy();
 console.log(failed ? `${failed} FAILED` : 'all ok');

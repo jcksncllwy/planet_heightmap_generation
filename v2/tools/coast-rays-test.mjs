@@ -104,14 +104,19 @@ for (let k = 0; k < REPS; k++) {
 console.log(`waves: ${cells.length.toLocaleString()} coast cells × ${D} · near ${T.nearSteps} steps of ${T.nearStep.toFixed(1)} km, far ${T.farSteps} of ${T.farStep} km · CPU far ${tFar.toFixed(0)} ms, near ${tNear.toFixed(0)} ms (one thread); GPU far ${gruns.map(r => r.msFar.toFixed(0)).join(' / ')} ms, near ${gruns.map(r => r.msNear.toFixed(0)).join(' / ')} ms`);
 const compare = (a, b, what) => {
     const v = Float64Array.from(b).filter(x => x > 0).sort(), floor = TOL.floor * (v.length ? v[Math.floor(0.99 * (v.length - 1))] : 1);
-    let off = 0, worst = 0;
-    const rel = [];
+    let off = 0, worst = 0, zero = 0, big = 0;
+    const rel = [], offRel = [];
     for (let i = 0; i < a.length; i++) {
         const r = Math.abs(a[i] - b[i]) / Math.max(Math.abs(b[i]), floor);
-        if (r > TOL.rel) off++; else { worst = Math.max(worst, r); rel.push(r); }
+        if (r > TOL.rel) {
+            off++; offRel.push(r);
+            if ((a[i] === 0) !== (b[i] === 0)) zero++;          // (one met land and the other did not: the walk's or the grid's land at a step)
+            else if (r > 0.01) big++;
+        } else { worst = Math.max(worst, r); rel.push(r); }
     }
-    rel.sort((x, y) => x - y);
-    console.log(`${what}: ${a.length.toLocaleString()} rays · within: p99 ${(rel[Math.floor(0.99 * (rel.length - 1))] ?? 0).toExponential(2)} max ${worst.toExponential(2)} · off (a path differs) ${off} (${(off / a.length).toExponential(2)})`);
+    rel.sort((x, y) => x - y); offRel.sort((x, y) => x - y);
+    console.log(`${what}: ${a.length.toLocaleString()} rays · within: p99 ${(rel[Math.floor(0.99 * (rel.length - 1))] ?? 0).toExponential(2)} max ${worst.toExponential(2)} · off (a path differs) ${off} (${(off / a.length).toExponential(2)})`
+        + (off ? `: ${zero} land met by one only, ${big} more than 1 % apart, the rest a growth step's grid cell or direction; off rays' |Δ| median ${offRel[offRel.length >> 1].toExponential(2)} max ${offRel.at(-1).toExponential(2)}` : ''));
     return off <= TOL.pathShare * a.length;
 };
 check(compare(gruns[0].far, far, 'far field'), `far field within ${TOL.rel} relative, but ≤ ${TOL.pathShare} of the rays (their path differs)`);

@@ -220,7 +220,9 @@ fn fu(L: f32, Ep: f32, w: f32) -> f32 {
             if (cyc == 2u) { gain -= melted; }
         }
     }
-    let store = min(pp, max(0.0, gain)); let rain = pp - store;
+    // (where no month thaws nothing melts and the whole year is kept, exactly: the twelve months' f32 shares need not add back
+    // to the year to the last bit, and a crumb of rain left there would run off where check-phase8b's thaw gate wants none)
+    let store = select(min(pp, max(0.0, gain)), pp, !(melt > 0.0)); let rain = pp - store;
     let A = 24u * G;
     let pet = max(p.petMin, w0 * gridIn[A + b0] + w1 * gridIn[A + b1] + w2 * gridIn[A + b2] + w3 * gridIn[A + b3]);
     let liquid = max(0.0, rain);
