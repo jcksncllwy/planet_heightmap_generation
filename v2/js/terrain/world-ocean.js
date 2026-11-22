@@ -8,6 +8,8 @@
 // and its views draw it as a lake at that level, or as a dry hollow at its true depth — and lower the world ocean by the
 // water it holds, which is the ocean's (the history pours all of it there and holds every hollow behind a sill empty).
 
+import { componentLabels, NONE } from '../gpu/labels.js';
+
 /**
  * The history's water rules where it is given (history: land-mask.js pouredSeaOnto — per terrain cell, whether the history
  * pours the ocean onto it, tectonics/ocean/inventory.js pourOcean, and the water it stands there). The view's surface
@@ -42,6 +44,30 @@ export function worldOcean(mesh, z, seaLevelKm = 0, history = null) {
         bodies.push({ first: c, cells: len, id });
         if (best < 0 || len > bodies[best].cells) best = id;
     }
+    return joinBodies(n, z, seaLevelKm, history, comp, bodies, best);
+}
+
+/**
+ * worldOcean with its flood on the GPU (lane gpucells M2: gpu/labels.js componentLabels, the bodies by their smallest cell
+ * — the order the flood above meets them in — so the same bodies, numbered the same, and the same answer to the cell). For
+ * the finish, which floods its surface again at every step of the coast (finish-coast.js) and after each stage.
+ * @param {GPUDevice} device
+ * @returns {Promise<ReturnType<typeof worldOcean>>}
+ */
+export async function worldOceanGPU(device, mesh, z, seaLevelKm = 0, history = null) {
+    const n = mesh.numCells, s = scratchOf(n), { comp, queue: rootId } = s, mask = new Uint8Array(n);
+    for (let c = 0; c < n; c++) mask[c] = z[c] < seaLevelKm ? 1 : 0;
+    const label = await componentLabels(device, mesh, mask);
+    const bodies = [];
+    let best = -1;
+    for (let c = 0; c < n; c++) if (label[c] === c) { rootId[c] = bodies.length; bodies.push({ first: c, cells: 0, id: bodies.length }); }
+    for (let c = 0; c < n; c++) { const l = label[c]; if (l === NONE) { comp[c] = -1; continue; } const b = rootId[l]; comp[c] = b; bodies[b].cells++; }
+    for (const b of bodies) if (best < 0 || b.cells > bodies[best].cells) best = b.id;
+    return joinBodies(n, z, seaLevelKm, history, comp, bodies, best);
+}
+
+/** worldOcean's rest, from its bodies (`comp`: each cell's body, −1 above sea level; `best`: the largest, the first of equals). */
+function joinBodies(n, z, seaLevelKm, history, comp, bodies, best) {
     // (the bodies the history fills: its water on their cells against their room below sea level)
     const joined = new Uint8Array(bodies.length);
     if (best >= 0) joined[best] = 1;

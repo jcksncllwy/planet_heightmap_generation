@@ -2598,6 +2598,22 @@ load) or `use-dawn.mjs`. `finishCells` and `thawedWater` stay on the CPU for the
 timeline's cut-off seas) and as the tests' references. gpuFingerprint ('gpu erosion v2 + climate cells v1') runs both kernels on a
 small fixed climate, so a GPU that answers them differently keys its histories, and its finishes, apart.
 
+**The coast's waves and the world ocean's flood run on the GPU too (lane gpucells M2, 2026-11-22).** The coast (`finish-coast.js`)
+traces its waves as one GPU thread a ray (`js/gpu/coast-rays.js`): the far field on the climate grid (every sea grid cell × 16
+directions marched up-wave 4500 km to the first land, the seas grown back along the path, each season) once a coast, and at each of
+its steps the near field on the mesh (every coast cell × direction walked cell by cell up-wave to the first land or 300 km out, then
+the far field). The pool's workers no longer trace waves (they still work out the seas' winds, `seaRange`). The same arithmetic
+as the CPU tracer, in f32: a ray's place after s steps in closed form from float64 tables (one rounding, not one a step), and the
+walk compares a neighbour's (x_nb − x_c)·p with 0 rather than two dot products near 1. `tools/coast-rays-test.mjs` (in `check-gpu`)
+holds them to the old float64 tracer (`tools/lib/coast-reference.mjs`): within 1e-4 relative, except rays whose path differs where
+it passes within a hair of a cell's, grid cell's or direction's edge (at 2.5M: 20 of 4.1M far rays, 16 of 610K near). The world
+ocean's flood (`terrain/world-ocean.js worldOceanGPU`, the coast's at every step) labels the cells below sea level by connected
+components on the GPU (`js/gpu/labels.js`: Shiloach–Vishkin hook-and-jump, each component labelled by its smallest cell, so the
+same bodies in the same order as the CPU's breadth-first flood): **equal to the CPU's flood to the cell**, which the test holds at
+three sea levels. The coast's open sea was a second flood of that world ocean's bodies at least `coastSeaKm2` big; the world ocean
+is one body, so it is now the world ocean if that big — the same cells, no flood. Measured at 160K on 831576@430: the coast's
+books (eroded, sand, land lost and gained) unchanged to the printed digit.
+
 **Headless runs keep the erosion on the CPU.** Check suites and `render-moment` run the CPU erosion solver: no GPU contention between
 suites. So a render can differ slightly from what the page shows for the same moment. (The climate per cell, above, runs on the GPU
 everywhere.)

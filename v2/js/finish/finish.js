@@ -36,7 +36,7 @@ import { fuEvaporation, snowYear, waterMonths, monthPET, SOIL_MM } from '../clim
 import { pageClimate } from '../evolution/climate-fields.js';
 import { STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
-import { worldOcean } from '../terrain/world-ocean.js';
+import { worldOcean, worldOceanGPU } from '../terrain/world-ocean.js';
 import { worldOcean as openSeaAt } from '../terrain/world-ocean.js';
 import { locate } from '../core/mesh-locate.js';
 import { GEOLOGY } from '../geology/geology-config.js';
@@ -458,7 +458,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
 
     // ── F5: the coast — the waves cut it back and drift its sand along it ──
     onStage('coast');
-    const Co = await coastWork({ mesh, z: C.z, lat, lon, soft, climGrid, ...waveIn, mouths: Sed.mouths, carveYears: F.carveTimeMyr * 1e6, oceanMask: zz => oceanMask(mesh, zz), cellKm2,
+    const Co = await coastWork({ mesh, z: C.z, lat, lon, soft, climGrid, ...waveIn, mouths: Sed.mouths, carveYears: F.carveTimeMyr * 1e6, worldOcean: zz => worldOceanGPU(device, mesh, zz, 0), device, cellKm2,
         pool: pool.closed || pool.broken ? null : pool }, F);
     if (closePool) pool.terminate();
     stats.coast = Co.stats;

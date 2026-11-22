@@ -11,8 +11,7 @@ import { terrainMeshAsync } from './terrain-mesh.js';
 import { GEO_FRAME_FIELDS } from '../tectonics/model/geology.js';
 
 const IS_NODE = typeof window === 'undefined' && typeof process !== 'undefined' && !!process.versions?.node;
-const CHUNKS_PER_WORKER = 8;
-const WAVES_NEAR_MAX_CELLS = 3e6;     // the coast's waves near the shore on the workers up to this many cells (wavesOpen)          // more chunks than workers, dealt round-robin: land and sea even out between workers
+const CHUNKS_PER_WORKER = 8;          // more chunks than workers, dealt round-robin: land and sea even out between workers
 // the Frame fields terrain synthesis reads (a worker is sent only these)
 // (every frame field the terrain reads — records.js, volcanoes.js — including the evolved heights; plus each plate's
 // rotation, below)
@@ -268,44 +267,14 @@ export class TerrainPool {
         } finally { worker.hold(false); }
     }
 
-    // ── the coast's waves (finish-coast.js waveTracer), traced on the pool's workers: every grid cell's far field and
-    // every coast cell's waves are each their own, so they are dealt out in runs and come back exactly as traced in one
-    // place. A worker is sent the tracer's grid arrays once (~50 MB), and — up to WAVES_NEAR_MAX_CELLS — the terrain mesh
-    // (its positions, its neighbours: ~40 bytes a cell) and each cell's latitude and longitude for the waves near the coast;
-    // finer than that the copies would cost more memory than the time they save is worth, and the coast is traced here ──
-
-    /** Open the waves' tracer on every worker. @returns {{far: number, near: number}} the workers that trace each part */
-    wavesOpen(T, mesh, lat, lon) {
-        if (this.closed || this.broken || !this.workers.length) return { far: 0, near: 0 };
-        const near = mesh.numCells <= WAVES_NEAR_MAX_CELLS;
-        const m = near ? { xyz: mesh.xyz, adjOffset: mesh.adjOffset, adjList: mesh.adjList } : null;
-        for (const w of this.workers) w.post({ type: 'waves-open', T: { ...T, far: null }, mesh: m, lat: near ? lat : null, lon: near ? lon : null });
-        return { far: this.workers.length, near: near ? this.workers.length : 0 };
-    }
+    // ── the coast's seas (finish-coast.js seaRange), on the pool's workers: every grid cell's are its own, so they are dealt
+    // out in runs and come back exactly as worked out in one place (the waves' rays are the GPU's: gpu/coast-rays.js) ──
 
     /** Each grid cell's seas (finish-coast.js seaRange) for the grid cells in `runs`, dealt among the workers.
      *  @returns {Promise<Array<{from, to, gen5, genU}>>} each 4 seasons × (to − from) × D */
     wavesSeas(seas, runs) {
         return this.wavesAsk(runs, () => ({ type: 'waves-seas', seas })).then(r => r.flatMap(m => m.parts));
     }
-
-    /** The far field of grid cells in `runs` ([from, to) each), dealt among the workers. @returns {Promise<Array<{from, to, out}>>}
-     *  out: 4 seasons × (to − from) × D */
-    wavesFar(runs) {
-        return this.wavesAsk(runs, () => ({ type: 'waves-far' })).then(r => r.flatMap(m => m.parts));
-    }
-
-    /** Every worker's copy of the far field, once traced (the waves near the coast read it). */
-    wavesFarDone(far) { for (const w of this.workers) w.post({ type: 'waves-far-set', far }); }
-
-    /** The waves at cells[from … to) of `runs`, on the coast as it stands (z), dealt among the workers.
-     *  @returns {Promise<Array<{from, to, out}>>} out: (to − from) × D */
-    wavesNear(z, cells, runs) {
-        return this.wavesAsk(runs, () => ({ type: 'waves-near', z, cells })).then(r => r.flatMap(m => m.parts));
-    }
-
-    /** The workers let go of the waves' tracer. */
-    wavesClose() { if (!this.closed) for (const w of this.workers) w.post({ type: 'waves-close' }); }
 
     wavesAsk(runs, msgOf) {
         this.open();
