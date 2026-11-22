@@ -44,7 +44,6 @@ export function beltReliefKm(type, reachKm, H) {
  */
 export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickenedKm, config, amp = 1, paid = false) {
     const H = heightsOf(config);
-    if (thickenedKm > 0) crust.foldSeaFill(c);          // (a drowned platform's fill, caught in the belt, is its crust now: model/crust.js)
     crust.rootKm[c] += thickenedKm * (H.rootGain?.[type] ?? 1);
     if (config.geology?.records) thickenCover(crust, c, thickenedKm, crust.oroLast[c], config.geology);     // (records only: step/geology.js)
     // (amp: a craton's rim takes a thin-skinned belt, cratonStrainShare of the relief — orogeny.js)

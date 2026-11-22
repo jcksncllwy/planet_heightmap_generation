@@ -202,6 +202,9 @@ export function spreadBelt(plate, mesh, sources, belt, config, allow = null) {
         // whole belt at the pace of its front's convergence. Over weak ground the shape is laid out 1/s as wide, so it
         // stands s as high: the same convergence lifts the same volume however far it spreads (a wide plateau is low in
         // relief across its interior — Tibet's, Fielding et al. 1994)
+        // (a drowned platform's fill, caught in the belt, is its crust now — model/crust.js foldSeaFill; folded before root0 so
+        // the book counts only what the belt made: the fill was rock already, and the arc cap's use stays the cap's)
+        if (thickened > 0) crust.foldSeaFill(c);
         const rock = crust.type[c] !== CrustType.OCEAN, root0 = crust.rootKm[c], up0 = Math.max(0, crust.upliftKm[c]);
         buildHeights(crust, c, belt.type, belt.side ?? BeltSide.NONE, u[c], widthOf(src[c]), workKm, thickened, config, rimCell ? shieldShare : share, paid);
         // (the rock book: what the belt made, unpaid — on continent and arc alike: crust-ledger.js counts an arc's root and
