@@ -2595,8 +2595,9 @@ crosses a boundary; the test checks the CPU's classifier gives the GPU's class o
 the water within 1e-3 mm + 1e-4 of the cell's year of rain; bit-repeatable. There is no CPU path for these in the finish: with no
 GPU it refuses (`js/gpu/finish-gpu.js`). In Node it takes Dawn from `history-dawn.mjs` (which the history cache and check-kit
 load) or `use-dawn.mjs`. `finishCells` and `thawedWater` stay on the CPU for the page's climate worker (the Climate tab, the
-timeline's cut-off seas) and as the tests' references. gpuFingerprint ('gpu erosion v2 + climate cells v1') runs both kernels on a
-small fixed climate, so a GPU that answers them differently keys its histories, and its finishes, apart.
+timeline's cut-off seas) and as the tests' references. gpuFingerprint ('gpu erosion v2 + climate cells v1 + coast rays v1') runs both kernels on a
+small fixed climate, and the coast's two ray kernels (M2, below) on its patch, so a GPU that answers them differently keys its
+histories, and its finishes, apart.
 
 **The coast's waves and the world ocean's flood run on the GPU too (lane gpucells M2, 2026-11-22).** The coast (`finish-coast.js`)
 traces its waves as one GPU thread a ray (`js/gpu/coast-rays.js`): the far field on the climate grid (every sea grid cell × 16

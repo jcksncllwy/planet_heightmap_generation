@@ -224,3 +224,20 @@ export async function coastRaysGPU(device, T, mesh, lat, lon) {
         destroy() { bGen.destroy(); bEnv.destroy(); bStart.destroy(); bCell.destroy(); },
     };
 }
+
+/**
+ * Both ray kernels on a small fixed sea — `mesh` and `z` (app/history-key.js gpuFingerprint's patch: its ground, lowered a km
+ * so part of it is sea), a 10° grid of integer winds — for gpuFingerprint: the rays' f32 trig and exponentials are the vendor's,
+ * so a GPU that answers them differently files its finishes apart. @returns {Promise<Float32Array[]>} what they answered, to hash
+ */
+export async function coastRaysProbe(device, mesh, z) {
+    const n = mesh.numCells, D = 16, w = 36, h = 18, G = w * h, gen5 = new Float32Array(4 * G * D), genU = new Float32Array(4 * G * D), si = new Float32Array(4 * G), landMask = new Uint8Array(G);
+    for (let o = 0; o < 4 * G * D; o++) { gen5[o] = (o * 37) % 1000; genU[o] = ((o * 13) % 20) * 0.5; }
+    for (let g = 0; g < 4 * G; g++) si[g] = ((g * 7) % 10) / 20;
+    for (let g = 0; g < G; g++) landMask[g] = g % 5 === 0 ? 1 : 0;
+    const lat = new Float32Array(n), lon = new Float32Array(n), sea = new Float32Array(n), cells = [];
+    for (let c = 0; c < n; c++) { lat[c] = 30 + (c % 48) * 0.25; lon[c] = -10 + Math.floor(c / 48) * 0.25; sea[c] = z[c] - 1; if (c % 7 === 0) cells.push(c); }
+    const T = { D, w, h, gen5, genU, si, landMask, swellDecayKm: 3000, waveSatK: 1e-4, waveFetchK: 2.25, farStep: 150, farSteps: 8, nearStep: 1.5 * mesh.edgeKm, nearSteps: 4 };
+    const rays = await coastRaysGPU(device, T, mesh, lat, lon);
+    try { return [await rays.far(), await rays.near(sea, cells)]; } finally { rays.destroy(); }
+}
