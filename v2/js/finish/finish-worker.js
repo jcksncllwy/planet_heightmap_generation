@@ -18,7 +18,7 @@
 // true, no finishing — else finished and then kept: 'done' carries cacheKey and saving: true, and the upload (compressed
 // here, off the page's thread) ends with {type: 'saved', id, ok}. cachedOnly: a miss is not finished ({type: 'error',
 // miss: true}).
-// {type: 'keyBase', id} → {type: 'done', id, code, math, erosion}: the parts of a finish-cache key that are this worker's
+// {type: 'keyBase', id} → {type: 'done', id, code, math, erosion, gpu}: the parts of a finish-cache key that are this worker's
 // (the finish code it loaded, its maths, what would run its erosion), so the page can key every moment of a history
 // itself and ask the cache which it holds (evolution-main.js knownDetail); code null: no finish cache.
 
@@ -30,14 +30,14 @@ import { meshFromArrays } from '../core/sim-mesh.js';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
 import { FINISH_CODE } from '../app/finish-code.js';
 import { finishKey, finishSpec, erosionOf } from '../app/finish-key.js';
-import { mathFingerprint } from '../app/history-key.js';
+import { mathFingerprint, gpuFingerprint } from '../app/history-key.js';
 import { treeChunks, readTree } from '../app/finish-wire.js';
 
 let sim = null, simCells = 0, delaunatorSet = false;
 
 self.onmessage = async ({ data }) => {
     if (data.type === 'keyBase') {
-        self.postMessage({ type: 'done', id: data.id, code: FINISH_CODE ?? null, math: mathFingerprint(), erosion: await erosionEngine() });
+        self.postMessage({ type: 'done', id: data.id, code: FINISH_CODE ?? null, math: mathFingerprint(), erosion: await erosionEngine(), gpu: await gpuFingerprint(undefined, 'finish') });
         return;
     }
     if (data.type !== 'finish') return;
@@ -45,7 +45,7 @@ self.onmessage = async ({ data }) => {
     try {
         // (the finish cache: this moment at these settings, on this engine, already finished — by this page before a
         // reload, or another tab)
-        const want = cache?.history && FINISH_CODE ? { history: cache.history, timeMyr: frame.time, code: FINISH_CODE, cells, width, climate: climateOptions, civ: wantCiv, host: 'page', math: mathFingerprint(), erosion: await erosionEngine() } : null;
+        const want = cache?.history && FINISH_CODE ? { history: cache.history, timeMyr: frame.time, code: FINISH_CODE, cells, width, climate: climateOptions, civ: wantCiv, host: 'page', math: mathFingerprint(), erosion: await erosionEngine(), gpu: await gpuFingerprint(undefined, 'finish') } : null;
         const wantKey = want && finishKey(want);
         if (wantKey) {
             const page = await cachedPage(wantKey);

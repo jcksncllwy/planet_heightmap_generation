@@ -8,8 +8,10 @@
 //     Precipitation, and whether the People layer's world is built (civ: it adds to the output, never changes the rest,
 //     but an entry without it cannot serve a page that wants it);
 //   · the engine: where it ran (the page's worker or Node), its maths (mathFingerprint: Chromium and Node differ in the
-//     last bit of sin, exp…) and what ran the erosion (the GPU's solver or the CPU's: they agree only to within float
-//     noise, finish.js erosionSolver). So the page's finishes and Node's are filed apart, as their histories are.
+//     last bit of sin, exp…), what ran the erosion (the GPU's solver or the CPU's: they agree only to within float
+//     noise, finish.js erosionSolver) and what its GPU answers the finish's own kernels with (gpu: history-key.js
+//     gpuFingerprint's 'finish' scope — the climate per cell and the coast's waves run on the GPU whatever ran the erosion).
+//     So the page's finishes and Node's are filed apart, as their histories are.
 // Not in it: the river density (a drawing threshold, riverPaths' q0), the palette and every other view setting — they
 // draw a finished moment, they never change it. Nor the finish's pool size: its slices are put together the same way
 // whatever their number (terrain-pool.js).
@@ -29,20 +31,20 @@ export const erosionOf = erodeOn => (erodeOn == null ? 'off' : erodeOn === 'cpu'
  * The settings a finished moment is keyed by, in one fixed shape (what meta.json keeps, and latest.json names).
  * @param {{history: string, timeMyr: number, code: string, cells: number, width: number, climate?: Object (else
  *          greenhouseWm2 and precipScale, as a spec holds them), civ?: boolean,
- *          host: 'page'|'node', math: string, erosion: 'gpu'|'cpu'|'off'}} s
+ *          host: 'page'|'node', math: string, erosion: 'gpu'|'cpu'|'off', gpu: string (gpuFingerprint(…, 'finish'))}} s
  */
 export function finishSpec(s) {
     // (the climate as options, or already spelt out: a spec read back from meta.json keys as it was keyed)
     const c = climateSettings(s.climate ?? s);
     return { history: s.history, timeMyr: Math.round(s.timeMyr * 1000) / 1000, code: s.code, cells: s.cells, width: s.width,
-        greenhouseWm2: c.greenhouseWm2, precipScale: c.precipScale, civ: !!s.civ, host: s.host, math: s.math, erosion: s.erosion };
+        greenhouseWm2: c.greenhouseWm2, precipScale: c.precipScale, civ: !!s.civ, host: s.host, math: s.math, erosion: s.erosion, gpu: s.gpu ?? null };
 }
 
 /** @returns {string|null} 32 hex digits (null without a history key or a code hash: nothing to file it under) */
 export function finishKey(s) {
     if (!s.history || !s.code) return null;
     const p = finishSpec(s);
-    return hash128([FINISH_KEY_VERSION, p.history, Math.round(p.timeMyr * 1000), p.code, p.cells, p.width, p.greenhouseWm2, p.precipScale, p.civ ? 1 : 0, p.host, p.math, p.erosion].map(String).join('\u0000'));
+    return hash128([FINISH_KEY_VERSION, p.history, Math.round(p.timeMyr * 1000), p.code, p.cells, p.width, p.greenhouseWm2, p.precipScale, p.civ ? 1 : 0, p.host, p.math, p.erosion, p.gpu].map(String).join('\u0000'));
 }
 
 function hash128(text) {

@@ -142,7 +142,7 @@ if (pageFin) {
     fin = fromCache(pageFin, pageFin.cells, pageFin.mesh); raster = pageFin.raster;
     console.log(`the page's own finish, from the finish cache (${LATEST.finish}: ${PAGE_FIN.host}, erosion ${PAGE_FIN.erosion}, ${PAGE_FIN.cells.toLocaleString()} cells, ${PAGE_FIN.width} px)`);
 } else {
-    const { spec, key } = CACHEABLE ? nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: W, erosion: await erosionEngine(F) }) : { spec: null, key: null };
+    const { spec, key } = CACHEABLE ? await nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: W, erosion: await erosionEngine(F) }) : { spec: null, key: null };
     let full = null;
     const r = await finishCached(spec, key, async () => {
         full = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true, debug: DEBUG, F, cfg: TCFG, observe, onStage: s => process.stdout.write(`${s}… `) });

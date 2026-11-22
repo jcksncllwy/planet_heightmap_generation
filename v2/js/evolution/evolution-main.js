@@ -814,7 +814,7 @@ function wouldLetGo(b, frame) {
 // (app/finish-key.js) and asks the dev server which are whole (/api/finish/has) — every few seconds at most, again
 // when the settings change or the history grows ──
 const KNOWN_EVERY_MS = 3000;
-let keyBase = null;                     // (a promise of {code, math, erosion}, once per page)
+let keyBase = null;                     // (a promise of {code, math, erosion, gpu}, once per page)
 /** The settings a moment's finish-cache key depends on beyond its time (the engine's parts are the page's own). */
 const detailSig = (b, cells = Number($('finishCells').value), climate = climateKey()) => `${b.cache?.key}|${cells}|${climate}|${view.civ ? 1 : 0}`;
 /** Is this kept moment detailed at the page's settings now (the key the timeline marks)? */
@@ -826,7 +826,7 @@ async function knownDetail(b) {
     try {
         const base = await (keyBase ??= finisher.keyBase());
         if (!base.code) throw new Error('no finish code: the page was not served by the dev server');
-        const cells = Number($('finishCells').value), spec = { history: b.cache.key, code: base.code, cells, width: finishWidth(cells), climate: climateOptions(), civ: view.civ, host: 'page', math: base.math, erosion: base.erosion };
+        const cells = Number($('finishCells').value), spec = { history: b.cache.key, code: base.code, cells, width: finishWidth(cells), climate: climateOptions(), civ: view.civ, host: 'page', math: base.math, erosion: base.erosion, gpu: base.gpu };
         const byKey = new Map(b.frames.slice(0, n).map(f => [finishKey({ ...spec, timeMyr: f.time }), f.time]));
         const r = await fetch('/api/finish/has', { method: 'POST', body: JSON.stringify({ keys: [...byKey.keys()] }) });
         if (!r.ok) throw new Error(`the dev server answered ${r.status}`);

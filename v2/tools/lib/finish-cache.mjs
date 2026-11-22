@@ -28,7 +28,7 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { historyCodeHash, sealedBytes, readSealed, atomicWrite, readLatest, REPO_ROOT } from './history-cache.mjs';
 import { finishKey, finishSpec } from '../../js/app/finish-key.js';
-import { mathFingerprint } from '../../js/app/history-key.js';
+import { mathFingerprint, gpuFingerprint } from '../../js/app/history-key.js';
 import { treeBytes, readTree } from '../../js/app/finish-wire.js';
 
 export const CACHE_DIR = process.env.GEO_SIM_FINISH_CACHE_DIR || path.join(os.homedir(), '.cache', 'geo-sim', 'finishes');
@@ -46,9 +46,10 @@ let codeMemo = null;
 /** This checkout's finish code hash, once per process. */
 export const codeHash = () => (codeMemo ??= finishCodeHash(REPO_ROOT).hash);
 
-/** The spec and key of a finish Node runs here (history: the moment's history-cache key). Null key: not cacheable. */
-export function nodeKey({ history, timeMyr, cells, width, climate = {}, civ = false, erosion = 'cpu' }) {
-    const spec = finishSpec({ history, timeMyr, code: codeHash(), cells, width, climate, civ, host: 'node', math: mathFingerprint(), erosion });
+/** The spec and key of a finish Node runs here (history: the moment's history-cache key). Null key: not cacheable. Async: the
+ *  GPU's finish fingerprint (history-key.js gpuFingerprint, 'finish') runs once a process. */
+export async function nodeKey({ history, timeMyr, cells, width, climate = {}, civ = false, erosion = 'cpu' }) {
+    const spec = finishSpec({ history, timeMyr, code: codeHash(), cells, width, climate, civ, host: 'node', math: mathFingerprint(), erosion, gpu: await gpuFingerprint(undefined, 'finish') });
     return { spec, key: ENABLED ? finishKey(spec) : null };
 }
 

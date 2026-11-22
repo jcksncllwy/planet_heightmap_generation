@@ -62,9 +62,9 @@ section('the wire format (app/finish-wire.js)');
 // ── the key ──
 section('the key (app/finish-key.js)');
 {
-    const base = { history: 'a'.repeat(32), timeMyr: 430, code: 'c0de', cells: 2500000, width: 4096, climate: { greenhouseWm2: 0, precipScale: 1 }, civ: true, host: 'page', math: '84ea2e1368bd', erosion: 'gpu' };
+    const base = { history: 'a'.repeat(32), timeMyr: 430, code: 'c0de', cells: 2500000, width: 4096, climate: { greenhouseWm2: 0, precipScale: 1 }, civ: true, host: 'page', math: '84ea2e1368bd', erosion: 'gpu', gpu: '8f520097b80d' };
     const k0 = finishKey(base);
-    const changes = { history: 'b'.repeat(32), timeMyr: 440, code: 'c0df', cells: 10000000, width: 8192, climate: { greenhouseWm2: 2, precipScale: 1 }, climate2: { greenhouseWm2: 0, precipScale: 1.5 }, civ: false, host: 'node', math: '1624d1d0e84a', erosion: 'cpu' };
+    const changes = { history: 'b'.repeat(32), timeMyr: 440, code: 'c0df', cells: 10000000, width: 8192, climate: { greenhouseWm2: 2, precipScale: 1 }, climate2: { greenhouseWm2: 0, precipScale: 1.5 }, civ: false, host: 'node', math: '1624d1d0e84a', erosion: 'cpu', gpu: 'f685589d10f1' };
     const same = Object.entries(changes).filter(([k, v]) => finishKey({ ...base, [k.replace(/2$/, '')]: v }) === k0).map(([k]) => k);
     check('the key changes with the history, the moment, the finish code, the detail, the width, Greenhouse, Precipitation, People, the host, the maths and the erosion\'s engine', same.length === 0, same.length ? `unchanged by: ${same}` : k0);
     check('…and not with how the climate is spelt (no options and the sliders at rest share a key)', finishKey({ ...base, climate: {} }) === k0 && finishKey({ ...base, climate: undefined }) === k0);
@@ -131,13 +131,13 @@ const finishNow = async (poolSize = null) => {
     return finishResult(await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool, closePool: true }), { width: WIDTH });
 };
 {
-    const { spec, key } = FC.nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: WIDTH });
+    const { spec, key } = await FC.nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: WIDTH });
     const first = await FC.finishCached(spec, key, finishNow);
     const again = await FC.finishCached(spec, key, finishNow);
     check('the first finish runs and is kept; the second is read — every array byte for byte, every number bit for bit', !first.cached && again.cached && builds === 1
         && differ(again.page.raster, first.page.raster) === null && differ(again.page.rivers, first.page.rivers) === null && differ(again.page.climate, first.page.climate) === null && differ(again.cells, first.cells) === null && differ(again.page.stats, first.page.stats) === null,
         `${(FC.listEntries()[0].bytes / 1e6).toFixed(1)} MB at ${CELLS.toLocaleString()} cells, ${WIDTH} px`);
-    const other = FC.nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: WIDTH, climate: { greenhouseWm2: 4 } });
+    const other = await FC.nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: WIDTH, climate: { greenhouseWm2: 4 } });
     check('another setting is another entry: a miss', other.key !== key && !FC.isComplete(other.key));
     fs.writeFileSync(FC.partPath(key, 'page'), Buffer.alloc(10));
     const rebuilt = await FC.finishCached(spec, key, finishNow);

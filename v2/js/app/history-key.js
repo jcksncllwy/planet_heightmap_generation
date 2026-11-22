@@ -109,17 +109,22 @@ export function mathFingerprint() {
     return (mathMemo = H.hex().slice(0, 12));
 }
 
-let gpuMemo = null, gpuMemoOf = null;
+const gpuMemo = new Map();      // (scope → {gpu, hex})
 /**
  * What this machine's GPU answers the history's erosion with (lane graded): the erosion kernels (gpu/erode-gpu.js, with the
  * history's own settings, tectonics/step/surface-erosion.js) run on a fixed patch of ground, the ground they leave hashed.
  * float32 rounding and fused multiply-adds are the vendor's, and the history's erosion feeds its dynamics, so two GPUs that
  * answer differently build different histories: the key keeps them apart (historyKey). The patch is built with no
  * transcendental function (a cube face's grid, normalised by sqrt, which IEEE rounds exactly): Math's own answers are
- * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none. @returns {Promise<string>} 12 hex digits
+ * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none.
+ * `scope` (lane gpucells; sessrumnir's ruling 2026-11-22): 'history' names only the kernels a history runs (the erosion's), so
+ * a GPU that differs only in the finish's kernels neither splits nor invalidates the history cache (gpuscan: keep the history's
+ * GPU footprint small) — main's 'gpu erosion v2' hash, unchanged; 'finish' adds the finish's own — the climate per cell, the coast's rays —
+ * for the finish cache's key (app/finish-key.js `gpu`). @returns {Promise<string>} 12 hex digits
  */
-export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU) {
-    if (gpuMemo && gpuMemoOf === gpu) return gpuMemo;
+export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU, scope = 'history') {
+    const memo = gpuMemo.get(scope);
+    if (memo && memo.gpu === gpu) return memo.hex;
     const { gpu: g, opened } = await historyGPU(gpu);
     const N = 48, n = N * N, xyz = new Float32Array(3 * n), off = [0], list = [];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -143,24 +148,28 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     const none = { lakes: [], sink: new Uint8Array(n), base: new Float32Array(n) };
     await erodeGPU(g, { mesh, z, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4 }, { device: opened });
     // (and the finish's GPU kernels the history's settings leave out, on the same patch: the rebound (gpu/rebound-gpu.js), with
-    // closed basins judged every other step. The finish's cache is keyed by this history's key, so a GPU that answers the
-    // finish differently must key apart too, not only one that answers the history differently)
+    // closed basins judged every other step — kept in the history's scope as main has had it since gpuerode ('gpu erosion v2'),
+    // so no history cache moves)
     const z2 = z.slice();
     await erodeGPU(g, { mesh, z: z2, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
-    // (and the finish's climate per cell and the coast's waves — lane gpucells, gpu/climate-cells.js and gpu/coast-rays.js: their
-    // f32 exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
-    const probes = [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z)];
     const H = new Hash128();
-    H.str('gpu erosion v2 + climate cells v1 + coast rays v1'); H.view(z); H.view(z2);
-    for (const a of probes) H.view(a);
-    gpuMemoOf = gpu;
-    return (gpuMemo = H.hex().slice(0, 12));
+    H.str('gpu erosion v2'); H.view(z); H.view(z2);
+    // (the finish's scope adds the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their f32
+    // exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
+    if (scope === 'finish') {
+        H.str('finish: climate cells v1 + coast rays v1');
+        for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z)]) H.view(a);
+    } else if (scope !== 'history') throw new Error(`gpuFingerprint: unknown scope '${scope}'`);
+    const hex = H.hex().slice(0, 12);
+    gpuMemo.set(scope, { gpu, hex });
+    return hex;
 }
 
 /** gpuFingerprint's answer, once it has been worked out (await gpuFingerprint() first): historyKey's, which is not async. */
-export function gpuFingerprintNow() {
-    if (!gpuMemo) throw new Error('the history key needs the GPU\'s fingerprint: await gpuFingerprint() first (app/history-key.js)');
-    return gpuMemo;
+export function gpuFingerprintNow(scope = 'history') {
+    const memo = gpuMemo.get(scope);
+    if (!memo) throw new Error('the history key needs the GPU\'s fingerprint: await gpuFingerprint() first (app/history-key.js)');
+    return memo.hex;
 }
 
 /** A drive's identity: its name and its source (what it does with the world is in the code hash). */
