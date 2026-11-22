@@ -159,15 +159,16 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     await erodeGPU(g, { mesh, z: z1, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, steps: 1 }, { device: opened });
     const H = new Hash128();
     H.str('gpu erosion v5'); H.view(z); H.view(z1);
-    // (the finish's scope adds the finish's own kernels: the erosion's rebound, with closed basins judged every other step, and the
-    // threshold hillslopes' solve and load (ERODE reliefK, erode-gpu.js THR) — in the history's scope until lane erosionfix
-    // (2026-11-22; 'gpu erosion v4' hashed the rebound, though the history's erosion runs rebound 0), so a finish kernel's change no
+    // (the finish's scope adds the finish's own kernels: the erosion's rebound — the thin plate (gpu/rebound-gpu.js, flexure-gpu.js:
+    // its multigrid's f32 sweeps and fixed-tree dots), with closed basins judged every other step — and the threshold hillslopes'
+    // solve and load (ERODE reliefK, erode-gpu.js THR) — in the history's scope until lanes erosionfix and flexure (2026-11-22;
+    // 'gpu erosion v4' hashed the rebound, though the history's erosion runs rebound 0), so a finish kernel's change no
     // longer splits the history cache; the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their
     // f32 exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
     if (scope === 'finish') {
         const z2 = z.slice();
-        await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reliefK: 0.25, reboundKm: 3 * mesh.edgeKm }, { device: opened });
-        H.str('finish: climate cells v1 + coast rays v1 + climate solver v1 + rebound v2 + threshold hillslopes v1'); H.view(z2);
+        await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reliefK: 0.25 }, { device: opened });
+        H.str('finish: climate cells v1 + coast rays v1 + climate solver v1 + rebound plate v1 + threshold hillslopes v1'); H.view(z2);
         for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z), ...await climateSolverProbe(opened.device)]) H.view(a);
     } else if (scope !== 'history') throw new Error(`gpuFingerprint: unknown scope '${scope}'`);
     const hex = H.hex().slice(0, 12);

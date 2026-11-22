@@ -890,8 +890,8 @@ depth-dependent diffusion for wave-dominated shelves, the form of Landlab's Simp
   under 10⁻³ of a difference on the shortest edge) or holding laid sediment, and their neighbours (`marineActive`, ~20 %).
 - **Reduced (what it skips):** one grain size; no tides or along-shelf currents; no turbidity currents down the slope, so the
   deep sea gets only K's tail and the shelf edge is overfed; one wave base, not the local wave climate's; the shore is a wall
-  for it (the coast's own waves on land are finish-coast.js's). The sea floor does not sink under its fill (the rebound is a
-  blur with no forebulge, and blurred onto the coast it drowned 3.7 % of the land); its flexure waits for the flexure lane.
+  for it (the coast's own waves on land are finish-coast.js's). The sea floor sinks under its fill: the erosion's rebound is a
+  thin elastic plate (lane flexure, below), and under the sea its load is the sediment's, (ρs − ρw)/ρm, over a trough the water fills.
 Fjords are the ice's (finish-ice.js). Nothing draws a ria: no `drownValleys`, no coast-band warp, no `ria*` or `drown*` keys. Also
 submarine canyons from big
 rivers' mouths down the shelf and slope (`canyonKm`). Both fade out where the mesh cannot draw a valley (160K).
@@ -2521,7 +2521,8 @@ the solve, deposits dammed big rivers. A lake keeps its load until full, and tha
 come from `closedBasins`. The run:
 - before the ice age, a ladder from 160K up to the shown mesh;
 - fills bury the finer relief (`bury`);
-- isostatic rebound of 0.82 (`rebound`, ρc/ρm = 2.7/3.3, Airy), on the coarsest level only;
+- the lithosphere's rebound under what the erosion moved, on every rung: a thin elastic plate, the land's load its rock's (`rebound`,
+  ρc/ρm = 2.7/3.3), the sea's its sediment's under water (see "The erosion's rebound: a thin elastic plate");
 - after wind and coast, a polish, because dunes and loess dam the plains erosion leaves;
 - a terminal body shallower than a year's net evaporation becomes a pan (`playaYears`).
 
@@ -2564,14 +2565,46 @@ sea-level bug below. Its rivers once graded to the seabed at the coast; they now
 `js/gpu/erode-gpu.js` holds FastFlow's depression routing (Jain et al. 2024, Cordonnier et al. 2019) for the network, then the CPU's own
 arithmetic swept level by level over cells sorted by depth. The ladder and the polish both run on it, with closed basins' flood too, at every size (`ERODE.gpuFloodCells` 0 since
 lane gpuerode; it was 500K while a flood cost more than it saved below that). Laying lakes' load, the closed basins' water balance and the ladder's maps stay on the CPU, and
-the lay code is the CPU solver's own. The rebound runs on the GPU (lane gpuerode M1, 2026-11-20: `js/gpu/rebound-gpu.js`): `rebounder`'s
-arithmetic — the load since the last settling, averaged onto the coarsest rung on a fine rung, blurred by σ = `reboundKm` in
-neighbour-mean passes, its Airy share taken back, the rock's top moved with the ground — one dispatch a pass, with the ground left in
-the solver's buffer. On the CPU it was 66–77 % of the GPU erosion's time (gpuscan); a settling at 160K now takes ~15 ms against
-~300 ms (`tools/rebound-gpu-test.mjs`: float64 reference, ground and rock top within 1 mm p99 / 5 mm max, as close as the f32 CPU
-rebounder comes; bit-repeatable). The mesh's adjacency and xyz are resident across runs (`js/gpu/fields.js`, which also holds the
-fixed-tree sum the rebound's km³ uses). gpuFingerprint ('gpu erosion v2') now runs a rebound too, so a GPU that answers the finish
-differently keys its histories, and so its finishes, apart.
+the lay code is the CPU solver's own. The rebound runs on the GPU (`js/gpu/rebound-gpu.js`; lane gpuerode M1 moved the old Gaussian
+blur there, lane flexure replaced it with the plate below), the ground left in the solver's buffer. The mesh's adjacency and xyz are
+resident across runs (`js/gpu/fields.js`, which also holds the fixed-tree sum the rebound's km³ uses). gpuFingerprint ('gpu erosion v2')
+runs a rebound too, so a GPU that answers the finish differently keys its histories, and so its finishes, apart.
+
+#### The erosion's rebound: a thin elastic plate (lane flexure, 2026-11-22)
+What the erosion takes off or lays on since the last settling (the history's own uplift not counted: its isostasy is already in it)
+loads the lithosphere, which bends as a thin elastic plate over a fluid mantle: ∇²(D∇²w) + Δρg w = q, D = E·Te³/12(1 − ν²), the
+flexural length α = (4D/Δρg)^¼ (Watts 2001, *Isostasy and Flexure of the Lithosphere*; Turcotte & Schubert §3). A load wider than α
+sinks by its Airy share; a narrower one is held up by the plate over α, and the ground beyond it rises — the forebulge, at ~πα from a
+line load, 4 % of the trough. The deflection moves land and sea floor alike, and the rock's top with them. It replaced a Gaussian blur
+of the load (σ = 350 km, on the coarsest rung only: no stiffness, no forebulge, the sea floor pinned), whose one physical number was
+the 0.82.
+- **The loads:** on land the rock's, ρc/ρm = 0.82 (`rebound`), the trough left to the air (Δρ = ρm); under the sea the sediment's
+  under water, (ρs − ρw)/ρm = (2.5 − 1.03)/3.3 ≈ 0.45, the trough filled with water (Δρ = ρm − ρw). So the sea's fill now sinks the
+  floor it lies on — the gap the marine lane named ("the second rebound pass stays off": its Gaussian drowned 3.7 % of the land).
+- **Te from the column** (`js/gpu/flexure.js` FLEX, `elasticThicknessKm` on the sim mesh): craton 70 km and ordinary continent 30
+  (Pérez-Gussinyé & Watts 2005: Archean and Palaeoproterozoic lithosphere > 60, Phanerozoic 20–40; Audet & Bürgmann 2011 map the same
+  split), island arcs and belts the history still raises (oroLast < 20 Myr) 15 (hot, weak: Watts 2001 §6.6; the Andean plateau,
+  Tibet); the sea floor the 450 °C isotherm at its age in GDH1's cooling plate (Watts & Burov 2003: oceanic Te between the 300 and
+  600 °C isotherms; ~2.9√t km young, saturating at 29 km past ~100 Myr), 2 km at a crest. D is computed with E = 100 GPa, ν = 0.25,
+  the pair those Te are quoted against. The finish carries Te from the sim mesh's ~110 km cells to each mesh by the 3 around each, in
+  log (`finish.js` `elasticOn`): a lithosphere's Te varies over its own flexural length, not from one 14 km cell to the next.
+- **The mesh's operator:** the finite-volume Laplacian on the Voronoi cells (cotangent weights; the terrain mesh's cells have 4–8
+  neighbours, where a graph Laplacian is not consistent), written A = K(B/M)K + MS — symmetric positive definite.
+- **The solve** (`js/gpu/flexure-gpu.js`): conjugate gradients preconditioned by one multigrid V-cycle over the terrain meshes
+  10 000·4ᵏ under the shown one (the ladder's own rungs), damped-Jacobi smoothing, the restriction the prolongation's transpose so the
+  cycle stays symmetric. A fourth-order operator's condition grows as (α/h)⁴: plain Jacobi-CG needed 937 iterations at 640K for
+  Te 70 and ~3 000 at 2.5M; MG-CG needs 12–40 at any size. No atomics; dot products by fixed trees; a machine repeats itself bit for
+  bit. The frozen CPU erosion uses the float64 plain-CG solve (`solvePlateCPU`), also the GPU's test reference.
+- **Tests** (`tools/flexure-test.mjs`, in check-gpu): the float64 solve against the analytic plate on the 640K mesh (Te 70, α 4.6
+  cells) — a point load's −kei profile within 2.5 % of w₀, its forebulge's crest at 5.00 l vs 4.93; a line load's w₀ within 0.6 %,
+  its zero at 2.359 α vs 3π/4 = 2.356, its forebulge at 3.10 α vs π and 4.26 % of w₀ vs 4.32 — then the GPU's solve within 2·10⁻⁶ of
+  the float64 one with Te varying and half the planet sea (12 iterations, ~46 ms at 160K), and the GPU rebounder within 5·10⁻⁶ km of
+  the float64 one; each twice, bit for bit.
+- **What it skips (limits):** a thin plate on a flat sheet (membrane stresses on the sphere matter past ~1000 km; α ≤ ~140 km here);
+  the variable-D operator without its (1 − ν) terms in D's gradients (exact for uniform D); an elastic, instant answer (no viscous
+  mantle or plate relaxation: kyr and Myr against the finish's ≤ 1 Myr); no broken plates (a trench's or rift's plate end is a
+  continuous plate thinning there); on land the sediment laid loads as rock (2.5 vs 2.7). Each rung's sea floor is its own (the
+  ladder carries the land's change up, as before).
 The loop around it is resident too (lane gpuerode M2, 2026-11-20). The seas a finish holds cut off (finish.js `seaDrying`) take
 their sills at every fine judge from the erosion network's own flood (`sills` in erode-gpu.js: the minimax path from the open sea,
 its cells at their own ground; the same max of the same float32 heights as the CPU's priority flood, checked equal at every judge
@@ -2673,7 +2706,7 @@ books (eroded, sand, land lost and gained) unchanged to the printed digit.
 suites. So a render can differ slightly from what the page shows for the same moment. (The climate per cell, above, runs on the GPU
 everywhere.)
 What ties the two together: `check-gpu` (deterministic tests only: each GPU kernel against a float64 CPU reference of its arithmetic
-with stated tolerances — `fluvial-kernels-test.mjs`, `rebound-gpu-test.mjs` — the GPU's waits failing loudly, `gpu-wait-test.mjs`, and
+with stated tolerances — `fluvial-kernels-test.mjs`, `flexure-test.mjs` — the GPU's waits failing loudly, `gpu-wait-test.mjs`, and
 whole GPU finishes: on the GPU, no NaN, a bit-identical repeat; ⚑ if Dawn is not installed. It no longer compares a GPU finish with a CPU
 one cell by cell: the paths' float32 tie-breaks compound, so that |dz| measures chaos, not error — a 1e-7 km nudge alone gives p99 278 m), `gpu-browser.mjs` (Chrome against Dawn, bit for bit) and `gpu-detail.mjs` (the real page in Chrome, Add detail pressed). To run
 any tool or suite on Dawn, as a browser would:

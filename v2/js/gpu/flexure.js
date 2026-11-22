@@ -137,8 +137,12 @@ export function plateOperator(mesh) {
         const ux = xyz[3 * i] - xyz[3 * k], uy = xyz[3 * i + 1] - xyz[3 * k + 1], uz = xyz[3 * i + 2] - xyz[3 * k + 2];
         const vx = xyz[3 * j] - xyz[3 * k], vy = xyz[3 * j + 1] - xyz[3 * k + 1], vz = xyz[3 * j + 2] - xyz[3 * k + 2];
         const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
-        return (ux * vx + uy * vy + uz * vz) / Math.hypot(cx, cy, cz);
+        const sin = Math.hypot(cx, cy, cz);
+        return sin > 1e-12 ? (ux * vx + uy * vy + uz * vz) / sin : 0;           // (a degenerate corner: no weight)
     };
+    // (a cell with no area — only on a mesh whose neighbours are not in ring order, as gpuFingerprint's test patch — takes the
+    // mesh's mean, so the operator stays finite there)
+    const meanArea = mesh.cellAreaKm2 ?? (Math.sqrt(3) / 2) * (mesh.edgeKm ?? 1) ** 2;
     for (let c = 0; c < n; c++) {
         const a = adjOffset[c], b = adjOffset[c + 1], x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
         let s = 0, area = 0;
@@ -148,7 +152,7 @@ export function plateOperator(mesh) {
             const km = R * Math.acos(Math.max(-1, Math.min(1, x * xyz[3 * d] + y * xyz[3 * d + 1] + z * xyz[3 * d + 2])));
             wK[j] = k; s += k; area += 0.25 * k * km * km;
         }
-        rowK[c] = s; M[c] = area;
+        rowK[c] = s; M[c] = area > 0 ? area : meanArea;
     }
     const op = { wK, rowK, M };
     ops.set(mesh, op);
