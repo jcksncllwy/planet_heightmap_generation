@@ -1254,19 +1254,29 @@ over main: 302 s against 290 s for the four histories.
 ## A closing contact earns its slab (2026-10-31, branch trench)
 
 Every closing contact used to become a trench within a step or two of real consumption. Closing is not subducting: a contact
-is now `BoundaryKind.CONVERGING` (it pulls nothing, builds no belt or arc, and resists closing) until the founder law
-(`founderUrge`) has held for `trenchEstablishKm` (100 km) of convergence: a fracture zone turns self-sustaining after ~100 km,
-and cumulative convergence, not its rate, sets the balance (Hall et al. 2003; Gurnis, Hall & Lavier 2004). So one law decides
-a trench's birth, at a passive margin or a contact (`establishes`, step/subduction-init.js). `founderSqueezeCmYr` was derived
-as 3.4 cm/yr (17 now with `founderStrength` 0.4: `config.js:432`), the rate at which a contact's shared resistance reaches `founderStrength` (was 6, by hand).
+is now `BoundaryKind.CONVERGING` (it pulls nothing, builds no belt or arc, and resists closing) until it has taken
+`trenchEstablishKm` (100 km) of NET convergence: a fracture zone turns self-sustaining after ~100 km, and cumulative
+convergence, not its rate, carries a forced margin past the bending resistance (Hall et al. 2003; Gurnis, Hall & Lavier 2004).
+The tally (`slabKm`) is paid back by any opening and fades while the contact rests, so jitter that closes one step and opens
+the next sums to nothing. Floor younger than `oceanNeutralAgeMyr` (30 Myr) never goes down however far it is pushed (Cloos
+1993): the contact stays CONVERGING (`establishes`, step/subduction-init.js).
+*(Lane oldfloor, 2026-11-22: until then the founder law (`founderUrge`) also had to hold at the contact, with the squeeze read
+from the closing rate ÷ `founderSqueezeCmYr`, 17 cm/yr: a viscous drag compared with a peak bending strength. Ocean on ocean,
+where the floor's weight is only the step in √age, it held ~80 % of forced contact below failure for good, while the rigid
+plates went on closing there: ~45k km of CONVERGING contact consumed 1.1 km²/yr of floor with no slab, more than every trench
+together. The front fell to 17–22k km (Earth ~55–62k), turnover to ~2 km²/yr, and with it the floor aged (10–24 % older than
+180 Myr against Earth's 0.6 %: the age-blind triangle's tail at that turnover). `founderUrge` still decides where nothing is
+closing: passive margins, sealed seas, a plate failing across its ocean, a trench running along a margin.)*
 Trenches die two ways: floor younger than `trenchDetachAgeMyr` (5 Myr) reaching one detaches the slab (Burkett & Billen 2009,
 2010), and a slab no plate feeds fades over `founderSlabMyr` (a choice of scale, not a measured rate). An edge at rest keeps
 its slab, so a world at rest can start itself; an oblique edge that still closes keeps its slab too, and land keeps its slab
 record, which collisions read. Force and Wilson scenes keep the trenches they are given. Off-switch:
 `MECHANISMS.trenchEstablish`. `tools/trace-trench.mjs` sorts a history's trenches by how each was established.
-**Limits.** The force on a contact is read from its closing rate, not solved for. Rigid plates must still lose the overlap at
-a contact that has not failed, so a CONVERGING contact consumes crust with no slab, where Earth's would stop or spread into a
-diffuse belt. **This is an interim law:** plates that emerge from a stress solve (the closed-loop study) may replace it.
+**Limits.** Rigid plates must still lose the overlap at a contact that has not failed, so for its first 100 km (and on floor
+too young to sink, for good) a CONVERGING contact consumes crust with no slab, where Earth's would stop or spread into a
+diffuse belt; the contact does not lock (a rigid-plastic resistance that stops the plates short of failure would need a
+non-linear force solve). `tools/trace-oldfloor.mjs` measures the front, the CONVERGING contact and why it has not failed;
+`tools/trace-floorbook.mjs` books which stage makes and destroys ocean floor. **This is an interim law:** plates that emerge from a stress solve (the closed-loop study) may replace it.
 
 ## Sealed seas founder (2026-10-23, branch stress-init)
 
@@ -2017,9 +2027,12 @@ in its gap work (decideBirth, nearestCrustInto: already tuned by the speed branc
 - **A scrap of ocean cut off from its plate keeps its age** (`ops/tidy-plates.js`, the one file outside round 1's;
   a few lines). Tidy still hands such a piece to the passive ocean, as on main, but used to stamp it pre-history old
   (`formedAt` ≤ −1). That made old-looking floor out of young scraps and skewed every sea-floor age report. Now a scrap
-  keeps the age it had. The exception is a scrap at a convergent seam: one with a cell beneath another plate, or closing
+  keeps the age it had. ~~The exception is a scrap at a convergent seam: one with a cell beneath another plate, or closing
   on its neighbour faster than `boundaryActiveCmYr`. It is stamped as before. Young floor kept at such seams made the
-  'laramide' slab steepen 5 Myr apart across meshes (the scale check).
+  'laramide' slab steepen 5 Myr apart across meshes (the scale check).~~ *(Lane oldfloor, 2026-11-22: the seam exception is
+  gone, and with it the `keepAge` switch, which collapse-arc.js's fore-arc giveback also took by default. Every scrap keeps
+  its age. The stamp was the only flow of floor into the > 180 Myr class, +0.2–0.3 km²/yr, and 12–20 % of the old floor wore
+  a pre-history date.)*
 
   The wider change was tried first and reverted: ocean scraps joining a plate they touch (microplate capture), a plate's
   worth moving on as a plate, and the main piece ranked by terranes. Each part broke a hard check. Slivers captured
