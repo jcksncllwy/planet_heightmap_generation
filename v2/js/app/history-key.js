@@ -157,8 +157,8 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     const z1 = z.slice();
     await erodeGPU(g, { mesh, z: z1, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, steps: 1 }, { device: opened });
     // (and the finish's GPU kernels the history's settings leave out, on the same patch: the rebound (gpu/rebound-gpu.js), with
-    // closed basins judged every other step — kept in the history's scope as main has had it since gpuerode ('gpu erosion v2')
-    // (lane marine3 moved the history's caches anyway: the waves are in its erosion)
+    // closed basins judged every other step — kept in the history's scope as main has had it since gpuerode ('gpu erosion v2'; lane
+    // marine3 moved the history's caches anyway: the waves are in its erosion))
     const z2 = z.slice();
     await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
     const H = new Hash128();
