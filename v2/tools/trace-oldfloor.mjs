@@ -78,7 +78,7 @@ function sample(f) {
     const conv = world.convergence;
     const fr = { t: Math.round(f.time), trench: { overriding: 0, front: 0, flagged: 0, converging: 0, byUpper: { ocean: 0, arc: 0, cont: 0 }, lowerNotOcean: 0, oo: 0 },
         consumed: { front: Array(AGE_BINS.length).fill(0), converging: Array(AGE_BINS.length).fill(0) },
-        floor: {}, old: { closedSea: 0, toTrench: 0, stalled: 0, passive: 0, interior: 0, interiorNoFront: 0, noFront: 0, background: 0, preHistory: 0 }, convRate: [0, 0, 0, 0, 0], convQ: { oo: [0, 0, 0], ol: [0, 0, 0] } };
+        floor: {}, old: { closedSea: 0, toTrench: 0, stalled: 0, passive: 0, interior: 0, interiorNoFront: 0, noFront: 0, background: 0, preHistory: 0 }, convRate: [0, 0, 0, 0, 0], convQ: { oo: [0, 0, 0], ol: [0, 0, 0] }, convWhy: { young: 0, land: 0, slab0: 0, slab50: 0, slab100: 0, closing0: 0 } };
     // trench length
     const plateFront = new Map();
     for (let w = 0; w < n; w++) {
@@ -100,6 +100,17 @@ function sample(f) {
                         fr.convQ[oo ? 'oo' : 'ol'][q < 0.75 ? 0 : q < 1 ? 1 : 2] += rowKm;
                     }
                 }
+            }
+            // why it is not yet a trench: the floor on both sides younger than oceanNeutralAgeMyr; no ocean on this side; else the
+            // contact tally on this cell's raster (slabKm: 0 / under 50 / 50 km on) and contacts not closing now
+            {
+                let u = -1; for (let k = adjOffset[w]; k < adjOffset[w + 1] && u < 0; k++) if (f.owner[adjList[k]] >= 0 && f.owner[adjList[k]] !== f.owner[w]) u = adjList[k];
+                const h = rowKm / 2, P = world.plates[f.owner[w]], sk = P?.crust.slabKm?.[world.ownerCell[w]] ?? 0;
+                const oldest = Math.max(f.type[w] === CrustType.OCEAN ? f.time - f.formedAt[w] : -1, u >= 0 && f.type[u] === CrustType.OCEAN ? f.time - f.formedAt[u] : -1);
+                if (oldest < 0) fr.convWhy.land += h;
+                else if (oldest < world.config.oceanNeutralAgeMyr) fr.convWhy.young += h;
+                else if (!(conv[w] > 0)) fr.convWhy.closing0 += h;
+                else fr.convWhy[sk <= 0 ? 'slab0' : sk < 50 ? 'slab50' : 'slab100'] += h;
             }
             if (f.type[w] === CrustType.OCEAN) fr.consumed.converging[ageBin(f.time - f.formedAt[w])] += rowKm * rate * 1e-5 / 2;   // (both sides carry the flag: half each)
         }
@@ -161,7 +172,7 @@ function sample(f) {
     }
     for (const k of ['overriding', 'front', 'flagged', 'converging', 'lowerNotOcean', 'oo']) fr.trench[k] = r1(fr.trench[k]);
     for (const k of Object.keys(fr.trench.byUpper)) fr.trench.byUpper[k] = r1(fr.trench.byUpper[k]);
-    fr.convRate = fr.convRate.map(r1); fr.convQ.oo = fr.convQ.oo.map(r1); fr.convQ.ol = fr.convQ.ol.map(r1); fr.consumed.front = fr.consumed.front.map(r3); fr.consumed.converging = fr.consumed.converging.map(r3);
+    fr.convRate = fr.convRate.map(r1); fr.convQ.oo = fr.convQ.oo.map(r1); for (const k in fr.convWhy) fr.convWhy[k] = r1(fr.convWhy[k]); fr.convQ.ol = fr.convQ.ol.map(r1); fr.consumed.front = fr.consumed.front.map(r3); fr.consumed.converging = fr.consumed.converging.map(r3);
     fr.plates = world.plates.filter(p => p.alive).length;
     return fr;
 }
