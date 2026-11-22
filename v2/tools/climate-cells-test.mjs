@@ -154,6 +154,10 @@ check(wBad === 0 && wNear <= TOL.nearShare * n && nan === 0, `water within ${TOL
 {
     let frozenN = 0, wet = 0;
     for (let c = 0; c < W.frozen.length; c++) if (W.frozen[c]) { frozenN++; if (W.rain[c] !== 0 || W.runoff[c] !== 0) wet++; }
+    // (finish.js iceDischarge takes every store > 0 for a glacier's source: the kept-snow cells must be the CPU's)
+    let keptDiff = 0, keptN = 0;
+    for (let c = 0; c < W.store.length; c++) { if (liquid.store[c] > 0) keptN++; if ((W.store[c] > 0) !== (liquid.store[c] > 0)) keptDiff++; }
+    check(keptDiff <= 1e-4 * keptN, `the cells that keep snow (store > 0) the CPU's: ${keptDiff} of ${keptN} differ (≤ 1e-4)`);
     check(frozenN > 0 && wet === 0, `where no month thaws, no rain and no runoff, exactly (check-phase8b's thaw gate): ${wet} of ${frozenN} frozen cells wet`);
 }
 check(wruns.every(({ w }) => ['rain', 'store', 'pet', 'runoff', 'thaw', 'frozen'].every(k => same(w[k], W[k]))), `water repeats itself to the bit (${REPS} runs)`);

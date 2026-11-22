@@ -209,19 +209,20 @@ fn fu(L: f32, Ep: f32, w: f32) -> f32 {
     }
     let pp = max(0.0, year); let k = select(0.0, pp / tot, tot > 0.0);
     for (var m = 0u; m < 12u; m++) { P[m] = select(pp / 12.0, P[m] * k, tot > 0.0); }
-    // (water.js snowYear: three years from bare ground, the third's gain kept — summed as it comes, the same number as the
-    // pack's end less its start, without f32's cancellation of two packs years deep: a cell that never thaws keeps all its rain)
-    var snow = 0.0; var gain = 0.0;
+    // (water.js snowYear: three years from bare ground, the third's gain kept — the pack's end less its start, as the CPU
+    // takes it: where the pack melts out each summer the third year repeats the second's sums from nothing, so the two are
+    // equal to the bit and nothing is kept, exactly (a running gain, +snow −melt, leaves ±ε there, and finish.js's
+    // iceDischarge takes every store > 0 for a glacier's source). A pack years deep that never melts out loses digits to
+    // the subtraction: within the test's tolerance, relative to the cell's year)
+    var snow = 0.0; var start = 0.0;
     for (var cyc = 0u; cyc < 3u; cyc++) {
+        if (cyc == 2u) { start = snow; }
         for (var m = 0u; m < 12u; m++) {
-            if (T[m] < 0.0) { snow += P[m]; if (cyc == 2u) { gain += P[m]; } continue; }
-            let melted = min(snow, p.melt * T[m]);
-            snow -= melted;
-            if (cyc == 2u) { gain -= melted; }
+            if (T[m] < 0.0) { snow += P[m]; continue; }
+            snow -= min(snow, p.melt * T[m]);
         }
     }
-    // (where no month thaws nothing melts and the whole year is kept, exactly: the twelve months' f32 shares need not add back
-    // to the year to the last bit, and a crumb of rain left there would run off where check-phase8b's thaw gate wants none)
+    let gain = snow - start;
     let store = select(min(pp, max(0.0, gain)), pp, !(melt > 0.0)); let rain = pp - store;
     let A = 24u * G;
     let pet = max(p.petMin, w0 * gridIn[A + b0] + w1 * gridIn[A + b1] + w2 * gridIn[A + b2] + w3 * gridIn[A + b3]);
