@@ -17,10 +17,12 @@
 // ERODE marine: Kaufman et al. 1991's depth-dependent diffusion, K0 to wave base and e^(−(d − wb)/wb) below; marine-config.js).
 // A river that meets such a sea lays its load as a delta there and the waves spread it; a high on the platform is planed toward
 // wave base and its rock laid in the lows. So a platform fills and planes in place, and when the sea leaves it the land's erosion
-// takes the soft fill first. The ocean floor stays the rivers' outlet (its edge is where the rock leaves for the rise and the fans:
-// step/trench-fans.js), a wall to the waves; an island arc's flooded crust too (it carries no sea fill: model/crust.js foldSeaFill).
+// takes the soft fill first. The ocean floor is in the waves' field too, at its depth (the pour's ground: terrain/land-mask.js
+// groundKm), so what they carry off a platform's edge goes down the slope and settles as the rise (crust.riseKm3); but a river that
+// reaches the ocean floor stays the mouths' (step/trench-fans.js: the rise and the fans), not laid as a delta here. An island arc's
+// flooded crust is outside the field, a wall to the waves (it carries no sea fill: model/crust.js foldSeaFill — a named gap).
 //   · the sea's fill (D under the sea, km) goes to seaFillKm on the continent, drawn water-loaded, at 1 / SEDIMENT_LOAD_FACTOR
-//     (terrain/land-mask.js crustColumnKm);
+//     (terrain/land-mask.js crustColumnKm); on the ocean floor, to its rise (riseKm3, drawn as records.js draws the rise);
 //   · the waves' wear (E under the sea) comes out of that fill first, then the rock, as on land — but it is the sea's to lay
 //     again, not the rivers' (no wornKm): the solve moved it, and its books close in the solve;
 //   · on land the sediment taken comes out of the hollow's fill, then the sea's (both soft, on top of the rock).
@@ -42,8 +44,8 @@ const R = 6371;
 // The crests (rugged, prevRugged) wear at this share of the relief's own rate (the e-folding times the wear rule had:
 // reliefTauMyr 100 against ruggedTauMyr 368 — an old belt keeps its grain, the Appalachians)
 export const CREST_WEAR = 100 / 368;
-// (the height the solve gives a sea cell outside the waves' field — the ocean floor, a flooded arc: an outlet at the sea's level, a
-// wall to the waves. Any height below the sea will do — the solve reads neither: only that it stays sea)
+// (the height the solve gives a sea cell outside the waves' field — a flooded arc, a cell no plate holds: an outlet at the sea's
+// level, a wall to the waves. Any height below the sea will do — the solve reads neither: only that it stays sea)
 const OUTLET_KM = -1;
 /** Is world cell `w` continental crust (continent or craton): ground the waves work when the sea is over it. */
 const continental = (world, w) => {
@@ -53,6 +55,8 @@ const continental = (world, w) => {
     return t === CrustType.CONTINENT || t === CrustType.CRATON;
 };
 export { continental };
+/** Is world cell `w` ocean floor a plate holds. */
+const oceanFloor = (world, w) => world.owner[w] >= 0 && world.plates[world.owner[w]].crust.type[world.ownerCell[w]] === CrustType.OCEAN;
 
 
 export { historyErodeSettings };
@@ -75,17 +79,18 @@ function fieldsOf(mesh, H) {
 }
 
 /**
- * The GPU's job for this river step: the land's height against the sea (`height`, km, on world cells: the land's and the drowned
- * continent's; `land` 1/0).
+ * The GPU's job for this river step: the ground's height against the sea (`height`, km, on world cells: the land's, the drowned
+ * continent's and the ocean floor's; `land` 1/0).
  * @returns {{o: Object, P: Object}} erodeGPU's arguments (o.z is the ground, eroded in place)
  */
 export function erosionRequest(world, land, height, spanMyr, H) {
     const { mesh, plates, owner, ownerCell } = world, n = mesh.numCells, F = fieldsOf(mesh, H);
-    const z = new Float32Array(n), ocean = new Uint8Array(n), k = new Float32Array(n), field = new Uint8Array(n);
+    const z = new Float32Array(n), ocean = new Uint8Array(n), k = new Float32Array(n), field = new Uint8Array(n), lay = new Uint8Array(n);
     for (let w = 0; w < n; w++) {
-        if (continental(world, w)) field[w] = 1;
-        // (the sea: a drowned continent at its depth — kept below the sea, where a column the mask calls sea stands at it —
-        // the rest an outlet)
+        if (continental(world, w)) field[w] = lay[w] = 1;
+        else if (!land[w] && oceanFloor(world, w)) field[w] = 1;
+        // (the sea: a drowned continent and the ocean floor at their depth — kept below the sea, where ground the mask calls sea
+        // stands at it — the rest an outlet)
         if (!land[w]) { ocean[w] = 1; z[w] = field[w] ? Math.min(height[w], 0) : OUTLET_KM; continue; }
         z[w] = height[w];
         const crust = plates[owner[w]].crust, c = ownerCell[w];
@@ -93,7 +98,7 @@ export function erosionRequest(world, land, height, spanMyr, H) {
         k[w] = F.kLat[w] * (crust.type[c] === CrustType.CRATON ? 1 - H.carveCratonHardness : 1);
     }
     const none = { lakes: [], sink: new Uint8Array(n), base: new Float32Array(n) };
-    return { o: { mesh, z, ocean, water: F.water, k, m: F.m, seaKm: 0, closed: () => none, column: null, uplift: null, marineField: field, joinOcean: false }, P: historyErodeSettings(spanMyr), z0: Float32Array.from(z), field };
+    return { o: { mesh, z, ocean, water: F.water, k, m: F.m, seaKm: 0, closed: () => none, column: null, uplift: null, marineField: field, marineLay: lay, joinOcean: false }, P: historyErodeSettings(spanMyr), z0: Float32Array.from(z), field };
 }
 
 /**
@@ -101,15 +106,16 @@ export function erosionRequest(world, land, height, spanMyr, H) {
  * cell) receives the sediment the step took up (+, a hollow's or a drained sea's fill eroded) or laid (−) on land: the rivers
  * route it with the bedrock.
  * @returns {{eroded: number, laid: number, fillTaken: number, unplaced: number, seaLaid: number, seaReworked: number, planed: number,
- *          seaTaken: number}} km³: bedrock taken, sediment laid, hollow fill re-eroded, and rock the solve took that no record could
- *          give (an arc's own crest: it wears its own way); under the sea, fill laid, fill the waves took up again and rock they
- *          planed (seaLaid − seaReworked − planed: the rivers' load they laid, step/rivers.js); on land, the sea's fill re-eroded
+ *          seaTaken: number, floorLaid: number}} km³: bedrock taken, sediment laid, hollow fill re-eroded, and rock the solve took that no record could
+ *          give (an arc's own crest: it wears its own way); under the sea, fill laid on the continent, fill the waves took up again
+ *          and rock they planed, and rock they laid on the ocean floor less what they took back up from it (the sum, seaLaid −
+ *          seaReworked − planed + floorLaid: the rivers' load they laid, step/rivers.js); on land, the sea's fill re-eroded
  */
 export function applyErosion(world, req, land, moved, H) {
     const { mesh, plates, owner, ownerCell, time } = world, n = mesh.numCells, cellArea = 4 * Math.PI * R * R / n;
     const geo = world.config.geology?.records ? world.config.geology : null, span = req.P.timeMyr;
     const C = columnModel(H), z = req.o.z, z0 = req.z0, field = req.field;
-    let eroded = 0, laid = 0, fillTaken = 0, unplaced = 0, seaLaid = 0, seaReworked = 0, planed = 0, seaTaken = 0;
+    let eroded = 0, laid = 0, fillTaken = 0, unplaced = 0, seaLaid = 0, seaReworked = 0, planed = 0, seaTaken = 0, floorLaid = 0;
     for (let w = 0; w < n; w++) {
         moved[w] = 0;
         const dz = z[w] - z0[w];
@@ -117,6 +123,18 @@ export function applyErosion(world, req, land, moved, H) {
         // (the sea's floor outside the waves' field is never touched: an outlet)
         if (!land[w] && !field[w]) continue;
         const crust = plates[owner[w]].crust, c = ownerCell[w], type = crust.type[c];
+        if (!land[w] && type === CrustType.OCEAN) {
+            // ── the ocean floor: what the waves carried off a platform's edge, settled as its rise; or taken back up from it (the
+            // rise first, then an enclosed sea's fill: only sediment the waves can move — their failure term moves only what they laid) ──
+            if (dz > 0) { crust.riseKm3[c] += dz * cellArea; floorLaid += dz; continue; }
+            let E = -dz;
+            const r = Math.min(E, crust.riseKm3[c] / cellArea);
+            if (r > 0) { crust.riseKm3[c] -= r * cellArea; floorLaid -= r; E -= r; }
+            const f = Math.min(E, crust.seaFillKm[c]);
+            if (f > 0) { crust.seaFillKm[c] -= f; floorLaid -= f; E -= f; }
+            if (E > 0) { unplaced += E; floorLaid -= E; }
+            continue;
+        }
         if (!land[w]) {
             // ── under the sea: the waves' fill and wear (M3) ──
             if (dz > 0) { crust.seaFillKm[c] += dz; seaLaid += dz; continue; }
@@ -140,7 +158,7 @@ export function applyErosion(world, req, land, moved, H) {
         eroded += r.rock;
     }
     const v = x => x * cellArea;
-    return { eroded: v(eroded), laid: v(laid), fillTaken: v(fillTaken), unplaced: v(unplaced), seaLaid: v(seaLaid), seaReworked: v(seaReworked), planed: v(planed), seaTaken: v(seaTaken) };
+    return { eroded: v(eroded), laid: v(laid), fillTaken: v(fillTaken), unplaced: v(unplaced), seaLaid: v(seaLaid), seaReworked: v(seaReworked), planed: v(planed), seaTaken: v(seaTaken), floorLaid: v(floorLaid) };
 }
 
 /** Take `E` km of rock off cell `c` of `crust` (continent, craton or arc), every part by one share — as far as the parts reach
