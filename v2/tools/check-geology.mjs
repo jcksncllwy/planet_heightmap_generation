@@ -60,7 +60,11 @@ for (const seed of SEEDS) {
     report('the record\'s time, history at 20K', 100 * (on.ms / off.ms - 1), { unit: ' %', digits: 1, detail: `CPU ${(off.ms / 1000).toFixed(1)} s without, ${(on.ms / 1000).toFixed(1)} s with, framing and hashing included` });
 
     section(`the cover against the rivers' books, seed ${seed}`);
-    const book = last.geoBook, sink = (last.budget.basinFillKm3 ?? 0) + (last.budget.seaFillKm3 ?? 0) + (last.budget.drownedShelfKm3 ?? 0);   // (the drowned shelf's fill is sea fill on continent: trench-fans.js layOnDrownedShelf)
+    // (the drowned shelf's fill is sea fill on continent: trench-fans.js layOnDrownedShelf; and so is what the waves lay on a drowned
+    // platform (lane marine3 M3): the mouths' load they took, net of what the land took back (marineShelfKm3), and the platform's
+    // own rock they planed into its lows (erodePlanedKm3) — as check-invariants' shelf book)
+    const book = last.geoBook, sink = (last.budget.basinFillKm3 ?? 0) + (last.budget.seaFillKm3 ?? 0) + (last.budget.drownedShelfKm3 ?? 0)
+        + (last.budget.marineShelfKm3 ?? 0) + (last.budget.erodePlanedKm3 ?? 0);
     let stock = 0, fill = 0, short = 0;
     for (let w = 0; w < n; w++) if (last.owner[w] >= 0) {
         const km = decodeCoverKm(last.coverKm[w]), f = last.basinFillKm[w] + last.seaFillKm[w];
@@ -73,7 +77,7 @@ for (const seed of SEEDS) {
     // net), the cover's laid is every rise of a cell's fill it saw and its wornFill every fall — since lane graded's history
     // erosion lays fill and wears it again in later ticks, gross laid runs ~2× the net books, which is not over-laying)
     const netLaid = book.laidKm3 - book.wornFillKm3;
-    check('no more cover laid than the rivers left: laid less worn ≤ basin + sea fill + drowned shelf', netLaid <= sink * (1 + 1e-6),
+    check('no more cover laid than the rivers left: laid less worn ≤ basin + sea fill + drowned shelf + the waves\' fill', netLaid <= sink * (1 + 1e-6),
         `${(netLaid / 1e6).toFixed(2)} of ${(sink / 1e6).toFixed(2)} Mkm³ (laid ${(book.laidKm3 / 1e6).toFixed(2)}, worn ${(book.wornFillKm3 / 1e6).toFixed(2)})`);
     check('something was laid (the books feed the cover)', book.laidKm3 > 0, `${(book.laidKm3 / 1e6).toFixed(2)} Mkm³`);
     report('laid less worn against the books', sink ? netLaid / sink : 0, { detail: 'see the README: the gap measured' });
