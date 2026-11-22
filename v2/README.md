@@ -824,8 +824,10 @@ waves' field at the pour's ground (inventory.js surfaceKm), so what they carry o
 and settles as its rise (the plate's `riseKm3`, `budget.marineRiseKm3`); a delta is laid only on drowned continent, and a
 river reaching the ocean floor stays the mouths' (the rise and the fans). A flooded island arc is not in the field (a
 fore-arc basin's fill is a named gap). Limits: the sea's level is the history's own, held over each 4 Myr step — no
-glacial cycle (the finish's lowstand), no thermal subsidence of the platform (a supercontinent's interior seas run
-shallower and fewer than Earth's: lane marine3 M4). Small rivers are routed over a micro-relief of
+glacial cycle (the finish's lowstand). A platform filled to the level of its time stays there, so a breakup's highstand
+floods less of the continent than Earth's Cretaceous (early dispersal ~25 % against 40–55 %; at the world's own level the
+sea is ~69 % of the planet, Earth 70.5: lane marine3's report). The column is already McKenzie's cooled end state; his
+thermal transient (young rifts standing higher, then sinking) is a separate item. Small rivers are routed over a micro-relief of
 the crust's own, so they ride with their continent between frames. **A GPU is required** for a history now (WGSL through
 gpu-device.js; Node runs it headless through Dawn, tools/gpu-harness/history-dawn.mjs); a build without one refuses with a
 clear message. The erosion feeds the dynamics (the roots and uplift it thins), so a history depends on its GPU's float
