@@ -88,7 +88,7 @@ export const solverOf = (ctx) => ctx.solver ?? ((grid, D, Dx, opts) => new Helmh
 
 export const COARSEST_SWEEPS = 48;
 /** A solve's tolerance and cycle cap when it is to converge (CONVERGED_TOL): the tighter tolerance, cycles enough to reach it. */
-export const convergedSettings = (tol, maxCycles) => ({ tol: Math.min(tol, CONVERGED_TOL), maxCycles: Math.max(maxCycles, CONVERGED_CYCLES) });
+export const convergedSettings = (tol, maxCycles, to = CONVERGED_TOL) => ({ tol: Math.min(tol, to), maxCycles: Math.max(maxCycles, CONVERGED_CYCLES) });
 
 export class HelmholtzSolver {
     /**
@@ -97,7 +97,7 @@ export class HelmholtzSolver {
      * @param {number} [Dx] east–west diffusivity (default: D, isotropic)
      * @param {{conservative?: boolean, deep?: boolean, zebra?: boolean, converged?: boolean}} [opts] conservative: transport
      *   in flux form (see above); deep: the deep hierarchy; zebra: the zebra smoother (relax, below); converged: every solve
-     *   to CONVERGED_TOL. All three are the GPU solver's (gpu/climate-solver.js), here for its float64 reference; the page's
+     *   to CONVERGED_TOL (or to this, a number: the reference test's control). All three are the GPU solver's (gpu/climate-solver.js), here for its float64 reference; the page's
      *   climate keeps the lexicographic smoother, the halving hierarchy and the callers' tolerances.
      */
     constructor(grid, D, Dx = D, { conservative = false, deep = false, zebra = false, converged = false } = {}) {
@@ -187,7 +187,7 @@ export class HelmholtzSolver {
      * tol × |f| or after maxCycles V-cycles. Returns { cycles, rel }.
      */
     solve(fr, fi, Tr, Ti, { maxCycles = 12, tol = 1e-5 } = {}) {
-        if (this.converged) ({ tol, maxCycles } = convergedSettings(tol, maxCycles));
+        if (this.converged) ({ tol, maxCycles } = convergedSettings(tol, maxCycles, this.converged === true ? CONVERGED_TOL : this.converged));
         const L0 = this.levels[0];
         L0.fr.set(fr); L0.fi.set(fi); L0.Tr.set(Tr); L0.Ti.set(Ti);
         let fnorm = 0;
