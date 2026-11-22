@@ -29,7 +29,7 @@
 // broken plates (a plate end at a trench or rift is a continuous plate whose Te thins there).
 
 import { PLANET_RADIUS_KM as R } from '../core/sim-mesh.js';
-import { CrustType } from '../tectonics/model/crust.js';
+import { CrustType, OrogenyType } from '../tectonics/model/crust.js';
 
 /**
  * The plate's constants. Te is quoted by its sources against E = 100 GPa and ν = 0.25 (Watts 2001 Table 6.1; Pérez-Gussinyé &
@@ -102,19 +102,47 @@ function oceanTeKm(ageMyr, F) {
 }
 
 /**
- * Te (km) on the history's mesh, from each cell's crust: a craton's, a continent's, an arc's, and the sea floor's by its age.
- * A continental cell in a belt the history still raises (frame.oroLast within `liveMyr`) is an arc's: hot and weak.
+ * Te (km) on the history's mesh: the plate that carries each cell's load. Off the belts, the cell's own crust's — a craton's,
+ * a continent's, the sea floor's by its age. On a belt the history still raises (oroLast within `liveMyr`), by who carries it:
+ *   · a collision's (URAL, HIMALAYAN) rides the plate thrust beneath it — India's lithosphere under the Himalaya and southern
+ *     Tibet, Te 40–70 (Watts 2001 §7.4; Jordan & Watts 2005; Lyon-Caen & Molnar 1983) — read as the stiffest unbelted
+ *     continental lithosphere within the belt's reach (beltReach) of the cell: the lower plate's crust runs under the upper's
+ *     front only in the plates' own rasters, not per world cell, so the nearest record of it is the foreland it rises from;
+ *   · an Andean, arc, flat-slab, rift or transform belt stands on the hot, weak lithosphere of its own margin: arcTeKm (the
+ *     Andean plateau 10–20, Tassara 2005; arcs 10–20, Watts 2001 §6.6; rifts ~20, Ebinger et al. 1989).
+ * `mesh`: the history's (adjacency, xyz, edgeKm) — the collision's reach is walked on it.
  */
-export function elasticThicknessKm(frame, F = FLEX, liveMyr = 20) {
+export function elasticThicknessKm(frame, mesh, F = FLEX, liveMyr = 20) {
     const n = frame.type.length, te = new Float32Array(n), time = frame.time;
+    const live = w => frame.oroType && frame.oroType[w] && time - frame.oroLast[w] < liveMyr;
+    const collision = w => live(w) && (frame.oroType[w] === OrogenyType.URAL || frame.oroType[w] === OrogenyType.HIMALAYAN);
     for (let w = 0; w < n; w++) {
         const t = frame.type[w];
         if (frame.owner && frame.owner[w] < 0) { te[w] = F.oceanMinTeKm; continue; }        // (a gap between plates: a spreading crest)
         if (t === CrustType.OCEAN) te[w] = oceanTeKm(frame.formedAt[w] < 0 ? F.prehistoryAgeMyr : time - frame.formedAt[w], F);
-        else if (t === CrustType.ARC) te[w] = F.arcTeKm;
-        else {
-            const live = frame.oroType && frame.oroType[w] && time - frame.oroLast[w] < liveMyr;
-            te[w] = live ? F.arcTeKm : t === CrustType.CRATON ? F.cratonTeKm : F.continentTeKm;
+        else if (t === CrustType.ARC || live(w)) te[w] = F.arcTeKm;
+        else te[w] = t === CrustType.CRATON ? F.cratonTeKm : F.continentTeKm;
+    }
+    // (a collision belt's cells: the stiffest foreland within its reach — a walk out from each over the mesh, km by hops)
+    if (mesh) {
+        const { adjOffset, adjList } = mesh, hop = mesh.edgeKm, seen = new Int32Array(n).fill(-1), base = Float32Array.from(te);
+        const stiff = w => frame.owner[w] >= 0 && frame.type[w] !== CrustType.OCEAN && frame.type[w] !== CrustType.ARC && !live(w);
+        for (let w = 0; w < n; w++) {
+            if (!collision(w)) continue;
+            const reach = Math.max(hop, frame.beltReach?.[w] ?? 0);
+            let best = base[w], q = [w], d = 0;
+            seen[w] = w;
+            while (q.length && d * hop < reach) {
+                const next = [];
+                for (const c of q) for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) {
+                    const y = adjList[j];
+                    if (seen[y] === w) continue;
+                    seen[y] = w; next.push(y);
+                    if (stiff(y)) best = Math.max(best, base[y]);
+                }
+                q = next; d++;
+            }
+            te[w] = best;
         }
     }
     return te;

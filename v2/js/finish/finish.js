@@ -339,7 +339,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
     // (the plate the erosion's rebound bends, its elastic thickness under each mesh the erosion runs on — the ladder's rungs, the
     // polish: elasticOn)
-    const teSim = EP?.rebound ? elasticThicknessKm(frame) : null;
+    const teSim = EP?.rebound ? elasticThicknessKm(frame, simMesh) : null;
     const eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, m: E.m,
         uplift: windowUplift(EP, carveIn),                          // (km/Myr: ERODE histLower)
         teOf: teSim ? m => elasticOn(simMesh, teSim, m) : null } : null;
