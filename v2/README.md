@@ -2583,8 +2583,24 @@ the wait outlasts `GEO_SIM_GPU_TIMEOUT_S` (120 s by default; `globalThis.geoSimG
 finish that asked fails and is rerun by its caller. Two check runs once sat 3.5 h at 0 % CPU on a promise that never settled while the GPU
 was shared with a game; `gpu-wait-test.mjs` (part of `check-gpu`) holds the guard to a hang and a lost device.
 
-**Headless runs stay on the CPU.** Check suites and `render-moment` run the CPU solver: no GPU contention between suites, and no dependency
-in a worktree without `npm ci` in `v2/tools/gpu-harness/`. So a render can differ slightly from what the page shows for the same moment.
+**The climate per cell runs on the GPU, always (lane gpucells, 2026-11-22).** The finish's step 5 — each cell's twelve months at its
+own height and relief, the texture's noise on the rain, the year, the Köppen class and the four measures beyond Köppen
+(`cell-stats.js`'s bytes) — and its thaw gate with the year's Budyko–Fu runoff run as two WGSL kernels, one thread a cell
+(`js/gpu/climate-cells.js`; the simplex noise is `js/gpu/noise-wgsl.js`, FastNoise operation for operation). The grid's months are
+reduced to sea level on the CPU once (`core.js seaLevelGrid`), each cell's bilinear corner and weights are worked out in float64 on
+the CPU, and every sum over the cells (the water ledger's books) stays the CPU's, in float64 and cell order. The land's cover still
+runs on the CPU from the months the GPU hands back. Against the float64 CPU arithmetic (`tools/climate-cells-test.mjs`, part of
+`check-gpu`): months within 1e-4 °C and 1e-4 of the rain, Köppen classes equal (a class may differ only where the months' f32 hair
+crosses a boundary; the test checks the CPU's classifier gives the GPU's class on the GPU's months), the stats' bytes within a level,
+the water within 1e-3 mm + 1e-4 of the cell's year of rain; bit-repeatable. There is no CPU path for these in the finish: with no
+GPU it refuses (`js/gpu/finish-gpu.js`). In Node it takes Dawn from `history-dawn.mjs` (which the history cache and check-kit
+load) or `use-dawn.mjs`. `finishCells` and `thawedWater` stay on the CPU for the page's climate worker (the Climate tab, the
+timeline's cut-off seas) and as the tests' references. gpuFingerprint ('gpu erosion v2 + climate cells v1') runs both kernels on a
+small fixed climate, so a GPU that answers them differently keys its histories, and its finishes, apart.
+
+**Headless runs keep the erosion on the CPU.** Check suites and `render-moment` run the CPU erosion solver: no GPU contention between
+suites. So a render can differ slightly from what the page shows for the same moment. (The climate per cell, above, runs on the GPU
+everywhere.)
 What ties the two together: `check-gpu` (deterministic tests only: each GPU kernel against a float64 CPU reference of its arithmetic
 with stated tolerances — `fluvial-kernels-test.mjs`, `rebound-gpu-test.mjs` — the GPU's waits failing loudly, `gpu-wait-test.mjs`, and
 whole GPU finishes: on the GPU, no NaN, a bit-identical repeat; ⚑ if Dawn is not installed. It no longer compares a GPU finish with a CPU

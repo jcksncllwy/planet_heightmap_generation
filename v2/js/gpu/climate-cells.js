@@ -24,6 +24,7 @@ import { dispatch, INDEX_WGSL, WG } from './fields.js';
 import { noiseWGSL, noiseTable, NOISE_TABLE } from './noise-wgsl.js';
 import { CORE_DEFAULTS, seaLevelGrid, cellTexture } from '../climate/core.js';
 import { KOPPEN_ID } from '../climate/koppen.js';
+import { LatLonGrid } from '../climate/grid.js';
 
 const DEG = Math.PI / 180;
 const K = KOPPEN_ID;
@@ -340,4 +341,29 @@ export async function waterCellsGPU(device, { grid, months, hLand, petG, lat, lo
         if (z[c] > 0) { if (store[c] > 0) { keptKm3 += store[c] * cellKm2 * 1e-6; keptKm2 += cellKm2; } if (frozen[c]) frozenKm2 += cellKm2; }
     }
     return { rain, store, frozen, thaw, pet, runoff, stats: { keptKm3: Math.round(keptKm3), keptKm2: Math.round(keptKm2), frozenKm2: Math.round(frozenKm2) } };
+}
+
+/**
+ * Both kernels on a small fixed climate — a 30° grid, 256 cells, every input made of integers (no transcendental function:
+ * Math's own answers are mathFingerprint's) — for app/history-key.js gpuFingerprint: f32 exp, pow, tan, acos, log2 and
+ * the noise are the vendor's, so a GPU that answers them differently files its finishes apart.
+ * @returns {Promise<ArrayBufferView[]>}  what they answered, to hash
+ */
+export async function climateCellsProbe(device) {
+    const grid = new LatLonGrid(30), G = grid.size, N = 256;
+    const months = { T: new Float32Array(12 * G), P: new Float32Array(12 * G) }, meanLandKm = new Float32Array(G), petG = new Float32Array(G);
+    for (let g = 0; g < G; g++) {
+        meanLandKm[g] = ((g * 5) % 7) * 0.3; petG[g] = (g * 13) % 900 + 100;
+        for (let m = 0; m < 12; m++) { months.T[m * G + g] = ((g * 7 + m * 13) % 50) - 20; months.P[m * G + g] = (g * 11 + m * 17) % 200; }
+    }
+    const lat = new Float32Array(N), lon = new Float32Array(N), z = new Float32Array(N), pAnn = new Float32Array(N), xyz = new Float32Array(3 * N), land = new Uint8Array(N).fill(1);
+    for (let i = 0; i < N; i++) {
+        lat[i] = ((i * 37) % 1790) / 10 - 89.5; lon[i] = ((i * 53) % 3600) / 10 - 180; z[i] = ((i * 29) % 60) / 10 - 0.5; pAnn[i] = (i * 31) % 3000;
+        const a = 2 * ((i * 7) % 16 + 0.5) / 16 - 1, b = 2 * ((i * 3) % 16 + 0.5) / 16 - 1, r = Math.sqrt(1 + a * a + b * b);
+        xyz[3 * i] = a / r; xyz[3 * i + 1] = b / r; xyz[3 * i + 2] = 1 / r;
+    }
+    const res = { grid, surface: { meanLandKm }, months, cell: { lat, lon } };
+    const c = await cellClimateGPU(device, res, xyz, z, land, {}, { months: true, stats: true });
+    const w = await waterCellsGPU(device, { grid: { w: grid.w, h: grid.h }, months, hLand: meanLandKm, petG, lat, lon, z, land, pAnn, gamma: 6.5, meltPerC: 120, petMin: 50, budykoW: 2.6 });
+    return [c.months, c.koppen, c.tAnnual, ...Object.values(c.stats), w.rain, w.store, w.pet, w.runoff, w.thaw];
 }

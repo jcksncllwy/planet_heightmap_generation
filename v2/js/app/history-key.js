@@ -21,6 +21,7 @@
 
 import { historyGPU } from '../gpu/history-gpu.js';
 import { erodeGPU } from '../gpu/erode-gpu.js';
+import { climateCellsProbe } from '../gpu/climate-cells.js';
 import { historyErodeSettings } from '../tectonics/step/erode-settings.js';
 
 const C1 = 0xcc9e2d51, C2 = 0x1b873593;
@@ -145,8 +146,11 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     // finish differently must key apart too, not only one that answers the history differently)
     const z2 = z.slice();
     await erodeGPU(g, { mesh, z: z2, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
+    // (and the finish's climate per cell, gpu/climate-cells.js — lane gpucells: its f32 exp, pow, tan, acos and noise)
+    const climate = await climateCellsProbe(opened.device);
     const H = new Hash128();
-    H.str('gpu erosion v2'); H.view(z); H.view(z2);
+    H.str('gpu erosion v2 + climate cells v1'); H.view(z); H.view(z2);
+    for (const a of climate) H.view(a);
     gpuMemoOf = gpu;
     return (gpuMemo = H.hex().slice(0, 12));
 }

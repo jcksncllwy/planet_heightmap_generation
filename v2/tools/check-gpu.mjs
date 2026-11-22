@@ -1,7 +1,8 @@
 // The GPU's finish on this machine: deterministic tests, no comparison of chaotic results (lane histprof, 2026-11-21).
 //   · each GPU kernel against a float64 CPU reference of its own arithmetic, with stated tolerances (fluvial-kernels-test.mjs:
 //     the affine solve, the drainage sum, the diffusion; rebound-gpu-test.mjs: the rebound's settling, on the mesh and through a
-//     coarser rung), each run twice and repeating itself bit for bit; and the GPU's waits failing loudly (gpu-wait-test.mjs);
+//     coarser rung; climate-cells-test.mjs: the climate per cell — step 5, Köppen, the stats' bytes, the thaw gate and the
+//     runoff), each run twice and repeating itself bit for bit; and the GPU's waits failing loudly (gpu-wait-test.mjs);
 //   · the whole GPU finish end to end: it ran on the GPU, no NaN, and a second finish on this machine bit for bit.
 // What it no longer does: compare a GPU finish with a CPU finish cell by cell. The two take different paths through float32
 // and the paths' tie-breaks compound over the finish's window, so their |dz| measures chaos, not error: a 1e-7 km nudge to
@@ -32,6 +33,7 @@ else {
     for (const [file, args, what] of [
         ['fluvial-kernels-test.mjs', [], 'the fluvial kernels (affine solve, drainage, diffusion)'],
         ['rebound-gpu-test.mjs', ['--cells', '160000', '--coarse', '40000', '--reps', '2'], 'the rebound (on its mesh and through a coarser rung)'],
+        ['climate-cells-test.mjs', ['--cells', '160000', '--reps', '2'], 'the climate per cell (step 5, Köppen, the stats, the thaw gate and the runoff)'],
         ['gpu-wait-test.mjs', [], 'the GPU\'s waits fail loudly (a hang, a lost device)'],
     ]) {
         const r = spawnSync(process.execPath, [path.join(TOOLS, file), ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
