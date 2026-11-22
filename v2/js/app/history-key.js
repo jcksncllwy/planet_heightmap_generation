@@ -119,7 +119,7 @@ const gpuMemo = new Map();      // (scope → {gpu, hex})
  * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none.
  * `scope` (lane gpucells; sessrumnir's ruling 2026-11-22): 'history' names only the kernels a history runs (the erosion's), so
  * a GPU that differs only in the finish's kernels neither splits nor invalidates the history cache (gpuscan: keep the history's
- * GPU footprint small) — main's 'gpu erosion v2' hash, unchanged; 'finish' adds the finish's own — the climate per cell, the coast's rays —
+ * GPU footprint small) — 'gpu erosion v4' since lane marine3 (the waves are the history's now); 'finish' adds the finish's own — the climate per cell, the coast's rays —
  * for the finish cache's key (app/finish-key.js `gpu`). @returns {Promise<string>} 12 hex digits
  */
 export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU, scope = 'history') {
@@ -147,14 +147,22 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     }
     const mesh = { numCells: n, xyz, adjOffset: Uint32Array.from(off), adjList: Uint32Array.from(list), edgeKm: 6371 * 2 / N };
     const none = { lakes: [], sink: new Uint8Array(n), base: new Float32Array(n) };
-    await erodeGPU(g, { mesh, z, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4 }, { device: opened });
+    // (each run its own copy of the sea, and the waves for one step a run, as the history calls them (a river step, step/rivers.js):
+    // the waves move the coast in the mask they are handed (erode-gpu.js moveCoast), and the routing over a coast so moved — flats
+    // at the sea's level — is not the same twice on Dawn/Metal (main's too, a marine run of 2+ steps). Over 4 steps with the waves
+    // on, the fingerprint changed from process to process and no two processes shared a history (lane marine3). So: the rivers'
+    // kernels over 4 steps without the waves, then the waves' over one)
+    const HS = historyErodeSettings(4);
+    await erodeGPU(g, { mesh, z, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4 }, { device: opened });
+    const z1 = z.slice();
+    await erodeGPU(g, { mesh, z: z1, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, steps: 1 }, { device: opened });
     // (and the finish's GPU kernels the history's settings leave out, on the same patch: the rebound (gpu/rebound-gpu.js), with
-    // closed basins judged every other step — kept in the history's scope as main has had it since gpuerode ('gpu erosion v2'),
-    // so no history cache moves)
+    // closed basins judged every other step — kept in the history's scope as main has had it since gpuerode ('gpu erosion v2')
+    // (lane marine3 moved the history's caches anyway: the waves are in its erosion)
     const z2 = z.slice();
-    await erodeGPU(g, { mesh, z: z2, ocean, water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...historyErodeSettings(4), steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
+    await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reboundKm: 3 * mesh.edgeKm }, { device: opened });
     const H = new Hash128();
-    H.str('gpu erosion v3'); H.view(z); H.view(z2);
+    H.str('gpu erosion v4'); H.view(z); H.view(z1); H.view(z2);
     // (the finish's scope adds the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their f32
     // exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
     if (scope === 'finish') {

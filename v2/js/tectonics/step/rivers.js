@@ -43,7 +43,7 @@ export function* evolveRivers(world, dt) {
     // and a filled sea the mantle's swell holds up above the sea. (Until 2026-11-06 the rivers took every continent and
     // arc as land however low — sea-level.js landAndSea — and ran 11–36 % of their water over what the terrain draws as
     // sea, on a sea level 11–22 m off its own: tools/datum-study.mjs) ──
-    viewOf(world, s.view, H);
+    viewOf(world, s.view, H, true);
     const sl = landMask(s.view, mesh, H, s.mask).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
     // (the ground the water was poured on, every cell: the ocean floor's height for the waves — inventory.js surfaceKm, as the mask
     // reckoned it; without the water inventory, reckoned here on the same swell)
@@ -309,11 +309,13 @@ export function lastDrainage() { return scratch; }
 
 let scratch = null;
 /** The world's own view of the crust and its mantle, as a frame carries them (tectonics/snapshot.js), on `view`: what the
- *  one mask (terrain/land-mask.js) reads. @returns {Object} view */
-function viewOf(world, view, H) {
+ *  one mask (terrain/land-mask.js) reads; `ground`: also what inventory.js surfaceKm reads, unpoured too (a river step). @returns {Object} view */
+function viewOf(world, view, H, ground = false) {
     const { plates, owner, ownerCell, time } = world, n = world.mesh.numCells;
     view.time = time; view.owner = owner;
-    const pouring = H.waterInventory > 0;          // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm)
+    // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm — and so
+    // does the ocean floor the waves work at a river step (M3), poured or not)
+    const pouring = ground || H.waterInventory > 0;
     if (pouring && !view.volcType) Object.assign(view, { volcType: new Uint8Array(n), volcKm: new Float32Array(n), volcWornKm: new Float32Array(n), riseKm3: new Float32Array(n) });
     // (each plate's crust fields fetched once a call, not once a cell: the history asks for this view every step, sea-age.js
     // seaMaskNow — lane gpuerode M4; the same values copied)
