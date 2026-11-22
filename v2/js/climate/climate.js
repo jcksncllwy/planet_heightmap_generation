@@ -8,7 +8,7 @@
 // Evolution's frames: xyz on the unit sphere with z north (axes 'z-up'), heights in km with the sea at 0. V1's planets:
 // y north ('y-up'). The climate is computed on a fixed lat-lon grid, so it is the same at every terrain resolution.
 
-import { computeClimate } from './core.js';
+import { computeClimate, computeClimateAsync } from './core.js';
 import { energyBalanceTemperature } from './temperature.js';
 import { derivedCirculation } from './circulation.js';
 import { windDrivenOcean } from './ocean.js';
@@ -25,4 +25,9 @@ export function climateStages({ tiltDeg = 23.44 } = {}) {
  */
 export function planetClimate(input, options = {}) {
     return computeClimate(input, { ...options, stages: climateStages(options) });
+}
+
+/** planetClimate with its solves on `solver` (a factory whose solvers answer asynchronously: gpu/climate-solver.js) — the finish's. */
+export function planetClimateAsync(input, options = {}) {
+    return computeClimateAsync(input, { ...options, stages: climateStages(options) });
 }

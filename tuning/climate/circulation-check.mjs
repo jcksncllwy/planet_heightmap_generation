@@ -28,7 +28,7 @@ import { regionOf, TUNED_REGIONS, BASINS } from './lib/regions.mjs';
 import { elevToHeightKm } from '../../js/color-map.js';
 import { buildSphere } from '../../js/sphere-mesh.js';
 import { makeRng } from '../../js/rng.js';
-import { computeClimate, aggregateSurface, cellLatLon } from '../../v2/js/climate/core.js';
+import { computeClimate, aggregateSurface, cellLatLon, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
 import { observedWinds, observedRain } from '../../v2/js/climate/inputs.js';
@@ -73,7 +73,7 @@ for (let c = 0; c < G; c++) {
 const ALL_REGIONS = [...CONTINENTS, ...BASINS];
 
 // ── Open-loop input: observed near-surface temperature at sea level ──
-const phase2 = energyBalanceTemperature()(ctxEarth, observedWinds(obs.u10, obs.v10)(ctxEarth));
+const phase2 = syncStage(energyBalanceTemperature())(ctxEarth, observedWinds(obs.u10, obs.v10)(ctxEarth));
 // (at each grid cell's reference height — its mean land height — as the temperature stage reports it)
 const obsT = { monthly: new Float32Array(12 * G), source: '' };
 {
@@ -287,7 +287,7 @@ const contMask = Object.fromEntries(TUNED_CONTINENTS.map(k => [k, new Uint8Array
 for (let c = 0; c < G; c++) if (obsLand[c] && surface.landFrac[c] >= 0.5) { const k = continentOf(cellLat(c), cellLon(c)); if (contMask[k]) contMask[k][c] = 1; }
 const t0 = performance.now();
 const closed = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' },
-    { stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), rain: observedRain(obs.precip) } });
+    { stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), rain: observedRain(obs.precip) } });
 const closedMs = performance.now() - t0;
 const tOpen = {}, tClosed = {};
 for (const k of TUNED_CONTINENTS) { tOpen[k] = tempError(phase2.monthly, contMask[k]); tClosed[k] = tempError(closed.stages.temperature.monthly, contMask[k]); }
@@ -307,7 +307,7 @@ const sampleAt = (f, m, lat, lon) => grid.sample(f.subarray(m * G, (m + 1) * G),
 const zonalMeanU = (res, lat, seaOnly, surf) => { let s = 0, n = 0; const j = Math.floor((90 - lat)); for (let m = 0; m < 12; m++) for (let i = 0; i < grid.w; i++) { const c = j * grid.w + i; if (seaOnly && surf.landFrac[c] > 0.2) continue; s += res.u[m * G + c]; n++; } return s / n; };
 for (const kind of Object.keys(TEST_PLANETS)) {
     const p = buildTestPlanet(kind, 40000, buildSphere, makeRng(7));
-    const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { anchors: 12, stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), rain: observedRain(new Float32Array(12 * G).fill(50)) } });
+    const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { anchors: 12, stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), rain: observedRain(new Float32Array(12 * G).fill(50)) } });
     const C = res.stages.circulation, surf = res.surface, list = [];
     const chk = (text, ok, detail) => list.push({ text, ok, detail });
     const tr = (zonalMeanU(C, 15, true, surf) + zonalMeanU(C, -15, true, surf)) / 2, we = (zonalMeanU(C, 45, true, surf) + zonalMeanU(C, -45, true, surf)) / 2;

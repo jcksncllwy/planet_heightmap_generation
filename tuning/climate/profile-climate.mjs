@@ -7,7 +7,7 @@
 import { loadEarthGrayscale } from './lib/earth-context.mjs';
 import { buildEarthMesh } from './lib/earth-mesh.mjs';
 import { elevToHeightKm } from '../../js/color-map.js';
-import { computeClimate } from '../../v2/js/climate/core.js';
+import { computeClimate, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
 import { windDrivenOcean } from '../../v2/js/climate/ocean.js';
@@ -31,8 +31,8 @@ for (let run = 0; run < RUNS; run++) {
     const t = performance.now();
     last = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' }, {
         stages: {
-            temperature: timed('temperature', energyBalanceTemperature()), circulation: timed('circulation', derivedCirculation()),
-            ocean: timed('ocean', windDrivenOcean()), rain: timed('rain', columnWaterRain()),
+            temperature: timed('temperature', syncStage(energyBalanceTemperature())), circulation: timed('circulation', derivedCirculation()),
+            ocean: timed('ocean', syncStage(windDrivenOcean())), rain: timed('rain', syncStage(columnWaterRain())),
         },
     });
     console.log(`run ${run + 1}: ${(performance.now() - t).toFixed(0)} ms — ${Object.entries(acc).map(([k, v]) => `${k} ${v.map(x => x.toFixed(0)).join('+')}`).join(' · ')}`);

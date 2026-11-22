@@ -12,6 +12,23 @@
 
 const R_PLANET = 6.371e6;       // m — converts winds to angular speeds
 const MIN_COARSE_ROWS = 12;     // coarsen while the next level keeps at least this many rows (a 3° grid: 60 → 30 → 15)
+// The deep hierarchy (lane gpuclimate, the GPU's): halve, else third, down to a handful of rows — a 1° grid 180 → 90 → 45 →
+// 15 → 5 rows, a 3° one 60 → 30 → 15 → 5 — so the coarsest level's 48 sweeps solve it all but exactly. The halving alone stops
+// at 45 rows, where those sweeps leave the slow north–south modes half solved (a zebra smoother needed 296 V-cycles for the
+// 1° solves of a climate there, 245 with the deep levels; the lexicographic 145 and 125)
+const DEEP_MIN_ROWS = 5;
+// What a solve "to convergence" asks (the GPU's, and the float64 reference it is tested against): the residual to 1e-5 of
+// the forcing, with the cycles it takes. The callers' looser tolerances and cycle caps (1e-3 … 1e-4, 4–30 cycles) were the
+// CPU's time budget, and they move the climate: the lexicographic solver at the callers' settings against the same solver
+// to 1e-6 differed by up to 10 °C in a month at the snow and ice edges (2,780 of 777,600 cell-months by > 0.5 °C, mean
+// 0.018 °C, on climate-prof's world). Converged, the smoothers agree: zebra to 1e-5 against lexicographic to 1e-6,
+// max 0.04 °C, mean 5e-5 °C, no cell-month by 0.5 °C (to 1e-4: 60 cell-months by > 0.5 °C, so 1e-5 it is)
+export const CONVERGED_TOL = 1e-5, CONVERGED_CYCLES = 60;
+/** The factor the next coarser level takes (2, else 3 in the deep hierarchy; rows and columns both divisible), or 0: the coarsest. */
+function coarsening(w, h, deep) {
+    for (const r of deep ? [2, 3] : [2]) if (h % r === 0 && w % r === 0 && h / r >= (deep ? DEEP_MIN_ROWS : MIN_COARSE_ROWS)) return r;
+    return 0;
+}
 
 class Level {
     constructor(w, h) {
@@ -66,18 +83,34 @@ class Level {
     }
 }
 
+/** The solver a stage's context asks for (ctx.solver: the GPU's in the finish, gpu/climate-solver.js), else this one. */
+export const solverOf = (ctx) => ctx.solver ?? ((grid, D, Dx, opts) => new HelmholtzSolver(grid, D, Dx, opts));
+
+export const COARSEST_SWEEPS = 48;
+/** A solve's tolerance and cycle cap when it is to converge (CONVERGED_TOL): the tighter tolerance, cycles enough to reach it. */
+export const convergedSettings = (tol, maxCycles) => ({ tol: Math.min(tol, CONVERGED_TOL), maxCycles: Math.max(maxCycles, CONVERGED_CYCLES) });
+
 export class HelmholtzSolver {
     /**
      * @param {{w:number, h:number}} grid  the climate grid (coarsened while the row count stays even and ≥ MIN_COARSE_ROWS)
      * @param {number} D   diffusivity on the unit sphere, W m⁻² K⁻¹ (north–south)
      * @param {number} [Dx] east–west diffusivity (default: D, isotropic)
-     * @param {{conservative?: boolean}} [opts] conservative: transport in flux form (see above)
+     * @param {{conservative?: boolean, deep?: boolean, zebra?: boolean, converged?: boolean}} [opts] conservative: transport
+     *   in flux form (see above); deep: the deep hierarchy; zebra: the zebra smoother (relax, below); converged: every solve
+     *   to CONVERGED_TOL. All three are the GPU solver's (gpu/climate-solver.js), here for its float64 reference; the page's
+     *   climate keeps the lexicographic smoother, the halving hierarchy and the callers' tolerances.
      */
-    constructor(grid, D, Dx = D, { conservative = false } = {}) {
+    constructor(grid, D, Dx = D, { conservative = false, deep = false, zebra = false, converged = false } = {}) {
         this.levels = [new Level(grid.w, grid.h)];
+        this.zebra = zebra; this.converged = converged;
         let w = grid.w, h = grid.h;
-        while (h % 2 === 0 && h / 2 >= MIN_COARSE_ROWS && w % 2 === 0) { w /= 2; h /= 2; this.levels.push(new Level(w, h)); }
-        for (const L of this.levels) { L.setDiffusion(Dx, D); L.conservative = conservative; }
+        for (;;) {
+            const r = coarsening(w, h, deep);
+            if (!r) break;
+            w /= r; h /= r;
+            const C = new Level(w, h); C.r = r; this.levels.push(C);
+        }
+        for (const L of this.levels) { L.setDiffusion(Dx, D); L.conservative = conservative; L.zebra = zebra; }
     }
 
     /**
@@ -90,7 +123,12 @@ export class HelmholtzSolver {
             const L = this.levels[l];
             if (l > 0) {
                 const nx = new Float64Array(L.h), ny = new Float64Array(L.h);
-                for (let j = 0; j < L.h; j++) { nx[j] = 0.5 * (dx[2 * j] + dx[2 * j + 1]); ny[j] = 0.5 * (dy[2 * j] + dy[2 * j + 1]); }
+                const r = L.r;
+                for (let j = 0; j < L.h; j++) {
+                    let sx = 0, sy = 0;
+                    for (let q = 0; q < r; q++) { sx += dx[r * j + q]; sy += dy[r * j + q]; }
+                    nx[j] = sx / r; ny[j] = sy / r;
+                }
                 dx = nx; dy = ny;
             }
             L.setRowDiffusion(dx, dy);
@@ -113,6 +151,7 @@ export class HelmholtzSolver {
         }
         this.setFaces(faces);
         for (const L of this.levels) { buildRows(L); factorRows(L); }
+        if (this.zebra) coarsestInverse(this.levels[this.levels.length - 1]);
     }
 
     /**
@@ -129,11 +168,14 @@ export class HelmholtzSolver {
             const T = L.faceBuf;
             if (l === 0) { T.e.set(faces.e); T.n.set(faces.n); }
             else {
-                const F = this.levels[l - 1].faceBuf, wf = this.levels[l - 1].w;
+                const F = this.levels[l - 1].faceBuf, wf = this.levels[l - 1].w, r = L.r;
                 for (let J = 0; J < L.h; J++) for (let I = 0; I < L.w; I++) {
-                    const c = J * L.w + I, e0 = 2 * J * wf + 2 * I + 1, n0 = 2 * J * wf + 2 * I;
-                    T.e[c] = 0.5 * (F.e[e0] + F.e[e0 + wf]);
-                    T.n[c] = 0.5 * (F.n[n0] + F.n[n0 + 1]);
+                    // (the coarse cell's east face: the fine faces down its east edge; its north face: those along its top)
+                    const c = J * L.w + I, e0 = r * J * wf + r * I + r - 1, n0 = r * J * wf + r * I;
+                    let se = 0, sn = 0;
+                    for (let q = 0; q < r; q++) { se += F.e[e0 + q * wf]; sn += F.n[n0 + q]; }
+                    T.e[c] = se / r;
+                    T.n[c] = sn / r;
                 }
             }
             L.faces = T;
@@ -145,6 +187,7 @@ export class HelmholtzSolver {
      * tol × |f| or after maxCycles V-cycles. Returns { cycles, rel }.
      */
     solve(fr, fi, Tr, Ti, { maxCycles = 12, tol = 1e-5 } = {}) {
+        if (this.converged) ({ tol, maxCycles } = convergedSettings(tol, maxCycles));
         const L0 = this.levels[0];
         L0.fr.set(fr); L0.fi.set(fi); L0.Tr.set(Tr); L0.Ti.set(Ti);
         let fnorm = 0;
@@ -171,7 +214,8 @@ export class HelmholtzSolver {
     vcycle(l) {
         const L = this.levels[l];
         if (l === this.levels.length - 1) {
-            for (let s = 0; s < 48; s++) relax(L, s & 1);
+            if (L.inv) { solveCoarsest(L); return; }
+            for (let s = 0; s < COARSEST_SWEEPS; s++) relax(L, s & 1);
             return;
         }
         relax(L, 0); relax(L, 1);
@@ -330,34 +374,93 @@ function substitute(L, o) {
     }
 }
 
-/** One zonal-line Gauss–Seidel sweep (dir 0: north → south, 1: south → north). */
+/**
+ * One zonal-line Gauss–Seidel sweep: each latitude row solved exactly with its neighbours' latest values — lexicographic
+ * (dir 0: north → south, 1: south → north), or zebra (red–black by rows: every other row, then the rows between them;
+ * dir 0: the even rows first). A zebra colour's rows read only the other colour's, so they are independent: the GPU solves
+ * them all at once (gpu/climate-solver.js). Lexicographic converges in fewer cycles on the CPU (the north–south winds'
+ * upwind coupling follows the sweep), zebra parallelises; converged, they agree (CONVERGED_TOL).
+ */
 function relax(L, dir) {
+    const { h } = L;
+    if (L.zebra) { for (let j = dir; j < h; j += 2) relaxRow(L, j); for (let j = 1 - dir; j < h; j += 2) relaxRow(L, j); return; }
+    for (let jj = 0; jj < h; jj++) relaxRow(L, dir ? h - 1 - jj : jj);
+}
+
+/** Row j solved exactly (a periodic tridiagonal system) with its neighbours' current values. */
+function relaxRow(L, j) {
     const { w, h, Tr, Ti, fr, fi } = L;
     // (the arrays held in locals: the same arithmetic, in the same order)
     const As = L.as, An = L.an, br = L.br, bi = L.bi, xr = L.xr, xi = L.xi, zr = L.zr, zi = L.zi, rowK = L.rowK;
-    for (let jj = 0; jj < h; jj++) {
-        const j = dir ? h - 1 - jj : jj, o = j * w;
-        const kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j];
-        for (let i = 0; i < w; i++) {
-            const c = o + i;
-            let rr = fr[c], ri = fi[c];
-            if (j > 0) { rr += kn * Tr[c - w]; ri += kn * Ti[c - w]; }
-            if (j < h - 1) { rr += ks * Tr[c + w]; ri += ks * Ti[c + w]; }
-            const as = As[c], an = An[c];
-            if (as > 0) { rr += as * Tr[c + w]; ri += as * Ti[c + w]; }
-            if (an > 0) { rr += an * Tr[c - w]; ri += an * Ti[c - w]; }
-            br[i] = rr; bi[i] = ri;
+    const o = j * w;
+    const kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j];
+    for (let i = 0; i < w; i++) {
+        const c = o + i;
+        let rr = fr[c], ri = fi[c];
+        if (j > 0) { rr += kn * Tr[c - w]; ri += kn * Ti[c - w]; }
+        if (j < h - 1) { rr += ks * Tr[c + w]; ri += ks * Ti[c + w]; }
+        const as = As[c], an = An[c];
+        if (as > 0) { rr += as * Tr[c + w]; ri += as * Ti[c + w]; }
+        if (an > 0) { rr += an * Tr[c - w]; ri += an * Ti[c - w]; }
+        br[i] = rr; bi[i] = ri;
+    }
+    substitute(L, o);
+    const k = j * 4, bgr = rowK[k], bgi = rowK[k + 1], idr = rowK[k + 2], idi = rowK[k + 3];
+    const x0r = xr[0], x0i = xi[0], xNr = xr[w - 1], xNi = xi[w - 1];
+    const nr = x0r + (bgr * xNr - bgi * xNi), ni = x0i + (bgr * xNi + bgi * xNr);
+    const fr2 = nr * idr - ni * idi, fi2 = nr * idi + ni * idr;                    // fact
+    for (let i = 0; i < w; i++) {
+        const c = o + i;
+        Tr[c] = xr[i] - (fr2 * zr[c] - fi2 * zi[c]);
+        Ti[c] = xi[i] - (fr2 * zi[c] + fi2 * zr[c]);
+    }
+}
+
+// The coarsest level solved exactly (with the zebra smoother — the GPU's algorithm): its operator's inverse, worked out
+// once an operator in float64 (Gauss–Jordan, partial pivoting; ≤ 64 cells: the deep hierarchy's 10 × 5), applied as a
+// matrix. One thread a cell on the GPU, where the 48 sweeps were one thread a row, serially: a third of each cycle.
+export const DIRECT_MAXN = 64;
+function coarsestInverse(L) {
+    const { w, h, n } = L;
+    if (n > DIRECT_MAXN || w < 3) { L.inv = null; return; }
+    const M = new Float64Array(2 * n * n), inv = new Float64Array(2 * n * n);
+    const put = (r, c, re, im) => { M[2 * (r * n + c)] += re; M[2 * (r * n + c) + 1] += im; };
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const c = j * w + i, kn = L.foldNS ? 0 : L.knRow[j], ks = L.foldNS ? 0 : L.ksRow[j];
+        put(c, c, L.bdr[c], L.bdi[c]);
+        put(c, j * w + (i + w - 1) % w, L.sub[c], 0);
+        put(c, j * w + (i + 1) % w, L.sup[c], 0);
+        if (j > 0) put(c, c - w, -(kn + L.an[c]), 0);
+        if (j < h - 1) put(c, c + w, -(ks + L.as[c]), 0);
+    }
+    for (let r = 0; r < n; r++) inv[2 * (r * n + r)] = 1;
+    for (let k = 0; k < n; k++) {
+        let p = k, best = -1;
+        for (let r = k; r < n; r++) { const m = Math.hypot(M[2 * (r * n + k)], M[2 * (r * n + k) + 1]); if (m > best) { best = m; p = r; } }
+        if (p !== k) for (const A of [M, inv]) for (let c = 0; c < 2 * n; c++) { const t = A[2 * k * n + c]; A[2 * k * n + c] = A[2 * p * n + c]; A[2 * p * n + c] = t; }
+        const pr = M[2 * (k * n + k)], pi = M[2 * (k * n + k) + 1], pd = pr * pr + pi * pi, qr = pr / pd, qi = -pi / pd;
+        for (const A of [M, inv]) for (let c = 0; c < n; c++) {
+            const o = 2 * (k * n + c), ar = A[o], ai = A[o + 1];
+            A[o] = ar * qr - ai * qi; A[o + 1] = ar * qi + ai * qr;
         }
-        substitute(L, o);
-        const k = j * 4, bgr = rowK[k], bgi = rowK[k + 1], idr = rowK[k + 2], idi = rowK[k + 3];
-        const x0r = xr[0], x0i = xi[0], xNr = xr[w - 1], xNi = xi[w - 1];
-        const nr = x0r + (bgr * xNr - bgi * xNi), ni = x0i + (bgr * xNi + bgi * xNr);
-        const fr2 = nr * idr - ni * idi, fi2 = nr * idi + ni * idr;                    // fact
-        for (let i = 0; i < w; i++) {
-            const c = o + i;
-            Tr[c] = xr[i] - (fr2 * zr[c] - fi2 * zi[c]);
-            Ti[c] = xi[i] - (fr2 * zi[c] + fi2 * zr[c]);
+        for (let r = 0; r < n; r++) {
+            if (r === k) continue;
+            const fr = M[2 * (r * n + k)], fi = M[2 * (r * n + k) + 1];
+            if (fr === 0 && fi === 0) continue;
+            for (const A of [M, inv]) for (let c = 0; c < n; c++) {
+                const o = 2 * (r * n + c), q = 2 * (k * n + c);
+                A[o] -= fr * A[q] - fi * A[q + 1]; A[o + 1] -= fr * A[q + 1] + fi * A[q];
+            }
         }
+    }
+    L.inv = inv;
+}
+function solveCoarsest(L) {
+    const { n, inv, fr, fi, Tr, Ti } = L;
+    for (let r = 0; r < n; r++) {
+        let sr = 0, si = 0;
+        for (let c = 0; c < n; c++) { const o = 2 * (r * n + c), ar = inv[o], ai = inv[o + 1]; sr += ar * fr[c] - ai * fi[c]; si += ar * fi[c] + ai * fr[c]; }
+        Tr[r] = sr; Ti[r] = si;
     }
 }
 
@@ -387,26 +490,34 @@ function residual(L) {
 
 /** Area-weighted average of 2 × 2 fine cells → coarse cell. */
 function restrict(F, C, src, dst) {
-    const wf = F.w, wc = C.w;
+    const wf = F.w, wc = C.w, r = C.r;
     for (let J = 0; J < C.h; J++) {
-        const j0 = 2 * J, j1 = j0 + 1, a0 = F.rowWeight[j0], a1 = F.rowWeight[j1], s = 2 * (a0 + a1);
+        let aw = 0;
+        for (let q = 0; q < r; q++) aw += F.rowWeight[r * J + q];
+        const s = r * aw;
         for (let I = 0; I < wc; I++) {
-            const i0 = 2 * I;
-            dst[J * wc + I] = (a0 * (src[j0 * wf + i0] + src[j0 * wf + i0 + 1]) + a1 * (src[j1 * wf + i0] + src[j1 * wf + i0 + 1])) / s;
+            let acc = 0;
+            for (let q = 0; q < r; q++) {
+                const o = (r * J + q) * wf + r * I;
+                let row = 0;
+                for (let p = 0; p < r; p++) row += src[o + p];
+                acc += F.rowWeight[r * J + q] * row;
+            }
+            dst[J * wc + I] = acc / s;
         }
     }
 }
 
 /** Bilinear interpolation of the coarse correction onto the fine cells (cell-centred), added to the fine solution. */
 function prolongAdd(C, F) {
-    const wc = C.w, hc = C.h, wf = F.w, FTr = F.Tr, FTi = F.Ti, CTr = C.Tr, CTi = C.Ti;
+    const wc = C.w, hc = C.h, wf = F.w, FTr = F.Tr, FTi = F.Ti, CTr = C.Tr, CTi = C.Ti, r = C.r;
     // (each fine column's two coarse columns and its weight, the same for every row: worked out once per level pair)
-    const key = `${wc}|${wf}`;
+    const key = `${wc}|${wf}`;     // (a level pair: w fixes r)
     let cols = prolongCols.get(key);
     if (!cols) {
         cols = { I0: new Int32Array(wf), I1: new Int32Array(wf), fx: new Float64Array(wf) };
         for (let i = 0; i < wf; i++) {
-            const X = i / 2 - 0.25, I0f = Math.floor(X), fx = X - I0f;
+            const X = (i + 0.5) / r - 0.5, I0f = Math.floor(X), fx = X - I0f;
             const I0 = ((I0f % wc) + wc) % wc, I1 = I0 + 1 === wc ? 0 : I0 + 1;
             cols.I0[i] = I0; cols.I1[i] = I1; cols.fx[i] = fx;
         }
@@ -414,7 +525,7 @@ function prolongAdd(C, F) {
     }
     const CI0 = cols.I0, CI1 = cols.I1, CFX = cols.fx;
     for (let j = 0; j < F.h; j++) {
-        let Y = j / 2 - 0.25, J0 = Math.floor(Y), fy = Y - J0;
+        let Y = (j + 0.5) / r - 0.5, J0 = Math.floor(Y), fy = Y - J0;
         if (J0 < 0) { J0 = 0; fy = 0; }
         if (J0 >= hc - 1) { J0 = hc - 1; fy = 0; }
         const J1 = Math.min(hc - 1, J0 + 1);

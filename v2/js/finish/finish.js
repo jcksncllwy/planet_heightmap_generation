@@ -27,7 +27,8 @@ import { carveLadder, carveSettings } from '../terrain/synthesize.js';
 import { floodSea } from '../terrain/carve.js';
 import { carveTerrain, forgetMesh } from '../terrain/carve.js';
 import { forgetEdgeKm } from '../core/min-heap.js';
-import { planetClimate } from '../climate/climate.js';
+import { planetClimateAsync } from '../climate/climate.js';
+import { climateSolverKit } from '../gpu/climate-solver.js';
 import { CORE_DEFAULTS } from '../climate/core.js';
 import { cellClimateGPU, waterCellsGPU } from '../gpu/climate-cells.js';
 import { finishDevice } from '../gpu/finish-gpu.js';
@@ -135,8 +136,12 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (the climate on a surface — its land all the world ocean `ocean0` does not reach — and all the finish reads of it: run here
     // on the surface, and again after the erosion when a pit it read as land ends as sea: the finished sea's climate, below)
     const climateOn = async (z, climateLand, ocean0) => {
-        // (the climate's step 5, each cell at its own height, on the GPU: gpu/climate-cells.js cellClimateGPU)
-        let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up', land: climateLand }, { ...climateOptions, cells: false });
+        // (the climate's solves on the GPU — gpu/climate-solver.js, every solve converged — and its step 5, each cell at its own
+        // height: gpu/climate-cells.js cellClimateGPU)
+        const solver = await climateSolverKit(device);
+        let res;
+        try { res = await planetClimateAsync({ xyz: mesh.xyz, elevKm: z, axes: 'z-up', land: climateLand }, { ...climateOptions, cells: false, solver }); }
+        finally { solver.release(); }
         res.cell = await cellClimateGPU(device, res, mesh.xyz, z, climateLand, climateOptions);
         const { koppen, tAnnual: tAnn, pAnnual: pAnn, lat, lon } = res.cell, G = res.grid.size;
         for (let c = 0; c < n; c++) if (pAnn[c] > F.rainMaxMm) pAnn[c] = F.rainMaxMm;     // (the climate's rare wet hotspots)

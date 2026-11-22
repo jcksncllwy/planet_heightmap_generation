@@ -24,7 +24,7 @@ import { basinOf, TUNED_BASINS } from './lib/regions.mjs';
 import { elevToHeightKm } from '../../js/color-map.js';
 import { buildSphere } from '../../js/sphere-mesh.js';
 import { makeRng } from '../../js/rng.js';
-import { computeClimate, aggregateSurface, cellLatLon } from '../../v2/js/climate/core.js';
+import { computeClimate, aggregateSurface, cellLatLon, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
 import { windDrivenOcean } from '../../v2/js/climate/ocean.js';
@@ -92,7 +92,7 @@ const annual = (f) => seasonMean(f, G, MONTHS12);
 
 // ── Open loop ──
 function runOpen() {
-    const tStage = energyBalanceTemperature(), oStage = windDrivenOcean();
+    const tStage = syncStage(energyBalanceTemperature()), oStage = syncStage(windDrivenOcean());
     let T = tStage(ctxEarth, obsWinds), O = null;
     for (let it = 0; it < 2; it++) { O = oStage(ctxEarth, obsWinds, T); T = tStage(ctxEarth, obsWinds, T.state, O.qflux); }
     return { T, O };
@@ -103,7 +103,7 @@ function score(T) {
     const ew = eastWestCorr(annual(T.monthlySL), annual(obs.sst), seaAll);
     return { perBasin, perCont, ew, sst: rmse(T.monthlySL, obs.sst, seaAll) };
 }
-const noOcean = energyBalanceTemperature()(ctxEarth, obsWinds);
+const noOcean = syncStage(energyBalanceTemperature())(ctxEarth, obsWinds);
 const baseScore = score(noOcean);
 
 const TUNED = ['OCEAN_HEAT_SHARE', 'OCEAN_UPWELL_DT', 'OCEAN_GUST_MS', 'OCEAN_FRICTION', 'OCEAN_CHANNEL_DRAG'];
@@ -192,8 +192,8 @@ for (const c of named) console.log(`    ${c.ok ? 'PASS' : 'FAIL'}  ${c.text} —
 
 // ── Closed loop on Earth ──
 const tc = performance.now();
-const noOceanClosed = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' }, { stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), rain: observedRain(obs.precip) } });
-const closed = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' }, { stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: observedRain(obs.precip) } });
+const noOceanClosed = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' }, { stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), rain: observedRain(obs.precip) } });
+const closed = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' }, { stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), ocean: syncStage(windDrivenOcean()), rain: observedRain(obs.precip) } });
 const closedMs = performance.now() - tc;
 const Sc = score(closed.stages.temperature), Sn = score(noOceanClosed.stages.temperature);
 const truth = new Uint8Array(nR); for (let r = 0; r < nR; r++) truth[r] = truthAt01(koppen01, latC[r], lonC[r]);
@@ -210,7 +210,7 @@ console.log(`    named, closed loop: ${namedClosed.filter(c => c.ok).length} / $
 const planets = {};
 for (const kind of ['midlat', 'supercontinent']) {
     const p = buildTestPlanet(kind, 40000, buildSphere, makeRng(7));
-    const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { anchors: 12, stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: observedRain(new Float32Array(12 * G).fill(50)) } });
+    const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { anchors: 12, stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), ocean: syncStage(windDrivenOcean()), rain: observedRain(new Float32Array(12 * G).fill(50)) } });
     const O = res.stages.ocean, sstA = annual(res.stages.temperature.monthlySL), list = [];
     const eastLon = kind === 'midlat' ? 44 : 60, westLon = kind === 'midlat' ? -44 : -60, lat = kind === 'midlat' ? 30 : 30;
     const vE = box(O.v, lat - 4, lat + 4, eastLon, eastLon + 6), vW = box(O.v, lat - 4, lat + 4, westLon - 6, westLon);

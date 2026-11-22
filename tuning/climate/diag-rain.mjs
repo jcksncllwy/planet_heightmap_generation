@@ -10,7 +10,7 @@ import { loadEarthGrayscale } from './lib/earth-context.mjs';
 import { buildEarthMesh } from './lib/earth-mesh.mjs';
 import { loadReferences, seasonMean, JJA, DJF } from './lib/ref.mjs';
 import { elevToHeightKm } from '../../js/color-map.js';
-import { aggregateSurface, cellLatLon } from '../../v2/js/climate/core.js';
+import { aggregateSurface, cellLatLon, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { columnWaterRain } from '../../v2/js/climate/rain.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
@@ -32,7 +32,7 @@ const surface = aggregateSurface(grid, latC, lonC, elevKm, landC);
 const MONTHS12 = Array.from({ length: 12 }, (_, m) => m);
 const ctx = { grid, surface, anchorMonths: MONTHS12, options: {} };
 const winds = observedWinds(obs.u10, obs.v10)(ctx);
-const phase2 = energyBalanceTemperature()(ctx, winds);
+const phase2 = syncStage(energyBalanceTemperature())(ctx, winds);
 const T = { monthly: new Float32Array(12 * G), monthlySL: new Float32Array(12 * G), seaIce: new Float32Array(12 * G) };
 for (let k = 0; k < 12 * G; k++) {
     const c = k % G, f = surface.landFrac[c], tl = obs.t2m[k], ts = obs.sst[k], ice = obs.seaIce[k];
@@ -43,7 +43,7 @@ for (let k = 0; k < 12 * G; k++) {
     T.seaIce[k] = ice === ice ? Math.min(1, ice) : 0;
 }
 const DERIVED = process.argv.includes('--derived');           // the circulation stage's winds instead of the observed ones
-const R = columnWaterRain()(ctx, DERIVED ? derivedCirculation()(ctx, T) : winds, T);
+const R = syncStage(columnWaterRain())(ctx, DERIVED ? derivedCirculation()(ctx, T) : winds, T);
 const ann = (f) => seasonMean(f, G, MONTHS12);
 const P = ann(R.P), E = ann(R.E), Wc = ann(R.W), rh = ann(R.r), Pl = ann(obs.precip), Pa = ann(obs.precipAll);
 const f0 = (x) => (x === x ? x.toFixed(0).padStart(5) : '    —'), f2 = (x) => (x === x ? x.toFixed(2).padStart(5) : '    —');

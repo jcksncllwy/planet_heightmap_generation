@@ -29,7 +29,7 @@ import { basinOf, TUNED_BASINS } from './lib/regions.mjs';
 import { elevToHeightKm } from '../../js/color-map.js';
 import { buildSphere } from '../../js/sphere-mesh.js';
 import { makeRng } from '../../js/rng.js';
-import { computeClimate, cellLatLon, aggregateSurface } from '../../v2/js/climate/core.js';
+import { computeClimate, cellLatLon, aggregateSurface, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
 import { windDrivenOcean } from '../../v2/js/climate/ocean.js';
@@ -55,7 +55,7 @@ const G = grid.size, W = gridWeights(grid);
 const { gray, width, height } = loadEarthGrayscale();
 const MONTHS12 = Array.from({ length: 12 }, (_, m) => m);
 const cellLat = (c) => grid.lat[Math.floor(c / grid.w)], cellLon = (c) => grid.lon[c % grid.w];
-const stages = () => ({ temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() });
+const stages = () => ({ temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), ocean: syncStage(windDrivenOcean()), rain: syncStage(columnWaterRain()) });
 
 function earthAt(N) {
     const e = buildEarthMesh(gray, width, height, { N });

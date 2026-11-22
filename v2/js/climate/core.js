@@ -15,6 +15,11 @@
 // judge one stage at a time) — or from a single `options.anchorSource` (the Phase 1 oracle run: observedAnchors()
 // below feeds real data, measuring the best the rest of the pipeline can do). The coupled order: temperature ↔ winds
 // ↔ ocean for a couple of rounds, then rain, then the temperature once more with the clouds the rain brings.
+//
+// The stages are generators (lane gpuclimate): each yields its solves (solver.js's, or the GPU's — options.solver,
+// gpu/climate-solver.js — whose answers come back asynchronously), so one stage code runs synchronously on the CPU
+// (computeClimate: the page, the civ layer, the tools) and asynchronously with the GPU's solver (computeClimateAsync: the
+// finish). A stage that solves nothing may be a plain function (inputs.js's observations; circulation.js).
 
 import { LatLonGrid } from './grid.js';
 import { interpolationMatrix, PRECIP_TRANSFORMS } from './seasons.js';
@@ -63,6 +68,37 @@ export const CORE_DEFAULTS = Object.freeze({
  *                                                  reference height, mm/month; NaN = no data there)
  */
 export function computeClimate(input, options = {}) {
+    return runSync(climateSteps(input, options));
+}
+
+/** computeClimate, its solves awaited: with options.solver (a factory of solvers whose solve returns a promise — the GPU's). */
+export function computeClimateAsync(input, options = {}) {
+    return runAsync(climateSteps(input, options));
+}
+
+/** A generator's steps, each yielded value handed back as it is (a CPU solve's result). */
+export function runSync(steps) {
+    let r = steps.next();
+    while (!r.done) {
+        if (r.value instanceof Promise) throw new Error('climate: an asynchronous solver needs computeClimateAsync');
+        r = steps.next(r.value);
+    }
+    return r.value;
+}
+/** A generator's steps, each yielded value awaited (a GPU solve's promise). */
+export async function runAsync(steps) {
+    let r = steps.next();
+    while (!r.done) r = steps.next(await r.value);
+    return r.value;
+}
+/** A stage made synchronous (its solves on the CPU): for tools that call a stage alone, outside computeClimate. */
+export const syncStage = (fn) => (...args) => { const r = fn(...args); return r && typeof r.next === 'function' ? runSync(r) : r; };
+/** A stage's result: a generator stage's steps (yield* this), or a plain function's value. */
+function* stage(x) {
+    return x && typeof x.next === 'function' && typeof x[Symbol.iterator] === 'function' ? yield* x : x;
+}
+
+function* climateSteps(input, options) {
     const o = { ...CORE_DEFAULTS, ...options };
     const timing = [];
     let t0 = performance.now();
@@ -85,10 +121,10 @@ export function computeClimate(input, options = {}) {
     //    ones), or from a single anchor source (Phase 1's oracle run)
     const K = o.anchors;
     const anchorMonths = Array.from({ length: K }, (_, k) => o.anchorPhase + k * 12 / K);
-    const sctx = { grid, surface, anchorMonths, options: o };
+    const sctx = { grid, surface, anchorMonths, options: o, solver: o.solver ?? null };
     let anchors, stages = null;
     if (o.stages) {
-        let winds = o.stages.winds ? o.stages.winds(sctx) : null;
+        let winds = o.stages.winds ? yield* stage(o.stages.winds(sctx)) : null;
         lap('winds');
         let temperature, circulation = null, ocean = null;
         if (o.stages.circulation) {
@@ -97,24 +133,24 @@ export function computeClimate(input, options = {}) {
             // given winds (or none) and no ocean heat; later ones the derived winds and the ocean's heat.
             const rounds = o.stages.ocean ? o.couplingsWithOcean : o.couplings;
             for (let it = 0; it < rounds; it++) {
-                temperature = o.stages.temperature(sctx, winds, temperature?.state, ocean?.qflux ?? null, null, ocean);
-                circulation = o.stages.circulation(sctx, temperature);
+                temperature = yield* stage(o.stages.temperature(sctx, winds, temperature?.state, ocean?.qflux ?? null, null, ocean));
+                circulation = yield* stage(o.stages.circulation(sctx, temperature));
                 winds = circulation;
-                if (o.stages.ocean) ocean = o.stages.ocean(sctx, circulation, temperature);
+                if (o.stages.ocean) ocean = yield* stage(o.stages.ocean(sctx, circulation, temperature));
             }
             lap(o.stages.ocean ? 'temperature ↔ winds ↔ ocean' : 'temperature ↔ winds');
         } else {
-            temperature = o.stages.temperature(sctx, winds);
+            temperature = yield* stage(o.stages.temperature(sctx, winds));
             lap('temperature');
         }
-        let rain = o.stages.rain(sctx, winds, temperature);
+        let rain = yield* stage(o.stages.rain(sctx, winds, temperature));
         lap('rain');
         if (o.cloudsFromRain && o.stages.circulation) {
             // clouds from the rain shade rainy land (the temperature stage reads monthly rain); the rain then follows
             // the new temperature from where it was
-            temperature = o.stages.temperature(sctx, winds, temperature.state, ocean?.qflux ?? null, monthsFromAnchors(rain.P, grid.size, K, o.anchorPhase, o.precipTransform), ocean);
+            temperature = yield* stage(o.stages.temperature(sctx, winds, temperature.state, ocean?.qflux ?? null, monthsFromAnchors(rain.P, grid.size, K, o.anchorPhase, o.precipTransform), ocean));
             lap('temperature with clouds');
-            if (o.rainAfterClouds) { rain = o.stages.rain(sctx, winds, temperature, rain.state ?? null); lap('rain again'); }
+            if (o.rainAfterClouds) { rain = yield* stage(o.stages.rain(sctx, winds, temperature, rain.state ?? null)); lap('rain again'); }
         }
         anchors = { T: Float32Array.from(temperature.T), P: rain.P };
         stages = { winds, temperature, circulation, ocean, rain };

@@ -8,7 +8,7 @@
 import Delaunator from 'delaunator';
 import { buildSphere, setDelaunator } from '../../js/sphere-mesh.js';
 import { makeRng } from '../../js/rng.js';
-import { computeClimate } from '../../v2/js/climate/core.js';
+import { computeClimate, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
 import { windDrivenOcean } from '../../v2/js/climate/ocean.js';
@@ -22,7 +22,7 @@ const argSet = process.argv.indexOf('--set');
 if (argSet > 0) setParams(Object.fromEntries(process.argv[argSet + 1].split(',').map(kv => { const [k, v] = kv.split('='); return [k, +v]; })));
 const kind = args[0] ?? 'mountains', lat = +(args[1] ?? 45);
 const p = buildTestPlanet(kind, 40000, buildSphere, makeRng(7));
-const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() } });
+const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), ocean: syncStage(windDrivenOcean()), rain: syncStage(columnWaterRain()) } });
 const g = res.grid, G = g.size, j = Math.round((90 - lat) / g.step - 0.5);
 const R = res.stages.rain, W = res.stages.circulation;
 const mean = (f, months, c, L = 12) => { let s = 0; for (const m of months) s += f[m * G + c]; return s / months.length; };

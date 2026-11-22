@@ -28,7 +28,7 @@ import { CONTINENTS, TUNED_CONTINENTS, continentOf } from './lib/continents.mjs'
 import { elevToHeightKm } from '../../js/color-map.js';
 import { buildSphere } from '../../js/sphere-mesh.js';
 import { makeRng } from '../../js/rng.js';
-import { computeClimate, aggregateSurface, cellLatLon } from '../../v2/js/climate/core.js';
+import { computeClimate, aggregateSurface, cellLatLon, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { observedWinds, zonalWinds, observedRain, observedTemperature, atAnchors } from '../../v2/js/climate/inputs.js';
 import { synthesizeCell } from '../../v2/js/climate/seasons.js';
@@ -108,7 +108,7 @@ function seasonRmse(s, o, mask) {
 
 function runEarth() {
     const t0 = performance.now();
-    const out = energyBalanceTemperature()(ctxEarth, windsEarth);
+    const out = syncStage(energyBalanceTemperature())(ctxEarth, windsEarth);
     return { out, ms: performance.now() - t0 };
 }
 function scoreEarth(out) {
@@ -209,7 +209,7 @@ function v1Temperature() {
 const truth = new Uint8Array(nR);
 for (let r = 0; r < nR; r++) truth[r] = truthAt01(koppen01, latC[r], lonC[r]);
 const swaps = [];
-for (const [label, tStage] of [['observed temperature (oracle)', observedTemperature(obs.t2m)], ['new temperature', energyBalanceTemperature()], ["V1's temperature", v1Temperature()]]) {
+for (const [label, tStage] of [['observed temperature (oracle)', observedTemperature(obs.t2m)], ['new temperature', syncStage(energyBalanceTemperature())], ["V1's temperature", v1Temperature()]]) {
     const res = computeClimate({ xyz: earth.r_xyz, elevKm, axes: 'y-up' },
         { stages: { winds: observedWinds(obs.u10, obs.v10), temperature: tStage, rain: observedRain(obs.precip) } });
     const cmp = compareClasses(truth, res.cell.koppen);
@@ -231,7 +231,7 @@ for (const kind of Object.keys(TEST_PLANETS)) {
     const surf = aggregateSurface(grid, la, lo, p.elevKm, ld);
     const ctx = { grid, surface: surf, anchorMonths: MONTHS12, options: { lapseRateCPerKm: LAPSE } };
     const t0 = performance.now();
-    const out = energyBalanceTemperature()(ctx, zonalWinds()(ctx));
+    const out = syncStage(energyBalanceTemperature())(ctx, zonalWinds()(ctx));
     const ms = performance.now() - t0;
     const T = out.monthly, checks = [];
     const check = (text, ok, detail) => checks.push({ text, ok, detail });

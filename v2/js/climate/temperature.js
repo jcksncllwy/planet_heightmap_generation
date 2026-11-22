@@ -29,7 +29,7 @@
 
 import { LatLonGrid, coarsenField, refineField, refineForDrawing, fillAcross } from './grid.js';
 import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
-import { HelmholtzSolver } from './solver.js';
+import { solverOf } from './solver.js';
 import { PARAMS } from './config.js';
 import { tropicsWeight, gaussianSmooth } from './circulation.js';
 import { FastNoise } from '../core/fast-noise.js';
@@ -76,7 +76,7 @@ const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean 
  * leave dry land in full sun.
  */
 export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
-    return (ctx, winds, init = null, qflux = null, rain = null, ocean = null) => {
+    return function* (ctx, winds, init = null, qflux = null, rain = null, ocean = null) {
         const t0 = performance.now();
         const P = { ...PARAMS };
         const dg = ctx.options?.ebmDiag ?? null;
@@ -236,7 +236,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             }
         }
 
-        const solver = new HelmholtzSolver(g, P.TEMP_DIFFUSIVITY, P.TEMP_DIFFUSIVITY_EW);
+        const solver = solverOf(ctx)(g, P.TEMP_DIFFUSIVITY, P.TEMP_DIFFUSIVITY_EW);
         // Mountains block the air near the ground, and the heat it carries and mixes, between the lowlands on either
         // side (the Himalaya keeps Tibet's cold out of India; the Sierra and Cascades keep the Pacific's air out of the
         // Great Basin; the Andes part Chile from Argentina). Each face between two cells is open by
@@ -403,20 +403,20 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             const relax = it === 0 && !warm ? 1 : 0.8;
             const tol = it === outer - 1 ? 1e-4 : 1e-3;
             prof.forcing += performance.now() - tp;
-            const solveWith = (srArr, sigmaI, fr, fi, xr, xi) => {
+            function* solveWith(srArr, sigmaI, fr, fi, xr, xi) {
                 let ta = performance.now();
                 solver.setOperator(srArr, sigmaI, winds ? uBar : null, winds ? vBar : null, gamma, faces);
                 prof.operator += performance.now() - ta; ta = performance.now();
-                const r = solveRelaxed(solver, fr, fi, xr, xi, relax, tol);
+                const r = yield* solveRelaxed(solver, fr, fi, xr, xi, relax, tol);
                 prof.solve += performance.now() - ta;
                 return r;
-            };
+            }
             // annual mean, then the first and second harmonics of the year
-            const n0 = solveWith(sr, zero, F0, zero, c0, null);
+            const n0 = yield* solveWith(sr, zero, F0, zero, c0, null);
             for (let c = 0; c < G; c++) si[c] = OMEGA * C[c];
-            const n1 = solveWith(srSeason, si, F1r, F1i, c1r, c1i);
+            const n1 = yield* solveWith(srSeason, si, F1r, F1i, c1r, c1i);
             for (let c = 0; c < G; c++) si[c] = 2 * OMEGA * C[c];
-            const n2 = solveWith(srSeason, si, F2r, F2i, c2r, c2i);
+            const n2 = yield* solveWith(srSeason, si, F2r, F2i, c2r, c2i);
             stats.push({ it, cycles: [n0.cycles, n1.cycles, n2.cycles] });
         }
         tp = performance.now();
@@ -527,38 +527,43 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // temperature — air coming down from a plateau warms as it sinks, air rising onto one cools. The
         // land's air is A; the sea's surface stays its own. Calm air goes nowhere, so a still interior keeps its own
         // temperature; islands and coasts downwind of the sea take the sea's air.
-        const airSolver = winds && P.TEMP_AIR_DARK_DAYS > 0 ? new HelmholtzSolver(g, 0, 0) : null;
+        const airSolver = winds && P.TEMP_AIR_DARK_DAYS > 0 ? solverOf(ctx)(g, 0, 0) : null;
         // (the low air itself, not the weather aloft: a range blocks it fully — Pacific air stays out of the Great Plains)
         const airFaces = airSolver && P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, blockKm, P.TEMP_BLOCK_KM, 0) : null;
         const airCache = new Map(), airA = new Float64Array(G), airAi = new Float64Array(G), airRhs = new Float64Array(G);
         const airSig = new Float64Array(G), airU = new Float64Array(G), airV = new Float64Array(G), airTheta = new Float64Array(G);
-        const airMass = (t, T) => {
-            let A = airCache.get(t);
-            if (!A) {
-                const delta = declination(t, tiltDeg);
-                const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
-                const day = 86400, sSea = 1 / (P.TEMP_AIR_SEA_DAYS * day);
-                for (let j = 0; j < h; j++) {
-                    // stable where the ground loses more heat than the sun gives it (winter poleward of ≈ 45°): below
-                    // AIR_STABLE_SUN of daily sunlight, mixed above AIR_MIXED_SUN
-                    const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
-                    let x = (AIR_MIXED_SUN - q) / (AIR_MIXED_SUN - AIR_STABLE_SUN); x = x <= 0 ? 0 : x >= 1 ? 1 : x;
-                    const dark = x * x * (3 - 2 * x), sLand = 1 / ((P.TEMP_AIR_SUN_DAYS + (P.TEMP_AIR_DARK_DAYS - P.TEMP_AIR_SUN_DAYS) * dark) * day);
-                    for (let i = 0; i < w; i++) {
-                        const c = j * w + i, f = landFrac[c], ice = iceRamp(T[c]);
-                        airSig[c] = f * sLand + (1 - f) * ((1 - ice) * sSea + ice * sLand);
-                        airTheta[c] = T[c] + (DRY_LAPSE - lapseEff[c]) * f * landKm[c];
-                        airRhs[c] = airSig[c] * airTheta[c];
-                        airU[c] = (1 - fm) * uM[ma * G + c] + fm * uM[mb * G + c]; airV[c] = (1 - fm) * vM[ma * G + c] + fm * vM[mb * G + c];
-                    }
+        // (each time's air is solved once, before the months and the anchors read it — prepareAir, a step the GPU's solver
+        // can wait on — and kept: the sea ice and the drawn fields, worked out later when first asked for, read the months')
+        function* prepareAir(t) {
+            if (airCache.has(t)) return;
+            const T = harmonicsAt(t, tmp);
+            const delta = declination(t, tiltDeg);
+            const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
+            const day = 86400, sSea = 1 / (P.TEMP_AIR_SEA_DAYS * day);
+            for (let j = 0; j < h; j++) {
+                // stable where the ground loses more heat than the sun gives it (winter poleward of ≈ 45°): below
+                // AIR_STABLE_SUN of daily sunlight, mixed above AIR_MIXED_SUN
+                const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
+                let x = (AIR_MIXED_SUN - q) / (AIR_MIXED_SUN - AIR_STABLE_SUN); x = x <= 0 ? 0 : x >= 1 ? 1 : x;
+                const dark = x * x * (3 - 2 * x), sLand = 1 / ((P.TEMP_AIR_SUN_DAYS + (P.TEMP_AIR_DARK_DAYS - P.TEMP_AIR_SUN_DAYS) * dark) * day);
+                for (let i = 0; i < w; i++) {
+                    const c = j * w + i, f = landFrac[c], ice = iceRamp(T[c]);
+                    airSig[c] = f * sLand + (1 - f) * ((1 - ice) * sSea + ice * sLand);
+                    airTheta[c] = T[c] + (DRY_LAPSE - lapseEff[c]) * f * landKm[c];
+                    airRhs[c] = airSig[c] * airTheta[c];
+                    airU[c] = (1 - fm) * uM[ma * G + c] + fm * uM[mb * G + c]; airV[c] = (1 - fm) * vM[ma * G + c] + fm * vM[mb * G + c];
                 }
-                airA.set(airTheta); airAi.fill(0);
-                airSolver.setOperator(airSig, zero, airU, airV, 1, airFaces);
-                airSolver.solve(airRhs, zero, airA, airAi, { maxCycles: AIR_CYCLES, tol: 1e-4 });
-                A = new Float64Array(G);
-                for (let c = 0; c < G; c++) A[c] = airA[c] - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c];
-                airCache.set(t, A);
             }
+            airA.set(airTheta); airAi.fill(0);
+            airSolver.setOperator(airSig, zero, airU, airV, 1, airFaces);
+            yield airSolver.solve(airRhs, zero, airA, airAi, { maxCycles: AIR_CYCLES, tol: 1e-4 });
+            const A = new Float64Array(G);
+            for (let c = 0; c < G; c++) A[c] = airA[c] - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c];
+            airCache.set(t, A);
+        }
+        const airMass = (t, T) => {
+            const A = airCache.get(t);
+            if (!A) throw new Error(`temperature: the air at month ${t} was not prepared (prepareAir)`);
             for (let c = 0; c < G; c++) if (landFrac[c] > 0) T[c] += landFrac[c] * (A[c] - T[c]);
         };
 
@@ -566,12 +571,17 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // near snowy or icy ground under a weak sun — the winter inversion, the air by the ground colder than the air
         // above it.
         const tmp = new Float64Array(G);
-        const surfaceAt = (t, withInversion) => {
+        /** The yearly cycle's harmonics at time t (months) into `out`. */
+        function harmonicsAt(t, out) {
             const th = 2 * Math.PI * t / 12, co = Math.cos(th), sn = Math.sin(th), co2 = Math.cos(2 * th), sn2 = Math.sin(2 * th);
+            for (let c = 0; c < G; c++) out[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
+            return out;
+        }
+        const surfaceAt = (t, withInversion) => {
             const delta = declination(t, tiltDeg);
             const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
             const U0sq = P.TEMP_INVERSION_WIND * P.TEMP_INVERSION_WIND;
-            for (let c = 0; c < G; c++) tmp[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
+            harmonicsAt(t, tmp);
             if (airSolver) airMass(t, tmp);
             for (let j = 0; j < h; j++) {
                 const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
@@ -606,6 +616,10 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             // (the ground's height, or an ice sheet's dome where it stands higher; below sea level too — PITHEAT)
             for (let c = 0; c < core.size; c++) { const hg = href[c] === href[c] ? href[c] : 0, d = domeCore[c], hr = d > 0 && d > hg ? d : hg; out[offset + c] -= lapseCore[c] * hr; }
         };
+        if (airSolver) {
+            for (let m = 0; m < 12; m++) yield* prepareAir(m + 0.5);
+            for (const a of ctx.anchorMonths) yield* prepareAir(a + 0.5);
+        }
         const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size);
         const inversion = new Float32Array(12 * core.size);
         for (let m = 0; m < 12; m++) {
@@ -748,10 +762,10 @@ function ridgeFaces(ctx, core, g, ratio, landKm, hKm, floor = BLOCK_FLOOR) {
     return faces;
 }
 
-function solveRelaxed(solver, fr, fi, xr, xi, relax, tol) {
+function* solveRelaxed(solver, fr, fi, xr, xi, relax, tol) {
     const n = fr.length;
     const nr = new Float64Array(xr), ni = xi ? new Float64Array(xi) : new Float64Array(n);
-    const res = solver.solve(fr, fi, nr, ni, { tol, maxCycles: 30 });
+    const res = yield solver.solve(fr, fi, nr, ni, { tol, maxCycles: 30 });
     for (let c = 0; c < n; c++) {
         xr[c] += relax * (nr[c] - xr[c]);
         if (xi) xi[c] += relax * (ni[c] - xi[c]);

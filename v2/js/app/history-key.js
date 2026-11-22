@@ -22,6 +22,7 @@
 import { historyGPU } from '../gpu/history-gpu.js';
 import { erodeGPU } from '../gpu/erode-gpu.js';
 import { climateCellsProbe } from '../gpu/climate-cells.js';
+import { climateSolverProbe } from '../gpu/climate-solver.js';
 import { coastRaysProbe } from '../gpu/coast-rays.js';
 import { historyErodeSettings } from '../tectonics/step/erode-settings.js';
 
@@ -119,7 +120,7 @@ const gpuMemo = new Map();      // (scope → {gpu, hex})
  * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none.
  * `scope` (lane gpucells; sessrumnir's ruling 2026-11-22): 'history' names only the kernels a history runs (the erosion's), so
  * a GPU that differs only in the finish's kernels neither splits nor invalidates the history cache (gpuscan: keep the history's
- * GPU footprint small) — 'gpu erosion v4' since lane marine3 (the waves are the history's now); 'finish' adds the finish's own — the climate per cell, the coast's rays —
+ * GPU footprint small) — 'gpu erosion v4' since lane marine3 (the waves are the history's now); 'finish' adds the finish's own — the climate per cell, the coast's rays, the climate's solver (lane gpuclimate) —
  * for the finish cache's key (app/finish-key.js `gpu`). @returns {Promise<string>} 12 hex digits
  */
 export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU, scope = 'history') {
@@ -166,8 +167,8 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     // (the finish's scope adds the climate per cell and the coast's waves — gpu/climate-cells.js, gpu/coast-rays.js: their f32
     // exp, pow, tan, acos, atan2 and noise. The world ocean's labels, gpu/labels.js, are integers: every GPU answers them alike)
     if (scope === 'finish') {
-        H.str('finish: climate cells v1 + coast rays v1');
-        for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z)]) H.view(a);
+        H.str('finish: climate cells v1 + coast rays v1 + climate solver v1');
+        for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z), ...await climateSolverProbe(opened.device)]) H.view(a);
     } else if (scope !== 'history') throw new Error(`gpuFingerprint: unknown scope '${scope}'`);
     const hex = H.hex().slice(0, 12);
     gpuMemo.set(scope, { gpu, hex });

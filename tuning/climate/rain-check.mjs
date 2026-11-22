@@ -28,7 +28,7 @@ import { basinOf, TUNED_BASINS } from './lib/regions.mjs';
 import { elevToHeightKm } from '../../js/color-map.js';
 import { buildSphere } from '../../js/sphere-mesh.js';
 import { makeRng } from '../../js/rng.js';
-import { computeClimate, aggregateSurface, cellLatLon } from '../../v2/js/climate/core.js';
+import { computeClimate, aggregateSurface, cellLatLon, syncStage } from '../../v2/js/climate/core.js';
 import { energyBalanceTemperature } from '../../v2/js/climate/temperature.js';
 import { derivedCirculation } from '../../v2/js/climate/circulation.js';
 import { windDrivenOcean } from '../../v2/js/climate/ocean.js';
@@ -66,7 +66,7 @@ const obsWinds = observedWinds(obs.u10, obs.v10)(ctxEarth);
 const cellLat = (c) => grid.lat[Math.floor(c / grid.w)], cellLon = (c) => grid.lon[c % grid.w];
 
 // ── Open-loop input: "real where observed" temperature ──
-const phase2 = energyBalanceTemperature()(ctxEarth, obsWinds);
+const phase2 = syncStage(energyBalanceTemperature())(ctxEarth, obsWinds);
 const obsT = { monthly: new Float32Array(12 * G), monthlySL: new Float32Array(12 * G), seaIce: new Float32Array(12 * G) };
 let filled = 0;
 for (let m = 0; m < 12; m++) for (let c = 0; c < G; c++) {
@@ -226,7 +226,7 @@ function named(P) {
 }
 
 // ── The open loop: observed temperature, with the observed winds and with the circulation stage's own winds ──
-const rainStage = columnWaterRain();
+const rainStage = syncStage(columnWaterRain());
 const derivedWinds = derivedCirculation()(ctxEarth, obsT);
 function runOpen(winds = obsWinds) { return rainStage(ctxEarth, winds, obsT); }
 
@@ -328,7 +328,7 @@ console.log(`\n  Truth swap — observed temperature + new rain → Köppen: ${(
 
 // ── Closed loop: every stage new ──
 const tc = performance.now();
-const closed = computeClimate(input, { stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() } });
+const closed = computeClimate(input, { stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), ocean: syncStage(windDrivenOcean()), rain: syncStage(columnWaterRain()) } });
 const closedMs = performance.now() - tc;
 const Sc = score(closed.months.P);
 const closedAcc = compareClasses(truth, closed.cell.koppen).exact;
@@ -350,7 +350,7 @@ const pbox = (P, g, la0, la1, lo0, lo1, months, landFrac, wantLand = true) => {
 for (const kind of ['midlat', 'tropical', 'supercontinent', 'mountains']) {
     if (!TEST_PLANETS[kind]) continue;
     const p = buildTestPlanet(kind, 40000, buildSphere, makeRng(7));
-    const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { stages: { temperature: energyBalanceTemperature(), circulation: derivedCirculation(), ocean: windDrivenOcean(), rain: columnWaterRain() } });
+    const res = computeClimate({ xyz: p.xyz, elevKm: p.elevKm, axes: p.axes }, { stages: { temperature: syncStage(energyBalanceTemperature()), circulation: derivedCirculation(), ocean: syncStage(windDrivenOcean()), rain: syncStage(columnWaterRain()) } });
     const P = res.months.P, g = res.grid, lf = res.surface.landFrac, list = [];
     const B = (la0, la1, lo0, lo1, months = MONTHS12, wantLand = true) => pbox(P, g, la0, la1, lo0, lo1, months, lf, wantLand);
     const chk = (text, ok, detail) => list.push({ text, ok, detail });

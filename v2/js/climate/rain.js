@@ -32,7 +32,7 @@
 
 import { SNOW_MELT_MM_PER_C, LATENT, PT_ALPHA, SURFACE_SW, NET_LW, ALBEDO_LAND, ALBEDO_SNOW, satSlope, PSYCHRO } from './water.js';
 import { LatLonGrid, coarsenField, refineField } from './grid.js';
-import { HelmholtzSolver } from './solver.js';
+import { solverOf } from './solver.js';
 import { atAnchors } from './inputs.js';
 import { PARAMS } from './config.js';
 import { dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
@@ -185,7 +185,7 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
  * { monthly (surface air at the reference height), monthlySL (sea level: the sea surface), seaIce } (12 × G).
  */
 export function columnWaterRain() {
-    return (ctx, winds, temperature, init = null) => {
+    return function* (ctx, winds, temperature, init = null) {
         const t0 = performance.now();
         const P_ = PARAMS;
         // (the page's Precipitation: the planet's water cycle faster or slower — its evaporation, from sea and land, scaled;
@@ -214,20 +214,20 @@ export function columnWaterRain() {
         for (let c = 0; c < G; c++) share[c] = winds.surfaceShareLand != null ? winds.surfaceShare + (winds.surfaceShareLand - winds.surfaceShare) * land[c]
             : winds.surfaceShare ?? 0.75 - 0.3 * land[c];
 
-        const solver = new HelmholtzSolver(g, 0, 0, { conservative: true });
+        const solver = solverOf(ctx)(g, 0, 0, { conservative: true });
         // Rising ground blocks the water. The solve is for the sea-level-equivalent column W* (the column over ground
         // at height h holds W = β·W*, β = e^{−h/H}); what crosses a face between two cells — carried or mixed — is the
         // part of the column above the higher of the two, β_face = min β. So water piles up (and rains) windward of
         // mountains, and only a share gets over them. H per point in the year below (terrainShare).
         const Ht = P_.RAIN_TERRAIN_HEIGHT_KM * 1000;
-        const poisson = new HelmholtzSolver(g, 1, 1);
-        const carrier = new HelmholtzSolver(g, 0, 0);                 // air-mass properties carried by the surface wind
+        const poisson = solverOf(ctx)(g, 1, 1);
+        const carrier = solverOf(ctx)(g, 0, 0);                 // air-mass properties carried by the surface wind
         const zero = new Float64Array(G);
         poisson.setOperator(new Float64Array(G).fill(1e-4), zero, null, null, 0);
 
         const chi = new Float64Array(G);
         /** The divergent part ∇χ of a wind field, from ∇²χ = ∇·u (a slightly damped Poisson solve on the sphere). */
-        function divergentPart(u, v) {
+        function* divergentPart(u, v) {
             const dv = new Float64Array(G), chiI = new Float64Array(G);
             let mean = 0, aw = 0;
             for (let j = 0; j < h; j++) {
@@ -241,7 +241,7 @@ export function columnWaterRain() {
             }
             mean /= aw;
             for (let c = 0; c < G; c++) dv[c] = -(dv[c] - mean) * R_PLANET;                      // −R²∇·u
-            poisson.solve(dv, zero, chi, chiI, { maxCycles: P_.RAIN_POISSON_CYCLES, tol: 1e-4 });     // χ starts from the last point's
+            yield poisson.solve(dv, zero, chi, chiI, { maxCycles: P_.RAIN_POISSON_CYCLES, tol: 1e-4 });     // χ starts from the last point's
             const ud = new Float64Array(G), vd = new Float64Array(G);
             for (let j = 0; j < h; j++) {
                 const cj = Math.max(0.02, cosLat[j]);
@@ -268,7 +268,7 @@ export function columnWaterRain() {
 
             // The wind that carries the water: the rotational part of the wind above the friction layer moves the whole
             // column; the divergent part moves only the water of the layer that converges or spreads (setWind below).
-            const { ud, vd } = divergentPart(u, v);
+            const { ud, vd } = yield* divergentPart(u, v);
             p.ud = ud; p.vd = vd;
             for (let c = 0; c < G; c++) {
                 p.ur[c] = P_.RAIN_WIND_ROT * (u[c] - ud[c]) / share[c];
@@ -325,7 +325,7 @@ export function columnWaterRain() {
                 Sloc[c] = Math.min(STABLE_MAX_K, Math.max(-UNSTABLE_MAX_K, sv)) / STABLE_RELAX_S; Sair[c] = Sloc[c] * STABLE_RELAX_S;
             }
             carrier.setOperator(new Float64Array(G).fill(1 / STABLE_RELAX_S), zero, u, v, 1);
-            carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: P_.RAIN_CARRIER_CYCLES, tol: 1e-3 });
+            yield carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: P_.RAIN_CARRIER_CYCLES, tol: 1e-3 });
 
             const delta = declination(ctx.anchorMonths[k] + 0.5, ctx.options.tiltDeg ?? 23.44);
             const sun = Float64Array.from(g.lat, l => dailyInsolation(l * DEG, delta));
@@ -453,7 +453,7 @@ export function columnWaterRain() {
          * and the soil water stored at this point in the year (kg m⁻² s⁻¹, per unit land area), or null (pass 1: the
          * land evaporates only the month's rain). Returns { P, E, balance }.
          */
-        function solveAnchor(k, Wv, ground) {
+        function* solveAnchor(k, Wv, ground) {
             const p = prep[k], Ws = p.Ws, rate = p.rate, lift = p.lift, beta = p.beta, faces = p.faces;
             // Rain-out rate and its slope in W. In the air: (Ws/τ)·rate·e^{a(r−1)}, continued linearly beyond R_MAX. Over
             // rising ground: the lifted water λ·W, of which less condenses the drier the air (it must first be lifted
@@ -497,7 +497,7 @@ export function columnWaterRain() {
                 }
                 setWind(p, Wv);
                 solver.setOperator(sigma, zero, p.gu, p.gv, 1, faces);
-                const res = solver.solve(src, srcI, Wstar, Wi, { maxCycles: P_.RAIN_CYCLES, tol: 1e-4 });
+                const res = yield solver.solve(src, srcI, Wstar, Wi, { maxCycles: P_.RAIN_CYCLES, tol: 1e-4 });
                 cycles += res.cycles; newton++;
                 let change = 0, wsum = 0; sp = 0; se = 0;
                 for (let j = 0; j < h; j++) {
@@ -527,7 +527,7 @@ export function columnWaterRain() {
         for (let k = 0; k < K; k++) {
             if (warm) Wv = Float64Array.from(warm[k]);
             if (k > 0 || warm) for (let c = 0; c < G; c++) Wv[c] = Math.min(Wv[c], 1.2 * prep[k].Ws[c]);
-            results.push(solveAnchor(k, Wv, null));
+            results.push(yield* solveAnchor(k, Wv, null));
             Wk.push(Float64Array.from(Wv));
         }
         // The ground through the year (from pass 1's rain, two turns for a steady cycle): snow piles up below freezing
@@ -551,7 +551,8 @@ export function columnWaterRain() {
                 }
             }
             prof.ground = performance.now() - tq; tq = performance.now();
-            results = Wk.map((Wa, k) => solveAnchor(k, Wa, ground[k]));
+            results = [];
+            for (let k = 0; k < K; k++) results.push(yield* solveAnchor(k, Wk[k], ground[k]));
             prof.pass2 = performance.now() - tq; prof.newton2 = newton - prof.newton1; tq = performance.now();
         }
 

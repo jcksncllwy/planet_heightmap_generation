@@ -30,7 +30,7 @@
 //    below a cold, fresh surface layer (the Arctic's halocline) that keeps its heat from the ice.
 
 import { LatLonGrid, coarsenField, refineField, refineForDrawing } from './grid.js';
-import { HelmholtzSolver } from './solver.js';
+import { solverOf } from './solver.js';
 import { PARAMS } from './config.js';
 
 const OMEGA_ROT = 7.292e-5;
@@ -137,7 +137,7 @@ function overturningHeat(g, isSea, channels, pw) {
 }
 
 export function windDrivenOcean() {
-    return (ctx, circ, temperature) => {
+    return function* (ctx, circ, temperature) {
         const t0 = performance.now();
         const P = { ...PARAMS };
         const core = ctx.grid;
@@ -228,10 +228,10 @@ export function windDrivenOcean() {
         }
         // friction: east–west sets the western boundary current's width; north–south kept small so the open ocean
         // keeps its Sverdrup balance (isotropic friction wide enough for the grid smears the gyres — Stommel box test)
-        const solver = new HelmholtzSolver(g, P.OCEAN_FRICTION_NS, r);
+        const solver = solverOf(ctx)(g, P.OCEAN_FRICTION_NS, r);
         solver.setOperator(sigma, zeroI, gu, gv, 1);
         /** The gyres of a wind stress (linear in it): Ψ, and the depth-integrated transport U = −∂Ψ/∂y, V = ∂Ψ/∂x. */
-        const gyres = (sx, sy, sCurl) => {
+        function* gyres(sx, sy, sCurl) {
             const { psiRef } = channelsOf(sx);
             // Solve for the departure Ψ' from the held values (Ψ = Ψ_ref + Ψ'), so the convergence test measures the open
             // sea and not the large pinning terms: Ψ' = 0 where held, A·Ψ' = f − A·Ψ_ref over the sea.
@@ -243,7 +243,7 @@ export function windDrivenOcean() {
             const psi = new Float64Array(G), psiI = new Float64Array(G);
             // (to a millionth: the 1e-10 it had differed by a few millionths of a °C and no Köppen class on Earth or three
             // test planets, for ≈ 3 more V-cycles a solve)
-            const stats = solver.solve(f, fi, psi, psiI, { maxCycles: 80, tol: 1e-6 });
+            const stats = yield solver.solve(f, fi, psi, psiI, { maxCycles: 80, tol: 1e-6 });
             for (let c = 0; c < G; c++) psi[c] += psiRow[c];
             const U = new Float64Array(G), V = new Float64Array(G);
             for (let j = 0; j < h; j++) {
@@ -257,15 +257,15 @@ export function windDrivenOcean() {
                 }
             }
             return { psi, U, V, stats };
-        };
-        const mean = gyres(tx, ty, curl), psi = mean.psi, U = mean.U, V = mean.V, solveStats = mean.stats;
+        }
+        const mean = yield* gyres(tx, ty, curl), psi = mean.psi, U = mean.U, V = mean.V, solveStats = mean.stats;
 
         // ── Each month's currents: the mean, plus the month's part of the annual cycle where the gyres can follow it —
         // whole to OCEAN_SEASON_FULL_DEG, fading (smoothly) to nothing at OCEAN_SEASON_ZERO_DEG ──
         const UM = new Float64Array(12 * G), VM = new Float64Array(12 * G);
         for (let m = 0; m < 12; m++) { UM.set(U, m * G); VM.set(V, m * G); }
         if (seasonal) {
-            const re = gyres(tx1r, ty1r, curlOf(tx1r, ty1r)), im = gyres(tx1i, ty1i, curlOf(tx1i, ty1i));
+            const re = yield* gyres(tx1r, ty1r, curlOf(tx1r, ty1r)), im = yield* gyres(tx1i, ty1i, curlOf(tx1i, ty1i));
             const fade = new Float64Array(h);
             for (let j = 0; j < h; j++) {
                 const x = Math.max(0, Math.min(1, (Math.abs(g.lat[j]) - P.OCEAN_SEASON_FULL_DEG) / Math.max(1e-6, P.OCEAN_SEASON_ZERO_DEG - P.OCEAN_SEASON_FULL_DEG)));
