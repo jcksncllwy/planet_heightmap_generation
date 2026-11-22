@@ -12,6 +12,7 @@
 //     down (ocean / not ocean); flagged (CrustFlag.TRENCH) km; CONVERGING km (forced contact: closing with no slab).
 //   - CONSUMPTION: at each front cell, the closing rate × the cell row → km²/yr of floor going down, binned by the incoming
 //     floor's age; the same at CONVERGING contacts (crust lost with no slab).
+//   - THE ARCS: world.budget's arcAddedKm3, arcRootAddedKm3, arcRecycledKm3, arcScrapedKm3 since the last frame (km³).
 //   - THE FLOOR'S AGE: ocean-crust area, mean age, share older than 180 Myr, the age histogram, production (floor younger than
 //     10 Myr ÷ 10 Myr).
 //   - WHERE OLD FLOOR (>180 Myr) SITS (and, apart: how much is on the passive background plate, how much is dated before the
@@ -177,6 +178,9 @@ function sample(f) {
     return fr;
 }
 
+// the arcs' books since the last frame (world.budget, km³: rock-book.js) — arc magmatism per km of front, against Earth's
+const ARC_KEYS = ['arcAddedKm3', 'arcRootAddedKm3', 'arcRecycledKm3', 'arcScrapedKm3'];
+let lastArc = {};
 const frames = [], t0 = performance.now();
 await simulate(world, {
     untilMyr: MYR, snapshotEveryMyr: 10, keepFrames: false,
@@ -184,6 +188,8 @@ await simulate(world, {
     onFrame: f => {
         if (Math.round(f.time) % EVERY) return;
         const fr = sample(f); frames.push(fr);
+        fr.arcKm3 = Object.fromEntries(ARC_KEYS.map(k => [k, +(((world.budget?.[k] ?? 0) - (lastArc[k] ?? 0))).toPrecision(5)]));
+        lastArc = Object.fromEntries(ARC_KEYS.map(k => [k, world.budget?.[k] ?? 0]));
         process.stderr.write(`t ${fr.t}  front ${fr.trench.front}  overriding ${fr.trench.overriding}  conv ${fr.trench.converging}  mean age ${fr.floor.meanAge}  >180 ${fr.floor.over180}  (${((performance.now() - t0) / 1000).toFixed(0)} s)\n`);
     },
 });
