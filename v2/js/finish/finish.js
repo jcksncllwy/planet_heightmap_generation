@@ -28,11 +28,13 @@ import { floodSea } from '../terrain/carve.js';
 import { carveTerrain, forgetMesh } from '../terrain/carve.js';
 import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimate } from '../climate/climate.js';
-import { CORE_DEFAULTS, cellClimate } from '../climate/core.js';
+import { CORE_DEFAULTS } from '../climate/core.js';
+import { cellClimateGPU, waterCellsGPU } from '../gpu/climate-cells.js';
+import { finishDevice } from '../gpu/finish-gpu.js';
 import { interpolationMatrix } from '../climate/seasons.js';
 import { fuEvaporation, snowYear, waterMonths, monthPET, SOIL_MM } from '../climate/water.js';
 import { pageClimate } from '../evolution/climate-fields.js';
-import { cellStatsCollector, STAT_KEYS } from '../climate/cell-stats.js';
+import { STAT_KEYS } from '../climate/cell-stats.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { worldOcean } from '../terrain/world-ocean.js';
 import { worldOcean as openSeaAt } from '../terrain/world-ocean.js';
@@ -126,12 +128,16 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     let ocean0 = oceanMask(mesh, z), climateLand = new Uint8Array(n);
     for (let c = 0; c < n; c++) climateLand[c] = ocean0[c] ? 0 : 1;
     const gamma = CORE_DEFAULTS.lapseRateCPerKm;
+    // (the GPU the climate per cell runs on — gpu/climate-cells.js; a GPU is required: refused clearly here where there is none)
+    const device = await finishDevice();
     // (civ: the civ layer's own fields gathered too — v2/js/civ/civ-finish.js, loaded only then; the People switch)
     const CF = civ ? await import('../civ/civ-finish.js') : null;
     // (the climate on a surface — its land all the world ocean `ocean0` does not reach — and all the finish reads of it: run here
     // on the surface, and again after the erosion when a pit it read as land ends as sea: the finished sea's climate, below)
-    const climateOn = (z, climateLand, ocean0) => {
-        let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up', land: climateLand }, climateOptions);
+    const climateOn = async (z, climateLand, ocean0) => {
+        // (the climate's step 5, each cell at its own height, on the GPU: gpu/climate-cells.js cellClimateGPU)
+        let res = planetClimate({ xyz: mesh.xyz, elevKm: z, axes: 'z-up', land: climateLand }, { ...climateOptions, cells: false });
+        res.cell = await cellClimateGPU(device, res, mesh.xyz, z, climateLand, climateOptions);
         const { koppen, tAnnual: tAnn, pAnnual: pAnn, lat, lon } = res.cell, G = res.grid.size;
         for (let c = 0; c < n; c++) if (pAnn[c] > F.rainMaxMm) pAnn[c] = F.rainMaxMm;     // (the climate's rare wet hotspots)
         // (the warmest month at sea level, and the winds, on the climate's grid)
@@ -180,8 +186,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         // (lane #5) and for the ice's mass (U9). What it skips: the year is the climate's mean month by month — a month a
         // little below freezing on the mean has thawing days (positive degree-days from the monthly spread, Braithwaite 1985),
         // and a store that melts away years later; the snow's sublimation and wind drift; no store carried between years)
-        const liquid = thawedWater(res.months, res.surface.meanLandKm, climGrid, G, z, pAnn, lat, lon, gamma, F, n, climateLand);
-        stats.snowStore = liquid.stats;
+        // On the GPU, with the year's runoff below (gpu/climate-cells.js waterCellsGPU), once the grid's evaporation is summed.
+        stats.snowStore = null;
         // (each place's runoff shared over the months — rain, snow kept until it melts, less a share of each month's
         // evaporation; a share, where it is humid, through the ground, which drains back slowly — and each month's dryness)
         const monthly = runoffMonths(res.months, petM, G, F);
@@ -199,18 +205,21 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
             if (wgt > 0) { gP += wgt * pp; gE += wgt * 12 * e / KA; }
         }
         stats.climateRunoffShare = gP > 0 ? +((gP - gE) / gP).toFixed(3) : null;
+        // (the thaw gate, above, and each cell's share of its liquid water to the air — Budyko's curve in Fu's form against the
+        // year's potential evaporation, at least F.petMinMm: climate/water.js fuEvaporation — on the GPU)
+        const liquid = await waterCellsGPU(device, { grid: climGrid, months: res.months, hLand: res.surface.meanLandKm, petG, lat, lon, z, land: climateLand, pAnn,
+            gamma, meltPerC: F.snowMeltMmPerC, petMin: F.petMinMm, budykoW: F.budykoW });
+        stats.snowStore = liquid.stats;
         // (debug: the grid's water for the ledger's studies — tools/water-study.mjs)
         const waterGrid = debug ? { grid: res.grid, surface: res.surface, months: res.months, petM, Eland: RS?.Eland ?? null, frontal: RS?.frontal ?? null, rainP: RS?.P ?? null, anchors: KA, share: monthly.share } : null;
         // (kept for the finished moment's own climate, at the end: the page's grid fields, and the grid's climate to finish
         // each cell again on the finished surface)
         const pageC = pageClimate(res, { cells: false }), gridClimate = { grid: res.grid, surface: res.surface, months: res.months, cell: { lat, lon } };
-        const runoff = new Float32Array(n), pet = new Float32Array(n);
+        const { runoff, pet } = liquid;
         let sumR = 0, sumP = 0, sumK = 0, sumE = 0, sumEc = 0, landN = 0;
         for (let c = 0; c < n; c++) {
             if (!(pAnn[c] === pAnn[c])) continue;
-            const P = Math.max(0, liquid.rain[c]), E0 = Math.max(F.petMinMm, bilinear(climGrid, petG, lat[c], lon[c]));
-            pet[c] = E0;
-            runoff[c] = P - fuEvaporation(P, E0, F.budykoW);
+            const P = Math.max(0, liquid.rain[c]);
             if (z[c] > 0) {
                 sumR += runoff[c]; sumP += Math.max(0, pAnn[c]); sumK += liquid.store[c]; landN++;
                 sumE += P - runoff[c];
@@ -249,7 +258,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
             runoff, pet, skyKept, skyRunoff, sumR, sumP, landN };
     };
     let { koppen, tAnn, pAnn, lat, lon, G, climGrid, warmSl, waveIn, wind, travelFlow, petM, wetMonths, liquid, monthly, waterGrid, pageC, gridClimate,
-        runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = climateOn(z, climateLand, ocean0);
+        runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = await climateOn(z, climateLand, ocean0);
     lap('climate');
     // (the surface and the sea that climate read, kept for its re-run on the pits that end as sea, below — the straits cut next write z)
     const climZ = z.slice(), climSea = ocean0.slice();
@@ -420,7 +429,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
             climateLand = climateLand.slice();                        // (a new mask: the first climate's results keep theirs)
             for (const c of pit) { climateLand[c] = 0; climSea[c] = 1; }
             ({ koppen, tAnn, pAnn, lat, lon, G, climGrid, warmSl, waveIn, wind, travelFlow, petM, wetMonths, liquid, monthly, waterGrid, pageC, gridClimate,
-                runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = climateOn(climZ, climateLand, climSea));
+                runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = await climateOn(climZ, climateLand, climSea));
             stats.climateRerun = { pitsKm2: Math.round(pits * cellKm2), ms: Math.round(performance.now() - t1), ...climateShift(was, pageC) };
             lap('climate');
         }
@@ -512,11 +521,14 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const rainTarget = coverRain(pAnn, lat, lon, c => land[c] === 1, new LatLonGrid(0.5), seed), P12c = new Float64Array(12);
     // (and its variety: tints between a few natural colours, by noise — its own stream)
     const varyNoise = new FastNoise(((seed | 0) * 0x51f3 + 0x3a9) >>> 0), vy = newVariety(), xyz = mesh.xyz;
-    // (and its measures beyond Köppen — cell-stats.js, one byte each — from the climate's own twelve months)
-    const cellStats = cellStatsCollector(n, c => lat[c] * Math.PI / 180, { bytes: true });
+    // (each land cell's twelve months, its year, its Köppen class and its measures beyond Köppen — cell-stats.js, one byte
+    // each — on the GPU: gpu/climate-cells.js cellClimateGPU; the cover below reads the months cell by cell)
     const civCells = CF?.civCollector(n, c => lat[c] * Math.PI / 180);
-    const cellsClimate = cellClimate(gridClimate, mesh.xyz, C.z, land, {}, (c, T12, P12) => {
-        cellStats.add(c, T12, P12);
+    const cellsClimate = await cellClimateGPU(device, gridClimate, mesh.xyz, C.z, land, {}, { months: true, stats: true });
+    const T12 = new Float64Array(12), P12 = new Float64Array(12), { cells: landCells, months: M12 } = cellsClimate;
+    for (let r = 0; r < landCells.length; r++) {
+        const c = landCells[r];
+        for (let m = 0; m < 12; m++) { T12[m] = M12[24 * r + m]; P12[m] = M12[24 * r + 12 + m]; }
         civCells?.add(c, T12, P12);
         landCover(T12, coverRainScale(P12, rainTarget[c], P12c), cv, F, COVER, lat[c]);
         placeVariety(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], varyNoise, vy);
@@ -530,7 +542,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
             for (let v = 0; v < 3; v++) coverRgb(cvWet, v, ripSat[v], 3 * c, undefined, vy);
         } else for (let v = 0; v < 3; v++) { const S = sat[v], D = ripSat[v], o = 3 * c; D[o] = S[o]; D[o + 1] = S[o + 1]; D[o + 2] = S[o + 2]; }
         cover[c] = cv.biome | (cv.snow[1] >= 0.5 ? 32 : 0) | (cv.snow[2] >= 0.5 ? 64 : 0);
-    });
+    }
     // (and toward each climate's own colours, regionally — on a coarser grid: the correction is smooth, ~100 km)
     biasTowardClimate(sat, cellsClimate.koppen, lat, lon, c => land[c] === 1 && cellsClimate.koppen[c] > 0, new LatLonGrid(0.5), seed);
     lap('final climate');
@@ -538,7 +550,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     for (let c = 0; c < n; c++) flow[c] = Math.log10(Math.max(1, Hy.area[c]));
     delete litho.column;
     return { mesh, z: C.z, ocean, litho, lake: Hy.lake, lakeLevel: Hy.lakeLevel, rivers: Hy.rivers, ms, stats, glaciated: I.ice,
-        climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellStats.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
+        climate: { page: pageC, cell: { koppen: cellsClimate.koppen, tAnnual: cellsClimate.tAnnual, pAnnual: cellsClimate.pAnnual, sat, cover, stats: cellsClimate.stats, mottleSeed: ((seed | 0) * 0x2f71 + 0x6d) >>> 0,
             flow, young, rivers: Hy.rivers, ripSat } },
         civ: civ ? { ice: I.ice, loess: W.loess, erg: W.erg, ...civCells.fields, flow: travelFlow } : null,              // (for the civ layer: v2/js/civ/civ-page.js)
         layers: debug ? { wave: Co.wave, coast: Co.change, ice: I.ice, flood: I.floods.flood, soft, basin: I.basin, sink: B.sink, erg: W.erg, loess: W.loess, basalt, koppen, before, rain: pAnn, lat, lon, q: Hy.q, recv: Hy.recv, terminal: Hy.terminal, lakeSrc: Hy.lakeSrc, hollow: Hy.hollow, hollowInfo: Hy.hollowInfo, tectonic: B.tectonic, warmSl, runoff, pet, liquid: liquid.rain, snowStore: liquid.store, frozen: liquid.frozen, thaw: liquid.thaw, tAnn, waterGrid } : null };

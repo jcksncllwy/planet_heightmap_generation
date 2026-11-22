@@ -130,22 +130,14 @@ export function computeClimate(input, options = {}) {
     const months = synthesizeGrid(grid, anchors, K, o.stages ? { ...o, precipScale: 1 } : o);
     lap('12 months (grid)');
 
-    // 5. Per terrain cell: sample, correct for height, classify
-    const cell = finishCells(grid, surface, months, lat, lon, input.elevKm, land, o, input.xyz, o.onCell ?? null);
+    // 5. Per terrain cell: sample, correct for height, classify — or, with o.cells false, left to the caller (the finish
+    // runs this step on the GPU: gpu/climate-cells.js cellClimateGPU; `cell` then holds only lat and lon)
+    const cell = o.cells === false ? { lat, lon } : finishCells(grid, surface, months, lat, lon, input.elevKm, land, o, input.xyz, o.onCell ?? null);
     lap('terrain cells + Köppen');
 
     return { grid, surface, anchorMonths, anchors, months, cell, stages, timing };
 }
 
-/**
- * Step 5 again, for new heights on the same terrain cells — the grid's climate kept (`res`: computeClimate's result, or
- * {grid, surface, months, cell: {lat, lon}} kept from it): e.g. a surface carved after its climate was calculated.
- * With the same heights and options it returns exactly res.cell. `onCell(r, T12, P12)`, if given, is shown each land
- * cell's twelve months (°C, mm; reused arrays).
- */
-export function cellClimate(res, xyz, elevKm, land, options = {}, onCell = null) {
-    return finishCells(res.grid, res.surface, res.months, res.cell.lat, res.cell.lon, elevKm, land, { ...CORE_DEFAULTS, ...options }, xyz, onCell);
-}
 
 // ── 1 ─────────────────────────────────────────────────────────────────────────
 export function cellLatLon(xyz, axes, lat, lon) {
@@ -247,26 +239,11 @@ function synthesizeGrid(grid, anchors, K, o) {
  * o.texture adds smooth noise of a fixed size in km to the rain — the local variety the grid can't resolve. Grid cells without data (e.g. land-only observations over the sea) are filled from the nearest
  * grid cell that has data. Only land cells are classified; the sea gets class 0.
  */
-function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCell = null) {
-    const G = grid.size, n = lat.length, w = grid.w, h = grid.h, gamma = o.lapseRateCPerKm;
-    // sea-level-reduced temperature and rain, with gaps filled
-    const valid = new Uint8Array(G);
-    for (let c = 0; c < G; c++) valid[c] = months.T[c] === months.T[c] ? 1 : 0;
-    const redirect = nearestValid(grid, valid);
-    const Tsl = new Float32Array(12 * G), P = new Float32Array(12 * G);
-    for (let c = 0; c < G; c++) {
-        const s = redirect[c];
-        if (s < 0) continue;
-        const href = surface.meanLandKm[s] === surface.meanLandKm[s] ? surface.meanLandKm[s] : 0;
-        for (let m = 0; m < 12; m++) { Tsl[m * G + c] = months.T[m * G + s] + gamma * href; P[m * G + c] = months.P[m * G + s]; }
-    }
-
-    const hLand = new Float32Array(G);
-    for (let c = 0; c < G; c++) { const s = redirect[c]; const v = s >= 0 ? surface.meanLandKm[s] : NaN; hLand[c] = v === v ? v : 0; }
+export function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCell = null) {
+    const n = lat.length, w = grid.w, h = grid.h, gamma = o.lapseRateCPerKm, G = grid.size;
+    const { Tsl, P, hLand } = seaLevelGrid(grid, surface, months, gamma);
     // texture: smooth noise fields on the unit sphere, a fixed size in km (so the same at every terrain resolution)
-    const tex = o.texture && (o.texture.tempC || o.texture.rain) ? o.texture : null;
-    const noiseT = tex?.tempC ? new FastNoise(o.seed * 7919 + 17) : null, noiseP = tex?.rain ? new FastNoise(o.seed * 7919 + 29) : null;
-    const texScale = tex ? 6371 / tex.km : 0;
+    const { tex, noiseT, noiseP, texScale } = cellTexture(o);
     const koppen = new Uint8Array(n);
     const tAnnual = new Float32Array(n).fill(NaN), pAnnual = new Float32Array(n).fill(NaN);
     const T12 = new Float64Array(12), P12 = new Float64Array(12);
@@ -304,6 +281,34 @@ function finishCells(grid, surface, months, lat, lon, elevKm, land, o, xyz, onCe
         if (onCell) onCell(r, T12, P12);
     }
     return { koppen, tAnnual, pAnnual, lat, lon };
+}
+
+/**
+ * Step 5's grid, before any terrain cell: the twelve months' temperature reduced to sea level (T + Γ·h_ref) and the rain,
+ * each grid cell without data (land-only observations over the sea) filled from the nearest that has it; and the grid's
+ * land height (km, 0 where none). finishCells and the GPU's (gpu/climate-cells.js) read the same. 12·G each, month-major.
+ */
+export function seaLevelGrid(grid, surface, months, gamma) {
+    const G = grid.size, valid = new Uint8Array(G);
+    for (let c = 0; c < G; c++) valid[c] = months.T[c] === months.T[c] ? 1 : 0;
+    const redirect = nearestValid(grid, valid);
+    const Tsl = new Float32Array(12 * G), P = new Float32Array(12 * G);
+    for (let c = 0; c < G; c++) {
+        const s = redirect[c];
+        if (s < 0) continue;
+        const href = surface.meanLandKm[s] === surface.meanLandKm[s] ? surface.meanLandKm[s] : 0;
+        for (let m = 0; m < 12; m++) { Tsl[m * G + c] = months.T[m * G + s] + gamma * href; P[m * G + c] = months.P[m * G + s]; }
+    }
+    const hLand = new Float32Array(G);
+    for (let c = 0; c < G; c++) { const s = redirect[c]; const v = s >= 0 ? surface.meanLandKm[s] : NaN; hLand[c] = v === v ? v : 0; }
+    return { Tsl, P, hLand };
+}
+
+/** Step 5's texture (o.texture): its noises — FastNoise streams from o.seed — and the scale that makes their size o.texture.km
+ *  on the unit sphere; null noises where it is off. */
+export function cellTexture(o) {
+    const tex = o.texture && (o.texture.tempC || o.texture.rain) ? o.texture : null;
+    return { tex, noiseT: tex?.tempC ? new FastNoise(o.seed * 7919 + 17) : null, noiseP: tex?.rain ? new FastNoise(o.seed * 7919 + 29) : null, texScale: tex ? 6371 / tex.km : 0 };
 }
 
 /** Breadth-first fill over the grid (longitude wraps): each cell → the nearest cell with valid[c] (−1 if none). */
