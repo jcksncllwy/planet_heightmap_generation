@@ -4,12 +4,12 @@
 // like swiss cheese. Every step, each plate keeps only its main piece (the one with the most land; by area when
 // there is no land); every other piece
 //   · ocean only                                          → is given to the passive ocean, to be subducted in time — as the
-//                                                            floor it is (branch founders, 2026-10-29: it was stamped
-//                                                            pre-history old, an artifact of the hand-over that held the
-//                                                            sea floor's age up), unless it lies at a convergent seam,
-//                                                            where it is overridden at once and goes as before (kept young
-//                                                            there, the 'laramide' slab read young and stayed flat 3–5 Myr
-//                                                            longer at 80K than at 40K)
+//                                                            floor it is, everywhere (branch founders, 2026-10-29: it was
+//                                                            stamped pre-history old; lane oldfloor, 2026-11-22: the stamp
+//                                                            kept at convergent seams, where the 'laramide' slab read young
+//                                                            and stayed flat 3–5 Myr longer at 80K than at 40K, is gone too —
+//                                                            it was the only flow of floor INTO the > 180 Myr class, +0.2–0.3
+//                                                            km²/yr, and 12–20 % of the old floor wore a pre-history date)
 //   · with land, near another plate (fragmentJoinKm)      → joins that plate (a terrane docking, in effect), and its
 //                                                            collisions with third plates go with it (ops/hand-collisions.js)
 //                                                            Its land that falls on the host's land is stacked onto the
@@ -49,7 +49,7 @@ export function tidyPlates(world) {
         pieces.sort((a, b) => b.land - a.land || b.cells.length - a.cells.length);
         for (const piece of pieces.slice(1)) {
             handled++;
-            if (piece.land === 0) { giveToBackground(world, plate, background, piece.cells, !atSeam(world, plate, piece.cells)); continue; }
+            if (piece.land === 0) { giveToBackground(world, plate, background, piece.cells); continue; }
             // which plate is it nearest to? (other plates' crust within a few world cells of it, nearer counting more)
             const contact = new Map(), P = [0, 0, 0], seen = new Set();
             let ring = [];
@@ -307,15 +307,15 @@ function freeCellWithin(to, mesh, q, hops, taken) {
 }
 
 /**
- * Hand raster cells of `plate` back to the passive ocean (as old ocean at their world positions — or, `keepAge`, as the
- * floor they are), pinholes filled.
+ * Hand raster cells of `plate` back to the passive ocean, at their world positions, as the floor they are (their own age:
+ * no stamp of pre-history age, which made old floor out of young), pinholes filled.
  */
-export function giveToBackground(world, plate, background, cells, keepAge = false) {
+export function giveToBackground(world, plate, background, cells) {
     const { xyz, index, adjOffset, adjList } = world.mesh, { owner } = world, P = [0, 0, 0];
     for (const c of cells) {
         if (background) {
             plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
-            const w = index.nearest(P[0], P[1], P[2]), age = keepAge ? plate.crust.formedAt[c] : Math.min(plate.crust.formedAt[c], -1);
+            const w = index.nearest(P[0], P[1], P[2]), age = plate.crust.formedAt[c];
             const before = cellRockKm3(world, plate.crust, c) + cellRockKm3(world, background.crust, w);
             if (!background.crust.mask[w]) background.crust.create(w, CrustType.OCEAN, age);
             mergeFloorRock(world, background.crust, w, plate.crust, c);                // (the rivers' rock on it goes with it)
@@ -332,13 +332,3 @@ export function giveToBackground(world, plate, background, cells, keepAge = fals
 }
 
 
-/** Does a piece of `plate` lie at a convergent seam — a cell of it beneath another plate, or closing on its neighbour faster than a locked contact? */
-function atSeam(world, plate, cells) {
-    const { mesh, owner, convergence, config } = world, { xyz, index } = mesh, P = [0, 0, 0];
-    for (const c of cells) {
-        plate.toWorld(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2], P);
-        const w = index.nearest(P[0], P[1], P[2]);
-        if (owner[w] !== plate.id || convergence[w] > config.boundaryActiveCmYr) return true;
-    }
-    return false;
-}
