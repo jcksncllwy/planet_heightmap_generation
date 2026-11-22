@@ -158,11 +158,13 @@ export class CrustRaster {
 
     /**
      * Cell `cell` has just stopped being ocean floor (an arc, a fore-arc island, a rift's or a collapse's continent made in
-     * place): the sediment an enclosed sea laid on that floor (seaFillKm, rock km over the cell) is now part of its column,
+     * place), or its continent thickens in a belt or a collision (step/heights.js buildHeights, ops/thicken.js — lane marine3:
+     * an epeiric sea's fill caught in a belt stood on it as free height, water-loaded, 9.6 km in phase 8a's history scene): the
+     * sediment a sea laid on it (seaFillKm, rock km over the cell) is now part of its column,
      * folded into its root (rootKm: the column's crust for continent and arc alike — step/crust-ledger.js addCellRock counts
      * it so, so the rock book sees fill become crust, none made or lost). Left as sea fill it read as rock still under a sea
      * on crust that stands, and drew as a tower once the terrain drew it water-loaded (marine-run, 831576 at 430 Myr: two
-     * cells with 14 km; lane contarea). seaFillKm is ocean floor's alone.
+     * cells with 14 km; lane contarea). seaFillKm is ocean floor's, and a drowned platform's (lane marine3 M3) until it thickens.
      */
     foldSeaFill(cell) {
         const f = this.seaFillKm[cell];
