@@ -70,7 +70,8 @@ const pipelinesOf = device => {
  * A rebounder whose ground stays on the GPU. `z`: the solver's ground buffer (n f32), read for the anchor now, so upload the
  * ground first. `lift`: the history's uplift buffer (km/Myr; null: none). `Kv`: the solver's packed k buffer (vec4: its .y the
  * rock's top, moved with the ground; null: no column). `ocean`: the world ocean now (setOcean when it changes). `te`: the
- * plate's elastic thickness on this mesh (km; null: FLEX.continentTeKm everywhere). `meshOf`: the coarser terrain meshes.
+ * plate's elastic thickness (km) on this mesh, or a mesh's by `te(mesh)` (asked on the mesh the plate is solved on: plateSolverGPU;
+ * null: FLEX.continentTeKm everywhere). `meshOf`: the coarser terrain meshes.
  * @returns {Promise<{ settle(at: number): Promise<number>, setOcean(o: Uint8Array): void, destroy(): void, last: Object }>}
  *   settle: the ground settled in place on the GPU at the run's time `at` (Myr); answers the km³ the ground moved by.
  */
@@ -83,7 +84,9 @@ export async function reboundGPU(device, { mesh, z, lift = null, Kv = null, ocea
     const liftB = lift ?? mk('lift0', 4 * n), KvB = Kv ?? mk('Kv0', 16);
     const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     own.push(uniform);
-    const setOcean = o => { device.queue.writeBuffer(oc, 0, Uint32Array.from(o)); plate.setOcean(o); };
+    // (the sea now, written at the next settling: plateSolverGPU's setOcean is the same)
+    let seaNow = null;
+    const setOcean = o => { seaNow = Uint32Array.from(o); plate.setOcean(o); };
     setOcean(ocean);
     // (the anchor: the ground as it stands now)
     { const e = device.createCommandEncoder(); e.copyBufferToBuffer(z, 0, anchor, 0, 4 * n); device.queue.submit([e.finish()]); }
@@ -95,6 +98,7 @@ export async function reboundGPU(device, { mesh, z, lift = null, Kv = null, ocea
     const settle = async (at = 0) => {
         uv.setFloat32(0, P.rebound, true); uv.setFloat32(4, seaLoadShare(F), true); uv.setFloat32(8, at - since, true); uv.setUint32(12, Kv ? 1 : 0, true);
         device.queue.writeBuffer(uniform, 0, ub);
+        if (seaNow) { device.queue.writeBuffer(oc, 0, seaNow); seaNow = null; }
         since = at;
         let e = device.createCommandEncoder(), p = e.beginComputePass();
         step(p, 'load', G.load);

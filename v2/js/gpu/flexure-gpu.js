@@ -250,8 +250,10 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX, onMes
     while (!onMesh && s0 + 1 < all.length && all[s0 + 1].edgeKm <= lMin) s0++;
     const meshes = all.slice(s0), L = [], nIn = mesh.numCells;
     const inMap = s0 ? mapOnto(meshes[0], mesh) : null, inT = inMap ? transposeOf(inMap, meshes[0].numCells) : null;
-    const logB = Float32Array.from(te, t => Math.log(stiffnessKm4(Math.max(0.5, t), F)));
-    let lb = inT ? tMean(inT, logB, meshes[0].numCells, Math.log(stiffnessKm4(F.continentTeKm, F))) : logB;
+    // (te: per cell of the mesh, or a mesh's own Te by `te(mesh)` — then asked on the solve's mesh only: finish.js elasticOn, its
+    // map from the history's mesh to 2.5M ~1 s that nothing else needs)
+    const logOf = t => Float32Array.from(t, v => Math.log(stiffnessKm4(Math.max(0.5, v), F)));
+    let lb = typeof te === 'function' ? logOf(te(meshes[0])) : inT ? tMean(inT, logOf(te), meshes[0].numCells, Math.log(stiffnessKm4(F.continentTeKm, F))) : logOf(te);
     for (let k = 0; k < meshes.length; k++) {
         const m = meshes[k], n = m.numCells, op = plateOperator(m);
         const map = k + 1 < meshes.length ? mapOnto(meshes[k + 1], m) : null, T = map ? transposeOf(map, meshes[k + 1].numCells) : null;
@@ -314,33 +316,32 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX, onMes
         }
     };
     const readS = async () => readBack(device, S);
-    let lastOcean = null;
+    let lastOcean = null, pending = null;
+    // (the buoyancy: Δρ/ρm, air or the sea's water filling the trough; coarse levels the mean by the transpose's weights)
+    const buoyancy = o => {
+        const sea = (F.mantleRho - F.waterRho) / F.mantleRho;
+        let s = new Float32Array(nIn);
+        for (let c = 0; c < nIn; c++) s[c] = o[c] ? sea : 1;
+        if (inT) s = tMean(inT, s, n, 1);
+        const e = device.createCommandEncoder(), pass = e.beginComputePass();
+        for (let k = 0; k < L.length; k++) {
+            const v = L[k], ms = new Float32Array(v.n);
+            for (let c = 0; c < v.n; c++) ms[c] = v.op.M[c] * s[c];
+            device.queue.writeBuffer(v.Ms, 0, ms);
+            step(pass, 'diag', v.G_.diag, v.n);
+            if (v.T) s = tMean(v.T, s, L[k + 1].n, 1);
+        }
+        pass.end();
+        device.queue.submit([e.finish()]);
+    };
 
     return {
         b: bIn, w, M: Mf, levels: L.map(v => v.n), cells: nIn,
         setOcean(o) {
-            // (the buoyancy: Δρ/ρm, air or the sea's water filling the trough; coarse levels the mean by the transpose's weights.
-            // Asked at every closed-basin judge: nothing to do when the sea has not moved)
+            // (the sea as it is now, kept for the next solve: the coast moves at every wave pass and closed-basin judge, the plate
+            // is asked only at a settling — ~0.25 s a time at 2.5M. Nothing to do when the sea has not moved)
             if (lastOcean && lastOcean.length === nIn && lastOcean.every((v, c) => v === (o[c] ? 1 : 0))) return;
-            lastOcean = Uint8Array.from(o, v => (v ? 1 : 0));
-            const sea = (F.mantleRho - F.waterRho) / F.mantleRho;
-            let s = new Float32Array(nIn);
-            for (let c = 0; c < nIn; c++) s[c] = o[c] ? sea : 1;
-            if (inT) s = tMean(inT, s, n, 1);
-            const e = device.createCommandEncoder(), pass = e.beginComputePass();
-            for (let k = 0; k < L.length; k++) {
-                const v = L[k], ms = new Float32Array(v.n);
-                for (let c = 0; c < v.n; c++) ms[c] = v.op.M[c] * s[c];
-                device.queue.writeBuffer(v.Ms, 0, ms);
-                step(pass, 'diag', v.G_.diag, v.n);
-                if (v.T) {
-                    const nc = L[k + 1].n, next = new Float32Array(nc);
-                    for (let c = 0; c < nc; c++) { let a = 0, sw = 0; for (let j = v.T.off[c]; j < v.T.off[c + 1]; j++) { a += v.T.w[j] * s[v.T.idx[j]]; sw += v.T.w[j]; } next[c] = sw > 0 ? a / sw : 1; }
-                    s = next;
-                }
-            }
-            pass.end();
-            device.queue.submit([e.finish()]);
+            lastOcean = Uint8Array.from(o, v => (v ? 1 : 0)); pending = lastOcean;
         },
         /**
          * The deflection under `b` into `w`: from zero, or `warm` from what `w` holds (the last solve's: the plate is linear and a
@@ -348,6 +349,7 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX, onMes
          * from that answer's residual, r = b − A w, and has less of the error to take out; the stop is still |r| ≤ mgTol |b|).
          */
         async solve(warm = false) {
+            if (pending) { buoyancy(pending); pending = null; }
             let e = device.createCommandEncoder(), pass;
             if (s0) { pass = e.beginComputePass(); step(pass, 'restrict', G.down, n); pass.end(); }
             if (warm) {

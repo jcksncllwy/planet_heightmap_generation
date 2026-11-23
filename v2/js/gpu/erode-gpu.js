@@ -853,7 +853,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     try {
         put('dropped', new Float32Array(n));
         // (the rebound settles the ground where it lies, on the GPU (rebound-gpu.js); its anchor is the ground as the run begins)
-        if (P.rebound > 0) { put('z', z); settle = await reboundGPU(device, { mesh, z: B.z, lift: B.lift, Kv: column ? B.Kv : null, ocean, te: o.teOf?.(mesh) ?? null, P }); }
+        if (P.rebound > 0) { put('z', z); settle = await reboundGPU(device, { mesh, z: B.z, lift: B.lift, Kv: column ? B.Kv : null, ocean, te: o.teOf ?? null, P }); }        // (Te asked on the plate's own mesh: rebound-gpu.js)
         // (the GPU settles the ground and hands it back for the CPU's closed-basin judge: z on both sides agree, no upload needed)
         // (the plate loads what the ground holds: the ground and what the last step dropped on it, which the next step's solve takes up
         // (Zt). Settled on the bare ground, a headwater's deposit — all it cut, laid back (G·a/A ≥ 1), F·its drop high: kilometres on a
