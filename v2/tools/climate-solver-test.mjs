@@ -3,6 +3,7 @@
 // (climate/solver.js: the zebra smoother, the deep hierarchy, the coarsest level exact, every solve converged), and the GPU
 // run twice, for determinism.
 //   node v2/tools/climate-solver-test.mjs [--world test|earth|finish:<key>] [--cells 160000] [--reps 2]
+//   [--no-ref] [--timing: each run's stages] [--save f | --against f: the GPU's months, to the bit against a saved run — a speed-up's check]
 // under Dawn (v2/tools/gpu-harness: `npm ci` there first). Worlds: `test` the climate-cells-test ground (continents, a 6 km
 // range past the ice line, a sunk basin); `earth` Earth's own surface (tuning/climate's mesh of the ETOPO picture); a
 // finished moment from the finish cache (tools/lib/finish-cache.mjs; its key). Exit 1 if a tolerance is missed or the GPU
@@ -104,7 +105,15 @@ for (let k = 0; k < REPS; k++) {
     kit.release();
     console.log(`GPU run ${k}: ${(performance.now() - t).toFixed(0)} ms; solves ${gs.calls}, cycles ${gs.cycles} (max ${gs.max}), ${gs.ms.toFixed(0)} ms`);
     if (k === 0) show(gs);
+    if (argv.includes('--timing')) console.log('   stages ms: ' + res.timing.map(t => `${t.stage} ${t.ms.toFixed(0)}`).join(' · '));
+    if (argv.includes('--timing')) for (const [k, st] of Object.entries(res.stages ?? {})) if (st?.profile) console.log(`   ${k} profile (last call): ` + Object.entries(st.profile).map(([a, b]) => `${a} ${(+b).toFixed(0)}`).join(' · ') + (st.ms ? ` · total ${st.ms.toFixed(0)}` : ''));
     runs.push(res);
+}
+// --save f / --against f: the GPU's months written out, or compared to the bit with a saved run (a speed-up's check)
+if (arg('--save', null)) (await import('node:fs')).writeFileSync(arg('--save'), Buffer.concat([Buffer.from(runs[0].months.T.buffer), Buffer.from(runs[0].months.P.buffer)]));
+if (arg('--against', null)) {
+    const was = (await import('node:fs')).readFileSync(arg('--against')), now = Buffer.concat([Buffer.from(runs[0].months.T.buffer), Buffer.from(runs[0].months.P.buffer)]);
+    check(was.equals(now), `the GPU's months equal the saved run's to the bit (${arg('--against')})`);
 }
 if (!ref) process.exit(0);
 compare('GPU float32 against float64', ref, runs[0]);

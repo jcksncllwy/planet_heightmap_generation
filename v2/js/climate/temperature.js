@@ -311,52 +311,8 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
                 lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * perennial[c];
                 surfKm[c] = Math.max(landKm[c], P.TEMP_ICE_DOME_KM * perennial[c]);
             }
-            for (let k = 0; k < NT; k++) {
-                const th = 2 * Math.PI * k / NT, co = Math.cos(th), sn = Math.sin(th), co2 = Math.cos(2 * th), sn2 = Math.sin(2 * th);
-                for (let c = 0; c < G; c++) Tk[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
-                for (let j = 0; j < h; j++) {
-                    const q = Q[k * h + j], ab = albBase[j], ar = absorb[j];
-                    const sx = 1 / (R_PLANET * Math.cos(g.lat[j] * Math.PI / 180) * dRad), sy = 1 / (R_PLANET * dRad);
-                    for (let i = 0; i < w; i++) {
-                        const c = j * w + i, T = Tk[c], f = landFrac[c];
-                        const sL = iceRamp(T - lapseEff[c] * surfKm[c]), sO = iceRamp(T);
-                        // snow on land: patchy seasonal snow (forests stand through it) reflects less than open snow;
-                        // snow that survives the summer — an ice sheet — like a sheet, and all year: a sheet stays white
-                        // through its summer melt (by the month's own snow alone, a sheet went dark the first month above
-                        // freezing and melted away)
-                        const albSnow = P.TEMP_ALBEDO_SNOW + (P.TEMP_ALBEDO_ICE - P.TEMP_ALBEDO_SNOW) * perennial[c];
-                        const sLa = Math.max(sL, perennial[c]);
-                        const cloP = cloudT ? f * (1 - sLa) * cloudT[k * G + c] : 0;    // clouds over snow-free land
-                        const r = ab + albVary[c] + cloP;
-                        const asBare = f * ALBEDO_LAND + (1 - f) * ALBEDO_SEA;
-                        const asSurf = asBare + f * sLa * (albSnow - ALBEDO_LAND) + (1 - f) * sO * (P.TEMP_ALBEDO_SEA_ICE - ALBEDO_SEA);
-                        let alb = planetary(r, asSurf, ar);
-                        if (dg) {                               // (climsens diagnostics: record or hold the albedo's parts)
-                            const iceP = alb - planetary(r, asBare, ar), kc = k * G + c;
-                            const cloA = cloP ? alb - planetary(r - cloP, asSurf, ar) : 0;
-                            if (dg.rec) { dg.rec.ice[kc] = iceP; dg.rec.cloud[kc] = cloA; dg.rec.q[kc] = q; }
-                            if (dg.fixIce) alb += dg.fixIce[kc] - iceP;
-                            if (dg.fixCloud) alb += dg.fixCloud[kc] - cloA;
-                            if (dg.rec) dg.rec.alb[kc] = alb;
-                        }
-                        snowYear[c] += sL / NT;
-                        let gF = q * (1 - alb);
-                        if (winds && gamma) {                   // the seasonal part of the winds' heat carrying
-                            const du = uT[k * G + c], dv = vT[k * G + c];
-                            const Tw = Tk[j * w + (i === 0 ? w - 1 : i - 1)], Te = Tk[j * w + (i === w - 1 ? 0 : i + 1)];
-                            const gx = du > 0 ? (T - Tw) : (Te - T);
-                            let gy = 0;
-                            if (dv > 0 && j < h - 1) gy = T - Tk[c + w];
-                            else if (dv < 0 && j > 0) gy = Tk[c - w] - T;
-                            gF -= gamma * (du * gx * sx + dv * gy * sy);
-                        }
-                        if (qAt) gF += qAt[k * G + c] * (1 - f);
-                        F0[c] += gF; F1r[c] += gF * co; F1i[c] -= gF * sn; F2r[c] += gF * co2; F2i[c] -= gF * sn2;
-                        iceYear[c] += (f * sL + (1 - f) * sO) / NT;
-                        seaIceYear[c] += sO / NT;
-                    }
-                }
-            }
+            forcingSamples({ P, g, G, w, h, NT, dRad, Q, albBase, absorb, albVary, landFrac, lapseEff, surfKm, perennial, cloudT, dg, winds, gamma, uT, vT, qAt,
+                c0, c1r, c1i, c2r, c2i, Tk, snowYear, iceYear, seaIceYear, F0, F1r, F1i, F2r, F2i });
             // (an anomaly's forcing, W/m², for the civ layer's climate ensemble (civ/climate-modes.js): `hemi` warms the
             // north and cools the south, most at 45° — sin 2φ; `land` warms land against the sea. Off by default)
             const fHemi = ctx.options?.forcing?.hemi ?? 0, fLand = ctx.options?.forcing?.land ?? 0;
@@ -527,15 +483,32 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // temperature — air coming down from a plateau warms as it sinks, air rising onto one cools. The
         // land's air is A; the sea's surface stays its own. Calm air goes nowhere, so a still interior keeps its own
         // temperature; islands and coasts downwind of the sea take the sea's air.
-        const airSolver = winds && P.TEMP_AIR_DARK_DAYS > 0 ? solverOf(ctx)(g, 0, 0) : null;
+        // (two solvers, in turn: the next time's operator is built while the GPU's solver works on the last — see prepareAir)
+        const airSolvers = winds && P.TEMP_AIR_DARK_DAYS > 0 ? [solverOf(ctx)(g, 0, 0), solverOf(ctx)(g, 0, 0)] : null, airSolver = airSolvers?.[0] ?? null;
         // (the low air itself, not the weather aloft: a range blocks it fully — Pacific air stays out of the Great Plains)
         const airFaces = airSolver && P.TEMP_BLOCK_KM > 0 ? ridgeFaces(ctx, core, g, ratio, blockKm, P.TEMP_BLOCK_KM, 0) : null;
-        const airCache = new Map(), airA = new Float64Array(G), airAi = new Float64Array(G), airRhs = new Float64Array(G);
-        const airSig = new Float64Array(G), airU = new Float64Array(G), airV = new Float64Array(G), airTheta = new Float64Array(G);
-        // (each time's air is solved once, before the months and the anchors read it — prepareAir, a step the GPU's solver
-        // can wait on — and kept: the sea ice and the drawn fields, worked out later when first asked for, read the months')
-        function* prepareAir(t) {
-            if (airCache.has(t)) return;
+        const airCache = new Map(), airSlot = () => ({ A: new Float64Array(G), Ai: new Float64Array(G), rhs: new Float64Array(G), sig: new Float64Array(G),
+            u: new Float64Array(G), v: new Float64Array(G), theta: new Float64Array(G) }), airSlots = airSolvers ? [airSlot(), airSlot()] : null;
+        // (each time's air is solved once, before the months and the anchors read it, and kept: the sea ice and the drawn
+        // fields, worked out later when first asked for, read the months'. The times are independent: each is started on one
+        // of two solvers in turn and waited on only when its solver comes round again — so on the GPU the CPU builds the
+        // next operator while the last solves (lane gpuclimate P3); on the CPU, where a solve is done when it returns, the
+        // same solves in the same order)
+        function* prepareAir(times) {
+            const todo = [...new Set(times)].filter(t => !airCache.has(t)), started = [null, null];
+            for (let i = 0; i <= todo.length + 1; i++) {
+                const k = i % 2;
+                if (started[k]) { yield started[k].solved; finishAir(started[k]); started[k] = null; }
+                if (i < todo.length) started[k] = startAir(todo[i], airSolvers[k], airSlots[k]);
+            }
+        }
+        function finishAir({ t, slot }) {
+            const A = new Float64Array(G);
+            for (let c = 0; c < G; c++) A[c] = slot.A[c] - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c];
+            airCache.set(t, A);
+        }
+        function startAir(t, airSolver, slot) {
+            const { A: airA, Ai: airAi, rhs: airRhs, sig: airSig, u: airU, v: airV, theta: airTheta } = slot;
             const T = harmonicsAt(t, tmp);
             const delta = declination(t, tiltDeg);
             const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
@@ -556,10 +529,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             }
             airA.set(airTheta); airAi.fill(0);
             airSolver.setOperator(airSig, zero, airU, airV, 1, airFaces);
-            yield airSolver.solve(airRhs, zero, airA, airAi, { maxCycles: AIR_CYCLES, tol: 1e-4 });
-            const A = new Float64Array(G);
-            for (let c = 0; c < G; c++) A[c] = airA[c] - (DRY_LAPSE - lapseEff[c]) * landFrac[c] * landKm[c];
-            airCache.set(t, A);
+            return { t, slot, solved: airSolver.solve(airRhs, zero, airA, airAi, { maxCycles: AIR_CYCLES, tol: 1e-4 }) };
         }
         const airMass = (t, T) => {
             const A = airCache.get(t);
@@ -617,8 +587,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             for (let c = 0; c < core.size; c++) { const hg = href[c] === href[c] ? href[c] : 0, d = domeCore[c], hr = d > 0 && d > hg ? d : hg; out[offset + c] -= lapseCore[c] * hr; }
         };
         if (airSolver) {
-            for (let m = 0; m < 12; m++) yield* prepareAir(m + 0.5);
-            for (const a of ctx.anchorMonths) yield* prepareAir(a + 0.5);
+            yield* prepareAir([...Array.from({ length: 12 }, (_, m) => m + 0.5), ...ctx.anchorMonths.map(a => a + 0.5)]);
         }
         const monthlySL = new Float32Array(12 * core.size), monthly = new Float32Array(12 * core.size);
         const inversion = new Float32Array(12 * core.size);
@@ -776,3 +745,64 @@ function* solveRelaxed(solver, fr, fi, xr, xi, relax, tol) {
 // Grid transfers (shared with the circulation stage)
 const coarsen = (core, g, ratio, src) => coarsenField(core, g, ratio, src);
 const refine = (g, core, ratio, src, out, offset) => refineField(g, core, ratio, src, out, offset);
+
+/**
+ * The energy balance's forcing over the year's NT samples (energyBalanceTemperature's outer round): each sample's sea-level
+ * temperature from the harmonics, the snow and ice on it, the albedo, the winds' seasonal heat carrying and the ocean's
+ * heat, summed into the forcing's harmonics F0–F2 and the year's snow and ice. A plain function, not the stage's
+ * generator closure, so V8 optimises it (lane gpuclimate P3: ~2.5× faster; the arithmetic, and its order, unchanged).
+ */
+function forcingSamples({ P, g, G, w, h, NT, dRad, Q, albBase, absorb, albVary, landFrac, lapseEff, surfKm, perennial, cloudT, dg, winds, gamma, uT, vT, qAt,
+    c0, c1r, c1i, c2r, c2i, Tk, snowYear, iceYear, seaIceYear, F0, F1r, F1i, F2r, F2i }) {
+    const iceRamp = (T) => {
+        const x = (P.TEMP_ICE_WARM_C - T) / (P.TEMP_ICE_WARM_C - P.TEMP_ICE_COLD_C);
+        return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+    };
+    const planetary = (r, as, a) => { const t = Math.max(0, 1 - r - a); return r + as * t * t / (1 - r * as); };
+    for (let k = 0; k < NT; k++) {
+        const th = 2 * Math.PI * k / NT, co = Math.cos(th), sn = Math.sin(th), co2 = Math.cos(2 * th), sn2 = Math.sin(2 * th);
+        for (let c = 0; c < G; c++) Tk[c] = c0[c] + 2 * (c1r[c] * co - c1i[c] * sn) + 2 * (c2r[c] * co2 - c2i[c] * sn2);
+        for (let j = 0; j < h; j++) {
+            const q = Q[k * h + j], ab = albBase[j], ar = absorb[j];
+            const sx = 1 / (R_PLANET * Math.cos(g.lat[j] * Math.PI / 180) * dRad), sy = 1 / (R_PLANET * dRad);
+            for (let i = 0; i < w; i++) {
+                const c = j * w + i, T = Tk[c], f = landFrac[c];
+                const sL = iceRamp(T - lapseEff[c] * surfKm[c]), sO = iceRamp(T);
+                // snow on land: patchy seasonal snow (forests stand through it) reflects less than open snow;
+                // snow that survives the summer — an ice sheet — like a sheet, and all year: a sheet stays white
+                // through its summer melt (by the month's own snow alone, a sheet went dark the first month above
+                // freezing and melted away)
+                const albSnow = P.TEMP_ALBEDO_SNOW + (P.TEMP_ALBEDO_ICE - P.TEMP_ALBEDO_SNOW) * perennial[c];
+                const sLa = Math.max(sL, perennial[c]);
+                const cloP = cloudT ? f * (1 - sLa) * cloudT[k * G + c] : 0;    // clouds over snow-free land
+                const r = ab + albVary[c] + cloP;
+                const asBare = f * ALBEDO_LAND + (1 - f) * ALBEDO_SEA;
+                const asSurf = asBare + f * sLa * (albSnow - ALBEDO_LAND) + (1 - f) * sO * (P.TEMP_ALBEDO_SEA_ICE - ALBEDO_SEA);
+                let alb = planetary(r, asSurf, ar);
+                if (dg) {                               // (climsens diagnostics: record or hold the albedo's parts)
+                    const iceP = alb - planetary(r, asBare, ar), kc = k * G + c;
+                    const cloA = cloP ? alb - planetary(r - cloP, asSurf, ar) : 0;
+                    if (dg.rec) { dg.rec.ice[kc] = iceP; dg.rec.cloud[kc] = cloA; dg.rec.q[kc] = q; }
+                    if (dg.fixIce) alb += dg.fixIce[kc] - iceP;
+                    if (dg.fixCloud) alb += dg.fixCloud[kc] - cloA;
+                    if (dg.rec) dg.rec.alb[kc] = alb;
+                }
+                snowYear[c] += sL / NT;
+                let gF = q * (1 - alb);
+                if (winds && gamma) {                   // the seasonal part of the winds' heat carrying
+                    const du = uT[k * G + c], dv = vT[k * G + c];
+                    const Tw = Tk[j * w + (i === 0 ? w - 1 : i - 1)], Te = Tk[j * w + (i === w - 1 ? 0 : i + 1)];
+                    const gx = du > 0 ? (T - Tw) : (Te - T);
+                    let gy = 0;
+                    if (dv > 0 && j < h - 1) gy = T - Tk[c + w];
+                    else if (dv < 0 && j > 0) gy = Tk[c - w] - T;
+                    gF -= gamma * (du * gx * sx + dv * gy * sy);
+                }
+                if (qAt) gF += qAt[k * G + c] * (1 - f);
+                F0[c] += gF; F1r[c] += gF * co; F1i[c] -= gF * sn; F2r[c] += gF * co2; F2i[c] -= gF * sn2;
+                iceYear[c] += (f * sL + (1 - f) * sO) / NT;
+                seaIceYear[c] += sO / NT;
+            }
+        }
+    }
+}
