@@ -2595,6 +2595,21 @@ the 0.82.
   cycle stays symmetric. A fourth-order operator's condition grows as (α/h)⁴: plain Jacobi-CG needed 937 iterations at 640K for
   Te 70 and ~3 000 at 2.5M; MG-CG needs 12–40 at any size. No atomics; dot products by fixed trees; a machine repeats itself bit for
   bit. The frozen CPU erosion uses the float64 plain-CG solve (`solvePlateCPU`), also the GPU's test reference.
+- **Where it is solved and what it costs** (lane flexure, 2026-11-23): on the coarsest of the mesh and its levels whose cells are no
+  wider than the thinnest land plate's own length, l = α/√2 of `arcTeKm` (31 km at Te 15). A deflection has no shape finer than l, so
+  the 2.5M ground (15 km cells) is bent on 640K's (30 km): its load comes down by the prolongation's transpose (volume kept), its
+  deflection goes back up by the prolongation. Against the same load solved on 2.5M itself: on land (Te ≥ 15) |Δw| p99 2–6 m of
+  ~600 m, worst 63 m (10 %) under a valley one 2.5M cell wide on a Te 15 plate; sea floor thinner than Te 5 (l ≤ 10 km, near the
+  ridges) differs more, and 2.5M does not resolve it either. Each settling's solve starts from the last one's answer (the plate is
+  linear; a settling's load is much like the last), to a relative residual 1e-3 (`mgTol`: 1e-4 gave the same land p90/p99/max at
+  2.5M, the cells apart only by the rivers' chaotic reroutes). The plate's sea is applied at its next solve, not at every move of
+  the coast. Te is asked on the solve's mesh only. Erosion stage at 2.5M, 831576 (Upwell, Metal): 430 Myr 21–24 s with the old blur,
+  45.6 s with the plate solved on 2.5M, 31.8 s now (rungs 160K / 640K / 2.5M: 5.4 / 4.7 / 10.2 s → 6.0 / 7.9 / 13.4 s); 340 Myr
+  20.4 → 41.1 → 30.1 s.
+- **The coarse rung** (160K, 61 km cells) under-resolves a thin plate: a load in one cell keeps 1.7× the analytic share in that
+  cell at Te 15 (1.18× at Te 70; 640K 1.35× / 1.06×), an O((h/l)²) error of grid-scale loads only — a load as broad as a massif
+  (Gaussian σ 100 km) is within 3 % at every Te; and there is no checkerboard mode: a one-cell load's two rings come down with it,
+  within 5 % of −kei where l ≥ h (flexure-test 1b).
 - **Tests** (`tools/flexure-test.mjs`, in check-gpu): the float64 solve against the analytic plate on the 640K mesh (Te 70, α 4.6
   cells) — a point load's −kei profile within 2.5 % of w₀, its forebulge's crest at 5.00 l vs 4.93; a line load's w₀ within 0.6 %,
   its zero at 2.359 α vs 3π/4 = 2.356, its forebulge at 3.10 α vs π and 4.26 % of w₀ vs 4.32 — then the GPU's solve within 2·10⁻⁶ of
