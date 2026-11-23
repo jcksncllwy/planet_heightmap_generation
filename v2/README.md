@@ -114,11 +114,12 @@ What it skips: the ice has no dynamics (it takes the bed's fall, not its surface
 one cell; a month's mean below freezing has no thawing days (positive degree-days from the monthly spread); no store
 carried between years but the kept snow (the water ledger, below), and the ice's own mass budget (model review
 U9) is to replace `iceDischarge`, dry basins left closed —
-flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the finish's own erosion strength
-(`erosionStrength` 0–3, 3; developer, 2026-10-15: "break up SOME of the monotony of the ridges"): the stream power's m
-lowered and k raised so its erosion climbs further up the headwaters (rivers draining 10⁵ km² cutting as before), the
-dissection cut deeper (by drainage area in km², the same at every detail), soil creep shorter and the fold belts' crests
-harder — over the mountains 5 % more relief, 13 % less ground above 4 km than at 0; sediment laid down (fans, floodplains,
+flat pans where inflow and evaporation balance, a cut-off sea's salt lake at its level (the carve's `sink` / `base`) — at the stream power's sourced m
+(`erosionM` 0.45, θ_ref: Wobus et al. 2006, Kirby & Whipple 2012; the history's too), k the terrain's pivoted so rivers draining
+10⁵ km² cut as at its own m (no fit: 831576 at 430 sends 7.7 / 6.3 km³/yr to the sea per Earth's land area on the 160K / 640K
+rungs, in Earth's prehuman ~6–8) — the art dial `erosionStrength` (m 0.25, k ×5.6 at the pivot, crests harder; developer,
+2026-10-15) deleted in lane erosionfix M3: at 0.45 the cutting goes to the trunks (the median land cell lowered 12 m, not 33,
+p90 alike), relief kept between them (land p99 +205 m), and the 160K/640K finishes' p99 gap is 270 m, not 427; sediment laid down (fans, floodplains,
 deltas); soil creep where it is wet and warm; an Earth-like last ice age (U-troughs, fjords, scoured lake hollows,
 moraines, basins still sunk by the ice; troughs deeper in soft rock, and where a lobe of the ice slid out over soft lowland
 rock it dug a basin below its rim's lowest ground — the Great Lakes, Ladoga, Winnipeg; each a lobe's, at most Superior's

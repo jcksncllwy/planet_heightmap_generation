@@ -92,7 +92,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const lap = name => { const t = performance.now(); ms[name] = (ms[name] ?? 0) + t - t0; t0 = t; };
     onStage('mesh');
     // (the carving's inputs at the finish's erosion strength: its stream power's k, its crests' hardness)
-    const E = erosionAt(F, cfg), surfCfg = rockCfg({ ...cfg, carveK: cfg.carveK * E.kMul, carveCrestHardness: E.crestHardness });
+    const E = erosionAt(F, cfg), surfCfg = rockCfg({ ...cfg, carveK: cfg.carveK * E.kMul });
     // (the surface's plan, begun on the pool's first worker while the mesh is built and warped here: it needs only the
     // mesh's cell size)
     const planned = pool.plan(frame, { cfg: surfCfg, seed, edgeKm: terrainEdgeKm(cells) });

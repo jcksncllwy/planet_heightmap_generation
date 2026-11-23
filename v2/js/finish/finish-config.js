@@ -39,18 +39,15 @@ export const FINISH = {
     wetMax: 2.5,                // mean: linear, the wettest regions carried ~10× the mean — valleys and grading far beyond the
                                 // live terrain's, the land there "unnaturally blurry" (developer)
 
-    // ── how strongly the finish erodes the mountains (developer, 2026-10-15: "strengthen the erosion in a final detail pass,
-    // particularly the fancy generated erosion we adapted from the paper, but not too much … break up SOME of the
-    // monotony of the ridges"): 0 as it was … 3. The stream power (carve.js; Tzathas et al. 2024: erosion a wave climbing
-    // each river at k·A^m) reaches further up the headwaters — m lower, k raised so a river draining erosionPivotKm2 cuts as
-    // before; and the fold belts' crests stand harder, so the valleys
-    // deepen between them rather than the ridges wearing away. The timeline's terrain is untouched
-    erosionStrength: 3,
+    // ── the stream power's m, the finish's and the history's (lane erosionfix M3, sessrumnir's ruling 2026-11-22: the art dial
+    // erosionStrength, m 0.25 and the crests harder, deleted). m = θ·n with n = 1 at the reference concavity θ_ref = 0.45 (Wobus
+    // et al. 2006, GSA Spec. Pap. 398; Kirby & Whipple 2012, J. Struct. Geol. 44: 54), the middle of Earth's 0.4–0.6. k as the
+    // terrain's (terrain-config carveK, at its carveM) pivoted so a river draining erosionPivotKm2 cuts as fast as it did: no fit.
+    // Checked, not targeted: 831576 at 430 (29 % land) sends 7.7 / 6.3 km³/yr to the sea per Earth's land area on the ladder's
+    // 160K / 640K rungs, in Earth's prehuman ~6–8 (Syvitski et al. 2005, Science 308: 376, ~15.5 Gt/yr; WBMsed 17.8–22 Gt/yr;
+    // as rock at 2.65 t/m³) — lane erosionfix report, M3 ──
+    erosionM: 0.45,
     erosionPivotKm2: 1e5,
-    erosionLevels: {            // at strength 0, 1, 2, 3 (between them, linear)
-        carveM: [0.4, 0.35, 0.3, 0.25],
-        crestHardness: [0.5, 0.55, 0.6, 0.65],
-    },
 
     // ── erosion and deposition through time (finish-erode.js ERODE, the design; an object here overrides it). The hydrology's
     // lake rules stand down with it: false restores the old finish, carve and rules alone ──
@@ -412,12 +409,9 @@ export const COVER = {
     climateGreen: { from: [40, 58], to: [150, 175], hue: 105, share: 0.5, sat: 1.4, value: 1.3 },
 };
 
-/** The finish's erosion at F.erosionStrength (erosionLevels, linear between the levels): the stream power's m, and its k as a
- *  multiple of the terrain's (a river draining F.erosionPivotKm2 cuts as fast as before), and the crests' hardness. The
- *  history's erosion reads it too (tectonics/step/surface-erosion.js): it lives here, not in finish.js, so the history's code
- *  hash does not take in the whole finish. */
+/** The erosion's stream power, the finish's and the history's: m (F.erosionM), and its k as a multiple of the terrain's (a river
+ *  draining F.erosionPivotKm2 cuts as fast as at the terrain's own m). The history's erosion reads it too (tectonics/step/
+ *  surface-erosion.js): it lives here, not in finish.js, so the history's code hash does not take in the whole finish. */
 export function erosionAt(F, cfg) {
-    const L = F.erosionLevels, s = Math.min(L.carveM.length - 1, Math.max(0, F.erosionStrength ?? 0)), i = Math.min(L.carveM.length - 2, Math.floor(s)), f = s - i;
-    const at = a => a[i] + (a[i + 1] - a[i]) * f, m = at(L.carveM);
-    return { m, kMul: F.erosionPivotKm2 ** (cfg.carveM - m), crestHardness: at(L.crestHardness) };
+    return { m: F.erosionM, kMul: F.erosionPivotKm2 ** (cfg.carveM - F.erosionM) };
 }
