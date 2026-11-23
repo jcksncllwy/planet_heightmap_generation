@@ -3,7 +3,9 @@
 // (gpu/climate-solver.js) — against the zonal proxy the history runs today (terrain-config.js rainAtLatitude,
 // basin-estimate.js tempAtLatitude less the lapse rate; erosionAtLatitude, the erosion clocks' multiplier).
 //   node v2/tools/history-climate-study.mjs --seeds 831576,243751,716130 [--times 100,300,…] [--sim 40000] [--grid 1] [--json out.json]
-//   [--grids 1,2]: each frame on each grid, timed, and the later grids' years against the first's (a cheaper history sample)
+//   [--variants 1,2,2+c1,2+c1+nc,2+c1+nc+a4]: each frame's climate in each variant, timed, the later ones' years against the
+//   first's (a cheaper history sample): the grid (°), +c1 one temperature ↔ winds ↔ ocean round, +nc no clouds-from-rain pass,
+//   +aN N anchors in the year
 // Heights: inventory.js surfaceKm (today's datum, so the moment's sea level is not taken off: ± a few hundred m of lapse);
 // land: land-mask.js landMask's.
 import fs from 'node:fs';
@@ -24,7 +26,10 @@ import { tempAtLatitude } from '../js/terrain/basin-estimate.js';
 
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const SEEDS = arg('--seeds', '831576,243751,716130').split(',').map(Number), SIM = +arg('--sim', 40000), GRID = +arg('--grid', 1);
-const GRIDS = arg('--grids', null)?.split(',').map(Number) ?? null;
+const variant = (v) => { const [gd, ...f] = v.split('+'), o = { gridStepDeg: +gd };
+    for (const x of f) { if (x === 'c1') o.couplingsWithOcean = 1; else if (x === 'nc') o.cloudsFromRain = false; else if (/^a\d+$/.test(x)) o.anchors = +x.slice(1); else throw new Error(`variant ${v}: ${x}?`); }
+    return o; };
+const GRIDS = arg('--variants', arg('--grids', null))?.split(',') ?? null;
 const TIMES = arg('--times', '100,250,400,550,700,850,1000').split(',').map(Number), JSON_OUT = arg('--json', null);
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -41,7 +46,7 @@ for (const seed of SEEDS) for (const time of TIMES) {
     if (GRIDS) {
         const out = [];
         for (const gd of GRIDS) {
-            const t1 = performance.now(), r = await planetClimateAsync(climIn, { solver: kit, gridStepDeg: gd });
+            const t1 = performance.now(), r = await planetClimateAsync(climIn, { solver: kit, ...variant(gd) });
             kit.release(); out.push({ gd, ms: performance.now() - t1, r });
         }
         const a = out[0].r.cell;
@@ -54,7 +59,7 @@ for (const seed of SEEDS) for (const time of TIMES) {
             }
             const row = { seed, time, grid: gd, ms: Math.round(ms), vsFirst: { meanDT: dT / N, meanAbsDT: aT / N, geoP: Math.exp(lp / N), meanAbsLogP: alp / N } };
             rows.push(row);
-            console.log(`${seed}@${time} ${gd}°: ${row.ms} ms · against ${GRIDS[0]}°: ΔT mean ${(dT / N).toFixed(2)} |${(aT / N).toFixed(2)}| °C · P× ${Math.exp(lp / N).toFixed(3)} (|ln| ${(alp / N).toFixed(3)})`);
+            console.log(`${seed}@${time} ${gd}: ${row.ms} ms · against ${GRIDS[0]}: ΔT mean ${(dT / N).toFixed(2)} |${(aT / N).toFixed(2)}| °C · P× ${Math.exp(lp / N).toFixed(3)} (|ln| ${(alp / N).toFixed(3)})`);
         }
         continue;
     }

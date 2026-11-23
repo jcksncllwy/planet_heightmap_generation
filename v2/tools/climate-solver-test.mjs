@@ -30,7 +30,7 @@ import { planetClimate, planetClimateAsync } from '../js/climate/climate.js';
 import { KOPPEN_CLASSES as KOPPEN } from '../js/climate/koppen.js';
 
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const CELLS = +arg('--cells', 160000), REPS = +arg('--reps', 2), WORLD = arg('--world', 'test');
+const CELLS = +arg('--cells', 160000), REPS = +arg('--reps', 2), WORLD = arg('--world', 'test'), GRID = +arg('--grid', 1);
 let failed = 0;
 const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failed++; };
 setDelaunator(Delaunator);
@@ -85,7 +85,7 @@ const counted = (make, s) => (...a) => {
 };
 let t = performance.now();
 const cs = stats('cpu');
-const ref = argv.includes('--no-ref') ? null : planetClimate(input, { solver: counted((g, D, Dx, o) => new HelmholtzSolver(g, D, Dx, { ...o, deep: true, zebra: true, converged: true }), cs) });
+const ref = argv.includes('--no-ref') ? null : planetClimate(input, { solver: counted((g, D, Dx, o) => new HelmholtzSolver(g, D, Dx, { ...o, deep: true, zebra: true, converged: true }), cs), gridStepDeg: GRID });
 if (ref) console.log(`CPU float64 reference: ${(performance.now() - t).toFixed(0)} ms; solves ${cs.calls}, cycles ${cs.cycles} (max ${cs.max}), ${cs.ms.toFixed(0)} ms`);
 const show = (s) => { for (const [k, v] of Object.entries(s.by)) console.log(`   ${k.padEnd(28)} ${String(v.calls).padStart(4)} solves ${String(v.cycles).padStart(5)} cycles (max ${v.max}) ${v.ms.toFixed(0).padStart(6)} ms, worst rel ${v.worstRel.toExponential(1)}${v.worstFloor ? ` (beyond floor ${v.worstFloor.toExponential(1)})` : ''}`); };
 if (ref) show(cs);
@@ -101,7 +101,7 @@ const runs = [];
 for (let k = 0; k < REPS; k++) {
     const kit = await climateSolverKit(device), gs = stats('gpu');
     t = performance.now();
-    const res = await planetClimateAsync(input, { solver: counted(kit, gs) });
+    const res = await planetClimateAsync(input, { solver: counted(kit, gs), gridStepDeg: GRID });
     kit.release();
     console.log(`GPU run ${k}: ${(performance.now() - t).toFixed(0)} ms; solves ${gs.calls}, cycles ${gs.cycles} (max ${gs.max}), ${gs.ms.toFixed(0)} ms`);
     if (k === 0) show(gs);
