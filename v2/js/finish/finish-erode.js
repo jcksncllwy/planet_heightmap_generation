@@ -89,6 +89,9 @@ export const ERODE = {
     spanSplit: 'even',          // …every rung stretched alike ('even'), or all of it on the coarsest ('coarse': leaves the 160K rung's ~100 km
                                 // interfluves as isolated mounds on the plains — fluvial5 A/B, 2026-11-10)
     tectUplift: true,           // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
+    histLower: true,            // C=(i) (Jackson, 2026-11-11): the history's own erosion's lowering over the same window (frame erodeRateKm) is
+                                // given back as it erodes, so the finish takes off only what it erodes beyond the history — the history the one
+                                // authority on how much rock leaves the land, the finish the sub-mesh rest (windowUplift)
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
     // ── the sea's floor (lane marine, 2026-11-21; GPU only): the rivers' load is laid as a delta from where they meet the sea (each
     // mouth's fills the nearest sea up to its level: erode-gpu.js seaDelta), not counted, and the waves move it: q = −K(d)·∇z between sea cells, K(d) = marineK down to wave base and K·e^(−(d − wb)/wb) below (Kaufman et al.
@@ -625,6 +628,22 @@ function meanOnto(M, fine, coarseN, empty = 0) {
 function carry(M, values, out) {
     const { cells, weights } = M, n = out.length;
     for (let i = 0; i < n; i++) out[i] += weights[3 * i] * values[cells[3 * i]] + weights[3 * i + 1] * values[cells[3 * i + 1]] + weights[3 * i + 2] * values[cells[3 * i + 2]];
+}
+
+/**
+ * The finish's uplift over the moment's window, km/Myr per cell (o.uplift), from the frame's records on the carve's corners
+ * (terrain/synthesize.js carveInputs): the history's tectonic rise (lift: ERODE tectUplift) plus its own erosion's lowering
+ * over the same window (lower: ERODE histLower, Jackson's C=(i)). Both are rates over the frame's window (tectSpanMyr), run
+ * over the same span (ladderOverWindow), so the finish gives back exactly what the history took off as it takes off its own:
+ * its net lowering is its erosion less the history's, cell by cell. Both are the ground's (isostasy in them: the history's
+ * erosion lowers the ground by the rock's ~1/6, surface-erosion.js wearRock), as the rebounder takes the uplift. null: neither.
+ */
+export function windowUplift(P, carve) {
+    const lift = P.tectUplift ? carve.lift : null, lower = P.histLower && carve.lower ? carve.lower : null;
+    if (!lower) return lift;
+    const u = new Float32Array(lower.length);
+    for (let i = 0; i < u.length; i++) u[i] = (lift ? lift[i] : 0) + lower[i];
+    return u;
 }
 
 /**

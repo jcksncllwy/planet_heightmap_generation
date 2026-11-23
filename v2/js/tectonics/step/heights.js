@@ -181,8 +181,8 @@ function rateTable(H) {
 /** The tectonic rise's window (records only; snapshot.js captureFrame): the time since the last frame (Myr). */
 export const tectWindowMyr = world => world.time - (world.tectSince ?? 0);
 
-/** A frame was taken: the tectonic rise gathers afresh from now. */
+/** A frame was taken: the tectonic rise, and the erosion's lowering (step/rivers.js), gather afresh from now. */
 export function openTectWindow(world) {
     world.tectSince = world.time;
-    for (const plate of world.plates) if (plate.alive) plate.crust.tectKm.fill(0);
+    for (const plate of world.plates) if (plate.alive) { plate.crust.tectKm.fill(0); plate.crust.erodeKm.fill(0); }
 }

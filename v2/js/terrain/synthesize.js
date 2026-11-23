@@ -89,10 +89,11 @@ export function surfaceParts(n) {
 }
 
 /** Per-terrain-cell arrays the surface pass fills for the carving (u, k, rain, micro; carve.js), and the history's
- *  tectonic rise for the finish's erosion (lift, km/Myr). */
+ *  tectonic rise for the finish's erosion (lift, km/Myr), and the history's own erosion's lowering over the same window (lower,
+ *  km/Myr: finish-erode.js histLower). */
 export function carveInputs(n) {
     return { u: new Float32Array(n), k: new Float32Array(n), rain: new Float32Array(n), micro: new Float32Array(n), hold: new Float32Array(n),
-        lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n), soft: new Float32Array(n), lift: new Float32Array(n) };
+        lip: new Float32Array(n), lipBase: new Float32Array(n), lipTop: new Float32Array(n), lipAge: new Float32Array(n), lipNoise: new Float32Array(n), soft: new Float32Array(n), lift: new Float32Array(n), lower: new Float32Array(n) };
 }
 
 /**
@@ -144,6 +145,7 @@ const thickLiftKm = (cfg, type, rootKm) => (type === CrustType.ARC ? columnModel
 export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
     const A = buildAnchor(frame, simMesh), rec = deriveRecords(frame, simMesh, cfg, seed, A);
     rec.tectRateKm = frame.tectRateKm ?? null;     // (the ground's tectonic rise, km/Myr: the finish's uplift, finish-erode.js o.uplift)
+    rec.erodeRateKm = frame.erodeRateKm ?? null;   // (the history's erosion's lowering over the same window, km/Myr: ERODE histLower)
     // The current belt's envelope (the evolved uplift) and its thickened crust (the isostatic part of the platform) as each
     // sim cell samples them, and how high each stands against its profile there — the broad profile, and the thickening's
     // (1 − u²) across the belt (tectonics/step/orogeny.js): the terrain takes their SHAPES from the profiles at the point
@@ -1025,7 +1027,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             carve.hold[i] = coast >= 0 ? active : 0;          // (how active the belt here is: its rivers cut less)
             // (the history's tectonic rise over the land corners, km/Myr signed: the finish's uplift)
             const tect = rec.tectRateKm;
-            if (tect) { const a0 = land[c0] ? w0 : 0, a1 = land[c1] ? w1 : 0, a2 = land[c2] ? w2 : 0, s = a0 + a1 + a2; carve.lift[i] = s > 0 ? (a0 * tect[c0] + a1 * tect[c1] + a2 * tect[c2]) / s : 0; }
+            const lower = rec.erodeRateKm;
+            if (tect || lower) {
+                const a0 = land[c0] ? w0 : 0, a1 = land[c1] ? w1 : 0, a2 = land[c2] ? w2 : 0, s = a0 + a1 + a2;
+                if (tect) carve.lift[i] = s > 0 ? (a0 * tect[c0] + a1 * tect[c1] + a2 * tect[c2]) / s : 0;
+                if (lower) carve.lower[i] = s > 0 ? (a0 * lower[c0] + a1 * lower[c1] + a2 * lower[c2]) / s : 0;
+            }
             carve.k[i] = cfg.carveK * (1 - cfg.carveCratonHardness * shield) * (1 - cfg.carveCrestHardness * Math.min(1, Math.max(0, stripes / 0.3)));
             carve.rain[i] = rainAtLatitude(Math.asin(Math.max(-1, Math.min(1, pz))) * 180 / Math.PI, cfg) / cfg.rainRefMm;
             // flood basalt: a hard cap — cliffed canyon walls, slower rivers; and the stair it is cut into (carve.js)

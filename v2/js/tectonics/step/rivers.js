@@ -62,9 +62,14 @@ export function* evolveRivers(world, dt) {
     // again on its records: the crust thinned and rebounded, the sediment laid in its hollows ──
     const req = erosionRequest(world, land, height, span, H);
     yield { kind: 'erode', o: req.o, P: req.P };
+    const before = s.before;
+    before.set(height);
     const done = applyErosion(world, req, land, s.moved, H);
     for (const key of ['eroded', 'laid', 'fillTaken', 'unplaced', 'seaLaid', 'seaReworked', 'planed', 'seaTaken', 'floorLaid']) world.budget[`erode${key[0].toUpperCase()}${key.slice(1)}Km3`] = (world.budget[`erode${key[0].toUpperCase()}${key.slice(1)}Km3`] ?? 0) + done[key];
     stand();
+    // (records only: the ground's lowering by this erosion, gathered over the frame's window as the tectonic rise is — crust.erodeKm,
+    // snapshot.js erodeRateKm; the finish takes it back off its own lowering, finish-erode.js histLower: Jackson's C=(i))
+    for (let w = 0; w < n; w++) if (owner[w] >= 0 && (land[w] || continental(world, w))) plates[owner[w]].crust.erodeKm[ownerCell[w]] += before[w] - height[w];
     // ── the priority flood from the sea, lowest spill first; each cell's receiver its steepest way down ──
     const heap = s.heap;
     heap.size = 0;
@@ -352,7 +357,7 @@ export function seaMaskNow(world) {
 
 function scratchFor(n) {
     if (scratch?.n === n) return scratch;
-    scratch = { n, land: new Uint8Array(n), moved: new Float32Array(n), height: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
+    scratch = { n, land: new Uint8Array(n), moved: new Float32Array(n), height: new Float32Array(n), before: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
         order: new Int32Array(n), recv: new Int32Array(n), recvKm: new Float32Array(n), area: new Float32Array(n), sed: new Float64Array(n), sedCont: new Float64Array(n), basin: new Float64Array(n), seaOf: new Int32Array(n), heap: new MinHeap(1 << 14),
         swellKm: new Float32Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n), flags: new Uint8Array(n), rootKm: new Float32Array(n), baseKm: new Float32Array(n), upliftKm: new Float32Array(n), basinFillKm: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n) } };
     scratch.mask = { land: scratch.land, swellKm: scratch.swellKm, seaColKm: scratch.seaColKm, dryHollow: scratch.dryHollow };

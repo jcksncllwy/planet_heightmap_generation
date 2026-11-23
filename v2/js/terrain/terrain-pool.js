@@ -17,7 +17,7 @@ const CHUNKS_PER_WORKER = 8;          // more chunks than workers, dealt round-r
 // rotation, below)
 export const FRAME_FIELDS = ['time', 'owner', 'type', 'flags', 'terrane', 'formedAt', 'boundary', 'margin', 'mantleHeat', 'oroType', 'oroLast', 'thickKm',
     'beltU', 'beltReach', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide', 'prevShear', 'volcType', 'volcAt', 'volcKm', 'volcSource',
-    'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverKm2', 'seaFillKm', 'riseKm3', 'basinFillKm', 'shelfKm3', 'fzU', 'arcKm', 'arcAt', 'riftThin', 'tectRateKm', 'tectSpanMyr',
+    'crustCells', 'crustType', 'crustFill', 'crustBelt', 'crustReach', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'riverKm2', 'seaFillKm', 'riseKm3', 'basinFillKm', 'shelfKm3', 'fzU', 'arcKm', 'arcAt', 'riftThin', 'tectRateKm', 'erodeRateKm', 'tectSpanMyr',
     'riftThinAt', 'hotspots', 'budget', 'seaCutAt', ...GEO_FRAME_FIELDS];   // (riftThinAt, hotspots, budget: the moment's volcanic record, tectonics/volcanism.js momentVolc;
     // seaCutAt: when each cut-off sea's cells last lay in the world ocean, tectonics/step/sea-age.js — the finish's seaDrying)
 

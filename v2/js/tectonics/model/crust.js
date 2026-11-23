@@ -53,7 +53,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
+    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'erodeKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
     'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage']);
 
 export class CrustRaster {
@@ -106,6 +106,9 @@ export class CrustRaster {
         this.tectKm = new Float32Array(numCells);
         this.tectRefKm = new Float32Array(numCells);
         this.tectAt = new Uint32Array(numCells);
+        // The ground's lowering (+) or raising (−) by the history's erosion and deposition over the same window (km; records only:
+        // step/rivers.js, the height the land stood at before each erosion less after; the finish's C=(i), finish-erode.js histLower)
+        this.erodeKm = new Float32Array(numCells);
         this.shelfKm3 = new Float32Array(numCells);    // rock the rivers have laid on this coast cell's shelf (km³ of rock; step/sea-fill.js)
         this.riseKm3 = new Float32Array(numCells);     // rock the rivers have laid past the shelf on this OCEAN cell: the continental rise (km³ of rock;
                                                        // step/trench-fans.js layRise; a record the terrain does not read — its rise is margins.js's)

@@ -16,7 +16,7 @@ import { windWork } from './finish-wind.js';
 import { coastWork } from './finish-coast.js';
 import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { fillSpillMerge } from './finish-fsm.js';
-import { ERODE, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, flexOnto, hollowCensus, playas, bayheadFill } from './finish-erode.js';
+import { ERODE, windowUplift, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, flexOnto, hollowCensus, playas, bayheadFill } from './finish-erode.js';
 import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
 import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
@@ -336,7 +336,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     };
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
     const eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, m: E.m,
-        uplift: EP.tectUplift ? carveIn.lift : null } : null;      // (the history's tectonic rise, km/Myr: ERODE tectUplift)
+        uplift: windowUplift(EP, carveIn) } : null;                  // (km/Myr: ERODE tectUplift, histLower)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     lap('rivers');
