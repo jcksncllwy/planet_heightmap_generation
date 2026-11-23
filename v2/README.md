@@ -636,9 +636,11 @@ across its rim; in front of them a foreland bends the shield down under the rang
 plate a load (its height above what its own root floats), on the plate solved as a thin elastic plate (`gpu/flexure.js`,
 on the CPU over the plate's raster, Te per cell from the column: a shield's 70 km, a live belt's 15), its trough filled
 with sediment as load (ρc/(ρm − ρs) under a wide load) and its forebulge in air. The bend is the basement's — 1.5–3 km at
-p90 under the fronts — and the ground over the fill comes down to base level, the sea's, and no further: a plain graded
-to the sea over a deep basement, then a low forebulge (an overfilled foreland: an underfilled marine one, the Persian
-Gulf's, would need the fill supply-limited — not modelled). A lower plate carries the whole wedge — its own thrusts on
+p90 under the fronts — and the ground over the fill comes down to its base level and no further: the sea's where the
+trough opens to it, its sill where the forebulge or the shield's own rise closes it in (`records.js` forelandFill: the
+bent ground priority-flooded from the sea at the sea's own level) — a plain graded to the sea, or filled to its sill,
+over a deep basement, then a low forebulge (an overfilled foreland: an underfilled marine one, the Persian Gulf's,
+would need the fill supply-limited — not modelled). A lower plate carries the whole wedge — its own thrusts on
 the shield's rim, and the upper plate's front where it is thrust under it (`underthrustKm`) — so its foreland is the deep
 one; a plateau's back on an upper plate stands on its own root, so only its crests load the block, and the front there
 stays steep;
@@ -2624,6 +2626,11 @@ the 0.82.
   mantle or plate relaxation: kyr and Myr against the finish's ≤ 1 Myr); no broken plates (a trench's or rift's plate end is a
   continuous plate thinning there); on land the sediment laid loads as rock (2.5 vs 2.7). Each rung's sea floor is its own (the
   ladder carries the land's change up, as before).
+- **The ice age's rebound still to come** (`finish-ice.js`, lane flexure P2, 2026-11-23): the last ice's weight (ρi/ρm × its
+  thickness) on the same plate, on the history's mesh (`solvePlateCPU`, Te from the column, the trough left to the mantle), and
+  `reboundLeft` (8 %) of its bend left unrebounded, the peripheral bulge's share with it. It replaced a 350 km blur of the load on a
+  0.25° grid (`reboundKm`): a sheet many α wide sinks nearly as Airy would, a valley glacier hardly at all (Walcott 1970; Watts 2001
+  §6.3).
 The loop around it is resident too (lane gpuerode M2, 2026-11-20). The seas a finish holds cut off (finish.js `seaDrying`) take
 their sills at every fine judge from the erosion network's own flood (`sills` in erode-gpu.js: the minimax path from the open sea,
 its cells at their own ground; the same max of the same float32 heights as the CPU's priority flood, checked equal at every judge
