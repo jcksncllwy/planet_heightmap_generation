@@ -233,8 +233,16 @@ section('scraps of craton');
             if (ring.size < 3) continue;
             T ??= synthesizeTerrain(F, mesh, tm, { seed });
             const meanH = cells => { const set = new Set(cells); let s = 0, m = 0; for (let t = 0; t < tm.numCells; t++) if (set.has(T.sampler.cells[3 * t])) { s += T.heightKm[t]; m++; } return m ? s / m : NaN; };
-            const inside = meanH(patch), around = meanH([...ring]);
-            if (inside === inside && around === around) gaps.push({ gap: around - inside, coast: sea > 0, drowned: inside < 0 && patch.every(w => T.rec.land[w]), note: `${patch.length} cell${patch.length > 1 ? 's' : ''}, belt ${[...new Set([...ring].map(q => F.oroType[q]))].join('/')}, ground around ${around.toFixed(2)} km` });
+            // (the gap is to the ring's MEDIAN cell: a hole stands below most of what is around it. Against the ring's mean, a
+            // range-front cell read as a hole when three 2.7–4.0 km range cells pulled the mean up — 777@600 under m 0.45: 1.10 km,
+            // above 3 of its 7 neighbours, draining to a 0.40 km one, net deposit over the last window; 0.85 km under the mean,
+            // 0.17 under the median. The mean's gap is reported. Erosionfix M3, sessrumnir's ruling)
+            // (the median of an even ring is its middle pair's mean: the file's median() takes the upper one, and a cell with 3 of 6
+            // neighbours below it then read as 0.64 km under its ring — 12345@520: 1.78 km, a range of 2.42–4.12 on one side,
+            // 0.84–1.08 on the other)
+            const mid = a => { const x = Float64Array.from(a).sort(), h = x.length >> 1; return x.length % 2 ? x[h] : (x[h - 1] + x[h]) / 2; };
+            const inside = meanH(patch), around = mid([...ring].map(q => meanH([q]))), aroundMean = meanH([...ring]);
+            if (inside === inside && around === around) gaps.push({ gap: around - inside, gapMean: aroundMean - inside, coast: sea > 0, drowned: inside < 0 && patch.every(w => T.rec.land[w]), note: `${patch.length} cell${patch.length > 1 ? 's' : ''}, belt ${[...new Set([...ring].map(q => F.oroType[q]))].join('/')}, ground around ${around.toFixed(2)} km` });
         }
         return gaps;
     };
@@ -261,20 +269,22 @@ section('scraps of craton');
     for (const [i, sceneSeed] of SCENE_SEEDS.entries()) {
         for (const [id, seed, times] of [['india', sceneSeed, [50, 60, 70, 80, 90]], ['history', PLANET_SEEDS[i], Array.from({ length: 30 }, (_, j) => 20 * (j + 1))]]) {
             const { frames } = await run(id, Math.max(...times), null, seed);
-            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) (g.coast ? coastal : scraps).push({ gap: g.gap, drowned: g.drowned, where: `${id} ${seed} @${F.time} (${g.note})` });
+            for (const F of frames.filter(f => times.includes(f.time))) for (const g of gapsOf(F, tm160, seed)) (g.coast ? coastal : scraps).push({ gap: g.gap, gapMean: g.gapMean, drowned: g.drowned, where: `${id} ${seed} @${F.time} (${g.note})` });
         }
     }
-    const gaps = scraps.map(x => x.gap), worst = scraps.reduce((m, x) => (!m || x.gap > m.gap ? x : m), null);
+    const gaps = scraps.map(x => x.gap), gapsMean = scraps.map(x => x.gapMean), worst = scraps.reduce((m, x) => (!m || x.gap > m.gap ? x : m), null);
     checkAcross('scraps of craton read as the ground around them — no flat holes in a range',
         [{ label: `${SCENE_SEEDS.length} India scenes and ${PLANET_SEEDS.length} planets pooled`, formed: gaps.length >= SCRAP_FLOOR, ok: median(gaps) <= 0.1 && Math.max(...gaps) <= 0.5,
             text: `${gaps.length} scraps (floor ${SCRAP_FLOOR}): around them ${median(gaps).toFixed(2)} km above (median), the most ${Math.max(...gaps).toFixed(2)} km${worst ? ` at ${worst.where}` : ''}` }],
-        { scene: 'scraps of craton (5 or more in the six histories)', detail: 'craton scraps of 1–3 cells on their own plate\'s raster; the ground around them stands this far above them — below, where negative (before Phase 10 median 0.02 km, the worst 1.27 km)' });
+        { scene: 'scraps of craton (5 or more in the six histories)', detail: 'craton scraps of 1–3 cells on their own plate\'s raster; the ring\'s median cell stands this far above them — below, where negative (before Phase 10 median 0.02 km, the worst 1.27 km)' });
     {
         const cg = Float64Array.from(coastal, x => x.gap).sort(), at = p => cg.length ? cg[Math.min(cg.length - 1, Math.floor(p * cg.length))] : NaN;
         report('scraps of craton at the sea\'s edge (a coast: not judged), each one\'s height below the land beside it', [...cg], { unit: ' km', digits: 2,
             detail: `${coastal.length} scraps: median ${at(0.5).toFixed(2)}, 90th percentile ${at(0.9).toFixed(2)}, the most ${(cg.length ? cg[cg.length - 1] : NaN).toFixed(2)} km; ${coastal.filter(x => x.drowned).length} read under the sea though their column is land (known issue, standing goal #8: records.js marginLine) — ${coastal.map(x => `${x.where}: ${x.gap.toFixed(2)}${x.drowned ? ' (under the sea)' : ''}`).join(', ')}` });
     }
-    report('scraps of craton found, and each one\'s height below its surroundings', gaps, { unit: ' km', digits: 2, detail: scraps.map(x => `${x.where}: ${x.gap.toFixed(2)}`).join(', ') });
+    report('…against the ring\'s mean instead (the rule before erosionfix M3): the most and the median', [Math.max(...gapsMean), median(gapsMean)], { unit: ' km', digits: 2,
+        detail: 'a range beside a scrap lifts the mean: a range-front cell reads as a hole' });
+    report('scraps of craton found, and each one\'s height below its surroundings', gaps, { unit: ' km', digits: 2, detail: scraps.map(x => `${x.where}: ${x.gap.toFixed(2)} (mean ${x.gapMean.toFixed(2)})`).join(', ') });
 }
 
 // ── who rides up: both scenes build their trench on Asia, so Asia owned the margin ──
