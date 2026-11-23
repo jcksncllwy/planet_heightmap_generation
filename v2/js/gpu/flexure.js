@@ -59,10 +59,10 @@ export const FLEX = {
     gdh1KappaMm2: 0.804,
     oceanMinTeKm: 2,            // a ridge's crest: the brittle lid over the magma lens, a few km (Watts 2001 §6.4: Te ~ 2–5 at ridges)
     prehistoryAgeMyr: 100,      // floor the history found already there: of unknown age, taken as old (terrain/records.js's 100)
-    // The solve (flexure-gpu.js): MG-preconditioned CG to a relative residual mgTol (1e-4: ~0.1 mm a km of load; f32's floor ~1e-6), read back every
+    // The solve (flexure-gpu.js): MG-preconditioned CG to a relative residual mgTol (1e-3: ~1 mm a km of load — at 2.5M the land's p90/p99/max equal 1e-4's to the metre, cells apart only by the rivers' chaotic reroutes, erosion 6–11 % quicker: lane flexure 2026-11-23; f32's floor ~1e-6), read back every
     // mgCheck iterations, at most mgMaxIter; mgSweeps damped-Jacobi sweeps a level each way at mgOmega, mgCoarseSweeps on the
     // coarsest. Numerics, not physics: they decide how close to the plate's answer, not what it is.
-    mgTol: 1e-4,
+    mgTol: 1e-3,
     mgCheck: 4,
     mgMaxIter: 64,
     mgSweeps: 2,

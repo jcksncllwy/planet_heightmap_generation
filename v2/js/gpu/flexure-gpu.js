@@ -20,7 +20,7 @@
 
 import { pipeline, readBack } from './gpu-device.js';
 import { WG, SUM_WG, INDEX_WGSL, dispatch, meshFields } from './fields.js';
-import { FLEX, plateOperator, stiffnessKm4 } from './flexure.js';
+import { FLEX, plateOperator, stiffnessKm4, flexuralLengthKm } from './flexure.js';
 import { mapOnto } from '../core/mesh-maps.js';
 
 const COARSEST = 12000;
@@ -202,6 +202,13 @@ function pipelinesOf(device, omega) {
     return of.get(key);
 }
 
+// (a fine field's mean over each coarse cell by the transpose's weights; a coarse cell no fine cell touches takes `empty`)
+function tMean(T, v, nc, empty) {
+    const out = new Float32Array(nc);
+    for (let c = 0; c < nc; c++) { let a = 0, sw = 0; for (let k = T.off[c]; k < T.off[c + 1]; k++) { a += T.w[k] * v[T.idx[k]]; sw += T.w[k]; } out[c] = sw > 0 ? a / sw : empty; }
+    return out;
+}
+
 // (a map's transpose: for each coarse cell, the fine cells whose 3 corners include it and those weights, in fine index order)
 const transposes = new WeakMap();
 function transposeOf(map, m) {
@@ -220,20 +227,31 @@ function transposeOf(map, m) {
  * A plate solver on `mesh` for Te `te` (km, per cell), resident on the GPU. Its finest level's `b` (n f32: M·ℓ, the load times
  * each cell's area) is the caller's to fill; `w` (n f32) holds the deflection after solve(); `M` (n f32) the cells' areas, for
  * the caller's load. setOcean(o): the buoyancy, air or sea water over each cell (1 per sea cell). `meshOf(cells)`: a terrain
- * mesh of about that many cells (terrain-mesh.js terrainMesh).
+ * mesh of about that many cells (terrain-mesh.js terrainMesh). `onMesh`: solve on the mesh itself, however fine (tests).
  * @returns {Promise<{b: GPUBuffer, w: GPUBuffer, M: GPUBuffer, setOcean(o: ArrayLike<number>): void, solve(): Promise<{iterations: number, residual: number}>, destroy(): void}>}
  */
-export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
+export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX, onMesh = false }) {
     const P_ = await pipelinesOf(device, F.mgOmega), own = [];
     const USE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     const mk = (label, bytes) => { const b = device.createBuffer({ label, size: Math.max(16, bytes), usage: USE }); own.push(b); return b; };
     const up = (label, arr) => { const b = mk(label, arr.byteLength); device.queue.writeBuffer(b, 0, arr.buffer, arr.byteOffset, arr.byteLength); return b; };
     const g = (name, list) => device.createBindGroup({ layout: P_[name].getBindGroupLayout(0), entries: list.map((buffer, binding) => ({ binding, resource: { buffer } })) });
 
-    // ── the levels: the mesh, then the coarser terrain meshes; each with its operator, its stiffness and its map to the next ──
-    const meshes = [mesh, ...levelSizes(mesh.numCells).map(s => meshOf(s))], L = [];
+    // ── where the plate is solved: the coarsest of the mesh and its levels whose cells are no wider than the thinnest land
+    // plate's own length, l = α/√2 of arcTeKm (31 km at 15 km: the belts, the arcs, the rifts). A deflection has no shape finer
+    // than l — the Kelvin function's — so a finer mesh only re-resolves the load (flexure-test 1b: at h ≈ l a 60 km-wide load is
+    // within 2 % of the Hankel solution, a 30 km one 7 %). The 2.5M ground (15 km cells) is bent on 640K's (30 km), a fourth of
+    // the work and none of 2.5M's operator to build (lane flexure, 2026-11-23: the plate's cost at 2.5M, 24 s → see README).
+    // What it skips: a load narrower than l on a plate thinner than arcTeKm's (young sea floor, Te 2–10 near the ridges: the
+    // sea's sediment is thin there) spreads over a 30 km cell before it bends the plate. The mesh's load comes down by the
+    // prolongation's transpose (Pᵀ: the load's volume kept), and the deflection goes back up by the prolongation (the 3 around).
+    const all = [mesh, ...levelSizes(mesh.numCells).map(s => meshOf(s))], lMin = flexuralLengthKm(F.arcTeKm, 0, F) / Math.SQRT2;
+    let s0 = 0;
+    while (!onMesh && s0 + 1 < all.length && all[s0 + 1].edgeKm <= lMin) s0++;
+    const meshes = all.slice(s0), L = [], nIn = mesh.numCells;
+    const inMap = s0 ? mapOnto(meshes[0], mesh) : null, inT = inMap ? transposeOf(inMap, meshes[0].numCells) : null;
     const logB = Float32Array.from(te, t => Math.log(stiffnessKm4(Math.max(0.5, t), F)));
-    let lb = logB;
+    let lb = inT ? tMean(inT, logB, meshes[0].numCells, Math.log(stiffnessKm4(F.continentTeKm, F))) : logB;
     for (let k = 0; k < meshes.length; k++) {
         const m = meshes[k], n = m.numCells, op = plateOperator(m);
         const map = k + 1 < meshes.length ? mapOnto(meshes[k + 1], m) : null, T = map ? transposeOf(map, meshes[k + 1].numCells) : null;
@@ -244,9 +262,7 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
             Ms: mk('Ms', 4 * n), diag: mk('diag', 4 * n), x: mk('x', 4 * n), b: mk('b', 4 * n), r: mk('r', 4 * n), t: mk('t', 4 * n) };
         if (map) {
             // (the next level's log stiffness: the fine cells' by the transpose's weights)
-            const nc = meshes[k + 1].numCells, next = new Float32Array(nc);
-            for (let c = 0; c < nc; c++) { let s = 0, sw = 0; for (let q = T.off[c]; q < T.off[c + 1]; q++) { s += T.w[q] * lb[T.idx[q]]; sw += T.w[q]; } next[c] = sw > 0 ? s / sw : Math.log(stiffnessKm4(F.continentTeKm, F)); }
-            lb = next;
+            lb = tMean(T, lb, meshes[k + 1].numCells, Math.log(stiffnessKm4(F.continentTeKm, F)));
             lev.cells = up('cells', Uint32Array.from(map.cells)); lev.weights = up('weights', Float32Array.from(map.weights));
             lev.tOff = up('tOff', T.off); lev.tIdx = up('tIdx', T.idx); lev.tW = up('tW', T.w);
         }
@@ -261,14 +277,24 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
 
     // ── the CG's vectors on the finest level: the V-cycle reads its residual as level 0's right side (L[0].b is the CG's r) and
     // writes z into level 0's x ──
-    const f = L[0], n = f.n, bIn = mk('load', 4 * n), w = mk('w', 4 * n), p = mk('p', 4 * n), q = mk('Ap', 4 * n), tq = mk('tq', 4 * n);
-    const Mf = up('M', f.op.M), parts = Math.ceil(n / SUM_WG), part = mk('part', 4 * parts), S = mk('S', 32);
+    // (bIn, w and M on the caller's mesh; bS and wS the solve's — the same buffers when the plate is solved on the mesh itself.
+    // M: the Voronoi areas there, else the mesh's mean cell, 4πR²/n — the erosion's own measure of a cell's volume)
+    const f = L[0], n = f.n, bIn = mk('load', 4 * nIn), w = mk('w', 4 * nIn), p = mk('p', 4 * n), q = mk('Ap', 4 * n), tq = mk('tq', 4 * n);
+    const bS = s0 ? mk('loadS', 4 * n) : bIn, wS = s0 ? mk('wS', 4 * n) : w;
+    const Mf = s0 ? up('M', new Float32Array(nIn).fill(4 * Math.PI * 6371 * 6371 / nIn)) : up('M', f.op.M), parts = Math.ceil(n / SUM_WG), part = mk('part', 4 * parts), S = mk('S', 32);
     const fins = {}, uni = (mode, slot) => { const u = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); own.push(u); device.queue.writeBuffer(u, 0, new Uint32Array([mode, slot, parts, 0])); return g('fin', [u, part, S]); };
     fins.rz = uni(0, RZ); fins.bb = uni(0, BB); fins.rr = uni(0, RR); fins.alpha = uni(1, 0); fins.beta = uni(2, 0);
     const r = f.b, z = f.x;
     const G = { kpP: g('kp', [f.off, f.adj, f.wK, f.G, p, tq]), ax: g('ax', [f.off, f.adj, f.wK, f.Ms, tq, p, q]),
-        dotPq: g('dot', [p, q, part]), dotRz: g('dot', [r, z, part]), dotRr: g('dot', [r, r, part]), dotBb: g('dot', [bIn, bIn, part]),
-        upd1: g('upd1', [S, p, q, w, r]), upd2: g('upd2', [S, z, p]), zeroW: g('zero', [w]) };
+        dotPq: g('dot', [p, q, part]), dotRz: g('dot', [r, z, part]), dotRr: g('dot', [r, r, part]), dotBb: g('dot', [bS, bS, part]),
+        upd1: g('upd1', [S, p, q, wS, r]), upd2: g('upd2', [S, z, p]), zeroW: g('zero', [wS]),
+        kpW: g('kp', [f.off, f.adj, f.wK, f.G, wS, tq]), residW: g('resid', [f.off, f.adj, f.wK, f.Ms, tq, bS, wS, r]) };
+    if (s0) {
+        const T = { off: up('tOff', inT.off), idx: up('tIdx', inT.idx), w: up('tW', inT.w) };
+        G.down = g('restrict', [T.off, T.idx, T.w, bIn, bS]);
+        G.zeroOut = g('zero', [w]);
+        G.up = g('prolong', [up('cells', Uint32Array.from(inMap.cells)), up('weights', Float32Array.from(inMap.weights)), wS, w]);
+    }
 
     const step = (pass, name, grp, count, wg) => { pass.setPipeline(P_[name]); pass.setBindGroup(0, grp); dispatch(pass, count, wg); };
     const sumTo = (pass, dotG, finG) => { step(pass, 'dot', dotG, n, SUM_WG); pass.setPipeline(P_.fin); pass.setBindGroup(0, finG); pass.dispatchWorkgroups(1); };
@@ -277,29 +303,30 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
         for (let k = 0; k < L.length; k++) {
             const v = L[k], last = k === L.length - 1;
             step(pass, 'zero', v.G_.zero, v.n);
-            for (let i = 0; i < (last ? F.mgCoarseSweeps : F.mgSweeps); i++) { step(pass, 'kp', v.G_.kpX, v.n); step(pass, 'smooth', v.G_.smooth, v.n); }
+            for (let i = 0; i < (last ? F.mgCoarseSweeps : k ? F.mgSweeps : F.mgSweeps0 ?? F.mgSweeps); i++) { step(pass, 'kp', v.G_.kpX, v.n); step(pass, 'smooth', v.G_.smooth, v.n); }
             if (last) break;
             step(pass, 'kp', v.G_.kpX, v.n); step(pass, 'resid', v.G_.resid, v.n); step(pass, 'restrict', v.G_.restrict, L[k + 1].n);
         }
         for (let k = L.length - 2; k >= 0; k--) {
             const v = L[k];
             step(pass, 'prolong', v.G_.prolong, v.n);
-            for (let i = 0; i < F.mgSweeps; i++) { step(pass, 'kp', v.G_.kpX, v.n); step(pass, 'smooth', v.G_.smooth, v.n); }
+            for (let i = 0; i < (k ? F.mgSweeps : F.mgSweeps0 ?? F.mgSweeps); i++) { step(pass, 'kp', v.G_.kpX, v.n); step(pass, 'smooth', v.G_.smooth, v.n); }
         }
     };
     const readS = async () => readBack(device, S);
     let lastOcean = null;
 
     return {
-        b: bIn, w, M: Mf, levels: L.map(v => v.n),
+        b: bIn, w, M: Mf, levels: L.map(v => v.n), cells: nIn,
         setOcean(o) {
             // (the buoyancy: Δρ/ρm, air or the sea's water filling the trough; coarse levels the mean by the transpose's weights.
             // Asked at every closed-basin judge: nothing to do when the sea has not moved)
-            if (lastOcean && lastOcean.length === n && lastOcean.every((v, c) => v === (o[c] ? 1 : 0))) return;
+            if (lastOcean && lastOcean.length === nIn && lastOcean.every((v, c) => v === (o[c] ? 1 : 0))) return;
             lastOcean = Uint8Array.from(o, v => (v ? 1 : 0));
             const sea = (F.mantleRho - F.waterRho) / F.mantleRho;
-            let s = new Float32Array(n);
-            for (let c = 0; c < n; c++) s[c] = o[c] ? sea : 1;
+            let s = new Float32Array(nIn);
+            for (let c = 0; c < nIn; c++) s[c] = o[c] ? sea : 1;
+            if (inT) s = tMean(inT, s, n, 1);
             const e = device.createCommandEncoder(), pass = e.beginComputePass();
             for (let k = 0; k < L.length; k++) {
                 const v = L[k], ms = new Float32Array(v.n);
@@ -315,12 +342,22 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
             pass.end();
             device.queue.submit([e.finish()]);
         },
-        /** The deflection under `b` into `w`, from zero. */
-        async solve() {
-            let e = device.createCommandEncoder();
-            e.copyBufferToBuffer(bIn, 0, r, 0, 4 * n);
-            let pass = e.beginComputePass();
-            step(pass, 'zero', G.zeroW, n);
+        /**
+         * The deflection under `b` into `w`: from zero, or `warm` from what `w` holds (the last solve's: the plate is linear and a
+         * settling's load is much like the last one's — the same rivers cutting, the same deltas building — so the CG starts
+         * from that answer's residual, r = b − A w, and has less of the error to take out; the stop is still |r| ≤ mgTol |b|).
+         */
+        async solve(warm = false) {
+            let e = device.createCommandEncoder(), pass;
+            if (s0) { pass = e.beginComputePass(); step(pass, 'restrict', G.down, n); pass.end(); }
+            if (warm) {
+                pass = e.beginComputePass();
+                step(pass, 'kp', G.kpW, n); step(pass, 'resid', G.residW, n);
+            } else {
+                e.copyBufferToBuffer(bS, 0, r, 0, 4 * n);
+                pass = e.beginComputePass();
+                step(pass, 'zero', G.zeroW, n);
+            }
             sumTo(pass, G.dotBb, fins.bb);
             vcycle(pass);
             pass.end();
@@ -347,6 +384,11 @@ export async function plateSolverGPU(device, { mesh, te, meshOf, F = FLEX }) {
                 const Sv = await readS();
                 rr = Sv[RR]; bb = Sv[BB];
                 if (!(bb > 0) || rr <= F.mgTol * F.mgTol * bb) break;
+            }
+            if (s0) {
+                e = device.createCommandEncoder(); pass = e.beginComputePass();
+                step(pass, 'zero', G.zeroOut, nIn); step(pass, 'prolong', G.up, nIn);
+                pass.end(); device.queue.submit([e.finish()]);
             }
             return { iterations: it, residual: bb > 0 ? Math.sqrt(rr / bb) : 0 };
         },

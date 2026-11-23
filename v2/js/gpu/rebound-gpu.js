@@ -100,7 +100,7 @@ export async function reboundGPU(device, { mesh, z, lift = null, Kv = null, ocea
         step(p, 'load', G.load);
         p.end();
         device.queue.submit([e.finish()]);
-        const r = await plate.solve();
+        const r = await plate.solve(last.solves > 0);          // (from the last settling's answer: plateSolverGPU solve's warm)
         last.solves++; last.maxIterations = Math.max(last.maxIterations, r.iterations); last.residual = Math.max(last.residual, r.residual);
         e = device.createCommandEncoder(); p = e.beginComputePass();
         step(p, 'apply', G.apply);
