@@ -3269,13 +3269,13 @@ The finish's erosion used to run a short ladder (10 + 4 + 2 steps) from the mome
 scalar, so the span never engaged before c92d61f). Processes, all in `finish-erode.js` (`ERODE`):
 
 - *(`tectUplift` (U), the history's rise re-added over the window as the frame's `tectRateKm`, was deleted in lane erosionfix M2: the frame's ground already stands on the window's rise, so it counted it twice. The finish's uplift is now `histLower`, below.)*
-- `histLower` (lane erosionfix M2, Jackson's C=(i)): the history's own erosion's lowering of the ground over the same window
+- `histLower` (lane erosionfix M2, Jackson's C=(i)): the history's own erosion's lowering of the ground over the moment's window
   reaches the finish as the frame's `erodeRateKm` (records only: `crust.erodeKm`, gathered in step/rivers.js as the height the land
-  stood at before each erosion less after, reset with `tectKm`; the history's surface bit-identical). The finish adds it to its uplift
-  cell by cell (finish-erode.js `windowUplift`), so its net lowering is its erosion less the history's. On 831576 at 640K it takes
-  the erosion stage's land-mean lowering 134 → 113 m at 430 and 208 → 167 m at 340 (p50 42 → 27, 70 → 48 m; p90 512 → 483,
-  804 → 730 m): the history's ground lowering is small (~0.155 of its rock, Airy), so most of the finish's erosion is what the
-  40K mesh can't resolve.
+  stood at before each erosion less after, reset with `tectKm`; the history's surface bit-identical). It is the finish's uplift, cell
+  by cell (finish-erode.js `windowUplift`), so the moment ends at z_frame + (E_history − E_finish)·T: the history the authority on
+  how much rock leaves the land, the finish the sub-mesh rest. On 831576 at 640K against the old uplift (U), the erosion stage's
+  land lowering: mean 127 → 127 m at 430, 208 → 193 m at 340; p50 43 → 33, 70 → 58 m; p90 529 → 499, 806 → 772 m; land p99
+  +16/+29 m, the highest point −826/−779 m (it stood on the window's rise counted twice).
   The old `sinkingGround` is retired.
 - `spanWindow` / `spanMaxMyr` (20): the ladder is stretched to the window, each rung at its own dt.
 - `spanSplit` **'even'** (default): every rung stretched alike. `'coarse'` put all the extra time on the 160K rung, whose
