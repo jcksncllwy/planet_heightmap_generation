@@ -2464,7 +2464,7 @@ rifts, and it barely passes the load test anyway.
 net fill (km³/yr) = inflow × lakeLoadShare − lake area × mean sinking share × lakeSinkMmYr
 it stands if      volume ≥ carveTimeMyr × net fill
 ```
-- *(Retired with the lake rules in 7d91f0a: erosion replaced them. The history's rise now reaches the finish as the frame's `tectRateKm`, `ERODE.tectUplift`; the lane fluvial section below.)*
+- *(Retired with the lake rules in 7d91f0a: erosion replaced them. The history's rise reached the finish as the frame's `tectRateKm`, `ERODE.tectUplift`, until lane erosionfix M2 (`histLower` now); the lane fluvial section below.)*
 - **What sinks** (`sinkingGround`, read from the frame): ground the belts deformed lately, fading over `carveActiveMyr`,
   and rifts on continental crust. It is sinking against the sill, which is all a lake feels: a hollow in a rising belt
   deepens as its rim rises.
@@ -3268,7 +3268,7 @@ The finish's erosion used to run a short ladder (10 + 4 + 2 steps) from the mome
 **window the history itself covers** (`tectSpanMyr`, carried on the terrain-pool frame: the slim frame had dropped the
 scalar, so the span never engaged before c92d61f). Processes, all in `finish-erode.js` (`ERODE`):
 
-- `tectUplift` (U): the history's rise reaches the finish as `tectRateKm`, so rock uplift and incision balance over the window.
+- *(`tectUplift` (U), the history's rise re-added over the window as the frame's `tectRateKm`, was deleted in lane erosionfix M2: the frame's ground already stands on the window's rise, so it counted it twice. The finish's uplift is now `histLower`, below.)*
 - `histLower` (lane erosionfix M2, Jackson's C=(i)): the history's own erosion's lowering of the ground over the same window
   reaches the finish as the frame's `erodeRateKm` (records only: `crust.erodeKm`, gathered in step/rivers.js as the height the land
   stood at before each erosion less after, reset with `tectKm`; the history's surface bit-identical). The finish adds it to its uplift

@@ -19,7 +19,8 @@
 // stream power and threshold diffusion (ERODE hillD, diffD); the geomorphic diffusivity, ~0.01 m²/yr (Fernandes & Dietrich
 // 1997, recalled), reaches √(2Dt) ~ 140 m in a Myr, far under any cell here.
 // Erosion is the carve's own: its k, its m, its rain-weighted drainage, on the whole cell (a cell's mean lowering, at every
-// detail); an active belt keeps its rivers high by the history's uplift (o.uplift), not by a hold on its rate.
+// detail); the ground the history eroded over the moment's window is given back as it erodes (o.uplift: ERODE histLower), so the
+// finish takes off only what it erodes beyond the history.
 // Heights km, distances km, time Myr.
 
 import { MinHeap } from '../core/min-heap.js';
@@ -88,10 +89,11 @@ export const ERODE = {
     spanMaxMyr: 20,             // …up to this long (a history's first frame counts its window from the start: a cost cap)
     spanSplit: 'even',          // …every rung stretched alike ('even'), or all of it on the coarsest ('coarse': leaves the 160K rung's ~100 km
                                 // interfluves as isolated mounds on the plains — fluvial5 A/B, 2026-11-10)
-    tectUplift: true,           // the history's tectonic rise (frame tectRateKm) lifts the ground as it erodes, rebounding at every level
-    histLower: true,            // C=(i) (Jackson, 2026-11-11): the history's own erosion's lowering over the same window (frame erodeRateKm) is
-                                // given back as it erodes, so the finish takes off only what it erodes beyond the history — the history the one
-                                // authority on how much rock leaves the land, the finish the sub-mesh rest (windowUplift)
+    histLower: true,            // C=(i) (Jackson, 2026-11-11): the history's own erosion's lowering over the moment's window (frame erodeRateKm)
+                                // is given back as it erodes, so the finish takes off only what it erodes beyond the history — the history the
+                                // one authority on how much rock leaves the land, the finish the sub-mesh rest (windowUplift). (The history's
+                                // tectonic rise over the window, tectUplift until lane erosionfix, is not added: the frame's ground already
+                                // stands on it, and adding it again counted it twice — sessrumnir's ruling, 2026-11-22)
     flatRule: true,             // a flat drains by Barnes et al. 2014's two gradients; false: by the flood's pop order, an arbitrary tie
     // ── the sea's floor (lane marine, 2026-11-21; GPU only): the rivers' load is laid as a delta from where they meet the sea (each
     // mouth's fills the nearest sea up to its level: erode-gpu.js seaDelta), not counted, and the waves move it: q = −K(d)·∇z between sea cells, K(d) = marineK down to wave base and K·e^(−(d − wb)/wb) below (Kaufman et al.
@@ -119,8 +121,8 @@ export const ERODE = {
  *                                       dry, or water again behind a lower sill: finish.js seaDrying)
  * @param {Float32Array|null} [o.slow]   a multiple of the rate, per cell (the ice's young ground)
  * @param {Object|null} [o.column]       the rock column on this mesh (loose, zBed, fine: rockColumn)
- * @param {Float32Array|null} [o.uplift] the history's surface uplift here, km/Myr, signed (its frame's tectRateKm: the rise its
- *                                       tectonic terms gave the ground, isostasy included, erosion not): added to the ground each step
+ * @param {Float32Array|null} [o.uplift] the ground's rise here, km/Myr, signed, isostasy included: added to the ground each step
+ *                                       (the finish's: the history's own erosion's lowering over the window, frame erodeRateKm — windowUplift)
  * @param {{mesh: Object, map: Object}|null} [o.flex] a finer ladder level's: its rebound blurs on this coarser mesh (rebounder)
  * @param {number} o.m              the carve's m
  * @param {Object} P                ERODE's settings
@@ -631,25 +633,21 @@ function carry(M, values, out) {
 }
 
 /**
- * The finish's uplift over the moment's window, km/Myr per cell (o.uplift), from the frame's records on the carve's corners
- * (terrain/synthesize.js carveInputs): the history's tectonic rise (lift: ERODE tectUplift) plus its own erosion's lowering
- * over the same window (lower: ERODE histLower, Jackson's C=(i)). Both are rates over the frame's window (tectSpanMyr), run
- * over the same span (ladderOverWindow), so the finish gives back exactly what the history took off as it takes off its own:
- * its net lowering is its erosion less the history's, cell by cell. Both are the ground's (isostasy in them: the history's
- * erosion lowers the ground by the rock's ~1/6, surface-erosion.js wearRock), as the rebounder takes the uplift. null: neither.
+ * The finish's uplift over the moment's window, km/Myr per cell (o.uplift): the history's own erosion's lowering of the ground
+ * over that window (ERODE histLower, Jackson's C=(i); the frame's erodeRateKm on the carve's corners, terrain/synthesize.js
+ * carveInputs lower). A rate over the frame's window (tectSpanMyr) run over the same span (ladderOverWindow), so the finish
+ * gives back what the history took off as it takes off its own: the moment ends at z_frame + (E_history − E_finish)·T, cell by
+ * cell. The ground's lowering (isostasy in it: the history's erosion lowers the ground by ~1/6 of the rock, surface-erosion.js
+ * wearRock), as the rebounder takes the uplift. The window's tectonic rise is not added: the frame's ground already stands on it.
  */
 export function windowUplift(P, carve) {
-    const lift = P.tectUplift ? carve.lift : null, lower = P.histLower && carve.lower ? carve.lower : null;
-    if (!lower) return lift;
-    const u = new Float32Array(lower.length);
-    for (let i = 0; i < u.length; i++) u[i] = (lift ? lift[i] : 0) + lower[i];
-    return u;
+    return P.histLower && carve.lower ? carve.lower : null;
 }
 
 /**
  * The ladder over the moment's window (ERODE spanWindow): its coarsest rung runs the window less the finer rungs' spans, at
- * the rung's own dt — the history's uplift (tectRateKm) is the rise over that window, so with it the rivers have the time the
- * ground rose in. A frame without a window (one cached before it was kept), or a window no longer than the ladder: as it is.
+ * the rung's own dt — the finish replays the window the frame closes (its uplift the history's own lowering over it, windowUplift),
+ * so its rivers have the time the history's had. A frame without a window (one cached before it was kept), or a window no longer than the ladder: as it is.
  */
 export function ladderOverWindow(P, windowMyr) {
     if (!P.spanWindow || !P.ladder || !(windowMyr > 0)) return P;

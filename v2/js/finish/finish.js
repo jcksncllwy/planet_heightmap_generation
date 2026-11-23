@@ -336,7 +336,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     };
     // (time-stepped erosion, on unless F.erode is false: finish-erode.js)
     const eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, m: E.m,
-        uplift: windowUplift(EP, carveIn) } : null;                  // (km/Myr: ERODE tectUplift, histLower)
+        uplift: windowUplift(EP, carveIn) } : null;                  // (km/Myr: ERODE histLower)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     lap('rivers');
