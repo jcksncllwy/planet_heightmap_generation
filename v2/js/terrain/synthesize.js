@@ -645,7 +645,7 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             // every term below is exactly 0)
             const cells = lw > 0 ? (n0 * craton[c0] + n1 * craton[c1] + n2 * craton[c2]) / lw : 0;
             if (cDepth > -200 || cells > 0) {
-                const cLoad = CRo ? rw3[0] * CRo.load[r3[0]] + rw3[1] * CRo.load[r3[1]] + rw3[2] * CRo.load[r3[2]] : w0 * CR.loadW[c0] + w1 * CR.loadW[c1] + w2 * CR.loadW[c2];
+                let cLoad = CRo ? rw3[0] * CRo.load[r3[0]] + rw3[1] * CRo.load[r3[1]] + rw3[2] * CRo.load[r3[2]] : w0 * CR.loadW[c0] + w1 * CR.loadW[c1] + w2 * CR.loadW[c2];
                 const cPatch = CRo ? Math.max(CRo.patch[r3[0]], CRo.patch[r3[1]], CRo.patch[r3[2]]) : Math.max(CR.patchW[c0], CR.patchW[c1], CR.patchW[c2]);
                 const crN = cDepth + cfg.cratonEdgeNoiseKm * noise.fbm(x * cratF + 9.1, y * cratF + 3.7, z * cratF + 5.3, 3, 0.5) * 1.5;
                 const whole = smooth(0.5 * cfg.cratonScrapKm, 1.5 * cfg.cratonScrapKm, cPatch);      // (a scrap reads as its surroundings)
@@ -659,10 +659,12 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
                 rimFade = 1 - whole * smooth(cfg.cratonRimInKm, cfg.cratonRimOutKm, crN);
                 // the foreland: the shield bent down under the ranges' weight (terrain/cratons.js: its plate solved under its loads
                 // as a stiff plate bends — deepest before the thrusts on its rim, rising to a low forebulge), across the edge line.
-                // The bend is the basement's: its trough fills with sediment to base level, the sea's (the fill is load there,
-                // cratons.js), so the ground over it comes down to the sea and no further — a plain graded to the sea (the
-                // Ganges', Mesopotamia's) over a basement kilometres down
-                if (cLoad > 0.002 || cLoad < -0.002) platform -= whole * smooth(-cfg.cratonBlendKm, cfg.cratonBlendKm, crN) * (cLoad > 0 ? Math.min(cLoad, Math.max(0, platform)) : cLoad);
+                // The bend is the basement's: its trough fills with sediment to base level (the fill is load there, cratons.js) —
+                // the sea's where the trough opens to it, its spill point where it is closed in (records.js forelandFill) — so the
+                // ground over it comes down to its base level and no further: a plain graded to the sea (the Ganges',
+                // Mesopotamia's) or filled to its sill, over a basement kilometres down
+                if (cLoad > 0.002) cLoad = Math.min(Math.max(0, cLoad - (w0 * CR.fillW[c0] + w1 * CR.fillW[c1] + w2 * CR.fillW[c2])), Math.max(0, platform - seaKm));
+                if (cLoad > 0.002 || cLoad < -0.002) platform -= whole * smooth(-cfg.cratonBlendKm, cfg.cratonBlendKm, crN) * cLoad;
                 // the shield's character (per craton: a sag basin, a swell, a flat shield) and its grain of domes and keels
                 if (shieldS > 0.01) {
                     let cT = c0, cW = -1;

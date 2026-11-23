@@ -8,7 +8,7 @@ import { BoundaryKind } from '../tectonics/model/world.js';
 import { Margin, filledSeaDepthKm, seaDepthKm, columnModel, LAND_SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
 import { liftRefKm } from './sea-level.js';
 import { landMask, crustColumnKm, fillPockets } from './land-mask.js';
-import { spreadKm } from '../core/min-heap.js';
+import { spreadKm, MinHeap } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
 import { frameWaterOf } from '../tectonics/step/climate-sample.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
@@ -682,10 +682,41 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
             reliefKm[w] = Math.max(reliefKm[w], f * r0 / m); overprinted.reliefKm[w] = Math.max(overprinted.reliefKm[w], f * r1 / m);
         }
     }
+    cratons.fillW = forelandFill(simMesh, land, craton, platformKm, shieldKm, upliftKm, cratons.loadW, sl, arc, cfg);
 
     return { coastRaster, land, arc, craton, riverKm2: frame.riverKm2, coastKm, coastKind, maturity, coastRugged: rugged, shelfKm, plainKm, slopeKm, breakKm, thinKm, riftShare: rift, footKm: foot, openSea: open, depthKm, ageMyr, fabricKm, trenchKm, riseKm, trenchDepthKm, fractureU,
         platformKm, shieldKm, fillLand, dryHollow, basinCover, upliftKm, cratons, terrane: frame.terrane, lipKm, lipWornKm, lipSrc, lipEdgeKm, lipOutKm, quietMyr, armKm, iceSoft, erosion, kind, dKm, reach, reliefKm, shear, across, belts: [current, overprinted], time,
         seaKm: sl.seaKm, seaRefKm: sl.seaRefKm, sea: { swellSeaKm: sl.swellSeaKm, ridgeSeaKm: sl.ridgeSeaKm, heatLand: sl.heatLand, heatSea: sl.heatSea, depthKm: sl.depthKm }, swellKm: sl.swellKm };
+}
+
+/**
+ * The sediment a foreland trough holds over its bent floor (km, per world cell; 0 off the troughs): an overfilled
+ * foreland (supply ≥ accommodation — the only kind drawn: the lane's named gap) fills to its base level, which is the sea
+ * where the trough opens to it and its spill point where the forebulge, the shield's own rise or the range close it in —
+ * a closed trough fills until it spills (the Ganges' plain grades to the sea; the Po's and the Mesopotamian plain spill
+ * past their sills, none stands as a hole hundreds of metres deep). The ground as the terrain stands it at sim scale (its
+ * platform with the swell, the shield's step, the evolved uplift) bent by the plate (cratons.js), priority-flooded from
+ * the sea at the sea's level (Barnes et al. 2014); the fill is the flood's depth over the bent ground where the plate
+ * bends it down. The terrain takes it off the bend (synthesize.js); the basement keeps the whole bend (cratons.loadW).
+ */
+function forelandFill(simMesh, land, craton, platformKm, shieldKm, upliftKm, bend, sl, arc, cfg) {
+    const n = simMesh.numCells, { adjOffset, adjList } = simMesh, seaKm = sl.seaKm ?? 0;
+    const g = new Float64Array(n), done = new Uint8Array(n), heap = new MinHeap(4096), fill = new Float32Array(n);
+    for (let w = 0; w < n; w++) {
+        if (!land[w]) { g[w] = seaKm; done[w] = 1; heap.push(seaKm, w); continue; }
+        const swell = sl.swellKm ? sl.swellKm[w] - liftRefKm(cfg, arc[w], sl.seaRefKm ?? 0) : 0;
+        g[w] = platformKm[w] + swell + (craton[w] ? shieldKm[w] : 0) + Math.max(0, upliftKm[w]) - bend[w];
+    }
+    while (heap.size) {
+        const w = heap.pop(), lv = heap.lastKey;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
+            const v = adjList[k]; if (done[v]) continue;
+            done[v] = 1; const f = Math.max(g[v], lv);
+            if (bend[v] > 0) fill[v] = f - g[v];
+            heap.push(f, v);
+        }
+    }
+    return fill;
 }
 
 /**
