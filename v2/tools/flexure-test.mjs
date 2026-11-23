@@ -6,6 +6,8 @@
 //      own cell, its forebulge's crest within ½ l and its height within 10 %; the line's w₀ within 3 %, its zero (3πα/4) within
 //      3 %, its forebulge's crest within 5 % and height within 10 % (the mesh's Laplacian is second order: (h/α)² ≈ 5 %, and
 //      the load lies on a band one cell wide, not a line);
+//   1b. the coarse rung (--cells): a one-cell load's 1st and 2nd rings against the disk-load −kei (no checkerboard), and a
+//      broad load (Gaussian σ 100 km) against the Hankel analytic;
 //   2. the GPU's MG-CG against the float64 solve, with Te varying (the history's ~110 km cells, carried in log as finish.js
 //      does) and half the planet sea: max |Δw| within 1e-3 of max |w| (f32 and mgTol 1e-5), twice bit for bit;
 //   3. the GPU rebounder against the float64 rebounder (finish-erode.js), two settlings with the history's uplift discounted
@@ -90,6 +92,44 @@ function kei(x) {
     const top = rows[0][1], hb = -bulge[1] / W0, want = Math.exp(-Math.PI);
     line(Math.abs(top / W0 - 1) <= 0.03 && Math.abs(zero / (0.75 * Math.PI * alpha) - 1) <= 0.03 && Math.abs(bulge[0] / (Math.PI * alpha) - 1) <= 0.05 && Math.abs(hb / want - 1) <= 0.1,
         `line load, Te ${TE}: w₀ ${(top / W0).toFixed(3)} of V α³/8D (tol 3 %) · zero at ${(zero / alpha).toFixed(3)} α vs 3π/4 = ${(0.75 * Math.PI).toFixed(3)} (tol 3 %) · forebulge at ${(bulge[0] / alpha).toFixed(2)} α vs π (tol 5 %), ${(100 * hb).toFixed(2)} % of w₀ vs ${(100 * want).toFixed(2)} (tol 10 %) · ${ln.iterations} CG iterations`);
+}
+
+// ── 1b. the coarse rung's plate (the ladder's 160K, where the window's most time runs): a load in one cell and broad loads ──
+// A checkerboard mode in a discrete biharmonic shows as w changing sign from ring to ring about a one-cell load; there is
+// none here where the plate is resolved (l ≥ the cell: Te 70 on 160K, both rings within 10 % of the disk-load −kei, all down).
+// What the mesh does miss is the load cell's own share when l < h (lumped mass, the Laplacian's symbol under k² at the grid's
+// scale): 1.7× the analytic cell mean at Te 15 on 160K, 1.35× on 640K, 1.06× at Te 70 on 640K (lane flexure, 2026-11-23,
+// flexure/r/checker-*.log) — a grid-scale load is answered more locally than the plate would; a load as broad as a massif
+// (a Gaussian of σ 100 km, the Hankel analytic w(0) = σ² ∫ e^(−k²σ²/2)/(1 + l⁴k⁴) k dk) is within 3 % at every Te.
+{
+    const mesh = terrainMesh(CELLS), n = mesh.numCells, { xyz, adjOffset, adjList } = mesh, op = plateOperator(mesh), s = new Float64Array(n).fill(1), c0 = 12345;
+    const dist = c => R * Math.acos(Math.min(1, xyz[3 * c0] * xyz[3 * c] + xyz[3 * c0 + 1] * xyz[3 * c + 1] + xyz[3 * c0 + 2] * xyz[3 * c + 2]));
+    const diskW = (r, A, l) => {           // (w at r of a unit volume spread evenly over a disk of area A)
+        const a = Math.sqrt(A / Math.PI), N = 60;
+        let v = 0;
+        for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { const rr = a * Math.sqrt((i + 0.5) / N), th = 2 * Math.PI * (j + 0.5) / N, d = Math.hypot(r - rr * Math.cos(th), rr * Math.sin(th)) / l; v += d > 10 ? 0 : -kei(d || 1e-9); }
+        return v / (N * N) / (2 * Math.PI * l * l);
+    };
+    {
+        const TE = 70, l = flexuralLengthKm(TE) / Math.SQRT2, B = new Float64Array(n).fill(stiffnessKm4(TE)), load = new Float64Array(n);
+        load[c0] = 1 / op.M[c0];
+        const { w } = solvePlateCPU(mesh, B, s, load, { tol: 1e-10 }), r1 = new Set(), r2 = new Set();
+        for (let j = adjOffset[c0]; j < adjOffset[c0 + 1]; j++) r1.add(adjList[j]);
+        for (const a of r1) for (let j = adjOffset[a]; j < adjOffset[a + 1]; j++) if (adjList[j] !== c0 && !r1.has(adjList[j])) r2.add(adjList[j]);
+        const ring = S => { let got = 0, want = 0, up = 0; for (const c of S) { got += w[c]; want += diskW(dist(c), op.M[c0], l); if (w[c] <= 0) up++; } return { e: got / want - 1, up }; };
+        const a = ring(r1), b = ring(r2);
+        line(!a.up && !b.up && Math.abs(a.e) <= 0.1 && Math.abs(b.e) <= 0.1,
+            `one cell's load, Te ${TE} on ${n} cells (l ${(l / mesh.edgeKm).toFixed(2)} cells): 1st ring ${a.up ? a.up + ' cells up' : 'all down'}, mean ${(100 * a.e).toFixed(1)} % off −kei · 2nd ring ${b.up ? b.up + ' cells up' : 'all down'}, ${(100 * b.e).toFixed(1)} % (tol 10 %; no checkerboard)`);
+    }
+    const out = []; let worst = 0;
+    for (const TE of [15, 30, 70]) {
+        const l = flexuralLengthKm(TE) / Math.SQRT2, B = new Float64Array(n).fill(stiffnessKm4(TE)), sg = 100, load = new Float64Array(n);
+        for (let c = 0; c < n; c++) { const d = dist(c); load[c] = Math.exp(-d * d / (2 * sg * sg)); }
+        const { w } = solvePlateCPU(mesh, B, s, load, { tol: 1e-10 });
+        let a = 0; const dk = 1e-4; for (let k = dk / 2; k < 0.5; k += dk) a += Math.exp(-k * k * sg * sg / 2) / (1 + l ** 4 * k ** 4) * k * dk; a *= sg * sg;
+        worst = Math.max(worst, Math.abs(w[c0] / a - 1)); out.push(`Te ${TE} ${w[c0].toFixed(3)} vs ${a.toFixed(3)}`);
+    }
+    line(worst <= 0.03, `a broad load (Gaussian σ 100 km) on ${n} cells: w(0) per unit load ${out.join(' · ')} — worst ${(100 * worst).toFixed(1)} % (tol 3 %)`);
 }
 
 // ── a test world on the GPU's mesh: Te on a 40K mesh (craton, continent, arc, sea floor by "age") carried in log; sea half ──
