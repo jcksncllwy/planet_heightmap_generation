@@ -36,7 +36,7 @@ import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { columnModel, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR, SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { arcCrustKm } from './collision.js';
 import { recordWear } from './geology.js';
-import { erosionAtLatitude, rainAtLatitude } from '../../terrain/terrain-config.js';
+import { climateRates } from './climate-sample.js';
 import { historyErodeSettings } from './erode-settings.js';
 import { FINISH, erosionAt } from '../../finish/finish-config.js';
 
@@ -62,19 +62,17 @@ const oceanFloor = (world, w) => world.owner[w] >= 0 && world.plates[world.owner
 export { historyErodeSettings };
 
 const fields = new WeakMap();
-/** Per mesh and constants: each world cell's drainage weight (rain ÷ rainRefMm) and its k without the rock's hardness. */
-function fieldsOf(mesh, H) {
-    let byH = fields.get(mesh);
-    if (!byH) fields.set(mesh, byH = new Map());
+/** Per climate sample (step/climate-sample.js, the climate the history holds) and constants: each world cell's drainage weight
+ *  (rain ÷ rainRefMm) and its k without the rock's hardness. */
+function fieldsOf(world, H) {
+    const rates = climateRates(world, H);
+    let byH = fields.get(rates);
+    if (!byH) fields.set(rates, byH = new Map());
     let f = byH.get(H);
     if (f) return f;
-    const n = mesh.numCells, water = new Float32Array(n), kLat = new Float32Array(n), E = erosionAt(FINISH, H);
-    for (let c = 0; c < n; c++) {
-        const lat = Math.asin(Math.max(-1, Math.min(1, mesh.xyz[3 * c + 2]))) * 180 / Math.PI;
-        water[c] = rainAtLatitude(lat, H) / H.rainRefMm;
-        kLat[c] = H.carveK * E.kMul * erosionAtLatitude(lat, H);
-    }
-    byH.set(H, f = { water, kLat, m: E.m });
+    const n = world.mesh.numCells, kLat = new Float32Array(n), E = erosionAt(FINISH, H);
+    for (let c = 0; c < n; c++) kLat[c] = H.carveK * E.kMul * rates.erosion[c];
+    byH.set(H, f = { water: rates.water, kLat, m: E.m });
     return f;
 }
 
@@ -84,7 +82,7 @@ function fieldsOf(mesh, H) {
  * @returns {{o: Object, P: Object}} erodeGPU's arguments (o.z is the ground, eroded in place)
  */
 export function erosionRequest(world, land, height, spanMyr, H) {
-    const { mesh, plates, owner, ownerCell } = world, n = mesh.numCells, F = fieldsOf(mesh, H);
+    const { mesh, plates, owner, ownerCell } = world, n = mesh.numCells, F = fieldsOf(world, H);
     const z = new Float32Array(n), ocean = new Uint8Array(n), k = new Float32Array(n), field = new Uint8Array(n), lay = new Uint8Array(n);
     for (let w = 0; w < n; w++) {
         if (continental(world, w)) field[w] = lay[w] = 1;

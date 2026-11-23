@@ -20,7 +20,7 @@ import { LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
 import { erosionRequest, applyErosion, landHeightKm, continental } from './surface-erosion.js';
 import { landMask } from '../../terrain/land-mask.js';
 import { surfaceKm } from '../ocean/inventory.js';
-import { rainAtLatitude } from '../../terrain/terrain-config.js';
+import { climateRates, heldWaterOf } from './climate-sample.js';
 
 const R = 6371;
 
@@ -44,7 +44,7 @@ export function* evolveRivers(world, dt) {
     // arc as land however low — sea-level.js landAndSea — and ran 11–36 % of their water over what the terrain draws as
     // sea, on a sea level 11–22 m off its own: tools/datum-study.mjs) ──
     viewOf(world, s.view, H, true);
-    const sl = landMask(s.view, mesh, H, s.mask).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
+    const sl = landMask(s.view, mesh, H, s.mask, heldWaterOf(world, H)).sl, swellKm = sl.swellKm, seaKm = sl.seaKm;
     // (the ground the water was poured on, every cell: the ocean floor's height for the waves — inventory.js surfaceKm, as the mask
     // reckoned it; without the water inventory, reckoned here on the same swell)
     const groundKm = s.mask.groundKm?.length === n ? s.mask.groundKm : surfaceKm(s.view, mesh, H, undefined, swellKm, sl.seaRefKm);
@@ -112,7 +112,7 @@ export function* evolveRivers(world, dt) {
     area.fill(0); sed.fill(0); sedCont.fill(0); basin.fill(0);
     const mouths = [];
     let supplied = 0, suppliedCont = 0;
-    const { rain } = latitudeRates(mesh, H);
+    const { rain } = climateRates(world, H);
     let clamped = 0;
     for (let i = count - 1; i >= 0; i--) {
         const c = order[i];
@@ -189,20 +189,6 @@ function shelfTake(world, mouths, shelfKm3, floorKm3, span, field) {
     B.erodeClampedKm3 = (B.erodeClampedKm3 ?? 0) + want * span;
 }
 
-// per mesh and climate: each world cell's rain (mm) — fixed, as the cells are (computed once, not every drainage)
-const rates = new WeakMap();
-function latitudeRates(mesh, H) {
-    const key = JSON.stringify([H.rainByLatitude]);
-    let byKey = rates.get(mesh);
-    if (!byKey) rates.set(mesh, byKey = new Map());
-    let r = byKey.get(key);
-    if (r) return r;
-    const n = mesh.numCells, rain = new Float64Array(n);
-    for (let c = 0; c < n; c++) rain[c] = rainAtLatitude(Math.asin(Math.max(-1, Math.min(1, mesh.xyz[3 * c + 2]))) * 180 / Math.PI, H);
-    r = { rain };
-    byKey.set(key, r);
-    return r;
-}
 
 // per mesh: the distance (km) along each adjacency entry
 const infos = new WeakMap();
@@ -313,9 +299,13 @@ export function trapEfficiency(tau) { return tau === Infinity ? 1 : Math.max(0, 
 export function lastDrainage() { return scratch; }
 
 let scratch = null;
+/** A blank view for viewOf, on n world cells. */
+export function newView(n) {
+    return { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n), flags: new Uint8Array(n), rootKm: new Float32Array(n), baseKm: new Float32Array(n), upliftKm: new Float32Array(n), basinFillKm: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n) };
+}
 /** The world's own view of the crust and its mantle, as a frame carries them (tectonics/snapshot.js), on `view`: what the
  *  one mask (terrain/land-mask.js) reads; `ground`: also what inventory.js surfaceKm reads, unpoured too (a river step). @returns {Object} view */
-function viewOf(world, view, H, ground = false) {
+export function viewOf(world, view, H, ground = false) {
     const { plates, owner, ownerCell, time } = world, n = world.mesh.numCells;
     view.time = time; view.owner = owner;
     // (the water inventory's ground needs the flood basalt, the rivers' cut and their rise too: inventory.js surfaceKm — and so
@@ -352,14 +342,14 @@ export function seaMaskNow(world) {
     if (!world.riverSea) return null;
     const H = heightsOf(world.config), n = world.mesh.numCells, s = scratchFor(n);
     s.nowMask ??= { land: new Uint8Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n) };
-    return landMask(viewOf(world, s.view, H), world.mesh, H, s.nowMask, null, world.riverSea).land;
+    return landMask(viewOf(world, s.view, H), world.mesh, H, s.nowMask, world.climate ? heldWaterOf(world, H) : null, world.riverSea).land;
 }
 
 function scratchFor(n) {
     if (scratch?.n === n) return scratch;
     scratch = { n, land: new Uint8Array(n), moved: new Float32Array(n), height: new Float32Array(n), before: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
         order: new Int32Array(n), recv: new Int32Array(n), recvKm: new Float32Array(n), area: new Float32Array(n), sed: new Float64Array(n), sedCont: new Float64Array(n), basin: new Float64Array(n), seaOf: new Int32Array(n), heap: new MinHeap(1 << 14),
-        swellKm: new Float32Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n), flags: new Uint8Array(n), rootKm: new Float32Array(n), baseKm: new Float32Array(n), upliftKm: new Float32Array(n), basinFillKm: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n) } };
+        swellKm: new Float32Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: newView(n) };
     scratch.mask = { land: scratch.land, swellKm: scratch.swellKm, seaColKm: scratch.seaColKm, dryHollow: scratch.dryHollow };
     return scratch;
 }

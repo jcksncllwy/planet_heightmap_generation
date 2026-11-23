@@ -120,7 +120,9 @@ const gpuMemo = new Map();      // (scope → {gpu, hex})
  * mathFingerprint's. Opens the GPU once a `gpu`; refuses where there is none.
  * `scope` (lane gpucells; sessrumnir's ruling 2026-11-22): 'history' names only the kernels a history runs (the erosion's), so
  * a GPU that differs only in the finish's kernels neither splits nor invalidates the history cache (gpuscan: keep the history's
- * GPU footprint small) — 'gpu erosion v5' since lane erosionfix (the rivers' and the waves' runs only); 'finish' adds the finish's own — the rebound, the threshold hillslopes, the climate per cell, the coast's rays, the climate's solver (lane gpuclimate) —
+ * GPU footprint small) — 'gpu erosion v5' since lane erosionfix (the rivers' and the waves' runs only), with the climate's solver
+ * since lane gpuclimate P4 (the history samples its climate on the GPU; the finish's key holds it through this scope too); 'finish'
+ * adds the finish's own — the rebound, the threshold hillslopes, the climate per cell, the coast's rays —
  * for the finish cache's key (app/finish-key.js `gpu`). @returns {Promise<string>} 12 hex digits
  */
 export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalThis.geoSimHistoryGPU, scope = 'history') {
@@ -158,7 +160,10 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     const z1 = z.slice();
     await erodeGPU(g, { mesh, z: z1, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, steps: 1 }, { device: opened });
     const H = new Hash128();
-    H.str('gpu erosion v5'); H.view(z); H.view(z1);
+    H.str('gpu erosion v5 + climate solver v1'); H.view(z); H.view(z1);
+    // (and the climate's solver — gpu/climate-solver.js: the history samples its climate every 20 Myr on the GPU (lane gpuclimate
+    // P4; Jackson's ruling 2026-11-23, GPU-split history keys accepted), its float32 cycles the vendor's)
+    for (const a of await climateSolverProbe(opened.device)) H.view(a);
     // (the finish's scope adds the finish's own kernels: the erosion's rebound — the thin plate (gpu/rebound-gpu.js, flexure-gpu.js:
     // its multigrid's f32 sweeps and fixed-tree dots), with closed basins judged every other step — and the threshold hillslopes'
     // solve and load (ERODE reliefK, erode-gpu.js THR) — in the history's scope until lanes erosionfix and flexure (2026-11-22;
@@ -168,8 +173,8 @@ export async function gpuFingerprint(gpu = globalThis.navigator?.gpu ?? globalTh
     if (scope === 'finish') {
         const z2 = z.slice();
         await erodeGPU(g, { mesh, z: z2, ocean: ocean.slice(), water, k, m: 0.25, seaKm: 0, closed: () => none, column: null, uplift: null }, { ...HS, marine: false, steps: 4, closedEvery: 2, rebound: 0.82, reliefK: 0.25 }, { device: opened });
-        H.str('finish: climate cells v1 + coast rays v1 + climate solver v1 + rebound plate v1 + threshold hillslopes v1'); H.view(z2);
-        for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z), ...await climateSolverProbe(opened.device)]) H.view(a);
+        H.str('finish: climate cells v1 + coast rays v1 + rebound plate v1 + threshold hillslopes v1'); H.view(z2);
+        for (const a of [...await climateCellsProbe(opened.device), ...await coastRaysProbe(opened.device, mesh, z)]) H.view(a);
     } else if (scope !== 'history') throw new Error(`gpuFingerprint: unknown scope '${scope}'`);
     const hex = H.hex().slice(0, 12);
     gpuMemo.set(scope, { gpu, hex });

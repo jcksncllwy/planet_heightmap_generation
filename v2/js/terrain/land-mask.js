@@ -23,6 +23,7 @@ import { seaFilledUp, arcSurfaceKm, columnModel, ARC_ROOT_SHARE, LAND_SEDIMENT_L
 import { seaLevel, seaLevelAgain, liftRefKm, liftedDry } from './sea-level.js';
 import { surfaceKm, pourOcean, EARTH_OCEAN_KM3 } from '../tectonics/ocean/inventory.js';
 import { zonalWater } from './basin-estimate.js';
+import { frameWaterOf } from '../tectonics/step/climate-sample.js';
 import { closedBasins } from '../finish/finish-basins.js';
 import { FINISH } from '../finish/finish-config.js';
 
@@ -184,6 +185,8 @@ export function landMask(frame, simMesh, cfg, out = {}, climate = null, fixed = 
  * each level) on the sim mesh, with the sea at the sill and the ocean side as the world ocean — on the zonal climate the
  * history erodes by (basin-estimate.js zonalWater: rainByLatitude, zonal PET), or on `climate` when given; the view's
  * own balance for a cut-off sea (basin-estimate.js estimateCutOff), so the history and the view judge a basin alike.
+ * `climate` a function (heights above the sill's sea, ocean) → {rain, pet, runoff}: the history's held climate
+ * (tectonics/step/climate-sample.js heldWaterOf — lane gpuclimate P4), balanced at each sill's own sea.
  * Humid when the largest sea the balance finds behind the sill fills to it. A basin under the finish's basinMinKm2 is
  * not balanced: arid (the ocean at the sill: the pour's answer before 2026-11-10). Runs only on a pinned pour (~1–2 % of
  * the history's drainages: waterflow §2.2, 7 frames of 484), tens of ms each at 40K cells.
@@ -192,7 +195,7 @@ export function pinnedHumid(simMesh, z, cfg, climate = null) {
     return ({ sillKm, basin, ocean }) => {
         const n = simMesh.numCells, cellKm2 = 4 * Math.PI * 6371 * 6371 / n, zz = new Float32Array(n);
         for (let c = 0; c < n; c++) zz[c] = z[c] - sillKm;
-        const { rain, pet, runoff } = climate ?? zonalWater(simMesh, zz, cfg, FINISH, ocean);
+        const { rain, pet, runoff } = typeof climate === 'function' ? climate(zz, ocean) : climate ?? zonalWater(simMesh, zz, cfg, FINISH, ocean);
         const kept = new Float32Array(n);
         for (let c = 0; c < n; c++) kept[c] = rain[c] - runoff[c];
         const B = closedBasins(simMesh, zz, runoff, pet, kept, cellKm2, FINISH, ocean);
@@ -215,7 +218,7 @@ export function pinnedHumid(simMesh, z, cfg, climate = null) {
  */
 export function pouredSeaOnto(frame, simMesh, cfg, sampler) {
     const out = {};
-    landMask(frame, simMesh, cfg, out);
+    landMask(frame, simMesh, cfg, out, frameWaterOf(frame, simMesh, cfg));      // (the climate the history held: its pinned sills judged alike)
     if (!out.pour) return null;                                // (no water inventory: no pour, the ground alone decides)
     const { sea: poured } = out.pour, ground = out.groundKm, { cells, weights } = sampler, n = cells.length / 3;
     const sea = new Uint8Array(n), waterKm = new Float32Array(n);

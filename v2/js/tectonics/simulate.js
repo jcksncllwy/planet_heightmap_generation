@@ -37,6 +37,9 @@ import { stepPlateStress } from './field/stress-step.js';
 import { accretePrisms } from './step/prism-accretion.js';
 import { erodeGPU } from '../gpu/erode-gpu.js';
 import { historyGPU } from '../gpu/history-gpu.js';
+import { sampleClimate } from './step/climate-sample.js';
+import { planetClimateAsync } from '../climate/climate.js';
+import { climateSolverKit } from '../gpu/climate-solver.js';
 
 /**
  * @param {import('./model/world.js').TectonicWorld} world
@@ -81,7 +84,9 @@ async function simulateNow(world, opts, helpers) {
     while (!r.done) {
         const job = r.value;
         const t = performance.now(), answer = job?.kind === 'erode' ? await erodeGPU(gpu.gpu, job.o, job.P, { device: gpu.opened })
+            : job?.kind === 'climate' ? await climateOnGPU(gpu.opened.device, job)
             : helpers ? await helpers.searchJunctions(world, job) : searchJunctions(world, job);
+        if (job?.kind === 'climate') { const T = world.climateTiming ??= { calls: 0, ms: 0 }; T.calls++; T.ms += performance.now() - t; }   // (records only)
         if (job?.kind === 'erode') { const T = world.erodeTiming ??= { calls: 0, ms: 0, setupMs: 0 }; T.calls++; T.ms += performance.now() - t; T.setupMs += answer.ms.setup; }   // (records only: tools/probe-graded.mjs)
         useRockBook(world.budget);                      // (this history's book again after the wait: rock-book.js)
         r = run.next(answer);
@@ -107,6 +112,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         if (events) trackCycle(world);                            // (is the start a supercontinent? — then the mantle already flows out from under it)
         drive(world);
         steerBackArcStrips(world);
+        yield* sampleClimate(world);                    // (the start's climate, before its frame: step/climate-sample.js)
         record(captureFrame(world));
     }
 
@@ -117,6 +123,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
     const L = crustLedger(world), led = (stage, v) => { L?.book(stage); return v; };   // (the crust ledger: off unless a check asks)
     while (world.time < untilMyr - 1e-9) {
         useRockBook(world.budget);                      // (the rock book: code with no world in hand books here — rock-book.js)
+        yield* sampleClimate(world);                    // (the climate the step's erosion reads, when a sample is due: step/climate-sample.js)
         L?.open();
         world.rollbackBirths = null;                    // (this step's births at retreating trenches: resolve.js → step/backarc.js)
         const nextGrid = (Math.floor(world.time / grid + 1e-9) + 1) * grid;
@@ -235,3 +242,9 @@ export function chooseStep(world) {
 }
 
 export { historyGPU, GPU_REQUIRED } from '../gpu/history-gpu.js';
+
+/** A climate sample's answer (step/climate-sample.js): the whole climate with its solves on the history's GPU. */
+async function climateOnGPU(device, { input, options }) {
+    const solver = await climateSolverKit(device);
+    try { return await planetClimateAsync(input, { ...options, solver }); } finally { solver.release(); }
+}

@@ -85,6 +85,23 @@ export function zonalWater(mesh, z, cfg, F = FINISH, ocean = null) {
     return { rain, pet, runoff };
 }
 
+/**
+ * The same balance on a computed climate per cell (tectonics/step/climate-sample.js, the history's held climate): its rain
+ * (mm/yr) and its year's temperature at sea level (°C) given, so no zonal tables and no inland fall-off (the climate's
+ * rain carries its continents' interiors). Heights in km above the sea the balance stands at.
+ */
+export function heldWater(mesh, z, rainMm, tSeaC, cfg, F = FINISH, ocean = null) {
+    const n = mesh.numCells, rain = new Float32Array(n), pet = new Float32Array(n), runoff = new Float32Array(n), lapse = cfg.lapseRateCPerKm ?? 6.5, xyz = mesh.xyz;
+    for (let c = 0; c < n; c++) {
+        if (ocean && ocean[c]) continue;
+        const lat = Math.asin(Math.max(-1, Math.min(1, xyz[3 * c + 2]))) / D2R, P = rainMm[c];
+        const E0 = Math.max(F.petMinMm, zonalPETAt(lat, tSeaC[c] - lapse * Math.max(0, z[c])));
+        rain[c] = P; pet[c] = E0;
+        runoff[c] = P > 0 ? P - fuEvaporation(P, E0, F.budykoW) : 0;
+    }
+    return { rain, pet, runoff };
+}
+
 /** Distance (km) from the world ocean over the mesh (cells × its mean edge; a breadth-first spread). */
 function oceanDistance(mesh, ocean) {
     const n = mesh.numCells, d = new Float32Array(n).fill(Infinity), q = new Int32Array(n), step = mesh.edgeKm ?? 2 * R * Math.sqrt(Math.PI / n);

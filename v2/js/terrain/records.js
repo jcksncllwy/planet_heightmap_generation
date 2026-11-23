@@ -10,6 +10,7 @@ import { liftRefKm } from './sea-level.js';
 import { landMask, crustColumnKm, fillPockets } from './land-mask.js';
 import { spreadKm } from '../core/min-heap.js';
 import { erosionAtLatitude } from './terrain-config.js';
+import { frameWaterOf } from '../tectonics/step/climate-sample.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 import { buildAnchor } from './anchor.js';
 import { plateCratons } from './cratons.js';
@@ -307,7 +308,7 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const noise = new SimplexNoise(seed * 13 + 5);
     const arc = new Uint8Array(n), craton = new Uint8Array(n);
     // the land and the sea, and the sea's level (terrain/land-mask.js: the one mask the history's rivers read too)
-    let { land, sl, seaColKm, dryHollow } = landMask(frame, simMesh, cfg);
+    let { land, sl, seaColKm, dryHollow } = landMask(frame, simMesh, cfg, {}, frameWaterOf(frame, simMesh, cfg));
     for (let w = 0; w < n; w++) {
         arc[w] = land[w] && frame.type[w] === CrustType.ARC ? 1 : 0;
         craton[w] = land[w] && frame.type[w] === CrustType.CRATON ? 1 : 0;

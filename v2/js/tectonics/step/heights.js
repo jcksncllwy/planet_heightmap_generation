@@ -20,7 +20,8 @@
 import { CrustType, CrustFlag, OrogenyType, VolcanicType } from '../model/crust.js';
 import { ISLAND_EROSION_KM_PER_MYR, columnModel, arcSurfaceKm, ARC_ROOT_SHARE } from '../measure.js';
 import { arcCrustKm } from './collision.js';
-import { TERRAIN, erosionAtLatitude } from '../../terrain/terrain-config.js';
+import { TERRAIN } from '../../terrain/terrain-config.js';
+import { erosionHeldAt } from './climate-sample.js';
 import { broadProfile } from '../../terrain/profiles.js';
 import { FastNoise } from '../../core/fast-noise.js';
 import { recordWear, thickenCover } from './geology.js';
@@ -89,7 +90,14 @@ export function evolveHeights(world, dt) {
     if (dt <= 0) return 0;
     const { mesh, plates, time, config } = world, H = heightsOf(config);
     const { adjOffset, adjList, xyz, edgeKm } = mesh;
-    const rate = rateTable(H), C = columnModel(H), geo = config.geology?.records ? config.geology : null;
+    // (the erosion clocks' rate where a cell of crust stands now — the plate's rotation of it — in the climate the history
+    // holds: step/climate-sample.js; asked only for an island's and a flood basalt's wear)
+    const rateAt = (m, c) => {
+        const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
+        const wx = m[0] * x + m[1] * y + m[2] * z, wy = m[3] * x + m[4] * y + m[5] * z, wz = m[6] * x + m[7] * y + m[8] * z;
+        return erosionHeldAt(world.climate, Math.asin(Math.max(-1, Math.min(1, wz))) * 180 / Math.PI, Math.atan2(wy, wx) * 180 / Math.PI, H);
+    };
+    const C = columnModel(H), geo = config.geology?.records ? config.geology : null;
     const spread = H.diffusionKm2PerMyr * dt * (2 / 3) / (edgeKm * edgeKm);      // hexagonal-lattice Laplacian, per step
     let flux = scratch.flux, made = 0;
     // (records only: the tectonic rise accumulator below. Each heights step is numbered; a cell whose reference height is
@@ -121,13 +129,10 @@ export function evolveHeights(world, dt) {
         }
         for (let c = 0; c < n; c++) {
             if (!mask[c]) continue;
-            // the cell's latitude now: the z row of the plate's rotation
-            const z = m[6] * xyz[3 * c] + m[7] * xyz[3 * c + 1] + m[8] * xyz[3 * c + 2];
-            const bin = Math.min(TABLE - 1, Math.max(0, Math.floor((z + 1) * 0.5 * TABLE)));
-            if (volcType[c] === VolcanicType.TRACK && volcKm[c] > 0) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + ISLAND_EROSION_KM_PER_MYR * dt * rate[bin];
+            if (volcType[c] === VolcanicType.TRACK && volcKm[c] > 0) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + ISLAND_EROSION_KM_PER_MYR * dt * rateAt(m, c);
             if (type[c] === CrustType.OCEAN) continue;
             // a flood basalt on land wears too — slowly (a hard cap), from its eruption on (terrain/lips.js cuts it up by it)
-            if (volcType[c] === VolcanicType.LIP) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + H.lipWearKmPerMyr * dt * rate[bin];
+            if (volcType[c] === VolcanicType.LIP) volcWornKm[c] = time - volcAt[c] <= dt + 1e-9 ? 0 : volcWornKm[c] + H.lipWearKmPerMyr * dt * rateAt(m, c);
             // (the land's wear is the history's erosion's, every river step: step/surface-erosion.js. Here the uplift spreads, and a
             // foreland basin below 0 stays a hollow until its rivers fill it)
             const up = upliftKm[c] + flux[c], arc = type[c] === CrustType.ARC;
@@ -162,21 +167,10 @@ export function arcToContinentRootKm(crust, c, time, config) {
     return Math.max(0, arcCrustKm(crust, c, time, config) + ARC_ROOT_SHARE * Math.max(0, crust.rootKm[c]) - heightsOf(config).riftCrustKm);
 }
 
-// The erosion rate by latitude is a function of z = sin(latitude), tabulated.
-const TABLE = 1024;
-const scratch = { flux: null, rootFlux: null, hi: null, tables: null };
+const scratch = { flux: null, rootFlux: null, hi: null };
 /** e^−x for the small x of one step (exact enough, and far cheaper than exp per cell per step). */
 const wear = x => (x < 0.05 ? 1 - x * (1 - x * (0.5 - x / 6)) : Math.exp(-x));
 
-function rateTable(H) {
-    let t = scratch.tables;
-    if (!t || t.H !== H) {
-        const rate = new Float64Array(TABLE);
-        for (let i = 0; i < TABLE; i++) rate[i] = erosionAtLatitude(Math.asin(Math.min(1, Math.max(-1, (i + 0.5) / TABLE * 2 - 1))) * 180 / Math.PI, H);
-        t = scratch.tables = { H, rate };
-    }
-    return t.rate;
-}
 
 /** The tectonic rise's window (records only; snapshot.js captureFrame): the time since the last frame (Myr). */
 export const tectWindowMyr = world => world.time - (world.tectSince ?? 0);

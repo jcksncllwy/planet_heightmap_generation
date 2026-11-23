@@ -132,6 +132,9 @@ export function captureFrame(world, reuse = null) {
     // (when each sea was cut off, Myr — NaN off the cut-off seas; −Infinity: never open — and the sea's log since the frame
     // before: step/sea-age.js. Copies, entries included: the world's go on changing)
     f.seaCutAt = world.seaCutAt ? world.seaCutAt.slice() : null;
+    // (the climate the history holds — step/climate-sample.js: its grid's year and ice, shared with the world (never changed
+    // in place: a sample is a new object) — so the view judges a pinned sill on the climate the history did)
+    f.climate = world.climate ? { atMyr: world.climate.atMyr, w: world.climate.w, h: world.climate.h, step: world.climate.step, rain: world.climate.rain, tSea: world.climate.tSea, ice: world.climate.ice } : null;
     f.seaLog = (world.seaLog ?? []).slice(world.seaLogShipped ?? 0).map(e => ({ ...e }));
     world.seaLogShipped = world.seaLog?.length ?? 0;
     f.geoBook = world.geoBook ? { ...world.geoBook } : null;
