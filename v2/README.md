@@ -61,8 +61,9 @@ Terrain (the lab's relief, or one of fifteen other palettes — maps and other w
 height alone), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age
 and setting. A sea cut off from the world ocean (the largest body of water; `terrain/world-ocean.js`) has its level set
-by its water balance, not by sea level, and a timeline frame has no climate — so it is balanced on the zonal climate the
-history erodes by (2026-10-28, `terrain/basin-estimate.js`): the rain by latitude (`rainByLatitude`, falling off inland
+by its water balance, not by sea level: on the climate the history held at that frame (lane gpuclimate P4, below:
+`basin-estimate.js heldWater`, the held rain and temperature, the same potential evaporation and runoff), or — a frame
+without one — on the zonal climate (2026-10-28, `terrain/basin-estimate.js`): the rain by latitude (`rainByLatitude`, falling off inland
 over `rainInlandKm`), the temperature by latitude less the lapse rate with height (`tempByLatitude`), a potential
 evaporation from that temperature and the latitude's sunlight (`climate/water.js zonalPET`: the climate's own
 Priestley–Taylor law, its seasons from the temperature stage's land response — the water ledger, 2026-11-06) and Add detail's Budyko runoff and its own balance (`finish-basins.js closedBasins` / `lakeBalance`: the
@@ -613,7 +614,7 @@ edifice with a noise-warped outline, broad ridges (rift zones, arc ridges) runni
 lower flanks, sometimes a flank collapse. Flood basalts come in every size and shape (2026-09-29; the history's
 `eruptLip`: 0.15–4 Mkm² log-uniform, one to four elongated flows off the plume, a warped ragged edge, nearly even
 thickness — a plateau, not a dome) and are cut up as they wear along their drainage, not by a noise: the history records
-how far each province has worn (`volcWornKm`, by the rain of its latitude), and the carving (`carve.js` stripBasalt)
+how far each province has worn (`volcWornKm`, by the history's held climate there: lane gpuclimate P4), and the carving (`carve.js` stripBasalt)
 strips the cap where its escarpment has retreated from the province's edge or its rivers' valleys have widened through
 it — rates × the wear's age, a river's valley only once it has cut through the pile, the slopes widening as they retreat
 (to `lipWallKm`) and wandering with a noise — so a young province is a plateau with canyons, then a dissected plateau
@@ -2700,6 +2701,28 @@ ice-edge cell-months up to ~0.6 °C where the sea ice's albedo carries the noise
 Köppen classes (EF and BW included) differing on ≤ 1e-3 of their cells; bit-repeatable. `gpuFingerprint`'s finish scope adds
 the solver on a small fixed problem. The operator's build and the stages' own loops stay on the CPU, which now dominates the
 climate's time (`tools/climate-finish-time.mjs`, `climate-solver-bench.mjs`).
+
+Lane gpuclimate P3 (2026-11-23): the energy balance's forcing is a plain function and the air masses' solves run two at a time
+(the next operator built while the GPU solves), bit-identical: the climate stage −0.85 s at 160K, −2 s at 2.5M. A warm start of
+the finish's second climate from its first fails: it settles into another snow-and-ice state (2112 ice-sheet flips on 716130).
+
+**The history samples its climate (lane gpuclimate P4, 2026-11-23; Jackson's ruling).** Every 20 Myr of the step grid the history
+takes the whole climate (`tectonics/step/climate-sample.js` → `planetClimateAsync`, its solves on the history's GPU) on the world as
+it stands — the mask's land, each cell's ground against the sea — on a **2° grid** (1.3–1.9 s a sample at 40K, against 3.2–4.7 s
+at 1°; the year's temperature within ~0.4–0.5 °C and its rain ~20–30 % of 1°'s per cell; `tools/history-climate-study.mjs
+--variants`), and holds it until the next. It keeps the grid's year: rain, temperature at sea level, the perennial ice field.
+Readers: the surface erosion's drainage weight and carving rate and the rivers' discharge read the held rain (`climateRates`:
+rain ÷ rainRefMm, and the erosion clocks' multiplier from it); the glacial ramp reads the held ice field, at a rate by the ice's
+temperature (the glacialErosion knots carried from latitude to today's zonal temperature there: temperate ice erodes, cold ice
+frozen to its bed hardly); the islands' and flood basalts' wear (`heights.js`) reads both where the crust stands now; and a pinned
+sill's humid test (`land-mask.js pinnedHumid`) judges by the held water balance. The history's latitude rate tables are gone from
+those readers. Frames carry the held climate (`frame.climate`), so the view judges sills as the history did. `gpuFingerprint`'s
+history scope adds the climate solver's probe (GPU-split history keys accepted). Cost: history time per 1000 Myr +53 %, ~1.4 s a sample (seed
+831576, Upwell, against main c182877). Still on the zonal tables (follow-ups): the view's carve rain (`synthesize.js`), `records.js erosionAtLatitude`
+(the view's cone wear and start-world margin sediment) and `basin-estimate.js zonalWater` (frames without a climate). The
+climate's own rare wet hotspots (an ice dome one rain-grid cell wide, fed by eddy mixing whose length exceeds the grid's) reach
+tens of m a year in a few cells; the history takes them unclamped; the fix — the eddy flux capped at the grid's scale — is its
+own lane, and then the finish's `rainMaxMm` goes.
 
 **The coast's waves and the world ocean's flood run on the GPU too (lane gpucells M2, 2026-11-22).** The coast (`finish-coast.js`)
 traces its waves as one GPU thread a ray (`js/gpu/coast-rays.js`): the far field on the climate grid (every sea grid cell × 16
