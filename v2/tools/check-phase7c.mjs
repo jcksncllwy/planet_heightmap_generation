@@ -15,6 +15,7 @@ import { frameTallies, Margin } from '../js/tectonics/measure.js';
 import { CrustFlag, CrustType } from '../js/tectonics/model/crust.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { arcFloats } from '../js/tectonics/step/polarity.js';
+import { TERRAIN } from '../js/terrain/terrain-config.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2;
 const mesh = labMesh(), { numCells, cellAreaKm2 } = mesh;
@@ -69,7 +70,15 @@ section('a continent slides under another (underthrusting)');
     // thickest cell stands at the ceiling in both runs (40.0 vs 40.0 km) and the maximum says nothing; what India's
     // underthrust land adds is crust, so it shows as volume. Lane crust)
     const thickVol = f => { let v = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w)) v += Math.max(0, f.thickKm[w]) * cellAreaKm2; return v / 1e6; };
-    check('Asia’s crust above it thickens — a plateau to come', thickVol(r.last) > thickVol(off.last), `thickened crust ${thickVol(r.last).toFixed(1)} Mkm³ above normal (without underthrusting: ${thickVol(off.last).toFixed(1)}); thickest ${maxThick(r.last).toFixed(1)} km (${maxThick(off.last).toFixed(1)})`);
+    // (judged with the history's rivers off: their sediment budget adds 26–50 Mkm³ of thickened land to this measure, 3–5×
+    // what India's underthrust land adds (+8.9 Mkm³ with the rivers off), and its sign with and without underthrusting follows
+    // the erosion's path, not the process: the erosion's m 0.25 → 0.45 flipped it, 3 of 3 paths. With the rivers off the two
+    // runs differ only by underthrusting. The delta with erosion on is reported below. Erosionfix M3, sessrumnir's ruling)
+    const dry = { heights: { ...TERRAIN, riverEveryMyr: 1e9 } };
+    const rd = await run('india', dry), offd = await run('india', { ...dry, underthrustShare: 0 });
+    check('Asia’s crust above it thickens — a plateau to come', thickVol(rd.last) > thickVol(offd.last), `thickened crust ${thickVol(rd.last).toFixed(1)} Mkm³ above normal (without underthrusting: ${thickVol(offd.last).toFixed(1)}), the history's rivers off; thickest ${maxThick(rd.last).toFixed(1)} km (${maxThick(offd.last).toFixed(1)})`);
+    report('…with the rivers on: thickened crust with underthrusting less without (erosion\'s sediment included)', thickVol(r.last) - thickVol(off.last), { unit: ' Mkm³', digits: 1,
+        detail: `${thickVol(r.last).toFixed(1)} against ${thickVol(off.last).toFixed(1)} Mkm³; the rivers' sediment adds to both, and which gains more follows the erosion's path` });
     report('thickest crust above normal over the underthrust land', maxThick(r.last), { earth: [25, 40], unit: ' km', digits: 1, source: 'Tibet ~60–80 km, about twice normal (Owens & Zandt 1997)' });
     if (suture) {
         const before = nearestFrame(r.frames, suture.time - 10), after = nearestFrame(r.frames, suture.time + 4);
