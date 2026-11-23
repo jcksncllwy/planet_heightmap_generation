@@ -34,7 +34,7 @@ export function* evolveRivers(world, dt) {
     world.riverClock = 0;
     const { mesh, plates, owner, ownerCell, time } = world, { adjOffset, adjList, xyz, numCells: n } = mesh;
     const { dist } = meshInfo(mesh), cellArea = 4 * Math.PI * R * R / n;
-    const s = scratchFor(n);
+    const s = scratchFor(world);
     const { land, height, fill, rank, order, recv, recvKm, area, moved, sed, sedCont, basin, seaOf, hol, holKm, holCells } = s;
     world.riverKm2 ??= new Float32Array(n);
     // ── the land and the sea as the terrain stands them: the one mask (terrain/land-mask.js), on the world's own view of
@@ -340,16 +340,23 @@ export function viewOf(world, view, H, ground = false) {
  */
 export function seaMaskNow(world) {
     if (!world.riverSea) return null;
-    const H = heightsOf(world.config), n = world.mesh.numCells, s = scratchFor(n);
+    const H = heightsOf(world.config), n = world.mesh.numCells, s = scratchFor(world);
     s.nowMask ??= { land: new Uint8Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n) };
     return landMask(viewOf(world, s.view, H), world.mesh, H, s.nowMask, world.climate ? heldWaterOf(world, H) : null, world.riverSea).land;
 }
 
-function scratchFor(n) {
-    if (scratch?.n === n) return scratch;
-    scratch = { n, land: new Uint8Array(n), moved: new Float32Array(n), height: new Float32Array(n), before: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
+// (one scratch per world, never shared between histories: its view keeps what a cell last held where viewOf does not
+// write it — a cell no plate owns, a cell that is not arc — and the masks keep their fields between calls, so a scratch
+// shared by every world on one mesh carried the last history's crust into the next run in the same thread: the same
+// start world gave another history after another scene had run (histdet, 2026-11-23). A fresh world's scratch starts
+// as the first history in a thread found it)
+const scratchOf = new WeakMap();
+function scratchFor(world) {
+    if ((scratch = scratchOf.get(world))) return scratch;
+    const n = world.mesh.numCells;
+    scratchOf.set(world, scratch = { n, land: new Uint8Array(n), moved: new Float32Array(n), height: new Float32Array(n), before: new Float32Array(n), fill: new Float32Array(n), rank: new Int32Array(n),
         order: new Int32Array(n), recv: new Int32Array(n), recvKm: new Float32Array(n), area: new Float32Array(n), sed: new Float64Array(n), sedCont: new Float64Array(n), basin: new Float64Array(n), seaOf: new Int32Array(n), heap: new MinHeap(1 << 14),
-        swellKm: new Float32Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: newView(n) };
+        swellKm: new Float32Array(n), seaColKm: new Float32Array(n), dryHollow: new Uint8Array(n), hol: new Int32Array(n), holKm: new Float32Array(n), holCells: new Int32Array(n), holStart: new Int32Array(1024), holSed: new Float64Array(1024), holCont: new Float64Array(1024), holRain: new Float64Array(1024), holCount: 0, view: newView(n) });
     scratch.mask = { land: scratch.land, swellKm: scratch.swellKm, seaColKm: scratch.seaColKm, dryHollow: scratch.dryHollow };
     return scratch;
 }

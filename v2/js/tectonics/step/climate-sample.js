@@ -24,6 +24,8 @@ import { FINISH } from '../../finish/finish-config.js';
 export const CLIMATE_EVERY_MYR = 20;
 export const CLIMATE_GRID_DEG = 2;
 
+// (per world, not per mesh: the view and the mask keep fields between calls — rivers.js scratchFor — and every scene on
+// the lab mesh shares one mesh, so a scratch per mesh carried one history's crust into the next's climate: histdet)
 const scratch = new WeakMap();
 
 /** Take the climate if a sample is due (the history's start, then each CLIMATE_EVERY_MYR on the step grid). */
@@ -31,8 +33,8 @@ export function* sampleClimate(world) {
     const due = !world.climate || Math.floor(world.time / CLIMATE_EVERY_MYR + 1e-9) > Math.floor(world.climate.atMyr / CLIMATE_EVERY_MYR + 1e-9);
     if (!due) return;
     const H = heightsOf(world.config), mesh = world.mesh, n = mesh.numCells;
-    let s = scratch.get(mesh);
-    if (!s) scratch.set(mesh, s = { view: newView(n), mask: {} });
+    let s = scratch.get(world);
+    if (!s) scratch.set(world, s = { view: newView(n), mask: {} });
     viewOf(world, s.view, H, true);
     const m = landMask(s.view, mesh, H, s.mask, world.climate ? heldWaterOf(world, H) : null), sl = m.sl;
     const ground = s.mask.groundKm?.length === n ? s.mask.groundKm : surfaceKm(s.view, mesh, H, undefined, sl.swellKm, sl.seaRefKm);
