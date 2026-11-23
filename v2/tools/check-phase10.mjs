@@ -13,7 +13,8 @@ import { onPath } from './lib/paths.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
 import { CrustType, OrogenyType, BeltSide } from '../js/tectonics/model/crust.js';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
-import { synthesizeTerrain, flexuralLengthKm } from '../js/terrain/synthesize.js';
+import { synthesizeTerrain } from '../js/terrain/synthesize.js';
+import { FLEX, flexuralLengthKm } from '../js/gpu/flexure.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide } from '../js/terrain/records.js';
 import { cratonStrengthRatio } from '../js/tectonics/field/stress-step.js';
@@ -89,7 +90,7 @@ const tm640 = terrainMesh(640000);
     // collision's chance. A seed whose cross-section finds no shield edge under a belt is counted as the scene not forming)
     const sides = (await Promise.all(SCENE_SEEDS.map(async seed => {
         const r = seed === SEED ? cr : await run('cratons', null, null, seed), F = r.frame, T = synthesizeTerrain(F, mesh, tm640, { seed, carve: true });
-        const Tflat = synthesizeTerrain(F, mesh, tm640, { seed, carve: true, cfg: terrainConfig({ foredeepPerKm: 0 }) });     // (no foreland at all)
+        const Tflat = synthesizeTerrain(F, mesh, tm640, { seed, carve: true, cfg: terrainConfig({ forelandByKind: {} }) });     // (no foreland at all: no belt loads a shield)
         // (India's shield is the one further south; a pressed edge: the belt outside it — on India's, any collision belt: its
         // own lower side's, or the upper plate's front where that overrides it (since Phase 11's collisions most of India's
         // lower belt lies hidden under Asia's front, and the world shows Asia's belt against India's shield — the range the
@@ -129,9 +130,9 @@ const tm640 = terrainMesh(640000);
         { scene: 'ranges against shields: Asia\'s shield edge under its plateau' });
     const tcfg = terrainConfig();
     report('the plateau\'s front: its back above the shield\'s edge', sides.map(s => s.upBack - s.upEdge).filter(Number.isFinite), { unit: ' km', digits: 2, source: 'a steep front with little lowland (Longmen Shan)', detail: sides.map(s => `${s.seed}: the plateau's back ${s.upBack.toFixed(2)} km (40–120 km outside), the shield's edge ${s.upEdge.toFixed(2)} km (0–80 km in)`).join(' · ') });
-    report('upper plate\'s bend ÷ lower plate\'s', sides.map(s => s.upBent / s.lowBent).filter(Number.isFinite), { digits: 2, unit: '×', source: 'retro-forelands shallower than pro-forelands (Naylor & Sinclair 2008)', detail: `the plateau's back loads by its crests only; foredeepMaxKm ${tcfg.foredeepMaxKm} km; seeds ${SCENE_SEEDS.join(', ')}` });
-    report('the shields\' flexural length', flexuralLengthKm(tcfg.shieldElasticKm), { unit: ' km', digits: 0, earth: [100, 250], source: 'cratonic Te 40–100 km (Watts 2001); the Ganges foredeep ~250–450 km wide ≈ πα/2 + the thrusts',
-        detail: `Te ${tcfg.shieldElasticKm} km: the foredeep ~${(3 * Math.PI / 4 * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km out from its load, the forebulge's crest ~${(Math.PI * flexuralLengthKm(tcfg.shieldElasticKm)).toFixed(0)} km` });
+    report('upper plate\'s bend ÷ lower plate\'s', sides.map(s => s.upBent / s.lowBent).filter(Number.isFinite), { digits: 2, unit: '×', source: 'retro-forelands shallower than pro-forelands (Naylor & Sinclair 2008)', detail: `the plateau's back loads by its crests only; seeds ${SCENE_SEEDS.join(', ')}` });
+    report('the shields\' flexural length', flexuralLengthKm(FLEX.cratonTeKm, FLEX.sedimentRho), { unit: ' km', digits: 0, earth: [100, 250], source: 'cratonic Te 40–100 km (Watts 2001); the Ganges foredeep ~250–450 km wide ≈ πα/2 + the thrusts',
+        detail: `Te ${FLEX.cratonTeKm} km (gpu/flexure.js cratonTeKm; the plate's Te per cell from the column, elasticThicknessKm), under a sediment-filled trough: the foredeep ~${(3 * Math.PI / 4 * flexuralLengthKm(FLEX.cratonTeKm, FLEX.sedimentRho)).toFixed(0)} km out from its load, the forebulge's crest ~${(Math.PI * flexuralLengthKm(FLEX.cratonTeKm, FLEX.sedimentRho)).toFixed(0)} km` });
 
     // ── the same look at every resolution (a numerical property: on every seed) ──
     section('the same at every resolution');

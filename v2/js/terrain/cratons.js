@@ -14,6 +14,7 @@
 import { CrustType } from '../tectonics/model/crust.js';
 import { spreadKm } from '../core/min-heap.js';
 import { rasterToWorld, cellRng } from './anchor.js';
+import { FLEX, elasticThicknessKm, stiffnessKm4, solvePlateCPU } from '../gpu/flexure.js';
 
 const R = 6371, FAR = 2000;
 
@@ -36,8 +37,8 @@ export function plateCratons(simMesh, A, frame, loadW, loadFull, loadOver, cfg) 
     const runs = new Map();
     if (frame.crustCells) for (let i = 0; i < frame.crustCells.length; i++) { const o = Math.floor(frame.crustCells[i] / n); const r = runs.get(o); if (r) r.end = i + 1; else runs.set(o, { start: i, end: i + 1 }); }
     const cls = new Int8Array(n), d = new Float32Array(n), load = new Float32Array(n), next = new Float32Array(n), sink = new Float32Array(n), near = new Float32Array(n);
-    const alpha = flexuralLengthKm(cfg.shieldElasticKm), cellKm2 = 4 * Math.PI * R * R / n, mark = new Uint32Array(n), ring = [];
-    let stamp = 0;
+    const teW = elasticThicknessKm(frame, simMesh), B = new Float64Array(n), s = new Float64Array(n), qm = new Float64Array(n), sea = new Uint8Array(n);
+    const sS = (FLEX.mantleRho - FLEX.sedimentRho) / FLEX.mantleRho, sW = (FLEX.mantleRho - FLEX.waterRho) / FLEX.mantleRho;
     const half = (a, b) => 0.5 * R * Math.acos(Math.min(1, xyz[3 * a] * xyz[3 * b] + xyz[3 * a + 1] * xyz[3 * b + 1] + xyz[3 * a + 2] * xyz[3 * b + 2]));
     for (const o of [...byPlate.keys()].sort((a, b) => a - b)) {
         const cells = byPlate.get(o), run = runs.get(o);
@@ -61,13 +62,14 @@ export function plateCratons(simMesh, A, frame, loadW, loadFull, loadOver, cfg) 
         }
         spreadKm(simMesh, d, { canEnter: (a, q) => cls[q] >= 0 && cls[q] === cls[a], maxKm: FAR });
         // the foreland: the shield bent down under the ranges on its plate — every belt cell's load (records.js: the height
-        // it stands at that its own root does not float, km) spread through the plate as a thin elastic plate over the
-        // mantle bends, summed (flexure is linear). A point load bends such a plate as −kei(r/ℓ), Kelvin's function, ℓ =
-        // (D/Δρg)^¼ = α/√2: down under the load, through zero at r ≈ 3.9ℓ, then a forebulge ~1 % as high — normalised over
-        // the plane (∫ −kei(r/ℓ) dA = 2πℓ²), so a load spread far and wide sinks the plate by foredeepPerKm × its height, as
-        // Airy would. Loads ride on the plate's own raster: the thrusts riding up onto the shield's rim load it where they
-        // stand, and a range far from the shield loads it little (Brotchie & Silvester 1969; Turcotte & Schubert 2002
-        // §3.15–3.17; Beaumont 1981). On the craton only: the rest of the plate's basins are the belts' own profiles.
+        // it stands at that its own root does not float, km of rock) on the plate as a thin elastic plate over the mantle
+        // (gpu/flexure.js: D∇⁴w + Δρg w = q on this raster, Te per cell from the column — elasticThicknessKm: a shield's 70,
+        // its belts' weaker plate). The trough fills to its base level with sediment, and the fill is load: under it the
+        // plate floats on ρm − ρs, not ρm (a wide load sinks it ρc/(ρm − ρs) × its height); a forebulge stands in air, and
+        // the sea floor's trough holds water — so the fill is where the plate bends down, solved again until that settles.
+        // The thrusts riding up onto the shield's rim load it where they stand, and a range far from the shield loads it
+        // little (Turcotte & Schubert 2002 §3.15–3.17; Beaumont 1981; DeCelles & Giles 1996). On the craton only: the rest
+        // of the plate's basins are the belts' own profiles.
         load.fill(0);
         let loaded = false;
         // (a cell of the plate's crust that another plate's crust overlies — the lower plate of a collision, thrust under the
@@ -102,25 +104,28 @@ export function plateCratons(simMesh, A, frame, loadW, loadFull, loadOver, cfg) 
         }
         sink.fill(0);
         if (loaded) {
-            const ell = alpha / Math.SQRT2, reachKm = KEI_MAX * ell, norm = cfg.foredeepPerKm * cellKm2 / (2 * Math.PI * ell * ell);
-            for (let s = 0; s < n; s++) {
-                if (!(load[s] > 0)) continue;
-                // (the cells within reach of the load, ring by ring; the bend by the straight distance)
-                const q0 = norm * load[s], sx = xyz[3 * s], sy = xyz[3 * s + 1], sz = xyz[3 * s + 2];
-                stamp++; ring.length = 0; ring.push(s); mark[s] = stamp;
-                for (let i = 0; i < ring.length; i++) {
-                    const r = ring[i];
-                    if (cls[r] === 1) sink[r] += q0 * bend(R * Math.acos(Math.min(1, sx * xyz[3 * r] + sy * xyz[3 * r + 1] + sz * xyz[3 * r + 2])) / ell);
-                    for (let k = adjOffset[r]; k < adjOffset[r + 1]; k++) {
-                        const q = adjList[k];
-                        if (mark[q] === stamp) continue;
-                        mark[q] = stamp;
-                        if (R * Math.acos(Math.min(1, sx * xyz[3 * q] + sy * xyz[3 * q + 1] + sz * xyz[3 * q + 2])) <= reachKm) ring.push(q);
-                    }
+            // (Te, the sea and the load on the plate's raster: a cell's world cell where the world shows the plate there; hidden
+            // crust — thrust under another plate — a shield's or a continent's own Te; else the world cell over it)
+            for (let r = 0; r < n; r++) {
+                let w = rasterToWorld(A, simMesh, o, r);
+                if (w < 0 && cls[r] < 0) {
+                    const x = xyz[3 * r], y = xyz[3 * r + 1], z = xyz[3 * r + 2];
+                    w = simMesh.index.nearest(m[b] * x + m[b + 1] * y + m[b + 2] * z, m[b + 3] * x + m[b + 4] * y + m[b + 5] * z, m[b + 6] * x + m[b + 7] * y + m[b + 8] * z);
                 }
+                const te = w >= 0 ? teW[w] : cls[r] === 1 ? FLEX.cratonTeKm : FLEX.continentTeKm;
+                B[r] = stiffnessKm4(te); sea[r] = cls[r] < 0 && w >= 0 && frame.type[w] === CrustType.OCEAN ? 1 : 0;
+                qm[r] = FLEX.rockRho / FLEX.mantleRho * load[r];
+                s[r] = sea[r] ? sW : sS;
             }
-            // (a foredeep fills with sediment to a plain: no deeper than foredeepMaxKm below the shield)
-            for (let r = 0; r < n; r++) if (sink[r] > cfg.foredeepMaxKm) sink[r] = cfg.foredeepMaxKm;
+            // (the fill where the plate bends down, air where it bends up: solved again from the last answer until no cell changes)
+            let wq = null;
+            for (let pass = 0; pass < 8; pass++) {
+                wq = solvePlateCPU(simMesh, B, s, qm, { tol: 1e-3, w0: wq }).w;      // (1e-3: within ~6 m of 1e-6 on 831576, at a third of its cost)
+                let changed = 0;
+                for (let r = 0; r < n; r++) if (!sea[r]) { const want = wq[r] > 0 ? sS : 1; if (want !== s[r]) { s[r] = want; changed++; } }
+                if (!changed) break;
+            }
+            for (let r = 0; r < n; r++) if (cls[r] === 1) sink[r] = wq[r];
             // (just outside the shield, the bend of the nearest craton cell: the terrain blends across the edge line)
             for (let r = 0; r < n; r++) {
                 if (cls[r] !== 0) continue;
@@ -169,24 +174,3 @@ export function cratonCharacter(C, seed, terrane) {
     }
     return ch;
 }
-
-/** The flexural length α (km) of a lithosphere `elasticKm` thick elastically, under a load whose deflection fills with sediment. */
-export function flexuralLengthKm(elasticKm) {
-    const E = 70e9, nu = 0.25, dRho = 900, g = 9.81, te = elasticKm * 1000;
-    return (4 * E * te ** 3 / (12 * (1 - nu * nu)) / (dRho * g)) ** 0.25 / 1000;
-}
-
-/** Kelvin's function kei(x), by its power series (exact to ~1e-6 over 0 < x ≤ KEI_MAX; Abramowitz & Stegun 9.9.12). */
-function kei(x) {
-    const y = x * x / 4;
-    let ber = 0, bei = 0, s = 0, f2k = 1, psi = 1 - 0.5772156649015329;        // (2k)!; ψ(2k + 2)
-    for (let k = 0; k < 30; k++) {
-        const f2k1 = f2k * (2 * k + 1), sign = k % 2 ? -1 : 1, b = sign * y ** (2 * k + 1) / (f2k1 * f2k1);
-        ber += sign * y ** (2 * k) / (f2k * f2k); bei += b; s += b * psi;
-        f2k = f2k1 * (2 * k + 2); psi += 1 / (2 * k + 2) + 1 / (2 * k + 3);
-    }
-    return -Math.log(x / 2) * bei - Math.PI / 4 * ber + s;
-}
-/** The bend of a thin elastic plate under a point load, −kei(x) (x: the distance over ℓ), tabulated to x = KEI_MAX. */
-const KEI_MAX = 6, KEI_STEPS = 1200, KEI_TABLE = Float64Array.from({ length: KEI_STEPS + 1 }, (_, i) => -kei(Math.max(1e-6, i * KEI_MAX / KEI_STEPS)));
-const bend = x => { if (!(x < KEI_MAX)) return 0; const f = x * KEI_STEPS / KEI_MAX, i = Math.floor(f), t = f - i; return KEI_TABLE[i] + t * (KEI_TABLE[i + 1] - KEI_TABLE[i]); };

@@ -31,7 +31,7 @@
 // Everything here is in units of W (u = x / W), so a margin's shoreline and break scale with its width and the tables
 // are built once per set of constants.
 
-import { flexuralLengthKm } from './cratons.js';
+import { FLEX, flexuralLengthKm } from '../gpu/flexure.js';
 import { columnModel } from '../tectonics/measure.js';
 import { CrustType } from '../tectonics/model/crust.js';
 
@@ -129,5 +129,5 @@ export function shelfRoomKm2(C, W, m) {
  *  moat, out to its first node 3πα/4 (Watts 2001) — for an elastic thickness by its maturity (cfg.marginElasticKm). */
 export function flexuralPlainKm(cfg, m) {
     const [young, mature] = cfg.marginElasticKm;
-    return 0.75 * Math.PI * flexuralLengthKm(young + (mature - young) * m);
+    return 0.75 * Math.PI * flexuralLengthKm(young + (mature - young) * m, FLEX.sedimentRho);
 }

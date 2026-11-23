@@ -191,22 +191,11 @@ export const TERRAIN = {
     cratonRimInKm: 10,          // a range pressed against a shield fades across its rim, from this far in…
     cratonRimOutKm: 120,        // …to nothing here (the history's thin-skinned belt: tectonics config cratonStrainShare; the
                                 // sub-Andean zone is 50–100 km wide)
-    foredeepPerKm: 3,           // the foreland a range bends into a shield: a plate under a load spread wide sinks this much per
-                                // km of the load's height — ρ_crust ÷ (ρ_mantle − ρ_fill), 2700 ÷ 900 kg/m³, the sink filled with
-                                // sediment as it forms (terrain/cratons.js sums it over the loads as the plate bends; the Ganges
-                                // foredeep's floor is 4–6 km down at the Himalayan front)…
-    foredeepMaxKm: 0.3,         // …filled to a plain at most this far below the shield (the Ganges plain lies ~0.3 km below the
-                                // Indian shield, the Chaco ~0.5 km below the Brazilian — a plain, not a trough)…
-    underthrustKm: 250,         // …the lower plate of a collision goes on this far under the upper plate's front (Indian crust is
+    underthrustKm: 250,         // the lower plate of a collision goes on this far under the upper plate's front (Indian crust is
                                 // imaged ~200 km under southern Tibet, its mantle lithosphere further: Nábělek et al. 2009), so the
-                                // front's whole weight bends it there — the pro-foreland is the deep one (terrain/cratons.js)…
-    shieldElasticKm: 60,        // …over the flexural length α = (4D / Δρg)^¼ of a shield's lithosphere this thick elastically (D = E Te³ /
-                                // 12(1 − ν²), E 70 GPa, ν 0.25, Δρ mantle − sediment fill 900 kg/m³; Te 60 km → α ≈ 155 km): the foredeep
-                                // ~πα/2 wide beyond the front, the forebulge's crest ~3πα/4 (cratons' Te is 40–100 km: wide, shallow
-                                // forelands — the Ganges basin is ~250–450 km wide; Beaumont 1981, DeCelles & Giles 1996)
-    forebulgeGain: 1,           // the forebulge, this many times the thin elastic plate's: a few % of the bend at the front, not
-                                // capped as the sediment-filled foredeep is — under a wedge that bends the plate km down, a swell
-                                // of ~0.1–0.2 km some 3πα/4 out (3 when the foreland was drawn from the shield's edge, not bent)
+                                // front's whole weight bends it there — the pro-foreland is the deep one (terrain/cratons.js)
+                                // (the foreland itself: the plate solved under the belts' loads, Te from the column, its trough
+                                // filled with sediment as load — terrain/cratons.js, gpu/flexure.js; no depth cap, no forebulge gain)
     forelandByKind: {           // how much a front of each kind loads the shield beside it (0: none)
         [OrogenyType.ANDEAN]: 1, [OrogenyType.HIMALAYAN]: 1, [OrogenyType.URAL]: 1, [OrogenyType.LARAMIDE]: 0.6,
         [OrogenyType.TRANSPRESSION]: 0.5, [OrogenyType.ARC]: 0.3, [OrogenyType.RIFT]: 0,

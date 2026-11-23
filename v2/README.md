@@ -633,9 +633,12 @@ from one frame to the next nothing moves, while over a few hundred Myr the lands
 ranges pressed against them as real shields do (Phase 10, `terrain/cratons.js`): the craton's edge is a line — the
 signed distance to it on each plate's raster, moved by noise — not the sim cells' staircase; a range's foothills fade
 across its rim; in front of them a foreland bends the shield down under the ranges' weight — every belt cell on the
-plate a load (its height above what its own root floats), summed as a thin elastic plate bends under point loads
-(Kelvin's −kei, over the flexural length of the shield's elastic thickness, `shieldElasticKm`): a lowland up to
-`foredeepMaxKm` below the shield beyond, then a low forebulge. A lower plate carries the whole wedge — its own thrusts on
+plate a load (its height above what its own root floats), on the plate solved as a thin elastic plate (`gpu/flexure.js`,
+on the CPU over the plate's raster, Te per cell from the column: a shield's 70 km, a live belt's 15), its trough filled
+with sediment as load (ρc/(ρm − ρs) under a wide load) and its forebulge in air. The bend is the basement's — 1.5–3 km at
+p90 under the fronts — and the ground over the fill comes down to base level, the sea's, and no further: a plain graded
+to the sea over a deep basement, then a low forebulge (an overfilled foreland: an underfilled marine one, the Persian
+Gulf's, would need the fill supply-limited — not modelled). A lower plate carries the whole wedge — its own thrusts on
 the shield's rim, and the upper plate's front where it is thrust under it (`underthrustKm`) — so its foreland is the deep
 one; a plateau's back on an upper plate stands on its own root, so only its crests load the block, and the front there
 stays steep;
