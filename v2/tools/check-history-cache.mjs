@@ -199,7 +199,11 @@ section('a damaged file is found and built again, never trusted');
     const file = t => HC.framePath(key, t);
     const cut = file(times[2]), flip = file(times[4]), empty = file(times[5]);
     fs.truncateSync(cut, Math.floor(fs.statSync(cut).size / 2));
-    const b = fs.readFileSync(flip); b[b.length - 100] ^= 0x40; fs.writeFileSync(flip, b);
+    // the byte is flipped in the frame's own bytes, which are then sealed again under the original header (its SHA-256 at
+    // 16–48). A flip in the deflated stream can be a no-op: in a run of zeros it moves a back-reference onto other zeros,
+    // and the stream inflates to the same bytes (~30 % of the flips in a 10K frame's last 400 bytes)
+    const orig = fs.readFileSync(flip), raw = Buffer.from(HC.unsealBytes(orig)); raw[raw.length - 100] ^= 0x40;
+    const b = HC.sealedBytes(raw); orig.copy(b, 16, 16, 48); fs.writeFileSync(flip, b);
     fs.writeFileSync(empty, '');
     fs.writeFileSync(process.env.GEO_SIM_HISTORY_LOG, '');
     const reads = [HC.getFrame(key, times[2]), HC.getFrame(key, times[4]), HC.getFrame(key, times[5])];
