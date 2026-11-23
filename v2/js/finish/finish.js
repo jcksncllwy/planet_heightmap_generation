@@ -449,7 +449,8 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet, land: climateLand }, F);
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet, land: climateLand,
+        simMesh, teSim: teSim ?? elasticThicknessKm(frame, simMesh) }, F);       // (the ice's weight on the plate: finish-ice.js)
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;
     let basinKm2 = 0, basinMaxKm = 0;

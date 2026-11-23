@@ -112,8 +112,7 @@ export const FINISH = {
     scourScaleKm: 45,           // …about this far apart
     moraineKm: 0.06,            // end moraines at the ice's farthest reach, and outwash plains beyond
     reboundLeft: 0.08,          // of the ice's weight (ρi/ρm × thickness), this share not yet rebounded (Hudson Bay, the Baltic;
-                                // 0.2 sank basins that held vast lakes)…
-    reboundKm: 350,             // …spread by the lithosphere over about this
+                                // 0.2 sank basins that held vast lakes) — of the plate's bend under it (finish-ice.js)
     // ── F3b: outburst floods from the ice-dammed lakes (finish-floods.js; 0 floodCutKm: none) ──
     floodLakeMinKm2: 5000,      // an ice-dammed lake floods if at least this big…
     floodVolumeKm3: [20, 5000], // …and holding this much water above where the bare ground would hold it (a jökulhlaup …

@@ -9,6 +9,8 @@
 import { spreadKm } from '../core/min-heap.js';
 import { FastNoise } from '../core/fast-noise.js';
 import { outburstFloods } from './finish-floods.js';
+import { mapOnto, meanOnto, carry } from '../core/mesh-maps.js';
+import { stiffnessKm4, solvePlateCPU } from '../gpu/flexure.js';
 import { satSlope, PSYCHRO } from '../climate/rain.js';
 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -212,9 +214,17 @@ export function lastIceAge(ctx, F) {
         const ridge = F.moraineKm * Math.exp(-((past[c] / Math.max(6, edgeKm)) ** 2)), plain = 0.4 * F.moraineKm * (1 - past[c] / 60);
         z[c] += Math.max(ridge, plain);
     }
-    // the rebound still to come: the ice's weight, spread by the lithosphere
-    const loadG = grid.blur(grid.average(lat, ctx.lon, load), F.reboundKm);
-    for (let c = 0; c < n; c++) { const L = grid.at(loadG, lat[c], ctx.lon[c]); if (L > 0) z[c] -= F.reboundLeft * L; }
+    // the rebound still to come: the ice's weight on the plate (gpu/flexure.js, on the history's mesh, Te from the column —
+    // ctx.teSim): an ice sheet many flexural lengths wide sinks it almost as Airy would, a valley glacier narrower than one
+    // hardly at all, and the rim beyond a sheet's edge bulges a little (Walcott 1970; Watts 2001 §6.3). Its trough holds
+    // the ice whose weight is the load: the plate floats on the mantle alone
+    {
+        const sim = ctx.simMesh, M = mapOnto(sim, mesh), ns = sim.numCells;
+        const B = Float64Array.from(ctx.teSim, t => stiffnessKm4(t)), s = new Float64Array(ns).fill(1);
+        const { w } = solvePlateCPU(sim, B, s, meanOnto(M, load, ns), { tol: 1e-3 });
+        const sink = new Float32Array(n); carry(M, w, sink);
+        for (let c = 0; c < n; c++) if (sink[c]) z[c] -= F.reboundLeft * sink[c];
+    }
     // the lakes the ice dammed, and their floods (finish-floods.js): on the ground as the ice left it, the ice still standing
     const floods = outburstFloods({ mesh, z, ice, S, cellKm2, seed: ctx.seed, water }, F);
     let sheets = 0;
