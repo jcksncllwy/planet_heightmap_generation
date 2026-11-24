@@ -39,6 +39,7 @@ else {
         ['coast-rays-test.mjs', ['--cells', '160000', '--reps', '2'], 'the coast\'s waves (far and near field) and the world ocean\'s flood (labels: equal to the CPU\'s)'],
         ['climate-solver-test.mjs', ['--world', 'test', '--reps', '2'], 'the climate\'s solves (the whole climate, float32 against float64 converged: months, sea ice, ice sheets, Köppen)'],
         ['gpu-wait-test.mjs', [], 'the GPU\'s waits fail loudly (a hang, a lost device)'],
+        ['erode-network-test.mjs', [], 'the erosion\'s network past the dispatch cap (9M cells) and 4096 levels: outlets, every cell\'s level exact'],
     ]) {
         const r = spawnSync(process.execPath, [path.join(TOOLS, file), ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
         const lines = `${r.stdout}${r.stderr}`.split('\n').filter(l => /^(ok  |FAIL)/.test(l));

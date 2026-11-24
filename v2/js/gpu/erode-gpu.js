@@ -17,7 +17,7 @@
 
 import { openDevice, readBack, gpuWait } from './gpu-device.js';
 import { deltaLayer, layUp, closedOutlets, layClosed } from '../finish/finish-erode.js';
-import { meshFields, sumPartials } from './fields.js';
+import { meshFields, sumPartials, grid, INDEX_WGSL, WG } from './fields.js';
 import { reboundGPU, zBedBack } from './rebound-gpu.js';
 import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
 
@@ -32,7 +32,7 @@ fn thr(zc: f32, zr: f32, d: f32) -> f32 {
     let r = min(max(zc - zr, 0.0) / (d * U_.tS), 0.99);
     return U_.tK * (r * r / (1.0 - r * r)) * U_.dt / d;
 }`;
-const R_EARTH = 6371, EPS = 1e-5, WG = 128, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
+const R_EARTH = 6371, EPS = 1e-5, NONE = 0x7FFFFFFF, INF = 0xFFFFFFFF, MAX_LEVELS = 1 << 16, EXPORT_WORDS = 8;
 // (a Cell's words: struct Cell below. Tools reading the buffer back index by this)
 export const CELL_WORDS = 10;
 
@@ -193,15 +193,25 @@ const KERNELS = {
             if (v < best) { best = v; pick = y; }
         }
         recv[c] = pick;` },
+    // (the depth is list ranking by pointer jumping: depth[c] counts the hops from c to the cell it points at, so a jump adds its
+    // pointee's count. A chain's end points at itself and counts 0 — an outlet (outletB) or an unresolved flat cell, recv NONE —
+    // so every jump after a cell reaches its end adds nothing, and after enough jumps depth[c] is the exact hop count to the end.
+    // It used to start every list cell at 1 and exempt only the end itself: a cell pointing at an unresolved end then gained 1 a
+    // jump, so a donor and its receiver could share a level and be swept together, the donor's water missing (deepnet, 2026-11-24))
     flagRecv: { b: { recv: 'u+', outlet: 'u', ptrA: 'u+', depthA: 'u+' }, body: `
         let r = recv[c];
-        if (r == NONE) { recv[c] = NONE; ptrA[c] = c; depthA[c] = 1u; return; }
+        if (r == NONE) { recv[c] = NONE; ptrA[c] = c; depthA[c] = 0u; return; }
         ptrA[c] = r; depthA[c] = 1u;
         if (outlet[r] != 0u) { recv[c] = r | 0x80000000u; }` },
-    // (a root points at itself and adds nothing: an unresolved flat cell, recv NONE, is one. Adding its own depth doubled it every
-    // jump, to 4096 levels and the network's throw, whenever a flat stayed unresolved: crustmass S5's flatter land, 2026-11-11)
-    depthJump: { b: { depthA: 'u', depthB: 'u+', ptrA: 'u', ptrB: 'u+' }, body: 'let p = ptrA[c]; depthB[c] = depthA[c] + select(depthA[p], 0u, p == c); ptrB[c] = ptrA[p];' },
-    histogram: { b: { depthA: 'u', hist: 'a' }, body: 'atomicAdd(&hist[depthA[c]], 1u);' },
+    depthJump: { b: { depthA: 'u', depthB: 'u+', ptrA: 'u', ptrB: 'u+' }, body: 'let p = ptrA[c]; depthB[c] = depthA[c] + depthA[p]; ptrB[c] = ptrA[p];' },
+    // (after the jumps: the level is the hop count, plus 1 where the chain ends on an unresolved cell, which is itself a level, as
+    // the cells draining to an outlet are and the outlet is not. hist[0], which no level uses, counts the cells whose pointer has
+    // not reached an end — a chain longer than the jumps cover, or a cycle — read back with the histogram, at no extra wait)
+    depthEnd: { b: { depthA: 'u+', ptrA: 'u', outlet: 'u', hist: 'a' }, body: `
+        let p = ptrA[c];
+        if (ptrA[p] != p) { atomicAdd(&hist[0], 1u); }
+        depthA[c] = depthA[c] + select(0u, 1u, outlet[p] == 0u);` },
+    histogram: { b: { depthA: 'u', hist: 'a' }, body: `atomicAdd(&hist[clamp(depthA[c], 1u, ${MAX_LEVELS - 1}u)], 1u);` },
     place: { b: { depthA: 'u', cursor: 'a', order: 'u+' }, body: 'order[atomicAdd(&cursor[depthA[c]], 1u)] = c;' },
     water: { b: { adjOffset: 'u', adjList: 'u', recv: 'u', water: 'f', cells: 'C+' }, body: `
         var v = U_.a * water[c]; var ar = U_.a;          // (A: the water's, by the rain; area: the ground's, km²)
@@ -290,15 +300,16 @@ function wgsl(name, spec) {
         const rw = t.endsWith('+') || t === 'a', ty = T[t[0]];
         return `@group(0) @binding(${i + 3}) var<storage, ${rw ? 'read_write' : 'read'}> ${k}: ${ty};`;
     }).join('\n');
-    return `${HEAD}
+    return `${HEAD}${INDEX_WGSL}
 @group(0) @binding(0) var<uniform> U_: U;
 @group(0) @binding(1) var<uniform> R_: Rg;
 @group(0) @binding(2) var<storage, read> ix: array<u32>;
 ${decl}
 ${spec.fn ?? ''}
-@compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= R_.count) { return; }
-    let i = R_.start + id.x; let c = ix[i];
+@compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) id: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let x_ = flatIndex(id, nwg);
+    if (x_ >= R_.count) { return; }
+    let i = R_.start + x_; let c = ix[i];
     ${spec.body}
 }`;
 }
@@ -474,7 +485,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         return { pipe, bg: device.createBindGroup({ layout, entries }) };
     };
     // (an empty range — no flats, no roots at a level — is skipped: a dispatch of 0 workgroups does nothing, and Dawn warns of each)
-    const run = (pass, g, slot, cnt) => { if (!(cnt > 0)) return; pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(Math.ceil(cnt / WG)); };
+    const run = (pass, g, slot, cnt) => { if (!(cnt > 0)) return; pass.setPipeline(g.pipe); pass.setBindGroup(0, g.bg, [slot * align]); pass.dispatchWorkgroups(...grid(cnt, WG)); };
     const rng = new Uint32Array(align / 4 * 8), setRange = (slot, start, cnt) => { rng[0] = start; rng[1] = cnt; device.queue.writeBuffer(rangeBuf, slot * align, rng.buffer, 0, 8); };
     const SL = { list: 0, roots: 1, flats: 2, all: 3, sea: 4 };
     const groupsKey = `${DIFF}|${(P.hillD ?? 0) > 0}|${MAR}|${THR}`, G = pool?.groups(groupsKey, P_) ?? {
@@ -488,7 +499,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         flatAB: group('flatten', 'roots', { compA: 'compB', compB: 'compA' }), flatBA: group('flatten', 'roots'), active: group('active', 'roots'),
         levelInit: group('levelInit', 'roots'), levelAB: group('levelJump', 'roots'), levelBA: group('levelJump', 'roots', { valA: 'valB', valB: 'valA', ptrB: 'ptrC', ptrC: 'ptrB' }),
         fillIn: group('fillIn', 'list'), receive: group('receive', 'list'), findFlat: group('findFlat', 'list'), flatAB2: group('flat', 'flats'), flatBA2: group('flat', 'flats', { distA: 'distB', distB: 'distA' }), highInit: group('highInit', 'flats'), highAB: group('high', 'flats'), highBA: group('high', 'flats', { hiA: 'hiB', hiB: 'hiA' }), pickFlat: group('pickFlat', 'flats'),
-        flagRecv: group('flagRecv', 'list'), depthAB: group('depthJump', 'list'), depthBA: group('depthJump', 'list', { depthA: 'depthB', depthB: 'depthA', ptrA: 'ptrB', ptrB: 'ptrA' }), histogram: group('histogram', 'list'), place: group('place', 'list'),
+        flagRecv: group('flagRecv', 'list'), depthAB: group('depthJump', 'list'), depthBA: group('depthJump', 'list', { depthA: 'depthB', depthB: 'depthA', ptrA: 'ptrB', ptrB: 'ptrA' }), depthEnd: group('depthEnd', 'list'), histogram: group('histogram', 'list'), place: group('place', 'list'),
         // (the solve's chains reuse the route's ptrB/ptrC and hiA/hiB: the route is done with them by then)
         prep: group('prep', 'list', { lpA: 'hiA', jpA: 'ptrB' }), affineInit: group(`affineInit${(P.hillD ?? 0) > 0 ? 'Hill' : ''}${THR ? 'Thr' : ''}`, 'list', { lpA: 'hiA' }),
         jumpAB2: group('affineJump', 'list', { jpA: 'ptrB', jpB: 'ptrC', lpA: 'hiA', lpB: 'hiB' }), jumpBA2: group('affineJump', 'list', { fA: 'fB', fB: 'fA', jpA: 'ptrC', jpB: 'ptrB', lpA: 'hiB', lpB: 'hiA' }),
@@ -792,25 +803,33 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         run(p, G.pickFlat, SL.flats, flats);
         p.end();
         device.queue.submit([e.finish()]);
-        e = device.createCommandEncoder(); p = e.beginComputePass();
-        run(p, G.flagRecv, SL.list, listLen);
-        const DJ = 12;
-        for (let i = 0; i < DJ; i++) run(p, i % 2 ? G.depthBA : G.depthAB, SL.list, listLen);
-        p.end();
-        e.clearBuffer(B.hist); p = e.beginComputePass();
-        run(p, G.histogram, SL.list, listLen);
-        p.end();
-        e.copyBufferToBuffer(B.hist, 0, stage, 0, 4 * MAX_LEVELS);
-        device.queue.submit([e.finish()]);
-        await gpuWait(device, stage.mapAsync(GPUMapMode.READ), 'erosion: reading the levels\' histogram');
-        const hist = new Uint32Array(stage.getMappedRange().slice(0));
-        stage.unmap();
+        // (the depth order. 12 jumps reach 2^12 = 4096 hops, deeper than real trees (~580 levels at 2.5M, 243751@430); a network
+        // whose chains outrun them, which depthEnd counts in hist[0], is ranked again from the start with jumps enough for any chain
+        // the list can hold, 2^J > listLen. A chain that still has not ended is a cycle in the receivers: thrown, never misordered)
+        const rank = async DJ => {
+            e = device.createCommandEncoder(); p = e.beginComputePass();
+            run(p, G.flagRecv, SL.list, listLen);
+            for (let i = 0; i < DJ; i++) run(p, i % 2 ? G.depthBA : G.depthAB, SL.list, listLen);
+            p.end();
+            e.clearBuffer(B.hist); p = e.beginComputePass();
+            run(p, G.depthEnd, SL.list, listLen); run(p, G.histogram, SL.list, listLen);
+            p.end();
+            e.copyBufferToBuffer(B.hist, 0, stage, 0, 4 * MAX_LEVELS);
+            device.queue.submit([e.finish()]);
+            await gpuWait(device, stage.mapAsync(GPUMapMode.READ), 'erosion: reading the levels\' histogram');
+            const h = new Uint32Array(stage.getMappedRange().slice(0));
+            stage.unmap();
+            return h;
+        };
+        const evenJumps = k => 2 * Math.ceil(k / 2);     // (even: the depths and pointers end in their A buffers)
+        let hist = await rank(12);
+        if (hist[0]) hist = await rank(evenJumps(Math.ceil(Math.log2(listLen + 1)) + 1));
         const t1 = performance.now();
         const cursor = new Uint32Array(MAX_LEVELS);
         let at = 0; levels = 0;
         for (let d = 1; d < MAX_LEVELS; d++) { cursor[d] = at; if (hist[d]) { setRange(8 + d, at, hist[d]); levels = d; at += hist[d]; } }
-        // (the jumps above reach 2^DJ hops: a deeper tree would come out misordered, without a sign. Real ones: ~600 levels at 2.5M)
-        if (levels >= 1 << DJ || at !== listLen) throw new Error(`erosion network: ${levels} levels, ${at} of ${listLen} cells placed`);
+        if (hist[0]) throw new Error(`erosion network: ${hist[0]} of ${listLen} cells on a receiver cycle (their chains never reach an outlet)`);
+        if (levels >= MAX_LEVELS - 1 || at !== listLen) throw new Error(`erosion network: ${levels} levels (the table holds ${MAX_LEVELS - 2}), ${at} of ${listLen} cells placed`);
         put('cursor', cursor);
         hist0 = hist;
         ms.route += t1 - t0; ms.sort += performance.now() - t1;
