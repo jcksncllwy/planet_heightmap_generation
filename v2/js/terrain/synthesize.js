@@ -63,7 +63,6 @@ function warpShift(xyz, q, s0, s1, s2, a, b) {
  * @returns {{heightKm: Float32Array, parts: Object|null, rec: Object, ms: Object}}
  */
 export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
-    const heldClimate = frameClimate(frame);
     const cfg = opts.cfg ?? TERRAIN, seed = opts.seed ?? 0;
     const ms = {}, clock = () => performance.now();
     let t0 = clock();
@@ -243,7 +242,9 @@ export function preparePlan(frame, simMesh, cfg, seed, edgeKm) {
         K.fade1 = Float64Array.from(K.wave, lam => smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / edgeKm));
         K.fade2 = Float64Array.from(K.wave, lam => (cfg.stripeFineShare > 0 ? smooth(cfg.minWavesPerCell, cfg.fullWavesPerCell, lam / cfg.stripeFineRatio / edgeKm) : 0));
     }
-    return { rec, Ks, A, V: buildVolcanoes(frame, rec, simMesh, cfg, seed, A, edgeKm), L: lipPieces(frame, simMesh, A), mesh: simMesh, timeMyr };
+    // (the rain the frame's history held — its climate sample, plain arrays that travel with the plan to the workers)
+    const cl = frameClimate(frame), held = { w: cl.w, h: cl.h, step: cl.step, rain: cl.rain };
+    return { rec, Ks, A, V: buildVolcanoes(frame, rec, simMesh, cfg, seed, A, edgeKm), L: lipPieces(frame, simMesh, A), mesh: simMesh, timeMyr, held };
 }
 
 /**
@@ -356,7 +357,7 @@ function curveOf(mesh, m, field, a, b, c, wa, wb, wc) {
  * gives the same heights.
  */
 export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, from, to, heightKm, parts = null, carve = null) {
-    const { rec, Ks, V, A, L, mesh: simMesh } = plan, { cell } = A, p = [0, 0, 0], d = [0, 0, 0], cross = [0, 0];
+    const { rec, Ks, V, A, L, mesh: simMesh, held: heldClimate } = plan, { cell } = A, p = [0, 0, 0], d = [0, 0, 0], cross = [0, 0];
     const warpN = warpField(seed, cfg, simMesh.edgeKm), loc3 = [0, 0, 0], locw3 = [0, 0, 0], local = [0, 0, 0], warped = [0, 0, 0], r3 = [0, 0, 0], rw3 = [0, 0, 0], q3 = [0, 0, 0], qw3 = [0, 0, 0];
     const anchorOn = cfg.anchorRecords !== false;
     // the point located on plate o's raster (the point in o's frame, warped there): raster cells into cells, weights into weights

@@ -8,8 +8,8 @@
 //    — its wet cells its lowest, not the heap's order;
 //  · a pinned sill, humid: the basin brim-full at its sill and the ocean below it by what the basin holds;
 //  · every case: the books close (the water standing = V, to single precision);
-//  · the zonal judge (terrain/land-mask.js pinnedHumid, the closed-basin balance on the history's rain table): the same
-//    basin humid under the equator's rain, arid under the subtropics'.
+//  · the judge (terrain/land-mask.js pinnedHumid, the closed-basin balance on a held climate): the same basin humid
+//    under wet rain, arid under dry.
 // At 40K and 160K cells (the scale: the same answers in km and m). ~10 s.
 // Usage: node v2/tools/check-pour.mjs
 
@@ -18,6 +18,7 @@ import { buildSimMesh } from '../js/core/sim-mesh.js';
 import { pourOcean } from '../js/tectonics/ocean/inventory.js';
 import { pinnedHumid } from '../js/terrain/land-mask.js';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
+import { heldWaterOn } from '../js/terrain/basin-estimate.js';
 
 const R = 6371, D = 180 / Math.PI, M = 1e6;
 
@@ -79,15 +80,19 @@ for (const cells of [40000, 160000]) {
     }
 }
 
-section('the zonal judge: the same basin (0.6 Mkm², its catchment 4 Mkm²) under the equator\'s rain and the subtropics\'');
+// (a held climate as the history holds one — frame.climate's {w, h, step, rain, tSea} on a 2° grid — here uniform: the
+// zonal tables are gone (lane rainland), the judge reads only the climate it is given)
+const heldUniform = (rainMm, tSea) => ({ w: 180, h: 90, step: 2, rain: new Float32Array(180 * 90).fill(rainMm), tSea: new Float32Array(180 * 90).fill(tSea) });
+section('the judge on a held climate: the same basin (0.6 Mkm², its catchment 4 Mkm²) under wet rain (2000 mm/yr) and dry (250 mm/yr), both 26 °C');
 {
     const mesh = buildSimMesh(40000, 12345), n = mesh.numCells, sill = 0.27, out = {};
-    for (const [latB, want] of [[5, true], [-25, false]]) {
-        const { z, basin } = world(mesh, latB, sill, 4, 12), ocean = new Uint8Array(n);
+    for (const [rainMm, want] of [[2000, true], [250, false]]) {
+        const { z, basin } = world(mesh, 5, sill, 4, 12), ocean = new Uint8Array(n), held = heldUniform(rainMm, 26);
         for (let c = 0; c < n; c++) if (z[c] === -4) ocean[c] = 1;
-        const t0 = performance.now(), humid = pinnedHumid(mesh, z, TERRAIN)({ sillKm: sill, basin, ocean }), ms = performance.now() - t0;
-        check(`a basin at ${Math.abs(latB)}°${latB < 0 ? 'S' : 'N'} is ${want ? 'humid (fills itself brim-full)' : 'arid (draws down behind its sill)'}`, humid === want, `judged ${humid ? 'humid' : 'arid'} in ${ms.toFixed(0)} ms`);
-        out[latB] = ms;
+        const climate = (zz, oc) => heldWaterOn(mesh, zz, held, TERRAIN, undefined, oc);
+        const t0 = performance.now(), humid = pinnedHumid(mesh, z, TERRAIN, climate)({ sillKm: sill, basin, ocean }), ms = performance.now() - t0;
+        check(`a basin under ${rainMm} mm/yr is ${want ? 'humid (fills itself brim-full)' : 'arid (draws down behind its sill)'}`, humid === want, `judged ${humid ? 'humid' : 'arid'} in ${ms.toFixed(0)} ms`);
+        out[rainMm] = ms;
     }
     report('the judge\'s cost per pinned pour (40K cells)', Math.max(...Object.values(out)), { unit: ' ms', digits: 0, source: 'runs only on a pinned pour, ~1–2 % of drainages' });
 }
