@@ -35,7 +35,8 @@
 // flow itself, no heating of thinned crust); uniform η in the channel (no stress or temperature dependence inside it); no flow across a plate's
 // boundary nor onto ocean floor (oceanic lithosphere has no crustal channel: the channel ends at the continent's edge —
 // area at the free edge is the strain term's, S4); an island arc's crust takes no part; the broad uplift does not flow
-// (with crustPaidRelief there is none to flow: relief is the root's face).
+// (with crustPaidRelief there is none to flow: relief is the root's face). What a quiet belt's channel carries out over the sea
+// or into ordinary crust leaves its column at once and is held on its cell (crust.heldKm) until orogenicCollapse lays it.
 
 import { CrustType, OrogenyType } from '../model/crust.js';
 import { columnModel, crustThicknessKm, LAND_SEDIMENT_LOAD_FACTOR } from '../measure.js';
@@ -198,29 +199,36 @@ export function flowCrust(world, dt, H) {
             rootKm[cells[i]] += d;
             if (d > 0) moved += d;
         }
-        // what crossed the coast is not moved here (a cell of land is made only by a ledger stage): it is owed, in cells of an
-        // ordinary continent's crust (area = volume ÷ the crust it spreads at), to the next orogenicCollapse stage, which takes it
-        // from the sources' roots then; each sea face remembers its source and how much it was fed (the most-fed spread first)
+        // what crossed the coast leaves its column now, as the fluxes between cells do, but a cell of land is made only by a ledger
+        // stage: it is held at its source (crust.heldKm, still the plate's rock: crust-ledger.js) for the next orogenicCollapse
+        // stage, which lays it as ordinary continent (area = volume ÷ the crust it spreads at) or gives it back to the column
+        // when the cell stops spreading; each sea face remembers its source and how much it was fed (the most-fed spread first).
+        // (lane peaktail: it was only owed, the root left standing until the collapse stage took it, which made at most what its
+        // faces allowed and forgot the rest — so a source kept its neighbours' inflow and none of its outflow: roots to 50–114 km
+        // past the 40 km ceiling, and a debt lost when the cell changed plate. Held on the cell, it moves with it)
         if (src) {
-            const h0 = C.crust[CrustType.CONTINENT], at = plate.collapseFaces ??= new Map(), B = world.budget;
-            const owe = (i, q, inland) => {
+            const h0 = C.crust[CrustType.CONTINENT], at = plate.collapseFaces ??= new Map(), B = world.budget, { heldKm } = crust;
+            const owe = (i, want, inland) => {
+                const q = Math.min(want, Math.max(0, rootKm[cells[i]]));     // (G1: only root spreads)
+                if (!(q > 0)) return 0;
+                rootKm[cells[i]] -= q; heldKm[cells[i]] += q;
                 plate.collapseDue = (plate.collapseDue ?? 0) + q / h0;
                 (plate.collapseSrc ??= new Set()).add(cells[i]);                  // (every owing cell gives root at conversion)
                 const kind = oroType[cells[i]];
                 B.collapseOwedKm3 = (B.collapseOwedKm3 ?? 0) + q * cellKm2;
                 if (inland) B.collapseInlandOwedKm3 = (B.collapseInlandOwedKm3 ?? 0) + q * cellKm2;
                 (B.collapseOwedByKind ??= {})[kind] = (B.collapseOwedByKind[kind] ?? 0) + q * cellKm2;
+                return q;
             };
             for (let f = 0; f < faces.length; f += 2) {
-                const i = faces[f], q = coef * K[i] * Math.max(0, x.s[i] - s0);        // (root km, as the fluxes above)
+                const i = faces[f], q = owe(i, coef * K[i] * Math.max(0, x.s[i] - s0), false);   // (root km, as the fluxes above)
                 if (!(q > 0)) continue;
                 const e = at.get(faces[f + 1]);
                 if (e) { e.km += q; if (q > e.top) { e.top = q; e.src = cells[i]; } } else at.set(faces[f + 1], { km: q, top: q, src: cells[i], hops: 0 });
-                owe(i, q, false);
             }
             // the belt's outflow inland (no more than its root: G1), owed as area at the plate's nearest coast
             let inland = 0;
-            for (let i = 0; i < m; i++) if (out[i] > 0) { out[i] = Math.min(out[i], rootKm[cells[i]]); if (out[i] > 0) { owe(i, out[i], true); inland += out[i]; } }
+            for (let i = 0; i < m; i++) if (out[i] > 0) { out[i] = owe(i, out[i], true); inland += out[i]; }
             if (inland > 0) nearestCoast(plate, mesh, cells, out, Math.ceil(plate.collapseDue) + 1, at, B);
         }
     }

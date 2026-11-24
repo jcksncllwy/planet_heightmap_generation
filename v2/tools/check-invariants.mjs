@@ -155,10 +155,28 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     // (the ledger sums each stage over the whole history; the drive, called once a step after the event stages, also
     // catches a forbidden stage that made land in one step and lost it in another)
     const seen = {}, offending = new Map();
+    // (lane peaktail: the crust a quiet belt's channel carries toward the coast is held on its cell, crust.heldKm, until the
+    // collapse lays it or gives it back — only ever on a continental cell on the map, never negative; every step)
+    let heldBad = null, heldMax = 0, heldMaxSum = 0;
+    const heldCheck = w => {
+        let sum = 0;
+        for (const p of w.plates) {
+            if (!p.alive) continue;
+            const { mask, type, heldKm } = p.crust;
+            for (let c = 0; c < mask.length; c++) {
+                const h = heldKm[c];
+                if (h === 0 || !mask[c]) continue;               // (a cell taken off the map keeps its stale fields: not rock — crust-ledger.js)
+                if (!heldBad && (!(h > 0) || type[c] !== CrustType.CONTINENT)) heldBad = `${h.toFixed(3)} km on plate ${p.id} cell ${c} (mask ${mask[c]}, type ${type[c]}) at ${w.time.toFixed(1)} Myr`;
+                sum += h; if (h > heldMax) heldMax = h;
+            }
+        }
+        heldMaxSum = Math.max(heldMaxSum, sum);
+    };
     await simulate(world, {
         untilMyr: LEDGER_MYR, snapshotEveryMyr: 50, keepFrames: false,
         drive: w => {
             scene.drive(w);
+            heldCheck(w);
             for (const [stage, e] of Object.entries(w.ledger?.stages ?? {})) {
                 const d = e.land - (seen[stage] ?? 0);
                 seen[stage] = e.land;
@@ -167,6 +185,13 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
         },
     });
     const { stages, start } = world.ledger, landAtEnd = landNow(world);
+    check('the crust a spreading belt holds for its coast (crust.heldKm) is, on the map, only ever on continent, never negative', !heldBad,
+        heldBad ?? `every step; the most one cell held ${heldMax.toFixed(2)} km, the planet ${heldMaxSum.toFixed(1)} cell-km`);
+    {   // (which stages move held crust: the heights (crust-flow holds it), the collapse (lays it, gives it back), and any stage
+        // that takes a holding cell off the map — booked there as that cell's rock; a merge or split moves it with its cell, 0)
+        const moved = Object.entries(stages).filter(([, e]) => e.parts && Math.abs(e.parts.held ?? 0) > 1e-6).map(([n, e]) => `${n} ${(e.parts.held >= 0 ? '+' : '')}${e.parts.held.toFixed(2)}`);
+        report('held crust by stage (cell-km over the run: + held, − laid or given back)', moved.length, { digits: 0, source: 'a book, not an Earth figure', detail: moved.join(', ') || 'none' });
+    }
     for (const [stage, e] of Object.entries(stages)) if (e.land !== 0 && !LAND_STAGES.includes(stage) && !offending.has(stage)) offending.set(stage, `${stage} ${e.land > 0 ? '+' : ''}${e.land} cells`);
     check('the crust ledger: no stage but collisions, margin isles, sediment subduction, subduction erosion, arc maturation, tidy and the rift stage makes or loses continental crust', offending.size === 0,
         offending.size ? [...offending.values()].join('; ') : `${Object.keys(stages).length - LAND_STAGES.length} other stages booked exactly 0 cells of land in every step`);

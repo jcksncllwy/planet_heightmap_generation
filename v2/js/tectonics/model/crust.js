@@ -54,7 +54,7 @@ export const CrustFlag = Object.freeze({
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
     'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'erodeKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
-    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage']);
+    'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage', 'heldKm']);
 
 export class CrustRaster {
     constructor(numCells) {
@@ -144,6 +144,10 @@ export class CrustRaster {
         this.riftThin = new Float32Array(numCells);
         this.riftThinAt = new Float32Array(numCells);
         this.damage = new Float32Array(numCells);      // how broken the lithosphere is, 0–1: set where the plate's stress beat its strength, healing after (field/stress-step.js)
+        this.heldKm = new Float32Array(numCells);      // crust (km) a quiet belt's channel has carried out of this column toward the sea, held until
+                                                        // orogenicCollapse lays it as new continent at the coast, or gives it back to the column
+                                                        // when the cell stops spreading (lane peaktail: step/crust-flow.js, step/orogenic-collapse.js).
+                                                        // Off the column (no height, no isostasy), but the cell's rock: crust-ledger.js counts it
         this.count = 0;                                // number of masked cells
         this.version = 0;                              // bumped whenever a cell of the mask changes (step/gather.js nearEdge: unchanged since last asked?)
         this.fields = CELL_FIELDS.map(name => this[name]);

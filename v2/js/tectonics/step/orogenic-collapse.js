@@ -18,12 +18,16 @@
 // more area, and an ordinary continent's own crust never thins through this (the runaway the crust-only strain law had,
 // crustmass S4, needs crust BELOW the reference to keep spreading; this has none). The volume that crossed is owed, as
 // area = volume ÷ the crust it spreads at (an ordinary continent's, C.crust[CONTINENT]), to this stage, which takes it from
-// the sources' roots and lays one ordinary continental cell per crust's worth on the most-fed sea face. No new parameter.
+// what the sources hold (crust.heldKm) and lays one ordinary continental cell per crust's worth on the most-fed sea face. No
+// new parameter.
 //
 // Limits (a reduced model): the new crust is made at the coast, not where the belt extends inside (a rigid raster can only add
 // cells at the edge — the Basin and Range's widening shows here as the coast moving out by the same area); no metamorphic
-// core complexes, no detachments, no extension-driven magmatism; the owed volume is taken from the sources when the cell is
-// made (a step later), not as it flows; a collapse onto a trench's apron is not separated from one onto a passive margin.
+// core complexes, no detachments, no extension-driven magmatism; the cell is made a step after its crust flowed; a collapse onto a trench's apron is not separated from one onto a passive margin.
+// (lane peaktail: the volume that crossed leaves its source's column as it flows — crust-flow.js holds it on the cell,
+// crust.heldKm, which moves with the cell through merges and splits — and this stage lays it from there; a cell that stops
+// spreading gets its held crust back. Was: owed, taken from the sources' roots when the cell was made, and what found no
+// face or no root forgotten, so a source kept its neighbours' inflow and none of its outflow.)
 
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { columnModel } from '../measure.js';
@@ -32,6 +36,22 @@ import { cellRockKm3 } from './crust-ledger.js';
 import { bookRock } from '../rock-book.js';
 import { collapseSource } from './crust-flow.js';
 
+/**
+ * Give the crust held on `plate`'s cells (crust.heldKm) back to their columns, but on the cells in `spreading` that still are
+ * spreading (a quiet belt's continent): what a belt carried toward a coast it no longer spreads over (its record restarted,
+ * the cell rifted or changed plate, the coast closed) was never laid, so it is the cell's crust again. Crust stays crust in
+ * the same cell: no rock moves (crust-ledger.js counts held and root alike).
+ */
+function giveBack(plate, spreading, world) {
+    const crust = plate.crust, { mask, type, heldKm, rootKm, oroType, oroLast } = crust, { time, config } = world;
+    for (let c = 0; c < mask.length; c++) {
+        if (!(heldKm[c] > 0)) continue;
+        if (mask[c] && spreading?.has(c) && type[c] === CrustType.CONTINENT && collapseSource(oroType[c], time - oroLast[c], config)) continue;
+        if (mask[c]) rootKm[c] += heldKm[c];
+        heldKm[c] = 0;
+    }
+}
+
 /** @returns {number} continental cells made this step by collapse at the free edge */
 export function collapseOrogens(world) {
     const { plates, config, time, mesh } = world;
@@ -39,30 +59,35 @@ export function collapseOrogens(world) {
     const C = columnModel(heightsOf(config)), h0 = C.crust[CrustType.CONTINENT];
     let made = 0;
     for (const plate of plates) {
-        const faces = plate.collapseFaces, due = plate.collapseDue ?? 0, owing = plate.collapseSrc;
-        plate.collapseFaces = plate.collapseSrc = null;
-        if (!plate.alive || !faces?.size) { plate.collapseDue = 0; continue; }
-        const crust = plate.crust, { mask, type, rootKm, oroType, terrane, formedAt } = crust;
+        const faces = plate.collapseFaces, owing = plate.collapseSrc;
+        plate.collapseFaces = plate.collapseSrc = null; plate.collapseDue = 0;
+        if (!plate.alive) continue;
+        if (!faces?.size) { giveBack(plate, null, world); continue; }
+        const crust = plate.crust, { mask, type, heldKm, oroType, terrane, formedAt } = crust;
         // the nearest faces first (B2: a belt's inland outflow makes its area at the plate's nearest coast), then the most fed (ties by index: deterministic); each source's root, the most-fed source first
         const order = [...faces.entries()].sort((a, b) => a[1].hops - b[1].hops || b[1].km - a[1].km || a[0] - b[0]);
         const sources = [...new Set([...order.map(e => e[1].src), ...(owing ?? [])])];       // (then every cell that owed, by index)
-        let want = Math.floor(due), n = 0, rock = 0;
+        // (what the plate's spreading belts hold for the coast — crust-flow.js crust.heldKm, carried on the cells — in cells of an
+        // ordinary continent's crust)
+        let held = 0;
+        for (const s of sources) if (mask[s] && type[s] === CrustType.CONTINENT && collapseSource(oroType[s], time - crust.oroLast[s], config)) held += heldKm[s];
+        let want = Math.floor(held / h0 + 1e-9), n = 0, rock = 0;
         for (const [c, f] of order) {
             if (n >= want) break;
             if (!mask[c] || type[c] !== CrustType.OCEAN) continue;
-            // h0 of root, from this face's source first, then the plate's other collapsing sources
+            // h0 of held crust, from this face's source first, then the plate's other collapsing sources
             let have = 0;
             const take = [];
             for (const s of [f.src, ...sources]) {
                 if (have >= h0) break;
                 // (still a quiet belt: a record that restarted, or a cell rifted since the heights step, gives nothing)
                 if (!mask[s] || type[s] !== CrustType.CONTINENT || take.some(t => t[0] === s) || !collapseSource(oroType[s], time - crust.oroLast[s], config)) continue;
-                const k = Math.min(Math.max(0, rootKm[s]), h0 - have);
+                const k = Math.min(heldKm[s], h0 - have);
                 if (k > 0) { take.push([s, k]); have += k; }
             }
             if (have < h0 - 1e-9) break;                                     // (the belts' root is spent: no more area)
             rock -= cellRockKm3(world, crust, c);
-            for (const [s, k] of take) { rock -= cellRockKm3(world, crust, s); rootKm[s] -= k; rock += cellRockKm3(world, crust, s); }
+            for (const [s, k] of take) { rock -= cellRockKm3(world, crust, s); heldKm[s] -= k; rock += cellRockKm3(world, crust, s); }
             // the sea's own sediment stays where it lay (now on land): the cell is remade around it — and its cover record with it
             // (the record fed from that fill: dropping it made geology lay the kept fill twice; lane graded)
             const keep = crust.fields.map(a => a[c]);
@@ -75,8 +100,8 @@ export function collapseOrogens(world) {
             const kind = oroType[f.src];
             (world.budget.collapseCellsByKind ??= {})[kind] = (world.budget.collapseCellsByKind[kind] ?? 0) + 1;
         }
-        // (an owed fraction carries while the belt keeps spreading; what found no face or no root is forgotten — its rock never left)
-        plate.collapseDue = n ? Math.min(due - n, 1) : Math.min(due, 1);
+        // (what is held carries on its cell while the belt keeps spreading; a cell that has stopped gives its held crust back)
+        giveBack(plate, new Set(sources), world);
         if (!n) continue;
         made += n;
         world.budget.collapseCells = (world.budget.collapseCells ?? 0) + n;

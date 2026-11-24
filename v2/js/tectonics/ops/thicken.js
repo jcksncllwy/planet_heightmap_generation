@@ -34,7 +34,7 @@ export function thickenShare(cr, c, config) {
 }
 
 /** The crust (km) of a continental cell of raster `cr`: its kind's as formed plus its root (measure.js columnModel C). */
-export const crustOf = (cr, c, C) => Math.max(0, C.crust[cr.type[c]] + cr.rootKm[c]);
+export const crustOf = (cr, c, C) => Math.max(0, C.crust[cr.type[c]] + cr.rootKm[c]) + cr.heldKm[c];     // (with what its channel holds for the coast: crust-flow.js)
 
 /** Σ crust (cell-km) over a plate's continent and craton. */
 export function continentVolume(plate, C) {

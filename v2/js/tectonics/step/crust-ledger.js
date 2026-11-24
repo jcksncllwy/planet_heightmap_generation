@@ -90,9 +90,10 @@ export function crustVolume(world) {
 /** The rock the planet holds now, in parts (cell-km; lane rockbook, a diagnostic with crustLedgerVolume): continental crust
  * (its kind's as formed plus its root), the relief it carries above that (measure.js crustThicknessKm's uplift and swell
  * term, as crust), the rivers' fill on it (basin, enclosed-sea and shelf rock), island-arc crust (collision.js arcCrustKm),
- * the sediment on OCEAN crust (the rise, enclosed-sea fill), and the rock worn off and not yet carried (crust.wornKm). */
+ * the sediment on OCEAN crust (the rise, enclosed-sea fill), the rock worn off and not yet carried (crust.wornKm), and the
+ * crust a quiet belt's channel has carried out of its column toward the coast, not yet laid (crust.heldKm: lane peaktail). */
 export function rockParts(world) {
-    const R = rockMeasure(world), parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 };
+    const R = rockMeasure(world), parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0, held: 0 };
     for (const p of world.plates) {
         if (!p.alive) continue;
         const k = p.crust, { mask } = k;
@@ -113,6 +114,7 @@ function rockMeasure(world) {
 function addCellRock(parts, R, k, c) {
     const t = k.type[c], C = R.C, sed = k.basinFillKm[c] + k.seaFillKm[c] + (k.shelfKm3[c] + k.riseKm3[c]) / R.cellKm2;
     parts.transit += k.wornKm[c];               // (eroded, not yet carried by the rivers)
+    parts.held += k.heldKm[c];                  // (a quiet belt's crust carried out of its column toward the coast, not yet laid: crust-flow.js)
     if (t === CrustType.OCEAN) { parts.oceanSed += sed; return; }
     parts.fill += sed;
     const relief = (Math.max(0, k.upliftKm[c]) + k.baseKm[c]) / C.slope[t];
@@ -128,17 +130,17 @@ function addCellRock(parts, R, k, c) {
  */
 export function cellRockKm3(world, crust, c) {
     if (!crust.mask[c]) return 0;
-    const R = rockMeasure(world), one = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 };
+    const R = rockMeasure(world), one = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0, held: 0 };
     addCellRock(one, R, crust, c);
-    return (one.crust + one.relief + one.fill + one.arc + one.oceanSed + one.transit) * R.cellKm2;
+    return (one.crust + one.relief + one.fill + one.arc + one.oceanSed + one.transit + one.held) * R.cellKm2;
 }
 
 /** Σ cellRockKm3 over a plate's raster (km³: a weld's books — before and after its merge). */
 export function plateRockKm3(world, plate) {
     if (!plate.alive) return 0;
-    const R = rockMeasure(world), parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0 }, k = plate.crust, { mask } = k;
+    const R = rockMeasure(world), parts = { crust: 0, relief: 0, fill: 0, arc: 0, oceanSed: 0, transit: 0, held: 0 }, k = plate.crust, { mask } = k;
     for (let c = 0; c < mask.length; c++) if (mask[c]) addCellRock(parts, R, k, c);
-    return (parts.crust + parts.relief + parts.fill + parts.arc + parts.oceanSed + parts.transit) * R.cellKm2;
+    return (parts.crust + parts.relief + parts.fill + parts.arc + parts.oceanSed + parts.transit + parts.held) * R.cellKm2;
 }
 
 /** Σ rock of the island-arc cells the history never grew (arcKm 0: a scene's hand-laid arc, measured by its age — collision.js

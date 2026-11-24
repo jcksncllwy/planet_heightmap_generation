@@ -3653,7 +3653,11 @@ none with a tuned parameter (measurements: `lanes-2026-10-29/beltthick/report.md
   on the plate's nearest sea face, because a raster can only add land at an edge, so interior widening shows as the coast
   moving out. Only root is spent (G1); only post-active shortening belts give it, never arcs, rifts or cratons (G2). Flow
   inside a belt is its own redistribution and makes no area: the no-root control showed sediment- and base-driven flow
-  circling between a belt's thinned and thickened cells (`collapse-guard.md`).
+  circling between a belt's thinned and thickened cells (`collapse-guard.md`). The outflow leaves its source's column as the
+  solve moves it and is held on that cell (`crust.heldKm`, counted as the cell's rock, moving with it through merges and
+  splits) until the collapse stage lays it; a cell that stops spreading gets its held crust back (lane peaktail). Before,
+  it was only owed: a source kept its neighbours' inflow and none of its outflow, the stage forgot what it could not lay,
+  and the debt was lost when the cell changed plate, so coastal sources piled roots of 50–114 km past the 40 km ceiling.
 
 Measured at cont 41, 40K × 1200 Myr, 4 seeds (Chroma x64): belt crust p99 (median of 50-Myr samples) collision 58–61 km,
 Andean 65–68 km (was 46–51 / 43–46). **Continental area still drifts down: cont% Δ 200→1200 −10.5 to −13.8 pts against
