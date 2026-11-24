@@ -530,7 +530,12 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    widens over the crust it thickened — each column there thickening by that share as much, so the same shortening
    adds the same crust however wide it spreads (wider, lower) — while a belt crosses onto a craton only as a low, thin-skinned fold-thrust belt,
    `cratonStrainShare` of its relief, each km of the shield costing as many km of the belt's reach as the craton's column is stronger (`cratonStrengthRatio`, ~3.5), and the
-   shield thickening by only that much less: cratons are strong, not rigid. So orogenies accumulate, and an
+   shield thickening by only that much less: cratons are strong, not rigid. The crust a collision or an Andean margin
+   shortens (`ops/thicken.js`) is laid by the same partition: a craton rim the belt has reached takes 1/`cratonStrengthRatio`
+   of an ordinary column's share of it, and it is a face to the crust's channel flow, not a wall (lane peaktail: before,
+   cratons took none, so a belt across a ragged rim stacked the continent cells between its craton cells to the root
+   ceiling, cell by cell; a shield's interior no belt reached still takes none and still walls the channel — Sichuan's
+   margin). So orogenies accumulate, and an
    old belt that drifted through the tropics keeps the wear it took there. Constants: terrain-config.js (`upliftBuildKm`,
    `reliefTauMyr`, `ruggedTauMyr`, `diffusionKm2PerMyr`, `collapseKm`; the columns' `riftCrustKm`…, `cratonCrustKm`…: see
    "One height from the crust" below); a world may carry its own in

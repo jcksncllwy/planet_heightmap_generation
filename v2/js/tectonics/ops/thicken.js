@@ -9,10 +9,29 @@
 // what finds no room there goes on the continent nearest the front, each cell filled before the next ring takes the
 // rest (a plateau widening as it fills: Tibet grew outward, its edges the youngest); where it stands then is heights.js's (its collapse spreads it further); no lower-crustal channel flow, no
 // eclogite foundering beyond the lost share.
+// A craton's rim the belt has reached (lane peaktail) takes the volume too, at 1/cratonStrengthRatio of an ordinary column's
+// share: the partition spreadBelt already lays the belt's own thickening by (orogeny.js: a km of craton costs the belt that
+// many km of reach, and its shield thickens that much less), one law for both. A thin sheet's strength means something only
+// over a lithosphere's thickness (England & McKenzie 1982; a craton's lid ~250 km): a rim cell inside a deforming belt is the
+// craton's margin, deformed with it — the strain goes to a strong block's edge (Neil & Houseman 1997, Tectonics 16; Clark &
+// Houseman 2009) — not a rigid wall. Was: cratons took none, so a belt across a ragged rim laid the rim's share on the
+// continent cells between its craton cells and stacked them to the ceiling (lanes-2026-10-29/peaktail/report.md). An
+// unreached shield (no belt geometry: crust.beltReach 0) still takes none.
 
 import { CrustType, OrogenyType } from '../model/crust.js';
 import { bookRock } from '../rock-book.js';
 import { spreadKm } from '../../core/min-heap.js';
+import { cratonStrengthRatio } from '../field/stress-step.js';
+
+/**
+ * The share of the shortened volume raster cell `c` takes against an ordinary continental column (1): a craton's rim a belt
+ * has reached 1/cratonStrengthRatio (its column's strength: field/stress-step.js), an unreached shield, sea or arc none.
+ */
+export function thickenShare(cr, c, config) {
+    const t = cr.type[c];
+    if (t === CrustType.CONTINENT) return 1;
+    return t === CrustType.CRATON && cr.beltReach[c] > 0 ? 1 / cratonStrengthRatio(config) : 0;
+}
 
 /** The crust (km) of a continental cell of raster `cr`: its kind's as formed plus its root (measure.js columnModel C). */
 export const crustOf = (cr, c, C) => Math.max(0, C.crust[cr.type[c]] + cr.rootKm[c]);
@@ -50,25 +69,24 @@ export function layProfile(plate, cells, weights, volKm, maxRootKm) {
 
 /**
  * Lay `volKm` (cell-km of crust) on `plate`'s continent, from the raster cells `seeds` outward ring by ring, each cell's
- * root raised to at most `maxRootKm` (thickKm, the belt's record of thickening, follows). Cratons take none (too strong
- * to thicken: Lenardic & Moresi 1999). @returns {number} the volume that found no room (0 normally)
+ * root raised to at most `maxRootKm` (thickKm, the belt's record of thickening, follows), each by its thickenShare: an
+ * unreached craton takes none (too strong to thicken: Lenardic & Moresi 1999), a reached rim 1/cratonStrengthRatio of an
+ * ordinary column's share. @returns {number} the volume that found no room (0 normally)
  */
-export function layThickening(plate, mesh, seeds, volKm, maxRootKm, maxHops = 64) {
+export function layThickening(plate, mesh, seeds, volKm, maxRootKm, config, maxHops = 64) {
     if (!(volKm > 0)) return 0;
     const cr = plate.crust, { adjOffset, adjList } = mesh, seen = new Set();
     let ring = [];
     for (const c of seeds) if (!seen.has(c) && cr.mask[c] && cr.type[c] !== CrustType.OCEAN) { seen.add(c); ring.push(c); }
     for (let hop = 0; ring.length && volKm > 1e-9 && hop <= maxHops; hop++) {
-        // (a ring at a time, shared evenly: the front's whole length thickens together, not its first cell)
-        const room = ring.filter(c => cr.type[c] === CrustType.CONTINENT && cr.rootKm[c] < maxRootKm);
-        let left = room.length;
-        for (const c of room) {
-            const add = Math.min(maxRootKm - cr.rootKm[c], volKm / left--);
-            if (add > 0) cr.foldSeaFill(c);                  // (as layProfile)
-            // (thickKm, the record, is held to the same ceiling: a worn cell — its root below its record — takes volume
-            // into its root again, but its record was already at most the ceiling, as the belts' own thickening is)
-            cr.rootKm[c] += add; cr.thickKm[c] = Math.min(maxRootKm, cr.thickKm[c] + add); volKm -= add;
-        }
+        // (a ring at a time, shared by each column's share — even over continent, a reached craton rim 1/cratonStrengthRatio
+        // of it: the front's whole length thickens together, not its first cell; what a full cell would have taken goes
+        // to the others of its ring, as layProfile's water-filling)
+        // (thickKm, the record, is held to the same ceiling: a worn cell — its root below its record — takes volume
+        // into its root again, but its record was already at most the ceiling, as the belts' own thickening is)
+        const room = [], w = [];
+        for (const c of ring) { const s = thickenShare(cr, c, config); if (s > 0 && cr.rootKm[c] < maxRootKm) { room.push(c); w.push(s); } }
+        volKm = layProfile(plate, room, w, volKm, maxRootKm);
         const next = [];
         for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
             const nb = adjList[k];
@@ -116,13 +134,14 @@ export function keepConsumed(world, U, seeds, volKm, since, book = 'collision') 
     const cr = U.crust, belt = [], weights = [], local = !!config.collisionKeepLocal;
     const near = local ? landDistanceKm(world.mesh, U, seeds, Math.max(config.belts.himalayan.maxKm, config.belts.ural.maxKm) * config.beltSpeedFactorMax) : null;
     for (let c = 0; c < cr.mask.length; c++) {
-        if (!cr.mask[c] || cr.type[c] !== CrustType.CONTINENT || !(cr.beltAt[c] >= since) || !(cr.beltReach[c] > 0)) continue;
+        if (!cr.mask[c] || !(cr.beltAt[c] >= since) || !(cr.beltReach[c] > 0)) continue;
         if (cr.oroType[c] !== OrogenyType.HIMALAYAN && cr.oroType[c] !== OrogenyType.URAL) continue;
         if (local && !(near[c] <= cr.beltReach[c])) continue;
-        belt.push(c); weights.push(1 - Math.min(1, cr.beltU[c]) ** 2);
+        const share = thickenShare(cr, c, config);                  // (continent 1; the craton rim the belt reached, its strength's share)
+        if (share > 0) { belt.push(c); weights.push(share * (1 - Math.min(1, cr.beltU[c]) ** 2)); }
     }
     const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
-    const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm);
+    const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm, config);
     bookRock(`${book}KeptKm3`, (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
     budget[`${book}KeptKm`] = (budget[`${book}KeptKm`] ?? 0) + kept - left;
     budget[`${book}LostKm`] = (budget[`${book}LostKm`] ?? 0) + lost;

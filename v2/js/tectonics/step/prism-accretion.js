@@ -28,7 +28,7 @@
 //     von Huene & Scholl 1991, Rev. Geophys. 29; Clift & Vannucchi 2004), the prism thickens the land within
 //     marginIsleReachKm of the trench instead — underplating and the prism's own stacking, laid as shortening lays its
 //     crust (ops/thicken.js layThickening: those cells first, then ring by ring inland, each root up to
-//     underthrustMaxThickKm, cratons none): the rock is kept, none made or lost; what finds no room stays in the prism.
+//     underthrustMaxThickKm, cratons none but a rim a belt reached, at its strength's share — thickenShare): the rock is kept, none made or lost; what finds no room stays in the prism.
 //     A plate with no accretionary margin of its own holds its prism until it has one again.
 // Books (rock-book.js, the stage 'prismAccretion'): prismAccretedKm3, every cell's rock after less before; prismInKm3
 // what was credited, prismUnderKm3 the share of it underplated (the fore-arc full); the sheet holds the rest as the prism reservoir (Σ prismKm3 over the living plates).
@@ -115,10 +115,10 @@ export function accretePrisms(world) {
             for (let c = 0; c < n; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON) && trenchD[c] >= 0 && trenchD[c] <= reachHops) land.push(c);
             if (land.length) {
                 // (through the law shortening and a collision's kept crust use, ops/thicken.js layThickening: the land within
-                // reach first, then ring by ring inland, each root up to underthrustMaxThickKm, cratons none. Was: the whole
+                // reach first, then ring by ring inland, each root up to underthrustMaxThickKm, cratons none (a reached rim its strength's share). Was: the whole
                 // prism evenly over those cells with no ceiling, 100–200 km of root where a margin had 1–6 of them, roots no
                 // channel could drain. What finds no room stays in the prism, the reservoir on the balance sheet)
-                const volKm = plate.prismKm3 / A, left = layThickening(plate, mesh, land, volKm, config.underthrustMaxThickKm);
+                const volKm = plate.prismKm3 / A, left = layThickening(plate, mesh, land, volKm, config.underthrustMaxThickKm, config);
                 const km3 = (volKm - left) * A;
                 accreted += km3; world.budget.prismUnderKm3 = (world.budget.prismUnderKm3 ?? 0) + km3; plate.prismKm3 = left * A;
             }

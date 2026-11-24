@@ -103,7 +103,7 @@ export function flowCrust(world, dt, H) {
     let moved = 0, iters = 0;
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, rootKm, upliftKm, baseKm, basinFillKm, oroType, oroLast } = crust, heat = heatOf(plate);
+        const crust = plate.crust, { mask, type, rootKm, upliftKm, baseKm, basinFillKm, oroType, oroLast, beltReach } = crust, heat = heatOf(plate);
         // the plate's continental cells, and each one's channel conductance and ground height
         const cells = [];
         for (let c = 0; c < mask.length; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) cells.push(c);
@@ -138,12 +138,15 @@ export function flowCrust(world, dt, H) {
         // h_face = min(h_up, km_down), K_face = ρgh_face³/12η. Upstream is read from the ground before the step, so both ends
         // of the face see the same conductance and the system stays symmetric. A craton downstream stays a wall: its thick,
         // cold lid is a strong block (the steep margin against Sichuan: Clark & Royden 2000), not merely crust too thin for a
-        // channel.
+        // channel — unless a belt has reached it (crust.beltReach > 0; lane peaktail): then it is the craton's deformed rim,
+        // a face like any continent's (ops/thicken.js takes its thickening there at its strength's share; strain goes to a strong
+        // block's edge: Neil & Houseman 1997, Clark & Houseman 2009). An unreached shield is still the wall, and the rim's own
+        // cold lid still gives it no channel of its own.
         const faceA = (i, j) => {
             if (K[i] > 0 && K[j] > 0) return coef * 2 * K[i] * K[j] / (K[i] + K[j]);
             if (s[i] === s[j]) return 0;
             const up = s[i] > s[j] ? i : j, dn = up === i ? j : i;
-            if (!(K[up] > 0) || type[cells[dn]] !== CrustType.CONTINENT) return 0;
+            if (!(K[up] > 0) || (type[cells[dn]] !== CrustType.CONTINENT && !(beltReach[cells[dn]] > 0))) return 0;
             const h = Math.min(hc[up], kmc[dn]);
             return coef * kPerKm3 * h * h * h;
         };

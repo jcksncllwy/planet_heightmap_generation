@@ -27,7 +27,8 @@
 // kept: this is the plate's own crust folded, not crust sent down (delamination and subduction erosion are not this stage's).
 // Not modelled: where along the belt the shortening concentrates (thin-skinned foreland belts vs the thick-skinned core), the
 // Bolivian orocline's along-strike flow (Hindle et al. 2005), any time lag between the plate's push and the belt's response.
-// Cratons never shorten (too strong: Lenardic & Moresi 1999); island arcs keep their own crust model (step/arcs.js).
+// Cratons never shorten (too strong: Lenardic & Moresi 1999), but a craton rim the belt reached takes its laid root at its
+// strength's share (ops/thicken.js thickenShare, lane peaktail); island arcs keep their own crust model (step/arcs.js).
 
 import { CrustType, CrustFlag, OrogenyType } from '../model/crust.js';
 import { BoundaryKind } from '../model/world.js';
@@ -37,7 +38,7 @@ import { contactAt } from './contact.js';
 import { rollbackCmYr } from './backarc.js';
 import { columnModel } from '../measure.js';
 import { heightsOf } from './heights.js';
-import { crustOf, layProfile, layThickening, landDistanceKm } from '../ops/thicken.js';
+import { crustOf, layProfile, layThickening, landDistanceKm, thickenShare } from '../ops/thicken.js';
 import { cellRockKm3 } from './crust-ledger.js';
 import { bookRock } from '../rock-book.js';
 
@@ -117,12 +118,13 @@ export function shortenMargins(world, dt) {
         // laid over this margin's Andean/Laramide belt within its reach of where the crust was taken (1 − u²), the rest from the front
         const live = seeds.filter(c => mask[c] && type[c] !== CrustType.OCEAN), near = landDistanceKm(mesh, plate, live, reach), belt = [], weights = [];
         for (let c = 0; c < mask.length; c++) {
-            if (!mask[c] || type[c] !== CrustType.CONTINENT || !(near[c] <= crust.beltReach[c])) continue;
+            if (!mask[c] || !(near[c] <= crust.beltReach[c])) continue;
             if (crust.oroType[c] !== OrogenyType.ANDEAN && crust.oroType[c] !== OrogenyType.LARAMIDE) continue;
-            belt.push(c); weights.push(1 - Math.min(1, crust.beltU[c]) ** 2);
+            const share = thickenShare(crust, c, config);           // (a craton rim the belt reached: its strength's share — ops/thicken.js)
+            if (share > 0) { belt.push(c); weights.push(share * (1 - Math.min(1, crust.beltU[c]) ** 2)); }
         }
         const rest = layProfile(plate, belt, weights, volKm, config.underthrustMaxThickKm);
-        const left = layThickening(plate, mesh, live, rest, config.underthrustMaxThickKm);
+        const left = layThickening(plate, mesh, live, rest, config.underthrustMaxThickKm, config);
         bookRock('shortenedKm3', rock);                                         // (the rock taken off the edge, < 0)
         bookRock('shortenKeptKm3', (volKm - left) * cellAreaKm2);               // (laid back as root; what found no room is lost)
         world.budget.andeanShortenedCells = (world.budget.andeanShortenedCells ?? 0) + taken;
