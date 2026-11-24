@@ -1058,7 +1058,7 @@ async function calculateClimate() {
 }
 
 // ── the real-climate balance (2026-11-10, Jackson approved): a moment with a sea of ≥ 1 Mkm² cut off from the ocean that
-// the history holds empty (basin-estimate.js needsClimate) is drawn at once balanced on the zonal climate, then again on
+// the history holds empty (basin-estimate.js needsClimate) is drawn at once balanced on the climate its history held, then again on
 // the computed one — the Climate tab's (1°) where this moment has it, else its own at 3° (climate-worker.js 'water'), on
 // a worker of its own so the Climate tab's stays free. One at a time, the moment on screen; none while playing. ──
 const waterClimate = new ClimateService();

@@ -2,7 +2,7 @@
 // whole climate (climate/climate.js planetClimate, its solves on the GPU: gpu/climate-solver.js) on the world as it stands —
 // the land the terrain's mask draws (terrain/land-mask.js), each cell's ground against the sea — held until the next sample.
 // It replaced the zonal tables the history's readers took rain and ice by latitude from (terrain-config.js rainByLatitude
-// and glacialErosion, as the history read them): the surface erosion's drainage weight and carving rate
+// and glacialErosion, as the history read them; both since deleted, lane rainland): the surface erosion's drainage weight and carving rate
 // (surface-erosion.js), the rivers' discharge (rivers.js), the islands' and flood basalts' wear (heights.js).
 //
 // The sample is taken on a 2° grid: 1.3–1.9 s a sample against 3.2–4.7 s at the finish's 1°, its year's temperature
@@ -13,12 +13,12 @@
 // grid's year at the cell's place.
 //
 // A generator step (simulate.js): it yields { kind: 'climate', input, options }, and simulate answers with the climate.
-import { landMask } from '../../terrain/land-mask.js';
+import { landMask, ARID_SILLS } from '../../terrain/land-mask.js';
 import { surfaceKm } from '../ocean/inventory.js';
 import { heightsOf } from './heights.js';
 import { viewOf, newView } from './rivers.js';
 import { CORE_DEFAULTS } from '../../climate/core.js';
-import { heldWater } from '../../terrain/basin-estimate.js';
+import { heldWater, heldAt } from '../../terrain/basin-estimate.js';
 import { FINISH } from '../../finish/finish-config.js';
 
 export const CLIMATE_EVERY_MYR = 20;
@@ -36,12 +36,28 @@ export function* sampleClimate(world) {
     let s = scratch.get(world);
     if (!s) scratch.set(world, s = { view: newView(n), mask: {} });
     viewOf(world, s.view, H, true);
-    const m = landMask(s.view, mesh, H, s.mask, world.climate ? heldWaterOf(world, H) : null), sl = m.sl;
+    // (the start has no climate to judge its pinned sills by: they are taken arid, the climate solved on that land, then the
+    // land judged again on it and, where that moves the land, solved again — one fixed-point step; lane rainland)
+    const first = !world.climate;
+    let { elevKm, land } = surfaceFor(world, s, H, first ? ARID_SILLS : heldWaterOf(world, H));
+    let res = yield { kind: 'climate', input: { xyz: mesh.xyz, elevKm, axes: 'z-up', land }, options: { gridStepDeg: CLIMATE_GRID_DEG, cells: false } };
+    world.climate = climateHeld(world.time, res, elevKm);
+    if (!first) return;
+    const again = surfaceFor(world, s, H, heldWaterOf(world, H));
+    if (again.land.every((v, c) => v === land[c]) && again.elevKm.every((v, c) => v === elevKm[c])) return;
+    ({ elevKm, land } = again);
+    res = yield { kind: 'climate', input: { xyz: mesh.xyz, elevKm, axes: 'z-up', land }, options: { gridStepDeg: CLIMATE_GRID_DEG, cells: false } };
+    world.climate = climateHeld(world.time, res, elevKm);
+}
+
+/** The ground the climate stands on: the mask's land (its pinned sills judged by `water`) and each cell's height over the sea. */
+function surfaceFor(world, s, H, water) {
+    const mesh = world.mesh, n = mesh.numCells;
+    const m = landMask(s.view, mesh, H, s.mask, water), sl = m.sl;
     const ground = s.mask.groundKm?.length === n ? s.mask.groundKm : surfaceKm(s.view, mesh, H, undefined, sl.swellKm, sl.seaRefKm);
     const elevKm = new Float32Array(n), land = Uint8Array.from(m.land);
     for (let c = 0; c < n; c++) elevKm[c] = ground[c] - sl.seaKm;
-    const res = yield { kind: 'climate', input: { xyz: mesh.xyz, elevKm, axes: 'z-up', land }, options: { gridStepDeg: CLIMATE_GRID_DEG, cells: false } };
-    world.climate = climateHeld(world.time, res, elevKm);
+    return { elevKm, land };
 }
 
 /** What the history keeps of a climate: the grid's year — rain (mm), temperature at sea level (°C) — and its ice sheets. */
@@ -59,22 +75,25 @@ function climateHeld(atMyr, res, elevKm) {
     return { atMyr, w: grid.w, h: grid.h, step: grid.step, rain, tSea, ice, elevKm, fields: new Map() };
 }
 
-/** Bilinear on the held grid (cell centres; wrapping in longitude, clamped at the poles), at latitude/longitude in degrees. */
-export function heldAt(cl, field, latDeg, lonDeg) {
-    const { w, h, step } = cl, f = cl[field];
-    const y = Math.min(h - 1, Math.max(0, (90 - latDeg) / step - 0.5)), x = ((lonDeg + 180) / step - 0.5 + w) % w;
-    const j0 = Math.floor(y), j1 = Math.min(h - 1, j0 + 1), fy = y - j0, i0 = Math.floor(x) % w, i1 = (i0 + 1) % w, fx = x - Math.floor(x);
-    return (1 - fy) * ((1 - fx) * f[j0 * w + i0] + fx * f[j0 * w + i1]) + fy * ((1 - fx) * f[j1 * w + i0] + fx * f[j1 * w + i1]);
+/** A frame's held climate (the history's sample it was drawn under). Every history frame carries one; a frame without one is
+ *  a bug (an old cache, or a frame built by hand), not a case for the zonal tables (lane rainland; sessrumnir's ruling). */
+export function frameClimate(frame) {
+    const cl = frame?.climate;
+    if (!cl) throw new Error(`frame at ${frame?.time} Myr carries no climate: frames come from a history that samples one (climate-sample.js)`);
+    return cl;
 }
+
+/** Bilinear on the held grid: basin-estimate.js heldAt (there, for the page's shading worker too). */
+export { heldAt };
 
 /**
  * Per world cell, from the held climate (once a sample and settings): `rain` (mm a year), `water` (rain ÷ rainRefMm: the
- * drainage's weight) and `erosion` — the erosion clocks' multiplier, as terrain-config.js erosionAtLatitude reckons it from
+ * drainage's weight) and `erosion` — the erosion clocks' multiplier, from
  * the rain ((rain ÷ rainRefMm)^rainErosionExponent, softer where wetter) or from the ice, whichever is larger. The ice:
- * glacial erosion where the climate keeps an ice sheet (its perennial share), at a rate by the ice's warmth — the
- * glacialErosion table carried from latitude to today's zonal temperature there (tempByLatitude: 52° ≈ 3.6 °C → 0.95,
- * 58° ≈ −0.6 °C → 1.07, 64° ≈ −5.2 °C → 0.45, 70° ≈ −10 °C → 0.15, 90° ≈ −25 °C → 0.05), at the cell's own annual temperature (the grid's at sea
- * level less the lapse over its height): temperate ice sliding on meltwater erodes, cold ice frozen to its bed hardly.
+ * glacial erosion where the climate keeps an ice sheet (its perennial share), at a rate by the ice's warmth
+ * (terrain-config.js glacialErosionByC: 3.6 °C → 0.95, −0.6 °C → 1.07, −5.2 °C → 0.45, −10 °C → 0.15, −25 °C → 0.05), at the
+ * cell's own annual temperature (the grid's at sea level less the lapse over its height): temperate ice sliding on meltwater
+ * erodes, cold ice frozen to its bed hardly.
  */
 export function climateRates(world, H) {
     const cl = world.climate;
@@ -103,13 +122,8 @@ function erosionOf(rainMm, ice, tC, H, iceByT) {
     return Math.max(r, ice > 0 ? ice * interp(iceByT, tC) : 0);
 }
 
-/** glacialErosion's [|lat|, rate] knots as [°C, rate], by tempByLatitude (warmest first), once per settings. */
-const glacialCache = new WeakMap();
-function glacialByTemperature(H) {
-    let t = glacialCache.get(H);
-    if (!t) glacialCache.set(H, t = H.glacialErosion.map(([lat, v]) => [interp(H.tempByLatitude, lat), v]).sort((a, b) => a[0] - b[0]));
-    return t;
-}
+/** The glacial erosion's [°C, rate] knots, coldest first (terrain-config.js glacialErosionByC). */
+const glacialByTemperature = (H) => H.glacialErosionByC;
 function interp(knots, x) {
     if (x <= knots[0][0]) return knots[0][1];
     for (let i = 1; i < knots.length; i++) if (x <= knots[i][0]) { const [x0, y0] = knots[i - 1], [x1, y1] = knots[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
@@ -124,11 +138,10 @@ export function heldWaterOf(world, H) {
 }
 
 /** heldWaterOf for a frame (terrain/land-mask.js, terrain/records.js: the view's land and pour from a history's frame): the
- *  climate the frame's history held, on the sim mesh — or null for a frame without one (the zonal balance). */
+ *  climate the frame's history held, on the sim mesh. A frame without one throws (frameClimate). */
 const frameRates = new WeakMap();
 export function frameWaterOf(frame, simMesh, cfg) {
-    const cl = frame?.climate;
-    if (!cl) return null;
+    const cl = frameClimate(frame);
     let r = frameRates.get(cl);
     if (!r || r.mesh !== simMesh) {
         const n = simMesh.numCells, xyz = simMesh.xyz, rain = new Float32Array(n), tSea = new Float32Array(n);

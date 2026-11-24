@@ -35,7 +35,7 @@ for (const [seed, cont, heights] of runs) {
         row.pouredBig = wo.bodies.slice(1).filter(b => b.pouredKm3 > 0 && b.cells * a >= CLIMATE_MIN_KM2).length;
         if (row.wants) {
             k++;
-            const Z = estimateCutOff(tm, h, wo, TERRAIN, 0);
+            const Z = estimateCutOff(tm, h, wo, TERRAIN, 0, undefined, f.climate);   // (the history's held climate: the zonal table it compared before is gone)
             const t0 = performance.now(), res = planetClimate({ xyz: tm.xyz, elevKm: h, axes: 'z-up' }, { gridStepDeg: GRID }), w = climateWater(res, h), ms = performance.now() - t0;
             const C = estimateCutOff(tm, h, fresh(), TERRAIN, 0, undefined, w);
             Object.assign(row, { climateMs: Math.round(ms), zonal: { seas: seasOf(Z), heldKm3: Math.round(Z.heldKm3), fallM: +(1000 * Z.oceanFallKm).toFixed(2) }, computed: { seas: seasOf(C), heldKm3: Math.round(C.heldKm3), fallM: +(1000 * C.oceanFallKm).toFixed(2), source: C.climate, deg: C.climateDeg } });

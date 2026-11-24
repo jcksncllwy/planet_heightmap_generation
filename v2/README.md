@@ -607,8 +607,9 @@ belt, fast, and the position along it, slow), so its highs and lows run with the
 continents are not flat: when the history starts they get broad swells (`baseKm`, up to `baseReliefKm`, half on
 shields) that wear down like the rest of the relief and steer the history's rivers into the lowlands between them. Belts come in two layers — the current one and the one it overprinted, at half
 strength with its own grain — and each corner's share is scaled by noise of its own, so kinds of ground interfinger.
-Every erosion clock runs faster where it rains more — a hard-coded zonal-mean rainfall by latitude, with ice keeping
-the high latitudes eroding (terrain-config.js rainByLatitude, glacialErosion; erosionAtLatitude), and faster on high
+Every erosion clock runs faster where it rains more — the rain the history's own climate holds (climate-sample.js;
+once a zonal table by latitude, retired by lane rainland), with temperate ice keeping glaciated ground eroding
+(glacialErosionByC, by the ice's temperature), and faster on high
 ground than on low (erosionAtHeight): old ranges linger as low hills. Volcanoes are irregular massifs, not cones: an
 edifice with a noise-warped outline, broad ridges (rift zones, arc ridges) running out from the summit, gullies in the
 lower flanks, sometimes a flank collapse. Flood basalts come in every size and shape (2026-09-29; the history's
@@ -2733,6 +2734,31 @@ history scope adds the climate solver's probe (GPU-split history keys accepted).
 climate's own rare wet hotspots (an ice dome one rain-grid cell wide, fed by eddy mixing whose length exceeds the grid's) reach
 tens of m a year in a few cells; the history takes them unclamped; the fix — the eddy flux capped at the grid's scale — is its
 own lane, and then the finish's `rainMaxMm` goes.
+
+**The climate's land rain checked against Earth's, and the readers set by it (lane rainland, 2026-11-24).** On Earth's own
+surface the history's 2° climate gave 0.90 of the observed land rain north of 60°S (Beck et al. 2023, Sci. Data 10:724,
+1991–2020: 851 mm/yr; GPCP v2.3: 863; GPCC's gauges 786) — at the dry edge of the observations — while the zonal table the
+history read before was ×1.27 the observed (×1.5–1.7 at 15–60°N): the history's land rain fell to ~0.7 of the table's
+mostly because the table was wet. Three changes:
+- **The eddy flux at the grid's scale** (`climate/rain.js`): the storms' moisture mixing K = σ_Eady·L·min(L, the face's
+  spacing), per face (east–west rows narrow with cos latitude). A mixing-length closure holds only for gradients broader than
+  L (1100 km); across a 275–445 km face the eddies can exchange at most σL·ΔW*, so the old K drained a one-cell cold column
+  L/dx ≈ 2.5–4× too fast and carried the tropics' water poleward. Earth's land, observed ratio by 15° band: tropics
+  0.77–0.81 → 0.86–0.95, 60–75°N 1.50 → 1.00.
+- **The orographic pass conserves** each rain-grid cell's budget: its children's area-weighted mean equals the cell's rain,
+  every point in the year (`check-rain-budget.mjs`). The old normalisation over 600 km boxes, cell by cell, made water
+  (a 4° cell's children ×1.56 its budget); `RAIN_OROG_SPREAD_KM` is gone. After both: Earth's land 0.90 at 2°, 0.93 at 1°.
+  What is still off: 30–45°N 0.77–0.84 and 30–45°S ~0.8 — mean-flow moisture onto mid-latitude land, a model finding (it is
+  there with the storms' mixing off too), queued on its own.
+- **The readers.** `rainRefMm` 1000 → 850, Earth's observed mean land rain: the rain at which a clock runs at its stated rate,
+  and at which a km² of drainage counts as one (`riverKm2`), so a great river of 10⁵ km² is ~30 km³/yr, ~940 m³/s at Earth's
+  runoff share. The zonal tables are gone — `rainByLatitude`, `tempByLatitude`, `rainInlandKm`, `rainAtLatitude`,
+  `erosionAtLatitude`, `basin-estimate.js zonalWater` — and nothing falls back to them: the view's carve rain and its cones'
+  and margins' erosion (`records.js`) read the frame's held climate; the timeline's cut-off seas are balanced on it
+  (`heldWaterOn`) until the page's computed climate arrives; a frame without a climate throws. The history's start, before
+  its first climate, takes its pinned sills arid, solves, judges them again on that climate and solves again where the land
+  moved (one fixed-point step). The glacial rate is keyed on the ice's temperature (`glacialErosionByC`, the old latitude
+  knots restated exactly). phase8a's check of the table's own shape ('erosion follows rainfall by latitude') retired with it.
 
 **The coast's waves and the world ocean's flood run on the GPU too (lane gpucells M2, 2026-11-22).** The coast (`finish-coast.js`)
 traces its waves as one GPU thread a ray (`js/gpu/coast-rays.js`): the far field on the climate grid (every sea grid cell × 16

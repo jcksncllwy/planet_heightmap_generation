@@ -118,7 +118,7 @@ section('the world ocean is the largest body of water');
     check('…only at the frame\'s own sea level (the history poured at it)', K.ocean.join('') === '0001111000', `at −50 m: ocean ${K.ocean.join('')}`);
     // standing it: the water the history pours into a part-filled body, from its bottom up, not debited
     const zs = Float32Array.from([0.3, 0.3, 0.5, -2, -2, -2, -2, 0.2, -0.5, -1.5]), cellA = 4 * Math.PI * 6371 * 6371 / N;
-    const Ws = worldOcean(mesh, zs, 0, hist([0, 0, 0, 1, 1, 1, 1, 0, 0, 1], [0, 0, 0, 2, 2, 2, 2, 0, 0, 1])), E = estimateCutOff(mesh, zs, Ws, TERRAIN, 0);
+    const Ws = worldOcean(mesh, zs, 0, hist([0, 0, 0, 1, 1, 1, 1, 0, 0, 1], [0, 0, 0, 2, 2, 2, 2, 0, 0, 1])), E = estimateCutOff(mesh, zs, Ws, TERRAIN, 0, F, { rain: new Float32Array(N), pet: new Float32Array(N).fill(3000), runoff: new Float32Array(N) });   // (an arid climate given: there is no zonal one)
     check('…a part-filled sea stands the history\'s water from its bottom: the deepest cell wet at its level, the shallower dry, nothing debited',
         E.given[9] === 1 && E.given[8] === 2 && Math.abs(E.givenKm3 / cellA - 1) < 1e-4 && E.cut[9] === 1 && E.dry[8] === 1 && E.oceanFallKm === 0 && !(E.heldKm3 > 0),
         `given ${E.given.join('')} · ${(E.givenKm3 / cellA).toFixed(4)} cell-km stood (1 poured) · level ${(1000 * (E.seas.find(s => s.history)?.levelKm ?? NaN)).toFixed(0)} m · fall ${E.oceanFallKm} · held ${E.heldKm3}`);

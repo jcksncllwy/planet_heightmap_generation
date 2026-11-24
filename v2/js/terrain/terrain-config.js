@@ -514,26 +514,22 @@ export const TERRAIN = {
     calderaBulkPerDre: 2.5,     // tephra bulk volume ÷ dense rock (VEI classes count bulk tephra; ~2–3, Pyle 2015)
 
     // ── Erosion follows rainfall ──
-    // A hard-coded estimate of zonal-mean precipitation by |latitude| (mm/yr, after Earth's: the wet equatorial belt,
-    // the dry subtropics, the mid-latitude storm tracks, the dry poles). Every erosion clock of the tectonic surface —
-    // relief of a quiet belt, its root rebounding, a rift's shoulders, a volcano wearing down and spreading — runs
+    // Every erosion clock of the tectonic surface — relief of a quiet belt, its root rebounding, a rift's shoulders, a volcano
+    // wearing down and spreading — and the rivers' drainage run by the rain the history's climate holds (climate-sample.js):
     // (rain / rainRefMm)^rainErosionExponent times as fast, and softer still where it is wetter than the reference
     // (developer, round 4: the contrast was too strong, especially at the equator): ×wetErosionShare on the exponent.
-    // Heights erode at the latitude the crust is at, step by step (tectonics/step/heights.js).
-    rainByLatitude: [[0, 2000], [10, 1600], [20, 950], [30, 850], [40, 1050], [50, 1100], [60, 800], [70, 400], [80, 200], [90, 120]],
-    rainRefMm: 1000,
-    // zonal annual mean surface air temperature at sea level (°C; both hemispheres' mean, today's climate: e.g. Hartmann
-    // 2016, Global Physical Climatology, fig. 1.x — recalled), and the standard atmosphere's lapse rate (6.5 °C/km, ICAO):
-    // with rainByLatitude, the zonal climate the timeline balances its cut-off seas by (basin-estimate.js)
-    tempByLatitude: [[0, 26.5], [10, 26], [20, 24], [30, 18.5], [40, 12], [50, 5], [60, -2], [70, -10], [80, -20], [90, -25]],
-    lapseRateCPerKm: 6.5,
-    // the rain the sea's moisture brings, falling off inland as it rains out: × e^(−d / this), d the distance from the
-    // ocean — the length over which moisture evaporated from the sea is rained out over land, ~1000–2000 km (van der Ent &
-    // Savenije 2011, Atmos. Chem. Phys. 11: the local length scale of evaporation recycling — recalled); the timeline's
-    // cut-off seas only (basin-estimate.js)
-    rainInlandKm: 1500,
+    // Heights erode at the place the crust is at, step by step (tectonics/step/heights.js). (The zonal tables these read
+    // before — rainByLatitude, tempByLatitude — are gone, lane rainland: on Earth's own land rainByLatitude was ×1.27 the
+    // observed, ×1.5–1.7 at 15–60°N.)
+    // rainRefMm: the rain at which a clock runs at its stated rate, and at which a km² of drainage counts as one (riverKm2, so a
+    // "great river ≥ 10⁵ km²" is 10⁵ km² of Earth-average land). The rates were set from Earth's (denudation, sediment export,
+    // the drainage-area lines measured on ETOPO5), so the reference is Earth's mean land rain: 851 mm/yr (Beck et al. 2023,
+    // Sci. Data 10:724, 1991–2020) and 863 (GPCP v2.3, Adler et al. 2018) over land north of 60°S (lane rainland P1). It was
+    // 1000, a round number, which with the zonal table the history read then made an Earth-average land cell run ×1.05.
+    rainRefMm: 850,
+    lapseRateCPerKm: 6.5,       // °C/km, the standard atmosphere's lapse rate (ICAO)
     rainErosionExponent: 0.6,   // 0 = erosion everywhere alike
-    wetErosionShare: 0.6,       // (equator: 2000 mm → ×1.28, the subtropics' 850 mm → ×0.91)
+    wetErosionShare: 0.6,       // (2000 mm → ×1.36, 500 mm → ×0.73)
 
     // ── Phase 8b: rivers carve the tectonic surface (carve.js) ──
     // The stream power law ∂z/∂t = u − k A^m |∇z| (n = 1), solved analytically in time along the rivers (Tzathas et al.
@@ -598,36 +594,15 @@ export const TERRAIN = {
     // to send a big river down another valley. With this many cells (e.g. 160000), a finer terrain gives that level the
     // surface synthesized at this detail instead (synthesize.js settleFields). 0: off
     carveSettleCells: 0,
-    // …except where ice does the work (developer): glaciers erode fast though little falls, so poleward of the storm
-    // tracks erosion holds near their level — the rate is the larger of rain's and this, by |latitude|. But only where the
-    // ice is temperate, sliding on meltwater: cold polar ice is frozen to its bed, and from Patagonia to the Antarctic
-    // Peninsula glacial erosion falls about a thousandfold (Koppes et al. 2015) — so it fades past ~60° (was 1.0 to the pole)
-    glacialErosion: [[45, 0], [52, 0.95], [58, 1.07], [64, 0.45], [70, 0.15], [90, 0.05]],
+    // …except where ice does the work (developer): glaciers erode fast though little falls, so under the climate's ice sheets
+    // erosion holds near the storm tracks' level — the rate is the larger of rain's and this, by the ice's annual temperature
+    // (°C at its height; tectonics/step/climate-sample.js). But only where the ice is temperate, sliding on meltwater: cold
+    // polar ice is frozen to its bed, and from Patagonia to the Antarctic Peninsula glacial erosion falls about a thousandfold
+    // (Koppes et al. 2015) — so it fades below ~−5 °C. [°C, rate], coldest first. (Restated exactly from the latitude knots
+    // [45°, 0], [52°, 0.95], [58°, 1.07], [64°, 0.45], [70°, 0.15], [90°, 0.05] carried to today's zonal sea-level temperature
+    // there, Hartmann 2016 — the table retired with the zonal climate, lane rainland)
+    glacialErosionByC: [[-25, 0.05], [-10, 0.15], [-5.2, 0.45], [-0.5999999999999996, 1.07], [3.6, 0.95], [8.5, 0]],
 };
-
-/** Estimated mean rainfall (mm/yr) at a latitude (degrees), from cfg.rainByLatitude. */
-export function rainAtLatitude(latDeg, cfg) {
-    const table = cfg.rainByLatitude, a = Math.min(90, Math.abs(latDeg));
-    for (let i = 1; i < table.length; i++) {
-        const [l0, r0] = table[i - 1], [l1, r1] = table[i];
-        if (a <= l1) return r0 + (r1 - r0) * (a - l0) / (l1 - l0);
-    }
-    return table[table.length - 1][1];
-}
-
-/**
- * How many times faster than at rainRefMm things erode at this latitude: by the rain that falls there, or — poleward —
- * by the ice (cfg.glacialErosion), whichever is more. With rainErosionExponent 0, 1 everywhere.
- */
-export function erosionAtLatitude(latDeg, cfg) {
-    if (cfg.rainErosionExponent <= 0) return 1;
-    const wet = rainAtLatitude(latDeg, cfg) / cfg.rainRefMm;
-    const rain = wet ** (cfg.rainErosionExponent * (wet > 1 ? cfg.wetErosionShare : 1));
-    const g = cfg.glacialErosion, a = Math.min(90, Math.abs(latDeg));
-    let ice = 0;
-    if (a > g[0][0]) for (let i = 1; i < g.length; i++) if (a <= g[i][0]) { const [l0, v0] = g[i - 1], [l1, v1] = g[i]; ice = v0 + (v1 - v0) * (a - l0) / (l1 - l0); break; }
-    return Math.max(rain, ice);
-}
 
 /** Terrain constants with the given overrides (shallow for scalars, one level deep for grouped tables). */
 export function terrainConfig(overrides = {}) {

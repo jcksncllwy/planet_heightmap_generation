@@ -19,7 +19,8 @@ import { VOLCANO_STRIDE, VOLCANO_WEAR_SLOT } from '../js/terrain/volcanoes.js';
 import { locate } from '../js/core/mesh-locate.js';
 import { quatToMat3 } from '../js/core/rotation.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
-import { TERRAIN, terrainConfig, erosionAtLatitude } from '../js/terrain/terrain-config.js';
+import { TERRAIN, terrainConfig } from '../js/terrain/terrain-config.js';
+import { erosionHeldAt, frameClimate } from '../js/tectonics/step/climate-sample.js';
 import { kindType, kindSide, gradient, CoastKind } from '../js/terrain/records.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { crossAt } from '../js/terrain/stripes.js';
@@ -354,15 +355,9 @@ section('a continent splits');
 // ── erosion by rainfall ──
 section('erosion by rainfall');
 {
-    // the rainfall table's shape (the general circulation): wet equator, dry subtropics, wetter storm tracks. How strong the
-    // contrast is was the developer's (round 4); toward the poles the ice's erosion falls off (glacialErosion: cold-based ice
-    // on frozen beds), though by less than the 2–3 orders of magnitude polar glaciers erode below temperate ones (Koppes
-    // et al. 2015) — the polar ranges still wear somewhat, for the look; reported
-    const e = l => erosionAtLatitude(l, TERRAIN);
-    check('erosion follows rainfall by latitude: wettest at the equator, driest in the subtropics, wetter in the storm tracks', e(0) > e(10) && e(25) < 1 && e(25) < e(0) && e(50) > e(25),
-        `×${e(0).toFixed(2)} at the equator, ×${e(10).toFixed(2)} at 10°, ×${e(25).toFixed(2)} at 25°, ×${e(50).toFixed(2)} at 50°`);
-    report('polar erosion against the storm tracks (80° ÷ 50°)', e(80) / e(50), { earth: [0.001, 0.01], digits: 3, source: 'polar glaciers erode 2–3 orders of magnitude less than temperate ones, Koppes et al. 2015 — today only: an icehouse; Earth\'s poles were ice-free through much of its history (the Cretaceous–Eocene), and no figure is found for then',
-        detail: `×${e(80).toFixed(2)} at 80°, ×${e(50).toFixed(2)} at 50°` });
+    // (lane rainland: the checks of the zonal rainfall table's shape — wet equator, dry subtropics, storm tracks, polar ice — retired
+    // with the table. The rain the history erodes by is its own climate's (climate-sample.js), checked against Earth's observed land
+    // rain on Earth's surface: lanes-2026-10-29/rainland p1/earth-rain.mjs, 0.92 of Beck et al. 2023 at the history's 2°)
     // (belts quiet 40–250 Myr: after Phase 13's quicker erosion a belt quiet 100+ Myr is worn to ~0.15 km wherever it stood)
     // and it shows: old belts are worn lower in the wet tropics, and kept higher in the dry subtropics, than in the same
     // (lane graded, 2026-11-12: the history's erosion feeds its dynamics — the rock it takes thins the crust collisions, rifts and
@@ -382,7 +377,7 @@ section('erosion by rainfall');
     // on 8cc63e2). What does not flip: the dry class is higher on all five (+24 · +33 · +87 · +77 · +33 m), and the pairing's slope
     // against the path's factor is negative on all five (−192 · −257 · −388 · −131 · −140 m per unit of factor). So the claim is
     // read as that: over five histories, the dry class is higher and the relief change falls with the path's erosion)
-    const eAt = l => erosionAtLatitude(l, TERRAIN);
+    // (the erosion factor the crust lived under: each frame's held climate where the crust stood then — climate-sample.js)
     const rainPair = async (seed, rainyRun = null) => {
         const rainyH = rainyRun ?? await run('history', null, null, seed);
         const onT = seed === SEED ? on : { ...synthesizeTerrain(rainyH.frame, mesh, tm160, { seed, parts: true }), tm: tm160 };
@@ -395,7 +390,8 @@ section('erosion by rainfall');
             for (const f of rainyH.frames) {
                 if (f.time < Fm.time - onT.rec.quietMyr[c] - 1e-6 || !f.plates[pl]?.alive) continue;
                 quatToMat3(f.plates[pl].quat, Rtm);
-                sum += eAt(Math.asin(Math.max(-1, Math.min(1, Rtm[6] * lx + Rtm[7] * ly + Rtm[8] * lz))) * 180 / Math.PI); k++;
+                const wx = Rtm[0] * lx + Rtm[1] * ly + Rtm[2] * lz, wy = Rtm[3] * lx + Rtm[4] * ly + Rtm[5] * lz, wz = Rtm[6] * lx + Rtm[7] * ly + Rtm[8] * lz;
+                sum += erosionHeldAt(frameClimate(f), Math.asin(Math.max(-1, Math.min(1, wz))) * 180 / Math.PI, Math.atan2(wy, wx) * 180 / Math.PI, TERRAIN); k++;
             }
             return k ? sum / k : NaN;
         };

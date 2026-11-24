@@ -25,7 +25,7 @@ import { BeltSide, CrustType } from '../tectonics/model/crust.js';
 import { sampleOnto, warpField, warpPoint } from './terrain-mesh.js';
 import { buildAnchor, plateFramePoint, plateToWorld, rasterToWorld } from './anchor.js';
 import { locate } from '../core/mesh-locate.js';
-import { rainAtLatitude } from './terrain-config.js';
+import { heldAt, frameClimate } from '../tectonics/step/climate-sample.js';
 import { carveTerrain } from './carve.js';
 import { seaOf, liftRefKm } from './sea-level.js';
 import { marginConstants, subsidence } from './margins.js';
@@ -63,6 +63,7 @@ function warpShift(xyz, q, s0, s1, s2, a, b) {
  * @returns {{heightKm: Float32Array, parts: Object|null, rec: Object, ms: Object}}
  */
 export function synthesizeTerrain(frame, simMesh, tMesh, opts = {}) {
+    const heldClimate = frameClimate(frame);
     const cfg = opts.cfg ?? TERRAIN, seed = opts.seed ?? 0;
     const ms = {}, clock = () => performance.now();
     let t0 = clock();
@@ -1033,7 +1034,8 @@ export function surfaceRange(plan, cfg, seed, edgeKm, xyz, sCells, sWeights, fro
             const lower = rec.erodeRateKm;
             if (lower) { const a0 = land[c0] ? w0 : 0, a1 = land[c1] ? w1 : 0, a2 = land[c2] ? w2 : 0, s = a0 + a1 + a2; carve.lower[i] = s > 0 ? (a0 * lower[c0] + a1 * lower[c1] + a2 * lower[c2]) / s : 0; }
             carve.k[i] = cfg.carveK * (1 - cfg.carveCratonHardness * shield) * (1 - cfg.carveCrestHardness * Math.min(1, Math.max(0, stripes / 0.3)));
-            carve.rain[i] = rainAtLatitude(Math.asin(Math.max(-1, Math.min(1, pz))) * 180 / Math.PI, cfg) / cfg.rainRefMm;
+            // (the rain the frame's history held, its climate sample at this place: climate-sample.js)
+            carve.rain[i] = heldAt(heldClimate, 'rain', Math.asin(Math.max(-1, Math.min(1, pz))) * 180 / Math.PI, Math.atan2(py, px) * 180 / Math.PI) / cfg.rainRefMm;
             // flood basalt: a hard cap — cliffed canyon walls, slower rivers; and the stair it is cut into (carve.js)
             const basalt = coast >= 0 ? smooth(0, 0.05, lipTop * ramp) : 0;
             carve.lip[i] = basalt; carve.lipTop[i] = lipTop * ramp; carve.lipBase[i] = heightKm[t] - lipKeep * ramp;

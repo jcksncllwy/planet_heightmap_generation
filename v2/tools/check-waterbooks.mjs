@@ -63,7 +63,7 @@ for (const seed of SEEDS) {
         const T = synthesizeTerrain(f, sim, tm, { cfg, seed, sampler, carve: true }), h = T.heightKm, wo = worldOcean(tm, h, 0, pouredSeaOnto(f, sim, cfg, sampler));
         let ocean0 = 0;
         for (let c = 0; c < tm.numCells; c++) if (wo.ocean[c]) ocean0 -= h[c] * cellKm2;
-        const W = estimateCutOff(tm, h, wo, TERRAIN, 0), d = W.oceanFallKm;
+        const W = estimateCutOff(tm, h, wo, TERRAIN, 0, undefined, f.climate), d = W.oceanFallKm;
         let oceanD = 0;
         for (let c = 0; c < tm.numCells; c++) if (wo.ocean[c] && h[c] < -d) oceanD += (-d - h[c]) * cellKm2;
         // (the view's water against V: its world ocean, and the history's water it stands in seas the history part-fills)
@@ -96,7 +96,7 @@ section('the history\'s water, where the view closes a seaway it keeps (831576, 
     const tm160 = terrainMesh(160000), a160 = A / tm160.numCells, sampler = sampleOnto(sim, tm160, cfg41, seed);
     const h = synthesizeTerrain(fr, sim, tm160, { cfg: cfg41, seed, sampler, carve: true }).heightKm, V41 = cfg41.waterInventory * EARTH_OCEAN_KM3;
     const gapOf = history => {
-        const wo = worldOcean(tm160, h, 0, history), W = estimateCutOff(tm160, h, wo, TERRAIN, 0);
+        const wo = worldOcean(tm160, h, 0, history), W = estimateCutOff(tm160, h, wo, TERRAIN, 0, undefined, fr.climate);
         let o = 0;
         for (let c = 0; c < tm160.numCells; c++) if (wo.ocean[c]) o -= h[c] * a160;
         return { gap: (o + W.givenKm3 - V41) / V41, given: W.givenKm3 };

@@ -9,8 +9,7 @@ import { Margin, filledSeaDepthKm, seaDepthKm, columnModel, LAND_SEDIMENT_LOAD_F
 import { liftRefKm } from './sea-level.js';
 import { landMask, crustColumnKm, fillPockets } from './land-mask.js';
 import { spreadKm, MinHeap } from '../core/min-heap.js';
-import { erosionAtLatitude } from './terrain-config.js';
-import { frameWaterOf } from '../tectonics/step/climate-sample.js';
+import { frameWaterOf, erosionHeldAt, frameClimate } from '../tectonics/step/climate-sample.js';
 import { FastNoise as SimplexNoise } from '../core/fast-noise.js';     // (bit-identical to V1's SimplexNoise, faster)
 import { buildAnchor } from './anchor.js';
 import { plateCratons } from './cratons.js';
@@ -306,6 +305,10 @@ const plainOf = (m, mature) => (m.youngPlainKm === undefined ? m.plainKm : m.you
 export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(frame, simMesh)) {
     const n = simMesh.numCells, { xyz, adjOffset, adjList } = simMesh, time = frame.time;
     const noise = new SimplexNoise(seed * 13 + 5);
+    // the erosion clocks' multiplier at sim cell w: the climate the frame's history held there (climate-sample.js, its rain or
+    // its ice: the history's own reckoning)
+    const held = frameClimate(frame);
+    const erosionHere = (w) => erosionHeldAt(held, Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI, Math.atan2(xyz[3 * w + 1], xyz[3 * w]) * 180 / Math.PI, cfg);
     const arc = new Uint8Array(n), craton = new Uint8Array(n);
     // the land and the sea, and the sea's level (terrain/land-mask.js: the one mask the history's rivers read too)
     let { land, sl, seaColKm, dryHollow } = landMask(frame, simMesh, cfg, {}, frameWaterOf(frame, simMesh, cfg));
@@ -433,10 +436,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
         ownOpen[w] = smooth(cfg.marginOpenSeaKm2[0], cfg.marginOpenSeaKm2[1], sea);
         ownWiden[w] = ownMature[w] * ownOpen[w];
         ownRift[w] = rifted ? 1 : 0;
-        const lat = Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI;
         // (a margin's sediment, km² per km of coast: the rock the history's rivers laid here, step/sea-fill.js. A margin of the
         // start world, on floor the history has not dated, was fed before the history began: its denudation over its age)
-        ownSed[w] = rifted && floorUndated(frame, w, simMesh) ? cfg.denudationKmPerMyr * (cfg.riftCrustRho / cfg.riftSedRho) * mass.perCoastKm[mass.of[w]] * age * erosionAtLatitude(lat, cfg)
+        ownSed[w] = rifted && floorUndated(frame, w, simMesh) ? cfg.denudationKmPerMyr * (cfg.riftCrustRho / cfg.riftSedRho) * mass.perCoastKm[mass.of[w]] * age * erosionHere(w)
             : (cfg.riftCrustRho / cfg.riftSedRho) * (frame.shelfKm3?.[w] ?? 0) / simMesh.edgeKm;
     }
     // how rugged a coast is (0 smooth … 1): roughness belongs where the land at the sea is rough — an island arc's volcanic
@@ -539,9 +541,9 @@ export function deriveRecords(frame, simMesh, cfg, seed = 0, A = buildAnchor(fra
     const trenchKm = new Float32Array(n), riseKm = new Float32Array(n);
     for (let w = 0; w < n; w++) { trenchKm[w] = Math.min(1e4, trenchDist[w]); riseKm[w] = Math.min(1e4, riseDist[w]); }
 
-    // ── how fast things erode here: faster where it rains more (terrain-config.js rainByLatitude) ──
+    // ── how fast things erode here: faster where it rains more — by the climate the frame's history held (erosionHere) ──
     const erosion = new Float32Array(n);
-    for (let w = 0; w < n; w++) erosion[w] = erosionAtLatitude(Math.asin(Math.max(-1, Math.min(1, xyz[3 * w + 2]))) * 180 / Math.PI, cfg);
+    for (let w = 0; w < n; w++) erosion[w] = erosionHere(w);
 
     // ── the continental platform: the column its crust and lithosphere stand at (tectonics/measure.js columnModel — no
     // height per kind of crust: branch unified), the start world's swells; the mantle's swell, flood basalts apart ──

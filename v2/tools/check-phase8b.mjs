@@ -269,7 +269,10 @@ section('rivers through the history');
 {
     // gorges: in the India collision, the history's rivers cut through the rising belt, and the terrain shows it. Since lane graded
     // (2026-11-12) the cut is no record of its own (riverIncKm retired): the history's erosion lowers the ground itself, so a gorge
-    // is ground on a great river (≥ 10⁵ km² drained) standing below the land around it (the mean of its land neighbours less
+    // is ground on a great river (≥ 10⁵ km² drained: riverKm2 counts the drainage at Earth's mean land rain, terrain-config.js
+    // rainRefMm — so 10⁵ km² is ~30 km³/yr, ~940 m³/s at Earth's runoff share basinRunoffShare 0.35: a large river by
+    // discharge, between the ~300 m³/s large/medium cut and Potter 1978's big rivers, > 2400 m³/s (Best 2019, Nat. Geosci. 12:7))
+    // standing below the land around it (the mean of its land neighbours less
     // its own height, ocean/inventory.js surfaceKm). Thresholds from main a083057's own figures, measured the same way
     // (lanes-2026-10-29/graded/gorge.mjs): belt 0.25 km at the 90th percentile, plains 0.03; the terrain on the belt's great
     // rivers 0.14 km below the belt off them (median)

@@ -33,7 +33,7 @@ const tot = { agree: 0, matched: 0, km2: 0, agreeKm2: 0, onlyT: 0, onlyF: 0, tWe
 for (const seed of SEEDS) for (const time of TIMES) {
     const frame = await momentFrame(ROOT, { seed, cont: DEFAULT_CONT, sim: SIM, time });
     const T = synthesizeTerrain(frame, simMesh, tm, { seed });
-    const est = estimateCutOff(tm, T.heightKm, worldOcean(tm, T.heightKm, 0), cfg).seas;
+    const est = estimateCutOff(tm, T.heightKm, worldOcean(tm, T.heightKm, 0), cfg, 0, undefined, frame.climate).seas;
     const pool = await TerrainPool.create(simMesh);
     const fin = await finishPlanet({ frame, simMesh, seed, cells: FIN, pool, closePool: true, onStage: () => {} });
     const fm = terrainMesh(FIN), fs = fin.stats.cutOffSeas ?? [];

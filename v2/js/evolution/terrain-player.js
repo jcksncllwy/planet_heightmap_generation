@@ -12,7 +12,8 @@ import { synthesizeTerrain, hypsometry } from '../terrain/synthesize.js';
 import { sampleOnto } from '../terrain/terrain-mesh.js';
 import { worldOcean } from '../terrain/world-ocean.js';
 import { pouredSeaOnto } from '../terrain/land-mask.js';
-import { estimateCutOff, shadeWithWater, needsClimate } from '../terrain/basin-estimate.js';
+import { estimateCutOff, shadeWithWater, needsClimate, heldSlim } from '../terrain/basin-estimate.js';
+import { frameClimate } from '../tectonics/step/climate-sample.js';
 import { TERRAIN } from '../terrain/terrain-config.js';
 import { SMALL_DEVICE } from '../core/device.js';
 
@@ -162,7 +163,7 @@ export class TerrainPlayer {
         // (water: the seas cut off from the world ocean — terrain/world-ocean.js — for drawing them apart: found by the shading
         // worker with the hillshade, or here where there is none)
         const out = { src: r, heightKm: r.heightKm, shade, sampler: r.sampler ?? this.sampler, get hyps() { return hyps ??= hypsometry(r.heightKm, seaLevelKm); },
-            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, seaLevelKm, historySea()), TERRAIN, seaLevelKm); },
+            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, seaLevelKm, historySea()), TERRAIN, seaLevelKm, undefined, frameClimate(frame)); },
             // (the climate's land: all the world ocean drawn here does not reach — a sea cut off from it is dry ground at its
             // own height to the air, below sea level too, as the finish's climate takes it — PITHEAT)
             get land() { return land ??= Uint8Array.from(worldOcean(tMesh, r.heightKm, seaLevelKm, historySea()).ocean, o => 1 - o); },
@@ -174,13 +175,13 @@ export class TerrainPlayer {
     }
     /** The shading for a frame: the view's, with the history's poured sea under it (world-ocean.js: which seas it joins),
      *  and the computed climate's water where the page has given it one (balance). */
-    shadingOf(frame, r) { return { ...this.shading, history: this.historySeaOf(frame, r), climate: this.climateOf(frame) }; }
+    shadingOf(frame, r) { return { ...this.shading, history: this.historySeaOf(frame, r), climate: this.climateOf(frame), held: heldSlim(frameClimate(frame)) }; }
 
     // ── the real-climate balance (2026-11-10): a frame with a big sea cut off from the ocean is shown first balanced on
-    // the zonal climate, then again on the computed one, once the page has it (basin-estimate.js needsClimate) ──
+    // the climate its history held, then again on the computed one, once the page has it (basin-estimate.js needsClimate) ──
     /** The computed climate's water for a frame ({rain, pet, runoff, gridDeg} — terrain/climate-water.js), or null. */
     climateOf(frame) { const e = this.climates.get(frame); return e && e.key === this.climateKey ? e.water : null; }
-    /** Whether the frame shown is balanced on the zonal climate with a sea the computed one should balance — or on a
+    /** Whether the frame shown is balanced on the held climate with a sea the computed one should balance — or on a
      *  coarser computed climate than `finerDeg` (the Climate tab's, when it has one). */
     wantsClimate(frame, finerDeg = Infinity) {
         const T = this.fresh(frame) ? this.shown.get(frame) : null, W = T?.shade?.water ?? null;

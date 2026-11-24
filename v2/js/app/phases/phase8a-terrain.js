@@ -19,7 +19,8 @@ import { locate } from '../../core/mesh-locate.js';
 import { paintRelief, tintOf, cutOffTint, dryTintOf } from '../../view/terrain-shade.js';
 import { worldOcean } from '../../terrain/world-ocean.js';
 import { pouredSeaOnto } from '../../terrain/land-mask.js';
-import { estimateCutOff, shadeWithWater } from '../../terrain/basin-estimate.js';
+import { estimateCutOff, shadeWithWater, heldSlim } from '../../terrain/basin-estimate.js';
+import { frameClimate } from '../../tectonics/step/climate-sample.js';
 import { colorByCrustType, colorByOrogeny, colorByMantleHeat, OROGENY_RGB, css } from '../../view/palettes.js';
 import { EventKind } from '../../tectonics/model/world.js';
 import { TECTONICS } from '../../tectonics/config.js';
@@ -273,14 +274,14 @@ export function terrainPhase(spec) {
     const seas = new WeakMap(), historySeaOf = (frame, r) => {
         if (!seas.has(frame)) { S.sampler ??= r?.sampler ?? sampleOnto(simMesh, tMesh, cfg, seed); seas.set(frame, pouredSeaOnto(frame, simMesh, cfg, S.sampler)); }
         return seas.get(frame);
-    }, shadingOf = (frame, r) => ({ ...shading, history: historySeaOf(frame, r) });
+    }, shadingOf = (frame, r) => ({ ...shading, history: historySeaOf(frame, r), held: heldSlim(frameClimate(frame)) });
     const keep = (frame, r, shade = shadeWithWater(tMesh, r.heightKm, shadingOf(frame, r), cfg)) => {
         let rec = r.rec ?? null, hyps = null, water = null;
         const out = { src: r, heightKm: r.heightKm, get parts() { return r.parts ?? null; }, sampler: r.sampler ?? S.sampler, ms: r.ms, kernels: r.kernels, volcanoes: r.volcanoes,
             tectonicKm: r.tectonicKm ?? null, drainage: r.drainage ?? null, carved: !carve || r.carved !== false, tally: null,
             shade, get hyps() { return hyps ??= hypsometry(r.heightKm, view.seaLevelKm); }, get rec() { return rec ??= deriveRecords(frame, simMesh, cfg, seed); },
             // (the world ocean and the seas cut off from it at this sea level — terrain/world-ocean.js — drawn apart)
-            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, view.seaLevelKm, historySeaOf(frame, r)), cfg, view.seaLevelKm); } };
+            get water() { return water ??= shade.water ?? estimateCutOff(tMesh, r.heightKm, worldOcean(tMesh, r.heightKm, view.seaLevelKm, historySeaOf(frame, r)), cfg, view.seaLevelKm, undefined, frameClimate(frame)); } };
         shown.set(frame, out);
         if (shown.size > 4) shown.delete(shown.keys().next().value);
         return out;
