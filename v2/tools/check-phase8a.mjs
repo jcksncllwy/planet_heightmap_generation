@@ -21,6 +21,7 @@ import { quatToMat3 } from '../js/core/rotation.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { TERRAIN, terrainConfig, erosionAtLatitude } from '../js/terrain/terrain-config.js';
 import { kindType, kindSide, gradient, CoastKind } from '../js/terrain/records.js';
+import { EventKind } from '../js/tectonics/model/world.js';
 import { crossAt } from '../js/terrain/stripes.js';
 import { coastLoops, coastFractal, kindOf as coastKindOf, COAST_KINDS, EARTH_D } from './lib/coast-fractal.mjs';
 import { stageOf, EARTH_LAND } from './lib/cycle-stage.mjs';
@@ -217,8 +218,15 @@ section('a continental collision');
     const { frame } = await run('india'), T = terrain(frame), { rec, heightKm } = T;
     const band = (side, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t); const u = rec.dKm[c] / Math.max(1, rec.reach[c]); if (kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && kindSide(rec.kind[c]) === side && u >= lo && u < hi && heightKm[t] > -0.2) a.push(heightKm[t]); } return a; };
     const plateau = mean(band(BeltSide.UPPER, 0.2, 0.8)), range = mean(band(BeltSide.LOWER, 0.1, 0.35)), foreland = mean(band(BeltSide.LOWER, 0.75, 1.01));
-    // (0.75 km: heights evolve — this collision welded 30 Myr ago and has worn down in the tropics since)
-    check('the upper plate carries a plateau, well above the foreland on the lower plate', plateau >= foreland + 0.75, `mean ${plateau.toFixed(2)} km across the upper plate’s belt (u 0.2–0.8), ${foreland.toFixed(2)} km in the lower plate’s foreland (u > 0.75)`);
+    // Judged at the collision's real age: a plateau stands ~4.5 km over its foreland while its collision converges (Tibet's
+    // cells ~4.8 km on ETOPO1 against the Ganges plain's 0.05–0.3: lane plateauroot), and once the pair has welded its relief
+    // wears with an orogen's e-folding time, 100–200 Myr (Baldwin et al. 2003, the heights' reliefTauMyr source) — the fast
+    // end here, the bar's lenient side. (Was a flat 0.75 km, "welded 30 Myr ago", set in 2026-09 on a plateau held ~2 km up
+    // by uplift no root paid for; this scene welds ~50 Myr before its last frame: lanes-2026-10-29/plateauroot/report.md)
+    const weld = frame.events.find(e => e.kind === EventKind.SUTURE), ageMyr = weld ? frame.time - weld.time : 0;
+    const plateauBar = 4.5 * Math.exp(-ageMyr / 100);
+    check('the upper plate carries a plateau, well above the foreland on the lower plate', plateau >= foreland + plateauBar, `mean ${plateau.toFixed(2)} km across the upper plate’s belt (u 0.2–0.8), ${foreland.toFixed(2)} km in the lower plate’s foreland (u > 0.75): ${(plateau - foreland).toFixed(2)} km over it, against ${plateauBar.toFixed(2)} km ${weld ? `${ageMyr.toFixed(0)} Myr after the weld` : 'while converging'}`);
+    report('collision plateau over its foreland', plateau - foreland, { earth: [plateauBar, 4.5], unit: ' km', digits: 2, source: 'Tibet ~4.5 km over the Ganges plain while converging (ETOPO1), worn with e-folding 100–200 Myr after the weld (Baldwin et al. 2003); lane plateauroot' });
     // (0.3 km: the sign of the Himalaya and its flexural foredeep, with room — the range stood 0.74 km over the foreland when
     // Phase 11's weld began waiting for the seam to close; that number is the scene's, not physics)
     check('the lower plate has a range near the suture and a basin beyond it', range >= foreland + 0.3, `mean ${range.toFixed(2)} km at u 0.1–0.35, ${foreland.toFixed(2)} km at u > 0.75`);

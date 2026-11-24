@@ -174,16 +174,25 @@ section('a collision plateau');
 {
     const { frame } = await run('india'), I = carved(frame);
     // the plateau on the upper plate (u 0.3–0.7 across the belt): most of it keeps most of its height, while gorges cut deep
-    const kept = [], cut = [];
+    const kept = [], cut = [], tect = [];
     for (let t = 0; t < I.tm.numCells; t++) {
         const c = I.sampler.cells[3 * t], k = I.rec.kind[c];
         if (!k || kindType(k) !== OrogenyType.HIMALAYAN || kindSide(k) !== BeltSide.UPPER || I.tectonicKm[t] <= 0) continue;
         const u = I.rec.dKm[c] / Math.max(1, I.rec.reach[c]);
-        if (u >= 0.3 && u < 0.7) { kept.push(I.heightKm[t] / I.tectonicKm[t]); cut.push(I.tectonicKm[t] - I.heightKm[t]); }
+        if (u >= 0.3 && u < 0.7) { kept.push(I.heightKm[t] / I.tectonicKm[t]); cut.push(I.tectonicKm[t] - I.heightKm[t]); tect.push(I.tectonicKm[t]); }
     }
     // (cell means: a cell drops by the share of it its valley takes, so a gorge's cells average shallower than its floor)
-    check('the plateau keeps most of its height while gorges cut deep into it', median(kept) >= 0.7 && quantile(cut, 0.9) >= 0.5,
-        `over ${kept.length} cells: median ${(100 * median(kept)).toFixed(0)} % of its tectonic height kept; the deepest tenth cut ${quantile(cut, 0.9).toFixed(2)} km or more`);
+    // The gorge bar is a share of the plateau's own height, not km: a plateau's rivers cut in proportion to the relief they
+    // fall through, so a fixed depth judges the plateau's height, not its rivers (the 0.5 km of 2026-09 was set on a plateau
+    // held ~2 km up by uplift no root paid for: lane plateauroot). Tibet, measured the same way on ETOPO1 (Amante & Eakins
+    // 2009; 15′ block means ≈ a 640K cell, the uncut surface = the p90 of cells within 60–150 km, cells ≥ 150 km inside its
+    // 3 km edge; lanes-2026-10-29/plateauroot/p2/tibet-cut.mjs): the median cell keeps 94–95 % of it, and the deepest tenth
+    // cuts 0.11–0.17 of the plateau's height (0.18–0.43 counting the gorged margins)
+    const height = median(tect), cutShare = quantile(cut, 0.9) / height;
+    check('the plateau keeps most of its height while gorges cut deep into it', median(kept) >= 0.7 && cutShare >= 0.1,
+        `over ${kept.length} cells: median ${(100 * median(kept)).toFixed(0)} % of its tectonic height kept; the deepest tenth cut ${quantile(cut, 0.9).toFixed(2)} km or more, ${cutShare.toFixed(2)} of the plateau's ${height.toFixed(2)} km`);
+    report('plateau: deepest tenth of the gorges as a share of its height', cutShare, { earth: [0.11, 0.17], digits: 2, source: 'Tibet inside 150 km of its edge, ETOPO1 at a 640K cell (0.18–0.43 with its margins); lane plateauroot' });
+    report('plateau: median share of its height kept', 100 * median(kept), { earth: [94, 95], unit: ' %', digits: 0, source: 'Tibet, the same measure on ETOPO1 (92–96 % over the window and edge choices); lane plateauroot' });
 }
 
 // ── 8b-2: the rivers of the history ──
