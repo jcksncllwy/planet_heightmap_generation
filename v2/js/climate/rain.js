@@ -81,10 +81,15 @@ export function saturatedColumn(T, vapourHeightKm) {
  * The wind is the storms' as much as the month's mean (orographic rain falls in storms): the mean wind's direction at
  * speed √(U² + (s·σL)²), σ the Eady rate, L the storms' size. factor = e^{β·clamp(w / 0.1 m/s, −2, 2) + κ·rise − λ·drop}
  * (rise and drop in km, each saturating at the vapour scale height).
- * Rain is moved, not made: the factor is normalised over all within RAIN_OROG_SPREAD_KM (sea too), weighted by the rain —
- * windward slopes take it from the lee, so whole regions behind a range are dry.
+ * Rain is moved, not made: within each rain-grid cell the factor is normalised so its children's area-weighted mean is
+ * the cell's budget exactly (parentP: the conservative column solve's rain), each point in the year — windward children
+ * take it from the lee ones and the sea around. (Lane rainland, sessrumnir's ruling 2026-11-24: the old normalisation, over
+ * every 1° cell within RAIN_OROG_SPREAD_KM by box sums, held each cell to its own box's mean, so a peak among lower
+ * factors kept more than its box gave — 831576@100's 4° cell got ×1.56 its budget — and the bilinear refinement's own
+ * departure from the cell's mean rode along.) What it skips: a range's shadow beyond its own rain-grid cell (3–4°): the
+ * column solve's budget already carries the water a range wrings out of the air downwind of it (the lift term).
  */
-function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K, tA) {
+function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K, tA, parentP) {
     const P_ = PARAMS;
     const h = core.h, w = core.w, G = core.size, dRad = core.step * DEG, stepKm = core.step * 111.2;
     const hLand = ctx.surface.meanLandKm, land = ctx.surface.landFrac;
@@ -104,9 +109,9 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
     const nSteps = Math.max(1, Math.min(16, Math.ceil(2.5 * recoverKm / stepKm)));
     const decay = Float64Array.from({ length: nSteps + 1 }, (_, s) => Math.exp(-s * stepKm / recoverKm));
     const Lmix = P_.RAIN_EDDY_LENGTH_KM * 1000;
-    const f = new Float64Array(G), A = new Float64Array(G), B = new Float64Array(G), rowA = new Float64Array(G), rowB = new Float64Array(G);
-    const pre = new Float64Array(Math.max(w, h) + 1), preB = new Float64Array(Math.max(w, h) + 1);
-    const nr = Math.max(1, Math.round(P_.RAIN_OROG_SPREAD_KM / stepKm));
+    const f = new Float64Array(G), gw = g.w, num = new Float64Array(g.size), den = new Float64Array(g.size);
+    const parentOf = new Int32Array(G), area = new Float64Array(G);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { parentOf[j * w + i] = Math.floor(j / ratio) * gw + Math.floor(i / ratio); area[j * w + i] = Math.cos(core.lat[j] * DEG); }
     for (let k = 0; k < K; k++) {
         const off = k * G;
         for (let j = 0; j < h; j++) {
@@ -149,29 +154,14 @@ function orographicRain(ctx, core, g, ratio, uA, vA, shareCoarse, eadyK, Pout, K
                 f[c] *= 1 + P_.RAIN_ISLAND_BOOST * seaAround[c] * warm;
             }
         }
-        // normalise over the land around, weighted by its rain: box sums by prefix sums — along each row (its width in
-        // cells growing toward the poles, so the box keeps its size in km), then down the columns
-        for (let c = 0; c < G; c++) { const q = Math.max(0, Pout[off + c]); A[c] = q * f[c]; B[c] = q; }
-        for (let j = 0; j < h; j++) {
-            const nc = Math.min(w >> 1, Math.max(1, Math.round(nr / Math.max(0.05, Math.cos(core.lat[j] * DEG)))));
-            pre[0] = 0; preB[0] = 0;
-            for (let i = 0; i < w; i++) { pre[i + 1] = pre[i] + A[j * w + i]; preB[i + 1] = preB[i] + B[j * w + i]; }
-            const sumRange = (P, a, b) => a < 0 ? P[w] - P[a + w] + P[b + 1] : b >= w ? P[w] - P[a] + P[b + 1 - w] : P[b + 1] - P[a];
-            for (let i = 0; i < w; i++) {
-                const a = i - nc, b = i + nc;
-                if (2 * nc + 1 >= w) { rowA[j * w + i] = pre[w]; rowB[j * w + i] = preB[w]; }
-                else { rowA[j * w + i] = sumRange(pre, a, b); rowB[j * w + i] = sumRange(preB, a, b); }
-            }
-        }
-        for (let i = 0; i < w; i++) {
-            pre[0] = 0; preB[0] = 0;
-            for (let j = 0; j < h; j++) { pre[j + 1] = pre[j] + rowA[j * w + i]; preB[j + 1] = preB[j] + rowB[j * w + i]; }
-            for (let j = 0; j < h; j++) {
-                const c = j * w + i;
-                const a = Math.max(0, j - nr), b = Math.min(h - 1, j + nr);
-                const sb = preB[b + 1] - preB[a];
-                if (sb > 0) Pout[off + c] *= f[c] * sb / (pre[b + 1] - pre[a]);
-            }
+        // normalise within each rain-grid cell: its children's area-weighted mean is its budget (mm/month)
+        num.fill(0); den.fill(0);
+        for (let c = 0; c < G; c++) { const q = Math.max(0, Pout[off + c]) * f[c], pc = parentOf[c]; num[pc] += area[c] * q; den[pc] += area[c]; }
+        const P0 = parentP[k];
+        for (let c = 0; c < G; c++) {
+            const pc = parentOf[c], target = Math.max(0, P0[pc]) * SECONDS_PER_MONTH * den[pc];
+            // (no rain to shape in the cell's children — the bilinear refinement is 0 across it: its budget spread evenly)
+            Pout[off + c] = num[pc] > 0 ? Math.max(0, Pout[off + c]) * f[c] * target / num[pc] : Math.max(0, P0[pc]) * SECONDS_PER_MONTH;
         }
     }
 }
@@ -588,7 +578,9 @@ export function columnWaterRain() {
         // slopes, < 1 the rain shadows) — for display (V1's Generate and Import: the Rain Shadow layer)
         const before = new Float64Array(core.size);
         for (let k = 0; k < K; k++) for (let c = 0; c < core.size; c++) before[c] += Math.max(0, Pout[k * core.size + c]);
-        if (P_.RAIN_SLOPE_FACTOR > 0 || P_.RAIN_LEE_PER_KM > 0 || P_.RAIN_ISLAND_BOOST > 0) orographicRain(ctx, core, g, ratio, uA, vA, share, eadyOut, Pout, K, tA);
+        // (always: with no orographic factors it still brings the refinement's children to their cell's budget)
+        orographicRain(ctx, core, g, ratio, uA, vA, share, eadyOut, Pout, K, tA, results.map(r => r.P));
+        const Porog = globalThis.RAIN_DEBUG ? Pout.slice() : null;   // (the test's: check-rain-budget.mjs)
         for (let i = 0; i < Pout.length; i++) if (!(Pout[i] > 0)) Pout[i] = 0;
         const orographic = new Float32Array(core.size);
         for (let c = 0; c < core.size; c++) {
@@ -625,7 +617,7 @@ export function columnWaterRain() {
         }
         const out = { P: Pout, W: Wout, E: Eout, Eland: ELout, PET: PETout, r: Rout, orographic, frontal, eady: eadyOut, balance: results.map(r => r.balance), cycles, newton,
             state: { step: g.step, Wk }, profile: prof, ms: performance.now() - t0, source: 'column water' };
-        if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt };
+        if (globalThis.RAIN_DEBUG) out.debug = { g, prep, Wk, results, land, hgt, Porog, ratio };
         return out;
     };
 }
