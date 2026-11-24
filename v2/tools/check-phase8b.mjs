@@ -73,14 +73,20 @@ section('the river network');
     // (the cells the carve left below today's sea — the lowstand's valleys it flooded — are an inlet's floor, a ria or a fjord with a
     // sill, and are not rivers. Above the sea no rule levels a river: the carve grades to the lowstand and none climbs)
     check('rivers run downhill (basins and drowned valley floors aside)', channels > 1000 && uphill === 0, `${channels} cells of rivers draining over ${fullKm2.toFixed(0)} km²; ${uphill} carved below the cell they drain into; ${basins} (${(100 * basins / channels).toFixed(1)} %) in basins of the tectonic surface; ${drowned} on the floor of a drowned valley`);
-    // dendritic: drainage areas follow a power law, P(A ≥ a) ∝ a^−β with β ≈ 0.43 on Earth (Rodríguez-Iturbe & Rinaldo)
+    // dendritic: drainage areas follow a power law, P(A ≥ a) ∝ a^−β. Counted over every land cell (each in its own outlet's
+    // basin, so a whole land of basins of every size), not within one network: the literature's β ≈ 0.43–0.45 is a single
+    // basin's (Rodríguez-Iturbe et al. 1992; Rigon et al. 1996) and is the wrong target for this estimator — the outlet
+    // basins' finite sizes steepen it. Earth's own surface by this very estimator (ETOPO5 on the terrain meshes, a priority
+    // flood from the world ocean, the ice sheets left out; lane coastsmooth 2026-11-24, probes/beta.mjs): the whole Earth
+    // 0.627 / 0.611 / 0.623 at 160K / 640K / 2.5M; its continents 0.56 (Eurasia) … 0.82 (Australia, dry: short rivers)
     const areas = [];
     for (let t = 0; t < n; t++) if (land(t)) areas.push(T.drainage[t]);
     const share = a => areas.filter(v => v >= a).length / areas.length, lo = channelKm2, hi = 100 * channelKm2;
     const beta = -Math.log(share(hi) / share(lo)) / Math.log(hi / lo);
-    // (a wide band: β ≈ 0.43 holds for fluvial networks almost everywhere — outside 0.3–0.65 the network is broken)
-    check('the network branches like a tree: drainage areas follow a power law', beta >= 0.3 && beta <= 0.65, `P(A ≥ a) ∝ a^−${beta.toFixed(2)} between ${lo.toFixed(0)} and ${hi.toFixed(0)} km²`);
-    report('drainage-area exponent β', beta, { earth: [0.40, 0.46], source: 'holds through the cycle: ~0.45 for river networks (Rodríguez-Iturbe et al. 1992, abstract checked); 0.43 ± 0.03 (Rigon et al. 1996, recalled, unconfirmed)' });
+    // (a bug check: a tree's β lies between a single network's (0.45) and Earth's driest continent's by this estimator (0.82),
+    // widened a little; outside it the network is broken — a sheet of parallel one-cell rivers, or everything in one basin)
+    check('the network branches like a tree: drainage areas follow a power law', beta >= 0.4 && beta <= 0.85, `P(A ≥ a) ∝ a^−${beta.toFixed(2)} between ${lo.toFixed(0)} and ${hi.toFixed(0)} km²`);
+    report('drainage-area exponent β (whole land)', beta, { earth: [0.61, 0.63], source: 'Earth by the same estimator: ETOPO5 on the 160K/640K/2.5M meshes, 0.611–0.627 (lane coastsmooth 2026-11-24); its continents 0.56–0.82. Within one basin ~0.43–0.45 (Rodríguez-Iturbe et al. 1992) — not this estimator' });
 }
 
 // ── what the carving does to the land ──
