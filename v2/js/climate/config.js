@@ -143,7 +143,7 @@ export const PARAMS_DEFAULTS = Object.freeze({
     RAIN_TIMESCALE_H: 1.86,     // h          rain-out time of a saturated column …
     RAIN_RH_STEEPNESS: 12.4,    // –          … and how steeply rain grows with the column's relative humidity
     RAIN_EDDY_DIFF: 6e5,        // m²/s       moisture mixing by weather systems: everywhere …
-    RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L²)
+    RAIN_EDDY_LENGTH_KM: 1100,  // km         … plus the storms' (mixing length L: K = σ_Eady·L·min(L, the grid face's spacing))
     RAIN_STORM_RH: 0.287,       // day        spread of the column's relative humidity by storms, per unit Eady growth rate
     RAIN_TROPICAL_RH: 0.3,      // day        … and by tropical disturbances (monsoon depressions, easterly waves), per unit of the
     RAIN_TROPICAL_KM: 600,      // km         low-level winds' cyclonic vorticity (1/day), smoothed over this, within the tropics

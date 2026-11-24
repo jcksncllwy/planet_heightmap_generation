@@ -262,7 +262,7 @@ export function columnWaterRain() {
             const u = co(sl(uA)), v = co(sl(vA)), Tair = co(sl(tA)), Tsl = co(sl(sA));
             const ice = iA ? co(sl(iA)) : null;
             const p = { gu: new Float64Array(G), gv: new Float64Array(G), ur: new Float64Array(G), vr: new Float64Array(G), ud: null, vd: null,
-                Krow: new Float64Array(h), rate: new Float64Array(G),
+                KrowE: new Float64Array(h), KrowN: new Float64Array(h), rate: new Float64Array(G),
                 lift: new Float64Array(G), Ws: new Float64Array(G), eSea: new Float64Array(G), eLand: new Float64Array(G),
                 snow: new Float64Array(G), Tair: new Float64Array(G) };
 
@@ -293,7 +293,15 @@ export function columnWaterRain() {
                 const f = 2 * 7.292e-5 * Math.abs(Math.sin(g.lat[j] * DEG));
                 const shear = Math.min(MAX_SHEAR, 9.81 * grad / (Math.max(1e-9, f) * (Tzs[j] + 273.15)));
                 eady[j] = 0.31 * f / BRUNT * shear;                                                         // 1/s
-                p.Krow[j] = (P_.RAIN_EDDY_DIFF + eady[j] * Lmix * Lmix) / (R_PLANET * R_PLANET);
+                // The storms' mixing K = σ·L·ℓ with ℓ = min(L, the face's spacing): a mixing-length closure holds only for a
+                // gradient broader than L; across one face the eddies (speed σL) can exchange at most σL·ΔW*, so on faces
+                // narrower than L the length is the face's (lane rainland; sessrumnir's ruling (a), 2026-11-23). Without it a
+                // one-cell cold column (an ice dome) drained its neighbours L/dx ≈ 2.5–4× too fast (44 m/yr hotspots), and on
+                // Earth the excess carried the tropics' water poleward: 0.77–0.81 of the observed rain at 15°S–15°N, ×1.5–2 at
+                // 60–90°N (Beck et al. 2023 land; lanes rainland P1). East–west faces narrow with cos(lat), north–south don't.
+                const sL = eady[j] * Lmix, dxE = R_PLANET * cosLat[j] * dRad, dxN = R_PLANET * dRad;
+                p.KrowE[j] = (P_.RAIN_EDDY_DIFF + sL * Math.min(Lmix, dxE)) / (R_PLANET * R_PLANET);
+                p.KrowN[j] = (P_.RAIN_EDDY_DIFF + sL * Math.min(Lmix, dxN)) / (R_PLANET * R_PLANET);
             }
             eadyOut.push(Float32Array.from(eady, x => x * 86400));
 
@@ -468,7 +476,7 @@ export function columnWaterRain() {
                 const r = Math.min(R_MAX, Wc / Ws[c]);
                 return a / tau * rate[c] * Math.exp(a * (r - 1)) + lift[c] * Math.exp(b * (r - 1)) * (1 + b * r);
             };
-            solver.setRowDiffusion(p.Krow, p.Krow);
+            solver.setRowDiffusion(p.KrowE, p.KrowN);
             const P = new Float64Array(G), E = new Float64Array(G), EL = new Float64Array(G);
             for (let c = 0; c < G; c++) P[c] = rainOf(c, Wv[c]);
             // Newton steps. Where the air starts too dry the tangent is nearly flat and a full step would overshoot
