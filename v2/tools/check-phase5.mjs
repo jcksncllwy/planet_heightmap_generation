@@ -48,7 +48,7 @@ const INDIA_CHECKS = [
     'cratons survive the redraw as rigid blocks',
     'the merged continent is one connected body (island arcs excepted)',
     'a suture belt runs along the closed seam',
-    'a craton thickens far less than the belt beside it',
+    'a craton beside the belt stays thin: its interior thickens far less than the belt',
     'crust is thickened in the belts, under the gravitational ceiling',
     'thickening spreads across the belt as a plateau, not a spike at the front',
     'no gaps in any frame',
@@ -152,7 +152,26 @@ for (const seed of SEEDS) {
     const shieldThick = mean(rimCells.map(w => last.thickKm[w])), beltThick = mean(beltCells.map(w => last.thickKm[w]));
     keep('deepest', [deepest, rimCells.length, thickRim]);
     // (a belt that never reached a shield on this seed: nothing to compare — the scene did not form for this check)
-    judge(seed, INDIA_CHECKS[9], rimCells.length > 0, shieldThick <= beltThick / 2, `mean thickening ${shieldThick.toFixed(2)} km on the craton's belt cells, ${beltThick.toFixed(2)} km on the rest of the belt`);
+    // the block beside the belt (lane peaktail): a rim the belt reached is the belt's own — it takes its strength's share of the
+    // shortening and the channel flows into it (ops/thicken.js, step/crust-flow.js), as the Longmen Shan is built on the edge of
+    // the Sichuan block (Clark & Royden 2000) — so the craton is judged where the belt did not reach: its interior 1–3 cells
+    // (~110–340 km at the lab mesh) from the collision belt, the Sichuan Basin's distance from the Longmen Shan front. Its
+    // crust now against its kind's as formed (rootKm) against the belt's continent, ≤ half: the Sichuan and Tarim blocks'
+    // crust ~40–45 km against Tibet's 65–70 (recalled, unconfirmed: receiver-function and refraction compilations) —
+    // about 0–8 km of thickening against 25–35
+    const BAND = 3, hop = new Int8Array(numCells).fill(-1), beltFront = [];
+    for (let w = 0; w < numCells; w++) if (last.owner[w] >= 0 && last.oroType[w] === OrogenyType.HIMALAYAN) { hop[w] = 0; beltFront.push(w); }
+    for (let h = 1, ring = beltFront; h <= BAND && ring.length; h++) {
+        const next = [];
+        for (const w of ring) for (let k = mesh.adjOffset[w]; k < mesh.adjOffset[w + 1]; k++) { const q = mesh.adjList[k]; if (hop[q] < 0) { hop[q] = h; next.push(q); } }
+        ring = next;
+    }
+    const inner = cellsWhere(numCells, w => hop[w] >= 1 && last.owner[w] >= 0 && last.type[w] === CrustType.CRATON && last.oroType[w] !== OrogenyType.HIMALAYAN);
+    const beltLand = beltCells.filter(w => last.oroType[w] === OrogenyType.HIMALAYAN);
+    const innerRoot = mean(inner.map(w => last.rootKm[w])), beltRoot = mean(beltLand.map(w => last.rootKm[w])), rimRoot = mean(rimCells.map(w => last.rootKm[w]));
+    // (a belt with no craton beside it on this seed: nothing to compare — the scene did not form for this check)
+    judge(seed, INDIA_CHECKS[9], inner.length > 0 && beltLand.length > 0, innerRoot <= beltRoot / 2,
+        `crust thickened ${innerRoot.toFixed(2)} km (mean, against its kind's as formed) over ${inner.length} craton cells 1–${BAND} cells beyond the belt, ${beltRoot.toFixed(2)} km over the belt's ${beltLand.length} continent cells (the reached rim's ${rimCells.length}: ${rimRoot.toFixed(2)} km; its thickening record ${shieldThick.toFixed(2)} against the belt's ${beltThick.toFixed(2)})`);
     let maxThick = 0, thickCells = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.thickKm[w] > 0) { thickCells++; maxThick = Math.max(maxThick, last.thickKm[w]); }
     // (gravitational potential energy caps thickening near twice normal crust: about 40–45 km of excess at most)
