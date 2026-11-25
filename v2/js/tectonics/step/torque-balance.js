@@ -23,6 +23,8 @@ import { CM_PER_YR_TO_RAD_PER_MYR } from '../config.js';
 import { gatherLoads, FORCE_KINDS } from './forces.js';
 import { speedCmYrAt } from './kinematics.js';
 import { heightsOf } from './heights.js';
+import { beltWidthKm } from './orogeny.js';
+import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 
 /** Recompute every plate's angular velocity from the forces on it. Use as the `drive` of tectonics/simulate.js. */
 export function updatePlateMotion(world) {
@@ -162,12 +164,29 @@ const s = x => x / Math.sqrt(1 + x * x);
 /** Per contact of this plate: its arms (r × n across the front, r × (r × n) along it), its cap in force units, the other plate. */
 export function lockContacts(world, plate, load) {
     if (!load.contacts.length) return [];
-    const { config } = world, H = heightsOf(config), len = contactLengths(world, plate, load.contacts);
+    const { config, collisions } = world, H = heightsOf(config), len = contactLengths(world, plate, load.contacts);
     return load.contacts.map(({ c, r, n, other, dh }, i) => {
         const an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];
         const at = [r[1] * an[2] - r[2] * an[1], r[2] * an[0] - r[0] * an[2], r[0] * an[1] - r[1] * an[0]];
-        return { c, an, at, other, cap: collisionGpeNPerM(dh, H) / config.forceUnitNPerM * len[i] };
+        const rec = collisions?.get(plate.id < other ? `${plate.id}:${other}` : `${other}:${plate.id}`);
+        return { c, an, at, other, cap: collisionGpeNPerM(dh, H) / config.forceUnitNPerM * len[i], visc: viscousPerRate(rec, config, H) * len[i] };
     });
+}
+
+/**
+ * The upper plate's viscous resistance to closing, per 100 km of front, in force units per rad/Myr of closing (lockContacts):
+ * a thin viscous sheet resists convergence by its buoyancy — the lock's cap — plus its viscous stress (England & McKenzie 1982),
+ * σ = 2ηε̇ over the lithosphere's thickness h_L, so the force per metre of front is ~η h_L ε̇, ε̇ = v ⁄ W the closing across the
+ * zone that deforms (W). η: upperViscosityPaS; h_L: the column model's lithosphere (riftLithKm); W: the upper plate's collision
+ * belt as the record has laid it (orogeny.js beltWidthKm 'himalayan', ~220 km at contact to ~1000 km — Tibet ~1000 after ~2500
+ * km). Linear in the closing rate, per metre of front: it does not grow with the overlap's area (collisionResistance's flaw, a
+ * viscosity per 10⁴ km² of overlap). Limits: one η for every upper plate, a craton's keel no stiffer; the belt's width law is
+ * orogeny.js's (WBP's, hand-set), not a thin-sheet length scale; only against closing (parting is the pivot's).
+ */
+function viscousPerRate(rec, config, H) {
+    const W = Math.max(1, beltWidthKm('himalayan', rec?.shorteningKm ?? 0, rec?.meanRateCmYr ?? 0, config)) * 1000;
+    const mPerSPerRadMyr = PLANET_RADIUS_KM * 1000 / 3.15576e13;
+    return config.upperViscosityPaS * H.riftLithKm * 1000 / W * mPerSPerRadMyr / config.forceUnitNPerM;
 }
 
 /**
@@ -210,7 +229,7 @@ export function eachLockForce(lock, self, omegaOf, config, visit) {
         const o = omegaOf[ct.other], an = ct.an, at = ct.at;
         const vn = (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2];
         const vt = (self[0] - o[0]) * at[0] + (self[1] - o[1]) * at[1] + (self[2] - o[2]) * at[2];
-        visit(ct, ct.cap * (vn > 0 ? 1 : config.collisionSeparateShare) * s(vn / v0), ct.cap * config.collisionShearShare * s(vt / v0));
+        visit(ct, ct.cap * (vn > 0 ? 1 : config.collisionSeparateShare) * s(vn / v0) + (vn > 0 ? ct.visc * vn : 0), ct.cap * config.collisionShearShare * s(vt / v0));
     }
 }
 
@@ -230,8 +249,10 @@ function solveWithLock(D, T, lock, omegaOf, start, config) {
                 const v = (w[0] - o[0]) * a[0] + (w[1] - o[1]) * a[1] + (w[2] - o[2]) * a[2], x = v / v0, q = Math.sqrt(1 + x * x);
                 const k = ct.cap * (v > 0 ? kPos : kNeg);
                 P += k * v0 * (q - 1);
+                const kv = a === ct.an && v > 0 ? ct.visc : 0;             // (the upper plate's viscous stress, closing only: ½ k v², convex)
+                P += 0.5 * kv * v * v;
                 if (!wantDerivs) continue;
-                const f = k * x / q, df = k / (v0 * q * q * q);
+                const f = k * x / q + kv * v, df = k / (v0 * q * q * q) + kv;
                 for (let i = 0; i < 3; i++) { g[i] += f * a[i]; for (let j = 0; j < 3; j++) H[3 * i + j] += df * a[i] * a[j]; }
             }
         }

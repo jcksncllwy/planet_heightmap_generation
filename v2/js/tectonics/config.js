@@ -279,6 +279,11 @@ export const TECTONICS = {
                                 // considered as an upper limit for vertically integrated stress" (Porth 2000, GJI 141:647, §2.2; plate
                                 // forces several 10¹² N/m, Tibet's ~7 × 10¹², Molnar & Lyon-Caen 1988). A material bound, not a target:
                                 // each step's held push is clipped to it before a collision's record averages it (collisionRootKm). Δh ≤ 53 km
+    upperViscosityPaS: 1e22,    // Pa s: the lithosphere's viscosity, averaged over its thickness, where a collision deforms the upper plate. A thin viscous
+                                // sheet resists convergence by its buoyancy (the lock's GPE cap) PLUS its viscous stress, 2ηε̇ (England & McKenzie 1982;
+                                // their ratio is the Argand number). Tibet's deforming lithosphere ~10²² Pa s, its surroundings ~10²³ (England &
+                                // Molnar 1997; Flesch, Haines & Holt 2001, averaged over 100 km: the range as sessrumnir's ruling cites it, the full
+                                // texts not read). The deforming zone's: torque-balance.js lockContacts. Lane gpelock 2026-11-25
     collisionForgetMyr: 8,      // a collision record whose plates have not touched for this long is forgotten: the next meeting starts afresh
     collisionJitterFrontKm: 845, // a brand-new contact of parting plates no bigger than a one-cell sliver this long is jitter, not a collision
     riftJitterFrontKm: 635,     // …and between the fresh margins of a rift, this long

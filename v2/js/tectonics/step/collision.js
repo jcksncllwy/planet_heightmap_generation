@@ -606,7 +606,14 @@ function underthrust(world, U, L, cells, rec, km) {
     if (Cm && keptKm > 0) keepConsumed(world, U, keptAt, keptKm, rec.startedAt, 'collision', rec.rootCapKm);
     // (the overlap's excess the lower plate could not send under — its shield jams it, and the land behind — is the upper
     // plate's crust shortened ahead of the indenter instead: shortenAhead)
-    const ahead = Cm && excess > consumed ? shortenAhead(world, U, cells, inOverlap, excess - consumed, rec, Cm) : 0;
+    // (at the rate the upper plate deforms: its viscous stress is in the balance (torque-balance.js lockContacts), so the closing
+    // is what its lithosphere lets through, and no step converts more of the overlap than the step's own closing over the front —
+    // what the raster held over from before stays as the seam's stack, and its GPE resists. Was all the excess each step: a
+    // front cut through its upper plate, seed 2, 262–318 Myr, lane gpelock)
+    rec.aheadDue = Math.min((rec.aheadDue ?? 0) + km * rec.frontKm / cellAreaKm2, Math.max(1, excess));
+    const aheadWant = Math.min(excess - consumed, Math.floor(rec.aheadDue) - consumed);
+    const ahead = Cm && aheadWant > 0 ? shortenAhead(world, U, cells, inOverlap, aheadWant, rec, Cm) : 0;
+    rec.aheadDue = Math.max(0, rec.aheadDue - consumed - ahead);
     rec.underthrustDue = Math.min(Math.max(0, rec.underthrustDue - consumed), 1);      // (what could not be consumed this step is not carried)
     rec.underthrustCells = (rec.underthrustCells ?? 0) + consumed;
     world.budget.underthrustCells += consumed;
