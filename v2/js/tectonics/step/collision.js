@@ -241,7 +241,7 @@ export function trackCollisions(world, dt) {
             inheritCollisions(collisions, U.id, L.id);
             const why = stacked && !(ready && closed) ? 'stacked' : 'stalled';
             world.log(EventKind.SUTURE, `${L.name} sutured to ${U.name} after ${(time - rec.startedAt).toFixed(0)} Myr: ${rec.frontKm.toFixed(0)} km front, ${rec.shorteningKm.toFixed(0)} km of shortening, ` +
-                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${why === 'stacked' ? ` — stacked one on the other, with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : ' — the seam had stalled'}`,
+                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${why === 'stacked' ? ` — stacked one on the other${Number.isFinite(rec.gapKm2) ? `, with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : ''}` : ' — the seam had stalled'}`,
                 { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, gapWidestKm: rec.gapWidestKm, sealKm2: rec.trapKm2 ?? 0, sealClosingCmYr: rec.trapClosingCmYr ?? null, why });
         }
     }

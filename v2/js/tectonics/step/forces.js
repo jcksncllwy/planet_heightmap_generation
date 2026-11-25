@@ -56,6 +56,8 @@ const PULL = 0, SUCTION = 1, RIDGE = 2, RIFT = 3, FLOW = 4, SWELL = 5;
  * @property {number[][]} forceByKind     vector sum of the forces per kind (for display arrows)
  * @property {number} torqueMagnitudeSum  Σ |r × F| over the boundary forces — compare with |Σ r × F| to see how much cancels
  * @property {number[]} flowTorque        the mantle flow's share of `torque` (not a boundary force: left out of the tension)
+ * @property {number[]} ridgeTorque       ridge push's share of `torque` (a body force on the ocean, which presses a plate and does not
+ *                                         pull it: left out of the tension and of torqueMagnitudeSum, as the swell's push is)
  * @property {number[]} cells             boundary cells contributing, per kind
  * @property {{w:number, r:number[], n:number[], other:number, length:number}[]} slabs     where this plate's ocean goes down a trench
  * @property {{w:number, c:number, r:number[], n:number[], other:number, dh:number}[]} contacts  land-on-land overlap cells (n: the front's
@@ -231,7 +233,10 @@ function ridgePushGpe(world, loadOf, cellTorque) {
         cellTorque[3 * w] += tx; cellTorque[3 * w + 1] += ty; cellTorque[3 * w + 2] += tz;
         const kb = load.byKind[RIDGE]; kb[0] += tx; kb[1] += ty; kb[2] += tz;
         const v = load.forceByKind[RIDGE]; v[0] += fx; v[1] += fy; v[2] += fz;
-        load.torqueMagnitudeSum += Math.hypot(tx, ty, tz);
+        // (not in torqueMagnitudeSum: a body force spread cell by cell has no boundary magnitude to sum, and the sum of its
+        // cells' magnitudes is the mesh's, not the force's — a 250 km apron's 0.9 / 1.5 / 2.1 at 16K / 40K / 90K cells against
+        // a net 0.5 / 0.7 / 1.1. Lane gpelock 2026-11-25)
+        load.ridgeTorque[0] += tx; load.ridgeTorque[1] += ty; load.ridgeTorque[2] += tz;
         load.cells[RIDGE]++;
     }
 }
@@ -496,7 +501,7 @@ function riftAge(plateA, A, cellA, plateB, B, cellB, time) {
 
 function newLoad() {
     const zero = () => [0, 0, 0];
-    return { torque: zero(), flowTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [], hinges: [] };
+    return { torque: zero(), flowTorque: zero(), ridgeTorque: zero(), byKind: FORCE_KINDS.map(zero), forceByKind: FORCE_KINDS.map(zero), torqueMagnitudeSum: 0, cells: FORCE_KINDS.map(() => 0), slabs: [], contacts: [], hinges: [] };
 }
 
 /**

@@ -106,8 +106,15 @@ for (const seed of SEEDS) {
     const overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2, closingSeries = series.map(([, b]) => b.closing);
     const peakClosing = Math.max(...closingSeries), converging = series.filter(([, b]) => b.closing > cfg.sutureStallCmYr).map(([t]) => t);
     const convergingMyr = converging.length ? converging.at(-1) - atContact.time : 0;
-    J(INDIA_CHECKS[3], convergingMyr >= 20 && closingSeries.at(-1) < 0.25 * peakClosing,
-        `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${closingSeries.at(-1).toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr`);
+    // (a seam that stalled: it converged for tens of Myr and slowed to a quarter of its peak first. A pair that welded stacked
+    // (collision.js: the overlap sutureStackKm deep) never stalled: with the event rules alone nothing takes the overlap up —
+    // underthrusting is Phase 7c — so India, pressed on by its slabs and ridge, stacks on Asia within 10–30 Myr. Not locked
+    // and slowing is then all this scene can show: still above the stall rate at the weld, below its peak. How far it slows
+    // when the belt takes the overlap up is judged with every event on, check-phase7c 'India slows on contact'. Lane gpelock
+    // 2026-11-25: under the GPE-bounded lock all three seeds weld stacked, closing at 3.8–6.4 cm/yr)
+    const lastClosing = closingSeries.at(-1), stackedWeld = suture.data.why === 'stacked';
+    J(INDIA_CHECKS[3], stackedWeld ? lastClosing > cfg.sutureStallCmYr && lastClosing < peakClosing : convergingMyr >= 20 && lastClosing < 0.25 * peakClosing,
+        `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${lastClosing.toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr (${suture.data.why})`);
     J(INDIA_CHECKS[4], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
         `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (shortening × front, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² of overlap before the weld`);
     keep('shortening', rec.shorteningKm);
@@ -199,7 +206,12 @@ for (const [name, samples] of judged) checkAcross(name, samples, name === INDIA_
     report('peak crustal thickening', per('thick'), { earth: [30, 40], unit: ' km', source: 'Tibet ≈ +35 km, Molnar & Lyon-Caen 1988', digits: 1 });
 
     const off = await run('india', INDIA_MYR, {}, false);
-    check('with the event rules off, the Phase 4 behaviour is unchanged (overlap persists, no suture)', off.sutures.length === 0 && off.collision.at(-1) > 0, `overlap at ${INDIA_MYR} Myr: ${off.collision.at(-1)} cells, ${off.events.length} events`);
+    // (the Phase 4 behaviour: no events, and the overlap nothing takes up. It need not persist to the end: pressed on past
+    // the GPE-bounded lock with nothing to break its slabs off, India crosses Asia and out the other side by ~120 Myr — was
+    // 'overlap persists', under the lock that grew with the overlap. Slab break-off is queued, lane gpelock 2026-11-25)
+    const offPeak = Math.max(...off.collision);
+    check('with the event rules off, the Phase 4 behaviour is unchanged (no events, no suture; the overlap is not taken up)', off.sutures.length === 0 && off.events.length === 0 && offPeak > 0,
+        `${off.events.length} events; overlap peaks at ${offPeak} cells (${off.collision.findIndex(c => c === offPeak) * SNAPSHOT_MYR} Myr), ${off.collision.at(-1)} cells at ${INDIA_MYR} Myr`);
 }
 
 section('self-driven Wilson cycle');

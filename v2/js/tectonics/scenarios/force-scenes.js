@@ -55,11 +55,11 @@ export const FORCE_SCENES = [
     },
     {
         id: 'wilson', label: 'Self-driven Wilson cycle', maxMyr: 160, view: [10, -20],
-        about: 'The Phase 2 landmass, but nobody tells it how to move. Trenches on the two outer coasts pull West and East apart; an ocean opens between them and ridge push joins in. East then meets Far — and this time the collision slows it and locks the two together instead of letting them plough through each other.',
+        about: 'The Phase 2 landmass, but nobody tells it how to move. Trenches on the two outer coasts pull West and East apart; an ocean opens between them and ridge push joins in. East then meets Far: the collision resists, but with forces alone nothing thickens, so the resistance stays at a thin belt’s weight and East keeps closing (Phase 5 takes the overlap up and welds them).',
         expect: { West: ['active'], East: ['active', 'colliding'], Far: ['passive', 'colliding', 'active', 'ringed'] },       // once pushed, Far grows trenches of its own
         checklist: [
             'The two halves separate on their own, each toward its outer trench; a ridge and new ocean open between them and the red ridge-push arrows appear.',
-            'When East reaches Far it slows, and the two lock and move together — the strong-magenta overlap stays a thin seam instead of growing as it did in Phase 2.',
+            'When East reaches Far the seam resists, but East keeps closing: the overlap (strong magenta) grows, and nothing takes it up until Phase 5.',
             'Far, pushed east, starts to override the old ocean ahead of it and grows a trench of its own there.',
         ],
         build(simMesh, seed) {
@@ -73,12 +73,12 @@ export const FORCE_SCENES = [
     },
     {
         id: 'india', label: 'India: a subducting ocean plate', maxMyr: 70, view: [5, 72],
-        about: '“Asia” is a big continent with a trench along its south coast. “India” is a small continent on a plate that is mostly ocean, and that ocean is going down Asia’s trench: slab pull acts on India’s own plate, so it should race north at subducting-ocean speeds (8–20 cm/yr), several times faster than any suction-driven continent, then slow sharply when the two landmasses meet.',
+        about: '“Asia” is a big continent with a trench along its south coast. “India” is a small continent on a plate that is mostly ocean, and that ocean is going down Asia’s trench: slab pull acts on India’s own plate, so it should race north at subducting-ocean speeds (8–20 cm/yr), several times faster than any suction-driven continent. Its ocean is aged from a ridge on India’s far side, so ridge push joins slab pull. When the two landmasses meet they press on: here, forces alone, nothing thickens and nothing breaks off, so the collision’s resistance (bounded by the thickened belt’s weight) stays small and India ploughs on — the slowdown needs the belt (Phase 7c’s India).',
         expect: { India: ['subducting', 'colliding'], Asia: ['active', 'colliding'] },
         checklist: [
             'India — whose own ocean floor is going down Asia’s trench — is several times faster than any suction-driven continent (yellow slab-pull arrow), in WBP’s 8–20 cm/yr band.',
             'Its speed is set by the balance of slab pull against the mantle’s resistance to the sinking slab, not by a speed cap.',
-            'On contact it drops sharply and the two lock (the real India went 20 → 6 cm/yr).',
+            'On contact it keeps going: with forces alone the overlap is not taken up, so it grows (magenta). The slowdown, ~10 → ~3.5 cm/yr as the belt thickens (the real India ~15 → ~4), is the full-events India of Phase 7c.',
         ],
         build(simMesh, seed) {
             const { world, canvas, noise } = begin(simMesh, seed);

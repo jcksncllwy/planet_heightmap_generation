@@ -51,10 +51,10 @@ const SCENES = [
         checklist: [
             'Before contact, an Andean belt (orange) sits along Asia’s trench-bearing coast — on land, inland of the coast, nowhere else.',
             'On contact the collision belt (purple, black while active) spreads from the front into Asia, wider the more shortening it absorbs and the faster India comes in, and stops at the craton — it wraps it, never enters it. A narrower foreland belt appears on India.',
-            'India does not stop at contact: it keeps converging, ever slower as the overlap builds (~9 cm/yr at contact, ~2 cm/yr 10 Myr later, below 0.4 cm/yr after ~40 Myr), ~1000 km of shortening in all. Only once the seam has stalled — about 60 Myr after contact — do the two weld (the real India has gone 2400–3200 km into Asia since ~50 Ma, and still converges).',
+            'India does not stop at contact: the collision resists only as much as the belt’s weight allows, so it keeps converging (~10 cm/yr at contact, 4–6 cm/yr 10 Myr later), 1100–1500 km of shortening. Here nothing takes the overlap up (underthrusting is Phase 7c), so within 10–30 Myr India lies so deep on Asia that the two weld stacked, still converging (the real India has gone 2400–3200 km into Asia since ~50 Ma, and still converges).',
             'At the suture the outlines are redrawn: Asia’s coast is indented around India’s nose, the flanks are squeezed outward, India sits in the notch, and narrow sea caught between the two closes (a large enclosed sea would survive). The before/after overlay (red = land gone, green = land gained) shows the change for a few Myr.',
             'After the suture there is one plate, no magenta overlap, a suture belt (Weakness layer) along the closed seam, and the merged plate moves as one.',
-            'The event log below reads like WBP’s: “India meets Asia”, then “sutured … km front, … km of shortening … — the seam had stalled”.',
+            'The event log below reads like WBP’s: “India meets Asia”, then “sutured … km front, … km of shortening … — stacked one on the other”.',
         ],
     },
     {

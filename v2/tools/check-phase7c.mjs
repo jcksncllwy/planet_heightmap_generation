@@ -7,7 +7,7 @@
 // sizes, and the net growth of continental crust (from the crust ledger) and how much land changes after assembly.
 // Usage: node v2/tools/check-phase7c.mjs
 
-import { check, report, section, finish, labMesh, isLand, countWhere, nearestFrame } from './lib/check-kit.mjs';
+import { check, report, section, finish, labMesh, isLand, countWhere, nearestFrame, relativeCmYr } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
@@ -63,6 +63,23 @@ section('a continent slides under another (underthrusting)');
     const sutureOf = x => x.events.find(e => e.kind === EventKind.SUTURE);
     const suture = sutureOf(r);
     check('India reaches Asia and they weld', !!suture, suture ? suture.text.slice(0, 120) : 'no suture');
+    // India slows on contact: the belt's resistance is a friction bounded by the thickened column's GPE per metre of front
+    // (torque-balance.js lockContacts; Copley, Avouac & Royer 2010: Tibet's thickening, ~5–6 × 10¹² N/m, slowed India
+    // from ~15 to ~4 cm/yr over 50–35 Ma). Judged here, with every event on — the belt thickens and India's land goes under
+    // — not on Phase 4's forces-only scenes, where nothing thickens and the plate's flank slabs keep pulling past the bound
+    // (retired there, lane gpelock 2026-11-25). The India–Asia closing rate (their relative motion at India's centre): its
+    // peak in the 10 Myr before contact, against its mean 15–25 Myr after
+    {
+        const contact = r.events.find(e => e.kind === EventKind.COLLISION)?.time;
+        const rate = f => { const a = f.plates.find(p => p.name === 'India' && p.alive), b = f.plates.find(p => p.name === 'Asia' && p.alive); return a && b ? relativeCmYr(a, b) : NaN; };
+        const over = (t0, t1) => r.frames.filter(f => f.time >= t0 && f.time <= t1 && (!suture || f.time < suture.time)).map(rate).filter(Number.isFinite);
+        const before = contact != null ? Math.max(...over(contact - 10, contact)) : NaN, afterRates = contact != null ? over(contact + 15, contact + 25) : [];
+        const after = afterRates.length ? afterRates.reduce((s, v) => s + v, 0) / afterRates.length : NaN;
+        check('India slows on contact, still converging: 15–25 Myr on, under 0.65× its approach and above the stall rate', after < 0.65 * before && after > r.world.config.sutureStallCmYr,
+            `contact at ${contact?.toFixed(0)} Myr: ${before.toFixed(1)} cm/yr approaching (peak, 10 Myr before) → ${after.toFixed(1)} cm/yr (mean, 15–25 Myr after; the stall rate ${r.world.config.sutureStallCmYr})`);
+        // (part of India's drop was the end of an acceleration — a plume head, van Hinsbergen et al. 2011 — which the scene does not have)
+        report('India: closing 15–25 Myr after contact ÷ approach before', after / before, { earth: [0.25, 0.35], source: 'India–Asia ~15 → ~4 cm/yr over 50–35 Ma (Copley, Avouac & Royer 2010)', digits: 2 });
+    }
     check('as they converge, India’s land in the overlap slides under Asia', r.budget.underthrustCells >= 5, `${r.budget.underthrustCells} cells (${Mkm2(r.budget.underthrustCells).toFixed(2)} Mkm²) consumed`);
     const maxThick = f => { let m = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w)) m = Math.max(m, f.thickKm[w]); return m; };
     // (by the thickened crust's volume, not its thickest cell: under collisionVolume every consumed column is laid ring by

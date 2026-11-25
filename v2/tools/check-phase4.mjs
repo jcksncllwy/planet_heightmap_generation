@@ -2,8 +2,8 @@
 // Usage: node v2/tools/check-phase4.mjs
 // Hard checks: the solver, crust rules under computed motion, the speed cap never engaging, and the force balance doing
 // what its physics says — a plate heads for its trench, balanced pulls cancel, the stronger pull wins, a landmass pulls
-// itself apart, collision slows the plates, slab-attached ocean outruns a continent, more drag or resistance slows, no
-// suction no motion, forces independent of the mesh. Reported: the speeds that come out (settled speeds, cruising and
+// itself apart, slab-attached ocean outruns a continent, more drag or resistance slows, no
+// drive no motion, forces independent of the mesh. Reported: the speeds that come out (settled speeds, cruising and
 // peak speeds, spreading rates, response time) against Earth's (Zahirovic et al. 2015 and others), and the collision's
 // overlap, which with forces alone nothing takes up (colliding plates keep converging; the budget in km² is Phase 5's).
 
@@ -14,7 +14,7 @@ import { FORCE_SCENES } from '../js/tectonics/scenarios/force-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion, solve3 } from '../js/tectonics/step/torque-balance.js';
 import { frameTallies, situationOf, isSteady } from '../js/tectonics/measure.js';
-import { CrustType } from '../js/tectonics/model/crust.js';
+import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
 import { resolve } from '../js/tectonics/step/resolve.js';
 import { gatherLoads } from '../js/tectonics/step/forces.js';
 
@@ -29,9 +29,10 @@ function landCells(world) {
 }
 
 /** Simulate one Phase 4 scene with the force model as the only source of motion. */
-async function run(id, overrides = {}, onMesh = mesh) {
+async function run(id, overrides = {}, onMesh = mesh, prep = null) {
     const scene = FORCE_SCENES.find(s => s.id === id), world = scene.build(onMesh, SEED);
     Object.assign(world.config, overrides);
+    prep?.(world);
     const landBefore = landCells(world);
     const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events: false });     // forces alone: collision events are Phase 5
     const idOf = Object.fromEntries(frames[0].plates.map(p => [p.name, p.id]));
@@ -55,6 +56,28 @@ function westwardShare(r, name, myr) {
     const { omega: o, centre: c } = r.plate(name, myr), v = [o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0]];
     const west = [c[1], -c[0], 0], speed = Math.hypot(...v), length = Math.hypot(...west);
     return speed < 1e-12 ? 0 : (v[0] * west[0] + v[1] * west[1]) / (speed * length);
+}
+
+/**
+ * How much of a plate's velocity (at its centre, at time `myr`) points at its own trench: the centroid of its trench cells
+ * then, or with `westSide` of those west of its centre only (a plate with a long trench west and a short one east). The
+ * trench is where the plate is now, not where it began: it grows where the plate overrides the ocean ahead of it, and the
+ * ridge push of the floor it leaves behind runs along its spreading — its heading — so a plate that heads for its trench
+ * may turn with it (lane gpelock 2026-11-25; was judged by the share pointing due west, westwardShare above, which still
+ * reports the turn).
+ */
+function trenchwardShare(r, name, myr, westSide = false) {
+    const f = r.frames[frameIndex(myr)], id = r.idOf[name], { omega: o, centre: c } = f.plates[id], { xyz } = mesh;
+    const v = [o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0]], west = [c[1], -c[0], 0];
+    let x = 0, y = 0, z = 0;
+    for (let w = 0; w < mesh.numCells; w++) {
+        if (f.owner[w] !== id || !(f.flags[w] & CrustFlag.TRENCH)) continue;
+        if (westSide && xyz[3 * w] * west[0] + xyz[3 * w + 1] * west[1] < 0) continue;
+        x += xyz[3 * w]; y += xyz[3 * w + 1]; z += xyz[3 * w + 2];
+    }
+    const along = x * c[0] + y * c[1] + z * c[2], u = [x - along * c[0], y - along * c[1], z - along * c[2]];
+    const speed = Math.hypot(...v), length = Math.hypot(...u);
+    return speed < 1e-12 || length < 1e-12 ? 0 : (v[0] * u[0] + v[1] * u[1] + v[2] * u[2]) / (speed * length);
 }
 
 section('the solver');
@@ -110,8 +133,9 @@ const solo = runs['one-sided'];
     // (the speed is the balance of its trench's suction against its keel's drag; whether it is Earth's is the report below)
     check('active-margin continent: its trench\'s suction moves it', mean(cruising) > 0.1, `Solo cruises at ${mean(cruising).toFixed(2)} cm/yr (30–80 Myr), from rest`);
     report('active-margin continent: cruising speed', mean(cruising), { earth: [1, 4], unit: ' cm/yr', source: 'cratonic plates ~2.8 cm/yr median RMS, Zahirovic et al. 2015' });
-    const west = [20, 40, 60, 80].map(t => westwardShare(solo, 'Solo', t));
-    check('it heads for its trench', Math.min(...west) > 0.9, `trench on the west coast → share of its velocity pointing west at 20/40/60/80 Myr: ${west.map(v => v.toFixed(2)).join(' / ')}`);
+    const west = [20, 40, 60, 80].map(t => westwardShare(solo, 'Solo', t)), trenchward = [20, 40, 60, 80].map(t => trenchwardShare(solo, 'Solo', t));
+    check('it heads for its trench', Math.min(...trenchward) > 0.9, `share of its velocity pointing at its trench at 20/40/60/80 Myr: ${trenchward.map(v => v.toFixed(2)).join(' / ')}`);
+    report('…and the turn: share pointing due west, where its trench began', west, { digits: 2, detail: 'the trench grows north as Solo overrides the ocean ahead, and the floor it leaves behind pushes it along its heading (ridge push)' });
     const spinUp = solo.track('Solo').findIndex(v => v > 0.8 * mean(cruising)) * SNAPSHOT_MYR;
     check('motion is smooth', largestJump(cruising) < 0.35 && spinUp >= 0,
         `largest change between frames (${SNAPSHOT_MYR} Myr) once under way: ${largestJump(cruising).toFixed(2)} cm/yr; reaches 80 % of cruising speed after ${spinUp} Myr`);
@@ -122,12 +146,18 @@ const solo = runs['one-sided'];
 
 section('tug of war');
 {
-    const r = runs.tug, early = Math.max(...r.track('Balanced').slice(0, frameIndex(30) + 1)), soloEarly = Math.max(...solo.track('Solo').slice(0, frameIndex(30) + 1));
+    // (judged while its pulls alone move it: the first 10 Myr. Once it tips, the floor it opens behind it pushes it on —
+    // ridge push along its heading, F of that floor's age — as hard as its pulls' imbalance by ~20 Myr (3.5 against 2.5
+    // units, 12345), and the tip runs ~twice as fast: 30 Myr was the window under no ridge push. Lane gpelock 2026-11-25)
+    const r = runs.tug, upTo = myr => name => Math.max(...r.track(name).slice(0, frameIndex(myr) + 1));
+    const early = upTo(10)('Balanced'), soloEarly = Math.max(...solo.track('Solo').slice(0, frameIndex(10) + 1));
+    const at30 = upTo(30)('Balanced'), solo30 = Math.max(...solo.track('Solo').slice(0, frameIndex(30) + 1));
     check('balanced pulls (nearly) cancel', early < 0.4 * soloEarly && r.plate('Balanced', 20).dynamics.tension > 0.8,
-        `“Balanced” stays below ${early.toFixed(2)} cm/yr for the first 30 Myr while the one-sided continent reaches ${soloEarly.toFixed(2)}; tension ${r.plate('Balanced', 20).dynamics.tension.toFixed(2)}; ${r.plate('Balanced', 80).speedCmYr.toFixed(1)} cm/yr by 80 Myr once the unstable balance tips`);
-    const lop = mean(r.track('Lopsided').slice(frameIndex(20))), west = [20, 50, 80].map(t => westwardShare(r, 'Lopsided', t));
-    check('unequal pulls: it goes to the stronger side', Math.min(...west) > 0.8,
-        `“Lopsided” (long trench west, short trench east) drifts at ${lop.toFixed(2)} cm/yr; share of its velocity pointing west at 20/50/80 Myr: ${west.map(v => v.toFixed(2)).join(' / ')}`);
+        `“Balanced” stays below ${early.toFixed(2)} cm/yr for the first 10 Myr while the one-sided continent reaches ${soloEarly.toFixed(2)}; tension ${r.plate('Balanced', 20).dynamics.tension.toFixed(2)}; ${r.plate('Balanced', 80).speedCmYr.toFixed(1)} cm/yr by 80 Myr once the unstable balance tips`);
+    report('…once it tips: Balanced against the one-sided continent, first 30 Myr', at30 / solo30, { digits: 2, detail: `${at30.toFixed(2)} against ${solo30.toFixed(2)} cm/yr; the floor it opens behind it pushes it along its heading` });
+    const lop = mean(r.track('Lopsided').slice(frameIndex(20))), west = [20, 50, 80].map(t => westwardShare(r, 'Lopsided', t)), toLong = [20, 50, 80].map(t => trenchwardShare(r, 'Lopsided', t, true));
+    check('unequal pulls: it goes to the stronger side', Math.min(...toLong) > 0.8,
+        `“Lopsided” (long trench west, short trench east) drifts at ${lop.toFixed(2)} cm/yr; share of its velocity pointing at its western trench at 20/50/80 Myr: ${toLong.map(v => v.toFixed(2)).join(' / ')} (due west: ${west.map(v => v.toFixed(2)).join(' / ')})`);
     report('unequal pulls: the drift speed', lop, { unit: ' cm/yr' });
 }
 
@@ -140,7 +170,11 @@ section('self-driven Wilson cycle');
         `at 40 Myr West ${west.toFixed(2)} and East ${east.toFixed(2)} cm/yr, ${apart.toFixed(2)} cm/yr apart, no prescribed motion; their centres ${gapDeg(0).toFixed(1)}° → ${gapDeg(40).toFixed(1)}° apart`);
     report('young ocean: full spreading rate between the halves (40 Myr)', apart, { earth: [2, 4], unit: ' cm/yr', source: 'the young Atlantic opened at ~2–4 cm/yr full rate', detail: `West ${west.toFixed(2)}, East ${east.toFixed(2)} cm/yr` });
     const track = r.track('East'), before = mean(track.slice(frameIndex(contact) - 6, frameIndex(contact))), after = mean(track.slice(frameIndex(contact) + 10, frameIndex(contact) + 25));
-    check('collision slows the plate', contact > 0 && after < 0.75 * before, `East meets Far at ${contact} Myr: ${before.toFixed(2)} → ${after.toFixed(2)} cm/yr`);
+    // (was a check, 'collision slows the plate' (< 0.75×): retired, lane gpelock 2026-11-25. The collision's resistance is a
+    // friction bounded by the thickened belt's GPE per metre of front (torque-balance.js lockContacts); here, forces alone,
+    // nothing thickens and the plate's flank slabs keep pulling past that bound. The claim is judged with the events on:
+    // check-phase7c, 'India slows on contact')
+    report('collision: East’s speed after contact ÷ before (forces alone)', after / before, { digits: 2, detail: `East meets Far at ${contact} Myr: ${before.toFixed(2)} → ${after.toFixed(2)} cm/yr; nothing thickens, so the bounded lock does not grow (the claim: check-phase7c)` });
     // (colliding plates keep converging; with the event rules on, the overlap is taken up as belt and welded, and that budget
     // in km² is checked in Phase 5. Here, forces alone, nothing takes it up: it is only reported.)
     const late = r.collision.slice(-15), peak = Math.max(...r.collision), mkm2 = cells => cells * mesh.cellAreaKm2 / 1e6;
@@ -166,7 +200,9 @@ section('India');
         `India peaks at ${peak.toFixed(1)} cm/yr — ${(peak / asiaBefore).toFixed(1)}× the continent it is heading for (${asiaBefore.toFixed(2)}); oceanic plates run 2–3× continental (Zahirovic et al. 2015)`);
     report('subducting ocean plate: peak speed', peak, { earth: [5, 10], unit: ' cm/yr', digits: 1, source: 'typical slab-attached plates (Zahirovic et al. 2015); India\'s ~18 cm/yr was exceptional (Kumar et al. 2007)' });
     const after = mean(india.slice(frameIndex(contact) + 8));
-    check('it slows sharply on contact', contact > 0 && after < 0.65 * peak, `contact at ${contact} Myr: ${peak.toFixed(1)} → ${after.toFixed(1)} cm/yr (the real India: 20 → 6)`);
+    // (was a check, 'it slows sharply on contact' (< 0.65× peak): retired, lane gpelock 2026-11-25, as 'collision slows the
+    // plate' above — judged with the events on in check-phase7c, 'India slows on contact')
+    report('India: speed after contact ÷ peak (forces alone)', after / peak, { digits: 2, detail: `contact at ${contact} Myr: ${peak.toFixed(1)} → ${after.toFixed(1)} cm/yr; nothing thickens and nothing breaks off (the claim: check-phase7c)` });
     // (the overlap turned into belt, as a budget in km²: Phase 5, with the event rules on)
     report('India: land-on-land overlap at its peak', Math.max(...r.collision) * mesh.cellAreaKm2 / 1e6, { unit: ' Mkm²', detail: 'forces alone, nothing takes it up (the km² budget: Phase 5)' });
     const stiff = await run('india', { slabResistance: 2 * r.world.config.slabResistance }), stiffPeak = Math.max(...stiff.track('India'));
@@ -184,9 +220,16 @@ section('the start world');
 section('the physics responds the way it should');
 {
     const cruise = r => mean(r.track('Solo').slice(frameIndex(30)));
-    const cfg = solo.world.config, heavy = await run('one-sided', { dragContinent: 2 * cfg.dragContinent, dragCraton: 2 * cfg.dragCraton }), none = await run('one-sided', { slabSuction: 0 });
+    // (no drive: suction off, and Solo's ocean all one age, so its own floor has no slope to push it down — the scene's ocean
+    // is aged from a ridge, scene-kit.js ageFromRidges. Was 'no suction → no motion', lane gpelock 2026-11-25: with the ocean
+    // aged, ridge push alone moves it, which is physical, and is reported)
+    const oneAge = w => { for (const p of w.plates) for (let c = 0; c < p.crust.mask.length; c++) if (p.crust.mask[c] && p.crust.type[c] === CrustType.OCEAN) p.crust.formedAt[c] = -w.config.initialOceanAgeMyr; };
+    const cfg = solo.world.config, heavy = await run('one-sided', { dragContinent: 2 * cfg.dragContinent, dragCraton: 2 * cfg.dragCraton });
+    const none = await run('one-sided', { slabSuction: 0 }, mesh, oneAge), ridgeOnly = await run('one-sided', { slabSuction: 0 });
     check('more continental drag → slower continent', cruise(heavy) < 0.7 * cruise(solo), `${cruise(solo).toFixed(2)} → ${cruise(heavy).toFixed(2)} cm/yr with drag doubled`);
-    check('no suction → no motion', Math.max(...none.track('Solo')) < 0.05, `fastest speed with suction off: ${Math.max(...none.track('Solo')).toFixed(3)} cm/yr`);
+    check('no drive → no motion', Math.max(...none.track('Solo')) < 0.05, `fastest speed with suction off and the ocean one age: ${Math.max(...none.track('Solo')).toFixed(3)} cm/yr`);
+    report('suction off, the ocean aged from its ridge: ridge push alone', Math.max(...ridgeOnly.track('Solo')), { unit: ' cm/yr', digits: 2,
+        detail: `Solo's fastest speed, against ${Math.max(...solo.track('Solo')).toFixed(2)} cm/yr with suction on` });
     // the forces themselves must not depend on the mesh …
     const pulls = [16000, 40000, 90000].map(cells => {
         const m = labMesh(cells), world = FORCE_SCENES[0].build(m, SEED);
