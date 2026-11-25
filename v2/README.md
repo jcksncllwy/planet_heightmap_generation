@@ -1458,10 +1458,14 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
   - "It heads for its trench" and "unequal pulls: it goes to the stronger side" are judged toward the plate's trench as it
     is at each frame. The trench grows where the plate overrides the ocean ahead of it, and the floor it leaves behind
     pushes it along its heading, so the plate turns with its trench. The share pointing due west is reported.
-  - "Balanced pulls cancel" judges the speed in the first 10 Myr, while the pulls alone move it.
+  - "Balanced pulls cancel" is judged as a force balance at the start: tension, and the speed its forces call for against
+    the one-sided continent's. The balance is unstable, and ridge push makes it more so (the floor a tipped plate opens
+    behind it pushes it along its heading): the tip's e-folding time is reported.
   - "No suction → no motion" is "no drive → no motion": suction off and the ocean all one age.
-  - Phase 5's India welds stacked (`sutureStackKm`), still converging, because there nothing takes the overlap up.
-    "Keeps converging, slowing" is judged on that weld as not locked and slowing.
+  - "After contact the two keep converging, slowing, and weld once the seam stalls" moved from Phase 5 to Phase 7c's India.
+    In Phase 5 nothing takes the overlap up (underthrusting is Phase 7c), so India stacks `sutureStackKm` deep on Asia and
+    welds stacked while still converging. The stack weld is a guard against a state Earth cannot reach, not the end of a
+    collision. With every event on the seam stalls first: Phase 7c's India, and all 42 of the planet's welds on 3 seeds.
   - Phase 5's events-off India crosses Asia: no events and an overlap nothing takes up, which need not persist.
 
 ## A collision ends when its belt holds the pair (2026-11-09, lane weld)
