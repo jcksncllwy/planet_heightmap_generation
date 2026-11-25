@@ -221,9 +221,16 @@ export function lastIceAge(ctx, F) {
     {
         const sim = ctx.simMesh, M = mapOnto(sim, mesh), ns = sim.numCells;
         const B = Float64Array.from(ctx.teSim, t => stiffnessKm4(t)), s = new Float64Array(ns).fill(1);
-        const { w } = solvePlateCPU(sim, B, s, meanOnto(M, load, ns), { tol: 1e-3 });
+        const { w, residual } = solvePlateCPU(sim, B, s, meanOnto(M, load, ns), { tol: 1e-3 });
+        // (only the bend the solve resolved: it stops at a relative residual `residual` (≤ tol), so a deflection under that
+        // share of the deepest is the iteration's error, not the plate's — far from any ice a sign-random fraction of a
+        // millimetre. Lane coastsmooth P3, 2026-11-24: applied, it drowned 2,632 coast cells at |lat| < 40° on 243751@430 640K,
+        // every one a delta plain standing at exactly 0 — the reason those now stand at mean high water, bayheadFill)
+        let deepest = 0;
+        for (let c = 0; c < ns; c++) deepest = Math.max(deepest, Math.abs(w[c]));
+        const resolved = residual * deepest;
         const sink = new Float32Array(n); carry(M, w, sink);
-        for (let c = 0; c < n; c++) if (sink[c]) z[c] -= F.reboundLeft * sink[c];
+        for (let c = 0; c < n; c++) if (Math.abs(sink[c]) > resolved) z[c] -= F.reboundLeft * sink[c];
     }
     // the lakes the ice dammed, and their floods (finish-floods.js): on the ground as the ice left it, the ice still standing
     const floods = outburstFloods({ mesh, z, ice, S, cellKm2, seed: ctx.seed, water }, F);

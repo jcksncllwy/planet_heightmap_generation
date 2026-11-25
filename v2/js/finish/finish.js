@@ -26,7 +26,7 @@ import { mapOnto } from '../core/mesh-maps.js';
 import { elasticThicknessKm } from '../gpu/flexure.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { carveLadder, carveSettings } from '../terrain/synthesize.js';
-import { floodSea, transgressiveFill } from '../terrain/carve.js';
+import { floodSea, transgressiveFill, FILL_TOP_KM } from '../terrain/carve.js';
 import { carveTerrain, forgetMesh } from '../terrain/carve.js';
 import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimateAsync } from '../climate/climate.js';
@@ -399,7 +399,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
             if (F.bayheadFillKyr > 0 && outflow) {
                 const t0 = performance.now(), drowned = new Uint8Array(n);
                 for (let c = 0; c < n; c++) drowned[c] = f1.sea[c] && !worldOcean[c] ? 1 : 0;
-                const bay = bayheadFill(mesh, C.z, drowned, f1.sea, outflow, F.bayheadFillKyr / 1000, cellKm2);
+                const bay = bayheadFill(mesh, C.z, drowned, f1.sea, outflow, F.bayheadFillKyr / 1000, cellKm2, FILL_TOP_KM);
                 f1 = floodSea(mesh, C.z, worldOcean);
                 let filled = 0, cutOff = 0, open = 0;
                 for (let c = 0; c < n; c++) if (drowned[c]) { if (f1.sea[c]) open++; else if (C.z[c] < 0) cutOff++; else filled++; }

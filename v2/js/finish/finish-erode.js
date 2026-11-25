@@ -489,7 +489,7 @@ let gathered = new Float64Array(0);
  * the last to fill (Dalrymple, Zaitlin & Boyd 1992 J. Sediment. Petrol. 62, 1130; Boyd, Dalrymple & Zaitlin 1992 Sediment. Geol.
  * 80, 139; Anthony 2014 in Coastal Environments and Global Change). A process, not a mask: each mouth's volume is its river's load
  * (the erosion's last step: what each land cell passes to a drowned one, km³/Myr) over `fillMyr`, laid with the lakes' own
- * deltaLayer — nearest the mouth first, up to today's sea, so the delta plain stands at it.
+ * deltaLayer — nearest the mouth first, up to mean high water (topKm), so the delta plain stands at it.
  * Reduced (what it skips): the load is the lowstand's, not the Holocene's own; all of it (sand and mud) stays in the valley that
  * takes it — none is carried out to the shelf by the tide, so a funnel's mouth is, if anything, filled too much; no wave or tide
  * shaping (the marine lane's); a mouth's load fills its own nearest water whoever's valley that is, and what a valley cannot hold
@@ -501,8 +501,10 @@ let gathered = new Float64Array(0);
  * @param {{q: Float32Array, recv: Int32Array}} outflow   the erosion's last step (erodeLandscape / erodeGPU / erodeLadder)
  * @param {number} fillMyr          how long the rivers have filled them
  * @param {number} a                a cell's area (km²)
+ * @param {number} [topKm]          the delta plain's top (km): mean high water (carve.js FILL_TOP_KM) — a delta plain and its tidal
+ *                                  flats stand at about it, not at the sea's mean, where they would be neither land nor sea
  */
-export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a) {
+export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a, topKm = 0) {
     const n = mesh.numCells, inlet = new Float64Array(n), cells = [];
     let mouths = 0, supply = 0, room = 0;
     for (let c = 0; c < n; c++) {
@@ -513,7 +515,7 @@ export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a) {
         inlet[r] += q; supply += q * fillMyr;
     }
     if (!mouths) return { mouths: 0, supplyKm3: 0, roomKm3: Math.round(room), laidKm3: 0, spiltKm3: 0 };
-    const spilt = deltaLayer(mesh, z, inlet)(cells, supply / a, () => 0, c => drowned[c] === 1) * a;
+    const spilt = deltaLayer(mesh, z, inlet)(cells, supply / a, () => topKm, c => drowned[c] === 1) * a;
     return { mouths, supplyKm3: Math.round(supply), roomKm3: Math.round(room), laidKm3: Math.round(supply - spilt), spiltKm3: Math.round(spilt) };
 }
 
