@@ -1525,6 +1525,23 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
   and the stack's resistance stops the pair. A weaker `collisionResistance` (25 or 50 instead of 100) makes it weld
   stacked at ~1,200 km, so the lock's strength is not what limits it. With the underthrust on (Phase 7c's India), the
   crust reaches the 40 km thickening cap.
+- **The upper plate resists by its viscous stress as well as its buoyancy (lane gpelock, 2026-11-25).** A thin viscous
+  sheet resists convergence by the GPE of the crust it has thickened (the lock's cap, below) plus its viscous stress
+  (England & McKenzie 1982). Each contact adds η h_L v ⁄ W per metre of front while it closes (`torque-balance.js
+  viscousPerRate`):
+  - η = `upperViscosityPaS` 10²² Pa s (Tibet's deforming lithosphere; England & Molnar 1997, Flesch et al. 2001);
+  - h_L = the column's lithosphere, 125 km;
+  - W = the upper plate's collision belt (220 → 1000 km).
+  It is per metre of front, so it doesn't grow with the overlap (`collisionResistance`'s flaw).
+  - *The overlap is a seam* one cell across the front (`overlapCapKm` deleted). Each step's convergence beyond the seam is
+    sent under (the lower plate's land) or shortened ahead (the upper plate's crust, `shortenAhead`), but never more than
+    the step's own closing × front. Without that bound, and without the viscous term, an indenter driven harder than the
+    plateau's GPE cut through its upper plate: seed 2, 262–318 Myr, lost 63 % of the upper plate's land.
+  - *Bug check, the Argand number* (gρc(1−ρc⁄ρm)L ⁄ (B (u0⁄L)^{1⁄n}), L the lithosphere's thickness): 1.5 at the model's
+    n = 1, inside England & Houseman's 1–3 for Asia; 7–9 if η is read as a power-law (n = 3) B at Tibet's strain rate.
+  - *India* (terrain scene, with a moving ridge partner, "Antarctica"): 2,181 km and 2.6 cm/yr 50 Myr after contact. Earth:
+    2,400–3,200 km and ~4 cm/yr. Asia keeps 95 % of its land; India slides off Asia's western flank ~60–80 Myr after
+    contact.
 - **The collision lock is a bounded force (lane belts, `collisionLockGpe`, opt-in, off by default).** A contact resists with the
   gravitational potential energy of the thickened crust, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²] per metre of front (5.7 × 10¹² N/m at
   Tibet's 35 km of extra crust; Copley et al. 2010). Δh is the larger of the thickest crust within two rings of the contact
