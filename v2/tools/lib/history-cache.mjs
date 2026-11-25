@@ -105,10 +105,19 @@ let codeMemo = null;
 /** This checkout's history code hash, worked out once per process (a tool's code does not change while it runs). */
 export const codeHash = () => (codeMemo ??= historyCodeHash(REPO_ROOT).hash);
 
-// (the GPU's fingerprint joins the key — history-key.js; worked out once here, where there is a GPU, so keyOf can stay sync)
-if (ENABLED) await gpuFingerprint().catch(() => null);
+// (the GPU's fingerprint joins the key — history-key.js; worked out once here, where there is a GPU, so keyOf can stay sync.
+// Where it can't be — no Dawn in this checkout: v2/tools/gpu-harness/node_modules unlinked, the agent brief's 'Dawn harness' —
+// the reason is kept and keyOf throws it, not history-key.js's 'await gpuFingerprint() first', which named the wrong cause
+// (lane lakebar: render-moment --latest and trace-land from main's checkout))
+let gpuFault = null;
+if (ENABLED) await gpuFingerprint().catch(e => { gpuFault = e; });
 /** The cache key of the history this fresh world would run (null: not cacheable). */
-export const keyOf = (world, drive, events = true) => (ENABLED ? historyKey(codeHash(), world, drive, events) : null);
+export const keyOf = (world, drive, events = true) => {
+    if (!ENABLED) return null;
+    if (gpuFault) throw new Error(`the history key needs the GPU's fingerprint, and it could not be worked out here: ${gpuFault.message}`
+        + ` (in a worktree: ln -s ~/.cache/geo-sim/gpu-harness/node_modules v2/tools/gpu-harness/node_modules)`, { cause: gpuFault });
+    return historyKey(codeHash(), world, drive, events);
+};
 
 // ── the store ──
 const entryDir = key => path.join(CACHE_DIR, key);

@@ -7,7 +7,7 @@
 // "holes in the ground" a dried-out inland sea leaves.
 //
 //   node --max-old-space-size=16000 v2/tools/render-moment.mjs --seed 799224 --cont 30 --time 290
-//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]] [--network] [--key <history-cache key>]
+//        [--sim 40000] [--cells 2500000] [--width 4096] [--crop lon0,lon1,lat0,lat1] [--out name] [--palette relief] [--lakes] [--probe "lat,lon;…"] [--rivers [q0]] [--debug --overlay flood|basin|soft|…] [--set key=value,…] [--live [--plain]] [--network] [--key <history-cache key>] [--coast (with --latest: the coast shape too)]
 //
 // The page's link ?seed=…&cont=…&sim=… gives --seed, --cont and --sim; the moment is --time (Myr). --latest: the moment the
 // user is looking at in the Evolution page (the history cache's latest.json: node v2/tools/history.mjs latest) — and, when
@@ -71,13 +71,17 @@ const NAME = arg('--out', `moment-${SEED}-${TIME}-${Math.round(CELLS / 1000)}k`)
 const NETWORK = process.argv.includes('--network'), R = 6371, t0 = performance.now(), secs = () => `${((performance.now() - t0) / 1000).toFixed(0)} s`;
 
 // ── the moment's frame: the history as the page builds it (scene 'cycle', ending none), to the moment; through the cache ──
-const frame = await momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME, key: arg('--key', null) ?? (LATEST && Number(LATEST.timeMyr) === TIME ? LATEST.key : null) });     // (--latest: the page's very frame; --key: a history-cache entry's, the page's frame once viewed)
-console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`);
+// (built only when wanted: --latest reads the page's own finish from the finish cache, and the page's history is in the history
+// cache only when Node has built it — the browser's isn't, history.mjs latest 'cached' — so asking for the frame first rebuilt
+// the whole history before a finish that needs none of it (lane lakebar))
+let frameMemo = null;
+const theFrame = () => (frameMemo ??= momentFrame(ROOT, { seed: SEED, cont: CONT, sim: SIM, time: TIME, key: arg('--key', null) ?? (LATEST && Number(LATEST.timeMyr) === TIME ? LATEST.key : null) })     // (--latest: the page's very frame; --key: a history-cache entry's, the page's frame once viewed)
+    .then(f => { console.log(`frame ${TIME} Myr of seed ${SEED} (${secs()})`); return f; }));
 
 // ── --live: the moment as the timeline draws it before any detail (the page's live terrain at --cells, its Terrain
 // Detail: 160K by default), painted as the page paints it — then stop ──
 if (process.argv.includes('--live')) {
-    const simMesh = buildSimMesh(SIM, MESH_SEED), tMesh = terrainMesh(CELLS);
+    const frame = await theFrame(), simMesh = buildSimMesh(SIM, MESH_SEED), tMesh = terrainMesh(CELLS);
     const cfg = terrainConfig(), T = synthesizeTerrain(frame, simMesh, tMesh, { cfg, seed: SEED, carve: true });
     const historySea = pouredSeaOnto(frame, simMesh, cfg, T.sampler ?? sampleOnto(simMesh, tMesh, cfg, SEED));   // (the history's sea: world-ocean.js)
     // (the shading worker's: the cut-off seas balanced and the ocean debited for them, then the hillshade — basin-estimate.js)
@@ -160,6 +164,7 @@ if (pageFin) {
     fin = fromCache(pageFin, pageFin.cells, pageFin.mesh); raster = pageFin.raster;
     console.log(`the page's own finish, from the finish cache (${LATEST.finish}: ${PAGE_FIN.host}, erosion ${PAGE_FIN.erosion}, ${PAGE_FIN.cells.toLocaleString()} cells, ${PAGE_FIN.width} px)`);
 } else {
+    const frame = await theFrame();
     const { spec, key } = CACHEABLE ? await nodeKey({ history: historyKeyOf(frame), timeMyr: TIME, cells: CELLS, width: W, erosion: await erosionEngine(F) }) : { spec: null, key: null };
     let full = null;
     const r = await finishCached(spec, key, async () => {
@@ -405,8 +410,12 @@ if (PROBE) for (const pt of PROBE.split(';')) {
 }
 // (the coastline's shape: its divider dimension D over 50–500 km rulers and its length L(50 km) / L(500 km), by kind of margin
 // — tools/lib/coast-fractal.mjs; the ice age's coasts count as glacial)
-const coastShape = coastFractal(coastLoops(fin.mesh, c => fin.ocean[c] === 1, z), kindOf(simMesh, deriveRecords(frame, simMesh, TCFG, SEED), fin.glaciated ?? null), { kinds: COAST_KINDS });
-console.log('coast shape (D, L50/L500): ' + ['all', ...COAST_KINDS].filter(k => coastShape[k]).map(k => `${k} ${coastShape[k].D.toFixed(3)}${Number.isFinite(coastShape[k].ratio) ? ` ×${coastShape[k].ratio.toFixed(2)}` : ''} (${Math.round(coastShape[k].km).toLocaleString()} km)`).join(' · '));
+// (the margins' kinds read the history's records, so the page's own finish (--latest) has them only with --coast: Node then
+// rebuilds the history to the moment — its own engine's, not the browser's, history.mjs latest 'nodeRebuildsItExactly')
+const coastShape = pageFin && !process.argv.includes('--coast') ? null
+    : coastFractal(coastLoops(fin.mesh, c => fin.ocean[c] === 1, z), kindOf(simMesh, deriveRecords(await theFrame(), simMesh, TCFG, SEED), fin.glaciated ?? null), { kinds: COAST_KINDS });
+if (!coastShape) console.log('coast shape: skipped (the page\'s finish; --coast rebuilds the history in Node for the margins\' kinds)');
+else console.log('coast shape (D, L50/L500): ' + ['all', ...COAST_KINDS].filter(k => coastShape[k]).map(k => `${k} ${coastShape[k].D.toFixed(3)}${Number.isFinite(coastShape[k].ratio) ? ` ×${coastShape[k].ratio.toFixed(2)}` : ''} (${Math.round(coastShape[k].km).toLocaleString()} km)`).join(' · '));
 // (the coast's spectrum: each coast loop of 1500 km or more walked with dividers from about the terrain cell to past the
 // sim's, summed; the local D between neighbouring rulers. The sim's cells, ~120 km at 40K, show as a rise of the local D
 // about their size — the raster's staircase — and the warps' and erosion's scales as where the length still grows)
