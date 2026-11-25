@@ -74,7 +74,7 @@ export const FORCE_SCENES = [
     {
         id: 'india', label: 'India: a subducting ocean plate', maxMyr: 70, view: [5, 72],
         about: '“Asia” is a big continent with a trench along its south coast. “India” is a small continent on a plate that is mostly ocean, and that ocean is going down Asia’s trench: slab pull acts on India’s own plate, so it should race north at subducting-ocean speeds (8–20 cm/yr), several times faster than any suction-driven continent. Its ocean is aged from a ridge on India’s far side, so ridge push joins slab pull. When the two landmasses meet they press on: here, forces alone, nothing thickens and nothing breaks off, so the collision’s resistance (bounded by the thickened belt’s weight) stays small and India ploughs on — the slowdown needs the belt (Phase 7c’s India).',
-        expect: { India: ['subducting', 'colliding'], Asia: ['active', 'colliding'] },
+        expect: { India: ['subducting', 'colliding'], Asia: ['active', 'colliding'], Antarctica: ['passive', 'active'] },   // Antarctica, pushed off the ridge into the old ocean, overrides it (as Far does)
         checklist: [
             'India — whose own ocean floor is going down Asia’s trench — is several times faster than any suction-driven continent (yellow slab-pull arrow), in WBP’s 8–20 cm/yr band.',
             'Its speed is set by the balance of slab pull against the mantle’s resistance to the sinking slab, not by a speed cap.',
