@@ -95,28 +95,9 @@ export const TECTONICS = {
     slabMatureKm: 600,          // a trench pulls in proportion to the slab hanging from it: full strength only once
                                 // this much crust has gone down (≈ the depth of the upper mantle)
     slabSuction: 0.25,          // on the overriding plate, toward its own trench — what moves an active-margin continent
-    ridgePush: 0.25,            // on both plates at a young ridge, away from it [WBP: secondary]. 0.25 × forceUnitNPerM = 1.5 × 10¹² N/m,
-                                // toward the 3–5 × 10¹² of Hopper & Buck 1993 and ~3.3 × 10¹² at 80 Myr by Turcotte & Schubert's
-                                // formula (recalled; lane emerge). Was 0.05 (3 × 10¹¹ N/m on the 6 × 10¹² unit, ~10× low). Raised with
-                                // founderStrength as one change (Jackson, 2026-11-02): RMS plate speed +9 %, founders −11 % on 3 seeds
-                                // (lane pstress, s0.jsonl 'both')
-    ridgeMaxAgeMyr: 40,         // crust younger than this on both sides of a contact = an active ridge
-    collisionResistance: 100,   // viscous coupling per 10⁴ km² of land-on-land overlap: colliding plates lock together —
-                                // across the front, against their closing (Phase 11; developer: collisions "more fluid, more
-                                // rotating and kinematic")… — but not dead: the pair keeps converging a little where it
-                                // touches (India into Asia, ~5 cm/yr), taken up by shortening and underthrusting, which keeps
-                                // the collided part pressed while the rest closes (Phase 12, 300 → 100: held rigid, the plate
-                                // see-sawed about the middle of the contact, opening one end as it closed the other)
-    collisionLockGpe: false,    // (lane belts, opt-in) the lock resists with a FORCE, the buoyancy of the crust the collision has thickened (~5.7 × 10¹² N/m
-                                // at Tibet's; Copley et al. 2010), not collisionResistance's viscosity per km² of overlap — under which the
-                                // closing fell as the overlap grew, India stalling at ~0.5 cm/yr 30 Myr after contact (Earth ~4) and
-                                // converging 1110–1350 km (Earth 2400–3200): step/torque-balance.js collisionGpeNPerM; its Δh counts the two
-                                // crusts stacked in the overlap, so it holds from first contact (forces.js frontThickening). Off by default
-                                // (lane belts5, 2026-11-09): on, Phase 4's forces-only slowing on contact fails (a force capped at the
-                                // plateau's cannot stop a plate whose drive goes on: India's 20 → 6 cm/yr was its drive collapsing), and the
-                                // whole model's biggest collisions close 1461–2374 km at 1–2 cm/yr (Earth ~5 for ~50 Myr) — the missing
-                                // process is the drive after contact, not this lock (README, "The collision lock is a bounded force").
-                                // collisionResistance applies only with this off. The shares below apply
+    // (ridge push is the ocean lithosphere's own GPE by age, from GDH1's plate — step/forces.js ridgePushGpe; was ridgePush 0.25,
+    // a constant at young-on-young contacts. The collision lock is a friction capped by the belt's GPE — torque-balance.js
+    // lockContacts; was collisionResistance 100, a viscosity per 10⁴ km² of overlap, and cratonLockFactor 4. Lane gpelock)
     collisionSlabPull: false,   // (lane upper, opt-in) the slab hanging under a collision front keeps pulling the lower plate in, net of the buoyancy
                                 // of its continental crust gone down after it (Cloos 1993) above the eclogite depth, until the slab breaks off as it warms through (step/forces.js hangingSlabPull).
                                 // Off: it brings no whole-model collision into Earth's range (README, lane belts5)
@@ -266,14 +247,6 @@ export const TECTONICS = {
                                 // of Myr: India has run 2400–3200 km into Asia since ~50 Ma and still converges at ~4 cm/yr
                                 // (Molnar & Stock 2009; van Hinsbergen et al. 2012). (Were: weld after 600 km of shortening, 40
                                 // Myr of contact or 0.4 Mkm² of overlap, and at 120 Myr whatever sea was left — hand-set lock times)
-    sutureHoldGpe: false,       // (lane weld, opt-in) …or once the belt has held the pair through one measure of the seam (sutureCheckMyr): the push
-                                // across the front no more than the buoyancy force of the crust the collision has thickened (the GPE lock's,
-                                // ~5.7 × 10¹² N/m at Tibet's: torque-balance.js seamHold). A thin viscous sheet converges while the force on
-                                // its edge beats that buoyancy and stops when it does not (England & McKenzie 1982; England & Houseman 1989);
-                                // the viscous lock alone only damps the push, and whole-model pairs crept on at 0.5–0.8 cm/yr for 50–150 Myr
-                                // after their convergence ran down — contact → weld ~124 Myr against the ~60–70 of Earth's ended
-                                // collisions (Alleghanian ~325→265 Ma, Hatcher 2002; Uralian ~320→250 Ma, Puchkov 2009). Held, the seam has
-                                // also closed all it will (the sea left is a remnant: no waiting on sutureStallGiveUpMyr)
     sutureStallMinKm: 200,      // …and only once at least this much has been absorbed (two plates merely touching do not weld)
     overlapCapKm: 250,          // (Phase 11) land stacked deeper than this on average (overlap ÷ front) goes under the upper plate
                                 // while the pair waits for its seam to close…
@@ -318,7 +291,6 @@ export const TECTONICS = {
                                 // Caspian), until its floor founders or the plate breaks again (was 260 km: 32 Mkm² of land made
                                 // in 1200 Myr, as much as all the arcs that matured into continent)
     inlandSeaMaxKm2: 0,         // …and an enclosed sea smaller than this is filled too (was 0.5 Mkm²; a taste setting, for the lab)
-    cratonLockFactor: 4,        // a craton at the collision front resists (locks) this much harder than ordinary crust
 
     // ── Wings, arcs, terranes (Phase 5b): plates are larger than their land ──
     wingGrowthCmYr: 4,          // a trench's ends propagate along strike this fast (the wing lengthens by capturing old ocean)
@@ -607,7 +579,7 @@ export const TECTONICS = {
     plateStrengthCrust: true,   // the strength reads each cell's own crust (above); off: every continent at plateCrustRefKm. The crust it reads
                                 // is the heights' (rootKm, relief), which erosion thins, so wear feeds the history through it (unroofing
                                 // restores a worn orogen's strength: Willett 1999's coupling); check-phase8a's like-for-like erosion pair
-                                // turns it off, as it does collisionLockGpe
+                                // turns it off
     plateHeatMantleFlow: 45,    // …of which this much comes up from the mantle: Hopper & Buck 1993 let the crust's heat production give
                                 // 20 mW/m² of the surface flow (their §"model formulation")…
     plateHeatWarmK: 100,        // …and a continent's insulation warms the mantle under it by up to this (h = 1): "as large as 100 °C" under

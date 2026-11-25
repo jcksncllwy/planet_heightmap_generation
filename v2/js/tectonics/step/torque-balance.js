@@ -7,13 +7,15 @@
 //   slab resistance  at each trench cell where this plate's ocean goes down: the mantle resists the
 //                    slab's sinking in proportion to the convergence rate. This — not basal drag — is
 //                    what limits a subducting plate's speed (terminal speed ≈ slabPull ÷ slabResistance)
-//   collision lock   where land overlaps land, a viscous tie to the other plate ACROSS the front, against their
-//                    closing: as the overlap grows it swamps everything else and the seam stops closing — but along
-//                    the front it resists only weakly, and hardly at all where the two part, so a contact is a pivot
-//                    (Phase 11): the pull of the ocean still going down beside it turns the plate about it and the
-//                    rest of the gap closes like a zipper
-// The two couplings involve the other plate's velocity; every plate is solved against the velocities
-// all plates had at the START of the step, so the result does not depend on plate order.
+//   collision lock   where land overlaps land, a friction across the front, bounded by the buoyancy of the crust the
+//                    collision has thickened (collisionGpeNPerM × the front): it resists the pair's closing with up to that force,
+//                    whatever the rate, and no more — a pair driven harder slides on at the rate its drag and slabs allow, one
+//                    driven less stops (England & Houseman 1989's Argand number). Along the front it resists with a share of it, and
+//                    hardly at all where the two part, so a contact is a pivot (Phase 11): the pull of the ocean still going down
+//                    beside it turns the plate about it and the rest of the gap closes like a zipper
+// The couplings involve the other plate's velocity; every plate is solved against the velocities all plates had at the
+// START of the step, so the result does not depend on plate order. The lock is not linear in the rate, so a plate in
+// contact is solved by Newton's method on the balance's potential (solveWithLock).
 // The solved rotation is approached over `relaxMyr` (WBP: plates change speed over a few Myr).
 
 import { CrustType } from '../model/crust.js';
@@ -54,12 +56,12 @@ function balancedRotation(world, plate, load, omegaOf) {
     const T = load.torque.slice();
 
     addSlabResistance(D, T, load, omegaOf, config);
-    addCollisionLock(D, T, world, plate, load, omegaOf);
     addHinges(D, T, load, omegaOf);
-    return solve3(D, T);
+    const lock = lockContacts(world, plate, load);
+    return lock.length ? solveWithLock(D, T, lock, omegaOf, omegaOf[plate.id], config) : solve3(D, T);
 }
 
-// The couplings, each added into the balance D ω = T (in this order: the sums are float, and the history must not change).
+// The linear couplings, each added into the balance D ω = T.
 function addSlabResistance(D, T, load, omegaOf, config) {
     // slab resistance acts along the trench normal only:  F = −c (n · (v_self − v_other)) n
     for (const { r, n, other, length } of load.slabs) {
@@ -71,26 +73,107 @@ function addSlabResistance(D, T, load, omegaOf, config) {
     }
 }
 
-function addCollisionLock(D, T, world, plate, load, omegaOf) {
-    const { config, mesh } = world, areaUnit = mesh.cellAreaKm2 / 1e4;
-    // collision lock, across the front and along it:  F = −c_n (n · v_rel) n − c_t (t · v_rel) t, v_rel = v_self − v_other;
-    // across, full strength where the two close and a small share where they part (judged at the start of the step)
-    const self = omegaOf[plate.id], gpe = config.collisionLockGpe ? gpeLock(world, plate, load) : null;
-    for (const ct of load.contacts) {
-        const { r, n, other, weight } = ct, o = omegaOf[other];
-        const an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];      // r × n: n·(ω × r) = ω·(r × n)
-        const rate = (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2], closing = rate > 0;
-        // (config.collisionLockGpe: the lock's force is bounded — the buoyancy of the crust the collision has thickened, its
-        // share of the front — and enters the linear solve as the coupling that gives that force at the closing rate the two
-        // had at the step's start, no slower than the stall rate: a regularised friction, not a viscosity)
-        const c = gpe ? gpe.forceOf(ct) * weight / Math.max(rate, gpe.floor) : config.collisionResistance * areaUnit * weight;
-        const t = an, at = [r[1] * t[2] - r[2] * t[1], r[2] * t[0] - r[0] * t[2], r[0] * t[1] - r[1] * t[0]];   // t = r × n along the front; r × t
-        for (const [a, k] of [[an, closing ? 1 : config.collisionSeparateShare], [at, config.collisionShearShare]]) {
-            const ck = c * k, oa = o[0] * a[0] + o[1] * a[1] + o[2] * a[2];
-            for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) D[3 * i + j] += ck * a[i] * a[j]; T[i] += ck * oa * a[i]; }
-        }
+/**
+ * The collision lock, contact by contact: where the plate's land overlaps the other's, a friction across the front and along
+ * it, F = −f(n · v_rel) n − f_t(t · v_rel) t (v_rel = v_self − v_other, n the front's normal toward the other plate, t = r × n
+ * along it). The force is bounded: closing, it rises smoothly to the cap — the gravitational potential energy the belt the
+ * collision has built holds against ordinary crust (collisionGpeNPerM), over the contact's share of the front — and stays
+ * there however fast the two close: a thin viscous sheet converges while the force on its edge beats the buoyancy of the
+ * crust it has thickened, and stops when it does not (England & McKenzie 1982; England & Houseman 1989; Copley, Avouac &
+ * Royer 2010 find the Tibetan plateau's 5–6 × 10¹² N/m holds India to ~4 cm/yr). Parting, it resists with
+ * collisionSeparateShare of the cap (a pivot, not a lock: Phase 11); along the front with collisionShearShare (oblique
+ * plates slide some).
+ *   f(v) = cap · s(v ⁄ v₀),  s(x) = x ⁄ √(1 + x²)
+ * s is Coulomb's friction smoothed at the origin (a square root, not tanh: exactly rounded in every JavaScript engine, so a
+ * seed builds one planet). The onset v₀ is a numerical regularisation, not a material property (Coulomb's law has none): it
+ * must be well below the rates that matter, and is sutureStallCmYr ⁄ 3 so that a seam pushed with up to 95 % of its cap
+ * closes slower than the stall rate (s(3.04) = 0.95) and welds as stalled: a push short of the cap stops the pair.
+ * (Was, lane plateauroot → gpelock 2026-11-24: collisionResistance, a viscosity per 10⁴ km² of overlap that grew with the
+ * overlap until it swamped every drive — India stalled 1159 km in, Earth's 2400–3200 — and, opt-in, a GPE force refit each
+ * step as force ÷ rate, with a craton's ×4 weight on a force already per metre of front and a Δh that stacked the lower
+ * plate's whole crust on the upper's: 4× its own bound in the India scene, the weight 2.1× and the stack 2.0×.)
+ * Limits: the plateau's GPE alone — the lithosphere's strength and the fault's own friction are not drawn; the cap reads the
+ * belt as it stands at the step's start.
+ */
+const ONSET_SHARE = 1 / 3;
+const s = x => x / Math.sqrt(1 + x * x);
+
+/** Per contact of this plate: its arms (r × n across the front, r × (r × n) along it), its cap in force units, the other plate. */
+export function lockContacts(world, plate, load) {
+    if (!load.contacts.length) return [];
+    const { config, mesh, collisions } = world, H = heightsOf(config), count = new Map(), lenOf = new Map();
+    for (const { other } of load.contacts) count.set(other, (count.get(other) ?? 0) + 1);
+    for (const [other, n] of count) {
+        const key = plate.id < other ? `${plate.id}:${other}` : `${other}:${plate.id}`;
+        // (the front as the collision measured it; before its record exists, a cell edge per contact cell)
+        const frontKm = Math.max(collisions?.get(key)?.frontKm ?? 0, mesh.edgeKm);
+        lenOf.set(other, frontKm / 100 / n);
+    }
+    return load.contacts.map(({ c, r, n, other, dh }) => {
+        const an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];
+        const at = [r[1] * an[2] - r[2] * an[1], r[2] * an[0] - r[0] * an[2], r[0] * an[1] - r[1] * an[0]];
+        return { c, an, at, other, cap: collisionGpeNPerM(dh, H) / config.forceUnitNPerM * lenOf.get(other) };
+    });
+}
+
+/** The lock's onset rate v₀, rad/Myr (lockContacts). */
+export function lockOnset(config) { return config.sutureStallCmYr * ONSET_SHARE * CM_PER_YR_TO_RAD_PER_MYR; }
+
+/**
+ * Each contact's lock at the rotations given, as force along each arm: visit(contact, fAcross, fAlong), the force resisting the
+ * plate's motion (+ against closing, against sliding along t). The share applies to the cap: closing 1, parting
+ * collisionSeparateShare; along the front collisionShearShare.
+ */
+export function eachLockForce(lock, self, omegaOf, config, visit) {
+    const v0 = lockOnset(config);
+    for (const ct of lock) {
+        const o = omegaOf[ct.other], an = ct.an, at = ct.at;
+        const vn = (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2];
+        const vt = (self[0] - o[0]) * at[0] + (self[1] - o[1]) * at[1] + (self[2] - o[2]) * at[2];
+        visit(ct, ct.cap * (vn > 0 ? 1 : config.collisionSeparateShare) * s(vn / v0), ct.cap * config.collisionShearShare * s(vt / v0));
     }
 }
+
+/**
+ * The rotation that balances D ω = T plus the lock (D, T: drag, slabs, hinges and the drives — linear). The balance is the
+ * minimum of a convex potential, P(ω) = ½ ωᵀDω − Tᵀω + Σ Φ(a·(ω − ω_other)), Φ(v) = cap v₀ (√(1 + (v/v₀)²) − 1) the
+ * friction's (its slope is f): so damped Newton converges from any start. From the plate's rotation at the step's start.
+ */
+function solveWithLock(D, T, lock, omegaOf, start, config) {
+    const v0 = lockOnset(config), sep = config.collisionSeparateShare, shear = config.collisionShearShare;
+    const terms = (w, wantDerivs) => {
+        let P = 0.5 * (w[0] * (D[0] * w[0] + D[1] * w[1] + D[2] * w[2]) + w[1] * (D[3] * w[0] + D[4] * w[1] + D[5] * w[2]) + w[2] * (D[6] * w[0] + D[7] * w[1] + D[8] * w[2])) - (T[0] * w[0] + T[1] * w[1] + T[2] * w[2]);
+        const g = wantDerivs ? [0, 1, 2].map(i => D[3 * i] * w[0] + D[3 * i + 1] * w[1] + D[3 * i + 2] * w[2] - T[i]) : null, H = wantDerivs ? D.slice() : null;
+        for (const ct of lock) {
+            const o = omegaOf[ct.other];
+            for (const [a, kPos, kNeg] of [[ct.an, 1, sep], [ct.at, shear, shear]]) {
+                const v = (w[0] - o[0]) * a[0] + (w[1] - o[1]) * a[1] + (w[2] - o[2]) * a[2], x = v / v0, q = Math.sqrt(1 + x * x);
+                const k = ct.cap * (v > 0 ? kPos : kNeg);
+                P += k * v0 * (q - 1);
+                if (!wantDerivs) continue;
+                const f = k * x / q, df = k / (v0 * q * q * q);
+                for (let i = 0; i < 3; i++) { g[i] += f * a[i]; for (let j = 0; j < 3; j++) H[3 * i + j] += df * a[i] * a[j]; }
+            }
+        }
+        return { P, g, H };
+    };
+    let w = start.slice();
+    for (let it = 0; it < LOCK_NEWTON_MAX; it++) {
+        const { P, g, H } = terms(w, true);
+        const step = solve3(H, [-g[0], -g[1], -g[2]]), slope = g[0] * step[0] + g[1] * step[1] + g[2] * step[2];
+        if (!(slope < 0)) break;
+        let t = 1, next = null;
+        for (let k = 0; k < 30; k++, t *= 0.5) {
+            next = [w[0] + t * step[0], w[1] + t * step[1], w[2] + t * step[2]];
+            if (terms(next, false).P <= P + 1e-4 * t * slope) break;
+        }
+        w = next;
+        // (converged once the step moves no arm by more than a millionth of the onset rate)
+        if (t * Math.max(...lock.map(ct => Math.abs(ct.an[0] * step[0] + ct.an[1] * step[1] + ct.an[2] * step[2]))) < 1e-6 * v0) break;
+    }
+    return w;
+}
+const LOCK_NEWTON_MAX = 30;
 
 function addHinges(D, T, load, omegaOf) {
     // rift hinge, a pin:  F = −c v_rel at r — the halves turn about it (step/forces.js riftHinge)
@@ -116,19 +199,22 @@ export function balanceTerms(world, plate) {
     const out = Object.fromEntries(FORCE_KINDS.map((k, i) => [k, load.byKind[i].slice()]));
     out.drag = apply(dragTensor(plate, world.mesh, world.config, areaUnit), [0, 0, 0]);
     out.slabResistance = term((D, T) => addSlabResistance(D, T, load, omegaOf, world.config));
-    out.lock = term((D, T) => addCollisionLock(D, T, world, plate, load, omegaOf));
+    const lock = [0, 0, 0];
+    eachLockForce(lockContacts(world, plate, load), w, omegaOf, world.config, (ct, fn, ft) => { for (let i = 0; i < 3; i++) lock[i] -= fn * ct.an[i] + ft * ct.at[i]; });
+    out.lock = lock;
     out.hinge = term((D, T) => addHinges(D, T, load, omegaOf));
     return out;
 }
 
 /**
- * The force per metre of front a collision resists its closing with, N/m (config.collisionLockGpe): the gravitational
+ * The force per metre of front a collision resists its closing with at most, N/m (the lock's cap: lockContacts): the gravitational
  * potential energy the thickened crust holds against the crust it is pushed into — for Airy-compensated crust of
  * thickness H + Δh against H, ΔF = ½ ρc g (1 − ρc/ρa) [(H + Δh)² − H²] (Molnar & Lyon-Caen 1988; Fleitout & Froidevaux
- * 1982). With H 35 km, Δh 35 (Tibet's ~70 km crust) it is ~5.7 × 10¹² N/m — the 5–6 × 10¹² Copley, Avouac & Wernicke
+ * 1982). With H 35 km, Δh 35 (Tibet's ~70 km crust) it is ~5.7 × 10¹² N/m — the 5–6 × 10¹² Copley, Avouac & Royer
  * (2010) find the Tibetan plateau exerts on India, and so what holds India to ~4 cm/yr rather than stopping it. It grows
- * with the thickening the collision has built (none at first contact: then the lithospheres' own strength and the lower
- * plate's buoyant crust slowing its slab carry it), and saturates where the crust spreads under its own weight instead.
+ * with the thickening the collision has built (none at first contact, where two ordinary margins meet: the pair is then slowed
+ * by the drive it loses — the trench filling with land, no longer a slab to pull — and by the lock only as the belt rises), and
+ * saturates where the crust spreads under its own weight instead.
  * H and the densities are the column model's (terrain-config.js riftCrustKm, riftCrustRho, the mantle as columnModel
  * expands it). Limits: the plateau's GPE alone — the lithospheric mantle's own (a thickened root is denser, a removed
  * one lighter) and the front's friction are not drawn.
@@ -136,49 +222,6 @@ export function balanceTerms(world, plate) {
 export function collisionGpeNPerM(dhKm, H) {
     const rc = H.riftCrustRho, ra = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC), h0 = H.riftCrustKm * 1000, h = h0 + Math.max(0, dhKm) * 1000;
     return 0.5 * rc * 9.81 * (1 - rc / ra) * (h * h - h0 * h0);
-}
-
-/**
- * (config.sutureHoldGpe, step/collision.js) Whether the belt between `plate` and `other` holds them: the force the lock now
- * carries across their front against closing — what the two push into each other, the lock's coupling × the closing rate
- * at each contact (judged on the loads and rotations of the last step, as balanceTerms) — against the most the belt the
- * collision has built can resist with, its gravitational potential energy over its share of the front (collisionGpeNPerM,
- * the GPE lock's force, of the plateau alone: forces.js dhBelt). A thin viscous sheet converges while the force on its edge exceeds the buoyancy force of the crust
- * it has thickened and stops when it does not (England & McKenzie 1982; England & Houseman 1989, the Argand number): the
- * viscous lock (collisionResistance) draws the first half, a coupling × rate that only damps a push and never stops it —
- * whole-model pairs creep on at 0.5–0.8 cm/yr for 50–150 Myr after their convergence has run down (lane weld, 2026-11-09)
- * — and this draws the second. @returns {{pushed: number, holds: number} | null} both in force units × model length
- */
-export function seamHold(world, plate, other) {
-    const load = world.loads?.get(plate.id);
-    if (!load) return null;
-    const { config, mesh } = world, areaUnit = mesh.cellAreaKm2 / 1e4, omegaOf = world.plates.map(p => p.omega), self = omegaOf[plate.id], o = omegaOf[other];
-    const gpe = gpeLock(world, plate, load);
-    let pushed = 0, holds = 0;
-    for (const ct of load.contacts) {
-        if (ct.other !== other) continue;
-        const { r, n, weight } = ct, an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];
-        const rate = Math.max(0, (self[0] - o[0]) * an[0] + (self[1] - o[1]) * an[1] + (self[2] - o[2]) * an[2]);
-        const lock = gpe.forceOf(ct) * weight, cap = gpe.forceOf({ ...ct, dh: ct.dhBelt }) * weight;     // (the belt's, without the stack: forces.js dhBelt)
-        pushed += config.collisionLockGpe ? Math.min(lock, lock * rate / gpe.floor) : config.collisionResistance * areaUnit * weight * rate;
-        holds += cap;
-    }
-    return { pushed, holds };
-}
-
-/** (config.collisionLockGpe) Per contact of this plate: its share of the pair's front (model length, 100 km) × the GPE force in force units. */
-function gpeLock(world, plate, load) {
-    const { config, mesh, collisions } = world, H = heightsOf(config), count = new Map();
-    for (const { other } of load.contacts) count.set(other, (count.get(other) ?? 0) + 1);
-    const lenOf = new Map();
-    for (const [other, n] of count) {
-        const key = plate.id < other ? `${plate.id}:${other}` : `${other}:${plate.id}`;
-        // (the front as the collision measured it; before its record exists, a cell edge per contact cell)
-        const frontKm = Math.max(collisions?.get(key)?.frontKm ?? 0, mesh.edgeKm);
-        lenOf.set(other, frontKm / 100 / n);
-    }
-    return { floor: config.sutureStallCmYr * CM_PER_YR_TO_RAD_PER_MYR,
-        forceOf: ct => collisionGpeNPerM(ct.dh ?? 0, H) / config.forceUnitNPerM * lenOf.get(ct.other) };
 }
 
 /** The fastest surface speed over the plate's cap, rad/Myr: rate · sin(angle from the axis), the angle axisAngle ± capRadius. */

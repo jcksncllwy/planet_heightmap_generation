@@ -24,8 +24,8 @@ const out = arg('--out', path.join(process.env.HOME, '.cache/geo-sim/lanes-2026-
 const sim = Number(arg('--sim', 40000)), cont = Number(arg('--cont', DEFAULT_CONT));
 // (every constant in the history's force unit: the forces, the resistances, and the strengths and floors stresses are held
 // against. mobility divides the drag, so it goes the other way; riftHingeLock is already ÷ mobility)
-export const FORCE_KEYS = ['slabPull', 'slabSuction', 'ridgePush', 'riftPush', 'mantleOutflow', 'mantleInflow', 'dispersalRepulsion',
-    'slabResistance', 'collisionResistance', 'founderStrength', 'riftStressFloor'];
+export const FORCE_KEYS = ['slabPull', 'slabSuction', 'riftPush', 'mantleOutflow', 'mantleInflow', 'dispersalRepulsion',
+    'slabResistance', 'founderStrength', 'riftStressFloor'];
 const CM_YR = 6371 / 10;
 const SWEEP = [2e12, 3e12, 5e12, 1e13, 2e13];       // declared continental strengths, N/m
 setDelaunator(Delaunator);

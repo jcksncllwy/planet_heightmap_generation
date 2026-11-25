@@ -12,7 +12,7 @@
 // was); the rotations are the plates' current ones.
 
 import { CrustType } from '../model/crust.js';
-import { cellSpin } from './torque-balance.js';
+import { cellSpin, lockContacts, eachLockForce } from './torque-balance.js';
 
 /**
  * Each raster cell's net torque ρ_c (world frame, 3 per cell; 0 off the plate), at the plate's present rotation — kept on
@@ -38,12 +38,10 @@ export function netTorques(world, plate) {
         for (let i = 0; i < 3; i++) rho[3 * c + i] -= k * rel * a[i];
     };
     for (const { c, r, n, other, length } of load.slabs) couple(c, cross(r, n), config.slabResistance * length, other);
-    for (const { c, r, n, other, weight } of load.contacts) {
-        const k = config.collisionResistance * areaUnit * weight, an = cross(r, n), o = plates[other]?.omega ?? [0, 0, 0];
-        const closing = (w0[0] - o[0]) * an[0] + (w0[1] - o[1]) * an[1] + (w0[2] - o[2]) * an[2] > 0;
-        couple(c, an, k * (closing ? 1 : config.collisionSeparateShare), other);
-        couple(c, cross(r, an), k * config.collisionShearShare, other);
-    }
+    // (the lock: the bounded friction at the rotations now, as torque-balance.js has it — eachLockForce)
+    eachLockForce(lockContacts(world, plate, load), w0, plates.map(p => p.omega), config, (ct, fn, ft) => {
+        for (let i = 0; i < 3; i++) rho[3 * ct.c + i] -= fn * ct.an[i] + ft * ct.at[i];
+    });
     // a rift hinge's pin: −c (I − r rᵀ)(ω − ω_other), as torque-balance.js has it (step/forces.js riftHinge)
     for (const { r, other, c: k, cell } of load.hinges) {
         if (cell < 0) continue;
