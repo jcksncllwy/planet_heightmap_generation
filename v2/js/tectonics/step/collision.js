@@ -100,7 +100,7 @@ export function trackCollisions(world, dt) {
         // sliver. Driven back into each other (another plate pushing), their overlap is a collision like any other.
         if (!rec && areYoungRiftPartners(plates[idA], plates[idB], time, config) && cells.length * cellAreaKm2 / edgeKm <= config.riftJitterFrontKm) continue;
         if (!rec) {
-            const { upper, lower } = chooseSides(world, plates[idA], plates[idB], cells);
+            const { upper, lower } = chooseSides(world, plates[idA], plates[idB]);
             rec = { upper: upper.id, lower: lower.id, startedAt: time, lastActive: time, shorteningKm: 0, frontKm: 0, closingCmYr: 0, meanRateCmYr: 0, stalledMyr: 0, contactMyr: 0, cells: 0, sutured: false, announce: false, underthrustDue: 0, underthrustCells: 0 };
             collisions.set(key, rec);
             // A small landmass (a microcontinent, an arc) is a terrane: it docks at once instead of colliding as an equal.
@@ -477,24 +477,34 @@ function dockIfTerrane(world, A, B, cells) {
  * modelled here). Slab and not a count of flags: by the time land touches land the trench's ocean cells have mostly
  * gone, and the last of it was overridden by the arriving continent, whose coast then carries fresh flags of its own
  * (feedTrench), while its slab is only the few hundred km of that apron — against the thousands the true margin has
- * swallowed. Read on both plates' rasters, ocean and land, within two aprons of the contact: the old trench stood an
- * apron off its coast, and either plate's may be the one. The greatest and not the sum, which would grow with the mesh.
+ * swallowed. Read on both plates' rasters, ocean and land: either plate's may be the one. The greatest and not the sum,
+ * which would grow with the mesh.
+ * Only a trench that faces the other plate counts (a cell at or beside one of the other plate's), and anywhere along the
+ * two plates' shared edge, not only within two aprons of the contact: a fast lower continent overrides the upper plate's
+ * apron where it arrives, so by contact both coasts there carry fresh flags with a few hundred km of slab, while the
+ * margin that swallowed the ocean between them — thousands of km — still faces it on either side of the indenter
+ * (lane gpelock: India under ridge push, seeds 3 and 5). (A pair meeting at two fronts of opposite polarity would take
+ * the one with the longer slab for both; none does in the scenes.)
  * With no slab on either side — or one the same on both — the larger continent rides up.
  */
-function chooseSides(world, A, B, cells) {
-    const { mesh, config } = world, { xyz, index, numCells, edgeKm } = mesh;
-    const { dist } = hopsFrom(mesh, cells, null, Math.max(1, Math.round(2 * config.apronKm / edgeKm)));
-    const slabAtFront = plate => {
+function chooseSides(world, A, B) {
+    const { mesh, owner } = world, { xyz, index, numCells, adjOffset, adjList } = mesh;
+    const faces = (w, other) => {
+        if (owner[w] === other.id) return true;
+        for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) if (owner[adjList[k]] === other.id) return true;
+        return false;
+    };
+    const slabAtFront = (plate, other) => {
         const { mask, flags, slabKm } = plate.crust;
         let most = 0;
         for (let w = 0; w < numCells; w++) {
-            if (dist[w] < 0) continue;
+            if (!faces(w, other)) continue;
             const c = plate.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
             if (mask[c] && (flags[c] & CrustFlag.TRENCH) && slabKm[c] > most) most = slabKm[c];
         }
         return most;
     };
-    const slabA = slabAtFront(A), slabB = slabAtFront(B);
+    const slabA = slabAtFront(A, B), slabB = slabAtFront(B, A);
     const aUpper = slabA !== slabB ? slabA > slabB : A.stats.continentalCells >= B.stats.continentalCells;
     return aUpper ? { upper: A, lower: B } : { upper: B, lower: A };
 }

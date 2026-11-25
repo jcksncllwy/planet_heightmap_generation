@@ -83,6 +83,45 @@ export function fillBackground(canvas, world, cfg) {
     return ocean;
 }
 
+/**
+ * Each scene plate's own ocean, aged as the floor of a plate whose ridge is its far passive edge: oldest at its trench,
+ * younger away from it, 0 where the plate's ocean meets the pre-history ocean farthest from any trench. A scene's ocean
+ * of one age (initialOceanAgeMyr) puts 0 Myr floor, opened behind a moving plate, against 150 Myr floor: a step of the
+ * whole of the old floor's GPE that no ridge makes (forces.js ridgePushGpe). Distances are walked through the plate's own
+ * ocean from its trench (its own trench cells, or those it faces on another plate); the age is the distance from the ridge
+ * ÷ SCENE_SPREAD_KM_PER_MYR, capped at initialOceanAgeMyr. A plate with no passive edge to the pre-history ocean, or no
+ * trench, keeps its ages. Call after fillBackground.
+ */
+export function ageFromRidges(world, cfg) {
+    const { mesh, plates } = world, { numCells, adjOffset, adjList, edgeKm } = mesh, bg = plates.find(p => p.isBackground);
+    const own = new Int32Array(numCells).fill(-1);
+    for (const p of plates) for (let c = 0; c < numCells; c++) if (p.crust.mask[c]) own[c] = p.id;
+    const trenchAt = c => own[c] >= 0 && (plates[own[c]].crust.flags[c] & CrustFlag.TRENCH) !== 0;
+    for (const p of plates) {
+        if (p.isBackground) continue;
+        const K = p.crust, ocean = c => own[c] === p.id && K.type[c] === CrustType.OCEAN;
+        const D = new Float64Array(numCells).fill(Infinity), queue = [];
+        for (let c = 0; c < numCells; c++) {
+            if (!ocean(c)) continue;
+            let front = trenchAt(c);
+            for (let k = adjOffset[c]; !front && k < adjOffset[c + 1]; k++) { const nb = adjList[k]; front = own[nb] !== p.id && own[nb] !== bg?.id && trenchAt(nb); }
+            if (front) { D[c] = 0; queue.push(c); }
+        }
+        for (let i = 0; i < queue.length; i++) {
+            const c = queue[i];
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (ocean(nb) && D[nb] === Infinity) { D[nb] = D[c] + edgeKm; queue.push(nb); } }
+        }
+        let ridgeKm = -1;
+        for (const c of queue) if (!trenchAt(c) && touches(mesh, c, nb => own[nb] === bg?.id)) ridgeKm = Math.max(ridgeKm, D[c]);
+        if (!(ridgeKm > 0)) continue;
+        for (const c of queue) K.formedAt[c] = -Math.min(cfg.initialOceanAgeMyr, Math.max(0, ridgeKm - D[c]) / SCENE_SPREAD_KM_PER_MYR);
+    }
+}
+/** The rate a scene plate's ocean was laid at by its ridge: the full spreading rate of Earth's ridges on average, ~3.4 km²/yr
+ *  of new floor (Rowley 2002, GSA Bull. 114) over ~62,000 km of ridge (recalled) ≈ 5.5 cm/yr. (The pre-history ocean does not
+ *  move: the gap a plate opens behind it is all its own, at its whole speed, as this floor was.) */
+export const SCENE_SPREAD_KM_PER_MYR = 55;
+
 function inSectors(azimuth, sectors) {
     if (sectors === 'all') return true;          // (a [0, 360] pair would wrap to a single point — say 'all' instead)
     return sectors.some(([from, to]) => (((azimuth - from) % 360) + 360) % 360 <= (((to - from) % 360) + 360) % 360);

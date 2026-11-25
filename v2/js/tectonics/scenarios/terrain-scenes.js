@@ -13,7 +13,7 @@ import { SimplexNoise } from '../../../../js/simplex-noise.js';
 import { TectonicWorld } from '../model/world.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { dot, cross, normalize } from '../../core/sphere-geom.js';
-import { sceneCanvas, addContinent, addApronAndTrench, addOcean, fillBackground } from './scene-kit.js';
+import { sceneCanvas, addContinent, addApronAndTrench, addOcean, fillBackground, ageFromRidges } from './scene-kit.js';
 import { onlyMechanisms, mechanismsOn } from '../config.js';
 import { terrainConfig } from '../../terrain/terrain-config.js';
 
@@ -50,6 +50,7 @@ function buildCratons(simMesh, seed) {
         return off < 1900 && along > 0 && along < span;
     }, -90);
     fillBackground(canvas, world, world.config);
+    ageFromRidges(world, world.config);
     Object.assign(world.config, onlyMechanisms('underthrust'), mechanismsOn('underthrust'));
     return world;
 }

@@ -8,7 +8,7 @@ import { SimplexNoise } from '../../../../js/simplex-noise.js';
 import { TectonicWorld } from '../model/world.js';
 import { PLANET_RADIUS_KM } from '../../core/sim-mesh.js';
 import { dot, cross, normalize } from '../../core/sphere-geom.js';
-import { sceneCanvas, addContinent, addApronAndTrench, addOcean, flagCoastTrench, fillBackground } from './scene-kit.js';
+import { sceneCanvas, addContinent, addApronAndTrench, addOcean, flagCoastTrench, fillBackground, ageFromRidges } from './scene-kit.js';
 import { buildWilsonWorld, WILSON_HOME } from './wilson-cycle.js';
 import { buildStartWorld } from '../init/start-world.js';
 import { mechanismsOff } from '../config.js';
@@ -30,6 +30,7 @@ export const FORCE_SCENES = [
             const solo = world.addPlate('Solo');
             addApronAndTrench(canvas, solo, addContinent(canvas, noise, { plate: solo, centre: [5, -20], radiusKm: 2300 }), WEST, world.config);
             fillBackground(canvas, world, world.config);
+            ageFromRidges(world, world.config);
             return world;
         },
     },
@@ -48,6 +49,7 @@ export const FORCE_SCENES = [
             addApronAndTrench(canvas, balanced, addContinent(canvas, noise, { plate: balanced, centre: [25, -65], radiusKm: 1900, wobble: 0.05 }), [[140, 220], [-40, 40]], world.config);
             addApronAndTrench(canvas, lopsided, addContinent(canvas, noise, { plate: lopsided, centre: [-20, 55], radiusKm: 1900 }), [[125, 235], [-18, 18]], world.config);
             fillBackground(canvas, world, world.config);
+            ageFromRidges(world, world.config);
             return world;
         },
     },
@@ -94,6 +96,7 @@ export const FORCE_SCENES = [
                 return off < 1700 && along > 0 && along < span;
             }, -90);
             fillBackground(canvas, world, world.config);
+            ageFromRidges(world, world.config);
             return world;
         },
     },
@@ -105,7 +108,7 @@ export const FORCE_SCENES = [
             'Pulled from nearly all sides, the supercontinent barely moves (well under 1 cm/yr), but “tension” reads close to 1.',
             'Phase 6 will use that stored tension to decide when and where a supercontinent rifts.',
         ],
-        build(simMesh, seed) { const { world } = buildStartWorld(simMesh, seed); Object.assign(world.config, GIVEN_TRENCHES); return world; },
+        build(simMesh, seed) { const { world } = buildStartWorld(simMesh, seed); Object.assign(world.config, GIVEN_TRENCHES); ageFromRidges(world, world.config); return world; },
     },
 ];
 
