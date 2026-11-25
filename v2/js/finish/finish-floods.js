@@ -35,13 +35,14 @@ export function outburstFloods(ctx, F) {
     const { mesh, z, ice, S, cellKm2 } = ctx, n = mesh.numCells, { adjOffset, adjList, xyz, edgeKm } = mesh;
     const flood = new Uint8Array(n), none = { flood, lakes: 0, lakeKm2: 0, volumeKm3: 0, largestKm3: 0, unheld: 0, lats: [] };
     if (!(F.floodCutKm > 0) || !ice.includes(1)) return none;
-    const sea = iceAgeSea(mesh, z, ice, cellKm2, F);
+    // (the ice age's sea: its level the ice's own — finish-ice.js glacialSheets' seaKm, the ice's volume above flotation)
+    const seaKm = ctx.seaKm, sea = iceAgeSea(mesh, z, ice, seaKm);
     // ── the two floods from the sea: the ice as a wall, and the bare ground ──
     const walled = new Float32Array(n);
     // (the ice's wall: its hydraulic head, the bed plus ρi/ρw of the ice — the level a lake floats it at; the head's ice is
     // its thickness over the cell's own bed, the surface less the bed)
     for (let c = 0; c < n; c++) walled[c] = ice[c] ? z[c] + RHO_ICE_WATER * Math.max(0, S[c] - z[c]) : z[c];
-    const dam = spill(mesh, walled, sea, -F.iceSeaDropKm), bare = spill(mesh, z, sea, -F.iceSeaDropKm);
+    const dam = spill(mesh, walled, sea, seaKm), bare = spill(mesh, z, sea, seaKm);
     // ── the lakes the ice holds: water above where the bare ground would hold it, in connected bodies ──
     const EPS = 0.001, held = c => !ice[c] && !sea[c] && dam.fill[c] > Math.max(z[c], bare.fill[c]) + EPS;
     const lakeOf = new Int32Array(n).fill(-1), lakes = [];
@@ -187,8 +188,8 @@ export function outburstFloods(ctx, F) {
 
 /** The ice age's sea: open water below its level (ice-free) joined to the largest body of it — the world ocean then (as
  *  finish.js oceanMask; a body cut off from it is a basin, not the sea). */
-function iceAgeSea(mesh, z, ice, cellKm2, F) {
-    const { adjOffset, adjList, numCells: n } = mesh, sea = new Uint8Array(n), seen = new Uint8Array(n), wet = c => !ice[c] && z[c] < -F.iceSeaDropKm;
+function iceAgeSea(mesh, z, ice, level) {
+    const { adjOffset, adjList, numCells: n } = mesh, sea = new Uint8Array(n), seen = new Uint8Array(n), wet = c => !ice[c] && z[c] < level;
     let best = null;
     for (let s = 0; s < n; s++) {
         if (seen[s] || !wet(s)) continue;

@@ -2,7 +2,7 @@
 // Report-only check (lane iceage, 2026-11-25): the ice age's code on Earth's own ground, against where Earth's ice was. A BUG
 // check, not a target to fit (Earth is N of 1): Earth's ground (ETOPO5 on the 160K terrain mesh, make-earth-surface.mjs)
 // goes through the finish's own climate (GPU, as finish.js climateOn: the warmest month at sea level, the year's rain) and
-// finish-ice.js lastIceAge, and its ice is laid against ICE-6G_C's at 21 ka (Peltier, Argus & Drummond 2015; the artifact
+// finish-ice.js glacialSheets and lastIceAge, and its ice is laid against ICE-6G_C's at 21 ka (Peltier, Argus & Drummond 2015; the artifact
 // make-earth-ice.mjs). Where the code puts ice Earth never had — or misses the ice Earth had — the mechanism is what to fix:
 // what the climate or the ice gets wrong under Earth's own conditions, not a constant to move toward Earth's numbers.
 // It also asks the climate of TODAY, with no ice age, two questions whose answers on Earth are known:
@@ -29,7 +29,7 @@ import { cellClimateGPU } from '../js/gpu/climate-cells.js';
 import { finishDevice } from '../js/gpu/finish-gpu.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { LatLonGrid } from '../js/finish/finish-grid.js';
-import { lastIceAge } from '../js/finish/finish-ice.js';
+import { lastIceAge, glacialSheets } from '../js/finish/finish-ice.js';
 import { bilinear } from '../js/finish/finish.js';
 import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios, co2At, greenhouseOf } from '../js/climate/planet-system.js';
 import { declination } from '../js/climate/insolation.js';
@@ -76,10 +76,14 @@ for (let g = 0; g < G; g++) for (let m = 0; m < 12; m++) { const t = Tsl[m * G +
 const warmSl = new Float32Array(n), rain = Float32Array.from(res.cell.pAnnual, p => Math.min(p, F.rainMaxMm));
 for (let c = 0; c < n; c++) warmSl[c] = bilinear(cg, warmG, lat[c], lon[c]);
 
-// ── the ice age on Earth (finish-ice.js; the plate under the ice a uniform 50 km thick: its bend moves the ground the ice
-// leaves, not where the ice is) ──
-const simMesh = buildSimMesh(40000, MESH_SEED), zi = z.slice();
-const LIA = lastIceAge({ mesh, z: zi, lat, lon, warmSl, rain, grid: new LatLonGrid(0.25), cellKm2, seed: 1, soft: null, land, simMesh, teSim: new Float32Array(simMesh.numCells).fill(50) }, F).ice;
+// ── the ice age on Earth (finish-ice.js: its sheets grown under the inception's and the maximum's climate, glacialSheets, on
+// Earth's bed — ETOPO5 less today's ice, ICE-6G_C's at 0 ka, so today's sheets grow anew from their beds as the sim's do;
+// the plate under the ice a uniform 50 km thick: its bend moves the ground the ice leaves, not where the ice is) ──
+const bedE = Float32Array.from(z, (v, c) => v - (I6.thickNowKm ? I6.thickNowKm[c] : 0)), tg = performance.now();
+const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {} }, F);
+const simMesh = buildSimMesh(40000, MESH_SEED), zi = bedE.slice();
+const LIA = lastIceAge({ mesh, z: zi, lat, lon, warmSl, rain, grid: new LatLonGrid(0.25), cellKm2, seed: 1, soft: null, land, simMesh, teSim: new Float32Array(simMesh.numCells).fill(50), sheet: GS }, F).ice;
+const iceAgeS = (performance.now() - tg) / 1000;
 
 // ── today's climate: a positive-degree-day mass balance, and the climate's own ice sheets ──
 const SIG = 5, erf = v => { const t = 1 / (1 + 0.3275911 * Math.abs(v)), y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-v * v); return v >= 0 ? y : -y; };
@@ -117,6 +121,15 @@ const Mkm2 = (mask, f) => { let s = 0; for (let c = 0; c < n; c++) if (mask[c] &
 const both = (a, b, f) => { let s = 0; for (let c = 0; c < n; c++) if (a[c] && b[c] && f(lat[c], lon[c])) s++; return s * cellKm2 / 1e6; };
 
 section('the ice age on Earth\'s ground and climate (finish-ice.js) against ICE-6G_C at 21 ka');
+{
+    for (const r of GS.rounds) console.log(`  round at ${r.epochKyr} ka, ${r.kyr} kyr (${r.steps} steps, ${(r.ms / 1000).toFixed(1)} s): ice ${r.iceMkm2.toFixed(1)} Mkm², ${r.iceMkm3.toFixed(1)} M km³, sea ${r.seaM.toFixed(0)} m`);
+    // (today's ice as the sea's: its volume, ρ_i/ρ_sea of it over today's sea — the LGM's drop is against today's sea, which
+    // already lacks it)
+    let today = 0, seaKm2 = 0; const o = worldOcean(mesh, bedE, 0).ocean;
+    for (let c = 0; c < n; c++) { today += (I6.thickNowKm ? I6.thickNowKm[c] : 0) * cellKm2; if (o[c]) seaKm2 += cellKm2; }
+    const todayM = -1000 * today * (910 / 1028) / seaKm2, drop = 1000 * GS.seaKm - todayM;
+    report('the glacial maximum\'s sea, against today\'s', drop, { earth: [-135, -115], unit: ' m', digits: 0, source: 'LGM eustatic sea level −120 to −134 m (Clark et al. 2009; Lambeck et al. 2014)', detail: `the ice's own drop ${(1000 * GS.seaKm).toFixed(0)} m from an ice-free Earth; today's ice ${todayM.toFixed(0)} m of it (${(today / 1e6).toFixed(1)} M km³); ${GS.rounds.length} rounds in ${iceAgeS.toFixed(1)} s` });
+}
 for (const [name, f] of REGIONS) {
     const sim = Mkm2(LIA, f), lgm = Mkm2(I6.lgm, f), hit = both(LIA, I6.lgm, f), [earth, source] = EARTH_RANGE[name] ?? [null, ''];
     report(`${name}: the ice age's ice`, sim, { earth, unit: ' Mkm²', source, detail: `ICE-6G_C 21 ka ${lgm.toFixed(2)} Mkm²; of it covered ${lgm > 0 ? (100 * hit / lgm).toFixed(0) : '–'} %; of the ice age's, outside ICE-6G_C's ${sim > 0 ? (100 * (sim - hit) / sim).toFixed(0) : '–'} %` });

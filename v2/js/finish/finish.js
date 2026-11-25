@@ -11,7 +11,7 @@ import { LatLonGrid } from './finish-grid.js';
 import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
 import { closedBasins, joinOpenSeas } from './finish-basins.js';
 import { depositSediment } from './finish-sediment.js';
-import { lastIceAge } from './finish-ice.js';
+import { lastIceAge, glacialSheets } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
 import { coastWork, tidalInlets } from './finish-coast.js';
 import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
@@ -458,7 +458,10 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // ── F3: the last ice age ──
     onStage('ice age');
     const grid = new LatLonGrid(0.25);
-    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet, land: climateLand,
+    // (its sheets, grown under a glacial epoch's climate on the ground as it stands: finish-ice.js glacialSheets — the GPU's)
+    const sheet = await glacialSheets({ device, mesh, z: C.z, climateOptions }, F);
+    stats.iceAge = { seaM: Math.round(1000 * sheet.seaKm), rounds: sheet.rounds, ms: sheet.ms };
+    const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet, land: climateLand, sheet,
         simMesh, teSim: teSim ?? elasticThicknessKm(frame, simMesh) }, F);       // (the ice's weight on the plate: finish-ice.js)
     forgetEdgeKm(mesh);
     stats.iceKm2 = I.iceKm2; stats.iceSheets = I.sheets;

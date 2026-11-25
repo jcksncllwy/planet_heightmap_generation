@@ -33,12 +33,15 @@ export function earthSurfaceKm(mesh, { terrain = false } = {}) {
 }
 
 /** Earth's ice on the terrain mesh of EARTH_ICE_MESH cells (make-earth-ice.mjs): { lgm, now } (Uint8Array, 1 under ICE-6G_C's
- *  ice at 21 ka / 0 ka), or { error } when the artifact is missing or its mesh has changed. */
+ *  ice at 21 ka / 0 ka) and thickNowKm (today's ice's thickness, km; null in an older artifact), or { error } when the artifact is missing or its mesh has changed. */
 export function earthIce(mesh) {
     const m = JSON.parse(fs.readFileSync(path.join(EARTH_SURFACE_DIR, 'earth-surface.json'), 'utf8')).ice;
     if (!m || m.numCells !== mesh.numCells) return { error: `no ice artifact for ${mesh.numCells} cells (run tools/make-earth-ice.mjs)` };
     const fp = meshFingerprint(mesh);
     if (fp !== m.fingerprint) return { error: `mesh changed (${fp} vs ${m.fingerprint}): re-run tools/make-earth-ice.mjs` };
     const b = fs.readFileSync(path.join(EARTH_SURFACE_DIR, m.file));
-    return { lgm: Uint8Array.from(b, v => v & 1), now: Uint8Array.from(b, v => v >> 1 & 1), source: m.source };
+    // (today's ice's thickness, km, where the artifact has it: ICE-6G_C's surface over its bed at 0 ka)
+    let thickNowKm = null;
+    if (m.thickFile && fs.existsSync(path.join(EARTH_SURFACE_DIR, m.thickFile))) { const t = fs.readFileSync(path.join(EARTH_SURFACE_DIR, m.thickFile)), i16 = new Int16Array(t.buffer, t.byteOffset, t.byteLength / 2); thickNowKm = Float32Array.from(i16, v => v / 1000); }
+    return { lgm: Uint8Array.from(b, v => v & 1), now: Uint8Array.from(b, v => v >> 1 & 1), thickNowKm, source: m.source };
 }

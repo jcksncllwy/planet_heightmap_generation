@@ -68,21 +68,23 @@ export const FINISH = {
     deltaTopKm: 0.004,          // a delta plain stands this high
     deltaMaxDepthKm: 0.15,      // …and grows only over the shelf
 
-    // ── F3: the last ice age, Earth-like ──
-    iceColdEqC: 3.5,            // colder than now at the equator…
-    iceColdPoleC: 16,           // …and at the poles (polar amplification: ~ (|lat|/90)^1.5 between)
-    iceDrier: 0.3,              // precipitation lower by up to this share toward the poles
-    iceSeaDropKm: TERRAIN.iceSeaDropKm,   // the sea ~120 m lower: shelves bare, ice grounded on them (terrain-config.js)
+    // ── F3: the last ice age: its sheets grown under a glacial epoch's climate (finish-ice.js glacialSheets; the ice's flow and
+    // balance, gpu/ice-sheet.js and gpu/ice-balance.js; the sea lowered by the ice's own volume) ──
+    iceMeshCells: 160000,       // the ice's mesh (~55 km): paleo ice-sheet models run at 20–100 km (Abe-Ouchi et al. 2013 1°;
+                                // Ganopolski et al. 2010 ~40 km; PMIP4 ice sheets 0.5–1°, Ivanovic et al. 2016)
+    iceInceptionKyr: 116,       // the inception's epoch of the orbit's cycle and the air's CO2: Earth's last glacial inception,
+                                // the northern summer's sunlight lowest (Berger 1978; Calov et al. 2005) — the glacial branch
+    iceMaxKyr: 21,              // the glacial maximum's epoch (the LGM: Clark et al. 2009, 26.5–19 ka; PMIP's 21 ka)
+    iceRounds: 3,               // climate–ice rounds at the maximum (after one at the inception)…
+    iceRoundKyr: 10,            // …each this long: a sheet's response time to its balance, ~5–10 kyr at 2–3 km thick and
+                                // 0.1–0.3 m/a (Jóhannesson et al. 1989: H/|b_terminus|; Cuffey & Paterson 2010 §11.5)
+    iceBalanceEveryYr: 100,     // the balance recomputed from the ice's surface this often within a round (its height
+                                // feedback: a 3 km sheet rises ~0.3 m a year at most, ~2 cm of lapse a century)
     // the drowned valleys' fill since the sea rose (finish-erode.js bayheadFill): the rivers' load laid from each valley's head
     // for this long. Modern deltas began ~8.5–6.5 ka, when the postglacial rise slowed (Stanley & Warne 1994 Science 265, 228);
     // the valleys drowned deepest earliest, from ~11 ka (Dalrymple et al. 1992's transgressive fill): ~8 kyr. 0: off
     bayheadFillKyr: 8,
     carveSeaDropKm: TERRAIN.carveSeaDropKm, // the rivers' base level: the glacial cycle's time-weighted mean sea, ~53 m lower (terrain-config.js)
-    iceGroundedKm: 0.4,         // ice grounded on the sea floor down to this depth where it spread from land
-    iceMarginC: [2, 6],         // ice flows past its snowline into summers this much warmer: a glacier's tongue … an ice sheet's lobe
-    iceSheetKm2: [3e4, 1e6],    // (by how big the snowfield it flows from is)
-    iceNyeKm: 0.015,            // ice thickness √(iceNyeKm · distance to the margin), km (a plastic ice sheet: ~3.9 km at 1000 km)
-    iceMaxKm: 4.5,
     troughKm: 0.6,              // deepest trough a glacier cuts (at the largest ice flux; 1.1 was too deep — developer)…
     troughFluxKm2: [2e3, 2e5],  // …from its snowfield's area
     troughWidthKm: [3, 14],     // a trough's half-width, small glacier → ice stream
