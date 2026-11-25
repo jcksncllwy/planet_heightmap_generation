@@ -62,7 +62,7 @@ for (const [seed, time] of MOMENTS) {
     const simMesh = buildSimMesh(SIM, MESH_SEED), n = simMesh.numCells, a = AREA / n;
     const m = landMask(frame, simMesh, H), sl = m.sl, z = surfaceKm(frame, simMesh, H, new Float32Array(n), sl.swellKm);
     const P = pourOcean(simMesh, z, H.waterInventory * EARTH_OCEAN_KM3, null, { fromOcean: true });
-    const seaRef = sl.seaRefKm;                                  // (the floor's swell against the mantle under its young floor: sea-level.js youngFloorSwellKm)
+    const seaRef = sl.seaRefKm;                                  // (the floor's swell against the mantle under a dispersed world's young floor: sea-level.js seaFloorRefKm)
     // V(0): the room under the datum the ocean reaches at the datum (spill < 0), and who holds it
     const kinds = {}, add = (k, w) => { const r = kinds[k] ??= { cells: 0, km3: 0 }; r.cells++; r.km3 += -z[w] * a; };
     // the ocean crust's mean depth below the datum, split: −z = gdh1(age) − sediment (the pelagic drape and the rivers' rock, loaded) − swell − lip − fill

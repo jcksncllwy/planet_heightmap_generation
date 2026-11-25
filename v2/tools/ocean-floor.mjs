@@ -21,7 +21,7 @@ import { simulateCached } from './lib/history-cache.mjs';
 import { pageWorld, MESH_SEED, DEFAULT_CONT } from './lib/moment-frame.mjs';
 import { FRAME_FIELDS } from '../js/terrain/terrain-pool.js';
 import { CrustType, VolcanicType } from '../js/tectonics/model/crust.js';
-import { mantleWarmth, youngFloorSwellKm } from '../js/terrain/sea-level.js';
+import { seaFloorRefKm } from '../js/terrain/sea-level.js';
 import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { seaDepthKm, seaFilledUp, SEDIMENT_LOAD_FACTOR, LAND_SEDIMENT_LOAD_FACTOR } from '../js/tectonics/measure.js';
 import { surfaceKm, pourOcean, EARTH_OCEAN_KM3 } from '../js/tectonics/ocean/inventory.js';
@@ -48,7 +48,7 @@ for (const seed of seeds) {
         if (f.time < 100) return;
         const fr = Object.fromEntries(FRAME_FIELDS.map(k => [k, f[k]]));
         surfaceKm(fr, simMesh, H, z);
-        const heat = mantleWarmth(fr, simMesh, H), seaRef = youngFloorSwellKm(fr, Float32Array.from(heat, h => H.mantleSwellKm * h));
+        const seaRef = seaFloorRefKm(H);
         const P = pourOcean(simMesh, z, EARTH_OCEAN_KM3, scratch); scratch = P.scratch;
         let N = 0, ownerless = 0, sZ = 0, sAge = 0, sLaw = 0, sFill = 0, sSwell = 0, sLip = 0, sBasin = 0, sG = 0, sP = 0, old = 0, sRise = 0, riseVol = 0, hasRise = !!f.riseKm3;
         const cellKm2 = 4 * Math.PI * 6371 * 6371 / n;

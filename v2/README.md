@@ -788,10 +788,14 @@ ages — 0.31 km of it the sediment's load, 0.23 km broad swells (GDH1's own fit
   (`trenchPelagicKmPerMyr` is gone; the rivers' rise and enclosed seas' fill lie on top of the drape).
 - **The swell against the young floor's mantle.** GDH1 is the floor over the mantle its ridges stand on: Earth's crests
   sit on it (< 4 Myr, > 300 km from land: 3.08 km observed against GDH1's 3.12). So the sea floor and the island arcs
-  on it stand on `mantleSwellKm` × (heat − the heat under the frame's < 10 Myr floor) (`youngFloorSwellKm`, carried as
-  `sl.seaRefKm`): the residual dynamic topography only. `mantleSwellSeaRef` (a fixed 0.26, the dispersed ocean's mean)
-  is gone. A swell counted from fully cooled mantle lifted the crests ~0.25 km above Earth's, because the history's heat
-  (the continents' insulation, spread under the ocean) is nearly flat with the floor's age.
+  on it stand on `mantleSwellKm` × (heat − `youngFloorHeatRef`) (`seaFloorRefKm`, carried as `sl.seaRefKm`): the
+  residual dynamic topography only, against the heat under a dispersed world's young floor (0.30: 0.29–0.32 by seed over
+  the dispersed frames, as `mantleSwellLandRef` is measured). A swell counted from fully cooled mantle lifted the crests
+  ~0.25 km above Earth's. From 2026-11-12 to 2026-11-25 the reference was the heat under each frame's own young floor
+  (`youngFloorSwellKm`, deleted): a supercontinent's first rift opens on its kept heat (0.6–0.8), so the reference jumped
+  +0.6 km at ~10 Myr, the old ocean's floor sank with it and the sea fell ~0.5 km — a lowstand through the breakup where
+  Earth had its Cretaceous highstand (lane startsea). Fixed, the breakup's young ridges stand high on the warm mantle and
+  the sea rises against them.
 - **Pre-history ocean** (formedAt < 0) is 100 Myr old in the pour and, now, in the drawn floor (`records.js`). Read as
   time − formedAt it was 780+ Myr old under the drape and stood above the pour's ground (check-waterbooks).
 

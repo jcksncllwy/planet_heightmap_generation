@@ -23,13 +23,19 @@
 // All of it is read from the frame (the history's mantleHeat, crust ages and sea fill): the history is unchanged.
 // Heights are calibrated against today's sea — a dispersed world's — so each part is measured from what a dispersed
 // world shows on average (terrain-config.js mantleSwellLandRef, seaHeatToday, seaDepthRefKm): today's land stands
-// where it does with today's mantle under it, and today's sea is at 0. The sea floor is not: its depth–age law (GDH1,
+// where it does with today's mantle under it, and today's sea is at 0. The sea floor too: its depth–age law (GDH1,
 // tectonics/measure.js) is the floor over the mantle its ridges stand on — Earth's crests sit on it — so its swell counts
-// from the heat under the frame's young floor (youngFloorSwellKm: the residual dynamic topography only). Earth's floor
-// rises over GDH1 as it ages (+0.11 km at 0–10 Myr to +0.45 at 120–140: superswells, plume swells; lane sealevel), which
-// the history's heat, nearly flat with the floor's age, does not make: that level is missing physics, not offset. Until
-// 2026-11-12 the swell counted from the dispersed sea's mean heat (mantleSwellSeaRef 0.26); lane sealevel's first pass
-// counted it from fully cooled mantle, which lifted the crests ~0.25 km above Earth's.
+// from the heat under a dispersed world's young floor (terrain-config.js youngFloorHeatRef: the residual dynamic
+// topography only), a fixed datum as the land's is. A ridge that opens on warmer mantle — a supercontinent's rift, on the
+// heat it kept in — stands above GDH1, and the old ocean's floor does not move when it opens. Earth's floor rises over
+// GDH1 as it ages (+0.11 km at 0–10 Myr to +0.45 at 120–140: superswells, plume swells; lane sealevel), which the
+// history's heat, nearly flat with the floor's age, does not make: that level is missing physics, not offset.
+// History of the reference: until 2026-11-12 the dispersed sea's mean heat (mantleSwellSeaRef 0.26); lane sealevel's
+// first pass fully cooled mantle (crests ~0.25 km above Earth's); 2026-11-12 to 2026-11-25 the heat under THIS frame's
+// young floor (youngFloorSwellKm), a datum that moved with where the ridges were: the first rift of a supercontinent opens
+// on its hot mantle (0.6–0.8), so the reference jumped +0.6 km at ~10 Myr and dropped the whole old ocean with it — the
+// sea fell ~0.5 km at the breakup, its lowstand held ~150 Myr, where Earth's breakup brought the Cretaceous highstand
+// (lane startsea, sessrumnir's ruling 2026-11-25).
 
 import { CrustType } from '../tectonics/model/crust.js';
 import { filledSeaDepthKm, seaDepthKm, SEDIMENT_LOAD_FACTOR } from '../tectonics/measure.js';
@@ -192,7 +198,7 @@ function coarseGraph(mesh) {
  *     stands at is read from it there (synthesize.js: interpolated at the point itself, not through the land's corners, so
  *     the swell has no cell-scale steps), less the reference for its side (liftRefKm): continental crust against the heat
  *     a dispersed world's continents stand on (its platform is today's), the sea floor — and an island arc on it — against
- *     the heat under the frame's young floor (sl.seaRefKm: youngFloorSwellKm; GDH1 is the ridges' floor);
+ *     the heat under a dispersed world's young floor (sl.seaRefKm: seaFloorRefKm; GDH1 is the ridges' floor);
  *   · seaKm: how far the sea stands above today's datum, reckoned (no water volume is kept here; the poured sea of
  *     waterInventory > 0, land-mask.js pourOcean, replaces it): the swell's
  *     mean over the sea floor (mantleSwellKm × (the ocean's mean heat − today's, seaHeatToday)) and the floor's mean depth's
@@ -234,7 +240,7 @@ function reckonSea(frame, simMesh, cfg, isLand, H, swellKm) {
     }
     heatSea /= Math.max(1, sea); depth /= Math.max(1, sea); heatLand /= Math.max(1, land);
     const swellSeaKm = A * (heatSea - cfg.seaHeatToday), ridgeSeaKm = cfg.seaDepthRefKm - depth;
-    return { swellKm, seaRefKm: youngFloorSwellKm(frame, swellKm), seaKm: swellSeaKm + (cfg.seaLevelFloorAge > 0 ? ridgeSeaKm : 0), swellSeaKm, ridgeSeaKm, heatLand, heatSea, depthKm: depth };
+    return { swellKm, seaRefKm: seaFloorRefKm(cfg), seaKm: swellSeaKm + (cfg.seaLevelFloorAge > 0 ? ridgeSeaKm : 0), swellSeaKm, ridgeSeaKm, heatLand, heatSea, depthKm: depth };
 }
 
 /**
@@ -249,33 +255,18 @@ export function liftRefKm(cfg, arcShare, seaRefKm = 0) {
 }
 
 /**
- * The sea floor's swell reference (km): the mantle's swell under this frame's young floor (< YOUNG_FLOOR_MYR old).
- * GDH1 is the floor's depth over the mantle its ridges stand on — Earth's crests sit on it (ridge < 4 Myr, > 300 km
- * from land: 3.08 km observed against GDH1's 3.12, lane sealevel earth-floor-p8a.py; the residual over GDH1 and its
- * sediment is +0.11 km at 0–10 Myr) — so the floor stands on its swell against that mantle's: the residual dynamic
- * topography only, A × (heat − heat under the young floor) (sessrumnir's ruling, 2026-11-12). A swell counted from fully
- * cooled mantle (sealevel's first pass) lifted the crests ~0.25 km above Earth's (3.10–3.24 km at 0–20 Myr against
- * Earth's 3.42), because the history's heat — the continents' insulation, spread under the ocean — is nearly flat with
- * the floor's age. Earth's residual grows with age instead (+0.11 at 0–10 Myr to +0.45 at 120–140: superswells and plume
- * swells on old floor, the South Pacific +0.52), which the model has no process for: the level it leaves out.
- * Without young floor (a frame with no ridge), the mean over all ocean floor.
+ * The sea floor's swell reference (km): the mantle's swell under a dispersed world's young floor, mantleSwellKm ×
+ * youngFloorHeatRef (terrain-config.js; measured as mantleSwellLandRef is). GDH1 is the floor's depth over the mantle its
+ * ridges stand on — Earth's crests sit on it (ridge < 4 Myr, > 300 km from land: 3.08 km observed against GDH1's 3.12;
+ * lane sealevel earth-floor-p8a.py) — so the floor stands on its swell against that mantle's: the residual dynamic
+ * topography only. Fixed, like the land's: the floor's depth does not move with where the ridges happen to be.
  */
-export function youngFloorSwellKm(frame, swellKm) {
-    const n = swellKm.length, time = frame.time ?? 0;
-    let s = 0, k = 0, sAll = 0, kAll = 0;
-    for (let w = 0; w < n; w++) {
-        if (frame.owner[w] < 0 || frame.type[w] !== CrustType.OCEAN) continue;
-        sAll += swellKm[w]; kAll++;
-        if (frame.formedAt[w] >= 0 && time - frame.formedAt[w] < YOUNG_FLOOR_MYR) { s += swellKm[w]; k++; }
-    }
-    return k ? s / k : kAll ? sAll / kAll : 0;
-}
-const YOUNG_FLOOR_MYR = 10;
+export const seaFloorRefKm = cfg => cfg.mantleSwellKm * cfg.youngFloorHeatRef;
 
 /**
  * A sea floor its sediment fills that the mantle's swell holds up at or above the sea: dry land (records.js deriveRecords;
  * the history's rivers: terrain/land-mask.js landMask) — the floor of seaDepthKm(age), shallowed by its fill (Airy: SEDIMENT_LOAD_FACTOR),
- * raised by the swell (against the young floor's mantle, sl.seaRefKm), against the sea's level.
+ * raised by the swell (against the young floor's mantle, sl.seaRefKm: seaFloorRefKm), against the sea's level.
  */
 export function liftedDry(frame, w, sl, cfg) {
     return frame.owner[w] >= 0 && frame.type[w] === CrustType.OCEAN && frame.seaFillKm?.[w] > 0 && frame.formedAt[w] >= 0

@@ -15,7 +15,7 @@
 
 import { CrustType, CrustFlag, VolcanicType } from '../model/crust.js';
 import { columnModel, filledSeaDepthKm, arcSurfaceKm, ARC_ROOT_SHARE, LAND_SEDIMENT_LOAD_FACTOR, SEDIMENT_LOAD_FACTOR } from '../measure.js';
-import { mantleWarmth, youngFloorSwellKm } from '../../terrain/sea-level.js';
+import { mantleWarmth, seaFloorRefKm } from '../../terrain/sea-level.js';
 import { MinHeap } from '../../core/min-heap.js';
 
 /** Earth's ocean, km³: 1.332e9 (Charette & Smith 2010, Oceanography 23(2): 112–114, from ETOPO1/Eakins & Sharman 2010's
@@ -38,8 +38,8 @@ const R = 6371;
 export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numCells), swellKm = null, seaRefKm = null, only = null) {
     const n = simMesh.numCells, C = columnModel(H), heat = swellKm ? null : mantleWarmth(frame, simMesh, H), time = frame.time;
     const landRef = H.mantleSwellKm * H.mantleSwellLandRef;
-    // (the sea floor and an arc: the swell against the mantle under the young floor, terrain/sea-level.js youngFloorSwellKm)
-    const seaRef = seaRefKm ?? youngFloorSwellKm(frame, swellKm ?? Float32Array.from(heat, h => H.mantleSwellKm * h));
+    // (the sea floor and an arc: the swell against the mantle under a dispersed world's young floor, terrain/sea-level.js seaFloorRefKm)
+    const seaRef = seaRefKm ?? seaFloorRefKm(H);
     for (let w = 0; w < n; w++) {
         if (only && !only(w)) continue;
         const swell = swellKm ? swellKm[w] : H.mantleSwellKm * heat[w], o = frame.owner[w], type = frame.type[w];

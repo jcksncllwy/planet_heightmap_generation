@@ -239,8 +239,15 @@ export const TERRAIN = {
     seaHeatToday: 0.26,         // …and its sea floor's: 0.246–0.265 by seed (0.18 under a supercontinent: the ocean's mantle
                                 // cools while the land keeps its heat) — the RECKONED level's datum only (waterInventory 0:
                                 // the sea moves by the sea floor's swell against today's). The floor itself stands on its
-                                // swell against the mantle under the frame's young floor (sea-level.js youngFloorSwellKm;
-                                // until 2026-11-12, mantleSwellSeaRef, it stood against this heat)
+                                // swell against youngFloorHeatRef (below; until 2026-11-12, mantleSwellSeaRef, against this)
+    youngFloorHeatRef: 0.30,    // …and the heat under its young floor (< 10 Myr), where GDH1's crests stand: the sea floor's
+                                // and an arc's swell reference (sea-level.js seaFloorRefKm). Measured as mantleSwellLandRef
+                                // is, over the cycle's dispersed frames 300–1000 Myr (cont 41, main 42b4650; per frame the
+                                // mean heat, mantleWarmth, under its young floor): 0.315 / 0.297 / 0.303 / 0.293 on seeds
+                                // 626225 / 777 / 12345 / 243751 (67–71 frames each; per-frame p10–p90 0.22–0.39); late
+                                // dispersal alone 0.30–0.38, under a supercontinent 0.24–0.29, while a supercontinent breaks
+                                // up (0–150 Myr) 0.63–0.67 — the rift on its kept heat (lane startsea). Fixed, as the land's
+                                // is: until 2026-11-25 it was the frame's own young floor's, which jumped at each breakup
     seaDepthRefKm: 4.55,        // …and the sea floor's mean depth (measure.js seaDepthKm, less the sediment of sealed seas):
                                 // 4.45–4.61 by seed (4.60–4.73 under a supercontinent: its ocean is old). The ocean's water
                                 // is the volume that holds the sea at today's datum over a dispersed world's floor
