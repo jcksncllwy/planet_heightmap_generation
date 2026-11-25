@@ -104,7 +104,7 @@ export function flowCrust(world, dt, H) {
     let moved = 0, iters = 0;
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, rootKm, upliftKm, baseKm, basinFillKm, oroType, oroLast, beltReach } = crust, heat = heatOf(plate);
+        const crust = plate.crust, { mask, type, rootKm, upliftKm, basinFillKm, oroType, oroLast, beltReach } = crust, heat = heatOf(plate);
         // the plate's continental cells, and each one's channel conductance and ground height
         const cells = [];
         for (let c = 0; c < mask.length; c++) if (mask[c] && (type[c] === CrustType.CONTINENT || type[c] === CrustType.CRATON)) cells.push(c);
@@ -115,7 +115,7 @@ export function flowCrust(world, dt, H) {
         for (let i = 0; i < m; i++) {
             const c = cells[i], t = type[c];
             loc[c] = i + 1;
-            const km = crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c]);
+            const km = crustThicknessKm(H, t, rootKm[c], upliftKm[c]);
             const qm = (config.plateHeatMantleFlow + heatFlowRise(heat[c], config)) * (t === CrustType.CRATON ? lid : 1);
             let h = channelKm(km, qm, config);
             const h0 = C.crust[t];
@@ -127,7 +127,7 @@ export function flowCrust(world, dt, H) {
             K[i] = kPerKm3 * h * h * h;
             hc[i] = h; kmc[i] = km;
             sl[i] = C.slope[t];
-            s[i] = C.ref[t] + C.slope[t] * rootKm[c] + Math.max(0, upliftKm[c]) + baseKm[c] + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
+            s[i] = C.ref[t] + C.slope[t] * rootKm[c] + Math.max(0, upliftKm[c]) + basinFillKm[c] / LAND_SEDIMENT_LOAD_FACTOR;
         }
         // edges (CSR): the channel's conductance between two cells in series, its harmonic mean where both have a channel. At
         // the channel's FRONT — downhill from a channel, ordinary continent with none of its own (crust too thin or too cold to

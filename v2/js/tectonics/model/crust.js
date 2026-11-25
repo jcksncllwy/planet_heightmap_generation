@@ -53,7 +53,7 @@ export const CrustFlag = Object.freeze({
 // added to the constructor must be added here too (check-invariants.mjs fails if one is missing).
 export const CELL_FIELDS = Object.freeze(['type', 'flags', 'formedAt', 'terrane', 'slabKm', 'wingKm', 'oroType', 'oroWork', 'oroStart',
     'oroLast', 'thickKm', 'beltU', 'beltReach', 'beltAt', 'beltSide', 'beltShear', 'prevType', 'prevLast', 'prevU', 'prevReach', 'prevSide',
-    'prevShear', 'rootKm', 'upliftKm', 'baseKm', 'rugged', 'prevRugged', 'volcWornKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'erodeKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
+    'prevShear', 'rootKm', 'upliftKm', 'rugged', 'prevRugged', 'volcWornKm', 'seaFillKm', 'basinFillKm', 'shelfKm3', 'riseKm3', 'wornKm', 'tectKm', 'tectRefKm', 'tectAt', 'erodeKm', 'volcType', 'volcAt', 'volcKm', 'volcSource', 'fzU', 'arcKm', 'arcAt',
     'geoFlags', 'coverKm', 'coverMaxKm', 'coverMaxAt', 'coverCarb', 'coverSalt', 'coverCoal', 'coverOrganic', 'coverFedKm', 'exhumKm', 'unroofKm', 'arcMyr', 'riftAt', 'riftThin', 'riftThinAt', 'damage', 'heldKm']);
 
 export class CrustRaster {
@@ -94,7 +94,6 @@ export class CrustRaster {
         // Heights as evolving state (step/heights.js; Phase 8): records only, the history never reads them
         this.rootKm = new Float32Array(numCells);      // the crust's thickness less its kind's as formed (km; < 0 thinned by erosion): its column stands on it (measure.js columnModel)
         this.upliftKm = new Float32Array(numCells);    // broad relief built by belts and worn by erosion (km)
-        this.baseKm = new Float32Array(numCells);      // the start world's own swells, worn by erosion (km)
         this.rugged = new Float32Array(numCells);      // how high the current belt's crests stand (km)
         this.prevRugged = new Float32Array(numCells);  // …and the overprinted belt's
         this.volcWornKm = new Float32Array(numCells);  // how far a hotspot volcano has worn down since it last erupted (km)

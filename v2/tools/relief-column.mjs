@@ -1,5 +1,5 @@
 // Why the land stands high (lane reliefcheck, 2026-11-12): the platform's height on the sim grid split into its parts —
-// the column as formed (CM.ref by kind), its thickening (slope × rootKm), the start world's swells as worn (baseKm), the
+// the column as formed (CM.ref by kind), its thickening (slope × rootKm), the start world's swells (baseKm: retired 2026-11-25, always 0 now), the
 // rivers' basin fill (basinFillKm / LAND_SEDIMENT_LOAD_FACTOR), the mantle's swell against the land's reference, and the
 // sea's level — as terrain/land-mask.js crustColumnKm and terrain/records.js deriveRecords add them. Land cells only
 // (land-mask.js landMask), equal-area sim cells. Reports the quantiles of each part and of the platform above the sea, and the sea floor's age.
@@ -28,7 +28,7 @@ for (let w = 0; w < simMesh.numCells; w++) {
     const t = frame.type[w], k = t === CrustType.OCEAN ? CrustType.CONTINENT : t;
     kinds[t] = (kinds[t] ?? 0) + 1;
     const ref = t === CrustType.ARC ? NaN : CM.ref[k], root = t === CrustType.ARC ? NaN : CM.slope[k] * frame.rootKm[w];
-    const base = frame.baseKm[w], fill = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR, swell = sl.swellKm[w] - landRef;
+    const base = 0, fill = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR, swell = sl.swellKm[w] - landRef;
     parts.ref.push(ref); parts.root.push(root); parts.base.push(base); parts.fill.push(fill); parts.swell.push(swell); parts.rootKm.push(frame.rootKm[w]);
     parts.platformAboveSea.push(ref + root + base + fill + swell - sl.seaKm);
 }

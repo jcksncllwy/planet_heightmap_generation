@@ -88,10 +88,10 @@ function highGround(w) {
         const p = w.plates[w.owner[c]]; if (!p) continue;
         const k = w.ownerCell[c], cr = p.crust, t = cr.type[k];
         if (t !== CrustType.CONTINENT && t !== CrustType.CRATON) continue;
-        const s = C.ref[t] + C.slope[t] * cr.rootKm[k] + Math.max(0, cr.upliftKm[k]) + cr.baseKm[k];
+        const s = C.ref[t] + C.slope[t] * cr.rootKm[k] + Math.max(0, cr.upliftKm[k]);
         if (t === CrustType.CRATON) crat.push(s);
         if (s > 3) h3++; if (s > 4) h4++; if (s > 5) h5++; if (s > top) top = s;
-        th.push(crustThicknessKm(H, t, cr.rootKm[k], cr.upliftKm[k], cr.baseKm[k]));
+        th.push(crustThicknessKm(H, t, cr.rootKm[k], cr.upliftKm[k]));
     }
     th.sort((x, y) => x - y);
     crat.sort((x, y) => x - y);

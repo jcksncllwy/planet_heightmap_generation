@@ -256,7 +256,7 @@ export function placeFacts(state, lat, lon) {
     const plate = f.owner[w], type = f.type[w], H = b ? (b.terrainCfg ??= terrainConfig(b.heights)) : null;
     F.ground = plate < 0 ? null : {
         plate, crust: type, crustWords: CRUST_WORDS[type] ?? 'Crust', ageMyr: Math.max(0, f.time - f.formedAt[w]), terrane: f.terrane?.[w] ?? null,
-        thicknessKm: !H ? null : type === CrustType.OCEAN ? columnModel(H).crust[CrustType.OCEAN] : crustThicknessKm(H, type, f.rootKm?.[w] ?? 0, f.upliftKm?.[w] ?? 0, f.baseKm?.[w] ?? 0),
+        thicknessKm: !H ? null : type === CrustType.OCEAN ? columnModel(H).crust[CrustType.OCEAN] : crustThicknessKm(H, type, f.rootKm?.[w] ?? 0, f.upliftKm?.[w] ?? 0),
         setting: settingOf(f, w),
         belt: f.oroType?.[w] ? { kind: f.oroType[w], words: BELT_KIND[f.oroType[w]] ?? 'Mountain belt', startMyr: f.oroStart?.[w] || null, lastMyr: f.oroLast[w], active: f.time - f.oroLast[w] <= ACTIVE_MYR } : null,
         rift: (f.riftThin?.[w] ?? 0) > 0.02 ? { thinned: f.riftThin[w], atMyr: f.riftThinAt?.[w] || null } : null,

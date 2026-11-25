@@ -214,14 +214,9 @@ export const TERRAIN = {
     cratonGrainKm: 0.06,        // a grain of domes and keels (granite domes between greenstone belts), this high…
     cratonGrainScaleKm: 90,     // …its domes about this far apart (faded where the mesh cannot show them)
     platformNoiseKm: 0.16,      // broad basins and arches (the Michigan basin, the Ozark dome), 400–2000 km across
-    // The first continents are not flat (developer, 8b round 5: "start the baseline with some large noise … that can erode
-    // over time and direct rivers more consistently"): broad swells and the lowlands between them, a record of the crust
-    // (baseKm, step/heights.js) that rides with it, wears down like any relief and steers the history's rivers. Crust made
-    // later starts flat. (Changing these re-runs the history in the lab.)
-    baseReliefKm: 0.8,          // the swells stand up to this high at the start…
-    baseReliefScaleKm: 2500,    // …the largest this many km across (then halves and quarters of it)…
-                                // (they are crust — a broad swell is a thicker crust, Airy — and wear down with the whole land)
-    baseReliefCraton: 0.5,      // a shield rises this share as high (cold, thick and stiff: the flattest ground there is)
+    // (the start world's drawn swells, baseReliefKm/ScaleKm/Craton and crust.baseKm, are retired — lane startsea D, Jackson
+    // 2026-11-25: a noise field drawn up to 0.8 km on the first continents. Their broad relief is the mantle's swell under
+    // them, sea-level.js, and their columns; crust never had swells after the start)
     // the mantle's swell (terrain/sea-level.js): warm mantle under a lid of continent lifts the surface over it, and the
     // sea answers — its water a fixed volume (records.js; the history's mantleHeat, tectonics/step/hotspots.js)
     mantleSwellKm: 1.0,         // fully insulated mantle (heat 1) stands this much above fully cooled (heat 0): the African

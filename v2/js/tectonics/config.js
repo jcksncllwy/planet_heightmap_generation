@@ -810,8 +810,6 @@ export const TECTONICS = {
         beltExhumKm: [6, 16],       // …the older continental crust about the cratons (its Proterozoic mobile belts)
         platformCoverKm: 2.5,       // platform sediment over the old crust, at most (in its sags; over half of it)
         platformNoiseKm: 1500,      // the size of the sags and arches
-        platformLowGain: 1,         // the sags lean to the start world's lowlands (1 − its swells' height, heights.js seedBaseRelief):
-        platformLowMid: 0.9,        // the noise + this × (that − this)
     },
 };
 

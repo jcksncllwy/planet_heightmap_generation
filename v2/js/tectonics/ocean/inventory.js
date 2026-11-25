@@ -57,7 +57,7 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
             b = (frame.flags[w] & CrustFlag.MARGIN_ISLE) ? H.foreArcIsleKm : arcSurfaceKm(frame.arcKm[w], time - frame.arcAt[w]);
             full = b + C.slope[1] * ARC_ROOT_SHARE * Math.max(0, frame.rootKm[w]);
         } else { b = C.ref[type]; full = b + C.slope[type] * frame.rootKm[w]; }
-        full += frame.upliftKm[w] + frame.baseKm[w]
+        full += frame.upliftKm[w]
             + (frame.volcType[w] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, frame.volcKm[w]) - frame.volcWornKm[w]) : 0);
         const laid = (frame.basinFillKm?.[w] ?? 0) / LAND_SEDIMENT_LOAD_FACTOR     // (the history's erosion lowered the records themselves: no cut to take off, lane graded)
             + (type !== CrustType.ARC ? (frame.seaFillKm?.[w] ?? 0) / SEDIMENT_LOAD_FACTOR : 0);   // (a sea's fill on a continent, water-loaded: terrain/land-mask.js crustColumnKm)

@@ -72,7 +72,7 @@ for (const seed of seeds) {
             const t = fr.type[w];
             if (t !== CrustType.CONTINENT && t !== CrustType.CRATON) continue;
             simCont++; simLand++;
-            parts.col += C.ref[t]; parts.root += C.slope[t] * fr.rootKm[w]; parts.base += fr.baseKm[w]; parts.up += fr.upliftKm[w]; parts.fill += (fr.basinFillKm?.[w] ?? 0) / 4.125; parts.swell += sl.swellKm[w] - landRef - sl.seaKm;
+            parts.col += C.ref[t]; parts.root += C.slope[t] * fr.rootKm[w]; parts.up += fr.upliftKm[w]; parts.fill += (fr.basinFillKm?.[w] ?? 0) / 4.125; parts.swell += sl.swellKm[w] - landRef - sl.seaKm;
         }
         for (const k in parts) parts[k] /= Math.max(1, simLand);
         // (upScale: the belts' uplift on the land scaled the same way; crust the belts have worked stands that much lower)

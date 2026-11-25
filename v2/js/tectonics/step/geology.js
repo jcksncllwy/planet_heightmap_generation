@@ -39,7 +39,6 @@ import { GeoFlag } from '../model/geology.js';
 import { EventKind } from '../model/world.js';
 import { spreadKm } from '../../core/min-heap.js';
 import { FastNoise } from '../../core/fast-noise.js';
-import { heightsOf } from './heights.js';
 
 const R = 6371, DEG = 180 / Math.PI;
 const FORELAND_BELTS = new Set([OrogenyType.ANDEAN, OrogenyType.LARAMIDE, OrogenyType.URAL, OrogenyType.HIMALAYAN]);
@@ -100,9 +99,11 @@ export function thickenCover(crust, c, thickenedKm, time, G) {
 }
 
 /**
- * The start world's past (once, when the history starts, just after heights.js seedBaseRelief): its ancient crust already
+ * The start world's past (once, when the history starts): its ancient crust already
  * worn deep — a shield more than the mobile belts about it, each craton by its own amount — and over half of it under
- * platform sediment laid in old sags: its lowlands, between the swells (the make-up by the latitude it starts at). From a
+ * platform sediment laid in old sags (the make-up by the latitude it starts at). The sags are their own noise field;
+ * until 2026-11-25 they leaned to the lowlands between the start's drawn swells (heights.js seedBaseRelief, retired: lane
+ * startsea D) — the cover still lies where its sags are; no height reads it. From a
  * noise field and a hash of its own: no random stream is touched. A painted initial state: see the header.
  */
 export function seedGeology(world) {
@@ -110,8 +111,6 @@ export function seedGeology(world) {
     if (!G?.records) return;
     const { xyz, numCells: n } = world.mesh, noise = new FastNoise((world.seed ^ 0x6e01) >>> 0), F = R / G.platformNoiseKm;
     const ancientAt = -world.config.initialLandAgeMyr / 4, cellArea = 4 * Math.PI * R * R / n;
-    // (the start world's swells, seeded just before — heights.js seedBaseRelief — the platform's sediment lies in the lowlands, its uplands bare)
-    const H = heightsOf(world.config), baseRef = H.baseReliefKm > 0 ? H.baseReliefKm : 0;
     const book = world.geoBook ??= newBook();
     for (const plate of world.plates) {
         if (!plate.alive) continue;
@@ -124,8 +123,7 @@ export function seedGeology(world) {
             const h = hash01(world.seed, k.terrane[c]), wobble = 1 + 0.25 * noise.noise3D(wx * F * 3 + 5.1, wy * F * 3 + 1.7, wz * F * 3 + 9.3);
             k.exhumKm[c] = (range[0] + (range[1] - range[0]) * h) * wobble;
             const v = 1.6 * noise.fbm(wx * F + 3.7, wy * F + 0.4, wz * F + 6.2, 3, 0.5);
-            const low = baseRef > 0 ? 1 - Math.min(1, k.baseKm[c] / (baseRef * (craton ? H.baseReliefCraton : 1))) : NaN;
-            const sag = smooth(-0.1, 0.5, low === low ? v + G.platformLowGain * (low - G.platformLowMid) : v);
+            const sag = smooth(-0.1, 0.5, v);
             if (sag > 0) {
                 const lat = Math.abs(Math.asin(Math.max(-1, Math.min(1, wz)))) * DEG;
                 deposit(k, c, G.platformCoverKm * sag, 0.7 * warmShare(lat, G), 0.15 * aridShare(lat, G), 0.03 * wetShare(lat, G), 0.03, ancientAt, G);

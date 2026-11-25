@@ -301,7 +301,7 @@ export function lastDrainage() { return scratch; }
 let scratch = null;
 /** A blank view for viewOf, on n world cells. */
 export function newView(n) {
-    return { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n), flags: new Uint8Array(n), rootKm: new Float32Array(n), baseKm: new Float32Array(n), upliftKm: new Float32Array(n), basinFillKm: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n) };
+    return { time: 0, owner: null, mantleHeat: new Uint8Array(n), type: new Uint8Array(n), formedAt: new Float32Array(n), seaFillKm: new Float32Array(n), flags: new Uint8Array(n), rootKm: new Float32Array(n), upliftKm: new Float32Array(n), basinFillKm: new Float32Array(n), arcKm: new Float32Array(n), arcAt: new Float32Array(n) };
 }
 /** The world's own view of the crust and its mantle, as a frame carries them (tectonics/snapshot.js), on `view`: what the
  *  one mask (terrain/land-mask.js) reads; `ground`: also what inventory.js surfaceKm reads, unpoured too (a river step). @returns {Object} view */
@@ -315,16 +315,16 @@ export function viewOf(world, view, H, ground = false) {
     // (each plate's crust fields fetched once a call, not once a cell: the history asks for this view every step, sea-age.js
     // seaMaskNow — lane gpuerode M4; the same values copied)
     const P = plates.map(p => p.crust), field = k => P.map(cr => cr?.[k]);
-    const T = field('type'), FA = field('formedAt'), SF = field('seaFillKm'), FL = field('flags'), RO = field('rootKm'), BA = field('baseKm'), UP = field('upliftKm'), BF = field('basinFillKm'), AK = field('arcKm'), AT = field('arcAt');
+    const T = field('type'), FA = field('formedAt'), SF = field('seaFillKm'), FL = field('flags'), RO = field('rootKm'), UP = field('upliftKm'), BF = field('basinFillKm'), AK = field('arcKm'), AT = field('arcAt');
     const VT = pouring ? field('volcType') : null, VK = pouring ? field('volcKm') : null, VW = pouring ? field('volcWornKm') : null, RK = pouring ? field('riseKm3') : null;
-    const { type: vType, formedAt: vFormed, seaFillKm: vSea, flags: vFlags, rootKm: vRoot, baseKm: vBase, upliftKm: vUp, basinFillKm: vBasin, arcKm: vArc, arcAt: vArcAt, mantleHeat: vHeat } = view, heat = world.mantleHeat;
+    const { type: vType, formedAt: vFormed, seaFillKm: vSea, flags: vFlags, rootKm: vRoot, upliftKm: vUp, basinFillKm: vBasin, arcKm: vArc, arcAt: vArcAt, mantleHeat: vHeat } = view, heat = world.mantleHeat;
     for (let w = 0; w < n; w++) {
         const o = owner[w];
         vHeat[w] = Math.round(255 * heat[w]);
         if (o < 0) { vType[w] = CrustType.OCEAN; vFormed[w] = -1; vSea[w] = 0; continue; }       // (no plate: never land)
         const c = ownerCell[w], type = T[o][c];
         vType[w] = type; vFormed[w] = FA[o][c]; vSea[w] = SF[o][c];
-        vFlags[w] = FL[o][c]; vRoot[w] = RO[o][c]; vBase[w] = BA[o][c]; vUp[w] = UP[o][c]; vBasin[w] = BF[o][c];
+        vFlags[w] = FL[o][c]; vRoot[w] = RO[o][c]; vUp[w] = UP[o][c]; vBasin[w] = BF[o][c];
         if (type === CrustType.ARC) { vArc[w] = arcCrustKm(P[o], c, time, world.config); vArcAt[w] = AK[o][c] > 0 ? AT[o][c] : time; }
         if (pouring) { view.volcType[w] = VT[o][c]; view.volcKm[w] = VK[o][c]; view.volcWornKm[w] = VW[o][c]; view.riseKm3[w] = RK[o][c]; }
     }

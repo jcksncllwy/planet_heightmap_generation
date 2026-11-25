@@ -148,7 +148,7 @@ export function volcStep(prev, frame, mesh, H, { seed = 0, arcGross = ARC_GROSS,
         }
         return k + best;
     };
-    const crustKm = w => crustThicknessKm(H, frame.type[w], frame.rootKm[w], frame.upliftKm[w], frame.baseKm[w]);
+    const crustKm = w => crustThicknessKm(H, frame.type[w], frame.rootKm[w], frame.upliftKm[w]);
     const continental = w => frame.owner[w] >= 0 && (frame.type[w] === CrustType.CONTINENT || frame.type[w] === CrustType.CRATON);
 
     // ── rifts: decompression melt under the crust stretched in this window ──

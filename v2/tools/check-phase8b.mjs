@@ -222,23 +222,8 @@ section('rivers through the history');
         const a = riverSet(frames[i - 1]), b = riverSet(frames[i]);
         for (const key of b) { total++; const o = Math.floor(key / 1e6), c = key % 1e6; let hit = a.has(key); for (let k = mesh.adjOffset[c]; !hit && k < mesh.adjOffset[c + 1]; k++) hit = a.has(o * 1e6 + mesh.adjList[k]); if (hit) kept++; }
     }
-    // the first continents' swells (8b round 5) steer the rivers: early on, big rivers run in the lowlands between them
-    // (audit 2026-10-30: the "divides" are the cells too small to drain anything, and since the basin fill (tectonics/step/rivers.js)
-    // that included filled plains — 20–36 % of them, swell 0.04–0.07 km like the rivers there, and no divide. A filled plain has
-    // none, so the fill is left out; and the ratio is read over five histories, not one: the median 0.52 (0.43–0.57) with it left
-    // out, 0.66 (0.50–0.74) without, 0.55 before the fill. 0.6 is a picked bound on a mechanism, not an Earth figure: the swells
-    // are the sim's own and wear with time, the ratio staying under 1 at every time from 20 to 120 Myr)
-    const steer = (seed, fr) => {
-        const f = fr.find(g => g.time >= 50), big = [], divide = [], cellKm2 = 4 * Math.PI * 6371 ** 2 / mesh.numCells;
-        for (let w = 0; w < mesh.numCells; w++) { if (f.owner[w] < 0 || f.type[w] === 0) continue; if (f.riverKm2[w] >= 1e5) big.push(f.baseKm[w]); else if (f.riverKm2[w] < 3 * cellKm2 && !(f.basinFillKm[w] > 0)) divide.push(f.baseKm[w]); }
-        return { seed, time: f.time, big: big.length, ratio: mean(big) / mean(divide), under: mean(big), over: mean(divide) };
-    };
-    const own = steer(SEED, frames), others = (await Promise.all([1, 2, 777, 4242].map(async seed => {
-        const sc = TERRAIN_SCENES.find(s => s.id === 'history');
-        return steer(seed, (await simulateCached(sc.build(mesh, seed), { untilMyr: 50, drive: w => sc.drive(w), snapshotEveryMyr: 10 }, { drive: sc.drive })).frames);
-    }))), all = [own, ...others], ratios = all.map(r => r.ratio), mid = median(ratios);
-    check('the first continents’ swells steer the history’s rivers into the lowlands between them', all.every(r => r.big >= 100) && mid <= 0.6,
-        `at ${own.time} Myr over ${all.length} histories: the swells under big rivers (≥ 100,000 km²) ÷ at the unfilled divides, median ${mid.toFixed(2)} (${all.map(r => `${r.seed}: ${r.ratio.toFixed(2)}`).join(', ')}); ${SEED}: ${own.under.toFixed(2)} km under big rivers, ${own.over.toFixed(2)} km at the divides`);
+    // (the check that the first continents' drawn swells steer the rivers into the lowlands between them retired with the
+    // swells: lane startsea D, Jackson 2026-11-25)
     // (a floor against flicker only: large drainages persist for tens of Myr on Earth, though they reorganise — the Amazon reversed)
     check('the history’s big rivers do not flicker from frame to frame (≥ 30 % keep their courses over 10 Myr)', total > 1000 && kept / total >= 0.3, `${kept} of ${total} big-river crust cells (≥ 50,000 km²)`);
     report('big-river crust cells still carrying one 10 Myr later', 100 * kept / total, { unit: ' %', digits: 0, source: 'no Earth figure: large drainages persist for tens of Myr' });

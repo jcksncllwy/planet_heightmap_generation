@@ -578,23 +578,7 @@ section('flood basalts through time');
 // ── continents through a whole history ──
 section('continents through a whole history');
 const T640 = terrain(history.frame);
-{
-    // the first continents' swells (8b round 5): seeded when the history starts, worn down as it runs; crust made since is flat
-    const start = [], now = [], lastBase = history.frame.baseKm;
-    let seaCarries = 0;
-    for (let w = 0; w < mesh.numCells; w++) {
-        const a = history.first, b = history.frame;
-        if (a.owner[w] >= 0 && a.type[w] !== CrustType.OCEAN && a.type[w] !== CrustType.ARC) start.push(a.baseKm[w]);
-        if (b.owner[w] >= 0 && b.type[w] !== CrustType.OCEAN) now.push(lastBase[w]);
-        if ((a.owner[w] >= 0 && a.type[w] === CrustType.OCEAN && a.baseKm[w] !== 0) || (b.owner[w] >= 0 && b.type[w] === CrustType.OCEAN && lastBase[w] !== 0)) seaCarries++;
-    }
-    const top = TERRAIN.baseReliefKm;
-    // (the swells' shape is a chosen start, not a check: shown in the detail)
-    check('the swells are the continents’: no ocean cell carries any', seaCarries === 0,
-        `${seaCarries} ocean cells carry any; at the start the land's median ${median(start).toFixed(2)} km, 90th percentile ${quantile(start, 0.9).toFixed(2)} km (swells up to ${top} km)`);
-    check('the swells wear down as the history runs', mean(now) <= 0.5 * mean(start),
-        `mean over the land ${mean(start).toFixed(2)} km at the start, ${mean(now).toFixed(2)} km after ${history.frame.time} Myr`);
-}
+// (the first continents' drawn swells, and their two checks, are retired: lane startsea D, Jackson 2026-11-25)
 {
     const { rec, heightKm } = T640, f = history.frame, active = [], old = [], craton = [];
     for (let t = 0; t < T640.tm.numCells; t++) {

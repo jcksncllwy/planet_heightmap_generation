@@ -621,8 +621,10 @@ of the belt's own uplift; the phasor sum taken at the corners of the plate's ras
 carried to each point from its three corners by continuing each corner's wave — `stripeCarry` 0 sums every kernel at
 every point, the same look and ~30 % slower at 2.5M), ridge noise — simplex noise drawn out ~8× along the strike (read at the distance across the
 belt, fast, and the position along it, slow), so its highs and lows run with the range — and cones. The first
-continents are not flat: when the history starts they get broad swells (`baseKm`, up to `baseReliefKm`, half on
-shields) that wear down like the rest of the relief and steer the history's rivers into the lowlands between them. Belts come in two layers — the current one and the one it overprinted, at half
+continents' broad relief is the mantle's swell under them and their own columns. Their drawn start swells (`baseKm`, up
+to `baseReliefKm` 0.8 km) were retired on 2026-11-25 (lane startsea D, Jackson's ruling), with their checks (8a "the
+swells are the continents'", "…wear down", 8b "…steer the history's rivers") and the platform cover's lean to their
+lowlands (`platformLowGain`). Belts come in two layers — the current one and the one it overprinted, at half
 strength with its own grain — and each corner's share is scaled by noise of its own, so kinds of ground interfinger.
 Every erosion clock runs faster where it rains more — the rain the history's own climate holds (climate-sample.js;
 once a zonal table by latitude, retired by lane rainland), with temperate ice keeping glaciated ground eroding

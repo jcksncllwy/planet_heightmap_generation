@@ -165,21 +165,20 @@ export function applyErosion(world, req, land, moved, H) {
 function wearRock(crust, c, type, E, C, geo, time, span) {
     const arc = type === CrustType.ARC, slope = arc ? C.slope[1] * ARC_ROOT_SHARE : C.slope[type];
     const colOf = () => (arc ? slope * Math.max(0, crust.rootKm[c]) : C.ref[type] + slope * crust.rootKm[c]);
-    const col = colOf(), up = Math.max(0, crust.upliftKm[c]), b0 = Math.max(0, crust.baseKm[c]), parts = up + b0 + Math.max(0, col);
-    const before = crust.upliftKm[c] + crust.baseKm[c] + col, r0 = crust.rootKm[c], c0 = crust.rugged[c] + crust.prevRugged[c];
+    const col = colOf(), up = Math.max(0, crust.upliftKm[c]), parts = up + Math.max(0, col);
+    const before = crust.upliftKm[c] + col, r0 = crust.rootKm[c], c0 = crust.rugged[c] + crust.prevRugged[c];
     const drop = Math.min(parts, E * slope), keep = parts > 0 ? 1 - drop / parts : 1;
     if (crust.upliftKm[c] > 0) crust.upliftKm[c] *= keep;
-    if (crust.baseKm[c] > 0) crust.baseKm[c] *= keep;
     if (col > 0) crust.rootKm[c] -= col * (1 - keep) / slope;
     let rest = E - drop / slope, unplaced = 0;
     if (rest > 1e-9) { if (arc) unplaced = rest; else crust.rootKm[c] -= rest; }
     const x = keep > 0 ? -Math.log(keep) * CREST_WEAR : Infinity, crest = Math.exp(-x);
     crust.rugged[c] *= crest; crust.prevRugged[c] *= crest;
-    // (the rock: the root thinned, and the crust the relief and the swells stood for — as heights.js wore them)
-    const rock = r0 - crust.rootKm[c] + (up - Math.max(0, crust.upliftKm[c]) + b0 - Math.max(0, crust.baseKm[c])) / slope;
+    // (the rock: the root thinned, and the crust the relief stood for — as heights.js wore it)
+    const rock = r0 - crust.rootKm[c] + (up - Math.max(0, crust.upliftKm[c])) / slope;
     // (the geological record, step/geology.js: the rock this took off, and a share of the crests)
     if (geo) recordWear(crust, c, rock + geo.crestShare * c0 * (1 - crest), 0, time, span, geo);
-    crust.tectRefKm[c] += crust.upliftKm[c] + crust.baseKm[c] + colOf() - before;   // (erosion is not tectonic rise: heights.js)
+    crust.tectRefKm[c] += crust.upliftKm[c] + colOf() - before;   // (erosion is not tectonic rise: heights.js)
     return { rock, unplaced };
 }
 
@@ -199,7 +198,7 @@ export function landHeightKm(world, w, H, swellKm, seaKm, landRef, seaRef) {
             : arcSurfaceKm(arcCrustKm(crust, c, time, world.config), crust.arcKm[c] > 0 ? time - crust.arcAt[c] : 0);     // (as the terrain stands it: records.js)
         full = b + C.slope[1] * ARC_ROOT_SHARE * Math.max(0, crust.rootKm[c]);
     } else full = C.ref[type] + C.slope[type] * crust.rootKm[c];
-    full += crust.upliftKm[c] + crust.baseKm[c] + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0);
+    full += crust.upliftKm[c] + (crust.volcType[c] === VolcanicType.LIP ? Math.max(0, H.lipLandKm * Math.min(H.lipMaxKm, crust.volcKm[c]) - crust.volcWornKm[c]) : 0);
     // (the swell is the mantle's, broad: it tilts the land and its rivers with it)
     return full + swellKm[w] - (type === CrustType.ARC ? seaRef : landRef) - seaKm + laid;
 }

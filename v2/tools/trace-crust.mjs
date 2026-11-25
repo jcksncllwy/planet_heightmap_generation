@@ -57,7 +57,7 @@ await simulate(world, {
             if (ty !== CrustType.CONTINENT && ty !== CrustType.CRATON) continue;
             cont[w] = 1; area++;
             if (ty === CrustType.CRATON) craton++;
-            const k = crustThicknessKm(TERRAIN, ty, f.rootKm[w], f.upliftKm[w], f.baseKm[w]);
+            const k = crustThicknessKm(TERRAIN, ty, f.rootKm[w], f.upliftKm[w]);
             vol += k; thickKmSum += f.thickKm?.[w] ?? 0; if (f.rootKm[w] > 0) rootPos++;
             if (k > 35) thick.t35++; if (k > 45) thick.t45++; if (k > 55) thick.t55++; if (k > 65) thick.t65++;
             const o = f.oroType[w];

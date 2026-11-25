@@ -139,7 +139,7 @@ export function cratonStrengthRatio(config) {
 function crustKmAt(crust, c, time, config) {
     const t = crust.type[c];
     if (t === CrustType.ARC) return arcCrustKm(crust, c, time, config) + crust.rootKm[c];
-    return crustThicknessKm(heightsOf(config), t, crust.rootKm[c], crust.upliftKm[c], crust.baseKm[c]);
+    return crustThicknessKm(heightsOf(config), t, crust.rootKm[c], crust.upliftKm[c]);
 }
 
 /** The rock's strength at raster cell c of a plate (N/m), over mantle heat h (world.mantleHeat at its world cell, 0…1). */

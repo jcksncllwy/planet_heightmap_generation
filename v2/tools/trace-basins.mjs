@@ -50,7 +50,7 @@ function historyHollows(world) {
     const parts = w => {
         const crust = plates[owner[w]].crust, c = ownerCell[w], t = crust.type[c];
         if (t === CrustType.OCEAN) return { col: 0, up: 0, base: 0, swell: D.swellKm[w] - landRef };
-        return { col: t === CrustType.ARC ? 0 : C.ref[t] + C.slope[t] * crust.rootKm[c], up: crust.upliftKm[c], base: crust.baseKm[c], swell: D.swellKm[w] - landRef };
+        return { col: t === CrustType.ARC ? 0 : C.ref[t] + C.slope[t] * crust.rootKm[c], up: crust.upliftKm[c], base: 0, swell: D.swellKm[w] - landRef };
     };
     const comp = new Int32Array(n).fill(-1), list = [];
     let belowKm2 = 0, volKm3 = 0;

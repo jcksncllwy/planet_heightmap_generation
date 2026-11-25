@@ -232,9 +232,8 @@ export const arcScrapedKm3 = (crustKm, cellAreaKm2, H) => arcScrapedShare(H) * M
 // root's cold, Kaban et al. find the cold wins a little). Its cold weighs it down, its depletion buoys it up: what is left
 // is its freeboard.
 // The record a cell carries (crust.rootKm) is its crust's thickness less its kind's as formed (riftCrustKm, cratonCrustKm):
-// thickened by belts, thinned by erosion. The belts' broad relief (crust.upliftKm) and the start world's swells
-// (crust.baseKm) are crust too — thickness counted in the height it lifts (÷ the column's slope gives its km) — kept
-// apart only because the belts shape it (terrain/profiles.js). An island arc stands by its own column (arcSurfaceKm).
+// thickened by belts, thinned by erosion. The belts' broad relief (crust.upliftKm) is crust too — thickness counted in
+// the height it lifts (÷ the column's slope gives its km) — kept apart only because the belts shape it (terrain/profiles.js). An island arc stands by its own column (arcSurfaceKm).
 const columns = new WeakMap();
 /** The share of an island arc's recorded thickening by belts that lifts it (the rest is its own growth, in its crust: arcSurfaceKm). */
 export const ARC_ROOT_SHARE = 0.25;
@@ -255,9 +254,9 @@ export function columnModel(H) {
 /** Where a continental column stands against the sea (km; mantle swell aside): its kind as formed, and its crust `rootKm` thicker (< 0: thinner). */
 export function columnKm(H, type, rootKm) { const C = columnModel(H); return C.ref[type] + C.slope[type] * rootKm; }
 /** A continental cell's crust (km): as formed, its thickening or thinning, and the crust its belts' relief and its swells stand for. */
-export function crustThicknessKm(H, type, rootKm, upliftKm = 0, baseKm = 0) {
+export function crustThicknessKm(H, type, rootKm, upliftKm = 0) {
     const C = columnModel(H);
-    return C.crust[type] + rootKm + (Math.max(0, upliftKm) + baseKm) / C.slope[type];
+    return C.crust[type] + rootKm + Math.max(0, upliftKm) / C.slope[type];
 }
 
 /**

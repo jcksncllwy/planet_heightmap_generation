@@ -10,8 +10,8 @@
 //     over time (hillslope smoothing). Crust too, counted in the height it lifts (measure.js crustThicknessKm);
 //   · rugged / prevRugged — how big the crests and ridges of the current belt and of the one it overprinted stand;
 //   · volcWornKm — how far a hotspot volcano, or a flood basalt on land, has been worn down since it erupted;
-//   · baseKm — the start world's own swells (seedBaseRelief): broad uplands and the lowlands between them, worn down
-//     like the rest — so the first continents are not flat, and their rivers have somewhere to run from.
+//   (the start world's drawn swells, baseKm, are retired — lane startsea D, Jackson 2026-11-25: the first continents' broad
+//   relief is the mantle's swell under them and their own columns, not a noise field)
 // Erosion (step/surface-erosion.js, every river step) takes the height down by the land's slope, drainage and base level —
 // the finish's stream power, on the GPU — each part by one share: the rock it takes thins the crust and the ground
 // rebounds (~5/6 of it). Records only, but for the rivers, which run over these heights (step/rivers.js). Constants
@@ -23,11 +23,9 @@ import { arcCrustKm } from './collision.js';
 import { TERRAIN } from '../../terrain/terrain-config.js';
 import { erosionHeldAt } from './climate-sample.js';
 import { broadProfile } from '../../terrain/profiles.js';
-import { FastNoise } from '../../core/fast-noise.js';
 import { recordWear, thickenCover } from './geology.js';
 import { flowCrust } from './crust-flow.js';
 
-const R = 6371;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** The height constants a world runs with. */
@@ -62,29 +60,6 @@ export function buildHeights(crust, c, type, side, u, reachKm, workKm, thickened
     if (A > crust.rugged[c]) crust.rugged[c] += (A - crust.rugged[c]) * share;
 }
 
-/**
- * The start world's swells (developer, 8b round 5: "start the baseline with some large noise … that can erode over time
- * and direct rivers more consistently"): on every continent, broad uplands up to baseReliefKm high and the lowlands
- * between them, from a noise field of their own (their own seed: no other stream is touched) read where the crust is at
- * the start — so it runs on across plate boundaries. Once, when the history starts; crust made later starts flat.
- */
-export function seedBaseRelief(world) {
-    const H = heightsOf(world.config), { xyz } = world.mesh;
-    if (!(H.baseReliefKm > 0)) return;
-    const noise = new FastNoise((world.seed ^ 0xba5e) >>> 0), F = R / H.baseReliefScaleKm;
-    for (const plate of world.plates) {
-        if (!plate.alive) continue;
-        const { mask, type, baseKm } = plate.crust, m = plate.mat;
-        for (let c = 0; c < mask.length; c++) {
-            if (!mask[c] || type[c] === CrustType.OCEAN || type[c] === CrustType.ARC) continue;
-            const x = xyz[3 * c], y = xyz[3 * c + 1], z = xyz[3 * c + 2];
-            const wx = m[0] * x + m[1] * y + m[2] * z, wy = m[3] * x + m[4] * y + m[5] * z, wz = m[6] * x + m[7] * y + m[8] * z;
-            // (fbm ≈ ±0.65: a quarter of the land stays low, half rises past ~0.4 of the full height, a tenth near all of it)
-            baseKm[c] = H.baseReliefKm * (type[c] === CrustType.CRATON ? H.baseReliefCraton : 1) * smooth(-0.1, 0.8, 1.6 * noise.fbm(wx * F + 2.1, wy * F + 7.7, wz * F + 4.9, 3, 0.5));
-        }
-    }
-}
-
 /** Hillslope smoothing, crustal flow and the volcanoes' wear, once per step over every plate. @returns {number} 0 (it never changes crust) */
 export function evolveHeights(world, dt) {
     if (dt <= 0) return 0;
@@ -111,7 +86,7 @@ export function evolveHeights(world, dt) {
     if (world.config.crustFlow) flowCrust(world, dt, H);
     for (const plate of plates) {
         if (!plate.alive || plate.crust.count === 0) continue;
-        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, baseKm, rugged, prevRugged, volcWornKm, tectKm, tectRefKm, tectAt } = crust;
+        const crust = plate.crust, { mask, type, flags, oroType, volcType, volcKm, volcAt, rootKm, upliftKm, rugged, prevRugged, volcWornKm, tectKm, tectRefKm, tectAt } = crust;
         const m = plate.mat, n = mask.length;
         // the column a cell stands on (km above the sea, the mantle's swell aside: tectonics/measure.js): a continent's
         // and a craton's from their crust; an island arc's thickening only — its own crust stands by arcSurfaceKm, which
@@ -145,11 +120,11 @@ export function evolveHeights(world, dt) {
             // this step's spreading, which runs after the reference is read below and before it is taken again. Signed: a
             // basin's sinking below the sea counts. Left out: the rivers' fill and the volcanoes' own edifices (their records
             // are their own), and the mantle's swell (no record here).
-            const tectNow = upliftKm[c] + baseKm[c] + col + arcTop;
+            const tectNow = upliftKm[c] + col + arcTop;
             if (tectAt[c] === epoch - 1) tectKm[c] += tectNow - tectRefKm[c];
             upliftKm[c] = up;
             if (geo) recordWear(crust, c, 0, Math.max(0, -up), time, dt, geo);     // (the geological record: a foreland's basin; the wear is the erosion's)
-            tectRefKm[c] = upliftKm[c] + baseKm[c] + colOf(c) + arcTop; tectAt[c] = epoch;
+            tectRefKm[c] = upliftKm[c] + colOf(c) + arcTop; tectAt[c] = epoch;
         }
     }
     return made;

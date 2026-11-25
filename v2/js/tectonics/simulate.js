@@ -28,7 +28,7 @@ import { collapseOrogens } from './step/orogenic-collapse.js';
 import { subductSediment } from './step/sediment-subduction.js';
 import { bookFans } from './step/trench-fans.js';
 import { captureFrame } from './snapshot.js';
-import { evolveHeights, seedBaseRelief } from './step/heights.js';
+import { evolveHeights } from './step/heights.js';
 import { evolveRivers } from './step/rivers.js';
 import { evolveSeaAge } from './step/sea-age.js';
 import { seedGeology, evolveGeology } from './step/geology.js';
@@ -109,7 +109,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         if (events && tidyPlates(world)) resolve(world);         // a scene may hand a plate cells that are not joined to it: settle that before anything moves
         if (world.time === 0 && !world.prehistoryDated) { datePrehistory(world); world.prehistoryDated = true; }   // (the pre-history ocean's ages: its relict ridges)
         classifyBoundaries(world, 0);
-        if (world.time === 0 && !world.baseSeeded) { seedBaseRelief(world); world.baseSeeded = true; seedGeology(world); }   // (records only)
+        if (world.time === 0 && !world.baseSeeded) { world.baseSeeded = true; seedGeology(world); }   // (records only; the start's drawn swells, seedBaseRelief, retired: lane startsea D)
         if (events && !world.hotspotsReady) insulateAtStart(world);   // (the first frame shows the start's mantle heat; step 1 sets it again)
         if (events) trackCycle(world);                            // (is the start a supercontinent? — then the mantle already flows out from under it)
         drive(world);

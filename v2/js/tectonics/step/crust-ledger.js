@@ -76,11 +76,11 @@ export function crustVolume(world) {
     let v = 0;
     for (const p of world.plates) {
         if (!p.alive) continue;
-        const { mask, type, rootKm, upliftKm, baseKm, basinFillKm, seaFillKm, shelfKm3 } = p.crust;
+        const { mask, type, rootKm, upliftKm, basinFillKm, seaFillKm, shelfKm3 } = p.crust;
         for (let c = 0; c < mask.length; c++) {
             if (!mask[c]) continue;
             const t = type[c];
-            if (t === CrustType.CONTINENT || t === CrustType.CRATON) v += crustThicknessKm(H, t, rootKm[c], upliftKm[c], baseKm[c])
+            if (t === CrustType.CONTINENT || t === CrustType.CRATON) v += crustThicknessKm(H, t, rootKm[c], upliftKm[c])
                 + basinFillKm[c] + seaFillKm[c] + shelfKm3[c] / cellKm2;   // (the rock laid on it is the continent's: one rock book)
         }
     }
@@ -117,7 +117,7 @@ function addCellRock(parts, R, k, c) {
     parts.held += k.heldKm[c];                  // (a quiet belt's crust carried out of its column toward the coast, not yet laid: crust-flow.js)
     if (t === CrustType.OCEAN) { parts.oceanSed += sed; return; }
     parts.fill += sed;
-    const relief = (Math.max(0, k.upliftKm[c]) + k.baseKm[c]) / C.slope[t];
+    const relief = Math.max(0, k.upliftKm[c]) / C.slope[t];
     if (t === CrustType.ARC) { parts.arc += arcCrustKm(k, c, R.time, R.config) + k.rootKm[c] + relief; return; }
     parts.crust += C.crust[t] + k.rootKm[c];
     parts.relief += relief;

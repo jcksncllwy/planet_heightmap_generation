@@ -173,7 +173,7 @@ async function run(seed, overrides = {}, { terrain = true } = {}) {
             let deformed = 0, compressed = 0, touched = 0, touchedC = 0;
             for (let w = 0; w < n; w++) {
                 if (!cont[w]) continue;
-                const k = crustThicknessKm(TERRAIN, f.type[w], f.rootKm[w], f.upliftKm[w], f.baseKm[w]);
+                const k = crustThicknessKm(TERRAIN, f.type[w], f.rootKm[w], f.upliftKm[w]);
                 if (f.oroType[w] && f.time - f.oroLast[w] < 240) {
                     const rift = f.oroType[w] === OrogenyType.RIFT;
                     touched++; if (!rift) touchedC++;
@@ -181,7 +181,7 @@ async function run(seed, overrides = {}, { terrain = true } = {}) {
                 }
                 all.push(k); if (f.type[w] === CrustType.CRATON) cra.push(k);
                 if (f.time >= 100 && f.oroType[w] && f.oroType[w] !== OrogenyType.ARC && f.oroType[w] !== OrogenyType.RIFT) {
-                    const q = Math.floor((f.time - f.oroLast[w]) / 25), h = columnKm(TERRAIN, f.type[w], f.rootKm[w]) + Math.max(0, f.upliftKm[w]) + f.baseKm[w] - columnModel(TERRAIN).ref[CrustType.CONTINENT];
+                    const q = Math.floor((f.time - f.oroLast[w]) / 25), h = columnKm(TERRAIN, f.type[w], f.rootKm[w]) + Math.max(0, f.upliftKm[w]) - columnModel(TERRAIN).ref[CrustType.CONTINENT];
                     const b = decay.get(q) ?? decay.set(q, { s: 0, n: 0 }).get(q); b.s += h; b.n++;
                 }
             }

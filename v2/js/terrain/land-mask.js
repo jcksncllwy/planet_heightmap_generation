@@ -30,7 +30,7 @@ import { FINISH } from '../finish/finish-config.js';
 export function filledUp(frame, w) { return !!frame.seaFillKm && frame.seaFillKm[w] > 0 && seaFilledUp(frame.time - frame.formedAt[w], frame.seaFillKm[w]); }
 
 // a crust cell's own column, as the continental platform reckons it (deriveRecords): its kind as formed (an arc by its
-// volcanoes' crust and its quiet) and its thickening or thinning since (lift), the start world's swells and the
+// volcanoes' crust and its quiet) and its thickening or thinning since (lift), and the
 // sediment the history's rivers laid on it. Against the land's swell reference; the swell itself is added by the caller
 export function crustColumnKm(frame, cfg, CM, w) {
     const type = frame.type[w];
@@ -51,7 +51,7 @@ export function crustColumnKm(frame, cfg, CM, w) {
         h = CM.ref[type === CrustType.OCEAN ? CrustType.CONTINENT : type];
         lift = CM.slope[type] * frame.rootKm[w];
     }
-    lift = Math.fround(lift + frame.baseKm[w]);                         // (the start world's swells, as worn so far; as the platform stores it)
+    lift = Math.fround(lift);                                           // (as the platform stores it)
     // (the sediment on it: a hollow's, Airy-loaded on land; a sea's on a continent — the epeiric seas' fill and planing, step/
     // surface-erosion.js, and a drowned shelf's, step/trench-fans.js layOnDrownedShelf — laid under water, water-loaded: lane marine3)
     const seaFill = type === CrustType.CONTINENT || type === CrustType.CRATON ? (frame.seaFillKm?.[w] ?? 0) / SEDIMENT_LOAD_FACTOR : 0;
@@ -80,7 +80,7 @@ export function fillPockets(simMesh, land, maxKm2, scratch = {}) {
 /**
  * The land and the sea on the sim grid, and the sea's level that answers them.
  * The frame is any view with its fields per world cell: owner, type, formedAt, flags, seaFillKm, basinFillKm, rootKm,
- * baseKm, upliftKm, arcKm, arcAt, mantleHeat (0–255), time — a snapshot (tectonics/snapshot.js), or the history's own
+ * upliftKm, arcKm, arcAt, mantleHeat (0–255), time — a snapshot (tectonics/snapshot.js), or the history's own
  * view of its plates (tectonics/step/rivers.js).
  * @param {Object} [out]  buffers to reuse: { land: Uint8Array, swellKm: Float32Array, seaColKm: Float32Array, dryHollow: Uint8Array,
  *                        heat: Float32Array (the mantle's smoothed warmth; made here, and kept on out, if missing) }
