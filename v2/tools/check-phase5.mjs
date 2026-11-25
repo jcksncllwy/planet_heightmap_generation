@@ -16,7 +16,7 @@ import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { frameTallies } from '../js/tectonics/measure.js';
 import { CrustType, CrustFlag, OrogenyType } from '../js/tectonics/model/crust.js';
-import { NO_WINGS } from '../js/app/phases/phase5-collisions.js';
+import { phase5Mechanisms } from '../js/app/phases/phase5-collisions.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { cratonStrengthRatio } from '../js/tectonics/field/stress-step.js';
 
@@ -27,7 +27,7 @@ const mesh = labMesh(), { xyz, numCells } = mesh;
 
 async function run(id, untilMyr, overrides = {}, events = true, seed = SEED) {
     const world = FORCE_SCENES.find(s => s.id === id).build(mesh, seed);
-    Object.assign(world.config, NO_WINGS, overrides);           // collisions alone: wings and arcs are Phase 5b
+    Object.assign(world.config, phase5Mechanisms(id), overrides);    // collisions alone (wings and arcs are Phase 5b); India's continent goes under
     // what each collision record had booked at each snapshot (its shortening so far, and its closing rate across the seam)
     const booked = [];
     const { frames, steps } = await simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events,
@@ -42,7 +42,8 @@ const INDIA_CHECKS = [
     'after the suture there is one plate, and it stays one',
     'overlap stays a seam while the collision lasts, then closes',
     'the recorded shortening matches how far the two landmasses really closed',
-    '…and what they converge is taken up: the area swept across the front matches the overlap the weld absorbs (km²)',
+    'after the cores meet the two keep converging, slowing over tens of Myr, and weld only once the seam has stalled',
+    '…and what they converge is taken up: the area swept across the front matches the overlap the weld absorbs and the land gone under (km²)',
     'the redraw absorbs the overlap, plus some crust squeezed into thickness',
     'cratons survive the redraw as rigid blocks',
     'the merged continent is one connected body (island arcs excepted)',
@@ -96,26 +97,24 @@ for (const seed of SEEDS) {
 
     // after the cores meet, the two keep converging — slowing as the collision's resistance grows, not locked at contact
     // (India–Asia: 2400–3200 km since ~50 Ma, still ~4 cm/yr; Molnar & Stock 2009, van Hinsbergen et al. 2012) — and every
-    // km² they converge is taken up: with the event rules alone (no underthrusting yet, Phase 7c) as overlap, which the
-    // weld then absorbs into the belt. The budget, in km²: the convergence swept across the front (shortening × front,
-    // step by step) against the overlap the weld found
+    // km² they converge is taken up: as India's land going under Asia (underthrusting, phase5Mechanisms) and as overlap, which
+    // the weld then absorbs into the belt. The budget, in km²: the convergence swept across the front (shortening × front,
+    // step by step) against the overlap the weld found and the land gone under
     const series = r.frames.filter(f => f.time >= atContact.time && f.time < suture.time).map(f => [f.time, r.bookedAt(f.time, rec)]).filter(([, b]) => b);
     let sweptKm2 = 0;
     for (let i = 1; i < series.length; i++) sweptKm2 += (series[i][1].km - series[i - 1][1].km) * (series[i][1].frontKm + series[i - 1][1].frontKm) / 2;
-    const overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2, closingSeries = series.map(([, b]) => b.closing);
+    // (…the overlap the weld absorbs, plus the land that went under Asia on the way: rec.underthrustCells, collision.js underthrust)
+    const underKm2 = (rec.underthrustCells ?? 0) * mesh.cellAreaKm2, overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2 + underKm2, closingSeries = series.map(([, b]) => b.closing);
     const peakClosing = Math.max(...closingSeries), converging = series.filter(([, b]) => b.closing > cfg.sutureStallCmYr).map(([t]) => t);
     const convergingMyr = converging.length ? converging.at(-1) - atContact.time : 0;
-    // (was a check, 'after the cores meet the two keep converging, slowing over tens of Myr — not locked at contact': moved
-    // to check-phase7c, lane gpelock 2026-11-25. Here nothing takes the overlap up — underthrusting is Phase 7c — so under
-    // the GPE-bounded resistance India stacks on Asia sutureStackKm deep within 10–30 Myr and welds stacked, still closing
-    // at 3.8–6.4 cm/yr. The stack weld is a guard against that state, which Earth cannot reach (Greater India went under
-    // Tibet), not the end of a collision; with every event on the seam stalls first (Phase 7c), as all 42 of the planet's
-    // welds on 3 seeds did. Reported)
+    // (…and welded only once the seam has stalled: with India's continent going under (phase5Mechanisms) nothing stacks,
+    // and on every seed the seam stalls before the weld, as all 43 of the planet's welds on 3 seeds did. The stack weld,
+    // collision.js, is a guard, not the end of a collision. Lane gpelock 2026-11-25)
     const lastClosing = closingSeries.at(-1);
-    keep('closing at weld', lastClosing);
-    keep('closing', `${seed}: ${peakClosing.toFixed(1)} → ${lastClosing.toFixed(1)} cm/yr at the weld, ${(suture.time - contact.time).toFixed(0)} Myr after contact (${suture.data.why})`);
-    J(INDIA_CHECKS[3], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
-        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (shortening × front, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² of overlap before the weld`);
+    J(INDIA_CHECKS[3], suture.data.why === 'stalled' && convergingMyr >= 20 && lastClosing < 0.25 * peakClosing,
+        `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${lastClosing.toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr (${suture.data.why})`);
+    J(INDIA_CHECKS[4], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
+        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (shortening × front, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² taken up: overlap before the weld and ${(underKm2 / 1e6).toFixed(2)} Mkm² gone under`);
     keep('shortening', rec.shorteningKm);
     keep('shortening detail', `${seed}: ${(suture.time - contact.time).toFixed(0)} Myr after contact, India peaking at ${Math.max(...r.frames.map(f => f.plates.find(p => p.name === 'India')?.speedCmYr ?? 0)).toFixed(1)} cm/yr`);
 
@@ -124,11 +123,11 @@ for (const seed of SEEDS) {
     const landBefore = cellsWhere(numCells, w => isLand(before, w)).length, landAfter = cellsWhere(numCells, w => isLand(after, w)).length;
     const overlapAtSuture = frameTallies(before).collision, absorbed = suture.data.landLostCells;
     // (the push ahead of the indenter compresses crust beyond the overlap too — that area goes into thickness)
-    J(INDIA_CHECKS[4], Math.abs(landAfter - landBefore) < 0.04 * landBefore && absorbed >= overlapAtSuture - 12 && absorbed <= 2 * overlapAtSuture + 12,
+    J(INDIA_CHECKS[5], Math.abs(landAfter - landBefore) < 0.04 * landBefore && absorbed >= overlapAtSuture - 12 && absorbed <= 2 * overlapAtSuture + 12,
         `map land ${landBefore} → ${landAfter} cells; event reports ${absorbed} cells absorbed, the overlap was ${overlapAtSuture}`);
     const cratonCells = f => cellsWhere(numCells, w => f.owner[w] >= 0 && f.type[w] === CrustType.CRATON).length;
     // (compared with the moment of contact: while the plates overlap, craton cells under the other plate are hidden from the map)
-    J(INDIA_CHECKS[5], Math.abs(cratonCells(after) - cratonCells(atContact)) <= 0.05 * cratonCells(atContact),      // (the world view samples a rotated raster: counts wobble ±2 % frame to frame)
+    J(INDIA_CHECKS[6], Math.abs(cratonCells(after) - cratonCells(atContact)) <= 0.05 * cratonCells(atContact),      // (the world view samples a rotated raster: counts wobble ±2 % frame to frame)
         `${cratonCells(atContact)} craton cells at contact, ${cratonCells(after)} after the suture`);
     // the merged land is one body with no holes that are not sea — on the merged plate's own raster, the crust itself (the
     // world view samples a moving plate's raster, and where it skips the cell that joins a narrow neck of coast to the
@@ -138,11 +137,11 @@ for (const seed of SEEDS) {
     const seedCell = landMask.findIndex(v => v), body = floodFrom(mesh, seedCell, c => landMask[c] === 1);
     let stray = 0;
     for (let c = 0; c < numCells; c++) if (landMask[c] && !body[c]) stray++;
-    J(INDIA_CHECKS[6], stray === 0, `${stray} non-arc land cells of ${merged.name}'s crust not connected to the main body`);
+    J(INDIA_CHECKS[7], stray === 0, `${stray} non-arc land cells of ${merged.name}'s crust not connected to the main body`);
 
     // belts
     const seam = cellsWhere(numCells, w => isLand(last, w) && (last.flags[w] & CrustFlag.SUTURE));
-    J(INDIA_CHECKS[7], seam.length * mesh.edgeKm >= front, `${seam.length} suture cells (${(seam.length * mesh.edgeKm).toFixed(0)} km of cell widths) along a ${front.toFixed(0)} km front`);
+    J(INDIA_CHECKS[8], seam.length * mesh.edgeKm >= front, `${seam.length} suture cells (${(seam.length * mesh.edgeKm).toFixed(0)} km of cell widths) along a ${front.toFixed(0)} km front`);
     const upperTerranes = new Set(cellsWhere(numCells, w => before.owner[w] === rec.upper && isLand(before, w)).map(w => before.terrane[w]));
     const himalayan = cellsWhere(numCells, w => isLand(last, w) && last.oroType[w] === OrogenyType.HIMALAYAN);
     const upperSide = himalayan.filter(w => upperTerranes.has(last.terrane[w])), lowerSide = himalayan.filter(w => !upperTerranes.has(last.terrane[w]));
@@ -176,22 +175,21 @@ for (const seed of SEEDS) {
     const beltLand = beltCells.filter(w => last.oroType[w] === OrogenyType.HIMALAYAN);
     const innerRoot = mean(inner.map(w => last.rootKm[w])), beltRoot = mean(beltLand.map(w => last.rootKm[w])), rimRoot = mean(rimCells.map(w => last.rootKm[w]));
     // (a belt with no craton beside it on this seed: nothing to compare — the scene did not form for this check)
-    judge(seed, INDIA_CHECKS[8], inner.length > 0 && beltLand.length > 0, innerRoot <= beltRoot / 2,
+    judge(seed, INDIA_CHECKS[9], inner.length > 0 && beltLand.length > 0, innerRoot <= beltRoot / 2,
         `crust thickened ${innerRoot.toFixed(2)} km (mean, against its kind's as formed) over ${inner.length} craton cells 1–${BAND} cells beyond the belt, ${beltRoot.toFixed(2)} km over the belt's ${beltLand.length} continent cells (the reached rim's ${rimCells.length}: ${rimRoot.toFixed(2)} km; its thickening record ${shieldThick.toFixed(2)} against the belt's ${beltThick.toFixed(2)})`);
     let maxThick = 0, thickCells = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.thickKm[w] > 0) { thickCells++; maxThick = Math.max(maxThick, last.thickKm[w]); }
     // (gravitational potential energy caps thickening near twice normal crust: about 40–45 km of excess at most)
-    J(INDIA_CHECKS[9], maxThick > 0 && maxThick < 45, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km`);
+    J(INDIA_CHECKS[10], maxThick > 0 && maxThick < 45, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km`);
     keep('thick', maxThick);
     let plateau = 0, inBelt = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.oroType[w] === OrogenyType.HIMALAYAN) { inBelt++; if (last.thickKm[w] >= 0.4 * maxThick) plateau++; }
-    J(INDIA_CHECKS[10], plateau / inBelt > 0.3, `${(100 * plateau / inBelt).toFixed(0)} % of collision-belt cells are at least 40 % as thick as the thickest`);
-    J(INDIA_CHECKS[11], r.frames.every(f => frameTallies(f).gaps === 0), 'checked every frame');
+    J(INDIA_CHECKS[11], plateau / inBelt > 0.3, `${(100 * plateau / inBelt).toFixed(0)} % of collision-belt cells are at least 40 % as thick as the thickest`);
+    J(INDIA_CHECKS[12], r.frames.every(f => frameTallies(f).gaps === 0), 'checked every frame');
 }
 for (const [name, samples] of judged) checkAcross(name, samples, name === INDIA_CHECKS[0] ? { scene: 'India meets Asia and welds' } : {});
 {
     const formed = SEEDS.filter((_, i) => judged.get(INDIA_CHECKS[0])[i].formed), per = k => reported.get(k) ?? [];
-    report('India: closing across the seam at the weld', per('closing at weld'), { unit: ' cm/yr', digits: 1, detail: `${per('closing').join(' · ')} (stacked: nothing takes the overlap up here; the seam's stall is judged in Phase 7c)` });
     report('India: shortening across the seam after contact', per('shortening'), { earth: [2400, 3200], unit: ' km', digits: 0, source: 'India into Asia since ~50 Ma (van Hinsbergen et al. 2012; Molnar & Stock 2009)',
         detail: `until the seam stalled and welded — ${per('shortening detail').join(' · ')} (the real one ~15–18)` });
     // (pending the model's rewrite — belt width from the two sides' relative strength and the shortening, not from which
@@ -208,7 +206,8 @@ for (const [name, samples] of judged) checkAcross(name, samples, name === INDIA_
     const off = await run('india', INDIA_MYR, {}, false);
     // (the Phase 4 behaviour: no events, and the overlap nothing takes up. It need not persist to the end: pressed on past
     // the GPE-bounded lock with nothing to break its slabs off, India crosses Asia and out the other side by ~120 Myr — was
-    // 'overlap persists', under the lock that grew with the overlap. Slab break-off is queued, lane gpelock 2026-11-25)
+    // 'overlap persists', under the lock that grew with the overlap. A weaker claim, accepted until slab break-off lands
+    // (queued as lane slabbreak; sessrumnir's ruling, lane gpelock 2026-11-25): then 'overlap persists' should return)
     const offPeak = Math.max(...off.collision);
     check('with the event rules off, the Phase 4 behaviour is unchanged (no events, no suture; the overlap is not taken up)', off.sutures.length === 0 && off.events.length === 0 && offPeak > 0,
         `${off.events.length} events; overlap peaks at ${offPeak} cells (${off.collision.findIndex(c => c === offPeak) * SNAPSHOT_MYR} Myr), ${off.collision.at(-1)} cells at ${INDIA_MYR} Myr`);

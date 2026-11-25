@@ -2,7 +2,7 @@
 // convergence is recorded as orogeny belts, colliding plates shorten, and when they weld the
 // outlines are redrawn — indenter pushed in, crust squeezed aside — the way WBP redraws by hand.
 
-import { onlyMechanisms } from '../../tectonics/config.js';
+import { onlyMechanisms, mechanismsOn } from '../../tectonics/config.js';
 import { FORCE_SCENES } from '../../tectonics/scenarios/force-scenes.js';
 import { COLLISION_SCENES } from '../../tectonics/scenarios/collision-scenes.js';
 import { simulate } from '../../tectonics/simulate.js';
@@ -17,6 +17,10 @@ import { EventKind } from '../../tectonics/model/world.js';
 const REDRAW_SHOWN_MYR = 6;             // the before/after overlay stays up this long after a suture
 /** These scenes isolate collisions: trench wings and island arcs (Phase 5b) and rifting (Phase 6) stay off. */
 export const NO_WINGS = onlyMechanisms();          // collisions alone: no wings, no arcs, and nothing of Phases 6–7
+/** Phase 5's mechanisms for a scene: collisions alone — and for India, its continent going under Asia (underthrusting,
+ *  Phase 7c's), so that the overlap is taken up as it is on Earth (Greater India went under Tibet) and the collision ends
+ *  when the seam stalls, not when the overlap has stacked sutureStackKm deep (lane gpelock 2026-11-25, sessrumnir's ruling). */
+export const phase5Mechanisms = id => (id === 'india' ? { ...NO_WINGS, ...mechanismsOn('underthrust') } : NO_WINGS);
 const TUNABLES = [
     { id: 'sutureStallCmYr', label: 'Plates weld once their seam closes slower than', min: 0.1, max: 3, step: 0.1, unit: ' cm/yr' },
     { id: 'sutureStallMyr', label: '…for', min: 4, max: 40, step: 1, unit: ' Myr' },
@@ -80,7 +84,7 @@ const SCENES = [
 export async function createPhase(simMesh, seed, overrides = {}) {
     const scene = SCENES.find(s => s.id === overrides.scene) ?? SCENES[0], base = FORCE_SCENES.find(s => s.id === scene.base) ?? COLLISION_SCENES.find(s => s.id === scene.base);
     const world = base.build(simMesh, seed);
-    Object.assign(world.config, NO_WINGS);
+    Object.assign(world.config, phase5Mechanisms(scene.base));
     for (const t of TUNABLES) if (overrides[t.id] !== undefined) world.config[t.id] = overrides[t.id];
     const started = performance.now();
     const { frames, steps } = await simulate(world, { untilMyr: scene.maxMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR });

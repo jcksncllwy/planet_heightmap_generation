@@ -195,7 +195,10 @@ export function trackCollisions(world, dt) {
         const closed = (rec.gapWidestKm ?? Infinity) <= config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
             || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr;
         // (so much land stacked on land that the two are one already: they weld now, whatever sea is left — a remnant — or
-        // whatever they ring; waiting would only stack them deeper)
+        // whatever they ring; waiting would only stack them deeper. A GUARD, NOT PHYSICS: land lies 500 km deep on land only
+        // where nothing takes the overlap up — on Earth the lower plate's continent goes under (Greater India under Tibet), and a
+        // collision ends when its seam stalls, above. With underthrusting on it does not fire: 43 of 43 of the planet's welds
+        // on 3 seeds stalled, and Phase 5's and 7c's India stall too (lane gpelock 2026-11-25). Report any history it fires in)
         // (stacked: how deep, on average, the one lies on the other — the overlap left after this step's underthrusting over the
         // front's length; an area alone would call a long front's single contact row "stacked")
         const stacked = (cells.length - underNow) * cellAreaKm2 / Math.max(rec.frontKm, edgeKm) >= config.sutureStackKm;

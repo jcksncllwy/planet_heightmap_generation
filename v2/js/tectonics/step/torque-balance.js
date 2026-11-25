@@ -47,6 +47,50 @@ export function updatePlateMotion(world) {
         const rotationCapped = clampSpeed(plate.omega, plate, centre, config);
         plate.dynamics = describeDynamics(load, target, centre, capped || rotationCapped, world.mesh);
     }
+    world.frontPush = frontPush(world, loads);
+}
+
+/**
+ * The force each colliding pair presses across its front with, N per metre: what the lock would carry were the seam held.
+ * Held, the two move as one, ω = (D_a + D_b)⁻¹ (T_a + T_b) (each plate's drag, slab couplings and drives, without the lock),
+ * and the torque one passes to the other is D_b ω − T_b; across the front it is a force per metre along the contacts' normal.
+ * This, not the force the lock carries, is the boundary force a belt thickens against: sliding, the lock carries its cap —
+ * the belt's own GPE — and only the push says how much higher the belt can stand (England & Houseman 1986's Argand number;
+ * Molnar & Lyon-Caen 1988: a column thickens while the force on its edge exceeds its ΔGPE). Limits: two plates at a time —
+ * a third pressing on either is in their drives, not in the pair.
+ * @returns {Map<string, number>} key `${lo}:${hi}` (plate ids) → N/m, ≥ 0
+ */
+function frontPush(world, loads) {
+    const { plates, config } = world, out = new Map(), lin = new Map();
+    for (const p of plates) { const L = loads.get(p.id); if (L?.lin) lin.set(p.id, L.lin); }
+    for (const p of plates) {
+        const L = loads.get(p.id), mine = lin.get(p.id);
+        if (!mine || !L.contacts.length) continue;
+        const arms = new Map();                                         // other → Σ arm (r × n, n toward the other) per contact
+        for (const { r, n, other } of L.contacts) {
+            const a = arms.get(other) ?? arms.set(other, { s: [0, 0, 0], k: 0 }).get(other);
+            a.s[0] += r[1] * n[2] - r[2] * n[1]; a.s[1] += r[2] * n[0] - r[0] * n[2]; a.s[2] += r[0] * n[1] - r[1] * n[0]; a.k++;
+        }
+        for (const [other, { s: A, k }] of arms) {
+            const key = p.id < other ? `${p.id}:${other}` : `${other}:${p.id}`, theirs = lin.get(other);
+            if (out.has(key) || !theirs) continue;
+            const D = mine.D.map((v, i) => v + theirs.D[i]), T = mine.T.map((v, i) => v + theirs.T[i]), w = solve3(D, T);
+            // the torque the other passes to this plate when held (D ω = T + τ); the push is its part against this plate's arms (−n: pressed back)
+            const tau = [0, 1, 2].map(i => mine.D[3 * i] * w[0] + mine.D[3 * i + 1] * w[1] + mine.D[3 * i + 2] * w[2] - mine.T[i]);
+            const A2 = A[0] * A[0] + A[1] * A[1] + A[2] * A[2];
+            const frontKm = Math.max(world.collisions?.get(key)?.frontKm ?? 0, k * world.mesh.edgeKm);
+            // (a uniform force f per 100 km over the contacts: torque f · (front ⁄ 100 ⁄ k) · Σ arm; so f = −τ·A ⁄ (|A|² front ⁄ 100 ⁄ k))
+            const f = A2 > 0 ? -(tau[0] * A[0] + tau[1] * A[1] + tau[2] * A[2]) / (A2 * frontKm / 100 / k) : 0;
+            out.set(key, Math.max(0, f) * config.forceUnitNPerM);
+        }
+    }
+    return out;
+}
+
+/** The thickening, km above ordinary crust, at which a column's ΔGPE reaches F (N/m): collisionGpeNPerM inverted. */
+export function thickeningForForce(F, H) {
+    const rc = H.riftCrustRho, ra = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC), h0 = H.riftCrustKm * 1000;
+    return (Math.sqrt(h0 * h0 + 2 * Math.max(0, F) / (rc * 9.81 * (1 - rc / ra))) - h0) / 1000;
 }
 
 /** The rotation at which drag and the couplings cancel the driving torque on this plate. */
@@ -57,6 +101,7 @@ function balancedRotation(world, plate, load, omegaOf) {
 
     addSlabResistance(D, T, load, omegaOf, config);
     addHinges(D, T, load, omegaOf);
+    load.lin = { D: D.slice(), T: T.slice() };                         // (the linear balance, for frontPush)
     const lock = lockContacts(world, plate, load);
     return lock.length ? solveWithLock(D, T, lock, omegaOf, omegaOf[plate.id], config) : solve3(D, T);
 }

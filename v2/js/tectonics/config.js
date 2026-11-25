@@ -250,7 +250,7 @@ export const TECTONICS = {
     sutureStallMinKm: 200,      // …and only once at least this much has been absorbed (two plates merely touching do not weld)
     overlapCapKm: 250,          // (Phase 11) land stacked deeper than this on average (overlap ÷ front) goes under the upper plate
                                 // while the pair waits for its seam to close…
-    sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, converging or not, whatever sea is left
+    sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, converging or not, whatever sea is left (a guard against an unphysical stack where nothing goes under, not physics: collision.js)
     sutureMinContactKm: 800,    // a collision front shorter than this is a terrane docking (Phase 5b), not a suture
     sutureGapKm: 1000,          // …and a weld waits for the seam to close (Phase 11): the sea between the two continents'
                                 // coasts, up to this wide…

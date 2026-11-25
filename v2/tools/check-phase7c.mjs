@@ -25,11 +25,8 @@ async function run(id, overrides = {}, untilMyr = null) {
     const scene = BUDGET_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
     Object.assign(world.config, overrides);
     const started = performance.now();
-    // (each collision record's closing across its seam, step by step: the India checks read how the seam slowed)
-    const closing = new Map();
-    const { frames, steps } = await simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR,
-        stopAt: w => { for (const c of w.collisions.values()) { const k = `${c.upper}:${c.lower}`; (closing.get(k) ?? closing.set(k, []).get(k)).push([w.time, c.closingCmYr]); } return false; } });
-    return { world, frames, steps, closing, last: frames.at(-1), seconds: (performance.now() - started) / 1000, events: world.events, budget: world.budget };
+    const { frames, steps } = await simulate(world, { untilMyr: untilMyr ?? scene.maxMyr, drive: w => scene.drive(w), snapshotEveryMyr: SNAPSHOT_MYR });
+    return { world, frames, steps, last: frames.at(-1), seconds: (performance.now() - started) / 1000, events: world.events, budget: world.budget };
 }
 const land = f => countWhere(numCells, w => isLand(f, w));
 
@@ -80,16 +77,6 @@ section('a continent slides under another (underthrusting)');
         const after = afterRates.length ? afterRates.reduce((s, v) => s + v, 0) / afterRates.length : NaN;
         check('India slows on contact, still converging: 15–25 Myr on, under 0.65× its approach and above the stall rate', after < 0.65 * before && after > r.world.config.sutureStallCmYr,
             `contact at ${contact?.toFixed(0)} Myr: ${before.toFixed(1)} cm/yr approaching (peak, 10 Myr before) → ${after.toFixed(1)} cm/yr (mean, 15–25 Myr after; the stall rate ${r.world.config.sutureStallCmYr})`);
-        // after the cores meet the two keep converging for tens of Myr, slowing, and weld only once the seam has stalled — not
-        // locked at contact, and not welded while still converging (India has run 2400–3200 km into Asia since ~50 Ma and still
-        // converges at ~4 cm/yr: Molnar & Stock 2009, van Hinsbergen et al. 2012). Judged on the India–Asia record's own closing
-        // across its seam. Moved here from Phase 5, lane gpelock 2026-11-25: there nothing takes the overlap up, and the pair
-        // welds stacked mid-convergence — a guard against a state Earth cannot reach, not the end of a collision
-        const series = suture ? (r.closing.get(`${suture.data.upper}:${suture.data.lower}`) ?? []).filter(([t]) => t >= contact && t < suture.time) : [];
-        const peakClosing = series.length ? Math.max(...series.map(([, v]) => v)) : NaN, atWeld = series.at(-1)?.[1] ?? NaN;
-        const above = series.filter(([, v]) => v > r.world.config.sutureStallCmYr), convergingMyr = above.length ? above.at(-1)[0] - contact : 0;
-        check('after contact the two keep converging for tens of Myr, slowing, and weld only once the seam has stalled', suture?.data.why === 'stalled' && convergingMyr >= 20 && atWeld < 0.25 * peakClosing,
-            `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${r.world.config.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${atWeld.toFixed(2)} cm/yr before the weld at ${suture?.time.toFixed(0)} Myr (${suture?.data.why}; ${suture?.data.shorteningKm.toFixed(0)} km of shortening)`);
         // (part of India's drop was the end of an acceleration — a plume head, van Hinsbergen et al. 2011 — which the scene does not have)
         report('India: closing 15–25 Myr after contact ÷ approach before', after / before, { earth: [0.25, 0.35], source: 'India–Asia ~15 → ~4 cm/yr over 50–35 Ma (Copley, Avouac & Royer 2010)', digits: 2 });
     }
