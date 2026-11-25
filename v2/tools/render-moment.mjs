@@ -152,6 +152,13 @@ if (pageFin) {
     else fin = full;
     raster = r.page?.raster ?? null;
 }
+// (--dump: the last ice age's extent too — the cells its ice covered, glaciated.u8 — and its stats, ice.json: for measuring
+// coasts by ice cover rather than by latitude (lane iceage))
+if (DUMP && fin.glaciated) {
+    fs.writeFileSync(path.join(DUMP, 'glaciated.u8'), Buffer.from(Uint8Array.from(fin.glaciated).buffer));
+    const s = fin.stats;
+    fs.writeFileSync(path.join(DUMP, 'ice.json'), JSON.stringify({ iceKm2: s.iceKm2, iceSheets: s.iceSheets, iceBasins: s.iceBasins, floods: s.floods }, null, 1));
+}
 console.log(`\nerosion on: ${fin.stats.erodeOn ?? 'off'}`);
 console.log(`\nfinished at ${CELLS.toLocaleString()} cells (${secs()}); stages ms: ${Object.entries(fin.ms).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}`);
 // (--network: the finished rivers' shape against Earth's — tools/lib/river-network.mjs; arid where rain is under half the
