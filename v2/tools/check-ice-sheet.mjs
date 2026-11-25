@@ -5,6 +5,9 @@
 //     t₀ = (7/4)³ R₀⁴ / (18 Γ H₀⁷). EISMINT's dome (R₀ 750 km, H₀ 3 600 m, A 10⁻¹⁶: t₀ 422 a) stepped from t₀ for 20 kyr on two
 //     meshes, against the exact answer: the scheme (its hexagon's faces on the jittered mesh, its explicit steps) is what this
 //     measures, and its error must fall as the mesh is refined (Bueler et al.'s convergence test). Its volume is kept.
+//   · Sliding: where the bed is thawed (Robin's column against the pressure-melting point, ice-sheet.js robinBed), the bed's
+//     speed B₀ ρ g H |∇s| (EISMINT II exp. H), the thawed cells the reference's; a frozen bed doesn't slide, a thawed dome
+//     falls faster, and the books close.
 //   · The sea's front: a sheet grown on an island under a positive balance, with snow on the sea around it: floating ice only
 //     at the front, the open sea's ice calved, and the books close (the volume = what fell + what the scheme made − what
 //     calved).
@@ -16,7 +19,7 @@ import { setDelaunator } from '../../js/sphere-mesh.js';
 import { check, report, section, finish } from './lib/check-kit.mjs';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { finishDevice } from '../js/gpu/finish-gpu.js';
-import { iceSheetGPU, glenGamma, ICE } from '../js/gpu/ice-sheet.js';
+import { iceSheetGPU, glenGamma, ICE, robinBed } from '../js/gpu/ice-sheet.js';
 import { iceBalanceGPU, pddBalance, PDD } from '../js/gpu/ice-balance.js';
 import { readBack } from '../js/gpu/gpu-device.js';
 import { bilinear } from '../js/finish/finish.js';
@@ -32,8 +35,9 @@ section('Halfar\'s dome (Bueler et al. 2005 test B)');
 const R0 = 750e3, H0 = 3600, T0 = (7 / 4) ** 3 * R0 ** 4 / (18 * glenGamma() * H0 ** 7), RUN = 20000, centre = unit(40, 10);
 const halfar = (r, t) => { const q = (T0 / t) ** (1 / 18) * r / R0; return q >= 1 ? 0 : H0 * (T0 / t) ** (1 / 9) * (1 - q ** (4 / 3)) ** (3 / 7); };
 const dome = {};
-for (const N of [40000, 160000]) {
-    const mesh = terrainMesh(N), n = mesh.numCells, x = mesh.xyz, r = new Float64Array(n), H = new Float32Array(n);
+const MESHES = [40000, 160000, 640000], meshes = {};
+for (const N of MESHES) {
+    const mesh = meshes[N] = terrainMesh(N), n = mesh.numCells, x = mesh.xyz, r = new Float64Array(n), H = new Float32Array(n);
     for (let c = 0; c < n; c++) { r[c] = arcM(x, c, centre); H[c] = halfar(r[c], T0); }
     const tw = performance.now();
     const ice = await iceSheetGPU(device, { mesh, bed: new Float32Array(n), H, smb: new Float32Array(n), sea: -1e4 });
@@ -53,13 +57,64 @@ for (const N of [40000, 160000]) {
     ice.destroy();
 }
 {
-    const a = dome[40000], z = dome[160000];
-    check('the dome converges: its error falls as the mesh is refined (40K → 160K)', Math.abs(z.dCentre) < Math.abs(a.dCentre) && z.mean < a.mean, `centre ${(100 * a.dCentre).toFixed(2)} → ${(100 * z.dCentre).toFixed(2)} %, mean |error| ${a.mean.toFixed(1)} → ${z.mean.toFixed(1)} m`);
-    check('160K: the dome\'s centre within 2 % of Halfar\'s and its margin within two cells', Math.abs(z.dCentre) < 0.02 && Math.abs(z.rIce - z.rTrue) < 2 * z.edge, `${(100 * z.dCentre).toFixed(2)} %; ${((z.rIce - z.rTrue) / 1e3).toFixed(0)} km (cell ${(z.edge / 1e3).toFixed(0)} km)`);
-    for (const N of [40000, 160000]) {
+    const a = dome[40000], m = dome[160000], z = dome[640000];
+    const order = (p, q) => Math.log(p / q) / Math.log(2);     // (each mesh halves the cell)
+    check('the dome converges: its error falls as the mesh is refined (40K → 160K → 640K)', Math.abs(z.dCentre) < Math.abs(m.dCentre) && Math.abs(m.dCentre) < Math.abs(a.dCentre) && z.mean < m.mean && m.mean < a.mean,
+        `centre ${(100 * a.dCentre).toFixed(2)} → ${(100 * m.dCentre).toFixed(2)} → ${(100 * z.dCentre).toFixed(2)} %, mean |error| ${a.mean.toFixed(1)} → ${m.mean.toFixed(1)} → ${z.mean.toFixed(1)} m (order ${order(a.mean, m.mean).toFixed(2)}, ${order(m.mean, z.mean).toFixed(2)})`);
+    for (const N of [160000, 640000]) { const d = dome[N];
+        check(`${N / 1000}K: the dome's centre within 2 % of Halfar's and its margin within two cells`, Math.abs(d.dCentre) < 0.02 && Math.abs(d.rIce - d.rTrue) < 2 * d.edge, `${(100 * d.dCentre).toFixed(2)} %; ${((d.rIce - d.rTrue) / 1e3).toFixed(0)} km (cell ${(d.edge / 1e3).toFixed(0)} km)`); }
+    for (const N of MESHES) {
         const { b } = dome[N];
         check(`${N / 1000}K: the dome's volume kept (no balance, nothing calved; the scheme's overshoot under 0.1 %)`, Math.abs(b.volume - b.start - b.made) < 1e-4 * b.start && b.made < 1e-3 * b.start && b.calved === 0, `${(b.start / 1e15).toFixed(4)} → ${(b.volume / 1e15).toFixed(4)} M km³, made ${(100 * b.made / b.start).toFixed(4)} %`);
     }
+}
+
+// ── sliding where the bed is thawed ──
+section('sliding (Weertman, EISMINT II exp. H) where the bed is thawed (Robin 1955)');
+{
+    const mesh = meshes[160000], n = mesh.numCells, x = mesh.xyz, r = new Float64Array(n), H = new Float32Array(n);
+    for (let c = 0; c < n; c++) { r[c] = arcM(x, c, centre); H[c] = halfar(r[c], T0); }
+    // (a surface's year-mean and balance at random, the bed thawed or not by Robin's column: the GPU's against the reference's)
+    let seed = 7; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    const Ts = new Float32Array(n), smb = new Float32Array(n);
+    for (let c = 0; c < n; c++) { Ts[c] = -40 + 45 * rnd(); smb[c] = -0.5 + 1.2 * rnd(); }
+    const ice = await iceSheetGPU(device, { mesh, bed: new Float32Array(n), H, smb, sea: -1e4 });
+    ice.setTsurf(Ts);
+    const sp0 = await ice.speeds();
+    let wrong = 0, thawedN = 0, iced = 0, worstU = 0;
+    // (the bed's speed against B₀ ρ g H |∇s|: the cell's gradient from its faces on the CPU, (2/k) Σ (Δs/d) ê)
+    const { edge } = await import('../js/gpu/ice-sheet.js').then(m => m.iceGeometry(mesh));
+    for (let c = 0; c < n; c++) {
+        if (!(H[c] > 0)) continue;
+        iced++;
+        const want = robinBed(Ts[c], smb[c], H[c]).thawed, got = sp0[2 * c + 1] > 0;
+        if (want !== got) wrong++;
+        if (want) thawedN++;
+        if (want && got) {
+            const g = [0, 0, 0]; let k0 = mesh.adjOffset[c], k1 = mesh.adjOffset[c + 1], m = 0;
+            for (let k = k0; k < k1; k++) { const b = mesh.adjList[k]; const ds = (H[b] - H[c]) / edge[4 * k + 3]; for (let j = 0; j < 3; j++) g[j] += ds * edge[4 * k + j]; m++; }
+            const u = ICE.slideB * ICE.rhoIce * ICE.g * H[c] * 2 / m * Math.hypot(...g);
+            worstU = Math.max(worstU, Math.abs(sp0[2 * c + 1] - u) / (u + 1));
+        }
+    }
+    check('the bed thaws where Robin\'s column reaches the pressure-melting point: the GPU\'s cells are the reference\'s', wrong === 0, `${thawedN} of ${iced} ice cells thawed; ${wrong} differ`);
+    check('the bed\'s speed is B₀ ρ g H |∇s| where thawed (to float32)', worstU < 1e-4, `worst relative ${worstU.toExponential(2)}`);
+    ice.destroy();
+    // (a dome on a thawed bed against the same on a frozen one: the thawed spreads faster; the books close)
+    const runDome = async ts => {
+        const s = await iceSheetGPU(device, { mesh, bed: new Float32Array(n), H, smb: new Float32Array(n), sea: -1e4 });
+        if (ts !== null) s.setTsurf(new Float32Array(n).fill(ts));
+        const tw = performance.now(), { steps } = await s.run(5000), h = await s.readH(), b = await s.books(), sp = await s.speeds();
+        let c0 = 0; for (let c = 1; c < n; c++) if (r[c] < r[c0]) c0 = c;
+        let umax = 0; for (let c = 0; c < n; c++) umax = Math.max(umax, sp[2 * c + 1]);
+        s.destroy();
+        return { centre: h[c0], b, steps, umax, ms: performance.now() - tw };
+    };
+    const frozen = await runDome(null), thawed = await runDome(-5);
+    report('a thawed dome\'s centre after 5 kyr against a frozen one\'s', thawed.centre - frozen.centre, { unit: ' m', digits: 0, detail: `${thawed.centre.toFixed(0)} vs ${frozen.centre.toFixed(0)} m; fastest sliding ${thawed.umax.toFixed(0)} m/a (frozen ${frozen.umax.toFixed(0)}); ${thawed.steps} vs ${frozen.steps} steps, ${(thawed.ms / 1000).toFixed(1)} s` });
+    check('a frozen bed doesn\'t slide; a thawed one does, and its dome falls faster', frozen.umax === 0 && thawed.umax > 0 && thawed.centre < frozen.centre, `${frozen.umax} / ${thawed.umax.toFixed(0)} m/a`);
+    const bk = thawed.b;
+    check('the books close with sliding (no balance, nothing calved; the overshoot under 0.1 %)', Math.abs(bk.volume - bk.start - bk.made) < 1e-4 * bk.start && bk.made < 1e-3 * bk.start && bk.calved === 0, `${(bk.start / 1e15).toFixed(4)} → ${(bk.volume / 1e15).toFixed(4)} M km³, made ${(100 * bk.made / bk.start).toFixed(4)} %`);
 }
 
 // ── the sea's front ──

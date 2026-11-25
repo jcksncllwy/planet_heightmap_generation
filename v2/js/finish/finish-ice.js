@@ -121,7 +121,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     const S = new Float32Array(n), down = new Float32Array(n), smbI = new Float32Array(n), afloat = new Uint8Array(n);
     for (let c = 0; c < n; c++) {
         const g = bed[c] >= sea || H[c] * flt > sea - bed[c];
-        S[c] = g ? bed[c] + H[c] : sea + H[c] * (1 - flt); down[c] = bedM[c] - bed[c]; smbI[c] = force[2 * c + 1]; afloat[c] = g ? 0 : 1;
+        S[c] = g ? bed[c] + H[c] : sea + H[c] * (1 - flt); down[c] = bedM[c] - bed[c]; smbI[c] = force[4 * c + 1]; afloat[c] = g ? 0 : 1;
     }
     const iceF = new Uint8Array(nF), HF = new Float32Array(nF), smbF = new Float32Array(nF), warmSl = new Float32Array(nF), rainF = new Float32Array(nF);
     const Sf = new Float32Array(nF), Df = new Float32Array(nF);

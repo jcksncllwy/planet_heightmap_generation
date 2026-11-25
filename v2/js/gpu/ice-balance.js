@@ -51,7 +51,7 @@ struct U { step: f32, gamma: f32, sea: f32, flt: f32, datum: f32, sigma: f32, sn
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var<storage, read> cellIn: array<vec4u>;      // the grid's corner (x0 | y0 << 16), fx, fy, the year's precipitation mm (f32 bits; < 0: the grid's)
 @group(0) @binding(2) var<storage, read> grid: array<f32>;          // T at sea level by month (12 G), then P by month (12 G), mm
-@group(0) @binding(3) var<storage, read_write> force: array<vec2f>; // (bed m, the balance m/a of ice: written)
+@group(0) @binding(3) var<storage, read_write> force: array<vec4f>; // (bed m; written: the balance m/a of ice, the surface's year-mean °C)
 @group(0) @binding(4) var<storage, read> H: array<f32>;
 ${INDEX_WGSL}
 const W = ${w}u; const G = ${w * h}u;
@@ -79,15 +79,16 @@ fn Phi(v: f32) -> f32 { return 0.5 * (1.0 + erf_(v * 0.70710678)); }
         Psum += Pm[m];
     }
     let scale = select(1.0, select(0.0, pAnn / Psum, Psum > 0.0), pAnn >= 0.0);
-    var snow = 0.0; var D = 0.0; let sg = u.sigma;
+    var snow = 0.0; var D = 0.0; var Tsum = 0.0; let sg = u.sigma;
     for (var m = 0u; m < 12u; m++) {
-        let T = Tm[m];
+        let T = Tm[m]; Tsum += T;
         snow += Pm[m] * scale * Phi((u.snowBelow - T) / sg);
         D += 30.4 * (sg * 0.39894228 * exp(-T * T / (2.0 * sg * sg)) + T * Phi(T / sg));
     }
     let snowMelt = min(snow, u.ddfSnow * D);
     let mb = snow - (1.0 - u.keep) * snowMelt - u.ddfIce * (D - snowMelt / u.ddfSnow);
     force[c].y = mb * u.weToIce;
+    force[c].z = Tsum / 12.0;
 }`;
 
 const compiled = new Map();
