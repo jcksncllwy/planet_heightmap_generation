@@ -461,6 +461,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // (its sheets, grown under a glacial epoch's climate on the ground as it stands: finish-ice.js glacialSheets — the GPU's)
     const sheet = await glacialSheets({ device, mesh, z: C.z, climateOptions }, F);
     stats.iceAge = { seaM: Math.round(1000 * sheet.seaKm), rounds: sheet.rounds, ms: sheet.ms };
+    observe?.('ice sheet', mesh, C.z, null, null, sheet);      // (a tool's look at the sheets as grown: render-moment --dump)
     const I = lastIceAge({ mesh, z: C.z, lat, lon, warmSl, rain: pAnn, grid, cellKm2, seed, soft, runoff: skyRunoff, pet, land: climateLand, sheet,
         simMesh, teSim: teSim ?? elasticThicknessKm(frame, simMesh) }, F);       // (the ice's weight on the plate: finish-ice.js)
     forgetEdgeKm(mesh);

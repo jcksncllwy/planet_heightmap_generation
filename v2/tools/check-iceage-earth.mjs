@@ -30,12 +30,14 @@ import { finishDevice } from '../js/gpu/finish-gpu.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { LatLonGrid } from '../js/finish/finish-grid.js';
 import { lastIceAge, glacialSheets } from '../js/finish/finish-ice.js';
+import { measureIceGrid } from './lib/ice-grid-measure.mjs';
 import { bilinear } from '../js/finish/finish.js';
 import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios, co2At, greenhouseOf } from '../js/climate/planet-system.js';
 import { declination } from '../js/climate/insolation.js';
 
 setDelaunator(Delaunator);
-const F = FINISH, t0 = performance.now();
+// (ICE_MESH_CELLS=40000: the ice grown on another ice mesh — lane iceage's ice-grid study; the measure's lines printed either way)
+const F = process.env.ICE_MESH_CELLS ? { ...FINISH, iceMeshCells: Number(process.env.ICE_MESH_CELLS) } : FINISH, t0 = performance.now();
 
 // ── the planet and its star (planet-system.js): its orbit at three epochs against PMIP's (Otto-Bliesner et al. 2017 for
 // 6 ka, Kageyama et al. 2017 for 21 ka: e, ε, ϖ from Berger 1978), the circular orbit as e = 0, Earth's perihelion ──
@@ -84,6 +86,9 @@ const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {} }, F)
 const simMesh = buildSimMesh(40000, MESH_SEED), zi = bedE.slice();
 const LIA = lastIceAge({ mesh, z: zi, lat, lon, warmSl, rain, grid: new LatLonGrid(0.25), cellKm2, seed: 1, soft: null, land, simMesh, teSim: new Float32Array(simMesh.numCells).fill(50), sheet: GS }, F).ice;
 const iceAgeS = (performance.now() - tg) / 1000;
+measureIceGrid({ mesh, z: bedE, sheet: GS, iceMeshCells: F.iceMeshCells, label: 'Earth' });
+// (ICE-6G_C's 21 ka ice measured the same way — no speeds: its area, pieces and margin the reference)
+measureIceGrid({ mesh, z: bedE, sheet: { ...GS, ice: I6.lgm, uSlide: new Float32Array(n), ms: 0, rounds: [] }, iceMeshCells: F.iceMeshCells, label: 'Earth ICE-6G_C 21 ka' });
 
 // ── today's climate: a positive-degree-day mass balance, and the climate's own ice sheets ──
 const SIG = 5, erf = v => { const t = 1 / (1 + 0.3275911 * Math.abs(v)), y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-v * v); return v >= 0 ? y : -y; };

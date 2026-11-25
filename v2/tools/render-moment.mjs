@@ -18,6 +18,7 @@
 // the finish's working layers, or change its constants); --no-cache: always finish.
 // On a shared machine, run it through sim-slots (sim-slots run -n 6 --gb 16 -- node …): SIM_THREADS sizes its pool.
 
+import { measureIceGrid } from './lib/ice-grid-measure.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,7 +110,7 @@ const TCFG = terrainConfig(TSET);
 // stage's), and each erosion rung's on its own mesh under rungs/ with its cells' lat/lon (Float32 pairs) once: for the
 // level-fills and locality tools (lane hollowfix). Always finishes.
 const DUMP = arg('--dump', null);
-const observe = DUMP && (() => {
+const dumpObserve = DUMP && (() => {
     let i = 0;
     fs.mkdirSync(path.join(DUMP, 'rungs'), { recursive: true });
     const put = (file, T, v) => fs.writeFileSync(file, Buffer.from(T.from(v).buffer));
@@ -120,7 +121,16 @@ const observe = DUMP && (() => {
         for (let c = 0; c < m.numCells; c++) { o[2 * c] = Math.asin(x[3 * c + 2]) * 180 / Math.PI; o[2 * c + 1] = Math.atan2(x[3 * c + 1], x[3 * c]) * 180 / Math.PI; }
         fs.writeFileSync(ll, Buffer.from(o.buffer));
     };
-    return (name, m, g, sea, lake) => {
+    return (name, m, g, sea, lake, extra) => {
+        // (the ice age's sheets as grown, on the finish's mesh: sheet-*.{u8,f32} and sheet.json — lane iceage's grid study)
+        if (name === 'ice sheet') {
+            latLon(DUMP, m);
+            put(path.join(DUMP, 'sheet-ice.u8'), Uint8Array, extra.ice);
+            for (const k of ['H', 'smb', 'uDef', 'uSlide']) put(path.join(DUMP, `sheet-${k}.f32`), Float32Array, extra[k]);
+            put(path.join(DUMP, 'sheet-z.f32'), Float32Array, g);
+            fs.writeFileSync(path.join(DUMP, 'sheet.json'), JSON.stringify({ seaKm: extra.seaKm, rounds: extra.rounds, ms: extra.ms, iceMeshCells: F.iceMeshCells }, null, 1));
+            return;
+        }
         if (name.startsWith('rung ')) {
             const d = path.join(DUMP, 'rungs'), tag = name.replace(/ /g, '-');
             put(path.join(d, `${tag}.z.f32`), Float32Array, g); put(path.join(d, `${tag}.sea.u8`), Uint8Array, sea);
@@ -133,7 +143,14 @@ const observe = DUMP && (() => {
         if (lake) put(`${tag}.lake.u8`, Uint8Array, lake);
     };
 })();
-const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !DUMP && !arg('--set', '') && !arg('--tset', '') && !process.argv.includes('--no-cache');
+// --ice-measure: the ice age's sheets measured as they are grown (tools/lib/ice-grid-measure.mjs: lane iceage's ice-grid study,
+// 40K against 160K ice meshes by --set iceMeshCells=…); printed, so it comes back from chroma
+const ICE_MEASURE = process.argv.includes('--ice-measure');
+const observe = DUMP || ICE_MEASURE ? (name, m, g, sea, lake, extra) => {
+    if (ICE_MEASURE && name === 'ice sheet') measureIceGrid({ mesh: m, z: g, sheet: extra, iceMeshCells: F.iceMeshCells, label: `${SEED}@${TIME}` });
+    dumpObserve?.(name, m, g, sea, lake, extra);
+} : null;
+const CACHEABLE = !DEBUG && !OVERLAY_ASKED && !DUMP && !ICE_MEASURE && !arg('--set', '') && !arg('--tset', '') && !process.argv.includes('--no-cache');
 let fin, raster = null;
 const fromCache = (page, cells, mesh) => ({ mesh, z: cells.z, ocean: cells.ocean, lake: cells.lake, lakeLevel: cells.lakeLevel, glaciated: cells.glaciated, rivers: page.rivers, stats: page.stats, ms: page.ms, layers: null, climate: null });
 const pageFin = CACHEABLE && PAGE_FIN ? await loadFinish(LATEST.finish, { mesh: true, waitMs: 5 * 60e3 }) : null;

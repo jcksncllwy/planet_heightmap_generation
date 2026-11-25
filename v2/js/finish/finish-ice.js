@@ -47,13 +47,14 @@ const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm);
 // melt the snow keeps itself: Calov & Ganopolski 2005), then F.iceRounds at the glacial maximum's epoch (F.iceMaxKyr: 21 ka).
 // Limits: an equilibrium, not the cycle's history (the sheets as they stand at the end, with no record of their growth or of
 // where the ice slid); the ice's own limits (gpu/ice-sheet.js: no sliding, no shelves, no calving law) and the balance's
-// (gpu/ice-balance.js: degree days); the climate on the ice mesh (F.iceMeshCells, ~55 km: the paleo models' own resolution);
+// (gpu/ice-balance.js: degree days); the climate on the ice mesh (F.iceMeshCells, ~61 km at 160K: the paleo models' own resolution);
 // no ocean circulation change beyond the climate's own (no AMOC shift); the sea's level one number (no sea-level fingerprint).
 /**
  * @param {Object} ctx  { device, mesh, z (km: the moment's ground, not changed), climateOptions (the finish's), onRound? }
- * @returns {Promise<{ ice: Uint8Array, H: Float32Array, smb: Float32Array, warmSl: Float32Array, rain: Float32Array,
- *   seaKm: number, rounds: Object[], ms: number }>}  on `mesh`: where the ice stood, its thickness (km) over the moment's
- *   ground, its mass balance (m of ice a year), the glacial climate's warmest month at the glacial sea's level (°C) and its year's
+ * @returns {Promise<{ ice: Uint8Array, H: Float32Array, smb: Float32Array, uDef: Float32Array, uSlide: Float32Array,
+ *   warmSl: Float32Array, rain: Float32Array, seaKm: number, rounds: Object[], ms: number }>}  on `mesh`: where the ice stood,
+ *   its thickness (km) over the moment's ground, its mass balance (m of ice a year), its surface's speed by deformation and its
+ *   bed's by sliding (m/a, the ice mesh's cell's), the glacial climate's warmest month at the glacial sea's level (°C) and its year's
  *   precipitation (mm, the climate's grid); the glacial sea's level (km against the moment's)
  */
 export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRound = null }, F) {
@@ -113,7 +114,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     // (the last balance, from the ice as it ends)
     const lastBal = await iceBalanceGPU(device, { sheet, grid: climate.grid, Tsl: climate.Tsl, P: climate.P, lat, lon, gamma, datum: sea });
     { const e = device.createCommandEncoder(); lastBal.encode(e); device.queue.submit([e.finish()]); }
-    const force = await readBack(device, sheet.force);
+    const force = await readBack(device, sheet.force), speed = await sheet.speeds();
     lastBal.destroy(); sheet.destroy();
     // ── down to the finish's mesh: the ice where its cell of the ice mesh holds ice, its surface the ice mesh's (smooth at its
     // scale, as a sheet's is), its thickness that surface over the moment's ground sunk as the ice mesh's bed sank — the valleys
@@ -124,11 +125,15 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
         S[c] = g ? bed[c] + H[c] : sea + H[c] * (1 - flt); down[c] = bedM[c] - bed[c]; smbI[c] = force[4 * c + 1]; afloat[c] = g ? 0 : 1;
     }
     const iceF = new Uint8Array(nF), HF = new Float32Array(nF), smbF = new Float32Array(nF), warmSl = new Float32Array(nF), rainF = new Float32Array(nF);
+    // (the ice's speeds, m/a, from its cell of the ice mesh: the surface's by deformation, the bed's by sliding — what a
+    // trough's erosion reads)
+    const uDefF = new Float32Array(nF), uSlideF = new Float32Array(nF);
     const Sf = new Float32Array(nF), Df = new Float32Array(nF);
     if (M) { carry(M, S, Sf); carry(M, down, Df); carry(M, smbI, smbF); } else { Sf.set(S); Df.set(down); smbF.set(smbI); }
     for (let c = 0; c < nF; c++) {
         const k = M ? M.nearest[c] : c;
         if (!(H[k] > 0)) continue;
+        uDefF[c] = speed[2 * k]; uSlideF[c] = speed[2 * k + 1];
         // (a floating front's ice is its own thickness, the water under it not the ice's)
         if (afloat[k]) { iceF[c] = 1; HF[c] = H[k] / 1000; continue; }
         const h = Sf[c] - (1000 * z[c] - Df[c]);
@@ -144,7 +149,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
             warmSl[c] = bilinearG(cg, warmG, la, lo); rainF[c] = bilinearG(cg, yearG, la, lo);
         }
     }
-    return { ice: iceF, H: HF, smb: smbF, warmSl, rain: rainF, seaKm: sea / 1000, rounds, ms: Math.round(performance.now() - t0) };
+    return { ice: iceF, H: HF, smb: smbF, uDef: uDefF, uSlide: uSlideF, warmSl, rain: rainF, seaKm: sea / 1000, rounds, ms: Math.round(performance.now() - t0) };
 }
 // (finish.js bilinear's, here so the ice needs nothing of finish.js: a 1° grid's field at a point)
 function bilinearG(g, field, lat, lon) {
