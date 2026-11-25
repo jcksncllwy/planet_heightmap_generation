@@ -29,6 +29,8 @@ import { coastLoops, coastFractal, kindOf, earthKindAt, EARTH_COAST_KINDS, COAST
 import { worldOcean } from '../js/terrain/world-ocean.js';
 import { deriveRecords } from '../js/terrain/records.js';
 import { earthSurfaceKm } from './lib/earth-surface.mjs';
+import { indiaAsiaPair } from './lib/india-pair.mjs';
+
 
 const SEED = 12345;
 const mesh = labMesh();
@@ -183,12 +185,14 @@ section('carving');
 // ── plateaus are eaten from their edges ──
 section('a collision plateau');
 {
-    const { frame } = await run('india'), I = carved(frame);
+    const { frame, frames } = await run('india'), I = carved(frame);
+    // (the India–Asia pair's plateau: India's neighbours build belts on Asia too — lib/india-pair.mjs, ruling (A), lane gpelock)
+    const ours = indiaAsiaPair(frames[0], frame.events, mesh).beltScope(frame);
     // the plateau on the upper plate (u 0.3–0.7 across the belt): most of it keeps most of its height, while gorges cut deep
     const kept = [], cut = [], tect = [];
     for (let t = 0; t < I.tm.numCells; t++) {
         const c = I.sampler.cells[3 * t], k = I.rec.kind[c];
-        if (!k || kindType(k) !== OrogenyType.HIMALAYAN || kindSide(k) !== BeltSide.UPPER || I.tectonicKm[t] <= 0) continue;
+        if (!k || kindType(k) !== OrogenyType.HIMALAYAN || kindSide(k) !== BeltSide.UPPER || I.tectonicKm[t] <= 0 || !ours(c)) continue;
         const u = I.rec.dKm[c] / Math.max(1, I.rec.reach[c]);
         if (u >= 0.3 && u < 0.7) { kept.push(I.heightKm[t] / I.tectonicKm[t]); cut.push(I.tectonicKm[t] - I.heightKm[t]); tect.push(I.tectonicKm[t]); }
     }
@@ -294,19 +298,19 @@ section('rivers through the history');
     // the flow off the belt's figure is 0.70 km, on all the belt's cells alike), which is right at 100 km and more and would be
     // wrong for a canyon. So the history is held to its belt's great rivers standing below the land around them; the canyon's
     // depth belongs to the finished surface, where its scale exists (tools/finish-gorges.mjs, the gorge target there))
-    const { frame, world } = await run('india');
+    const { frame, world, frames } = await run('india'), inPair = indiaAsiaPair(frames[0], frame.events, mesh).beltScope(frame);     // (the pair's belt: lib/india-pair.mjs)
     const z = surfaceKm(frame, mesh, heightsOf(world.config)), { adjOffset, adjList } = mesh, isLand = w => frame.owner[w] >= 0 && frame.type[w] !== 0;
     const inBelt = [], plain = [];
     for (let w = 0; w < mesh.numCells; w++) {
         if (!isLand(w) || frame.riverKm2[w] < 1e5) continue;
         let s = 0, k = 0;
         for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) if (isLand(adjList[j])) { s += z[adjList[j]]; k++; }
-        if (k) (frame.oroType[w] === OrogenyType.HIMALAYAN ? inBelt : frame.oroType[w] ? [] : plain).push(s / k - z[w]);
+        if (k) (frame.oroType[w] === OrogenyType.HIMALAYAN ? (inPair(w) ? inBelt : []) : frame.oroType[w] ? [] : plain).push(s / k - z[w]);
     }
     check('the history’s rivers cut down into the rising belt', quantile(inBelt, 0.9) >= 0.15,
         `how far its great rivers stand below the land around them (90th percentile): ${quantile(inBelt, 0.9).toFixed(2)} km in the collision belt (${inBelt.length} cells); on the plains ${quantile(plain, 0.9).toFixed(2)} km (${plain.length}; not judged at this scale)`);
     const tm = terrainMesh(640000), H = synthesizeTerrain(frame, mesh, tm, { seed: SEED, carve: true }), on = [], off = [];
-    for (let t = 0; t < tm.numCells; t++) { const c = H.sampler.cells[3 * t]; if (frame.oroType[c] === OrogenyType.HIMALAYAN && H.heightKm[t] > 0) (frame.riverKm2[c] >= 1e5 ? on : off).push(H.heightKm[t]); }
+    for (let t = 0; t < tm.numCells; t++) { const c = H.sampler.cells[3 * t]; if (frame.oroType[c] === OrogenyType.HIMALAYAN && inPair(c) && H.heightKm[t] > 0) (frame.riverKm2[c] >= 1e5 ? on : off).push(H.heightKm[t]); }
     check('the terrain draws them: canyons where the history’s rivers held their ways', on.length >= 300 && median(off) - median(on) >= 0.1,
         `in the collision belt, the terrain on the history's great rivers stands ${(median(off) - median(on)).toFixed(2)} km below the belt off them (medians; ${on.length} terrain cells on them)`);
 }

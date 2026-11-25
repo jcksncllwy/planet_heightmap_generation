@@ -8,6 +8,7 @@
 // Usage: node v2/tools/check-phase10.mjs
 
 import { check, checkAcross, report, section, finish, labMesh, medianOf, nearestFrame } from './lib/check-kit.mjs';
+import { indiaAsiaPair } from './lib/india-pair.mjs';
 import { simulateCached } from './lib/history-cache.mjs';
 import { onPath } from './lib/paths.mjs';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
@@ -296,7 +297,8 @@ section('the plate that owned the trench rides up');
     // renames it: the scenes' own truth, read from how they are built, not from the slab the rule itself reads)
     const seeds = [SEED, 1, 2, 3, 4, 5], scenes = ['india', 'cratons'];
     const rows = (await Promise.all(scenes.map(async id => (await Promise.all(seeds.map(async seed => {
-        const r = await run(id, null, null, seed), asia = r.frames[0].plates.find(p => p.name === 'Asia').id, first = r.events.find(e => e.kind === 'collision');
+        // (the India–Asia pair's first contact: India's neighbours collide too, with Asia and with India — lib/india-pair.mjs)
+        const r = await run(id, null, null, seed), asia = r.frames[0].plates.find(p => p.name === 'Asia').id, first = id === 'india' ? indiaAsiaPair(r.frames[0], r.events, mesh).contact : r.events.find(e => e.kind === 'collision');
         return { label: `${id} ${seed}`, formed: !!first, ok: first?.data.upper === asia };
     })))))).flat();
     const formed = rows.filter(x => x.formed), wrong = formed.filter(x => !x.ok);

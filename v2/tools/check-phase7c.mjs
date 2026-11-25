@@ -15,6 +15,7 @@ import { frameTallies, Margin } from '../js/tectonics/measure.js';
 import { CrustFlag, CrustType } from '../js/tectonics/model/crust.js';
 import { EventKind } from '../js/tectonics/model/world.js';
 import { arcFloats } from '../js/tectonics/step/polarity.js';
+import { indiaAsiaPair } from './lib/india-pair.mjs';
 import { TERRAIN } from '../js/terrain/terrain-config.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 2;
@@ -60,8 +61,9 @@ section('erosive and accretionary margins');
 section('a continent slides under another (underthrusting)');
 {
     const r = await run('india'), off = await run('india', { underthrustShare: 0 });
-    const sutureOf = x => x.events.find(e => e.kind === EventKind.SUTURE);
-    const suture = sutureOf(r);
+    // (the India–Asia pair: India's neighbours collide too, with Asia and with India — lib/india-pair.mjs, ruling (A), lane
+    // gpelock 2026-11-25 — so the weld, the contact, the rates, the land and the thickening here are the pair's)
+    const pairOf = x => indiaAsiaPair(x.frames[0], x.events, mesh, x.world), P = pairOf(r), suture = P.suture;
     check('India reaches Asia and they weld', !!suture, suture ? suture.text.slice(0, 120) : 'no suture');
     // India slows on contact: the belt's resistance is a friction bounded by the thickened column's GPE per metre of front
     // (torque-balance.js lockContacts; Copley, Avouac & Royer 2010: Tibet's thickening, ~5–6 × 10¹² N/m, slowed India
@@ -70,8 +72,8 @@ section('a continent slides under another (underthrusting)');
     // (retired there, lane gpelock 2026-11-25). The India–Asia closing rate (their relative motion at India's centre): its
     // peak in the 10 Myr before contact, against its mean 15–25 Myr after
     {
-        const contact = r.events.find(e => e.kind === EventKind.COLLISION)?.time;
-        const rate = f => { const a = f.plates.find(p => p.name === 'India' && p.alive), b = f.plates.find(p => p.name === 'Asia' && p.alive); return a && b ? relativeCmYr(a, b) : NaN; };
+        const contact = P.contact?.time;
+        const rate = f => { const a = f.plates.find(p => P.indiaIds.has(p.id) && p.alive), b = f.plates.find(p => P.asiaIds.has(p.id) && p.alive); return a && b && a !== b ? relativeCmYr(a, b) : NaN; };
         const over = (t0, t1) => r.frames.filter(f => f.time >= t0 && f.time <= t1 && (!suture || f.time < suture.time)).map(rate).filter(Number.isFinite);
         const before = contact != null ? Math.max(...over(contact - 10, contact)) : NaN, afterRates = contact != null ? over(contact + 15, contact + 25) : [];
         const after = afterRates.length ? afterRates.reduce((s, v) => s + v, 0) / afterRates.length : NaN;
@@ -80,26 +82,28 @@ section('a continent slides under another (underthrusting)');
         // (part of India's drop was the end of an acceleration — a plume head, van Hinsbergen et al. 2011 — which the scene does not have)
         report('India: closing 15–25 Myr after contact ÷ approach before', after / before, { earth: [0.25, 0.35], source: 'India–Asia ~15 → ~4 cm/yr over 50–35 Ma (Copley, Avouac & Royer 2010)', digits: 2 });
     }
-    check('as they converge, India’s land in the overlap slides under Asia', r.budget.underthrustCells >= 5, `${r.budget.underthrustCells} cells (${Mkm2(r.budget.underthrustCells).toFixed(2)} Mkm²) consumed`);
-    const maxThick = f => { let m = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w)) m = Math.max(m, f.thickKm[w]); return m; };
+    const under = P.rec?.underthrustCells ?? 0;
+    check('as they converge, India’s land in the overlap slides under Asia', under >= 5, `${under} cells (${Mkm2(under).toFixed(2)} Mkm²) consumed`);
+    const maxThick = (f, Q = P) => { const ours = Q.beltScope(f); let m = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w) && ours(w)) m = Math.max(m, f.thickKm[w]); return m; };
     // (by the thickened crust's volume, not its thickest cell: under collisionVolume every consumed column is laid ring by
     // ring up to the ceiling, underthrustMaxThickKm, with or without underthrusting — the weld's overlap fills it too — so the
     // thickest cell stands at the ceiling in both runs (40.0 vs 40.0 km) and the maximum says nothing; what India's
     // underthrust land adds is crust, so it shows as volume. Lane crust)
-    const thickVol = f => { let v = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w)) v += Math.max(0, f.thickKm[w]) * cellAreaKm2; return v / 1e6; };
+    const thickVol = (f, Q = P) => { const ours = Q.beltScope(f); let v = 0; for (let w = 0; w < numCells; w++) if (isLand(f, w) && ours(w)) v += Math.max(0, f.thickKm[w]) * cellAreaKm2; return v / 1e6; };
     // (judged with the history's rivers off: their sediment budget adds 26–50 Mkm³ of thickened land to this measure, 3–5×
     // what India's underthrust land adds (+8.9 Mkm³ with the rivers off), and its sign with and without underthrusting follows
     // the erosion's path, not the process: the erosion's m 0.25 → 0.45 flipped it, 3 of 3 paths. With the rivers off the two
     // runs differ only by underthrusting. The delta with erosion on is reported below. Erosionfix M3, sessrumnir's ruling)
     const dry = { heights: { ...TERRAIN, riverEveryMyr: 1e9 } };
     const rd = await run('india', dry), offd = await run('india', { ...dry, underthrustShare: 0 });
-    check('Asia’s crust above it thickens — a plateau to come', thickVol(rd.last) > thickVol(offd.last), `thickened crust ${thickVol(rd.last).toFixed(1)} Mkm³ above normal (without underthrusting: ${thickVol(offd.last).toFixed(1)}), the history's rivers off; thickest ${maxThick(rd.last).toFixed(1)} km (${maxThick(offd.last).toFixed(1)})`);
-    report('…with the rivers on: thickened crust with underthrusting less without (erosion\'s sediment included)', thickVol(r.last) - thickVol(off.last), { unit: ' Mkm³', digits: 1,
-        detail: `${thickVol(r.last).toFixed(1)} against ${thickVol(off.last).toFixed(1)} Mkm³; the rivers' sediment adds to both, and which gains more follows the erosion's path` });
+    check('Asia’s crust above it thickens — a plateau to come', thickVol(rd.last, pairOf(rd)) > thickVol(offd.last, pairOf(offd)), `thickened crust ${thickVol(rd.last, pairOf(rd)).toFixed(1)} Mkm³ above normal (without underthrusting: ${thickVol(offd.last, pairOf(offd)).toFixed(1)}), the history's rivers off; thickest ${maxThick(rd.last, pairOf(rd)).toFixed(1)} km (${maxThick(offd.last, pairOf(offd)).toFixed(1)})`);
+    report('…with the rivers on: thickened crust with underthrusting less without (erosion\'s sediment included)', thickVol(r.last) - thickVol(off.last, pairOf(off)), { unit: ' Mkm³', digits: 1,
+        detail: `${thickVol(r.last).toFixed(1)} against ${thickVol(off.last, pairOf(off)).toFixed(1)} Mkm³; the rivers' sediment adds to both, and which gains more follows the erosion's path` });
     report('thickest crust above normal over the underthrust land', maxThick(r.last), { earth: [25, 40], unit: ' km', digits: 1, source: 'Tibet ~60–80 km, about twice normal (Owens & Zandt 1997)' });
     if (suture) {
         const before = nearestFrame(r.frames, suture.time - 10), after = nearestFrame(r.frames, suture.time + 4);
-        check('the collision makes no land', land(after) <= land(before) + 0.01 * land(before), `${land(before)} land cells 10 Myr before the weld, ${land(after)} just after`);
+        const pairLand = f => countWhere(numCells, w => isLand(f, w) && P.ours(f, w));       // (the pair's: not a neighbour's)
+        check('the collision makes no land', pairLand(after) <= pairLand(before) + 0.01 * pairLand(before), `${pairLand(before)} land cells 10 Myr before the weld, ${pairLand(after)} just after`);
     }
     check('with underthrusting off, nothing is consumed', off.budget.underthrustCells === 0, `${off.budget.underthrustCells} cells`);
 }

@@ -11,7 +11,7 @@ import { check, checkAcross, report, section, finish, mean, labMesh, isLand, cel
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../js/tectonics/config.js';
 import { floodFrom } from '../js/core/mesh-bfs.js';
-import { spreadKm } from '../js/core/min-heap.js';
+import { indiaAsiaPair } from './lib/india-pair.mjs';
 import { FORCE_SCENES } from '../js/tectonics/scenarios/force-scenes.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
@@ -29,16 +29,13 @@ const mesh = labMesh(), { xyz, numCells } = mesh;
 async function run(id, untilMyr, overrides = {}, events = true, seed = SEED) {
     const world = FORCE_SCENES.find(s => s.id === id).build(mesh, seed);
     Object.assign(world.config, phase5Mechanisms(id), overrides);    // collisions alone (wings and arcs are Phase 5b); India's continent goes under
-    // (each plate's id and its land's terranes as built: the India scene has neighbours of its own, so its checks read the
-    // India–Asia pair by these, not the world's first collision)
-    const built = new Map(world.plates.filter(p => !p.isBackground).map(p => [p.name, { id: p.id, terranes: new Set(cellsWhere(numCells, c => p.crust.mask[c] && p.crust.type[c] !== CrustType.OCEAN).map(c => p.crust.terrane[c])) }]));
     // what each collision record had booked at each snapshot (its shortening so far, and its closing rate across the seam)
     const booked = [];
     const { frames, steps } = await simulate(world, { untilMyr, drive: updatePlateMotion, snapshotEveryMyr: SNAPSHOT_MYR, events,
         stopAt: w => { booked.push([w.time, new Map([...w.collisions.values()].map(c => [`${c.upper}:${c.lower}`, { km: c.shorteningKm, closing: c.closingCmYr, frontKm: c.frontKm }]))]); return false; } });
     const at = t => frames.find(f => Math.abs(f.time - t) < 1e-6);
     const bookedAt = (t, rec) => booked.find(([bt]) => Math.abs(bt - t) < 1e-6)?.[1].get(`${rec.upper}:${rec.lower}`);
-    return { world, built, frames, steps, at, bookedAt, events: world.events, sutures: world.events.filter(e => e.kind === EventKind.SUTURE), collision: frames.map(f => frameTallies(f).collision) };
+    return { world, frames, steps, at, bookedAt, events: world.events, sutures: world.events.filter(e => e.kind === EventKind.SUTURE), collision: frames.map(f => frameTallies(f).collision) };
 }
 
 // (the India checks that read the weld, in order: a seed whose collision never welds counts for each as the scene not forming)
@@ -57,34 +54,6 @@ const INDIA_CHECKS = [
     'thickening spreads across the belt as a plateau, not a spike at the front',
     'no gaps in any frame',
 ];
-/** The India–Asia pair in an India-scene run: its collision and weld events (each side's plate id, and the ids of the plates
- *  it was welded into before the pair's own weld), its collision record, its overlap, and which cells are its: land of
- *  India's or Asia's terranes, or of a terrane neither of India's neighbours brought (an arc's), and for the belts, a cell
- *  nearer the other side's land than any neighbour's (on India, nearer Asia's; elsewhere, nearer India's) — Asia's coast is
- *  indented by Africa and Australia too, and Australia's arcs reach India. */
-function pairScope(r) {
-    const india = r.built.get('India'), asia = r.built.get('Asia'), gi = new Set([india.id]), ga = new Set([asia.id]);
-    const otherT = new Set([...r.built].filter(([name]) => name !== 'India' && name !== 'Asia').flatMap(([, b]) => [...b.terranes]));
-    const isPair = (u, l) => (gi.has(u) && ga.has(l)) || (ga.has(u) && gi.has(l));
-    let contact, suture;
-    for (const e of r.events) {
-        const u = e.data?.upper, l = e.data?.lower;
-        if (u === undefined || suture) continue;
-        if (e.kind === EventKind.COLLISION && !contact && isPair(u, l)) contact = e;
-        if (e.kind === EventKind.SUTURE) { if (isPair(u, l)) suture = e; else for (const g of [gi, ga]) if (g.has(l)) g.add(u); }
-    }
-    const rec = suture && [...r.world.collisions.values()].find(c => c.upper === suture.data.upper && c.lower === suture.data.lower);
-    const pairT = new Set([...india.terranes, ...asia.terranes]);
-    const sideT = id => (gi.has(id) ? india.terranes : asia.terranes), ownTerrane = t => !otherT.has(t), ours = (f, w) => ownTerrane(f.terrane[w]);
-    const isOverlap = (f, w) => f.overlap[w] === 2 && isPair(f.owner[w], f.collider[w]);
-    const overlapCount = f => { let n = 0; for (let w = 0; w < numCells; w++) if (isOverlap(f, w)) n++; return n; };
-    const beltScope = f => {
-        const from = T => { const d = new Float64Array(numCells).fill(Infinity); for (let w = 0; w < numCells; w++) if (isLand(f, w) && T.has(f.terrane[w])) d[w] = 0; spreadKm(mesh, d); return d; };
-        const dI = from(india.terranes), dA = from(asia.terranes), dO = from(otherT);
-        return w => ours(f, w) && (india.terranes.has(f.terrane[w]) ? dA[w] <= dO[w] : dI[w] <= dO[w]);
-    };
-    return { contact, suture, rec, pairT, sideT, ownTerrane, ours, isOverlap, overlapCount, beltScope };
-}
 section('India meets Asia');
 // (the scene on three seeds — its coasts drawn from each seed's noise — and every check judged over them: lib/check-kit.mjs
 // checkAcross. A seed on which India never reaches Asia, or reaches it and never welds, is a scene that did not form — the
@@ -98,8 +67,8 @@ for (const seed of SEEDS) {
     // The India–Asia pair (ruling (A), lane gpelock 2026-11-25): India's neighbours (Africa, Australia, Antarctica) collide too,
     // with Asia and with India, so every check below reads the pair: its events by plate id — each side's id, plus the id of
     // whatever plate it was welded into, up to the pair's own weld — its overlap and land by the pair's ids and terranes, and
-    // its belts on the cells nearer India's land than any neighbour's (pairScope below). The thresholds are unchanged.
-    const P = pairScope(r);
+    // its belts on the cells nearer India's land than any neighbour's (lib/india-pair.mjs). The thresholds are unchanged.
+    const P = indiaAsiaPair(r.frames[0], r.events, mesh, r.world);
     const { contact, suture } = P;
     judge(seed, 'collision and suture events are logged in order', !!contact, suture && suture.time > contact.time, `${r.events.length} events${suture ? `, suture at ${suture.time.toFixed(0)} Myr` : contact ? ', no suture' : ', no collision'}`);
     const J = (name, ok, text) => judge(seed, name, !!suture, ok, text);

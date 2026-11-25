@@ -22,10 +22,10 @@ import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { TERRAIN, terrainConfig } from '../js/terrain/terrain-config.js';
 import { erosionHeldAt, frameClimate } from '../js/tectonics/step/climate-sample.js';
 import { kindType, kindSide, gradient, CoastKind } from '../js/terrain/records.js';
-import { EventKind } from '../js/tectonics/model/world.js';
 import { crossAt } from '../js/terrain/stripes.js';
 import { coastLoops, coastFractal, kindOf as coastKindOf, COAST_KINDS, EARTH_D } from './lib/coast-fractal.mjs';
 import { stageOf, EARTH_LAND } from './lib/cycle-stage.mjs';
+import { indiaAsiaPair } from './lib/india-pair.mjs';
 
 const SEED = 12345;
 const RIFT_SEEDS = [SEED, 2, 777, 4242, 626225, 1, 3, 5];      // (the rift scene's figures that vary from rift to rift)
@@ -216,15 +216,20 @@ section('an Andean margin');
 // ── a continental collision ──
 section('a continental collision');
 {
-    const { frame } = await run('india'), T = terrain(frame), { rec, heightKm } = T;
-    const band = (side, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t); const u = rec.dKm[c] / Math.max(1, rec.reach[c]); if (kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && kindSide(rec.kind[c]) === side && u >= lo && u < hi && heightKm[t] > -0.2) a.push(heightKm[t]); } return a; };
+    const { frame, frames } = await run('india'), T = terrain(frame), { rec, heightKm } = T;
+    // (the India–Asia pair: India's neighbours collide too, with Asia and with India — lib/india-pair.mjs, ruling (A), lane
+    // gpelock 2026-11-25 — so the belts, the weld and the seam here are the pair's: belt cells nearer the other side's land
+    // than any neighbour's, the pair's weld event, and its seam — the suture its weld flagged, or while it still converges
+    // the overlap between them)
+    const P = indiaAsiaPair(frames[0], frame.events, mesh), ours = P.beltScope(frame);
+    const band = (side, lo, hi) => { const a = []; for (let t = 0; t < T.tm.numCells; t++) { const c = corner(T, t); const u = rec.dKm[c] / Math.max(1, rec.reach[c]); if (kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && ours(c) && kindSide(rec.kind[c]) === side && u >= lo && u < hi && heightKm[t] > -0.2) a.push(heightKm[t]); } return a; };
     const plateau = mean(band(BeltSide.UPPER, 0.2, 0.8)), range = mean(band(BeltSide.LOWER, 0.1, 0.35)), foreland = mean(band(BeltSide.LOWER, 0.75, 1.01));
     // Judged at the collision's real age: a plateau stands ~4.5 km over its foreland while its collision converges (Tibet's
     // cells ~4.8 km on ETOPO1 against the Ganges plain's 0.05–0.3: lane plateauroot), and once the pair has welded its relief
     // wears with an orogen's e-folding time, 100–200 Myr (Baldwin et al. 2003, the heights' reliefTauMyr source) — the fast
     // end here, the bar's lenient side. (Was a flat 0.75 km, "welded 30 Myr ago", set in 2026-09 on a plateau held ~2 km up
     // by uplift no root paid for; this scene welds ~50 Myr before its last frame: lanes-2026-10-29/plateauroot/report.md)
-    const weld = frame.events.find(e => e.kind === EventKind.SUTURE), ageMyr = weld ? frame.time - weld.time : 0;
+    const weld = P.suture, ageMyr = weld ? frame.time - weld.time : 0;
     const plateauBar = 4.5 * Math.exp(-ageMyr / 100);
     check('the upper plate carries a plateau, well above the foreland on the lower plate', plateau >= foreland + plateauBar, `mean ${plateau.toFixed(2)} km across the upper plate’s belt (u 0.2–0.8), ${foreland.toFixed(2)} km in the lower plate’s foreland (u > 0.75): ${(plateau - foreland).toFixed(2)} km over it, against ${plateauBar.toFixed(2)} km ${weld ? `${ageMyr.toFixed(0)} Myr after the weld` : 'while converging'}`);
     report('collision plateau over its foreland', plateau - foreland, { earth: [plateauBar, 4.5], unit: ' km', digits: 2, source: 'Tibet ~4.5 km over the Ganges plain while converging (ETOPO1), worn with e-folding 100–200 Myr after the weld (Baldwin et al. 2003); lane plateauroot' });
@@ -234,12 +239,13 @@ section('a continental collision');
     const near = [...band(BeltSide.UPPER, 0, 0.35), ...band(BeltSide.LOWER, 0, 0.35)], all = [...near, ...band(BeltSide.UPPER, 0.35, 1.01), ...band(BeltSide.LOWER, 0.35, 1.01)];
     check('the highest ground is near the suture', quantile(near, 0.99) >= 0.9 * quantile(all, 0.99), `99th percentile ${quantile(near, 0.99).toFixed(2)} km within u < 0.35 of the suture, ${quantile(all, 0.99).toFixed(2)} km over the whole belt`);
     // ridges against the suture itself (flagged in the crust), measured independently of the belt records
-    const sutured = w => frame.owner[w] >= 0 && (frame.flags[w] & CrustFlag.SUTURE) !== 0;
+    const pre = weld && frames.filter(f => f.time < weld.time).at(-1), post = weld && frames.find(f => f.time >= weld.time);
+    const sutured = w => weld ? frame.owner[w] >= 0 && (frame.flags[w] & CrustFlag.SUTURE) !== 0 && (post.flags[w] & CrustFlag.SUTURE) !== 0 && !(pre.flags[w] & CrustFlag.SUTURE) : P.isOverlap(frame, w);
     const suture = [];
     for (let w = 0; w < mesh.numCells; w++) if (sutured(w)) suture.push(mesh.xyz[3 * w], mesh.xyz[3 * w + 1], mesh.xyz[3 * w + 2]);
     const away = awayFrom(suture), withinKm = (c, km) => { for (let i = 0; i < suture.length; i += 3) if (mesh.xyz[3 * c] * suture[i] + mesh.xyz[3 * c + 1] * suture[i + 1] + mesh.xyz[3 * c + 2] * suture[i + 2] > Math.cos(km / 6371)) return true; return false; };
     const nearSuture = new Uint8Array(mesh.numCells); for (let w = 0; w < mesh.numCells; w++) if (rec.kind[w] && withinKm(w, 800)) nearSuture[w] = 1;
-    const angles = ridgeAngles(T, away, t => { const c = corner(T, t); return kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && nearSuture[c] && heightKm[t] > 0; });
+    const angles = ridgeAngles(T, away, t => { const c = corner(T, t); return kindType(rec.kind[c]) === OrogenyType.HIMALAYAN && ours(c) && nearSuture[c] && heightKm[t] > 0; });
     check('ridges run parallel to the suture', angles.length >= 10 && median(angles) <= 30, `median ${median(angles).toFixed(0)}° between the ridges’ cross-direction and the direction away from the suture, over ${angles.length} sim cells (random: 45°)`);
     // the ridge noise (8b round 5): the same place with and without it; its value against itself a little way along the
     // strike and the same way across it — drawn out along the belt, it should hold along and change across. The strike
