@@ -56,7 +56,7 @@ export const STAGE_FLOWS = {
     kinematics: { arcAgeingKm3: +1 },
     resolve: { riseDownKm3: -1, riseKeptKm3: -1, seaFillDownKm3: -1, seaFillKeptKm3: -1, arcRecycledKm3: +1, arcScrapedKm3: +1 },
     boundaries: { beltReliefKm3: +1, beltRootKm3: +1, arcRootAddedKm3: +1 },
-    collisions: { beltReliefKm3: +1, beltRootKm3: +1, collisionConsumedKm3: +1, collisionKeptKm3: +1, arcRecycledKm3: +1, arcScrapedKm3: +1 },
+    collisions: { beltReliefKm3: +1, beltRootKm3: +1, collisionConsumedKm3: +1, collisionKeptKm3: +1, aheadShortenedKm3: +1, aheadKeptKm3: +1, arcRecycledKm3: +1, arcScrapedKm3: +1 },
     rifts: { beltReliefKm3: +1, beltRootKm3: +1 },
     arcs: { arcAddedKm3: +1 },
     arcMaturation: { arcMaturedKm3: +1 },

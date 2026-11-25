@@ -216,6 +216,11 @@ section(`the crust ledger: ${LEDGER_MYR} Myr of the supercontinent cycle, ${LEDG
     check('…and sediment subduction takes its rock down without eating the coast again (the erosion took it off the crust already), and touches no arc', sunk.land === 0 && sunk.arc === 0 && (world.budget.sedimentCells ?? 0) === 0 && (world.budget.sedimentKm3 ?? 0) > 0,
         `sedimentSubduction booked ${sunk.land} cells of land, ${sunk.arc} of arc; world.budget.sedimentCells ${world.budget.sedimentCells ?? 0}; ${((world.budget.sedimentKm3 ?? 0) / 1e6).toFixed(2)} Mkm³ of terrigenous sediment subducted`);
     const B = world.budget;
+    // (lane gpelock P2: the upper plate's crust shortened ahead of an indenter whose shield jams the overlap — collision.js
+    // shortenAhead — is folded, not sent down: all of it laid back as root, or left unplaced where no column had room)
+    const aheadVol = B.aheadVolKm ?? 0, aheadBack = (B.aheadKeptKm ?? 0) + (B.aheadUnplacedKm ?? 0);
+    check('…and the upper plate\'s crust shortened ahead of an indenter is all kept: what is taken is laid back as root, none lost', Math.abs(aheadBack - aheadVol) <= 1e-6 * Math.max(1, aheadVol) && (B.aheadLostKm ?? 0) === 0,
+        `${B.aheadShortenedCells ?? 0} cells shortened ahead (${(aheadVol * world.mesh.cellAreaKm2 / 1e6).toFixed(2)} Mkm³), laid back ${((B.aheadKeptKm ?? 0) * world.mesh.cellAreaKm2 / 1e6).toFixed(2)}, unplaced ${((B.aheadUnplacedKm ?? 0) * world.mesh.cellAreaKm2 / 1e6).toFixed(2)}, lost ${((B.aheadLostKm ?? 0) * world.mesh.cellAreaKm2 / 1e6).toFixed(2)}`);
     check('…and a weld or a dock makes no crust: every cell of sea it fills is paid for with a cell of its coast', (B.sealPaidCells ?? 0) === (B.sealedLandCells ?? 0) && (B.arcPaidCells ?? 0) === (B.sealedArcCells ?? 0),
         `${B.sealedLandCells ?? 0} cells of sea filled with continent at welds and docks, ${B.sealPaidCells ?? 0} of continental coast given back; ${B.sealedArcCells ?? 0} filled with arc, ${B.arcPaidCells ?? 0} of coast given back for them; ${B.remnantSeaCells ?? 0} left sea, unpaid, as remnant basins`);
     report('weld and dock sea left as remnant basins (no coast of the plate\'s own to pay for it)', B.remnantSeaCells ?? 0, { unit: ' cells' });

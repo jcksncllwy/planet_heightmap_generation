@@ -32,6 +32,8 @@
 //                   keepConsumed (was deleted as movedLostKm3: lane contarea (2)); and a terrane's dock's seal — the strait it
 //                   closes and the coast that pays for it, the host's rock after less before (accrete-terrane.js, as a weld's
 //                   in collisionConsumedKm3; lane oldfloor)
+//   aheadShortenedKm3 (< 0) the upper plate's crust a collision shortens ahead of an indenter whose shield jams the overlap
+//                   (step/collision.js shortenAhead); aheadKeptKm3 what keepConsumed lays back as its belt's root (none lost)
 //   shortenedKm3    (< 0) an Andean margin's edge shortened away; shortenKeptKm3 what step/andean-shortening.js lays back as
 //                   its belt's root: their sum is the unplaced (normally 0)
 //   collapseNetKm3  orogenicCollapse's rock change (≈ 0: a quiet belt's root moved into the continental cell it makes on its

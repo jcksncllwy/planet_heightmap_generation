@@ -122,9 +122,11 @@ let nearScratch = null;
  * force's limit (torque-balance.js collisionRootKm: where the column's ΔGPE reaches the push its record pressed the front with).
  * A dock keeps the constant underthrustMaxThickKm: it happens in one step, so it has no record of a push to take a force from
  * (lane gpelock P2, sessrumnir's ruling 3: collisions only for now).
+ * `lostShare`: the share that returns to the mantle — a collision's consumed crust collisionLostShare; the upper plate's own crust
+ * shortened ahead of an indenter none (step/collision.js shortenAhead: folded, not sent down).
  */
-export function keepConsumed(world, U, seeds, volKm, since, book = 'collision', maxRootKm = world.config.underthrustMaxThickKm) {
-    const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
+export function keepConsumed(world, U, seeds, volKm, since, book = 'collision', maxRootKm = world.config.underthrustMaxThickKm, lostShare = world.config.collisionLostShare) {
+    const { config, budget } = world, lost = volKm * lostShare, kept = volKm - lost;
     // across the collision's belt on the upper plate — every cell it has stamped since it began, not only this step's: the
     // deforming zone is the belt the convergence built (England & Houseman 1986), and the weld, which absorbs the most, comes
     // after the seam has stalled, a step that stamps no belt at all (on seeds 1 and 2 of phase5's India the weld found no

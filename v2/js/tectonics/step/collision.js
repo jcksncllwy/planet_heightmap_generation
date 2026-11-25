@@ -564,8 +564,9 @@ function underthrust(world, U, L, cells, rec, km) {
         const nb = adjList[k];
         if (!inOverlap.has(nb) && landClaims[nb] <= 1 && owner[nb] === L.id && L.crust.type[ownerCell[nb]] !== CrustType.OCEAN) { lowerSide.push(w); break; }
     }
-    if (!lowerSide.length) return 0;
-    const depth = hopsFrom(mesh, lowerSide, w => inOverlap.has(w)).dist;
+    // (none: the lower plate's land no longer touches the overlap — its edge gone under up to a shield, the overlap a pocket in the
+    // upper plate's land — so nothing of it goes under; the excess is shortenAhead's)
+    const depth = lowerSide.length ? hopsFrom(mesh, lowerSide, w => inOverlap.has(w)).dist : new Int32Array(mesh.numCells);
     // (a craton of the lower plate that has reached the overlap jams it: its lithosphere is too thick and buoyant to go
     // under (Cloos 1993) and too strong to break (Lenardic & Moresi 1999), so the lower plate's land behind it — between it
     // and the lower plate's own side — goes no further under. Consumed round it, the craton was cut off from its plate,
@@ -602,11 +603,56 @@ function underthrust(world, U, L, cells, rec, km) {
         }
     }
     if (Cm && keptKm > 0) keepConsumed(world, U, keptAt, keptKm, rec.startedAt, 'collision', rec.rootCapKm);
+    // (the overlap's excess the lower plate could not send under — its shield jams it, and the land behind — is the upper
+    // plate's crust shortened ahead of the indenter instead: shortenAhead)
+    const ahead = Cm && excess > consumed ? shortenAhead(world, U, cells, inOverlap, excess - consumed, rec, Cm) : 0;
     rec.underthrustDue = Math.min(Math.max(0, rec.underthrustDue - consumed), 1);      // (what could not be consumed this step is not carried)
     rec.underthrustCells = (rec.underthrustCells ?? 0) + consumed;
     world.budget.underthrustCells += consumed;
     if (consumed) { L.markReshaped(); U.dirty = true; }
-    return consumed;
+    return consumed + ahead;
+}
+
+/**
+ * The upper plate's crust shortened ahead of an indenter (lane gpelock P2, sessrumnir's ruling 2026-11-25). Where the lower plate's
+ * land cannot go under — its craton jams the overlap (Cloos 1993; Lenardic & Moresi 1999), and its land behind the shield with it
+ * (underthrust above) — the convergence is taken up by the upper plate instead: its crust in front of the indenter shortens and
+ * thickens. Most of Tibet's thickened crust is Asian, shortened ahead of India (Yin & Harrison 2000, Annu. Rev. Earth Planet. Sci.
+ * 28: ≥ 1400 km of shortening within Asia since the collision; DeCelles et al. 2002, Tectonics 21: ~1500 km across the Himalaya
+ * and southern Tibet). So the overlap's excess (deeper than overlapCapKm over the front) is taken from the upper plate's crust in
+ * the overlap, the indenter's face first — nearest the upper plate's own land — and its volume laid on the upper plate's
+ * collision belt by keepConsumed, up to the collision's force limit (rec.rootCapKm), the rest ring by ring outward. Nothing goes
+ * to the mantle (lostShare 0: folded, not sent down). Its cratons are too strong to shorten (Lenardic & Moresi 1999) and its arcs
+ * are scraped, not shortened (accreteArcs). Books: budget.aheadShortenedCells; the rock book aheadShortenedKm3 (< 0, the rock taken
+ * off the map) and aheadKeptKm3 (laid back) — check-invariants.mjs holds the two to closing. Limits: the raster's overlap is the
+ * convergence not yet converted, and overlapCapKm how much of it the raster holds — a tolerance, not a property of rock.
+ * @returns {number} cells shortened
+ */
+function shortenAhead(world, U, cells, inOverlap, want, rec, Cm) {
+    const { mesh, owner, ownerCell, landClaims } = world, { xyz, index, adjOffset, adjList } = mesh;
+    // (the indenter's face first: the overlap's cells nearest the upper plate's own land — its crust in front of the indenter)
+    const face = cells.filter(w => { for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) { const nb = adjList[k]; if (!inOverlap.has(nb) && landClaims[nb] <= 1 && owner[nb] === U.id && U.crust.type[ownerCell[nb]] !== CrustType.OCEAN) return true; } return false; });
+    const d = hopsFrom(mesh, face, w => inOverlap.has(w)).dist, far = q => (d[q] >= 0 ? d[q] : Infinity);
+    const order = cells.slice().sort((p, q) => far(p) - far(q) || p - q);
+    const seeds = [];
+    let volKm = 0, taken = 0;
+    for (const w of order) {
+        if (taken >= want) break;
+        const cu = U.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
+        if (!U.crust.mask[cu] || U.crust.type[cu] !== CrustType.CONTINENT) continue;
+        volKm += crustOf(U.crust, cu, Cm);
+        bookRock('aheadShortenedKm3', -cellRockKm3(world, U.crust, cu));
+        U.crust.remove(cu);
+        seeds.push(cu);
+        taken++;
+    }
+    if (!taken) return 0;
+    keepConsumed(world, U, seeds, volKm, rec.startedAt, 'ahead', rec.rootCapKm, 0);
+    world.budget.aheadShortenedCells = (world.budget.aheadShortenedCells ?? 0) + taken;
+    world.budget.aheadVolKm = (world.budget.aheadVolKm ?? 0) + volKm;
+    rec.aheadCells = (rec.aheadCells ?? 0) + taken;
+    U.markReshaped();
+    return taken;
 }
 
 /** How thick an island arc's crust is at this age (Myr since it formed), km: it thickens as magma adds to it. */

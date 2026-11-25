@@ -49,7 +49,7 @@ const INDIA_CHECKS = [
     'the merged continent is one connected body (island arcs excepted)',
     'a suture belt runs along the closed seam',
     'a craton beside the belt stays thin: its interior thickens far less than the belt',
-    'crust is thickened in the belts, under the gravitational ceiling',
+    'crust is thickened in the belts, under the collision\'s ceiling (where its ΔGPE meets the push on its front)',
     'thickening spreads across the belt as a plateau, not a spike at the front',
     'no gaps in any frame',
 ];
@@ -132,7 +132,8 @@ for (const seed of SEEDS) {
     let sweptKm2 = 0;
     for (let i = 1; i < series.length; i++) sweptKm2 += (series[i][0] - series[i - 1][0]) * (sweepRate(r.at(series[i][0])) + sweepRate(r.at(series[i - 1][0]))) / 2;
     // (…the overlap the weld absorbs, plus the land that went under Asia on the way: rec.underthrustCells, collision.js underthrust)
-    const underKm2 = (rec.underthrustCells ?? 0) * mesh.cellAreaKm2, overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2 + underKm2, closingSeries = series.map(([, b]) => b.closing);
+    const underKm2 = ((rec.underthrustCells ?? 0) + (rec.aheadCells ?? 0)) * mesh.cellAreaKm2,     // (and the upper plate's crust shortened ahead of a jammed shield: collision.js shortenAhead)
+         overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2 + underKm2, closingSeries = series.map(([, b]) => b.closing);
     const peakClosing = Math.max(...closingSeries), converging = series.filter(([, b]) => b.closing > cfg.sutureStallCmYr).map(([t]) => t);
     const convergingMyr = converging.length ? converging.at(-1) - atContact.time : 0;
     // (…and welded only once the seam has stalled: with India's continent going under (phase5Mechanisms) nothing stacks,
@@ -142,7 +143,7 @@ for (const seed of SEEDS) {
     J(INDIA_CHECKS[3], suture.data.why === 'stalled' && convergingMyr >= 20 && lastClosing < 0.25 * peakClosing,
         `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${lastClosing.toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr (${suture.data.why})`);
     J(INDIA_CHECKS[4], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
-        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (closing over the overlap × the front as wide as India, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² taken up: overlap before the weld and ${(underKm2 / 1e6).toFixed(2)} Mkm² gone under`);
+        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (closing over the overlap × the front as wide as India, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² taken up: overlap before the weld and ${(underKm2 / 1e6).toFixed(2)} Mkm² gone under or shortened ahead (${rec.aheadCells ?? 0} cells)`);
     keep('shortening', rec.shorteningKm);
     keep('shortening detail', `${seed}: ${(suture.time - contact.time).toFixed(0)} Myr after contact, India peaking at ${Math.max(...r.frames.map(f => f.plates.find(p => p.name === 'India')?.speedCmYr ?? 0)).toFixed(1)} cm/yr`);
 
@@ -207,8 +208,12 @@ for (const seed of SEEDS) {
         `crust thickened ${innerRoot.toFixed(2)} km (mean, against its kind's as formed) over ${inner.length} craton cells 1–${BAND} cells beyond the belt, ${beltRoot.toFixed(2)} km over the belt's ${beltLand.length} continent cells (the reached rim's ${rimCells.length}: ${rimRoot.toFixed(2)} km; its thickening record ${shieldThick.toFixed(2)} against the belt's ${beltThick.toFixed(2)})`);
     let maxThick = 0, thickCells = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.thickKm[w] > 0) { thickCells++; maxThick = Math.max(maxThick, last.thickKm[w]); }
-    // (gravitational potential energy caps thickening near twice normal crust: about 40–45 km of excess at most)
-    J(INDIA_CHECKS[10], maxThick > 0 && maxThick < 45, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km`);
+    // (the ceiling is the collision's own: a column thickens while the push across its front exceeds its ΔGPE, and no further
+    // (Molnar & Lyon-Caen 1988) — the weld's rootCapKm, ΔGPE⁻¹ of the force its record pressed the front with, at most the
+    // lithosphere's integrated strength (torque-balance.js collisionRootKm; 52.7 km at 10¹³ N/m). Was a fixed 45 km, the
+    // constant ceiling underthrustMaxThickKm 40 + 5, before the force set it. Lane gpelock P2)
+    const ceilingKm = suture.data.rootCapKm ?? Infinity;
+    J(INDIA_CHECKS[10], maxThick > 0 && maxThick <= ceilingKm + 0.5, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km, under the collision's ceiling ${ceilingKm.toFixed(1)} km (its force ${((suture.data.pushNPerM ?? NaN) / 1e12).toFixed(1)} × 10¹² N/m)`);
     keep('thick', maxThick);
     let plateau = 0, inBelt = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.oroType[w] === OrogenyType.HIMALAYAN) { inBelt++; if (last.thickKm[w] >= 0.4 * maxThick) plateau++; }
