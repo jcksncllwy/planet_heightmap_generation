@@ -114,7 +114,7 @@ function* climateSteps(input, options) {
     lap('cell positions');
 
     // 2. The surface as the grid sees it
-    const surface = aggregateSurface(grid, lat, lon, input.elevKm, land);
+    const surface = aggregateSurface(grid, lat, lon, input.elevKm, land, input.ice ?? null);
     lap('surface → grid');
 
     // 3. The climate at K points in the year — from the stages (winds → temperature → rain; each reads only earlier
@@ -195,27 +195,30 @@ export function cellLatLon(xyz, axes, lat, lon) {
 
 // ── 2 ─────────────────────────────────────────────────────────────────────────
 /**
- * Per grid cell: land fraction, mean land height (km), mean height of everything (km). Grid cells too small to hold
+ * Per grid cell: land fraction, mean land height (km), mean height of everything (km); with `ice` (1 a terrain cell an ice
+ * sheet covers: input.ice, the ice age's sheet — elevKm then its surface, the ice on its bed), the share of the land it
+ * covers (sheetFrac, NaN where there is no land). Grid cells too small to hold
  * a terrain cell (near the poles, or at a coarse terrain resolution) take the values of the nearest grid cell in
  * their latitude row that does — a short distance, since such cells are tiny.
  */
-export function aggregateSurface(grid, lat, lon, elevKm, land) {
+export function aggregateSurface(grid, lat, lon, elevKm, land, ice = null) {
     const G = grid.size, n = lat.length;
-    const cnt = new Float64Array(G), landCnt = new Float64Array(G), sumAll = new Float64Array(G), sumLand = new Float64Array(G);
+    const cnt = new Float64Array(G), landCnt = new Float64Array(G), sumAll = new Float64Array(G), sumLand = new Float64Array(G), iceCnt = ice ? new Float64Array(G) : null;
     for (let r = 0; r < n; r++) {
         const c = grid.cellAt(lat[r], lon[r]);
         cnt[c]++; sumAll[c] += elevKm[r];
-        if (land[r]) { landCnt[c]++; sumLand[c] += elevKm[r]; }
+        if (land[r]) { landCnt[c]++; sumLand[c] += elevKm[r]; if (ice && ice[r]) iceCnt[c]++; }
     }
     const from = rowFill(grid, cnt);
-    const landFrac = new Float32Array(G), meanLandKm = new Float32Array(G), meanKm = new Float32Array(G);
+    const landFrac = new Float32Array(G), meanLandKm = new Float32Array(G), meanKm = new Float32Array(G), sheetFrac = ice ? new Float32Array(G) : null;
     for (let c = 0; c < G; c++) {
         const s = from[c];
         landFrac[c] = cnt[s] ? landCnt[s] / cnt[s] : 0;
         meanKm[c] = cnt[s] ? sumAll[s] / cnt[s] : 0;
         meanLandKm[c] = landCnt[s] ? sumLand[s] / landCnt[s] : NaN;
+        if (ice) sheetFrac[c] = landCnt[s] ? iceCnt[s] / landCnt[s] : NaN;
     }
-    return { landFrac, meanLandKm, meanKm };
+    return { landFrac, meanLandKm, meanKm, ...(ice ? { sheetFrac } : {}) };
 }
 
 /** For each grid cell, itself if count[c] > 0, else the nearest cell in the same row with count > 0. */
