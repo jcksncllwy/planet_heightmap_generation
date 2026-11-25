@@ -98,11 +98,39 @@ for (const seed of SEEDS) {
     // after the cores meet, the two keep converging — slowing as the collision's resistance grows, not locked at contact
     // (India–Asia: 2400–3200 km since ~50 Ma, still ~4 cm/yr; Molnar & Stock 2009, van Hinsbergen et al. 2012) — and every
     // km² they converge is taken up: as India's land going under Asia (underthrusting, phase5Mechanisms) and as overlap, which
-    // the weld then absorbs into the belt. The budget, in km²: the convergence swept across the front (shortening × front,
-    // step by step) against the overlap the weld found and the land gone under
+    // the weld then absorbs into the belt. The budget, in km²: the convergence swept across the front against the overlap the
+    // weld found and the land gone under. Swept is the closing across the overlap (v·n at each of its cells, n toward the
+    // upper plate's land, averaged) × the front, the front no longer than India's land is wide across the convergence: a rigid
+    // body sweeps its projected width, and its flanks slide past. (Was the record's shortening × its frontKm, step by step:
+    // the record's front is every overlap cell touching either plate's land, round the nose and down the flanks, 3,600–4,200 km
+    // against India's 1,000–1,300 km, and its rate the closing at the overlap's centroid, so it counted 3.9–6.7 Mkm² against
+    // 1.4–2.1 taken up; measured this way 2.0–2.1 swept against the same 1.4–2.1. Lane gpelock P2, p2/swept-pre.txt)
     const series = r.frames.filter(f => f.time >= atContact.time && f.time < suture.time).map(f => [f.time, r.bookedAt(f.time, rec)]).filter(([, b]) => b);
+    const sweepRate = f => {                                    // km²/Myr: the mean closing over the overlap × the front as wide as India
+        const U = f.plates.find(p => p.id === rec.upper), L = f.plates.find(p => p.id === rec.lower), landL = [], ov = [];
+        for (let w = 0; w < numCells; w++) {
+            if (f.overlap[w] === 2) ov.push(w);
+            if (f.type[w] === CrustType.OCEAN && f.overlap[w] !== 2) continue;
+            if (f.owner[w] === rec.lower || (f.overlap[w] === 2 && f.collider[w] === rec.lower)) landL.push(w);
+        }
+        if (!U || !L || !ov.length || !landL.length) return 0;
+        const cU = landCentroid(f, rec.upper), cL = landCentroid(f, rec.lower);
+        let ax = [cL[1] * cU[2] - cL[2] * cU[1], cL[2] * cU[0] - cL[0] * cU[2], cL[0] * cU[1] - cL[1] * cU[0]];
+        const al = Math.hypot(...ax) || 1; ax = ax.map(v => v / al);
+        let lo = Infinity, hi = -Infinity;
+        for (const w of landL) { const sx = xyz[3 * w] * ax[0] + xyz[3 * w + 1] * ax[1] + xyz[3 * w + 2] * ax[2]; lo = Math.min(lo, sx); hi = Math.max(hi, sx); }
+        const widthKm = (Math.asin(Math.min(1, hi)) - Math.asin(Math.max(-1, lo))) * PLANET_RADIUS_KM;
+        const o = [0, 1, 2].map(i => L.omega[i] - U.omega[i]);
+        let vn = 0;
+        for (const w of ov) {
+            const x = xyz[3 * w], y = xyz[3 * w + 1], z = xyz[3 * w + 2], d = cU[0] * x + cU[1] * y + cU[2] * z;
+            const n = [cU[0] - x * d, cU[1] - y * d, cU[2] - z * d], nl = Math.hypot(...n) || 1;
+            vn += ((o[1] * z - o[2] * y) * n[0] + (o[2] * x - o[0] * z) * n[1] + (o[0] * y - o[1] * x) * n[2]) / nl;
+        }
+        return Math.max(0, vn / ov.length * PLANET_RADIUS_KM) * Math.min(r.bookedAt(f.time, rec).frontKm, widthKm);
+    };
     let sweptKm2 = 0;
-    for (let i = 1; i < series.length; i++) sweptKm2 += (series[i][1].km - series[i - 1][1].km) * (series[i][1].frontKm + series[i - 1][1].frontKm) / 2;
+    for (let i = 1; i < series.length; i++) sweptKm2 += (series[i][0] - series[i - 1][0]) * (sweepRate(r.at(series[i][0])) + sweepRate(r.at(series[i - 1][0]))) / 2;
     // (…the overlap the weld absorbs, plus the land that went under Asia on the way: rec.underthrustCells, collision.js underthrust)
     const underKm2 = (rec.underthrustCells ?? 0) * mesh.cellAreaKm2, overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2 + underKm2, closingSeries = series.map(([, b]) => b.closing);
     const peakClosing = Math.max(...closingSeries), converging = series.filter(([, b]) => b.closing > cfg.sutureStallCmYr).map(([t]) => t);
@@ -114,7 +142,7 @@ for (const seed of SEEDS) {
     J(INDIA_CHECKS[3], suture.data.why === 'stalled' && convergingMyr >= 20 && lastClosing < 0.25 * peakClosing,
         `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${lastClosing.toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr (${suture.data.why})`);
     J(INDIA_CHECKS[4], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
-        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (shortening × front, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² taken up: overlap before the weld and ${(underKm2 / 1e6).toFixed(2)} Mkm² gone under`);
+        `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (closing over the overlap × the front as wide as India, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² taken up: overlap before the weld and ${(underKm2 / 1e6).toFixed(2)} Mkm² gone under`);
     keep('shortening', rec.shorteningKm);
     keep('shortening detail', `${seed}: ${(suture.time - contact.time).toFixed(0)} Myr after contact, India peaking at ${Math.max(...r.frames.map(f => f.plates.find(p => p.name === 'India')?.speedCmYr ?? 0)).toFixed(1)} cm/yr`);
 
