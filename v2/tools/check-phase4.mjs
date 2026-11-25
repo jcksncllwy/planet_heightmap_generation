@@ -146,15 +146,17 @@ const solo = runs['one-sided'];
 
 section('tug of war');
 {
-    // (judged while its pulls alone move it: the first 10 Myr. Once it tips, the floor it opens behind it pushes it on —
-    // ridge push along its heading, F of that floor's age — as hard as its pulls' imbalance by ~20 Myr (3.5 against 2.5
-    // units, 12345), and the tip runs ~twice as fast: 30 Myr was the window under no ridge push. Lane gpelock 2026-11-25)
-    const r = runs.tug, upTo = myr => name => Math.max(...r.track(name).slice(0, frameIndex(myr) + 1));
-    const early = upTo(10)('Balanced'), soloEarly = Math.max(...solo.track('Solo').slice(0, frameIndex(10) + 1));
-    const at30 = upTo(30)('Balanced'), solo30 = Math.max(...solo.track('Solo').slice(0, frameIndex(30) + 1));
-    check('balanced pulls (nearly) cancel', early < 0.4 * soloEarly && r.plate('Balanced', 20).dynamics.tension > 0.8,
-        `“Balanced” stays below ${early.toFixed(2)} cm/yr for the first 10 Myr while the one-sided continent reaches ${soloEarly.toFixed(2)}; tension ${r.plate('Balanced', 20).dynamics.tension.toFixed(2)}; ${r.plate('Balanced', 80).speedCmYr.toFixed(1)} cm/yr by 80 Myr once the unstable balance tips`);
-    report('…once it tips: Balanced against the one-sided continent, first 30 Myr', at30 / solo30, { digits: 2, detail: `${at30.toFixed(2)} against ${solo30.toFixed(2)} cm/yr; the floor it opens behind it pushes it along its heading` });
+    // (judged as what it is, a force balance at the start: tension — how much of its pulls cancel — and the speed its forces
+    // call for (the torque balance's target), against the one-sided continent's at the same moment. The balance is unstable,
+    // and ridge push makes it more so: once it tips, the floor it opens behind it pushes it along its heading (F of that
+    // floor's age), so the tip grows faster than its pulls' imbalance alone would drive — reported. Was judged on its
+    // speed over the first 30 Myr, lane gpelock 2026-11-25: that is the tip's growth, not the balance)
+    const r = runs.tug, t0 = r.frames[0].plates[r.idOf.Balanced].dynamics, solo0 = solo.frames[0].plates[solo.idOf.Solo].dynamics;
+    check('balanced pulls (nearly) cancel', t0.targetCmYr < 0.4 * solo0.targetCmYr && t0.tension > 0.8,
+        `at the start “Balanced”'s forces call for ${t0.targetCmYr.toFixed(2)} cm/yr against the one-sided continent's ${solo0.targetCmYr.toFixed(2)}; tension ${t0.tension.toFixed(2)}; ${r.plate('Balanced', 80).speedCmYr.toFixed(1)} cm/yr by 80 Myr once the unstable balance tips`);
+    const v8 = r.plate('Balanced', 8).speedCmYr, v20 = r.plate('Balanced', 20).speedCmYr;
+    report('…the unstable balance tips: e-folding time of Balanced\'s speed, 8–20 Myr', 12 / Math.log(v20 / v8), { unit: ' Myr', digits: 1,
+        detail: `${v8.toFixed(2)} → ${v20.toFixed(2)} cm/yr; the floor it opens behind it pushes it along its heading; tension ${r.plate('Balanced', 20).dynamics.tension.toFixed(2)} at 20 Myr` });
     const lop = mean(r.track('Lopsided').slice(frameIndex(20))), west = [20, 50, 80].map(t => westwardShare(r, 'Lopsided', t)), toLong = [20, 50, 80].map(t => trenchwardShare(r, 'Lopsided', t, true));
     check('unequal pulls: it goes to the stronger side', Math.min(...toLong) > 0.8,
         `“Lopsided” (long trench west, short trench east) drifts at ${lop.toFixed(2)} cm/yr; share of its velocity pointing at its western trench at 20/50/80 Myr: ${toLong.map(v => v.toFixed(2)).join(' / ')} (due west: ${west.map(v => v.toFixed(2)).join(' / ')})`);

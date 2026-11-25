@@ -490,7 +490,8 @@ tools/             check scripts (+ lib/check-kit.mjs: shared frame helpers), tr
    below) runs before `drive`. Steps are adaptive (a plate moves at most a
    cell per step) and never cross a multiple of `stepGridMyr`, so how often a history is recorded never changes it.
 4. **Forces come from boundary state**, not velocities: trench flags, crust type and age, slab length. `D·ω = T` per
-   plate, with basal drag, slab resistance and a viscous collision lock in `D`. Speeds are never scripted. One force
+   plate, with basal drag and slab resistance in `D`, and a collision's resistance as a friction bounded by its belt's GPE
+   (below, lane gpelock). Speeds are never scripted. One force
    is not at a boundary (Phase 13): the **mantle flow** drags on continents' roots — out from the upwelling under the
    last supercontinent (as strong as the heat the supercontinent left there), toward a downwelling ~90° from it (once
    the supercontinent has begun to break up). It is small next to slab pull, and left out of a plate's tension.
@@ -1424,6 +1425,44 @@ collapse: main's mechanisms on more plates). At 1000 Myr alone (one frame, noisy
   when it decides a weld (the seam closed, not stacked), once per `sutureCheckMyr`: taken at every check it
   cost ~3 % (not exact: the test then reads the sea a step or two later). The rest is the histories differing (seed
   12345 rifts a larger plate: +17 %; the other seeds −6 % to +9 %).
+
+## A collision resists with its belt's weight; ridge push from the ocean's own GPE (2026-11-25, lane gpelock)
+
+Jackson's option A (2026-11-24). It changes every history's collisions. The sections below describe the viscous lock
+(`collisionResistance`), `collisionLockGpe`, `sutureHoldGpe` and the constant `ridgePush`: all four are gone.
+
+- **The collision's resistance is a friction bounded by the thickened column's GPE per metre of front** (Copley, Avouac &
+  Royer 2010: Tibet's ~5–6 × 10¹² N/m slowed India from ~15 to ~4 cm/yr over 50–35 Ma). `torque-balance.js solveWithLock`
+  solves f(v) = cap·s(v/v₀), s(x) = x/√(1+x²), by a damped Newton step on its convex potential. The resistance never
+  exceeds the cap at any rate, and there is no per-step refit of a viscosity. cap = `collisionGpeNPerM(Δh)` × the
+  contact's share of the front, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²]: 5.7 × 10¹² N/m at Δh 35. Δh is the belt's or the overlap's
+  column as it is now (`rootKm`), at most `underthrustMaxThickKm`. No craton weight sits on top: a per-metre force has no
+  per-cell weight. v₀ = `sutureStallCmYr` ÷ 3, so a seam pushed below ~95 % of its cap closes slower than the stall rate.
+  Deleted: `collisionResistance`, `collisionLockGpe`, `cratonLockFactor`, `sutureHoldGpe` (the friction stalls exactly when
+  the push is under the cap, which is what the hold rule tested).
+- **Ridge push is the ocean's own GPE by age** (`forces.js ridgePushGpe`): F(t) = g(ρm − ρw)[2 w∞ a m(t) + ½ w(t)²] for
+  GDH1's 95 km plate (Stein & Stein 1992; Turcotte & Schubert's form), 1.4 / 2.0 / 2.3 × 10¹² N/m at 40 / 80 / ≥ 150 Myr.
+  It is a body force on every ocean cell, −∇U with U = −F(age), and over a plate it sums to F of its oldest floor wherever
+  that floor ends. It presses a plate rather than pulling it, so like the swell's push it is left out of the plate's
+  tension (`torqueMagnitudeSum` and the net that tension compares it with). Deleted: `ridgePush`, `ridgeMaxAgeMyr`.
+- **The scenes' oceans are aged from a ridge** (`scene-kit.js ageFromRidges`). A scene plate's own ocean is aged as if
+  laid by a ridge on its far passive edge at Earth's mean full spreading rate (55 km/Myr), capped at
+  `initialOceanAgeMyr`. A scene ocean of one age put 0 Myr floor, opened behind a moving plate, against 150 Myr floor: a
+  step of the old floor's whole GPE that no ridge makes. The planet's `buildStartWorld` is untouched.
+- **A collision's upper plate** (`collision.js chooseSides`) is the one with the longest slab among the trench cells that
+  face the other plate (owned by it or beside it), anywhere along the pair's shared edge, not only near the first contact.
+- **The checks this moved** (re-judged on the aged scenes, each with its reason in the check):
+  - Phase 4's forces-only "collision slows the plate" and "it slows sharply on contact" are reports now. Forces alone,
+    nothing thickens and nothing breaks off, so the bounded resistance stays at a thin belt's and the flank slabs keep
+    pulling. The claim is judged with every event on, in Phase 7c: "India slows on contact".
+  - "It heads for its trench" and "unequal pulls: it goes to the stronger side" are judged toward the plate's trench as it
+    is at each frame. The trench grows where the plate overrides the ocean ahead of it, and the floor it leaves behind
+    pushes it along its heading, so the plate turns with its trench. The share pointing due west is reported.
+  - "Balanced pulls cancel" judges the speed in the first 10 Myr, while the pulls alone move it.
+  - "No suction → no motion" is "no drive → no motion": suction off and the ocean all one age.
+  - Phase 5's India welds stacked (`sutureStackKm`), still converging, because there nothing takes the overlap up.
+    "Keeps converging, slowing" is judged on that weld as not locked and slowing.
+  - Phase 5's events-off India crosses Asia: no events and an overlap nothing takes up, which need not persist.
 
 ## A collision ends when its belt holds the pair (2026-11-09, lane weld)
 

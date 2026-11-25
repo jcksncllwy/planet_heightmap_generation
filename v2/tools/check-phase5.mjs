@@ -42,7 +42,6 @@ const INDIA_CHECKS = [
     'after the suture there is one plate, and it stays one',
     'overlap stays a seam while the collision lasts, then closes',
     'the recorded shortening matches how far the two landmasses really closed',
-    'after the cores meet the two keep converging, slowing over tens of Myr — not locked at contact',
     '…and what they converge is taken up: the area swept across the front matches the overlap the weld absorbs (km²)',
     'the redraw absorbs the overlap, plus some crust squeezed into thickness',
     'cratons survive the redraw as rigid blocks',
@@ -106,16 +105,16 @@ for (const seed of SEEDS) {
     const overlapKm2 = frameTallies(before).collision * mesh.cellAreaKm2, closingSeries = series.map(([, b]) => b.closing);
     const peakClosing = Math.max(...closingSeries), converging = series.filter(([, b]) => b.closing > cfg.sutureStallCmYr).map(([t]) => t);
     const convergingMyr = converging.length ? converging.at(-1) - atContact.time : 0;
-    // (a seam that stalled: it converged for tens of Myr and slowed to a quarter of its peak first. A pair that welded stacked
-    // (collision.js: the overlap sutureStackKm deep) never stalled: with the event rules alone nothing takes the overlap up —
-    // underthrusting is Phase 7c — so India, pressed on by its slabs and ridge, stacks on Asia within 10–30 Myr. Not locked
-    // and slowing is then all this scene can show: still above the stall rate at the weld, below its peak. How far it slows
-    // when the belt takes the overlap up is judged with every event on, check-phase7c 'India slows on contact'. Lane gpelock
-    // 2026-11-25: under the GPE-bounded lock all three seeds weld stacked, closing at 3.8–6.4 cm/yr)
-    const lastClosing = closingSeries.at(-1), stackedWeld = suture.data.why === 'stacked';
-    J(INDIA_CHECKS[3], stackedWeld ? lastClosing > cfg.sutureStallCmYr && lastClosing < peakClosing : convergingMyr >= 20 && lastClosing < 0.25 * peakClosing,
-        `closing across the seam ${peakClosing.toFixed(2)} cm/yr at its peak after contact, above the stall rate (${cfg.sutureStallCmYr} cm/yr) for ${convergingMyr.toFixed(0)} Myr, ${lastClosing.toFixed(2)} cm/yr before the weld at ${suture.time.toFixed(0)} Myr (${suture.data.why})`);
-    J(INDIA_CHECKS[4], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
+    // (was a check, 'after the cores meet the two keep converging, slowing over tens of Myr — not locked at contact': moved
+    // to check-phase7c, lane gpelock 2026-11-25. Here nothing takes the overlap up — underthrusting is Phase 7c — so under
+    // the GPE-bounded resistance India stacks on Asia sutureStackKm deep within 10–30 Myr and welds stacked, still closing
+    // at 3.8–6.4 cm/yr. The stack weld is a guard against that state, which Earth cannot reach (Greater India went under
+    // Tibet), not the end of a collision; with every event on the seam stalls first (Phase 7c), as all 42 of the planet's
+    // welds on 3 seeds did. Reported)
+    const lastClosing = closingSeries.at(-1);
+    keep('closing at weld', lastClosing);
+    keep('closing', `${seed}: ${peakClosing.toFixed(1)} → ${lastClosing.toFixed(1)} cm/yr at the weld, ${(suture.time - contact.time).toFixed(0)} Myr after contact (${suture.data.why})`);
+    J(INDIA_CHECKS[3], Math.abs(sweptKm2 - overlapKm2) < 0.35 * sweptKm2,
         `${(sweptKm2 / 1e6).toFixed(2)} Mkm² swept (shortening × front, ${atContact.time}–${before.time} Myr) against ${(overlapKm2 / 1e6).toFixed(2)} Mkm² of overlap before the weld`);
     keep('shortening', rec.shorteningKm);
     keep('shortening detail', `${seed}: ${(suture.time - contact.time).toFixed(0)} Myr after contact, India peaking at ${Math.max(...r.frames.map(f => f.plates.find(p => p.name === 'India')?.speedCmYr ?? 0)).toFixed(1)} cm/yr`);
@@ -125,11 +124,11 @@ for (const seed of SEEDS) {
     const landBefore = cellsWhere(numCells, w => isLand(before, w)).length, landAfter = cellsWhere(numCells, w => isLand(after, w)).length;
     const overlapAtSuture = frameTallies(before).collision, absorbed = suture.data.landLostCells;
     // (the push ahead of the indenter compresses crust beyond the overlap too — that area goes into thickness)
-    J(INDIA_CHECKS[5], Math.abs(landAfter - landBefore) < 0.04 * landBefore && absorbed >= overlapAtSuture - 12 && absorbed <= 2 * overlapAtSuture + 12,
+    J(INDIA_CHECKS[4], Math.abs(landAfter - landBefore) < 0.04 * landBefore && absorbed >= overlapAtSuture - 12 && absorbed <= 2 * overlapAtSuture + 12,
         `map land ${landBefore} → ${landAfter} cells; event reports ${absorbed} cells absorbed, the overlap was ${overlapAtSuture}`);
     const cratonCells = f => cellsWhere(numCells, w => f.owner[w] >= 0 && f.type[w] === CrustType.CRATON).length;
     // (compared with the moment of contact: while the plates overlap, craton cells under the other plate are hidden from the map)
-    J(INDIA_CHECKS[6], Math.abs(cratonCells(after) - cratonCells(atContact)) <= 0.05 * cratonCells(atContact),      // (the world view samples a rotated raster: counts wobble ±2 % frame to frame)
+    J(INDIA_CHECKS[5], Math.abs(cratonCells(after) - cratonCells(atContact)) <= 0.05 * cratonCells(atContact),      // (the world view samples a rotated raster: counts wobble ±2 % frame to frame)
         `${cratonCells(atContact)} craton cells at contact, ${cratonCells(after)} after the suture`);
     // the merged land is one body with no holes that are not sea — on the merged plate's own raster, the crust itself (the
     // world view samples a moving plate's raster, and where it skips the cell that joins a narrow neck of coast to the
@@ -139,11 +138,11 @@ for (const seed of SEEDS) {
     const seedCell = landMask.findIndex(v => v), body = floodFrom(mesh, seedCell, c => landMask[c] === 1);
     let stray = 0;
     for (let c = 0; c < numCells; c++) if (landMask[c] && !body[c]) stray++;
-    J(INDIA_CHECKS[7], stray === 0, `${stray} non-arc land cells of ${merged.name}'s crust not connected to the main body`);
+    J(INDIA_CHECKS[6], stray === 0, `${stray} non-arc land cells of ${merged.name}'s crust not connected to the main body`);
 
     // belts
     const seam = cellsWhere(numCells, w => isLand(last, w) && (last.flags[w] & CrustFlag.SUTURE));
-    J(INDIA_CHECKS[8], seam.length * mesh.edgeKm >= front, `${seam.length} suture cells (${(seam.length * mesh.edgeKm).toFixed(0)} km of cell widths) along a ${front.toFixed(0)} km front`);
+    J(INDIA_CHECKS[7], seam.length * mesh.edgeKm >= front, `${seam.length} suture cells (${(seam.length * mesh.edgeKm).toFixed(0)} km of cell widths) along a ${front.toFixed(0)} km front`);
     const upperTerranes = new Set(cellsWhere(numCells, w => before.owner[w] === rec.upper && isLand(before, w)).map(w => before.terrane[w]));
     const himalayan = cellsWhere(numCells, w => isLand(last, w) && last.oroType[w] === OrogenyType.HIMALAYAN);
     const upperSide = himalayan.filter(w => upperTerranes.has(last.terrane[w])), lowerSide = himalayan.filter(w => !upperTerranes.has(last.terrane[w]));
@@ -177,21 +176,22 @@ for (const seed of SEEDS) {
     const beltLand = beltCells.filter(w => last.oroType[w] === OrogenyType.HIMALAYAN);
     const innerRoot = mean(inner.map(w => last.rootKm[w])), beltRoot = mean(beltLand.map(w => last.rootKm[w])), rimRoot = mean(rimCells.map(w => last.rootKm[w]));
     // (a belt with no craton beside it on this seed: nothing to compare — the scene did not form for this check)
-    judge(seed, INDIA_CHECKS[9], inner.length > 0 && beltLand.length > 0, innerRoot <= beltRoot / 2,
+    judge(seed, INDIA_CHECKS[8], inner.length > 0 && beltLand.length > 0, innerRoot <= beltRoot / 2,
         `crust thickened ${innerRoot.toFixed(2)} km (mean, against its kind's as formed) over ${inner.length} craton cells 1–${BAND} cells beyond the belt, ${beltRoot.toFixed(2)} km over the belt's ${beltLand.length} continent cells (the reached rim's ${rimCells.length}: ${rimRoot.toFixed(2)} km; its thickening record ${shieldThick.toFixed(2)} against the belt's ${beltThick.toFixed(2)})`);
     let maxThick = 0, thickCells = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.thickKm[w] > 0) { thickCells++; maxThick = Math.max(maxThick, last.thickKm[w]); }
     // (gravitational potential energy caps thickening near twice normal crust: about 40–45 km of excess at most)
-    J(INDIA_CHECKS[10], maxThick > 0 && maxThick < 45, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km`);
+    J(INDIA_CHECKS[9], maxThick > 0 && maxThick < 45, `${thickCells} thickened cells, up to ${maxThick.toFixed(1)} km`);
     keep('thick', maxThick);
     let plateau = 0, inBelt = 0;
     for (let w = 0; w < numCells; w++) if (isLand(last, w) && last.oroType[w] === OrogenyType.HIMALAYAN) { inBelt++; if (last.thickKm[w] >= 0.4 * maxThick) plateau++; }
-    J(INDIA_CHECKS[11], plateau / inBelt > 0.3, `${(100 * plateau / inBelt).toFixed(0)} % of collision-belt cells are at least 40 % as thick as the thickest`);
-    J(INDIA_CHECKS[12], r.frames.every(f => frameTallies(f).gaps === 0), 'checked every frame');
+    J(INDIA_CHECKS[10], plateau / inBelt > 0.3, `${(100 * plateau / inBelt).toFixed(0)} % of collision-belt cells are at least 40 % as thick as the thickest`);
+    J(INDIA_CHECKS[11], r.frames.every(f => frameTallies(f).gaps === 0), 'checked every frame');
 }
 for (const [name, samples] of judged) checkAcross(name, samples, name === INDIA_CHECKS[0] ? { scene: 'India meets Asia and welds' } : {});
 {
     const formed = SEEDS.filter((_, i) => judged.get(INDIA_CHECKS[0])[i].formed), per = k => reported.get(k) ?? [];
+    report('India: closing across the seam at the weld', per('closing at weld'), { unit: ' cm/yr', digits: 1, detail: `${per('closing').join(' · ')} (stacked: nothing takes the overlap up here; the seam's stall is judged in Phase 7c)` });
     report('India: shortening across the seam after contact', per('shortening'), { earth: [2400, 3200], unit: ' km', digits: 0, source: 'India into Asia since ~50 Ma (van Hinsbergen et al. 2012; Molnar & Stock 2009)',
         detail: `until the seam stalled and welded — ${per('shortening detail').join(' · ')} (the real one ~15–18)` });
     // (pending the model's rewrite — belt width from the two sides' relative strength and the shortening, not from which

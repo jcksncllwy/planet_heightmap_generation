@@ -45,7 +45,7 @@ export async function createPhase(simMesh, seed, overrides = {}) {
         title: 'Phase 4 — Plate driving forces',
         summary: 'Nothing is told how to move any more. Every step, each plate’s rotation is solved from a balance of torques: ' +
             'slab pull on a subducting plate (held back by the mantle’s resistance to the sinking slab), slab suction on the plate ' +
-            'that carries a trench, ridge push at young ridges, the swell’s push (land over mantle a continent has kept warm stands high and pushes away from the swell’s centre — a load inside the plate: it moves no plate, but it pulls an old supercontinent’s interior apart), a viscous resistance where land meets land (it slows the two, it does not clamp them: colliding plates keep converging) — all against basal drag, ' +
+            'that carries a trench, ridge push (ocean floor cools, sinks and pushes away from its ridge, down the slope toward older floor), the swell’s push (land over mantle a continent has kept warm stands high and pushes away from the swell’s centre — a load inside the plate: it moves no plate, but it pulls an old supercontinent’s interior apart), a friction where land meets land, bounded by the weight of the crust it has thickened (a thin belt resists little: with forces alone nothing thickens, and colliding plates keep converging) — all against basal drag, ' +
             'which is heavier under continents and cratons. The pre-history ocean never moves. ' + scene.about,
         checklist: [...scene.checklist, ...SHARED_CHECKLIST],
         checkCommand: 'node v2/tools/check-phase4.mjs',
@@ -76,7 +76,7 @@ export async function createPhase(simMesh, seed, overrides = {}) {
             const tally = frameTallies(frame);
             return {
                 cards: [
-                    { big: `${tally.collision}`, small: 'land-on-land overlap cells (should stay a thin seam)' },
+                    { big: `${tally.collision}`, small: 'land-on-land overlap cells (nothing takes it up until Phase 5)' },
                     { big: `${tally.gaps}`, small: 'unfilled gap cells (must be 0)' },
                 ],
                 head: ['Plate', 'cm/yr', 'WBP band', 'tension'],
