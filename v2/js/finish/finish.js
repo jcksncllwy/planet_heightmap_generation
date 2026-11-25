@@ -503,7 +503,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: low, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: F.polishMarineSeaKm ?? low, marineDeltaSeaKm: F.polishDeltaSeaKm, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, { ...(EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP), ...(F.polishErode ?? {}) });   // (lane coastwave probe: polishMarineSeaKm, polishErode)
         delete late.outflow;                                          // (per cell: bayheadFill's, after the early run only — not stats)
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');

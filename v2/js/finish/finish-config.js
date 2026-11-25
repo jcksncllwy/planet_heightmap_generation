@@ -221,6 +221,10 @@ export const FINISH = {
     driftAlign: 0.2,            // the drift passes to the shore cell most along the shore, at least this aligned
     beachCrestKm: 0.003,        // sand is laid up to a beach's crest…
     closureKm: 0.06,            // …where the ground under it is no deeper than this (deeper, the waves cannot hold it: lost offshore)
+    shoreModel: 'route',        // lane coastwave prototype: 'flux' (gpu/shore-gpu.js, the one-line model's cellular form) or 'route'
+    shoreSubsteps: 40,          //   (flux: substeps a coast step)
+    shoreSmooth: 2,             //   (flux: smoothing passes of the land's share for the shore's orientation)
+    shoreLock: 0,               //   (flux: 1 locks the sand a sea cell deeper than closureKm is given)
 
     // ── F4: wind ──
     ergSlope: 0.006,            // sand seas: desert ground flatter than this…

@@ -16,6 +16,7 @@
 
 import { PARAMS } from '../climate/config.js';
 import { coastRaysGPU, gridCell } from '../gpu/coast-rays.js';
+import { shoreDriftGPU } from '../gpu/shore-gpu.js';
 
 // E[max(0, m + ξ)⁵], ξ ~ N(0, 1): a direction's share of the fifth power of a wind of mean m and unit spread (the storms)
 const POW5 = (() => {
@@ -123,6 +124,7 @@ export async function coastWork(ctx, F) {
         const isCoastLand = new Uint8Array(n), isShore = new Uint8Array(n), down = new Int32Array(n), inDeg = new Int32Array(n);
         const avail = new Float64Array(n), carry = new Float64Array(n);
         let firstSand = true;
+        const flux = F.shoreModel === 'flux', loose = flux ? new Float32Array(n) : null;
         for (let it = 0; it < steps; it++) {
             // (the open sea: the world ocean, if it is at least coastSeaKm2 — not a hollow below sea level the ice dug inland, dry
             // until the rivers fill it (finish-hydro.js), whose shores no swell reaches. The world ocean is one body, so this is
@@ -143,7 +145,7 @@ export async function coastWork(ctx, F) {
             const Pd = new Float32Array(coast.length * D), at = new Int32Array(n).fill(-1);
             coast.forEach((c, i) => { at[c] = i; });
             await wavesAt(Int32Array.from(coast), Pd);
-            if (firstSand) { for (const c of coast) if (isShore[c]) sandH[c] = F.coastSandKm; firstSand = false; }
+            if (firstSand) { for (const c of coast) if (isShore[c]) { sandH[c] = F.coastSandKm; if (flux && z[c] >= -F.closureKm) loose[c] = F.coastSandKm * cellKm2; } firstSand = false; }
             avail.fill(0);
             // (the cliffs: cut back toward a wave-cut platform; their rock's sand to the shore below)
             let waveSum = 0, waveN = 0;
@@ -152,7 +154,7 @@ export async function coastWork(ctx, F) {
                 let P = 0;
                 for (let d = 0; d < D; d++) P += Pd[at[c] * D + d];
                 wave[c] = P; waveSum += P; waveN++;
-                if (sandH[c] > 0) continue;                                 // (a beach the drift built is the drift's, not a cliff)
+                if (flux ? loose[c] > 0 : sandH[c] > 0) continue;           // (a beach the drift built is the drift's, not a cliff)
                 const erod = F.cliffHardRatio ** (1 - (soft ? soft[c] : 0.5)), hM = Math.max(0, z[c]) * 1000;
                 const retreatM = F.cliffK * P * erod / (hM + F.cliffToeM);
                 const share = Math.min(F.coastMaxShare, retreatM * 1e-3 * dt / edgeKm), cut = share * (z[c] - F.platformKm);
@@ -170,6 +172,19 @@ export async function coastWork(ctx, F) {
                 let s = mouth;
                 if (!isShore[s]) { s = -1; for (let k = adjOffset[mouth]; k < adjOffset[mouth + 1]; k++) if (isShore[adjList[k]]) { s = adjList[k]; break; } }
                 if (s >= 0) { avail[s] += rate * dt; stats.riverKm3 += rate * dt; }
+            }
+            if (flux) {
+                // (lane coastwave prototype: the one-line model's cellular form on the GPU, gpu/shore-gpu.js — the cliffs' and the
+                // rivers' sand laid at its shore cell, then moved along the shore by the waves' flux in substeps)
+                for (const c of coast) if (avail[c] > 0) { loose[c] += avail[c]; z[c] += avail[c] / cellKm2; }
+                const open = new Uint8Array(n);
+                for (let c = 0; c < n; c++) open[c] = ocean[c] || isCoastLand[c] ? 1 : 0;
+                let before = 0; for (let c = 0; c < n; c++) before += loose[c];
+                await shoreDriftGPU(ctx.device, { mesh, z, loose, open, at, Pd, D, dt: dt / F.shoreSubsteps, substeps: F.shoreSubsteps, K: F.longshoreK,
+                    crestKm: F.beachCrestKm, closureKm: F.shoreLock ? F.closureKm : 1e6, cellKm2, smooth: F.shoreSmooth });
+                let after = 0; for (let c = 0; c < n; c++) after += loose[c];
+                stats.lostKm3 += before - after;                            // (locked below the closure depth as the shoreface's fill)
+                continue;
             }
             // (the drift along the shore: the waves' slant at each shore cell, toward its neighbour along the shore that way)
             const shoreList = coast.filter(c => isShore[c]), cap = new Float64Array(shoreList.length);

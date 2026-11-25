@@ -402,6 +402,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // rivers run to today's coast, but 0.3 Myr of waves at today's level is a highstand forty Holocenes long: it filled the inner shelf
     // to the brim and walled lagoons off behind it. Land and sea are still today's: seaLvl)
     const marSea = Math.fround(o.marineSeaKm ?? seaLvl);     // (a float32, as the CPU's: finish-erode.js)
+    const delSea = Math.fround(o.marineDeltaSeaKm ?? marSea);    // (lane coastwave probe: the deltas' sea, apart from the waves')
     // (the waves' own ground, o.marineField (1/0 per cell; none: the whole sea), and the delta's, o.marineLay (none: the field): the
     // history's sea (step/surface-erosion.js, lane marine3) lays a river's load as a delta only on drowned continent — what a river
     // carries to the ocean floor is the mouths' (step/trench-fans.js) — but the waves work the whole sea, so what they carry off a
@@ -667,7 +668,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         let laid = 0;
         const mouths = [], load = [];
         for (let i = 0; i < seaLen; i++) { const c = seaList[i]; if (seaIn[c] > 0) { laid += seaIn[c]; mouths.push(c); load.push(seaIn[c] / a); } }
-        let left = laid > 0 ? seaDelta(mouths, load, () => marSea, c => layWet(c) || (Math.abs(z[c] - seaLvl) <= AT_SEA && !(sink && sink[c]) && !(lay && !lay[c])), spillIn) : 0;
+        let left = laid > 0 ? seaDelta(mouths, load, () => delSea, c => layWet(c) || (Math.abs(z[c] - seaLvl) <= AT_SEA && !(sink && sink[c]) && !(lay && !lay[c])), spillIn) : 0;
         // (a pocket of sea full to its level behind ground above it — a lagoon its delta closed — holds no more: its river goes on to
         // the open sea, so what it could not hold goes to the nearest sea with room, over any ground but a closed basin's. In rounds:
         // a front that ran into one still laying merged with it, and ground a spent one held is free the next round)
@@ -675,7 +676,7 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
             const from = [], more = [];
             for (let i = 0; i < seaLen; i++) { const c = seaList[i]; if (spillIn[c] > 0) { from.push(c); more.push(spillIn[c]); spillIn[c] = 0; } }
             const was = left;
-            left = seaDelta(from, more, c => layWet(c) ? marSea : -Infinity, c => !(sink && sink[c]) && !(lay && !lay[c]), spillIn);
+            left = seaDelta(from, more, c => layWet(c) ? delSea : -Infinity, c => !(sink && sink[c]) && !(lay && !lay[c]), spillIn);
             if (left > 0.98 * was) break;
         }
         spillIn.fill(0);
