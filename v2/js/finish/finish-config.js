@@ -196,6 +196,8 @@ export const FINISH = {
     // ── F5: the coast (finish-coast.js): the waves and their sand, over the interglacials' high seas ──
     coastYears: 30000,          // years of the sea at about its height (the Holocene's 7,000 and the last interglacials')
     coastSteps: 6,              // in this many steps (the waves found again each step, on the coast as it is)
+    tidalRangeM: 1,             // the tide's range, m, that holds a lagoon's inlet open (finish-coast.js tidalInlets): one for every
+                                //   coast — most of the world's coasts are microtidal, under 2 m (Davies 1964; recalled)
     coastSeaKm2: 1e6,           // the open sea's coasts only: bodies of the sea at least this big (not the hollows below sea level
                                 //   the ice dug inland, dry until the rivers fill them)
     waveDirs: 16,               // directions the waves are traced from
@@ -218,13 +220,12 @@ export const FINISH = {
                                 //   2.5M — a beach and shoreface's prism)
     longshoreK: 2.5e-4,         // longshore drift, km³/yr per kW/m of deep-water power · cos^1.2 α · sin α (CERC 0.39,
                                 //   refraction and breaking: a fifth of the deep water's)
-    driftAlign: 0.2,            // the drift passes to the shore cell most along the shore, at least this aligned
-    beachCrestKm: 0.003,        // sand is laid up to a beach's crest…
-    closureKm: 0.06,            // …where the ground under it is no deeper than this (deeper, the waves cannot hold it: lost offshore)
-    shoreModel: 'route',        // lane coastwave prototype: 'flux' (gpu/shore-gpu.js, the one-line model's cellular form) or 'route'
-    shoreSubsteps: 40,          //   (flux: substeps a coast step)
-    shoreSmooth: 2,             //   (flux: smoothing passes of the land's share for the shore's orientation)
-    shoreLock: 0,               //   (flux: 1 locks the sand a sea cell deeper than closureKm is given)
+    beachCrestKm: 0.003,        // the drift works the land no higher than a beach's crest
+    closureKm: 0.06,            // the shoreface's sand at the start lies on shore cells no deeper than this
+    shoreSubsteps: 40,          // the drift's substeps a coast step (gpu/shore-gpu.js: an explicit step; ~125 yr each moves a band
+                                //   cell's sand a small share of its volume — stable, the donor limiter keeping every cell's sand ≥ 0)
+    shoreSmooth: 2,             // passes smoothing the land's share for the shore's orientation (the cellular one-line model's
+                                //   angle over neighbouring cells: Ashton et al. 2001)
 
     // ── F4: wind ──
     ergSlope: 0.006,            // sand seas: desert ground flatter than this…

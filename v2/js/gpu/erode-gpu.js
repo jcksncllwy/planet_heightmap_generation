@@ -402,7 +402,10 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     // rivers run to today's coast, but 0.3 Myr of waves at today's level is a highstand forty Holocenes long: it filled the inner shelf
     // to the brim and walled lagoons off behind it. Land and sea are still today's: seaLvl)
     const marSea = Math.fround(o.marineSeaKm ?? seaLvl);     // (a float32, as the CPU's: finish-erode.js)
-    const delSea = Math.fround(o.marineDeltaSeaKm ?? marSea);    // (lane coastwave probe: the deltas' sea, apart from the waves')
+    // (the deltas' sea, o.marineDeltaSeaKm — apart from the waves': a load is laid where it arrives, so the polish, whose rivers run
+    // to today's coast, lays its deltas to today's sea while its waves stay at the cycle's; lane coastwave 2026-11-25: at the
+    // lowstand its deltas filled today's mouths only to 53 m below them, and every ria and bay head stayed open)
+    const delSea = Math.fround(o.marineDeltaSeaKm ?? marSea);
     // (the waves' own ground, o.marineField (1/0 per cell; none: the whole sea), and the delta's, o.marineLay (none: the field): the
     // history's sea (step/surface-erosion.js, lane marine3) lays a river's load as a delta only on drowned continent — what a river
     // carries to the ocean floor is the mouths' (step/trench-fans.js) — but the waves work the whole sea, so what they carry off a

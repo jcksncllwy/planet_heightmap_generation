@@ -135,8 +135,14 @@ flat with their silts (a hollow a flood's gorge drains, its pockets cut through 
 and the coast (finish-coast): the waves of the interglacials' high seas — grown by the climate's winds, storms and all,
 over the open water toward a fully developed sea, carried on as swell, none under the sea ice, and traced in to each coast
 from 16 directions so headlands take them from all round and bays from their mouths — cut the cliffs back (soft rock and
-low coasts fastest) and drift the sand of the cliffs and the rivers along the shore as they meet it slantwise, laying it
-where the drift slows: beaches, barriers and filled bays; the sand below the shoreface lost offshore. It runs in its
+low coasts fastest) and drift the sand of the cliffs and the rivers along the shore as they meet it slantwise: the one-line
+model of a sandy shore on the GPU (gpu/shore-gpu.js; Ashton & Murray 2006), the waves' longshore flux from every direction
+at each shore cell, its change along the shore laid or taken, so headlands are cut back and bays filled where waves come
+within ~42° of the shore's normal and capes and spits grow where they come more slantwise. Sand is conserved (only loose sand
+moves; a rock coast with none is moved only by its cliffs' retreat). Its reach is set by the shore's depth: in the 30,000
+years of high sea at Earth's drift rates (~10⁶ m³/yr) a shore ~15 m deep moves ~70 km, and one ~120 m deep — most of these
+worlds', whose synthesized margins fall away at the coast — ~25 km. So the waves straighten the coast at the mesh's finest
+scales, and its 50–500 km shape is the margin's (its sediment wedge, not modelled; lane coastwave 2026-11-25). It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
 like the live terrain; a handful of moments are kept in detail per history — up to four on a desktop (and no more than
 1 GB between them: 209 MB each at 2.5M, measured; two at 10M), one on a small device — so stepping back onto one shows it at once; the one viewed
@@ -914,7 +920,14 @@ depth-dependent diffusion for wave-dominated shelves, the form of Landlab's Simp
   lowstand: 831576@430 at 2.5M, 195–220 m (the lowstand's −53 m plus ~2.5–3 e-folds of wave base). Earth's ~130 m was cut at the
   glacial maxima (−120 m), when the rivers fed the shelf edge; the finish works at the cycle's time-weighted mean.
 - **When:** every `closedEvery` steps over the span since, and in the polish at the cycle's time-weighted sea (the lowstand),
-  not 0.3 Myr of today's highstand, which filled the inner shelf to the brim and walled lagoons off.
+  not 0.3 Myr of today's highstand, which filled the inner shelf to the brim and walled lagoons off. The polish's **deltas**
+  are laid to today's sea (`marineDeltaSeaKm`): its rivers run to today's coast, so their load arrives at today's mouths;
+  laid to the lowstand it filled them only to 53 m below the sea and every ria and bay head stayed open (lane coastwave,
+  2026-11-25: 2.5M 243751@430 |lat|<40 coast D 1.203 → 1.151, mature passive 1.222 → 1.124, Earth 1.04–1.06).
+- **Lagoons:** a bay whose mouth a fill closed (the polish's deltas, the water stage's ponds) keeps a tidal inlet through it,
+  its throat sized by its tidal prism (Jarrett 1976: A = 1.576·10⁻⁴ P^0.95 m², `tidalRangeM` 1 m), the cut swept into the
+  lagoon; a lagoon too small to take the cut is filled by it to the sea's level (a marsh). finish-coast.js `tidalInlets`,
+  `stats.inlets` / `stats.inletsWater`.
 - **Solver:** RKL1 super-time-stepping (Meyer, Balsara & Aslam 2012), flux-form, so the sea's sediment is conserved to float
   rounding (`marineDriftKm3` in each rung's stats). It works only cells above the waves' reach on the mesh (exchange per span
   under 10⁻³ of a difference on the shortest edge) or holding laid sediment, and their neighbours (`marineActive`, ~20 %).

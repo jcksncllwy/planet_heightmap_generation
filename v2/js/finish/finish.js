@@ -13,7 +13,7 @@ import { closedBasins, joinOpenSeas } from './finish-basins.js';
 import { depositSediment } from './finish-sediment.js';
 import { lastIceAge } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
-import { coastWork } from './finish-coast.js';
+import { coastWork, tidalInlets } from './finish-coast.js';
 import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
 import { fillSpillMerge } from './finish-fsm.js';
 import { ERODE, windowUplift, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, hollowCensus, playas, bayheadFill } from './finish-erode.js';
@@ -503,11 +503,15 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         const slow = new Float32Array(n).fill(1);
         for (let c = 0; c < n; c++) if (I.ice[c]) slow[c] = EP.iceShare;
         stats.erodeOn = eroder.on;
-        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: F.polishMarineSeaKm ?? low, marineDeltaSeaKm: F.polishDeltaSeaKm, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, { ...(EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP), ...(F.polishErode ?? {}) });   // (lane coastwave probe: polishMarineSeaKm, polishErode)
+        const polishZ = C.z.slice();                                  // (the ground the polish starts from: its deltas' lagoons)
+        const late = await eroder.solve({ ...erodeIn, mesh, z: C.z, ocean, slow, marineSeaKm: low, marineDeltaSeaKm: 0, closed: (g, flood) => reflooded(mesh, ocean, closedBasins(mesh, g, runoff, pet, skyKept, cellKm2, F, ocean, flood, 0, true, B.seaCells), 'late') }, EP.at === 'both' ? { ...EP, timeMyr: EP.polishMyr, steps: EP.polishSteps, G: EP.polishG, rebound: erodeIn.uplift ? EP.rebound : 0, lastClean: EP.lastClean } : EP);
         delete late.outflow;                                          // (per cell: bayheadFill's, after the early run only — not stats)
         if (stats.erode) stats.erodeLate = late; else stats.erode = late;
         lap('erosion');
         census('after late erosion', ocean);
+        // (a bay whose mouth the polish's deltas filled keeps its tidal inlet: finish-coast.js tidalInlets)
+        stats.inlets = tidalInlets({ mesh, z: C.z, zBefore: polishZ, wasOcean: oceanMask(mesh, polishZ), ocean: oceanMask(mesh, C.z), cellKm2, edgeKm: mesh.edgeKm }, F);
+        if (stats.inlets.opened) ocean = oceanMask(mesh, C.z);
     }
 
     // ── R1: rivers and lakes, by the climate ──
@@ -518,9 +522,12 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const bi = new Int32Array(4), bw = new Float64Array(4), at = (f, c) => f[bi[0]] * bw[0] + f[bi[1]] * bw[1] + f[bi[2]] * bw[2] + f[bi[3]] * bw[3];
     const months = { at: (c, m0, M, share, arid) => { corners(climGrid, lat[c], lon[c], bi, bw); for (let j = 0; j < M; j++) { share[j] = at(monthly.share[m0 + j], c); arid[j] = at(monthly.arid[m0 + j], c); } } };
     // (Fill-Spill-Merge on the erosion's ground: finish-fsm.js. Without the erosion, a study switch, it gives ~2.5× Earth's lakes)
+    const waterZ = C.z.slice();                                       // (the ground before the ponds: their lagoons)
     const Hy = fillSpillMerge({ mesh, z: C.z, ocean, runoff, pet, rain: pAnn, skyKept, frozen: liquid.frozen, wetMonths, ice, glaciated: I.ice, basin: I.basin, seaBasin, lat, lon, months, debug }, F);
     Object.assign(stats, { water: Hy.stats });
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
+    // (a bay the ponds' fill closed off keeps its tidal inlet too: finish-coast.js tidalInlets)
+    stats.inletsWater = tidalInlets({ mesh, z: C.z, zBefore: waterZ, wasOcean: oceanMask(mesh, waterZ), ocean: oceanMask(mesh, C.z), cellKm2, edgeKm: mesh.edgeKm }, F);
     // (the sea again, after the rivers' gorges)
     ocean = oceanMask(mesh, C.z);
     observe?.('after water', mesh, C.z, ocean, Hy.lake);
