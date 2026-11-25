@@ -66,21 +66,21 @@ function frontPush(world, loads) {
     for (const p of plates) {
         const L = loads.get(p.id), mine = lin.get(p.id);
         if (!mine || !L.contacts.length) continue;
-        const arms = new Map();                                         // other → Σ arm (r × n, n toward the other) per contact
-        for (const { r, n, other } of L.contacts) {
-            const a = arms.get(other) ?? arms.set(other, { s: [0, 0, 0], k: 0 }).get(other);
-            a.s[0] += r[1] * n[2] - r[2] * n[1]; a.s[1] += r[2] * n[0] - r[0] * n[2]; a.s[2] += r[0] * n[1] - r[1] * n[0]; a.k++;
-        }
-        for (const [other, { s: A, k }] of arms) {
+        const arms = new Map(), len = contactLengths(world, p, L.contacts);   // other → Σ ℓ (r × n): each contact's arm × its length of front, 100 km
+        L.contacts.forEach(({ r, n, other }, i) => {
+            const a = arms.get(other) ?? arms.set(other, [0, 0, 0]).get(other), l = len[i];
+            a[0] += l * (r[1] * n[2] - r[2] * n[1]); a[1] += l * (r[2] * n[0] - r[0] * n[2]); a[2] += l * (r[0] * n[1] - r[1] * n[0]);
+        });
+        for (const [other, A] of arms) {
             const key = p.id < other ? `${p.id}:${other}` : `${other}:${p.id}`, theirs = lin.get(other);
             if (out.has(key) || !theirs) continue;
             const D = mine.D.map((v, i) => v + theirs.D[i]), T = mine.T.map((v, i) => v + theirs.T[i]), w = solve3(D, T);
             // the torque the other passes to this plate when held (D ω = T + τ); the push is its part against this plate's arms (−n: pressed back)
             const tau = [0, 1, 2].map(i => mine.D[3 * i] * w[0] + mine.D[3 * i + 1] * w[1] + mine.D[3 * i + 2] * w[2] - mine.T[i]);
             const A2 = A[0] * A[0] + A[1] * A[1] + A[2] * A[2];
-            const frontKm = Math.max(world.collisions?.get(key)?.frontKm ?? 0, k * world.mesh.edgeKm);
-            // (a uniform force f per 100 km over the contacts: torque f · (front ⁄ 100 ⁄ k) · Σ arm; so f = −τ·A ⁄ (|A|² front ⁄ 100 ⁄ k))
-            const f = A2 > 0 ? -(tau[0] * A[0] + tau[1] * A[1] + tau[2] * A[2]) / (A2 * frontKm / 100 / k) : 0;
+            // (a uniform force f per 100 km over the front, each contact its length of it (contactLengths): torque f · Σ ℓ (r × n) = f A;
+            // so f = −τ·A ⁄ |A|²)
+            const f = A2 > 0 ? -(tau[0] * A[0] + tau[1] * A[1] + tau[2] * A[2]) / A2 : 0;
             out.set(key, Math.max(0, f) * config.forceUnitNPerM);
         }
     }
@@ -162,19 +162,38 @@ const s = x => x / Math.sqrt(1 + x * x);
 /** Per contact of this plate: its arms (r × n across the front, r × (r × n) along it), its cap in force units, the other plate. */
 export function lockContacts(world, plate, load) {
     if (!load.contacts.length) return [];
-    const { config, mesh, collisions } = world, H = heightsOf(config), count = new Map(), lenOf = new Map();
-    for (const { other } of load.contacts) count.set(other, (count.get(other) ?? 0) + 1);
-    for (const [other, n] of count) {
-        const key = plate.id < other ? `${plate.id}:${other}` : `${other}:${plate.id}`;
-        // (the front as the collision measured it; before its record exists, a cell edge per contact cell)
-        const frontKm = Math.max(collisions?.get(key)?.frontKm ?? 0, mesh.edgeKm);
-        lenOf.set(other, frontKm / 100 / n);
-    }
-    return load.contacts.map(({ c, r, n, other, dh }) => {
+    const { config } = world, H = heightsOf(config), len = contactLengths(world, plate, load.contacts);
+    return load.contacts.map(({ c, r, n, other, dh }, i) => {
         const an = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];
         const at = [r[1] * an[2] - r[2] * an[1], r[2] * an[0] - r[0] * an[2], r[0] * an[1] - r[1] * an[0]];
-        return { c, an, at, other, cap: collisionGpeNPerM(dh, H) / config.forceUnitNPerM * lenOf.get(other) };
+        return { c, an, at, other, cap: collisionGpeNPerM(dh, H) / config.forceUnitNPerM * len[i] };
     });
+}
+
+/**
+ * Each contact's length of front, in 100 km: the collision's front (its record's frontKm — the overlap's width across the line
+ * between the two plates, step/collision.js frontWidthKm; before the record exists, a cell's) shared among the contacts by how
+ * squarely each faces the other plate, |n · ĝ| (ĝ toward the other plate's centre): a segment of front with normal n spans
+ * |n · ĝ| of its length across that line, so a flank, parallel to the convergence, carries none of it (it slides: lane gpelock
+ * P2 — shared evenly, a ring of contacts round a pocket of overlap resisted the convergence over 2–3× the indenter's width).
+ * All of one pair's contacts facing away (|n · ĝ| summing to 0): evenly.
+ */
+export function contactLengths(world, plate, contacts) {
+    const { collisions, mesh, plates } = world, out = new Float64Array(contacts.length), sum = new Map(), count = new Map(), centre = new Map();
+    contacts.forEach(({ r, n, other }, i) => {
+        let t = centre.get(other);
+        if (!t) { const o = plates[other]; t = o.toWorld(o.capCenter[0], o.capCenter[1], o.capCenter[2], [0, 0, 0]); centre.set(other, t); }
+        const d = t[0] * r[0] + t[1] * r[1] + t[2] * r[2], g = [t[0] - r[0] * d, t[1] - r[1] * d, t[2] - r[2] * d], gl = Math.hypot(g[0], g[1], g[2]) || 1;
+        out[i] = Math.abs(n[0] * g[0] + n[1] * g[1] + n[2] * g[2]) / gl;
+        sum.set(other, (sum.get(other) ?? 0) + out[i]);
+        count.set(other, (count.get(other) ?? 0) + 1);
+    });
+    contacts.forEach(({ other }, i) => {
+        const key = plate.id < other ? `${plate.id}:${other}` : `${other}:${plate.id}`;
+        const frontKm = Math.max(collisions?.get(key)?.frontKm ?? 0, mesh.edgeKm), S = sum.get(other);
+        out[i] = frontKm / 100 * (S > 0 ? out[i] / S : 1 / count.get(other));
+    });
+    return out;
 }
 
 /** The lock's onset rate v₀, rad/Myr (lockContacts). */

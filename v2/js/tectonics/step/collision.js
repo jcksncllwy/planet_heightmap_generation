@@ -151,7 +151,7 @@ export function trackCollisions(world, dt) {
             if (touchesU) upperFront.push(U.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]));
             if (touchesL) lowerFront.push(L.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]));
         }
-        rec.frontKm = Math.max(upperFront.length, lowerFront.length) * edgeKm * Math.sqrt(3) / 2;
+        rec.frontKm = frontWidthKm(cells, cU, cL, xyz, edgeKm) ?? Math.max(upperFront.length, lowerFront.length) * edgeKm * Math.sqrt(3) / 2;
 
         // records: a plateau-side belt on the upper plate, a foreland belt on the lower one — both reaching further
         // the more shortening they have absorbed and the faster it comes
@@ -524,6 +524,26 @@ function chooseSides(world, A, B) {
     return aUpper ? { upper: A, lower: B } : { upper: B, lower: A };
 }
 
+
+/**
+ * A collision's front, km: the overlap's width across the line between the two plates — the width a rigid indenter presses
+ * with. Its flanks, parallel to the convergence, slide past (strike-slip, as the Chaman and Sagaing faults bound India's
+ * indenter) and transmit little across them. (Was every overlap cell touching either plate's land, × a cell's width: round
+ * the nose and down the flanks, and once the lower plate's leading land had gone under, a ring round the overlap's pocket —
+ * 3,600–5,100 km of front against India's 1,000–1,300 km of land across the convergence, and the lock, its cap per metre of
+ * that front, resisting the convergence over 1.2–1.9× India's width mid-collision, 2.1–3.4× from ~30 Myr after contact.
+ * Lane gpelock P2, p2/front3-p2.txt.) Plus one cell's width, so a one-cell contact has a cell's front.
+ * @returns {number|null} null when the two centres coincide (no line to be across)
+ */
+function frontWidthKm(cells, cU, cL, xyz, edgeKm) {
+    let ax = [cL[1] * cU[2] - cL[2] * cU[1], cL[2] * cU[0] - cL[0] * cU[2], cL[0] * cU[1] - cL[1] * cU[0]];
+    const al = Math.hypot(ax[0], ax[1], ax[2]);
+    if (al < 1e-9) return null;
+    ax = [ax[0] / al, ax[1] / al, ax[2] / al];
+    let lo = Infinity, hi = -Infinity;
+    for (const w of cells) { const s = xyz[3 * w] * ax[0] + xyz[3 * w + 1] * ax[1] + xyz[3 * w + 2] * ax[2]; if (s < lo) lo = s; if (s > hi) hi = s; }
+    return (Math.asin(Math.min(1, hi)) - Math.asin(Math.max(-1, lo))) * PLANET_RADIUS_KM + edgeKm * Math.sqrt(3) / 2;
+}
 
 /**
  * Continental underthrusting (Phase 7c). Land does not subduct as a slab, but the leading edge of the lower plate's
