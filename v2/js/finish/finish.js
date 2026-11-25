@@ -26,7 +26,7 @@ import { mapOnto } from '../core/mesh-maps.js';
 import { elasticThicknessKm } from '../gpu/flexure.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
 import { carveLadder, carveSettings } from '../terrain/synthesize.js';
-import { floodSea } from '../terrain/carve.js';
+import { floodSea, transgressiveFill } from '../terrain/carve.js';
 import { carveTerrain, forgetMesh } from '../terrain/carve.js';
 import { forgetEdgeKm } from '../core/min-heap.js';
 import { planetClimateAsync } from '../climate/climate.js';
@@ -343,6 +343,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const eroder = EP ? await erosionSolver(EP) : null, erodeIn = EP ? { water: carveIn.rain, k: carveIn.k, m: E.m,
         uplift: windowUplift(EP, carveIn),                          // (km/Myr: ERODE histLower)
         teOf: teSim ? m => elasticOn(simMesh, teSim, m) : null } : null;
+    const carveU = carveIn.u;                                         // (the rock uplift a graded catchment sheds: the cycle fill's supply)
     carveIn = null;
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's caches for this mesh: ~0.5 GB at 10M)
     lap('rivers');
@@ -384,6 +385,14 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         // (one flood at today's sea over what the erosion left: the lowstand's valleys it reaches are the rias; then the rivers
         // fill them from their heads through the transgression and the highstand — finish-erode.js bayheadFill — and the sea
         // is flooded once more over what they left open)
+        // (the erosion graded to the cycle's mean sea for its whole window; a lowstand valley the next lowstand's knickpoint
+        // cannot reach again is refilled between lowstands by its river's load — carve.js transgressiveFill, as the carve's own)
+        if (F.cycleFill !== false) {
+            const windowMyr = (stats.erode?.levels ?? []).reduce((t, L) => t + (L.timeMyr ?? 0), 0) || EP.timeMyr || F.carveTimeMyr;
+            stats.lowstand.cycleFill = transgressiveFill(mesh, C.z, { pre: before, todaySeed: worldOcean, lowSea: c => lowOcean[c] === 1,
+                k: erodeIn.k, rain: erodeIn.water, u: carveU, m: E.m, lowKm: low, windowMyr });
+            stats.lowstand.cycleFill.windowMyr = +windowMyr.toFixed(2);
+        }
         {
             let f1 = floodSea(mesh, C.z, ocean0);
             const beforeFill = f1.drowned;

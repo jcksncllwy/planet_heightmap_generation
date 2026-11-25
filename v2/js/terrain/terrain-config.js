@@ -559,9 +559,10 @@ export const TERRAIN = {
     // So the carve runs to a sea carveSeaDropKm below today's (lower still where the history's own sea stood lower within
     // the carving's time: terrain/sea-level.js, given by the caller), the shelf above it carved as land, and today's sea
     // then floods in from the ocean over whatever stands below it (carve.js floodSea); the finish's early erosion grades to
-    // it too. Reduced: one mean level, not the erosion weighted through each level the sea passed; the valleys' refilling
-    // by the last transgression is the finish's bayhead fill (finish-erode.js bayheadFill); fjords are the finish's ice
-    // age's (finish-ice.js), not this.
+    // it too. Reduced: one mean level, not the erosion weighted through each level the sea passed. What that level cut below
+    // today's sea stays open only within the reach of one lowstand's knickpoint; beyond it the valley is refilled between
+    // lowstands by its river's load (carve.js transgressiveFill, lane coastsmooth) — and the last transgression's fill is the
+    // finish's bayhead fill (finish-erode.js bayheadFill); fjords are the finish's ice age's (finish-ice.js), not this.
     carveSeaDropKm: 0.053,
     carveM: 0.4,                // the drainage-area exponent m (the paper's; concavity m / n)
     carveValleyKm: 20,          // a valley is this wide where its river drains 10⁴ km², wider with √(drainage) (Leopold &

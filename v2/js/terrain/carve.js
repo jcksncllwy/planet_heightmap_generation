@@ -29,6 +29,7 @@
 
 import { MinHeap, spreadKm } from '../core/min-heap.js';
 import { locate } from '../core/mesh-locate.js';
+import { cutOffShare, STACK_KYR } from '../finish/sea-level-stack.js';
 
 const R = 6371;
 
@@ -350,9 +351,102 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
     }
     if (F[L - 1].lipAge && (cfg.lipEdgeRetreat > 0 || cfg.lipValleyRate > 0)) stripBasalt(meshes[L - 1], F[L - 1], result, cfg);
     if (cfg.lipStepKm > 0) terraceBasalt(F[L - 1], result, cfg);     // (on the mesh shown only)
+    {
+        const f = F[L - 1], mesh = meshes[L - 1], n = mesh.numCells, today = new Uint8Array(n);
+        for (let c = 0; c < n; c++) today[c] = f.ocean ? f.ocean[c] > 0.5 : f.z[c] <= 0;
+        result.cycleFill = transgressiveFill(mesh, result.z, { pre: f.z, todaySeed: today, lowSea: c => (f.ocean ? f.ocean[c] > 0.5 : true) && !(f.z[c] > (cfg.lowstandKm ?? 0)),
+            k: f.k, rain: f.rain, u: f.u, m: cfg.m, lowKm: cfg.lowstandKm ?? 0, windowMyr: cfg.timeMyr });
+    }
     floodToday(meshes[L - 1], F[L - 1], result);
     if (cfg.canyonKm > 0 && cfg.canyonDepthKm > 0) cutCanyons(meshes[L - 1], F[L - 1], result, cfg);
     return result;
+}
+
+// (a valley fill's top: the highstand's tidal flats and bayhead plain stand at about mean high water, half a ~1 m mean tidal
+// range above mean sea (open coasts: Davies 1964's microtidal < 2 m) — land, not the sea's floor at exactly its level)
+const FILL_TOP_KM = 0.0005;
+
+/**
+ * The lowstand valleys refilled over the glacial cycles (lane coastsmooth, 2026-11-24): what the carve's base level
+ * (the cycle's mean sea, carveSeaDropKm) cut below today's sea is kept open only where the next lowstand cuts it again.
+ * Each lowstand lasts f · STACK_KYR / falls of the cycle (the sea below the base level — Spratt & Lisiecki 2016's stack,
+ * finish/sea-level-stack.js: ~25 kyr at −53 m), and its knickpoint climbs from the lowstand's shore at the river's own
+ * speed a = k A^m (the carve's wave): a valley reach the knickpoint cannot get back to within one lowstand is not cut
+ * again. Between lowstands the sea stands above the valley floor (a share 1 − f of the time) and the river's load is
+ * trapped there, as the transgressive fills of incised valleys are (Dalrymple, Zaitlin & Boyd 1992, J. Sed. Petrol. 62:
+ * 1130; Zaitlin, Dalrymple & Boyd 1994, SEPM Spec. Pub. 51). So, per river reaching the lowstand's sea: its supply over
+ * the window's highstands (the catchment's rock uplift, which a graded catchment sheds: Σ u · area, km³/Myr, × (1 − f)
+ * × windowMyr) fills its drowned valley beyond the knickpoint's reach, from the head seaward, up to today's sea.
+ * Incision then depends on discharge, shelf and lowstand together (Talling 1998, J. Geol. Soc. 155:1; Blum & Törnqvist
+ * 2000, Sedimentology 47 suppl.): a great river or a narrow shelf keeps its ria (the knickpoint is back at the coast within
+ * a lowstand), and so does a starved river (its load cannot fill the valley: the Chesapeake, Susquehanna's); a wide shelf
+ * crossed by a modest river is a smooth coast again (the US Atlantic's filled valleys). Fjords are the ice age's (after this).
+ * Reduced (what it skips): the knickpoint starts each lowstand from the lowstand's mean shore, not from where the sea
+ * actually fell to; the load is the uplift's steady shed, not the climate's; all of it is trapped (no tidal export); a
+ * cell is filled to mean high water (FILL_TOP_KM), not to a prograding delta plain's slope; only ground that was land before the carve.
+ * @param {Object} mesh
+ * @param {Float32Array} z     the carved ground (km), raised in place
+ * @param {{pre: Float32Array, todaySeed: Uint8Array, lowSea: (c: number) => boolean, k, rain, u: Float32Array,
+ *          m: number, lowKm: number, windowMyr: number}} o   pre: the ground before carving (land where ≥ 0); todaySeed:
+ *          today's open sea; lowSea: the lowstand's sea; k, rain, u, m: the carve's stream power (a = k (A·rain)^m) and uplift
+ * @returns {{episodeKyr, highShare, cells, filledKm3, supplyKm3, starved, reachCells}}
+ */
+export function transgressiveFill(mesh, z, o) {
+    const { adjOffset, adjList, numCells: n } = mesh, { dist, area: cellArea } = infoOf(mesh);
+    const { f, falls } = cutOffShare(o.lowKm), episodeMyr = falls > 0 ? f * STACK_KYR / falls / 1000 : 0, high = 1 - f;
+    const out = { episodeKyr: +(episodeMyr * 1000).toFixed(1), highShare: +high.toFixed(3), cells: 0, filledKm3: 0, supplyKm3: 0, starved: 0, reachCells: 0 };
+    if (!(o.lowKm < 0) || !(episodeMyr > 0)) return out;
+    // today's sea over the carved ground: the valleys it drowned are the only ground to fill
+    const today = floodSea(mesh, z, o.todaySeed).sea;
+    // the lowstand's network over the carved ground: a priority flood from its sea, each cell's way down the flood's
+    const recv = new Int32Array(n).fill(-1), recvKm = new Float32Array(n), order = new Int32Array(n), seen = new Uint8Array(n);
+    const heap = new MinHeap(1 << 16);
+    let count = 0;
+    for (let c = 0; c < n; c++) if (o.lowSea(c)) seen[c] = 2;
+    for (let c = 0; c < n; c++) {
+        if (seen[c] !== 2) continue;
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seen[nb]) { seen[nb] = 1; recv[nb] = -1 - c; recvKm[nb] = dist[k]; heap.push(z[nb], nb); } }
+    }
+    const level = new Float32Array(n);
+    while (heap.size) {
+        const c = heap.pop();
+        order[count++] = c;
+        level[c] = Math.max(z[c], recv[c] >= 0 ? level[recv[c]] : -Infinity);
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seen[nb]) { seen[nb] = 1; recv[nb] = c; recvKm[nb] = dist[k]; heap.push(Math.max(z[nb], level[c]), nb); } }
+    }
+    // drainage (rain-weighted, as the carve's) and supply (km³/Myr) down the network; each cell's root (the river's mouth)
+    const A = new Float32Array(n), Q = new Float64Array(n), root = new Int32Array(n);
+    for (let i = count - 1; i >= 0; i--) {
+        const c = order[i];
+        A[c] += cellArea * (o.rain ? o.rain[c] : 1); Q[c] += Math.max(0, o.u ? o.u[c] : 0) * cellArea;
+        if (recv[c] >= 0) { A[recv[c]] += A[c]; Q[recv[c]] += Q[c]; }
+    }
+    // the knickpoint's time from the lowstand's shore (Myr), and the valley cells beyond its reach, by root
+    const T = new Float64Array(n), byRoot = new Map();
+    for (let i = 0; i < count; i++) {
+        const c = order[i], r = recv[c];
+        root[c] = r >= 0 ? root[r] : c;
+        T[c] = (r >= 0 ? T[r] : 0) + recvKm[c] / (Math.max(1e-9, o.k[c]) * Math.max(A[c], 1e-6) ** o.m);
+        if (!today[c] || !(o.pre[c] >= 0) || !(z[c] < 0)) continue;
+        if (T[c] <= episodeMyr) { out.reachCells++; continue; }
+        let list = byRoot.get(root[c]);
+        if (!list) byRoot.set(root[c], list = []);
+        list.push(c);
+    }
+    // each river's load over the window's highstands, laid from the valley's head seaward up to today's sea
+    for (const [r, cells] of byRoot) {
+        let budget = Q[r] * high * o.windowMyr;
+        out.supplyKm3 += budget;
+        cells.sort((p, q) => T[q] - T[p]);
+        for (const c of cells) {
+            if (!(budget > 0)) break;
+            const need = (FILL_TOP_KM - z[c]) * cellArea, put = Math.min(need, budget);
+            z[c] += put / cellArea; budget -= put; out.filledKm3 += put; out.cells++;
+        }
+        if (budget <= 0 && z[cells.at(-1)] < 0) out.starved++;
+    }
+    out.filledKm3 = Math.round(out.filledKm3); out.supplyKm3 = Math.round(out.supplyKm3);
+    return out;
 }
 
 /**

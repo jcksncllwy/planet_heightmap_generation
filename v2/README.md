@@ -877,6 +877,20 @@ mouth first up to today's sea, the lakes' own `deltaLayer`. A valley with a big 
 stays an open ria, funnel-shaped, its mouth the last to fill (Dalrymple et al. 1992; Boyd et al. 1992). It skips: the
 Holocene's own load (it uses the lowstand's), the tide carrying mud out of a valley, waves, and the overflow a full valley
 would build onto the open shelf (counted, `stats.lowstand.bayhead.spiltKm3`). The sea is flooded once more after it.
+**The lowstand valleys over the cycles** (lane coastsmooth, 2026-11-24; `transgressiveFill`, carve.js). The carve and the early
+erosion hold the cycle's mean sea for their whole window, as if it never rose; every river, great or small, then reached −53 m at
+today's coast and today's sea drowned them all: every margin a ria coast (D 1.27–1.42 against Earth's passive 1.04–1.06, rising
+with the mesh). Now a valley stays open only where the next lowstand cuts it again: each lowstand lasts ~25 kyr (the stack's share
+below −53 m over its falls, `sea-level-stack.js`), and its knickpoint climbs from the lowstand's shore at the river's own speed
+k A^m, so only a great river or a narrow shelf gets back to today's coast within one. Beyond that reach the valley is refilled
+between lowstands (the sea above its floor 52 % of the time; transgressive valley fills, Dalrymple et al. 1992, Zaitlin et al.
+1994) by its river's load — the catchment's rock uplift over the window's highstands — from its head seaward, up to today's sea; a
+river too starved to fill it keeps its ria (Talling 1998; Blum & Törnqvist 2000). It runs at the carve's end (the preview) and in
+the finish after the early erosion, before the bayhead fill (`stats.lowstand.cycleFill`). Earth on the same meshes, the same
+measure (`check-phase8b` 'the coast by margin'; `tools/data/earth-terrain-*.i16`): passive margins smoother than the rest, and D
+flat with resolution. It skips: the knickpoint starting from the mean lowstand's shore, not the sea's actual fall; the climate's
+load (it uses the uplift's steady shed); tidal export; a fill's own delta slope. The finish's ice age and late erosion roughen the
+coast again afterwards (fjords, the rebound still to come; measured in coastsmooth's report, queued).
 **The sea's floor under the waves** (lane marine, 2026-11-21; `ERODE.marine`, GPU only). Until then every finish erosion
 treated the sea as an outlet: what its rivers carried to the sea (~12 km³/yr over the moment's window at 831576@430, 92 % of it
 arriving over drowned continental crust at 50–500 m) was counted and dropped, bar the 3 % deltas and the bayhead fill. Now the
