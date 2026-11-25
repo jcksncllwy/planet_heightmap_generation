@@ -323,10 +323,16 @@ section('Andean margin');
             : await (async () => { const b = (await run('one-sided', 80, {}, true, seed)).frames.at(-1), f = (await run('one-sided', 80, halfDrag, true, seed)).frames.at(-1), pl = fr => fr.plates.find(x => x.name === 'Solo');
                 return { base: b, soloB: pl(b), baseBelt: cellsWhere(numCells, w => isLand(b, w) && b.oroType[w] === OrogenyType.ANDEAN), fastFrame: f, soloF: pl(f), fastCells: cellsWhere(numCells, w => isLand(f, w) && f.oroType[w] === OrogenyType.ANDEAN) }; })();
         const wb = widthP90(q.base, q.soloB), wf = widthP90(q.fastFrame, q.soloF), advB = advanceCmYr(q.base, q.soloB, q.baseBelt), advF = advanceCmYr(q.fastFrame, q.soloF, q.fastCells);
-        return { label: seed, formed: wb.cells > 0 && wf.cells > 0, ok: advF > advB && wf.cells > wb.cells && wf.p90 > wb.p90,
-            text: `${advB.toFixed(1)} → ${advF.toFixed(1)} cm/yr: ${wb.cells} → ${wf.cells} cells, 90th percentile ${wb.p90.toFixed(0)} → ${wf.p90.toFixed(0)} km` };
+        const cut = f => f.budget?.andeanShortenedCells ?? 0, kept = f => (f.budget?.andeanShortenKeptKm3 ?? 0) / 1e6;
+        return { label: seed, formed: wb.cells > 0 && wf.cells > 0, ok: advF > advB && cut(q.fastFrame) > cut(q.base) && kept(q.fastFrame) > kept(q.base),
+            text: `${advB.toFixed(1)} → ${advF.toFixed(1)} cm/yr: shortened ${cut(q.base)} → ${cut(q.fastFrame)} cells, root kept ${kept(q.base).toFixed(1)} → ${kept(q.fastFrame).toFixed(1)} Mkm³ (belt ${wb.cells} → ${wf.cells} cells, 90th percentile ${wb.p90.toFixed(0)} → ${wf.p90.toFixed(0)} km)` };
     })));
-    checkAcross('…and further the faster the upper plate advances on its trench', forced, { detail: 'Solo with half the drag against as built; reach = 90th-percentile distance inland' });
+    // (lane gpelock 2026-11-25, sessrumnir's ruling: was "further" — more belt cells and a farther 90th percentile. With the upper
+    // plate's own shortening (andean-shortening.js) the faster plate shortens its margin more and the coast steps inland, so its belt
+    // cells fall by about the extra cells shortened (−19/−9/−17 against +16/+18/+11; p2/further-pre.txt) and the reach is the
+    // margin's width after shortening. What the advance drives is shortening and thickening: Oncken et al. 2006 (the Andes'
+    // shortening rate follows the upper plate's westward drift; Heuret & Lallemand 2005). The belt cells and reach stay in the text)
+    checkAcross('…and the upper plate shortens and thickens more the faster it advances on its trench', forced, { detail: 'Solo with half the drag against as built: Andean shortening (cells) and the root it keeps (km³), andean-shortening.js' });
     // the trailing coast (within ±40° of due east of the centre) must carry nothing; a slight rotation may let the rim
     // override old ocean near the tips of the trench, which is a real (small) trench and is allowed
     const centre = solo.centre, east = [-centre[1], centre[0], 0], north = [-centre[2] * centre[0], -centre[2] * centre[1], centre[0] ** 2 + centre[1] ** 2];
