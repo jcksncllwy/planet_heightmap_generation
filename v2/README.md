@@ -3681,3 +3681,20 @@ Andean 65–68 km (was 46–51 / 43–46). **Continental area still drifts down:
 −4.5 to −10 before** (bar |Δ| ≤ 4). Collapse returns 9–11 Mkm² per 1200 Myr, ×0.2–0.3 of Earth's ~36–48 (Basin and Range,
 Aegean): only ~0.25 Gkm³ of crust-flow leaves a quiet belt; the rest moves within belts. The missing area-maker is open:
 e.g. rifts that reopen old belts (the Wilson cycle). `check-invariants` reports both rates against Earth.
+
+## The ice age on Earth: a bug check (2026-11-25, lane iceage B1)
+`check-iceage-earth.mjs` (report only, ~17 s, needs a GPU) runs the finish's own climate and `finish-ice.js` `lastIceAge`
+on Earth's ground (ETOPO5 on the 160K terrain mesh) and lays its ice against ICE-6G_C's at 21 ka (Peltier, Argus & Drummond
+2015), region by region. It also asks today's climate, with no ice age, where a degree-day mass balance keeps its snow
+(Reeh 1991; Braithwaite 1995) and where its own ice sheets stand (`temperature.js` TEMP_ICE_FORM), against today's ice. It
+is a bug check, not a target: where the code puts ice Earth never had, the mechanism is what is wrong, not a constant.
+- **Data:** `tuning/climate/fetch-ice6g.sh` (PMIP4's ICE-6G_C, 0 and 21 ka, md5-checked, gitignored) →
+  `tools/make-earth-ice.mjs` → the committed artifact `tools/data/earth-ice-160k.u8` (bit 0: ice at 21 ka, bit 1: at 0 ka;
+  provenance in `earth-surface.json`'s `ice`), read by `lib/earth-surface.mjs` `earthIce`.
+- **What it shows on main 42b4650:** the prescribed ice age (zonal cooling `iceColdEqC`/`iceColdPoleC`, `iceDrier`, the
+  reach rule) ices Siberia (10.7 Mkm²; Earth's LGM ≤ 1) and the Tibetan Plateau (2.9; ≤ 0.35) and misses the Laurentide's
+  south (38–50° N: 0.5 against 3.5). The degree-day balance on today's climate keeps snow on 93 % of today's sheets and
+  1.3 Mkm² beyond them; the climate's own sheets cover 8.2 Mkm² where today has none (Siberia 3.9, High Asia 1.5). The
+  lane's analysis and the physical model proposed in their place: `lanes-2026-10-29/iceage/report.md`.
+- `render-moment --dump` also writes the ice age's extent (`glaciated.u8`) and its stats (`ice.json`), to measure coasts by
+  ice cover.
