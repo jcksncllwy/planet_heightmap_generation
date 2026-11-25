@@ -16,5 +16,21 @@
       "fingerprint": "160001:4651ef764f97f428",
       "sha256": "f00d355cc7906982df1447eb46e135d6416aa94be8bdc4dc89863b51de276b75"
     }
+  },
+  "terrain": {
+    "160001": {
+      "file": "earth-terrain-160k.i16",
+      "numCells": 160001,
+      "fingerprint": "160001:fac47e241208aa46",
+      "sampling": "every row and column (5′)",
+      "sha256": "da8fc179a47b87e30a20f371a1d6602508ea1c2b9c528454405e8a07ec3e7faf"
+    },
+    "640001": {
+      "file": "earth-terrain-640k.i16",
+      "numCells": 640001,
+      "fingerprint": "640001:8d7374164201ca9e",
+      "sampling": "every row and column (5′)",
+      "sha256": "901786caa044abee30576338384bc147826ac60b8392f50f7cec65c215055d3d"
+    }
   }
 }

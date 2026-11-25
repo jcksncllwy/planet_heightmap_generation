@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 export const EARTH_SURFACE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data');
 export const EARTH_SURFACE_MESHES = [40000, 160000];
+/** The terrain meshes (terrain-mesh.js) Earth is binned onto too: check-phase8b's coast by margin (lane coastsmooth). */
+export const EARTH_TERRAIN_MESHES = [160000, 640000];
 
 /** The mesh's topology, hashed (cell count and adjacency): the artifact is per cell id, so it holds only on this mesh.
  *  Positions are left out: their last bits differ by CPU (mathFingerprint), the cells and their neighbours do not. */
@@ -17,8 +19,8 @@ export function meshFingerprint(mesh) {
 }
 
 /** Earth's surface in km on `mesh` (one of EARTH_SURFACE_MESHES), or { error } when the artifact is missing or stale. */
-export function earthSurfaceKm(mesh) {
-    const man = JSON.parse(fs.readFileSync(path.join(EARTH_SURFACE_DIR, 'earth-surface.json'), 'utf8')), m = man.meshes[mesh.numCells];
+export function earthSurfaceKm(mesh, { terrain = false } = {}) {
+    const man = JSON.parse(fs.readFileSync(path.join(EARTH_SURFACE_DIR, 'earth-surface.json'), 'utf8')), m = (terrain ? man.terrain ?? {} : man.meshes)[mesh.numCells];
     if (!m) return { error: `no artifact for ${mesh.numCells} cells` };
     const fp = meshFingerprint(mesh);
     if (fp !== m.fingerprint) return { error: `mesh changed (${fp} vs ${m.fingerprint}): re-run tools/make-earth-surface.mjs` };

@@ -212,3 +212,22 @@ export function kindOf(simMesh, rec, glaciated = null, matureAt = 0.6) {
         return 4;                                                          // ARC
     };
 }
+
+/**
+ * Earth's coasts by margin, for measuring Earth on a mesh the way the sim is measured (lane coastsmooth, 2026-11-24): lon/lat
+ * boxes around the passive margins (US Atlantic and Gulf, West Africa's Guinea and Angola–Namibia coasts, Brazil, East India,
+ * SE Australia) and the fjord and ria coasts (Norway, southern Chile, British Columbia–SE Alaska, Scotland); every other
+ * coast equatorward of 60° is 'other', the rest uncounted. On ETOPO5 binned to the terrain meshes, D 50–500 km: passive
+ * 1.04–1.06, fjord/ria 1.20–1.21, other 1.15–1.17 (160K–2.5M).
+ */
+export const EARTH_COAST_KINDS = ['passive', 'fjord', 'other'];
+const EARTH_COAST_BOXES = [
+    [0, -82, -69, 25, 41.5], [0, -98, -81, 24.5, 31], [0, -14, 10, 3, 11], [0, 8, 19, -30, -5], [0, -52, -34, -33, -3], [0, 78, 88, 8, 22], [0, 145, 154, -39, -25],
+    [1, 4, 31, 58, 71.5], [1, -77, -63, -56, -41], [1, -140, -122, 48, 60], [1, -8, -1.5, 55, 59],
+];
+/** A kindAt() for coastFractal on Earth's surface: EARTH_COAST_KINDS' index by the point's place (unit vector). */
+export function earthKindAt(cell, x, y, z) {
+    const lon = Math.atan2(y, x) * 180 / Math.PI, lat = Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI;
+    for (const [k, l0, l1, a0, a1] of EARTH_COAST_BOXES) if (lon >= l0 && lon <= l1 && lat >= a0 && lat <= a1) return k;
+    return Math.abs(lat) < 60 ? 2 : -1;
+}

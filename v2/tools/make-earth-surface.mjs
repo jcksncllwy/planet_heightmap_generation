@@ -6,8 +6,10 @@
 // surface on the ice sheets), fetched by tuning/civ/fetch-earth.sh. Every second row and column is sampled (10′, 2.3M
 // pixels, ~30 per 160K cell); a cell no pixel fell in takes its neighbours' mean. Rounding to 1 m moves the poured level
 // by well under 1 m.
-// Re-run when labMesh changes (the check refuses an artifact whose mesh fingerprint no longer matches).
-// Usage: node v2/tools/make-earth-surface.mjs
+// Also Earth on the TERRAIN meshes (terrain-mesh.js; EARTH_TERRAIN_MESHES), v2/tools/data/earth-terrain-{160,640}k.i16, for
+// check-phase8b's coast by margin (lane coastsmooth): every ETOPO5 pixel (5′: ~4 per 640K cell), the same area-weighted mean.
+// Re-run when labMesh or the terrain mesh changes (the checks refuse an artifact whose mesh fingerprint no longer matches).
+// Usage: node v2/tools/make-earth-surface.mjs [--etopo path/to/ETOPO5.DAT]
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -15,17 +17,18 @@ import { fileURLToPath } from 'node:url';
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
 import { labMesh } from './lib/check-kit.mjs';
-import { meshFingerprint, EARTH_SURFACE_DIR, EARTH_SURFACE_MESHES } from './lib/earth-surface.mjs';
+import { meshFingerprint, EARTH_SURFACE_DIR, EARTH_SURFACE_MESHES, EARTH_TERRAIN_MESHES } from './lib/earth-surface.mjs';
+import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 
 setDelaunator(Delaunator);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const ETOPO = path.join(ROOT, 'tuning/civ/data/raw/etopo/ETOPO5.DAT');
+const at = process.argv.indexOf('--etopo'), ETOPO = at > 0 ? path.resolve(process.argv[at + 1]) : path.join(ROOT, 'tuning/civ/data/raw/etopo/ETOPO5.DAT');
 
-function earthSurfaceM(mesh, buf) {
+function earthSurfaceM(mesh, buf, step = 2) {
     const n = mesh.numCells, sum = new Float64Array(n), wt = new Float64Array(n), D = Math.PI / 180;
-    for (let r = 0; r < 2160; r += 2) {
+    for (let r = 0; r < 2160; r += step) {
         const la = (90 - (r + 0.5) / 12) * D, cl = Math.cos(la), sl = Math.sin(la);
-        for (let q = 0; q < 4320; q += 2) {
+        for (let q = 0; q < 4320; q += step) {
             const lo = ((q + 0.5) / 12) * D, c = mesh.index.nearest(cl * Math.cos(lo), cl * Math.sin(lo), sl);
             sum[c] += cl * buf.readInt16BE(2 * (r * 4320 + q)); wt[c] += cl;
         }
@@ -48,5 +51,12 @@ for (const cells of EARTH_SURFACE_MESHES) {
     fs.writeFileSync(path.join(EARTH_SURFACE_DIR, file), Buffer.from(z.buffer));
     manifest.meshes[mesh.numCells] = { file, numCells: mesh.numCells, fingerprint: meshFingerprint(mesh), sha256: crypto.createHash('sha256').update(Buffer.from(z.buffer)).digest('hex') };
     console.log(`${cells}: ${file} ${z.byteLength} B`);
+}
+manifest.terrain = {};
+for (const cells of EARTH_TERRAIN_MESHES) {
+    const mesh = terrainMesh(cells), z = earthSurfaceM(mesh, buf, 1), file = `earth-terrain-${cells / 1000}k.i16`;
+    fs.writeFileSync(path.join(EARTH_SURFACE_DIR, file), Buffer.from(z.buffer));
+    manifest.terrain[mesh.numCells] = { file, numCells: mesh.numCells, fingerprint: meshFingerprint(mesh), sampling: 'every row and column (5′)', sha256: crypto.createHash('sha256').update(Buffer.from(z.buffer)).digest('hex') };
+    console.log(`terrain ${cells}: ${file} ${z.byteLength} B`);
 }
 fs.writeFileSync(path.join(EARTH_SURFACE_DIR, 'earth-surface.json'), JSON.stringify(manifest, null, 2) + '\n');

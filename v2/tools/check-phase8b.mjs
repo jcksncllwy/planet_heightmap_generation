@@ -25,12 +25,17 @@ import { quatToMat3 } from '../js/core/rotation.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { networkShape } from './lib/river-network.mjs';
+import { coastLoops, coastFractal, kindOf, earthKindAt, EARTH_COAST_KINDS, COAST_KINDS } from './lib/coast-fractal.mjs';
+import { worldOcean } from '../js/terrain/world-ocean.js';
+import { deriveRecords } from '../js/terrain/records.js';
+import { earthSurfaceKm } from './lib/earth-surface.mjs';
 
 const SEED = 12345;
 const mesh = labMesh();
 const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[s.length >> 1]; };
 const quantile = (a, p) => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const mean = a => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
+const oceans = new WeakMap(), worldOceanOf = (tm, z) => { let o = oceans.get(z); if (!o) oceans.set(z, o = worldOcean(tm, z, 0).ocean); return o; };
 
 async function run(id) {
     const scene = TERRAIN_SCENES.find(s => s.id === id), world = scene.build(mesh, SEED);
@@ -403,6 +408,40 @@ section('the network’s shape');
             source: 'snowmelt-dominated high-Arctic catchments return most of their precipitation as runoff: little evaporation, frozen ground (Woo 2012, Permafrost Hydrology, ch. 8; range from the literature\'s catchments, not one figure)' });
     }
     report('Add detail at 640K cells (for the network above)', finSeconds, { unit: ' s', digits: 1, source: 'no Earth figure: the time the finish takes headlessly' });
+}
+
+// ── the coast by margin (lane coastsmooth, 2026-11-24): the carve's lowstand valleys, refilled where the next lowstand
+// cannot cut them again (carve.js transgressiveFill), against Earth's coasts binned onto the same meshes and measured the
+// same way (coast-fractal.mjs: the zero contour under the world ocean, divider D over 50–500 km) ──
+section('the coast by margin');
+{
+    const rec = deriveRecords(history.frame, mesh, TERRAIN, SEED), simKind = kindOf(mesh, rec);
+    // (the mature passive margins — Earth's passive set is all old Atlantic-type margins — against the active, transform, collision
+    // and arc coasts; young passive margins counted in neither, and every kind's D in the detail)
+    const grouped = (c, x, y, z) => { const k = simKind(c, x, y, z); return k === 0 ? 0 : k >= 2 ? 1 : -1; };
+    const at = {};
+    for (const cells of [160000, 640000]) {
+        const tm = terrainMesh(cells), S = cells === 640000 ? T : carved(history.frame, cells);
+        const loops = coastLoops(tm, c => S.heightKm[c] < 0 && worldOceanOf(tm, S.heightKm)[c] === 1, S.heightKm);
+        const sim = { ...coastFractal(loops, grouped, { kinds: ['passive', 'rest'] }), each: coastFractal(loops, simKind, { kinds: COAST_KINDS }) };
+        const E = earthSurfaceKm(tm, { terrain: true });
+        const earth = E.error ? null : coastFractal(coastLoops(tm, c => worldOceanOf(tm, E.z)[c] === 1, E.z), earthKindAt, { kinds: EARTH_COAST_KINDS });
+        at[cells] = { sim, earth, error: E.error };
+    }
+    const D = (r, k) => r?.[k]?.D ?? NaN, f3 = v => v.toFixed(3);
+    const s16 = at[160000].sim, s64 = at[640000].sim, e16 = at[160000].earth, e64 = at[640000].earth;
+    check('Earth’s coast is binned onto the terrain meshes', !!e16 && !!e64, at[160000].error ?? at[640000].error ?? 'tools/data/earth-terrain-*.i16');
+    // passive margins smoother than the rest, as Earth's are (its passive 1.06 against its fjords 1.21 and the rest 1.17 at 640K)
+    check('mature passive coasts are smoother than active, collision and arc coasts (as on Earth)', D(s64, 'passive') < D(s64, 'rest'),
+        `640K: mature passive D ${f3(D(s64, 'passive'))} · the rest ${f3(D(s64, 'rest'))} (${COAST_KINDS.map(k => `${k} ${f3(D(s64.each, k))}`).join(', ')}); Earth passive ${f3(D(e64, 'passive'))} · fjord/ria ${f3(D(e64, 'fjord'))} · other ${f3(D(e64, 'other'))}`);
+    // D flat with resolution, as Earth's: a sub-cell feature (a drowned valley) must not roughen the coast as the mesh resolves it.
+    // Allowed: Earth's own rise between the meshes, plus 0.035 — Earth's D spread over 160K–2.5M (0.015) and the run-to-run
+    // spread of this D across histories (±0.02: 2 worlds × 4 commits, coastsmooth P1)
+    const rise = D(s64, 'all') - D(s16, 'all'), earthRise = D(e64, 'all') - D(e16, 'all');
+    check('the coast is as rough at every mesh (D flat with resolution, as Earth’s)', rise <= earthRise + 0.035,
+        `D ${f3(D(s16, 'all'))} at 160K → ${f3(D(s64, 'all'))} at 640K (${rise >= 0 ? '+' : ''}${f3(rise)}); Earth ${f3(D(e16, 'all'))} → ${f3(D(e64, 'all'))} (${earthRise >= 0 ? '+' : ''}${f3(earthRise)})`);
+    report('coast D at 640K (all coasts)', D(s64, 'all'), { earth: [D(e64, 'all') - 0.02, D(e64, 'all') + 0.02], source: 'Earth: ETOPO5 binned to the same mesh, the same measure (v2/tools/data/earth-terrain-640k.i16), ± the D spread over its meshes' });
+    report('passive-margin coast D at 640K', D(s64, 'passive'), { earth: [D(e64, 'passive') - 0.02, D(e64, 'passive') + 0.02], source: 'Earth’s passive margins (US Atlantic and Gulf, W Africa, Brazil, E India, SE Australia) on the same mesh, the same measure' });
 }
 
 finish('Phase 8b');
