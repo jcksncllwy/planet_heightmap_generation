@@ -9,6 +9,7 @@ import { touches } from '../../core/mesh-bfs.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { latLonToXyz } from '../step/kinematics.js';
 import { plateOutlineWithApron } from '../init/rim-trench.js';
+import { PREHISTORY } from '../init/prehistory-ocean.js';
 
 /** Tracks which sim cells a scene has already given to some plate. */
 export function sceneCanvas(simMesh, cfg) { return { mesh: simMesh, taken: new Uint8Array(simMesh.numCells), landAgeMyr: cfg.initialLandAgeMyr, lastTerrane: 0 }; }
@@ -46,7 +47,7 @@ export function addApronAndTrench(canvas, plate, continent, sectors, cfg) {
     const { inPlate, rim } = plateOutlineWithApron(mesh, continent.isLand, cfg);
     for (let i = 0; i < numCells; i++) {
         if (!inPlate[i] || taken[i]) continue;
-        plate.crust.create(i, CrustType.OCEAN, -cfg.initialOceanAgeMyr);
+        plate.crust.create(i, CrustType.OCEAN, PREHISTORY);
         plate.crust.flags[i] |= CrustFlag.APRON;
         taken[i] = 1;
     }
@@ -78,7 +79,7 @@ export function addOcean(canvas, plate, wanted, formedAt) {
 export function fillBackground(canvas, world, cfg) {
     const ocean = world.addPlate('Pre-history ocean');
     ocean.isBackground = true;
-    for (let i = 0; i < canvas.mesh.numCells; i++) if (!canvas.taken[i]) ocean.crust.create(i, CrustType.OCEAN, -cfg.initialOceanAgeMyr);
+    for (let i = 0; i < canvas.mesh.numCells; i++) if (!canvas.taken[i]) ocean.crust.create(i, CrustType.OCEAN, PREHISTORY);
     for (const p of world.plates) p.refreshExtent(canvas.mesh.xyz);
     return ocean;
 }

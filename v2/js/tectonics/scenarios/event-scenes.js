@@ -12,6 +12,7 @@ import { latLonToXyz } from '../step/kinematics.js';
 import { arcSlabKm } from '../step/wings.js';
 import { sceneCanvas, sceneTerrane, addContinent, addApronAndTrench, addOcean, fillBackground } from './scene-kit.js';
 import { FORCE_SCENES } from './force-scenes.js';
+import { PREHISTORY } from '../init/prehistory-ocean.js';
 
 export const EVENT_SCENES = [
     {
@@ -88,7 +89,7 @@ function addArcRidge(canvas, plate, from, toward, distanceKm, halfWidthKm, cfg, 
         if (Math.abs(along - band) > half * 0.5) continue;
         crust.type[i] = CrustType.ARC;
         crust.terrane[i] = terraneId;
-        crust.formedAt[i] = -cfg.initialOceanAgeMyr;
+        crust.formedAt[i] = PREHISTORY;
         crust.flags[i] &= ~CrustFlag.TRENCH;
     }
 }
@@ -123,7 +124,7 @@ function addArcPlate(canvas, plate, { lat, lon, halfWidthDeg, depthDeg }, cfg) {
         const la = Math.asin(xyz[3 * i + 2]) * 180 / Math.PI, lo = Math.atan2(xyz[3 * i + 1], xyz[3 * i]) * 180 / Math.PI;
         const dlon = ((lo - lon + 540) % 360) - 180;
         if (la < lat || la > lat + depthDeg || Math.abs(dlon) > halfWidthDeg) continue;
-        plate.crust.create(i, CrustType.OCEAN, -cfg.initialOceanAgeMyr);
+        plate.crust.create(i, CrustType.OCEAN, PREHISTORY);
         inside[i] = 1; taken[i] = 1;
     }
     // rows of cells inward (north) from the plate's southern rim: a trench TRENCH_KM deep, then an arc ARC_KM wide —

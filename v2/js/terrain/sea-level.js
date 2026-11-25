@@ -202,9 +202,8 @@ function coarseGraph(mesh) {
  *   · seaKm: how far the sea stands above today's datum, reckoned (no water volume is kept here; the poured sea of
  *     waterInventory > 0, land-mask.js pourOcean, replaces it): the swell's
  *     mean over the sea floor (mantleSwellKm × (the ocean's mean heat − today's, seaHeatToday)) and the floor's mean depth's
- *     shortfall from the reference (younger floor: higher sea). Floor the history has not dated yet (the start's
- *     placeholder ocean, tectonics/config.js initialOceanAgeMyr: "uniformly old, soon overwritten") counts at the
- *     reference depth — its ages are unknown, not 150 Myr each. The floor's part counts only with cfg.seaLevelFloorAge
+ *     shortfall from the reference (younger floor: higher sea). Pre-history floor by its age (its relict ridges':
+ *     tectonics/init/prehistory-ocean.js; until 2026-11-25 it counted at the reference depth). The floor's part counts only with cfg.seaLevelFloorAge
  *     (terrain-config.js: off — the history's floor is too old, and its age swings too far, for its volume to be Earth's);
  *     it is reported either way (ridgeSeaKm).
  * The ocean here is the sea floor that holds water: ocean crust not filled to sea level, and any cell no plate covers.
@@ -235,7 +234,7 @@ function reckonSea(frame, simMesh, cfg, isLand, H, swellKm) {
         if (isLand(w)) { heatLand += H[w]; land++; continue; }
         sea++; heatSea += H[w];
         const o = frame.owner[w];
-        depth += o < 0 || frame.type[w] !== CrustType.OCEAN || frame.formedAt[w] < 0 ? cfg.seaDepthRefKm
+        depth += o < 0 || frame.type[w] !== CrustType.OCEAN ? cfg.seaDepthRefKm
             : filledSeaDepthKm(time - frame.formedAt[w], frame.seaFillKm?.[w] ?? 0);
     }
     heatSea /= Math.max(1, sea); depth /= Math.max(1, sea); heatLand /= Math.max(1, land);

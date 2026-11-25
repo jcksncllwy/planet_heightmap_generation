@@ -62,7 +62,10 @@ export const TECTONICS = {
     apronKm: 250,               // captured old ocean between the coast and the rim trench
     apronSmoothKm: 1400,        // bays narrower than ~2× this lie inside the plate: trench lines are smooth arcs over 1000s of km
     rimTrenchCoverage: 0.85,    // share of the rim that starts as an active trench (rest = passive margin)
-    initialOceanAgeMyr: 150,    // pre-history ocean floor: uniformly old, soon overwritten
+    // the pre-history ocean's floor, dated at the start by a ridge network relict at t0 (init/prehistory-ocean.js; lane startsea)
+    prehistoryPlateKm2: 5.9e7,  // its oceanic plates' mean area: Earth's seven largest plates average ~59 Mkm² (Bird 2003, G³ 4(3))
+    prehistoryHalfRateCmYr: 2.8,// …spreading at this half-rate at their ridges: the global length-weighted mean since 83 Ma
+                                // (Müller group's rotation model, GSA 2013 Annual Meeting Paper 229454; 28.2 ± 2.5 mm/yr)
     initialLandAgeMyr: 2000,    // continental crust is ancient at the start of recorded history
     startSutureBeltKm: 350,     // the start supercontinent's sutures carry old ranges (init/start-world.js): this wide…
     startSutureWorkKm: 600,     // …built by this much convergence (0: none)…

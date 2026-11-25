@@ -10,6 +10,7 @@ import { TectonicWorld } from '../model/world.js';
 import { CrustType } from '../model/crust.js';
 import { latLonToXyz, omegaFromEulerPole, poseAtConstantOmega } from '../step/kinematics.js';
 import { quatIdentity } from '../../core/rotation.js';
+import { PREHISTORY } from '../init/prehistory-ocean.js';
 
 // Plate centres (lat, lon) and their prescribed motions. `poleOffsetDeg` is the angular
 // distance from the plate centre to its Euler pole: 90 = pure translation, 0 = pure spin.
@@ -59,7 +60,7 @@ export function buildRigidDriftWorld(simMesh, seed) {
         if (shape < 0.20) type = CrustType.CRATON;
         else if (shape < 0.46) type = CrustType.CONTINENT;
         // Continental crust belongs to its continent's plate; every ocean cell to the background.
-        if (type === CrustType.OCEAN) ocean.crust.create(c, type, -world.config.initialOceanAgeMyr);
+        if (type === CrustType.OCEAN) ocean.crust.create(c, type, PREHISTORY);
         else plates[best].crust.create(c, type, -world.config.initialLandAgeMyr);
     }
     for (const p of world.plates) p.refreshExtent(xyz);

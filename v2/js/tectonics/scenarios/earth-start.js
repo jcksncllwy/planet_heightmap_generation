@@ -17,6 +17,7 @@
 // Not registered in any scene index or the lab (new files only); tools import `buildEarthStart` directly.
 import { TectonicWorld, EventKind } from '../model/world.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
+import { PREHISTORY } from '../init/prehistory-ocean.js';
 
 export const EARTH_CLASS = Object.freeze({ OCEAN: 0, CONTINENT: 1, CRATON: 2, ARC: 3 });
 
@@ -73,7 +74,7 @@ export function buildEarthStart(simMesh, seed, inputs, overrides = {}) {
             case EARTH_CLASS.CONTINENT: crust.create(c, CrustType.CONTINENT, -cfg.initialLandAgeMyr, terrane[c]); break;
             case EARTH_CLASS.CRATON: crust.create(c, CrustType.CRATON, -cfg.initialLandAgeMyr, terrane[c]); break;
             case EARTH_CLASS.ARC: crust.create(c, CrustType.ARC, 0, terrane[c]); break;
-            default: crust.create(c, CrustType.OCEAN, -(Number.isFinite(ageMyr[c]) ? ageMyr[c] : cfg.initialOceanAgeMyr));
+            default: crust.create(c, CrustType.OCEAN, Number.isFinite(ageMyr[c]) ? -ageMyr[c] : PREHISTORY);   // (no age in the raster: dated by the relict ridges, init/prehistory-ocean.js)
         }
         if (trench[c]) crust.armTrench(c, cfg.slabMatureKm);
     }

@@ -131,11 +131,11 @@ export function fillPinholes(world, enclosedOnly = false) {
     let filled = 0;
     for (let w = 0; w < numCells; w++) {
         if (owner[w] >= 0) continue;
-        let plate = -1, from = -1, others = false, count = 0, background = -1;
+        let plate = -1, from = -1, others = false, count = 0, background = -1, bgFrom = -1;
         for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
             const nb = adjList[k], o = owner[nb];
             if (o < 0) continue;
-            if (plates[o].isBackground) background = o;
+            if (plates[o].isBackground) { background = o; bgFrom = ownerCell[nb]; }
             if (plate < 0) { plate = o; from = ownerCell[nb]; }
             if (o !== plate) others = true;
             count++;
@@ -148,7 +148,9 @@ export function fillPinholes(world, enclosedOnly = false) {
         }
         const p = plates[plate], q = p.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]);
         if (p.crust.mask[q]) continue;
-        if (from < 0) p.crust.create(q, CrustType.OCEAN, -world.config.initialOceanAgeMyr); else p.crust.copyFrom(q, p.crust, from);
+        // (between plates, fresh passive ocean as old as the passive ocean's floor beside it — until 2026-11-25 at a fixed
+        // initialOceanAgeMyr, 150 Myr before the start whenever it was filled)
+        if (from < 0) p.crust.create(q, CrustType.OCEAN, p.crust.formedAt[bgFrom]); else p.crust.copyFrom(q, p.crust, from);
         p.markReshaped();
         filled++;
     }

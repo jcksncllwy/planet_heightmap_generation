@@ -44,7 +44,7 @@ export function surfaceKm(frame, simMesh, H, out = new Float32Array(simMesh.numC
         if (only && !only(w)) continue;
         const swell = swellKm ? swellKm[w] : H.mantleSwellKm * heat[w], o = frame.owner[w], type = frame.type[w];
         if (o < 0 || type === CrustType.OCEAN) {
-            const age = o >= 0 && frame.formedAt[w] >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;
+            const age = o >= 0 ? Math.max(0, time - frame.formedAt[w]) : 100;      // (pre-history floor by its relict ridges' ages, init/prehistory-ocean.js; a cell no plate covers, a gap, at 100 Myr)
             const lip = o >= 0 && frame.volcType[w] === VolcanicType.LIP ? H.lipSeaKm * Math.min(H.lipMaxKm, frame.volcKm[w]) : 0;
             // (the rivers' rock on it, Airy-loaded: an enclosed sea's fill and an open margin's rise, riseKm3 spread over its cell)
             const rockKm = o >= 0 ? (frame.seaFillKm?.[w] ?? 0) + (frame.riseKm3?.[w] ?? 0) / simMesh.cellAreaKm2 : 0;

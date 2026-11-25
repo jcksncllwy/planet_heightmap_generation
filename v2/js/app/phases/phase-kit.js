@@ -106,7 +106,7 @@ export function describeCell(frame, w, { terraneName = null } = {}) {
     const crust = type === CrustType.CRATON ? 'craton'
         : type === CrustType.CONTINENT ? 'continental crust'
         : type === CrustType.ARC ? (flags & CrustFlag.MARGIN_ISLE ? 'fore-arc island' : 'island-arc crust')
-        : frame.formedAt[w] < 0 ? 'pre-history ocean crust' : `ocean crust, ${(frame.time - frame.formedAt[w]).toFixed(0)} Myr old`;
+        : frame.formedAt[w] < 0 ? `pre-history ocean crust, ${(frame.time - frame.formedAt[w]).toFixed(0)} Myr old (its relict ridges')` : `ocean crust, ${(frame.time - frame.formedAt[w]).toFixed(0)} Myr old`;
     const parts = [frame.plates[id].name, crust];
     if (terraneName && type !== CrustType.OCEAN && frame.terrane[w]) parts.push(`terrane ${terraneName(frame.terrane[w])}`);
     if (frame.overlap[w] === 1) parts.push('riding over ocean');

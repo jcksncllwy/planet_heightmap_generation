@@ -18,6 +18,7 @@ import { initiateSubduction, founderWithinPlates } from './step/subduction-init.
 import { retireBackground, splitOceanPlates, captureMicroplates, accreteHiddenRemnants } from './step/ocean-plates.js';
 import { CrustRaster } from './model/crust.js';
 import { updateHotspots, insulateAtStart } from './step/hotspots.js';
+import { datePrehistory } from './init/prehistory-ocean.js';
 import { trackCycle } from './step/supercontinent.js';
 import { openBackArcs, steerBackArcStrips } from './step/backarc.js';
 import { growMarginIsles } from './step/margin-isles.js';
@@ -106,6 +107,7 @@ function* stepsOf(world, { untilMyr, drive, snapshotEveryMyr = world.config.snap
         for (const p of world.plates) p.refreshExtent(world.mesh.xyz);
         resolve(world);
         if (events && tidyPlates(world)) resolve(world);         // a scene may hand a plate cells that are not joined to it: settle that before anything moves
+        if (world.time === 0 && !world.prehistoryDated) { datePrehistory(world); world.prehistoryDated = true; }   // (the pre-history ocean's ages: its relict ridges)
         classifyBoundaries(world, 0);
         if (world.time === 0 && !world.baseSeeded) { seedBaseRelief(world); world.baseSeeded = true; seedGeology(world); }   // (records only)
         if (events && !world.hotspotsReady) insulateAtStart(world);   // (the first frame shows the start's mantle heat; step 1 sets it again)

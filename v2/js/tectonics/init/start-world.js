@@ -13,6 +13,7 @@ import { useRockBook } from '../rock-book.js';
 import { placeCratons } from './cratons.js';
 import { shapeLandmass } from './landmass.js';
 import { plateOutlineWithApron, chooseActiveRim } from './rim-trench.js';
+import { PREHISTORY } from './prehistory-ocean.js';
 
 const MAX_ATTEMPTS = 24;
 const RELAX_SPAN_AFTER = 18;        // the extent cap is a preference; the spacing promises are never relaxed
@@ -113,9 +114,9 @@ function assemble(world, simMesh, seed, found) {
     const ocean = world.addPlate('Pre-history ocean');
     ocean.isBackground = true;
     for (let c = 0; c < numCells; c++) {
-        if (!inPlate[c]) { ocean.crust.create(c, CrustType.OCEAN, -cfg.initialOceanAgeMyr); continue; }
+        if (!inPlate[c]) { ocean.crust.create(c, CrustType.OCEAN, PREHISTORY); continue; }   // (dated at the start: init/prehistory-ocean.js)
         if (land.type[c] === CrustType.OCEAN) {
-            continent.crust.create(c, CrustType.OCEAN, -cfg.initialOceanAgeMyr);
+            continent.crust.create(c, CrustType.OCEAN, PREHISTORY);
             continent.crust.flags[c] |= CrustFlag.APRON;
             if (trench.active[c]) continent.crust.armTrench(c, cfg.slabMatureKm);       // rim trenches start mature
         } else {

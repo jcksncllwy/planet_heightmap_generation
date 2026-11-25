@@ -16,6 +16,7 @@ import { mechanismsOff } from '../config.js';
 import { CrustType, CrustFlag } from '../model/crust.js';
 import { latLonToXyz, omegaFromEulerPole } from '../step/kinematics.js';
 import { dot, cross, normalize, angleBetween as angle } from '../../core/sphere-geom.js';
+import { PREHISTORY } from '../init/prehistory-ocean.js';
 
 export const WILSON_MAX_MYR = 150;
 export const WEST_CM_YR = 1.0, EAST_CM_YR = 6.0;
@@ -62,7 +63,7 @@ export function buildWilsonWorld(simMesh, seed, { farCentre = FAR_CENTRE } = {})
         } else if (dFar + wob < 0.34) {
             far.crust.create(c, dFar + 0.5 * wob < 0.15 ? CrustType.CRATON : CrustType.CONTINENT, -world.config.initialLandAgeMyr);
         } else {
-            ocean.crust.create(c, CrustType.OCEAN, -world.config.initialOceanAgeMyr);
+            ocean.crust.create(c, CrustType.OCEAN, PREHISTORY);
         }
     }
     return world;

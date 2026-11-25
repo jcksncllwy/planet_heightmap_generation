@@ -801,8 +801,18 @@ ages — 0.31 km of it the sediment's load, 0.23 km broad swells (GDH1's own fit
   +0.6 km at ~10 Myr, the old ocean's floor sank with it and the sea fell ~0.5 km — a lowstand through the breakup where
   Earth had its Cretaceous highstand (lane startsea). Fixed, the breakup's young ridges stand high on the warm mantle and
   the sea rises against them.
-- **Pre-history ocean** (formedAt < 0) is 100 Myr old in the pour and, now, in the drawn floor (`records.js`). Read as
-  time − formedAt it was 780+ Myr old under the drape and stood above the pour's ground (check-waterbooks).
+- **Pre-history ocean, dated by its relict ridges** (`tectonics/init/prehistory-ocean.js`, lane startsea A2, 2026-11-25).
+  A scene makes its pre-history floor at `PREHISTORY`. At the history's start (`simulate.js`) it is dated by the ridges
+  of the ocean it was before t0's reorganization: a Voronoi tessellation of oceanic plates (`prehistoryPlateKm2` 59 Mkm²
+  each on average, Earth's seven largest: Bird 2003), nucleated at random, spreading at `prehistoryHalfRateCmYr` 2.8
+  (the length-weighted mean since 83 Ma). Age = distance from the nearest relict ridge ÷ the half-rate. Those ridges stop
+  at t0: they are not the history's boundaries (real start ridges, A1, are queued behind the forces work). Every reader
+  takes the floor's age as time − formedAt. Before this, the floor was made at a fixed 150 Myr (`initialOceanAgeMyr`,
+  deleted) and read as 100 Myr by the pour, the drawn floor and flexure, or at `seaDepthRefKm` by the reckoned sea. That
+  left a ridgeless ocean 5.27 km deep everywhere, and the start's sea stood 0.84 km below datum on every seed. Check,
+  not target (nothing was fitted): 5 relict plates at cont 41, mean age 63–72 Myr, 28–32 % of the floor under 30 Myr,
+  5 % over 180 (to 260–280 Myr, far from any ridge), and a mean depth of 4.61–4.69 km against Parsons' (1982) triangle
+  to 180 Myr, 4.66.
 
 The water inventory is unchanged and nothing offsets the level, so the sea still stands 0.40–0.72 km below the datum
 at the gallery moments. The source fixes moved the floor's terms onto Earth's: the drape now carries Earth's sediment load
