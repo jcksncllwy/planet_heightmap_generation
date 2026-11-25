@@ -75,8 +75,11 @@ export const FINISH = {
     iceInceptionKyr: 116,       // the inception's epoch of the orbit's cycle and the air's CO2: Earth's last glacial inception,
                                 // the northern summer's sunlight lowest (Berger 1978; Calov et al. 2005) — the glacial branch
     iceMaxKyr: 21,              // the glacial maximum's epoch (the LGM: Clark et al. 2009, 26.5–19 ka; PMIP's 21 ka)
-    iceRounds: 3,               // climate–ice rounds at the maximum (after one at the inception)…
-    iceRoundKyr: 10,            // …each this long: a sheet's response time to its balance, ~5–10 kyr at 2–3 km thick and
+    iceSteadyFrac: 0.02,        // climate–ice rounds at the maximum (after one at the inception) until the ice's volume changes
+                                // by less than this share in a round: its steady state (a numerical tolerance, not a fit) —
+                                // at most the time a glacial has, the inception to the maximum (iceInceptionKyr − iceMaxKyr);
+                                // three fixed rounds left 243751@430's sheets still growing ~10 % a round (2026-11-25)
+    iceRoundKyr: 10,            // each round this long: a sheet's response time to its balance, ~5–10 kyr at 2–3 km thick and
                                 // 0.1–0.3 m/a (Jóhannesson et al. 1989: H/|b_terminus|; Cuffey & Paterson 2010 §11.5)
     iceBalanceEveryYr: 100,     // the balance recomputed from the ice's surface this often within a round (its height
                                 // feedback: a 3 km sheet rises ~0.3 m a year at most, ~2 cm of lapse a century)

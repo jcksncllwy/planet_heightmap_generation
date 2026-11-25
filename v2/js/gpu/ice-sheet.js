@@ -19,7 +19,8 @@
 // gradient along it, a cell's gradient (2/k) Σ (Δs/d) ê over its k faces (exact for a plane on a regular mesh). (The two
 // cells' mean |∇s|², the first form, put a margin's cliff on every face of the cell beside it: its margin ran a cell out and
 // its error did not fall with the mesh — check-ice-sheet's Halfar dome.) Explicit steps at the stability limit (Gershgorin:
-// dt ≤ 1/max_c Σ D f/(d A); ICE.cfl of it, read every ICE.batch steps, at most ICE.dtMaxYr).
+// dt ≤ 1/max_c Σ D f/(d A); ICE.cfl of it every step, at most ICE.dtMaxYr — chosen on the GPU, its clock read back every
+// ICE.batch steps: the CPU waits on the GPU that rarely).
 //
 // Sliding (the EISMINT II form, Payne et al. 2000 experiment H): where the bed is at its pressure-melting point the ice also
 // slides, at u_b = B₀ τ_b, τ_b = ρ_i g H |∇s| the driving stress, B₀ = ICE.slideB (EISMINT II's 10⁻³ m a⁻¹ Pa⁻¹); its flux
@@ -67,8 +68,8 @@ export const ICE = Object.freeze({
     rhoSea: 1028,         // kg/m³, sea water
     rhoMantle: 3300,      // kg/m³, the asthenosphere the bed sinks into (Turcotte & Schubert 2002)
     g: 9.81,
-    cfl: 0.5,             // of the explicit step's stability limit: room for D to grow within a batch
-    batch: 20,            // steps between reads of the limit
+    cfl: 0.5,             // of the explicit step's stability limit (Gershgorin's bound is not tight on a jittered mesh)
+    batch: 100,           // steps between reads of the GPU's clock (the balance's updates and the run's end wait on it)
     dtMaxYr: 50,          // the longest step, years
     slideB: 1e-3,         // Weertman's sliding coefficient, m a⁻¹ Pa⁻¹, where the bed is thawed (EISMINT II: Payne et al. 2000, exp. H)
     geoFlux: 0.042,       // the ground's heat flux, W/m² (EISMINT II; Pollack et al. 1993: shields 40–50, continents' mean 65)
@@ -162,6 +163,7 @@ ${MAIN}
 @group(0) @binding(6) var<storage, read> G2: array<vec4f>;
 @group(0) @binding(7) var<storage, read_write> Hn: array<f32>;
 @group(0) @binding(8) var<storage, read_write> books: array<vec4f>;
+@group(0) @binding(9) var<storage, read> clock: vec4f;               // (this step's dt, the time run, the run's end, -)
 ${MAIN}
     var div = 0.0; var area = 0.0; var touched = false;
     for (var k = k0; k < k1; k++) {
@@ -172,9 +174,10 @@ ${MAIN}
             div += (u.gamma * h5(hc, hb) * face2(ds / d, ed.xyz, G2[c].xyz, G2[b].xyz) + dslide(hc, tc, hb, thawed(b, gb))) * ds;
         }
     }
-    let h1 = hc + u.dt * div * ISQ3 / (area * 0.25 * ISQ3);
+    let dt = clock.x;
+    let h1 = hc + dt * div * ISQ3 / (area * 0.25 * ISQ3);
     let made = max(0.0, -h1); let h2 = max(h1, 0.0);
-    let h3 = max(h2 + u.dt * force[c].y, 0.0);
+    let h3 = max(h2 + dt * force[c].y, 0.0);
     let calved = select(0.0, h3, !gc && !touched);
     Hn[c] = h3 - calved;
     books[c] += vec4f(h3 - h2, made, calved, 0.0);
@@ -189,6 +192,19 @@ ${MAIN}
     out[c] = select(vec2f(0.0), vec2f(1.25 * u.gamma * h2 * h2 * gs * gs * gs, u.slide * tc * hc * gs), gc && hc > 0.0);
 }`,
 };
+
+// (the step's dt from the limit the rate pass left, on the GPU: its clock advanced, the limit cleared for the next step)
+KERNELS.tick = /* wgsl */`
+struct T { cfl: f32, dtMax: f32, pad0: f32, pad1: f32 }
+@group(0) @binding(0) var<uniform> p: T;
+@group(0) @binding(1) var<storage, read_write> rmax: atomic<u32>;
+@group(0) @binding(2) var<storage, read_write> clock: vec4f;
+@compute @workgroup_size(1) fn main() {
+    let r = bitcast<f32>(atomicLoad(&rmax));
+    let dt = min(select(p.dtMax, min(p.dtMax, p.cfl / r), r > 0.0), max(0.0, clock.z - clock.y));
+    clock = vec4f(dt, clock.y + dt, clock.z, clock.w + select(0.0, 1.0, dt > 0.0));
+    atomicStore(&rmax, 0u);
+}`;
 
 // (a field written into one component of the per-cell forcing: 0 the bed, 1 the balance, 2 the surface's year-mean — the
 // others left as they are, so a balance kernel's output survives a new bed and the reverse)
@@ -242,7 +258,9 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
     const mk = (label, bytes) => { const b = device.createBuffer({ label, size: Math.max(16, bytes), usage }); own.push(b); return b; };
     const distB = mk('ice faces', 4 * edge.length), forceB = mk('ice bed+smb+Ts', 16 * n), G2 = mk('ice ∇s', 16 * n);
     const Hb = [mk('ice H', 4 * n), mk('ice H′', 4 * n)], booksB = mk('ice books', 16 * n), rmax = mk('ice rate', 4);
-    const speedB = mk('ice speeds', 8 * n);
+    const speedB = mk('ice speeds', 8 * n), clockB = mk('ice clock', 16);
+    const tickU = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); own.push(tickU);
+    device.queue.writeBuffer(tickU, 0, Float32Array.of(P.cfl, P.dtMaxYr, 0, 0));
     const uniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     own.push(uniform);
     device.queue.writeBuffer(distB, 0, edge);
@@ -272,32 +290,37 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
     const G = [0, 1].map(i => ({
         grad: g('grad', [...shared, Hb[i], G2]),
         rate: g('rate', [...shared, Hb[i], G2, rmax]),
-        step: g('step', [...shared, Hb[i], G2, Hb[1 - i], booksB]),
+        step: g('step', [...shared, Hb[i], G2, Hb[1 - i], booksB, clockB]),
         speed: g('speed', [uniform, M.adjOffset, null, null, forceB, Hb[i], G2, speedB]),      // (it reads no faces: their bindings not in its layout)
     }));
     let cur = 0;
+    const tickG = device.createBindGroup({ layout: P_.tick.getBindGroupLayout(0), entries: [tickU, rmax, clockB].map((buffer, binding) => ({ binding, resource: { buffer } })) });
     const pass = (e, name) => { const p = e.beginComputePass(); p.setPipeline(P_[name]); p.setBindGroup(0, G[cur][name]); dispatch(p, n); p.end(); };
     const run = async (years, { each = null, everyYears = 0 } = {}) => {
         let t = 0, steps = 0, dt = 0, next = 0;
-        while (t < years) {
-            // (a mass balance on the GPU from the ice as it stands, every everyYears: its passes into the encoder, before the limit)
+        // (the GPU's clock: this step's dt, the time run, the run's end, the steps taken — every step its limit from the ice as
+        // it stands (grad, rate), its dt (tick), then the step; the CPU reads the clock between batches)
+        writeU(0);
+        device.queue.writeBuffer(clockB, 0, Float32Array.of(0, 0, years, 0));
+        device.queue.writeBuffer(rmax, 0, new Uint32Array(1));
+        let per = P.batch, s0 = 0, t0 = 0;
+        while (t < years * (1 - 1e-6)) {
+            // (a mass balance on the GPU from the ice as it stands, every everyYears: its passes into the encoder)
             if (each && t >= next) { const e = device.createCommandEncoder(); each(e); device.queue.submit([e.finish()]); next = t + everyYears; }
-            // (the limit, from the ice as it stands)
-            writeU(0);
-            device.queue.writeBuffer(rmax, 0, new Uint32Array(1));
-            let e = device.createCommandEncoder();
-            pass(e, 'grad'); pass(e, 'rate');
-            device.queue.submit([e.finish()]);
-            const r = new Float32Array((await readBack(device, rmax, Uint32Array)).buffer)[0];
-            dt = Math.min(P.dtMaxYr, r > 0 ? P.cfl / r : Infinity);
-            e = device.createCommandEncoder();
-            for (let i = 0; i < P.batch && t < years; i++, steps++) {
-                const h = Math.min(dt, years - t);
-                if (h !== dt || i === 0) { device.queue.submit([e.finish()]); writeU(h); e = device.createCommandEncoder(); }
-                pass(e, 'grad'); pass(e, 'step');
-                cur = 1 - cur; t += h;
+            const e = device.createCommandEncoder();
+            for (let i = 0; i < per; i++) {
+                pass(e, 'grad'); pass(e, 'rate');
+                const p = e.beginComputePass(); p.setPipeline(P_.tick); p.setBindGroup(0, tickG); p.dispatchWorkgroups(1); p.end();
+                pass(e, 'step');
+                cur = 1 - cur;
             }
             device.queue.submit([e.finish()]);
+            const k = await readBack(device, clockB);
+            t = k[1]; steps = k[3]; dt = k[0];
+            // (a batch no longer than the balance's interval, at the steps' recent mean)
+            const mean = steps > s0 ? (t - t0) / (steps - s0) : 0;
+            per = each && mean > 0 ? Math.max(1, Math.min(P.batch, Math.ceil(everyYears / mean))) : P.batch;
+            s0 = steps; t0 = t;
         }
         return { steps, dt };
     };

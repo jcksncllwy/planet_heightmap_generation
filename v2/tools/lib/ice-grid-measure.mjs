@@ -87,7 +87,7 @@ export function measureIceGrid({ mesh, z, sheet, iceMeshCells, label, log = cons
         marginN: Array.from(marginN, v => v === v ? Math.round(v * 10) / 10 : null), marginS: Array.from(marginS, v => v === v ? Math.round(v * 10) / 10 : null),
     };
     log(`\n── ice grid: ${label} — ice mesh ${iceMeshCells.toLocaleString()} cells (~${iceEdgeKm.toFixed(0)} km), finish mesh ${n.toLocaleString()} ──`);
-    log(`time: ${(sheet.ms / 1000).toFixed(1)} s; rounds ${out.rounds.map(r => `${r.kyr} kyr ${r.steps} steps ${(r.ms / 1000).toFixed(1)} s ${r.iceMkm2.toFixed(1)} Mkm² sea ${r.seaM.toFixed(0)} m`).join(' · ')}`);
+    log(`time: ${(sheet.ms / 1000).toFixed(1)} s; rounds ${out.rounds.map(r => `${r.kyr} kyr ${r.steps} steps ${(r.ms / 1000).toFixed(1)} s ${r.iceMkm2.toFixed(1)} Mkm² sea ${r.seaM.toFixed(0)} m${r.change < Infinity ? ` Δvol ${(100 * r.change).toFixed(1)} %` : ""}`).join(' · ')}`);
     log(`ice ${out.iceMkm2.toFixed(2)} Mkm²: ${out.sheets} sheets ${out.sheetMkm2.toFixed(2)} Mkm²; ${out.caps} mountain caps ${(out.capKm2 / 1e3).toFixed(0)}k km² (${out.capsHigh} mostly above 1 km)`);
     log(`ice streams (≥ ${STREAM_MA} m/a sliding): ${out.streams}, ${out.outlets} reaching the margin; width p10/median/p90/max ${[out.widthKm.p10, out.widthKm.median, out.widthKm.p90, out.widthKm.max].map(v => v.toFixed(0)).join('/')} km`);
     log(`glaciated coast: ${out.coast.cells} cells, ${(100 * out.coast.sliding).toFixed(0)} % sliding, ${(100 * out.coast.fast).toFixed(0)} % ≥ ${STREAM_MA} m/a; sliding median/p90/max ${[out.coast.median, out.coast.p90, out.coast.max].map(v => v.toFixed(0)).join('/')} m/a`);

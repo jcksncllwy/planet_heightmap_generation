@@ -44,7 +44,7 @@ const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm);
 // relaxing-asthenosphere model, Le Meur & Huybrechts 1996 — the rounds are its few-kyr relaxation and longer).
 // The rounds: first an inception at a cold-summer epoch (F.iceInceptionKyr: Earth's 116 ka — low obliquity, the northern
 // summer at aphelion), so the climate takes the glacial branch of its two steady states (ice where summers once failed to
-// melt the snow keeps itself: Calov & Ganopolski 2005), then F.iceRounds at the glacial maximum's epoch (F.iceMaxKyr: 21 ka).
+// melt the snow keeps itself: Calov & Ganopolski 2005), then rounds at the glacial maximum's epoch (F.iceMaxKyr: 21 ka) until steady (F.iceSteadyFrac), within the glacial's time.
 // Limits: an equilibrium, not the cycle's history (the sheets as they stand at the end, with no record of their growth or of
 // where the ice slid); the ice's own limits (gpu/ice-sheet.js: no sliding, no shelves, no calving law) and the balance's
 // (gpu/ice-balance.js: degree days); the climate on the ice mesh (F.iceMeshCells, ~61 km at 160K: the paleo models' own resolution);
@@ -70,10 +70,13 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     let seaArea = 0;
     { const o = worldOcean(im, bed0, 0).ocean; for (let c = 0; c < n; c++) if (o[c]) seaArea += area[c]; }
     const sys0 = systemOf(climateOptions.system), cycle = sys0.orbit.cycle ?? EARTH_CYCLE;
-    const plan = [{ epochKyr: F.iceInceptionKyr, kyr: F.iceRoundKyr }, ...Array.from({ length: F.iceRounds }, () => ({ epochKyr: F.iceMaxKyr, kyr: F.iceRoundKyr }))];
-    let H = new Float32Array(n), sea = 0, climate = null;
+    // (the plan: a round at the inception, then rounds at the maximum until the ice is steady — or the glacial's time is spent)
+    const budgetKyr = F.iceInceptionKyr - F.iceMaxKyr;
+    let H = new Float32Array(n), sea = 0, climate = null, spentKyr = 0, lastVol = 0, steady = false;
     const rounds = [], elevKm = new Float32Array(n), iceMask = new Uint8Array(n), land = new Uint8Array(n);
-    for (const r of plan) {
+    while (spentKyr < budgetKyr && !steady) {
+        const r = { epochKyr: rounds.length ? F.iceMaxKyr : F.iceInceptionKyr, kyr: Math.min(F.iceRoundKyr, budgetKyr - spentKyr) };
+        spentKyr += r.kyr;
         const tr = performance.now();
         // (the ground the climate sees: the ice's surface where it stands grounded, the bed elsewhere, against the glacial sea;
         // its land all the world ocean at that sea does not reach)
@@ -108,7 +111,10 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
             bed[c] = bedM[c] - (g ? sink * H[c] : 0);
         }
         sea = -above * flt / seaArea;
-        const rec = { epochKyr: r.epochKyr, kyr: r.kyr, steps: run.steps, iceMkm2: km2 / 1e6, iceMkm3: vol / 1e6, seaM: sea, ms: Math.round(performance.now() - tr) };
+        // (steady: a round at the maximum that changed the ice's volume by less than iceSteadyFrac)
+        const change = lastVol > 0 ? Math.abs(vol - lastVol) / lastVol : Infinity;
+        steady = rounds.length > 0 && change < F.iceSteadyFrac; lastVol = vol;
+        const rec = { epochKyr: r.epochKyr, kyr: r.kyr, steps: run.steps, iceMkm2: km2 / 1e6, iceMkm3: vol / 1e6, seaM: sea, change, steady, ms: Math.round(performance.now() - tr) };
         rounds.push(rec); onRound?.(rec);
     }
     // (the last balance, from the ice as it ends)
