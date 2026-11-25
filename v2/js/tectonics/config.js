@@ -242,8 +242,8 @@ export const TECTONICS = {
                                 // (Molnar & Stock 2009; van Hinsbergen et al. 2012). (Were: weld after 600 km of shortening, 40
                                 // Myr of contact or 0.4 Mkm² of overlap, and at 120 Myr whatever sea was left — hand-set lock times)
     sutureStallMinKm: 200,      // …and only once at least this much has been absorbed (two plates merely touching do not weld)
-    overlapCapKm: 250,          // (Phase 11) land stacked deeper than this on average (overlap ÷ front) goes under the upper plate
-                                // while the pair waits for its seam to close…
+    // (overlapCapKm 250 is gone: a collision's overlap is its seam, one cell across the front, and the convergence beyond it is sent
+    // under or shortened ahead each step: step/collision.js underthrust. Lane gpelock 2026-11-25)
     sutureStackKm: 500,         // …and a pair stacked this deep is one already: it welds, converging or not, whatever sea is left (a guard against an unphysical stack where nothing goes under, not physics: collision.js)
     sutureMinContactKm: 800,    // a collision front shorter than this is a terrane docking (Phase 5b), not a suture
     sutureGapKm: 1000,          // …and a weld waits for the seam to close (Phase 11): the sea between the two continents'

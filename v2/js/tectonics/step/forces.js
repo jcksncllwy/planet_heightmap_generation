@@ -497,7 +497,7 @@ function newLoad() {
  * crust.rootKm, each crust's thickness less its kind's as formed (thickened, spread by crust-flow, worn) — at its thickest
  * within two rings of w: the plateau the collision has built (keepConsumed, 1 − u², just behind the overlap) and, in the
  * overlap itself, the two crusts stacked one on the other (Argand 1924's doubled crust under Tibet; Zhao et al. 2010 image
- * India's crust beneath it). The overlap is crust the model keeps stacked — up to overlapCapKm deep, and a craton's whole,
+ * India's crust beneath it). The overlap is crust the model keeps stacked — a seam one cell across, and a craton's whole,
  * which never goes under (step/collision.js underthrust); and all of it in a world without the event rules — so its column
  * is a real one, and its buoyancy holds the pair: without it a craton overridden by its neighbour (the India scene, once
  * India's crust beyond its shield has gone under) was crossed at 2–3 cm/yr for 100 Myr, nothing built and nothing resisting.

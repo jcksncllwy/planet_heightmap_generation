@@ -1551,7 +1551,7 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
   after contact (lane upper, `belts-probe.mjs --forces`). Tried and dropped: the lower plate's crust going down as negative
   slab pull (Cloos 1993; it double-counted the slab the front already drops), upper-plate shortening behind a jammed craton.
   Phase 5's India (`NO_WINGS`, underthrust off) measures the stack weld, not the seam, and is not the acceptance scene.
-- **The hanging slab (`collisionSlabPull`, opt-in, off by default; lane upper, rebuilt in lane slab 2026-11-10).** After
+- **The hanging slab (the model since lane gpelock 2026-11-25; was opt-in `collisionSlabPull`; lane upper, rebuilt in lane slab 2026-11-10).** After
   contact the slab still hanging under the front keeps pulling the lower plate in (`forces.js hangingSlabPull`): its gross
   negative buoyancy (`collisionSlabGrossNPerM`, 3 × 10¹³ N/m; England & Wortel 1980), scaled like a trench's pull by the
   slab's age and length read at contact (the lower plate's ocean and the upper plate's trench within three rings of the
@@ -1560,14 +1560,18 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
     eclogites formed at ≥ 1.46 GPa, Austrheim 1991; eclogite ~6 % denser than the mantle, Hacker et al. 2003), down a slab
     of `collisionSlabDipDeg` 30 (32 ± 9° over 0–125 km, Lallemand et al. 2005): at most 120 km of crust offsets the slab.
     Before, every metre underthrust counted, and any collision's crust cancelled any slab within ~175 km, a few Myr in.
-  - *Break-off* is the slab's own, not a cited time (was `collisionBreakoffMyr` 20). Stalled, the slab is warmed through
-    from both faces; when its strong core (colder than `slabCoreTempShare` 0.6 of the mantle's 1350 °C, ~800 °C: Goetze &
-    Evans 1979, Kirby 1987) is gone it necks and breaks (Davies & von Blanckenburg 1995; Duretz, Gerya & May 2011). The
-    core of a plate of age A is 2√(κA) erf⁻¹(θ) thick; its first conductive mode warms through in A × 4 erf⁻¹(θ)² ⁄ π² ×
-    ln(4(1 − θ⁄2) ⁄ π(1 − θ)), so κ cancels and t_b ≈ 0.115 A: 9 Myr for an 80-Myr slab, 16 for the India scene's ~140.
-  - **Against Earth** (not fitted): van Hunen & Allen (2011) find break-off 20–25 Myr after contact for old slabs, ~10 for
-    young. This break-off is earlier by about half, because it is the warming alone: the neck's own runaway is not drawn.
-    θ maps almost one-for-one onto t_b (0.75 gives ~25 Myr), so it is taken from olivine's strength, not from their result.
+  - *Break-off* is the neck's, against the lithosphere's strength (lane gpelock; was a thermal timer, `slabCoreTempShare`
+    0.6, ~0.115 × the slab's age after contact; before that `collisionBreakoffMyr` 20). The slab's weight pulls down and the
+    buoyant crust it dragged in holds it up, so the neck carries the lesser of the two, T = min(s · 3 × 10¹³, F_b), and fails
+    once T reaches `collisionStrengthNPerM` 10¹³ N/m (Davies & von Blanckenburg 1995: break-off where the change in force
+    exceeds the integrated strength; the 10¹³ is Porth 2000's bound, already the model's). F_b = (ρa − ρc) g h_c L is
+    1.2 × 10¹¹ N/m per km of crust gone down, so an old slab (s > 1⁄3) breaks after ~82 km of crust, within a few Myr of
+    contact; a slab too young or short to weigh 10¹³ never breaks this way, and the crust cancels its pull instead.
+  - *No lateral tear.* The ocean still going down beside the front, on the flanks of the same trench (Sunda's and Makran's
+    on Earth, India still converging ~4 cm/yr 50 Myr after contact), keeps pulling as any trench does, along its own normal:
+    a slab pulls down its own dip, and oblique convergence partitions into trench-normal subduction and strike-slip
+    (McCaffrey 1992), with no threshold obliquity found (Morell et al. 2025). Ruled (i), sessrumnir 2026-11-25.
+  - *The tables below are lane slab's (2026-11-10, the thermal timer and the old viscous lock)*, kept as the record.
   - **India scene** (`budget-scenes india`, 12345/777/4242, slab off → on):
 
     | | weld, Myr after contact | km at weld | km at 20 Myr |

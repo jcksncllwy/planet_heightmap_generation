@@ -578,10 +578,11 @@ function underthrust(world, U, L, cells, rec, km) {
         if (L.crust.mask[cl] && L.crust.type[cl] === CrustType.CRATON) shield = depth[w];
     }
     const candidates = cells.filter(w => depth[w] > shield || (depth[w] > 0 && shield === Infinity)).sort((p, q) => depth[q] - depth[p] || p - q);     // most advanced first
-    // (and the overlap never piles up: land stacked deeper than overlapCapKm over the front goes under too — a collision
-    // that waits for its seam to close, turning as it waits, keeps converging, and its lower plate's edge keeps going under:
-    // India lost ~2,000 km of its front beneath Tibet)
-    const excess = Math.max(0, cells.length - Math.max(1, Math.floor(rec.frontKm * config.overlapCapKm / cellAreaKm2)));
+    // (and the overlap never piles up: it is the seam, one cell across the front, and every step's convergence beyond it is
+    // converted — sent under here, or shortened ahead (shortenAhead) — a collision that waits for its seam to close keeps
+    // converging, and its lower plate's edge keeps going under: India lost ~2,000 km of its front beneath Tibet. Was
+    // overlapCapKm 250, how much unconverted convergence the raster held: a tolerance, not rock; lane gpelock 2026-11-25)
+    const excess = Math.max(0, cells.length - Math.max(1, Math.floor(rec.frontKm / mesh.edgeKm)));
     let consumed = 0;
     const Cm = config.collisionVolume ? columnModel(heightsOf(config)) : null, keptAt = [];
     let keptKm = 0;
@@ -619,13 +620,13 @@ function underthrust(world, U, L, cells, rec, km) {
  * (underthrust above) — the convergence is taken up by the upper plate instead: its crust in front of the indenter shortens and
  * thickens. Most of Tibet's thickened crust is Asian, shortened ahead of India (Yin & Harrison 2000, Annu. Rev. Earth Planet. Sci.
  * 28: ≥ 1400 km of shortening within Asia since the collision; DeCelles et al. 2002, Tectonics 21: ~1500 km across the Himalaya
- * and southern Tibet). So the overlap's excess (deeper than overlapCapKm over the front) is taken from the upper plate's crust in
+ * and southern Tibet). So the overlap's excess (beyond the one-cell seam) is taken from the upper plate's crust in
  * the overlap, the indenter's face first — nearest the upper plate's own land — and its volume laid on the upper plate's
  * collision belt by keepConsumed, up to the collision's force limit (rec.rootCapKm), the rest ring by ring outward. Nothing goes
  * to the mantle (lostShare 0: folded, not sent down). Its cratons are too strong to shorten (Lenardic & Moresi 1999) and its arcs
  * are scraped, not shortened (accreteArcs). Books: budget.aheadShortenedCells; the rock book aheadShortenedKm3 (< 0, the rock taken
  * off the map) and aheadKeptKm3 (laid back) — check-invariants.mjs holds the two to closing. Limits: the raster's overlap is the
- * convergence not yet converted, and overlapCapKm how much of it the raster holds — a tolerance, not a property of rock.
+ * convergence not yet converted; a seam one cell across is the least the raster can hold.
  * @returns {number} cells shortened
  */
 function shortenAhead(world, U, cells, inOverlap, want, rec, Cm) {
