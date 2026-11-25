@@ -431,9 +431,13 @@ section('the coast by margin');
     const D = (r, k) => r?.[k]?.D ?? NaN, f3 = v => v.toFixed(3);
     const s16 = at[160000].sim, s64 = at[640000].sim, e16 = at[160000].earth, e64 = at[640000].earth;
     check('Earth’s coast is binned onto the terrain meshes', !!e16 && !!e64, at[160000].error ?? at[640000].error ?? 'tools/data/earth-terrain-*.i16');
-    // passive margins smoother than the rest, as Earth's are (its passive 1.06 against its fjords 1.21 and the rest 1.17 at 640K)
+    // passive margins smoother than the rest, as Earth's are (its passive 1.05 against its fjords 1.21 and the rest 1.15 at 640K).
+    // A KNOWN GAP (supervisor, 2026-11-25: kept as a failing check so it stays seen): on this world the mature passive coast is
+    // already 1.22 in the tectonic surface before any carving (1.16 at 160K), and stays so with the coast noise, its detail and
+    // the warps off — the synthesized coastline itself, not the rivers (lane coastsmooth P2, probes/p8b-kinds.mjs). Earth's
+    // passive coasts are smoothed by the waves (Ashton & Murray 2006, JGR 111, F04011), which no stage models yet (queued: B)
     check('mature passive coasts are smoother than active, collision and arc coasts (as on Earth)', D(s64, 'passive') < D(s64, 'rest'),
-        `640K: mature passive D ${f3(D(s64, 'passive'))} · the rest ${f3(D(s64, 'rest'))} (${COAST_KINDS.map(k => `${k} ${f3(D(s64.each, k))}`).join(', ')}); Earth passive ${f3(D(e64, 'passive'))} · fjord/ria ${f3(D(e64, 'fjord'))} · other ${f3(D(e64, 'other'))}`);
+        `640K: mature passive D ${f3(D(s64, 'passive'))} · the rest ${f3(D(s64, 'rest'))} (${COAST_KINDS.map(k => `${k} ${f3(D(s64.each, k))}`).join(', ')}); Earth passive ${f3(D(e64, 'passive'))} · fjord/ria ${f3(D(e64, 'fjord'))} · other ${f3(D(e64, 'other'))}` + (D(s64, 'passive') < D(s64, 'rest') ? '' : ' — known gap: the synthesized coast’s roughness; wave smoothing (B) is queued'));
     // D flat with resolution, as Earth's: a sub-cell feature (a drowned valley) must not roughen the coast as the mesh resolves it.
     // Allowed: Earth's own rise between the meshes, plus 0.035 — Earth's D spread over 160K–2.5M (0.015) and the run-to-run
     // spread of this D across histories (±0.02: 2 worlds × 4 commits, coastsmooth P1)

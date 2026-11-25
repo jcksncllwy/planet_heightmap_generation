@@ -351,11 +351,11 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
     }
     if (F[L - 1].lipAge && (cfg.lipEdgeRetreat > 0 || cfg.lipValleyRate > 0)) stripBasalt(meshes[L - 1], F[L - 1], result, cfg);
     if (cfg.lipStepKm > 0) terraceBasalt(F[L - 1], result, cfg);     // (on the mesh shown only)
-    {
+    if (cfg.cycleFill !== false) {      // (false: the lowstand's valleys left unfilled, for the studies)
         const f = F[L - 1], mesh = meshes[L - 1], n = mesh.numCells, today = new Uint8Array(n);
         for (let c = 0; c < n; c++) today[c] = f.ocean ? f.ocean[c] > 0.5 : f.z[c] <= 0;
         result.cycleFill = transgressiveFill(mesh, result.z, { pre: f.z, todaySeed: today, lowSea: c => (f.ocean ? f.ocean[c] > 0.5 : true) && !(f.z[c] > (cfg.lowstandKm ?? 0)),
-            k: f.k, rain: f.rain, u: f.u, m: cfg.m, lowKm: cfg.lowstandKm ?? 0, windowMyr: cfg.timeMyr });
+            k: f.k, rain: f.rain, u: f.u, m: cfg.m, lowKm: cfg.lowstandKm ?? 0, windowMyr: cfg.timeMyr, riverRecv: result.recv });
     }
     floodToday(meshes[L - 1], F[L - 1], result);
     if (cfg.canyonKm > 0 && cfg.canyonDepthKm > 0) cutCanyons(meshes[L - 1], F[L - 1], result, cfg);
@@ -364,7 +364,7 @@ export function carveTerrain(meshes, fields, cfg, given = null) {
 
 // (a valley fill's top: the highstand's tidal flats and bayhead plain stand at about mean high water, half a ~1 m mean tidal
 // range above mean sea (open coasts: Davies 1964's microtidal < 2 m) — land, not the sea's floor at exactly its level)
-const FILL_TOP_KM = 0.0005;
+export const FILL_TOP_KM = 0.0005;
 
 /**
  * The lowstand valleys refilled over the glacial cycles (lane coastsmooth, 2026-11-24): what the carve's base level
@@ -427,23 +427,61 @@ export function transgressiveFill(mesh, z, o) {
         const c = order[i], r = recv[c];
         root[c] = r >= 0 ? root[r] : c;
         T[c] = (r >= 0 ? T[r] : 0) + recvKm[c] / (Math.max(1e-9, o.k[c]) * Math.max(A[c], 1e-6) ** o.m);
-        if (!today[c] || !(o.pre[c] >= 0) || !(z[c] < 0)) continue;
+        if (!today[c] || !(o.pre[c] > 0) || !(z[c] < 0)) continue;
+        // (a physical bound too: a drowned cell whose river leaves it over higher ground — a pit behind a sill, the sea reaching
+        // it sideways — has no load running through it to the mouth: it stays a drowned hollow, not a flat below its own outlet)
+        const rr = o.riverRecv ? o.riverRecv[c] : -1;
+        if (rr >= 0 && z[rr] > Math.min(FILL_TOP_KM, o.pre[c]) + 1e-4) continue;
         if (T[c] <= episodeMyr) { out.reachCells++; continue; }
         let list = byRoot.get(root[c]);
         if (!list) byRoot.set(root[c], list = []);
         list.push(c);
     }
+    // Two physical bounds on a fill's top besides mean high water: (1) the ground the valley was cut into — an estuary fills
+    // its valley, it does not build above the interfluves; (2) the bed of each river feeding it — a river aggrades to its
+    // mouth's fill, so the fill cannot stand above the channel that brings its load (by the carve's own routing)
+    const rr = o.riverRecv, donorAt = new Int32Array(n + 1), donors = rr ? new Int32Array(n) : null;
+    if (rr) {
+        for (let c = 0; c < n; c++) if (rr[c] >= 0) donorAt[rr[c] + 1]++;
+        for (let c = 0; c < n; c++) donorAt[c + 1] += donorAt[c];
+        const at = donorAt.slice(0, n);
+        for (let c = 0; c < n; c++) if (rr[c] >= 0) donors[at[rr[c]]++] = c;
+    }
+    const topOf = c => {
+        let top = Math.min(FILL_TOP_KM, o.pre[c]);
+        if (rr) for (let i = donorAt[c]; i < donorAt[c + 1]; i++) { const d = z[donors[i]]; if (d >= 0) top = Math.min(top, d); }
+        return top;
+    };
     // each river's load over the window's highstands, laid from the valley's head seaward up to today's sea
+    const filled = new Map();           // (each filled cell's floor before)
     for (const [r, cells] of byRoot) {
         let budget = Q[r] * high * o.windowMyr;
         out.supplyKm3 += budget;
         cells.sort((p, q) => T[q] - T[p]);
         for (const c of cells) {
             if (!(budget > 0)) break;
-            const need = (FILL_TOP_KM - z[c]) * cellArea, put = Math.min(need, budget);
-            z[c] += put / cellArea; budget -= put; out.filledKm3 += put; out.cells++;
+            // (to mean high water, within bounds (1) and (2) above; a top at the sea itself is no fill — the cell would stand
+            // neither land nor sea)
+            const top = topOf(c);
+            if (!(top > 1e-6)) continue;
+            const need = (top - z[c]) * cellArea, put = Math.min(need, budget);
+            filled.set(c, z[c]); z[c] += put / cellArea; budget -= put; out.filledKm3 += put; out.cells++;
         }
         if (budget <= 0 && z[cells.at(-1)] < 0) out.starved++;
+    }
+    // (bound (2) again over the whole fill: the rivers' order is not the fill's — rivers of two mouths, a reach left half-filled
+    // when its load ran out — so a fill above a river bed that feeds it comes down to it, or back to the drowned floor when
+    // that bed is the sea's own level)
+    if (rr) {
+        const work = [...filled.keys()];
+        while (work.length) {
+            const c = work.pop(), top = topOf(c);
+            if (!(z[c] > top + 1e-7)) continue;
+            const was = z[c];
+            z[c] = top > 1e-6 ? top : filled.get(c);
+            out.filledKm3 -= (was - z[c]) * cellArea;
+            if (rr[c] >= 0 && filled.has(rr[c])) work.push(rr[c]);
+        }
     }
     out.filledKm3 = Math.round(out.filledKm3); out.supplyKm3 = Math.round(out.supplyKm3);
     return out;
