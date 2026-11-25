@@ -889,8 +889,11 @@ river too starved to fill it keeps its ria (Talling 1998; Blum & Törnqvist 2000
 the finish after the early erosion, before the bayhead fill (`stats.lowstand.cycleFill`). Earth on the same meshes, the same
 measure (`check-phase8b` 'the coast by margin'; `tools/data/earth-terrain-*.i16`): passive margins smoother than the rest, and D
 flat with resolution. It skips: the knickpoint starting from the mean lowstand's shore, not the sea's actual fall; the climate's
-load (it uses the uplift's steady shed); tidal export; a fill's own delta slope. The finish's ice age and late erosion roughen the
-coast again afterwards (fjords, the rebound still to come; measured in coastsmooth's report, queued).
+load (it uses the uplift's steady shed); tidal export; a fill's own delta slope. Fills and the bayhead's delta plains stand at
+mean high water (0.5 m), not at the sea's mean: at exactly 0 a delta plain was neither land nor sea, and the ice age's rebound —
+a fraction of a millimetre of its solve's error far from any ice — drowned every one (P3: the rebound is applied only above the
+solve's residual). The ice age still roughens the high latitudes (rebound and overdeepened basins, D 1.16 → 1.40 above 55° at
+640K, Earth 1.18) and the late polish the low ones a little (+0.02); measured in coastsmooth's report, not changed.
 **The sea's floor under the waves** (lane marine, 2026-11-21; `ERODE.marine`, GPU only). Until then every finish erosion
 treated the sea as an outlet: what its rivers carried to the sea (~12 km³/yr over the moment's window at 831576@430, 92 % of it
 arriving over drowned continental crust at 50–500 m) was counted and dropped, bar the 3 % deltas and the bayhead fill. Now the
