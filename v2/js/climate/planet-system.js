@@ -23,6 +23,12 @@
 //                         obliquity a cosine series about its mean, e cos π / e sin π cosine and sine series, the precession
 //                         a sine series about its steady rate) — Earth's: BERGER_1978. With a cycle the values above are
 //                         replaced by the cycle's at `epochKyr`.
+//   atmosphere.co2        the air's CO2 through time: a series in ppm by whole kyr before present (index k = k kyr BP), or
+//                         null. Earth's: Bereiter et al. 2015 (co2-bereiter2015.js). Its forcing at the epoch, against the
+//                         series at 0 (pre-industrial): 5.35 ln(C/C₀) W/m² (Myhre et al. 1998), added to the page's Greenhouse
+//                         — so at epoch 0 nothing changes (the climate's constants were fit to today's Earth). What it skips:
+//                         CH4 and N2O (together ~0.6 of CO2's −2.1 W/m² at the LGM; Köhler et al. 2010), dust, and the
+//                         climate's calibration era being later than pre-industrial (its present is ~1980–2010's air).
 //   epochKyr              when, in thousands of years before the moment the planet is drawn at (Earth's "present": 1950 CE).
 //                         0 with Earth's cycle gives e 0.0167, 23.44°, ϖ 102.7° (Berger 1978 at 1950).
 // The calendar: t in months from the start of the month after the northern winter solstice; the northern spring equinox stays
@@ -32,6 +38,7 @@
 // and the anomalistic year's difference from the tropical (the ~21 kyr precession cycle is the cycle's).
 
 import { BERGER_1978 } from './berger1978.js';
+import { CO2_BEREITER_2015 } from './co2-bereiter2015.js';
 
 export const S_EARTH = 1361;                 // W/m² at 1 AU from the Sun (insolation.js SOLAR_CONSTANT)
 export const SUN_TEFF_K = 5772;
@@ -41,13 +48,14 @@ export const EARTH_SYSTEM = Object.freeze({
     // (the values today — J2000: e 0.01671, ε 23.44°, ϖ 102.94°; Simon et al. 1994. The cycle is off by default: Berger
     // 1978 at 1950 gives the same to < 0.01 and the ice age turns it on)
     orbit: Object.freeze({ semiMajorAU: 1, eccentricity: 0.0167, obliquityDeg: 23.44, perihelionSunLonDeg: 282.94, cycle: null }),
+    atmosphere: Object.freeze({ co2: CO2_BEREITER_2015 }),
     epochKyr: 0,
 });
 
 /** A full system from a partial one (any missing value Earth's). */
 export function systemOf(s = null) {
     if (!s) return EARTH_SYSTEM;
-    return { star: { ...EARTH_SYSTEM.star, ...(s.star ?? {}) }, orbit: { ...EARTH_SYSTEM.orbit, ...(s.orbit ?? {}) }, epochKyr: s.epochKyr ?? 0 };
+    return { star: { ...EARTH_SYSTEM.star, ...(s.star ?? {}) }, orbit: { ...EARTH_SYSTEM.orbit, ...(s.orbit ?? {}) }, atmosphere: { ...EARTH_SYSTEM.atmosphere, ...(s.atmosphere ?? {}) }, epochKyr: s.epochKyr ?? 0 };
 }
 
 /** Earth's orbital cycle (Berger 1978) as a system's orbit.cycle. */
@@ -70,6 +78,20 @@ export function orbitAt(system = EARTH_SYSTEM) {
     const e = Math.hypot(ec, es), fixedPerihelion = Math.atan2(es, ec) / DEG;          // (π, from the fixed equinox)
     const varpi = fixedPerihelion + C.precessionRateArcsec * ARCSEC * years + C.precessionPhaseDeg + mv;   // (ϖ, from the moving equinox)
     return { eccentricity: e, obliquityDeg: C.obliquityMeanDeg + ob, perihelionSunLonDeg: (((varpi + 180) % 360) + 360) % 360 };
+}
+
+/** The air's CO2 at the system's epoch (ppm; linear between the series' kyr), or null without a series. */
+export function co2At(system = EARTH_SYSTEM) {
+    const s = systemOf(system), C = s.atmosphere.co2;
+    if (!C?.length) return null;
+    const t = Math.max(0, Math.min(C.length - 1, s.epochKyr)), i = Math.min(C.length - 2, Math.floor(t)), f = t - i;
+    return C[i] + f * (C[i + 1] - C[i]);
+}
+/** The CO2's radiative forcing at the epoch against the series at 0 (W/m²; 5.35 ln(C/C₀), Myhre et al. 1998): 0 at the
+ *  present, about −2.1 at the Last Glacial Maximum. */
+export function greenhouseOf(system = EARTH_SYSTEM) {
+    const c = co2At(system), C = systemOf(system).atmosphere.co2;
+    return c === null ? 0 : 5.35 * Math.log(c / C[0]);
 }
 
 /** The year's sunlight at the top of the air at the orbit's mean distance (W/m²): S_EARTH · L / a². */

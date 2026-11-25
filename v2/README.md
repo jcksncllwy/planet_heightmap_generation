@@ -3858,6 +3858,9 @@ obliquity and the star's longitude at perihelion, and the orbit's variations thr
   albedo, bright in the visible and dark in the near-infrared — a red dwarf's light is absorbed by them far more (Shields et al.
   2013 Table 2: snow × 0.65, bare ice × 0.32 under an M3.5; × 1.07 and × 1.27 under an F2; 1 under the Sun). Not reached: the
   air's absorption, Rayleigh scattering, the sea's and the land's spectra.
+- **The air's CO2 through time** (`atmosphere.co2`): Earth's is Bereiter et al. 2015's ice-core composite (805 kyr, 1 kyr
+  bins; `climate/co2-bereiter2015.js`), its forcing 5.35 ln(C/C₀) against the pre-industrial bin added to the page's Greenhouse
+  — 0 at the present, −2.04 W/m² at 21 ka. CO2 only (CH4 and N2O, dust: not yet).
 - **Earth's default now carries its real orbit** (e 0.0167, perihelion in early January) where the climate had a circular one.
   On Earth's ground (160K) the global mean is unchanged (15.30 → 15.31 °C); the northern summer is cooler (July 60–75° N
   −2.0 K, 75–90° N −2.4 K), the southern warmer, and the northern annual mean 0.12 K lower (the snow's longer summers at

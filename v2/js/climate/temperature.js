@@ -29,7 +29,7 @@
 
 import { LatLonGrid, coarsenField, refineField, refineForDrawing, fillAcross } from './grid.js';
 import { insolationTable, dailyInsolation, SOLAR_CONSTANT } from './insolation.js';
-import { starCalendar, albedoRatios } from './planet-system.js';
+import { starCalendar, albedoRatios, greenhouseOf } from './planet-system.js';
 import { solverOf } from './solver.js';
 import { PARAMS } from './config.js';
 import { tropicsWeight, gaussianSmooth } from './circulation.js';
@@ -85,7 +85,7 @@ export function energyBalanceTemperature() {
         // less) greenhouse gas would; ≈ 0.5 °C per W/m² before the snow, ice and seas answer. They amplify a cooling far
         // more than a warming — on Earth −10 W/m² cools the planet ≈ 8 °C, +10 warms it ≈ 6 °C — and past −20 W/m² the
         // ice runs away: sea ice on a quarter of the sea at −20, nearly all of it at −28, a snowball at −30)
-        P.TEMP_OLR_A -= ctx.options?.greenhouseWm2 ?? 0;
+        P.TEMP_OLR_A -= (ctx.options?.greenhouseWm2 ?? 0) + greenhouseOf(ctx.options?.system);    // (+ the system's CO2 at its epoch: planet-system.js)
         // (the planet's star and orbit — planet-system.js: the sunlight through the year from the orbit's eccentricity, tilt and
         // perihelion, the star's luminosity and distance; and the star's colour on the snow's and the ice's albedo, bright in the
         // visible and dark in the near-infrared: 1 under the Sun. Sea ice, snow-covered for much of its year, takes the two's mean)

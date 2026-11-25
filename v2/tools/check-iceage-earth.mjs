@@ -31,7 +31,7 @@ import { FINISH } from '../js/finish/finish-config.js';
 import { LatLonGrid } from '../js/finish/finish-grid.js';
 import { lastIceAge } from '../js/finish/finish-ice.js';
 import { bilinear } from '../js/finish/finish.js';
-import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios } from '../js/climate/planet-system.js';
+import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios, co2At, greenhouseOf } from '../js/climate/planet-system.js';
 import { declination } from '../js/climate/insolation.js';
 
 setDelaunator(Delaunator);
@@ -50,6 +50,8 @@ section('the planet and its star');
     check('e = 0: the circular orbit exactly', d < 1e-9, `max difference ${d.toExponential(1)}`);
     const cal = starCalendar(); let best = 0, tb = 0; for (let t = 0; t < 12; t += 0.01) { const q = cal.at(t).irradiance; if (q > best) { best = q; tb = t; } }
     check('Earth: nearest the Sun in early January, 3.4 % above the mean', tb > 0 && tb < 0.3 && Math.abs(best / solarConstantOf() - (1 + 0.0167) ** 2 / (1 - 0.0167 ** 2) ** 2) < 1e-6, `t ${tb.toFixed(2)} months, ${best.toFixed(1)} W/m²`);
+    const lgm = co2At({ epochKyr: 21 }), f0 = greenhouseOf(), f21 = greenhouseOf({ epochKyr: 21 });
+    check('the air\'s CO2 (Bereiter et al. 2015): the LGM\'s ~190 ppm, no forcing at the present', Math.abs(lgm - 190) < 8 && f0 === 0 && f21 < -1.8 && f21 > -2.4, `pre-industrial ${co2At().toFixed(1)} ppm; 21 ka ${lgm.toFixed(1)} ppm, ${f21.toFixed(2)} W/m²`);
     const r = albedoRatios(), m = albedoRatios({ star: { teffK: 3400 } });
     check('the Sun leaves the snow\'s and the ice\'s albedo as they are; an M dwarf darkens them', r.snow === 1 && r.ice === 1 && m.snow < 0.7 && m.ice < 0.35, `M3.5: snow × ${m.snow.toFixed(2)}, ice × ${m.ice.toFixed(2)} (Shields et al. 2013)`);
 }
