@@ -123,6 +123,9 @@ export function shortenMargins(world, dt) {
             const share = thickenShare(crust, c, config);           // (a craton rim the belt reached: its strength's share — ops/thicken.js)
             if (share > 0) { belt.push(c); weights.push(share * (1 - Math.min(1, crust.beltU[c]) ** 2)); }
         }
+        // (the column's limit stays the constant here, not a force's as a collision's is — torque-balance.js collisionRootKm: an
+        // Andean margin has no collision front, so no pair push; its own, the upper plate's push against its anchored slab, is not
+        // modelled. Lane gpelock P2, sessrumnir's ruling 3; the Altiplano's ~70 km crust is the force limit queued for it)
         const rest = layProfile(plate, belt, weights, volKm, config.underthrustMaxThickKm);
         const left = layThickening(plate, mesh, live, rest, config.underthrustMaxThickKm, config);
         bookRock('shortenedKm3', rock);                                         // (the rock taken off the edge, < 0)

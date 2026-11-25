@@ -87,6 +87,22 @@ function frontPush(world, loads) {
     return out;
 }
 
+/**
+ * The thickest a collision's column stands, km above ordinary crust: where its ΔGPE reaches the force the pair presses across
+ * its front with (Molnar & Lyon-Caen 1988: a column thickens while the force on its edge exceeds its ΔGPE; beyond that the
+ * volume goes outward — ops/thicken.js layThickening's rings). The force is the collision's record, not a step's: the held
+ * push (frontPush), each step's at most the lithosphere's integrated strength (collisionStrengthNPerM: no lithosphere passes
+ * more), averaged over the steps the seam closed faster than it welds at (step/collision.js pushNMyr ⁄ pushMyr). Per step it
+ * is no limit: at first contact a plate's whole drive sits on a few cells of front (43 × 10¹² N/m, India's scene), late the
+ * held pair's drag grows as the seam slows (24 × 10¹²), and at the stall the held balance can flip to none — lane gpelock P2.
+ * Before the record has a sample, the strength bound. Limits: a pair at a time (a third plate pressing is in their drives); the
+ * plateau's crust only (collisionGpeNPerM's limits).
+ */
+export function collisionRootKm(rec, config) {
+    const F = rec?.pushMyr > 0 ? rec.pushNMyr / rec.pushMyr : config.collisionStrengthNPerM;
+    return thickeningForForce(F, heightsOf(config));
+}
+
 /** The thickening, km above ordinary crust, at which a column's ΔGPE reaches F (N/m): collisionGpeNPerM inverted. */
 export function thickeningForForce(F, H) {
     const rc = H.riftCrustRho, ra = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC), h0 = H.riftCrustKm * 1000;

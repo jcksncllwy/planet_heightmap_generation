@@ -118,6 +118,8 @@ export function accretePrisms(world) {
                 // reach first, then ring by ring inland, each root up to underthrustMaxThickKm, cratons none (a reached rim its strength's share). Was: the whole
                 // prism evenly over those cells with no ceiling, 100–200 km of root where a margin had 1–6 of them, roots no
                 // channel could drain. What finds no room stays in the prism, the reservoir on the balance sheet)
+                // (the constant, not a force's limit as a collision's is — torque-balance.js collisionRootKm: a prism is laid at a trench,
+                // with no collision front and so no pair push to take a limit from. Lane gpelock P2, sessrumnir's ruling 3)
                 const volKm = plate.prismKm3 / A, left = layThickening(plate, mesh, land, volKm, config.underthrustMaxThickKm, config);
                 const km3 = (volKm - left) * A;
                 accreted += km3; world.budget.prismUnderKm3 = (world.budget.prismUnderKm3 ?? 0) + km3; plate.prismKm3 = left * A;

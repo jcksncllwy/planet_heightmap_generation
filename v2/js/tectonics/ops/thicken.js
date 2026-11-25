@@ -118,8 +118,12 @@ let nearScratch = null;
  * room beside it: ops/scrape-arc.js, tidy-plates.js, accrete-terrane.js): <book>KeptKm, <book>LostKm, <book>UnplacedKm, and
  * the rock book <book>KeptKm3.
  * `since` (Myr): the collision's start — its belt is every collision-belt cell it has stamped since.
+ * `maxRootKm`: the thickest a column of the belt stands, km above ordinary crust, the rest laid outward. A collision passes its
+ * force's limit (torque-balance.js collisionRootKm: where the column's ΔGPE reaches the push its record pressed the front with).
+ * A dock keeps the constant underthrustMaxThickKm: it happens in one step, so it has no record of a push to take a force from
+ * (lane gpelock P2, sessrumnir's ruling 3: collisions only for now).
  */
-export function keepConsumed(world, U, seeds, volKm, since, book = 'collision') {
+export function keepConsumed(world, U, seeds, volKm, since, book = 'collision', maxRootKm = world.config.underthrustMaxThickKm) {
     const { config, budget } = world, lost = volKm * config.collisionLostShare, kept = volKm - lost;
     // across the collision's belt on the upper plate — every cell it has stamped since it began, not only this step's: the
     // deforming zone is the belt the convergence built (England & Houseman 1986), and the weld, which absorbs the most, comes
@@ -140,8 +144,8 @@ export function keepConsumed(world, U, seeds, volKm, since, book = 'collision') 
         const share = thickenShare(cr, c, config);                  // (continent 1; the craton rim the belt reached, its strength's share)
         if (share > 0) { belt.push(c); weights.push(share * (1 - Math.min(1, cr.beltU[c]) ** 2)); }
     }
-    const rest = layProfile(U, belt, weights, kept, config.underthrustMaxThickKm);
-    const left = layThickening(U, world.mesh, seeds, rest, config.underthrustMaxThickKm, config);
+    const rest = layProfile(U, belt, weights, kept, maxRootKm);
+    const left = layThickening(U, world.mesh, seeds, rest, maxRootKm, config);
     bookRock(`${book}KeptKm3`, (kept - left) * world.mesh.cellAreaKm2);        // (the rock book: laid back as thickness; the lost share and the unplaced are gone)
     budget[`${book}KeptKm`] = (budget[`${book}KeptKm`] ?? 0) + kept - left;
     budget[`${book}LostKm`] = (budget[`${book}LostKm`] ?? 0) + lost;

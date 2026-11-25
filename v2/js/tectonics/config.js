@@ -277,7 +277,14 @@ export const TECTONICS = {
                                 // the shortening at a stretch of front thickens the belt behind it (Δh = S·h₀ ÷ W; Tibet: ~1000–1500 km of
                                 // Asia and India shortened over a ~1000 km plateau, crust ~35 → ~70 km). false: every collision belt the upper
                                 // plate stamped since the collision began (a supercontinent's whole stock; the control)
-    underthrustMaxThickKm: 40,  // …up to this (Tibet: crust ~70 km, about 35 km thicker than normal)
+    underthrustMaxThickKm: 40,  // …up to this (Tibet: crust ~70 km, about 35 km thicker than normal). For Andean margins, prisms and docks
+                                // only: a collision's column stops where its ΔGPE reaches the push across its front (torque-balance.js
+                                // collisionRootKm). An Andean margin has no collision front and so no pair push; its own force (the upper
+                                // plate's push against its anchored slab; the Altiplano's ~70 km crust) is not modelled (queued, lane gpelock P2)
+    collisionStrengthNPerM: 1e13, // the most force per metre a lithosphere transmits, N/m: its integrated strength — "10 × 10¹² N m⁻¹ may be
+                                // considered as an upper limit for vertically integrated stress" (Porth 2000, GJI 141:647, §2.2; plate
+                                // forces several 10¹² N/m, Tibet's ~7 × 10¹², Molnar & Lyon-Caen 1988). A material bound, not a target:
+                                // each step's held push is clipped to it before a collision's record averages it (collisionRootKm). Δh ≤ 53 km
     collisionForgetMyr: 8,      // a collision record whose plates have not touched for this long is forgotten: the next meeting starts afresh
     collisionJitterFrontKm: 845, // a brand-new contact of parting plates no bigger than a one-cell sliver this long is jitter, not a collision
     riftJitterFrontKm: 635,     // …and between the fresh margins of a rift, this long

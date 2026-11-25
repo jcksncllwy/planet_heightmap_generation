@@ -44,6 +44,7 @@ import { heightsOf } from './heights.js';
 import { smoothHeat } from '../../terrain/sea-level.js';
 import { isContinental } from './hotspots.js';
 import { gdh1BasementKm } from '../measure.js';
+import { collisionRootKm } from './torque-balance.js';
 
 /** Force names, in the order of PlateLoad.byKind / forceByKind. Display code keys colours by these names. */
 export const FORCE_KINDS = ['slab pull', 'slab suction', 'ridge push', 'rift push', 'mantle flow', 'swell push'];
@@ -516,7 +517,8 @@ function newLoad() {
  * Not thickKm, the record of what orogenies laid, which is never reset: read, it stacked an Andean margin's laid 39 km on
  * the lower plate's crust, and the cap stood 2.0× the belt's in the India scene (lane gpelock). Its weight, as the
  * plateau's, is reckoned per metre of front, as an Airy-compensated column (torque-balance.js collisionGpeNPerM).
- * At most underthrustMaxThickKm, the thickest the model lets a column stand before it spreads under its own weight (ops/
+ * At most the collision's own limit (torque-balance.js collisionRootKm: where the column's ΔGPE reaches the push its record has
+ * pressed the front with; the strength bound before it has one), the thickest its column stands before it spreads (ops/
  * thicken.js): the stack in the overlap is kept as two rasters, not laid as a column, so no spreading reaches it, and read
  * whole — an upper plate's 20 km of root on the lower's crust, Δh 55 — it held India at 1.8× Tibet's force, stalled 1257 km
  * in (lane gpelock). Limits: the lower plate's edge is drawn at its kind's full thickness, not thinned as a passive margin's
@@ -533,5 +535,5 @@ function frontThickening(world, w, a, b, crustA, cellA, crustB, cellB) {
         look(nb);
         for (let j = adjOffset[nb]; j < adjOffset[nb + 1]; j++) look(adjList[j]);
     }
-    return Math.min(best, config.underthrustMaxThickKm);
+    return Math.min(best, collisionRootKm(world.collisions?.get(a < b ? `${a}:${b}` : `${b}:${a}`), config));
 }

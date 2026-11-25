@@ -31,6 +31,7 @@ import { arcFloats } from './polarity.js';
 import { creditPrism } from './prism-accretion.js';
 import { heightsOf } from './heights.js';
 import { bookRock } from '../rock-book.js';
+import { collisionRootKm } from './torque-balance.js';
 import { cellRockKm3, plateRockKm3 } from './crust-ledger.js';
 
 /**
@@ -127,6 +128,15 @@ export function trackCollisions(world, dt) {
         rec.shorteningKm += km;
         rec.stalledMyr = rec.closingCmYr < config.sutureStallCmYr ? rec.stalledMyr + dt : 0;
         rec.meanRateCmYr = rec.shorteningKm / Math.max(dt, time - rec.startedAt) / 10;          // km/Myr ÷ 10 = cm/yr
+        // the force this collision has pressed its front with, over its record (torque-balance.js collisionRootKm): the held push
+        // (frontPush, solved this step), at most the lithosphere's strength, while the seam closes faster than it welds at — the
+        // stalled seam's held balance says nothing of the push that built the belt. Its column stands no thicker than that force holds
+        const push = world.frontPush?.get(key);
+        if (push !== undefined && rec.closingCmYr >= config.sutureStallCmYr) {
+            rec.pushNMyr = (rec.pushNMyr ?? 0) + Math.min(push, config.collisionStrengthNPerM) * dt;
+            rec.pushMyr = (rec.pushMyr ?? 0) + dt;
+        }
+        rec.rootCapKm = collisionRootKm(rec, config);
 
         // the front: overlap cells that touch the upper plate's own land (and the lower plate's, on the other side)
         const upperFront = [], lowerFront = [];
@@ -230,7 +240,7 @@ export function trackCollisions(world, dt) {
                 const gone = volBefore - continentVolume(U, Cm);
                 if (gone > 0) {
                     const seeds = cells.map(w => U.cellAt(mesh.index, mesh.xyz[3 * w], mesh.xyz[3 * w + 1], mesh.xyz[3 * w + 2]));
-                    keepConsumed(world, U, seeds, gone, rec.startedAt);
+                    keepConsumed(world, U, seeds, gone, rec.startedAt, 'collision', rec.rootCapKm);
                 }
             }
             world.budget.sealedCells = (world.budget.sealedCells ?? 0) + result.sealedCells;
@@ -245,7 +255,8 @@ export function trackCollisions(world, dt) {
             const why = stacked && !(ready && closed) ? 'stacked' : 'stalled';
             world.log(EventKind.SUTURE, `${L.name} sutured to ${U.name} after ${(time - rec.startedAt).toFixed(0)} Myr: ${rec.frontKm.toFixed(0)} km front, ${rec.shorteningKm.toFixed(0)} km of shortening, ` +
                 `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${why === 'stacked' ? ` — stacked one on the other${Number.isFinite(rec.gapKm2) ? `, with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : ''}` : ' — the seam had stalled'}`,
-                { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, gapWidestKm: rec.gapWidestKm, sealKm2: rec.trapKm2 ?? 0, sealClosingCmYr: rec.trapClosingCmYr ?? null, why });
+                { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, gapWidestKm: rec.gapWidestKm, sealKm2: rec.trapKm2 ?? 0, sealClosingCmYr: rec.trapClosingCmYr ?? null, why,
+                  pushNPerM: rec.pushMyr > 0 ? rec.pushNMyr / rec.pushMyr : null, rootCapKm: rec.rootCapKm });
         }
     }
     return merged;
@@ -335,6 +346,7 @@ function inheritCollisions(collisions, upperId, lowerId) {
         mine.contactMyr = Math.max(mine.contactMyr, rec.contactMyr);
         mine.frontMaxKm = Math.max(mine.frontMaxKm ?? 0, rec.frontMaxKm ?? 0, rec.frontKm);
         mine.lastActive = Math.max(mine.lastActive, rec.lastActive);
+        mine.pushNMyr = (mine.pushNMyr ?? 0) + (rec.pushNMyr ?? 0); mine.pushMyr = (mine.pushMyr ?? 0) + (rec.pushMyr ?? 0);   // (the force over both records)
     }
 }
 
@@ -519,7 +531,7 @@ function chooseSides(world, A, B) {
  * convergence sweeps (shortening this step × the front's length) is consumed from the lower plate's land in the
  * overlap — its most advanced cells first (farthest from its own side), never the contact row itself, so the
  * collision still locks — and the upper plate's crust above each consumed cell thickens by underthrustThickenKm (up
- * to underthrustMaxThickKm). So a collision eats continental area in step with its convergence, as Tibet swallowed
+ * to the collision's force limit, rec.rootCapKm). So a collision eats continental area in step with its convergence, as Tibet swallowed
  * ~2000 km of India, and turns it into a plateau for Phase 8. Cratons are never consumed: they never break.
  * @returns {number} cells consumed
  */
@@ -564,12 +576,12 @@ function underthrust(world, U, L, cells, rec, km) {
         if (Cm) continue;                                   // (1b: laid below, all of it, instead of a fixed 25 km here)
         if (U.crust.mask[cu] && U.crust.type[cu] !== CrustType.OCEAN) {
             const root0 = U.crust.rootKm[cu];
-            U.crust.thickKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.thickKm[cu] + config.underthrustThickenKm);
-            U.crust.rootKm[cu] = Math.min(config.underthrustMaxThickKm, U.crust.rootKm[cu] + config.underthrustThickenKm);    // (heights: the plateau's root)
+            U.crust.thickKm[cu] = Math.min(rec.rootCapKm, U.crust.thickKm[cu] + config.underthrustThickenKm);
+            U.crust.rootKm[cu] = Math.min(rec.rootCapKm, U.crust.rootKm[cu] + config.underthrustThickenKm);    // (heights: the plateau's root)
             if (U.crust.type[cu] !== CrustType.ARC) bookRock('collisionKeptKm3', (U.crust.rootKm[cu] - root0) * cellAreaKm2);     // (collisionVolume off: the fixed thickening; an arc's root is not its measure)
         }
     }
-    if (Cm && keptKm > 0) keepConsumed(world, U, keptAt, keptKm, rec.startedAt);
+    if (Cm && keptKm > 0) keepConsumed(world, U, keptAt, keptKm, rec.startedAt, 'collision', rec.rootCapKm);
     rec.underthrustDue = Math.min(Math.max(0, rec.underthrustDue - consumed), 1);      // (what could not be consumed this step is not carried)
     rec.underthrustCells = (rec.underthrustCells ?? 0) + consumed;
     world.budget.underthrustCells += consumed;

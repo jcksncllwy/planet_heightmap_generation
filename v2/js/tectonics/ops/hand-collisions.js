@@ -58,6 +58,7 @@ export function handCollisions(world, from, to, others) {
         mine.contactMyr = Math.max(mine.contactMyr, rec.contactMyr);
         mine.frontMaxKm = Math.max(mine.frontMaxKm ?? 0, rec.frontMaxKm ?? 0, rec.frontKm);
         mine.lastActive = Math.max(mine.lastActive, rec.lastActive);
+        mine.pushNMyr = (mine.pushNMyr ?? 0) + (rec.pushNMyr ?? 0); mine.pushMyr = (mine.pushMyr ?? 0) + (rec.pushMyr ?? 0);   // (the force over both records: torque-balance.js collisionRootKm)
     }
     return handed;
 }
