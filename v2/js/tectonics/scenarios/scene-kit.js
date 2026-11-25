@@ -84,22 +84,27 @@ export function fillBackground(canvas, world, cfg) {
 }
 
 /**
- * Each scene plate's own ocean, aged as the floor of a plate whose ridge is its far passive edge: oldest at its trench,
- * younger away from it, 0 where the plate's ocean meets the pre-history ocean farthest from any trench. A scene's ocean
- * of one age (initialOceanAgeMyr) puts 0 Myr floor, opened behind a moving plate, against 150 Myr floor: a step of the
- * whole of the old floor's GPE that no ridge makes (forces.js ridgePushGpe). Distances are walked through the plate's own
- * ocean from its trench (its own trench cells, or those it faces on another plate); the age is the distance from the ridge
- * ÷ SCENE_SPREAD_KM_PER_MYR, capped at initialOceanAgeMyr. A plate with no passive edge to the pre-history ocean, or no
- * trench, keeps its ages. Call after fillBackground.
+ * Each scene plate's own ocean, aged as the floor of a plate whose ridge is its far edge: oldest at its trench, younger away
+ * from it, 0 at the ridge farthest from any trench. A scene's ocean of one age (initialOceanAgeMyr) puts 0 Myr floor, opened
+ * behind a moving plate, against 150 Myr floor: a step of the whole of the old floor's GPE that no ridge makes (forces.js
+ * ridgePushGpe). Distances are walked through the plate's own ocean from its trench (its own trench cells, or those it faces
+ * on another plate). The ridge is where the plate's ocean meets the pre-history ocean, which does not move, so the plate laid
+ * all its floor there at the whole spreading rate (SCENE_SPREAD_KM_PER_MYR) — or, for the pairs in `ridges` ([plateA, plateB]
+ * ids: two scene plates whose oceans meet at a spreading ridge), where it meets its partner's ocean: each side then got half
+ * the floor, at half the rate. A plate in such a pair with no trench is aged from that ridge alone. Ages are capped at
+ * initialOceanAgeMyr. A plate with neither a passive edge nor a trench keeps its ages. Call after fillBackground.
  */
-export function ageFromRidges(world, cfg) {
+export function ageFromRidges(world, cfg, ridges = []) {
     const { mesh, plates } = world, { numCells, adjOffset, adjList, edgeKm } = mesh, bg = plates.find(p => p.isBackground);
     const own = new Int32Array(numCells).fill(-1);
     for (const p of plates) for (let c = 0; c < numCells; c++) if (p.crust.mask[c]) own[c] = p.id;
     const trenchAt = c => own[c] >= 0 && (plates[own[c]].crust.flags[c] & CrustFlag.TRENCH) !== 0;
+    const partnerOf = new Map();
+    for (const [x, y] of ridges) { partnerOf.set(x, y); partnerOf.set(y, x); }
     for (const p of plates) {
         if (p.isBackground) continue;
-        const K = p.crust, ocean = c => own[c] === p.id && K.type[c] === CrustType.OCEAN;
+        const K = p.crust, ocean = c => own[c] === p.id && K.type[c] === CrustType.OCEAN, partner = partnerOf.get(p.id);
+        const atPartner = c => partner !== undefined && !trenchAt(c) && touches(mesh, c, nb => own[nb] === partner && plates[partner].crust.type[nb] === CrustType.OCEAN && !trenchAt(nb));
         const D = new Float64Array(numCells).fill(Infinity), queue = [];
         for (let c = 0; c < numCells; c++) {
             if (!ocean(c)) continue;
@@ -107,14 +112,27 @@ export function ageFromRidges(world, cfg) {
             for (let k = adjOffset[c]; !front && k < adjOffset[c + 1]; k++) { const nb = adjList[k]; front = own[nb] !== p.id && own[nb] !== bg?.id && trenchAt(nb); }
             if (front) { D[c] = 0; queue.push(c); }
         }
+        if (!queue.length && partner !== undefined) {                                      // no trench: aged from its ridge alone
+            for (let c = 0; c < numCells; c++) if (ocean(c) && atPartner(c)) { D[c] = 0; queue.push(c); }
+            walk(queue, D, ocean);
+            for (const c of queue) K.formedAt[c] = -Math.min(cfg.initialOceanAgeMyr, D[c] / (SCENE_SPREAD_KM_PER_MYR / 2));
+            continue;
+        }
+        walk(queue, D, ocean);
+        let ridgeKm = -1, rate = SCENE_SPREAD_KM_PER_MYR;
+        for (const c of queue) {
+            if (trenchAt(c) || !(D[c] > ridgeKm)) continue;
+            if (atPartner(c)) { ridgeKm = D[c]; rate = SCENE_SPREAD_KM_PER_MYR / 2; }
+            else if (touches(mesh, c, nb => own[nb] === bg?.id)) { ridgeKm = D[c]; rate = SCENE_SPREAD_KM_PER_MYR; }
+        }
+        if (!(ridgeKm > 0)) continue;
+        for (const c of queue) K.formedAt[c] = -Math.min(cfg.initialOceanAgeMyr, Math.max(0, ridgeKm - D[c]) / rate);
+    }
+    function walk(queue, D, ocean) {
         for (let i = 0; i < queue.length; i++) {
             const c = queue[i];
             for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (ocean(nb) && D[nb] === Infinity) { D[nb] = D[c] + edgeKm; queue.push(nb); } }
         }
-        let ridgeKm = -1;
-        for (const c of queue) if (!trenchAt(c) && touches(mesh, c, nb => own[nb] === bg?.id)) ridgeKm = Math.max(ridgeKm, D[c]);
-        if (!(ridgeKm > 0)) continue;
-        for (const c of queue) K.formedAt[c] = -Math.min(cfg.initialOceanAgeMyr, Math.max(0, ridgeKm - D[c]) / SCENE_SPREAD_KM_PER_MYR);
     }
 }
 /** The rate a scene plate's ocean was laid at by its ridge: the full spreading rate of Earth's ridges on average, ~3.4 km²/yr

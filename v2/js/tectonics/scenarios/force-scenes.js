@@ -95,8 +95,17 @@ export const FORCE_SCENES = [
                 const along = Math.atan2(dot(cross(a, p), axis), dot(a, p));                                         // angle travelled from India toward Asia
                 return off < 1700 && along > 0 && along < span;
             }, -90);
+            // India's ridge has a partner that moves (lane gpelock, sessrumnir's ruling 2026-11-25): a southern plate, a continent
+            // with its own ocean out to India's, the two meeting at a spreading ridge south of India, as the Antarctic and African
+            // plates are India's on Earth. Against the pre-history ocean, which does not move, the ridge laid all its floor on
+            // India's side: India's plate grew behind it at its whole speed (1293 → 3455 cells of ocean in 130 Myr). The southern
+            // plate moves under its own forces (no trench of its own: ridge push, its drag and the mantle's)
+            const south = world.addPlate('Antarctica');
+            const southLand = addContinent(canvas, noise, { plate: south, centre: [-75, 72], radiusKm: 2000 });
+            const reach = Math.acos(dot(southLand.centre, a)) * PLANET_RADIUS_KM - 1500 + 2 * simMesh.edgeKm;      // out to India's ocean
+            addOcean(canvas, south, (x, y, z) => Math.acos(Math.max(-1, Math.min(1, x * southLand.centre[0] + y * southLand.centre[1] + z * southLand.centre[2]))) * PLANET_RADIUS_KM < reach, -90);
             fillBackground(canvas, world, world.config);
-            ageFromRidges(world, world.config);
+            ageFromRidges(world, world.config, [[india.id, south.id]]);
             return world;
         },
     },
