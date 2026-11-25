@@ -268,12 +268,12 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
         uv.setFloat32(16, (P.slideB ?? 0) * P.rhoIce * P.g, true); uv.setFloat32(20, (P.geoFlux ?? 0) / (P.kIce ?? 1), true); uv.setFloat32(24, P.kappaIce ?? 1, true); uv.setFloat32(28, P.pmpKPerM ?? 0, true);
         device.queue.writeBuffer(uniform, 0, ub); };
     const shared = [uniform, M.adjOffset, M.adjList, distB, forceB];
-    const g = (name, list) => device.createBindGroup({ layout: P_[name].getBindGroupLayout(0), entries: list.map((buffer, binding) => ({ binding, resource: { buffer } })) });
+    const g = (name, list) => device.createBindGroup({ layout: P_[name].getBindGroupLayout(0), entries: list.map((buffer, binding) => buffer && ({ binding, resource: { buffer } })).filter(Boolean) });
     const G = [0, 1].map(i => ({
         grad: g('grad', [...shared, Hb[i], G2]),
         rate: g('rate', [...shared, Hb[i], G2, rmax]),
         step: g('step', [...shared, Hb[i], G2, Hb[1 - i], booksB]),
-        speed: g('speed', [...shared, Hb[i], G2, speedB]),
+        speed: g('speed', [uniform, M.adjOffset, null, null, forceB, Hb[i], G2, speedB]),      // (it reads no faces: their bindings not in its layout)
     }));
     let cur = 0;
     const pass = (e, name) => { const p = e.beginComputePass(); p.setPipeline(P_[name]); p.setBindGroup(0, G[cur][name]); dispatch(p, n); p.end(); };

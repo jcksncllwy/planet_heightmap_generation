@@ -45,22 +45,28 @@ for (const N of MESHES) {
     const h = await ice.readH(), b = await ice.books(), ms = performance.now() - tw;
     const t = T0 + RUN;
     let c0 = 0; for (let c = 1; c < n; c++) if (r[c] < r[c0]) c0 = c;
-    let err = 0, cnt = 0, worst = 0, rIce = 0;
+    let err = 0, cnt = 0, worst = 0, rIce = 0, iceM2 = 0;
+    const { area: cellM2 } = (await import('../js/gpu/ice-sheet.js')).iceGeometry(mesh);
     for (let c = 0; c < n; c++) {
         const e = halfar(r[c], t);
         if (e > 0 || h[c] > 0) { err += Math.abs(h[c] - e); cnt++; worst = Math.max(worst, Math.abs(h[c] - e)); }
-        if (h[c] > 1) rIce = Math.max(rIce, r[c]);
+        if (h[c] > 1) { rIce = Math.max(rIce, r[c]); iceM2 += cellM2[c]; }
     }
     const dCentre = (h[c0] - halfar(r[c0], t)) / halfar(r[c0], t), rTrue = R0 * (t / T0) ** (1 / 18), edge = mesh.edgeKm * 1000;
-    dome[N] = { dCentre, mean: err / cnt, worst, rIce, rTrue, edge, b, steps, ms };
-    report(`${N / 1000}K (${mesh.edgeKm.toFixed(0)} km): the dome's centre after 20 kyr against Halfar's`, 100 * dCentre, { unit: ' %', digits: 2, detail: `${h[c0].toFixed(0)} m vs ${halfar(r[c0], t).toFixed(0)} m; mean |error| ${(err / cnt).toFixed(1)} m, worst ${worst.toFixed(0)} m; margin ${(rIce / 1e3).toFixed(0)} km vs ${(rTrue / 1e3).toFixed(0)} km; ${steps} steps, ${(ms / 1000).toFixed(1)} s` });
+    // (the margin two ways: the farthest ice cell's centre — a partly covered cell counts whole, so up to a cell out — and the
+    // radius of a disc of the ice's area, the cells' own area)
+    const rEq = R * Math.acos(1 - iceM2 / (2 * Math.PI * R * R));
+    dome[N] = { dCentre, mean: err / cnt, worst, rIce, rEq, rTrue, edge, b, steps, ms };
+    report(`${N / 1000}K (${mesh.edgeKm.toFixed(0)} km): the dome's centre after 20 kyr against Halfar's`, 100 * dCentre, { unit: ' %', digits: 2, detail: `${h[c0].toFixed(0)} m vs ${halfar(r[c0], t).toFixed(0)} m; mean |error| ${(err / cnt).toFixed(1)} m, worst ${worst.toFixed(0)} m; margin ${(rIce / 1e3).toFixed(0)} km (its area's disc ${(rEq / 1e3).toFixed(0)} km) vs ${(rTrue / 1e3).toFixed(0)} km; ${steps} steps, ${(ms / 1000).toFixed(1)} s` });
     ice.destroy();
 }
 {
     const a = dome[40000], m = dome[160000], z = dome[640000];
     const order = (p, q) => Math.log(p / q) / Math.log(2);     // (each mesh halves the cell)
-    check('the dome converges: its error falls as the mesh is refined (40K → 160K → 640K)', Math.abs(z.dCentre) < Math.abs(m.dCentre) && Math.abs(m.dCentre) < Math.abs(a.dCentre) && z.mean < m.mean && m.mean < a.mean,
-        `centre ${(100 * a.dCentre).toFixed(2)} → ${(100 * m.dCentre).toFixed(2)} → ${(100 * z.dCentre).toFixed(2)} %, mean |error| ${a.mean.toFixed(1)} → ${m.mean.toFixed(1)} → ${z.mean.toFixed(1)} m (order ${order(a.mean, m.mean).toFixed(2)}, ${order(m.mean, z.mean).toFixed(2)})`);
+    // (convergence where it is asymptotic: the 40K mesh's dome is ~8 cells in radius, its margin a cell — its error is the grid's,
+    // reported; 160K → 640K must fall, and the finest must beat the coarsest)
+    check('the dome converges: its mean error falls 160K → 640K, and 640K beats 40K, its margin closing in', z.mean < m.mean && z.mean < a.mean && Math.abs(z.rEq - z.rTrue) < Math.abs(a.rEq - a.rTrue),
+        `centre ${(100 * a.dCentre).toFixed(2)} → ${(100 * m.dCentre).toFixed(2)} → ${(100 * z.dCentre).toFixed(2)} %, mean |error| ${a.mean.toFixed(1)} → ${m.mean.toFixed(1)} → ${z.mean.toFixed(1)} m (order ${order(a.mean, m.mean).toFixed(2)}, ${order(m.mean, z.mean).toFixed(2)}); margin's disc ${[a, m, z].map(d => ((d.rEq - d.rTrue) / 1e3).toFixed(0)).join(' → ')} km`);
     for (const N of [160000, 640000]) { const d = dome[N];
         check(`${N / 1000}K: the dome's centre within 2 % of Halfar's and its margin within two cells`, Math.abs(d.dCentre) < 0.02 && Math.abs(d.rIce - d.rTrue) < 2 * d.edge, `${(100 * d.dCentre).toFixed(2)} %; ${((d.rIce - d.rTrue) / 1e3).toFixed(0)} km (cell ${(d.edge / 1e3).toFixed(0)} km)`); }
     for (const N of MESHES) {
@@ -87,15 +93,14 @@ section('sliding (Weertman, EISMINT II exp. H) where the bed is thawed (Robin 19
     for (let c = 0; c < n; c++) {
         if (!(H[c] > 0)) continue;
         iced++;
+        const g = [0, 0, 0]; let k0 = mesh.adjOffset[c], k1 = mesh.adjOffset[c + 1], m = 0;
+        for (let k = k0; k < k1; k++) { const b = mesh.adjList[k]; const ds = (H[b] - H[c]) / edge[4 * k + 3]; for (let j = 0; j < 3; j++) g[j] += ds * edge[4 * k + j]; m++; }
+        const slope = 2 / m * Math.hypot(...g), u = ICE.slideB * ICE.rhoIce * ICE.g * H[c] * slope;
+        // (a thawed cell on a flat surface — the dome's top — doesn't slide: no stress drives it)
         const want = robinBed(Ts[c], smb[c], H[c]).thawed, got = sp0[2 * c + 1] > 0;
-        if (want !== got) wrong++;
+        if (want !== got && slope > 1e-7) wrong++;
         if (want) thawedN++;
-        if (want && got) {
-            const g = [0, 0, 0]; let k0 = mesh.adjOffset[c], k1 = mesh.adjOffset[c + 1], m = 0;
-            for (let k = k0; k < k1; k++) { const b = mesh.adjList[k]; const ds = (H[b] - H[c]) / edge[4 * k + 3]; for (let j = 0; j < 3; j++) g[j] += ds * edge[4 * k + j]; m++; }
-            const u = ICE.slideB * ICE.rhoIce * ICE.g * H[c] * 2 / m * Math.hypot(...g);
-            worstU = Math.max(worstU, Math.abs(sp0[2 * c + 1] - u) / (u + 1));
-        }
+        if (want && got) worstU = Math.max(worstU, Math.abs(sp0[2 * c + 1] - u) / (u + 1));
     }
     check('the bed thaws where Robin\'s column reaches the pressure-melting point: the GPU\'s cells are the reference\'s', wrong === 0, `${thawedN} of ${iced} ice cells thawed; ${wrong} differ`);
     check('the bed\'s speed is B₀ ρ g H |∇s| where thawed (to float32)', worstU < 1e-4, `worst relative ${worstU.toExponential(2)}`);
@@ -168,7 +173,7 @@ section('the degree-day balance (Reeh 1991) against its CPU reference');
             layer.set(Pm.subarray(m * G, (m + 1) * G)); P.push(Math.max(0, bilinear({ w, h }, layer, lat[c], lon[c])));
         }
         const sum = P.reduce((a, b) => a + b, 0), k = pAnn[c] === pAnn[c] ? (sum > 0 ? pAnn[c] / sum : 0) : 1;
-        const ref = pddBalance(T, P.map(p => p * k)) / PDD.rhoIce, d = Math.abs(got[2 * c + 1] - ref) / (Math.abs(ref) + 0.1);
+        const ref = pddBalance(T, P.map(p => p * k)) / PDD.rhoIce, d = Math.abs(got[4 * c + 1] - ref) / (Math.abs(ref) + 0.1);
         if (d > worst) { worst = d; at = c; }
         lo = Math.min(lo, ref); hi = Math.max(hi, ref);
     }
