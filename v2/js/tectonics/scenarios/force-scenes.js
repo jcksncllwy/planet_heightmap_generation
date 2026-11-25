@@ -73,8 +73,8 @@ export const FORCE_SCENES = [
     },
     {
         id: 'india', label: 'India: a subducting ocean plate', maxMyr: 70, view: [5, 72],
-        about: '“Asia” is a big continent with a trench along its south coast. “India” is a small continent on a plate that is mostly ocean, and that ocean is going down Asia’s trench: slab pull acts on India’s own plate, so it should race north at subducting-ocean speeds (8–20 cm/yr), several times faster than any suction-driven continent. Its ocean is aged from a ridge on India’s far side, so ridge push joins slab pull. When the two landmasses meet they press on: here, forces alone, nothing thickens and nothing breaks off, so the collision’s resistance (bounded by the thickened belt’s weight) stays small and India ploughs on — the slowdown needs the belt (Phase 7c’s India).',
-        expect: { India: ['subducting', 'colliding'], Asia: ['active', 'colliding'], Antarctica: ['passive', 'active'] },   // Antarctica, pushed off the ridge into the old ocean, overrides it (as Far does)
+        about: '“Asia” is a big continent with a trench along its south coast. “India” is a small continent on a plate that is mostly ocean, and that ocean is going down Asia’s trench: slab pull acts on India’s own plate, so it should race north at subducting-ocean speeds (8–20 cm/yr), several times faster than any suction-driven continent. Its ocean is aged from a ridge on India’s far side, so ridge push joins slab pull. India’s neighbours move too, under their own forces, laid out as Earth’s were ~55 Ma: “Antarctica” across that ridge, “Africa” to the west and “Australia” to the east across transforms — their oceans go down Asia’s trench as well, and later they reach Asia. When the two landmasses meet they press on: here, forces alone, nothing thickens and nothing breaks off, so the collision’s resistance (bounded by the thickened belt’s weight) stays small and India ploughs on — the slowdown needs the belt (Phase 7c’s India).',
+        expect: { India: ['subducting', 'colliding'], Asia: ['active', 'colliding'], Antarctica: ['passive', 'active'], Africa: ['passive', 'subducting'], Australia: ['passive', 'subducting'] },   // (their oceans go down Asia's trench, as the Neo-Tethys under Eurasia and Sunda)   // Antarctica, pushed off the ridge into the old ocean, overrides it (as Far does)
         checklist: [
             'India — whose own ocean floor is going down Asia’s trench — is several times faster than any suction-driven continent (yellow slab-pull arrow), in WBP’s 8–20 cm/yr band.',
             'Its speed is set by the balance of slab pull against the mantle’s resistance to the sinking slab, not by a speed cap.',
@@ -104,8 +104,28 @@ export const FORCE_SCENES = [
             const southLand = addContinent(canvas, noise, { plate: south, centre: [-75, 72], radiusKm: 2000 });
             const reach = Math.acos(dot(southLand.centre, a)) * PLANET_RADIUS_KM - 1500 + 2 * simMesh.edgeKm;      // out to India's ocean
             addOcean(canvas, south, (x, y, z) => Math.acos(Math.max(-1, Math.min(1, x * southLand.centre[0] + y * southLand.centre[1] + z * southLand.centre[2]))) * PLANET_RADIUS_KM < reach, -90);
+            // India's flanks have moving neighbours too, across transforms, as on Earth in the early Eocene: Africa (with Somalia)
+            // to the west across the Owen–Chain fracture zones, Australia to the east across the Ninetyeast Ridge; each ocean
+            // spread from its own ridge with Antarctica (the Southwest and Southeast Indian Ridges). (Recalled, not re-read:
+            // Patriat & Achache 1984, Nature 311, and the ~55 Ma arrangement of GPlates' reconstructions, Müller et al. 2016;
+            // the continents' sizes are Earth's areas, Africa ~30, Australia ~7.7 Mkm² (recalled), placed beside this scene's
+            // India as they lay beside Earth's, not to hit any speed.) Against the pre-history ocean, which does not move, any drift of India's opened a
+            // ridge along a whole flank, whose young floor's GPE pushed it on the way it drifted (lane gpelock 2026-11-25)
+            const flank = (name, centre, radiusKm) => {
+                const plate = world.addPlate(name), land = addContinent(canvas, noise, { plate, centre, radiusKm });
+                const side = Math.sign(dot(land.centre, axis)), farKm = Math.abs(Math.asin(dot(land.centre, axis))) * PLANET_RADIUS_KM;
+                addOcean(canvas, plate, (x, y, z) => {
+                    const p = [x, y, z], d = dot(p, axis);
+                    if (Math.acos(Math.max(-1, Math.min(1, dot(p, land.centre)))) * PLANET_RADIUS_KM < radiusKm + 800) return true;
+                    if (Math.sign(d) !== side || Math.abs(Math.asin(Math.max(-1, Math.min(1, d)))) * PLANET_RADIUS_KM > farKm) return false;
+                    const along = Math.atan2(dot(cross(a, p), axis), dot(a, p));
+                    return along > -2000 / PLANET_RADIUS_KM && along < span;
+                }, -90);
+                return plate;
+            };
+            const africa = flank('Africa', [0, 12], 3100), australia = flank('Australia', [-42, 122], 1600);
             fillBackground(canvas, world, world.config);
-            ageFromRidges(world, world.config, [[india.id, south.id]]);
+            ageFromRidges(world, world.config, [[india.id, south.id], [africa.id, south.id], [australia.id, south.id]]);
             return world;
         },
     },

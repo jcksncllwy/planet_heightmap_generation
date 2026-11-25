@@ -90,7 +90,7 @@ export function fillBackground(canvas, world, cfg) {
  * ridgePushGpe). Distances are walked through the plate's own ocean from its trench (its own trench cells, or those it faces
  * on another plate). The ridge is where the plate's ocean meets the pre-history ocean, which does not move, so the plate laid
  * all its floor there at the whole spreading rate (SCENE_SPREAD_KM_PER_MYR) — or, for the pairs in `ridges` ([plateA, plateB]
- * ids: two scene plates whose oceans meet at a spreading ridge), where it meets its partner's ocean: each side then got half
+ * ids: two scene plates whose oceans meet at a spreading ridge; a plate may have several), where it meets a partner's ocean: each side then got half
  * the floor, at half the rate. A plate in such a pair is aged from that ridge alone, trench or not: its floor's age is its
  * distance from the ridge at half the rate, walked across the plate's own crust (ocean and continent alike, so a continent
  * riding on the plate does not bend the isochrons around it), and its isochrons lie along the ridge, not along whatever trench
@@ -104,12 +104,12 @@ export function ageFromRidges(world, cfg, ridges = []) {
     const own = new Int32Array(numCells).fill(-1);
     for (const p of plates) for (let c = 0; c < numCells; c++) if (p.crust.mask[c]) own[c] = p.id;
     const trenchAt = c => own[c] >= 0 && (plates[own[c]].crust.flags[c] & CrustFlag.TRENCH) !== 0;
-    const partnerOf = new Map();
-    for (const [x, y] of ridges) { partnerOf.set(x, y); partnerOf.set(y, x); }
+    const partnerOf = new Map();                                                           // plate id → its ridge partners' ids
+    for (const [x, y] of ridges) for (const [u, v] of [[x, y], [y, x]]) (partnerOf.get(u) ?? partnerOf.set(u, new Set()).get(u)).add(v);
     for (const p of plates) {
         if (p.isBackground) continue;
         const K = p.crust, ocean = c => own[c] === p.id && K.type[c] === CrustType.OCEAN, partner = partnerOf.get(p.id);
-        const atPartner = c => partner !== undefined && !trenchAt(c) && touches(mesh, c, nb => own[nb] === partner && plates[partner].crust.type[nb] === CrustType.OCEAN && !trenchAt(nb));
+        const atPartner = c => partner !== undefined && !trenchAt(c) && touches(mesh, c, nb => partner.has(own[nb]) && plates[own[nb]].crust.type[nb] === CrustType.OCEAN && !trenchAt(nb));
         const D = new Float64Array(numCells).fill(Infinity), queue = [];
         if (partner !== undefined) {                                                        // aged from its ridge alone
             for (let c = 0; c < numCells; c++) if (ocean(c) && atPartner(c)) { D[c] = 0; queue.push(c); }
