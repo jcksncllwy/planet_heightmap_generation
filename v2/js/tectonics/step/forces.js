@@ -154,7 +154,7 @@ export function gatherLoads(world) {
     }
     for (const p of plates) if (loadOf[p.id]) riftHinge(world, p, loadOf[p.id]);
     ridgePushGpe(world, loadOf, cellTorque);
-    if (config.collisionSlabPull) hangingSlabPull(world, loadOf, cellTorque);
+    hangingSlabPull(world, loadOf, cellTorque);
     if (config.swellPush) swellPush(world, loadOf, cellTorque);
     return loads;
 }
@@ -336,9 +336,9 @@ function swellForce(w, S, scale, T, adjOffset, adjList, out) {
 }
 
 /**
- * (config.collisionSlabPull) The slab still hanging under a collision front keeps pulling the lower plate in, net of the
- * buoyancy of its continental crust that has gone down after it, until the slab breaks off. Without it the model drops the
- * pull the moment land reaches the trench (a boundary cell of land on land is a contact, not a trench).
+ * The slab still hanging under a collision front keeps pulling the lower plate in, net of the buoyancy of its continental crust
+ * that has gone down after it, until the slab breaks off. Without it the model drops the pull the moment land reaches the
+ * trench (a boundary cell of land on land is a contact, not a trench).
  *   net pull per metre = slabPull × s × (1 − F_b ⁄ (F_slab × s)),  s = age factor × slab maturity,  F_b = (ρa − ρc) g h_c L
  * F_slab: an old, full slab's gross negative buoyancy, collisionSlabGrossNPerM (England & Wortel 1980; the force unit is the
  * ~20 % of it the plate feels: config forceUnitNPerM), scaled like the trench's own pull by the slab's age and length at
@@ -351,35 +351,34 @@ function swellForce(w, S, scale, T, adjOffset, adjList, out) {
  * al. 2003; Hetényi et al. 2007 find India's lower crust eclogitised under southern Tibet — but late, where it reaches its
  * deepest, the reaction held back by its kinetics: so the cap at the equilibrium depth leaves the most net pull it can). Down a slab dipping at
  * collisionSlabDipDeg that is L ≤ z_ecl ⁄ sin dip, so a slab that outweighs that much crust keeps a net pull (Capitanio et
- * al. 2010: Greater India's attached slab drove its convergence on long after contact) — without the cap the crust of any
- * collision cancelled any slab after ~175 km of it had gone down, within a few Myr of contact (lane slab).
- * Break-off is the slab's own: once land stalls it, the slab hangs in the mantle and is warmed through from both faces;
- * when the core that carries its weight (colder than slabCoreTempShare of the mantle's temperature) is gone it necks and
- * breaks (Davies & von Blanckenburg 1995: whether and where a slab breaks is set by its temperature; Duretz, Gerya & May 2011). The core of a plate of age A is z = 2√(κA) erf⁻¹(θ) thick
- * (the half-space cooling profile); conduction from both faces warms its middle past θ in z² ⁄ (π² κ) ln(4(1 − θ⁄2) ⁄ π(1 − θ))
- * (the slab's first mode, its mean start at θ⁄2) — so t_b = A × 4 erf⁻¹(θ)² ⁄ π² × ln(…): κ cancels, an old slab holds on
- * longer than a young one, as van Hunen & Allen (2011) find (old slabs 20–25 Myr after contact, young ~10; not fitted
- * here: the warming alone gives ~0.115 A, README "The hanging slab"). Acts on the lower plate only, across the front toward the upper, split evenly over the pair's
- * contact cells by their share of the front (as torque-balance.js gpeLock). Limits: one slab per collision, its age and
- * length read once, at the first step seen; break-off from first contact, not from when the slab stalled; the necking's
- * own runaway (its strain rate) is not drawn, only the warming that allows it; the detached slab's flow (step/slab-conveyor
- * on the drive branch) is not added.
+ * al. 2010: Greater India's attached slab drove its convergence on long after contact).
+ * Break-off is the neck's: the slab's weight pulls down and the buoyant crust it has dragged in holds it up, so the neck
+ * between them carries the lesser of the two, T = min(s F_slab, F_b), and it fails once T reaches the integrated strength of
+ * lithosphere, collisionStrengthNPerM (Davies & von Blanckenburg 1995: break-off where "the change in force could exceed the
+ * integrated strength"; the strength 10¹³ N/m, Porth 2000). An old slab (s F_slab > 10¹³) breaks once ~82 km of crust has
+ * gone down after it, a few Myr after contact; a slab too young or too short to weigh 10¹³ never breaks this way, and its
+ * pull is cancelled by the crust instead. From then on (rec.slabBrokenAt) the front's slab pulls nothing. (Was, until lane
+ * gpelock 2026-11-25: off unless config.collisionSlabPull, and broken by a thermal timer, ~0.115 × the slab's age after
+ * contact, slabCoreTempShare.) Acts on the lower plate only, across the front toward the upper, split evenly over the pair's
+ * contact cells. Limits: one slab per collision, its age and length read once, at the first step seen; no lateral tear: the
+ * ocean still going down beside the front (the flanks' trenches, Sunda's and Makran's on Earth) keeps pulling as any trench
+ * does, along its own normal; the detached slab's flow is not added.
  */
 function hangingSlabPull(world, loadOf, cellTorque) {
     const { config, collisions, time, mesh } = world, H = heightsOf(config);
     const rc = H.riftCrustRho, ra = H.riftMantleRho * (1 - H.riftExpansion * H.riftMantleC), hc = H.riftCrustKm * 1000;
     const buoyantMaxM = config.collisionEclogiteKm * 1000 / Math.sin(config.collisionSlabDipDeg * Math.PI / 180);
-    const perAge = breakoffPerAgeMyr(config.slabCoreTempShare);
     for (const rec of collisions?.values() ?? []) {
         const load = loadOf[rec.lower], after = time - rec.startedAt;
-        if (!load || rec.sutured || !(after >= 0) || !(rec.frontKm > 0)) continue;
+        if (!load || rec.sutured || rec.slabBrokenAt !== undefined || !(after >= 0) || !(rec.frontKm > 0)) continue;
         const cs = load.contacts.filter(c => c.other === rec.upper);
         if (!cs.length) continue;
         if (rec.slabAgeMyr === undefined) slabAtContact(world, rec, cs);
-        if (after >= perAge * rec.slabAgeMyr) continue;                                     // broken off
         const s = Math.sqrt(Math.min(1, rec.slabAgeMyr / config.slabPullAgeRefMyr)) * Math.min(1, rec.slabKm / config.slabMatureKm);
         const enteredM = Math.min(buoyantMaxM, (rec.underthrustCells ?? 0) * mesh.cellAreaKm2 / rec.frontKm * 1000);
-        const net = s - (ra - rc) * 9.81 * hc * enteredM / config.collisionSlabGrossNPerM;
+        const buoyancy = (ra - rc) * 9.81 * hc * enteredM;
+        if (Math.min(s * config.collisionSlabGrossNPerM, buoyancy) >= config.collisionStrengthNPerM) { rec.slabBrokenAt = time; continue; }   // the neck fails
+        const net = s - buoyancy / config.collisionSlabGrossNPerM;
         if (!(net > 0)) continue;
         const f = config.slabPull * net * Math.max(rec.frontKm, mesh.edgeKm) / 100 / cs.length;
         for (const { w, r, n } of cs) {
@@ -410,18 +409,6 @@ function slabAtContact(world, rec, cs) {
     }
     rec.slabAgeMyr = ages ? ageSum / ages : config.slabPullAgeRefMyr;
     rec.slabKm = slab > 0 ? slab : config.slabMatureKm;
-}
-
-/**
- * Break-off time per Myr of slab age (hangingSlabPull): 4 erf⁻¹(θ)² ⁄ π² × ln(4(1 − θ⁄2) ⁄ π(1 − θ)). erf by its Taylor
- * series and erf⁻¹ by bisection — sums and products only, the same last digit in every JavaScript engine.
- */
-function breakoffPerAgeMyr(theta) {
-    const erf = x => { let term = x, sum = x; for (let n = 1; n < 60; n++) { term *= -x * x / n; sum += term / (2 * n + 1); } return sum * 2 / Math.sqrt(Math.PI); };
-    let lo = 0, hi = 3;
-    for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (erf(mid) < theta) lo = mid; else hi = mid; }
-    const z = (lo + hi) / 2;
-    return 4 * z * z / (Math.PI * Math.PI) * Math.log(4 * (1 - theta / 2) / (Math.PI * (1 - theta)));
 }
 
 /**

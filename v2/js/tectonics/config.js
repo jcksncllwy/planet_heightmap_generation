@@ -98,17 +98,11 @@ export const TECTONICS = {
     // (ridge push is the ocean lithosphere's own GPE by age, from GDH1's plate — step/forces.js ridgePushGpe; was ridgePush 0.25,
     // a constant at young-on-young contacts. The collision lock is a friction capped by the belt's GPE — torque-balance.js
     // lockContacts; was collisionResistance 100, a viscosity per 10⁴ km² of overlap, and cratonLockFactor 4. Lane gpelock)
-    collisionSlabPull: false,   // (lane upper, opt-in) the slab hanging under a collision front keeps pulling the lower plate in, net of the buoyancy
-                                // of its continental crust gone down after it (Cloos 1993) above the eclogite depth, until the slab breaks off as it warms through (step/forces.js hangingSlabPull).
-                                // Off: it brings no whole-model collision into Earth's range (README, lane belts5)
+    // The slab hanging under a collision front keeps pulling the lower plate in, net of the buoyancy of its continental crust
+    // gone down after it (Cloos 1993) above the eclogite depth, until the neck between them fails at collisionStrengthNPerM
+    // (step/forces.js hangingSlabPull; was opt-in collisionSlabPull, broken by a thermal timer slabCoreTempShare: lane gpelock)
     collisionSlabGrossNPerM: 3e13, // …the slab's gross negative buoyancy, N/m, that the crust's buoyancy is set against (England & Wortel 1980: up to ~3 × 10¹³;
                                 // the force unit is the ~20 % of it the plate feels — forceUnitNPerM)
-    slabCoreTempShare: 0.6,     // …and breaks off once the mantle has warmed through the core that carries its weight: the lithosphere colder than this
-                                // share of the mantle's temperature, ~800 °C of 1350 (olivine's strength falls away at ~700–800 °C at a
-                                // plate's strain rates: Goetze & Evans 1979, the isotherm as Kirby 1987 reads it; the 1350 °C mantle of
-                                // Parsons & Sclater 1977). A slab of age A breaks ~0.115 A after contact (step/forces.js hangingSlabPull):
-                                // 9 Myr for an 80-Myr slab, 16 for India's scene's ~140 — the warming alone; van Hunen & Allen 2011 find
-                                // 20–25 Myr for old slabs (~10 for young), the neck's own runaway included, which is not drawn. Not fitted
     collisionEclogiteKm: 60,    // …and the crust dragged down after it is buoyant only above this depth: below, its mafic lower half is eclogite
                                 // (3.1–3.6 g/cm³: Austrheim 1991, Terra Nova; Holsnøy's lower-crust eclogites formed at ≥ 1.46 GPa, > 55 km),
                                 // ~6 % denser than the mantle (Hacker, Abers & Peacock 2003); India's under southern Tibet (Hetényi et al. 2007)
