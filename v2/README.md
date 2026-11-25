@@ -1539,9 +1539,20 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
     plateau's GPE cut through its upper plate: seed 2, 262–318 Myr, lost 63 % of the upper plate's land.
   - *Bug check, the Argand number* (gρc(1−ρc⁄ρm)L ⁄ (B (u0⁄L)^{1⁄n}), L the lithosphere's thickness): 1.5 at the model's
     n = 1, inside England & Houseman's 1–3 for Asia; 7–9 if η is read as a power-law (n = 3) B at Tibet's strain rate.
-  - *India* (terrain scene, with a moving ridge partner, "Antarctica"): 2,181 km and 2.6 cm/yr 50 Myr after contact. Earth:
-    2,400–3,200 km and ~4 cm/yr. Asia keeps 95 % of its land; India slides off Asia's western flank ~60–80 Myr after
-    contact.
+  - *India's scene has moving neighbours* (`force-scenes.js` 'india', and the budget and terrain scenes built on it), laid
+    out as Earth's ~55 Ma (recalled: Patriat & Achache 1984; GPlates, Müller et al. 2016). "Antarctica" lies across India's
+    ridge, "Africa" to the west and "Australia" to the east across transforms; each ocean is aged from its own ridge
+    (`ageFromRidges`). Against the static pre-history ocean, any drift of India's opened a ridge along a whole flank, and
+    its young floor's GPE pushed India further the same way, up to 5 cm/yr west: India met Asia's corner and slid off it.
+    With the neighbours it heads straight in (−1.0 cm/yr along the front at contact). The neighbours collide too
+    (Australia–India, Africa–Asia, Australia–Asia, ~50 Myr after India, as Arabia and Sunda did), so the India checks read
+    the pair (`tools/lib/india-pair.mjs`).
+  - *India in Phase 5* (3 seeds): welds stalled at 97 and 122 Myr (838 and 769 km of shortening; Earth 2,400–3,200 km).
+    On seed 12345 it stalls at 104–120 Myr, then Australia welds onto India and drives the pair into Asia at 0.5–0.7 cm/yr,
+    still converging at 170 Myr (Earth's India still converges ~4 cm/yr). Named gaps: the weld's redraw duplicates land
+    at the indenter's ends (`merge-plates.js` inverse warp, +1.1 % land at the weld); crust thickened while the push was
+    high keeps its thickness when the push falls (no orogenic collapse), so it can stand over the collision's ceiling at
+    the weld (seed 2: 52.7 km against 24.1).
 - **The collision lock is a bounded force (lane belts, `collisionLockGpe`, opt-in, off by default).** A contact resists with the
   gravitational potential energy of the thickened crust, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²] per metre of front (5.7 × 10¹² N/m at
   Tibet's 35 km of extra crust; Copley et al. 2010). Δh is the larger of the thickest crust within two rings of the contact
