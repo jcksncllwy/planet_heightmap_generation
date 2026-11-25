@@ -19,6 +19,7 @@
 // transcendental and fused multiply-adds differ, so the finish's cache keys by app/history-key.js gpuFingerprint, which
 // runs both kernels.
 
+import { orbitAt } from '../climate/planet-system.js';
 import { pipeline, storage, readBack, bind } from './gpu-device.js';
 import { dispatch, INDEX_WGSL, WG } from './fields.js';
 import { noiseWGSL, noiseTable, NOISE_TABLE } from './noise-wgsl.js';
@@ -276,8 +277,10 @@ export async function cellClimateGPU(device, res, xyz, elevKm, land, options = {
     u[0] = grid.w; u[1] = grid.h; u[2] = L;
     u[3] = (o.rainPerKm ? 1 : 0) | (noiseT ? 2 : 0) | (noiseP ? 4 : 0) | (want.stats ? 8 : 0);
     f.set([grid.step, o.lapseRateCPerKm, o.terrainRelief, o.rainRelief, o.rainPerKm || 0, tex?.tempC || 0, tex?.rain || 0, texScale], 4);
-    // (cell-stats.js dayHours' declination at each month's middle — the same in every cell, so its tangent here, in float64)
-    for (let m = 0; m < 12; m++) f[12 + m] = Math.tan(23.44 * DEG * Math.sin(2 * Math.PI * (15 + 30.44 * m - 81) / 365));
+    // (cell-stats.js dayHours' declination at each month's middle — the same in every cell, so its tangent here, in float64;
+    // the axis's tilt the planet's own, planet-system.js — the calendar circular, as dayHours': its day lengths only)
+    const tilt = orbitAt(o.system).obliquityDeg;
+    for (let m = 0; m < 12; m++) f[12 + m] = Math.tan(tilt * DEG * Math.sin(2 * Math.PI * (15 + 30.44 * m - 81) / 365));
 
     const { cells: pipe } = await pipesOf(device);
     const bufs = [uniform(device, params), storage(device, cellIn), storage(device, gridIn), storage(device, tables),

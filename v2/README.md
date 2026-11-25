@@ -3798,3 +3798,24 @@ is a bug check, not a target: where the code puts ice Earth never had, the mecha
   lane's analysis and the physical model proposed in their place: `lanes-2026-10-29/iceage/report.md`.
 - `render-moment --dump` also writes the ice age's extent (`glaciated.u8`) and its stats (`ice.json`), to measure coasts by
   ice cover.
+
+## The planet and its star (2026-11-25, lane iceage; Jackson: "a general planet-and-star system … default every value to Earth's")
+One object, `climate/planet-system.js` (`EARTH_SYSTEM`, `systemOf`), passed to the climate as `options.system` and read by
+the ice age next: the star's luminosity (L☉) and effective temperature, the orbit's mean distance (AU), eccentricity,
+obliquity and the star's longitude at perihelion, and the orbit's variations through time (`orbit.cycle`: a table of Berger
+1978's form; Earth's, `EARTH_CYCLE`, in `climate/berger1978.js` from CESM/E3SM's shr_orb_mod) at `epochKyr` before present.
+- **Sunlight:** S = 1361 W/m² · L / a², times (a/r)² through the year; Kepler's equation for where the planet is in each
+  month, the northern spring equinox held at its calendar date (`starCalendar`). It replaces the circular orbit and the
+  fixed tilt in `insolation.js`, `temperature.js` (its sunlight table, the air's stability, inversions and the wet tropics'
+  cooling), `rain.js` (convection's sunlight), `water.js` `monthPET`, and the cells' day lengths (`gpu/climate-cells.js`: the
+  tilt only). The history's basin estimate (`zonalPET`) keeps the circular orbit (a hemisphere-blind estimate).
+- **The star's colour:** the climate is gray, so the spectrum reaches it in one place: the snow's and the ice's broadband
+  albedo, bright in the visible and dark in the near-infrared — a red dwarf's light is absorbed by them far more (Shields et al.
+  2013 Table 2: snow × 0.65, bare ice × 0.32 under an M3.5; × 1.07 and × 1.27 under an F2; 1 under the Sun). Not reached: the
+  air's absorption, Rayleigh scattering, the sea's and the land's spectra.
+- **Earth's default now carries its real orbit** (e 0.0167, perihelion in early January) where the climate had a circular one.
+  On Earth's ground (160K) the global mean is unchanged (15.30 → 15.31 °C); the northern summer is cooler (July 60–75° N
+  −2.0 K, 75–90° N −2.4 K), the southern warmer, and the northern annual mean 0.12 K lower (the snow's longer summers at
+  high latitudes). The climate's constants were tuned on the circular orbit (2026-09-28).
+- **Checks:** `check-iceage-earth` hard-checks Berger 1978 against PMIP's orbits at 1950, 6 and 21 ka, e = 0 against the
+  circular orbit, Earth's perihelion, and the star's albedo factors.

@@ -28,7 +28,8 @@
 // RH is one constant, not the circulation's.
 
 import { LatLonGrid, coarsenField, refineField, refineForDrawing, fillAcross } from './grid.js';
-import { insolationTable, dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
+import { insolationTable, dailyInsolation, SOLAR_CONSTANT } from './insolation.js';
+import { starCalendar, albedoRatios } from './planet-system.js';
 import { solverOf } from './solver.js';
 import { PARAMS } from './config.js';
 import { tropicsWeight, gaussianSmooth } from './circulation.js';
@@ -67,7 +68,7 @@ const CLOUD_RAIN_MM = 100;                  // mm/month of rain at which land is
 const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean sunlight: below it, inversions form
 
 /**
- * The temperature stage. Options: { tiltDeg = 23.44 }.
+ * The temperature stage. Its star and orbit: ctx.options.system (planet-system.js; Earth's by default).
  * Returns stage(ctx, winds, init?) → { T (K anchors × G, °C at reference height), monthly (12 × G, same), monthlySL
  * (12 × G, sea level), iceFrac (G, share of the year a cell is snow- or ice-covered), state, timing }.
  * init: a previous run's `state` (same settings) to start from — used when temperature and winds are iterated
@@ -75,7 +76,7 @@ const WEAK_SUN = SOLAR_CONSTANT / 8;        // W/m² — half the planet's mean 
  * rain: monthly rain (12 × G, mm/month, core grid) from the rain stage, or null — then clouds shade rainy land and
  * leave dry land in full sun.
  */
-export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
+export function energyBalanceTemperature() {
     return function* (ctx, winds, init = null, qflux = null, rain = null, ocean = null) {
         const t0 = performance.now();
         const P = { ...PARAMS };
@@ -85,6 +86,11 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // more than a warming — on Earth −10 W/m² cools the planet ≈ 8 °C, +10 warms it ≈ 6 °C — and past −20 W/m² the
         // ice runs away: sea ice on a quarter of the sea at −20, nearly all of it at −28, a snowball at −30)
         P.TEMP_OLR_A -= ctx.options?.greenhouseWm2 ?? 0;
+        // (the planet's star and orbit — planet-system.js: the sunlight through the year from the orbit's eccentricity, tilt and
+        // perihelion, the star's luminosity and distance; and the star's colour on the snow's and the ice's albedo, bright in the
+        // visible and dark in the near-infrared: 1 under the Sun. Sea ice, snow-covered for much of its year, takes the two's mean)
+        const sun = starCalendar(ctx.options?.system), alb = albedoRatios(ctx.options?.system);
+        P.TEMP_ALBEDO_SNOW *= alb.snow; P.TEMP_ALBEDO_ICE *= alb.ice; P.TEMP_ALBEDO_SEA_ICE *= 0.5 * (alb.snow + alb.ice);
         const core = ctx.grid;
         const ratio = Math.round(P.TEMP_GRID_DEG / core.step);
         const g = ratio > 1 ? new LatLonGrid(core.step * ratio) : core;
@@ -157,7 +163,7 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         // surface's mean, and the snow replaced it — darker than the base poleward of ~45°: snow darkened the planet.)
         // What it skips: one layer; A fixed by latitude (no absorption by the warmer air's extra vapour); the sea's
         // brightness under a low sun; deserts' bright soil (snow-free land is one value and the variety noise).
-        const Q = insolationTable(g.lat, tiltDeg, NT);
+        const Q = insolationTable(g.lat, sun, NT);
         const albBase = new Float64Array(h), absorb = new Float64Array(h);
         for (let j = 0; j < h; j++) {
             const x = Math.sin(g.lat[j] * Math.PI / 180);
@@ -510,13 +516,13 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
         function startAir(t, airSolver, slot) {
             const { A: airA, Ai: airAi, rhs: airRhs, sig: airSig, u: airU, v: airV, theta: airTheta } = slot;
             const T = harmonicsAt(t, tmp);
-            const delta = declination(t, tiltDeg);
+            const star = sun.at(t), delta = star.declination;
             const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
             const day = 86400, sSea = 1 / (P.TEMP_AIR_SEA_DAYS * day);
             for (let j = 0; j < h; j++) {
                 // stable where the ground loses more heat than the sun gives it (winter poleward of ≈ 45°): below
                 // AIR_STABLE_SUN of daily sunlight, mixed above AIR_MIXED_SUN
-                const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
+                const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta, star.irradiance);
                 let x = (AIR_MIXED_SUN - q) / (AIR_MIXED_SUN - AIR_STABLE_SUN); x = x <= 0 ? 0 : x >= 1 ? 1 : x;
                 const dark = x * x * (3 - 2 * x), sLand = 1 / ((P.TEMP_AIR_SUN_DAYS + (P.TEMP_AIR_DARK_DAYS - P.TEMP_AIR_SUN_DAYS) * dark) * day);
                 for (let i = 0; i < w; i++) {
@@ -548,13 +554,13 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             return out;
         }
         const surfaceAt = (t, withInversion) => {
-            const delta = declination(t, tiltDeg);
+            const star = sun.at(t), delta = star.declination;
             const pos = t - 0.5, m0 = Math.floor(pos), fm = pos - m0, ma = ((m0 % 12) + 12) % 12, mb = (ma + 1) % 12;
             const U0sq = P.TEMP_INVERSION_WIND * P.TEMP_INVERSION_WIND;
             harmonicsAt(t, tmp);
             if (airSolver) airMass(t, tmp);
             for (let j = 0; j < h; j++) {
-                const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta);
+                const q = dailyInsolation(g.lat[j] * Math.PI / 180, delta, star.irradiance);
                 let x = 1 - q / WEAK_SUN; x = x <= 0 ? 0 : x >= 1 ? 1 : x;
                 const dark = x * x * (3 - 2 * x);
                 for (let i = 0; i < w; i++) {
@@ -632,11 +638,11 @@ export function energyBalanceTemperature({ tiltDeg = 23.44 } = {}) {
             const lf = ctx.surface.landFrac, N = core.size, cw = core.w, ch = core.h;
             const sunAt = new Float64Array(ch), belts = winds?.belts;
             const adjust = (out, off, t) => {
-                const delta = declination(t, tiltDeg);
+                const star = sun.at(t), delta = star.declination;
                 const pos = t - 0.5, m0 = Math.floor(pos), f = pos - m0, a = ((m0 % 12) + 12) % 12, b = (a + 1) % 12;
                 const bl = (key, def) => belts ? (1 - f) * belts[a][key] + f * belts[b][key] : def;
                 const itcz = bl('itcz', 0), hiN = bl('hiN', 30), hiS = bl('hiS', -30);
-                for (let j = 0; j < ch; j++) sunAt[j] = tropicsWeight(core.lat[j], itcz, hiN, hiS) * dailyInsolation(core.lat[j] * Math.PI / 180, delta) / WET_SUN_REF;
+                for (let j = 0; j < ch; j++) sunAt[j] = tropicsWeight(core.lat[j], itcz, hiN, hiS) * dailyInsolation(core.lat[j] * Math.PI / 180, delta, star.irradiance) / WET_SUN_REF;
                 for (let c = 0; c < N; c++) {
                     const s = sunAt[(c / cw) | 0];
                     if (!(lf[c] > 0) || s === 0) continue;

@@ -31,9 +31,28 @@ import { FINISH } from '../js/finish/finish-config.js';
 import { LatLonGrid } from '../js/finish/finish-grid.js';
 import { lastIceAge } from '../js/finish/finish-ice.js';
 import { bilinear } from '../js/finish/finish.js';
+import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios } from '../js/climate/planet-system.js';
+import { declination } from '../js/climate/insolation.js';
 
 setDelaunator(Delaunator);
 const F = FINISH, t0 = performance.now();
+
+// ── the planet and its star (planet-system.js): its orbit at three epochs against PMIP's (Otto-Bliesner et al. 2017 for
+// 6 ka, Kageyama et al. 2017 for 21 ka: e, ε, ϖ from Berger 1978), the circular orbit as e = 0, Earth's perihelion ──
+section('the planet and its star');
+{
+    const cyc = k => orbitAt({ ...EARTH_SYSTEM, orbit: { ...EARTH_SYSTEM.orbit, cycle: EARTH_CYCLE }, epochKyr: k });
+    const near = (o, e, ob, w) => Math.abs(o.eccentricity - e) < 2e-4 && Math.abs(o.obliquityDeg - ob) < 0.01 && Math.abs(((o.perihelionSunLonDeg - 180 - w + 540) % 360) - 180) < 0.2;
+    const o0 = cyc(0), o6 = cyc(6), o21 = cyc(21), fmt = o => `e ${o.eccentricity.toFixed(5)}, ${o.obliquityDeg.toFixed(3)}°, ϖ ${(o.perihelionSunLonDeg - 180).toFixed(2)}°`;
+    check('Berger 1978 at 1950, 6 ka and 21 ka: PMIP\'s orbits', near(o0, 0.016724, 23.446, 102.04) && near(o6, 0.018682, 24.105, 0.87) && near(o21, 0.018994, 22.949, 114.42), `${fmt(o0)} · ${fmt(o6)} · ${fmt(o21)}`);
+    const circ = starCalendar({ orbit: { eccentricity: 0 } });
+    let d = 0; for (let t = 0; t < 12; t += 0.13) d = Math.max(d, Math.abs(circ.at(t).declination - declination(t, 23.44)), Math.abs(circ.at(t).irradiance - 1361));
+    check('e = 0: the circular orbit exactly', d < 1e-9, `max difference ${d.toExponential(1)}`);
+    const cal = starCalendar(); let best = 0, tb = 0; for (let t = 0; t < 12; t += 0.01) { const q = cal.at(t).irradiance; if (q > best) { best = q; tb = t; } }
+    check('Earth: nearest the Sun in early January, 3.4 % above the mean', tb > 0 && tb < 0.3 && Math.abs(best / solarConstantOf() - (1 + 0.0167) ** 2 / (1 - 0.0167 ** 2) ** 2) < 1e-6, `t ${tb.toFixed(2)} months, ${best.toFixed(1)} W/m²`);
+    const r = albedoRatios(), m = albedoRatios({ star: { teffK: 3400 } });
+    check('the Sun leaves the snow\'s and the ice\'s albedo as they are; an M dwarf darkens them', r.snow === 1 && r.ice === 1 && m.snow < 0.7 && m.ice < 0.35, `M3.5: snow × ${m.snow.toFixed(2)}, ice × ${m.ice.toFixed(2)} (Shields et al. 2013)`);
+}
 const mesh = terrainMesh(EARTH_ICE_MESH), n = mesh.numCells, x = mesh.xyz, cellKm2 = 4 * Math.PI * 6371 ** 2 / n;
 const S = earthSurfaceKm(mesh, { terrain: true }), I6 = earthIce(mesh);
 section('inputs');

@@ -35,7 +35,8 @@ import { LatLonGrid, coarsenField, refineField } from './grid.js';
 import { solverOf } from './solver.js';
 import { atAnchors } from './inputs.js';
 import { PARAMS } from './config.js';
-import { dailyInsolation, declination, SOLAR_CONSTANT } from './insolation.js';
+import { dailyInsolation, SOLAR_CONSTANT } from './insolation.js';
+import { starCalendar } from './planet-system.js';
 import { gaussianSmooth } from './circulation.js';
 
 const R_PLANET = 6.371e6;
@@ -325,8 +326,8 @@ export function columnWaterRain() {
             carrier.setOperator(new Float64Array(G).fill(1 / STABLE_RELAX_S), zero, u, v, 1);
             yield carrier.solve(Sloc, zero, Sair, SairI, { maxCycles: P_.RAIN_CARRIER_CYCLES, tol: 1e-3 });
 
-            const delta = declination(ctx.anchorMonths[k] + 0.5, ctx.options.tiltDeg ?? 23.44);
-            const sun = Float64Array.from(g.lat, l => dailyInsolation(l * DEG, delta));
+            const star = starCalendar(ctx.options.system).at(ctx.anchorMonths[k] + 0.5);       // (planet-system.js)
+            const sun = Float64Array.from(g.lat, l => dailyInsolation(l * DEG, star.declination, star.irradiance));
             // land convection's share of full strength by the day's sunlight: none under a winter sun, full in the
             // tropics and the summer (CONVECT_SUN_LOW … CONVECT_SUN_FULL of daily sunlight at the top of the air)
             p.sunConv = Float64Array.from(sun, q => { const x = Math.min(1, Math.max(0, (q - CONVECT_SUN_LOW) / (CONVECT_SUN_FULL - CONVECT_SUN_LOW))); return x * x * (3 - 2 * x); });

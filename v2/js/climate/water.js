@@ -31,6 +31,7 @@
 // tuning/climate): its bucket sets how much the land evaporates back into the air, the ledger's only when.
 
 import { dailyInsolation, declination } from './insolation.js';
+import { starCalendar } from './planet-system.js';
 import { PARAMS } from './config.js';
 
 // Priestley–Taylor (1972): a wet surface evaporates α·Δ/(Δ + γ) of its net radiation, α = 1.26; the net radiation the
@@ -88,9 +89,13 @@ function pt(Q, T) {
 }
 
 /** Month m's (0 = January) potential evaporation (mm) at latitude latDeg and temperature T — pt at mid-month. */
-export function monthPET(latDeg, m, T, tiltDeg = 23.44) {
-    return pt(dailyInsolation(latDeg * Math.PI / 180, declination(m + 0.5, tiltDeg)), T);
+export function monthPET(latDeg, m, T, system = null) {
+    const star = starOf(system).at(m + 0.5);
+    return pt(dailyInsolation(latDeg * Math.PI / 180, star.declination, star.irradiance), T);
 }
+// (one star calendar per system object: planet-system.js)
+const calendars = new WeakMap(), EARTH_KEY = {};
+const starOf = s => { const k = s ?? EARTH_KEY; let c = calendars.get(k); if (!c) calendars.set(k, c = starCalendar(s)); return c; };
 
 /** zonalPET from a table (1° of latitude × 1 °C, −50…45 °C; bilinear) — built once per tilt: the basin estimate reads it
  *  for every cell of every frame. */
