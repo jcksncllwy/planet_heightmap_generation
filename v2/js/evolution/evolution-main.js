@@ -59,7 +59,7 @@ const SCENE = TERRAIN_SCENES.find(s => s.id === 'cycle');      // the start worl
 const SAVE_HISTORY = new URLSearchParams(location.search).get('save') !== '0';
 
 const $ = id => document.getElementById(id);
-const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), water: $('sWater'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
+const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), asm: $('sAsm'), water: $('sWater'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
     seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), statusText: $('buildStatusText'), pause: $('historyPause'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
     timeLabel: $('timeLabel'), rate: $('rate'), extend: $('extendBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
     railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), marks: $('detailMarks'), quality: $('quality'), world: $('worldSection'), tmp: $('sTmp'), prc: $('sPrc') };
@@ -72,8 +72,10 @@ const setIf = (el, v) => { if (v !== null && [...(el.options ?? [])].some(o => o
 // quantity, retired with the water inventory (lane sliders) — so it takes the defaults, Earth's)
 // (the Crust slider starts at the tectonics default — one source with the lab and the tools — not the markup's value)
 ui.cont.value = String(Math.round(TECTONICS.continentalFraction * 100));
+ui.asm.value = String(TECTONICS.startAssemblyMyr);              // (the Supercontinent Age slider likewise: tectonics/config.js)
 if (url.get('water')) ui.water.value = url.get('water');
 if (url.get('crust')) ui.cont.value = url.get('crust');
+if (url.get('asm')) ui.asm.value = url.get('asm');
 if (url.get('len')) ui.len.value = url.get('len');
 // (Greenhouse, W/m²; an older link's temp= was the same slider in °C steps of 1)
 if (url.get('greenhouse')) ui.tmp.value = url.get('greenhouse'); else if (url.get('temp')) ui.tmp.value = 2 * Number(url.get('temp'));
@@ -108,7 +110,7 @@ function tmpWords(t) { t = Number(t); return t ? `${t > 0 ? '+' : '−'}${Math.a
 function prcWords(v) { const p = Math.round(50 * Number(v)); return p ? `${p > 0 ? '+' : '−'}${Math.abs(p)}%` : '±0%'; }
 /** The World section's values, and its one-line summary (shown while it is folded). */
 function labels() {
-    $('vCont').textContent = `${ui.cont.value}%`; $('vWater').textContent = `${Number(ui.water.value).toFixed(2)}× Earth`; $('vLen').textContent = `${ui.len.value} Myr`;
+    $('vCont').textContent = `${ui.cont.value}%`; $('vAsm').textContent = `${ui.asm.value} Myr`; $('vWater').textContent = `${Number(ui.water.value).toFixed(2)}× Earth`; $('vLen').textContent = `${ui.len.value} Myr`;
     const t = Number(ui.tmp.value), p = Math.round(50 * Number(ui.prc.value));
     $('vTmp').textContent = tmpWords(t);
     $('vPrc').textContent = prcWords(ui.prc.value);
@@ -117,7 +119,7 @@ function labels() {
     // (the plates' resolution is the one setting a history cannot change: it waits for a build)
     $('worldPending').hidden = !B?.simCells || B.simCells === Number(ui.sim.value);
 }
-for (const el of [ui.cont, ui.water, ui.len, ui.seed, ui.tmp, ui.prc]) el.addEventListener('input', labels);
+for (const el of [ui.cont, ui.asm, ui.water, ui.len, ui.seed, ui.tmp, ui.prc]) el.addEventListener('input', labels);
 // (a new Temperature or Precipitation: the previews' climates are worked out again when shown; a detailed moment keeps
 // its old climate — its rivers, ice and Satellite were sculpted by it — until detail is added again)
 for (const el of [ui.tmp, ui.prc]) el.addEventListener('change', () => { saveUrl(); labels(); B?.player?.setClimateKey(climateKey()); dirty = true; updateClimateUi(); });
@@ -153,7 +155,7 @@ $('rebuildBtn').addEventListener('click', () => build());                       
 // (terrain detail only redraws the terrain: the history is the same at any terrain resolution)
 ui.terrain.addEventListener('change', () => setTerrainDetail());
 // (more: how far the history was kept going — a link rebuilds the same history, run on as far)
-const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&water=${ui.water.value}&crust=${ui.cont.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
+const saveUrl = () => history.replaceState(null, '', `?seed=${Number(ui.seed.value) || 0}&water=${ui.water.value}&crust=${ui.cont.value}&asm=${ui.asm.value}&len=${ui.len.value}&end=${ui.ending.value}&sim=${ui.sim.value}&terrain=${ui.terrain.value}` +
     (Number(ui.tmp.value) ? `&greenhouse=${ui.tmp.value}` : '') + (Number(ui.prc.value) ? `&rain=${ui.prc.value}` : '') + (B?.moreTo ? `&more=${B.moreTo}` : '') +
     (linkedDetailOf(B) ? `&detail=${linkedDetailOf(B)[0].time}&dcells=${linkedDetailOf(B)[1].cells}` : ''));
 let linkedMore = Number(url.get('more')) || 0;          // (the first build only: a new world starts at its length)
@@ -319,7 +321,7 @@ async function build() {
     if (B?.finishJob) finisher.cancel();
     B?.controller.abort();
     B?.player?.dispose();
-    const seed = Number(ui.seed.value) || 0, cont = Number(ui.cont.value) / 100, water = Number(ui.water.value), heights = { waterInventory: water }, len = Number(ui.len.value), ending = ui.ending.value;
+    const seed = Number(ui.seed.value) || 0, cont = Number(ui.cont.value) / 100, asm = Number(ui.asm.value), water = Number(ui.water.value), heights = { waterInventory: water }, len = Number(ui.len.value), ending = ui.ending.value;
     const simCells = Number(ui.sim.value), terrainCells = Number(ui.terrain.value);
     const b = B = { heights, controller: new AbortController(), player: null, frames: [], simMesh: null, simCells, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
         climates: new Map(), climateJob: null, problem: null,         // (climates: frame → {tMesh, data}, while this history is open)
@@ -348,8 +350,8 @@ async function build() {
     try {
         b.simMesh = simMeshOf(simCells);
         const meshReady = terrainMeshAsync(terrainCells);
-        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, heights, lengthMyr: len, keep: true, hold: b.hold,
-            save: SAVE_HISTORY, saveSpec: { cont: Math.round(cont * 100), water, sim: simCells, meshSeed: MESH_SEED, lengthMyr: len, ending, url: location.href }, onCache: c => { b.cache = { ...c, cont: Math.round(cont * 100), water, ending }; } }, b.simMesh, seed, SNAPSHOT_MYR,
+        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont, startAssemblyMyr: asm }, heights, lengthMyr: len, keep: true, hold: b.hold,
+            save: SAVE_HISTORY, saveSpec: { cont: Math.round(cont * 100), asm, water, sim: simCells, meshSeed: MESH_SEED, lengthMyr: len, ending, url: location.href }, onCache: c => { b.cache = { ...c, cont: Math.round(cont * 100), water, ending }; } }, b.simMesh, seed, SNAPSHOT_MYR,
             t => { if (B === b) progress(b, t); },
             frame => { if (B !== b) return; if (!b.frames.length) console.info(`[evolution] first frame simulated at ${((performance.now() - b.started) / 1000).toFixed(1)} s`); b.frames.push(frame); b.player?.addFrame(frame); if (frame.time > Number(ui.time.max)) setScale(frame.time); rail();
                 if (b.restore && Math.abs(frame.time - b.restore.t) < 1e-6) restoreDetail(b, frame, b.ready); },

@@ -725,11 +725,15 @@ it warms (the history's `mantleHeat`, `mantleInsulateMyr`), and warm mantle lift
 topography (Gurnis 1988; Lenardic et al. 2005; Coltice et al. 2007; the African superswell, Pangaea's legacy, ~0.5 km
 above the other shields, Nyblade & Robinson 1994). The swell is absolute, under the sea floor as under the land
 (`mantleSwellKm` 1 km from fully cooled to fully insulated mantle, the heat smoothed over `mantleSwellSmoothKm` 400 km),
-and the sea answers it. Reckoned (`sea-level.js seaLevel`; no water volume is kept, and `waterInventory: 0` selects it), the sea's level is the swell's mean under the sea floor; by default the level is instead where Earth's water stands when poured onto the ground ("The water inventory" below; `land-mask.js:103`).
+and the sea answers it. **The start's mantle** (`step/hotspots.js insulateAtStart`; lane startsea C, 2026-11-25): the
+supercontinent has stood `startAssemblyMyr` (120: Pangaea's ~320 → ~200 Ma; the page's Supercontinent Age slider) over
+mantle that held a dispersed world's mean heat (`startMantleHeat` 0.465, measured) when it gathered. The insulation law
+solved over that span gives 0.84 under the land and 0.21 under the ocean. Until then it was 1 and 0: a supercontinent
+that had stood forever over fully cooled ocean. Reckoned (`sea-level.js seaLevel`; no water volume is kept, and `waterInventory: 0` selects it), the sea's level is the swell's mean under the sea floor; by default the level is instead where Earth's water stands when poured onto the ground ("The water inventory" below; `land-mask.js:103`).
 Heights are today's, so each part is measured from what a dispersed world shows on average (`mantleSwellLandRef`,
-`seaHeatToday`, measured over three histories' dispersed frames; since 2026-11-12 the sea floor and its arcs instead stand
-on their swell against the mantle under the young floor, and `seaHeatToday` is only the reckoned level's datum: "The floor the water
-stands on" below): a dispersed world's sea stands at 0 on average,
+`seaHeatToday`, measured over three histories' dispersed frames; the sea floor and its arcs instead stand on their swell
+against `youngFloorHeatRef`, the heat under a dispersed world's young floor, and `seaHeatToday` is only the reckoned level's
+datum: "The floor the water stands on" below): a dispersed world's sea stands at 0 on average,
 a supercontinent on its own warm mantle stands high as a whole and the sea falls against it (a lowstand, a dry, high
 interior), and after the breakup the pieces ride onto mantle the ocean has cooled and sink, and shallow seas spread over
 their low ground (Gurnis 1990). The sea floor's age would move the sea too — a young ocean, its ridges long and hot, is

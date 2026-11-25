@@ -350,6 +350,14 @@ export const TECTONICS = {
                                 // it favours the mantle a continent has sat on, strongly but not absolutely (developer)
     mantleInsulateMyr: 100,     // mantle under a continent warms toward "fully insulated" over about this long…
     mantleCoolMyr: 150,         // …and cools back over about this long once the continent has moved off it
+    // the start's mantle (step/hotspots.js insulateAtStart; lane startsea C, Jackson 2026-11-25): the supercontinent has stood
+    // this long, on mantle that held a dispersed world's heat before it gathered, and the insulation law above ran meanwhile
+    startAssemblyMyr: 120,      // how long the start supercontinent has stood assembled: Pangaea's, from its last suture
+                                // (~320 Ma, the Alleghanian–Variscan closure) to its rifting (~200 Ma, the Central Atlantic
+                                // magmatic province: Marzoli et al. 1999, Science 284) — the page's "Supercontinent age"
+    startMantleHeat: 0.465,     // …and the mantle's heat before it gathered, everywhere alike: a dispersed world's global mean
+                                // (measured over 300–1000 Myr, cont 41: 0.479 / 0.466 / 0.450 / 0.465 on seeds 626225 / 777 /
+                                // 12345 / 243751; frame-to-frame 0.43–0.50)
     plumeSpacingKm: 1500,       // a new plume does not rise within this of a live one
     plumeLifeMinMyr: 80,        // a plume's tail lasts between these (Hawaii ~80 Myr and still going; Kerguelen ~120)
     plumeLifeMaxMyr: 250,

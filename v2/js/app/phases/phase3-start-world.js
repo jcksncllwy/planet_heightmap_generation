@@ -54,6 +54,7 @@ export async function createPhase(simMesh, seed, overrides = {}) {
             { id: 'cratonMinCoastKm', label: 'Min craton-to-sea distance', min: 300, max: 900, step: 50, value: cfg.cratonMinCoastKm, unit: ' km' },
             { id: 'coastReliefKm', label: 'Coast relief (bays & peninsulas)', min: 0, max: 1500, step: 50, value: cfg.coastReliefKm, unit: ' km' },
             { id: 'rimTrenchCoverage', label: 'Rim trench coverage', min: 0.5, max: 1, step: 0.05, value: cfg.rimTrenchCoverage },
+            { id: 'startAssemblyMyr', label: 'Supercontinent age (its mantle warmed that long; Pangaea ~120)', min: 0, max: 400, step: 10, value: cfg.startAssemblyMyr, unit: ' Myr' },
         ],
         layers: [
             { label: 'Crust type', paint: colorByCrustType },

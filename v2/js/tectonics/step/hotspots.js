@@ -85,7 +85,7 @@ export function pickPlumeSite(world, rng) {
 
 // ─────────────────────────────── the mantle ───────────────────────────────
 
-/** First step: the start is old — the mantle under every continent is already insulated — and some plumes are already rising. */
+/** First step: the start is old — the mantle under every continent already insulated for startAssemblyMyr — and some plumes are already rising. */
 function begin(world) {
     const { mesh, config } = world;
     world.hotspotsReady = true;
@@ -100,14 +100,20 @@ function begin(world) {
 }
 
 /**
- * The start is old: the mantle under every continent is already insulated. The first step sets it (begin); this also
- * sets it before the history's first frame is recorded, so that frame shows the start as it is (it read no heat, and
- * every continent rose by its mantle swell at the first step — developer, 8b round 6: "on step 1 all the land raises
- * up a bit"). The first step sets it again, the same way: the history is unchanged.
+ * The start's mantle: the supercontinent has stood startAssemblyMyr, over mantle that held a dispersed world's mean heat
+ * (startMantleHeat) when it gathered, and warmMantle's law ran under it and under the ocean all that while — the same law,
+ * solved over that span: under a continent 1 − (1 − h₀) e^(−T/mantleInsulateMyr), elsewhere h₀ e^(−T/mantleCoolMyr).
+ * Pangaea's ~120 Myr gives 0.84 under the land and 0.21 under the ocean. (Until 2026-11-25 it was 1 and 0: a supercontinent
+ * that had stood forever over fully cooled ocean, a swell ~0.1 km higher than the history's own supercontinents reach and an
+ * ocean's mantle colder than any it makes; lane startsea C, Jackson's ruling.) Reduced: the gathering is taken as instant,
+ * and every continent cell as under the lid for all of T. The first step sets it (begin); this also sets it before the
+ * history's first frame is recorded, so that frame shows the start as it is (developer, 8b round 6). The first step sets it
+ * again, the same way: the history is unchanged by the repeat.
  */
 export function insulateAtStart(world) {
-    const { mesh, mantleHeat } = world;
-    for (let w = 0; w < mesh.numCells; w++) mantleHeat[w] = isContinental(world, w) ? 1 : 0;
+    const { mesh, mantleHeat, config } = world, T = config.startAssemblyMyr, h0 = config.startMantleHeat;
+    const under = 1 - (1 - h0) * Math.exp(-T / config.mantleInsulateMyr), away = h0 * Math.exp(-T / config.mantleCoolMyr);
+    for (let w = 0; w < mesh.numCells; w++) mantleHeat[w] = isContinental(world, w) ? under : away;
 }
 
 /** Warm the mantle under continents, cool it elsewhere — toward 1 and 0 respectively, over mantleInsulateMyr and mantleCoolMyr. */
