@@ -246,7 +246,9 @@ export function closeSeasBetween(out, origin, mesh, upper, config, time) {
     // fill from the nearest land of either plate
     const toFill = [];
     for (let q = 0; q < numCells; q++) if (fill[q]) toFill.push(q);
-    if (!toFill.length) return 0;
+    // (nothing to seal: every count 0 — was a bare 0, which the weld destructured to undefined, so the suture's landLostCells and
+    // the budget's seal books went NaN from the first weld without a sea between: on main too. Lane gpelock 2026-11-25)
+    if (!toFill.length) return { sealed: 0, landSealed: 0, paid: 0, arcSealed: 0, arcPaid: 0, remnant: 0 };
     const nearestLand = hopsFrom(mesh, [...land1, ...land2], q => fill[q] === 1);
     const before = toFill.map(q => out.mask[q] ? out.snapshot(q) : null), originBefore = toFill.map(q => origin[q]);
     for (const q of toFill) {

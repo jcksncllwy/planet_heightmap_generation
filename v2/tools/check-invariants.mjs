@@ -13,6 +13,7 @@ import { LAND_STAGES } from '../js/tectonics/step/crust-ledger.js';
 import { rockClosure, UNIT_TOLERANCE } from './lib/volume-books.mjs';
 import { CrustRaster, CrustType, CELL_FIELDS } from '../js/tectonics/model/crust.js';
 import { TECTONICS, MECHANISMS } from '../js/tectonics/config.js';
+import { closeSeasBetween } from '../js/tectonics/ops/merge-plates.js';
 
 const SEEDS = [12345, 777, 592250];     // (592250: the developer saw two rift halves driven back through each other there)
 const HISTORY_MYR = 600;                 // longer than a phase scene: long histories are the point (1000–2000 Myr planned)
@@ -39,6 +40,12 @@ section('the crust raster and the config');
         'world.config and world.config.belts are copies');
     const unknown = Object.values(MECHANISMS).flatMap(Object.keys).filter(k => !(k in TECTONICS));
     check('every mechanism off-switch names a real config key', unknown.length === 0, unknown.length ? `unknown: ${unknown.join(', ')}` : `${Object.keys(MECHANISMS).length} mechanisms`);
+    // (a weld with no sea between the two: closeSeasBetween returned a bare 0, which the weld and a dock destructured to
+    // undefined, and the suture's landLostCells and the budget's seal books went NaN from then on — on main too; lane gpelock)
+    const none = closeSeasBetween(new CrustRaster(mesh.numCells), new Uint8Array(mesh.numCells), mesh, { capCenter: [0, 0, 1] }, TECTONICS, 0);
+    const counts = ['sealed', 'landSealed', 'paid', 'arcSealed', 'arcPaid', 'remnant'].map(k => none?.[k]);
+    check('a weld with no sea between the two seals nothing, and says so in numbers (closeSeasBetween: every count 0, none undefined)', counts.every(v => v === 0),
+        `counts ${counts.join(', ')}`);
 }
 
 for (const seed of SEEDS) {
