@@ -428,7 +428,7 @@ section('the coast by margin');
         const earth = E.error ? null : coastFractal(coastLoops(tm, c => worldOceanOf(tm, E.z)[c] === 1, E.z), earthKindAt, { kinds: EARTH_COAST_KINDS });
         at[cells] = { sim, earth, error: E.error };
     }
-    const D = (r, k) => r?.[k]?.D ?? NaN, f3 = v => v.toFixed(3);
+    const D = (r, k) => r?.[k]?.D ?? NaN, f3 = v => Number.isFinite(v) ? v.toFixed(3) : 'none';     // (none: no coast of that kind on this world)
     const s16 = at[160000].sim, s64 = at[640000].sim, e16 = at[160000].earth, e64 = at[640000].earth;
     check('Earth’s coast is binned onto the terrain meshes', !!e16 && !!e64, at[160000].error ?? at[640000].error ?? 'tools/data/earth-terrain-*.i16');
     // passive margins smoother than the rest, as Earth's are (its passive 1.05 against its fjords 1.21 and the rest 1.15 at 640K).
