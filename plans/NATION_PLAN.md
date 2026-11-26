@@ -510,25 +510,20 @@ Hazards are 1 − e^(−rate·25 yr), with the same hashed chances polity.js use
   - A collapsed realm breaks into its seats' regions, not into single towns.
 
 ### 7.4 Identity: culture, language, assimilation, cohesion and military technology
-- **Cultures come from the people's own history.** The civ run already records who came from whom: `cameFrom` per cell,
-  `farmFrom` per crop.
-  - A culture tree grows from them. Each landing across water, and each front that lost contact with its source for
-    T_split years, makes a daughter culture. Contact means people within so many days, by the travel graph.
-  - T_split is the time to mutual unintelligibility. Glottochronology is contested, so T_split is a tuned value,
-    labelled as such.
-  - Farming fronts carry their culture (the farming/language dispersal).
-  - Language and culture are one field at first, with language as its visible part.
-- **Assimilation:** where the ruling culture differs from the cell's, the share speaking it moves by Abrams & Strogatz
-  2003, with a = 1.31.
-  - Its status s rises with the polity's hold: administered over tributary, and the share of its people in towns and in
-    the seats.
-  - When the share passes ½, the cell's culture becomes the ruler's. Conquered cultures fade where states last and hold
-    tight, and they survive in the hills and the zones. Currie & Mace 2009's area–complexity check falls out of this.
-  - Rate c: tuned on Earth (Weber's 1863 France gives one point: a century of state for a quarter of the people
-    unshifted).
+- **Cultures and their tree come from langspec** (CULTURE_PLAN §7.1–7.4 and §7.9; seam §7.4a). The earlier
+  placeholder here (daughters at landings and after a tuned T_split out of contact) is retired: in langspec's model
+  splits emerge from contact and drift, and there is no T_split.
+- **Assimilation moves to the culture layer** (CULTURE_PLAN's shift rule, Abrams & Strogatz 2003). The nation layer
+  doesn't shift anyone's language. It supplies the inputs:
+  - status s for the ruling culture, from the polity's hold (administered over tributary) and the share of its people
+    in towns and in the seats;
+  - conquest settlement (who moved where).
+  - langspec sets the rate c on Kandler et al.'s Celtic series and Weber's France. Conquered cultures fading where
+    states last and hold tight, and surviving in hills and zones, is then langspec's output, read back through the seam.
 - **Cohesion (asabiya):**
   - A cell's asabiya grows logistically where it lies on a **metaethnic frontier**: within D_f days of people of a
-    distant culture. Distant means far apart in the culture tree, or a different way of life (herders against farmers:
+    distant culture. Distant means a long time since the two were one people (langspec's MRCA age, §7.4a), or a
+    different way of life (herders against farmers:
     the steppe frontier).
   - It decays where the cell is safe inside.
   - A polity's cohesion is its people-weighted mean. It multiplies its force (§7.2) and holds off collapse (§7.3).
@@ -546,21 +541,31 @@ blending. The nation layer owns none of that model. §7.4's culture tree, assimi
 plan's **placeholder** for it, kept only to say what the nation layer needs. Where langspec's model differs, langspec's
 model wins.
 
-**What the nation layer reads from langspec,** each step, on the civ mesh:
-- **culture per cell:** the dominant culture's id (a node of langspec's tree), and its share where cultures mix (for
-  §7.5's minorities and §7.8's homogeneity);
+**What the nation layer reads from langspec,** each step, on the civ mesh (amended 2026-11-26 from langspec's report and
+Jackson's culture answers, §14):
+- **culture per cell** (CULTURE_PLAN §8.1): `lang[c]`, a language id from langspec's tracked tree, and `family[c]`;
+  where two mix, the rival's language and its share x (for §7.5's minorities and §7.8's homogeneity). Ids stay stable
+  across frames by overlap matching, and a split gives daughter ids, so a realm's ruling culture can be followed
+  through a split. The nation layer reads the **language** level; dialects (Jackson: two levels) are for display.
 - **culture per town,** for seats, capitals and a polity's ruling culture;
-- **distance between two cultures** d(a, b), from 0 (the same) to 1 (unrelated). It's used for metaethnic frontiers
-  (asabiya, §7.4), legitimacy after the national stage (§7.8), unification (co-cultural means d below a level), and the
-  realm's minorities;
-- **language for names:** for a culture, a deterministic name generator (polities, places, peoples), whose names drift
-  down the tree;
-- **writing:** whether a culture has writing (for §7.8's mobilization), if langspec carries it.
+- **distance between two cultures:** d(a, b), the lexical distance on langspec's 40-meaning list, from 0 (the same) to 1
+  (unrelated), later mixed with the ~16 customs once culture L5 exists; and alongside it the **MRCA age**, how long
+  since the two were one people. Metaethnic frontiers (asabiya, §7.4) use the MRCA age; legitimacy after the national
+  stage (§7.8), unification (co-cultural means d below a level) and minorities use d. Religion is not in d: it waits
+  for langspec's religion revision (§14).
+- **names** (CULTURE_PLAN L3): for a culture, a deterministic generator of place, people and realm names, drifting down
+  the tree, **plus exonyms** (what a neighbour calls a realm). Personal names (rulers, dynasties) are not here; they
+  belong to a later "story" layer.
+- **ancestry** (langspec's check layer, L2) is not read by the nation layer, but it uses the conquest settlement the
+  nation layer gives, so aDNA checks see conquest.
+
+**Writing is not langspec's** (Jackson, 2026-11-26): it is a know-how in the civ economy's skills model (§13), which
+§7.8's mobilization reads.
 
 **What the nation layer gives langspec** each step:
 - per cell: the administering polity, its suzerain and the hold (administered, tributary or none);
 - per polity: its ruling culture, its seats and towns, and conquest settlement (who moved where);
-- the status a culture gets from ruling (Abrams–Strogatz's s), as an input to langspec's shift rule.
+- the status a culture gets from ruling (Abrams–Strogatz's s), as the input to langspec's shift rule (§7.4).
 
 **Order:** both run inside sim.js's step, realm then culture. Each reads the other's state from the last step, so the
 run stays deterministic.
@@ -599,7 +604,8 @@ run stays deterministic.
 ### 7.8 The national stage: identity becomes political
 - **The switch.** Each polity has a mobilization index M:
   - its towns' share of its people;
-  - the know-how of writing (born in states old enough; spread by contact like MilTech);
+  - the know-how of writing, read from the civ economy's skills model (§13; born in states old enough, spread by
+    contact);
   - how quickly its towns reach each other, in days.
   - Where M passes M*, culture enters legitimacy (Deutsch 1953's mobilization; Anderson's print; Gellner's standard
     culture).
@@ -770,7 +776,10 @@ are from §4.
 - **A run:** 200 steps over 5 kyr, about 10–25 s on top of the People run's ~18 s at 160K.
   - On the page, after the People run, in its worker.
   - In the ensemble, 20 worlds × that.
-  - At 640K, ~4× (CIV_PLAN §9.8's scaling).
+  - At 640K, ~4× (CIV_PLAN §9.8's scaling). The People mesh may move to 640K (Jackson's culture answer, §14), so this
+    is the case to cost: civgpu-run is measuring 160K vs 640K People runs, and the reach pass's share is to be
+    measured on top. The Dijkstra is serial; if it dominates at 640K, a GPU relaxation (Bellman–Ford sweeps) or a
+    coarser reach mesh are the options, decided on the measurement.
 - **Storage:**
   - owner changes per step are a few % of cells (~6 bytes each, about 30 KB a step, ~6 MB a run);
   - influence fields aren't stored; they are recomputed for the frame shown (one pass, ~50 ms);
@@ -800,12 +809,15 @@ are from §4.
     time on its card; the chronicle at each step.
   - Checks: lifetimes (130 / 220 yr), largest polity's curve, N_A, reigns by rule; ensemble medians; time cost; the
     timeline replays to the same borders as the run (the changes store is exact).
-- **N3. Identity** (consumes langspec's culture model through the seam of §7.4a; langspec builds it).
-  - Culture per cell and town, and distances, read from langspec; asabiya on metaethnic frontiers;
+- **N3. Identity** (consumes langspec's culture model through the seam of §7.4a; langspec builds it). Needs culture
+  **L1** (identity and distance).
+  - Culture per cell and town, distances and MRCA ages, read from langspec; asabiya on metaethnic frontiers;
     MilTech know-how (riding from herds; iron waits for T4).
   - Nomad confederations.
   - Checks: Earth retrodiction R²; megaempires by the arid belt and their elongation; culture area vs complexity;
     culture density vs latitude.
+- **Language shift under the realm** is culture **L4**, langspec's stage. It needs N2's hold and seats (the status s)
+  and comes after N2; N4's conquest settlement feeds it further.
 - **N4. Feedback onto the people.** On by default once its checks pass (Jackson, Q4). It changes the civ
   fingerprints, which become the new baseline.
   - War deaths; refugees and conquest settlement; state works (canals and granaries that raise K or the store); taxes
@@ -814,10 +826,11 @@ are from §4.
 - **N5. Alliances, vassals in full, trade spheres and trading cities** (needs civ T2).
   - Checks: Abramson's cities-and-fragmentation elasticity on Earth; war-size exponent.
 - **N6. The national stage** (§7.8; gated by §14 Q1).
-  - Mobilization, culture in legitimacy, unification and national secession, faster assimilation.
+  - Mobilization, culture in legitimacy, unification and national secession, faster assimilation (through s, in
+    langspec's shift rule). Writing comes from the civ economy's skills model, so N6 needs it there.
   - Checks: partitioned homelands; the late-and-fast switch (states' cultural homogeneity before and after).
-- **N7. Names and the written chronicle** (§14 Q3): names from each culture's phonology, through langspec's
-  generator (§7.4a).
+- **N7. Names and the written chronicle** (§14 Q3): place, people and realm names and exonyms from each culture's
+  phonology, through langspec's generator (§7.4a). Needs culture **L3**. Rulers' names wait for the story layer.
 
 ## 13. What it needs from the civ layer that the civ layer doesn't have yet
 
@@ -833,7 +846,10 @@ are from §4.
   end).
 - **Frames' polity state:** frames carry towns and a polity table. The realm layer adds a changes store and its records
   (§11.3).
-- **Writing** (for N6's mobilization): a know-how born in states, which the economy's skills model (§9.3) could carry.
+- **Writing** (for N6's mobilization): a know-how born in states, carried by the economy's skills model (§9.3), as
+  Jackson decided (2026-11-26). Jackson also wants the civ model's organization reviewed for subsystems that
+  generalize the way the skills model does (writing, MilTech's know-how bits and riding could all be skills); that
+  review is a civ-layer task, recorded here, not done in this lane.
 - **Finer detail for regional views and Earth's European check:** the page's 160K is ~56 km. The tools can run 640K.
 - **Polity.js's town-level rules that the realm step replaces** (proposed in the report as a CIV_PLAN amendment, not
   made here):
@@ -854,6 +870,28 @@ are from §4.
 - **Q5:** (a), one model from polity.js's first polity.
 - **Q6:** yes, fetch Turchin et al. 2013's maps for the Earth R² check (N0).
 - **Q7:** (a), 160K cells; small realms live as town dots.
+
+**Amended (Jackson's culture answers, 2026-11-26, via sessrumnir; langspec's six proposed changes applied):**
+- **Culture tree (§7.4):** the placeholder is replaced by a pointer to CULTURE_PLAN §7.1–7.4 and §7.9; T_split is gone.
+- **Culture per cell (§7.4a):** `lang[c]` plus `family[c]`, and the rival language with share x; ids stable by overlap
+  matching. Dialects are shown at two levels; the nation layer reads languages.
+- **Distance (§7.4a):** lexical distance on the 40-meaning list, mixed with the ~16 customs at culture L5 (Jackson:
+  yes), with the MRCA age alongside for metaethnic frontiers. Religion is held until langspec's religion revision,
+  then re-asked; until then it plays no part in legitimacy.
+- **Assimilation (§7.4):** the shift rule moves to langspec; the nation layer supplies s and conquest settlement.
+- **Writing (§7.4a, §7.8, §13):** owned by the civ economy's skills model. Jackson also asked for a review of the civ
+  model's organization for subsystems that generalize like the skills model (§13).
+- **Stages (§12):** N3 needs culture L1, N7 needs L3; shift under the realm is culture L4, after N2.
+- **Names (Q3):** (a) of langspec's question, places, peoples and realms, plus exonyms. Personal names later, in a
+  future story layer.
+- **Ancestry:** a check layer in langspec, fed by the nation layer's conquest settlement.
+- **Creoles:** later, at the colonial horizon (beyond this plan's Q1 (b)).
+- **Start:** culture runs from the first people (70 ka); the nation layer still starts at polity.js's first polity.
+- **Mesh (revises Q7):** Jackson chose 640K for the culture layer and wants a real time cost; civgpu-run is measuring
+  160K vs 640K People runs. The nation layer runs on the People mesh, so it follows: sub-cell realms still live as town
+  dots, and the reach pass's cost at 640K is measured on top (§11.3).
+- **GPU:** the culture layer gets a GPU kernel, and a civgpu lane now studies GPU for the civ layer. The nation layer's
+  per-cell passes are GPU-friendly; its Dijkstra is the open case (§11.3).
 
 The questions as they were put:
 
