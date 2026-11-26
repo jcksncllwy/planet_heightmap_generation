@@ -30,7 +30,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
-| The basic list: 40 meanings | ASJP's 40-item list (Holman et al. 2008) | Direct (the list) | [A]; the list itself from batch G |
+| The basic list: 40 meanings | ASJP's 40-item list (Holman et al. 2008; the list via Wikipedia's ASJP page, citing the paper) | Direct (the list) | [A] paper; [V] list, secondary |
 | Per-meaning replacement rates λ_m = ln 2 / h_m, the quantiles of the measured distribution | Pagel, Atkinson & Meade 2007 (frequency predicts rate; ~50 % of variance; 200 meanings, 87 languages); half-lives "2,000–4,000 y" for most, "10,000, 20,000 or even more" for the slowest (Pagel et al. 2013) | Direct (rates), once read from their data | [A] 2007, [V] 2013; the 2007 range "750–10,000" NOT FOUND |
 | A lineage's substitution rate equals the per-cell innovation rate, whatever its size | Kimura's neutral theory (substitution rate = mutation rate) | Direct (the theorem) | [L] |
 | No size effect on rates at first; a check against it | Bromham et al. 2015 (larger Polynesian populations gain words faster, smaller lose faster); Greenhill et al. 2018 (not universal) | — (a check) | [V]/[A] |
@@ -42,10 +42,10 @@ the PDFs and pages read are in `verify/pdfs/`).
 |---|---|---|---|
 | The voter model with innovation on the mesh: each slot copies a neighbour at rate m_ab | the stepping-stone model (Kimura & Weiss 1964; Malécot) with words as alleles; Schulze, Stauffer & Wichmann 2008 (copying between speakers' feature strings) | Adapted | [A] K&W; [V] Schulze review |
 | k_ab = 4D/(deg·ℓ²), ℓ in travel-days × a flat day's walk | a 2-D diffusion's finite-difference rate; routes.js's days | Ours (the discretization) | — |
-| D = ⟨Δ²⟩/(4T); D ≈ 12.5 km²/yr as the Neolithic models use | Davison, Dolukhanov, Sarson & Shukurov 2006 (after Ammerman & Cavalli-Sforza); forager and farmer values from batch G | Direct, once confirmed | [V] Davison; A&CS [A] |
+| D = ⟨Δ²⟩/(4T) by way of life: farmers ~3 km²/yr from Fort 2012's preindustrial kernel (⟨Δ²⟩ ≈ 360 km², our arithmetic, T = 30 yr); 12.5 km²/yr as the Neolithic front models use (Davison et al., after A&CS); foragers to read (Fort, Pujol & Cavalli-Sforza 2004, NOT FOUND yet) | Fort 2012; Davison et al. | Direct (kernel), Adapted (D) | [V]/[V] |
 | Backward migration: a's input from b ∝ N_b / N_a | demography of dispersal; Burridge 2017 (density-weighted averaging) | Adapted | [V] Burridge |
-| Intelligibility g(sim): full levelling within a continuum, a borrowing floor between unintelligible lects | Mira & Paredes 2005 (similarity allows bilingual coexistence); Gooskens on lexical distance and intelligibility (batch G) | Ours (the smooth step and its thresholds) | [V abstract] Mira & Paredes |
-| Expected: lexical distance sublinear in distance, near logarithmic | Nerbonne 2010 / Nerbonne & Heeringa 2007 (log distance the best predictor; r 0.47–0.62); Séguy 1971 | — (a check) | [V draft]; Séguy via Nerbonne |
+| Intelligibility g(sim): full levelling within a continuum, a borrowing floor between unintelligible lects | Mira & Paredes 2005 (similarity allows bilingual coexistence); Gooskens & van Heuven 2020 (lexical distance explains intelligibility, R² 0.57 all pairs, 0.89 Germanic) | Ours (the smooth step); s_hi = s_lang | [V abstract]/[V] |
+| Expected: lexical distance sublinear in distance, near logarithmic | Nerbonne 2010 / Nerbonne & Heeringa 2007 (log distance the best predictor; r 0.47–0.62); Séguy 1971; the genetic twin: F_ST/(1−F_ST) linear in ln distance in 2-D (Rousset 1997) | — (a check) | [V draft]; Séguy via Nerbonne; Rousset [A] |
 | Expected: boundaries with surface tension, driven off dense centres | Burridge 2017, eq. (9) | — (a check) | [V] |
 | Expected: diversity rising with roughness and river density | Axelsen & Manrubia 2014 | — (a check) | [V] |
 | Later: town-to-town diffusion by P_i P_j / d² | Trudgill 1974's gravity model (via Burridge; Nerbonne et al.) | Adapted, at T2 | [V] secondary; primary not read |
@@ -55,7 +55,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
 | No split rule: splits emerge where contact can't hold drift | the stepping-stone model; contrast Gavin et al. 2017's split-at-size rule | Ours | [A] Gavin |
-| Languages by leader clustering at similarity s_lang | Ethnologue's language/dialect calls (case by case); field surveys' lexical thresholds (batch G) | Ours (a convention) | — |
+| Languages by leader clustering at s_lang: the cut-off LDN = 0.51 (≈ 1,075–1,635 yr apart); in L1 the cognate similarity our rates give at ~1,350 yr | Wichmann 2019 (ASJP, 7,500+ varieties); SIL's ~70 % rule (Kluge, NOT FOUND in primary) | Direct (LDN), Adapted (the L1 stand-in) | [V] |
 | Families: clades younger than T_detect ≈ 8–10 kyr | Nichols 1992:313 ("dissipate entirely after about 8000 years", quoted by Renfrew 2000); Rankin 2003:207 ("at least around 10,000 years") | Adapted | [V] Renfrew, Rankin; Nichols via them |
 | Reconstruction check: UPGMA or NJ on 0 BP lects against the tracked tree | Bayesian and distance phylogenetics (Gray & Atkinson 2003 etc.) | — (a check) | [A] |
 
@@ -113,12 +113,12 @@ the PDFs and pages read are in `verify/pdfs/`).
 | Sound changes as regular rules over all words | Osthoff & Brugmann 1878; Labov 1981 (regular at the phonetic level) | Adapted | [L]/[A] |
 | Chains of change (lenition, palatalization, final loss, tonogenesis) | Kümmel 2007; Index Diachronica; UniDia | Adapted (the catalogue) | [A] |
 | Applied in the order taken | Rosenfelder's SCA2 (ordered rules `s1/s2/e1_e2`); historical linguistics' relative chronology | Adapted | [V] |
-| Settings' rates: not slower than words; ordered by feature stability | Greenhill et al. 2017 (most grammatical features faster than basic vocabulary; 81 Austronesian languages); Dediu & Cysouw 2013 (batch G) | Ours (rates), ordered by the sources | [V] |
+| Settings' rates: not slower than words; ordered by feature stability | Greenhill et al. 2017 (most grammatical features faster than basic vocabulary; 81 Austronesian languages); Dediu & Cysouw 2013 (62 WALS features, 7 methods: word order most stable; phonology spans the range; consonant inventories near the bottom) | Ours (rates), ordered by the sources | [V]/[V] |
 | Syllables by sonority | Clements 1990 | Adapted | [L] |
-| Underlying forms by segment frequency; frequent meanings shorter | PHOIBLE; Zipf's law of abbreviation (batch G) | Adapted | [V]/— |
+| Underlying forms by segment frequency; frequent meanings shorter | PHOIBLE; Zipf's law of abbreviation in 986 languages (Bentz & Ferrer-i-Cancho 2016) | Adapted | [V]/[A] |
 | Spelling as an inherited trait (orthography patches) | O'Leary's naming languages (mewo2.com, via the Wayback Machine) | Adapted | [V] |
 | Names as compounds of meaningful words | Dwarf Fortress (language_words.txt, translation tables, compound tokens); O'Leary (morpheme reuse) | Adapted | [V] |
-| Places named once, kept through shift; renamed at a hazard | Peust 2015 (~87 % of 210 large European rivers keep their names over 2,000 yr; "normally retained even when the area is invaded"); Krahe 1964 (Old European hydronymy; contested by Vennemann 2003) | Direct (the rate for large rivers); the hazard for others ours | [V]/[A] |
+| Places named once, kept through shift; renamed at a hazard | Peust 2015 (80 of the 92 large European rivers attested in Greek or Latin, 87 %, keep their ancient names after 2,000 yr; "normally retained even when the area is invaded"); Krahe 1964 (Old European hydronymy; contested by Vennemann 2003) | Direct (the rate for large rivers); the hazard for others ours | [V]/[A] |
 | Not used: Markov chains on Earth's names | Azgaar's FMG (nameBases, Markov chains) | — | [V code] |
 
 ## Earth checks (§4, §11.1)
@@ -175,6 +175,7 @@ the PDFs and pages read are in `verify/pdfs/`).
   *PNAS* 112:2097–2102. doi:10.1073/pnas.1419704112
 - Bromham L et al. 2022. Global predictors of language endangerment and the future of linguistic diversity. *Nat Ecol
   Evol* 6:163–173. doi:10.1038/s41559-021-01604-y
+- Bentz C, Ferrer-i-Cancho R 2016. Zipf's law of abbreviation as a language universal. Leiden Workshop proceedings
 - Burridge J 2017. Spatial evolution of human dialects. *Phys Rev X* 7:031008. doi:10.1103/PhysRevX.7.031008
 - Campbell L 2002. What drives linguistic diversification and language spread? In Bellwood & Renfrew (eds), 49–63
 - Castelló X, Eguíluz VM, San Miguel M 2006. Ordering dynamics with two non-excluding options: bilingualism in
@@ -190,6 +191,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 - Creanza N et al. 2015. A comparison of worldwide phonemic and genetic variation in human populations. *PNAS*
   112:1265–1272. doi:10.1073/pnas.1424033112
 - Cysouw M, Dediu D, Moran S 2012. Comment on "Phonemic diversity…". *Science* 335:657. doi:10.1126/science.1208841
+- Dediu D, Cysouw M 2013. Some structural aspects of language are more stable than others. *PLoS ONE* 8:e55009
 - Davison K, Dolukhanov P, Sarson GR, Shukurov A. Environmental effects on the spread of the Neolithic. arXiv
   q-bio/0505013 (read; its journal version not checked)
 - de Boer B 2000. Self-organization in vowel systems. *J Phonetics* 28:441–465
@@ -205,6 +207,8 @@ the PDFs and pages read are in `verify/pdfs/`).
 - Gray RD, Drummond AJ, Greenhill SJ 2009. Language phylogenies reveal expansion pulses and pauses in Pacific
   settlement. *Science* 323:479–483
 - Gray RD, Bryant D, Greenhill SJ 2010. On the shape and fabric of human history. *Phil Trans R Soc B* 365:3923–3933
+- Gooskens C, van Heuven VJ 2020. How well can intelligibility of closely related languages in Europe be predicted
+  by linguistic and non-linguistic variables? *Linguistic Approaches to Bilingualism* 10:351–379
 - Greenhill SJ et al. 2017. Evolutionary dynamics of language systems. *PNAS* 114:E8822–E8829
 - Grollemund R et al. 2015. Bantu expansion shows that habitat alters the route and pace of human dispersals. *PNAS*
   112:13296–13301
@@ -264,6 +268,8 @@ the PDFs and pages read are in `verify/pdfs/`).
 - Robbeets M et al. 2021. Triangulation supports agricultural spread of the Transeurasian languages. *Nature*
   599:616–621
 - Rosenfelder M. *The Language Construction Kit*; Gen; SCA2 (zompist.com)
+- Rousset F 1997. Genetic differentiation and estimation of gene flow from F-statistics under isolation by distance.
+  *Genetics* 145:1219–1228
 - Schulze C, Stauffer D, Wichmann S 2008. Birth, survival and death of languages by Monte Carlo simulation. *Commun
   Comput Phys* 3:271–294 (arXiv:0704.0691)
 - Swadesh M 1955. Towards greater accuracy in lexicostatistic dating. *IJAL* 21:121–137
@@ -275,4 +281,5 @@ the PDFs and pages read are in `verify/pdfs/`).
   complexity. *PNAS* 113:E2241–E2247
 - Watts J et al. 2015. Broad supernatural punishment but not moralizing high gods precede the evolution of political
   complexity in Austronesia. *Proc R Soc B* 282:20142556
+- Wichmann S 2019. How to distinguish languages and dialects. *Computational Linguistics* 45:823–831
 - Wichmann S 2005. On the power-law distribution of language family sizes. *J Linguistics* 41:117–131

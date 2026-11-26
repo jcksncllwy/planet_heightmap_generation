@@ -103,9 +103,10 @@ Alternatives, not recommended:
   then the clades that survived the Holocene's expansions, as on Earth. A Holocene start would need its families
   drawn by hand.
 - **Step: 25 years**, sim.js's generation. The reasons:
-  - Contact between neighbouring cells at 160K, ~0.07 per neighbour per step (k_ab·25 yr at D = 12.5 km²/yr, §7.3),
-    must stay well under 1 for the discrete voter model to approximate the continuous one. A century step would make
-    it ~0.3 per neighbour, ~1.6 over six, and over-mix.
+  - Contact between neighbouring cells at 160K is ~0.02–0.07 per neighbour per step (k_ab·25 yr at D = 3–12.5
+    km²/yr, §7.3). It must stay well under 1 for the discrete voter model to approximate the continuous one. At 640K
+    (cells half as far apart) it is four times as much, still under 0.3. A century step at 160K would be ~0.1–0.3 per
+    neighbour, ~0.6–1.6 over six, and would over-mix.
   - The nation layer's realm step is 25 yr (NATION_PLAN §2), and shift under a ruler is part of the culture step.
   - Abrams–Strogatz shift takes a few generations to a few centuries; 25 yr resolves it.
 - **Frames.** The culture labels (language and family per cell) and each language's representative lect go into the
@@ -128,8 +129,8 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - The observed front, 0.9–1.3 km/yr (Fort 2012 [V]). The civ layer already runs its fronts on these numbers
     (CIV_PLAN §5.4).
 - **Demic and cultural together.** Cultural diffusion explains ~40 ± 8 % of the Neolithic front's **speed** in Europe,
-  a continental average. For the LBK it is "a very small percentage" (Fort 2012 [V]). It is a share of the spread
-  rate, not of ancestry: Fort says the paper doesn't answer that question. Ammerman & Cavalli-Sforza already wrote that
+  a continental average, so "the demic effect is ∼60 %". For the LBK the cultural share is "a very small percentage"
+  (Fort 2012 [V]). These are shares of the spread rate, not of ancestry; Fort says the paper doesn't answer that. Ammerman & Cavalli-Sforza already wrote that
   demic and cultural diffusion are not exclusive (quoted by Fort [V]).
   - **Ancestry, from ancient DNA:** the steppe migrants of the 3rd millennium BCE replaced ~75 % of central Europe's
     ancestry; the Corded Ware people were 79 % Yamnaya-like, 4 % western hunter-gatherer and 17 % early farmer (Haak et
@@ -375,8 +376,8 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - **What doesn't:** Markov chains on Earth's names (they'd make an Orogen world sound like Earth); DF's static tables
     (no drift, so no kin).
 - **Names keep.** "The names of large rivers are among the diachronically most stable of all words," and "are normally
-  retained even when the area is invaded by speakers of another language." About 87 % of 210 large European rivers keep
-  their names over 2,000 years (Peust 2015 [V]). Krahe's "Old European" hydronymy as an Indo-European layer is
+  retained even when the area is invaded by speakers of another language." Of 92 large European rivers attested in
+  Greek or Latin, 87 % keep their ancient names after 2,000 years (Peust 2015 [V]), so ~93 % per millennium. Krahe's "Old European" hydronymy as an Indo-European layer is
   contested (Vennemann 2003 and others [A]). The persistence itself isn't. This is §9.4's naming rule and its rate.
 
 ## 4. Quantitative regularities a model can be checked against
@@ -395,7 +396,7 @@ table says which are, and the checks compare like with like (a modern figure as 
 | Family sizes | rank–size slope −1.905 (R² 0.957, Ethnologue families); a size-frequency exponent ~1.5 by our arithmetic | Wichmann 2005 | [V] |
 | Australia, a forager continent | 407 languages; a simple fill-and-divide model gives 406 and 56 % of the spatial variation | Gavin et al. 2017 | [A] |
 | Retention | ~80.5 % per millennium (200-list), 86 % (100-list); between lineages ~4–20 % lost per millennium | Lees 1953; Swadesh 1955; Bergsland & Vogt 1962 | [A] |
-| Half-lives by meaning | most words 2,000–4,000 yr; numerals, pronouns 10,000–20,000+ | Pagel et al. 2007, 2013 | [A]/[V] |
+| Half-lives by meaning | most words 2,000–4,000 yr; numerals, pronouns 10,000–20,000+ ("750–10,000": NOT FOUND) | Pagel et al. 2007, 2013 | [A]/[V] |
 | Bursts at splits | Bantu 31 %, Indo-European 21 %, Austronesian 9.5 % of divergence | Atkinson et al. 2008 | [V] |
 | The comparative method's reach | ~8,000 yr (Nichols); ≥ ~10,000 (Rankin) | Nichols 1992; Rankin 2003 | [V] |
 | Distance and geography | sublinear; best predicted by log distance (r ≈ 0.47–0.62) | Nerbonne 2010 | [V] |
@@ -405,7 +406,9 @@ table says which are, and the checks compare like with like (a modern figure as 
 | Elite shift | Anatolian Turkish speakers ~9.6 % Central Asian ancestry | Kars et al. 2021 | [V] |
 | Borrowing | WOLD mean ~24 % loans (1.2–62.7 %); nouns 31 %, verbs 14 % | Haspelmath & Tadmor 2009 | [V] |
 | Shift | Abrams–Strogatz a = 1.31 ± 0.25 | Abrams & Strogatz 2003 | [V] |
-| Name persistence | ~87 % of large rivers keep their names over 2,000 yr | Peust 2015 | [V] |
+| Name persistence | 87 % of 92 attested large rivers keep their ancient names over 2,000 yr | Peust 2015 | [V] |
+| Dialect or language | LDN 0.51 (≈ 1,075–1,635 yr apart) | Wichmann 2019 | [V] |
+| Intelligibility | lexical distance explains R² 0.57 (all pairs), 0.89 (Germanic) | Gooskens & van Heuven 2020 | [V] |
 | Cultural vs genetic distance | neighbours' cultural F_ST 0.080 against genetic 0.0053 | Bell et al. 2009 | [V] |
 
 Which don't depend on Earth's map, and so can be read off any world:
@@ -493,8 +496,10 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
   Fort 2012's demic–cultural mix as the reason both outcomes must be possible (§3.1).
 
 ### 7.2 Drift: innovation of words and sounds
-- **The basic list.** M = 40 meanings, the ASJP list (Holman et al. 2008): the Swadesh items that are the most stable
-  and the least borrowed. Each meaning m has its own replacement rate λ_m = ln 2 / h_m, from Pagel et al.'s per-meaning
+- **The basic list.** M = 40 meanings, the ASJP list (Holman et al. 2008; the list as given in secondary sources [V]):
+  eye, ear, nose, tongue, tooth, hand, knee, blood, bone, breast, liver, skin; louse, dog, fish, horn, tree, leaf;
+  person, name; sun, star, water, fire, stone, path, mountain, night; drink, die, see, hear, come, new, full; one, two,
+  I, you, we. These are the Swadesh items most stable and most useful for classifying. Each meaning m has its own replacement rate λ_m = ln 2 / h_m, from Pagel et al.'s per-meaning
   half-lives h_m: 2,000–4,000 yr for most words, 10,000–20,000 and more for numerals and pronouns (§3.2). The 40 rates
   are the quantiles of that distribution, read from their data at L0, so the model's mean retention per millennium is an
   output to check against Lees 1953 and Swadesh, not an input.
@@ -522,21 +527,31 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
     a dense neighbour speaks to a sparse cell more than the reverse);
   - **g(sim)** is how far two lects understand each other. It is 1 within a dialect continuum and falls to a
     borrowing floor b_loan between mutually unintelligible lects (smooth in lexical similarity, between s_lo and s_hi).
+    Lexical distance is the best single predictor of how well related European languages understand each other: R²
+    0.57 over all pairs, 0.89 within Germanic (Gooskens & van Heuven 2020 [V]). s_hi is set at s_lang (§7.9).
     Neighbours who can't understand each other don't level their words; they borrow (§7.6) and shift (§7.5);
   - **p_b** is b's prestige: 1 by default; towns and ruling cultures raise it (§7.5).
-- **D, the diffusivity,** comes from human dispersal per generation, not from language data: D = ⟨Δ²⟩ / (4T), from
-  the demic models' mean squared displacement per generation T. The Neolithic models use D ≈ 12.5 km²/yr, after
-  Ammerman & Cavalli-Sforza (Davison et al., arXiv q-bio/0505013 [V]), so ⟨Δ²⟩ ≈ 1,250 km² per 25-yr generation. Forager and farmer
-  values from ethnographic dispersal distances are to be read at L0 (§3.1; CULTURE_SOURCES.md). Speech is learnt from
-  parents and neighbours, so the flux of speakers is taken as the flux of people. That is an assumption, labelled.
+- **D, the diffusivity,** comes from human dispersal per generation, not from language data: D = ⟨Δ²⟩ / (4T), with
+  ⟨Δ²⟩ the mean squared displacement in a generation of T years.
+  - **Farmers:** Fort 2012's ethnographic kernel for preindustrial farmers [V] puts 42 % of children within 2.3 km of
+    their parents and 1 % at 100 km. That gives ⟨Δ²⟩ ≈ 360 km² (our arithmetic), so D ≈ 3 km²/yr at T = 30 yr.
+  - **The Neolithic front models** use D ≈ 12.5 km²/yr after Ammerman & Cavalli-Sforza (Davison et al., arXiv
+    q-bio/0505013 [V]). That is the upper value.
+  - **Foragers** are more mobile. Their kernel (Fort, Pujol & Cavalli-Sforza 2004) wasn't reached; it is read at L0.
+  - D is a property of the way of life, so the cell's `life` selects it.
+  - Speech is learnt from parents and neighbours, so the flux of speakers is taken as the flux of people. That is an
+    assumption, and labelled as one.
 - **What it predicts, as checks, not rules:**
   - **Isolation by distance.** In a 2-D stepping-stone model, identity falls off with distance like the Bessel
     function K₀(r/ξ), close to logarithmic over a wide range (Malécot; Kimura & Weiss 1964). That is Séguy's curve,
     lexical distance growing as the log of geographic distance, which dialectometry finds across Europe (Séguy 1971;
     Nerbonne 2010). It is the strongest single check on the contact rule (§11.1).
-  - **Correlation length** ξ_m ≈ √(D/λ_m): with D = 12.5 km²/yr, ~230 km for a word of half-life 3,000 yr and ~600 km
-    for one of 20,000. So a language spans a few hundred km where people are spread evenly. Fast meanings vary over
+  - **Correlation length** ξ_m ≈ √(D/λ_m). For a word of half-life 3,000 yr it is ~110 km at the farmers' D = 3 km²/yr
+    and ~230 km at 12.5. For one of 20,000 yr it is ~290–600 km. So a language spans one to a few hundred km where people
+    are spread evenly, two to four cells at 160K; that is why §11.1's scale check matters. Fast meanings vary over
     shorter distances than slow ones, as dialect atlases show.
+  - **The log law has a population-genetic twin:** in two dimensions, F_ST/(1 − F_ST) between demes grows linearly in
+    the log of distance (Rousset 1997 [A]). Séguy's curve is that law, with words for genes.
   - **Barriers.** Rugged land and rivers raise diversity (Axelsen & Manrubia 2014), because they cut contact.
   - **Isogloss dynamics.** Boundaries between dialect domains behave with a surface tension: they straighten, and
     they are driven away from dense population centres toward thinner people (Burridge 2017). The N_b/N_a term is that
@@ -649,8 +664,12 @@ Every frame (the civ frames' `frameYears`, and on demand for the nation layer):
 - **Languages.** Seeds go in order of people, so the largest cell first. A language is the connected set of cells
   whose lexical similarity to its seed's lect is at least s_lang. Each seed is the most populous cell not yet taken.
   This is leader clustering; a connected-components rule on similar neighbours would chain a whole dialect continuum
-  into one language. s_lang is where a dialect ends and a language begins (§3.2; Ethnologue's own boundaries are
-  argued case by case, so it is a convention, set once).
+  into one language. s_lang is where a dialect ends and a language begins:
+  - **sourced:** Wichmann 2019 [V] proposes a universal cut-off between dialect pairs and language pairs at ASJP's
+    normalized Levenshtein distance LDN = 0.51 (mean 0.514 ± 0.071), about 1,075–1,635 years of separation;
+  - in L1, with no word forms yet, s_lang is the cognate similarity our rates give after that separation (~1,350 yr),
+    so the threshold is derived, not tuned;
+  - from L3, on generated forms, it is LDN = 0.51 itself, measured as ASJP measures it.
 - **Tracking.** Each new language takes the id of the previous frame's language with which it shares the most cells.
   A previous language whose cells now fall under two or more ids **split**: the first keeps the id and the others are
   its daughters, dated to this frame. One whose cells are all taken by another **died**, by shift or emptiness.
@@ -738,8 +757,10 @@ PHOIBLE, WALS). From there they change by drift and contact like the words, each
 ### 9.2 Sound change as regular rules, in the order they happened
 - **A change is a value step** along a setting's chain (no lenition → intervocalic voicing, codas any → sonorants
   only), with a rate per setting. The rates are ours. Greenhill et al. 2017 find most grammatical features change
-  faster than basic vocabulary, around a stable core, so settings are not assumed slower than words. Their per-feature
-  rates (and Dediu & Cysouw 2013's stability ranking, to check) order the settings' rates.
+  faster than basic vocabulary, around a stable core, so settings are not assumed slower than words. Dediu & Cysouw
+  2013 [V] rank 62 WALS features over seven methods: word order (genitive–noun, object–verb, adposition) is the most
+  stable area, and phonology spans the whole range (front rounded vowels near the top, consonant inventories and
+  voicing near the bottom). Their ranking orders our settings' rates.
 - **Each setting is a function on word forms,** applied to every word. That is the Neogrammarian regularity (Osthoff &
   Brugmann 1878). Labov 1981's resolution of lexical diffusion, that sound changes are regular at the level of
   phonetic categories, is enough here.
