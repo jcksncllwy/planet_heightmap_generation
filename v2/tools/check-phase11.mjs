@@ -13,7 +13,7 @@ import { simulate } from '../js/tectonics/simulate.js';
 import { COLLISION_SCENES } from '../js/tectonics/scenarios/collision-scenes.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { buildStartWorld } from '../js/tectonics/init/start-world.js';
-import { onlyMechanisms, TECTONICS } from '../js/tectonics/config.js';
+import { onlyMechanisms, mechanismsOn, TECTONICS } from '../js/tectonics/config.js';
 import { updatePlateMotion } from '../js/tectonics/step/torque-balance.js';
 import { TectonicWorld, EventKind } from '../js/tectonics/model/world.js';
 import { CrustType, CrustFlag } from '../js/tectonics/model/crust.js';
@@ -31,12 +31,17 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? 
 section('two continents meeting at an angle');
 const zipper = async (overrides, seed = LAB_MESH_SEED) => {
     const world = onPath(COLLISION_SCENES.find(s => s.id === 'zipper').build(mesh, seed));      // (on path GEO_SIM_PATH: lib/paths.mjs)
-    Object.assign(world.config, onlyMechanisms(), overrides);
+    // (collisions alone — and the lower continent going under the upper (underthrusting, Phase 7c's), as phase 5's India has it:
+    // with nothing taking the overlap up the pair rode on over each other, 8.3 Mkm² of land on land by 100 Myr still closing at
+    // ~1 cm/yr, which only the stack weld had ended — deleted, lane stackweld 2026-11-26, sessrumnir's ruling)
+    Object.assign(world.config, onlyMechanisms(), mechanismsOn('underthrust'), overrides);
     const { frames } = await simulate(world, { untilMyr: 100, drive: updatePlateMotion, snapshotEveryMyr: 2 });
     const turn = f => { const a = f.plates[0].quat, b = f.plates[1].quat; return 2 * Math.acos(Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]))) * 180 / Math.PI; };
     const at = t => frames.reduce((b, f) => Math.abs(f.time - t) < Math.abs(b.time - t) ? f : b);
     const contact = world.events.find(e => e.kind === EventKind.COLLISION)?.time, weld = world.events.find(e => e.kind === EventKind.SUTURE);
-    if (contact === undefined || !weld) return { contact, weld };
+    // (unwelded: the pair's open record at the end — how fast it still closes and slides, how long it has stalled)
+    const open = [...world.collisions.values()].find(c => !c.sutured);
+    if (contact === undefined || !weld) return { contact, weld, open };
     return { contact, weld, turned: turn(at(weld.time - 2)) - turn(at(contact)), gapMkm2: weld.data.gapKm2 / 1e6, widestKm: weld.data.gapWidestKm, limitKm: world.config.sutureGapWidthKm + mesh.edgeKm };
 };
 {
@@ -48,13 +53,20 @@ const zipper = async (overrides, seed = LAB_MESH_SEED) => {
     // comes after first contact, and as the seam stalling — the sea stopped closing — not as a stack forced to give up (collision.js
     // `why`). How much sea is left is Earth's to judge: reported, against the Black Sea and the Mediterranean)
     const seeds = [LAB_MESH_SEED, 1, 2, 3], runs = [now, ...(await Promise.all(seeds.slice(1).map(async seed => await zipper({}, seed))))];
-    checkAcross('after first contact the two weld once the seam has stalled, not before', runs.map((z, i) => ({ label: seeds[i], formed: z.contact !== undefined, ok: !!z.weld && z.weld.time > z.contact && z.weld.data.why === 'stalled',
-        text: z.weld ? `contact at ${z.contact.toFixed(0)} Myr, weld at ${z.weld.time.toFixed(0)} Myr as ${z.weld.data.why}` : z.contact === undefined ? 'no contact' : `contact at ${z.contact.toFixed(0)} Myr, no weld` })));
+    // (re-scoped, lane stackweld 2026-11-26, on sessrumnir's phase-5 ruling: a weld is a stopped pair — closing and sliding both under
+    // the stall rate — so a pair still converging or sliding at the scene's end is two plates, not a weld that failed. The claim held:
+    // any weld comes after contact and as the seam stalled; unwelded, the pair is either still moving or not yet overdue (stalled less
+    // than sutureStallGiveUpMyr, after which it welds whatever sea is left). Was: a weld by 100 Myr on every seed)
+    const giveUp = TECTONICS.sutureStallGiveUpMyr;
+    checkAcross('after first contact the two weld once the seam has stalled, not before', runs.map((z, i) => ({ label: seeds[i], formed: z.contact !== undefined,
+        ok: z.weld ? z.weld.time > z.contact && z.weld.data.why === 'stalled' : !!z.open && z.open.stalledMyr < giveUp,
+        text: z.weld ? `contact at ${z.contact.toFixed(0)} Myr, weld at ${z.weld.time.toFixed(0)} Myr as ${z.weld.data.why}` : z.contact === undefined ? 'no contact'
+            : `contact at ${z.contact.toFixed(0)} Myr, unwelded at 100 Myr: ${z.open ? `closing ${z.open.closingCmYr.toFixed(2)}, sliding ${(z.open.slideCmYr ?? NaN).toFixed(2)} cm/yr, stalled ${z.open.stalledMyr.toFixed(0)} of ${giveUp} Myr` : 'no open record'}` })));
     // (a weld with no gap measured — collision.js books gapKm2 Infinity and no widest gap; the stack weld that did so is gone,
     // lane stackweld — is named in the detail as unmeasured, not averaged in or read as a number)
     const measured = z => z.weld && Number.isFinite(z.gapMkm2) && Number.isFinite(z.widestKm), unmeasured = runs.map((z, i) => z.weld && !measured(z) ? `${seeds[i]} (${z.weld.data.why})` : null).filter(Boolean);
     report('the sea left between the continents at the weld', runs.filter(measured).map(z => z.gapMkm2), { earth: [0.44, 2.5], unit: ' Mkm²', digits: 2, source: 'remnant seas of a collision: the Black Sea ~0.44 Mkm² to the Mediterranean ~2.5 Mkm² (the code\'s own figures, collision.js; recalled, not looked up)',
-        detail: `seeds ${seeds.join(', ')}; widest gap ${runs.filter(measured).map(z => `${z.widestKm.toFixed(0)} km`).join(', ') || 'none measured'} (unstable, so detail only; the limit for a closed margin is ${now.limitKm.toFixed(0)} km)${unmeasured.length ? `; no gap measured at the weld of seed${unmeasured.length > 1 ? 's' : ''} ${unmeasured.join(', ')}` : ''}` });
+        detail: `seeds ${seeds.join(', ')}; widest gap ${runs.filter(measured).map(z => `${z.widestKm.toFixed(0)} km`).join(', ') || 'none measured'} (unstable, so detail only; the limit for a closed margin is ${(TECTONICS.sutureGapWidthKm + mesh.edgeKm).toFixed(0)} km)${unmeasured.length ? `; no gap measured at the weld of seed${unmeasured.length > 1 ? 's' : ''} ${unmeasured.join(', ')}` : ''}` });
     report('the lower continent turns about the contact before the weld', now.weld ? now.turned : NaN, { unit: '°', digits: 1, source: 'no Earth figure: collisions are diachronous (the Tethys zipper)',
         detail: now.weld ? `over ${(now.weld.time - now.contact).toFixed(0)} Myr` : 'no weld' });
 }
