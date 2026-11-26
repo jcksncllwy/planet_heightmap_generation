@@ -284,6 +284,11 @@ section('the sea floor, island arcs and hotspots');
     for (let t = 0; t < T.tm.numCells; t++) {
         const c0 = T.sampler.cells[3 * t], c1 = T.sampler.cells[3 * t + 1], c2 = T.sampler.cells[3 * t + 2];
         if (rec.land[c0] || rec.land[c1] || rec.land[c2] || rec.coastKm[c0] > -300 || rec.trenchKm[c0] < 400) continue;
+        // (ocean crust only, as Earth's figure is — the age grid dates ocean floor: a flooded continental interior, its
+        // crust older than 100 Myr, stood in as "old floor" at the sea's surface — 37 % of the cells at 12345@600 when the
+        // sea stood 0.2 km high, the median −3.35 km for an ocean floor at −5.16; lane startsea, the B gate)
+        const F = history.frame;
+        if (F.type[c0] !== CrustType.OCEAN || F.type[c1] !== CrustType.OCEAN || F.type[c2] !== CrustType.OCEAN) continue;
         const age = Math.max(rec.ageMyr[c0], rec.ageMyr[c1], rec.ageMyr[c2]), young = Math.min(rec.ageMyr[c0], rec.ageMyr[c1], rec.ageMyr[c2]);
         if (age < 4) ridge.push(heightKm[t] + rec.seaKm); else if (young > 100) old.push(heightKm[t] + rec.seaKm);
     }
