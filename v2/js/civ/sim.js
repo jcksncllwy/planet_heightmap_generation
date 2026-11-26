@@ -554,13 +554,15 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         d[c] = K > 0 ? Math.max(0, d[c] + r * d[c] * (1 - d[c] / K) * C.stepYears) : d[c] * 0.5;
         // what they learn: each domesticate's skill by use, held only as far as the people within reach can hold it; its
         // domestication by use of its cultivated form
-        let near = d[c], k = 1;
-        for (let e = adjOffset[c]; e < adjOffset[c + 1]; e++) { const b = adjList[e]; if (home[b] >= 0) { near += d[b]; k++; } }
-        const cap = skillCap(near / k * contactKm2, C);
+        // (the skill learnt here; held to what the people within reach can hold — the cap, from the neighbours as they stand
+        // when this cell's turn comes — in stage B, skillsHeld: min(cap, fround(x)) is fround(min(cap, x)), so the same)
+        dMid[c] = d[c];
+        let mask = 0;
         for (let i = 0; i < DOM.length; i++) {
             if (!has(i, c)) continue;
+            mask |= 1 << i;
             const wi = xx[NW + i] / N;
-            Sk[i][c] = Math.min(cap, learn(Sk[i][c], wi, C));
+            Sk[i][c] = learn(Sk[i][c], wi, C);
             const D0 = Dm[i][c];
             Dm[i][c] = domesticate(D0, wi, DOM[i].herd, C);
             if (D0 < 1 && Dm[i][c] >= 1 && farmArrival[i][c] > t) domesticated.push([i, c]);
@@ -595,7 +597,13 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             }
         }
         // good and bad years, for the settled and the herders: their fields, rain-fed and watered, their herds and the wild
-        if (V && (settled(life[c]) || life[c] === Life.HERDER) && d[c] > 0) liveYears(c, t, step, f || life[c] === Life.HERDER ? C.storeYears : C.storeYearsForagers, kR, kI, kH, Kw);
+        had[c] = mask;
+        // (lived in stage C, liveYears: what it needs from here, kept)
+        if (V && (settled(life[c]) || life[c] === Life.HERDER) && d[c] > 0) {
+            const o = 5 * yearsN++;
+            yearsCell[yearsN - 1] = c; yearsArg[o] = f || life[c] === Life.HERDER ? C.storeYears : C.storeYearsForagers;
+            yearsArg[o + 1] = kR; yearsArg[o + 2] = kI; yearsArg[o + 3] = kH; yearsArg[o + 4] = Kw;
+        }
     };
     /** After a generation of the economy: the new centres (a lineage's first domestication, at the cell where it began), the
      *  fronts of new cultivation. */
@@ -612,6 +620,76 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         onsets = []; domesticated = [];
     };
 
+    // ── the economy's generation, in stages (lane civgpu): the step's numbers are those of one pass over the cells in order —
+    // each cell's economy, its skills held to its neighbours' people, its good and bad years, the shelves the sea takes back
+    // moving their people to their coasts as their turn comes — but worked out stage by stage, so that a stage that is each
+    // cell's own (the years, C) can be done for all cells at once:
+    //   0  the shelves the sea takes back: their people, in cell order, to their coasts not yet come to (the rest after B)
+    //   A  each cell's economy, in order (economyOf): its diet, people, way of life, onsets — the skills learnt, not held yet
+    //   C  each settled cell's good and bad years (liveYears): its own store, its own people
+    //   B  each cell's skills held to the people within reach (skillsHeld), its neighbours read as the one pass had them at
+    //      its turn: the cells before it as they ended (after their years, and any people from the shelves since), the
+    //      cells after it as they began
+    //   then the step's people summed in cell order, and the shelves' people moved to coasts already come to
+    const dOld = new Float32Array(n), dMid = new Float32Array(n), had = new Uint16Array(n), doneAt = new Int32Array(n).fill(-1), drownedAt = new Int32Array(n).fill(-1);
+    const yearsCell = new Int32Array(n), yearsArg = new Float64Array(5 * n), economyCells = new Int32Array(n);
+    let yearsN = 0;
+    const movesInto = new Map(), lateMoves = [];
+    /** The shelf s's people to its coast h (as the one pass did at s's turn). */
+    const moveAshore = s => { const h = home[s], a = d[s]; if (!(d[h] > 0)) cameFrom[h] = s; d[h] += a; d[s] = 0; };
+    /** d[b] as the one pass had it at cell x's turn. */
+    const dAt = (b, x) => {
+        const mv = movesInto.get(b);
+        let v;
+        if (doneAt[b] === step && b < x) {                       // (its turn came: as it ended, and any people come ashore since)
+            v = d[b];
+            if (mv) for (const [s, a] of mv) if (s > b && s < x) v = Math.fround(v + a);
+            return v;
+        }
+        if (drownedAt[b] === step) return b < x ? 0 : dOld[b];    // (a shelf the sea took back: empty from its turn)
+        v = dOld[b];                                              // (its turn not come yet, or not lived this step)
+        if (mv) for (const [s, a] of mv) if (s < x) v = Math.fround(v + a);
+        return v;
+    };
+    const skillsHeld = c => {
+        let near = dMid[c], k = 1;
+        for (let e = adjOffset[c]; e < adjOffset[c + 1]; e++) { const b = adjList[e]; if (home[b] >= 0) { near += dAt(b, c); k++; } }
+        const cap = skillCap(near / k * contactKm2, C), mask = had[c];
+        for (let i = 0; i < DOM.length; i++) if (mask & (1 << i)) Sk[i][c] = Math.min(cap, Sk[i][c]);
+    };
+    const economySteps = (seaKm, forage, bp) => {
+        dOld.set(d);
+        movesInto.clear(); lateMoves.length = 0; yearsN = 0;
+        // 0: the shelves, and (A) each cell's economy, in cell order
+        let m = 0;
+        for (const c of cells) {
+            if (arrival[c] > t) continue;
+            if (!dry(c, seaKm)) {
+                drownedAt[c] = step;
+                if (d[c] > 0) {
+                    const h = home[c];
+                    let mv = movesInto.get(h);
+                    if (!mv) movesInto.set(h, mv = []);
+                    mv.push([c, d[c]]);
+                    // (to a coast whose turn has come — or comes before this shelf's — after B; else now, as the pass did)
+                    if (h < c && arrival[h] <= t) lateMoves.push(c); else moveAshore(c);
+                }
+                life[c] = Life.EMPTY;
+                continue;
+            }
+            economyCells[m++] = c;
+        }
+        for (let j = 0; j < m; j++) { const c = economyCells[j]; doneAt[c] = step; economyOf(c, forage(c), bp); }
+        // C: the good and bad years
+        for (let j = 0; j < yearsN; j++) { const o = 5 * j; liveYears(yearsCell[j], t, step, yearsArg[o], yearsArg[o + 1], yearsArg[o + 2], yearsArg[o + 3], yearsArg[o + 4]); }
+        // B: the skills held
+        for (let j = 0; j < m; j++) skillsHeld(economyCells[j]);
+        let people = 0, farmersPeople = 0;
+        for (let j = 0; j < m; j++) { const c = economyCells[j]; people += d[c] * cellKm2; if (farmPkg[c] >= 0) farmersPeople += d[c] * cellKm2; }
+        for (const c of lateMoves) moveAshore(c);
+        return [people, farmersPeople];
+    };
+
     /** One generation (C.stepYears) of the run. */
     const live = () => {
         const bp = bpOf(t), seaKm = schedule(C.seaLevelM, bp) / 1000, holo = bp <= C.holoceneBP;
@@ -620,17 +698,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         const economic = bp <= C.cultivationFromBP;
         let people = 0, farmersPeople = 0;
         if (economic) carry();
-        for (const c of cells) {
+        if (economic) [people, farmersPeople] = economySteps(seaKm, forage, bp);
+        else for (const c of cells) {
             if (arrival[c] > t) continue;
             // the sea over the shelves: their people move to the coast that feeds them (and are its source, if it had none;
             // where it had people, the two mix — the economy's skills will be shared out here, by people)
             if (!dry(c, seaKm)) { if (d[c] > 0) { const h = home[c]; if (!(d[h] > 0)) cameFrom[h] = c; d[h] += d[c]; d[c] = 0; } life[c] = Life.EMPTY; continue; }
-            if (economic) {
-                economyOf(c, forage(c), bp);
-                people += d[c] * cellKm2;
-                if (farmPkg[c] >= 0) farmersPeople += d[c] * cellKm2;
-                continue;
-            }
             // (before the economy, foragers: what the land feeds, less what its diseases take)
             const K = forage(c) * health(c, false, false);
             if (d[c] === 0) d[c] = C.seedShare * K;
