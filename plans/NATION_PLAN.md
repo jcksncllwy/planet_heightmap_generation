@@ -79,8 +79,8 @@ Alternatives, not recommended:
 - polity.js keeps its API (`step`, `packed`, `packedPolities`, `counts`), so the page and the tools keep working. It
   becomes the nation layer with its later mechanisms switched off.
 - **Fingerprints.** As in C0 and D: each stage lands behind an option, and the civ fingerprints
-  (`civ-fingerprint.mjs`) stay byte-identical with it off. A stage that changes the people (N4) is Jackson's call to
-  make default.
+  (`civ-fingerprint.mjs`) stay byte-identical with it off. A stage that changes the people (N4) goes on by default once its
+  checks pass (Jackson, 2026-11-26).
 
 ## 2. Time span and step
 
@@ -539,6 +539,32 @@ Hazards are 1 − e^(−rate·25 yr), with the same hashed chances polity.js use
   - They spread cell to cell by contact, and are never lost.
   - Seeded by the land, not by Earth's map.
 
+### 7.4a The seam with langspec (culture and language)
+
+Jackson (2026-11-26) put culture and language in a lane of their own, langspec: spread, evolution, differentiation and
+blending. The nation layer owns none of that model. §7.4's culture tree, assimilation rule and T_split are this
+plan's **placeholder** for it, kept only to say what the nation layer needs. Where langspec's model differs, langspec's
+model wins.
+
+**What the nation layer reads from langspec,** each step, on the civ mesh:
+- **culture per cell:** the dominant culture's id (a node of langspec's tree), and its share where cultures mix (for
+  §7.5's minorities and §7.8's homogeneity);
+- **culture per town,** for seats, capitals and a polity's ruling culture;
+- **distance between two cultures** d(a, b), from 0 (the same) to 1 (unrelated). It's used for metaethnic frontiers
+  (asabiya, §7.4), legitimacy after the national stage (§7.8), unification (co-cultural means d below a level), and the
+  realm's minorities;
+- **language for names:** for a culture, a deterministic name generator (polities, places, peoples), whose names drift
+  down the tree;
+- **writing:** whether a culture has writing (for §7.8's mobilization), if langspec carries it.
+
+**What the nation layer gives langspec** each step:
+- per cell: the administering polity, its suzerain and the hold (administered, tributary or none);
+- per polity: its ruling culture, its seats and towns, and conquest settlement (who moved where);
+- the status a culture gets from ruling (Abrams–Strogatz's s), as an input to langspec's shift rule.
+
+**Order:** both run inside sim.js's step, realm then culture. Each reads the other's state from the last step, so the
+run stays deterministic.
+
 ### 7.5 Rebellion and secession
 - A province (a seat's region) rebels at a hazard that grows with:
   - its distance in days from the capital (overstretch);
@@ -672,6 +698,8 @@ quantity from §7.1. The view only colours it.
 ### 10.3 Over time
 - Frames every step (25 yr) for the realm layer, so borders move smoothly when scrubbed, and influence waxes and wanes
   as forces change. The 500-yr density frames stay as they are; the realm layer stores changes, not frames (§11.3).
+- **The timeline** (Jackson, Q2; stage N2): a slider over the run's steps replays the border changes, with play and
+  step buttons, and the selected realm's area-over-time curve under it.
 - **A realm's card** (clicking its land or capital):
   - its name, dates, capitals, rulers, wars;
   - an area-over-time sparkline: Taagepera's rise, plateau and fall, with its R and D marked;
@@ -768,14 +796,18 @@ are from §4.
 - **N2. The realm step.**
   - 25-yr step; revenue, army, capacity; campaign reach in days; succession rules; collapse into seats' regions; the
     chronicle and life stories.
-  - Checks: lifetimes (130 / 220 yr), largest polity's curve, N_A, reigns by rule; ensemble medians; time cost.
-- **N3. Identity.**
-  - The culture tree from `cameFrom`/`farmFrom`; assimilation (Abrams–Strogatz); asabiya on metaethnic frontiers;
+  - **The timeline view** (§10.3; §14 Q2): borders scrubbed step by step from the stored changes; a realm's area over
+    time on its card; the chronicle at each step.
+  - Checks: lifetimes (130 / 220 yr), largest polity's curve, N_A, reigns by rule; ensemble medians; time cost; the
+    timeline replays to the same borders as the run (the changes store is exact).
+- **N3. Identity** (consumes langspec's culture model through the seam of §7.4a; langspec builds it).
+  - Culture per cell and town, and distances, read from langspec; asabiya on metaethnic frontiers;
     MilTech know-how (riding from herds; iron waits for T4).
   - Nomad confederations.
   - Checks: Earth retrodiction R²; megaempires by the arid belt and their elongation; culture area vs complexity;
     culture density vs latitude.
-- **N4. Feedback onto the people** (changes the civ fingerprints: Jackson's call to default on).
+- **N4. Feedback onto the people.** On by default once its checks pass (Jackson, Q4). It changes the civ
+  fingerprints, which become the new baseline.
   - War deaths; refugees and conquest settlement; state works (canals and granaries that raise K or the store); taxes
     as a drain on the store.
   - Checks: the civ layer's own Earth numbers (HYDE populations, the Ur chain) not broken; famine rates.
@@ -784,7 +816,8 @@ are from §4.
 - **N6. The national stage** (§7.8; gated by §14 Q1).
   - Mobilization, culture in legitimacy, unification and national secession, faster assimilation.
   - Checks: partitioned homelands; the late-and-fast switch (states' cultural homogeneity before and after).
-- **N7 (optional). Names and the written chronicle** (§14 Q3).
+- **N7. Names and the written chronicle** (§14 Q3): names from each culture's phonology, through langspec's
+  generator (§7.4a).
 
 ## 13. What it needs from the civ layer that the civ layer doesn't have yet
 
@@ -809,6 +842,21 @@ are from §4.
   - reach in land-km.
 
 ## 14. Open questions for Jackson
+
+**Answered (Jackson, 2026-11-26, via sessrumnir):**
+- **Q1:** (b), agrarian plus the national stage (N0–N6).
+- **Q2:** (c), the map modes plus a **timeline**: scrub borders through history and follow a realm's area over time.
+  It is planned in at N2, not left for later (§12).
+- **Q3:** (b), names from each culture's phonology. Culture and language spread, evolution, differentiation and
+  blending get a lane of their own, **langspec**. The nation layer's culture tree (§7.4, N3) and names (N7) consume
+  that lane's model; the seam is §7.4a.
+- **Q4:** (c), feedback onto the people (N4) **on by default once its checks pass**, with no option-off stage first.
+- **Q5:** (a), one model from polity.js's first polity.
+- **Q6:** yes, fetch Turchin et al. 2013's maps for the Earth R² check (N0).
+- **Q7:** (a), 160K cells; small realms live as town dots.
+
+The questions as they were put:
+
 
 **Q1. Scope and horizon.** How far in history?
 - (a) **Agrarian only:** city-states to agrarian empires and early-modern territorial states; no nationalism (N0–N5).
