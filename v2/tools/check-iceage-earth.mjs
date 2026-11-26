@@ -36,8 +36,8 @@ import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albe
 import { declination } from '../js/climate/insolation.js';
 
 setDelaunator(Delaunator);
-// (ICE_MESH_CELLS=40000: the ice grown on another ice mesh — lane iceage's ice-grid study; the measure's lines printed either way)
-const F = process.env.ICE_MESH_CELLS ? { ...FINISH, iceMeshCells: Number(process.env.ICE_MESH_CELLS) } : FINISH, t0 = performance.now();
+// (GEO_SIM_ICE_MESH_CELLS=40000 (GEO_SIM_: what sim-slots carries to chroma): the ice grown on another ice mesh — lane iceage's ice-grid study; the measure's lines printed either way)
+const F = process.env.GEO_SIM_ICE_MESH_CELLS ? { ...FINISH, iceMeshCells: Number(process.env.GEO_SIM_ICE_MESH_CELLS) } : FINISH, t0 = performance.now();
 
 // ── the planet and its star (planet-system.js): its orbit at three epochs against PMIP's (Otto-Bliesner et al. 2017 for
 // 6 ka, Kageyama et al. 2017 for 21 ka: e, ε, ϖ from Berger 1978), the circular orbit as e = 0, Earth's perihelion ──
