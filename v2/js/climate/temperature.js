@@ -200,9 +200,13 @@ export function energyBalanceTemperature() {
         // …and a sheet once there is kept while its snow lasts TEMP_ICE_KEEP of the year (an ice sheet outlives the summers
         // that could not grow it: by the growing ramp alone, a sheet snowy ~85 % of the year counted as half a sheet, warmed
         // round by round and was gone)
-        // …unless the sheets are given (the ice age's, gpu/ice-sheet.js: input.ice, core.js sheetFrac): then they are where its
-        // flow put them, the ground's height already the ice's surface (no dome), and the snow's year leaves them as they are
+        // …and where the sheets are given (the ice age's, gpu/ice-sheet.js: input.ice, core.js sheetFrac) they are where its
+        // flow put them, the ground's height already the ice's surface (no dome there), the snow's year leaving them as they
+        // are. The climate's own perennial snow is kept beside them (`own`, its dome only beyond the given sheet): the cover is
+        // the larger of the two. Given alone, the rounds' ice-free inception had no snow to start a sheet from — at 116 ka
+        // northern Canada's cells with a positive balance went from 30 % to 0 % (lane iceage B2, tools/iceage-inception.mjs)
         const given = ctx.surface.sheetFrac ? coarsen(core, g, ratio, ctx.surface.sheetFrac) : null;
+        const own = new Float64Array(G);
         const keepSheet = (share) => { const x = (share - P.TEMP_ICE_KEEP[0]) / (P.TEMP_ICE_KEEP[1] - P.TEMP_ICE_KEEP[0]); return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
         const iceRamp = (T) => {
             const x = (P.TEMP_ICE_WARM_C - T) / (P.TEMP_ICE_WARM_C - P.TEMP_ICE_COLD_C);
@@ -220,17 +224,16 @@ export function energyBalanceTemperature() {
         const warm = !!(init && init.step === g.step && init.c0.length === G);
         if (warm) {
             c0.set(init.c0); c1r.set(init.c1r); c1i.set(init.c1i); c2r.set(init.c2r); c2i.set(init.c2i); snowYear.set(init.snowYear);
-            if (init.perennial) perennial.set(init.perennial); else for (let c = 0; c < G; c++) perennial[c] = iceSheet(snowYear[c]);
-        } else if (given) {
-            perennial.set(given);
+            if (init.perennial) own.set(init.own ?? init.perennial); else for (let c = 0; c < G; c++) own[c] = iceSheet(snowYear[c]);
         } else if (P.TEMP_ICE_START_C > -Infinity) {
             // An ice sheet keeps itself cold — its whiteness, its height — so cold land can carry one through summers that
             // bare ground there would not survive: two steady states. Started from bare ground the snow-and-ice rounds
             // never find the icy one (polar land snowy ~60 % of the year stays bare, under the sheet's 70 %); so a fresh
             // start begins with ice on land the first guess (by latitude alone) makes colder than TEMP_ICE_START_C, and
             // the rounds keep the sheets that hold themselves (developer: the poles "frequently not icey … feels super wrong")
-            for (let c = 0; c < G; c++) if (landFrac[c] > 0 && c0[c] < P.TEMP_ICE_START_C) { snowYear[c] = 1; perennial[c] = 1; }
+            for (let c = 0; c < G; c++) if (landFrac[c] > 0 && c0[c] < P.TEMP_ICE_START_C) { snowYear[c] = 1; own[c] = 1; }
         }
+        for (let c = 0; c < G; c++) perennial[c] = given ? Math.max(given[c], own[c]) : own[c];
         const outer = warm ? OUTER_WARM : OUTER;
         // heat the ocean's currents bring to (or take from) the sea's surface layer, W/m² (ocean.js)
         const qEbm = qflux ? coarsen(core, g, ratio, qflux) : null;
@@ -318,9 +321,10 @@ export function energyBalanceTemperature() {
             F0.fill(0); F1r.fill(0); F1i.fill(0); F2r.fill(0); F2i.fill(0); iceYear.fill(0); seaIceYear.fill(0);
             snowYearPrev.set(snowYear); snowYear.fill(0);
             for (let c = 0; c < G; c++) {
-                perennial[c] = given ? given[c] : Math.max(iceSheet(snowYearPrev[c]), perennial[c] * keepSheet(snowYearPrev[c]));
+                own[c] = Math.max(iceSheet(snowYearPrev[c]), own[c] * keepSheet(snowYearPrev[c]));
+                perennial[c] = given ? Math.max(given[c], own[c]) : own[c];
                 lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * perennial[c];
-                surfKm[c] = given ? landKm[c] : Math.max(landKm[c], P.TEMP_ICE_DOME_KM * perennial[c]);
+                surfKm[c] = Math.max(landKm[c], P.TEMP_ICE_DOME_KM * Math.max(0, own[c] - (given ? given[c] : 0)));
             }
             forcingSamples({ P, g, G, w, h, NT, dRad, Q, albBase, absorb, albVary, landFrac, lapseEff, surfKm, perennial, cloudT, dg, winds, gamma, uT, vT, qAt,
                 c0, c1r, c1i, c2r, c2i, Tk, snowYear, iceYear, seaIceYear, F0, F1r, F1i, F2r, F2i });
@@ -589,7 +593,7 @@ export function energyBalanceTemperature() {
         // surface air temperature at each grid cell's reference height
         const href = ctx.surface.meanLandKm;
         const domeG = new Float64Array(G);
-        for (let c = 0; c < G; c++) { const p = perennial[c] = given ? given[c] : Math.max(iceSheet(snowYear[c]), perennial[c] * keepSheet(snowYear[c])); lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = given ? 0 : P.TEMP_ICE_DOME_KM * p; }
+        for (let c = 0; c < G; c++) { own[c] = Math.max(iceSheet(snowYear[c]), own[c] * keepSheet(snowYear[c])); const p = perennial[c] = given ? Math.max(given[c], own[c]) : own[c]; lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = P.TEMP_ICE_DOME_KM * Math.max(0, own[c] - (given ? given[c] : 0)); }
         const lapseCore = new Float32Array(core.size), domeCore = new Float32Array(core.size);
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
@@ -702,7 +706,7 @@ export function energyBalanceTemperature() {
             refineForDrawing(g, core, ratio, domeG, domeDraw, 0, landCoarse, 0, Infinity);   // (from the land; an island far out, its own)
             return (drawn = { seaSL, seaIceOpen, domeDraw });
         };
-        const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial };
+        const state = { step: g.step, c0, c1r, c1i, c2r, c2i, snowYear, perennial, own };
         if (dg?.rec) dg.rec.c0 = Float64Array.from(c0);
         const out = { T, monthly, monthlySL, iceFrac: iceCore, domeKm: domeCore, inversion, state, solverStats: stats, profile: prof, ms: performance.now() - t0, source: 'energy balance' };
         return Object.defineProperties(out, {
