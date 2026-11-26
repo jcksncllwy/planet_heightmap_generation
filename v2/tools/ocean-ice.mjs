@@ -1,8 +1,8 @@
 // Ice and the water cycle on one finished moment (lane ocean, questions 6 and 7; measure only):
-//  · ice: the finish's last ice age (finish-ice.js: its extent, and its thickness a plastic sheet's, √(NYE_KM × distance
-//    to the margin), capped at MAX_KM — this tool's estimate) and the moment's own ice (Köppen EF, the same law), as volumes and the sea-level
+//  · ice: the finish's last ice age (finish-ice.js: its extent, and its thickness a plastic sheet's, √(iceNyeKm × distance
+//    to the margin), capped at iceMaxKm) and the moment's own ice (Köppen EF, the same law), as volumes and the sea-level
 //    drop each would make taken from the ocean (ρ_ice/ρ_water 0.917/1.027 ≈ 0.89 of its volume as sea water, over the
-//    ocean's area); then the sea lowered by the terrain's glacial lowstand (terrain-config.js iceSeaDropKm) and by the volume's own drop, and the shelf
+//    ocean's area); then the sea lowered by the finish's fixed iceSeaDropKm and by the volume's own drop, and the shelf
 //    bared and the land masses joined (land bridges) at each;
 //  · water cycle: the moment's climate on the finished surface (climate/rain.js): global rain against evaporation per
 //    anchor month, land's rain against land's evaporation, and the finish's runoff (its own Budyko: finish.js) against
@@ -18,7 +18,7 @@ import { REPO_ROOT } from './lib/history-cache.mjs';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { FINISH } from '../js/finish/finish-config.js';
-import { terrainConfig, TERRAIN } from '../js/terrain/terrain-config.js';
+import { terrainConfig } from '../js/terrain/terrain-config.js';
 import { planetClimate } from '../js/climate/climate.js';
 import { KOPPEN_ID } from '../js/climate/koppen.js';
 import { spreadKm } from '../js/core/min-heap.js';
@@ -27,10 +27,7 @@ import { pourOcean, volumeAt, EARTH_OCEAN_KM3 } from '../js/tectonics/ocean/inve
 setDelaunator(Delaunator);
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const seed = Number(flag('--seed', 626225)), t = Number(flag('--t', 300)), cells = Number(flag('--cells', 2500000)), jsonOut = flag('--json', null);
-const F = FINISH, R = 6371, ICE_TO_WATER = 0.917 / 1.027, LOWSTAND_KM = TERRAIN.iceSeaDropKm;
-// (this tool's own thickness law, a plastic sheet's: √(NYE_KM × distance to the margin), at most MAX_KM (Nye 1952) — the finish's
-// until lane iceage B2 grew its sheets by the ice's flow, 2026-11-25; the finish's ice-age sea is now its own: stats.iceAge)
-const NYE_KM = 0.015, MAX_KM = 4.5;
+const F = FINISH, R = 6371, ICE_TO_WATER = 0.917 / 1.027;
 const simMesh = buildSimMesh(40000, MESH_SEED), frame = await momentFrame(REPO_ROOT, { seed, cont: DEFAULT_CONT, sim: 40000, time: t });
 const pool = await TerrainPool.create(simMesh);
 const t0 = performance.now();
@@ -44,7 +41,7 @@ const volumeOf = ice => {
     for (let c = 0; c < n; c++) if (ice[c]) for (let k = mesh.adjOffset[c]; k < mesh.adjOffset[c + 1]; k++) if (!ice[mesh.adjList[k]]) { toEdge[c] = 0.5 * mesh.edgeKm; break; }
     spreadKm(mesh, toEdge, { canEnter: (a, b) => ice[b] === 1 });
     let v = 0, a = 0;
-    for (let c = 0; c < n; c++) if (ice[c] && toEdge[c] < Infinity) { v += Math.min(MAX_KM, Math.sqrt(NYE_KM * toEdge[c])) * cellKm2; a += cellKm2; }
+    for (let c = 0; c < n; c++) if (ice[c] && toEdge[c] < Infinity) { v += Math.min(F.iceMaxKm, Math.sqrt(F.iceNyeKm * toEdge[c])) * cellKm2; a += cellKm2; }
     return { km3: v, km2: a };
 };
 let oceanKm2 = 0;
@@ -62,7 +59,7 @@ const lgm = volumeOf(glaciated), today = volumeOf(ef);
 const dropOf = km3 => km3 * ICE_TO_WATER / oceanKm2;                // (first order: the ocean's area held fixed)
 const lgmExtra = { km3: Math.max(0, lgm.km3 - today.km3) };
 console.log(`ocean ${(oceanKm2 / 1e6).toFixed(0)} Mkm² · moment's own ice (EF) ${(today.km2 / 1e6).toFixed(2)} Mkm², ${(today.km3 / 1e6).toFixed(2)} Mkm³ → ${(1000 * dropOf(today.km3)).toFixed(0)} m of sea`);
-console.log(`ice age ice ${(lgm.km2 / 1e6).toFixed(2)} Mkm², ${(lgm.km3 / 1e6).toFixed(2)} Mkm³ → ${(1000 * dropOf(lgm.km3)).toFixed(0)} m; beyond the moment's own: ${(1000 * dropOf(lgmExtra.km3)).toFixed(0)} m (the terrain's lowstand ${1000 * LOWSTAND_KM} m)`);
+console.log(`ice age ice ${(lgm.km2 / 1e6).toFixed(2)} Mkm², ${(lgm.km3 / 1e6).toFixed(2)} Mkm³ → ${(1000 * dropOf(lgm.km3)).toFixed(0)} m; beyond the moment's own: ${(1000 * dropOf(lgmExtra.km3)).toFixed(0)} m (finish assumes ${1000 * F.iceSeaDropKm} m)`);
 
 // ── the shelf bared and the land joined at a lowered sea (the ocean's connected flood from its cells, below the level) ──
 const lowered = dropKm => {
@@ -90,10 +87,10 @@ function landMasses(isLand) {
     }
     return sizes.filter(a => a > 1e5).sort((a, b) => b - a);
 }
-const now = landMasses(c => !ocean[c]), atFixed = lowered(LOWSTAND_KM), atOwn = lowered(dropOf(lgmExtra.km3));
+const now = landMasses(c => !ocean[c]), atFixed = lowered(F.iceSeaDropKm), atOwn = lowered(dropOf(lgmExtra.km3));
 const fmt = m => `${m.length} masses > 0.1 Mkm² (largest ${m.slice(0, 4).map(a => (a / 1e6).toFixed(1)).join(', ')} Mkm²)`;
 console.log(`today: ${fmt(now)}`);
-console.log(`sea −${1000 * LOWSTAND_KM} m: shelf bared ${(atFixed.bared / 1e6).toFixed(2)} Mkm², ${fmt(atFixed.masses)}`);
+console.log(`sea −${1000 * F.iceSeaDropKm} m: shelf bared ${(atFixed.bared / 1e6).toFixed(2)} Mkm², ${fmt(atFixed.masses)}`);
 console.log(`sea −${(1000 * dropOf(lgmExtra.km3)).toFixed(0)} m (the ice's own): shelf bared ${(atOwn.bared / 1e6).toFixed(2)} Mkm², ${fmt(atOwn.masses)}`);
 
 // ── the water cycle: the climate's rain and evaporation, and the finish's runoff ──
@@ -120,4 +117,4 @@ const r3 = x => x.toFixed(3);
 console.log(`climate anchors' P/E: ${rain.balance.map(r3).join(', ')} · whole year, area-weighted: P/E ${r3(P / E)}`);
 console.log(`land (grid cells > 50 % land): P ${r3(Pl / P)} of global rain, E ${r3(El / E)} of global evaporation; land P − E = ${r3((Pl - El) / Pl)} of land rain; sea E − P = ${r3((Es - Ps) / Pl)} of land rain`);
 console.log(`finish's cells: runoff ${r3(Rc / Pc)} of land rain (Budyko, temperature PET), its implied land evaporation ${r3(Ec / Pc)} of land rain`);
-if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ seed, t, n, oceanKm2, lgm, today, iceSeaDropKm: LOWSTAND_KM, ownDropKm: dropOf(lgmExtra.km3), now, atFixed, atOwn, pour: { levelKm: PO.levelKm, land: 1 - PO.seaCells / n, ms: pourMs, vAt0 }, balance: rain.balance, P, E, Pl, El, Ps, Es, Pc, Rc, Ec }));
+if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ seed, t, n, oceanKm2, lgm, today, iceSeaDropKm: F.iceSeaDropKm, ownDropKm: dropOf(lgmExtra.km3), now, atFixed, atOwn, pour: { levelKm: PO.levelKm, land: 1 - PO.seaCells / n, ms: pourMs, vAt0 }, balance: rain.balance, P, E, Pl, El, Ps, Es, Pc, Rc, Ec }));

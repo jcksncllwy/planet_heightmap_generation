@@ -146,6 +146,7 @@ const dumpObserve = DUMP && (() => {
 // --ice-measure: the ice age's sheets measured as they are grown (tools/lib/ice-grid-measure.mjs: lane iceage's ice-grid study,
 // 40K against 160K ice meshes by --set iceMeshCells=…); printed, so it comes back from chroma
 const ICE_MEASURE = process.argv.includes('--ice-measure');
+if (ICE_MEASURE) F.iceGrown = true;                // (the grown sheets are what it measures: finish-config.js iceGrown, off by default)
 const observe = DUMP || ICE_MEASURE ? (name, m, g, sea, lake, extra) => {
     if (ICE_MEASURE && name === 'ice sheet') measureIceGrid({ mesh: m, z: g, sheet: extra, iceMeshCells: F.iceMeshCells, label: `${SEED}@${TIME}` });
     dumpObserve?.(name, m, g, sea, lake, extra);

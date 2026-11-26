@@ -28,6 +28,9 @@ const R = 6371, LAPSE = 6.5, ICE_SHEET_KM2 = 5e4;
 
 /** Priestley–Taylor's potential evaporation in air at `cold` °C over that at `warm` (Δ/(Δ + γ), the sunlight the same —
  * rain.js; the summer's temperatures, when the year's evaporation mostly happens). */
+/** The summer temperature (°C) at the equilibrium line for a year's precipitation P (mm) — Ohmura et al. 1992. */
+const elaTemp = P => (-296 + Math.sqrt(Math.max(0, 296 * 296 - 36 * (645 - P)))) / 18;
+
 const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm); return (a / (a + PSYCHRO)) / (b / (b + PSYCHRO)); };
 
 
@@ -182,51 +185,17 @@ function bilinearG(g, field, lat, lon) {
  *          basin: how deep (km) the ice dug each cell's basin; floods: finish-floods.js
  */
 export function lastIceAge(ctx, F) {
-    const { mesh, z, lat, grid, cellKm2, sheet } = ctx, n = mesh.numCells, { adjOffset, adjList, edgeKm, xyz } = mesh;
-    // ── the ice the climate grew (glacialSheets), its snowfields (where its balance is positive), and the glacial summer ──
-    const ice = sheet.ice, H = sheet.H, acc = new Uint8Array(n), tS = new Float32Array(n);
-    for (let c = 0; c < n; c++) {
-        if (ice[c] && sheet.smb[c] > 0) acc[c] = 1;
-        tS[c] = sheet.warmSl[c] - LAPSE * (ice[c] ? Math.max(0, z[c] + H[c] - sheet.seaKm) : ctx.land?.[c] ? z[c] - sheet.seaKm : Math.max(0, z[c] - sheet.seaKm));
-    }
-    // (and the ice age's water, for the lakes the ice dams — finish-floods.js: the moment's runoff and rain scaled by the glacial
-    // climate's precipitation over the moment's, the runoff only where the glacial summer thaws, the open water's evaporation
-    // cooled with the air — Priestley–Taylor's Δ/(Δ + γ) at the glacial summer over the moment's, the sunlight the same)
-    const water = ctx.runoff && ctx.pet ? { runoff: new Float32Array(n), rain: new Float32Array(n), pet: new Float32Array(n) } : null;
-    if (water) {
-        // (the moment's rain where the climate gave none — the sea, bare at the ice age on the shelves — the land's, blurred)
-        const rainG = grid.blur(grid.average(lat, ctx.lon, ctx.rain, c => ctx.rain[c] === ctx.rain[c]), 150);
-        for (let c = 0; c < n; c++) {
-            const now = ctx.rain[c] === ctx.rain[c] ? ctx.rain[c] : grid.at(rainG, lat[c], ctx.lon[c]);
-            const dry = now > 0 ? sheet.rain[c] / now : 1, warm = ctx.warmSl[c] - LAPSE * Math.max(0, z[c]);
-            // (water runs off only where the summer thaws: snow on ground whose summer stays below freezing — under the ice
-            // or on the cold dry ground between its lobes — stays snow and ice, or sublimes; a sheet's meltwater comes from
-            // its ablation zone, the Laurentide's southern margin that fed Agassiz)
-            water.runoff[c] = ctx.runoff[c] === ctx.runoff[c] && tS[c] > 0 ? ctx.runoff[c] * dry : 0;
-            water.rain[c] = now > 0 ? now * dry : sheet.rain[c];
-            // (the shelves the sea leaves bare had no land climate at the moment: NaN — finish-floods.js gives them their
-            // lake's own)
-            water.pet[c] = ctx.pet[c] > 0 ? Math.max(F.petMinMm, ctx.pet[c] * ptCooled(tS[c], Math.max(tS[c], warm))) : NaN;
-        }
-    }
-    // ── the ice sheets: the ice's pieces at least an ice sheet's size (50 000 km²: the size that tells a sheet from an ice
-    // cap, Benn & Evans 2010 §1.3) ──
-    const comp = new Int32Array(n).fill(-1), sizes = [];
-    for (let s = 0; s < n; s++) {
-        if (!ice[s] || comp[s] >= 0) continue;
-        const id = sizes.length, q = [s]; comp[s] = id;
-        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (ice[nb] && comp[nb] < 0) { comp[nb] = id; q.push(nb); } }
-        sizes.push(q.length * cellKm2);
-    }
+    const { mesh, z, lat, grid, cellKm2 } = ctx, n = mesh.numCells, { adjOffset, adjList, edgeKm, xyz } = mesh;
+    // (the ice: grown — ctx.sheet, glacialSheets' answer, when F.iceGrown — or the prescribed ice age's: finish-config.js)
+    const head = ctx.sheet ? grownIce(ctx, F) : prescribedIce(ctx, F), { ice, acc, water, sizes, seaKm, sheetKm2 } = head;
     let iceCells = 0;
     for (let c = 0; c < n; c++) iceCells += ice[c];
-    if (!iceCells) return { ice, margin: new Uint8Array(n), iceKm2: 0, sheets: 0, basin: new Float32Array(n), floods: outburstFloods({ mesh, z, ice, S: null, cellKm2, seed: ctx.seed, water, seaKm: sheet.seaKm }, F) };
-    // ── the distance to the margin; the surface, the ice's on the moment's ground ──
+    if (!iceCells) return { ice, margin: new Uint8Array(n), iceKm2: 0, sheets: 0, basin: new Float32Array(n), floods: outburstFloods({ mesh, z, ice, S: null, cellKm2, seed: ctx.seed, water, seaKm }, F) };
+    // ── the distance to the margin; the ice's thickness and surface ──
     const toEdge = new Float32Array(n).fill(Infinity);
     for (let c = 0; c < n; c++) if (ice[c]) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) if (!ice[adjList[k]]) { toEdge[c] = 0.5 * edgeKm; break; }
     spreadKm(mesh, toEdge, { canEnter: (a, b) => ice[b] === 1 });
-    const S = new Float32Array(n);
-    for (let c = 0; c < n; c++) if (ice[c]) S[c] = z[c] + H[c];
+    const { H, S } = head.surface(toEdge);
     // ── the ice's flow, steered by the bed (the land's valleys) with a little of its surface's pull; its flux, the
     // snowfield area upstream ──
     const route = new Float32Array(n), iceList = [];
@@ -366,10 +335,118 @@ export function lastIceAge(ctx, F) {
         for (let c = 0; c < n; c++) if (Math.abs(sink[c]) > resolved) z[c] -= F.reboundLeft * sink[c];
     }
     // the lakes the ice dammed, and their floods (finish-floods.js): on the ground as the ice left it, the ice still standing
-    const floods = outburstFloods({ mesh, z, ice, S, cellKm2, seed: ctx.seed, water, seaKm: sheet.seaKm }, F);
+    const floods = outburstFloods({ mesh, z, ice, S, cellKm2, seed: ctx.seed, water, seaKm }, F);
     let sheets = 0;
-    for (const a of sizes) if (a >= ICE_SHEET_KM2) sheets++;
+    for (const a of sizes) if (a >= sheetKm2) sheets++;
     return { ice, margin, iceKm2: iceCells * cellKm2, sheets, basin, floods };
+}
+
+/** lastIceAge's ice, grown (F.iceGrown: ctx.sheet, glacialSheets' answer): the ice, its snowfields (its balance positive), the
+ *  ice age's water, its pieces' sizes (a sheet ≥ ICE_SHEET_KM2), the glacial sea; its surface the ice's on the moment's ground. */
+function grownIce(ctx, F) {
+    const { mesh, z, lat, grid, cellKm2, sheet } = ctx, n = mesh.numCells, { adjOffset, adjList } = mesh;
+    // ── the ice the climate grew (glacialSheets), its snowfields (where its balance is positive), and the glacial summer ──
+    const ice = sheet.ice, H = sheet.H, acc = new Uint8Array(n), tS = new Float32Array(n);
+    for (let c = 0; c < n; c++) {
+        if (ice[c] && sheet.smb[c] > 0) acc[c] = 1;
+        tS[c] = sheet.warmSl[c] - LAPSE * (ice[c] ? Math.max(0, z[c] + H[c] - sheet.seaKm) : ctx.land?.[c] ? z[c] - sheet.seaKm : Math.max(0, z[c] - sheet.seaKm));
+    }
+    // (and the ice age's water, for the lakes the ice dams — finish-floods.js: the moment's runoff and rain scaled by the glacial
+    // climate's precipitation over the moment's, the runoff only where the glacial summer thaws, the open water's evaporation
+    // cooled with the air — Priestley–Taylor's Δ/(Δ + γ) at the glacial summer over the moment's, the sunlight the same)
+    const water = ctx.runoff && ctx.pet ? { runoff: new Float32Array(n), rain: new Float32Array(n), pet: new Float32Array(n) } : null;
+    if (water) {
+        // (the moment's rain where the climate gave none — the sea, bare at the ice age on the shelves — the land's, blurred)
+        const rainG = grid.blur(grid.average(lat, ctx.lon, ctx.rain, c => ctx.rain[c] === ctx.rain[c]), 150);
+        for (let c = 0; c < n; c++) {
+            const now = ctx.rain[c] === ctx.rain[c] ? ctx.rain[c] : grid.at(rainG, lat[c], ctx.lon[c]);
+            const dry = now > 0 ? sheet.rain[c] / now : 1, warm = ctx.warmSl[c] - LAPSE * Math.max(0, z[c]);
+            // (water runs off only where the summer thaws: snow on ground whose summer stays below freezing — under the ice
+            // or on the cold dry ground between its lobes — stays snow and ice, or sublimes; a sheet's meltwater comes from
+            // its ablation zone, the Laurentide's southern margin that fed Agassiz)
+            water.runoff[c] = ctx.runoff[c] === ctx.runoff[c] && tS[c] > 0 ? ctx.runoff[c] * dry : 0;
+            water.rain[c] = now > 0 ? now * dry : sheet.rain[c];
+            // (the shelves the sea leaves bare had no land climate at the moment: NaN — finish-floods.js gives them their
+            // lake's own)
+            water.pet[c] = ctx.pet[c] > 0 ? Math.max(F.petMinMm, ctx.pet[c] * ptCooled(tS[c], Math.max(tS[c], warm))) : NaN;
+        }
+    }
+    // ── the ice sheets: the ice's pieces at least an ice sheet's size (50 000 km²: the size that tells a sheet from an ice
+    // cap, Benn & Evans 2010 §1.3) ──
+    const comp = new Int32Array(n).fill(-1), sizes = [];
+    for (let s = 0; s < n; s++) {
+        if (!ice[s] || comp[s] >= 0) continue;
+        const id = sizes.length, q = [s]; comp[s] = id;
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (ice[nb] && comp[nb] < 0) { comp[nb] = id; q.push(nb); } }
+        sizes.push(q.length * cellKm2);
+    }
+    const surface = () => { const S = new Float32Array(n); for (let c = 0; c < n; c++) if (ice[c]) S[c] = z[c] + H[c]; return { H, S }; };
+    return { ice, acc, water, sizes, seaKm: sheet.seaKm, sheetKm2: ICE_SHEET_KM2, surface };
+}
+
+/** lastIceAge's ice, prescribed (F.iceGrown off — main's until lane iceage B2, kept as it was): the moment's climate cooled
+ *  (more toward the poles) and dried, the sea F.iceSeaDropKm lower; ice where snow outlasts the summer (Ohmura's summer
+ *  temperature at the equilibrium line, from the precipitation), flowing out past its snowline — a glacier's tongue, an ice
+ *  sheet's lobes; its thickness a plastic ice sheet's (√ of the distance to its margin), its surface over the bed smoothed. */
+function prescribedIce(ctx, F) {
+    const { mesh, z, lat, warmSl, grid, cellKm2 } = ctx, n = mesh.numCells, { adjOffset, adjList } = mesh;
+    // rain where the climate gave none (the sea, bare at the ice age on the shelves): the land's, blurred
+    const rainG = grid.blur(grid.average(lat, ctx.lon, ctx.rain, c => ctx.rain[c] === ctx.rain[c]), 150);
+    // ── the ice age's summer and snow, and where snow outlasts summer ──
+    const tS = new Float32Array(n), snow = new Float32Array(n), acc = new Uint8Array(n);
+    // (and the ice age's water, for the lakes the ice dams — finish-floods.js: the runoff and rain dried as the snow is, the
+    // runoff only where the summer thaws, the open water's evaporation cooled with the air — Priestley–Taylor's Δ/(Δ + γ) at
+    // the colder summer over today's, the sunlight the same)
+    const water = ctx.runoff && ctx.pet ? { runoff: new Float32Array(n), rain: new Float32Array(n), pet: new Float32Array(n) } : null;
+    for (let c = 0; c < n; c++) {
+        const a = Math.abs(lat[c]) / 90, cold = F.iceColdEqC + (F.iceColdPoleC - F.iceColdEqC) * a ** 1.5;
+        const P = (ctx.rain[c] === ctx.rain[c] ? ctx.rain[c] : grid.at(rainG, lat[c], ctx.lon[c])) * (1 - F.iceDrier * a);
+        tS[c] = warmSl[c] - cold - LAPSE * (ctx.land?.[c] ? z[c] : Math.max(0, z[c]));
+        snow[c] = P;
+        if (water) {
+            const dry = 1 - F.iceDrier * a;
+            // (water runs off only where the summer thaws: snow on ground whose summer stays below freezing — under the ice
+            // or on the cold dry ground between its lobes — stays snow and ice, or sublimes; a sheet's meltwater comes from
+            // its ablation zone, the Laurentide's southern margin that fed Agassiz)
+            water.runoff[c] = ctx.runoff[c] === ctx.runoff[c] && tS[c] > 0 ? ctx.runoff[c] * dry : 0;
+            water.rain[c] = P === P ? P : 0;
+            // (the shelves the sea leaves bare had no land climate at the moment: NaN — finish-floods.js gives them their
+            // lake's own)
+            water.pet[c] = ctx.pet[c] > 0 ? Math.max(F.petMinMm, ctx.pet[c] * ptCooled(tS[c], tS[c] + cold)) : NaN;
+        }
+        if (z[c] > -F.iceSeaDropKm && P > 80 && tS[c] < elaTemp(P)) acc[c] = 1;
+    }
+    // ── snowfields, and how far past its snowline each one's ice flows (by its size) ──
+    const comp = new Int32Array(n).fill(-1), sizes = [];
+    for (let s = 0; s < n; s++) {
+        if (!acc[s] || comp[s] >= 0) continue;
+        const id = sizes.length, q = [s]; comp[s] = id;
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) { const nb = adjList[k]; if (acc[nb] && comp[nb] < 0) { comp[nb] = id; q.push(nb); } }
+        sizes.push(q.length * cellKm2);
+    }
+    const reach = Float32Array.from(sizes, a => F.iceMarginC[0] + (F.iceMarginC[1] - F.iceMarginC[0]) * smooth(Math.log(F.iceSheetKm2[0]), Math.log(F.iceSheetKm2[1]), Math.log(a)));
+    // ice spreads from its snowfields while the summer is not too warm for it (grounded on the shelf, not the deep sea)
+    const ice = new Uint8Array(n), allow = new Float32Array(n).fill(-Infinity), q = [];
+    for (let c = 0; c < n; c++) if (acc[c]) { ice[c] = 1; allow[c] = reach[comp[c]]; q.push(c); }
+    for (let i = 0; i < q.length; i++) {
+        const c = q[i];
+        for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+            const nb = adjList[k];
+            if (ice[nb] || z[nb] < -F.iceGroundedKm || tS[nb] > elaTemp(snow[nb]) + allow[c]) continue;
+            ice[nb] = 1; allow[nb] = allow[c]; q.push(nb);
+        }
+    }
+    const surface = toEdge => {
+        const bedG = grid.blur(grid.average(lat, ctx.lon, z, c => ice[c] === 1), 60), H = new Float32Array(n), S = new Float32Array(n);
+        for (let c = 0; c < n; c++) {
+            if (!ice[c]) continue;
+            H[c] = Math.min(F.iceMaxKm, Math.sqrt(F.iceNyeKm * toEdge[c]));
+            const bed = grid.at(bedG, lat[c], ctx.lon[c]);
+            S[c] = Math.max(z[c] + 0.05, (bed === bed ? Math.max(bed, -F.iceSeaDropKm) : z[c]) + H[c]);
+        }
+        return { H, S };
+    };
+    return { ice, acc, water, sizes, seaKm: -F.iceSeaDropKm, sheetKm2: F.iceSheetKm2[1] * 0.3, surface };
 }
 
 /**

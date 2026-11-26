@@ -68,9 +68,24 @@ export const FINISH = {
     deltaTopKm: 0.004,          // a delta plain stands this high
     deltaMaxDepthKm: 0.15,      // …and grows only over the shelf
 
-    // ── F3: the last ice age: its sheets grown under a glacial epoch's climate (finish-ice.js glacialSheets; the ice's flow and
-    // balance, gpu/ice-sheet.js and gpu/ice-balance.js; the sea lowered by the ice's own volume) ──
-    iceMeshCells: 160000,       // the ice's mesh (~55 km): paleo ice-sheet models run at 20–100 km (Abe-Ouchi et al. 2013 1°;
+    // ── F3: the last ice age ──
+    // iceGrown: its sheets grown under a glacial epoch's climate (finish-ice.js glacialSheets; the ice's flow and balance,
+    // gpu/ice-sheet.js and gpu/ice-balance.js; the sea lowered by the ice's own volume) — or, off, the prescribed ice age below
+    // (iceColdEqC … iceMaxKm: a cooling and drying, a snowline rule, a plastic sheet's thickness, the terrain's fixed lowstand).
+    // OFF BY DEFAULT FOR ITS COST, NOT ITS PHYSICS (lane iceage, ruling 2026-11-26): grown, the rounds to steady take minutes to
+    // tens of minutes a finish (a check of 9 finishes ran 7 h against 20–45 min), against the ~2 min the full-cycle emulator is
+    // to bring it to. On when that lands. check-ice-sheet and check-iceage-earth run it on, so its kernels stay tested.
+    iceGrown: false,
+    iceColdEqC: 3.5,            // (prescribed) colder than now at the equator…
+    iceColdPoleC: 16,           // …and at the poles (polar amplification: ~ (|lat|/90)^1.5 between)
+    iceDrier: 0.3,              // precipitation lower by up to this share toward the poles
+    iceSeaDropKm: TERRAIN.iceSeaDropKm,   // the sea ~120 m lower: shelves bare, ice grounded on them (terrain-config.js)
+    iceGroundedKm: 0.4,         // ice grounded on the sea floor down to this depth where it spread from land
+    iceMarginC: [2, 6],         // ice flows past its snowline into summers this much warmer: a glacier's tongue … an ice sheet's lobe
+    iceSheetKm2: [3e4, 1e6],    // (by how big the snowfield it flows from is)
+    iceNyeKm: 0.015,            // ice thickness √(iceNyeKm · distance to the margin), km (a plastic ice sheet: ~3.9 km at 1000 km)
+    iceMaxKm: 4.5,
+    iceMeshCells: 160000,       // (grown) the ice's mesh (~55 km): paleo ice-sheet models run at 20–100 km (Abe-Ouchi et al. 2013 1°;
                                 // Ganopolski et al. 2010 ~40 km; PMIP4 ice sheets 0.5–1°, Ivanovic et al. 2016)
     iceInceptionKyr: 116,       // the inception's epoch of the orbit's cycle and the air's CO2: Earth's last glacial inception,
                                 // the northern summer's sunlight lowest (Berger 1978; Calov et al. 2005) — the glacial branch
