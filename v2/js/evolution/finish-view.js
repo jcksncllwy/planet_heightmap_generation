@@ -4,7 +4,9 @@
 // the live terrain is.
 
 export class FinishService {
-    constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; }
+    // (keptCells: the detail whose mesh the kept worker holds — 0 when none; saved: the finish-cache keys this page's finishes
+    // were kept under, so the page knows which detailed moments it can let go and bring back — page-memory.js)
+    constructor() { this.worker = null; this.jobs = new Map(); this.next = 1; this.keptCells = 0; this.saved = new Set(); }
 
     /**
      * Finish a moment. keep: the worker stays afterwards, with the mesh it built (a 10M-cell mesh takes ~15 s; a 640K one
@@ -18,7 +20,7 @@ export class FinishService {
     finish(msg, { onStage = null, onProgress = null, keep = true } = {}) {
         const w = this.start(), id = this.next++;
         return new Promise((resolve, reject) => {
-            this.jobs.set(id, { resolve, reject, onStage, onProgress, keep });
+            this.jobs.set(id, { resolve, reject, onStage, onProgress, keep, cells: msg.cells });
             w.postMessage({ type: 'finish', id, ...msg, delaunatorUrl: import.meta.resolve('delaunator') });
         });
     }
@@ -33,10 +35,16 @@ export class FinishService {
         });
     }
 
+    /** Let the kept worker go, and the mesh it holds, if it is idle (making room for another detail: page-memory.js). */
+    release() {
+        if (!this.worker || this.jobs.size) return false;
+        this.worker.terminate(); this.worker = null; this.keptCells = 0;
+        return true;
+    }
     /** Stop a finish under way (the worker goes, and with it the meshes it held). */
     cancel() {
         if (!this.worker) return;
-        this.worker.terminate(); this.worker = null;
+        this.worker.terminate(); this.worker = null; this.keptCells = 0;
         for (const j of this.jobs.values()) j.reject(new DOMException('The finish was cancelled', 'AbortError'));
         this.jobs.clear();
     }
@@ -49,14 +57,14 @@ export class FinishService {
             if (!j) return;
             if (data.type === 'stage') j.onStage?.(data.stage);
             else if (data.type === 'progress') j.onProgress?.(data.share);
-            else if (data.type === 'done') { if (!data.saving) this.jobs.delete(data.id); j.resolve(data); }
-            else if (data.type === 'saved') { this.jobs.delete(data.id); if (!data.ok) console.warn('[finish] the finished moment was not kept in the finish cache'); }
+            else if (data.type === 'done') { if (!data.saving) this.jobs.delete(data.id); if (data.cached && data.cacheKey) this.saved.add(data.cacheKey); else if (j.keep && j.cells) this.keptCells = j.cells; j.resolve(data); }
+            else if (data.type === 'saved') { this.jobs.delete(data.id); if (data.ok) this.saved.add(data.key); else console.warn('[finish] the finished moment was not kept in the finish cache'); }
             else { this.jobs.delete(data.id); j.reject(Object.assign(new Error(data.message), { miss: !!data.miss })); }
-            if ((data.type === 'done' || data.type === 'saved' || data.type === 'error') && !j.keep && !this.jobs.size && this.worker === w) { w.terminate(); this.worker = null; }
+            if ((data.type === 'done' || data.type === 'saved' || data.type === 'error') && !j.keep && !this.jobs.size && this.worker === w) { w.terminate(); this.worker = null; this.keptCells = 0; }
         };
         w.onerror = e => {
             for (const j of this.jobs.values()) j.reject(new Error(e.message || 'the finishing worker stopped (out of memory?)'));
-            this.jobs.clear(); w.terminate(); if (this.worker === w) this.worker = null;
+            this.jobs.clear(); w.terminate(); if (this.worker === w) { this.worker = null; this.keptCells = 0; }
         };
         return w;
     }
