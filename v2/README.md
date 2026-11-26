@@ -1465,7 +1465,8 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
   - "After contact the two keep converging, slowing, and weld once the seam stalls" moved from Phase 5 to Phase 7c's India.
     In Phase 5 nothing takes the overlap up (underthrusting is Phase 7c), so India stacks `sutureStackKm` deep on Asia and
     welds stacked while still converging. The stack weld is a guard against a state Earth cannot reach, not the end of a
-    collision. With every event on the seam stalls first: Phase 7c's India, and all 42 of the planet's welds on 3 seeds.
+    collision. With every event on, most welds stall first (Phase 7c's India; 27 of the planet's 34 welds on 3 seeds), but
+    the guard still fires in 7 (a named gap, under the viscous term below).
   - Phase 5's events-off India crosses Asia: no events and an overlap nothing takes up, which need not persist.
 
 ## A collision ends when its belt holds the pair (2026-11-09, lane weld)
@@ -1553,6 +1554,12 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
     at the indenter's ends (`merge-plates.js` inverse warp, +1.1 % land at the weld); crust thickened while the push was
     high keeps its thickness when the push falls (no orogenic collapse), so it can stand over the collision's ceiling at
     the weld (seed 2: 52.7 km against 24.1).
+  - *The stack weld still fires* (named gap). It fired in 0 of 43 planet welds before P2 measured the front across the line
+    between the plates, and in 7 of 34 (2/2/3 on seeds 12345/1/2) since. Some of those jams are craton on craton, others
+    hold no craton. It fires in every zipper weld (Phase 11, underthrust off), in Phase 6's breakup, and on seed 777 of
+    Phase 13 it rejoins a piece rifted off the supercontinent 6 Myr earlier, so one plate holds over 90 % of the planet for
+    130 Myr. Seed 12345's India does not weld inside Phase 7c's and 8a's scene, so their weld-premised India checks fail
+    there.
 - **The collision lock is a bounded force (lane belts, `collisionLockGpe`, opt-in, off by default).** A contact resists with the
   gravitational potential energy of the thickened crust, ½ρc g(1−ρc/ρa)[(H+Δh)²−H²] per metre of front (5.7 × 10¹² N/m at
   Tibet's 35 km of extra crust; Copley et al. 2010). Δh is the larger of the thickest crust within two rings of the contact
