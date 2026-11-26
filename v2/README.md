@@ -907,8 +907,8 @@ river too starved to fill it keeps its ria (Talling 1998; Blum & Törnqvist 2000
 the finish after the early erosion, before the bayhead fill (`stats.lowstand.cycleFill`).
 **Fills keep their inlets** (lane lakebar, 2026-11-25; `keepInlets`, carve.js): water the sea reached before a fill and that the
 fill left below sea level drains, and takes the tide, through an inlet its river and tidal prism keep scoured (Escoffier 1940).
-So after both fills, where one cut such water off from the sea, the filled cells on its lowest way back go back to their floor
-(`inletKm3` in `cycleFill` and `bayhead`). Before, a side river's fill across an arm's seaward neck left the arm a lake below sea
+So after the transgressive fill, where it cut such water off from the sea, the filled cells on its lowest way back go back to their floor
+(`stats.lowstand.cycleFill.inletKm3`; the bayhead fill's head-first order already leaves its necks for last). Before, a side river's fill across an arm's seaward neck left the arm a lake below sea
 level, held 4 m above the sea by a one-cell strip (243751 at 630 Myr: 196,000 km² behind a 30 km strip). Reduced: the channel is a
 cell wide and runs where the ground was lowest. A lake that is cut off by other means (the ice age's rebound, the history) is the
 water pass's, and its overflow is a later lane's (lakebar report: overflow at every low exit with sill incision). Earth on the same meshes, the same

@@ -24,7 +24,6 @@
 // Heights km, distances km, time Myr.
 
 import { MinHeap } from '../core/min-heap.js';
-import { keepInlets } from '../terrain/carve.js';
 import { mapOnto, meanOnto, carry } from '../core/mesh-maps.js';
 import { WAVE_BASE_KM, MARINE_K } from './marine-config.js';
 import { FLEX, seaLoadShare, stiffnessKm4, solvePlateCPU } from '../gpu/flexure.js';
@@ -541,15 +540,8 @@ export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a, topKm = 
         for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const y = adjList[k]; if (drowned[y] && fromSea[y] > d) { fromSea[y] = d; next.push(y); } }
         ring = next;
     }
-    const was = new Float32Array(cells.length);
-    cells.forEach((c, i) => { was[i] = z[c]; });
     const spilt = deltaLayer(mesh, z, inlet, fromSea)(cells, supply / a, () => topKm, c => drowned[c] === 1) * a;
-    // (and it keeps the inlets of the water it would have cut off from the sea: carve.js keepInlets)
-    const before = new Map(), open = new Uint8Array(n);
-    cells.forEach((c, i) => { if (z[c] !== was[i]) before.set(c, was[i]); });
-    for (let c = 0; c < n; c++) open[c] = sea[c] && !drowned[c] ? 1 : 0;
-    const back = keepInlets(mesh, z, before, open, sea) * a;
-    return { mouths, supplyKm3: Math.round(supply), roomKm3: Math.round(room), laidKm3: Math.round(supply - spilt - back), spiltKm3: Math.round(spilt), inletKm3: Math.round(back) };
+    return { mouths, supplyKm3: Math.round(supply), roomKm3: Math.round(room), laidKm3: Math.round(supply - spilt), spiltKm3: Math.round(spilt) };
 }
 
 /**
