@@ -148,9 +148,11 @@ years of high sea at Earth's drift rates (~10⁶ m³/yr) a shore ~15 m deep move
 worlds', whose synthesized margins fall away at the coast — ~25 km. So the waves straighten the coast at the mesh's finest
 scales, and its 50–500 km shape is the margin's (its sediment wedge, not modelled; lane coastwave 2026-11-25). It runs in its
 own worker (which alone holds a 10M-cell mesh) and returns an equirectangular picture of heights and the ocean, painted
-like the live terrain; a handful of moments are kept in detail per history — up to four on a desktop (and no more than
-1 GB between them: 209 MB each at 2.5M, measured; two at 10M), one on a small device — so stepping back onto one shows it at once; the one viewed
-longest ago is let go once a new one is done (never the one on screen, so a cancel loses nothing). See "The finish cache"
+like the live terrain. Moments are kept in detail per history, as many as the page's memory budget leaves room for
+beside the next Add detail (up to twelve, and at least 1 GB of them on a desktop; one on a small device: "The page's
+memory" below), so stepping back onto one shows it at once. Those the finish cache holds go first, the one viewed longest
+ago first, once a new one is done (never the one on screen, so a cancel loses nothing). Stepped onto again, they come
+back from the cache at their own detail in about a second. See "The finish cache"
 for the moments detailed before. A finished moment brings **its own
 climate, at its detail**: the grid's climate from the finish's climate stage, each cell's own (its height, its relief)
 again on the finished surface (the lapse rate on all of a cell's height, so a ridge is 6.5 °C a km colder than its valley and
@@ -1060,6 +1062,33 @@ cache (simulateCached). The page at rest went 4.56 → 1.29 GB (the history work
 history peaked at 3.69 → 1.10 GB. Every frame is the same: value hashes on three worlds, 243751 to 1200 Myr; a run with
 `GEO_SIM_DEAD_PLATE_TRAP=1` puts a getter that throws in place of each dropped field, and it ran clean. Keep going and a
 reloaded `&more=` link run on as before.
+
+The page's memory (2026-11-26, pagemem; evolution/page-memory.js). Every worker of the page runs in its one renderer process,
+whose ArrayBuffers are capped at ~15.5 GB in all (headless Chrome 158; past it every allocation fails, and that is the error
+Add detail's retry catches). The engines' heaps are small, so the page budgets ArrayBuffers: half of `deviceMemory`, at most
+9 GB on a desktop, 1.5 GB on a small device (`?membudget=GB` sets another).
+- **Before each Add detail**, the page works out what the pass needs. The table is measured on seed 243751 with a 1.2× margin:
+  peak above rest +0.5 GB at 640K, +2.5 GB at 2.5M, +5.3 GB at 10M. If the pass would not fit, the page makes room first,
+  cheapest to bring back first:
+  - the finishing worker kept with another detail's mesh (2.15 GB after a 10M; built again only if that detail is used again);
+  - the terrain's workers, rested for the pass (~0.33 GB);
+  - then the detailed moments the finish cache holds, viewed longest ago first.
+- **The card says what was let go.** If the pass still won't fit, the card says so as the pass runs ("may need about … close
+  other World Orogen tabs or choose a coarser detail").
+- **Moments the cache doesn't hold are never let go to make room.**
+- **On an out-of-memory error**, the console names the error, the stage, and what the page held.
+- **The progress bar never moves back.** The climate worked out again after the erosion is stage 'climate' a second time, and
+  it used to send the bar from 54 % to 25 %.
+- **Measured** (cross-origin-isolated page, measureUserAgentSpecificMemory; 640K at 960, then 10M at 730, then 2.5M at 1200
+  Myr):
+
+  | | before | after |
+  |---|---|---|
+  | rest | 4.56 GB | 1.29 GB |
+  | the 2.5M pass's peak | 7.81 GB | 4.50 GB (3.64 GB with a 3.5 GB budget, which made room) |
+  | 10M peak | 10.25 GB | 6.94 GB |
+
+  The moments let go came back from the cache in 0.8–1.3 s.
 
 The picture on the GPU (2026-10-18; developer: "lets do the GPU repaint"): Evolution painted every moment on the page's
 thread — ~2M pixels each blended from three cells through a pixel table (`SmoothMapRaster`; 37 ms at 2048 px, 130 ms at
