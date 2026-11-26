@@ -42,7 +42,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 |---|---|---|---|
 | The voter model with innovation on the mesh: each slot copies a neighbour at rate m_ab | the stepping-stone model (Kimura & Weiss 1964; Malécot) with words as alleles; Schulze, Stauffer & Wichmann 2008 (copying between speakers' feature strings) | Adapted | [A] K&W; [V] Schulze review |
 | k_ab = 4D/(deg·ℓ²), ℓ in travel-days × a flat day's walk | a 2-D diffusion's finite-difference rate; routes.js's days | Ours (the discretization) | — |
-| D = ⟨Δ²⟩/(4T) by way of life: farmers ~3 km²/yr from Fort 2012's preindustrial kernel (⟨Δ²⟩ ≈ 360 km², our arithmetic, T = 30 yr); 12.5 km²/yr as the Neolithic front models use (Davison et al., after A&CS); foragers to read (Fort, Pujol & Cavalli-Sforza 2004, NOT FOUND yet) | Fort 2012; Davison et al. | Direct (kernel), Adapted (D) | [V]/[V] |
+| D = ⟨Δ²⟩/(4T) by way of life: farmers ~3 km²/yr from Fort 2012's preindustrial kernel (⟨Δ²⟩ ≈ 360 km², our arithmetic, T = 30 yr); 12.5 km²/yr as the Neolithic front models use (Davison et al., after A&CS); foragers to read (Fort, Pujol & Cavalli-Sforza 2004, NOT FOUND yet) | Fort 2012; Davison et al. | Direct (kernel, main text; SI not read), Ours (⟨Δ²⟩ and D derived) | [V]/[V] |
 | Backward migration: a's input from b ∝ N_b / N_a | demography of dispersal; Burridge 2017 (density-weighted averaging) | Adapted | [V] Burridge |
 | Intelligibility g(sim): full levelling within a continuum, a borrowing floor between unintelligible lects | Mira & Paredes 2005 (similarity allows bilingual coexistence); Gooskens & van Heuven 2020 (lexical distance explains intelligibility, R² 0.57 all pairs, 0.89 Germanic) | Ours (the smooth step); s_hi = s_lang | [V abstract]/[V] |
 | Expected: lexical distance sublinear in distance, near logarithmic | Nerbonne 2010 / Nerbonne & Heeringa 2007 (log distance the best predictor; r 0.47–0.62); Séguy 1971; the genetic twin: F_ST/(1−F_ST) linear in ln distance in 2-D (Rousset 1997) | — (a check) | [V draft]; Séguy via Nerbonne; Rousset [A] |
@@ -64,8 +64,8 @@ the PDFs and pages read are in `verify/pdfs/`).
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
 | dx/dt = c[(1−x)x^a s − x(1−x)^a(1−s)], a = 1.31 | Abrams & Strogatz 2003 (42 regions; no stable coexistence) | Direct | [V] |
-| Plus migration of speakers (reaction–diffusion form) | Patriarca & Leppänen 2004 (coexistence in separate zones); Kandler, Unger & Steele 2010 (monolinguals and bilinguals, fitted to Welsh and Gaelic censuses) | Adapted | [A] P&L; [V] Kandler model text |
-| Rate c set on Earth's shift records | Kandler et al. 2010's Celtic series; Weber 1976's France (NATION_PLAN) | Tuned, labelled | [V]/[V] |
+| Plus migration of speakers (reaction–diffusion form) | Patriarca & Leppänen 2004 (coexistence in separate zones); Kandler, Unger & Steele 2010 (monolinguals and bilinguals, fitted to Welsh and Gaelic censuses) | Adapted | [A] P&L; [V partial] Kandler model text |
+| Rate c set on Earth's shift records | Kandler et al. 2010's Celtic series; Weber 1976's France (NATION_PLAN) | Tuned, labelled | [V partial]/[L here] |
 | Status s: ½ by default; raised by the ruler's hold, towns, schooling | Renfrew 1987 (elite dominance, via Renfrew 2000); Kars et al. 2021 (Anatolia ~9.6 % Central Asian ancestry); Yunusbayev et al. 2015 | Adapted; the mapping from hold to s is ours | [V]/[V]/[A] |
 | The swap keeps few words (r_lex) and more sounds (r_phon > r_lex) | Thomason & Kaufman 1988 (shift brings phonological and syntactic interference, "sometimes … very few loanwords"; from Thomason's own summary) | Adapted; r values ours | [V summary]; the book [L] |
 | Bilingual coexistence of similar lects through g(sim) | Mira & Paredes 2005; Castelló, Eguíluz & San Miguel 2006 | Adapted | [V abstracts] |
@@ -74,7 +74,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
-| Loans into the basic list at b_loan·β_m, faster with bilingualism | Haspelmath & Tadmor 2009 (WOLD: mean ~24 % loans over all vocabulary, 1.2–62.7 %; nouns 31 %, verbs 14 %; the Leipzig–Jakarta list least borrowed) | Adapted; β_m from the L–J ranking, b_loan ours | [V] |
+| Loans into the basic list at b_loan·β_m, faster with bilingualism | Haspelmath & Tadmor 2009 (WOLD: loans 1.2–62.7 % by language, a mean ~24 % by our arithmetic from Table 1; nouns 31 %, verbs 14 %; the Leipzig–Jakarta list ranks resistance to borrowing, its own loan share NOT FOUND) | Adapted; β_m from the L–J ranking, b_loan ours | [V] |
 | Settings cross only under bilingualism | Thomason & Kaufman 1988's borrowing scale (words first, structure with intense contact) | Adapted | [V summary]; levels [A] |
 | Expected: linguistic areas | Emeneau 1956; Sandfeld 1930 | — (a check) | [A]/[L] |
 
@@ -83,7 +83,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 | Rule | Source | Fidelity | Checked |
 |---|---|---|---|
 | Koinés from the voter model's majority in mixed towns | Trudgill's new-dialect formation | Adapted (no rule) | [L] |
-| Creoles (later): no input over f_mix, a status lexifier, settings toward unmarked or the substrate's | Mufwene 1996 (the founder principle; colony demography, Jamaica 3:1 → >10:1); McWhorter 2001 (simplest grammars, contested) | Ours, an outcome rule, off by default | [V]/[A] |
+| Creoles (later): no input over f_mix, a status lexifier, settings toward unmarked or the substrate's | Mufwene 1996 (the founder principle; colony demography, Jamaica 3:1 → >10:1); McWhorter 2001 (simplest grammars, contested) | Ours, an outcome rule, off by default | [V]/[L] |
 | Creole and pidgin features for checks | APiCS (Michaelis et al. 2013): 76 languages, 130 features | — | [V] |
 
 ## Culture traits and religion (§7.8; planned `culture/traits.js`)
@@ -92,7 +92,7 @@ the PDFs and pages read are in `verify/pdfs/`).
 |---|---|---|---|
 | Vertical, horizontal, conformist and prestige transmission | Boyd & Richerson 1985 (guided variation; direct, indirect and frequency-dependent bias), via Mesoudi, Whiten & Laland 2006 and the SEP | Adapted | [V] summaries; the book [L] |
 | Trait kinds from the Ethnographic Atlas | Murdock 1967 | Adapted (the kinds) | [L] |
-| Traits partly treelike | Collard, Shennan & Tehrani 2006 (cultural ≈ biological treeness; contested by Morrison 2014); Tehrani & Collard 2002 (Turkmen designs ~70 % → ~60 % homologous) | — (a check) | [A]/[V secondary] |
+| Traits partly treelike | Collard, Shennan & Tehrani 2006 (cultural ≈ biological treeness; contested by Morrison 2014); Tehrani & Collard 2002 (Turkmen designs ~70 % → ~60 % homologous) | — (a check) | [L]/[V secondary] |
 | Rulers convert their realms; missionary religions spread along routes | cuius regio, eius religio (1555), as a mechanism | Ours | — ; a sourced model NOT FOUND |
 | Not used: moralizing gods from Seshat | Whitehouse et al. 2019, retracted 2021 | — | [V] |
 | Complex skills and population size: left to the economy | Henrich 2004; Kline & Boyd 2010; against: Vaesen et al. 2016; Collard et al. 2013 | — (CIV_PLAN §9.1) | [V]/[V]/[V]/[A] |
@@ -112,13 +112,13 @@ the PDFs and pages read are in `verify/pdfs/`).
 | The founding lect's settings from Earth's frequencies | WALS chs. 1, 2, 12 (Maddieson 2013: consonants mean 22.7; five vowels commonest, 188/564; syllables simple 61 / moderate 274 / complex 151); PHOIBLE 2.0 (3,020 inventories, 2,186 languages) | Direct (frequencies) | [V] |
 | Sound changes as regular rules over all words | Osthoff & Brugmann 1878; Labov 1981 (regular at the phonetic level) | Adapted | [L]/[A] |
 | Chains of change (lenition, palatalization, final loss, tonogenesis) | Kümmel 2007; Index Diachronica; UniDia | Adapted (the catalogue) | [A] |
-| Applied in the order taken | Rosenfelder's SCA2 (ordered rules `s1/s2/e1_e2`); historical linguistics' relative chronology | Adapted | [V] |
+| Applied in the order taken | Rosenfelder's SCA2 (rules `s1/s2/e1_e2`; their order of application not confirmed in what was read); historical linguistics' relative chronology | Adapted | [V]/[L] |
 | Settings' rates: not slower than words; ordered by feature stability | Greenhill et al. 2017 (most grammatical features faster than basic vocabulary; 81 Austronesian languages); Dediu & Cysouw 2013 (62 WALS features, 7 methods: word order most stable; phonology spans the range; consonant inventories near the bottom) | Ours (rates), ordered by the sources | [V]/[V] |
 | Syllables by sonority | Clements 1990 | Adapted | [L] |
-| Underlying forms by segment frequency; frequent meanings shorter | PHOIBLE; Zipf's law of abbreviation in 986 languages (Bentz & Ferrer-i-Cancho 2016) | Adapted | [V]/[A] |
+| Underlying forms by segment frequency; frequent meanings shorter | PHOIBLE; Zipf's law of abbreviation in 986 languages (Bentz & Ferrer-i-Cancho 2016) | Adapted | [V]/[L] |
 | Spelling as an inherited trait (orthography patches) | O'Leary's naming languages (mewo2.com, via the Wayback Machine) | Adapted | [V] |
 | Names as compounds of meaningful words | Dwarf Fortress (language_words.txt, translation tables, compound tokens); O'Leary (morpheme reuse) | Adapted | [V] |
-| Places named once, kept through shift; renamed at a hazard | Peust 2015 (80 of the 92 large European rivers attested in Greek or Latin, 87 %, keep their ancient names after 2,000 yr; "normally retained even when the area is invaded"); Krahe 1964 (Old European hydronymy; contested by Vennemann 2003) | Direct (the rate for large rivers); the hazard for others ours | [V]/[A] |
+| Places named once, kept through shift; renamed at a hazard | Peust 2015 (of the 92 large European rivers attested in Greek or Latin, 78 kept their ancient names and 4 with alternates count half: 80/92 = 87 % after 2,000 yr; "normally retained even when the area is invaded"); Krahe 1964 (Old European hydronymy; contested by Vennemann 2003) | Direct (the rate for large rivers); the hazard for others ours | [V]/[L] |
 | Not used: Markov chains on Earth's names | Azgaar's FMG (nameBases, Markov chains) | — | [V code] |
 
 ## Earth checks (§4, §11.1)
@@ -127,23 +127,23 @@ the PDFs and pages read are in `verify/pdfs/`).
 |---|---|---|
 | 7,685 languages, 245 families, 183 isolates | Glottolog 5.4 (glottolog.org) | [V] |
 | 7,159 living languages | Ethnologue 28th ed. (2025) | [A] |
-| Median ~7,000 speakers | Ethnologue (blog) | [A] |
+| Median ~7,000 speakers | Ethnologue (blog) | [L] |
 | Lognormal ranges and speakers; latitude | Amano et al. 2014 | [V] |
 | Languages vs population and growing season | Nettle 1998 (ln L = 0.33 ln P + 0.18 MGS − 0.62, r = 0.63, 43 tropical countries) | [V] |
 | Latitude and growing season after corrections | Hua et al. 2019 (6,425 languages) | [V] |
-| North America's gradient (≥ 6×) | Mace & Pagel 1995 | [A] |
+| North America's gradient (≥ 6×) | Mace & Pagel 1995 | [A], a catalogue record and summary |
 | Cultures by latitude (3,814) | Collard & Foley 2002 | [A] |
 | Family sizes: rank–size slope −1.905 | Wichmann 2005 | [V] |
 | Australia: 407 languages; model 406 | Gavin et al. 2017 | [A] |
-| Retention 80.5 % / 86 % per millennium | Lees 1953; Swadesh 1955 (via secondary text) | [A] |
+| Retention 80.5 % / 86 % per millennium | Lees 1953; Swadesh 1955 (via secondary text) | [L] |
 | Bantu roots, route | Grollemund et al. 2015 (424 languages; in-group ~4,850 BP; around the forest); Koile et al. 2022 (5,110 BP; through it) | [V] |
 | Austronesian root | Gray, Drummond & Greenhill 2009 (400 languages, ~5,230 BP, HPD 4,750–5,800) | [A]; recap [V] |
-| Indo-European root | Gray & Atkinson 2003; Bouckaert et al. 2012; Chang et al. 2015; Heggarty et al. 2023 | [A] |
-| Pama-Nyungan | Bouckaert, Bowern & Atkinson 2018 (306 languages; Gulf Plains; mid-Holocene) | [A] |
-| Transeurasian (contested) | Robbeets et al. 2021 (9,181 BP, HPD 5,595–12,793); Tian et al. 2022 | [V]/[A] |
+| Indo-European root | Gray & Atkinson 2003 (7,800–9,800); Bouckaert et al. 2012 (Anatolia; fitted root NOT FOUND); Chang et al. 2015 (steppe, c. 6,500–5,500); Heggarty et al. 2023 (~8,120) | [A] |
+| Pama-Nyungan | Bouckaert, Bowern & Atkinson 2018 (306 languages; Gulf Plains; mid-Holocene; "just under 6,000" from Bowern's popular account) | [A] |
+| Transeurasian (contested) | Robbeets et al. 2021 (9,181 BP, HPD 5,595–12,793); Tian et al. 2022 | [V]/[L] |
 | Steppe ancestry | Haak et al. 2015 (Corded Ware 79 % Yamnaya-like in the 3-way model; ~75 % headline) | [V] |
 | Front speed and cultural share | Fort 2012 (0.9–1.3 km/yr; cultural 40 ± 8 % of the speed) | [V] |
-| Founder effects (contested) | Atkinson 2011; Cysouw, Dediu & Moran 2012; Hunley, Bowern & Healy 2012; Creanza et al. 2015 | [A]/[A]/[A]/[V] |
+| Founder effects (contested) | Atkinson 2011; Cysouw, Dediu & Moran 2012; Hunley, Bowern & Healy 2012; Creanza et al. 2015 | [A]/[A]/[A]/[V, part] |
 | Inventory and population (contested) | Hay & Bauer 2007; Moran, McCloy & Wright 2012 | [A] |
 | Morphology and population | Lupyan & Dale 2010 (26/28 features; 2,236 languages) | [V] |
 | Genes and languages | Cavalli-Sforza et al. 1988 | [A] |
@@ -244,7 +244,8 @@ the PDFs and pages read are in `verify/pdfs/`).
   261:117–121
 - Maddieson I 1984. *Patterns of Sounds.* Cambridge UP; Maddieson I 2013, WALS chapters 1, 2, 12
 - McWhorter J 2001. The world's simplest grammars are creole grammars. *Linguistic Typology* 5:125–166
-- Mesoudi A, Whiten A, Laland KN 2006. Towards a unified science of cultural evolution. *Behav Brain Sci* 29:329–383
+- Mesoudi A, Whiten A, Laland KN 2006. Towards a unified science of cultural evolution. *Behav Brain Sci* 29:329–347 (target article;
+  commentaries to 383)
 - Michaelis SM et al. (eds) 2013. *The Atlas of Pidgin and Creole Language Structures.* OUP
 - Mira J, Paredes Á 2005. Interlinguistic similarity and language death dynamics. *Europhys Lett* 69:1031–1034
 - Moran S, McCloy D (eds) 2019. *PHOIBLE 2.0.* doi:10.5281/zenodo.2593234
@@ -283,3 +284,25 @@ the PDFs and pages read are in `verify/pdfs/`).
   complexity in Austronesia. *Proc R Soc B* 282:20142556
 - Wichmann S 2019. How to distinguish languages and dialects. *Computational Linguistics* 45:823–831
 - Wichmann S 2005. On the power-law distribution of language family sizes. *J Linguistics* 41:117–131
+
+### Cited, and to be checked or read before a stage relies on them
+- Collard M, Buchanan B, O'Brien MJ, Scholnick J 2013. *Phil Trans R Soc B* 368:20120412 [A]
+- Collard M, Ruttle A, Buchanan B, O'Brien MJ 2013. *PLoS ONE* 8:e72628 [A]
+- Currie TE, Mace R 2009 (ethnolinguistic area and political complexity; via NATION_SOURCES) [L]
+- Greenhill SJ et al. 2018. *Frontiers in Psychology*, doi:10.3389/fpsyg.2018.00576 [A, snippet]
+- Heggarty P, Beresford-Jones D 2010. Agriculture and language dispersals. *Curr Anthropol* 51:163–191 [A]
+- Holman EW et al. 2011. Automated dating of the world's language families. *Curr Anthropol* 52:841–875 [L]
+- Krahe H 1964. *Unsere ältesten Flussnamen.* Harrassowitz [L]
+- Malécot G 1951 (the 2-D isolation-by-distance formula) [L]
+- Morrison DA 2014. bioRxiv 10.1101/006486 [L]
+- Murdock GP 1967. *Ethnographic Atlas.* U Pittsburgh Press [L]
+- Powell A, Shennan S, Thomas MG 2009. *Science* 324:1298–1301 [A]
+- Seuren P 2001. Simple and transparent. *Linguistic Typology* 5:176–180 [L]
+- Stark R 1996. *The Rise of Christianity.* Princeton UP [L]
+- Tian Z et al. 2022. bioRxiv 10.1101/2022.06.09.495471 [L]
+- Urban M 2024. Global language geography and language history. *Open Research Europe* 4:213 [V]
+- Vennemann T 2003. *Europa Vasconica – Europa Semitica.* De Gruyter [L]
+- Weber E 1976. *Peasants into Frenchmen.* Stanford UP (read by nationspec; not here) [L]
+- Whitehouse H et al. 2019, retracted 2021 (Retraction Note *Nature* 595:320) [V]
+- Yunusbayev B et al. 2015. *PLoS Genet* 11:e1005068 [A]
+- Henrich 2004 was read in the author's pre-publication copy, marked not for citation; check the printed wording.
