@@ -24,6 +24,7 @@
 // Heights km, distances km, time Myr.
 
 import { MinHeap } from '../core/min-heap.js';
+import { keepInlets } from '../terrain/carve.js';
 import { mapOnto, meanOnto, carry } from '../core/mesh-maps.js';
 import { WAVE_BASE_KM, MARINE_K } from './marine-config.js';
 import { FLEX, seaLoadShare, stiffnessKm4, solvePlateCPU } from '../gpu/flexure.js';
@@ -375,8 +376,10 @@ export function erodeLandscape(o, P) {
  * @returns {(cells: ArrayLike<number>, vol: number, surface: (c: number) => number, inside: (c: number) => boolean) => number}
  *   lays in place; returns what found no room (km³ ÷ a cell's area)
  */
-export function deltaLayer(mesh, z, inlet) {
-    const { adjOffset, adjList, numCells: n } = mesh, been = new Int32Array(n).fill(-1);
+export function deltaLayer(mesh, z, inlet, order = null) {
+    // (`order`, per cell: the walk takes the reached cell with the highest first, not the nearest — bayheadFill's head-first fill,
+    // its cells' distance from the open sea. Without it, nearest first: a lake's delta)
+    const { adjOffset, adjList, numCells: n } = mesh, been = new Int32Array(n).fill(-1), heap = order ? new MinHeap(1 << 12) : null;
     let walk = 0;
     return (cells, vol, surface, inside) => {
         const mouths = [];
@@ -392,8 +395,17 @@ export function deltaLayer(mesh, z, inlet) {
         for (const c0 of mouths) {
             let left = vol * inlet[c0] / all;
             if (full) { spilt += left; continue; }
-            const q = [c0], id = walk++;
+            const id = walk++;
             been[c0] = id;
+            if (heap) {
+                heap.size = 0; heap.push(-order[c0], c0);
+                while (heap.size && left > 0) {
+                    const c = heap.pop(), room = surface(c) - z[c];
+                    if (room > 0) { const put = room < left ? room : left; z[c] += put; left -= put; }
+                    for (let j = adjOffset[c]; j < adjOffset[c + 1]; j++) { const y = adjList[j]; if (been[y] !== id && inside(y)) { been[y] = id; heap.push(-order[y], y); } }
+                }
+            }
+            const q = heap ? [] : [c0];
             for (let i = 0; i < q.length && left > 0; i++) {
                 const c = q[i], room = surface(c) - z[c];
                 if (room > 0) { const put = room < left ? room : left; z[c] += put; left -= put; }
@@ -489,7 +501,10 @@ let gathered = new Float64Array(0);
  * the last to fill (Dalrymple, Zaitlin & Boyd 1992 J. Sediment. Petrol. 62, 1130; Boyd, Dalrymple & Zaitlin 1992 Sediment. Geol.
  * 80, 139; Anthony 2014 in Coastal Environments and Global Change). A process, not a mask: each mouth's volume is its river's load
  * (the erosion's last step: what each land cell passes to a drowned one, km³/Myr) over `fillMyr`, laid with the lakes' own
- * deltaLayer — nearest the mouth first, up to mean high water (topKm), so the delta plain stands at it.
+ * deltaLayer up to mean high water (topKm), so the delta plain stands at it — head first: of the drowned water a mouth reaches,
+ * the cells farthest from the open sea first, so the fill advances seaward and a valley's mouth is the last to fill. (Until
+ * 2026-11-25 nearest the mouth first: a river entering an arm near its seaward neck raised the neck to mean high water and left
+ * the arm behind it below sea level, cut off — a lake made by the fill's order: lane lakebar, 196k km² on 243751 at 630 Myr.)
  * Reduced (what it skips): the load is the lowstand's, not the Holocene's own; all of it (sand and mud) stays in the valley that
  * takes it — none is carried out to the shelf by the tide, so a funnel's mouth is, if anything, filled too much; no wave or tide
  * shaping (the marine lane's); a mouth's load fills its own nearest water whoever's valley that is, and what a valley cannot hold
@@ -515,8 +530,26 @@ export function bayheadFill(mesh, z, drowned, sea, outflow, fillMyr, a, topKm = 
         inlet[r] += q; supply += q * fillMyr;
     }
     if (!mouths) return { mouths: 0, supplyKm3: 0, roomKm3: Math.round(room), laidKm3: 0, spiltKm3: 0 };
-    const spilt = deltaLayer(mesh, z, inlet)(cells, supply / a, () => topKm, c => drowned[c] === 1) * a;
-    return { mouths, supplyKm3: Math.round(supply), roomKm3: Math.round(room), laidKm3: Math.round(supply - spilt), spiltKm3: Math.round(spilt) };
+    // (head first: each drowned cell's distance from the open sea, in cells through the drowned water — a valley's head the
+    // farthest, its mouth the nearest; a pocket the open sea can't reach, first of all. Each mouth's load fills what it reaches
+    // farthest from the sea first, so a valley fills from its head seaward and a neck only once everything behind it has)
+    const fromSea = new Int32Array(n).fill(n), { adjOffset, adjList } = mesh;
+    let ring = [];
+    for (let c = 0; c < n; c++) if (sea[c] && !drowned[c]) { fromSea[c] = 0; ring.push(c); }
+    for (let d = 1; ring.length; d++) {
+        const next = [];
+        for (const c of ring) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const y = adjList[k]; if (drowned[y] && fromSea[y] > d) { fromSea[y] = d; next.push(y); } }
+        ring = next;
+    }
+    const was = new Float32Array(cells.length);
+    cells.forEach((c, i) => { was[i] = z[c]; });
+    const spilt = deltaLayer(mesh, z, inlet, fromSea)(cells, supply / a, () => topKm, c => drowned[c] === 1) * a;
+    // (and it keeps the inlets of the water it would have cut off from the sea: carve.js keepInlets)
+    const before = new Map(), open = new Uint8Array(n);
+    cells.forEach((c, i) => { if (z[c] !== was[i]) before.set(c, was[i]); });
+    for (let c = 0; c < n; c++) open[c] = sea[c] && !drowned[c] ? 1 : 0;
+    const back = keepInlets(mesh, z, before, open, sea) * a;
+    return { mouths, supplyKm3: Math.round(supply), roomKm3: Math.round(room), laidKm3: Math.round(supply - spilt - back), spiltKm3: Math.round(spilt), inletKm3: Math.round(back) };
 }
 
 /**

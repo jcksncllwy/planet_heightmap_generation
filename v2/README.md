@@ -889,8 +889,9 @@ its rivers cut valleys down to it; today's sea then floods in once from the worl
 it reaches: the valleys it reaches are rias, the spurs between them headlands, and a hollow it does not reach stays as cut
 (counted as `stats.lowstand.hollowKm2`). The finish's early erosion grades to the same level and floods once more at today's
 sea; then the rivers fill the drowned valleys from their heads (`bayheadFill`, finish-erode.js): each river's load from the
-erosion's last step, over `bayheadFillKyr` (8 kyr: the transgression and highstand, Stanley & Warne 1994), laid nearest its
-mouth first up to today's sea, the lakes' own `deltaLayer`. A valley with a big load fills to a delta plain; one with little
+erosion's last step, over `bayheadFillKyr` (8 kyr: the transgression and highstand, Stanley & Warne 1994), laid up to today's
+sea with the lakes' own `deltaLayer`, head first: of the drowned water a mouth reaches, the cells farthest from the open sea first
+(lane lakebar, 2026-11-25; until then nearest the mouth first, so a river entering an arm by its neck plugged the neck). A valley with a big load fills to a delta plain; one with little
 stays an open ria, funnel-shaped, its mouth the last to fill (Dalrymple et al. 1992; Boyd et al. 1992). It skips: the
 Holocene's own load (it uses the lowstand's), the tide carrying mud out of a valley, waves, and the overflow a full valley
 would build onto the open shelf (counted, `stats.lowstand.bayhead.spiltKm3`). The sea is flooded once more after it.
@@ -903,7 +904,14 @@ k A^m, so only a great river or a narrow shelf gets back to today's coast within
 between lowstands (the sea above its floor 52 % of the time; transgressive valley fills, Dalrymple et al. 1992, Zaitlin et al.
 1994) by its river's load — the catchment's rock uplift over the window's highstands — from its head seaward, up to today's sea; a
 river too starved to fill it keeps its ria (Talling 1998; Blum & Törnqvist 2000). It runs at the carve's end (the preview) and in
-the finish after the early erosion, before the bayhead fill (`stats.lowstand.cycleFill`). Earth on the same meshes, the same
+the finish after the early erosion, before the bayhead fill (`stats.lowstand.cycleFill`).
+**Fills keep their inlets** (lane lakebar, 2026-11-25; `keepInlets`, carve.js): water the sea reached before a fill and that the
+fill left below sea level drains, and takes the tide, through an inlet its river and tidal prism keep scoured (Escoffier 1940).
+So after both fills, where one cut such water off from the sea, the filled cells on its lowest way back go back to their floor
+(`inletKm3` in `cycleFill` and `bayhead`). Before, a side river's fill across an arm's seaward neck left the arm a lake below sea
+level, held 4 m above the sea by a one-cell strip (243751 at 630 Myr: 196,000 km² behind a 30 km strip). Reduced: the channel is a
+cell wide and runs where the ground was lowest. A lake that is cut off by other means (the ice age's rebound, the history) is the
+water pass's, and its overflow is a later lane's (lakebar report: overflow at every low exit with sill incision). Earth on the same meshes, the same
 measure (`check-phase8b` 'the coast by margin'; `tools/data/earth-terrain-*.i16`): passive margins smoother than the rest, and D
 flat with resolution. It skips: the knickpoint starting from the mean lowstand's shore, not the sea's actual fall; the climate's
 load (it uses the uplift's steady shed); tidal export; a fill's own delta slope. Fills and the bayhead's delta plains stand at

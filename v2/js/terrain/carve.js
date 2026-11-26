@@ -483,6 +483,9 @@ export function transgressiveFill(mesh, z, o) {
             if (rr[c] >= 0 && filled.has(rr[c])) work.push(rr[c]);
         }
     }
+    // (and the fill keeps the inlets of the water it would have cut off: keepInlets)
+    const back = keepInlets(mesh, z, filled, o.todaySeed, today) * cellArea;
+    out.filledKm3 -= back; out.inletKm3 = Math.round(back);
     out.filledKm3 = Math.round(out.filledKm3); out.supplyKm3 = Math.round(out.supplyKm3);
     return out;
 }
@@ -503,6 +506,51 @@ export function floodSea(mesh, z, seed, level = 0) {
         for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const q = adjList[k]; if (!sea[q] && z[q] < level) { sea[q] = 1; queue[tail++] = q; } }
     }
     return { sea, drowned: tail - seeds, queue, seeds, tail };
+}
+
+/**
+ * A valley fill keeps its inlets (lane lakebar, 2026-11-25): water the sea reached before a fill and that the fill left below
+ * sea level drains, and takes the tide, through an inlet the fill cannot close. Its river and tidal prism scour the channel the
+ * fill would lay across it (Escoffier 1940's inlet stability; an estuary's mouth is the last of it to fill: Dalrymple, Zaitlin &
+ * Boyd 1992). So where a fill cut such water off, the filled cells on its lowest way back to the sea go back to the floor they
+ * had. Without it the fill's order decides: a side river's fill across an arm's seaward neck left the arm a lake below sea level
+ * (lakebar: 196k km² on 243751 at 630 Myr). Its loads are returned (`returnedKm3`), not moved: what the inlet carries out is the
+ * sea's. Reduced: the channel is a cell wide (the mesh's), and it runs where the ground was lowest, not where a tide would cut it.
+ * @param {Map<number, number>} before   each filled cell's floor before the fill (km)
+ * @param {Uint8Array} seed               the open sea the fill did not touch
+ * @param {Uint8Array} reached            the sea's reach before the fill (floodSea over the unfilled ground)
+ * @returns {number} km³ ÷ a cell's area given back
+ */
+export function keepInlets(mesh, z, before, seed, reached) {
+    const { adjOffset, adjList, numCells: n } = mesh, heap = new MinHeap(1 << 12), lv = new Float32Array(n), from = new Int32Array(n);
+    let back = 0;
+    for (let round = 0; round < 64; round++) {
+        const { sea } = floodSea(mesh, z, seed);
+        // (the water cut off: below the sea, reached before, not now) — each such cell starts the climb back to the sea
+        lv.fill(Infinity); from.fill(-1); heap.size = 0;
+        let cut = 0;
+        const comp = new Int32Array(n).fill(-1);
+        for (let c = 0; c < n; c++) if (reached[c] && !sea[c] && z[c] < 0 && comp[c] < 0) {
+            const q = [c]; comp[c] = cut++;
+            for (let i = 0; i < q.length; i++) { const x = q[i]; lv[x] = z[x]; heap.push(z[x], x); for (let k = adjOffset[x]; k < adjOffset[x + 1]; k++) { const y = adjList[k]; if (comp[y] < 0 && reached[y] && !sea[y] && z[y] < 0) { comp[y] = comp[c]; q.push(y); } } }
+        }
+        if (!cut) break;
+        // (the lowest way out of all of it at once: a minimax flood to the first cell of the sea; each reached sea cell's way back
+        // is the one to open. Opening one way can join other cut-off water to the sea, hence rounds)
+        const done = new Uint8Array(n), out = new Uint8Array(cut), opened = [];
+        while (heap.size) {
+            const k0 = heap.peekKey(), c = heap.pop();
+            if (done[c] || k0 > lv[c]) continue;
+            done[c] = 1;
+            if (out[comp[c]]) continue;                        // (this water has its way out already)
+            if (sea[c]) { out[comp[c]] = 1; opened.push(c); continue; }
+            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const y = adjList[k], l = Math.max(lv[c], z[y]); if (!done[y] && (l < lv[y] || (l === lv[y] && comp[y] < 0))) { lv[y] = l; from[y] = c; comp[y] = comp[c]; heap.push(l, y); } }
+        }
+        let changed = 0;
+        for (const s of opened) for (let c = from[s]; c >= 0; c = from[c]) if (before.has(c) && z[c] >= 0) { back += z[c] - before.get(c); z[c] = before.get(c); changed++; }
+        if (!changed) break;
+    }
+    return back;
 }
 
 function floodToday(mesh, f, C) {
