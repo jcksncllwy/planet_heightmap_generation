@@ -36,6 +36,7 @@ import { simulate } from '../../js/tectonics/simulate.js';
 import { packFrame, unpack } from '../../js/tectonics/frame-pack.js';
 import { frameBytes, readFrameBytes } from '../../js/app/frame-wire.js';
 import { historyKey, mathFingerprint, gpuFingerprint } from '../../js/app/history-key.js';
+import { freeDeadPlates } from '../../js/tectonics/ops/free-dead-plates.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..', '..', '..');
@@ -297,7 +298,7 @@ function schedule(every, untilMyr) {
 export async function simulateCached(world, opts, { drive = opts.drive, spec = null } = {}) {
     if (ENABLED) await gpuFingerprint();             // (refuses clearly where there is no GPU)
     const events = opts.events !== false, key = opts.stopAt || opts.resume ? null : keyOf(world, drive, events);
-    if (!key) { stats.bypassed++; return { ...(await simulate(world, opts)), cached: false, key: null }; }
+    if (!key) { stats.bypassed++; return { ...(await simulate(world, { ...opts, onFrame: f => { opts.onFrame?.(f); freeDeadPlates(world); } })), cached: false, key: null }; }
     const every = opts.snapshotEveryMyr ?? world.config.snapshotEveryMyr, grid = world.config.stepGridMyr, untilMyr = opts.untilMyr;
     const onGrid = t => Math.abs(t / grid - Math.round(t / grid)) < 1e-6;
     const want = schedule(every, untilMyr), wantSet = new Set(want.map(milli)), keepFrames = opts.keepFrames !== false;
@@ -342,9 +343,8 @@ export async function simulateCached(world, opts, { drive = opts.drive, spec = n
         let kept = 0;
         const r = await simulate(world, { ...opts, snapshotEveryMyr: rec, keepFrames: false, onFrame: f => {
             if (onGrid(f.time)) { stepsAt[milli(f.time)] = world.step; if (!present.has(milli(f.time))) { writeLater(key, f); kept++; } }
-            if (!wantSet.has(milli(f.time))) return;
-            if (keepFrames) frames.push(f);
-            opts.onFrame?.(f);
+            if (wantSet.has(milli(f.time))) { if (keepFrames) frames.push(f); opts.onFrame?.(f); }
+            freeDeadPlates(world);                       // (the plates that died let go of their rasters: tectonics/ops/free-dead-plates.js)
         } });
         writesDone();
         const ms = performance.now() - t0;

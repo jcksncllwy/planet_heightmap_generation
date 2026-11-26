@@ -19,6 +19,7 @@ import { historyKey, mathFingerprint, gpuFingerprint } from './history-key.js';
 import { HistoryUpload } from './history-upload.js';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
 import { HistoryHold, runHeld } from './history-hold.js';
+import { freeDeadPlates } from '../tectonics/ops/free-dead-plates.js';
 
 const SCENE_LISTS = { terrain: TERRAIN_SCENES };
 
@@ -57,7 +58,7 @@ self.onmessage = async ({ data }) => {
         if (data.type === 'more') {
             const { world, scene, snapshotEveryMyr } = kept, started = performance.now(), heldBefore = hold.heldMs;
             await helpersFor(world.mesh);
-            const { steps } = await run(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
+            const { steps } = await run(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: f => { send(f); freeDeadPlates(world); }, keepFrames: false });
             restHelpers();
             upload?.done({ time: world.time, steps, stopped: false });
             self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started - (hold.heldMs - heldBefore), uploadMs: upload?.ms ?? 0 });
@@ -80,7 +81,9 @@ self.onmessage = async ({ data }) => {
         if (key) self.postMessage({ type: 'cache', key, code: HISTORY_CODE });
         packMs = 0;
         const started = performance.now(), heldBefore = hold.heldMs;
-        const { steps, stopped } = await run(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
+        // (after each frame, the plates that died let go of their mesh-sized arrays: the world is kept for Keep going, and most
+        // of a long history's plates are dead — 3.3 GB of 3.6 at 1200 Myr on 40K cells; tectonics/ops/free-dead-plates.js)
+        const { steps, stopped } = await run(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: f => { send(f); freeDeadPlates(world); }, keepFrames: false });
         kept = { world, scene, snapshotEveryMyr };
         const helperCount = helpers?.size ?? 0;
         restHelpers();
