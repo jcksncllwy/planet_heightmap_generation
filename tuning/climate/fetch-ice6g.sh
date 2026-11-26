@@ -17,4 +17,6 @@ sum() { openssl md5 -r "$1" | cut -d' ' -f1; }
 # surface; the sum of the file as fetched and unzipped 2026-11-25)
 [ -s I6_C.VM5a_1deg.0.nc ] || { curl -fsSL --retry 3 -o I6_C.VM5a_1deg.0.nc.gz 'https://www.atmosp.physics.utoronto.ca/~peltier/datasets/Ice6G_C_VM5a/I6_C.VM5a_1deg.0.nc.gz' && gunzip -f I6_C.VM5a_1deg.0.nc.gz; }
 [ "$(sum I6_C.VM5a_1deg.0.nc)" = 13215e8347b959db150cde0e0f24959d ] || { echo "I6_C.VM5a_1deg.0.nc: md5 mismatch" >&2; exit 1; }
+[ -s I6_C.VM5a_1deg.21.nc ] || { curl -fsSL --retry 3 -o I6_C.VM5a_1deg.21.nc.gz 'https://www.atmosp.physics.utoronto.ca/~peltier/datasets/Ice6G_C_VM5a/I6_C.VM5a_1deg.21.nc.gz' && gunzip -f I6_C.VM5a_1deg.21.nc.gz; }
+[ "$(sum I6_C.VM5a_1deg.21.nc)" = aa433b44f8da13fbcccfa9f80809d758 ] || { echo "I6_C.VM5a_1deg.21.nc: md5 mismatch" >&2; exit 1; }
 echo "ICE-6G_C 0 and 21 ka in $(pwd)"

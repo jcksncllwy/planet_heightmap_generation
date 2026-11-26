@@ -47,6 +47,10 @@
       "thick": {
         "file": "I6_C.VM5a_1deg.0.nc",
         "sha256": "5d98a12a95bb0f483e6af1d5be1ac5cf6403767668854f8b1c1dd861ea0ff9af"
+      },
+      "thick21": {
+        "file": "I6_C.VM5a_1deg.21.nc",
+        "sha256": "55ca55a47c6c0111aef56928f44693efe17a93a088eb60988c275a9e9f705fed"
       }
     },
     "sampling": "every 10′ point to its nearest cell, cos-lat weighted mean share ≥ 50 %; bit 0: 21 ka, bit 1: 0 ka",
@@ -57,6 +61,9 @@
     "sha256": "aac7e561dba10e4a1b4067ce81d38d2aacc76b0e4749a6aa96705084cba51507",
     "thickFile": "earth-ice-thick-160k.i16",
     "thickSampling": "today's ice thickness (stgit at 0 ka, 1° file, m), bilinear at the cell's centre where bit 1 (today's ice) is set",
-    "thickSha256": "42e19446af4a56f8d9248bd3311f307cdee152762620bd02e6e86acf234e8404"
+    "thickSha256": "42e19446af4a56f8d9248bd3311f307cdee152762620bd02e6e86acf234e8404",
+    "thick21File": "earth-ice-thick21-160k.i16",
+    "thick21Sampling": "the 21 ka ice's thickness (stgit at 21 ka, 1° file, m), bilinear where bit 0 is set",
+    "thick21Sha256": "d3218450e47bcdbb07d68dc45258988a680239a58dbcdee51f3528d3e4a1aea1"
   }
 }

@@ -43,5 +43,7 @@ export function earthIce(mesh) {
     // (today's ice's thickness, km, where the artifact has it: ICE-6G_C's surface over its bed at 0 ka)
     let thickNowKm = null;
     if (m.thickFile && fs.existsSync(path.join(EARTH_SURFACE_DIR, m.thickFile))) { const t = fs.readFileSync(path.join(EARTH_SURFACE_DIR, m.thickFile)), i16 = new Int16Array(t.buffer, t.byteOffset, t.byteLength / 2); thickNowKm = Float32Array.from(i16, v => v / 1000); }
-    return { lgm: Uint8Array.from(b, v => v & 1), now: Uint8Array.from(b, v => v >> 1 & 1), thickNowKm, source: m.source };
+    let thickLgmKm = null;
+    if (m.thick21File && fs.existsSync(path.join(EARTH_SURFACE_DIR, m.thick21File))) { const t = fs.readFileSync(path.join(EARTH_SURFACE_DIR, m.thick21File)), i16 = new Int16Array(t.buffer, t.byteOffset, t.byteLength / 2); thickLgmKm = Float32Array.from(i16, v => v / 1000); }
+    return { lgm: Uint8Array.from(b, v => v & 1), now: Uint8Array.from(b, v => v >> 1 & 1), thickNowKm, thickLgmKm, source: m.source };
 }

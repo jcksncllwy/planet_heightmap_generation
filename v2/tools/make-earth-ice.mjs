@@ -48,13 +48,13 @@ function readNc3(file, want) {
     return { bytes: b, out: Object.fromEntries(want.map(w => [w, get(w)])) };
 }
 
-const files = { lgm: path.join(DIR, 'I6_C.VM5a_10min.21.nc'), now: path.join(DIR, 'I6_C.VM5a_10min.0.nc'), thick: path.join(DIR, 'I6_C.VM5a_1deg.0.nc') };
+const files = { lgm: path.join(DIR, 'I6_C.VM5a_10min.21.nc'), now: path.join(DIR, 'I6_C.VM5a_10min.0.nc'), thick: path.join(DIR, 'I6_C.VM5a_1deg.0.nc'), thick21: path.join(DIR, 'I6_C.VM5a_1deg.21.nc') };
 for (const f of Object.values(files)) if (!fs.existsSync(f)) { console.error(`missing ${f} (run tuning/climate/fetch-ice6g.sh)`); process.exit(1); }
 const mesh = terrainMesh(EARTH_ICE_MESH), n = mesh.numCells, D = Math.PI / 180, out = new Uint8Array(n), sources = {};
 // (and today's ice's thickness, m: ICE-6G_C's stgit at 0 ka, its 1° file's (the 10′ files have none: their Topo and Orog are
 // both the surface, 2026-11-25), bilinear at the cell's centre where the cell is under today's ice — so a replay on Earth's
 // ground (ETOPO5, today's sheets' surfaces in it) can stand on the bed under them)
-const thick = new Int16Array(n);
+const thick = new Int16Array(n), thick21 = new Int16Array(n);     // (and the 21 ka ice's, for the inception's diagnosis: iceage-inception.mjs)
 for (const [bit, key] of [[0, 'lgm'], [1, 'now']]) {
     const { bytes, out: { sftgif, lat, lon } } = readNc3(files[key], ['sftgif', 'lat', 'lon']), [NY, NX] = sftgif.dims.map(d => d.len);
     sources[key] = { file: path.basename(files[key]), sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
@@ -73,28 +73,31 @@ for (const [bit, key] of [[0, 'lgm'], [1, 'now']]) {
         if (s >= 50) out[c] |= 1 << bit;
     }
 }
-{
-    const { bytes, out: { stgit, lat, lon } } = readNc3(files.thick, ['stgit', 'lat', 'lon']), [NY, NX] = stgit.dims.map(d => d.len);
-    sources.thick = { file: path.basename(files.thick), sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+for (const [key, bit, into] of [['thick', 1, thick], ['thick21', 0, thick21]]) {
+    const { bytes, out: { stgit, lat, lon } } = readNc3(files[key], ['stgit', 'lat', 'lon']), [NY, NX] = stgit.dims.map(d => d.len);
+    sources[key] = { file: path.basename(files[key]), sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
     const la0 = lat.data[0], dla = lat.data[1] - lat.data[0], lo0 = lon.data[0], dlo = lon.data[1] - lon.data[0], x = mesh.xyz;
     for (let c = 0; c < n; c++) {
-        if (!(out[c] >> 1 & 1)) continue;
+        if (!(out[c] >> bit & 1)) continue;
         const la = Math.asin(x[3 * c + 2]) / D, lo = Math.atan2(x[3 * c + 1], x[3 * c]) / D;
         const fy = Math.max(0, Math.min(NY - 1.000001, (la - la0) / dla)), fx = ((((lo - lo0) / dlo) % NX) + NX) % NX;
         const j = Math.floor(fy), i = Math.floor(fx), ty = fy - j, tx = fx - i, i1 = (i + 1) % NX, at = (jj, ii) => Math.max(0, stgit.data[jj * NX + ii]);
         const h = (1 - ty) * ((1 - tx) * at(j, i) + tx * at(j, i1)) + ty * ((1 - tx) * at(j + 1, i) + tx * at(j + 1, i1));
-        thick[c] = Math.min(32767, Math.round(h));
+        into[c] = Math.min(32767, Math.round(h));
     }
 }
 const file = `earth-ice-${EARTH_ICE_MESH / 1000}k.u8`, manPath = path.join(EARTH_SURFACE_DIR, 'earth-surface.json'), man = JSON.parse(fs.readFileSync(manPath, 'utf8'));
 const thickFile = `earth-ice-thick-${EARTH_ICE_MESH / 1000}k.i16`, thickBytes = Buffer.from(thick.buffer);
+const thick21File = `earth-ice-thick21-${EARTH_ICE_MESH / 1000}k.i16`, thick21Bytes = Buffer.from(thick21.buffer);
+fs.writeFileSync(path.join(EARTH_SURFACE_DIR, thick21File), thick21Bytes);
 fs.writeFileSync(path.join(EARTH_SURFACE_DIR, file), out);
 fs.writeFileSync(path.join(EARTH_SURFACE_DIR, thickFile), thickBytes);
 man.ice = { source: 'ICE-6G_C (Peltier, Argus & Drummond 2015), sftgif at 21 and 0 ka (10′), stgit at 0 ka (1°), tuning/climate/fetch-ice6g.sh', sources,
     sampling: 'every 10′ point to its nearest cell, cos-lat weighted mean share ≥ 50 %; bit 0: 21 ka, bit 1: 0 ka', tool: 'v2/tools/make-earth-ice.mjs',
     file, numCells: n, fingerprint: meshFingerprint(mesh), sha256: crypto.createHash('sha256').update(out).digest('hex'),
-    thickFile, thickSampling: 'today\'s ice thickness (stgit at 0 ka, 1° file, m), bilinear at the cell\'s centre where bit 1 (today\'s ice) is set', thickSha256: crypto.createHash('sha256').update(thickBytes).digest('hex') };
+    thickFile, thickSampling: 'today\'s ice thickness (stgit at 0 ka, 1° file, m), bilinear at the cell\'s centre where bit 1 (today\'s ice) is set', thickSha256: crypto.createHash('sha256').update(thickBytes).digest('hex'),
+    thick21File, thick21Sampling: 'the 21 ka ice\'s thickness (stgit at 21 ka, 1° file, m), bilinear where bit 0 is set', thick21Sha256: crypto.createHash('sha256').update(thick21Bytes).digest('hex') };
 fs.writeFileSync(manPath, JSON.stringify(man, null, 2) + '\n');
 const km2 = 4 * Math.PI * 6371 ** 2 / n, area = bit => { let s = 0; for (let c = 0; c < n; c++) if (out[c] >> bit & 1) s += km2; return (s / 1e6).toFixed(2); };
-let vol = 0; for (let c = 0; c < n; c++) vol += thick[c] * km2 / 1000;
-console.log(`${file}: ${n} cells; ice at 21 ka ${area(0)} Mkm², at 0 ka ${area(1)} Mkm²; today's ice ${(vol / 1e6).toFixed(1)} M km³ (${thickFile})`);
+let vol = 0, vol21 = 0; for (let c = 0; c < n; c++) { vol += thick[c] * km2 / 1000; vol21 += thick21[c] * km2 / 1000; }
+console.log(`${file}: ${n} cells; ice at 21 ka ${area(0)} Mkm², at 0 ka ${area(1)} Mkm²; today's ice ${(vol / 1e6).toFixed(1)} M km³ (${thickFile}), 21 ka's ${(vol21 / 1e6).toFixed(1)} M km³`);
