@@ -551,8 +551,8 @@ Jackson's culture answers, §14):
 - **distance between two cultures:** d(a, b), the lexical distance on langspec's 40-meaning list, from 0 (the same) to 1
   (unrelated), later mixed with the ~16 customs once culture L5 exists; and alongside it the **MRCA age**, how long
   since the two were one people. Metaethnic frontiers (asabiya, §7.4) use the MRCA age; legitimacy after the national
-  stage (§7.8), unification (co-cultural means d below a level) and minorities use d. Religion is not in d: it waits
-  for langspec's religion revision (§14).
+  stage (§7.8), unification (co-cultural means d below a level) and minorities use d. Religion is not in d. It enters
+  through legitimacy and revolt, with culture L6 (deferred; below).
 - **names** (CULTURE_PLAN L3): for a culture, a deterministic generator of place, people and realm names, drifting down
   the tree, **plus exonyms** (what a neighbour calls a realm). Personal names (rulers, dynasties) are not here; they
   belong to a later "story" layer.
@@ -565,7 +565,23 @@ Jackson's culture answers, §14):
 **What the nation layer gives langspec** each step:
 - per cell: the administering polity, its suzerain and the hold (administered, tributary or none);
 - per polity: its ruling culture, its seats and towns, and conquest settlement (who moved where);
-- the status a culture gets from ruling (Abrams–Strogatz's s), as the input to langspec's shift rule (§7.4).
+- the status a culture gets from ruling (Abrams–Strogatz's s), as the input to langspec's shift rule (§7.4);
+- from culture L6 (deferred): per polity, capacity κ (§7.3) and the hold per cell, read by CULTURE_PLAN §7.8 as the
+  **capacity to enforce** a faith. The nation layer does not model religious governance (no clergy, no church–state
+  bargaining). Jackson deferred state-governance modelling (2026-11-26).
+
+**Faith in legitimacy and revolt (langspec's change 7; tied to culture L6, deferred).** This lands only with
+CULTURE_PLAN's L6, after the stages N0–N7 here. Each realm has an **official faith or none**: no official religion is a
+first-class state, not a missing value. From the culture layer it reads, per cell, the held faith and the professed and
+held shares (CULTURE_PLAN §7.8).
+- **Legitimacy:** a realm with an official faith gains legitimacy with the share of its people who hold that faith,
+  beside §7.8's ruling-culture share. A realm with none has no faith term: neither bonus nor penalty.
+- **Revolt:** the coerced share, professed minus held (y − b), adds to the rebellion hazard of §7.5. So do co-religious
+  minorities under a realm of another faith that coerces them. Antiochus IV and the Maccabees are the record's case
+  (CULTURE_PLAN §3.4).
+- **Weights:** to set on Earth when L6 lands. Until then faith plays no part in legitimacy or revolt.
+- **Why a ruler declares a faith, and how well he can enforce it,** is CULTURE_PLAN §7.8's open research question for
+  L6. Enforcement capacity is this layer's κ and hold, which the culture layer reads.
 
 **Order:** both run inside sim.js's step, realm then culture. Each reads the other's state from the last step, so the
 run stays deterministic.
@@ -876,8 +892,15 @@ are from §4.
 - **Culture per cell (§7.4a):** `lang[c]` plus `family[c]`, and the rival language with share x; ids stable by overlap
   matching. Dialects are shown at two levels; the nation layer reads languages.
 - **Distance (§7.4a):** lexical distance on the 40-meaning list, mixed with the ~16 customs at culture L5 (Jackson:
-  yes), with the MRCA age alongside for metaethnic frontiers. Religion is held until langspec's religion revision,
-  then re-asked; until then it plays no part in legitimacy.
+  yes), with the MRCA age alongside for metaethnic frontiers.
+- **Religion (re-asked after langspec's religion revision, 2026-11-26):** "later, its own stage after L5", which is
+  culture L6.
+  - No professed religion (cell, town) and no official religion (realm) are first-class states.
+  - Why rulers declare a state religion, and their capacity to enforce it, is an open research question for L6.
+    Enforcement capacity is this layer's κ and hold, which L6 reads.
+  - State-governance modelling is deferred ("might be a bit much at this point").
+  - Faith in legitimacy and revolt (langspec's change 7) is written into §7.4a, tied to L6 and deferred. Until then
+    faith plays no part in legitimacy.
 - **Assimilation (§7.4):** the shift rule moves to langspec; the nation layer supplies s and conquest settlement.
 - **Writing (§7.4a, §7.8, §13):** owned by the civ economy's skills model. Jackson also asked for a review of the civ
   model's organization for subsystems that generalize like the skills model (§13).

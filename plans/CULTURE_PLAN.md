@@ -560,7 +560,8 @@ Earth's own checks are the family roots and areas, the demic share, Australia's 
 | `rival` | the cell whose lect is the second language here (a rival or ruler's lect), or −1 | Int32 |
 | `x` | the share speaking the rival's language (Abrams–Strogatz's x; 0 where no rival) | Float32 |
 | `trait[c·Q + q]` | cultural traits (practices, religion), Q ≈ 16 (§7.8; later stage) | Uint16 × Q |
-| `faith`, `faithRival`, `faithY`, `faithB` | held faith id, rival faith id, professed and held shares of the rival (§7.8; later stage) | Uint32 × 2, Uint16 × 2 |
+| `faith`, `faithRival`, `faithY`, `faithB` | held faith id and rival faith id (0 = none, a real value), professed and held shares of the rival (§7.8; L6) | Uint32 × 2, Uint16 × 2 |
+| per realm: `realmFaith`, `eliteFaith` | official faith (0 = no official religion) and the ruling culture's held faith (§7.8; L6) | Uint32 × 2 per realm |
 | `lang`, `family` | the language and family it belongs to (read off, §7.9; recomputed every frame) | Int32, Int32 |
 
 At 640K cells, ~200K of them land: `lex` is ~32 MB, `phonT` ~16 MB, the rest ~12 MB, so ~60 MB. At 160K it is a quarter of that.
@@ -745,7 +746,7 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
   - It is the one rule here that writes an outcome. It stays off until the colonial horizon (NATION_PLAN §14 Q1 (c))
     or a trade-port case needs it.
 
-### 7.8 Culture beyond language: practices and religion (later stage)
+### 7.8 Culture beyond language: practices (L5) and religion (L6)
 - **Traits.** Q ≈ 16 cultural traits per cell, each with a few values, drawn from the Ethnographic Atlas's kinds of
   variable (Murdock 1967). Examples: descent, residence after marriage, marriage form, burial, house form, the main
   cults. The way of life (forager, farmer, herder) is already the civ layer's, and know-how (crops, boats, irrigation,
@@ -759,10 +760,23 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
   - prestige: from towns and rulers.
   - Collard, Shennan & Tehrani 2006 find cultural data about as treelike as biological. Traits are therefore neither
     wholly inherited nor wholly borrowed.
-- **Religion** is a trait with its own state and rules. They come from the record in §3.4; where the record gives
-  rates, they are calibration targets, not fits. The mechanism is ours: no fitted model of ruler-driven conversion was
-  found.
-  - **State per cell.** Each cell has a held faith f and a rival faith f′, with two shares of f′:
+- **Religion** is its own stage, **L6, after L5** (§14 Q4, decided). It is a trait with its own state and rules. They
+  come from the record in §3.4; where the record gives rates, they are calibration targets, not fits. The mechanism is
+  ours: no fitted model of ruler-driven conversion was found.
+  - **"None" is a first-class state at every level, not a missing value** (Jackson, 2026-11-26). Faith id 0 is **none**,
+    a real value the rules treat like any other.
+    - **A cell** can profess none: its people follow no organized faith. Shares of none change by the same equation as
+      any faith's. Abrams, Yaple & Wiener 2011 fit exactly that, the growth of "no religion", so this is the sourced
+      case, not an edge case.
+    - **A town** can have no established cult: no temple or clergy of its own. It then adds no status or missionary
+      push to any faith.
+    - **A realm** can have **no official religion**: nothing declared or sanctioned by the state. Its faith term in u
+      is then ½, it coerces no one, and it tolerates by default.
+    - Being undeclared is also a real state on Earth: 113 of 188 countries had no state religion in 2000, and 41 % in
+      1900 (Barro & McCleary 2005, §3.4). A realm's ruling elite can hold a faith that the realm does not declare.
+      Holding and declaring are separate fields.
+  - **State per cell.** Each cell has a held faith f and a rival faith f′, either of which can be none, with two shares
+    of f′:
     - **professed** y: who conforms in public;
     - **held** b ≤ y: who believes it.
     Without coercion they are equal: conversion is real (Bulliet). Under coercion y runs ahead of b. Faiths are ids in
@@ -790,27 +804,58 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
     - The Palatinate's switches, four in thirty years, leave b behind y each time.
     - This is the "conditions under which it fails" in one rule: too short a reign of enforcement for the belief to
       follow.
-  - **The ceiling on force.** The cost of enforcing grows faster than the heterodox share (Johnson & Koyama 2013).
-    - A realm can coerce only while 1 − b < κ·capacity. capacity is the nation layer's administration of the cell:
-      administered beats tributary, and seats beat the periphery.
-    - Above that ceiling it tolerates, and conversion runs at the no-force rate.
-    - Revolt pressure rises with the coerced share, a term NATION_PLAN's rebellion pressure can read. Antiochus IV and
-      the Maccabees are the record's case.
+  - **Enforcement capacity is the nation layer's state capacity, read and not modelled here.**
+    - A realm can coerce a cell only within its reach. That is NATION_PLAN §7.3's capacity κ (the days from a seat
+      within which collecting tax pays) and the cell's hold (administered, tributary or none).
+    - r_force scales with the hold, and is zero outside κ. A tributary zone is not coerced.
+    - The cost of enforcing grows faster than the heterodox share (Johnson & Koyama 2013), so a realm coerces only
+      while 1 − b < κ_rel·(its capacity at the cell). Above that it tolerates, and conversion runs at the no-force rate.
+    - Revolt pressure from the coerced share (y − b) is the nation layer's to use (NATION_PLAN §7.4a, faith; deferred).
+    - L6 models no governance: no bureaucracy, no clergy as an institution, no church–state bargaining. Jackson
+      deferred state-governance modelling (2026-11-26). If a governance layer comes, it replaces these reads, and the
+      rule stays the same.
   - **Leaving.** Cells whose b stays low under coercion lose people to realms of their faith, when the nation layer
     moves people. This is *ius emigrandi*, and the expulsions of Salzburg, Bohemia and the Moriscos. Until then it is
     a counter in the chronicle, not a flux.
-  - **The ruler's own choice.** Each realm has a ruling faith R. Each step the ruler may adopt another faith F, with
-    a hazard built from three terms:
-    - **neighbours:** a hazard that grows with the share of neighbouring realms ruling in F, weighted by border.
-      Cantoni 2012 measures +0.86 in probability per unit of that share per period of a few years. That is ~0.1–0.3
-      per year at full share (ours, from the LPM coefficient), and gives the clustering of the Reformation and its
-      spread from a centre;
-    - **subjects:** a hazard that grows with F's held share among the ruling culture's own people, and with F's share
-      among all subjects. Where R is a small elite's faith over a majority with an organized faith, the ruler converts
-      to the majority's: the Ilkhans, Chagatai and Visigoths. Barro & McCleary's states follow concentrated
-      majorities;
-    - **against:** large realms, and realms whose rule rests on R's clergy (Cantoni's ecclesiastical territories),
-      adopt less.
+  - **Declaring an official religion, and which.** Each realm has an official faith R, which may be none, and a
+    ruling elite's held faith (the ruling culture's cells). There are two decisions:
+    - **Whether to declare (or disestablish).** This is the **open research question for L6** (below). Until it is
+      answered, a placeholder hazard: a realm declares its elite's faith with a hazard rising with that faith's
+      concentration among its subjects (Barro & McCleary's predictor), and drops it at a small hazard. It is
+      persistent, as their 0.75 coefficient from 1900 to 2000 says.
+    - **Which faith, once declared, and switches.** The ruler may adopt another faith F, with a hazard built from three
+      terms:
+      - **neighbours:** a hazard that grows with the share of neighbouring realms ruling in F, weighted by border.
+        Cantoni 2012 measures +0.86 in probability per unit of that share per period of a few years. That is ~0.1–0.3
+        per year at full share (ours, from the LPM coefficient), and gives the clustering of the Reformation and its
+        spread from a centre;
+      - **subjects:** a hazard that grows with F's held share among the ruling culture's own people, and with F's share
+        among all subjects. Where R is a small elite's faith over a majority with an organized faith, the ruler
+        converts to the majority's: the Ilkhans, Chagatai and Visigoths;
+      - **against:** large realms, and realms whose rule rests on R's clergy (Cantoni's ecclesiastical territories),
+        adopt less.
+  - **Open research question for L6: why rulers declare a state religion, and their capacity to enforce it.**
+    - The leads already checked (§3.4):
+      - **Barro & McCleary 2005** [V of the NBER paper]: a state religion is likelier where adherence is concentrated
+        (+0.16 per s.d. of the Herfindahl index) and persists (0.75 from 1900 to 2000). Communism lowers it by 0.49.
+        Size, income, democracy and colonial history matter little. The share with one fell from 59 % (1900) to 40 %
+        (2000). These are 20th-century correlations, and the authors decline to explain single rulers' choices.
+      - **Johnson & Koyama 2013** [V of the working paper] (and their 2019 book [A]): weak states rule through
+        identity rules and religious legitimation. The cost of persecution is convex in the heterodox share. As states
+        centralize, they first persecute more, then widen the orthodoxy and tolerate. A theory, not fitted.
+      - **Cantoni 2012** [V of the working paper]: princes adopted when it was legally safe and their neighbours had,
+        less when large or ecclesiastical.
+      - **Rubin 2017** [A, via Becker, Pfaff & Rubin 2016 [V]]: weak rulers facing a strong clergy buy legitimacy with
+        monopoly privileges. Stronger states extract concessions in turn. An upstart faith offers cheaper legitimation,
+        plus the old church's assets (the Reformation's expropriations).
+    - **What's missing:**
+      - a mechanism for the declaration itself, as a function of the ruler's legitimacy needs, the clergy's strength
+        and the realm's capacity;
+      - an account of disestablishment (the 20th century's fall, which is more than communism);
+      - a fitted model of either.
+    - **The plan until then:** the placeholder hazard above, with enforcement read from the nation layer's κ and hold.
+      A rule that needs the clergy's strength or the ruler's legitimacy as inputs would be state-governance modelling,
+      which Jackson deferred.
   - **New faiths.**
     - A faith is founded by a hash draw in a town or court cell.
     - It seeks converts or not.
@@ -818,7 +863,8 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
       university towns and Rubin's printing presses (§3.4).
     - A ruler-founded faith with no following outside the court has b ≈ 0 and dies with the reign. That is the
       Akhenaten case, by the reversal rule above.
-  - **Checks** (§11.1): a realm-backed faith takes ~2–3 centuries to pass 80 % without force (Bulliet's Iran). Forced
+  - **Checks** (§11.1): realms with no official religion exist, with cells of none among them. A realm-backed faith
+    takes ~2–3 centuries to pass 80 % without force (Bulliet's Iran). Forced
     conversion leaves a hidden minority for ~4–10 generations. Ruler adoptions cluster in space and spread from a
     centre (Cantoni's Table 5: territories nearer Wittenberg adopted first). Conquerors with a minority faith take
     their subjects' faith.
@@ -1054,7 +1100,9 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
   2015).
 - **Scale:** the same world at 160K and 640K (as `check-civ-food` does across meshes). The correlation length in km and the language
   count per area at scales above both meshes' cells should agree.
-- **Religion** (L5, §7.8). These are calibration targets, not independent tests:
+- **Religion** (L6, §7.8). These are calibration targets, not independent tests:
+  - realms with no official religion, and cells and towns of none, occur and persist. The share of realms with a
+    declared faith is reported beside Barro & McCleary's 59 % (1900) and 40 % (2000), as a report, not a target;
   - a faith backed by its realm, with no force, should pass 80 % in ~2–3 centuries (Bulliet's Iran);
   - forced conversion should leave a hidden minority for ~4–10 generations (Moriscos, Salzburg, Japan);
   - enforcement shorter than ~τ_p should revert (Akhenaten, Julian);
@@ -1132,8 +1180,16 @@ These are scaled from the 160K estimate. Jackson asked for a real time cost: civ
   d(a, b) the nation layer's N3 reads; N6's schooling.
   - Checks: the nation layer's culture area against complexity (Currie & Mace 2009 [L]), from its side; Weber's France.
 - **L5. Traits** (§7.8; §14 Q4 (b), decided): ~16 customs, and d_trait in d(a, b).
-  - Religion (§7.8; Q4 (c)) joins L5 if Jackson takes it when Q4 (c) is re-asked.
-- **L6. Contact along routes and blending** (needs civ T2): Trudgill's gravity contact through towns, lingua francas,
+- **L6. Religion** (§7.8; §14 Q4, decided: its own stage after L5).
+  - The professed and held shares.
+  - None as a first-class faith at cell, town and realm.
+  - The official faith or none per realm.
+  - Coercion within the nation layer's κ and hold, and reversal.
+  - The placeholder declaration hazard, until the open research question on declaration and enforcement (§7.8) is
+    answered. No governance modelling (deferred).
+  - Needs NATION_PLAN's realms with κ and hold (N2). Faith in legitimacy and revolt is NATION_PLAN's, deferred with
+    this stage.
+- **L7. Contact along routes and blending** (needs civ T2): Trudgill's gravity contact through towns, lingua francas,
   koinés; mixed languages and creoles only with the colonial horizon (§7.7).
 
 ## 13. What it needs from the civ and nation layers that they don't have yet
@@ -1153,7 +1209,7 @@ These are scaled from the 160K estimate. Jackson asked for a real time cost: civ
 ## 14. Open questions for Jackson
 
 Jackson answered these on the board on 2026-11-26, relayed by sessrumnir. Each question keeps its options, and its
-**Decided** line records the answer. Q4 (c) is the one still open.
+**Decided** line records the answer. Q4 (c) was re-asked and answered the same day.
 
 **Q1. Resolution.** At the page's 160K, a cell is ~3,200 km². Forager continents and farmed plains resolve. The tropics'
 small languages (New Guinea's ~1,000) are sub-cell.
@@ -1199,8 +1255,17 @@ has no GPU dependency today: it runs in a page worker and in Node tools.
     - Still missing: a fitted mechanistic model of ruler-driven conversion. §7.8 is ours, calibrated to those rates.
   - Religion also gives the nation layer a second axis for legitimacy and revolt, beside language (report).
   - The alternative is to see (b) running first and add (c) after, if L5 should stay small.
-- **Decided: (b), the ~16 customs, as L5** ("sounds great"). (c), religion, was held until the religion revision
-  (§3.4 and §7.8, rewritten from sources on 2026-11-26). It is **to be re-asked** with the text above.
+- **Decided: (b), the ~16 customs, as L5** ("sounds great").
+- **Decided (re-asked after the religion revision, 2026-11-26): religion "later, its own stage after L5"**, now L6
+  (§12). Jackson:
+  - leave space for an area, town or settlement to have **no professed religion**, and a realm **no official or
+    state-sanctioned religion**. These are first-class states (§7.8);
+  - look into what makes a state's rulers declare an official religion, and their ability to enforce it. This is an
+    **open research question for L6** (§7.8), with the leads Barro & McCleary 2005, Johnson & Koyama 2013, Cantoni
+    2012 and Rubin 2017;
+  - "we are starting to touch on state governance modelling, which might be a bit much at this point." So enforcement
+    capacity is the nation layer's κ and hold, read by L6, and governance modelling is deferred.
+  - The recommendation above ("(c) at L5") is superseded.
 
 **Q5. Names: how far?**
 - (a) Places, peoples and realms (NATION_PLAN's Q3 (b)).
