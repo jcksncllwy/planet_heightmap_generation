@@ -11,6 +11,7 @@
 //   node v2/tools/iceage-inception.mjs        (GPU: Dawn in Node)
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
+import './gpu-harness/use-dawn.mjs';            // (WebGPU in Node, as the check suites have it: check-kit)
 import { earthSurfaceKm, earthIce, EARTH_ICE_MESH } from './lib/earth-surface.mjs';
 import { terrainMesh } from '../js/terrain/terrain-mesh.js';
 import { worldOcean } from '../js/terrain/world-ocean.js';
