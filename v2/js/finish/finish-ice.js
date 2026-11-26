@@ -71,7 +71,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     { const o = worldOcean(im, bed0, 0).ocean; for (let c = 0; c < n; c++) if (o[c]) seaArea += area[c]; }
     const sys0 = systemOf(climateOptions.system), cycle = sys0.orbit.cycle ?? EARTH_CYCLE;
     // (the plan: a round at the inception, then rounds at the maximum until the ice is steady — or the glacial's time is spent)
-    const budgetKyr = F.iceInceptionKyr - F.iceMaxKyr;
+    const budgetKyr = F.iceBudgetKyr ?? F.iceInceptionKyr - F.iceMaxKyr;      // (iceBudgetKyr: a study's longer run, unset in the finish)
     let H = new Float32Array(n), sea = 0, climate = null, spentKyr = 0, lastVol = 0, steady = false;
     const rounds = [], elevKm = new Float32Array(n), iceMask = new Uint8Array(n), land = new Uint8Array(n);
     while (spentKyr < budgetKyr && !steady) {
