@@ -773,12 +773,12 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
     if (!b?.simMesh || !frame) return;
     // (the button cancels a finish under way — but not in its first moments: it turns into Cancel where Add detail was,
     // so a double click would otherwise start a finish and stop it at once)
-    if (b.finishJob) { if (performance.now() - b.finishJob.startedAt >= CANCEL_GRACE_MS) finisher.cancel(); return; }
+    if (b.finishJob && !(again && b.finishJob.retry)) { if (performance.now() - b.finishJob.startedAt >= CANCEL_GRACE_MS) finisher.cancel(); return; }   // (a retry takes over its placeholder)
     setPlaying(false);
     const cells = Number($('finishCells').value), width = finishWidth(cells);
     const started = performance.now(), done = new Map(FINISH_STAGES);
     b.finishNote = null; b.finishOk = false;
-    b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), lookup: cachedOnly };
+    b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), lookup: cachedOnly, retry: again ? b.retryNote : null };
     if (!cachedOnly) holdForDetail(b, true);
     updateClimateUi();
     const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
@@ -818,7 +818,12 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
         // (once: the moment kept in detail let go — it holds memory — and the finish tried again in a fresh worker, the old
         // one's memory gone with it)
         if (oom && !again && B === b) {
-            b.finishes.clear(); b.finishJob = null; dirty = true;
+            // (said at once, on the card and the status line: the bar starts again from 0 — Jackson's 1200 Myr pass went from
+            // ~99 % to 0 % with no word, 2026-11-26)
+            b.retryNote = `Ran short of memory${(b.finishJob?.share ?? 0) > 0.8 ? ' near the end' : ''}. Trying again, with the moments kept in detail let go`;
+            b.finishes.clear(); b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), retry: b.retryNote }; dirty = true;
+            if (!b.live) status(`${b.retryNote}…`, null);
+            updateClimateUi();
             console.warn('[evolution] out of memory finishing: the detailed moments kept and the old worker let go, trying again');
             setTimeout(() => finishMoment(frame), 300);
             return;
@@ -832,7 +837,8 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
         else if (err.name !== 'AbortError') console.error(err);
     } finally {
         b.player?.wake();
-        if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; holdForDetail(b, false); updateClimateUi(); }
+        if (again && B === b && !b.live && b.doneText && !b.retexturing) status(b.doneText, 1);     // (the retry's word on the status line, done)
+        if (B === b && b.finishJob?.frame === frame && !(b.finishJob.retry && !again)) { b.finishJob = null; dirty = true; holdForDetail(b, false); updateClimateUi(); }
     }
 }
 
@@ -965,7 +971,7 @@ function updateCard() {
     $('cardTitle').textContent = frame ? `${t} Myr` : 'Starting…';
     const computing = !!b?.live && !b.going;
     $('cardText').textContent = !frame ? 'A new world is starting…'
-        : job ? (job.lookup ? `Bringing back the detail of ${job.frame.time.toFixed(0)} Myr from the finish cache…` : `Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`)
+        : job ? (job.lookup ? `Bringing back the detail of ${job.frame.time.toFixed(0)} Myr from the finish cache…` : `${job.retry ? `${job.retry}. ` : ''}Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`)
         : isDet ? 'This moment, sculpted in detail. Look around — Satellite and Climate show it at its detail — then export it as map files.'
         : playing ? (computing && !b.hold.paused ? 'Computing the history — scrub through any of it as it fills in. Stop playback on a moment you like, then add detail.' : 'Stop playback on a moment you like, then add detail.')
         : 'This is a preview. Add detail sculpts it again, finely: rivers and lakes, glaciers, its own climate and the Satellite view — ready to export.';
