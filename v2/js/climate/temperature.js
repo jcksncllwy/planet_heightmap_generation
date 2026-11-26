@@ -201,10 +201,13 @@ export function energyBalanceTemperature() {
         // that could not grow it: by the growing ramp alone, a sheet snowy ~85 % of the year counted as half a sheet, warmed
         // round by round and was gone)
         // …and where the sheets are given (the ice age's, gpu/ice-sheet.js: input.ice, core.js sheetFrac) they are where its
-        // flow put them, the ground's height already the ice's surface (no dome there), the snow's year leaving them as they
-        // are. The climate's own perennial snow is kept beside them (`own`, its dome only beyond the given sheet): the cover is
-        // the larger of the two. Given alone, the rounds' ice-free inception had no snow to start a sheet from — at 116 ka
-        // northern Canada's cells with a positive balance went from 30 % to 0 % (lane iceage B2, tools/iceage-inception.mjs)
+        // flow put them, the ground's height already the ice's surface, the snow's year leaving them as they are. The
+        // climate's own perennial snow is kept beside them (`own`): the cover — its albedo, its lapse — is the larger of the
+        // two. Given alone, the rounds' ice-free inception had no snow to start a sheet from (lane iceage B2,
+        // tools/iceage-inception.mjs). No dome while sheets are given, own snow's included: the dome stands in for a sheet's
+        // height, which the given sheets' flow grows itself — and seaLevelGrid (core.js) brings the temperature back to sea
+        // level by the ground's height alone, so a dome there read as ~8 K of phantom cold: Earth's rounds ran to 44 Mkm² in
+        // their first 10 kyr
         const given = ctx.surface.sheetFrac ? coarsen(core, g, ratio, ctx.surface.sheetFrac) : null;
         const own = new Float64Array(G);
         const keepSheet = (share) => { const x = (share - P.TEMP_ICE_KEEP[0]) / (P.TEMP_ICE_KEEP[1] - P.TEMP_ICE_KEEP[0]); return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
@@ -324,7 +327,7 @@ export function energyBalanceTemperature() {
                 own[c] = Math.max(iceSheet(snowYearPrev[c]), own[c] * keepSheet(snowYearPrev[c]));
                 perennial[c] = given ? Math.max(given[c], own[c]) : own[c];
                 lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * perennial[c];
-                surfKm[c] = Math.max(landKm[c], P.TEMP_ICE_DOME_KM * Math.max(0, own[c] - (given ? given[c] : 0)));
+                surfKm[c] = given ? landKm[c] : Math.max(landKm[c], P.TEMP_ICE_DOME_KM * own[c]);
             }
             forcingSamples({ P, g, G, w, h, NT, dRad, Q, albBase, absorb, albVary, landFrac, lapseEff, surfKm, perennial, cloudT, dg, winds, gamma, uT, vT, qAt,
                 c0, c1r, c1i, c2r, c2i, Tk, snowYear, iceYear, seaIceYear, F0, F1r, F1i, F2r, F2i });
@@ -593,7 +596,7 @@ export function energyBalanceTemperature() {
         // surface air temperature at each grid cell's reference height
         const href = ctx.surface.meanLandKm;
         const domeG = new Float64Array(G);
-        for (let c = 0; c < G; c++) { own[c] = Math.max(iceSheet(snowYear[c]), own[c] * keepSheet(snowYear[c])); const p = perennial[c] = given ? Math.max(given[c], own[c]) : own[c]; lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = P.TEMP_ICE_DOME_KM * Math.max(0, own[c] - (given ? given[c] : 0)); }
+        for (let c = 0; c < G; c++) { own[c] = Math.max(iceSheet(snowYear[c]), own[c] * keepSheet(snowYear[c])); const p = perennial[c] = given ? Math.max(given[c], own[c]) : own[c]; lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = given ? 0 : P.TEMP_ICE_DOME_KM * p; }
         const lapseCore = new Float32Array(core.size), domeCore = new Float32Array(core.size);
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
