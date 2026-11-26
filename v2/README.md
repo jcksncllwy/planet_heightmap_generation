@@ -1049,6 +1049,18 @@ raster (`world.goneCrust`, simulate.js — as a merge already gave the plate it 
 `small`), starting them again — well under a second — when the history runs on. Peak during a 640K Add detail
 1.97 → 1.66 GB, after it 1.64 → 1.22 GB; every frame the same (hashes: three histories in place, one with helpers).
 
+The gone plates' caches (2026-11-26, pagemem; Jackson's 2.5M pass reset at 99 % with the page at 5.3 GB): the shared empty
+raster did not free the old one. gather.js's near-edge marks on the plate (`_nearEdge`) still held `raster: plate.crust`,
+the plate's full raster as it was before it went, and those marks, the claim map and the torque sums are mesh-sized
+themselves. On seed 243751 at 1200 Myr (40K), 353 of 360 plates are gone, and the history worker, which keeps its world
+for Keep going, held 3.56 GB of the page's 4.56 GB at rest (measureUserAgentSpecificMemory). Now
+`tectonics/ops/free-dead-plates.js` drops every mesh-sized field of a gone plate except its crust (the shared raster,
+which the river step's view still fetches). The history worker sweeps after each frame, and so does the tools' history
+cache (simulateCached). The page at rest went 4.56 → 1.29 GB (the history worker 3,555 → 271 MB). A Node build of that
+history peaked at 3.69 → 1.10 GB. Every frame is the same: value hashes on three worlds, 243751 to 1200 Myr; a run with
+`GEO_SIM_DEAD_PLATE_TRAP=1` puts a getter that throws in place of each dropped field, and it ran clean. Keep going and a
+reloaded `&more=` link run on as before.
+
 The picture on the GPU (2026-10-18; developer: "lets do the GPU repaint"): Evolution painted every moment on the page's
 thread — ~2M pixels each blended from three cells through a pixel table (`SmoothMapRaster`; 37 ms at 2048 px, 130 ms at
 4096, and the 4096 table itself ~1 s and 117 MB to build), then sent as a texture. Now (`view/gpu-paint.js`) the terrain
