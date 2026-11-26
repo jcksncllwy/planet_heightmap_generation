@@ -124,7 +124,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - Farming crossed Europe at ~1 km/yr on average (Ammerman & Cavalli-Sforza 1971 [A]). Their 1973 chapter made it a
     demic wave: Fisher's reaction–diffusion front [A].
   - Regional rates were faster along the Danube–Rhine (~4–6 km/yr) and the Mediterranean coast (~10 km/yr) (Davison
-    et al. 2006 [V], on the same data).
+    et al. [V], on the same data).
   - The observed front, 0.9–1.3 km/yr (Fort 2012 [V]). The civ layer already runs its fronts on these numbers
     (CIV_PLAN §5.4).
 - **Demic and cultural together.** Cultural diffusion explains ~40 ± 8 % of the Neolithic front's **speed** in Europe,
@@ -526,7 +526,7 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
   - **p_b** is b's prestige: 1 by default; towns and ruling cultures raise it (§7.5).
 - **D, the diffusivity,** comes from human dispersal per generation, not from language data: D = ⟨Δ²⟩ / (4T), from
   the demic models' mean squared displacement per generation T. The Neolithic models use D ≈ 12.5 km²/yr, after
-  Ammerman & Cavalli-Sforza (Davison et al. 2006 [V]), so ⟨Δ²⟩ ≈ 1,250 km² per 25-yr generation. Forager and farmer
+  Ammerman & Cavalli-Sforza (Davison et al., arXiv q-bio/0505013 [V]), so ⟨Δ²⟩ ≈ 1,250 km² per 25-yr generation. Forager and farmer
   values from ethnographic dispersal distances are to be read at L0 (§3.1; CULTURE_SOURCES.md). Speech is learnt from
   parents and neighbours, so the flux of speakers is taken as the flux of people. That is an assumption, labelled.
 - **What it predicts, as checks, not rules:**
