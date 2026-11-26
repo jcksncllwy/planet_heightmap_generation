@@ -63,7 +63,7 @@ The reasons:
   Sharp boundaries form where contact is thin (seas, mountains, deserts, empty land) or where two populations meet
   after long separation. Neither needs a rule (§7.3).
 - **The rates are the literature's own numbers.** Pagel et al. 2007's per-meaning replacement rates go straight in
-  (§7.2). Under neutral drift a lineage's substitution rate equals its innovation rate (Kimura's result), whatever the
+  (§7.2). Under neutral drift a lineage's substitution rate equals its innovation rate (Kimura's result [L]), whatever the
   number of cells, so the rates measured on trees are the rates the model runs at.
 - **Distances are real lexical distances.** The nation layer's d(a, b) is the share of the basic list two lects don't
   share (§7.10). It is what lexicostatistics and ASJP measure, so it can be checked against Earth's.
@@ -105,8 +105,8 @@ Alternatives, not recommended:
 - **Step: 25 years**, sim.js's generation. The reasons:
   - Contact between neighbouring cells at 160K is ~0.02–0.07 per neighbour per step (k_ab·25 yr at D = 3–12.5
     km²/yr, §7.3). It must stay well under 1 for the discrete voter model to approximate the continuous one. At 640K
-    (cells half as far apart) it is four times as much, still under 0.3. A century step at 160K would be ~0.1–0.3 per
-    neighbour, ~0.6–1.6 over six, and would over-mix.
+    (cells half as far apart) it is four times as much, still under 0.3. A century step at 160K would be ~0.06–0.27 per
+    neighbour, ~0.4–1.6 over six, and would over-mix.
   - The nation layer's realm step is 25 yr (NATION_PLAN §2), and shift under a ruler is part of the culture step.
   - Abrams–Strogatz shift takes a few generations to a few centuries; 25 yr resolves it.
 - **Frames.** The culture labels (language and family per cell) and each language's representative lect go into the
@@ -143,9 +143,10 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - **Contested:** agriculture is one driver among several, and the spread-zone concept is weak (Campbell 2002 [A]).
     The Andean case refines the rule rather than refuting it (Heggarty & Beresford-Jones 2010 [A]). Transeurasian
     as a farming dispersal, 9181 BP (95 % HPD 5595–12793) from millet farmers of the West Liao (Robbeets et al. 2021 [V]),
-    is disputed: the lexical data can't separate inheritance from contact and chance (Tian et al. 2022, preprint [A]).
+    is disputed: the lexical data can't separate inheritance from contact and chance (Tian et al. 2022, preprint; seen in a search summary only [L]).
   - **A forager counter-case:** Pama-Nyungan spread across most of Australia from the Gulf Plains in the mid-Holocene,
-    "just under 6,000 years ago" (306 languages; Bouckaert, Bowern & Atkinson 2018 [A]), with no strong genetic sign of
+    "just under 6,000 years ago" (306 languages; Bouckaert, Bowern & Atkinson 2018 [A]; the date is from Bowern's own
+    popular account, the paper's root age and HPD NOT FOUND), with no strong genetic sign of
     a population expansion. The authors' explanation is a package of cultural innovations that absorbed existing groups.
 - **Elite dominance.** A language spreads through a small ruling group, by status rather than numbers (Renfrew 1987,
   as described in Renfrew 2000 [V]). Anatolia's Turkish speakers carry ~9.6 % Central Asian ancestry (6.5–12 % by
@@ -166,8 +167,9 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - **Austronesian:** 400 languages, origin in Taiwan ~5,230 BP (95 % HPD 4,750–5,800), a "chained" tree through the
     Philippines, Borneo and Sulawesi to Oceania, with pauses and pulses tied to innovations (Gray, Drummond & Greenhill
     2009 [A]; the authors' recap 2010 [V]). Where the pauses fell: NOT FOUND in what was read.
-  - **Indo-European:** root ages 7,800–9,800 BP (Gray & Atkinson 2003 [A]); an Anatolian origin with 8,000–9,500
-    (Bouckaert et al. 2012 [A]); ~6,500 BP with ancestry constraints, the steppe (Chang et al. 2015 [A]); ~8,120 BP, a
+  - **Indo-European:** root ages 7,800–9,800 BP (Gray & Atkinson 2003 [A]); decisive support for an Anatolian origin
+    over a steppe one (Bouckaert et al. 2012 [A]; 8,000–9,500 is the hypothesis they tested, their fitted root NOT FOUND); the steppe, c. 6,500–5,500 BP, with ancestry constraints
+    (Chang et al. 2015 [A]; ~6,500 from press accounts); ~8,120 BP, a
     hybrid with a homeland south of the Caucasus and a later steppe branch (Heggarty et al. 2023 [A]).
   - **Status.** Established: farming families are real and large, and their spread was largely demic. Contested: the
     homelands and dates (Indo-European above all), and how much elites against farmers did. Just-so: any single-cause
@@ -178,10 +180,10 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
 
 ### 3.2 Evolution and differentiation: rates, trees, continua, barriers, founders
 - **Glottochronology's constant rate failed.**
-  - Lees 1953 found 80.5 % (± 1.8 %) retention per millennium on the 200-word list (13 pairs). Swadesh's 100-word list
-    gave 86 % (both via secondary text [A]).
+  - Lees 1953 found 80.5 % (± 1.8 %, 90 % confidence) retention per millennium on the 200-word list (13 pairs). Swadesh's 100-word list
+    gave 86 % (both via secondary text [L]).
   - Rates vary between related languages: Icelandic lost ~4 % per millennium and Norwegian (Riksmål) ~20 % (Bergsland
-    & Vogt 1962, as paraphrased [A]).
+    & Vogt 1962, as paraphrased [L]).
   - **Established:** there is no constant rate. Rates vary by meaning and by lineage.
 - **Rates by meaning.** Frequent words are replaced slowly and rare words fast. Frequency of use explains ~50 % of the
   variance in rates over 200 meanings in 87 Indo-European languages (Pagel, Atkinson & Meade 2007 [A]). Most words
@@ -208,8 +210,8 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
 - **Dialect continua and isolation by distance.**
   - Dialect distance grows **sublinearly** with geographic distance in virtually every study. Its best predictor is
     the logarithm of distance (Nerbonne & Heeringa 2007, in Nerbonne 2010 [V of the draft]). The correlations with log
-    distance are r = 0.47 (Bantu, 53 sites), 0.49 (Bulgarian), 0.51 and 0.62 (Dutch).
-  - Séguy 1971 compared his Gascon curve with the square root of the log of distance (via Nerbonne [V]).
+    distance are r = 0.47 (Bantu, 53 sites), 0.49 (Bulgarian), 0.62 (Dutch) and 0.51 (a fourth dataset).
+  - Séguy 1971 compared his curve with the square root of the log of distance (via Nerbonne [V]).
   - Burridge 2017 [V] models dialect domains: boundaries move with a surface tension (curvature shrinks), are driven
     **away from population centres** toward thinner people, and are shaped by coasts. His Séguy curve is a function of
     distance over √time that saturates; it has no innovation.
@@ -231,7 +233,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - Against: it is "an artifact of using suboptimal data, biased methodology, and unjustified assumptions" (Cysouw,
     Dediu & Moran 2012 [A]). In 725 languages most of the founder model's predictions fail for phonemes, though they
     hold for genes, because "phonemes change rapidly" (Hunley, Bowern & Healy 2012 [A]). In 2,082 languages there's no
-    serial-founder signal, and near languages share more phonemes: contact (Creanza et al. 2015 [V]).
+    serial-founder signal, and near languages share more phonemes: contact (Creanza et al. 2015 [V], the first ~40 % of the text).
   - Inventory size against population: a "robust correlation" (Hay & Bauer 2007 [A]); "little support" once relatedness
     is controlled for (Moran, McCloy & Wright 2012 [A]).
   - **For us:** no founder rule. Founders copy their source's phonology exactly (§7.1), and the report checks whether
@@ -259,7 +261,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
     simplicity). Its own loan share: NOT FOUND.
 - **Linguistic areas.** Features diffuse across unrelated languages through long multilingualism: India (Emeneau 1956
   [A]); the Balkans (Sandfeld 1930 [L]). A satisfactory definition is "extremely difficult, if it is possible at all"
-  (via a Leiden source [A]). Established as a phenomenon; definitions are contested.
+  (via a Leiden source, search snippets only [L]). Established as a phenomenon; definitions are contested.
 - **Shift and death** (Abrams & Strogatz 2003 [V]):
   - dx/dt = c[(1−x)·x^a·s − x·(1−x)^a·(1−s)], with a = 1.31 ± 0.25 over 42 regions;
   - "two languages cannot coexist stably";
@@ -267,20 +269,21 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
     [V abstract], Castilian and Galician). A bilingual state in a voter model changes coarsening from noise-driven to
     curvature-driven (Castelló, Eguíluz & San Miguel 2006 [V abstract]). The spatial version gives coexistence in
     separate zones (Patriarca & Leppänen 2004 [A]). Reaction–diffusion with monolinguals and bilinguals is fitted to
-    Welsh and Gaelic censuses; a diglossia variant keeps the endangered language (Kandler, Unger & Steele 2010 [V of
-    the model's text]).
+    Welsh and Gaelic censuses; a diglossia variant adds demand for the endangered language in some domains (Kandler, Unger & Steele 2010
+    [V of the model's text, partly]; a stable-coexistence result NOT FOUND).
   - Established as fits to decline curves. Contested as a law: bilingualism and similarity allow coexistence.
 - **Endangerment now.** Of ~7,000 documented languages nearly half are endangered; 37 % of 6,511 are threatened. Road
   density and years of schooling predict it; contact with other languages per se doesn't (Bromham et al. 2022 [V]).
-  Krauss 1992 foresaw "the death or doom of 90 %" within the century (via Simons 2013 [V]), a figure Simons finds the
-  evidence isn't bearing out. Modern-horizon matters, kept only to say that states and schools, not contact, kill
+  Krauss 1992 foresaw "the death or doom of 90 %" within the century (via Simons 2013 [V]). Simons finds the evidence not
+  bearing out Krauss's companion estimate that half were already moribund. Modern-horizon matters, kept only to say that states and schools, not contact, kill
   languages.
 - **Creoles.**
   - APiCS covers 76 pidgins and creoles (Michaelis et al. 2013 [V]).
   - The founder principle: a creole's structure is largely set by the vernaculars of the colony's founding population
     (Mufwene 1996 [V]). Demography decides: Jamaica went from 3 Africans per European in 1690 to over 10 by the
     mid-18th century; Barbados stayed under 3 (Mufwene 1996:92 [V], from Williams 1985).
-  - That creole grammars are the world's simplest (McWhorter 2001 [A]) is contested (Seuren 2001 and later work [A]).
+  - That creole grammars are the world's simplest (McWhorter 2001 [L]) is contested (Seuren 2001 and
+    later work [L]).
   - Established: creoles form where a new population is assembled from many languages under a dominant one.
     Contested: whether they are typologically special.
 
@@ -303,7 +306,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - The civ layer's economy already caps complex skills by people within reach (CIV_PLAN §9.1). This layer doesn't add
     a second version.
 - **Branching and blending.** Cultural datasets fit trees about as well as biological ones (Collard, Shennan & Tehrani
-  2006 [A]; contested by Morrison 2014 [A]). Turkmen textile designs were ~70 % homologous before the Russian conquest
+  2006 [L], from summaries; contested by Morrison 2014 [L]). Turkmen textile designs were ~70 % homologous before the Russian conquest
   and ~60 % after. Branching stayed dominant; blending rose (Tehrani & Collard 2002, via Collard & Shennan 2008 [V]).
   Languages are not perfectly treelike either: delta scores average 0.41 for Polynesian and 0.22 for Indo-European
   (Gray, Bryant & Greenhill 2010 [V]).
@@ -321,7 +324,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - In 96 Austronesian cultures, broad supernatural punishment precedes political complexity, and moralizing high gods
     follow it (Watts et al. 2015 [V]).
   - The Seshat moralizing-gods paper (Whitehouse et al. 2019) was **retracted** in 2021 [V].
-  - Christianity's early growth, "40 % per decade" (Stark 1996): secondary only [A].
+  - Christianity's early growth, "40 % per decade" (Stark 1996): from magazines and blogs only [L].
   - A peer-reviewed model of elite-led conversion: NOT FOUND. "Cuius regio, eius religio" is a historical rule (1555),
     used here as a mechanism, not a sourced model.
 - **Geography and persistence.** Linguistic diversity persists more where a country's axis runs north–south: about 5
@@ -343,17 +346,17 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
 - **Regular sound change.** The Neogrammarians' exceptionless sound laws (Osthoff & Brugmann 1878 [L]) against lexical
   diffusion (Wang 1969 [L]). Labov 1981 [A]: instrumental studies of change in progress support the Neogrammarians
   ("change affects all words that include the sound according to their phonetic environment"), while Chinese history
-  supports gradual diffusion through the lexicon. His resolution: low-level phonetic change is regular, and more
+  supports gradual diffusion through the lexicon. In our words, the resolution: low-level phonetic change is regular, and more
   abstract change can diffuse word by word.
 - **Catalogues of sound changes:** Kümmel 2007's *Konsonantenwandel* (consonant changes, with their languages and
   conditioning [A]); the Index Diachronica (a volunteer wiki); UniDia (Lyon). Sizes: NOT FOUND. These are the
   catalogue our settings' chains come from (§9.1).
-- **Self-organization.** Agents playing imitation games evolve vowel systems like human ones, so innate bias isn't
-  needed (de Boer 2000 [A]). Languages passed down chains of learners become structured and easier to learn (Kirby,
+- **Self-organization.** Agents evolve vowel systems like human ones, so innate bias isn't
+  needed (de Boer 2000 [L], from a summary; the imitation games are described in his 1997 and 2001 work). Languages passed down chains of learners become structured and easier to learn (Kirby,
   Cornish & Smith 2008 [A]). These justify drift that stays within the space of natural languages, not random strings.
 - **Procedural precedents** (what they do, and what carries over):
   - **Rosenfelder's tools** [V]: Gen builds words from phoneme categories and syllable patterns, with a frequency
-    dropoff. SCA2 applies sound changes written as `s1/s2/e1_e2` rules, in order, with categories, boundaries and
+    dropoff. SCA2 applies sound changes written as `s1/s2/e1_e2` rules, with categories, boundaries and
     exceptions. His *Language Construction Kit* [A].
   - **Lexurgy** [A]: a sound changer. **Vulgar** [A]: a generator of whole conlangs.
   - **Martin O'Leary's naming languages** [V]: weighted inventories, syllable patterns with cluster filters,
@@ -364,7 +367,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - **Azgaar's Fantasy Map Generator** [V code]: names by Markov chains trained on real name lists ("name bases"), and
     cultures grown from centres by an accumulated cost (biome, height, rivers, type) over a priority queue.
   - **Dwarf Fortress** [V wiki]: one shared list of 3,301 words; each language file is a translation table for them,
-    and words are used only in names. "The four predefined languages … have no real morphology." Symbols let a
+    and Dwarven words are used only in names. "The four predefined languages … have no real morphology." Symbols let a
     civilization prefer some word groups. The wiki doesn't say whether languages change over a world's history.
   - **Simulations:** Nettle 1999 [V] puts 400 speakers on a social (not spatial) grid; variation in learning, together
     with differences in social influence, drives change. The Schulze model (Schulze, Stauffer & Wichmann 2008 [V of the
@@ -374,7 +377,7 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
     trait (§9.3) and morpheme reuse in names (§9.4); Schulze's copy-and-shift structure. Our version runs it on real
     geography and people, with sourced rates.
   - **What doesn't:** Markov chains on Earth's names (they'd make an Orogen world sound like Earth); DF's static tables
-    (no drift, so no kin).
+    (no drift that the wiki describes, so no kin).
 - **Names keep.** "The names of large rivers are among the diachronically most stable of all words," and "are normally
   retained even when the area is invaded by speakers of another language." Of 92 large European rivers attested in
   Greek or Latin, 87 % keep their ancient names after 2,000 years (Peust 2015 [V]), so ~93 % per millennium. Krahe's "Old European" hydronymy as an Indo-European layer is
@@ -389,7 +392,7 @@ table says which are, and the checks compare like with like (a modern figure as 
 | Regularity | Earth's record | Source | Mark |
 |---|---|---|---|
 | Languages, families | 7,685 spoken L1 languages in 245 families and 183 isolates (Glottolog 5.4); 7,159 living (Ethnologue 28th ed.) | Glottolog; Ethnologue | [V]/[A] |
-| Speakers per language | median ~7,000 (Ethnologue); range and speakers both ~lognormal; range rising toward higher latitudes, falling above 60° N | Ethnologue blog; Amano et al. 2014 | [A]/[V] |
+| Speakers per language | median ~7,000 (Ethnologue, a blog post [L]); range and speakers both ~lognormal; range rising toward higher latitudes, falling above 60° N | Ethnologue blog; Amano et al. 2014 | [A]/[V] |
 | Languages by latitude | tropical countries: ln(languages) = 0.33 ln(pop) + 0.18·MGS − 0.62 (r = 0.63, 43 countries); diversity falls with \|latitude\| after correcting for space and relatedness, and rises with the growing season | Nettle 1998; Hua et al. 2019 | [V] |
 | North America at contact | language-group density "six times or more" higher in the south than the north | Mace & Pagel 1995 | [A] |
 | Cultures by latitude | 3,814 cultures: density and diversity fall with latitude; tropical cultures have smaller ranges | Collard & Foley 2002 | [A] |
@@ -398,10 +401,10 @@ table says which are, and the checks compare like with like (a modern figure as 
 | Retention | ~80.5 % per millennium (200-list), 86 % (100-list); between lineages ~4–20 % lost per millennium | Lees 1953; Swadesh 1955; Bergsland & Vogt 1962 | [A] |
 | Half-lives by meaning | most words 2,000–4,000 yr; numerals, pronouns 10,000–20,000+ ("750–10,000": NOT FOUND) | Pagel et al. 2007, 2013 | [A]/[V] |
 | Bursts at splits | Bantu 31 %, Indo-European 21 %, Austronesian 9.5 % of divergence | Atkinson et al. 2008 | [V] |
-| The comparative method's reach | ~8,000 yr (Nichols); ≥ ~10,000 (Rankin) | Nichols 1992; Rankin 2003 | [V] |
-| Distance and geography | sublinear; best predicted by log distance (r ≈ 0.47–0.62) | Nerbonne 2010 | [V] |
+| The comparative method's reach | ~8,000 yr (Nichols, quoted by Renfrew 2000); ≥ ~10,000 (Rankin) | Nichols 1992; Rankin 2003 | [V] Renfrew, Rankin |
+| Distance and geography | sublinear; best predicted by log distance (r ≈ 0.47–0.62) | Nerbonne 2010 | [V] draft |
 | Diversity and terrain | roughness and river density the only universal predictors (14 tested); up to 80 % of Africa's variance | Axelsen & Manrubia 2014 | [V] |
-| Family roots | Bantu ~4,850 / 5,110 BP; Austronesian ~5,230 BP; Indo-European 6,500–9,800 BP (by method); Pama-Nyungan just under 6,000 BP; Transeurasian 9,181 BP (contested) | §3.1 | [V]/[A] |
+| Family roots | Bantu ~4,850 / 5,110 BP; Austronesian ~5,230 BP; Indo-European 6,500–9,800 BP (by method); Pama-Nyungan just under 6,000 BP (popular account); Transeurasian 9,181 BP (contested) | §3.1 | [V]/[A] |
 | Demic share | cultural diffusion ~40 ± 8 % of the European Neolithic front's speed (a continental average) | Fort 2012 | [V] |
 | Elite shift | Anatolian Turkish speakers ~9.6 % Central Asian ancestry | Kars et al. 2021 | [V] |
 | Borrowing | WOLD mean ~24 % loans (1.2–62.7 %); nouns 31 %, verbs 14 % | Haspelmath & Tadmor 2009 | [V] |
@@ -422,7 +425,7 @@ Which don't depend on Earth's map, and so can be read off any world:
 
 Earth's own checks are the family roots and areas, the demic share, Australia's count and the Bantu route.
 
-**What a 160K mesh can resolve.** A cell is ~3,200 km². Earth's 7,685 languages over ~134 Mkm² of ice-free land average
+**What a 160K mesh can resolve.** A cell is ~3,200 km². Earth's 7,685 languages over ~134 Mkm² of ice-free land (a round figure [L]) average
 ~17,000 km², about five cells, but the median is far smaller: New Guinea's languages are sub-cell. So the model resolves
 the forager continents (Australia: ~2,400 cells for 407 languages) and the farmed plains. Tropical horticulturalists'
 diversity is a known limit (§14 Q1), and density checks use bands of latitude, not cell counts.
@@ -441,7 +444,7 @@ diversity is a known limit (§14 Q1), and density checks use bands of latitude, 
 | Rosenfelder (Gen, SCA2), Lexurgy | word generators; ordered rewrite rules | conlangs with histories | the ordered rules and categories (§9.2) | hand-written rules |
 | O'Leary's naming languages | weighted inventories, syllable patterns, orthographies, reused morphemes | readable fantasy names | spelling patches as a trait; morphemes reused across names | static: no families, no change |
 | Azgaar's FMG | name chains from Earth name lists; cultures by cost expansion | legible maps | the legibility of cost-grown cultures | Earth's names; one-shot cultures |
-| Dwarf Fortress | translation tables of a shared word list; compound names | memorable names in Legends | compound names from meaningful words (§9.4) | no drift, no kin |
+| Dwarf Fortress | translation tables of a shared word list; compound names | memorable names in Legends | compound names from meaningful words (§9.4) | no drift described, no kin |
 
 ## 6. State
 
@@ -457,7 +460,7 @@ diversity is a known limit (§14 Q1), and density checks use bands of latitude, 
 | `trait[c·Q + q]` | cultural traits (practices, religion), Q ≈ 16 (§7.8; later stage) | Uint16 × Q |
 | `lang`, `family` | the language and family it belongs to (read off, §7.9; recomputed every frame) | Int32, Int32 |
 
-At 160K cells, ~50K of them land: `lex` is ~8 MB, the rest ~3 MB.
+At 160K cells, ~50K of them land: `lex` is ~8 MB, `phonT` ~4 MB, the rest ~3 MB.
 
 **The lineage** (`lineage.js`, small):
 - languages: id, its representative lect (that of its most populous cell), its cells' count and people, its parent
@@ -507,7 +510,7 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
   new class's id is a hash of (cell, step, meaning), so it is new to the world.
 - **Why the rate is per cell and still right.** In the voter model an innovation in one cell usually dies out; one in
   k cells fixes across a k-cell language. A language's substitution rate is then λ_m, the per-cell innovation rate,
-  whatever its size (Kimura's neutral result). So Pagel's rates, measured between languages on a tree, are the rates the
+  whatever its size (Kimura's neutral result [L]). So Pagel's rates, measured between languages on a tree, are the rates the
   cells run at. Atkinson et al. 2008's punctuational bursts at splits (§3.2) aren't added by rule. Whether something like
   them emerges at the founding of small daughter populations is a check.
 - **Population size.** Bromham et al. 2015 find larger populations gain words faster and smaller ones lose them faster
@@ -527,8 +530,9 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
     a dense neighbour speaks to a sparse cell more than the reverse);
   - **g(sim)** is how far two lects understand each other. It is 1 within a dialect continuum and falls to a
     borrowing floor b_loan between mutually unintelligible lects (smooth in lexical similarity, between s_lo and s_hi).
-    Lexical distance is the best single predictor of how well related European languages understand each other: R²
-    0.57 over all pairs, 0.89 within Germanic (Gooskens & van Heuven 2020 [V]). s_hi is set at s_lang (§7.9).
+    Among measured linguistic distances, lexical distance is the best predictor of how well related European languages
+    understand each other once exposure is set aside: R² 0.57 over all pairs, 0.89 within Germanic, though syntax
+    leads within Romance (Gooskens & van Heuven 2020 [V]). Exposure outweighs all of them; here that is contact. s_hi is set at s_lang (§7.9).
     Neighbours who can't understand each other don't level their words; they borrow (§7.6) and shift (§7.5);
   - **p_b** is b's prestige: 1 by default; towns and ruling cultures raise it (§7.5).
 - **D, the diffusivity,** comes from human dispersal per generation, not from language data: D = ⟨Δ²⟩ / (4T), with
@@ -543,15 +547,16 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
     assumption, and labelled as one.
 - **What it predicts, as checks, not rules:**
   - **Isolation by distance.** In a 2-D stepping-stone model, identity falls off with distance like the Bessel
-    function K₀(r/ξ), close to logarithmic over a wide range (Malécot; Kimura & Weiss 1964). That is Séguy's curve,
-    lexical distance growing as the log of geographic distance, which dialectometry finds across Europe (Séguy 1971;
-    Nerbonne 2010). It is the strongest single check on the contact rule (§11.1).
+    function K₀(r/ξ), close to logarithmic over a wide range (Malécot; Kimura & Weiss 1964 [L]: the standard result,
+    not read in the primary). Dialectometry finds lexical distance growing about as the log of geographic distance, in
+    Bantu, Bulgarian and Dutch data (Nerbonne & Heeringa 2007, in Nerbonne 2010 [V draft]). Burridge's saturating
+    Séguy curve is the other candidate; the check tells them apart. It is the strongest single check on the contact rule (§11.1).
   - **Correlation length** ξ_m ≈ √(D/λ_m). For a word of half-life 3,000 yr it is ~110 km at the farmers' D = 3 km²/yr
     and ~230 km at 12.5. For one of 20,000 yr it is ~290–600 km. So a language spans one to a few hundred km where people
     are spread evenly, two to four cells at 160K; that is why §11.1's scale check matters. Fast meanings vary over
     shorter distances than slow ones, as dialect atlases show.
   - **The log law has a population-genetic twin:** in two dimensions, F_ST/(1 − F_ST) between demes grows linearly in
-    the log of distance (Rousset 1997 [A]). Séguy's curve is that law, with words for genes.
+    the log of distance (Rousset 1997 [A]). The log law of dialectometry is that law, with words for genes.
   - **Barriers.** Rugged land and rivers raise diversity (Axelsen & Manrubia 2014), because they cut contact.
   - **Isogloss dynamics.** Boundaries between dialect domains behave with a surface tension: they straighten, and
     they are driven away from dense population centres toward thinner people (Burridge 2017). The N_b/N_a term is that
@@ -576,10 +581,10 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
     x = 0 and x = 1 are both stable: two languages in one place don't coexist, and the majority, weighted by status,
     wins;
   - the second is the flux of speakers from neighbours that speak the rival (m' is §7.3's k_ab·N_b/N_a without g). With
-    it, the model becomes Patriarca & Leppänen 2004's and Kandler's spatial versions: coexistence in separate regions
-    with a moving front between them;
+    it, the model becomes a spatial version like Patriarca & Leppänen 2004's (coexistence in separate regions [A]) and
+    Kandler et al.'s reaction–diffusion of monolinguals and bilinguals;
   - c is a rate (per generation), set on Earth's records of shift: the Celtic languages' decline curves (Kandler et al.
-    2010); Weber 1976's France, which NATION_PLAN §7.4 already uses.
+    2010); Weber 1976's France [L here; NATION_PLAN marks it V], which NATION_PLAN §7.4 already uses.
 - **x₀ for farmers arriving.** The newcomers are the farm front's seed, the same `seedShare` of the new capacity that
   sim.js gives an empty cell, against the residents: x₀ = σK_F / (σK_F + d_res). Farmers live at 10–100× forager
   density, so x₀ runs from ~⅓ (dense, settled foragers) to over ⅘ (thin foragers). The model then decides by numbers
@@ -611,7 +616,8 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
 ### 7.6 Borrowing and areal features
 - **Loans into the basic list.** Between unintelligible lects, meaning m crosses at the borrowing floor b_loan · β_m,
   and faster in bilingual cells: b_loan · β_m · (1 + x/x_b). β_m is m's borrowability, low for the ASJP list (WOLD's
-  basic vocabulary is the least borrowed, §3.3). A loan is the same cognate class, so lexical distance between
+  borrowing ranking, the Leipzig–Jakarta list, puts basic meanings last, §3.3; the ASJP items' own β is to be read from
+  WOLD at L0). A loan is the same cognate class, so lexical distance between
   neighbouring languages falls, which is why lexicostatistics overstates closeness in contact zones.
 - **The borrowing scale.** Casual contact passes words; intense, long contact with widespread bilingualism passes
   sounds and structure (Thomason & Kaufman 1988). So settings cross between unintelligible lects only in bilingual
@@ -864,6 +870,15 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
   share whose people kept theirs. Fort 2012's ~40 % cultural is a share of the front's speed, not of cells, so this is a
   sanity range, with ancient DNA's ancestry shares (Haak et al. 2015) beside it.
 - **Barriers:** diversity against ruggedness and river density (Axelsen & Manrubia 2014).
+- **Australia:** the number of languages on Earth's Australia at the eve of contact, and their spatial pattern, against
+  the record's 407 and Gavin et al. 2017's model (406, 56 % of the spatial variation). A forager continent at a
+  resolution the mesh holds (~2,400 cells).
+- **Bursts at splits:** the share of lexical divergence that arises near splits in the tracked tree, beside Atkinson et
+  al. 2008's 9.5–31 %. Nothing builds bursts in, so any found are emergent.
+- **Rates and population size:** gains and losses of cognates by language size, beside Bromham et al. 2015 (larger gain
+  faster, smaller lose faster). Under neutral drift the model should show none; a difference is a finding.
+- **Name persistence:** the share of big rivers' names kept over 2,000 years, beside Peust 2015's 87 %. This checks the
+  renaming hazard of §9.4.
 - **Kin sound alike:** the normalized edit distance between generated names against the lexical distance between
   their languages. It should rise with distance, and unrelated languages should sit at chance.
 - **Founder effects:** inventory size (from the settings) against the distance from the origin along `cameFrom`. Report
@@ -886,7 +901,8 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 
 ### 11.3 Cost (estimates, to measure)
 - **The step:** ~50K land cells × (40 meanings + 20 settings) × ~6 neighbours, 2800 steps from 70 ka. That is
-  ~5·10⁹ slot updates and ~3·10¹⁰ neighbour reads a run:
+  ~8·10⁹ slot updates and ~5·10¹⁰ neighbour reads a run if every land cell were peopled
+  throughout; ~5·10⁹ allowing for the cells peopled late (to measure):
   - **on the CPU in JS:** ~1 min at 160K (by the civ layer's own measured throughput), against the People run's ~18 s.
     Too slow;
   - **on the GPU** (one WGSL kernel per step: every slot of every cell in parallel, reading its neighbours'
@@ -896,7 +912,7 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
   - the lineage reader every frame: a leader clustering over the land cells, ~20 ms × 140 frames (or every 100 yr for
     the nation layer's culture ids: ~700 × 20 ms ≈ 14 s, so on demand, or on the GPU too).
 - **Readback:** the nation layer needs `lang` per cell and the ruling lects each step. That is ~0.2 MB, or on demand.
-- **Memory:** ~11 MB of state at 160K, ~45 MB at 640K.
+- **Memory:** ~15 MB of state at 160K (`lex` 8, `phonT` 4, the rest 3), ~60 MB at 640K.
 - **Storage:** per frame, `lang` and `family` per cell (Int32 each, ~1.3 MB at 160K, or Uint16 of a frame-local table)
   and the representative lects (~10³ languages × 40 × 4 B); the tree. For 140 frames, ~100 MB uncompressed; store as
   changes (most cells keep their language from frame to frame), ~10 MB.
@@ -926,7 +942,7 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
   - Checks: kin sound alike; the founder-effect report; areal features.
 - **L4. Nation coupling** (after NATION_PLAN N2): status from realms' hold; conquest settlement; the culture ids and
   d(a, b) the nation layer's N3 reads; N6's schooling.
-  - Checks: the nation layer's culture area against complexity (Currie & Mace 2009), from its side; Weber's France.
+  - Checks: the nation layer's culture area against complexity (Currie & Mace 2009 [L]), from its side; Weber's France.
 - **L5. Traits and religion** (§7.8), and d_trait in d(a, b).
 - **L6. Contact along routes and blending** (needs civ T2): Trudgill's gravity contact through towns, lingua francas,
   koinés; mixed languages and creoles only with the colonial horizon (§7.7).
@@ -956,7 +972,7 @@ small languages (New Guinea's ~1,000) are sub-cell.
 - **Recommend (a), with (c) as a cheap readout later.** (b) quadruples the cost for diversity the people's own cells
   don't carry. The planet-scale picture (families, spread and residual zones) is what 160K shows well.
 
-**Q2. The GPU.** The step is ~5·10⁹ slot updates a run: ~1 min in JS, ~1–3 s as a WGSL kernel (§11.3). The civ layer
+**Q2. The GPU.** The step is ~5–8·10⁹ slot updates a run: ~1 min in JS, ~1–3 s as a WGSL kernel (§11.3). The civ layer
 has no GPU dependency today: it runs in a page worker and in Node tools.
 - (a) WGSL kernel, as the agent brief's rule says (Dawn for the tools; WebGPU in the worker). An integer-only kernel
   agrees bit for bit across GPUs.
