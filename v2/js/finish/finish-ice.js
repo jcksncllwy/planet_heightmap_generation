@@ -57,7 +57,7 @@ const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm);
  *   bed's by sliding (m/a, the ice mesh's cell's), the glacial climate's warmest month at the glacial sea's level (°C) and its year's
  *   precipitation (mm, the climate's grid); the glacial sea's level (km against the moment's)
  */
-export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRound = null }, F) {
+export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRound = null, probe = null }, F) {
     const t0 = performance.now(), nF = mesh.numCells;
     const im = nF <= 1.2 * F.iceMeshCells ? mesh : terrainMesh(F.iceMeshCells), n = im.numCells, M = im === mesh ? null : mapOnto(im, mesh);
     const bed0 = M ? meanOnto(M, z, n) : Float32Array.from(z), x = im.xyz;
@@ -98,6 +98,12 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
         // (the sheets under it: the bed sunk by the ice as it stood, the sea as it stood)
         sheet.setBed(bed); sheet.setSea(sea);
         const bal = await iceBalanceGPU(device, { sheet, grid: res.grid, Tsl, P, lat, lon, pAnn, gamma, datum: sea });
+        // (a study's look at the balance on the ground as the round starts: probe({ round, epochKyr, force (bed, balance m/a,
+        // surface's year-mean °C, -), H, lat, lon, sea }) — check-iceage-earth's inception diagnosis)
+        if (probe) {
+            const e = device.createCommandEncoder(); bal.encode(e); device.queue.submit([e.finish()]);
+            probe({ round: rounds.length, epochKyr: r.epochKyr, force: await readBack(device, sheet.force), H, lat, lon, sea, pAnn });
+        }
         const run = await sheet.run(1000 * r.kyr, { each: e => bal.encode(e), everyYears: F.iceBalanceEveryYr });
         bal.destroy();
         H = await sheet.readH();

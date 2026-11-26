@@ -31,6 +31,7 @@ import { FINISH } from '../js/finish/finish-config.js';
 import { LatLonGrid } from '../js/finish/finish-grid.js';
 import { lastIceAge, glacialSheets } from '../js/finish/finish-ice.js';
 import { measureIceGrid } from './lib/ice-grid-measure.mjs';
+import { ICE } from '../js/gpu/ice-sheet.js';
 import { bilinear } from '../js/finish/finish.js';
 import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios, co2At, greenhouseOf } from '../js/climate/planet-system.js';
 import { declination } from '../js/climate/insolation.js';
@@ -78,11 +79,46 @@ for (let g = 0; g < G; g++) for (let m = 0; m < 12; m++) { const t = Tsl[m * G +
 const warmSl = new Float32Array(n), rain = Float32Array.from(res.cell.pAnnual, p => Math.min(p, F.rainMaxMm));
 for (let c = 0; c < n; c++) warmSl[c] = bilinear(cg, warmG, lat[c], lon[c]);
 
+const REGIONS = [
+    ['Laurentide and Cordillera (North America 38–85° N, not Greenland or Alaska)', (a, o) => a > 38 && a < 85 && o > -142 && o < -50 && !(a > 59 && o > -74)],
+    ['the Laurentide\'s south (North America 38–50° N)', (a, o) => a > 38 && a < 50 && o > -142 && o < -50],
+    ['NW Eurasia (Fennoscandia, Britain, Barents–Kara: 45–85° N, 12° W–70° E)', (a, o) => a > 45 && a < 85 && o > -12 && o < 70],
+    ['Siberia and NE Asia (45–85° N, 70–180° E)', (a, o) => a > 45 && a < 85 && o >= 70],
+    ['Alaska and Beringia (55–75° N, 142–180° W)', (a, o) => a > 55 && a < 75 && o <= -142],
+    ['High Asia (25–45° N, 65–105° E)', (a, o) => a > 25 && a <= 45 && o > 65 && o < 105],
+    ['Greenland', (a, o) => a > 59 && a < 84 && o > -74 && o < -10],
+    ['Antarctica', a => a < -60],
+    ['Patagonia (35–56° S, 60–80° W)', (a, o) => a > -56 && a < -35 && o > -80 && o < -60],
+];
+// (where Earth had little or no ice, its range; elsewhere ICE-6G_C's figure is in the detail, not a range to fit)
+const EARTH_RANGE = {
+    'Siberia and NE Asia (45–85° N, 70–180° E)': [[0, 1], 'the LGM\'s Eurasian ice ended at the Kara Sea; ice caps on Taymyr, Putorana and the eastern ranges (Svendsen et al. 2004; Hughes et al. 2016 DATED-1)'],
+    'High Asia (25–45° N, 65–105° E)': [[0, 0.35], 'no Tibetan ice sheet; the plateau\'s LGM glaciers ~0.35 Mkm² (Shi 2002; Owen & Dortch 2014)'],
+};
 // ── the ice age on Earth (finish-ice.js: its sheets grown under the inception's and the maximum's climate, glacialSheets, on
 // Earth's bed — ETOPO5 less today's ice, ICE-6G_C's at 0 ka, so today's sheets grow anew from their beds as the sim's do;
 // the plate under the ice a uniform 50 km thick: its bend moves the ground the ice leaves, not where the ice is) ──
-const bedE = Float32Array.from(z, (v, c) => v - (I6.thickNowKm ? I6.thickNowKm[c] : 0)), tg = performance.now();
-const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {} }, F);
+// (the bed rebounded: today's ice gone, the ground it pressed down risen by Airy's share ρ_i/ρ_m of it — the same share the
+// sheet sinks it by (finish-ice.js) — as a sim world's bed stands unloaded; Greenland's interior rises ~0.8 km)
+const bedE = Float32Array.from(z, (v, c) => v - (I6.thickNowKm ? I6.thickNowKm[c] * (1 - ICE.rhoIce / ICE.rhoMantle) : 0)), tg = performance.now();
+// (the inception's diagnosis: the balance on the ice-free ground at each round's start, by region — where snow outlasts summer)
+const probe = ({ round, epochKyr, force, H, lat: la, lon: lo, sea }) => {
+    if (round > 1) return;
+    const m = la.length, line = [];
+    for (const [name, f] of REGIONS) {
+        const b = [], ts = [], top = []; let pos = 0, landN = 0;
+        for (let c = 0; c < m; c++) {
+            if (!f(la[c], lo[c]) || force[4 * c] < sea) continue;
+            landN++; b.push(force[4 * c + 1]); ts.push(force[4 * c + 2]); if (force[4 * c + 1] > 0) pos++;
+            top.push([force[4 * c], force[4 * c + 1]]);
+        }
+        if (!landN) continue;
+        const med = a => Float64Array.from(a).sort()[a.length >> 1], hi = top.sort((p, q) => q[0] - p[0]).slice(0, Math.max(1, landN >> 4));
+        line.push(`  ${name.split(' (')[0]}: ${(100 * pos / landN).toFixed(0)} % of ${landN} land cells positive; balance median ${med(b).toFixed(2)} m/a; Ts median ${med(ts).toFixed(1)} °C; its highest 1/16 (bed ≥ ${hi[hi.length - 1][0].toFixed(0)} m) balance median ${med(hi.map(p => p[1])).toFixed(2)} m/a`);
+    }
+    console.log(`the balance as the round at ${epochKyr} ka starts (round ${round}${round ? ', on the inception\'s ice' : ', ice-free'}):\n${line.join('\n')}`);
+};
+const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {}, probe }, F);
 const simMesh = buildSimMesh(40000, MESH_SEED), zi = bedE.slice();
 const LIA = lastIceAge({ mesh, z: zi, lat, lon, warmSl, rain, grid: new LatLonGrid(0.25), cellKm2, seed: 1, soft: null, land, simMesh, teSim: new Float32Array(simMesh.numCells).fill(50), sheet: GS }, F).ice;
 const iceAgeS = (performance.now() - tg) / 1000;
@@ -106,22 +142,6 @@ for (let c = 0; c < n; c++) {
     sheet[c] = iceF?.length === G && bilinear(cg, iceF, lat[c], lon[c]) >= 0.5 ? 1 : 0;
 }
 
-const REGIONS = [
-    ['Laurentide and Cordillera (North America 38–85° N, not Greenland or Alaska)', (a, o) => a > 38 && a < 85 && o > -142 && o < -50 && !(a > 59 && o > -74)],
-    ['the Laurentide\'s south (North America 38–50° N)', (a, o) => a > 38 && a < 50 && o > -142 && o < -50],
-    ['NW Eurasia (Fennoscandia, Britain, Barents–Kara: 45–85° N, 12° W–70° E)', (a, o) => a > 45 && a < 85 && o > -12 && o < 70],
-    ['Siberia and NE Asia (45–85° N, 70–180° E)', (a, o) => a > 45 && a < 85 && o >= 70],
-    ['Alaska and Beringia (55–75° N, 142–180° W)', (a, o) => a > 55 && a < 75 && o <= -142],
-    ['High Asia (25–45° N, 65–105° E)', (a, o) => a > 25 && a <= 45 && o > 65 && o < 105],
-    ['Greenland', (a, o) => a > 59 && a < 84 && o > -74 && o < -10],
-    ['Antarctica', a => a < -60],
-    ['Patagonia (35–56° S, 60–80° W)', (a, o) => a > -56 && a < -35 && o > -80 && o < -60],
-];
-// (where Earth had little or no ice, its range; elsewhere ICE-6G_C's figure is in the detail, not a range to fit)
-const EARTH_RANGE = {
-    'Siberia and NE Asia (45–85° N, 70–180° E)': [[0, 1], 'the LGM\'s Eurasian ice ended at the Kara Sea; ice caps on Taymyr, Putorana and the eastern ranges (Svendsen et al. 2004; Hughes et al. 2016 DATED-1)'],
-    'High Asia (25–45° N, 65–105° E)': [[0, 0.35], 'no Tibetan ice sheet; the plateau\'s LGM glaciers ~0.35 Mkm² (Shi 2002; Owen & Dortch 2014)'],
-};
 const Mkm2 = (mask, f) => { let s = 0; for (let c = 0; c < n; c++) if (mask[c] && f(lat[c], lon[c])) s++; return s * cellKm2 / 1e6; };
 const both = (a, b, f) => { let s = 0; for (let c = 0; c < n; c++) if (a[c] && b[c] && f(lat[c], lon[c])) s++; return s * cellKm2 / 1e6; };
 
