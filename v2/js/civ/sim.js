@@ -297,6 +297,9 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     const riverNoise = new Map();               // (a river's storms, per year of this step: shared by everyone it waters)
     let riverNoiseStep = -1, famineDead = 0;
     const meanF = new Float32Array(3 * n).fill(NaN), MEAN_DRAWS = 64;
+    // (the long-run means' draws are the same for every cell — normal(k, 101…104): made once, not per cell; lane civgpu)
+    const HERD_DRAWS = 20 + 4 * MEAN_DRAWS, draw = V ? new Float64Array(4 * HERD_DRAWS) : null;
+    if (V) for (let k = 0; k < HERD_DRAWS; k++) { draw[4 * k] = normal(k, 101); draw[4 * k + 1] = normal(k, 102); draw[4 * k + 2] = normal(k, 103); draw[4 * k + 3] = normal(k, 104); }
     let herdStock = null, herdMean = null;      // (each cell's herd against a full one, and its long-run mean: made once herds are kept)
     /** One step's years for a settled or herding cell: each year's harvest against a normal one — rain-fed fields by the
      *  substrate's own yield ramp, the river's by its flood (the land watered follows it; a flood far above the usual breaks
@@ -317,7 +320,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         if (src >= 0) {
             if (riverNoiseStep !== step) { riverNoise.clear(); riverNoiseStep = step; }
             rn = riverNoise.get(src);
-            if (!rn) { rn = new Float32Array(C.stepYears); for (let k = 0; k < C.stepYears; k++) rn[k] = V.riverCV[src] * normal(src + 7 * n, y0 + k); riverNoise.set(src, rn); }
+            if (!rn) {
+                // (the noise, and the flood it makes each year — the same for every cell the river waters: kept per step)
+                rn = new Float32Array(C.stepYears); for (let k = 0; k < C.stepYears; k++) rn[k] = V.riverCV[src] * normal(src + 7 * n, y0 + k);
+                rn.q = new Float64Array(C.stepYears).fill(NaN);
+                riverNoise.set(src, rn);
+            }
         }
         const grazed = Kw > 0 || kH > 0, tl = grazed ? C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h])) : 0, n0 = grazed ? Math.min(tl, nppP(P)) : 0;
         const steady = aquaticHome(c) ? C.aquaticSteady : 0, kWild = C.foragerSlope * 0.45;
@@ -326,10 +334,10 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         if (meanF[3 * c] !== meanF[3 * c]) {
             let mR = 0, mI = 0, mW = 0;
             for (let k = 0; k < MEAN_DRAWS; k++) {
-                const aH = normal(k, 101), aL = normal(k, 102), lnx = modeLn(V.rainLn, h, aH, aL) + cv * normal(k, 103);
+                const aH = draw[4 * k], aL = draw[4 * k + 1], lnx = modeLn(V.rainLn, h, aH, aL) + cv * draw[4 * k + 2];
                 mR += kR > 0 ? (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / rampN) : 1;
                 const s0 = sub.irrigSrc[h];
-                if (s0 >= 0) { const q = Math.exp(modeLn(V.riverLn, s0, aH, aL) + V.riverCV[s0] * normal(k, 104)); mI += q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1; }
+                if (s0 >= 0) { const q = Math.exp(modeLn(V.riverLn, s0, aH, aL) + V.riverCV[s0] * draw[4 * k + 3]); mI += q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1; }
                 else mI += 1;
                 const t1 = C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h]));
                 mW += Math.pow(10, kWild * (Math.min(t1, nppP(P * Math.exp(lnx))) - Math.min(t1, nppP(P))));
@@ -341,8 +349,8 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             herdStock ??= new Float32Array(n).fill(1); herdMean ??= new Float32Array(n);
             if (!(herdMean[c] > 0)) {
                 let s = 1, m = 0;
-                for (let k = 0; k < 20 + 4 * MEAN_DRAWS; k++) {
-                    const lnx = modeLn(V.rainLn, h, normal(k, 101), normal(k, 102)) + cv * normal(k, 103);
+                for (let k = 0; k < HERD_DRAWS; k++) {
+                    const lnx = modeLn(V.rainLn, h, draw[4 * k], draw[4 * k + 1]) + cv * draw[4 * k + 2];
                     s = herdYear(s, Math.min(tl, nppP(P * Math.exp(lnx))) / Math.max(1e-9, n0), C);
                     if (k >= 20) m += s;
                 }
@@ -357,13 +365,16 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             const aH = modes[2 * y], aL = modes[2 * y + 1];
             const lnx = modeLn(V.rainLn, h, aH, aL) + cv * regionNoise[r * C.stepYears + j];
             let food = 0;
-            if (kR > 0) food += kR * (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, P * Math.exp(lnx)) / rampN) / mR;
+            // (the year's rain, P·e^lnx, and its grazing, min(tl, nppP(·)), worked out once for the fields, the herds and the wild)
+            const Py = P * Math.exp(lnx), graze = kH > 0 || Kw > 0 ? Math.min(tl, nppP(Py)) : 0;
+            if (kR > 0) food += kR * (lnx >= lnFull ? 1 : smooth(C.rainfedMinMm, C.rainfedFullMm, Py) / rampN) / mR;
             if (src >= 0) {
-                const q = Math.exp(modeLn(V.riverLn, src, aH, aL) + rn[j]);
+                let q = rn.q[j];
+                if (q !== q) q = rn.q[j] = Math.exp(modeLn(V.riverLn, src, aH, aL) + rn[j]);
                 food += kI * (q < 1 ? q : q > C.floodHigh ? Math.max(0, 1 - C.floodDamage * (q - C.floodHigh)) : 1) / mI;
             } else food += kI;
-            if (kH > 0) { const hs = herdStock[c] = herdYear(herdStock[c], Math.min(tl, nppP(P * Math.exp(lnx))) / Math.max(1e-9, n0), C); food += kH * hs / herdMean[c]; }
-            if (Kw > 0) food += Kw * (steady + (1 - steady) * Math.pow(10, kWild * (Math.min(tl, nppP(P * Math.exp(lnx))) - n0))) / mW;
+            if (kH > 0) { const hs = herdStock[c] = herdYear(herdStock[c], graze / Math.max(1e-9, n0), C); food += kH * hs / herdMean[c]; }
+            if (Kw > 0) food += Kw * (steady + (1 - steady) * Math.pow(10, kWild * (graze - n0))) / mW;
             st += food / Math.max(1e-12, dd) - 1;
             if (st > cap) st = cap;
             if (st < 0) {
