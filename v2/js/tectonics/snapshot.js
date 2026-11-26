@@ -68,7 +68,7 @@ const LIVE_TRENCH_HOPS = 2;   // a flagged cell this close to an overriding edge
  * @typedef {Object} FramePlate
  * @property {number} id  @property {string} name  @property {boolean} alive  @property {boolean} isBackground
  * @property {number[]} omega  @property {number[]} quat  @property {number[]} centre   world position of its centre of area
- * @property {number} cells  @property {number} landCells  @property {number} keelCells  continental and craton cells (not island arc) @property {number} speedCmYr  speed at `centre`
+ * @property {number} cells  @property {number} landCells  non-ocean cells (island arc included)  @property {number} keelCells  continental and craton cells (not island arc) @property {number} speedCmYr  speed at `centre`
  * @property {Object|null} dynamics     force diagnostics (step/torque-balance.js), when the force model drives the world
  */
 

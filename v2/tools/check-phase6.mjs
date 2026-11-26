@@ -24,6 +24,9 @@ const mesh = labMesh(), { numCells } = mesh;
 const flagged = (f, flag) => countWhere(numCells, w => f.owner[w] >= 0 && (f.flags[w] & flag));
 // the plates carrying continent (a plate of ocean that broke away at an old margin — step/subduction-init.js — is not a half)
 const continental = f => f.plates.filter(p => p.alive && !p.isBackground && p.landCells > 0);
+// (…and the plates carrying a continental keel — CONTINENT or CRATON cells, frame keelCells: an ocean plate broken from an
+// old margin may carry island arcs born on it, and landCells counts those — model/plate.js refreshExtent — yet it is no half)
+const keeled = f => f.plates.filter(p => p.alive && !p.isBackground && p.keelCells > 0);
 
 async function run(id, overrides = {}, untilMyr = null, prepare = null, seed = SEED) {
     const scene = RIFT_SCENES.find(s => s.id === id), world = onPath(scene.build(mesh, seed));      // (on path GEO_SIM_PATH: lib/paths.mjs)
@@ -77,8 +80,8 @@ section('a plume splits a continent');
     }
     const scheduledOnly = await run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60);
     const noPlume = await run('plume', { plumeRatePerMyr: 0, riftRatePerMyr: 0 }, 60, world => { world.plumes.length = 0; });
-    check('no plume and no chance → no rift; a scheduled plume alone → one', scheduledOnly.events.filter(e => e.kind === EventKind.RIFT).length === 1 && noPlume.events.filter(e => e.kind === EventKind.RIFT).length === 0 && continental(noPlume.frames.at(-1)).length === 1,
-        `scheduled plume alone: ${scheduledOnly.events.filter(e => e.kind === EventKind.RIFT).length} rift; no plume: ${noPlume.events.filter(e => e.kind === EventKind.RIFT).length}, ending as ${continental(noPlume.frames.at(-1)).map(p => p.name).join(' + ')}`);
+    check('no plume and no chance → no rift; a scheduled plume alone → one', scheduledOnly.events.filter(e => e.kind === EventKind.RIFT).length === 1 && noPlume.events.filter(e => e.kind === EventKind.RIFT).length === 0 && keeled(noPlume.frames.at(-1)).length === 1,
+        `scheduled plume alone: ${scheduledOnly.events.filter(e => e.kind === EventKind.RIFT).length} rift; no plume: ${noPlume.events.filter(e => e.kind === EventKind.RIFT).length}, ending as ${keeled(noPlume.frames.at(-1)).map(p => p.name).join(' + ')} (with a keel; ${continental(noPlume.frames.at(-1)).length} with any land)`);
 }
 
 section('the start world breaks up');
