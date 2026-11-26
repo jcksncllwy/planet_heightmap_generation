@@ -35,6 +35,8 @@ export function outburstFloods(ctx, F) {
     const { mesh, z, ice, S, cellKm2 } = ctx, n = mesh.numCells, { adjOffset, adjList, xyz, edgeKm } = mesh;
     const flood = new Uint8Array(n), none = { flood, lakes: 0, lakeKm2: 0, volumeKm3: 0, largestKm3: 0, unheld: 0, lats: [] };
     if (!(F.floodCutKm > 0) || !ice.includes(1)) return none;
+    // (the caller gives the sea's level: without one every comparison is false and no lake forms, silently)
+    if (!Number.isFinite(ctx.seaKm)) throw new Error('outburstFloods: ctx.seaKm (the ice age\'s sea level, km) is required');
     // (the ice age's sea: its level the ice's own — finish-ice.js glacialSheets' seaKm, the ice's volume above flotation)
     const seaKm = ctx.seaKm, sea = iceAgeSea(mesh, z, ice, seaKm);
     // ── the two floods from the sea: the ice as a wall, and the bare ground ──

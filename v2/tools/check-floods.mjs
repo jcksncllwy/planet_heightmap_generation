@@ -39,7 +39,7 @@ section('a valley and its ice');
     const valley = (from, to, surfaceKm, water = null) => {
         const z = Float32Array.from(ground), ice = new Uint8Array(N), S = new Float32Array(N);
         for (let i = from; i <= to; i++) { ice[i] = 1; S[i] = Math.max(z[i] + 0.05, surfaceKm); }
-        return outburstFloods({ mesh, z, ice, S, cellKm2, seed: 1, water }, F);
+        return outburstFloods({ mesh, z, ice, S, cellKm2, seed: 1, water, seaKm: -F.iceSeaDropKm }, F);
     };
     // (the ice age's water, the same everywhere: rain, runoff and potential evaporation, mm/year)
     const climate = (rain, runoff, pet) => ({ rain: new Float32Array(N).fill(rain), runoff: new Float32Array(N).fill(runoff), pet: new Float32Array(N).fill(pet) });
