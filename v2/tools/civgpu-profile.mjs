@@ -62,7 +62,7 @@ async function world() {
         fs.writeFileSync(file, v8.serialize({ ...fin, mesh: asMesh(fin.mesh) }));
     }
     const about = { seed: SEED, cont: CONT, timeMyr: TIME, finishCells: fin.mesh.numCells };
-    if (CIVN < fin.mesh.numCells) return { w: civWorldFromFinish(fin), about };           // (the page's reduction, to PAGE_CELLS)
+    if (fin.mesh.numCells > 1.01 * CIVN) return { w: civWorldFromFinish(fin), about };           // (the page's reduction, to PAGE_CELLS)
     // (the finish's own cells: civWorldFromFinish's `small` branch, which the page's PAGE_CELLS keeps from a finish this big)
     const cc = fin.climate.cell, L = fin.civ ?? {}, R = fin.rivers, n = fin.mesh.numCells, xyz = fin.mesh.xyz;
     const rivers = { lat: R.lat.slice(), lon: R.lon.slice(), q: R.q.slice(), regime: R.regime?.slice() ?? null, farFed: R.farFed?.slice() ?? null };
