@@ -66,6 +66,10 @@ function sailMonthKmh(u, v, hE, hN, anyWind, C) {
     return Math.min(C.sailMaxKmh, C.sailSpeed * W * 3.6) * (steady * sailShare(a, C) + (1 - steady) * anyWind);
 }
 
+// (each world's graphs, kept while the world is: a graph is only read once made — seaGate keeps its own state — so the run's
+// own and the page's travel queries share one, rather than each building it again, a second or more at 160K; lane civgpu)
+const graphsOf = new WeakMap();
+
 /**
  * The graph: days[(m · E) + k] for adjacency k (mesh.adjList's order: from cell c to adjList[k]) in month m (0 = January),
  * for a craft. A closed edge is Infinity.
@@ -73,6 +77,15 @@ function sailMonthKmh(u, v, hE, hN, anyWind, C) {
  * @param sub civSubstrate(w) (its rivers)
  */
 export function travelGraph(w, sub, craft = Craft.SAIL, C = CIV) {
+    let kept = graphsOf.get(w);
+    if (!kept) graphsOf.set(w, kept = []);
+    const hit = kept.find(g => g.sub === sub && g.C === C && g.craft === craft);
+    if (hit) return hit.graph;
+    const graph = buildGraph(w, sub, craft, C);
+    kept.push({ sub, C, craft, graph });
+    return graph;
+}
+function buildGraph(w, sub, craft, C) {
     const { mesh, z, ocean, lake } = w, n = mesh.numCells, { adjOffset, adjList, xyz } = mesh, E = adjList.length, len = edgeLengths(mesh);
     const days = new Float32Array(12 * E), F = w.flow ?? null, q = sub.river.q;
     const water = c => ocean[c] || lake[c], anyWind = sailShareAnyWind(C);
