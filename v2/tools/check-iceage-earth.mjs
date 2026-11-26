@@ -32,6 +32,7 @@ import { LatLonGrid } from '../js/finish/finish-grid.js';
 import { lastIceAge, glacialSheets } from '../js/finish/finish-ice.js';
 import { measureIceGrid } from './lib/ice-grid-measure.mjs';
 import { ICE } from '../js/gpu/ice-sheet.js';
+import { pddBalance } from '../js/gpu/ice-balance.js';
 import { bilinear } from '../js/finish/finish.js';
 import { EARTH_SYSTEM, EARTH_CYCLE, orbitAt, starCalendar, solarConstantOf, albedoRatios, co2At, greenhouseOf } from '../js/climate/planet-system.js';
 import { declination } from '../js/climate/insolation.js';
@@ -127,18 +128,13 @@ measureIceGrid({ mesh, z: bedE, sheet: GS, iceMeshCells: F.iceMeshCells, label: 
 measureIceGrid({ mesh, z: bedE, sheet: { ...GS, ice: I6.lgm, uSlide: new Float32Array(n), ms: 0, rounds: [] }, iceMeshCells: F.iceMeshCells, label: 'Earth ICE-6G_C 21 ka' });
 
 // ── today's climate: a positive-degree-day mass balance, and the climate's own ice sheets ──
-const SIG = 5, erf = v => { const t = 1 / (1 + 0.3275911 * Math.abs(v)), y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-v * v); return v >= 0 ? y : -y; };
-const Phi = v => 0.5 * (1 + erf(v / Math.SQRT2)), pdd = T => 30.4 * (SIG / Math.sqrt(2 * Math.PI) * Math.exp(-T * T / (2 * SIG * SIG)) + T * Phi(T / SIG));
 const kept = new Uint8Array(n), sheet = new Uint8Array(n), layer = new Float32Array(G), iceF = res.stages.temperature.iceFrac;
 const monthAt = (A, m, c) => { layer.set(A.subarray(m * G, (m + 1) * G)); return bilinear(cg, layer, lat[c], lon[c]); };
 for (let c = 0; c < n; c++) {
     if (!land[c]) continue;
     const Tm = [], Pm = []; let P = 0;
     for (let m = 0; m < 12; m++) { Tm.push(monthAt(Tsl, m, c) - gamma * Math.max(0, z[c])); const p = Math.max(0, monthAt(res.months.P, m, c)); Pm.push(p); P += p; }
-    let snow = 0, D = 0;
-    for (let m = 0; m < 12; m++) { snow += (P > 0 ? Pm[m] * rain[c] / P : 0) * Phi((1 - Tm[m]) / SIG); D += pdd(Tm[m]); }
-    const snowMelt = Math.min(snow, 3 * D);
-    kept[c] = snow - 0.4 * snowMelt - 8 * (D - snowMelt / 3) > 0 ? 1 : 0;
+    kept[c] = pddBalance(Tm, Pm.map(p => P > 0 ? p * rain[c] / P : 0)) > 0 ? 1 : 0;      // (gpu/ice-balance.js: the kernel's reference)
     sheet[c] = iceF?.length === G && bilinear(cg, iceF, lat[c], lon[c]) >= 0.5 ? 1 : 0;
 }
 

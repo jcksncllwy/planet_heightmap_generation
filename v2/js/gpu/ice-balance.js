@@ -7,8 +7,11 @@
 // bilinear (finish.js bilinear's); lowered to the ice's surface by the climate's lapse rate; the days of a month scattered
 // about its mean by σ (PDD.sigmaK: 5 K, Reeh's), so its positive degree days are 30.4 [σ/√(2π) e^{−T²/2σ²} + T Φ(T/σ)] and the
 // share of its precipitation that is snow Φ((T_snow − T)/σ). Melt eats the year's snow first at PDD.ddfSnow mm w.e. per
-// degree-day, of which PDD.refreeze stays (refrozen in the firn), then the ice at PDD.ddfIce. The balance: snow − the snow's
-// melt not refrozen − the ice's melt, mm w.e. a year, as m of ice (ρ_w/ρ_i).
+// degree-day, then the ice at PDD.ddfIce. The snow's meltwater refreezes in the snowpack as superimposed ice until it is
+// PDD.refreeze of the year's snow (Reeh 1991, as Huybrechts & de Wolde 1999 apply it: R = min(0.6 S, the snow's melt)); the
+// degree days left after the snow melt that ice first, at the ice's factor. The balance: snow − (the snow's melt − R) − the
+// ice's melt, mm w.e. a year, as m of ice (ρ_w/ρ_i). (Until 2026-11-25 R was 0.6 of the snow's melt: the same where all
+// the snow melts, short by up to 0.24 S where only part of it does — the margins' near-zero balances.)
 // It is check-iceage-earth's own reference (its CPU degree-day balance, pddBalance here), the same numbers; the kernel is held
 // to it by check-ice-sheet.
 //
@@ -30,7 +33,7 @@ export const PDD = Object.freeze({
     snowBelowC: 1,        // precipitation falls as snow below this, °C (Reeh 1991; Ohmura et al. 1999's ~1–2 °C)
     ddfSnow: 3,           // mm w.e. per positive degree-day, snow (Braithwaite 1995: 3–5; Reeh 1991: 3)
     ddfIce: 8,            // mm w.e. per positive degree-day, ice (Braithwaite 1995: 7–8; Reeh 1991: 8)
-    refreeze: 0.6,        // of the snow's melt refrozen in the firn (Reeh 1991)
+    refreeze: 0.6,        // the snowpack's meltwater retention, a share of the year's snow (Reeh 1991: superimposed ice)
     rhoIce: 910,
 });
 
@@ -43,7 +46,7 @@ export function pddBalance(Tm, Pm, P = PDD) {
     let snow = 0, D = 0;
     for (let m = 0; m < 12; m++) { snow += Pm[m] * Phi((P.snowBelowC - Tm[m]) / P.sigmaK); D += monthPdd(Tm[m], P); }
     const snowMelt = Math.min(snow, P.ddfSnow * D);
-    return snow - (1 - P.refreeze) * snowMelt - P.ddfIce * (D - snowMelt / P.ddfSnow);
+    return snow - (snowMelt - Math.min(P.refreeze * snow, snowMelt)) - P.ddfIce * (D - snowMelt / P.ddfSnow);
 }
 
 const KERNEL = (w, h) => /* wgsl */`
@@ -86,7 +89,7 @@ fn Phi(v: f32) -> f32 { return 0.5 * (1.0 + erf_(v * 0.70710678)); }
         D += 30.4 * (sg * 0.39894228 * exp(-T * T / (2.0 * sg * sg)) + T * Phi(T / sg));
     }
     let snowMelt = min(snow, u.ddfSnow * D);
-    let mb = snow - (1.0 - u.keep) * snowMelt - u.ddfIce * (D - snowMelt / u.ddfSnow);
+    let mb = snow - (snowMelt - min(u.keep * snow, snowMelt)) - u.ddfIce * (D - snowMelt / u.ddfSnow);
     force[c].y = mb * u.weToIce;
     force[c].z = Tsum / 12.0;
 }`;
