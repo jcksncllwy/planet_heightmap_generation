@@ -20,13 +20,13 @@ import { Session } from 'node:inspector';
 import { buildSimMesh, meshFromArrays } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
-import { cropsFromMonths } from '../js/civ/crops.js';
-import { civWorldFromFinish, seaOf, morePeople, travelFrom, startPeople } from '../js/civ/civ-page.js';
+import { morePeople, travelFrom, startPeople } from '../js/civ/civ-page.js';
 import { civSubstrate } from '../js/civ/substrate.js';
 import { ensembleForcings, ensembleRain, landOf, climateVariability } from '../js/civ/climate-var.js';
 import { createCivSim } from '../js/civ/sim.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { loadFinish } from './lib/finish-cache.mjs';
+import { readFrozen, civWorldAt } from './lib/civ-frozen-world.mjs';
 import { OUT, MESH_SEED, frameOf, worldCode } from './lib/civ-world.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
@@ -52,7 +52,7 @@ async function world() {
     }
     const file = path.join(OUT, 'cache', `civgpu-${SEED}-${CONT}-${SIM}-${TIME}-${FINN / 1000}k-${worldCode()}.bin`);
     let fin;
-    if (fs.existsSync(file)) { fin = v8.deserialize(fs.readFileSync(file)); fin.mesh = meshFromArrays(fin.mesh); }
+    if (fs.existsSync(file)) fin = readFrozen(file);
     else {
         const simMesh = buildSimMesh(SIM, MESH_SEED), frame = await frameOf(SEED, { cont: CONT, sim: SIM, time: TIME });
         const f = await atime('finish', async () => finishPlanet({ frame, simMesh, seed: SEED, cells: FINN, pool: await TerrainPool.create(simMesh), closePool: true, civ: true }));
@@ -61,14 +61,7 @@ async function world() {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, v8.serialize({ ...fin, mesh: asMesh(fin.mesh) }));
     }
-    const about = { seed: SEED, cont: CONT, timeMyr: TIME, finishCells: fin.mesh.numCells };
-    if (fin.mesh.numCells > 1.01 * CIVN) return { w: civWorldFromFinish(fin), about };           // (the page's reduction, to PAGE_CELLS)
-    // (the finish's own cells: civWorldFromFinish's `small` branch, which the page's PAGE_CELLS keeps from a finish this big)
-    const cc = fin.climate.cell, L = fin.civ ?? {}, R = fin.rivers, n = fin.mesh.numCells, xyz = fin.mesh.xyz;
-    const rivers = { lat: R.lat.slice(), lon: R.lon.slice(), q: R.q.slice(), regime: R.regime?.slice() ?? null, farFed: R.farFed?.slice() ?? null };
-    return { about, w: { mesh: fin.mesh, z: fin.z, ocean: fin.ocean, lake: fin.lake, koppen: cc.koppen, tAnnual: cc.tAnnual, pAnnual: cc.pAnnual,
-        stats: cc.stats, rivers, loess: L.loess ?? null, erg: L.erg ?? null, ice: L.ice ?? null, vector: L.vector ?? null, flow: L.flow ?? null, sea: seaOf(fin.climate.page),
-        crops: L.months ? cropsFromMonths(L.months, n, c => Math.asin(xyz[3 * c + 2])) : null } };
+    return { about: { seed: SEED, cont: CONT, timeMyr: TIME, finishCells: fin.mesh.numCells }, w: civWorldAt(fin, CIVN) };
 }
 
 /** The CPU profile of `f`: per function, self and inclusive ms (a function counted once a sample, however deep it recurs). */
