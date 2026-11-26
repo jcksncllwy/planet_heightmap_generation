@@ -320,13 +320,102 @@ not seen. Sonnet subagents checked each claim against its source (2026-11-25/26;
   - ELF at each level of the language tree (Desmet, Ortuño-Ortín & Wacziarg 2012 [V of the working paper]). It is not
     a pairwise distance; the paper sets itself apart from distance-weighted indices.
   - Our d(a, b) is the lexical version of these (§7.10).
-- **Religion.**
-  - In 96 Austronesian cultures, broad supernatural punishment precedes political complexity, and moralizing high gods
-    follow it (Watts et al. 2015 [V]).
-  - The Seshat moralizing-gods paper (Whitehouse et al. 2019) was **retracted** in 2021 [V].
-  - Christianity's early growth, "40 % per decade" (Stark 1996): from magazines and blogs only [L].
-  - A peer-reviewed model of elite-led conversion: NOT FOUND. "Cuius regio, eius religio" is a historical rule (1555),
-    used here as a mechanism, not a sourced model.
+- **Religion.** Two rounds of checks (`verify/H`–`N`).
+  - **Established: rulers convert realms, and the record measures how fast the population followed.**
+    - **The Reformation in the Empire.** The prince's choice bound his subjects, by the Peace of Augsburg's provision
+      (1555), and 71 % of 103 territories were Protestant by 1600 (Cantoni 2012, *Economic Journal* 122:502 [V of the
+      working paper]). Princes adopted later and less often:
+      - when the territory was large (−23.6 points per s.d. of its Reichsmatrikel assessment);
+      - when it was ecclesiastical;
+      - the farther it lay from Wittenberg (−17 points per 133 km).
+      They adopted more often after their neighbours did: +17 points in the next period per +0.2 of neighbours'
+      share. The periods are the windows of legal safety between imperial decrees (1521–1555), and timing followed
+      them. Becker, Pfaff & Rubin 2016 [V] review the field and agree. The Reformation "was imposed from above as a
+      prerogative of princes" in some countries.
+    - **Subjects could leave** (Augsburg §24, *ius emigrandi* [V]). Those who would not conform were expelled:
+      - ~20,000 Protestants from Salzburg in 1731–32, whose faith had "survived in Salzburg's alpine regions since the
+        Reformation" (Melton 2015, citing Walker 1992 [V]);
+      - the Moriscos, baptized by force in 1499–1526 and expelled in 1609–14, ~300,000 of them (Lapeyre 1959 [W]),
+        after ~3–4 generations of nominal conformity;
+      - Japan's Christians (~300,000 at the peak [W]), banned in 1614. About 20,000–30,000 hidden Christians came
+        out in 1865 [W/A].
+    - **Practice lags the law.** Visitation records show that "a century of Protestantism had brought about little or
+      no change in the common religious conscience" (Strauss 1978, p. 299, via a review [A]). The finding is contested
+      by Parker 1992 [A]. Iceland's Althing (999/1000) made everyone be baptized, kept private sacrifice legal, "and a
+      few years later, that heathen practice was also taken away" (Íslendingabók ch. 7 [V]).
+    - **The Roman empire.** The turning points:
+      - Constantine (312) is the usual political one;
+      - *Cunctos populos* (380 [V]) defines the Catholic orthodoxy and brands the rest as heretics;
+      - the laws of 391–392 ban sacrifice [W].
+      The Christian share is ~10 % in 300 by convention. About half by 350 comes only from Stark's constant 3.4 %/yr
+      (Hopkins 1998's "guesstimates, not facts" [V]). By MacMullen's count, Christians were still not a majority in
+      400 [A]. John of Ephesus was still baptizing 70,000–80,000 pagans in Asia Minor in the 540s [A]. In Egypt, names
+      by year (Bagnall 1982, the same method as Bulliet's [A]) put Christians at ~20 % in 313, half by the 320s and
+      ~90 % by 400. Later counts are slower: a majority ~350 and completion in the mid-5th century (Depauw & Clarysse
+      [A]). Wipszycka contests the method.
+    - **Kievan Rus' (988).** Burial rites in the countryside change from the late 10th to the 13th century [A]. Rock
+      2007 calls "double belief" (*dvoeverie*) an academic myth [A].
+    - **Safavid Iran (1501).** Before 1501 the cities were mostly Sunni, with Shi'i regions (Qom, Kashan, Gilan…; via
+      Mustawfi [W]). A majority was Shi'i by the end of the 16th century [W] or in the 17th [A]. Recent work "questions
+      the manner and rapidity" of the change (a review of Abisaab 2004 [A]).
+  - **Without the ruler's force, conversion is slower, and it still follows status and money.**
+    - **Bulliet 1979**, read through Iranica's summary (Daniel 1993 [V]) and Pénelas 2002 [V]:
+      - The method is the adoption of Muslim names in the genealogies of biographical dictionaries: 469 genealogies
+        for Iran, 154 for Spain.
+      - Iran converted slowly to 750, then quickly: "80 percent or more" by ~950, ~300 years after the conquest.
+      - Spain's midpoint is 961, ~250 years after 711.
+      - Coercion as a factor "has been generally discredited" (Daniel).
+      - Iraq, Egypt, Syria and Tunisia were read off the popularity of Muslim names, not genealogies. Their dates are
+        NOT FOUND: the book is not readable online.
+      - Critics: Pénelas (Spain's sample is too small), Carlson 2018 [A] (the "age of conversions" keeps moving later),
+        and "Behind the Curve" 2012 [A].
+    - **Egypt's poll tax** was 6–10 % of a modest wage. Non-Muslims were 42 % in 680 and 23 % in 813 (Courbage &
+      Fargues, via Saleh 2018, *J. Econ. Hist.* 78:394 [V of the working paper]). Copts were 16 % in 1200, by his
+      proxy of villages with churches.
+    - **As logistic rates** (ours, from those numbers; r is per year, and 10 % → 90 % takes 4.4/r):
+      - Egypt's Christianization under emperors who backed it: r ≈ 0.03–0.04, so ~110–150 years;
+      - Iran's Islamization: r ≈ 0.018, ~250 years;
+      - Egypt's Islamization: r ≈ 0.007 to 813, slower after. Saleh's tax is the incentive.
+  - **Established: where the ruler's religion didn't take, and why.**
+    - **Akhenaten** (Amarna, c. 1347–1332 BCE [A]). Akhenaten pushed the cult of the Aten and of himself. Houses at
+      Amarna kept an "already diverse, and apparently adequate, domestic religious landscape, and in the end it did
+      not take" (Stevens 2009 [V]). Within about two years Tutankhamun left the city, "and Akhenaten's cult was
+      abandoned utterly" (Amarna Project [V]). His Restoration Stela says the temples "had fallen into ruin" [A]. It is
+      a reform with no clergy or following outside the court, undone within a reign.
+    - **Julian** (361–363) restored the temples; the revival died with him [A].
+    - **Antiochus IV** banned Jewish practice in 167 BCE, provoking a revolt and the Temple's reconsecration in 164
+      [A].
+    - **Joseph II** revoked most of his reforms in 1790, keeping the Toleration Patent [A].
+    - **Conquerors who took their subjects' faith.**
+      - Ilkhanate: the first three Ilkhans were pagans. Tegüder (1282–84) was the first Muslim, and Ghazan converted
+        in June 1295. "The widespread conversion of the Mongols almost certainly preceded the adoption of Islam by the
+        Ilkhan Ghazan." The rulers "travelled in the wake of the Mongol rank and file… [to] adopt the majority faith of
+        their subjects" (Jackson 2017, pp. 341, 344 [V]).
+      - Chagatai (Tarmashirin) followed the same pattern [V, Jackson].
+      - The Visigoths' Arian kings became Catholic with Reccared, 587/589 [A].
+    - **States follow majorities, too.** In 188 countries, a state religion is likelier where adherence is concentrated:
+      +0.16 probability per s.d. of the Herfindahl index. It is persistent (coefficient 0.75 from 1900 to 2000)
+      (Barro & McCleary 2005, *QJE* 120:1331 [V of the NBER paper]).
+  - **Still missing: a fitted mechanistic model of ruler-driven conversion.** None was found in two rounds. A limited
+    search, not proof of absence. The nearest:
+    - **Abrams, Yaple & Wiener 2011** (*PRL* 107:088701 [V]): dx/dt = y·c·x^a·u_x − x·c·y^a·(1 − u_x), fitted to
+      census series from 85 regions in 9 countries. The exponent is a ≈ 1 (a broad minimum) and the utility u_x is
+      0.56–0.70. It models modern disaffiliation, has no ruler term, and is the same equation as our §7.5.
+    - **Johnson & Koyama 2013** (*J. Comp. Econ.* 41:959 [V of the working paper]) is a theory. The ruler sets an
+      orthodoxy, and the cost of persecuting is convex in the heterodox share. Weak states therefore persecute, and
+      stronger, centralized ones tolerate. It is not fitted. Their 2019 book carries it further [A].
+    - **Ampofo et al. 2025** (CEPR DP 20757 [A]). Monarchs' conversions change the payoffs. Returns that rise
+      nonlinearly with the share of co-religionists give multiple steady states. The evidence is reduced-form, from
+      West Africa.
+    - Others have no ruler: Hayward 1999's epidemic model of revivals [V of the 2018 revision]; Ausloos & Petroni 2007
+      [V]; Taskin & Lazebnik 2026 [A].
+    - Networks: Collar 2013 [A] (cults along officers' ties), Kim & Pfaff 2012 [A] (towns with university ties
+      adopted the Reformation sooner) and Rubin 2014 [V of the working paper] (a printing press by 1500 made a city
+      +52 points likelier to be Protestant by 1530, and +29 by 1600).
+  - **Other strands.**
+    - In 96 Austronesian cultures, broad supernatural punishment precedes political complexity, and moralizing high
+      gods follow it (Watts et al. 2015 [V]).
+    - The Seshat moralizing-gods paper (Whitehouse et al. 2019) was **retracted** in 2021 [V].
 - **Geography and persistence.** Linguistic diversity persists more where a country's axis runs north–south: about 5
   percentage points per standard deviation of the axis ratio, over 147 countries (Laitin, Moortgat & Robinson 2012 [V]).
   The effect shrinks with state age.
@@ -458,6 +547,7 @@ diversity is a known limit (§14 Q1), and density checks use bands of latitude, 
 | `rival` | the cell whose lect is the second language here (a rival or ruler's lect), or −1 | Int32 |
 | `x` | the share speaking the rival's language (Abrams–Strogatz's x; 0 where no rival) | Float32 |
 | `trait[c·Q + q]` | cultural traits (practices, religion), Q ≈ 16 (§7.8; later stage) | Uint16 × Q |
+| `faith`, `faithRival`, `faithY`, `faithB` | held faith id, rival faith id, professed and held shares of the rival (§7.8; later stage) | Uint32 × 2, Uint16 × 2 |
 | `lang`, `family` | the language and family it belongs to (read off, §7.9; recomputed every frame) | Int32, Int32 |
 
 At 160K cells, ~50K of them land: `lex` is ~8 MB, `phonT` ~4 MB, the rest ~3 MB.
@@ -656,12 +746,70 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
   - prestige: from towns and rulers.
   - Collard, Shennan & Tehrani 2006 find cultural data about as treelike as biological. Traits are therefore neither
     wholly inherited nor wholly borrowed.
-- **Religion** is one trait with two extra rules from the record:
-  - **rulers convert their realms,** at a rate set by the hold (cuius regio, eius religio): the status term again;
-  - **missionary religions spread along routes and through towns,** faster than practices. A religion takes this
-    property at its birth, as a hashed trait.
-  - The moralizing-gods dataset (Whitehouse et al. 2019) was retracted, and NATION_PLAN doesn't use it. Neither does this
-    plan.
+- **Religion** is a trait with its own state and rules. They come from the record in §3.4; where the record gives
+  rates, they are calibration targets, not fits. The mechanism is ours: no fitted model of ruler-driven conversion was
+  found.
+  - **State per cell.** Each cell has a held faith f and a rival faith f′, with two shares of f′:
+    - **professed** y: who conforms in public;
+    - **held** b ≤ y: who believes it.
+    Without coercion they are equal: conversion is real (Bulliet). Under coercion y runs ahead of b. Faiths are ids in
+    a faith tree, like lects, with one bit per faith for whether it seeks converts.
+  - **Conversion without force:**
+    - dy/dt = c_r·[(1 − y)·y^a·u − y·(1 − y)^a·(1 − u)] + contact.
+    - This is Abrams, Yaple & Wiener 2011's equation with a = 1, their fit.
+    - u is the faith's status: ½ plus the ruler's faith term (tax and office: Saleh's poll tax), plus towns and
+      missionaries.
+    - Contact is §7.3's, with no intelligibility barrier.
+    - c_r is calibrated so that a realm-backed faith with no force goes from 10 % to 90 % in ~250 years (Iran's
+      r ≈ 0.018/yr, §3.4).
+    - Here b = y.
+  - **Coercion.** A realm whose ruler enforces his faith raises the professed share y toward 1 within about a
+    generation, at rate r_force·hold. The record has formal conformity in years: ordinances, forced baptisms. Belief
+    follows more slowly:
+    - db/dt = (y − b)/τ_p, with τ_p ≈ 100 yr, Strauss's century (contested);
+    - persistence of 107–250 years under sustained coercion (Moriscos, Salzburg, Japan) puts the tail longer.
+    - Calibration target: Egypt's Christianization, backed by the emperors, from 20 % to 90 % in ~90–150 years.
+  - **Reversal** is the same two numbers, not a special rule.
+    - When the coercion stops (the ruler dies, the realm falls, or a successor enforces another faith), y relaxes
+      back to b within a generation.
+    - A faith enforced for much less than τ_p reverts: Akhenaten (~15 years), Julian (2). One enforced for several
+      τ_p sticks: Rus', Safavid Iran.
+    - The Palatinate's switches, four in thirty years, leave b behind y each time.
+    - This is the "conditions under which it fails" in one rule: too short a reign of enforcement for the belief to
+      follow.
+  - **The ceiling on force.** The cost of enforcing grows faster than the heterodox share (Johnson & Koyama 2013).
+    - A realm can coerce only while 1 − b < κ·capacity. capacity is the nation layer's administration of the cell:
+      administered beats tributary, and seats beat the periphery.
+    - Above that ceiling it tolerates, and conversion runs at the no-force rate.
+    - Revolt pressure rises with the coerced share, a term NATION_PLAN's rebellion pressure can read. Antiochus IV and
+      the Maccabees are the record's case.
+  - **Leaving.** Cells whose b stays low under coercion lose people to realms of their faith, when the nation layer
+    moves people. This is *ius emigrandi*, and the expulsions of Salzburg, Bohemia and the Moriscos. Until then it is
+    a counter in the chronicle, not a flux.
+  - **The ruler's own choice.** Each realm has a ruling faith R. Each step the ruler may adopt another faith F, with
+    a hazard built from three terms:
+    - **neighbours:** a hazard that grows with the share of neighbouring realms ruling in F, weighted by border.
+      Cantoni 2012 measures +0.86 in probability per unit of that share per period of a few years. That is ~0.1–0.3
+      per year at full share (ours, from the LPM coefficient), and gives the clustering of the Reformation and its
+      spread from a centre;
+    - **subjects:** a hazard that grows with F's held share among the ruling culture's own people, and with F's share
+      among all subjects. Where R is a small elite's faith over a majority with an organized faith, the ruler converts
+      to the majority's: the Ilkhans, Chagatai and Visigoths. Barro & McCleary's states follow concentrated
+      majorities;
+    - **against:** large realms, and realms whose rule rests on R's clergy (Cantoni's ecclesiastical territories),
+      adopt less.
+  - **New faiths.**
+    - A faith is founded by a hash draw in a town or court cell.
+    - It seeks converts or not.
+    - Missionary faiths spread along routes and through towns faster than practices: Collar's networks, Kim & Pfaff's
+      university towns and Rubin's printing presses (§3.4).
+    - A ruler-founded faith with no following outside the court has b ≈ 0 and dies with the reign. That is the
+      Akhenaten case, by the reversal rule above.
+  - **Checks** (§11.1): a realm-backed faith takes ~2–3 centuries to pass 80 % without force (Bulliet's Iran). Forced
+    conversion leaves a hidden minority for ~4–10 generations. Ruler adoptions cluster in space and spread from a
+    centre (Cantoni's Table 5: territories nearer Wittenberg adopted first). Conquerors with a minority faith take
+    their subjects' faith.
+  - Not used: the moralizing-gods dataset (Whitehouse et al. 2019) was retracted, and NATION_PLAN doesn't use it.
 - **Henrich's population size and complexity:** already in the economy, where complex skills are capped by the people
   within 50 km (CIV_PLAN §9.1). It is contested (Vaesen et al. 2016) and lives there, not here.
 
@@ -886,6 +1034,12 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
   2015).
 - **Scale:** the same world at 40K and 160K (as `check-civ-food` does). The correlation length in km and the language
   count per area at scales above both meshes' cells should agree.
+- **Religion** (L5, §7.8). These are calibration targets, not independent tests:
+  - a faith backed by its realm, with no force, should pass 80 % in ~2–3 centuries (Bulliet's Iran);
+  - forced conversion should leave a hidden minority for ~4–10 generations (Moriscos, Salzburg, Japan);
+  - enforcement shorter than ~τ_p should revert (Akhenaten, Julian);
+  - rulers' adoptions should cluster in space and spread from a centre (Cantoni);
+  - conquerors whose faith is a minority's should take their subjects' faith (the Ilkhans).
 - **Gene–language congruence** (optional, with §14 Q6's ancestry field): Cavalli-Sforza et al. 1988.
 
 ### 11.2 Determinism
@@ -991,10 +1145,18 @@ has no GPU dependency today: it runs in a page worker and in Node tools.
 **Q4. Culture beyond language.** How much, and when?
 - (a) Language only: d(a, b) is lexical.
 - (b) Language plus ~16 practice traits (L5), with traits in d(a, b).
-- (c) (b) plus religion, with rulers converting realms and missionary religions spreading along routes.
-- **Recommend (a) for L1–L4, then (b).** The nation layer's needs (identity, distance, names) are met by language. Traits
-  add map modes and texture. Religion (c) has the thinnest sourcing of anything here: no peer-reviewed conversion model
-  was found. Decide after seeing (b).
+- (c) (b) plus religion (§7.8). Each realm has a ruling faith. Subjects profess it at a rate set by the hold, and
+  believe it a century behind. Enforcement too short for belief to follow is undone. Force has a ceiling set by the
+  realm's capacity. Rulers adopt their neighbours' faith or, as a minority elite, their subjects'. Missionary faiths
+  spread along routes and through towns.
+- **Recommend (a) for L1–L4, then (b) and (c) together at L5.**
+  - The nation layer's needs (identity, distance, names) are met by language.
+  - Religion is no longer the thinnest part.
+    - Established: rulers convert realms, with measured rates. Cantoni's Reformation adoption, Bulliet's and Bagnall's
+      conversion curves, the lag of belief behind law, the cases that failed and why (§3.4).
+    - Still missing: a fitted mechanistic model of ruler-driven conversion. §7.8 is ours, calibrated to those rates.
+  - Religion also gives the nation layer a second axis for legitimacy and revolt, beside language (report).
+  - The alternative is (b) alone at L5 and (c) after seeing it, if L5 should stay small.
 
 **Q5. Names: how far?**
 - (a) Places, peoples and realms (NATION_PLAN's Q3 (b)).

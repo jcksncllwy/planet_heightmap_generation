@@ -93,7 +93,17 @@ the PDFs and pages read are in `verify/pdfs/`).
 | Vertical, horizontal, conformist and prestige transmission | Boyd & Richerson 1985 (guided variation; direct, indirect and frequency-dependent bias), via Mesoudi, Whiten & Laland 2006 and the SEP | Adapted | [V] summaries; the book [L] |
 | Trait kinds from the Ethnographic Atlas | Murdock 1967 | Adapted (the kinds) | [L] |
 | Traits partly treelike | Collard, Shennan & Tehrani 2006 (cultural ≈ biological treeness; contested by Morrison 2014); Tehrani & Collard 2002 (Turkmen designs ~70 % → ~60 % homologous) | — (a check) | [L]/[V secondary] |
-| Rulers convert their realms; missionary religions spread along routes | cuius regio, eius religio (1555), as a mechanism | Ours | — ; a sourced model NOT FOUND |
+| Rulers convert realms: princes' adoption, neighbour clustering, size and ecclesiastical drag | Cantoni 2012 (71 % of 103 territories by 1600; −23.6 pts/s.d. size; −17 pts/133 km from Wittenberg; +17 pts next period per +0.2 neighbours' share); Becker, Pfaff & Rubin 2016 | Adapted (the neighbour hazard of §7.8, converted to a yearly rate by us) | [V of the working paper]/[V] |
+| Conversion without force follows status and money, slowly | Bulliet 1979 via Daniel 1993 (Iran ≥80 % by ~950) and Pénelas 2002 (Spain midpoint 961); Saleh 2018 (poll tax 6–10 % of wage; Egypt non-Muslims 42 % in 680, 23 % in 813) | Calibration target for c_r (r ≈ 0.018/yr, ours) | [V secondary]/[V of the working paper]; the book NOT READ |
+| Shares change by Abrams–Strogatz with a ≈ 1 | Abrams, Yaple & Wiener 2011 (85 regions, 9 countries; u 0.56–0.70) | Adapted (modern disaffiliation, no ruler term) | [V] |
+| State-backed conversion pace | Bagnall 1982 (Egypt ~20 % in 313 → ~90 % by 400; contested by Wipszycka 1986); Depauw & Clarysse (majority ~350); Hopkins 1998 (10 % in 300 a convention; Stark's 3.4 %/yr a model); MacMullen 1984 (not a majority in 400) | Calibration target for r_force (~0.03–0.04/yr, ours) | [A]/[A]/[V]/[A] |
+| Belief lags professed conformity; coerced minorities persist | Strauss 1978 (a century of little change; contested by Parker 1992); Salzburg 1731–32, ~20,000 (Melton 2015 citing Walker 1992); Moriscos 1499–1526 → 1609–14 (Lapeyre 1959); Japan 1614 → 1865; Íslendingabók ch. 7 | τ_p ≈ 100 yr, ours from these | [A]/[V]/[W]/[W]/[V] |
+| Short enforcement reverts | Akhenaten (Stevens 2009: domestic religion "did not take"; Amarna Project: cult "abandoned utterly" after ~2 years); Julian 361–363; Antiochus IV 167–164 BCE | Falls out of τ_p (no special rule) | [V]/[V]/[A]/[A] |
+| Minority-elite conquerors take the subjects' faith | Jackson 2017 pp. 341, 344 (Ilkhans after their rank and file; Chagatai); Reccared 587/589 | Adapted (the subjects term of §7.8) | [V]/[A] |
+| States follow concentrated majorities | Barro & McCleary 2005 (+0.16 per s.d. of adherence Herfindahl; persistence 0.75, 1900→2000) | Adapted | [V of the NBER paper] |
+| Force has a ceiling that grows with state capacity | Johnson & Koyama 2013 (convex persecution cost in the heterodox share; theory); 2019 book | Adapted (κ·capacity, ours) | [V of the working paper]/[A] |
+| Missionary faiths spread through towns and networks | Rubin 2014 (press by 1500: +52 pts Protestant by 1530, +29 by 1600); Kim & Pfaff 2012 (university ties); Collar 2013 (officers' networks) | Adapted (routes and towns) | [V of the working paper]/[A]/[A] |
+| A fitted mechanistic model of ruler-driven conversion | searched in two rounds; nearest: Ampofo et al. 2025 (reduced-form, monarchs shift payoffs); Taskin & Lazebnik 2026; Hayward 1999; Ausloos & Petroni 2007 (no ruler) | — | NOT FOUND (a limited search) |
 | Not used: moralizing gods from Seshat | Whitehouse et al. 2019, retracted 2021 | — | [V] |
 | Complex skills and population size: left to the economy | Henrich 2004; Kline & Boyd 2010; against: Vaesen et al. 2016; Collard et al. 2013 | — (CIV_PLAN §9.1) | [V]/[V]/[V]/[A] |
 
@@ -285,6 +295,34 @@ the PDFs and pages read are in `verify/pdfs/`).
 - Wichmann S 2019. How to distinguish languages and dialects. *Computational Linguistics* 45:823–831
 - Wichmann S 2005. On the power-law distribution of language family sizes. *J Linguistics* 41:117–131
 
+- Abrams DM, Yaple HA, Wiener RJ 2011. Dynamics of social group competition: modeling the decline of religious
+  affiliation. *Phys Rev Lett* 107:088701. doi:10.1103/PhysRevLett.107.088701 (arXiv:1012.1375)
+- Ausloos M, Petroni F 2007. Statistical dynamics of religions and adherents. *EPL* 77:38002.
+  doi:10.1209/0295-5075/77/38002
+- Barro RJ, McCleary RM 2005. Which countries have state religions? *QJE* 120:1331–1370.
+  doi:10.1162/003355305775097515 (read as NBER WP 10438)
+- Becker SO, Pfaff S, Rubin J 2016. Causes and consequences of the Protestant Reformation. *Explorations in Economic
+  History* 62:1–25. doi:10.1016/j.eeh.2016.07.007
+- Cantoni D 2012. Adopting a new religion: the case of Protestantism in 16th century Germany. *Economic Journal*
+  122:502–531. doi:10.1111/j.1468-0297.2012.02495.x (read as BGSE WP 540, 2010)
+- Codex Theodosianus 16.1.2 (*Cunctos populos*, 380), Latin and translation at andrewjacobs.org/rs91/cucntos.html
+- Daniel EL 1993. Conversion ii. Of Iranians to Islam. *Encyclopaedia Iranica* VI/3:229–232 (summarizing Bulliet)
+- Hayward J 1999. Mathematical modeling of church growth. *J Math Sociology* 23:255–292 (read in the 2018 revision)
+- Hopkins K 1998. Christian number and its implications. *J Early Christian Studies* 6:185–226.
+  doi:10.1353/earl.1998.0035
+- Íslendingabók, ch. 7 (English Wikisource translation)
+- Jackson P 2017. *The Mongols and the Islamic World: From Conquest to Conversion.* Yale UP
+- Johnson ND, Koyama M 2013. Legal centralization and the birth of the secular state. *J Comparative Economics*
+  41:959–978. doi:10.1016/j.jce.2013.08.001 (read as MPRA 40887)
+- Melton JVH 2015. *Religion, Community, and Slavery on the Colonial Southern Frontier.* Cambridge UP (introduction)
+- Pénelas M 2002. Some remarks on conversion to Islam in al-Andalus. *Al-Qanṭara* 23:193ff
+- Religious Peace of Augsburg 1555, §24 (German History in Documents and Images, doc. 58)
+- Rubin J 2014. Printing and Protestants. *Rev Econ Stat* 96:270–286. doi:10.1162/REST_a_00368 (read as MPRA 34294)
+- Saleh M 2018. On the road to heaven: taxation, conversions, and the Coptic-Muslim socioeconomic gap in medieval
+  Egypt. *J Economic History* 78:394–434 (read as the 2015 working paper)
+- Stevens A 2009. Domestic religious practices. *UCLA Encyclopedia of Egyptology*
+- Amarna Project, "Historical framework" (amarnaproject.com)
+
 ### Cited, and to be checked or read before a stage relies on them
 - Collard M, Buchanan B, O'Brien MJ, Scholnick J 2013. *Phil Trans R Soc B* 368:20120412 [A]
 - Collard M, Ruttle A, Buchanan B, O'Brien MJ 2013. *PLoS ONE* 8:e72628 [A]
@@ -298,7 +336,25 @@ the PDFs and pages read are in `verify/pdfs/`).
 - Murdock GP 1967. *Ethnographic Atlas.* U Pittsburgh Press [L]
 - Powell A, Shennan S, Thomas MG 2009. *Science* 324:1298–1301 [A]
 - Seuren P 2001. Simple and transparent. *Linguistic Typology* 5:176–180 [L]
-- Stark R 1996. *The Rise of Christianity.* Princeton UP [L]
+- Stark R 1996. *The Rise of Christianity.* Princeton UP (table 1.1 via Hopkins 1998) [L]
+- Bulliet RW 1979. *Conversion to Islam in the Medieval Period.* Harvard UP (a restricted lending copy; read through
+  Daniel 1993 and Pénelas 2002) [L]
+- Bagnall RS 1982. Religious conversion and onomastic change in early Byzantine Egypt. *BASP* 19:105–124 (an image
+  scan; not read); reply *ZPE* 69 (1987); Wipszycka E 1986 *ZPE* 62; Depauw M, Clarysse W, "How Christian was fourth
+  century Egypt?" [A]
+- Strauss G 1978. *Luther's House of Learning.* Johns Hopkins UP (via a review) [A]; Parker G 1992. *Past & Present*
+  136:43–82 [A]
+- MacMullen R 1984. *Christianizing the Roman Empire.* Yale UP [A]
+- Lapeyre H 1959 (Morisco expulsion counts) [W]; Harvey LP 2005. *Muslims in Spain 1500–1614.* U Chicago Press [L]
+- Rock S 2007. *Popular Religion in Russia: "Double Belief" and the Making of an Academic Myth.* Routledge [A]
+- Abisaab RJ 2004. *Converting Persia.* I.B. Tauris [A]; the Safavid majority date [W]
+- Carlson TA 2018. When did the Middle East become Muslim? *History Compass* doi:10.1111/hic3.12494 [A]
+- Johnson ND, Koyama M 2019. *Persecution and Toleration.* Cambridge UP [A]
+- Ampofo et al. 2025. The dynamics of religious conversion. CEPR DP 20757 [A]
+- Taskin, Lazebnik 2026. An epidemiological modeling take on religion dynamics. arXiv:2601.11436 [A]
+- Kim H, Pfaff S 2012. *American Sociological Review* 77:188–215 [A]; Collar A 2013. *Religious Networks in the Roman
+  Empire.* Cambridge UP [A]
+- The religion checks are in `~/.cache/geo-sim/lanes-2026-10-29/langspec/verify/H-out.md` … `N-out.md`.
 - Tian Z et al. 2022. bioRxiv 10.1101/2022.06.09.495471 [L]
 - Urban M 2024. Global language geography and language history. *Open Research Europe* 4:213 [V]
 - Vennemann T 2003. *Europa Vasconica – Europa Semitica.* De Gruyter [L]
