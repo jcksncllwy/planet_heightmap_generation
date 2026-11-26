@@ -8,6 +8,9 @@
 //     and off (input.ice given as none — what glacialSheets' rounds pass, B2 (iii)), and the balance under each;
 //   · the climate feeling the ice: 21 ka with ICE-6G_C's 21 ka ice given (its albedo and its height) against ice-free — and
 //     whether the degree-day balance on that ice is positive (could the sheet keep itself in this climate?).
+//   · the sites (lib/iceage-sites.mjs: the inception's plateaus, High Asia's ranges): each one's months at sea level and its
+//     ground's heights — the cells' (the degree days' height) and the climate grid's mean (its 2° cell's) — for
+//     tools/iceage-sites-cru.mjs to set beside CRU CL 2.0 (REPORT_JSON sites)
 //   node v2/tools/iceage-inception.mjs        (GPU: Dawn in Node)
 import Delaunator from 'delaunator';
 import { setDelaunator } from '../../js/sphere-mesh.js';
@@ -25,6 +28,7 @@ import { bilinear } from '../js/finish/finish.js';
 import { systemOf, EARTH_CYCLE } from '../js/climate/planet-system.js';
 import { pddBalance } from '../js/gpu/ice-balance.js';
 import { ICE } from '../js/gpu/ice-sheet.js';
+import { SITES, SITE_KM, gcKm } from './lib/iceage-sites.mjs';
 
 setDelaunator(Delaunator);
 const t0 = performance.now(), F = FINISH, gamma = CORE_DEFAULTS.lapseRateCPerKm;
@@ -54,7 +58,7 @@ async function climateAt(name, epochKyr, elevKm, ice) {
     let res;
     try { res = await planetClimateAsync({ xyz: x, elevKm, axes: 'z-up', land, ...(ice ? { ice } : {}) }, { ...opts, cells: false, solver }); } finally { solver.release(); }
     const cell = await cellClimateGPU(device, res, x, elevKm, land, opts);
-    const { Tsl, P } = seaLevelGrid(res.grid, res.surface, res.months, gamma);
+    const { Tsl, P, hLand } = seaLevelGrid(res.grid, res.surface, res.months, gamma);
     const G = res.grid.size, cg = { w: res.grid.w, h: res.grid.h }, layer = new Float32Array(G), iceFrac = res.stages.temperature.iceFrac;
     // (each month's layer once, onto the cells of every region: sea-level T and precipitation, the climate's perennial share)
     const cells = [], reg = [];
@@ -85,6 +89,23 @@ async function climateAt(name, epochKyr, elevKm, ice) {
         const med = a => Float64Array.from(a).sort()[a.length >> 1], mean = a => a.reduce((s, v) => s + v, 0) / a.length;
         out.push({ region: rname, cells: k, summerC: med(summer), balance: med(bal), positive: pos / k, snowWe: med(snow), perennial: mean(pr) });
     }
+    // (the sites: their cells' mean months at sea level, the precipitation scaled as the balance's; the heights)
+    const sites = SITES.map(st => {
+        const sc = []; for (let c = 0; c < n; c++) if (land[c] && gcKm(st.lat, st.lon, lat[c], lon[c]) <= SITE_KM) sc.push(c);
+        if (!sc.length) return { name: st.name, cells: 0 };
+        const Tsl12 = new Array(12).fill(0), P12 = new Array(12).fill(0), zs = sc.map(c => Math.max(0, elevKm[c])).sort((a, b) => a - b);
+        let hr = 0; for (const c of sc) hr += bilinear(cg, hLand, lat[c], lon[c]) / sc.length;
+        for (let m = 0; m < 12; m++) {
+            layer.set(Tsl.subarray(m * G, (m + 1) * G)); for (const c of sc) Tsl12[m] += bilinear(cg, layer, lat[c], lon[c]) / sc.length;
+        }
+        for (const c of sc) {
+            const pm = []; let Ps = 0; for (let m = 0; m < 12; m++) { layer.set(P.subarray(m * G, (m + 1) * G)); const v = Math.max(0, bilinear(cg, layer, lat[c], lon[c])); pm.push(v); Ps += v; }
+            const pA = Math.min(cell.pAnnual[c], F.rainMaxMm), k = Ps > 0 && pA === pA ? pA / Ps : 1;
+            for (let m = 0; m < 12; m++) P12[m] += pm[m] * k / sc.length;
+        }
+        return { name: st.name, group: st.group, cells: sc.length, zMed: zs[zs.length >> 1], zP90: zs[Math.floor(0.9 * (zs.length - 1))], hrefMed: hr, Tsl12, P12 };
+    });
+    out.sites = sites;
     console.log(`\n── ${name} (${epochKyr} ka, ${ice ? 'ice given' : 'the climate\'s own snow'}; ${((performance.now() - tw) / 1000).toFixed(0)} s) ──`);
     for (const r of out) console.log(`  ${r.region.split(' (')[0].padEnd(18)} summer ${r.summerC.toFixed(1).padStart(6)} °C · balance median ${r.balance.toFixed(2).padStart(6)} m w.e./a, ${(100 * r.positive).toFixed(0).padStart(3)} % positive · snowfall ${r.snowWe.toFixed(2)} m w.e. · the climate's perennial share ${(100 * r.perennial).toFixed(0)} %`);
     return out;
@@ -110,5 +131,7 @@ d(B0, B, 'perennial snow off at 116 ka (rounds\' form)');
 d(C0, C, 'perennial snow off at 21 ka');
 d(D, C0, 'ICE-6G_C\'s ice given at 21 ka');
 console.log(`\n(${((performance.now() - t0) / 1000).toFixed(0)} s)`);
-console.log(`REPORT_JSON ${JSON.stringify({ inception: { A, A0, B, B0, C, C0, D } })}`);
+const strip = r => r.filter(x => x.region);
+console.log(`REPORT_JSON ${JSON.stringify({ inception: { A: strip(A), A0: strip(A0), B: strip(B), B0: strip(B0), C: strip(C), C0: strip(C0), D: strip(D) } })}`);
+console.log(`REPORT_JSON ${JSON.stringify({ sites: { A: A.sites, A0: A0.sites, B: B.sites, B0: B0.sites, C0: C0.sites } })}`);
 process.exit(0);
