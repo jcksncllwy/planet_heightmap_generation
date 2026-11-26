@@ -27,6 +27,8 @@
 .evo-rail i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; }
 .evo-rail .built { background: rgba(100,160,255,0.28); }
 .evo-rail .shown { background: #48f; }
+/* the history paused (Pause history): its built edge marked */
+.evo-rail .built.held { background: repeating-linear-gradient(-45deg, rgba(255,170,90,0.45) 0 4px, rgba(100,160,255,0.28) 4px 8px); }
 .evo-track input[type=range] {
     position: absolute; left: 0; right: 0; top: 4px; width: 100%; height: 20px; margin: 0;
     -webkit-appearance: none; appearance: none; background: transparent;
@@ -290,11 +292,11 @@
 .evo-status[hidden] { display: none; }
 .evo-status-text { flex: 1; min-width: 0; }
 .evo-status-btn {
-    flex: none; padding: 3px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; line-height: 1.4;
+    flex: none; min-height: 28px; padding: 3px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; line-height: 1.4;
     border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.4); color: #cde;
 }
 .evo-status-btn:hover { filter: brightness(1.2); }
-.evo-status-btn[aria-pressed="true"] { border-color: rgba(255,170,90,0.5); background: rgba(130,70,20,0.6); color: #fdb; }
+.evo-status-btn.on { border-color: rgba(255,170,90,0.5); background: rgba(130,70,20,0.6); color: #fdb; }
 .evo-status-btn[hidden] { display: none; }
 .evo-status .bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); margin-top: 4px; overflow: hidden; }
 .evo-status .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #36c, #6af); width: 0; transition: width 0.3s; }
@@ -312,7 +314,7 @@
     .evo-time { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; font-size: 12px; }
     .evo-timeline select { min-height: 44px; }
     #finishCells, #riverDensity, #rate, #quality, #simCells, #terrainCells, #ending { min-height: 44px; }
-    .evo-card-btn, .evo-card-ghost { min-height: 48px; }
+    .evo-card-btn, .evo-card-ghost, .evo-status-btn { min-height: 48px; }
     .evo-card-link { min-height: 44px; padding: 0; }
     #worldSection summary, #viewSection summary { min-height: 44px; }
     #ui { width: auto; max-height: 70vh; }

@@ -78,7 +78,7 @@
         </div>
         <div id="sidebarContent">
         <button id="generate" title="Build a new world from a new random seed">New World</button>
-        <div id="buildStatus" class="evo-status" hidden><div id="buildStatusText" class="evo-status-text" aria-live="polite"></div><button id="historyPause" class="evo-status-btn" aria-pressed="false" hidden>Pause</button></div>
+        <div id="buildStatus" class="evo-status" hidden><div id="buildStatusText" class="evo-status-text" aria-live="polite"></div><button id="historyPause" class="evo-status-btn" hidden>Pause history</button></div>
         <details class="section" id="worldSection">
             <summary>World <span id="worldSummary" class="evo-world-sum"></span></summary>
             <div class="section-body">
@@ -371,7 +371,7 @@
     </div>
     <div id="climateChip" class="evo-chip" hidden><span id="climateChipText"></span><button id="climateChipBtn">Calculate</button></div>
     <div id="timeline" class="evo-timeline" hidden>
-        <button id="playBtn" class="evo-play" aria-label="Play / pause">&#x25B6;</button>
+        <button id="playBtn" class="evo-play" aria-label="Play / pause playback" title="Play / pause playback (Space)">&#x25B6;</button>
         <div class="evo-track">
             <div class="evo-rail"><i id="railBuilt" class="built"></i><i id="railShown" class="shown"></i></div>
             <div id="detailMarks" class="evo-marks" aria-hidden="true"></div>
@@ -422,7 +422,7 @@
             </div>
             <div class="tutorial-step" data-step="2">
                 <h3>Add Detail</h3>
-                <p>Found a moment you like? Press <strong>Add detail</strong>. It sculpts that moment again, much more finely: rivers and lakes, glaciers and fjords, sand seas, its own climate, and the <strong>Satellite</strong> view. It takes from a few seconds to about a minute.</p>
+                <p>Found a moment you like? Press <strong>Add detail</strong>. It sculpts that moment again, much more finely: rivers and lakes, glaciers and fjords, sand seas, its own climate, and the <strong>Satellite</strong> view. It takes from a few seconds to about a minute. While the history is still being computed, <strong>Pause history</strong> (beside its progress, or the P key) holds it at its next frame so the detail has the computer to itself; resume it after, and it goes on as if it had never stopped.</p>
                 <p>A basin its rivers cannot fill keeps its water, at any height: they end there, at a salt lake or a playa, and a lake that fills spills on into the next basin down. The Stats say how much of the land drains to such basins (Earth: about a fifth).</p>
                 <p>Up to four moments are kept in detail (one on a phone), each marked green on the timeline: step back onto one and it shows at once. Adding detail to a fifth lets go of the one you viewed longest ago once the new one is done, and the card tells you which. A faint mark is a moment detailed before at these settings: pause on it and its detail comes back in seconds.</p>
             </div>

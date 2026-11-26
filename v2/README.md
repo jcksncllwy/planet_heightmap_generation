@@ -56,7 +56,11 @@ timeline to scrub and play; changing the terrain resolution redraws the same his
 new build). **Extend history** runs a finished history on, 20 Myr at a time in the worker that ran it, until Stop
 extending (`simulate`'s `resume`: the pieces are the
 one history, bit for bit; the link records how far — `more=` — and rebuilds it; it stops for good at a memory budget,
-~13,000 Myr at 40K). Its views are V1's:
+~13,000 Myr at 40K). **Pause history** (beside the history's progress, while it runs or is extended; the P key) holds
+the history at its next frame (every 10 Myr), so Add detail has the GPU and the CPU to itself; Resume runs it on
+(`app/history-hold.js`: the pause is simulate's own stopAt and `resume`, so a paused history is the unpaused one —
+frames, steps, history-cache key and entry; `check-history-pause.mjs`). Stop extending while paused ends the
+extension at the held frame. `PAUSE_FOR_DETAIL` (off) would pause it for each Add detail and resume after. Its views are V1's:
 Terrain (the lab's relief, or one of fifteen other palettes — maps and other worlds; "Blue Marble (by height)" colours by
 height alone), Heightmap and Plates, globe (in V1's space: stars,
 atmosphere, sunlight glinting off the sea) or map (centre longitude), grid, and V1's hover readout with the crust's age

@@ -461,8 +461,12 @@ function progress(b, t) {
     if (b.retexturing) return;
     const H = b.hold;
     if (H.paused || H.wanted) {
-        const at = H.paused ? `Paused at ${H.heldAt.toFixed(0)} Myr` : `Pausing at the next frame (every ${SNAPSHOT_MYR} Myr)…`, of = b.going ? '' : ` of ${b.lengthMyr} Myr`;
-        status(H.paused ? `${at}${of} — ${b.holdForDetail ? 'while detail is added; it goes on once that is done' : 'add detail to any moment built, then Resume'}` : at, null);
+        // (the bar kept where it was, so nothing jumps)
+        const share = b.going ? (b.goUntil !== Infinity ? Math.min(1, (b.lastT - b.goFrom) / Math.max(1, b.goUntil - b.goFrom)) : null) : Math.min(1, b.lastT / b.lengthMyr);
+        const at = `${H.heldAt?.toFixed(0)}${b.going ? '' : ` of ${b.lengthMyr}`} Myr`;
+        status(!H.paused ? 'Pausing the history at its next frame, usually within a few seconds…'
+            : b.holdForDetail ? `History paused at ${at} while detail is added — it goes on once that is done.`
+            : `History paused at ${at}. Add detail to any moment built, then resume.`, share);
         return;
     }
     if (b.going) {
@@ -494,13 +498,15 @@ function holdChanged(b) {
 /** The Pause button: shown while the history runs (or runs on); Pause, Pausing… (a click calls it off), Resume. */
 function pauseButton(b) {
     const btn = ui.pause, H = b?.hold, on = !!b?.live && !!H && !b.error;
-    if (!showIf(btn, on)) return;
+    if (!on && document.activeElement === btn) ui.play.focus();          // (a focused button about to vanish: focus kept on the page)
+    if (!showIf(btn, on)) { ui.railBuilt.classList.remove('held'); return; }
     const state = H.paused ? 'paused' : H.wanted ? 'pausing' : 'running';
-    btn.textContent = state === 'paused' ? 'Resume' : state === 'pausing' ? 'Pausing…' : 'Pause';
-    btn.setAttribute('aria-pressed', String(state !== 'running'));
-    btn.title = state === 'paused' ? `Resume the history from ${H.heldAt.toFixed(0)} Myr (P)`
-        : state === 'pausing' ? 'Pausing at the next frame — click to keep it going (P)'
-        : 'Pause the history at its next frame: Add detail then has the GPU to itself. Resuming gives the same history (P)';
+    btn.textContent = state === 'paused' ? 'Resume history' : state === 'pausing' ? 'Pausing… (cancel)' : 'Pause history';
+    btn.classList.toggle('on', state !== 'running');
+    btn.title = state === 'paused' ? `Run the history on from ${H.heldAt.toFixed(0)} Myr (P)`
+        : state === 'pausing' ? 'Pausing at the next frame — click to keep it running (P)'
+        : 'Pause the simulation at its next frame, so Add detail has the GPU to itself. Resuming gives the same history (P)';
+    ui.railBuilt.classList.toggle('held', state === 'paused');
 }
 ui.pause.addEventListener('click', () => { const b = B; if (b?.live) { b.holdForDetail = false; b.hold.toggle(); } });
 /** Add detail starting or done: the history paused for it, and let go after (PAUSE_FOR_DETAIL) — never one you paused. */
@@ -961,7 +967,7 @@ function updateCard() {
     $('cardText').textContent = !frame ? 'A new world is starting…'
         : job ? (job.lookup ? `Bringing back the detail of ${job.frame.time.toFixed(0)} Myr from the finish cache…` : `Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`)
         : isDet ? 'This moment, sculpted in detail. Look around — Satellite and Climate show it at its detail — then export it as map files.'
-        : playing ? (computing && !b.hold.paused ? 'Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail.' : 'Pause on a moment you like, then add detail.')
+        : playing ? (computing && !b.hold.paused ? 'Computing the history — scrub through any of it as it fills in. Stop playback on a moment you like, then add detail.' : 'Stop playback on a moment you like, then add detail.')
         : 'This is a preview. Add detail sculpts it again, finely: rivers and lakes, glaciers, its own climate and the Satellite view — ready to export.';
     showIf($('detailGroup'), !!frame && !job);
     showIf($('waterGroup'), isDet && !job);
@@ -984,7 +990,8 @@ function updateCard() {
         ext.disabled = b.going && !b.wantGo;
         ext.classList.toggle('on', b.going);
         ext.textContent = !b.going ? 'Extend history' : b.wantGo ? 'Stop extending' : 'Stopping…';
-        ext.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.wantGo ? 'Stop the history here (you can extend it again later)' : 'Stopping once this piece of history is done';
+        ext.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.hold.paused && b.wantGo ? `End the extension at ${b.hold.heldAt.toFixed(0)} Myr, where it is paused (you can extend it again later)`
+            : b.wantGo ? 'Stop the history here (you can extend it again later)' : 'Stopping once this piece of history is done';
     }
     // (the collapsed bottom sheet: the moment and what is going on, in a line)
     $('sheetLine').textContent = b?.problem && !frame ? b.problem : !frame ? 'Starting a world…' : `${t} Myr · ${badge}` + (job ? ` · adding detail ${pct}%` : b?.live && b.hold.paused ? ` · history paused at ${b.hold.heldAt.toFixed(0)} Myr` : computing ? ' · computing the history…' : b?.going ? ' · extending the history…' : '');
@@ -1158,7 +1165,7 @@ function updateClimateUi() {
             if (!fin.peopleJob) setTimeout(() => runPeople(fin), 0);
         }
     } else if (frame && CLIMATE_SUB.has(view.layer) && !shown && !have) {
-        text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Pause on a moment to see its climate' : `No climate for ${t} Myr`;
+        text = job ? `Working out the climate of ${job.frame.time.toFixed(0)} Myr…` : playing ? 'Stop playback on a moment to see its climate' : `No climate for ${t} Myr`;
         act = job || playing ? null : 'Calculate';
     }
     chip.hidden = !text;
