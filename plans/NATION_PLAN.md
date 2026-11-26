@@ -537,9 +537,9 @@ Hazards are 1 − e^(−rate·25 yr), with the same hashed chances polity.js use
 ### 7.4a The seam with langspec (culture and language)
 
 Jackson (2026-11-26) put culture and language in a lane of their own, langspec: spread, evolution, differentiation and
-blending. The nation layer owns none of that model. §7.4's culture tree, assimilation rule and T_split are this
-plan's **placeholder** for it, kept only to say what the nation layer needs. Where langspec's model differs, langspec's
-model wins.
+blending. The nation layer owns none of that model. This plan's placeholder culture tree and
+assimilation rule are retired (§7.4); the nation layer reads langspec's model (CULTURE_PLAN) through the seam below.
+Where the two plans differ, CULTURE_PLAN wins.
 
 **What the nation layer reads from langspec,** each step, on the civ mesh (amended 2026-11-26 from langspec's report and
 Jackson's culture answers, §14):
