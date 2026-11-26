@@ -235,13 +235,28 @@ function shares(n, k) {
  * cell's width; what the cut takes is swept into the lagoon (its flood-tide delta), so nothing is made or lost. A lagoon too
  * small to take it is filled to the sea's level by it (back-barrier infill: a marsh, land). A lagoon whose
  * only way out is through ground the stage didn't raise (rock, an older fill) is left closed: the hydrology's.
+ * Lagoons behind lagoons chain: a pass at a time, the sea recomputed between, so a lagoon infilled (now fill itself) or
+ * opened (now sea) becomes the way out of the one behind it, until a pass changes nothing (2.5M 243751@430: a 76,000 km²
+ * lagoon behind a smaller one, closed in one pass).
  * What it skips: the tide itself (one range everywhere, tidalRangeM), the inlet's migration and closure by the drift, and
  * lagoons a cell or smaller (the mesh's own coast).
  * @param {Object} o { mesh, z (km, changed in place), zBefore (the ground before the stage), wasOcean (the open sea before it: the
- *                     world ocean of zBefore), ocean (the open sea now), cellKm2, edgeKm }
- * @returns {{pockets, cells, km2, opened, openedKm2, infilled, infilledKm2, cutKm3, closed, closedKm2}}
+ *                     world ocean of zBefore), oceanOf (z → the open sea of z), cellKm2, edgeKm }
+ * @returns {{pockets, cells, km2 (sealed before), opened, openedKm2, infilled, infilledKm2, cutKm3, closed, closedKm2 (left), passes}}
  */
-export function tidalInlets({ mesh, z, zBefore, wasOcean, ocean, cellKm2, edgeKm }, F) {
+export function tidalInlets({ mesh, z, zBefore, wasOcean, oceanOf, cellKm2, edgeKm }, F, maxPasses = 8) {
+    const first = inletPass({ mesh, z, zBefore, wasOcean, ocean: oceanOf(z), cellKm2, edgeKm }, F), out = { ...first, passes: 1 };
+    for (let r = first; out.passes < maxPasses && (r.opened || r.infilled); out.passes++) {
+        r = inletPass({ mesh, z, zBefore, wasOcean, ocean: oceanOf(z), cellKm2, edgeKm }, F);
+        for (const k of ['opened', 'openedKm2', 'infilled', 'infilledKm2']) out[k] += r[k];
+        out.cutKm3 = +(out.cutKm3 + r.cutKm3).toFixed(2);
+        out.closed = r.closed; out.closedKm2 = r.closedKm2;
+    }
+    return out;
+}
+
+/** One pass of tidalInlets against a fixed open sea. */
+function inletPass({ mesh, z, zBefore, wasOcean, ocean, cellKm2, edgeKm }, F) {
     const { adjOffset, adjList, numCells: n } = mesh, comp = new Int32Array(n).fill(-1), out = { pockets: 0, cells: 0, km2: 0, opened: 0, openedKm2: 0, infilled: 0, infilledKm2: 0, cutKm3: 0, closed: 0, closedKm2: 0 };
     const sealed = c => z[c] < 0 && wasOcean[c] && !ocean[c], laid = c => zBefore[c] < 0 && z[c] >= 0;
     const from = new Int32Array(n).fill(-1);

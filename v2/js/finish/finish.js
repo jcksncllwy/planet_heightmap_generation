@@ -510,7 +510,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         lap('erosion');
         census('after late erosion', ocean);
         // (a bay whose mouth the polish's deltas filled keeps its tidal inlet: finish-coast.js tidalInlets)
-        stats.inlets = tidalInlets({ mesh, z: C.z, zBefore: polishZ, wasOcean: oceanMask(mesh, polishZ), ocean: oceanMask(mesh, C.z), cellKm2, edgeKm: mesh.edgeKm }, F);
+        stats.inlets = tidalInlets({ mesh, z: C.z, zBefore: polishZ, wasOcean: oceanMask(mesh, polishZ), oceanOf: zz => oceanMask(mesh, zz), cellKm2, edgeKm: mesh.edgeKm }, F);
         if (stats.inlets.opened) ocean = oceanMask(mesh, C.z);
     }
 
@@ -527,7 +527,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     Object.assign(stats, { water: Hy.stats });
     if (EP?.playaYears > 0) stats.playaKm2 = playas(mesh, Hy.lake, Hy.lakeLevel, C.z, pet, pAnn, F, EP.playaYears, Water.SALT, Water.PAN);
     // (a bay the ponds' fill closed off keeps its tidal inlet too: finish-coast.js tidalInlets)
-    stats.inletsWater = tidalInlets({ mesh, z: C.z, zBefore: waterZ, wasOcean: oceanMask(mesh, waterZ), ocean: oceanMask(mesh, C.z), cellKm2, edgeKm: mesh.edgeKm }, F);
+    stats.inletsWater = tidalInlets({ mesh, z: C.z, zBefore: waterZ, wasOcean: oceanMask(mesh, waterZ), oceanOf: zz => oceanMask(mesh, zz), cellKm2, edgeKm: mesh.edgeKm }, F);
     // (the sea again, after the rivers' gorges)
     ocean = oceanMask(mesh, C.z);
     observe?.('after water', mesh, C.z, ocean, Hy.lake);

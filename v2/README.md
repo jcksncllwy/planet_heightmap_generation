@@ -926,7 +926,8 @@ depth-dependent diffusion for wave-dominated shelves, the form of Landlab's Simp
   2026-11-25: 2.5M 243751@430 |lat|<40 coast D 1.203 → 1.151, mature passive 1.222 → 1.124, Earth 1.04–1.06).
 - **Lagoons:** a bay whose mouth a fill closed (the polish's deltas, the water stage's ponds) keeps a tidal inlet through it,
   its throat sized by its tidal prism (Jarrett 1976: A = 1.576·10⁻⁴ P^0.95 m², `tidalRangeM` 1 m), the cut swept into the
-  lagoon; a lagoon too small to take the cut is filled by it to the sea's level (a marsh). finish-coast.js `tidalInlets`,
+  lagoon; a lagoon too small to take the cut is filled by it to the sea's level (a marsh). Lagoons behind lagoons chain, a pass
+  at a time with the sea recomputed between, until a pass changes nothing. finish-coast.js `tidalInlets`,
   `stats.inlets` / `stats.inletsWater`.
 - **Solver:** RKL1 super-time-stepping (Meyer, Balsara & Aslam 2012), flux-form, so the sea's sediment is conserved to float
   rounding (`marineDriftKm3` in each rung's stats). It works only cells above the waves' reach on the mesh (exchange per span
