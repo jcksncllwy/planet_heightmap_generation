@@ -2,6 +2,8 @@
 // page stays responsive, can show how far it has got, and holds a long history in a third of the memory). Same code, same inputs: the same history as on the page.
 // It keeps its world afterwards: {type: 'more', untilMyr} runs the history on from where it stopped (simulate's resume —
 // the same history as one long run) and streams those frames too, then answers {type: 'more-done'} (Evolution's "Keep going").
+// {type: 'hold', ask: 'pause' | 'resume' | 'end'} pauses either run at its next frame (app/history-hold.js: the same
+// history, paused or not); it answers {type: 'held', wanted, heldAt} at each change.
 // Where it can start workers of its own, a few helpers (app/helper-pool.js) take the pieces of the work that do not depend
 // on one another — the start world's layout attempts, each rift's junctions — side by side: the same history, sooner.
 
@@ -16,6 +18,7 @@ import { HISTORY_CODE } from './history-code.js';
 import { historyKey, mathFingerprint, gpuFingerprint } from './history-key.js';
 import { HistoryUpload } from './history-upload.js';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
+import { HistoryHold, runHeld } from './history-hold.js';
 
 const SCENE_LISTS = { terrain: TERRAIN_SCENES };
 
@@ -34,8 +37,10 @@ const send = frame => {
     if (upload && Math.abs(frame.time / grid - Math.round(frame.time / grid)) < 1e-6) upload.frame(packed);    // (before the arrays go)
     self.postMessage({ type: 'frame', frame: packed }, transfer);
 };
-// (with helpers, or right here — the same history either way)
-const run = (world, opts) => simulate(world, opts, helpers);
+// (with helpers, or right here — the same history either way; paused at a frame when the page asks — the same history too)
+const hold = new HistoryHold();
+hold.on(h => self.postMessage({ type: 'held', wanted: h.wanted, heldAt: h.heldAt }));
+const run = (world, opts) => runHeld((w, o) => simulate(w, o, helpers), world, opts, hold);
 
 async function helpersFor(simMesh) {
     if (helpers || typeof Worker === 'undefined') return helpers;
@@ -47,14 +52,15 @@ async function helpersFor(simMesh) {
 const restHelpers = () => { if (small && helpers) { helpers.terminate(); helpers = null; } };
 
 self.onmessage = async ({ data }) => {
+    if (data.type === 'hold') { if (['pause', 'resume', 'end'].includes(data.ask)) hold[data.ask](); return; }          // (at any time: a run under way waits between its steps)
     try {
         if (data.type === 'more') {
-            const { world, scene, snapshotEveryMyr } = kept, started = performance.now();
+            const { world, scene, snapshotEveryMyr } = kept, started = performance.now(), heldBefore = hold.heldMs;
             await helpersFor(world.mesh);
             const { steps } = await run(world, { untilMyr: data.untilMyr, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
             restHelpers();
             upload?.done({ time: world.time, steps, stopped: false });
-            self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started, uploadMs: upload?.ms ?? 0 });
+            self.postMessage({ type: 'more-done', steps, time: world.time, ms: performance.now() - started - (hold.heldMs - heldBefore), uploadMs: upload?.ms ?? 0 });
             return;
         }
         const { list, sceneId, seed, mesh, snapshotEveryMyr, heights = {}, ending = 'none', start = {}, lengthMyr = null } = data;
@@ -73,13 +79,13 @@ self.onmessage = async ({ data }) => {
         grid = world.config.stepGridMyr;
         if (key) self.postMessage({ type: 'cache', key, code: HISTORY_CODE });
         packMs = 0;
-        const started = performance.now();
+        const started = performance.now(), heldBefore = hold.heldMs;
         const { steps, stopped } = await run(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: send, keepFrames: false });
         kept = { world, scene, snapshotEveryMyr };
         const helperCount = helpers?.size ?? 0;
         restHelpers();
         upload?.done({ time: world.time, steps, stopped });
-        self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started, packMs, uploadMs: upload?.ms ?? 0, helpers: helperCount });
+        self.postMessage({ type: 'done', steps, stopped, untilMyr, time: world.time, ms: performance.now() - started - (hold.heldMs - heldBefore), packMs, uploadMs: upload?.ms ?? 0, helpers: helperCount });
     } catch (err) {
         self.postMessage({ type: 'error', message: err.stack ?? String(err) });
     }

@@ -285,6 +285,17 @@
 .evo-status {
     font-size: 12px; color: #9ab; margin: -4px 0 12px; line-height: 1.5;
 }
+/* Pause: beside the history's progress (while it runs, or runs on) */
+.evo-status { display: flex; align-items: flex-start; gap: 8px; }
+.evo-status[hidden] { display: none; }
+.evo-status-text { flex: 1; min-width: 0; }
+.evo-status-btn {
+    flex: none; padding: 3px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; line-height: 1.4;
+    border: 1px solid rgba(100,160,255,0.35); background: rgba(40,60,120,0.4); color: #cde;
+}
+.evo-status-btn:hover { filter: brightness(1.2); }
+.evo-status-btn[aria-pressed="true"] { border-color: rgba(255,170,90,0.5); background: rgba(130,70,20,0.6); color: #fdb; }
+.evo-status-btn[hidden] { display: none; }
 .evo-status .bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); margin-top: 4px; overflow: hidden; }
 .evo-status .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #36c, #6af); width: 0; transition: width 0.3s; }
 #seedRow #seedCode { color: #cde; }

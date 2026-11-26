@@ -6,6 +6,7 @@ import { terrainConfig } from '../terrain/terrain-config.js';
 import { PackedFrame } from '../tectonics/frame-pack.js';
 import { historyEnding } from '../tectonics/ending.js';
 import { SMALL_DEVICE } from '../core/device.js';
+import { runHeld } from './history-hold.js';
 
 /**
  * @param {{list: string, scene: Object, heights?: Object, ending?: string, start?: Object, lengthMyr?: number, keep?: boolean}} which   the
@@ -16,23 +17,24 @@ import { SMALL_DEVICE } from '../core/device.js';
  *        multiple of the step grid, its frames through onFrame as before — the same history as one long run) and
  *        `close()` (lets its worker go); save: the worker saves the history to the machine's history cache as it builds it,
  *        where the dev server served the page (app/history-upload.js; ignored elsewhere), with `saveSpec` noted beside it,
- *        and `onCache({key, code})` is told its key
+ *        and `onCache({key, code})` is told its key; hold: an app/history-hold.js HistoryHold — the page pauses the run (and
+ *        its runs on) at a frame with it, and it tells the page where it is held; the same history, paused or not
  * @param {(frame, index: number) => void} [onFrame]   each frame as it arrives (the Evolution page shows the planet as it builds)
  * @param {AbortSignal} [signal]   aborts the run (its worker is stopped; the promise rejects with an AbortError)
  * @returns {Promise<{frames: Object[], steps: number, stopped: boolean, complete: boolean}>}  stopped: it reached its
  *          ending; complete: it ran as far as a history may (so a longer run would not find more)
  */
-export function runHistory({ list, scene, heights = {}, ending = 'none', start = {}, lengthMyr = null, keep = false, save = false, saveSpec = null, onCache = null }, simMesh, seed, snapshotEveryMyr, onProgress = () => {}, onFrame = null, signal = null) {
+export function runHistory({ list, scene, heights = {}, ending = 'none', start = {}, lengthMyr = null, keep = false, save = false, saveSpec = null, onCache = null, hold = null }, simMesh, seed, snapshotEveryMyr, onProgress = () => {}, onFrame = null, signal = null) {
     if (typeof Worker === 'undefined') {
         const world = scene.build(simMesh, seed, start);
         world.config.heights = terrainConfig(heights);
         const { untilMyr, stopAt } = historyEnding(lengthMyr ?? scene.maxMyr, ending, world.config);
         let n = 0;
         const each = onFrame ? f => onFrame(f, n++) : null;
-        return simulate(world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }).then(r => {
+        return runHeld(simulate, world, { untilMyr, stopAt, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }, hold).then(r => {
             const out = { ...r, complete: !r.stopped && ending !== 'none', time: world.time };
             if (keep) {
-                out.more = async to => { const m = await simulate(world, { untilMyr: to, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }); out.frames.push(...m.frames); return { steps: m.steps, time: world.time }; };
+                out.more = async to => { const m = await runHeld(simulate, world, { untilMyr: to, resume: true, drive: w => scene.drive(w), snapshotEveryMyr, onFrame: each }, hold); out.frames.push(...m.frames); return { steps: m.steps, time: world.time }; };
                 out.close = () => {};
             }
             return out;
@@ -41,18 +43,22 @@ export function runHistory({ list, scene, heights = {}, ending = 'none', start =
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL('./history-worker.js', import.meta.url), { type: 'module' }), frames = [];
         let moreJob = null, dead = null;             // (a run-on under way: its promise's resolve / reject; the worker's end)
-        const fail = err => { dead = err; worker.terminate(); if (moreJob) { moreJob.reject(err); moreJob = null; } else reject(err); };
+        // (the page's pause, passed on to the worker, which says where it holds; once the worker is gone, nothing is held)
+        const letHoldGo = () => { if (hold) { hold.relay = null; hold.mirror({ wanted: false, heldAt: null }); } };
+        if (hold) hold.relay = ask => worker.postMessage({ type: 'hold', ask });
+        const fail = err => { dead = err; worker.terminate(); letHoldGo(); if (moreJob) { moreJob.reject(err); moreJob = null; } else reject(err); };
         worker.onmessage = ({ data }) => {
             if (data.type === 'frame') { const frame = new PackedFrame(data.frame); frames.push(frame); onProgress(frame.time); onFrame?.(frame, frames.length - 1); }
             else if (data.type === 'done') {
                 const out = { frames, steps: data.steps, stopped: data.stopped, complete: !data.stopped && ending !== 'none', time: data.time, ms: data.ms, packMs: data.packMs, uploadMs: data.uploadMs };
-                if (!keep) worker.terminate();
+                if (!keep) { worker.terminate(); letHoldGo(); }
                 else {
                     out.more = untilMyr => dead ? Promise.reject(dead) : new Promise((res, rej) => { moreJob = { resolve: res, reject: rej }; worker.postMessage({ type: 'more', untilMyr }); });
-                    out.close = () => worker.terminate();
+                    out.close = () => { worker.terminate(); letHoldGo(); };
                 }
                 resolve(out);
             } else if (data.type === 'cache') onCache?.({ key: data.key, code: data.code });
+            else if (data.type === 'held') hold?.mirror(data);
             else if (data.type === 'more-done') { const job = moreJob; moreJob = null; job?.resolve({ steps: data.steps, time: data.time, ms: data.ms }); }
             else fail(new Error(`history worker: ${data.message}`));
         };

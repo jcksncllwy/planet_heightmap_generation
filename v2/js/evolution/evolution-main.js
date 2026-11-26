@@ -19,6 +19,7 @@ import { colorByPlate } from '../view/palettes.js';
 import { GlobeView } from '../app/globe-view.js';
 import { drawGraticule } from '../app/overlays.js';
 import { runHistory } from '../app/history-runner.js';
+import { HistoryHold } from '../app/history-hold.js';
 import { TERRAIN_SCENES } from '../tectonics/scenarios/terrain-scenes.js';
 import { ENDINGS } from '../tectonics/ending.js';
 import { TECTONICS } from '../tectonics/config.js';
@@ -58,7 +59,7 @@ const SAVE_HISTORY = new URLSearchParams(location.search).get('save') !== '0';
 
 const $ = id => document.getElementById(id);
 const ui = { canvas: $('canvas'), map: $('mapCanvas'), cont: $('sCont'), water: $('sWater'), len: $('sLen'), ending: $('ending'), sim: $('simCells'), terrain: $('terrainCells'),
-    seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
+    seed: $('seedCode'), build: $('generate'), status: $('buildStatus'), statusText: $('buildStatusText'), pause: $('historyPause'), timeline: $('timeline'), play: $('playBtn'), time: $('timeSlider'),
     timeLabel: $('timeLabel'), rate: $('rate'), extend: $('extendBtn'), hover: $('hoverInfo'), panel: $('ui'), stats: $('stats'), info: $('info'),
     railBuilt: $('railBuilt'), railShown: $('railShown'), ticks: $('timeTicks'), marks: $('detailMarks'), quality: $('quality'), world: $('worldSection'), tmp: $('sTmp'), prc: $('sPrc') };
 
@@ -161,6 +162,10 @@ let linkedDetail = url.get('detail') != null && Number.isFinite(Number(url.get('
 // Keep going: the history runs on in pieces this long, until stopped (a multiple of the step grid and of the snapshot
 // interval — pieces of the one history, the same as a single run: tectonics/simulate.js, resume)
 const GO_PIECE_MYR = 20;
+// Add detail pauses the history while it runs and lets it go on once done (only a history the page paused itself: one
+// you paused stays paused). Off: pausing is yours alone (the Pause button beside the history's progress). An open
+// question for Jackson (histpause, 2026-11-26); measured in the lane's report.
+const PAUSE_FOR_DETAIL = false;
 // …and stops for good when the history holds this much (a frame, packed, is ~24–28 bytes a plate cell: ~0.1 GB per
 // 1000 Myr at 40K) — some 13,000 Myr at 40K on a desktop, 7,000 Myr at 20K on a phone
 const HISTORY_BYTES = IS_TOUCH ? 400e6 : 1.5e9, FRAME_BYTES_PER_CELL = 28;
@@ -281,10 +286,12 @@ async function build() {
     const b = B = { heights, controller: new AbortController(), player: null, frames: [], simMesh: null, simCells, tMesh: null, raster: null, live: true, started: performance.now(), endMyr: len, error: null, lengthMyr: len, doneText: null,
         climates: new Map(), climateJob: null, problem: null,         // (climates: frame → {tMesh, data}, while this history is open)
         run: null, going: false, wantGo: false, moreTo: linkedMore,        // (keep going: the history's run, kept to run on)
+        hold: new HistoryHold(), heldSince: 0, heldMs: 0, lastT: 0, holdForDetail: false,   // (Pause: app/history-hold.js; the time held, left out of the timings)
         finishes: new Map(), finishJob: null, finishNote: null,           // (finishes: frame → {cells, raster, secs, seen} — the detailed moments kept)
         known: null, linked: null,                                      // (known: the moments the finish cache holds at the page's settings — knownDetail)
         restore: linkedDetail };                                        // (a link's detailed moment, to bring back from the finish cache)
     linkedMore = 0; linkedDetail = null;
+    b.hold.on(() => { if (B === b) holdChanged(b); });
     saveUrl(); labels();
     ui.world.open = false;                                                            // (the World section folds to its summary)
     // (watching it build is playing it from the start, at the speed chosen — held at the newest moment built)
@@ -303,7 +310,7 @@ async function build() {
     try {
         b.simMesh = simMeshOf(simCells);
         const meshReady = terrainMeshAsync(terrainCells);
-        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, heights, lengthMyr: len, keep: true,
+        const run = runHistory({ list: 'terrain', scene: SCENE, ending, start: { continentalFraction: cont }, heights, lengthMyr: len, keep: true, hold: b.hold,
             save: SAVE_HISTORY, saveSpec: { cont: Math.round(cont * 100), water, sim: simCells, meshSeed: MESH_SEED, lengthMyr: len, ending, url: location.href }, onCache: c => { b.cache = { ...c, cont: Math.round(cont * 100), water, ending }; } }, b.simMesh, seed, SNAPSHOT_MYR,
             t => { if (B === b) progress(b, t); },
             frame => { if (B !== b) return; if (!b.frames.length) console.info(`[evolution] first frame simulated at ${((performance.now() - b.started) / 1000).toFixed(1)} s`); b.frames.push(frame); b.player?.addFrame(frame); if (frame.time > Number(ui.time.max)) setScale(frame.time); rail();
@@ -319,10 +326,11 @@ async function build() {
         const done = await run;
         if (B !== b) return;
         b.run = done; b.simMyr = done.time; b.steps = done.steps;
+        b.hold.resume();                                                 // (a pause asked at its last frame: nothing left to hold)
         b.live = false; b.endMyr = b.frames.at(-1).time;
         setScale(b.endMyr); rail();
         b.player.finish();
-        const secs = (performance.now() - b.started) / 1000, stop = ENDINGS.find(e => e.id === ending);
+        const secs = runSecs(b, b.started), stop = ENDINGS.find(e => e.id === ending);
         console.info(`[evolution] history: ${(done.ms / 1000).toFixed(1)} s in the worker, of which packing frames ${(done.packMs / 1000).toFixed(1)} s` + (b.cache ? `, handing them to the history cache ${(done.uploadMs / 1000).toFixed(2)} s` : ''));
         b.doneText = `${b.endMyr.toFixed(0)} Myr of history in ${secs.toFixed(0)} s · ${done.steps} steps` + (ending === 'none' ? '' : done.stopped ? ` — ends as ${stop.phrase}` : ` — did not reach ${stop.phrase} in time`);
         if (!b.retexturing) status(b.doneText, 1);
@@ -347,7 +355,7 @@ async function build() {
 async function keepGoing(b, until = Infinity) {
     if (B !== b || !b.run?.more || b.going) return;
     b.going = true; b.wantGo = true; b.live = true;
-    b.goFrom ??= b.simMyr; b.goUntil = until; b.goStarted = performance.now();      // (from: where the history first ended)
+    b.goFrom ??= b.simMyr; b.goUntil = until; b.goStarted = performance.now(); b.heldMs = 0;      // (from: where the history first ended)
     updateCard();
     if (until === Infinity) { playTime = builtTo(); ui.time.value = playTime; setPlaying(true); dirty = true; }   // (watch it go on)
     progress(b, b.simMyr);
@@ -368,10 +376,11 @@ async function keepGoing(b, until = Infinity) {
         console.error(err);
     }
     if (B !== b) return;
+    b.hold.resume();                                                     // (a pause asked as it stopped: the next Extend runs at once)
     b.going = false; b.wantGo = false; b.live = false; b.endMyr = builtTo();
     setScale(b.endMyr); rail();
     b.player?.finish();
-    b.goSecs = (b.goSecs ?? 0) + (performance.now() - b.goStarted) / 1000;
+    b.goSecs = (b.goSecs ?? 0) + runSecs(b, b.goStarted);
     if (b.full) { b.run.close(); b.run = null; }                             // (its world goes too)
     b.doneText = failed ? `Could not extend the history: ${String(failed.message).split('\n')[0]} — ${b.endMyr.toFixed(0)} Myr of history`
         : `${b.endMyr.toFixed(0)} Myr of history · ${b.steps} steps — extended from ${b.goFrom.toFixed(0)} Myr (${b.goSecs.toFixed(0)} s)` +
@@ -448,19 +457,57 @@ function show(t) {
 const showMap = () => globe.setMap(view.mode === 'map' ? ui.map : null, view.centerLon);
 
 function progress(b, t) {
+    b.lastT = t;
     if (b.retexturing) return;
+    const H = b.hold;
+    if (H.paused || H.wanted) {
+        const at = H.paused ? `Paused at ${H.heldAt.toFixed(0)} Myr` : `Pausing at the next frame (every ${SNAPSHOT_MYR} Myr)…`, of = b.going ? '' : ` of ${b.lengthMyr} Myr`;
+        status(H.paused ? `${at}${of} — ${b.holdForDetail ? 'while detail is added; it goes on once that is done' : 'add detail to any moment built, then Resume'}` : at, null);
+        return;
+    }
     if (b.going) {
-        const secs = (performance.now() - b.goStarted) / 1000, linked = b.goUntil !== Infinity;
+        const secs = runSecs(b, b.goStarted), linked = b.goUntil !== Infinity;
         status(linked ? `Running on to ${b.goUntil} Myr, as in the link… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s` : `Extending the history… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s (from ${b.goFrom.toFixed(0)} Myr)`,
             linked ? Math.min(1, (t - b.goFrom) / Math.max(1, b.goUntil - b.goFrom)) : null);
         return;
     }
-    const target = b.lengthMyr, secs = (performance.now() - b.started) / 1000;
+    const target = b.lengthMyr, secs = runSecs(b, b.started);
     status(t <= target ? `Simulating the history… ${t.toFixed(0)} of ${target} Myr · ${secs.toFixed(0)} s` : `Running on until it ends as asked… ${t.toFixed(0)} Myr · ${secs.toFixed(0)} s`, Math.min(1, t / target));
 }
 function status(text, share) {
     ui.status.hidden = false;
-    ui.status.innerHTML = `${text}${share === null ? '' : `<div class="bar"><i style="width:${(100 * share).toFixed(1)}%"></i></div>`}`;
+    ui.statusText.innerHTML = `${text}${share === null ? '' : `<div class="bar"><i style="width:${(100 * share).toFixed(1)}%"></i></div>`}`;
+}
+/** Seconds since `from`, less the time the history was held (Pause) since then: the time it took to run. */
+const runSecs = (b, from) => (performance.now() - from - b.heldMs - (b.hold.paused ? performance.now() - b.heldSince : 0)) / 1000;
+
+// ── Pause: the history (or its run on, Extend history) held at a frame, the GPU and the CPU left to Add detail ──
+/** The hold changed (asked, taken, let go): its time kept, the status and the button. */
+function holdChanged(b) {
+    const H = b.hold;
+    if (H.paused && !b.heldSince) b.heldSince = performance.now();
+    if (!H.paused && b.heldSince) { b.heldMs += performance.now() - b.heldSince; b.heldSince = 0; }
+    if (!H.wanted && !H.paused) b.holdForDetail = false;
+    if (b.live) progress(b, b.lastT);
+    updateCard();
+}
+/** The Pause button: shown while the history runs (or runs on); Pause, Pausing… (a click calls it off), Resume. */
+function pauseButton(b) {
+    const btn = ui.pause, H = b?.hold, on = !!b?.live && !!H && !b.error;
+    if (!showIf(btn, on)) return;
+    const state = H.paused ? 'paused' : H.wanted ? 'pausing' : 'running';
+    btn.textContent = state === 'paused' ? 'Resume' : state === 'pausing' ? 'Pausing…' : 'Pause';
+    btn.setAttribute('aria-pressed', String(state !== 'running'));
+    btn.title = state === 'paused' ? `Resume the history from ${H.heldAt.toFixed(0)} Myr (P)`
+        : state === 'pausing' ? 'Pausing at the next frame — click to keep it going (P)'
+        : 'Pause the history at its next frame: Add detail then has the GPU to itself. Resuming gives the same history (P)';
+}
+ui.pause.addEventListener('click', () => { const b = B; if (b?.live) { b.holdForDetail = false; b.hold.toggle(); } });
+/** Add detail starting or done: the history paused for it, and let go after (PAUSE_FOR_DETAIL) — never one you paused. */
+function holdForDetail(b, on) {
+    if (!PAUSE_FOR_DETAIL || B !== b) return;
+    if (on && b.live && !b.hold.wanted && !b.hold.paused) { b.holdForDetail = true; b.hold.pause(); }
+    else if (!on && b.holdForDetail) { b.holdForDetail = false; b.hold.resume(); }
 }
 
 // ── the timeline's scale: the whole history from the start (not only what is built), what is built so far, the moment shown ──
@@ -726,6 +773,7 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
     const started = performance.now(), done = new Map(FINISH_STAGES);
     b.finishNote = null; b.finishOk = false;
     b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), lookup: cachedOnly };
+    if (!cachedOnly) holdForDetail(b, true);
     updateClimateUi();
     const slim = Object.fromEntries(FRAME_FIELDS.map(k => [k, frame[k]]));
     slim.plates = frame.plates.map(p => p && { quat: p.quat });
@@ -778,7 +826,7 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
         else if (err.name !== 'AbortError') console.error(err);
     } finally {
         b.player?.wake();
-        if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; updateClimateUi(); }
+        if (B === b && b.finishJob?.frame === frame) { b.finishJob = null; dirty = true; holdForDetail(b, false); updateClimateUi(); }
     }
 }
 
@@ -913,7 +961,7 @@ function updateCard() {
     $('cardText').textContent = !frame ? 'A new world is starting…'
         : job ? (job.lookup ? `Bringing back the detail of ${job.frame.time.toFixed(0)} Myr from the finish cache…` : `Adding detail to ${job.frame.time.toFixed(0)} Myr: ${job.stage}…`)
         : isDet ? 'This moment, sculpted in detail. Look around — Satellite and Climate show it at its detail — then export it as map files.'
-        : playing ? (computing ? 'Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail.' : 'Pause on a moment you like, then add detail.')
+        : playing ? (computing && !b.hold.paused ? 'Computing the history — scrub through any of it as it fills in. Pause on a moment you like, then add detail.' : 'Pause on a moment you like, then add detail.')
         : 'This is a preview. Add detail sculpts it again, finely: rivers and lakes, glaciers, its own climate and the Satellite view — ready to export.';
     showIf($('detailGroup'), !!frame && !job);
     showIf($('waterGroup'), isDet && !job);
@@ -929,6 +977,7 @@ function updateCard() {
         : stale && !job ? 'Detailed with the Temperature and Precipitation as they were — its rivers, ice and Satellite view too.'
         : b?.finishNote && (isDet || !b.finishOk) ? b.finishNote : null;
     if (showIf($('cardNote'), !!note)) $('cardNote').textContent = note;
+    pauseButton(b);
     // Extend history: once the history has reached its end — Stop while it runs on, Stopping… until its piece is done
     const ext = ui.extend;
     if (showIf(ext, !!b?.run?.more)) {
@@ -938,7 +987,7 @@ function updateCard() {
         ext.title = !b.going ? 'Run the history on from where it ended, for as long as you like' : b.wantGo ? 'Stop the history here (you can extend it again later)' : 'Stopping once this piece of history is done';
     }
     // (the collapsed bottom sheet: the moment and what is going on, in a line)
-    $('sheetLine').textContent = b?.problem && !frame ? b.problem : !frame ? 'Starting a world…' : `${t} Myr · ${badge}` + (job ? ` · adding detail ${pct}%` : computing ? ' · computing the history…' : b?.going ? ' · extending the history…' : '');
+    $('sheetLine').textContent = b?.problem && !frame ? b.problem : !frame ? 'Starting a world…' : `${t} Myr · ${badge}` + (job ? ` · adding detail ${pct}%` : b?.live && b.hold.paused ? ` · history paused at ${b.hold.heldAt.toFixed(0)} Myr` : computing ? ' · computing the history…' : b?.going ? ' · extending the history…' : '');
     // Satellite comes with detail: its tab locked on previews
     const satOk = !!(frame && b?.finishes.get(frame)?.climate?.raster?.sat);
     document.querySelector('#mapTabs [data-layer="satellite"]').classList.toggle('locked', !satOk);
@@ -1230,11 +1279,12 @@ ui.extend.addEventListener('click', () => {
     const b = B;
     if (!b?.run?.more) return;
     if (!b.going) keepGoing(b);
-    else { b.wantGo = false; b.goUntil = Infinity; updateCard(); }
+    else { b.wantGo = false; b.goUntil = Infinity; b.hold.end(); updateCard(); }     // (paused: it ends at the frame it is held at)
 });
 addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea') || !$('exportOverlay').classList.contains('hidden') || !$('tutorialOverlay').classList.contains('hidden')) return;
     if (e.code === 'Space') { e.preventDefault(); ui.play.click(); }
+    if (e.code === 'KeyP' && !e.metaKey && !e.ctrlKey && !e.altKey && !ui.pause.hidden) { e.preventDefault(); ui.pause.click(); }
 });
 
 // ── view options (V1's) ──
