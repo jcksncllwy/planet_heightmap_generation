@@ -1602,10 +1602,14 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
     behind it pushes it along its heading): the tip's e-folding time is reported.
   - "No suction → no motion" is "no drive → no motion": suction off and the ocean all one age.
   - "After contact the two keep converging, slowing, and weld once the seam stalls" moved from Phase 5 to Phase 7c's India.
-    In Phase 5 nothing takes the overlap up (underthrusting is Phase 7c), so India stacks `sutureStackKm` deep on Asia and
-    welds stacked while still converging. The stack weld is a guard against a state Earth cannot reach, not the end of a
-    collision. With every event on, most welds stall first (Phase 7c's India; 27 of the planet's 34 welds on 3 seeds), but
-    the guard still fires in 7 (a named gap, under the viscous term below).
+    In Phase 5 nothing takes the overlap up (underthrusting is Phase 7c), so India rides on over Asia until the seam
+    stalls. A pair welds only once it has stalled: the two have stopped moving against each other, every direction
+    (lane stackweld, 2026-11-26). The stack weld (`sutureStackKm`, 500 km of land on land, welded converging or not) is
+    deleted. On the planet it fired in 7 of 34 welds, and the diagnosis found no stack: area over the across-line front
+    read 460–500 km off strips 1–1.5 cells deep along contacts 3–4× that front, or off overlaps nothing converted
+    because the centroid's closing along the centre line read ≤ 0 while the face closed at 1–3.5 cm/yr. The collision
+    is now metered at its face (`collision.js` faceSweep): each face cell's closing along its own normal, times its
+    width, is the area swept, which the shortening, underthrusting and shortening ahead take up.
   - Phase 5's events-off India crosses Asia: no events and an overlap nothing takes up, which need not persist.
 
 ## A collision ends when its belt holds the pair (2026-11-09, lane weld)
@@ -1656,8 +1660,8 @@ Jackson's option A (2026-11-24). It changes every history's collisions. The sect
   overlap (`sutureOverlapKm2`), and the `overdue` weld after 120 Myr locked (`sutureLockMaxMyr`). Those were hand-set
   lock times. After the cores meet, the torque balance alone sets how fast the pair slows: the forces driving the two
   against the collision's viscous resistance. India has run 2400–3200 km into Asia since ~50 Ma and still converges
-  (Molnar & Stock 2009; van Hinsbergen et al. 2012). Kept: the stack weld (`sutureStackKm`, 500 km deep), the stall
-  give-up (`sutureStallGiveUpMyr`) and the gap stall (`sutureGapStallMyr`). The stack weld overrides the stall: land stacked that deep welds at once, stalled or not, converging or not (`collision.js:208`, `wouldWeld = (ready && closed && !sealing) || stacked`).
+  (Molnar & Stock 2009; van Hinsbergen et al. 2012). Kept: the stall give-up (`sutureStallGiveUpMyr`) and the gap stall
+  (`sutureGapStallMyr`). The stack weld (`sutureStackKm`) is deleted (lane stackweld): a weld is a stalled seam only.
 - **India** (Phase 5): contact at 50 Myr. Closing slows from 8.7 to ~2 cm/yr within ~12 Myr, then falls below the
   stall rate. The weld comes ~60 Myr after contact, after 1,050 km of shortening (main welded it at the 600 km lock). The upper plate's indentation at the weld is 946 / 736 / 631 km in Phase 5's scenes, inside Earth's 600–1,100 km (was 736 / 420 / 736). The
   area swept across the front matches the overlap the weld absorbs (1.46 against 1.22 Mkm²). Shortening stays short

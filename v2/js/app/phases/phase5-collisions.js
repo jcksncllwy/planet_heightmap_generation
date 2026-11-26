@@ -19,7 +19,7 @@ const REDRAW_SHOWN_MYR = 6;             // the before/after overlay stays up thi
 export const NO_WINGS = onlyMechanisms();          // collisions alone: no wings, no arcs, and nothing of Phases 6–7
 /** Phase 5's mechanisms for a scene: collisions alone — and for India, its continent going under Asia (underthrusting,
  *  Phase 7c's), so that the overlap is taken up as it is on Earth (Greater India went under Tibet) and the collision ends
- *  when the seam stalls, not when the overlap has stacked sutureStackKm deep (lane gpelock 2026-11-25, sessrumnir's ruling). */
+ *  when the seam stalls (lane gpelock 2026-11-25, sessrumnir's ruling; the stack weld itself deleted, lane stackweld 2026-11-26). */
 export const phase5Mechanisms = id => (id === 'india' ? { ...NO_WINGS, ...mechanismsOn('underthrust') } : NO_WINGS);
 const TUNABLES = [
     { id: 'sutureStallCmYr', label: 'Plates weld once their seam closes slower than', min: 0.1, max: 3, step: 0.1, unit: ' cm/yr' },
@@ -58,7 +58,7 @@ const SCENES = [
             'India does not stop at contact: the collision resists only as much as the belt’s weight allows, so it keeps converging (~10 cm/yr at contact, 4–6 cm/yr 10 Myr later), 1100–1500 km of shortening. Here nothing takes the overlap up (underthrusting is Phase 7c), so within 10–30 Myr India lies so deep on Asia that the two weld stacked, still converging (the real India has gone 2400–3200 km into Asia since ~50 Ma, and still converges).',
             'At the suture the outlines are redrawn: Asia’s coast is indented around India’s nose, the flanks are squeezed outward, India sits in the notch, and narrow sea caught between the two closes (a large enclosed sea would survive). The before/after overlay (red = land gone, green = land gained) shows the change for a few Myr.',
             'After the suture there is one plate, no magenta overlap, a suture belt (Weakness layer) along the closed seam, and the merged plate moves as one.',
-            'The event log below reads like WBP’s: “India meets Asia”, then “sutured … km front, … km of shortening … — stacked one on the other”.',
+            'The event log below reads like WBP’s: “India meets Asia”, then “sutured … km front, … km of shortening … — the seam had stalled”.',
         ],
     },
     {

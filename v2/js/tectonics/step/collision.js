@@ -40,9 +40,10 @@ import { cellRockKm3, plateRockKm3 } from './crust-ledger.js';
  * @property {number} startedAt  @property {number} lastActive   Myr
  * @property {number} shorteningKm      convergence absorbed across the seam so far
  * @property {number} frontKm           length of the collision front now
- * @property {number} closingCmYr       convergence rate across the seam now
+ * @property {number} closingCmYr       convergence rate across the seam now: the mean closing over its converging face (faceSweep)
+ * @property {number} slideCmYr         the two plates' relative speed along the face, every direction (faceSweep)
  * @property {number} meanRateCmYr      mean convergence rate since the collision began (what sets the belts' reach)
- * @property {number} stalledMyr        how long the seam has been closing slower than sutureStallCmYr
+ * @property {number} stalledMyr        how long the two have been moving against each other slower than sutureStallCmYr
  * @property {number} contactMyr        how long the two have been in contact, counting only steps they actually overlap
  * @property {number} cells             overlap cells now
  * @property {boolean} sutured
@@ -115,18 +116,28 @@ export function trackCollisions(world, dt) {
         rec.lastActive = time;
         rec.contactMyr += dt;
 
-        // convergence across the seam: the lower plate's velocity relative to the upper, along the line from
-        // the lower body to the upper body, at the centre of the overlap
+        // convergence across the seam: the lower plate's velocity relative to the upper, across the face where the two meet —
+        // each face cell's own normal (faceSweep). (Was: at the overlap's centre, along the line between the two plates' centres.
+        // Where a contact runs oblique to that line the two disagree: seed 12345 @262 read −1.3 to −2.9 cm/yr there while its face
+        // closed at +1.5 to +3.2, so nothing of the overlap was converted and it "stacked" — lane stackweld P1, 5 of 13 stack welds)
         const c = centroidOfCells(xyz, cells), cU = U.toWorld(U.capCenter[0], U.capCenter[1], U.capCenter[2], [0, 0, 0]), cL = L.toWorld(L.capCenter[0], L.capCenter[1], L.capCenter[2], [0, 0, 0]);
-        const n = tangentToward(c, cL, cU);
         const o = [L.omega[0] - U.omega[0], L.omega[1] - U.omega[1], L.omega[2] - U.omega[2]];
-        const closing = (o[1] * c[2] - o[2] * c[1]) * n[0] + (o[2] * c[0] - o[0] * c[2]) * n[1] + (o[0] * c[1] - o[1] * c[0]) * n[2];
+        const inOverlap = new Set(cells), face = faceSweep(world, U, L, cells, inOverlap, o, c);
+        // (no face — an overlap touching neither plate's own land — the centre line, as before)
+        const n = face?.normal ?? tangentToward(c, cL, cU);
+        const closing = face ? face.closing : (o[1] * c[2] - o[2] * c[1]) * n[0] + (o[2] * c[0] - o[0] * c[2]) * n[1] + (o[0] * c[1] - o[1] * c[0]) * n[2];
         rec.closingCmYr = closing / CM_PER_YR_TO_RAD_PER_MYR;
+        rec.slideCmYr = (face ? face.rel : Math.hypot(o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0])) / CM_PER_YR_TO_RAD_PER_MYR;
         if (rec.startedAt === time && rec.closingCmYr < 0 && cells.length * cellAreaKm2 / edgeKm <= config.collisionJitterFrontKm) { collisions.delete(key); continue; }   // parting plates one cell out of step: not a collision
         if (rec.announce) { rec.announce = false; world.log(EventKind.COLLISION, `${L.name} meets ${U.name}`, { upper: U.id, lower: L.id }); }
-        const km = Math.max(0, closing) * dt * PLANET_RADIUS_KM;
+        // (the shortening: the area the face swept this step over the face's converging length — the mean closing there × dt;
+        // and that area itself, in cells, is what the overlap gained this step and what underthrust and shortenAhead convert)
+        const km = face ? (face.convKm > 0 ? face.sweptKm2 * dt / face.convKm : 0) : Math.max(0, closing) * dt * PLANET_RADIUS_KM;
+        const sweptCells = face ? face.sweptKm2 * dt / cellAreaKm2 : km * Math.max(rec.frontKm, edgeKm) / cellAreaKm2;
         rec.shorteningKm += km;
-        rec.stalledMyr = rec.closingCmYr < config.sutureStallCmYr ? rec.stalledMyr + dt : 0;
+        // (stalled: the two have stopped moving against each other — every direction, not only across the seam: a pair still
+        // sliding past along its face is a transform, not one plate. Seed 2 @306 had welded "stalled" sliding at 1.7 cm/yr)
+        rec.stalledMyr = rec.slideCmYr < config.sutureStallCmYr ? rec.stalledMyr + dt : 0;
         rec.meanRateCmYr = rec.shorteningKm / Math.max(dt, time - rec.startedAt) / 10;          // km/Myr ÷ 10 = cm/yr
         // the force this collision has pressed its front with, over its record (torque-balance.js collisionRootKm): the held push
         // (frontPush, solved this step), at most the lithosphere's strength, while the seam closes faster than it welds at — the
@@ -159,32 +170,36 @@ export function trackCollisions(world, dt) {
             const major = rec.frontKm >= config.sutureMinContactKm, type = major ? OrogenyType.HIMALAYAN : OrogenyType.URAL;
             // an oblique collision takes much of its motion up as strike-slip along the seam: narrower belts
             const vx = o[1] * c[2] - o[2] * c[1], vy = o[2] * c[0] - o[0] * c[2], vz = o[0] * c[1] - o[1] * c[0];
-            const shape = beltShape(closing / Math.max(1e-12, Math.hypot(vx, vy, vz)), undefined, config);
+            const shape = beltShape(Math.max(0, vx * n[0] + vy * n[1] + vz * n[2]) / Math.max(1e-12, Math.hypot(vx, vy, vz)), undefined, config);
             // (under beltStrainRate, as far as the seam's shortening NOW strains the crust at that rate — the closing is the
             // normal component already, so no obliquity factor; under collisionVolume the consumed crust is the belt's thickening
             // — ops/thicken.js — so the belt itself adds none: it would count the same shortening twice)
             const live = config.beltStrainRate > 0, noThicken = !!config.collisionVolume;
             const upperWidth = live ? liveBeltWidthKm(major ? 'himalayan' : 'ural', km / dt, config) : beltWidthKm(major ? 'himalayan' : 'ural', rec.shorteningKm, rec.meanRateCmYr, config) * shape;
             const lowerWidth = live ? liveBeltWidthKm(major ? 'foreland' : 'ural', km / dt, config) : beltWidthKm(major ? 'foreland' : 'ural', rec.shorteningKm, rec.meanRateCmYr, config) * shape;
-            const shear = obliquityDeg([vx, vy, vz], n, c, closing);
+            const shear = obliquityDeg([vx, vy, vz], n, c, vx * n[0] + vy * n[1] + vz * n[2]);
             spreadBelt(U, mesh, uniq(upperFront), { type, widthKm: upperWidth, workKm: km, time, side: BeltSide.UPPER, shear, noThicken }, config);
             spreadBelt(L, mesh, uniq(lowerFront), { type, widthKm: lowerWidth, workKm: km, time, side: BeltSide.LOWER, shear, noThicken }, config);
         }
 
         // the lower plate's continent slides under the upper one: its land deep in the overlap is consumed, and the
         // upper plate's crust above it thickens (area → thickness: Tibet)
-        const underNow = underthrust(world, U, L, cells, rec, km);
+        const underNow = underthrust(world, U, L, cells, rec, sweptCells);
 
         // weld?
-        // once the seam has stalled: the two have stopped converging, and then they are one plate — or at once, if stacked (below).
-        // Nothing else ends a collision — no set shortening, contact time or overlap: after the cores meet the pair keeps converging for as long
+        // once the seam has stalled: the two have stopped moving against each other, and then they are one plate. Nothing else
+        // ends a collision — no set shortening, contact time or overlap: after the cores meet the pair keeps converging for as long
         // as the forces on the two drive it against the collision's resistance (torque-balance.js), slowing as that grows
         // (India has run 2400–3200 km into Asia since ~50 Ma and still converges at ~4 cm/yr: Molnar & Stock 2009, van
         // Hinsbergen et al. 2012) — the overlap meanwhile taken up as belt, thickening and underthrust crust
         // (…once one lies on the other at least sutureStallMinKm deep: by the shortening this pair has absorbed, or by the
-        // overlap itself — area over front — where the land stacked came otherwise: a third plate driving the two together, a
-        // collision handed on at a weld. Stalled, stacked that deep, they are one; merely touching, they are not)
-        const depthKm = cells.length * cellAreaKm2 / Math.max(rec.frontKm, edgeKm);
+        // overlap itself — its area over the face it meets along — where the land came otherwise: a collision handed on at a
+        // weld. Stalled, that deep, they are one; merely touching, they are not)
+        // (the stack weld is gone, lane stackweld 2026-11-26: "so much land stacked on land that the two are one", whatever their
+        // motion, was a guard, and on the planet it fired on area over the across-line front — 460–500 km read off strips one to
+        // one and a half cells deep along contacts 3–4× that front, still converging at 1.4–2.7 cm/yr — and on overlaps nothing
+        // converted while the face closed; the rest had stopped and weld here)
+        const depthKm = cells.length * cellAreaKm2 / Math.max(rec.frontKm, face?.lengthKm ?? 0, edgeKm);
         // (the seam stalls exactly when the belt holds the pair: the lock is a friction bounded by the belt's buoyancy —
         // torque-balance.js lockContacts — so a push short of it stops the two, below the stall rate, and one beyond it slides
         // on. Lane weld's sutureHoldGpe tested the same against the viscous lock, which only damped a push; it was retired with
@@ -204,29 +219,18 @@ export function trackCollisions(world, dt) {
         // (a seam that has stalled long has closed all it will: the pivot has done its work — what is left is a remnant sea)
         const closed = (rec.gapWidestKm ?? Infinity) <= config.sutureGapWidthKm || rec.stalledMyr >= config.sutureStallGiveUpMyr
             || time - (rec.gapShrankAt ?? time) >= config.sutureGapStallMyr;
-        // (so much land stacked on land that the two are one already: they weld now, whatever sea is left — a remnant — or
-        // whatever they ring; waiting would only stack them deeper. A GUARD, NOT PHYSICS: land lies 500 km deep on land only
-        // where nothing takes the overlap up — on Earth the lower plate's continent goes under (Greater India under Tibet), and a
-        // collision ends when its seam stalls, above. It still fires with underthrusting on: 7 of the planet's 34 welds on 3
-        // seeds (2/2/3; 0 of 43 before the front was measured across the line between the plates, lane gpelock P2), Phase 6's
-        // and 13's histories too, and every zipper weld (underthrust off). A named gap, lane gpelock 2026-11-25: report any
-        // history it fires in)
-        // (stacked: how deep, on average, the one lies on the other — the overlap left after this step's underthrusting over the
-        // front's length; an area alone would call a long front's single contact row "stacked")
-        const stacked = (cells.length - underNow) * cellAreaKm2 / Math.max(rec.frontKm, edgeKm) >= config.sutureStackKm;
         // (…but not while the two are still closing a sea the weld would seal: it waits for that sea's floor to go down)
-        // (taken only when it decides the weld — the seam closed, not stacked — once per sutureCheckMyr: a flood of
+        // (taken only when it decides the weld — the seam closed — once per sutureCheckMyr: a flood of
         // the pair's rasters, ~3 % of a history were it taken at every check)
         let sealing = false;
-        if (ready && closed && !stacked && rec.frontMaxKm >= config.sutureMinContactKm) {
+        if (ready && closed && rec.frontMaxKm >= config.sutureMinContactKm) {
             if (due || !(rec.trapAt >= (rec.checkedAt ?? -Infinity))) {
                 ({ km2: rec.trapKm2, closingCmYr: rec.trapClosingCmYr } = seaWeldWouldSeal(world, U, L));
                 rec.trapAt = time;
             }
             sealing = rec.trapKm2 > 0 && rec.trapClosingCmYr > config.sutureStallCmYr;
         } else rec.trapKm2 = rec.trapClosingCmYr = rec.trapAt = undefined;
-        // (stacked this deep, they are one already, converging or not)
-        const wouldWeld = ((ready && closed && !sealing) || stacked) && rec.frontMaxKm >= config.sutureMinContactKm;
+        const wouldWeld = ready && closed && !sealing && rec.frontMaxKm >= config.sutureMinContactKm;
         if (due) rec.checkedAt = time;
         // (a weld may close a ring round a sea: the sea is then sealed inside one plate, its floor foundering in time like any
         // margin's — step/subduction-init.js founderWithinPlates)
@@ -254,9 +258,9 @@ export function trackCollisions(world, dt) {
             rec.sutured = true;
             merged = true;
             inheritCollisions(collisions, U.id, L.id);
-            const why = stacked && !(ready && closed) ? 'stacked' : 'stalled';
+            const why = 'stalled';             // (the only way a pair welds; kept in the event for the tools that read it)
             world.log(EventKind.SUTURE, `${L.name} sutured to ${U.name} after ${(time - rec.startedAt).toFixed(0)} Myr: ${rec.frontKm.toFixed(0)} km front, ${rec.shorteningKm.toFixed(0)} km of shortening, ` +
-                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})${why === 'stacked' ? ` — stacked one on the other${Number.isFinite(rec.gapKm2) ? `, with ${(rec.gapKm2 / 1e6).toFixed(2)} Mkm² of sea still between them` : ''}` : ' — the seam had stalled'}`,
+                `outlines redrawn (indented up to ${result.maxIndentKm.toFixed(0)} km; ${result.landLostCells} cells of land absorbed into the belt${result.sealedCells ? `, ${result.sealedCells} cells of sea between them closed` : ''})} — the seam had stalled`,
                 { upper: U.id, lower: L.id, afterMyr: time - rec.startedAt, frontKm: rec.frontKm, shorteningKm: rec.shorteningKm, maxIndentKm: result.maxIndentKm, landLostCells: result.landLostCells, sealedCells: result.sealedCells, gapKm2: rec.gapKm2, gapWidestKm: rec.gapWidestKm, sealKm2: rec.trapKm2 ?? 0, sealClosingCmYr: rec.trapClosingCmYr ?? null, why,
                   pushNPerM: rec.pushMyr > 0 ? rec.pushNMyr / rec.pushMyr : null, rootCapKm: rec.rootCapKm });
         }
@@ -548,19 +552,74 @@ function frontWidthKm(cells, cU, cL, xyz, edgeKm) {
 }
 
 /**
+ * The convergence across a collision's face (lane stackweld, sessrumnir's ruling A 2026-11-26): where the two meet, the
+ * overlap's cells that touch the upper plate's own land, each with its own normal into that land (n, from the cell to those
+ * neighbours) and its width (a cell's, edgeKm·√3⁄2). The lower plate's velocity relative to the upper there, v = (ω_L − ω_U) × p,
+ * sweeps the overlap at v · n over that width: the area the overlap gains each Myr is S = Σ max(0, v · n) ds — what the
+ * collision must convert (underthrust, shortenAhead) — and its shortening is S over the face's converging length, the mean
+ * closing there. The upper face is the lower plate's leading edge inside the upper's land; with none (an overlap that touches
+ * none of the upper plate's own land) the lower face, the upper plate's edge in the lower's, the same relative motion.
+ * (Was: the closing at the overlap's centroid along the line between the two plates' centres, times the overlap's width
+ * across that line. Right for a front square to that line; wrong where the contact runs oblique to it — lane stackweld P1:
+ * at 13 planet stack welds the face closed at 1–3.5 cm/yr where the centroid read ≤ 0, or the overlap ran along a contact
+ * 3–4× the across-line front, and the unconverted remainder stayed in the raster.) Limits: a raster face is stepped, so the
+ * per-cell normals are rough; their sum over a straight face reads its length to within the steps' excess (P1: the face's
+ * sweep matched the overlap's growth plus conversion to within ~20 % over each record's life, under it where it differed).
+ * @returns {{sweptKm2: number, convKm: number, lengthKm: number, closing: number, rel: number, normal: number[]}|null}
+ *   km² per Myr; the converging face's length and the whole face's, km; the mean closing over the converging face (or, none
+ *   converging, the face's mean signed closing) and the mean relative speed along it, rad/Myr; the sweep-weighted normal,
+ *   tangent at c. null: no face.
+ */
+function faceSweep(world, U, L, cells, inOverlap, o, c) {
+    const { owner, ownerCell, landClaims, mesh } = world, { xyz, adjOffset, adjList, edgeKm } = mesh, ds = edgeKm * Math.sqrt(3) / 2;
+    const at = (P, sign) => {
+        let swept = 0, conv = 0, len = 0, net = 0, rel = 0, nx = 0, ny = 0, nz = 0;
+        for (const w of cells) {
+            const px = xyz[3 * w], py = xyz[3 * w + 1], pz = xyz[3 * w + 2];
+            let ax = 0, ay = 0, az = 0, k = 0;
+            for (let j = adjOffset[w]; j < adjOffset[w + 1]; j++) {
+                const nb = adjList[j];
+                if (inOverlap.has(nb) || landClaims[nb] > 1 || owner[nb] !== P.id || P.crust.type[ownerCell[nb]] === CrustType.OCEAN) continue;
+                ax += xyz[3 * nb] - px; ay += xyz[3 * nb + 1] - py; az += xyz[3 * nb + 2] - pz; k++;
+            }
+            if (!k) continue;
+            const d = ax * px + ay * py + az * pz; ax -= d * px; ay -= d * py; az -= d * pz;
+            const al = Math.hypot(ax, ay, az);
+            if (al < 1e-12) continue;
+            ax /= al; ay /= al; az /= al;
+            // (v: the other plate's motion relative to P, into P's land: the lower's into the upper's, or the upper's into the lower's)
+            const vx = sign * (o[1] * pz - o[2] * py), vy = sign * (o[2] * px - o[0] * pz), vz = sign * (o[0] * py - o[1] * px);
+            const vn = vx * ax + vy * ay + vz * az;
+            len += ds; net += vn * ds; rel += Math.hypot(vx, vy, vz) * ds;
+            if (vn > 0) { swept += vn * ds; conv += ds; nx += vn * ax; ny += vn * ay; nz += vn * az; }
+        }
+        if (!(len > 0)) return null;
+        // (the normal as the upper plate's: into the upper's land — the lower face's points into the lower's, so it turns round)
+        nx *= sign; ny *= sign; nz *= sign;
+        const dc = nx * c[0] + ny * c[1] + nz * c[2]; nx -= dc * c[0]; ny -= dc * c[1]; nz -= dc * c[2];
+        const nl = Math.hypot(nx, ny, nz);
+        return { sweptKm2: swept * PLANET_RADIUS_KM, convKm: conv, lengthKm: len, closing: conv > 0 ? swept / conv : net / len, rel: rel / len,
+            normal: nl > 1e-12 ? [nx / nl, ny / nl, nz / nl] : null };
+    };
+    const f = at(U, 1) ?? at(L, -1);
+    if (f && !f.normal) delete f.normal;                    // (nothing converging: the caller's centre line for the belts' bearing)
+    return f;
+}
+
+/**
  * Continental underthrusting (Phase 7c). Land does not subduct as a slab, but the leading edge of the lower plate's
  * continent slides under the upper plate as the two converge: every step, underthrustShare of the area the
- * convergence sweeps (shortening this step × the front's length) is consumed from the lower plate's land in the
+ * convergence sweeps (faceSweep: each face cell's closing along its own normal × its length × dt) is consumed from the lower plate's land in the
  * overlap — its most advanced cells first (farthest from its own side), never the contact row itself, so the
  * collision still locks — and the upper plate's crust above each consumed cell thickens by underthrustThickenKm (up
  * to the collision's force limit, rec.rootCapKm). So a collision eats continental area in step with its convergence, as Tibet swallowed
  * ~2000 km of India, and turns it into a plateau for Phase 8. Cratons are never consumed: they never break.
  * @returns {number} cells consumed
  */
-function underthrust(world, U, L, cells, rec, km) {
+function underthrust(world, U, L, cells, rec, sweptCells) {
     const { mesh, config, owner, ownerCell, landClaims } = world, { xyz, index, adjOffset, adjList, cellAreaKm2 } = mesh;
-    if (!(config.underthrustShare > 0) || km <= 0) return 0;
-    rec.underthrustDue = (rec.underthrustDue ?? 0) + config.underthrustShare * km * rec.frontKm / cellAreaKm2;   // cells owed
+    if (!(config.underthrustShare > 0) || sweptCells <= 0) return 0;
+    rec.underthrustDue = (rec.underthrustDue ?? 0) + config.underthrustShare * sweptCells;   // cells owed
     const inOverlap = new Set(cells), lowerSide = [];
     for (const w of cells) for (let k = adjOffset[w]; k < adjOffset[w + 1]; k++) {
         const nb = adjList[k];
@@ -609,10 +668,10 @@ function underthrust(world, U, L, cells, rec, km) {
     // (the overlap's excess the lower plate could not send under — its shield jams it, and the land behind — is the upper
     // plate's crust shortened ahead of the indenter instead: shortenAhead)
     // (at the rate the upper plate deforms: its viscous stress is in the balance (torque-balance.js lockContacts), so the closing
-    // is what its lithosphere lets through, and no step converts more of the overlap than the step's own closing over the front —
+    // is what its lithosphere lets through, and no step converts more of the overlap than the step's own sweep at the face —
     // what the raster held over from before stays as the seam's stack, and its GPE resists. Was all the excess each step: a
     // front cut through its upper plate, seed 2, 262–318 Myr, lane gpelock)
-    rec.aheadDue = Math.min((rec.aheadDue ?? 0) + km * rec.frontKm / cellAreaKm2, Math.max(1, excess));
+    rec.aheadDue = Math.min((rec.aheadDue ?? 0) + sweptCells, Math.max(1, excess));
     const aheadWant = Math.min(excess - consumed, Math.floor(rec.aheadDue) - consumed);
     const ahead = Cm && aheadWant > 0 ? shortenAhead(world, U, cells, inOverlap, aheadWant, rec, Cm) : 0;
     rec.aheadDue = Math.max(0, rec.aheadDue - consumed - ahead);

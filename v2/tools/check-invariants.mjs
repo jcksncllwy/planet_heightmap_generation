@@ -23,6 +23,10 @@ const MAX_LAND_DROP_PER_STEP = 0.01;     // land is never deleted: a step may lo
 const MAX_TERRANE_IDS_PER_MYR = 3.3;     // id churn, scaled to the history's length (was 2000 ids over 600 Myr)
 const CRATONS_SURVIVE_MYR = 600;         // cratons outlast this on Earth (~35 from ≥2.5 Ga, Bleeker 2003); a longer history may lose
                                          // one (the North China Craton was partly destroyed), so beyond it their survival is reported
+// (how deep land may lie on land, km over the collision's front: the bound this check held at 1.5 × the stack weld's 500 km.
+// The stack weld is gone — lane stackweld 2026-11-26: a pair welds only once stalled, and the overlap is converted as the face
+// sweeps it, a seam a cell or two deep — so the bound is the same number held as the invariant's own, not a weld's)
+const MAX_STACK_KM = 750;
 const BIG_OVERLAP_KM2 = 1e5;       // two plates' land may overlap this much only while the two still converge (a stalled seam welds)
 const mesh = labMesh();
 const LEDGER_CELLS = 20000, LEDGER_MYR = 300, LEDGER_SEED = 12345;
@@ -131,8 +135,8 @@ for (const seed of SEEDS) {
     const idsPerMyr = (maxTerrane - firstTerrane) / HISTORY_MYR;
     check('terrane ids stay few: crust keeps its id whichever plate carries it', idsPerMyr <= MAX_TERRANE_IDS_PER_MYR,
         `${maxTerrane - firstTerrane} ids handed out over ${HISTORY_MYR} Myr (${firstTerrane} at the start): ${idsPerMyr.toFixed(2)} a Myr (limit ${MAX_TERRANE_IDS_PER_MYR})`);
-    check('no two plates stack land on land deeper than the weld threshold', (biggestOverlap.depth ?? 0) <= 1.5 * world.config.sutureStackKm,
-        `deepest overlap ${(biggestOverlap.depth ?? 0).toFixed(0)} km over its front (${((biggestOverlap.cells ?? 0) * mesh.cellAreaKm2 / 1e6).toFixed(2)} Mkm², ${biggestOverlap.pair ?? '—'} at ${biggestOverlap.at?.toFixed(0) ?? '—'} Myr; weld at ${world.config.sutureStackKm} km)`);
+    check('no two plates stack land on land deeper than the weld threshold', (biggestOverlap.depth ?? 0) <= MAX_STACK_KM,
+        `deepest overlap ${(biggestOverlap.depth ?? 0).toFixed(0)} km over its front (${((biggestOverlap.cells ?? 0) * mesh.cellAreaKm2 / 1e6).toFixed(2)} Mkm², ${biggestOverlap.pair ?? '—'} at ${biggestOverlap.at?.toFixed(0) ?? '—'} Myr; bound ${MAX_STACK_KM} km)`);
     // (a collision lasts as long as its plates converge — India–Asia has for ~50 Myr — so how long an overlap lasts is
     // reported; what must hold is that a stalled one welds — unless a sea the weld would seal is still closing — within the
     // weld rule's own wait: stalled sutureStallGiveUpMyr, measured at most sutureCheckMyr apart, a step's slack)
