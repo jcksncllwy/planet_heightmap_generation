@@ -38,7 +38,9 @@ NATION_PLAN §7.4a. Where the two plans differ, this one owns the culture model.
   `polityStepYears` = 100 yr (polity.js), 25 once the nation layer's realm step lands (NATION_PLAN §2).
 - **The travel graph.** `routes.js` gives days per edge by month and craft (on foot, paddled, sail). Today only the
   page's travel view reads it (T0).
-- **The mesh.** The page runs 160K cells, ~56 km apart and ~3,200 km² each; the tools can run 640K.
+- **The mesh.** The page runs 160K cells, ~56 km apart and ~3,200 km² each, and the tools can run 640K (~28 km,
+  ~800 km²). This layer runs at **640K** (§14 Q1, decided). Whether the People run itself moves to 640K is
+  civgpu-run's measurement. If it stays at 160K, the culture step reads people interpolated down to 640K.
 
 What it doesn't have: any notion of what people speak or practise. NATION_PLAN §7.4 sketched a placeholder: a culture
 tree that splits at each landing and after T_split years out of contact. This plan replaces it.
@@ -104,9 +106,14 @@ Alternatives, not recommended:
   drawn by hand.
 - **Step: 25 years**, sim.js's generation. The reasons:
   - Contact between neighbouring cells at 160K is ~0.02–0.07 per neighbour per step (k_ab·25 yr at D = 3–12.5
-    km²/yr, §7.3). It must stay well under 1 for the discrete voter model to approximate the continuous one. At 640K
-    (cells half as far apart) it is four times as much, still under 0.3. A century step at 160K would be ~0.06–0.27 per
-    neighbour, ~0.4–1.6 over six, and would over-mix.
+    km²/yr, §7.3). It must stay well under 1 for the discrete voter model to approximate the continuous one.
+  - **At 640K (the decided mesh), contact needs sub-steps.** The cells are half as far apart, so k_ab is four times
+    as much: ~0.08–0.28 per neighbour, ~0.5–1.7 over six neighbours per 25-yr step. That over-mixes, as a century
+    step at 160K would.
+    - So contact runs in n_sub sub-steps of the 25-yr step, with n_sub chosen so the total per sub-step stays under
+      ~0.3: 2 at D = 3 km²/yr, 6 at D = 12.5 (sub-steps of 12.5 to 4 yr).
+    - Drift, shift and inheritance stay at 25 yr.
+    - n_sub is computed once from the travel graph's shortest edges, on the CPU.
   - The nation layer's realm step is 25 yr (NATION_PLAN §2), and shift under a ruler is part of the culture step.
   - Abrams–Strogatz shift takes a few generations to a few centuries; 25 yr resolves it.
 - **Frames.** The culture labels (language and family per cell) and each language's representative lect go into the
@@ -514,10 +521,16 @@ Which don't depend on Earth's map, and so can be read off any world:
 
 Earth's own checks are the family roots and areas, the demic share, Australia's count and the Bantu route.
 
-**What a 160K mesh can resolve.** A cell is ~3,200 km². Earth's 7,685 languages over ~134 Mkm² of ice-free land (a round figure [L]) average
-~17,000 km², about five cells, but the median is far smaller: New Guinea's languages are sub-cell. So the model resolves
-the forager continents (Australia: ~2,400 cells for 407 languages) and the farmed plains. Tropical horticulturalists'
-diversity is a known limit (§14 Q1), and density checks use bands of latitude, not cell counts.
+**What the 640K mesh can resolve** (decided, §14 Q1). A cell is ~800 km².
+- Earth's 7,685 languages over ~134 Mkm² of ice-free land (a round figure [L]) average ~17,000 km², about 21 cells.
+- New Guinea's ~1,000 languages on ~0.79 Mkm² average about one cell each, so the median New Guinea language is still
+  at or below a cell.
+- The model resolves the forager continents (Australia: ~9,600 cells for 407 languages), the farmed plains, and the
+  coarser half of the tropics.
+- At 160K (~3,200 km²) it would be about five cells per language and ~2,400 for Australia, with New Guinea entirely
+  sub-cell.
+- Tropical horticulturalists' finest diversity is still a limit. Density checks use bands of latitude, not cell
+  counts.
 
 ## 5. Existing models, and what carries over
 
@@ -550,7 +563,7 @@ diversity is a known limit (§14 Q1), and density checks use bands of latitude, 
 | `faith`, `faithRival`, `faithY`, `faithB` | held faith id, rival faith id, professed and held shares of the rival (§7.8; later stage) | Uint32 × 2, Uint16 × 2 |
 | `lang`, `family` | the language and family it belongs to (read off, §7.9; recomputed every frame) | Int32, Int32 |
 
-At 160K cells, ~50K of them land: `lex` is ~8 MB, `phonT` ~4 MB, the rest ~3 MB.
+At 640K cells, ~200K of them land: `lex` is ~32 MB, `phonT` ~16 MB, the rest ~12 MB, so ~60 MB. At 160K it is a quarter of that.
 
 **The lineage** (`lineage.js`, small):
 - languages: id, its representative lect (that of its most populous cell), its cells' count and people, its parent
@@ -643,7 +656,7 @@ Every chance is a hash of (cell, step, slot, salt), as `chance` in sim.js, so ru
     Séguy curve is the other candidate; the check tells them apart. It is the strongest single check on the contact rule (§11.1).
   - **Correlation length** ξ_m ≈ √(D/λ_m). For a word of half-life 3,000 yr it is ~110 km at the farmers' D = 3 km²/yr
     and ~230 km at 12.5. For one of 20,000 yr it is ~290–600 km. So a language spans one to a few hundred km where people
-    are spread evenly, two to four cells at 160K; that is why §11.1's scale check matters. Fast meanings vary over
+    are spread evenly: four to twenty cells at 640K (two to four at 160K). That is why §11.1's scale check matters. Fast meanings vary over
     shorter distances than slow ones, as dialect atlases show.
   - **The log law has a population-genetic twin:** in two dimensions, F_ST/(1 − F_ST) between demes grows linearly in
     the log of distance (Rousset 1997 [A]). The log law of dialectometry is that law, with words for genes.
@@ -818,7 +831,12 @@ Every frame (the civ frames' `frameYears`, and on demand for the nation layer):
 - **Languages.** Seeds go in order of people, so the largest cell first. A language is the connected set of cells
   whose lexical similarity to its seed's lect is at least s_lang. Each seed is the most populous cell not yet taken.
   This is leader clustering; a connected-components rule on similar neighbours would chain a whole dialect continuum
-  into one language. s_lang is where a dialect ends and a language begins:
+  into one language.
+- **Two levels** (§14 Q9, decided). Within each language, **dialect groups** are read the same way, at a higher
+  similarity s_dial. Both levels are shown: the map's languages, and their dialect groups on demand.
+  - s_dial: by default, the similarity after ~500 yr of separation. That is ours, to tune by eye: no sourced cut-off
+    was found. Wichmann 2019's dialect pairs, read from the ASJP data at L0, are the candidate source.
+- s_lang is where a dialect ends and a language begins:
   - **sourced:** Wichmann 2019 [V] proposes a universal cut-off between dialect pairs and language pairs at ASJP's
     normalized Levenshtein distance LDN = 0.51 (mean 0.514 ± 0.071), about 1,075–1,635 years of separation;
   - in L1, with no word forms yet, s_lang is the cognate similarity our rates give after that separation (~1,350 yr),
@@ -857,7 +875,7 @@ Every frame (the civ frames' `frameYears`, and on demand for the nation layer):
 - **distance d(a, b)** between two cells' or two languages' lects (§7.10), and the MRCA age;
 - **names** (§9): for a cell, town, river, region, people or realm, in a given language: `nameOf(kind, place, lang)`.
   Daughter languages' names drift from their parents' through their own sound changes;
-- **writing:** not owned here (§14 Q7).
+- **writing:** not owned here. The civ economy's skills model owns it (§14 Q7, decided).
 
 ### 8.2 What it reads from the nation layer, each step
 - per cell: the administering polity, its suzerain, the hold (administered, tributary or none);
@@ -957,6 +975,8 @@ PHOIBLE, WALS). From there they change by drift and contact like the words, each
 - **Exonyms:** each language's name for another people is that people's endonym passed through the speaker's settings
   (a loan). So one realm is known by kin-sounding names around it.
 - **Deterministic:** everything is a hash of the world's ids, so the same world gives the same names.
+- **Not here: personal and dynastic names** (§14 Q5, decided). They wait for a future "story" layer, which will call
+  `nameOf` with a person kind on the same phonology.
 
 ### 9.5 An example of the intended behaviour (made up, to show the mechanism, not a result)
 - A parent language has the classes "water" *kapu and "people" *tami, and puts the modifier first.
@@ -1005,8 +1025,8 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 - **Retention:** the share of the basic list kept per millennium down the tracked tree (an output; Lees' ~80 %) and
   each meaning's half-life against its input (a consistency check of the code).
 - **Language density by latitude:** languages per 10⁶ km² by latitude band and by growing season (Mace & Pagel 1995;
-  Nettle 1998; Collard & Foley 2002). At 160K, a cell is ~3,200 km², so the model resolves languages down to a few
-  cells; the check is on bands, not counts.
+  Nettle 1998; Collard & Foley 2002). At 640K, a cell is ~800 km², so the model resolves languages down to a few
+  cells. The check is on bands, not counts.
 - **Range sizes:** languages' areas and speakers, roughly lognormal, with ranges growing toward higher latitudes and
   shrinking again above 60° N (Amano et al. 2014).
 - **Families:** the count of families and isolates per land area, and family sizes against Wichmann 2005's power law.
@@ -1020,7 +1040,7 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 - **Barriers:** diversity against ruggedness and river density (Axelsen & Manrubia 2014).
 - **Australia:** the number of languages on Earth's Australia at the eve of contact, and their spatial pattern, against
   the record's 407 and Gavin et al. 2017's model (406, 56 % of the spatial variation). A forager continent at a
-  resolution the mesh holds (~2,400 cells).
+  resolution the mesh holds (~9,600 cells at 640K).
 - **Bursts at splits:** the share of lexical divergence that arises near splits in the tracked tree, beside Atkinson et
   al. 2008's 9.5–31 %. Nothing builds bursts in, so any found are emergent.
 - **Rates and population size:** gains and losses of cognates by language size, beside Bromham et al. 2015 (larger gain
@@ -1032,7 +1052,7 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 - **Founder effects:** inventory size (from the settings) against the distance from the origin along `cameFrom`. Report
   only, since the record is contested (Atkinson 2011 against Cysouw et al. 2012, Hunley et al. 2012, Creanza et al.
   2015).
-- **Scale:** the same world at 40K and 160K (as `check-civ-food` does). The correlation length in km and the language
+- **Scale:** the same world at 160K and 640K (as `check-civ-food` does across meshes). The correlation length in km and the language
   count per area at scales above both meshes' cells should agree.
 - **Religion** (L5, §7.8). These are calibration targets, not independent tests:
   - a faith backed by its realm, with no force, should pass 80 % in ~2–3 centuries (Bulliet's Iran);
@@ -1053,24 +1073,32 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 - The lineage reader breaks ties by cell index.
 - `civ-fingerprint.mjs` grows a culture section (each frame's labels, the tree, a hash of the lects).
 
-### 11.3 Cost (estimates, to measure)
-- **The step:** ~50K land cells × (40 meanings + 20 settings) × ~6 neighbours, 2800 steps from 70 ka. That is
-  ~8·10⁹ slot updates and ~5·10¹⁰ neighbour reads a run if every land cell were peopled
-  throughout; ~5·10⁹ allowing for the cells peopled late (to measure):
-  - **on the CPU in JS:** ~1 min at 160K (by the civ layer's own measured throughput), against the People run's ~18 s.
-    Too slow;
-  - **on the GPU** (one WGSL kernel per step: every slot of every cell in parallel, reading its neighbours'
-    previous values; integer hashes): ~1–3 s for a run at 160K, mostly dispatch overhead. This is the agent brief's rule
-    (new processes are WGSL, through `gpu-device.js`; Dawn for the tools), and the kernel is a stencil, the easy case;
-  - shift (x per cell) and inheritance are a few passes over the cells per step on the CPU, ~1 ms;
-  - the lineage reader every frame: a leader clustering over the land cells, ~20 ms × 140 frames (or every 100 yr for
-    the nation layer's culture ids: ~700 × 20 ms ≈ 14 s, so on demand, or on the GPU too).
-- **Readback:** the nation layer needs `lang` per cell and the ruling lects each step. That is ~0.2 MB, or on demand.
-- **Memory:** ~15 MB of state at 160K (`lex` 8, `phonT` 4, the rest 3), ~60 MB at 640K.
-- **Storage:** per frame, `lang` and `family` per cell (Int32 each, ~1.3 MB at 160K, or Uint16 of a frame-local table)
-  and the representative lects (~10³ languages × 40 × 4 B); the tree. For 140 frames, ~100 MB uncompressed; store as
-  changes (most cells keep their language from frame to frame), ~10 MB.
-- **At 640K:** ~4× (CIV_PLAN §9.8's scaling).
+### 11.3 Cost at 640K (decided, §14 Q1; estimates, to measure)
+These are scaled from the 160K estimate. Jackson asked for a real time cost: civgpu-run is measuring People runs at
+160K and 640K, and L1 measures this step.
+- **The step at 160K** (for scale): ~50K land cells × (40 meanings + 20 settings) × ~6 neighbours, 2,800 steps from
+  70 ka. That is ~8·10⁹ slot updates a run if every land cell were peopled throughout, or ~5·10⁹ allowing for cells
+  peopled late.
+- **The step at 640K:** 4× the cells and 2–6 contact sub-steps (§2), so ~8–24× the work:
+  - ~4·10¹⁰–1.2·10¹¹ slot updates a run, allowing for late peopling;
+  - **on the CPU in JS:** ~8–24 min (the 160K run's ~1 min, from the civ layer's own measured throughput, scaled).
+    Not a path;
+  - **on the GPU** (one WGSL kernel per sub-step, with every slot of every cell in parallel reading its neighbours'
+    previous values, and integer hashes): ~5–30 s a run. 160K's ~1–3 s was mostly dispatch overhead. At 640K there
+    are 5,600–17,000 dispatches and 8–24× the work, so the work starts to count;
+  - this follows the agent brief's rule (new processes are WGSL, through `gpu-device.js`; Dawn for the tools). The
+    kernel is a stencil, the easy case.
+- **Shift (x per cell) and inheritance:** a few passes over the cells per step on the CPU, ~4 ms.
+- **The lineage reader:** a leader clustering over ~200K land cells, ~80 ms a frame. Over 140 frames that is ~11 s.
+  - For the nation layer's culture ids every 100 yr it would be ~700 × 80 ms ≈ 56 s.
+  - So it goes on the GPU too, or on demand, or runs on a 160K sampling of the cells, with ids
+    mapped back to the nearest 640K cell.
+- **Readback:** the nation layer needs `lang` per cell and the ruling lects each step: ~0.8 MB, or on demand.
+- **Memory:** ~60 MB of state (`lex` 32, `phonT` 16, the rest 12).
+- **Storage:** per frame, `lang` and `family` per cell (Int32 each, ~5 MB at 640K, or Uint16 of a frame-local table),
+  plus the representative lects (~10³ languages × 40 × 4 B) and the tree.
+  - For 140 frames that is ~400 MB uncompressed.
+  - Store it as changes (most cells keep their language from frame to frame): ~40 MB.
 
 ## 12. Stages (each lands on its own, with its checks)
 
@@ -1085,11 +1113,17 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
   model on the travel graph. The lineage reader, the tree, families.
   - The GPU kernel and its CPU reference (for the check only), with a parity check.
   - Views: Languages, Families, Dialect boundaries, A word; the tree panel; the readout.
-  - Checks: Séguy's curve; retention; latitude; families and sizes; scale 40K vs 160K; determinism across GPUs; time.
+  - At 640K, with contact sub-steps (§2) and the people read from the People run's mesh (interpolated down if that
+    stays at 160K).
+  - Checks: Séguy's curve; retention; latitude; families and sizes; scale 160K vs 640K; determinism across GPUs. Time
+    at 640K is the real cost Jackson asked for (§11.3), measured beside civgpu-run's People timings.
 - **L2. Shift and death.** Rivals and x; Abrams–Strogatz with migration; farmers' x₀; substrate; status from towns and
   polity.js's capitals; borrowing between unintelligible lects; death in the tree.
+  - The ancestry field (§14 Q6, decided): a few components per cell, inherited and mixed like the lect but never
+    shifting. It is a check layer, and a map.
   - Checks: Earth's spread zones (Bantu, Austronesian, Indo-European) and residual zones; the demic share; shift
-    curves against Kandler et al. 2010's Celtic case.
+    curves against Kandler et al. 2010's Celtic case; genes against languages and elite shift against ancient DNA
+    (Cavalli-Sforza et al. 1988; Kars et al. 2021; Haak et al. 2015).
 - **L3. Phonology and names.** Settings, sound changes in order, word forms, spelling; the naming list; places named
   once; endonyms and exonyms; `nameOf` for the nation layer (N7).
   - Views: A sound; names on the map and in the readout.
@@ -1097,7 +1131,8 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 - **L4. Nation coupling** (after NATION_PLAN N2): status from realms' hold; conquest settlement; the culture ids and
   d(a, b) the nation layer's N3 reads; N6's schooling.
   - Checks: the nation layer's culture area against complexity (Currie & Mace 2009 [L]), from its side; Weber's France.
-- **L5. Traits and religion** (§7.8), and d_trait in d(a, b).
+- **L5. Traits** (§7.8; §14 Q4 (b), decided): ~16 customs, and d_trait in d(a, b).
+  - Religion (§7.8; Q4 (c)) joins L5 if Jackson takes it when Q4 (c) is re-asked.
 - **L6. Contact along routes and blending** (needs civ T2): Trudgill's gravity contact through towns, lingua francas,
   koinés; mixed languages and creoles only with the colonial horizon (§7.7).
 
@@ -1117,6 +1152,9 @@ On `civ-sim --earth` and the ensemble, as `report()` lines that never fail a run
 
 ## 14. Open questions for Jackson
 
+Jackson answered these on the board on 2026-11-26, relayed by sessrumnir. Each question keeps its options, and its
+**Decided** line records the answer. Q4 (c) is the one still open.
+
 **Q1. Resolution.** At the page's 160K, a cell is ~3,200 km². Forager continents and farmed plains resolve. The tropics'
 small languages (New Guinea's ~1,000) are sub-cell.
 - (a) Accept. Languages smaller than a few cells don't exist in the run; density checks use latitude bands.
@@ -1125,8 +1163,11 @@ small languages (New Guinea's ~1,000) are sub-cell.
   (Nettle 1998's regression). A number for the readout, not lects.
 - **Recommend (a), with (c) as a cheap readout later.** (b) quadruples the cost for diversity the people's own cells
   don't carry. The planet-scale picture (families, spread and residual zones) is what 160K shows well.
+- **Decided: 640K.** It is (b) and more: the culture layer runs at 640K. Jackson wants a real time cost. civgpu-run is
+  measuring People runs at 160K and 640K, and §11.3 gives this layer's estimate (GPU ~5–30 s, with contact
+  sub-steps, §2). The text is changed to match: §1, §2, §4, §6, §11 and §12.
 
-**Q2. The GPU.** The step is ~5–8·10⁹ slot updates a run: ~1 min in JS, ~1–3 s as a WGSL kernel (§11.3). The civ layer
+**Q2. The GPU.** At 160K the step is ~5–8·10⁹ slot updates a run: ~1 min in JS, ~1–3 s as a WGSL kernel. At 640K it is ~8–24× that (§11.3). The civ layer
 has no GPU dependency today: it runs in a page worker and in Node tools.
 - (a) WGSL kernel, as the agent brief's rule says (Dawn for the tools; WebGPU in the worker). An integer-only kernel
   agrees bit for bit across GPUs.
@@ -1134,6 +1175,7 @@ has no GPU dependency today: it runs in a page worker and in Node tools.
 - (c) CPU with a smaller list (20 meanings) and event-driven updates: ~15 s, and coarser distances.
 - **Recommend (a).** The kernel is a stencil, the easiest kind, and determinism comes free with integers. The CPU
   reference stays as a check, not a path.
+- **Decided: (a), the WGSL kernel.** A civgpu lane now studies the GPU for the civ layer as a whole.
 
 **Q3. Start at the origin or at the Holocene?**
 - (a) From the first people (70 ka). Families emerge as the clades that survive the comparative method's horizon.
@@ -1141,6 +1183,7 @@ has no GPU dependency today: it runs in a page worker and in Node tools.
   drawn by the seeding.
 - **Recommend (a).** It is the only way families and isolates come from the run. The Pleistocene steps cost ~80 % of the
   time, but on the GPU that is a second or two.
+- **Decided: (a), from the first people (70 ka).**
 
 **Q4. Culture beyond language.** How much, and when?
 - (a) Language only: d(a, b) is lexical.
@@ -1149,14 +1192,15 @@ has no GPU dependency today: it runs in a page worker and in Node tools.
   believe it a century behind. Enforcement too short for belief to follow is undone. Force has a ceiling set by the
   realm's capacity. Rulers adopt their neighbours' faith or, as a minority elite, their subjects'. Missionary faiths
   spread along routes and through towns.
-- **Recommend (a) for L1–L4, then (b) and (c) together at L5.**
-  - The nation layer's needs (identity, distance, names) are met by language.
+- **Recommend (c), at L5 with the customs**, for the re-ask now that (b) is decided.
   - Religion is no longer the thinnest part.
     - Established: rulers convert realms, with measured rates. Cantoni's Reformation adoption, Bulliet's and Bagnall's
       conversion curves, the lag of belief behind law, the cases that failed and why (§3.4).
     - Still missing: a fitted mechanistic model of ruler-driven conversion. §7.8 is ours, calibrated to those rates.
   - Religion also gives the nation layer a second axis for legitimacy and revolt, beside language (report).
-  - The alternative is (b) alone at L5 and (c) after seeing it, if L5 should stay small.
+  - The alternative is to see (b) running first and add (c) after, if L5 should stay small.
+- **Decided: (b), the ~16 customs, as L5** ("sounds great"). (c), religion, was held until the religion revision
+  (§3.4 and §7.8, rewritten from sources on 2026-11-26). It is **to be re-asked** with the text above.
 
 **Q5. Names: how far?**
 - (a) Places, peoples and realms (NATION_PLAN's Q3 (b)).
@@ -1164,6 +1208,8 @@ has no GPU dependency today: it runs in a page worker and in Node tools.
 - (c) (b) plus personal and dynastic names for the chronicle.
 - **Recommend (b).** Exonyms cost almost nothing once names exist, and they make a realm's neighbours feel like
   neighbours. (c) is character stories; NATION_PLAN declined them.
+- **Decided: (b),** places, peoples and realms, plus exonyms. Personal and dynastic names come later, in a future
+  "story" layer (§9.4).
 
 **Q6. Ancestry.** Track who descends from whom (a few ancestry components per cell, inherited and mixed like the lect,
 but never shifting)?
@@ -1172,21 +1218,29 @@ but never shifting)?
   demic fronts (Haak et al. 2015).
 - **Recommend (b), at L2.** It is cheap (8 floats a cell) and is the only way to check the shift mechanism against
   ancient DNA. It is also a map players like ("where the steppe people's descendants live").
+- **Decided: (b), yes, as a check layer,** at L2 (§12).
 
 **Q7. Writing.** NATION_PLAN §7.8 needs a "writing" know-how for mobilization.
 - (a) The civ economy's skills model owns it (CIV_PLAN §9.3), as a skill born in states.
 - (b) This layer owns it, as a cultural trait that spreads by contact.
 - **Recommend (a).** Writing behaves like the economy's know-how (needs people, administration, a use), not like a
   practice. This layer can show which languages are written.
+- **Decided: (a),** the civ economy's skills model.
+  - Jackson also wants the civ model's organization reviewed for subsystems that generalize, as the skills model
+    does: know-how, writing, and maybe practices and religion as diffusing traits with a carrier and a rate.
+  - That review is not this lane's. It is a follow-up for sessrumnir to assign; this plan's §7.8 traits are one
+    candidate to share the machinery.
 
 **Q8. Creoles and mixed languages.**
 - (a) Leave them for the colonial horizon (NATION_PLAN Q1 (c)).
 - (b) Build §7.7's rule now, for trade ports and conquest settlement.
 - **Recommend (a).** The agrarian record's blending is koinés and areal borrowing, which come free. Creoles need the
   plantation and port demography the civ layer doesn't make, and §7.7's rule is the one place an outcome is written in.
+- **Decided: (a), later,** with the colonial horizon.
 
 **Q9. Language and dialect.** Where does the reader draw the line (s_lang)?
 - (a) One threshold for the world, a convention (like Ethnologue's case-by-case calls, made uniform).
 - (b) Two levels: "languages" at s_lang, "dialect groups" within them at a higher similarity, both shown.
 - **Recommend (b).** A dialect continuum is real in the model, and showing two levels makes it visible rather than
   hiding it inside an arbitrary count.
+- **Decided: (b), two levels** (§7.9).
