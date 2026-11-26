@@ -406,11 +406,37 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     /** What each front's people carry, in order of arrival: the crop's domestication (seed is given: the most domesticated
      *  of the people it came from) and its skill (mixing toward theirs). Where a crop is newly domesticated, its front goes on
      *  beyond its wild form's range. */
+    // (each front's cells by arrival, ties by cell — what a stable sort of the cells in index order gives. Made again from the
+    // last order whenever the front moves: only the cells whose arrival changed since are taken out and merged back in, so
+    // the order is the same as sorting them all, without sorting them all each time — at 640K the full sorts were an eighth
+    // of the run; lane civgpu)
+    const orderOf = new Map(), moved = new Uint8Array(n);
     const ordered = A => {
-        const list = [];
-        for (let c = 0; c < n; c++) if (A[c] < Infinity) list.push(c);
-        list.sort((a, b) => A[a] - A[b]);
-        return Int32Array.from(list);
+        const kept = orderOf.get(A);
+        if (!kept) {
+            const list = [];
+            for (let c = 0; c < n; c++) if (A[c] < Infinity) list.push(c);
+            list.sort((a, b) => A[a] - A[b]);
+            const O = Int32Array.from(list);
+            orderOf.set(A, { O, at: Float64Array.from(A) });
+            return O;
+        }
+        const { O, at } = kept, add = [], changed = [];
+        for (let c = 0; c < n; c++) if (A[c] !== at[c] && (A[c] === A[c] || at[c] === at[c])) { moved[c] = 1; at[c] = A[c]; changed.push(c); if (A[c] < Infinity) add.push(c); }
+        if (!changed.length) return O;
+        let m = 0;
+        for (let k = 0; k < O.length; k++) if (moved[O[k]]) m++;
+        add.sort((a, b) => A[a] - A[b] || a - b);
+        const out = new Int32Array(O.length - m + add.length);
+        let i = 0, j = 0, k = 0;
+        while (i < O.length || j < add.length) {
+            if (i < O.length && moved[O[i]]) { i++; continue; }
+            if (j >= add.length || (i < O.length && (A[O[i]] < A[add[j]] || (A[O[i]] === A[add[j]] && O[i] < add[j])))) out[k++] = O[i++];
+            else out[k++] = add[j++];
+        }
+        for (const c of changed) moved[c] = 0;
+        kept.O = out;
+        return out;
     };
     const pass = (O, A, F, D, S) => {
         for (const c of O) {
