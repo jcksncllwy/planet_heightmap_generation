@@ -11,6 +11,7 @@ import { check, report, section, finish, labMesh, mean, largestJump, relativeCmY
 import { makeRng } from '../../js/rng.js';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { FORCE_SCENES } from '../js/tectonics/scenarios/force-scenes.js';
+import { SCENE_OCEAN_MAX_AGE_MYR } from '../js/tectonics/scenarios/scene-kit.js';
 import { simulate } from '../js/tectonics/simulate.js';
 import { updatePlateMotion, solve3 } from '../js/tectonics/step/torque-balance.js';
 import { frameTallies, situationOf, isSteady } from '../js/tectonics/measure.js';
@@ -225,7 +226,7 @@ section('the physics responds the way it should');
     // (no drive: suction off, and Solo's ocean all one age, so its own floor has no slope to push it down — the scene's ocean
     // is aged from a ridge, scene-kit.js ageFromRidges. Was 'no suction → no motion', lane gpelock 2026-11-25: with the ocean
     // aged, ridge push alone moves it, which is physical, and is reported)
-    const oneAge = w => { for (const p of w.plates) for (let c = 0; c < p.crust.mask.length; c++) if (p.crust.mask[c] && p.crust.type[c] === CrustType.OCEAN) p.crust.formedAt[c] = -w.config.initialOceanAgeMyr; };
+    const oneAge = w => { for (const p of w.plates) for (let c = 0; c < p.crust.mask.length; c++) if (p.crust.mask[c] && p.crust.type[c] === CrustType.OCEAN) p.crust.formedAt[c] = -SCENE_OCEAN_MAX_AGE_MYR; };
     const cfg = solo.world.config, heavy = await run('one-sided', { dragContinent: 2 * cfg.dragContinent, dragCraton: 2 * cfg.dragCraton });
     const none = await run('one-sided', { slabSuction: 0 }, mesh, oneAge), ridgeOnly = await run('one-sided', { slabSuction: 0 });
     check('more continental drag → slower continent', cruise(heavy) < 0.7 * cruise(solo), `${cruise(solo).toFixed(2)} → ${cruise(heavy).toFixed(2)} cm/yr with drag doubled`);

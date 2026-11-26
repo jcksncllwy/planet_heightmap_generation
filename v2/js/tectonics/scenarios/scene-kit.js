@@ -86,7 +86,7 @@ export function fillBackground(canvas, world, cfg) {
 
 /**
  * Each scene plate's own ocean, aged as the floor of a plate whose ridge is its far edge: oldest at its trench, younger away
- * from it, 0 at the ridge farthest from any trench. A scene's ocean of one age (initialOceanAgeMyr) puts 0 Myr floor, opened
+ * from it, 0 at the ridge farthest from any trench. A scene's ocean of one age (until 2026-11-25 initialOceanAgeMyr) puts 0 Myr floor, opened
  * behind a moving plate, against 150 Myr floor: a step of the whole of the old floor's GPE that no ridge makes (forces.js
  * ridgePushGpe). Distances are walked through the plate's own ocean from its trench (its own trench cells, or those it faces
  * on another plate). The ridge is where the plate's ocean meets the pre-history ocean, which does not move, so the plate laid
@@ -97,7 +97,7 @@ export function fillBackground(canvas, world, cfg) {
  * riding on the plate does not bend the isochrons around it), and its isochrons lie along the ridge, not along whatever trench
  * the far edge happens to meet. (Aged back from the trench, India's floor took the shape of Asia's trench arc: ~20 Myr older
  * east of India than west at one latitude, and the GPE at its coasts pushed it west at ~5 cm/yr. Lane gpelock 2026-11-25.)
- * Ages are capped at initialOceanAgeMyr. A plate with neither a passive edge nor a trench keeps its ages. Call after
+ * Ages are capped at SCENE_OCEAN_MAX_AGE_MYR. A plate with neither a passive edge nor a trench keeps its ages. Call after
  * fillBackground.
  */
 export function ageFromRidges(world, cfg, ridges = []) {
@@ -115,7 +115,7 @@ export function ageFromRidges(world, cfg, ridges = []) {
         if (partner !== undefined) {                                                        // aged from its ridge alone
             for (let c = 0; c < numCells; c++) if (ocean(c) && atPartner(c)) { D[c] = 0; queue.push(c); }
             walk(queue, D, c => own[c] === p.id);
-            for (const c of queue) if (ocean(c)) K.formedAt[c] = -Math.min(cfg.initialOceanAgeMyr, D[c] / (SCENE_SPREAD_KM_PER_MYR / 2));
+            for (const c of queue) if (ocean(c)) K.formedAt[c] = -Math.min(SCENE_OCEAN_MAX_AGE_MYR, D[c] / (SCENE_SPREAD_KM_PER_MYR / 2));
             continue;
         }
         for (let c = 0; c < numCells; c++) {
@@ -132,7 +132,7 @@ export function ageFromRidges(world, cfg, ridges = []) {
             if (touches(mesh, c, nb => own[nb] === bg?.id)) ridgeKm = D[c];
         }
         if (!(ridgeKm > 0)) continue;
-        for (const c of queue) K.formedAt[c] = -Math.min(cfg.initialOceanAgeMyr, Math.max(0, ridgeKm - D[c]) / rate);
+        for (const c of queue) K.formedAt[c] = -Math.min(SCENE_OCEAN_MAX_AGE_MYR, Math.max(0, ridgeKm - D[c]) / rate);
     }
     function walk(queue, D, ocean) {
         for (let i = 0; i < queue.length; i++) {
@@ -145,6 +145,11 @@ export function ageFromRidges(world, cfg, ridges = []) {
  *  of new floor (Rowley 2002, GSA Bull. 114) over ~62,000 km of ridge (recalled) ≈ 5.5 cm/yr. (The pre-history ocean does not
  *  move: the gap a plate opens behind it is all its own, at its whole speed, as this floor was.) */
 export const SCENE_SPREAD_KM_PER_MYR = 55;
+/** The oldest floor a scene plate's ridge-aged ocean is drawn with, Myr: the cap on ageFromRidges' ages, and the one age
+ *  check-phase4 gives an ocean that has no slope. A scene's drawing, not a pre-history age: the background ocean is dated
+ *  at the history's start by its relict ridges (init/prehistory-ocean.js datePrehistory). The value of the config key
+ *  initialOceanAgeMyr it replaces (retired 2026-11-25, lane startsea A2), so the scenes' ages are unchanged. */
+export const SCENE_OCEAN_MAX_AGE_MYR = 150;
 
 function inSectors(azimuth, sectors) {
     if (sectors === 'all') return true;          // (a [0, 360] pair would wrap to a single point — say 'all' instead)
