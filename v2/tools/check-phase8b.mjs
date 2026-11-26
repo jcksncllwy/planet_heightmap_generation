@@ -439,9 +439,12 @@ section('the coast by margin');
     // A KNOWN GAP (supervisor, 2026-11-25: kept as a failing check so it stays seen): on this world the mature passive coast is
     // already 1.22 in the tectonic surface before any carving (1.16 at 160K), and stays so with the coast noise, its detail and
     // the warps off — the synthesized coastline itself, not the rivers (lane coastsmooth P2, probes/p8b-kinds.mjs). Earth's
-    // passive coasts are smoothed by the waves (Ashton & Murray 2006, JGR 111, F04011), which no stage models yet (queued: B)
+    // passive coasts are smoothed by the waves (Ashton & Murray 2006, JGR 111, F04011). The finish's coast stage now runs that
+    // drift (finish-coast.js), but this check reads the tectonic surface upstream of it, so the waves cannot move it. On the
+    // finished ground the drift reaches tens of km, not the 50–500 km measured here: the sim's shore sea is ~7× deeper than
+    // Earth's (lane coastwave), and that shoreface/coastal-plain grading is queued as its own lane (the margin wedge)
     check('mature passive coasts are smoother than active, collision and arc coasts (as on Earth)', D(s64, 'passive') < D(s64, 'rest'),
-        `640K: mature passive D ${f3(D(s64, 'passive'))} · the rest ${f3(D(s64, 'rest'))} (${COAST_KINDS.map(k => `${k} ${f3(D(s64.each, k))}`).join(', ')}); Earth passive ${f3(D(e64, 'passive'))} · fjord/ria ${f3(D(e64, 'fjord'))} · other ${f3(D(e64, 'other'))}` + (D(s64, 'passive') < D(s64, 'rest') ? '' : ' — known gap: the synthesized coast’s roughness; wave smoothing (B) is queued'));
+        `640K: mature passive D ${f3(D(s64, 'passive'))} · the rest ${f3(D(s64, 'rest'))} (${COAST_KINDS.map(k => `${k} ${f3(D(s64.each, k))}`).join(', ')}); Earth passive ${f3(D(e64, 'passive'))} · fjord/ria ${f3(D(e64, 'fjord'))} · other ${f3(D(e64, 'other'))}` + (D(s64, 'passive') < D(s64, 'rest') ? '' : ' — known gap: the synthesized coast’s roughness (upstream of the finish’s wave drift; the margin wedge is queued)'));
     // D flat with resolution, as Earth's: a sub-cell feature (a drowned valley) must not roughen the coast as the mesh resolves it.
     // Allowed: Earth's own rise between the meshes, plus 0.035 — Earth's D spread over 160K–2.5M (0.015) and the run-to-run
     // spread of this D across histories (±0.02: 2 worlds × 4 commits, coastsmooth P1)
