@@ -34,7 +34,7 @@
     }
   },
   "ice": {
-    "source": "ICE-6G_C (Peltier, Argus & Drummond 2015), sftgif at 21 and 0 ka, tuning/climate/fetch-ice6g.sh",
+    "source": "ICE-6G_C (Peltier, Argus & Drummond 2015), sftgif at 21 and 0 ka (10′), stgit at 0 ka (1°), tuning/climate/fetch-ice6g.sh",
     "sources": {
       "lgm": {
         "file": "I6_C.VM5a_10min.21.nc",
@@ -43,6 +43,10 @@
       "now": {
         "file": "I6_C.VM5a_10min.0.nc",
         "sha256": "518bdfa9c918cb17090a4380c494572ffd011a2a5b547dab57327faf7ade415a"
+      },
+      "thick": {
+        "file": "I6_C.VM5a_1deg.0.nc",
+        "sha256": "5d98a12a95bb0f483e6af1d5be1ac5cf6403767668854f8b1c1dd861ea0ff9af"
       }
     },
     "sampling": "every 10′ point to its nearest cell, cos-lat weighted mean share ≥ 50 %; bit 0: 21 ka, bit 1: 0 ka",
@@ -50,6 +54,9 @@
     "file": "earth-ice-160k.u8",
     "numCells": 160001,
     "fingerprint": "160001:fac47e241208aa46",
-    "sha256": "aac7e561dba10e4a1b4067ce81d38d2aacc76b0e4749a6aa96705084cba51507"
+    "sha256": "aac7e561dba10e4a1b4067ce81d38d2aacc76b0e4749a6aa96705084cba51507",
+    "thickFile": "earth-ice-thick-160k.i16",
+    "thickSampling": "today's ice thickness (stgit at 0 ka, 1° file, m), bilinear at the cell's centre where bit 1 (today's ice) is set",
+    "thickSha256": "42e19446af4a56f8d9248bd3311f307cdee152762620bd02e6e86acf234e8404"
   }
 }
