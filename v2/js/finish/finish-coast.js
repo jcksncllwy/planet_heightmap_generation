@@ -234,7 +234,10 @@ function shares(n, k) {
  * below the sea to at or above it), each cut to the mean depth that carries the throat across a
  * cell's width; what the cut takes is swept into the lagoon (its flood-tide delta), so nothing is made or lost. A lagoon too
  * small to take it is filled to the sea's level by it (back-barrier infill: a marsh, land). A lagoon whose
- * only way out is through ground the stage didn't raise (rock, an older fill) is left closed: the hydrology's.
+ * only way out is through ground the stage didn't raise (rock, an older fill) keeps an inlet only through a barrier one cell
+ * thick (it touches the coast: a strait narrower than the mesh's cells) standing under the tide's high water, else is left closed: the hydrology's. Any water below the
+ * sea's level cut off from it counts, not only what the stage sealed (lane lakebar R3, 2026-11-26: with openStraits gone, a sea
+ * behind a low barrier is opened by its tidal prism here, or by its overflow cutting its sill, finish-erode.js overflowSills).
  * Lagoons behind lagoons chain: a pass at a time, the sea recomputed between, so a lagoon infilled (now fill itself) or
  * opened (now sea) becomes the way out of the one behind it, until a pass changes nothing (2.5M 243751@430: a 76,000 km²
  * lagoon behind a smaller one, closed in one pass).
@@ -258,7 +261,9 @@ export function tidalInlets({ mesh, z, zBefore, wasOcean, oceanOf, cellKm2, edge
 /** One pass of tidalInlets against a fixed open sea. */
 function inletPass({ mesh, z, zBefore, wasOcean, ocean, cellKm2, edgeKm }, F) {
     const { adjOffset, adjList, numCells: n } = mesh, comp = new Int32Array(n).fill(-1), out = { pockets: 0, cells: 0, km2: 0, opened: 0, openedKm2: 0, infilled: 0, infilledKm2: 0, cutKm3: 0, closed: 0, closedKm2: 0 };
-    const sealed = c => z[c] < 0 && wasOcean[c] && !ocean[c], laid = c => zBefore[c] < 0 && z[c] >= 0;
+    // (a pocket: any water below the sea's level the open sea does not reach — a lagoon the stage sealed, or a body cut off
+    // before it (lane lakebar R3: openStraits' sea behind a sill); wasOcean is kept for the callers' books, not asked here)
+    const sealed = c => z[c] < 0 && !ocean[c], laid = c => zBefore[c] < 0 && z[c] >= 0;
     const from = new Int32Array(n).fill(-1);
     for (let s = 0; s < n; s++) {
         if (!sealed(s) || comp[s] >= 0) continue;
@@ -280,6 +285,18 @@ function inletPass({ mesh, z, zBefore, wasOcean, ocean, cellKm2, edgeKm }, F) {
         const path = [];
         for (let c = end; c >= 0 && comp[c] !== id; c = from[c]) path.push(c);
         for (const c of seen) from[c] = -1;
+        // (no way through the stage's fill: a body touching the coast — one cell of ground between it and the open sea, a barrier
+        // narrower than the mesh's cells — takes its inlet through that cell, the lowest such, if the tide reaches over it (under
+        // high water, half the range: without that no prism flows, and an inlet needs one to open); any other barrier is the hydrology's)
+        if (end < 0) {
+            const high = F.tidalRangeM / 2000;
+            for (const c of cells) for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) {
+                const y = adjList[k];
+                if (comp[y] === id || ocean[y] || !(z[y] >= 0 && z[y] < high) || (end >= 0 && !(z[y] < z[end] || (z[y] === z[end] && y < end)))) continue;
+                for (let j = adjOffset[y]; j < adjOffset[y + 1]; j++) if (ocean[adjList[j]]) { end = y; break; }
+            }
+            if (end >= 0) path.push(end);
+        }
         if (end < 0) { out.closed++; out.closedKm2 += areaKm2; continue; }
         // (the throat's mean depth over a cell's width; the cut swept into the lagoon in proportion to its depth. If the lagoon can
         // take the whole cut it stays open behind its inlet; if not, the tide's sand fills it to the sea's level first — infilled,

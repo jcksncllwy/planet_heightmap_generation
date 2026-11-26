@@ -911,7 +911,8 @@ point and every other saddle under it: a lone exit's head is ~9 m at 10⁵ m³/s
 its share. The share cuts that sill by the erosion's own stream power until the next judge, and a sill cut below the spill
 point's is the lake's way out from then on: capture, with no rule for it. It replaced `openStraits`, which opened a sea behind a
 sill under ~30 m and ~160 km of dry land by cutting a strait 20 m below the sea; such a sea is now a closed basin like any other,
-and joins the ocean only when its sill is cut below the sea (`stats.overflow`: lakes, exits, cells cut, km³ carried off, judge by
+and joins the ocean when its sill is cut below the sea, or by its tidal prism (`tidalInlets`, finish-coast.js: any water below the
+sea's level cut off from it now, through the stage's fill or a one-cell barrier under the tide's high water) (`stats.overflow`: lakes, exits, cells cut, km³ carried off, judge by
 judge). Limits: the share is not routed past its sill, only the barrier above the lake's level is cut, and what it cuts is
 counted as carried off, not laid.
 **Fills keep their inlets** (lane lakebar, 2026-11-25; `keepInlets`, carve.js): water the sea reached before a fill and that the
