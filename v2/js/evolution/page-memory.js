@@ -55,7 +55,7 @@ export function heldBytes({ framesBytes = 0, detailBytes = 0, keptWorkerCells = 
 }
 
 /** Bytes as the card says them: "740 MB", "2.1 GB". */
-export const bytesWords = n => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`);
+export const bytesWords = n => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n < 0.5e6 ? (n > 0 ? 'under 1 MB' : 'none') : `${Math.round(n / 1e6)} MB`);
 
 /**
  * The plan for making room for an Add detail at `cells`: what to let go, cheapest to bring back first, until the pass

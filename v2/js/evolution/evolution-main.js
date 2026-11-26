@@ -250,6 +250,12 @@ const finishBytes = f => (f.bytes ??= bytesOf({ raster: f.raster, rivers: f.rive
 const frameSizes = new WeakMap(), frameBytes = f => { let v = frameSizes.get(f); if (v == null) frameSizes.set(f, v = bytesOf(f)); return v; };
 /** Is this detailed moment in the finish cache (read from it, or kept there after it was made)? Only those are let go to make room. */
 const onDisk = fin => !!fin.cacheKey && (fin.cached || finisher.saved.has(fin.cacheKey));
+/** Let a detailed moment go; one the finish cache holds is noted with its detail and climate, to bring back at them when
+ *  stepped onto (lookUpDetail) — the page's detail may be another by then. */
+function letGoFinish(b, frame, fin) {
+    if (onDisk(fin)) (b.letGo ??= new Map()).set(frame, { cells: fin.cells, climateKey: fin.climateKey, civ: !!fin.civ });
+    b.finishes.delete(frame);
+}
 /** What the page holds now, by part (page-memory.js heldBytes). */
 function held(b) {
     let frames = 0, detail = 0;
@@ -268,7 +274,7 @@ function makeRoom(b, cells, keep) {
     const said = [];
     if (plan.worker) { const c = finisher.keptCells; if (finisher.release()) said.push(`the ${cellsWords(c)} detail's mesh`); }
     if (plan.pool) b.player?.rest();                                   // (woken when the pass is done: finishMoment's finally)
-    for (const f of plan.detail) { b.finishes.delete(f); said.push(`the detailed ${f.time.toFixed(0)} Myr (kept on disk)`); }
+    for (const f of plan.detail) { letGoFinish(b, f, b.finishes.get(f)); said.push(`the detailed ${f.time.toFixed(0)} Myr (kept on disk)`); }
     if (plan.detail.length) dirty = true;
     console.info(`[evolution] memory before a ${cellsWords(cells)} pass: ${bytesWords(h.total)} held (frames ${bytesWords(h.frames)}, detail ${bytesWords(h.detail)}, finishing worker ${bytesWords(h.worker)}), ` +
         `about ${bytesWords(plan.need)} needed, budget ${bytesWords(BUDGET_BYTES)}` + (said.length || plan.pool ? `; let go: ${[...said, ...(plan.pool ? ['the terrain workers, for the pass'] : [])].join(', ')}` : '') + (plan.fits ? '' : ' — may still not fit'));
@@ -800,14 +806,15 @@ async function restoreDetail(b, frame, ready) {
     await finishMoment(null, { frame, cachedOnly: true });
 }
 // (auto: a moment stepped onto, looked up in the finish cache — knownDetail, lookUpDetail — and shown as the view stands)
-async function finishMoment(again = null, { frame: asked = null, cachedOnly = false, auto = false } = {}) {
+// (cells: a detail other than the page's — a moment let go to make room, brought back from the finish cache at its own)
+async function finishMoment(again = null, { frame: asked = null, cachedOnly = false, auto = false, cells: askedCells = null } = {}) {
     const b = B, frame = again ?? asked ?? painted;
     if (!b?.simMesh || !frame) return;
     // (the button cancels a finish under way — but not in its first moments: it turns into Cancel where Add detail was,
     // so a double click would otherwise start a finish and stop it at once)
     if (b.finishJob && !(again && b.finishJob.retry)) { if (performance.now() - b.finishJob.startedAt >= CANCEL_GRACE_MS) finisher.cancel(); return; }   // (a retry takes over its placeholder)
     setPlaying(false);
-    const cells = Number($('finishCells').value), width = finishWidth(cells);
+    const cells = askedCells ?? Number($('finishCells').value), width = finishWidth(cells);
     const started = performance.now(), done = new Map(FINISH_STAGES);
     b.finishNote = null; b.finishOk = false;
     b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), lookup: cachedOnly, retry: again ? b.retryNote : null };
@@ -839,6 +846,7 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
         // (kept with the others; now that it is done, the one viewed longest ago goes if there are too many — never this
         // one nor the one on screen)
         b.finishes.set(frame, { cells, raster: res.raster, rivers: res.rivers, climate: res.climate, civ: res.civ, stats: res.stats, secs, climateKey: key, cacheKey: res.cacheKey ?? null, cached: !!res.cached, seen: performance.now() });
+        b.letGo?.delete(frame);
         letGoDetailed(b, [frame, painted]);
         if (res.cacheKey && b.known?.sig === detailSig(b, cells, key)) b.known.times?.add(frame.time);
         b.finishOk = true;
@@ -858,7 +866,8 @@ async function finishMoment(again = null, { frame: asked = null, cachedOnly = fa
             // (said at once, on the card and the status line: the bar starts again from 0 — Jackson's 1200 Myr pass went from
             // ~99 % to 0 % with no word, 2026-11-26)
             b.retryNote = `Ran short of memory${(b.finishJob?.share ?? 0) > 0.8 ? ' near the end' : ''}. Trying again, with the moments kept in detail let go`;
-            b.finishes.clear(); b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), retry: b.retryNote }; dirty = true;
+            for (const [f, fin] of [...b.finishes]) letGoFinish(b, f, fin);
+            b.finishJob = { frame, cells, stage: 'starting', share: 0, startedAt: performance.now(), retry: b.retryNote }; dirty = true;
             if (!b.live) status(`${b.retryNote}…`, null);
             updateClimateUi();
             console.warn('[evolution] out of memory finishing: the detailed moments kept and the old worker let go, trying again');
@@ -889,7 +898,7 @@ function letGoDetailed(b, keep) {
     for (const [frame, fin] of order) {
         if (n <= KEEP_DETAILED && bytes <= room) break;
         if (keep.includes(frame)) continue;
-        b.finishes.delete(frame); n--; bytes -= finishBytes(fin);
+        letGoFinish(b, frame, fin); n--; bytes -= finishBytes(fin);
         console.info(`[evolution] the detailed ${frame.time.toFixed(0)} Myr let go (${onDisk(fin) ? 'kept on disk' : 'viewed longest ago'}): ${n} kept, ${(bytes / 2 ** 20).toFixed(0)} MB of ${bytesWords(room)}`);
     }
 }
@@ -944,6 +953,12 @@ async function knownDetail(b) {
  *  finished unasked: a miss leaves the preview, with Add detail to press). Once per moment and settings. */
 function lookUpDetail(b, frame) {
     if (b.finishes.has(frame) || b.finishJob || !b.cache || b.restore) return;
+    // (a moment let go to make room, at its own detail — while the climate and People are as they were when it was made)
+    const L = b.letGo?.get(frame);
+    if (L && L.climateKey === climateKey() && L.civ === !!view.civ) {
+        const tried = `let|${L.cells}|${L.climateKey}|${frame.time}`;
+        if (!(b.looked ??= new Set()).has(tried)) { b.looked.add(tried); finishMoment(null, { frame, cachedOnly: true, auto: true, cells: L.cells }); return; }
+    }
     const sig = detailSig(b), K = b.known?.sig === sig ? b.known : null;
     if (!K || (K.times ? !K.times.has(frame.time) : !K.failed)) return;     // (not held — or not known yet)
     const tried = `${sig}|${frame.time}`;
@@ -1026,7 +1041,7 @@ function updateCard() {
         const mem = kept.reduce((v, f) => v + finishBytes(b.finishes.get(f)), 0);
         // (and those the finish cache holds at these settings but the page let go: brought back when stepped onto)
         const K = b.known?.times && b.known.sig === detailSig(b) ? b.known.times : null, keptT = new Set(kept.map(f => f.time));
-        const disk = K ? b.frames.filter(f => K.has(f.time) && !keptT.has(f.time) && f !== frame) : [];
+        const disk = b.frames.filter(f => (K?.has(f.time) || b.letGo?.has(f)) && !keptT.has(f.time) && f !== frame);
         $('cardDetailed').innerHTML = 'Detailed: ' + kept.map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ') + ` (in memory, ${bytesWords(mem)})` +
             (disk.length ? `; on disk, brought back when you step onto them: ${disk.slice(0, 8).map(f => `<a href="#" data-t="${f.time}">${f.time.toFixed(0)} Myr</a>`).join(' · ')}${disk.length > 8 ? ` and ${disk.length - 8} more` : ''}` : '') +
             (goes && !job ? `. Adding detail here lets ${dt} Myr go once it is done${onDisk(b.finishes.get(goes)) ? ' (it stays on disk)' : ''}.` : '');
