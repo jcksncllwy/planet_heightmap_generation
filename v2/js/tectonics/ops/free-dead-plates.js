@@ -1,23 +1,27 @@
 // A dead plate's memory, let go. A plate dies when its last crust goes: welded into another (collision.js), or
 // a split or a birth that found nothing to take (subduction-init.js, ocean-plates.js). It stays in world.plates, as
-// its id is its index and frames, records and colours name it, but nothing moves it or reads its crust again. Yet each
-// plate holds a raster the size of the mesh (CrustRaster: ~211 bytes a cell, 8.4 MB at 40K cells) and a few
-// mesh-sized caches of the steps (gather.js's claim map and near-edge marks, rift-stress, collapse sources). Over a
-// long history most plates are dead: on the Evolution page's seed 243751, 353 of 360 at 1200 Myr, 3.3 GB in the history
-// worker, which keeps its world for Keep going (pagemem, 2026-11-26). This sweep drops whatever a dead plate holds
-// that is mesh-sized, keeping what names it (id, name, hue, born, quat, stats), so the frames and records read the same.
+// its id is its index and frames, records and colours name it. simulate.js already gives an emptied dead plate the one
+// shared empty raster (world.goneCrust) — but the steps' caches on the plate keep the old one alive: gather.js's
+// near-edge marks hold `raster: plate.crust` (the full CrustRaster as it was, ~211 bytes a cell, 8.4 MB at 40K) beside
+// their own mesh-sized arrays, and the claim map and the torque sums are mesh-sized too. Over a long history most plates
+// are dead: on the Evolution page's seed 243751, 353 of 360 at 1200 Myr, ~3.3 GB in the history worker, which keeps its
+// world for Keep going (pagemem, 2026-11-26). This sweep drops those caches from a dead plate (every own field that is
+// mesh-sized or holds a crust raster) — never its crust itself, which simulate.js keeps (goneCrust) and the river step's
+// view fetches for every plate — so the frames and records read the same.
 //
 // Called between steps by whoever runs a history (the page's history worker after each frame; the Node tools' history
 // cache, simulateCached): it changes no history (the frames' value hashes match without it), it only frees memory.
-// Nothing may read a dead plate's crust after this. GEO_SIM_DEAD_PLATE_TRAP=1 (Node) or trap: true puts a getter
-// that throws in place of each dropped field, so a run proves it (pagemem's check: three worlds, full length).
+// Nothing may read a dropped field after this. GEO_SIM_DEAD_PLATE_TRAP=1 (Node) or trap: true puts a getter that throws
+// in place of each one, so a run proves it (pagemem's check: three worlds, Jackson's at full length).
 
-/** Is this value mesh-sized: a typed array of at least `n` entries, or an object holding one (one level down)? */
+import { CrustRaster } from '../model/crust.js';
+
+/** Is this value mesh-sized: a typed array of at least `n` entries, or an object holding one or a crust raster (one level down)? */
 function meshSized(v, n) {
     if (!v || typeof v !== 'object') return false;
     if (ArrayBuffer.isView(v)) return v.length >= n;
     if (v instanceof Map || v instanceof Set) return false;           // (wings: a few entries per trench tip)
-    for (const x of Object.values(v)) if (ArrayBuffer.isView(x) && x.length >= n) return true;
+    for (const x of Object.values(v)) if ((ArrayBuffer.isView(x) && x.length >= n) || x instanceof CrustRaster) return true;
     return false;
 }
 
@@ -37,10 +41,12 @@ export function freeDeadPlates(world, { trap = TRAP } = {}) {
     for (const p of world.plates) {
         if (!p || p.alive || swept.has(p)) continue;
         for (const k of Object.keys(p)) {
+            if (k === 'crust') continue;                              // (simulate.js's goneCrust: shared, and read)
             const v = p[k];
             if (!meshSized(v, n)) continue;
             for (const x of ArrayBuffer.isView(v) ? [v] : Object.values(v)) {
-                if (ArrayBuffer.isView(x) && !seen.has(x.buffer)) { seen.add(x.buffer); bytes += x.buffer.byteLength; }
+                const bufs = ArrayBuffer.isView(x) ? [x] : x instanceof CrustRaster && x !== world.goneCrust ? Object.values(x).filter(y => ArrayBuffer.isView(y)) : [];
+                for (const y of bufs) if (!seen.has(y.buffer)) { seen.add(y.buffer); bytes += y.buffer.byteLength; }
             }
             if (trap) {
                 const id = p.id;
