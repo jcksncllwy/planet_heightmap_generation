@@ -206,8 +206,7 @@ moves 1.3–1.9 %, all of it filling to a level water stands at. **The world oce
 `terrain/world-ocean.js`, `finish-basins.js`): the sea is the water below sea level joined to the largest body of it — the
 world ocean; a body below sea level that does not join it has its surface set by its water balance, not by sea level (the
 Caspian at −28 m, the Dead Sea at −430 m; the Mediterranean drawn down 1.5–3 km when the Atlantic was cut off in the
-Messinian). A sea behind a low, short barrier (sill ≲ 30 m, ≲ 160 km of dry land — a strait narrower than the cells) is
-first opened into the ocean. Any other is a closed basin: its lake grown from its lowest point, as water rising in it
+Messinian). Each is a closed basin: its lake grown from its lowest point, as water rising in it
 would — a pocket behind a ridge only once the water tops it — until what evaporates off it (open water: 1.2 × the land's
 potential evaporation, Penman 1948, less the rain on it) outweighs what flows in (its catchment's runoff, less what dry
 river beds lose). Water balance settles in thousands of years, at once on the timeline's scale: the finish solves its
@@ -905,6 +904,16 @@ between lowstands (the sea above its floor 52 % of the time; transgressive valle
 1994) by its river's load — the catchment's rock uplift over the window's highstands — from its head seaward, up to today's sea; a
 river too starved to fill it keeps its ria (Talling 1998; Blum & Törnqvist 2000). It runs at the carve's end (the preview) and in
 the finish after the early erosion, before the bayhead fill (`stats.lowstand.cycleFill`).
+**A full lake overflows at every low exit** (lane lakebar R3, 2026-11-26; `overflowSills`, finish-erode.js, at each judge of
+both erosion runs, CPU and GPU). An exit's flow is critical over its sill (Garcia-Castellanos & O'Connor 2018), Q = W·h·√(g·h),
+its width the channel's by hydraulic geometry (W = 4·√Q, Leopold & Maddock 1953), so Q = a²·g·h³. One level feeds the spill
+point and every other saddle under it: a lone exit's head is ~9 m at 10⁵ m³/s and ~1 m at 100, and a second saddle within it takes
+its share. The share cuts that sill by the erosion's own stream power until the next judge, and a sill cut below the spill
+point's is the lake's way out from then on: capture, with no rule for it. It replaced `openStraits`, which opened a sea behind a
+sill under ~30 m and ~160 km of dry land by cutting a strait 20 m below the sea; such a sea is now a closed basin like any other,
+and joins the ocean only when its sill is cut below the sea (`stats.overflow`: lakes, exits, cells cut, km³ carried off, judge by
+judge). Limits: the share is not routed past its sill, only the barrier above the lake's level is cut, and what it cuts is
+counted as carried off, not laid.
 **Fills keep their inlets** (lane lakebar, 2026-11-25; `keepInlets`, carve.js): water the sea reached before a fill and that the
 fill left below sea level drains, and takes the tide, through an inlet its river and tidal prism keep scoured (Escoffier 1940).
 So after the transgressive fill, where it cut such water off from the sea, the filled cells on its lowest way back go back to their floor

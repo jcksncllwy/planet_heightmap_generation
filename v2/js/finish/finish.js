@@ -14,9 +14,9 @@ import { depositSediment } from './finish-sediment.js';
 import { lastIceAge, glacialSheets } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
 import { coastWork, tidalInlets } from './finish-coast.js';
-import { openStraits, fillSeaBasins, Water } from './finish-hydro.js';
+import { fillSeaBasins, Water } from './finish-hydro.js';
 import { fillSpillMerge } from './finish-fsm.js';
-import { ERODE, windowUplift, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, hollowCensus, playas, bayheadFill } from './finish-erode.js';
+import { ERODE, windowUplift, erodeLandscape, erodeLadder, ladderOverWindow, erosionSpanMyr, hollowCensus, playas, bayheadFill, addOverflow, roundOverflow } from './finish-erode.js';
 import { erodeGPU, gpuCanRun } from '../gpu/erode-gpu.js';
 import { sharedDevice } from '../gpu/gpu-device.js';
 import { landCover, coverRgb, newCover, biasTowardClimate, coverRain, coverRainScale, newVariety, placeVariety, placeGround, fineMottle, terrainLook } from './finish-cover.js';
@@ -124,8 +124,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // the Dead Sea's shore at −430 m and the Danakil's are among the hottest places on Earth. Until 2026-11-10 the
     // climate took land as z > 0: such a pit was sea to every stage, and its ground read the sea level's temperature.
     // The climate runs before the lakes exist, so a cut-off lake is read as its dry floor — PITHEAT, README)
-    // (the world ocean — the sea joined to the largest body of water — its straits narrower than the mesh's cells opened
-    // first: a sea cut off from it is a closed basin, its level its water balance's — finish-basins.js; taken here, before
+    // (the world ocean — the sea joined to the largest body of water: a sea cut off from it is a closed basin, its level its water balance's — finish-basins.js; taken here, before
     // the carve's micro-relief (which leaves z as it is), for the ice: what reaches it calves, what reaches a sunk basin
     // melts into it)
     let ocean0 = oceanMask(mesh, z), climateLand = new Uint8Array(n);
@@ -267,7 +266,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     let { koppen, tAnn, pAnn, lat, lon, G, climGrid, warmSl, waveIn, wind, travelFlow, petM, wetMonths, liquid, monthly, waterGrid, pageC, gridClimate,
         runoff, pet, skyKept, skyRunoff, sumR, sumP, landN } = await climateOn(z, climateLand, ocean0);
     lap('climate');
-    // (the surface and the sea that climate read, kept for its re-run on the pits that end as sea, below — the straits cut next write z)
+    // (the surface and the sea that climate read, kept for its re-run on the pits that end as sea, below — the carve next writes z)
     const climZ = z.slice(), climSea = ocean0.slice();
 
     // ── the rivers: runoff (rain less evaporation) weights the drainage; dry basins stay closed; carved for longer ──
@@ -282,8 +281,6 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const meanR = landN ? sumR / landN : 1, meanP = landN ? sumP / landN : 1, meanW = landN ? oldW / landN : 1;
     for (let c = 0; c < n; c++) if (z[c] > 0 && pAnn[c] === pAnn[c])
         carveIn.rain[c] = meanW * Math.min(F.wetMax, Math.max(F.runoffFloor, (1 - F.rainShare) * runoff[c] / meanR + F.rainShare * Math.max(0, liquid.rain[c]) / meanP) ** F.wetPower);
-    const straits0 = openStraits(mesh, z, ocean0, F);
-    if (straits0.opened) ocean0 = oceanMask(mesh, z);
     observe?.('surface', mesh, z, ocean0);
     const B = closedBasins(mesh, z, runoff, pet, skyKept, cellKm2, F, ocean0);
     stats.closedBasins = B.basins;
@@ -497,11 +494,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     // hydrology's, its level its water balance's ──
     onStage('sea');
     let ocean = oceanMask(mesh, C.z);
-    // (an inland sea the ocean all but reaches — behind a low, short barrier — is opened into it; one left closed is a
-    // remnant of the sea in a basin, for the hydrology: finish-hydro.js)
-    const straits = openStraits(mesh, C.z, ocean, F);
-    stats.straits = { opened: straits.opened + straits0.opened, cut: straits.cut + straits0.cut };
-    if (straits.opened) ocean = oceanMask(mesh, C.z);
+    // (a sea cut off from it is a remnant of the sea in a basin, for the hydrology: finish-hydro.js. One the ocean all but reaches
+    // is not opened by a rule (openStraits, until lane lakebar R3): full, it overflows at every low exit and its sills are cut by
+    // their shares (finish-erode.js overflowSills), and a sill cut below the sea joins it here)
     const seaBasin = fillSeaBasins(mesh, C.z, ocean, F);
     forgetMesh(mesh); forgetEdgeKm(mesh);                             // (the carve's and the distances' caches for this mesh)
     lap('sea');
@@ -520,6 +515,9 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
         stats.inlets = tidalInlets({ mesh, z: C.z, zBefore: polishZ, wasOcean: oceanMask(mesh, polishZ), oceanOf: zz => oceanMask(mesh, zz), cellKm2, edgeKm: mesh.edgeKm }, F);
         if (stats.inlets.opened) ocean = oceanMask(mesh, C.z);
     }
+
+    // (the lakes' other exits, over both erosion runs, judge by judge: finish-erode.js overflowSills)
+    stats.overflow = roundOverflow([stats.erode, stats.erodeLate].filter(Boolean).flatMap(r => r.levels ?? [r]).reduce((t, l) => (l.overflow ? addOverflow(t, l.overflow) : t), { lakes: 0, exits: 0, cells: 0, cutKm3: 0 }));
 
     // ── R1: rivers and lakes, by the climate ──
     onStage('water');

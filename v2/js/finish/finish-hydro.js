@@ -1,8 +1,8 @@
 // The finish's waters, what the water pass (finish-fsm.js, Fill-Spill-Merge) shares with the rest of the finish:
 //   · the water kinds of a cell and of the picture (Water), and a river's regime (Regime);
-//   · the world ocean's near misses: an inland sea behind a strait narrower than the cells, opened (openStraits), and the
-//     remnants of the sea in a basin, marked (fillSeaBasins: a body below sea level cut off from the ocean, whose water the
-//     water pass judges by its balance as any other hollow's);
+//   · the remnants of the sea in a basin, marked (fillSeaBasins: a body below sea level cut off from the ocean, whose water the
+//     water pass judges by its balance as any other hollow's). Until lane lakebar R3 (2026-11-26) a sea behind a strait narrower
+//     than the cells was opened here by a rule (openStraits); now its sills are cut by its overflow (finish-erode.js overflowSills);
 //   · one water, one kind (oneWater), and each river's year (riverYears), both run by the water pass.
 // Until 2026-11-03 this file held the hydrology itself: a priority flood with rules that rewrote the ground so its rivers could
 // cross it (graded fills, gorges, pockets cut, a breach for the ice's lakes, late rounds of fills; 2.6–3.2 % of the land's cells
@@ -16,48 +16,6 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 
 /** Lake kinds (per cell, and per pixel of the finished picture). */
 export const Water = Object.freeze({ NONE: 0, FRESH: 1, SALT: 2, PAN: 3 });
-
-/**
- * Inland seas the open ocean all but reaches: a body below sea level behind a low, short barrier — a strait narrower than
- * the mesh's cells, low land the carve keeps at its floor — is opened into the ocean, the barrier cut to F.straitDepthKm
- * below sea level along the way its water would spill (a priority flood from the sea). By a smooth weight on the
- * barrier's height (its sill, m) and its length over dry land (km): the same at every detail. A body left closed is the
- * hydrology's: a remnant of the sea in a basin (hydrology: `sea` hollows).
- * @returns {{opened: number, cut: number}} bodies opened, cells cut
- */
-export function openStraits(mesh, z, ocean, F) {
-    const { adjOffset, adjList, numCells: n, xyz } = mesh;
-    const { fill, parent, rank } = spillFlood(mesh, z, ocean);
-    // each body below sea level the ocean does not reach: its way out from the cell the flood reached first
-    const seen = new Uint8Array(n);
-    let opened = 0, cut = 0;
-    for (let s = 0; s < n; s++) {
-        if (seen[s] || ocean[s] || !(z[s] < 0)) continue;
-        const cells = [s];
-        seen[s] = 1;
-        let first = s;
-        for (let i = 0; i < cells.length; i++) {
-            const c = cells[i];
-            if (rank[c] >= 0 && (rank[first] < 0 || rank[c] < rank[first])) first = c;
-            for (let k = adjOffset[c]; k < adjOffset[c + 1]; k++) { const nb = adjList[k]; if (!seen[nb] && !ocean[nb] && z[nb] < 0) { seen[nb] = 1; cells.push(nb); } }
-        }
-        if (rank[first] < 0) continue;
-        let barrierKm = 0, sillKm = 0;
-        const path = [];
-        for (let c = first, guard = 0; c >= 0 && rank[c] !== -2 && guard < 1e6; guard++) {
-            path.push(c);
-            const p = parent[c];
-            if (z[c] >= 0 && p >= 0) barrierKm += R * Math.hypot(xyz[3 * p] - xyz[3 * c], xyz[3 * p + 1] - xyz[3 * c + 1], xyz[3 * p + 2] - xyz[3 * c + 2]);
-            if (z[c] > sillKm) sillKm = z[c];
-            c = p;
-        }
-        const open = (1 - smooth(F.straitSillM[0], F.straitSillM[1], 1000 * sillKm)) * (1 - smooth(F.straitKm[0], F.straitKm[1], barrierKm));
-        if (open < 0.5) continue;
-        for (const c of path) if (z[c] > -F.straitDepthKm) { z[c] = -F.straitDepthKm; cut++; }
-        opened++;
-    }
-    return { opened, cut };
-}
 
 /** The way water would spill to the sea from every cell (a priority flood from the ocean, water below sea level standing
  *  at it): each cell's spill level (km, ≥ 0), the cell it was reached from, and its order (-2: the ocean). */

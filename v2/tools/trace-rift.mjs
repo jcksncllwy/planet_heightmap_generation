@@ -68,8 +68,7 @@ for (const w of seenW) {
 }
 ages.sort((x, y) => x - y);
 console.log(`CRUST over ${seenW.size} sim cells: ${JSON.stringify(Object.fromEntries(kinds))}, plates ${JSON.stringify(Object.fromEntries(owners))}; oceanic ages Myr ${ages.length ? `${ages[0].toFixed(0)}…${ages[ages.length - 1].toFixed(0)} (median ${ages[ages.length >> 1].toFixed(0)}, under 50: ${young})` : 'none'}`);
-// (its sill to the world ocean, the barrier's dry length, the strait rule's weight on it)
-const smooth = (x0, x1, x) => { const t = Math.min(1, Math.max(0, (x - x0) / (x1 - x0))); return t * t * (3 - 2 * t); };
+// (its sill to the world ocean, the barrier's dry length)
 const sill = (zz, label) => {
     const oc = oceanMask(mesh, zz), fill = new Float32Array(n).fill(Infinity), parent = new Int32Array(n).fill(-1), heap = new MinHeap(1 << 16), done = new Uint8Array(n);
     let inSea = 0;
@@ -85,10 +84,9 @@ const sill = (zz, label) => {
     for (const c of body) if (zz[c] < zz[deep]) deep = c;
     let km = 0, top = 0, cells = 0, dryCells = 0, c = deep;
     for (let g = 0; c >= 0 && !oc[c] && g < 1e6; g++) { const p = parent[c]; if (zz[c] > top) top = zz[c]; if (zz[c] >= 0) { dryCells++; if (p >= 0) km += R * Math.hypot(xyz[3 * p] - xyz[3 * c], xyz[3 * p + 1] - xyz[3 * c + 1], xyz[3 * p + 2] - xyz[3 * c + 2]); } cells++; c = p; }
-    const open = (1 - smooth(F.straitSillM[0], F.straitSillM[1], 1000 * top)) * (1 - smooth(F.straitKm[0], F.straitKm[1], km));
-    console.log(`SILL ${label}: body cells in the world ocean ${inSea}/${body.length}; deepest ${Math.round(1000 * zz[deep])} m; spill path ${cells} cells, ${dryCells} dry, ${Math.round(km)} km over dry land, sill ${Math.round(1000 * top)} m; the strait rule's weight ${open.toFixed(2)} (opens over 0.5), reaches the sea at ${c >= 0 ? `${lat[c].toFixed(1)},${lon[c].toFixed(1)}` : '-'}`);
+    console.log(`SILL ${label}: body cells in the world ocean ${inSea}/${body.length}; deepest ${Math.round(1000 * zz[deep])} m; spill path ${cells} cells, ${dryCells} dry, ${Math.round(km)} km over dry land, sill ${Math.round(1000 * top)} m, reaches the sea at ${c >= 0 ? `${lat[c].toFixed(1)},${lon[c].toFixed(1)}` : '-'}`);
 };
 sill(before, 'before the carve');
 sill(z, 'finished');
-console.log('stats', JSON.stringify({ straits: fin.stats.straits ?? null, cutOffSeas: fin.stats.cutOffSeas?.length ?? fin.stats.cutOffSeas ?? null, biggest: fin.stats.water.biggestLakesKm2 }));
+console.log('stats', JSON.stringify({ overflow: fin.stats.overflow ?? null, cutOffSeas: fin.stats.cutOffSeas?.length ?? fin.stats.cutOffSeas ?? null, biggest: fin.stats.water.biggestLakesKm2 }));
 process.exit(0);

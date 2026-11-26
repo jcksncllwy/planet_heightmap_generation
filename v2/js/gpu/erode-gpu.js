@@ -16,7 +16,7 @@
 // what lakes kept, closed basins and rebound stay on the CPU, with a readback a step.
 
 import { openDevice, readBack, gpuWait } from './gpu-device.js';
-import { deltaLayer, layUp, closedOutlets, layClosed } from '../finish/finish-erode.js';
+import { deltaLayer, layUp, closedOutlets, layClosed, overflowSills, addOverflow, roundOverflow } from '../finish/finish-erode.js';
 import { meshFields, sumPartials, grid, INDEX_WGSL, WG } from './fields.js';
 import { reboundGPU, zBedBack } from './rebound-gpu.js';
 import { CLAMP_AFFINE_WGSL } from './fluvial-kernels.js';
@@ -559,11 +559,18 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
         for (let i = 0; i < q.length; i++) for (let j = adjOffset[q[i]]; j < adjOffset[q[i] + 1]; j++) { const y = adjList[j]; if (open[y]) return fill[c0]; if (!seen[y]) { seen[y] = 1; q.push(y); } }
         return Infinity;
     };
+    const overflow = { lakes: 0, exits: 0, cells: 0, cutKm3: 0 };
     const closed = async tMyr => {
         // (a cut-off sea gone dry leaves the ocean first: finish-erode.js erodeLandscape; outlets() reads it after. Its sills come
         // from this network's flood: `sills`)
         if (o.release) { const t = performance.now(); await o.release(tMyr, z, sills); ms.release += performance.now() - t; }
-        ({ sink, base, sinkAt, basins } = closedOutlets(o.closed(z, gpuClosed ? await flood() : null), z, n, sinkAt));
+        const J = o.closed(z, gpuClosed ? await flood() : null);
+        ({ sink, base, sinkAt, basins } = closedOutlets(J, z, n, sinkAt));
+        // (a full lake's other low exits take their share and cut their sills, until the next judge (finish-erode.js
+        // overflowSills): on the CPU, on the ground just read back, so the GPU takes the cut ground from here)
+        const cut = overflowSills(mesh, z, J, { water, kOf: c => K[c], m, column, dtMyr: Math.min(P.closedEvery, P.steps - Math.round(tMyr / dt)) * dt, seaKm: seaLvl });
+        addOverflow(overflow, cut);
+        if (cut.cells) put('z', z);
         // (the rebound's copy of the ocean: the release, and the judge itself (a breached sea joined: finish.js reflooded), change it in place)
         settle?.setOcean(ocean);
     };
@@ -955,5 +962,5 @@ export async function erodeGPU(gpu, o, P, { onStep = null, device: shared = null
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3), overRimKm3PerYr: perYr(overKm3), ...(settle ? { plate: { ...settle.last, residual: +settle.last.residual.toExponential(1) } } : {}) };
-    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, ...undone, toSeaKm3: R.toSea, closedKm3: R.inClosed, ...(MAR ? { marineKm3: R.marineKm3, marineDriftKm3: R.marineDriftKm3, marineSub: marSub, coastMovedCells: R.coastMoved, marineSpiltKm3: R.marineSpiltKm3, pocketCells: R.pocketCells, marineActive: +(R.marineActive / Math.max(1, R.marineSteps)).toFixed(3) } : {}), outflow: { q: outQ, recv: outR } };
+    return { curve, survivors: null, budget, ms: Object.fromEntries(Object.entries(ms).map(([key, v]) => [key, Math.round(v)])), route: R.route, ...undone, overflow: roundOverflow(overflow), toSeaKm3: R.toSea, closedKm3: R.inClosed, ...(MAR ? { marineKm3: R.marineKm3, marineDriftKm3: R.marineDriftKm3, marineSub: marSub, coastMovedCells: R.coastMoved, marineSpiltKm3: R.marineSpiltKm3, pocketCells: R.pocketCells, marineActive: +(R.marineActive / Math.max(1, R.marineSteps)).toFixed(3) } : {}), outflow: { q: outQ, recv: outR } };
 }

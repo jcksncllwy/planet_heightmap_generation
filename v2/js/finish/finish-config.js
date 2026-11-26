@@ -173,13 +173,6 @@ export const FINISH = {
     // over basinLakeKm: its lakes count as glacial (stats.water.byOriginShare), as a hollow half under the ice's ice does
     basinLakeKm: 0.05,
     basinLakeShare: 0.25,
-    // inland seas (2026-10-15, developer: inland seas "COMPLETELY dried out … leaving holes in the ground"): a body below
-    // sea level behind a low, short barrier is a sea the mesh cannot connect — a strait narrower than its cells, low land
-    // the carve keeps at its 2 m floor — opened into the ocean along the way it would spill, by a smooth weight on the
-    // barrier's height and its length over dry land (open below the first of each, closed beyond the second)
-    straitSillM: [3, 30],
-    straitKm: [40, 160],
-    straitDepthKm: 0.02,        // …the strait cut this far below sea level
     // a basin below sea level cut off from the world ocean is a remnant of the sea (finish-basins.js): its surface is set
     // by its water balance — the runoff of its catchment and the rain on it against what evaporates off its water — not
     // by sea level. Full to its rim, it spills on (a fresh lake whatever its size); short of it, a salt lake at its own

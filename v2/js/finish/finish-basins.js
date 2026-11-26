@@ -252,13 +252,15 @@ function treeScratch(n, m) {
  *   ground is the finest's averaged, which shaves a narrow sill below the sea that the finest still holds above it
  * @param {Uint8Array|null} [histSea]  the seas the history left cut off (the first judge's `seaCells`, on the history's own
  *   surface): only a hollow most of whose ground below the sea lay in them opens — a hollow the erosion dug is not a sea the history held
- * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], open: Int32Array[], seaCells: Uint8Array}}
+ * @returns {{sink: Uint8Array, base: Float32Array, water: Float32Array, basins: number, levelled: number, tectonic: Uint8Array, seas: Object[], lakes: Object[], open: Int32Array[], seaCells: Uint8Array, flood: Object}}
  *   sink: 1 on every cell of a closed hollow (its rivers end there); base: the level a river ending there is graded to
  *   (the ground, or a lake's level); water: each lake's level on the cells under it (NaN elsewhere) — a closed hollow's
  *   lakes, terminal and full; tectonic: the tectonic surface's hollows, closed hollows included; seas: each sea cut off from the ocean (a basin with ground below sea level, at least basinMinKm2): its area (km²),
  *   floor and sill (km), its water's level (km) and area (km²), inflow and what it would evaporate full (km³/yr), and
  *   whether it spills (full) or keeps a lake (wet) or a playa — or `open`: its sill below the sea's surface, the sea's; open:
  *   those seas' cells, one array each (joinOpenSeas); seaCells: 1 on each cut-off sea's cells below the sea's surface
+ *   lakes: each hollow (cells, its outlet first; level: its spill level; outflow: what a full one passes on, km²·mm/yr); flood:
+ *   the flood (fill, parent, order, count; done: 2 ocean, 1 land; lake: each cell's hollow, −1 none) — finish-erode.js overflowSills
  */
 export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, flood = null, seaKm = 0, breach = true, histSea = null) {
     const { adjOffset, adjList, numCells: n } = mesh;
@@ -379,7 +381,8 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         for (const W of S.lakes) { wetKm2 += W.cells.length * cellKm2; if (!(main && shows(main)) && (!main || W.cells.length > main.cells.length)) main = W; }
         if (cutOff) seas.push({ id, low, km2: area, floorKm: floor, sillKm: L.level, inflowKm3: S.inflow * 1e-6, full: S.full, levelKm: S.full ? L.level : main ? main.level : floor,
             waterKm2: S.full ? area : wetKm2, wet: S.full || (!!main && shows(main)) });
-        if (S.full) return S.outflow;                                 // (it fills and spills: an open basin — the rivers lead it out)
+        if (S.full) { L.outflow = S.outflow; return S.outflow; }     // (it fills and spills: an open basin — the rivers lead it out; its
+                                                                      // exits share what it passes on: finish-erode.js overflowSills)
         // Closed: the whole hollow is its rivers' end — what reaches it stays in it — and its floor is not cut: what the
         // rivers bring there is laid down, not carried away. A river entering it is graded to the ground where it enters
         // (base), never cut below it, and one reaching a lake to the lake's level: rivers ending in a closed basin aggrade
@@ -394,7 +397,7 @@ export function closedBasins(mesh, z, runoff, pet, rain, cellKm2, F, ocean, floo
         basins++;
         return 0;
     }
-    return { sink, base, water, basins, levelled, tectonic, seas, lakes, open, seaCells };
+    return { sink, base, water, basins, levelled, tectonic, seas, lakes, open, seaCells, flood: { fill, parent, order, count, done, lake } };
 }
 
 /**

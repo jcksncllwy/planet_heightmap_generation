@@ -151,6 +151,7 @@ export function erodeLandscape(o, P) {
     };
     coastline();
     let sink = null, base = null, sinkAt = null, basins = [], count = 0;
+    const overflow = { lakes: 0, exits: 0, cells: 0, cutKm3: 0 };
     const closed = s => {
         // (a cut-off sea held as water from the window's start goes dry once its evaporation has drawn it down: o.release —
         // finish.js seaDrying — takes it out of the ocean at the judge after its time, and the coast is drawn again)
@@ -158,6 +159,8 @@ export function erodeLandscape(o, P) {
         const B = o.closed(z);
         if (B.open?.length) coastline();
         ({ sink, base, sinkAt, basins } = closedOutlets(B, z, n, sinkAt));
+        // (a full lake's other low exits take their share and cut their sills, until the next judge: overflowSills)
+        addOverflow(overflow, overflowSills(mesh, z, B, { water, kOf: c => P.kScale * k[c] * (slow ? slow[c] : 1), m, column, dtMyr: Math.min(P.closedEvery, P.steps - s) * dt, seaKm }));
     };
     const route = () => {
         rank.fill(-1); parent.fill(-1);
@@ -365,7 +368,7 @@ export function erodeLandscape(o, P) {
     for (const p of curve) { seaKm3 += p.seaKm3; closedKm3 += p.closedKm3; grossKm3 += p.erodedKm3; }
     const perYr = v => +(v / Math.max(1e-9, P.timeMyr) * 1e-6).toFixed(2);
     const budget = { seaKm3PerYr: perYr(seaKm3), closedKm3PerYr: perYr(closedKm3), grossKm3PerYr: perYr(grossKm3), reboundKm3PerYr: perYr(reboundKm3), overRimKm3PerYr: perYr(overKm3) };
-    return { curve, survivors, budget, ms: Object.fromEntries(Object.entries(t).map(([key, v]) => [key, Math.round(v)])), outflow: { q: outQ, recv: outR } };
+    return { curve, survivors, budget, ms: Object.fromEntries(Object.entries(t).map(([key, v]) => [key, Math.round(v)])), overflow: roundOverflow(overflow), outflow: { q: outQ, recv: outR } };
 }
 
 /**
@@ -461,6 +464,117 @@ export function closedOutlets(B, z, n, sinkAt = null) {
     }
     return { sink, base: B.base, sinkAt, basins };
 }
+
+// ── a full lake's other exits (lane lakebar R3, 2026-11-26) ──
+// (water's g, m/s²; Leopold & Maddock 1953's (USGS PP 252) hydraulic geometry, W = a·Q^0.5 with b ≈ 0.5 across rivers and a ≈ 3–5
+// in SI for alluvial channels — 4; seconds a year)
+const G_SI = 9.81, HG_A = 4, SEC_PER_YR = 3.156e7;
+
+/**
+ * A full lake overflows at every low point of its rim, not only at its spill point (Garcia-Castellanos & O'Connor 2018, Sci. Rep.
+ * 8, 10573: an exit's flow is critical over its sill, V = √(g·h), h the lake's head over it). An exit of width W passes
+ * Q_i = W·h_i·√(g·h_i); with the channel's own width by hydraulic geometry, W = a·√Q_i, that is Q_i = a²·g·h_i³. One level z_l
+ * feeds every exit, Σ Q_i(z_l − z_s,i) = Q the lake passes on (closedBasins' balance: its inflow less what its water evaporates),
+ * solved by bisection. A lone exit's head is (Q/(a²g))^⅓: ~9 m for 10⁵ m³/s, ~1 m for 100. So a second saddle within that head of
+ * the spill point takes a share, and the share cuts its sill by the erosion's own stream power — this file's k, m and layer, its
+ * implicit step, the share's part of the lake's drainage — over the time to the next judge. A sill cut below the spill point's
+ * is the lake's way out at the next network: the exit with the steeper, softer way down wins, and capture is that, no rule.
+ * The stream power is the outflow's law on Myr: Garcia-Castellanos & O'Connor find their sills' erodibility consistent with
+ * long-term landscape evolution; their critical-flow shear (τ = ρ·g·n²·V²/h^⅓, k_e(τ − τ_c)^1.5) is a flood's onset, and
+ * applied to a lake's steady outflow it would drain every lake to grade within a step.
+ * Limits: the share is not routed past the sill (the network sends the lake's water out at its spill point until a judge finds
+ * another exit lower), so only the barrier above the lake's level is cut — the cells of the share's way down, from the rim to
+ * the first below the lake; what it cuts leaves the books as carried off (cutKm3). No flood hydrograph, no outburst deposits.
+ * Replaced finish-hydro.js openStraits (a sea behind a sill under 30 m and 160 km of dry land cut 20 m below the sea).
+ * @param {Object} mesh
+ * @param {Float32Array} z  the ground (km), its sills cut in place
+ * @param {Object} B        closedBasins' judge: its lakes (outflow on a full one) and its flood
+ * @param {{water: Float32Array, kOf: (c: number) => number, m: number, column: Object|null, dtMyr: number, seaKm: number}} o
+ *   the erosion's water weight, its k at a cell (kScale and slow in), m, rock column; the time to the next judge (Myr); the sea's surface
+ * @returns {{lakes: number, exits: number, cells: number, cutKm3: number}} lakes with a second exit taking a share, those exits,
+ *   the cells cut and what came off them
+ */
+export function overflowSills(mesh, z, B, o) {
+    const { adjOffset, adjList, numCells: n, xyz } = mesh, a = 4 * Math.PI * R * R / n, res = { lakes: 0, exits: 0, cells: 0, cutKm3: 0 };
+    const full = (B.lakes ?? []).filter(L => L.outflow > 0);
+    if (!full.length || !B.flood || !(o.dtMyr > 0)) return res;
+    const { fill, parent, order, count, done, lake } = B.flood;
+    // (the erosion's drainage, a·water, down the flood's tree to each hollow's outlet — each cell after the cell it was reached
+    // from; a closed hollow keeps its own)
+    const A = new Float64Array(n);
+    for (let i = count - 1; i >= 0; i--) { const c = order[i], p = parent[c]; A[c] += a * o.water[c]; if (p >= 0 && done[p] === 1 && !B.sink[c]) A[p] += A[c]; }
+    const seen = new Int32Array(n).fill(-1), spillOf = new Int32Array(n).fill(-1), dist = (c, d) => R * Math.hypot(xyz[3 * d] - xyz[3 * c], xyz[3 * d + 1] - xyz[3 * c + 1], xyz[3 * d + 2] - xyz[3 * c + 2]);
+    for (const L of full) {
+        const id = lake[L.cells[0]], lvl = L.level, p0 = parent[L.cells[0]], Q = L.outflow * 1e3 / SEC_PER_YR;
+        const top = lvl + Math.cbrt(Q / (HG_A * HG_A * G_SI)) / 1000;
+        // (the rim under the lone exit's level: out from the lake over the ground below it, each cell's way down the flood's until it
+        // is below the lake's level. A cell whose way comes back into the lake is shore the raised lake covers — the flood goes on
+        // through it; one whose way goes out through the spill point is that exit's; any other way out is another exit)
+        const rim = new Map(), q = [];
+        for (const c of L.cells) { seen[c] = id; q.push(c); }
+        spillOf[p0] = id;
+        for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) {
+            const r = adjList[k];
+            if (seen[r] === id || done[r] !== 1 || !(z[r] < top)) continue;
+            seen[r] = id;
+            const path = [];
+            let x = r, crest = -Infinity, back = false, spill = false;
+            for (let guard = 0; x >= 0 && done[x] === 1 && fill[x] >= lvl && guard < 1e5; guard++) {
+                if (lake[x] === id) { back = true; break; }
+                if (x === p0) { spill = true; break; }
+                path.push(x); if (z[x] > crest) crest = z[x];
+                x = parent[x];
+            }
+            if (back) q.push(r);
+            else if (spill) spillOf[r] = id;
+            else if (path.length && crest < top) rim.set(r, { path, crest, under: x });
+        }
+        if (!rim.size) continue;
+        // (rim cells side by side are one exit — a wide sill is one channel, its width the hydraulic geometry's — its sill their
+        // lowest; a run beside the spill point's own ground is the spill point's, cut by the network's stream power already)
+        const exits = [], taken = new Set();
+        for (const r of rim.keys()) {
+            if (taken.has(r)) continue;
+            let best = rim.get(r), spillSide = false;
+            const q = [r];
+            taken.add(r);
+            for (let i = 0; i < q.length; i++) for (let k = adjOffset[q[i]]; k < adjOffset[q[i] + 1]; k++) {
+                const y = adjList[k];
+                if (spillOf[y] === id) spillSide = true;
+                if (rim.has(y) && !taken.has(y)) { taken.add(y); q.push(y); if (rim.get(y).crest < best.crest) best = rim.get(y); }
+            }
+            if (!spillSide) exits.push(best);
+        }
+        // (the level that feeds them all with the spill point: Σ a²·g·h³ = Q)
+        const flow = zl => { let s = HG_A * HG_A * G_SI * (1000 * (zl - lvl)) ** 3; for (const E of exits) if (zl > E.crest) s += HG_A * HG_A * G_SI * (1000 * (zl - E.crest)) ** 3; return s; };
+        let lo = lvl, hi = top;
+        for (let it = 0; it < 60; it++) { const mid = 0.5 * (lo + hi); if (flow(mid) < Q) lo = mid; else hi = mid; }
+        const zl = 0.5 * (lo + hi);
+        let any = false;
+        for (const E of exits) {
+            if (!(zl > E.crest)) continue;
+            const share = HG_A * HG_A * G_SI * (1000 * (zl - E.crest)) ** 3 / Q, Ai = A[L.cells[0]] * share;
+            if (!(Ai > 0)) continue;
+            any = true; res.exits++;
+            // (the stream power's implicit step down the share's way, from the first cell below the lake up to the rim)
+            const { path, under } = E;
+            let zu = under >= 0 ? (done[under] === 2 ? Math.max(o.seaKm, z[under]) : z[under]) : -Infinity;
+            for (let j = path.length - 1; j >= 0; j--) {
+                const c = path[j], d = j + 1 < path.length ? path[j + 1] : under, old = z[c];
+                if (d < 0 || !(old > zu)) { zu = old; continue; }
+                const layer = o.column && old > o.column.zBed[c] + 1e-4 ? o.column.loose[c] : 1;
+                const F = o.kOf(c) * layer * Ai ** o.m * o.dtMyr / dist(c, d), h = (old + F * zu) / (1 + F);
+                z[c] = h; res.cells++; res.cutKm3 += (old - h) * a;
+                zu = h;
+            }
+        }
+        if (any) res.lakes++;
+    }
+    return res;
+}
+/** The judges' overflowSills summed over a run (lakes and exits: judge by judge, so a lake judged twice counts twice), and rounded for the stats. */
+export const addOverflow = (to, r) => { to.lakes += r.lakes; to.exits += r.exits; to.cells += r.cells; to.cutKm3 += r.cutKm3; return to; };
+export const roundOverflow = r => ({ ...r, cutKm3: +r.cutKm3.toFixed(1) });
 
 /**
  * layUp's sorted heights, only as far up as its level can reach: a basin's floor fills from its lowest cells, and sorting the
@@ -688,7 +802,7 @@ export async function erodeLadder(o, P, meshOf, solve = erodeLandscape) {
         tStart += L.timeMyr;
         o.observe?.(`rung ${lm.numCells} end`, lm, f.z, f.ocean);
         if (fine) outflow = r.outflow ?? null;
-        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, toSeaKm3: Math.round(r.toSeaKm3 ?? NaN), ...(r.marineKm3 != null ? { marineKm3: Math.round(r.marineKm3), marineDriftKm3: +r.marineDriftKm3.toFixed(1), marineSub: r.marineSub, marineSpiltKm3: Math.round(r.marineSpiltKm3), pocketCells: r.pocketCells, marineActive: r.marineActive } : {}), seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget });
+        out.push({ cells: lm.numCells, timeMyr: L.timeMyr, steps: L.steps, toSeaKm3: Math.round(r.toSeaKm3 ?? NaN), ...(r.marineKm3 != null ? { marineKm3: Math.round(r.marineKm3), marineDriftKm3: +r.marineDriftKm3.toFixed(1), marineSub: r.marineSub, marineSpiltKm3: Math.round(r.marineSpiltKm3), pocketCells: r.pocketCells, marineActive: r.marineActive } : {}), seconds: +((performance.now() - t0) / 1000).toFixed(2), ...(r.unjoined != null ? { unjoined: r.unjoined, unresolved: r.unresolved } : {}), mapSeconds: +((t1 - t0) / 1000).toFixed(2), ms: r.ms, last: r.curve[r.curve.length - 1], budget: r.budget, ...(r.overflow ? { overflow: r.overflow } : {}) });
         delta = new Float32Array(lm.numCells);
         for (let c = 0; c < lm.numCells; c++) delta[c] = f.z[c] - start[c];
         prev = lm; prevZ = f.z;
