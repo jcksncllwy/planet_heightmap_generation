@@ -10,6 +10,7 @@ import { civSubstrate, cellLife, FOODS, STAPLES, STAPLE_WORDS, WAY_WORDS, PARENT
 import { FOOD } from './food-config.js';
 import { cropsFromMonths } from './crops.js';
 import { createCivSim, byteDensity, Life } from './sim.js';
+import { civGPU } from './civ-gpu.js';
 import { climateVariability, spreadOf } from './climate-var.js';
 import { diseaseLoss } from './disease.js';
 import { TownFlag } from './polity.js';
@@ -74,19 +75,21 @@ export function seaOf(page) {
 
 /**
  * Run the people on a finished moment's world (civWorldFromFinish), to now. `width`: the picture the page paints (width ×
- * width/2), for each pixel's cell. The run stays alive in `state`, to go on with (morePeople).
+ * width/2), for each pixel's cell. The run stays alive in `state`, to go on with (morePeople). Async: the famine's years
+ * run on the GPU (civ-gpu.js; this worker's own device, opened once), and a GPU's results come back asynchronously.
  * @returns {{state, result: {cells, frames: Uint8Array (frame-major, cells each: densityCode), ways: Uint8Array (the same:
  *   wayCode), bp: Float32Array, people: Float64Array,
  *   farmers: Float64Array, towns: [Float32Array [lat, lon, people, TownFlag, polity] × each town of 2500+, or null] per frame,
  *   polities, centres, place, origin: [lat, lon], pix: Int32Array, pixW, ms}}}
  */
-export function startPeople(w, width, onProgress = () => {}, runs = null) {
+export async function startPeople(w, width, onProgress = () => {}, runs = null, gpu = null) {
     const t0 = performance.now();
+    gpu ??= await civGPU();
     const sub = civSubstrate(w), n = w.mesh.numCells, vary = climateVariability(w, sub, CIV, runs);
     const state = { w, sub, n, onFrame: null, still: null };
-    state.sim = createCivSim(w, sub, { vary, onFrame: fr => state.onFrame?.(fr) });
+    state.sim = createCivSim(w, sub, { vary, gpu, onFrame: fr => state.onFrame?.(fr) });
     const count = Math.floor(CIV.originBP / CIV.frameYears) + 1;
-    const first = collect(state, () => state.sim.advance(0), k => onProgress(k / count));
+    const first = await collect(state, () => state.sim.advance(0), k => onProgress(k / count));
     const W = width, H = W >> 1, pix = new Int32Array(W * H);
     for (let y = 0; y < H; y++) {
         const la = (0.5 - (y + 0.5) / H) * Math.PI, cl = Math.cos(la), sl = Math.sin(la);
@@ -133,16 +136,16 @@ export function travelFrom(state, craft, m, lat, lon) {
 /** Go on with a run (startPeople's state) to `toBP` (negative: years after now), a frame every `every` years: the new frames,
  *  and the place, centres as they now stand. */
 export function morePeople(state, toBP, every = STEP_YEARS) {
-    return collect(state, () => state.sim.advance(toBP, every));
+    return collect(state, () => state.sim.advance(toBP, every));      // (a Promise: await it before the next)
 }
 
 /** startPeople's run to now, as one result (for the tools). */
-export function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
-    return startPeople(w, width, onProgress, runs).result;
+export async function peopleOfWorld(w, width, onProgress = () => {}, runs = null) {
+    return (await startPeople(w, width, onProgress, runs)).result;
 }
 
 /** The frames a step of the run adds, packed: three bytes per cell and frame (density, way of life with crop, land in use), each frame's year, people, towns, polities. */
-function collect(state, run, onFrame = () => {}) {
+async function collect(state, run, onFrame = () => {}) {
     const { n } = state, list = [];
     state.onFrame = fr => {
         const b = new Uint8Array(n), wb = new Uint8Array(n);
@@ -150,8 +153,7 @@ function collect(state, run, onFrame = () => {}) {
         list.push({ b, wb, land: fr.land, bp: fr.bp, people: fr.people, farmers: fr.farmers, towns: fr.towns, polities: fr.polityTable });
         onFrame(list.length);
     };
-    run();
-    state.onFrame = null;
+    try { await run(); } finally { state.onFrame = null; }
     const frames = new Uint8Array(list.length * n), ways = new Uint8Array(list.length * n);
     list.forEach((x, i) => { frames.set(x.b, i * n); ways.set(x.wb, i * n); });
     // (the land in use, a byte a cell and frame as sim.js packs it)

@@ -52,7 +52,10 @@ function summary(r, w, sub) {
     let townPop = 0; const T = last.towns; if (T) for (let k = 0; k < T.length; k += 5) townPop += T[k + 2];
     return { bp: last.bp, peopleM: M(last.people), farmersM: M(last.farmers), byLifeM: Object.fromEntries(Object.entries(byLife).map(([k, v]) => [k, M(v)])),
         famineDeadM: M(r.totals.reduce((s, x) => s + x.famineDead, 0)), towns: T ? T.length / 5 : 0, townPopM: M(townPop), polities: last.polities, centres: r.centres.length,
-        firstFarmBP: Math.max(...Array.from(r.farmBP).filter(x => x === x), -Infinity) };
+        firstFarmBP: Math.max(...Array.from(r.farmBP).filter(x => x === x), -Infinity),
+        // (states come and go: their count through the last 6000 years, and its most)
+        statesKa: Object.fromEntries([6, 5, 4, 3, 2, 1, 0].map(k => [k, r.frames.reduce((x, f) => (Math.abs(f.bp - 1000 * k) < Math.abs(x.bp - 1000 * k) ? f : x)).polities?.states ?? 0])),
+        maxStates: Math.max(0, ...r.frames.map(f => f.polities?.states ?? 0)) };
 }
 const cellsOf = (r, w) => ({ density: r.frames.at(-1).density, life: r.frames.at(-1).life, famine: r.famine ?? new Float32Array(w.mesh.numCells) });
 const b64 = a => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('base64');

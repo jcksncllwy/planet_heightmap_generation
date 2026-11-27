@@ -32,7 +32,7 @@ const out = await finishPlanet({ frame, simMesh, seed: SEED, cells: CELLS, pool,
 const tFinish = performance.now() - t0;
 const w = civWorldFromFinish(out);
 let t = performance.now();
-const { result: P } = startPeople(w, WIDTH);
+const { result: P } = await startPeople(w, WIDTH);
 const tPeople = performance.now() - t;
 console.log(`finished ${CELLS} cells in ${(tFinish / 1000).toFixed(1)} s; the people (${P.cells} cells, to now) in ${(tPeople / 1000).toFixed(1)} s`);
 

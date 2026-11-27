@@ -37,14 +37,14 @@ self.onmessage = async ({ data }) => {
     try {
         if (data.type === 'people') {
             const { world, width } = data, climate = await ensembleRuns(world);
-            const { state, result } = startPeople({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), climate);
+            const { state, result } = await startPeople({ ...world, mesh: meshFromArrays(world.mesh) }, width, share => self.postMessage({ type: 'progress', id, share }), climate);
             runs.set(id, state);
             while (runs.size > KEEP) runs.delete(runs.keys().next().value);
             self.postMessage({ type: 'people', id, ...result }, [...moved(result), result.pix.buffer, result.food.buffer, ...Object.values(result.ground).map(a => a.buffer)]);
         } else if (data.type === 'more') {
             const state = runs.get(data.run);
             if (!state) throw new Error('that run is no longer kept');
-            const r = morePeople(state, data.toBP, data.every);
+            const r = await morePeople(state, data.toBP, data.every);
             self.postMessage({ type: 'more', id, ...r }, moved(r));
         } else if (data.type === 'travel') {
             const state = runs.get(data.run);

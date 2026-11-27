@@ -21,6 +21,7 @@ import { buildSimMesh, meshFromArrays } from '../js/core/sim-mesh.js';
 import { TerrainPool } from '../js/terrain/terrain-pool.js';
 import { finishPlanet } from '../js/finish/finish.js';
 import { morePeople, travelFrom, startPeople } from '../js/civ/civ-page.js';
+import { civEngine } from './lib/civ-engine.mjs';
 import { civSubstrate } from '../js/civ/substrate.js';
 import { ensembleForcings, ensembleRain, landOf, climateVariability } from '../js/civ/climate-var.js';
 import { createCivSim } from '../js/civ/sim.js';
@@ -115,21 +116,23 @@ const vary = time('variability', () => climateVariability(w, sub, CIV, runs));
 mem.afterSubstrate = mb();
 const frames = [];
 let tf = 0;
-const sim = time('simSetup', () => createCivSim(w, sub, { vary, onFrame: fr => {
+const E = await civEngine();   // (--cpu: the famine's years on the CPU; default the GPU, as the page)
+console.log(`engine ${E.label}`);
+const sim = time('simSetup', () => createCivSim(w, sub, { vary, gpu: E.gpu, onFrame: fr => {
     const t = now();
     frames.push({ bp: fr.bp, ms: Math.round(t - tf), people: fr.people, farmers: fr.farmers, polities: fr.polities ?? null, heapMB: heapMB() });
     tf = t;
 } }));
 mem.afterSetup = mb();
 tf = now();
-const [, prof] = profiled(() => time('advance0', () => sim.advance(0)));
+const [, prof] = E.gpu ? [await atime('advance0', () => sim.advance(0)), null] : profiled(() => time('advance0', () => sim.advance(0)));   // (the CPU profile: the CPU's years only)
 mem.afterAdvance0 = mb(); mem.heapAfterAdvance0 = heapMB();
-time('advanceMore', () => sim.advance(MORE));
+await atime('advanceMore', () => sim.advance(MORE));
 console.log(`advance(0) ${T.advance0} ms over ${frames.length} frames; advance(${MORE}) ${T.advanceMore} ms; rss ${mb()} MB, peak ${peakMB()} MB`);
 // (the page's own call, whole, for what it adds around the stages above: the picture's cells, the land views, the frames' packing)
 if (!PROF) {
-    const sp = time('startPeopleWhole', () => startPeople(w, 2048, () => {}, runs));
-    time('morePeopleWhole', () => morePeople(sp.state, MORE));
+    const sp = await atime('startPeopleWhole', () => startPeople(w, 2048, () => {}, runs, E.gpu ?? undefined));
+    await atime('morePeopleWhole', () => morePeople(sp.state, MORE));
     time('travelGraphAndQuery', () => travelFrom(sp.state, 1, 0, 30, 30));
     time('travelQuery', () => travelFrom(sp.state, 1, 6, 10, 40));
 }
