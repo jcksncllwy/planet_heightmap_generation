@@ -7,6 +7,9 @@
 //   node v2/tools/civ-ensemble.mjs --compare base other
 //
 // --set overrides CIV's values for the run (JSON values: --set onsetPowerLate=2,voyageDays=[[0,2.5],[5000,9]]).
+// --cpu lives the famine's years on the CPU (the float64 reference); the default is the GPU, as the page (lib/civ-engine.mjs).
+// --check (GPU): each step's years on the CPU too; each world's JSON keeps the differences (yearsCheck).
+// The worlds' histories need a GPU too: NODE_OPTIONS="--import=$PWD/v2/tools/gpu-harness/history-dawn.mjs".
 // Output: v2/out/civ/ensemble/<label>/<seed>.json and summary.json.
 
 import fs from 'node:fs';
@@ -23,6 +26,7 @@ import { civSubstrate, PACKAGES } from '../js/civ/substrate.js';
 import { runCivSim, farms } from '../js/civ/sim.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { cropsFromMonths } from '../js/civ/crops.js';
+import { civEngine, yearsCheckLine } from './lib/civ-engine.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SELF = fileURLToPath(import.meta.url), DIR = path.join(OUT, 'ensemble'), CACHE = path.join(OUT, 'cache');
@@ -51,7 +55,9 @@ async function pageWorld({ seed, cont, time }) {
 async function one(spec, label, C) {
     const t0 = performance.now(), w = await pageWorld(spec), tWorld = performance.now() - t0;
     const sub = civSubstrate(w, C), n = w.mesh.numCells, A = sub.cellKm2, { adjOffset, adjList } = w.mesh;
-    const r = runCivSim(w, sub, { C });
+    const E = await civEngine(), t1 = performance.now();
+    const r = await runCivSim(w, sub, { C, gpu: E.gpu, yearsCheck: E.yearsCheck });
+    const tRun = performance.now() - t1;
     // landmasses (today's coast) of ≥ 1M km², and whom they hold when
     const land = c => !w.ocean[c] && !w.lake[c], comp = new Int32Array(n).fill(-1), sizes = [];
     for (let s = 0; s < n; s++) if (land(s) && comp[s] < 0) {
@@ -83,7 +89,7 @@ async function one(spec, label, C) {
     const last = at(0), f5 = at(5000);
     const biggestTown = f => { const T = f.towns; let m = 0; if (T) for (let k = 0; k < T.length; k += 5) m = Math.max(m, T[k + 2]); return Math.round(m); };
     const out = {
-        ...spec, label, secs: { world: Math.round(tWorld / 1000), total: Math.round((performance.now() - t0) / 1000) },
+        ...spec, label, engine: E.label, secs: { world: Math.round(tWorld / 1000), run: Math.round(tRun / 1000), total: Math.round((performance.now() - t0) / 1000) },
         landMkm2: +(landKm2 / 1e6).toFixed(1),
         landmasses: big.map(([k, i]) => ({ Mkm2: +(k * A / 1e6).toFixed(1), origin: i === comp[origin], peopledBP: peopledBy.get(i), farmedBP: farmedBy.get(i) })),
         originMkm2: originMass && +(originMass / 1e6).toFixed(1),
@@ -94,6 +100,8 @@ async function one(spec, label, C) {
         peopleM: { '10ka': +(at(10000).people / 1e6).toFixed(1), '6ka': +(at(6000).people / 1e6).toFixed(1), '0': +(last.people / 1e6).toFixed(1) },
         farmersM0: +(last.farmers / 1e6).toFixed(1),
         firstTownBP, firstCityBP, firstStateBP, maxStates, biggestTown: { '5ka': biggestTown(f5), '0': biggestTown(last) },
+        famineDeadM: +(r.totals.reduce((a, x) => a + x.famineDead, 0) / 1e6).toFixed(2),
+        yearsCheck: r.yearsCheck ? yearsCheckLine(r.yearsCheck) : undefined,
     };
     fs.mkdirSync(path.join(DIR, label), { recursive: true });
     fs.writeFileSync(path.join(DIR, label, `${spec.seed}.json`), JSON.stringify(out, null, 1));
@@ -112,6 +120,7 @@ function summarise(rows) {
         medianFirstCentreKa: ka(median(rows.map(r => r.firstCentreBP))), medianFirstCityKa: ka(median(rows.map(r => r.firstCityBP))),
         medianFirstStateKa: ka(median(rows.map(r => r.firstStateBP))), medianCentres: median(rows.map(r => r.centres)),
         medianPeopleM0: median(rows.map(r => r.peopleM['0'])), medianFarmedShare0: median(rows.map(r => r.farmedShare['0'])),
+        medianFamineDeadM: median(rows.map(r => r.famineDeadM ?? null)), medianRunS: median(rows.map(r => r.secs.run ?? null)),
     };
 }
 function table(rows) {
@@ -141,7 +150,7 @@ if (process.argv.includes('--one')) {
         while (queue.length) {
             const seed = queue.shift();
             await new Promise(res => {
-                const args = ['--max-old-space-size=6000', SELF, '--one', String(seed), '--label', label, ...(set ? ['--set', set] : [])];
+                const args = ['--max-old-space-size=6000', SELF, '--one', String(seed), '--label', label, ...(set ? ['--set', set] : []), ...['--cpu', '--check'].filter(f => process.argv.includes(f))];
                 const p = spawn(process.execPath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
                 let err = ''; p.stderr.on('data', d => { err += d; });
                 p.on('close', code => { console.log(`  seed ${seed} ${code === 0 ? 'done' : 'FAILED: ' + err.trim().split('\n').slice(-3).join(' / ')} (${((performance.now() - t0) / 1000).toFixed(0)} s)`); res(); });

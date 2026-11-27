@@ -31,6 +31,7 @@ import { Polities } from './polity.js';
 import { climateVariability, modeSeries, modeLn, normal } from './climate-var.js';
 import { parasiteRange, diseaseLoss } from './disease.js';
 import { domesticates, allocate, RANK, skillCap, learn, domesticate, cultivated } from './econ.js';
+import { yearsGPU, REC, R as RF } from './years-gpu.js';
 
 /** A herd's year (plans/CIV_PLAN.md §9.2, the herd response class): the animals the year's grazing (`g`, against a normal
  *  year's) can't carry die, and the herd grows back slowly — over years, where a harvest comes back the next. */
@@ -54,24 +55,27 @@ export const byteDensity = q => (q ? Math.pow(10, (q - 1) / 40 - 4) : 0);
  * @param opts { origins: [cell] (default: the richest savanna of the biggest landmass), endBP (default 0), onFrame(frame),
  *   polities (default true: towns and polities, polity.js, every polityStepYears once there are farmers),
  *   famine (default true: good and bad years, climate-var.js), vary (climateVariability(w, sub), if already made),
- *   disease (default true: disease.js), C }
+ *   disease (default true: disease.js), gpu (civ-gpu.js civGPU(): the famine's years on the GPU, as the page lives them —
+ *   then the run is async: runCivSim and advance return Promises; null, the CPU's float64 years, the reference),
+ *   yearsCheck (with gpu: each step's years lived on the CPU too, from the same start, and the differences kept —
+ *   result().yearsCheck; the run goes on with the GPU's), C }
  * @returns { frames (each: density, life, crop — its dominant crop, a FOODS index or −1 — farmPkg, …), centres, totals,
  *   arrivalBP (Float32, per cell; NaN never), farmBP (per cell), cameFrom (per cell: the cell its people came from; −1
  *   never), farmFrom ({crop: per cell, the cell its farmers came from}), coastBP ({crop: when voyagers took it up}),
  *   packages (the ids farmPkg and centres' pkg name: the domesticates', econ.js) }
  */
 export function runCivSim(w, sub, opts = {}) {
-    const sim = createCivSim(w, sub, opts);
-    sim.advance(opts.endBP ?? 0);
-    return sim.result();
+    const sim = createCivSim(w, sub, opts), done = sim.advance(opts.endBP ?? 0);
+    return done ? done.then(() => sim.result()) : sim.result();
 }
 
 /**
  * The same run, kept alive: advance(toBP) lives on to that year (past 0 BP into the world's future, as far as asked),
  * calling onFrame for each new frame; result() reads it as runCivSim returns it, at any point. opts as runCivSim's,
  * without endBP; frameYears (default C.frameYears) — how often a frame is kept — may be changed between advances.
+ * With opts.gpu, advance returns a Promise: await it before the next advance or result().
  */
-export function createCivSim(w, sub, { origins = null, onFrame = null, polities = true, famine = true, vary = null, disease = true, C = CIV } = {}) {
+export function createCivSim(w, sub, { origins = null, onFrame = null, polities = true, famine = true, vary = null, disease = true, gpu = null, yearsCheck = false, C = CIV } = {}) {
     const { mesh, z, ocean, lake, koppen } = w, n = mesh.numCells, { adjOffset, adjList } = mesh, len = edgeLengths(mesh);
     const cellKm2 = sub.cellKm2, T0 = C.originBP;
     const tOf = bp => T0 - bp, bpOf = t => T0 - t;
@@ -306,7 +310,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
      *  the banks and the works), the wild by the forager regression's own response to the year's NPP (water foods steady),
      *  herds by their stock (herdYear: the year's grazing, with the NPP) — its store, its famines. What it lives on, persons/km²:
      *  kR rain-fed fields, kI watered ones, kH herds, Kw the wild; cap, the most it stores (years of food). */
-    const liveYears = (c, t, step, cap, kR, kI, kH, Kw) => {
+    const liveYears = (c, t, step, cap, kR, kI, kH, Kw, j = -1) => {
         const h = home[c], y0 = Math.round(t);
         // (what stays the same all step)
         const P = w.pAnnual[h], r = V.region[h], cv = V.rainCV[h];
@@ -325,6 +329,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
                 rn = new Float32Array(C.stepYears); for (let k = 0; k < C.stepYears; k++) rn[k] = V.riverCV[src] * normal(src + 7 * n, y0 + k);
                 rn.q = new Float64Array(C.stepYears).fill(NaN);
                 riverNoise.set(src, rn);
+                if (j >= 0) {
+                    // (for the GPU: all the step's floods now, and a slot in its table — the same numbers the years below make as they go)
+                    rn.slot = floodSlots++;
+                    if (flood.length < floodSlots * C.stepYears) { const g = new Float32Array(2 * floodSlots * C.stepYears); g.set(flood); flood = g; }
+                    for (let k = 0; k < C.stepYears; k++) flood[rn.slot * C.stepYears + k] = rn.q[k] = Math.exp(modeLn(V.riverLn, src, modes[2 * (y0 + k)], modes[2 * (y0 + k) + 1]) + rn[k]);
+                }
             }
         }
         const grazed = Kw > 0 || kH > 0, tl = grazed ? C.nppMax / (1 + Math.exp(1.315 - 0.119 * w.tAnnual[h])) : 0, n0 = grazed ? Math.min(tl, nppP(P)) : 0;
@@ -358,6 +368,16 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
             }
         }
         const mR = meanF[3 * c], mI = meanF[3 * c + 1], mW = steady + (1 - steady) * meanF[3 * c + 2];
+        if (j >= 0) {
+            // (for the GPU, years-gpu.js: what the years below read, as one record; the kernel lives them)
+            const { rec, recF } = years, o = REC * j;
+            rec[o + RF.home] = h; rec[o + RF.slot] = rn ? rn.slot : -1;
+            recF[o + RF.cap] = cap; recF[o + RF.kR] = kR; recF[o + RF.kI] = kI; recF[o + RF.kH] = kH; recF[o + RF.Kw] = Kw;
+            recF[o + RF.mR] = mR; recF[o + RF.mI] = mI; recF[o + RF.mW] = mW; recF[o + RF.steady] = steady; recF[o + RF.rampN] = rampN; recF[o + RF.lnFull] = lnFull;
+            recF[o + RF.tl] = tl; recF[o + RF.n0] = n0; recF[o + RF.herdMean] = kH > 0 ? herdMean[c] : 1;
+            recF[o + RF.d] = d[c]; recF[o + RF.st] = store[c]; recF[o + RF.hs] = kH > 0 ? herdStock[c] : 0;
+            return 0;
+        }
         let dd = d[c], st = store[c], dead = 0;
         for (let j = 0; j < C.stepYears; j++) {
             const y = y0 + j;
@@ -384,7 +404,60 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         }
         store[c] = st;
         if (dead > 0) { famineShare[c] += dead / d[c]; famineCentury[c] += dead / d[c]; d[c] = dd; famineDead += dead * cellKm2; }
+        return dead;
     };
+    // ── the years on the GPU (years-gpu.js; lane civgpu2): its kernel for this run, made at the first advance ──
+    let years = null, floodSlots = 0, flood = new Float32Array(64 * C.stepYears);
+    const check = yearsCheck && gpu ? yearsChecker() : null;
+    /** Stage C: each listed cell's years, on the CPU in cell order, or (gpu) packed, lived by the kernel all at once — a
+     *  generator, yielding the GPU's Promise to the async advance — and its results taken back in cell order. */
+    function* yearsStage() {
+        if (!years) { for (let j = 0; j < yearsN; j++) { const o = 5 * j; liveYears(yearsCell[j], t, step, yearsArg[o], yearsArg[o + 1], yearsArg[o + 2], yearsArg[o + 3], yearsArg[o + 4]); } return; }
+        const Y = C.stepYears, y0 = Math.round(t);
+        if (2 * (y0 + Y) + 1 >= modes.length) modes = modeSeries(2 * (y0 + Y) + 1000, C);
+        if (riverNoiseStep !== step) { riverNoise.clear(); riverNoiseStep = step; }
+        floodSlots = 0;
+        for (let j = 0; j < yearsN; j++) { const o = 5 * j; liveYears(yearsCell[j], t, step, yearsArg[o], yearsArg[o + 1], yearsArg[o + 2], yearsArg[o + 3], yearsArg[o + 4], j); }
+        const out = yield years.run(yearsN, modes.subarray(2 * y0, 2 * (y0 + Y)), regionNoise, flood.subarray(0, floodSlots * Y));
+        if (check) check.compare(out);
+        for (let j = 0; j < yearsN; j++) {
+            const c = yearsCell[j], st = out[4 * j], dd = out[4 * j + 1], dead = out[4 * j + 2];
+            store[c] = st;
+            if (yearsArg[5 * j + 3] > 0) herdStock[c] = out[4 * j + 3];
+            if (dead > 0) { famineShare[c] += dead / d[c]; famineCentury[c] += dead / d[c]; d[c] = dd; famineDead += dead * cellKm2; }
+        }
+    }
+    /** yearsCheck: the step's years on the CPU too, from the same start (its writes undone after), against the GPU's — per
+     *  cell, |Δ| of the store and the people's relative |Δ|, whether a famine came on one side only, the dead; the step's
+     *  famine deaths on each. Histograms on a log scale, 1e-9 … 1 (bin 0: equal). */
+    function yearsChecker() {
+        const B = 37, bin = x => (x > 0 ? Math.min(B - 1, Math.max(1, 1 + Math.floor(4 * (Math.log10(x) + 9)))) : 0);
+        const h = { store: new Float64Array(B), people: new Float64Array(B), dead: new Float64Array(B) };
+        const S = { cells: 0, steps: 0, famineOnlyCPU: 0, famineOnlyGPU: 0, famineBoth: 0, deadCPU: 0, deadGPU: 0, maxStore: 0, maxPeople: 0, worstStep: null, hist: h, bins: Array.from({ length: B }, (_, i) => (i ? 10 ** (i / 4 - 9) : 0)) };
+        return {
+            S,
+            compare(out) {
+                const c0 = new Float32Array(3 * yearsN), fs = new Float32Array(2 * yearsN), fd0 = famineDead;
+                for (let j = 0; j < yearsN; j++) { const c = yearsCell[j]; c0[3 * j] = d[c]; c0[3 * j + 1] = store[c]; c0[3 * j + 2] = herdStock ? herdStock[c] : 0; fs[2 * j] = famineShare[c]; fs[2 * j + 1] = famineCentury[c]; }
+                let stepCPU = 0, stepGPU = 0;
+                for (let j = 0; j < yearsN; j++) {
+                    const c = yearsCell[j], o = 5 * j;
+                    const dead = liveYears(c, t, step, yearsArg[o], yearsArg[o + 1], yearsArg[o + 2], yearsArg[o + 3], yearsArg[o + 4]);
+                    const gd = out[4 * j + 2], dS = Math.abs(store[c] - out[4 * j]), dP = Math.abs(d[c] - out[4 * j + 1]) / Math.max(1e-30, d[c]);
+                    h.store[bin(dS)]++; h.people[bin(dP)]++; h.dead[bin(Math.abs(dead - gd) / Math.max(1e-30, c0[3 * j]))]++;
+                    if (dead > 0 && gd > 0) S.famineBoth++; else if (dead > 0) S.famineOnlyCPU++; else if (gd > 0) S.famineOnlyGPU++;
+                    S.maxStore = Math.max(S.maxStore, dS); S.maxPeople = Math.max(S.maxPeople, dP);
+                    stepCPU += dead * cellKm2; stepGPU += gd * cellKm2;
+                    // (undone: the GPU's go on)
+                    d[c] = c0[3 * j]; store[c] = c0[3 * j + 1]; if (herdStock) herdStock[c] = c0[3 * j + 2]; famineShare[c] = fs[2 * j]; famineCentury[c] = fs[2 * j + 1];
+                }
+                famineDead = fd0;
+                S.cells += yearsN; S.steps++; S.deadCPU += stepCPU; S.deadGPU += stepGPU;
+                const rel = Math.abs(stepCPU - stepGPU) / Math.max(1, stepCPU);
+                if (!S.worstStep || rel > S.worstStep.rel) S.worstStep = { bp: Math.round(bpOf(t)), rel, cpu: Math.round(stepCPU), gpu: Math.round(stepGPU) };
+            },
+        };
+    }
 
     let nextFrame = 0, nextPolity = 0, nextVoyage = 0, anyFarmers = false, frameYears = C.frameYears, t = 0, step = 0;
     const pol = polities ? new Polities(w, sub, C) : null, Kc = pol ? new Float32Array(n) : null;
@@ -657,7 +730,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         const cap = skillCap(near / k * contactKm2, C), mask = had[c];
         for (let i = 0; i < DOM.length; i++) if (mask & (1 << i)) Sk[i][c] = Math.min(cap, Sk[i][c]);
     };
-    const economySteps = (seaKm, forage, bp) => {
+    const economySteps = function* (seaKm, forage, bp) {
         dOld.set(d);
         movesInto.clear(); lateMoves.length = 0; yearsN = 0;
         // 0: the shelves, and (A) each cell's economy, in cell order
@@ -681,7 +754,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         }
         for (let j = 0; j < m; j++) { const c = economyCells[j]; doneAt[c] = step; economyOf(c, forage(c), bp); }
         // C: the good and bad years
-        for (let j = 0; j < yearsN; j++) { const o = 5 * j; liveYears(yearsCell[j], t, step, yearsArg[o], yearsArg[o + 1], yearsArg[o + 2], yearsArg[o + 3], yearsArg[o + 4]); }
+        yield* yearsStage();
         // B: the skills held
         for (let j = 0; j < m; j++) skillsHeld(economyCells[j]);
         let people = 0, farmersPeople = 0;
@@ -690,15 +763,15 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         return [people, farmersPeople];
     };
 
-    /** One generation (C.stepYears) of the run. */
-    const live = () => {
+    /** One generation (C.stepYears) of the run: a generator that yields only the GPU's years (yearsStage). */
+    const live = function* () {
         const bp = bpOf(t), seaKm = schedule(C.seaLevelM, bp) / 1000, holo = bp <= C.holoceneBP;
         const g = rise(-C.glacialToBP[0], -C.glacialToBP[1], -bp);
         const forage = c => (iced(c, bp) ? 0 : KfG[c] + (Kf[c] - KfG[c]) * g);
         const economic = bp <= C.cultivationFromBP;
         let people = 0, farmersPeople = 0;
         if (economic) carry();
-        if (economic) [people, farmersPeople] = economySteps(seaKm, forage, bp);
+        if (economic) [people, farmersPeople] = yield* economySteps(seaKm, forage, bp);
         else for (const c of cells) {
             if (arrival[c] > t) continue;
             // the sea over the shelves: their people move to the coast that feeds them (and are its source, if it had none;
@@ -742,7 +815,12 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
     };
     const advance = (toBP, every = frameYears) => {
         if (every !== frameYears) { nextFrame = Math.min(nextFrame, t); frameYears = every; }   // (the next generation lived is the first at the new pace)
-        for (const end = tOf(toBP); t <= end + 1e-9; t += C.stepYears, step++) live();
+        const end = tOf(toBP);
+        if (!gpu) { for (; t <= end + 1e-9; t += C.stepYears, step++) for (const _ of live()) throw new Error('the CPU years yielded'); return undefined; }
+        return (async () => {
+            if (V && !years) years = await yearsGPU(gpu, w, V, C);
+            for (; t <= end + 1e-9; t += C.stepYears, step++) { const g = live(); let r = g.next(); while (!r.done) r = g.next(await r.value); }
+        })();
     };
     const result = () => {
         const arrivalBP = new Float32Array(n).fill(NaN), farmBP = new Float32Array(n).fill(NaN), onsetBP = new Float32Array(n).fill(NaN);
@@ -754,6 +832,7 @@ export function createCivSim(w, sub, { origins = null, onFrame = null, polities 
         };
         for (const c of cells) { if (arrival[c] < Infinity) arrivalBP[c] = bpOf(arrival[c]); if (farmT[c] < Infinity) farmBP[c] = bpOf(farmT[c]); if (startT[c] < Infinity) onsetBP[c] = bpOf(startT[c]); }
         return { frames, centres: clusterCentres(mesh, centres, C.centreKm), totals, arrivalBP, farmBP, onsetBP, centreCells: centres, farmPkg, origins, polities: pol, famine: famine ? famineCentury : null, parasites: range, vary: V,
+            engine: gpu && V ? 'gpu' : 'cpu', yearsCheck: check ? check.S : null,
             voyagingBP: coastT.map(x => (x < Infinity ? bpOf(x) : null)),
             // (per crop: when its farmers first farmed a coast — from then voyagers carry it)
             coastBP: Object.fromEntries(DOM.map((p, i) => [p.food, coastT[i] < Infinity ? bpOf(coastT[i]) : null])),

@@ -7,6 +7,8 @@
 //                                        `cells` (taken down as the page takes it) or at its own (default)
 //   … --travel                           the page's travel queries after the run (paddle and sail, two months), hashed in
 //   … --key <finish key>                 a cached page finish's own civ world (tools/lib/finish-cache.mjs), its winds included
+//   … --cpu                              the famine's years on the CPU (the float64 reference); default the GPU, as the page
+//   … --check                            (GPU) each step's years on the CPU too: their per-cell differences, printed
 // (--world and --key are frozen inputs: they don't follow the world code's hash, so a fingerprint taken before a change
 // compares with one after it however the history or finish code moved)
 
@@ -21,6 +23,7 @@ import { runCivSim } from '../js/civ/sim.js';
 import { climateVariability } from '../js/civ/climate-var.js';
 import { travelGraph, travelDays, Craft } from '../js/civ/routes.js';
 import { CIV } from '../js/civ/civ-config.js';
+import { civEngine, yearsCheckLine } from './lib/civ-engine.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const set = arg('--set', ''), C = { ...CIV, ...(set ? Object.fromEntries(set.split(/,(?=[A-Za-z_]+=)/).map(kv => { const i = kv.indexOf('='); return [kv.slice(0, i), JSON.parse(kv.slice(i + 1))]; })) : {}) };
@@ -47,12 +50,15 @@ async function* worlds() {
         yield [seed, w];
     }
 }
+const E = await civEngine();
 for await (const [seed, w] of worlds()) {
     // (timed by stage: the substrate, the climate ensemble's variability, the run — with --travel, the travel queries a
     // page makes after it, their days hashed in too)
     const ms = {}, tick = (k, f) => { const t = performance.now(), x = f(); ms[k] = Math.round(performance.now() - t); return x; };
     const t0 = Date.now(), sub = tick('substrate', () => civSubstrate(w, C)), vary = tick('variability', () => climateVariability(w, sub, C));
-    const r = tick('run', () => runCivSim(w, sub, { C, endBP: END, vary }));
+    let t1 = performance.now();
+    const r = await runCivSim(w, sub, { C, endBP: END, vary, gpu: E.gpu, yearsCheck: E.yearsCheck });
+    ms.run = Math.round(performance.now() - t1);
     const h = crypto.createHash('sha1'), add = a => h.update(Buffer.from(a.buffer, a.byteOffset, a.byteLength));
     for (const fr of r.frames) {
         add(fr.density); add(fr.life); add(fr.farmPkg);
@@ -63,5 +69,6 @@ for await (const [seed, w] of worlds()) {
     add(r.arrivalBP); add(r.farmBP); add(r.onsetBP);
     h.update(JSON.stringify([r.centres, r.totals, r.voyagingBP]));
     if (TRAVEL) for (const craft of [Craft.PADDLE, Craft.SAIL]) for (const m of [0, 6]) add(tick(`travel${craft}m${m}`, () => travelDays(w.mesh, travelGraph(w, sub, craft, C), r.origins[0], m)));
-    console.log(seed, h.digest('hex').slice(0, 16), `${((Date.now() - t0) / 1000).toFixed(0)} s`, JSON.stringify(ms));
+    console.log(seed, h.digest('hex').slice(0, 16), `${((Date.now() - t0) / 1000).toFixed(0)} s`, JSON.stringify(ms), E.label);
+    if (r.yearsCheck) console.log(' ', yearsCheckLine(r.yearsCheck));
 }
