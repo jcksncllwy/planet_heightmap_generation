@@ -1,5 +1,5 @@
 // F3 — the last ice age. Its ice sheets grown by the ice's own flow under the climate of a glacial epoch (glacialSheets,
-// below: the planet's orbit and the air's CO2 at the glacial maximum, the sea lowered by the ice's volume; gpu/ice-sheet.js,
+// below: the planet's orbit at the glacial maximum (the air's CO2 held at the planet's own), the sea lowered by the ice's volume; gpu/ice-sheet.js,
 // gpu/ice-balance.js — lane iceage B2, 2026-11-25; until then a prescribed cooling and drying, a snowline rule and a plastic
 // sheet's thickness). Where ice gathered and flowed it cut troughs — U-shaped valleys along its paths, below the sea where
 // it reached the sea (fjords) — scoured hollows into the bed under the sheets (lake districts on the shields), left
@@ -37,7 +37,7 @@ const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm);
 // ── The ice age's ice sheets, from its climate (lane iceage B2 (iv), 2026-11-25) ──
 // The moment's ground under a glacial planet-and-star system: the same planet and star, at an epoch of the orbit's cycle
 // (Berger 1978; Earth's when the system has none of its own — "a world that could produce Earth") and of the air's CO2
-// (planet-system.js: Bereiter et al. 2015), its sheets grown by the ice's own flow (gpu/ice-sheet.js) under the mass balance
+// (held at the planet's own on a generated world; Bereiter et al. 2015 only in the Earth replay), its sheets grown by the ice's own flow (gpu/ice-sheet.js) under the mass balance
 // the climate gives at the ice's surface (gpu/ice-balance.js), coupled asynchronously as paleo ice-sheet models are
 // (CLIMBER–SICOPOLIS, Ganopolski et al. 2010; Abe-Ouchi et al. 2013): a climate on the ground and its sheets as they stand,
 // then the sheets run F.iceRoundKyr under it, the balance recomputed from their surface every F.iceBalanceEveryYr, round by
@@ -53,14 +53,15 @@ const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm);
 // (gpu/ice-balance.js: degree days); the climate on the ice mesh (F.iceMeshCells, ~61 km at 160K: the paleo models' own resolution);
 // no ocean circulation change beyond the climate's own (no AMOC shift); the sea's level one number (no sea-level fingerprint).
 /**
- * @param {Object} ctx  { device, mesh, z (km: the moment's ground, not changed), climateOptions (the finish's), onRound? }
+ * @param {Object} ctx  { device, mesh, z (km: the moment's ground, not changed), climateOptions (the finish's), onRound?,
+ *   co2Record? (the system's CO2 series through the rounds: the Earth replay's check only; else the CO2 held) }
  * @returns {Promise<{ ice: Uint8Array, H: Float32Array, smb: Float32Array, uDef: Float32Array, uSlide: Float32Array,
  *   warmSl: Float32Array, rain: Float32Array, seaKm: number, rounds: Object[], ms: number }>}  on `mesh`: where the ice stood,
  *   its thickness (km) over the moment's ground, its mass balance (m of ice a year), its surface's speed by deformation and its
  *   bed's by sliding (m/a, the ice mesh's cell's), the glacial climate's warmest month at the glacial sea's level (°C) and its year's
  *   precipitation (mm, the climate's grid); the glacial sea's level (km against the moment's)
  */
-export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRound = null, probe = null }, F) {
+export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRound = null, probe = null, co2Record = false }, F) {
     const t0 = performance.now(), nF = mesh.numCells;
     const im = nF <= 1.2 * F.iceMeshCells ? mesh : terrainMesh(F.iceMeshCells), n = im.numCells, M = im === mesh ? null : mapOnto(im, mesh);
     const bed0 = M ? meanOnto(M, z, n) : Float32Array.from(z), x = im.xyz;
@@ -72,7 +73,12 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     // (the moment's sea, whose area the ice's water leaves)
     let seaArea = 0;
     { const o = worldOcean(im, bed0, 0).ocean; for (let c = 0; c < n; c++) if (o[c]) seaArea += area[c]; }
-    const sys0 = systemOf(climateOptions.system), cycle = sys0.orbit.cycle ?? EARTH_CYCLE;
+    // (the air's CO2 held at the planet's own (its present, pre-industrial on Earth: no forcing), ruled 2026-11-27: a glacial's
+    // low CO2 is itself a response — the ocean and the carbon cycle drawing it down — not a planet setting, so a generated
+    // world's rounds don't take Earth's record. Only the Earth replay may (co2Record: Bereiter et al. 2015, as a check). The
+    // missing carbon cycle is a named gap: with one, the CO2 would come from it.)
+    const sysIn = systemOf(climateOptions.system), sys0 = co2Record ? sysIn : { ...sysIn, atmosphere: { ...sysIn.atmosphere, co2: null } };
+    const cycle = sys0.orbit.cycle ?? EARTH_CYCLE;
     // (the plan: a round at the inception, then rounds at the maximum until the ice is steady — or the glacial's time is spent)
     const budgetKyr = F.iceBudgetKyr ?? F.iceInceptionKyr - F.iceMaxKyr;      // (iceBudgetKyr: a study's longer run, unset in the finish)
     let H = new Float32Array(n), sea = 0, climate = null, spentKyr = 0, lastVol = 0, steady = false;

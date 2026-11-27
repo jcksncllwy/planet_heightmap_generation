@@ -119,7 +119,7 @@ const probe = ({ round, epochKyr, force, H, lat: la, lon: lo, sea }) => {
     }
     console.log(`the balance as the round at ${epochKyr} ka starts (round ${round}${round ? ', on the inception\'s ice' : ', ice-free'}):\n${line.join('\n')}`);
 };
-const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {}, probe }, F);
+const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {}, probe, co2Record: true }, F);     // (Earth's own CO2 record: a replay, ruled 2026-11-27)
 const simMesh = buildSimMesh(40000, MESH_SEED), zi = bedE.slice();
 const LIA = lastIceAge({ mesh, z: zi, lat, lon, warmSl, rain, grid: new LatLonGrid(0.25), cellKm2, seed: 1, soft: null, land, simMesh, teSim: new Float32Array(simMesh.numCells).fill(50), sheet: GS }, F).ice;
 const iceAgeS = (performance.now() - tg) / 1000;

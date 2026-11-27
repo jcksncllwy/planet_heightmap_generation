@@ -4014,6 +4014,9 @@ obliquity and the star's longitude at perihelion, and the orbit's variations thr
 - **The air's CO2 through time** (`atmosphere.co2`): Earth's is Bereiter et al. 2015's ice-core composite (805 kyr, 1 kyr
   bins; `climate/co2-bereiter2015.js`), its forcing 5.35 ln(C/C₀) against the pre-industrial bin added to the page's Greenhouse
   — 0 at the present, −2.04 W/m² at 21 ka. CO2 only (CH4 and N2O, dust: not yet).
+  **The grown ice's rounds hold it at the planet's own on a generated world** (ruled 2026-11-27): a glacial's low CO2 is
+  itself a response (the ocean and the carbon cycle drawing it down), not a planet setting, so a generated world doesn't take
+  Earth's record. Only the Earth replay (check-iceage-earth) runs Bereiter's, as a check. Named gap: no carbon cycle.
 - **Earth's default now carries its real orbit** (e 0.0167, perihelion in early January) where the climate had a circular one.
   On Earth's ground (160K) the global mean is unchanged (15.30 → 15.31 °C); the northern summer is cooler (July 60–75° N
   −2.0 K, 75–90° N −2.4 K), the southern warmer, and the northern annual mean 0.12 K lower (the snow's longer summers at
