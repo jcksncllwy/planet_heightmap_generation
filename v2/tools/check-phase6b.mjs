@@ -1,8 +1,8 @@
 // Headless acceptance checks for Phase 6b (subduction initiation at old passive margins).
 // Hard checks: a wholly passive scene founders a trench along an old margin — pushed down by the founder law (founderUrge:
 // the ocean's age and the squeeze across it), never on ocean younger than oceanNeutralAgeMyr — the passive ocean going
-// down, the basin closing, the continents colliding, no plate ballooning, continental crust kept; the ablations (rule off;
-// too young unsqueezed) and the founder law's induced branch (squeezed hard, 40–120 Myr ocean founders; under
+// down, the basin closing, the continents colliding, no plate ballooning, continental crust kept; the ablations (rule off: nothing founders, the
+// basin stays open; too young unsqueezed) and the founder law's induced branch (squeezed hard, 40–120 Myr ocean founders; under
 // oceanNeutralAgeMyr it never does); determinism; plates carved out of the passive ocean; the segment vote; no gaps.
 // Reported against Earth over the start world's history (per seed): initiation events per 100 Myr, induced and
 // spontaneous; the sea floor's age (mean, share older than 180 and 250 Myr); the plate count.
@@ -18,6 +18,11 @@ import { CrustType } from '../js/tectonics/model/crust.js';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { BoundaryKind, EventKind } from '../js/tectonics/model/world.js';
 import { founderUrge } from '../js/tectonics/step/subduction-init.js';
+import { resolve } from '../js/tectonics/step/resolve.js';
+import { tidyPlates } from '../js/tectonics/ops/tidy-plates.js';
+import { classifyBoundaries } from '../js/tectonics/step/boundaries.js';
+import { gatherLoads, FORCE_KINDS } from '../js/tectonics/step/forces.js';
+import { datePrehistory } from '../js/tectonics/init/prehistory-ocean.js';
 
 const SEED = 12345, SNAPSHOT_MYR = 4, MORE_SEEDS = [1, 2];      // (the start world's history is run on a few seeds)
 const mesh = labMesh(), { numCells, xyz } = mesh;
@@ -25,6 +30,21 @@ const mesh = labMesh(), { numCells, xyz } = mesh;
 const coreCount = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.owner[w] >= 0 && (f.type[w] === CrustType.CONTINENT || f.type[w] === CrustType.CRATON)) n++; return n; };
 const trenchCells = f => { let n = 0; for (let w = 0; w < numCells; w++) if (f.boundary[w] === BoundaryKind.OVERRIDING) n++; return n; };
 const movers = f => f.plates.filter(p => p.alive && !p.isBackground);
+
+// The ridge push's share of each driven plate's force at a scene's t0, after the history's own start sequence
+// (simulate.js stepsOf: resolve, tidy, the pre-history ocean dated, boundaries classified). Reported only.
+function ridgePushShareAtStart(id, overrides) {
+    const world = RIFT_SCENES.find(s => s.id === id).build(mesh, SEED);
+    Object.assign(world.config, overrides);
+    for (const p of world.plates) p.refreshExtent(xyz);
+    resolve(world); if (tidyPlates(world)) resolve(world);
+    datePrehistory(world); classifyBoundaries(world, 0);
+    const k = FORCE_KINDS.indexOf('ridge push'), mag = v => Math.hypot(v[0], v[1], v[2]);
+    return [...gatherLoads(world)].map(([pid, L]) => {
+        const all = L.forceByKind.reduce((a, v) => a + mag(v), 0);
+        return `${world.plates[pid].name} ${all ? (100 * mag(L.forceByKind[k]) / all).toFixed(0) : 0} %`;
+    }).join(' · ') + ' of |force| summed by kind';
+}
 
 async function run(id, overrides = {}, untilMyr = null, seed = SEED) {
     const scene = RIFT_SCENES.find(s => s.id === id), world = scene.build(mesh, seed);
@@ -106,8 +126,26 @@ section('an old passive margin founders');
 section('it is a rule, not an accident');
 {
     const off = await run('founder', { subductionInitRatePerMyr: 0 });
-    check('with the rule off, nothing founders and the basin stays open', off.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0 && off.events.every(e => e.kind !== EventKind.SUTURE) && movers(off.frames.at(-1)).every(p => p.speedCmYr < 0.5),
-        `0 margins founder, no collision; ${movers(off.frames.at(-1)).map(p => p.speedCmYr.toFixed(2)).join('/')} cm/yr after ${off.frames.at(-1).time} Myr`);
+    // Judged: nothing founders, nothing collides, and the basin stays open (it never narrows as the founding run's does,
+    // by 800 km). Reported, not judged: the plates' speed. Until lane startsea A2 (2026-11-27) every plate was also held
+    // under 0.5 cm/yr, a premise of the flat pre-history floor (one age everywhere: no slope, no ridge push). A2 dates that
+    // floor by its relict ridges; their slopes push as any ocean's do (step/forces.js ridgePushGpe), so plates drift with
+    // no slab at all. The ridge push's share of the driving force at t0 is reported beside the speed.
+    // KNOWN FAIL (lane startsea, 2026-11-27, a pre-existing sink): with the rule off the basin still closes: the continents
+    // drift ~1800 km in 300 Myr onto the passive background, and resolve.js gatherAndSubduct deletes the ocean they advance on
+    // (polarity.js: ocean goes under land, the background always loses) — with no trench until feedTrench's establishes()
+    // has earned one (oceanNeutralAgeMyr, trenchEstablishKm), and none at all on younger floor. Histories lose ocean the same
+    // way, at the same rate on main as with A2 (startsea probe x-silent: ~⅓ of all consumption): the sink is the model's, not
+    // A2's; A2's push only shows it here, where main's plates stood still. Its fix (a contact with no trench spends at most
+    // trenchEstablishKm, then locks or shortens) is its own lane. 'Neither plate balloons' and 'a newborn plate is a normal
+    // plate' fail on the same push into the same sink.
+    const offIds = ['Westland', 'Eastland'].map(name => off.frames[0].plates.find(p => p.name === name).id);
+    const offStart = separationKm(off.frames[0], offIds), offSep = off.frames.map(f => separationKm(f, offIds)).filter(v => v !== null);
+    const offClosest = offSep.length ? Math.min(...offSep) : null;
+    const offPush = ridgePushShareAtStart('founder', { subductionInitRatePerMyr: 0 });
+    check('with the rule off, nothing founders and the basin stays open',
+        off.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0 && off.events.every(e => e.kind !== EventKind.SUTURE) && offClosest !== null && offClosest >= offStart - 800,
+        `0 margins founder, no collision; land-to-land ${offStart.toFixed(0)} km at the start, ${offClosest?.toFixed(0)} km at its narrowest; ${movers(off.frames.at(-1)).map(p => p.speedCmYr.toFixed(2)).join('/')} cm/yr after ${off.frames.at(-1).time} Myr (reported); ridge push at t0 ${offPush}`);
     // spontaneous: unsqueezed (this scene starts at rest), ocean short of the age threshold never founders
     const young = await run('founder', { subductionInitAgeMyr: 10000 });
     check('unsqueezed, crust too young to founder never does', young.events.filter(e => e.kind === EventKind.SUBDUCTION_INIT).length === 0,
