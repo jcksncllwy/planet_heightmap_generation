@@ -64,7 +64,7 @@
 // bits: the max is the same in any order); every other pass writes only its own cell. float32 throughout.
 
 import { pipeline, readBack } from './gpu-device.js';
-import { INDEX_WGSL, dispatch, meshFields } from './fields.js';
+import { INDEX_WGSL, SUM_WG, dispatch, meshFields } from './fields.js';
 
 const R_M = 6.371e6;
 
@@ -78,6 +78,11 @@ export const ICE = Object.freeze({
     cfl: 0.5,             // of the explicit step's stability limit (Gershgorin's bound is not tight on a jittered mesh)
     batch: 100,           // steps between reads of the GPU's clock (the balance's updates and the run's end wait on it)
     dtMaxYr: 50,          // the longest step, years
+    // the semi-implicit step (E1b): 'explicit' or 'semi' (Hindmarsh & Payne 1996: D frozen at the step's start, the surface
+    // solved implicitly), its step (years) and its CG's iterations a step (Jacobi-preconditioned; the residual is booked)
+    scheme: 'explicit',
+    semiDtYr: 5,
+    semiIters: 24,
     slideB: 1e-3,         // Weertman's sliding coefficient, m a⁻¹ Pa⁻¹, where the bed is thawed (EISMINT II: Payne et al. 2000, exp. H)
     geoFlux: 0.042,       // the ground's heat flux, W/m² (EISMINT II; Pollack et al. 1993: shields 40–50, continents' mean 65)
     kIce: 2.1,            // ice's conductivity, W m⁻¹ K⁻¹ (Cuffey & Paterson 2010)
@@ -222,6 +227,279 @@ struct T { cfl: f32, dtMax: f32, pad0: f32, pad1: f32 }
     atomicStore(&rmax, 0u);
 }`;
 
+// ── the semi-implicit step (lane iceemu E1b, 2026-11-27; Hindmarsh & Payne 1996) ──
+// The explicit step's limit is the stiffest face anywhere: thick ice on a steep raw bed took the live finish's dt to 0.012 a.
+// Frozen at the step's start, D makes the flux linear in the new surface, so the step is a linear solve,
+//     a_c (H′_c − H_c) = dt Σ_k C_k (s′_b − s′_c),   s′ = φ H′ + o   (φ 1, o the bed where grounded; φ 1 − ρ_i/ρ_w, o the sea
+// at a floating front), then the balance and the calving as the explicit step has them (the flux first: a margin's inflow
+// melts in the step it arrives — the balance first left a 10–50 a step's inflow to an empty ablation cell unmelted, ~30 %
+// more ice on Earth's replay), C_k the face's D (the explicit step's, both sides alike) and a_c the cell's area as the
+// explicit step counts it. In y = φ H′ the matrix diag a/φ + dt ΣC, off-diagonal −dt C is symmetric and positive definite:
+// conjugate gradients, Jacobi-preconditioned, on the GPU (its scalars never leave it: three passes an iteration, each
+// workgroup summing the last pass's partials itself), stopped at SEMI_TOL; the CPU dispatches a few more iterations than the
+// last batch's worst step took (~0.2 ms a pass at 160K even idle), up to ICE.semiIters. The frozen D is the scheme's error
+// and its limit: stable far past the explicit limit (Earth's replay 50 a, ~100× it), but a nonlinear sheet can oscillate at
+// a long enough step — a batch whose limited fluxes still leave a cell SEMI_BAD_M below zero is run again from its start at
+// half the step, which grows back after clean batches.
+// Measured (lane iceemu E1b, Upwell Dawn, 160K): Halfar's dome at 20 a matches the explicit step's error (centre 0.84 vs
+// 0.82 %, mean 53.7 vs 53.6 m); Earth's replay (95 kyr, coupled) ends at 27.6 Mkm², −118 m at 20 or 50 a against the
+// explicit step's 28.4 Mkm², −120 m; ~4 ms a step at ~6 iterations, ~7 ms at ~16.
+// Mass and the margin: a face whose donor (its higher surface at the step's start) holds no ice carries nothing (C 0) — the
+// mean-H face would otherwise draw an empty cell on a high bed below zero, the explicit step's leak in implicit form; the
+// solve's face fluxes are then applied as fluxes, each scaled by its donor's share min(1, (a H + inflow) / outflow), so the
+// volume is conserved to the face and a cell that would go below zero gives only what it has and receives. What a chain of
+// such cells still leaves below zero is clipped and booked (`made`, a check's number).
+// (a partials array's total, the same in every workgroup: a fixed stride, then a fixed tree; every thread gets it)
+// (the CG's stop: the preconditioned residual r·z down by SEMI_TOL² from the step's first — each pass reads it and does nothing
+// once it holds, so a step pays for the iterations it needs, up to ICE.semiIters)
+// (a step that overshot: the limited fluxes still left a cell more than SEMI_BAD_M below zero — ice the scheme would make —
+// the frozen D's lag at a step far past the explicit limit, where the nonlinear sheet oscillates (Earth's replay at 50 a,
+// round 5: made grew to 10¹⁴ km³); the batch is run again at half the step. A sound step's clip is ~10⁻⁹ of the ice)
+const SEMI_BAD_M = '1.0';
+const SEMI_TOL = 1e-4, SEMI_TOL2 = (SEMI_TOL * SEMI_TOL).toExponential(3);
+const CG_SUM = (...names) => `var<workgroup> sh: array<f32, ${SUM_WG}>;
+var<workgroup> tot: f32;
+${names.map(a => `fn total_${a}(l: u32) -> f32 {
+    var v = 0.0; for (var k = l; k < arrayLength(&${a}); k += ${SUM_WG}u) { v += ${a}[k]; }
+    sh[l] = v; workgroupBarrier();
+    for (var k = ${SUM_WG / 2}u; k > 0u; k >>= 1u) { if (l < k) { sh[l] += sh[l + k]; } workgroupBarrier(); }
+    if (l == 0u) { tot = sh[0]; }
+    return workgroupUniformLoad(&tot);       // (uniform: every thread its workgroup's one total, so a pass may stop on it)
+}`).join('\n')}`;
+const SK = {
+    // (the frozen faces: C per face (0 where the donor is empty), the diagonal, the right side, the first guess y = φ H)
+    si_coef: `${HEAD}
+@group(0) @binding(6) var<storage, read> G2: array<vec4f>;
+@group(0) @binding(7) var<storage, read_write> coef: array<f32>;
+@group(0) @binding(8) var<storage, read_write> sys: array<vec4f>;      // (diag, rhs, φ, a)
+@group(0) @binding(9) var<storage, read_write> y: array<f32>;
+@group(0) @binding(10) var<storage, read_write> cnt: array<u32>;       // (the CG's iterations: this step's, the most a step took)
+fn offs(i: u32, g: bool) -> f32 { return select(u.sea, force[i].x, g); }
+${MAIN}
+    if (c == 0u) { cnt[1] = max(cnt[1], cnt[0]); cnt[0] = 0u; }
+    var sc_ = 0.0; var rhs = 0.0; var area = 0.0; let oc = offs(c, gc);
+    for (var k = k0; k < k1; k++) {
+        let b = adj[k]; let ed = edge[k]; let d = ed.w; area += d * d; let hb = H[b]; let gb = grounded(b);
+        var C = 0.0;
+        if (flows(gc, hc, gb, hb)) {
+            let ds = surf(b, gb) - sc;
+            let empty = (ds > 0.0 && hb <= 0.0) || (ds < 0.0 && hc <= 0.0) || (ds == 0.0 && (hb <= 0.0 || hc <= 0.0));
+            C = select(u.gamma * h5(hc, hb) * face2(ds / d, ed.xyz, G2[c].xyz, G2[b].xyz) + dslide(hc, tc, hb, thawed(b, gb)), 0.0, empty);
+        }
+        coef[k] = C; sc_ += C; rhs += C * (offs(b, gb) - oc);
+    }
+    let a = area * 0.25; let phi = select(1.0 - u.flt, 1.0, gc);
+    sys[c] = vec4f(a / phi + u.dt * sc_, a * hc + u.dt * rhs, phi, a);
+    y[c] = phi * hc;
+}`,
+    // (r = rhs − A y, z = r / diag)
+    si_resid: `${HEAD}
+@group(0) @binding(6) var<storage, read> coef: array<f32>;
+@group(0) @binding(7) var<storage, read> sys: array<vec4f>;
+@group(0) @binding(8) var<storage, read> y: array<f32>;
+@group(0) @binding(9) var<storage, read_write> r: array<f32>;
+@group(0) @binding(10) var<storage, read_write> z: array<f32>;
+@group(0) @binding(11) var<storage, read_write> p: array<f32>;
+@compute @workgroup_size(128) fn main(@builtin(global_invocation_id) id: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let c = flatIndex(id, nwg); if (c >= arrayLength(&H)) { return; }
+    var o = 0.0; for (var k = off[c]; k < off[c + 1u]; k++) { o += coef[k] * y[adj[k]]; }
+    let s = sys[c]; let rv = s.y - (s.x * y[c] - u.dt * o);
+    r[c] = rv; z[c] = rv / s.x; p[c] = rv / s.x;
+}`,
+    // (q = A p)
+    si_ax: `${HEAD}
+@group(0) @binding(6) var<storage, read> coef: array<f32>;
+@group(0) @binding(7) var<storage, read> sys: array<vec4f>;
+@group(0) @binding(8) var<storage, read> p: array<f32>;
+@group(0) @binding(9) var<storage, read_write> q: array<f32>;
+@compute @workgroup_size(128) fn main(@builtin(global_invocation_id) id: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let c = flatIndex(id, nwg); if (c >= arrayLength(&H)) { return; }
+    var o = 0.0; for (var k = off[c]; k < off[c + 1u]; k++) { o += coef[k] * p[adj[k]]; }
+    q[c] = sys[c].x * p[c] - u.dt * o;
+}`,
+    // (y += α p, r −= α q, z = r / diag)
+    si_upd1: `@group(0) @binding(0) var<storage, read> S: array<f32>;
+@group(0) @binding(1) var<storage, read> p: array<f32>;
+@group(0) @binding(2) var<storage, read> q: array<f32>;
+@group(0) @binding(3) var<storage, read_write> y: array<f32>;
+@group(0) @binding(4) var<storage, read_write> r: array<f32>;
+@group(0) @binding(5) var<storage, read_write> z: array<f32>;
+@group(0) @binding(6) var<storage, read> sys: array<vec4f>;
+${INDEX_WGSL}
+@compute @workgroup_size(128) fn main(@builtin(global_invocation_id) id: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let c = flatIndex(id, nwg); if (c >= arrayLength(&y)) { return; }
+    let a = S[1]; y[c] += a * p[c]; let rv = r[c] - a * q[c]; r[c] = rv; z[c] = rv / sys[c].x;
+}`,
+    // (p = z + β p)
+    si_upd2: `@group(0) @binding(0) var<storage, read> S: array<f32>;
+@group(0) @binding(1) var<storage, read> z: array<f32>;
+@group(0) @binding(2) var<storage, read_write> p: array<f32>;
+${INDEX_WGSL}
+@compute @workgroup_size(128) fn main(@builtin(global_invocation_id) id: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let c = flatIndex(id, nwg); if (c >= arrayLength(&p)) { return; }
+    p[c] = z[c] + S[2] * p[c];
+}`,
+    // (a dot product's partials, each workgroup of 256 by a fixed tree)
+    si_dot: `@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read> b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> part: array<f32>;
+var<workgroup> sh: array<f32, ${SUM_WG}>;
+@compute @workgroup_size(${SUM_WG}) fn main(@builtin(local_invocation_index) l: u32, @builtin(workgroup_id) g: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let w = g.x + g.y * nwg.x; let i = w * ${SUM_WG}u + l;
+    sh[l] = select(0.0, a[i] * b[i], i < arrayLength(&a));
+    workgroupBarrier();
+    for (var k = ${SUM_WG / 2}u; k > 0u; k >>= 1u) { if (l < k) { sh[l] += sh[l + k]; } workgroupBarrier(); }
+    if (l == 0u) { part[w] = sh[0]; }
+}`,
+    // (the partials summed in a fixed stride and tree into the CG's scalars S = (rz, α, β, rr, bb, worst rr/bb):
+    // mode 0 rz = Σ; 1 α = rz / Σ; 2 β = Σ / rz, rz = Σ; 3 rr = Σ; 4 bb = Σ; 5 rr = Σ and the worst rr/bb kept)
+    si_fin: `struct F { mode: u32, count: u32, pad0: u32, pad1: u32 }
+@group(0) @binding(0) var<uniform> f: F;
+@group(0) @binding(1) var<storage, read> part: array<f32>;
+@group(0) @binding(2) var<storage, read_write> S: array<f32>;
+var<workgroup> sh: array<f32, ${SUM_WG}>;
+@compute @workgroup_size(${SUM_WG}) fn main(@builtin(local_invocation_index) l: u32) {
+    var v = 0.0; for (var k = l; k < f.count; k += ${SUM_WG}u) { v += part[k]; }
+    sh[l] = v;
+    workgroupBarrier();
+    for (var k = ${SUM_WG / 2}u; k > 0u; k >>= 1u) { if (l < k) { sh[l] += sh[l + k]; } workgroupBarrier(); }
+    if (l == 0u) {
+        let s = sh[0];
+        if (f.mode == 0u) { S[0] = s; }
+        else if (f.mode == 1u) { S[1] = select(0.0, S[0] / s, s != 0.0); }
+        else if (f.mode == 2u) { S[2] = select(0.0, s / S[0], S[0] != 0.0); S[0] = s; }
+        else if (f.mode == 4u) { S[4] = s; }
+        else { S[3] = s; S[5] = max(S[5], select(0.0, sqrt(s) / sqrt(S[4]), S[4] > 0.0)); }
+    }
+}`,
+    // ── the CG fused to three passes an iteration: each pass's workgroups sum the partials they need themselves (the same
+    // fixed stride and tree in every workgroup, so every one reads the same scalar), and leave their own partials for the next ──
+    // (q = A p, and p·q's partials)
+    cg_ax: `${HEAD}
+@group(0) @binding(6) var<storage, read> coef: array<f32>;
+@group(0) @binding(7) var<storage, read> sys: array<vec4f>;
+@group(0) @binding(8) var<storage, read> p: array<f32>;
+@group(0) @binding(9) var<storage, read_write> q: array<f32>;
+@group(0) @binding(10) var<storage, read_write> pq: array<f32>;
+@group(0) @binding(11) var<storage, read> rz0: array<f32>;
+@group(0) @binding(12) var<storage, read> rzI: array<f32>;
+${CG_SUM('rz0', 'rzI')}
+@compute @workgroup_size(${SUM_WG}) fn main(@builtin(local_invocation_index) l: u32, @builtin(workgroup_id) g: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let w = g.x + g.y * nwg.x; let c = w * ${SUM_WG}u + l; var v = 0.0;
+    let done = total_rz0(l) <= ${SEMI_TOL2} * total_rzI(l);
+    if (!done && c < arrayLength(&H)) {
+        var o = 0.0; for (var k = off[c]; k < off[c + 1u]; k++) { o += coef[k] * p[adj[k]]; }
+        let qc = sys[c].x * p[c] - u.dt * o; q[c] = qc; v = p[c] * qc;
+    }
+    sh[l] = v; workgroupBarrier();
+    for (var k = ${SUM_WG / 2}u; k > 0u; k >>= 1u) { if (l < k) { sh[l] += sh[l + k]; } workgroupBarrier(); }
+    if (l == 0u) { pq[w] = sh[0]; }
+}`,
+    // (α = rz / p·q from the partials; y += α p, r −= α q, z = r / diag, and r·z's new partials)
+    cg_upd1: `
+@group(0) @binding(0) var<storage, read> pq: array<f32>;
+@group(0) @binding(1) var<storage, read> rz0: array<f32>;
+@group(0) @binding(2) var<storage, read_write> rz1: array<f32>;
+@group(0) @binding(3) var<storage, read> p: array<f32>;
+@group(0) @binding(4) var<storage, read> q: array<f32>;
+@group(0) @binding(5) var<storage, read_write> y: array<f32>;
+@group(0) @binding(6) var<storage, read_write> r: array<f32>;
+@group(0) @binding(7) var<storage, read_write> z: array<f32>;
+@group(0) @binding(8) var<storage, read> sys: array<vec4f>;
+@group(0) @binding(9) var<storage, read> rzI: array<f32>;
+${CG_SUM('pq', 'rz0', 'rzI')}
+@compute @workgroup_size(${SUM_WG}) fn main(@builtin(local_invocation_index) l: u32, @builtin(workgroup_id) g: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let w = g.x + g.y * nwg.x; let c = w * ${SUM_WG}u + l;
+    let a = total_pq(l); let rz = total_rz0(l); let alpha = select(0.0, rz / a, a != 0.0);
+    let done = rz <= ${SEMI_TOL2} * total_rzI(l);
+    if (done) { if (l == 0u) { rz1[w] = rz0[w]; } return; }
+    var v = 0.0;
+    if (c < arrayLength(&y)) { y[c] += alpha * p[c]; let rv = r[c] - alpha * q[c]; r[c] = rv; let zv = rv / sys[c].x; z[c] = zv; v = rv * zv; }
+    sh[l] = v; workgroupBarrier();
+    for (var k = ${SUM_WG / 2}u; k > 0u; k >>= 1u) { if (l < k) { sh[l] += sh[l + k]; } workgroupBarrier(); }
+    if (l == 0u) { rz1[w] = sh[0]; }
+}`,
+    // (β = rz′ / rz; p = z + β p)
+    cg_upd2: `
+@group(0) @binding(0) var<storage, read> rz0: array<f32>;
+@group(0) @binding(1) var<storage, read> rz1: array<f32>;
+@group(0) @binding(2) var<storage, read> z: array<f32>;
+@group(0) @binding(3) var<storage, read_write> p: array<f32>;
+@group(0) @binding(4) var<storage, read> rzI: array<f32>;
+@group(0) @binding(5) var<storage, read_write> cnt: array<u32>;
+${CG_SUM('rz0', 'rz1', 'rzI')}
+@compute @workgroup_size(${SUM_WG}) fn main(@builtin(local_invocation_index) l: u32, @builtin(workgroup_id) g: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let w = g.x + g.y * nwg.x; let c = w * ${SUM_WG}u + l;
+    let b0 = total_rz0(l); let b1 = total_rz1(l); let beta = select(0.0, b1 / b0, b0 != 0.0);
+    if (b0 <= ${SEMI_TOL2} * total_rzI(l)) { return; }
+    if (c == 0u) { cnt[0] += 1u; }
+    if (c < arrayLength(&p)) { p[c] = z[c] + beta * p[c]; }
+}`,
+    // (r = rhs − A y, z = r / diag, p = z, and r·z's partials)
+    cg_resid: `${HEAD}
+@group(0) @binding(6) var<storage, read> coef: array<f32>;
+@group(0) @binding(7) var<storage, read> sys: array<vec4f>;
+@group(0) @binding(8) var<storage, read> y: array<f32>;
+@group(0) @binding(9) var<storage, read_write> r: array<f32>;
+@group(0) @binding(10) var<storage, read_write> z: array<f32>;
+@group(0) @binding(11) var<storage, read_write> p: array<f32>;
+@group(0) @binding(12) var<storage, read_write> rz: array<f32>;
+@group(0) @binding(13) var<storage, read_write> rzI: array<f32>;
+var<workgroup> sh: array<f32, ${SUM_WG}>;
+@compute @workgroup_size(${SUM_WG}) fn main(@builtin(local_invocation_index) l: u32, @builtin(workgroup_id) g: vec3u, @builtin(num_workgroups) nwg: vec3u) {
+    let w = g.x + g.y * nwg.x; let c = w * ${SUM_WG}u + l; var v = 0.0;
+    if (c < arrayLength(&y)) {
+        var o = 0.0; for (var k = off[c]; k < off[c + 1u]; k++) { o += coef[k] * y[adj[k]]; }
+        let s = sys[c]; let rv = s.y - (s.x * y[c] - u.dt * o); let zv = rv / s.x;
+        r[c] = rv; z[c] = zv; p[c] = zv; v = rv * zv;
+    }
+    sh[l] = v; workgroupBarrier();
+    for (var k = ${SUM_WG / 2}u; k > 0u; k >>= 1u) { if (l < k) { sh[l] += sh[l + k]; } workgroupBarrier(); }
+    if (l == 0u) { rz[w] = sh[0]; rzI[w] = sh[0]; }
+}`,
+    // (the solve's face fluxes, m³ over the step / the face's geometry: each cell's outflow and inflow, and its share)
+    si_flux: `${HEAD}
+@group(0) @binding(6) var<storage, read> coef: array<f32>;
+@group(0) @binding(7) var<storage, read> sys: array<vec4f>;
+@group(0) @binding(8) var<storage, read> y: array<f32>;
+@group(0) @binding(9) var<storage, read_write> shr: array<vec2f>;   // (the donor's share, the cell's area as the step counts it)
+fn offs(i: u32, g: bool) -> f32 { return select(u.sea, force[i].x, g); }
+${MAIN}
+    let s1 = y[c] + offs(c, gc); var o = 0.0; var inn = 0.0;
+    for (var k = k0; k < k1; k++) {
+        let b = adj[k]; let qv = u.dt * coef[k] * (y[b] + offs(b, grounded(b)) - s1);
+        o += max(0.0, -qv); inn += max(0.0, qv);
+    }
+    let have = sys[c].w * hc + inn;
+    shr[c] = vec2f(select(1.0, have / o, o > have), sys[c].w);
+}`,
+    // (the fluxes applied, each scaled by its donor's share; the clip booked as made; the open sea's ice calved)
+    si_apply: `${HEAD}
+@group(0) @binding(6) var<storage, read> coef: array<f32>;
+@group(0) @binding(7) var<storage, read_write> bad: array<u32>;      // (set where the limited fluxes still left a cell over SEMI_BAD_M below zero)
+@group(0) @binding(8) var<storage, read> y: array<f32>;
+@group(0) @binding(9) var<storage, read> shr: array<vec2f>;
+@group(0) @binding(10) var<storage, read_write> Hn: array<f32>;
+@group(0) @binding(11) var<storage, read_write> books: array<vec4f>;
+fn offs(i: u32, g: bool) -> f32 { return select(u.sea, force[i].x, g); }
+${MAIN}
+    let s1 = y[c] + offs(c, gc); var div = 0.0; var touched = false;
+    for (var k = k0; k < k1; k++) {
+        let b = adj[k]; let gb = grounded(b); touched = touched || (gb && H[b] > 0.0);
+        let qv = u.dt * coef[k] * (y[b] + offs(b, gb) - s1);
+        div += qv * select(shr[c].x, shr[b].x, qv > 0.0);
+    }
+    let h1 = hc + div / shr[c].y;
+    let made = max(0.0, -h1); let h2 = max(h1, 0.0);
+    if (made > ${SEMI_BAD_M}) { bad[0] = 1u; }
+    let h3 = max(h2 + u.dt * force[c].y, 0.0);
+    let calved = select(0.0, h3, !gc && !touched);
+    Hn[c] = h3 - calved;
+    books[c] += vec4f(h3 - h2, made, calved, 0.0);
+}`,
+};
+Object.assign(KERNELS, SK);
+
 // (a field written into one component of the per-cell forcing: 0 the bed, 1 the balance, 2 the surface's year-mean — the
 // others left as they are, so a balance kernel's output survives a new bed and the reverse)
 const PUT = /* wgsl */`
@@ -312,7 +590,88 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
     let cur = 0;
     const tickG = device.createBindGroup({ layout: P_.tick.getBindGroupLayout(0), entries: [tickU, rmax, clockB].map((buffer, binding) => ({ binding, resource: { buffer } })) });
     const pass = (e, name) => { const p = e.beginComputePass(); p.setPipeline(P_[name]); p.setBindGroup(0, G[cur][name]); dispatch(p, n); p.end(); };
-    const run = async (years, { each = null, everyYears = 0 } = {}) => {
+    // ── the semi-implicit step's buffers and bind groups (E1b: P.scheme 'semi') ──
+    const semi = P.scheme === 'semi' ? (() => {
+        const K = mesh.adjList.length, parts = Math.max(1, Math.ceil(n / SUM_WG));
+        const coef = mk('ice C', 4 * K), sys = mk('ice sys', 16 * n), y = mk('ice y', 4 * n), r = mk('ice r', 4 * n),
+            z = mk('ice z', 4 * n), p = mk('ice p', 4 * n), q = mk('ice q', 4 * n), shr = mk('ice share', 8 * n), S = mk('ice S', 32), part = mk('ice partials', 4 * parts);
+        const pqP = mk('ice p·q', 4 * parts), rzP = [mk('ice r·z', 4 * parts), mk('ice r·z′', 4 * parts)], rzI = mk('ice r·z₀', 4 * parts), cnt = mk('ice CG count', 16), bad = mk('ice overshoot', 16), Hbak = mk('ice H kept', 4 * n), booksBak = mk('ice books kept', 16 * n);
+        const fins = [0, 1, 2, 3, 4, 5].map(mode => { const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); own.push(b);
+            device.queue.writeBuffer(b, 0, Uint32Array.of(mode, parts, 0, 0)); return g('si_fin', [b, part, S]); });
+        const dots = { pq: g('si_dot', [p, q, part]), rz: g('si_dot', [r, z, part]), rr: g('si_dot', [r, r, part]) };
+        const per = [0, 1].map(i => ({
+            grad: g('grad', [...shared, Hb[i], G2]),
+            coef: g('si_coef', [...shared, Hb[i], G2, coef, sys, y, cnt]),
+            resid: g('si_resid', [uniform, M.adjOffset, M.adjList, null, null, Hb[i], coef, sys, y, r, z, p]),
+            ax: g('si_ax', [uniform, M.adjOffset, M.adjList, null, null, Hb[i], coef, sys, p, q]),
+            upd1: g('si_upd1', [S, p, q, y, r, z, sys]),
+            upd2: g('si_upd2', [S, z, p]),
+            // (the fused CG: rz's partials ping-pong between two arrays by the iteration's parity)
+            fresid: g('cg_resid', [uniform, M.adjOffset, M.adjList, null, null, null, coef, sys, y, r, z, p, rzP[0], rzI]),
+            fax: [0, 1].map(j => g('cg_ax', [uniform, M.adjOffset, M.adjList, null, null, Hb[i], coef, sys, p, q, pqP, rzP[j], rzI])),
+            fupd1: [0, 1].map(j => g('cg_upd1', [pqP, rzP[j], rzP[1 - j], p, q, y, r, z, sys, rzI])),
+            fupd2: [0, 1].map(j => g('cg_upd2', [rzP[j], rzP[1 - j], z, p, rzI, cnt])),
+            flux: g('si_flux', [uniform, M.adjOffset, M.adjList, null, forceB, Hb[i], coef, sys, y, shr]),
+            apply: g('si_apply', [uniform, M.adjOffset, M.adjList, null, forceB, Hb[i], coef, bad, y, shr, Hb[1 - i], booksB]),
+        }));
+        const one = (pp, name, group, count = n, wg = 128) => { pp.setPipeline(P_[name]); pp.setBindGroup(0, group); dispatch(pp, count, wg); };
+        const sum = (pp, dot, mode) => { one(pp, 'si_dot', dots[dot], n, SUM_WG); pp.setPipeline(P_.si_fin); pp.setBindGroup(0, fins[mode]); pp.dispatchWorkgroups(1); };
+        // (one step into a pass: the balance, the frozen faces, the CG, the fluxes applied)
+        const step = (pp, iters) => {
+            const G_ = per[cur];
+            one(pp, 'grad', G_.grad); one(pp, 'si_coef', G_.coef);
+            if (P.semiFused === false) {
+                one(pp, 'si_resid', G_.resid); sum(pp, 'rr', 4); sum(pp, 'rz', 0);
+                for (let k = 0; k < iters; k++) { one(pp, 'si_ax', G_.ax); sum(pp, 'pq', 1); one(pp, 'si_upd1', G_.upd1); sum(pp, 'rz', 2); one(pp, 'si_upd2', G_.upd2); }
+            } else {
+                one(pp, 'cg_resid', G_.fresid, n, SUM_WG); sum(pp, 'rr', 4);
+                for (let k = 0; k < iters; k++) { const j = k & 1; one(pp, 'cg_ax', G_.fax[j], n, SUM_WG); one(pp, 'cg_upd1', G_.fupd1[j], n, SUM_WG); one(pp, 'cg_upd2', G_.fupd2[j], n, SUM_WG); }
+            }
+            sum(pp, 'rr', 5);
+            one(pp, 'si_flux', G_.flux); one(pp, 'si_apply', G_.apply);
+            cur = 1 - cur;
+        };
+        return { step, S, cnt, bad, Hbak, booksBak };
+    })() : null;
+    let worstResid = 0, itersUsed = 0, retries = 0;
+    const runSemi = async (years, { each = null, everyYears = 0 } = {}) => {
+        let t = 0, steps = 0, next = 0;
+        const dt0 = Math.min(P.semiDtYr, P.dtMaxYr);
+        device.queue.writeBuffer(semi.S, 0, new Float32Array(8));
+        // (the iterations dispatched a step: 16 at first, then a few more than the most any step of the last batch took
+        // — a pass past the stop costs ~0.2 ms at 160K even idle, so the CPU trims the count; a step that hit it raises it)
+        let iters = Math.min(P.semiIters, 16), dtNow = dt0, clean = 0;
+        while (t < years * (1 - 1e-6)) {
+            if (each && t >= next) { const e = device.createCommandEncoder(); each(e); device.queue.submit([e.finish()]); next = t + everyYears; }
+            // (a batch of whole steps at one dt, no longer than the balance's interval; the last step shortened to the run's end)
+            const left = years - t, dt = Math.min(dtNow, left), room = each ? Math.max(dt, Math.min(left, next - t)) : left;
+            const k = Math.max(1, Math.min(P.batch, Math.floor(room / dt + 1e-6)));
+            writeU(dt);
+            // (the batch's start kept, so an overshooting batch can be run again at half the step)
+            const cur0 = cur, e = device.createCommandEncoder();
+            e.copyBufferToBuffer(Hb[cur], 0, semi.Hbak, 0, 4 * n); e.copyBufferToBuffer(booksB, 0, semi.booksBak, 0, 16 * n);
+            const pp = e.beginComputePass();
+            for (let i = 0; i < k; i++) semi.step(pp, iters);
+            pp.end(); device.queue.submit([e.finish()]);
+            if ((await readBack(device, semi.bad, Uint32Array))[0]) {
+                const r = device.createCommandEncoder();
+                r.copyBufferToBuffer(semi.Hbak, 0, Hb[cur0], 0, 4 * n); r.copyBufferToBuffer(semi.booksBak, 0, booksB, 0, 16 * n);
+                device.queue.submit([r.finish()]); device.queue.writeBuffer(semi.bad, 0, new Uint32Array(1));
+                cur = cur0; dtNow = dt / 2; retries++; clean = 0;
+                if (dtNow < 1e-3) throw new Error('ice sheet: the semi-implicit step overshoots at any step');
+                continue;
+            }
+            if (dtNow < dt0 && ++clean >= 4) { dtNow = Math.min(dt0, 2 * dtNow); clean = 0; }
+            t += k * dt; steps += k;
+            const used = (await readBack(device, semi.cnt, Uint32Array))[1]; device.queue.writeBuffer(semi.cnt, 4, new Uint32Array(1));
+            iters = used >= iters ? Math.min(P.semiIters, 2 * iters) : Math.min(P.semiIters, used + 4);
+            itersUsed = Math.max(itersUsed, used);
+        }
+        const Sv = await readBack(device, semi.S); worstResid = Math.max(worstResid, Sv[5]);
+        return { steps, dt: dt0 };
+    };
+    const run = (years, opts = {}) => semi ? runSemi(years, opts) : runExplicit(years, opts);
+    const runExplicit = async (years, { each = null, everyYears = 0 } = {}) => {
         let t = 0, steps = 0, dt = 0, next = 0;
         // (the GPU's clock: this step's dt, the time run, the run's end, the steps taken — every step its limit from the ice as
         // it stands (grad, rate), its dt (tick), then the step; the CPU reads the clock between batches)
@@ -351,7 +710,7 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
         const h = await readH(), b = await readBack(device, booksB);
         let volume = 0, balance = 0, made = 0, calved = 0;
         for (let c = 0; c < n; c++) { const a = area[c]; volume += h[c] * a; balance += b[4 * c] * a; made += b[4 * c + 1] * a; calved += b[4 * c + 2] * a; }
-        return { volume, balance, made, calved, start };
+        return { volume, balance, made, calved, start, residual: worstResid, retries, iterations: itersUsed };
     };
     return {
         run, setBed, setSmb, setTsurf, readH, speeds, books, area, force: forceB, P,

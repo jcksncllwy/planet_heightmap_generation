@@ -39,7 +39,10 @@ import { declination } from '../js/climate/insolation.js';
 
 setDelaunator(Delaunator);
 // (GEO_SIM_ICE_MESH_CELLS=40000 (GEO_SIM_: what sim-slots carries to chroma): the ice grown on another ice mesh — lane iceage's ice-grid study; the measure's lines printed either way)
-const F = process.env.GEO_SIM_ICE_MESH_CELLS ? { ...FINISH, iceMeshCells: Number(process.env.GEO_SIM_ICE_MESH_CELLS) } : FINISH, t0 = performance.now();
+// (GEO_SIM_ICE_MESH_CELLS, GEO_SIM_ICE_SCHEME, GEO_SIM_ICE_DT, GEO_SIM_ICE_ITERS: a study's ice mesh and time step)
+const env = globalThis.process?.env ?? {}, F = { ...FINISH,
+    ...(env.GEO_SIM_ICE_MESH_CELLS ? { iceMeshCells: Number(env.GEO_SIM_ICE_MESH_CELLS) } : {}), ...(env.GEO_SIM_ICE_SCHEME ? { iceScheme: env.GEO_SIM_ICE_SCHEME } : {}),
+    ...(env.GEO_SIM_ICE_DT ? { iceDtYr: Number(env.GEO_SIM_ICE_DT) } : {}), ...(env.GEO_SIM_ICE_ITERS ? { iceSolveIters: Number(env.GEO_SIM_ICE_ITERS) } : {}) }, t0 = performance.now();
 
 // ── the planet and its star (planet-system.js): its orbit at three epochs against PMIP's (Otto-Bliesner et al. 2017 for
 // 6 ka, Kageyama et al. 2017 for 21 ka: e, ε, ϖ from Berger 1978), the circular orbit as e = 0, Earth's perihelion ──
@@ -143,7 +146,7 @@ const both = (a, b, f) => { let s = 0; for (let c = 0; c < n; c++) if (a[c] && b
 
 section('the ice age on Earth\'s ground and climate (finish-ice.js) against ICE-6G_C at 21 ka');
 {
-    for (const r of GS.rounds) console.log(`  round at ${r.epochKyr} ka, ${r.kyr} kyr (${r.steps} steps, ${(r.ms / 1000).toFixed(1)} s): ice ${r.iceMkm2.toFixed(1)} Mkm², ${r.iceMkm3.toFixed(1)} M km³, sea ${r.seaM.toFixed(0)} m`);
+    for (const r of GS.rounds) console.log(`  round at ${r.epochKyr} ka, ${r.kyr} kyr (${r.steps} steps, ${(r.ms / 1000).toFixed(1)} s, the ice ${((r.iceMs ?? 0) / 1000).toFixed(1)} s): ice ${r.iceMkm2.toFixed(1)} Mkm², ${r.iceMkm3.toFixed(1)} M km³, sea ${r.seaM.toFixed(0)} m; made ${(r.madeKm3 ?? 0).toExponential(1)} km³${r.residual ? `, solve residual ≤ ${r.residual.toExponential(1)}` : ""}`);
     // (today's ice as the sea's: its volume, ρ_i/ρ_sea of it over today's sea — the LGM's drop is against today's sea, which
     // already lacks it)
     let today = 0, seaKm2 = 0; const o = worldOcean(mesh, bedE, 0).ocean;

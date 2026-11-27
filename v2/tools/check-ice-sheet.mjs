@@ -167,6 +167,35 @@ section('a rough bed: nothing made where ice sits on a step higher than itself')
         `made ${(b.made / 1e12).toFixed(4)} k km³ (${(100 * b.made / b.balance).toFixed(4)} % of the ${(b.balance / 1e12).toFixed(0)} laid; main before E1a 59 %); volume ${(b.start / 1e12).toFixed(0)} → ${(b.volume / 1e12).toFixed(0)} k km³; ${neg} cells below zero; ${steps} steps, ${((performance.now() - tw) / 1000).toFixed(1)} s`);
     ice.destroy();
 }
+// ── the semi-implicit step (E1b): the same answers as the explicit one at ~40× its step ──
+section('the semi-implicit step (Hindmarsh & Payne 1996) against the explicit one');
+{
+    const SEMI = { ...ICE, scheme: 'semi', semiDtYr: 20, semiIters: 64 };
+    for (const N of [160000, 640000]) {
+        const mesh = meshes[N], n = mesh.numCells, x = mesh.xyz, r = new Float64Array(n), H = new Float32Array(n);
+        for (let c = 0; c < n; c++) { r[c] = arcM(x, c, centre); H[c] = halfar(r[c], T0); }
+        const ice = await iceSheetGPU(device, { mesh, bed: new Float32Array(n), H, smb: new Float32Array(n), sea: -1e4, P: SEMI });
+        const tw = performance.now(), { steps } = await ice.run(RUN), h = await ice.readH(), b = await ice.books(), ms = performance.now() - tw;
+        let c0 = 0; for (let c = 1; c < n; c++) if (r[c] < r[c0]) c0 = c;
+        const t = T0 + RUN, dC = (h[c0] - halfar(r[c0], t)) / halfar(r[c0], t), ex = dome[N];
+        let err = 0, cnt = 0; for (let c = 0; c < n; c++) { const e = halfar(r[c], t); if (e > 0 || h[c] > 0) { err += Math.abs(h[c] - e); cnt++; } }
+        check(`${N / 1000}K: Halfar's dome at a 20 a step as good as the explicit step's (centre within 0.2 points, mean error within 10 %), its volume kept`,
+            Math.abs(Math.abs(dC) - Math.abs(ex.dCentre)) < 0.002 && err / cnt < 1.1 * ex.mean && Math.abs(b.volume - b.start) < 1e-4 * b.start && b.made < 1e-6 * b.start,
+            `centre ${(100 * dC).toFixed(2)} % (explicit ${(100 * ex.dCentre).toFixed(2)}), mean |error| ${(err / cnt).toFixed(1)} m (${ex.mean.toFixed(1)}); ${steps} steps against ${ex.steps}, ${(ms / 1000).toFixed(1)} s against ${(ex.ms / 1000).toFixed(1)}; CG ≤ ${b.iterations} iterations, residual ≤ ${b.residual.toExponential(1)}`);
+        ice.destroy();
+    }
+    // (the rough bed at a 50 a step, the explicit limit's ~20×: nothing made, no cell below zero, the books closed)
+    const mesh = meshes[160000], n = mesh.numCells, x = mesh.xyz, cap = unit(62, -45), bed = new Float32Array(n), smb = new Float32Array(n), H = new Float32Array(n);
+    let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    for (let c = 0; c < n; c++) { const r = arcM(x, c, cap), q = r / R0; bed[c] = r < 1500e3 ? 4000 * rnd() : -2000; smb[c] = r < 1000e3 ? 0.3 : r < 1500e3 ? -1 : 0; H[c] = q < 1 ? H0 * (1 - q ** (4 / 3)) ** (3 / 7) : 0; }
+    const ice = await iceSheetGPU(device, { mesh, bed, H, smb, sea: 0, P: { ...SEMI, semiDtYr: 50 } });
+    ice.setTsurf(new Float32Array(n).fill(-5));
+    const { steps } = await ice.run(2000), b = await ice.books(), h = await ice.readH();
+    let neg = 0; for (let c = 0; c < n; c++) if (!(h[c] >= 0)) neg++;
+    check('the rough bed at a 50 a step: nothing made, no cell below zero, the books closed', b.made < 1e-3 * b.balance && neg === 0 && Math.abs(b.volume - (b.start + b.balance + b.made - b.calved)) < 1e-4 * b.volume,
+        `made ${(100 * b.made / b.balance).toExponential(1)} % of the laid; volume ${(b.start / 1e12).toFixed(0)} → ${(b.volume / 1e12).toFixed(0)} k km³; ${steps} steps (${b.retries} batches run again at half the step); CG ≤ ${b.iterations}`);
+    ice.destroy();
+}
 // ── the degree-day balance against its reference ──
 section('the degree-day balance (Reeh 1991) against its CPU reference');
 {

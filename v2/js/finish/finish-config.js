@@ -85,6 +85,11 @@ export const FINISH = {
     iceSheetKm2: [3e4, 1e6],    // (by how big the snowfield it flows from is)
     iceNyeKm: 0.015,            // ice thickness √(iceNyeKm · distance to the margin), km (a plastic ice sheet: ~3.9 km at 1000 km)
     iceMaxKm: 4.5,
+    iceScheme: 'explicit',      // (grown) the ice's time step: 'explicit' (the stability limit, gpu/ice-sheet.js) or 'semi' (the
+                                // semi-implicit step, Hindmarsh & Payne 1996: iceDtYr a step, halved where it overshoots; its CG
+                                // at most iceSolveIters iterations). Earth's replay: 20 and 50 a both within 3 % of the explicit ice
+    iceDtYr: 50,
+    iceSolveIters: 64,
     iceMeshCells: 160000,       // (grown) the ice's mesh (~55 km): paleo ice-sheet models run at 20–100 km (Abe-Ouchi et al. 2013 1°;
                                 // Ganopolski et al. 2010 ~40 km; PMIP4 ice sheets 0.5–1°, Ivanovic et al. 2016)
     iceInceptionKyr: 116,       // the inception's epoch of the orbit's cycle and the air's CO2: Earth's last glacial inception,

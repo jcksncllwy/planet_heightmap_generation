@@ -69,7 +69,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     for (let c = 0; c < n; c++) { lat[c] = Math.asin(x[3 * c + 2]) * 180 / Math.PI; lon[c] = Math.atan2(x[3 * c + 1], x[3 * c]) * 180 / Math.PI; }
     const flt = ICE.rhoIce / ICE.rhoSea, sink = ICE.rhoIce / ICE.rhoMantle, gamma = CORE_DEFAULTS.lapseRateCPerKm;
     const bedM = Float32Array.from(bed0, v => 1000 * v), bed = bedM.slice();
-    const sheet = await iceSheetGPU(device, { mesh: im, bed, smb: null, sea: 0 }), area = sheet.area;
+    const sheet = await iceSheetGPU(device, { mesh: im, bed, smb: null, sea: 0, P: { ...ICE, scheme: F.iceScheme ?? ICE.scheme, semiDtYr: F.iceDtYr ?? ICE.semiDtYr, semiIters: F.iceSolveIters ?? ICE.semiIters } }), area = sheet.area;
     // (the moment's sea, whose area the ice's water leaves)
     let seaArea = 0;
     { const o = worldOcean(im, bed0, 0).ocean; for (let c = 0; c < n; c++) if (o[c]) seaArea += area[c]; }
@@ -113,7 +113,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
             const e = device.createCommandEncoder(); bal.encode(e); device.queue.submit([e.finish()]);
             probe({ round: rounds.length, epochKyr: r.epochKyr, force: await readBack(device, sheet.force), H, lat, lon, sea, pAnn });
         }
-        const run = await sheet.run(1000 * r.kyr, { each: e => bal.encode(e), everyYears: F.iceBalanceEveryYr });
+        const tIce = performance.now(), run = await sheet.run(1000 * r.kyr, { each: e => bal.encode(e), everyYears: F.iceBalanceEveryYr }), iceMs = Math.round(performance.now() - tIce);
         bal.destroy();
         H = await sheet.readH();
         // (the sea lowered by the ice above flotation; the bed sunk by the grounded ice's weight)
@@ -129,7 +129,9 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
         // (steady: a round at the maximum that changed the ice's volume by less than iceSteadyFrac)
         const change = lastVol > 0 ? Math.abs(vol - lastVol) / lastVol : Infinity;
         steady = rounds.length > 0 && change < F.iceSteadyFrac; lastVol = vol;
-        const rec = { epochKyr: r.epochKyr, kyr: r.kyr, steps: run.steps, iceMkm2: km2 / 1e6, iceMkm3: vol / 1e6, seaM: sea, change, steady, ms: Math.round(performance.now() - tr) };
+        const bk = await sheet.books();      // (the books since the first round: what the scheme made, the solve's worst residual)
+        const rec = { epochKyr: r.epochKyr, kyr: r.kyr, steps: run.steps, iceMkm2: km2 / 1e6, iceMkm3: vol / 1e6, seaM: sea, change, steady, ms: Math.round(performance.now() - tr),
+            iceMs, madeKm3: bk.made / 1e9, residual: bk.residual, retries: bk.retries, iterations: bk.iterations };
         rounds.push(rec); onRound?.(rec);
     }
     // (the last balance, from the ice as it ends)
