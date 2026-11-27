@@ -50,8 +50,15 @@
 //   divides, margins and steep beds), the bed fixed during a run (its isostatic sinking under the ice: B2 (iv), between runs);
 // · the hexagon's face (d/√3) on the mesh's jittered cells, pentagons and heptagons alike: its error is what check-ice-sheet's
 //   Halfar dome measures.
-// The scheme's one leak: a margin cell can be asked for more ice than it holds in one step (the flux's overshoot, explicit
-// steps' known fault at a steep margin); it stops at zero, and the books keep what that made (`made`), so a run reports it.
+// Mass is conserved (lane iceemu E1a, 2026-11-27). An explicit step can ask a margin cell for more ice than it holds (the
+// flux's overshoot at a steep margin, where the face's D is the two cells' mean H⁵: the empty cell's outflow is its full
+// neighbour's). Clipping it at zero made ice from nothing: E0 measured that `made` was the whole of the grown sheets' growth
+// (0.8–5.7× the accumulation, scaling with the step count). So each cell's outflow in a step is now limited to the ice it holds:
+// the rate pass keeps its outflow rate (m/a), and every face's flux is scaled by its donor's share min(1, H/(dt·outflow)),
+// the same factor on both sides of the face. A cell then can't go below zero, and `made` stays in the books only as
+// float rounding (check-ice-sheet asserts it). This is the positivity limiter of finite-volume transport (the donor-cell
+// bound; cf. Jarosch et al. 2013, who show the SIA's explicit steps lose or make mass at steep margins); it changes nothing
+// where no cell runs dry within a step.
 //
 // Determinism: the step's dt is a maximum over cells through an atomic on the float's bits (positive floats order as their
 // bits: the max is the same in any order); every other pass writes only its own cell. float32 throughout.
@@ -148,14 +155,19 @@ ${MAIN}
     rate: `${HEAD}
 @group(0) @binding(6) var<storage, read> G2: array<vec4f>;
 @group(0) @binding(7) var<storage, read_write> rmax: atomic<u32>;
+@group(0) @binding(8) var<storage, read_write> outR: array<f32>;
 ${MAIN}
-    var s = 0.0; var area = 0.0;
+    var s = 0.0; var area = 0.0; var o = 0.0;
     for (var k = k0; k < k1; k++) {
         let b = adj[k]; let ed = edge[k]; let d = ed.w; area += d * d; let hb = H[b];
         let gb = grounded(b);
-        if (flows(gc, hc, gb, hb)) { s += u.gamma * h5(hc, hb) * face2((surf(b, gb) - sc) / d, ed.xyz, G2[c].xyz, G2[b].xyz) + dslide(hc, tc, hb, thawed(b, gb)); }
+        if (flows(gc, hc, gb, hb)) {
+            let ds = surf(b, gb) - sc; let D = u.gamma * h5(hc, hb) * face2(ds / d, ed.xyz, G2[c].xyz, G2[b].xyz) + dslide(hc, tc, hb, thawed(b, gb));
+            s += D; o += max(0.0, -D * ds);
+        }
     }
     atomicMax(&rmax, bitcast<u32>(s * ISQ3 / (area * 0.25 * ISQ3)));
+    outR[c] = o * ISQ3 / (area * 0.25 * ISQ3);
 }`,
     // (one step: the flux across each face, then the mass balance, then the open sea's ice calved; the books per cell:
     // the balance applied, the ice the flux's overshoot made, the ice calved, metres of ice)
@@ -164,17 +176,21 @@ ${MAIN}
 @group(0) @binding(7) var<storage, read_write> Hn: array<f32>;
 @group(0) @binding(8) var<storage, read_write> books: array<vec4f>;
 @group(0) @binding(9) var<storage, read> clock: vec4f;               // (this step's dt, the time run, the run's end, -)
+@group(0) @binding(10) var<storage, read> outR: array<f32>;
+// (the share of its outflow a cell may give this step: all of it, or what it holds)
+fn share(i: u32, dt: f32) -> f32 { let o = dt * outR[i]; return select(1.0, H[i] / o, o > H[i]); }
 ${MAIN}
+    let dt = clock.x; let ac = share(c, dt);
     var div = 0.0; var area = 0.0; var touched = false;
     for (var k = k0; k < k1; k++) {
         let b = adj[k]; let ed = edge[k]; let d = ed.w; area += d * d; let hb = H[b]; let gb = grounded(b);
         touched = touched || (gb && hb > 0.0);
         if (flows(gc, hc, gb, hb)) {
             let ds = surf(b, gb) - sc;
-            div += (u.gamma * h5(hc, hb) * face2(ds / d, ed.xyz, G2[c].xyz, G2[b].xyz) + dslide(hc, tc, hb, thawed(b, gb))) * ds;
+            let q = (u.gamma * h5(hc, hb) * face2(ds / d, ed.xyz, G2[c].xyz, G2[b].xyz) + dslide(hc, tc, hb, thawed(b, gb))) * ds;
+            div += q * select(ac, share(b, dt), q > 0.0);
         }
     }
-    let dt = clock.x;
     let h1 = hc + dt * div * ISQ3 / (area * 0.25 * ISQ3);
     let made = max(0.0, -h1); let h2 = max(h1, 0.0);
     let h3 = max(h2 + dt * force[c].y, 0.0);
@@ -258,7 +274,7 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
     const mk = (label, bytes) => { const b = device.createBuffer({ label, size: Math.max(16, bytes), usage }); own.push(b); return b; };
     const distB = mk('ice faces', 4 * edge.length), forceB = mk('ice bed+smb+Ts', 16 * n), G2 = mk('ice ∇s', 16 * n);
     const Hb = [mk('ice H', 4 * n), mk('ice H′', 4 * n)], booksB = mk('ice books', 16 * n), rmax = mk('ice rate', 4);
-    const speedB = mk('ice speeds', 8 * n), clockB = mk('ice clock', 16);
+    const speedB = mk('ice speeds', 8 * n), clockB = mk('ice clock', 16), outB = mk('ice outflow', 4 * n);
     const tickU = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); own.push(tickU);
     device.queue.writeBuffer(tickU, 0, Float32Array.of(P.cfl, P.dtMaxYr, 0, 0));
     const uniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -289,8 +305,8 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
     const g = (name, list) => device.createBindGroup({ layout: P_[name].getBindGroupLayout(0), entries: list.map((buffer, binding) => buffer && ({ binding, resource: { buffer } })).filter(Boolean) });
     const G = [0, 1].map(i => ({
         grad: g('grad', [...shared, Hb[i], G2]),
-        rate: g('rate', [...shared, Hb[i], G2, rmax]),
-        step: g('step', [...shared, Hb[i], G2, Hb[1 - i], booksB, clockB]),
+        rate: g('rate', [...shared, Hb[i], G2, rmax, outB]),
+        step: g('step', [...shared, Hb[i], G2, Hb[1 - i], booksB, clockB, outB]),
         speed: g('speed', [uniform, M.adjOffset, null, null, forceB, Hb[i], G2, speedB]),      // (it reads no faces: their bindings not in its layout)
     }));
     let cur = 0;

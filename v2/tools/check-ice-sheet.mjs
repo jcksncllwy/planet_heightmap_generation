@@ -9,8 +9,8 @@
 //     speed B₀ ρ g H |∇s| (EISMINT II exp. H), the thawed cells the reference's; a frozen bed doesn't slide, a thawed dome
 //     falls faster, and the books close.
 //   · The sea's front: a sheet grown on an island under a positive balance, with snow on the sea around it: floating ice only
-//     at the front, the open sea's ice calved, and the books close (the volume = what fell + what the scheme made − what
-//     calved).
+//     at the front, the open sea's ice calved, and the books close (the volume = what fell − what calved: nothing made at its
+//     steep margin, the flux limited to what a cell holds, lane iceemu E1a).
 //   · The degree-day balance (gpu/ice-balance.js) against its CPU reference (pddBalance, check-iceage-earth's), on a made-up
 //     climate and a random bed and ice: the same balance to float32's rounding.
 //   node v2/tools/check-ice-sheet.mjs        (needs a GPU: Dawn in Node, through check-kit)
@@ -71,7 +71,7 @@ for (const N of MESHES) {
         check(`${N / 1000}K: the dome's centre within 2 % of Halfar's and its margin within two cells`, Math.abs(d.dCentre) < 0.02 && Math.abs(d.rIce - d.rTrue) < 2 * d.edge, `${(100 * d.dCentre).toFixed(2)} %; ${((d.rIce - d.rTrue) / 1e3).toFixed(0)} km (cell ${(d.edge / 1e3).toFixed(0)} km)`); }
     for (const N of MESHES) {
         const { b } = dome[N];
-        check(`${N / 1000}K: the dome's volume kept (no balance, nothing calved; the scheme's overshoot under 0.1 %)`, Math.abs(b.volume - b.start - b.made) < 1e-4 * b.start && b.made < 1e-3 * b.start && b.calved === 0, `${(b.start / 1e15).toFixed(4)} → ${(b.volume / 1e15).toFixed(4)} M km³, made ${(100 * b.made / b.start).toFixed(4)} %`);
+        check(`${N / 1000}K: the dome's volume kept (no balance, nothing calved, nothing made: the flux limited to what a cell holds)`, Math.abs(b.volume - b.start) < 1e-4 * b.start && b.made < 1e-6 * b.start && b.calved === 0, `${(b.start / 1e15).toFixed(4)} → ${(b.volume / 1e15).toFixed(4)} M km³, made ${(100 * b.made / b.start).toFixed(4)} %`);
     }
 }
 
@@ -119,7 +119,7 @@ section('sliding (Weertman, EISMINT II exp. H) where the bed is thawed (Robin 19
     report('a thawed dome\'s centre after 5 kyr against a frozen one\'s', thawed.centre - frozen.centre, { unit: ' m', digits: 0, detail: `${thawed.centre.toFixed(0)} vs ${frozen.centre.toFixed(0)} m; fastest sliding ${thawed.umax.toFixed(0)} m/a (frozen ${frozen.umax.toFixed(0)}); ${thawed.steps} vs ${frozen.steps} steps, ${(thawed.ms / 1000).toFixed(1)} s` });
     check('a frozen bed doesn\'t slide; a thawed one does, and its dome falls faster', frozen.umax === 0 && thawed.umax > 0 && thawed.centre < frozen.centre, `${frozen.umax} / ${thawed.umax.toFixed(0)} m/a`);
     const bk = thawed.b;
-    check('the books close with sliding (no balance, nothing calved; the overshoot under 0.1 %)', Math.abs(bk.volume - bk.start - bk.made) < 1e-4 * bk.start && bk.made < 1e-3 * bk.start && bk.calved === 0, `${(bk.start / 1e15).toFixed(4)} → ${(bk.volume / 1e15).toFixed(4)} M km³, made ${(100 * bk.made / bk.start).toFixed(4)} %`);
+    check('the books close with sliding (no balance, nothing calved, nothing made)', Math.abs(bk.volume - bk.start) < 1e-4 * bk.start && bk.made < 1e-6 * bk.start && bk.calved === 0, `${(bk.start / 1e15).toFixed(4)} → ${(bk.volume / 1e15).toFixed(4)} M km³, made ${(100 * bk.made / bk.start).toFixed(4)} %`);
 }
 
 // ── the sea's front ──
@@ -143,7 +143,28 @@ section('the sea\'s front');
     const fell = b.balance;
     check('floating ice only at the front (the open sea\'s snow calves)', stray === 0 && b.calved > 0, `${front} front cells, ${stray} stray; calved ${(b.calved / 1e12).toFixed(1)} k km³ of ${(fell / 1e12).toFixed(1)} k km³ the balance laid`);
     check('the books close: the volume = what the balance laid + what the scheme made − what calved', Math.abs(b.volume - (b.balance + b.made - b.calved)) < 1e-4 * Math.max(b.volume, 1), `${(b.volume / 1e12).toFixed(2)} vs ${((b.balance + b.made - b.calved) / 1e12).toFixed(2)} k km³; made ${(b.made / 1e12).toFixed(3)}`);
+    // (E1a: the island's cliff into the sea is the steep margin an explicit step overshoots; before the limiter its clip made
+    // ice from nothing, 0.8–5.7× the accumulation on the grown sheets, E0)
+    check('nothing made at the steep margin: the scheme\'s overshoot under 0.1 % of what the balance laid', b.made < 1e-3 * Math.max(b.balance, 1), `made ${(b.made / 1e12).toFixed(5)} of ${(b.balance / 1e12).toFixed(1)} k km³`);
     report('the sheet grounded across the sea\'s floor (cells)', marine, { digits: 0, detail: 'no calving law at the front: it advances as its flux fills the water (ice-sheet.js limits)' });
+    ice.destroy();
+}
+// ── a rough bed: the steep margin E0's leak lived on ──
+section('a rough bed: nothing made where ice sits on a step higher than itself');
+{
+    // (EISMINT's dome, thawed (a −5 °C surface: it slides), on a bed as rough as the mesh allows — each cell's bed drawn at
+    // random over 4 km, so a margin cell's surface can stand a bed step above its neighbour's, where an explicit step asks it
+    // for H + Δbed: the overshoot that made the grown sheets' ice (E0). Before E1a's limiter this run's clip made ice equal
+    // to 59 % of all the snow that fell on it, at the same 838 steps.)
+    const mesh = meshes[160000], n = mesh.numCells, x = mesh.xyz, cap = unit(62, -45), bed = new Float32Array(n), smb = new Float32Array(n), H = new Float32Array(n);
+    let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    for (let c = 0; c < n; c++) { const r = arcM(x, c, cap), q = r / R0; bed[c] = r < 1500e3 ? 4000 * rnd() : -2000; smb[c] = r < 1000e3 ? 0.3 : r < 1500e3 ? -1 : 0; H[c] = q < 1 ? H0 * (1 - q ** (4 / 3)) ** (3 / 7) : 0; }
+    const ice = await iceSheetGPU(device, { mesh, bed, H, smb, sea: 0 });
+    ice.setTsurf(new Float32Array(n).fill(-5));
+    const tw = performance.now(), { steps } = await ice.run(2000), b = await ice.books(), h = await ice.readH();
+    let neg = 0; for (let c = 0; c < n; c++) if (!(h[c] >= 0)) neg++;
+    check('a rough bed: nothing made (under 0.1 % of what the balance laid), no cell below zero, the books closed', b.made < 1e-3 * b.balance && neg === 0 && Math.abs(b.volume - (b.start + b.balance + b.made - b.calved)) < 1e-4 * b.volume,
+        `made ${(b.made / 1e12).toFixed(4)} k km³ (${(100 * b.made / b.balance).toFixed(4)} % of the ${(b.balance / 1e12).toFixed(0)} laid; main before E1a 59 %); volume ${(b.start / 1e12).toFixed(0)} → ${(b.volume / 1e12).toFixed(0)} k km³; ${neg} cells below zero; ${steps} steps, ${((performance.now() - tw) / 1000).toFixed(1)} s`);
     ice.destroy();
 }
 // ── the degree-day balance against its reference ──
