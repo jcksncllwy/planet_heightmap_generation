@@ -86,7 +86,7 @@ export function trackCollisions(world, dt) {
         if (byPair.has(key) || collisions.has(key)) continue;
         const [idA, idB] = key.split(':').map(Number);
         if (!bothAlive(idA, idB)) continue;
-        if (dockIfTerrane(world, plates[idA], plates[idB], cells)) merged = true;
+        if (dockIfTerrane(world, plates[idA], plates[idB], cells, byPair)) merged = true;
     }
     for (const [key, overlap] of byPair) {
         const [idA, idB] = key.split(':').map(Number);
@@ -106,7 +106,7 @@ export function trackCollisions(world, dt) {
             rec = { upper: upper.id, lower: lower.id, startedAt: time, lastActive: time, shorteningKm: 0, frontKm: 0, closingCmYr: 0, meanRateCmYr: 0, stalledMyr: 0, contactMyr: 0, cells: 0, sutured: false, announce: false, underthrustDue: 0, underthrustCells: 0 };
             collisions.set(key, rec);
             // A small landmass (a microcontinent, an arc) is a terrane: it docks at once instead of colliding as an equal.
-            const docked = dockIfTerrane(world, upper, lower, cells);
+            const docked = dockIfTerrane(world, upper, lower, cells, byPair);
             if (docked) { collisions.delete(key); merged = true; continue; }        // (the next piece to arrive starts afresh)
             rec.announce = true;                                                        // "meets" is logged once the record is confirmed below
         }
@@ -431,6 +431,18 @@ function accreteArcs(world, A, B, overlap) {
     return { core, accreted: accreted > 0 };
 }
 
+/** Whether `donor`'s landmass `mass` (its raster cells) lies in this step's overlap of an open collision with a plate other than `host`. */
+function collidingElsewhere(world, donor, host, mass, byPair) {
+    const { mesh: { xyz, index }, collisions } = world, inMass = new Set(mass);
+    for (const [key, rec] of collisions) {
+        if (rec.sutured || (rec.upper !== donor.id && rec.lower !== donor.id)) continue;
+        const other = rec.upper === donor.id ? rec.lower : rec.upper;
+        if (other === host.id) continue;
+        for (const w of byPair.get(key) ?? []) if (inMass.has(donor.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]))) return true;
+    }
+    return false;
+}
+
 /** The two sides of a rift younger than riftPushMyr: pushed apart, never in collision with each other. */
 export function areYoungRiftPartners(A, B, time, config) {
     return A.riftPartner === B.id && B.riftPartner === A.id && time - Math.max(A.born, B.born) < config.riftPushMyr;
@@ -445,9 +457,10 @@ function isRiftJitter(world, A, B, cells) {
 
 /**
  * If either landmass at this contact is smaller than terraneMaxAreaKm2, move it onto the other's plate.
- * The smaller of the two docks; the other is the host. @returns {boolean} whether a terrane docked
+ * The smaller of the two docks; the other is the host — unless that landmass is already colliding into a third plate
+ * (`byPair`: this step's overlap by pair). @returns {boolean} whether a terrane docked
  */
-function dockIfTerrane(world, A, B, cells) {
+function dockIfTerrane(world, A, B, cells, byPair = null) {
     const { mesh, config } = world, { xyz, index, cellAreaKm2 } = mesh;
     const under = plate => cells.map(w => plate.cellAt(index, xyz[3 * w], xyz[3 * w + 1], xyz[3 * w + 2]));
     const massA = landmassOf(A, mesh, under(A)), massB = landmassOf(B, mesh, under(B));
@@ -465,6 +478,12 @@ function dockIfTerrane(world, A, B, cells) {
     const cA = continentIn(A, massA), cB = continentIn(B, massB);
     const aHosts = !terraneA || (terraneB && (cA !== cB ? cA > cB : cA === 0 ? massA.length >= massB.length : A.stats.continentalCells >= B.stats.continentalCells));
     const [host, donor, mass] = aHosts ? [A, B, massB] : [B, A, massA];   // each piece of an arc docks as it arrives
+    // a landmass already in collision with another plate — an open record whose overlap this step lies on this same landmass —
+    // is converging into THAT plate: it stays in that collision (to weld once stalled, or to go on converging), and does not
+    // dock onto a third plate that has just touched it. (Was: whichever neighbour opened a contact once the landmass had
+    // shrunk under terraneMaxAreaKm2 hosted it — the India scene on main 46cc919: India, 48 Myr into its collision with
+    // Asia and its land halved by underthrusting, docked onto Africa at 161 Myr; lane stackweld, sessrumnir's ruling)
+    if (byPair && collidingElsewhere(world, donor, host, mass, byPair)) return false;
     const o = [donor.omega[0] - host.omega[0], donor.omega[1] - host.omega[1], donor.omega[2] - host.omega[2]];
     const c = centroidOfCells(xyz, cells), rate = Math.hypot(o[1] * c[2] - o[2] * c[1], o[2] * c[0] - o[0] * c[2], o[0] * c[1] - o[1] * c[0]) / CM_PER_YR_TO_RAD_PER_MYR;
     const kind = mass.filter(q => donor.crust.type[q] === CrustType.ARC).length * 2 > mass.length ? 'island arc' : 'terrane';
