@@ -95,6 +95,32 @@ export function checkAcross(name, samples, { detail = '', scene = null } = {}) {
     return ok;
 }
 
+/**
+ * A weld check over histories, judged only where the pair has stopped (lane stackweld, sessrumnir's rulings 2026-11-26/27):
+ * a pair welds only once it has stopped moving against the other, so a weld is not a target by a scene's end — India is its
+ * own plate ~50 Myr after contact, still converging (Molnar & Stock 2009). Samples are { label, stopped, ok, text, state }:
+ * most of the stopped pairs must pass; a pair still converging is reported with its `state` (closing, time since contact),
+ * not failed; if none stopped, the check is reported, not run.
+ */
+export function checkWeldAcross(name, samples, { detail = '' } = {}) {
+    const st = samples.filter(x => x.stopped), passed = st.filter(x => x.ok);
+    const each = samples.map(x => `${x.label}: ${x.stopped ? (x.ok ? 'pass' : 'fail') : `not stopped${x.state ? ` (${x.state})` : ''}`}${x.stopped && x.text ? ` (${x.text})` : ''}`).join(' · ');
+    if (st.length) return check(name, passed.length > st.length / 2, `${passed.length} of ${st.length} stopped pairs pass; ${samples.length - st.length} of ${samples.length} not stopped${detail ? `; ${detail}` : ''} — ${each}`);
+    report(name, NaN, { source: 'judged only where the pair has stopped (closing and sliding both under the stall rate) and welded', detail: `no pair stopped — ${each}` });
+    return true;
+}
+
+/**
+ * Where a pair stands at the end of a run: welded (a weld is made only once the pair has stalled: collision.js), still in
+ * collision (its open record: closing, slide, time since contact) or gone without a weld (the record lost — a failure of the
+ * pair, not a weld still to come). @returns {{ stopped: boolean, lost: boolean, state: string }}
+ */
+export function pairFate(world, { suture = null, rec = null } = {}) {
+    if (suture) return { stopped: true, lost: false, state: `welded at ${suture.time.toFixed(0)} Myr` };
+    if (rec && !rec.sutured) return { stopped: false, lost: false, state: `unwelded at ${world.time.toFixed(0)} Myr, closing ${rec.closingCmYr.toFixed(2)} and sliding ${(rec.slideCmYr ?? NaN).toFixed(2)} cm/yr, ${(world.time - rec.startedAt).toFixed(0)} Myr since contact, stalled ${rec.stalledMyr.toFixed(0)} Myr` };
+    return { stopped: false, lost: true, state: 'no weld and no open collision: the pair was lost' };
+}
+
 export function section(title) { sectionTitle = title; console.log(`\n── ${title} ──`); }
 
 /** Print the verdict and set the process exit code (the hard checks alone decide it). Call last. */

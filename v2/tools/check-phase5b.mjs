@@ -8,7 +8,7 @@
 // Usage: node v2/tools/check-phase5b.mjs
 
 import { arcSlabKm, arcGapKm } from '../js/tectonics/step/wings.js';
-import { check, checkAcross, report, section, finish, labMesh, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
+import { check, checkAcross, checkWeldAcross, pairFate, report, section, finish, labMesh, mean, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../js/tectonics/config.js';
 import { EVENT_SCENES } from '../js/tectonics/scenarios/event-scenes.js';
@@ -226,9 +226,14 @@ section('arcs between closing continents');
     const each = (await Promise.all(SCENE_SEEDS.map(async seed => {
         const r = await run('arc-collision', {}, seed, closing);
         const scraped = [...r.world.arcScrapes.values()], firstScrape = scraped.length ? Math.min(...scraped.map(s => s.since)) : null;
-        const suture = r.events.find(e => e.kind === EventKind.SUTURE), collision = r.events.find(e => e.kind === EventKind.COLLISION), shortening = suture?.data.shorteningKm ?? 0;
+        // (the shortening the record books — at the weld, or on the open record if the pair has not welded: the scene drives the
+        // two together at a fixed rate to its end, so they never stop and, a pair welding only once stopped, never weld (lane
+        // stackweld, sessrumnir's ruling 2026-11-27); was the weld's alone, 0 without one)
+        const suture = r.events.find(e => e.kind === EventKind.SUTURE), collision = r.events.find(e => e.kind === EventKind.COLLISION);
+        const rec = collision ? r.world.collisions.get(collision.data.upper < collision.data.lower ? `${collision.data.upper}:${collision.data.lower}` : `${collision.data.lower}:${collision.data.upper}`) : null;
+        const shortening = suture?.data.shorteningKm ?? rec?.shorteningKm ?? 0, fate = pairFate(r.world, { suture, rec });
         const L = r.world.ledger, stages = Object.entries(L.stages), made = stages.reduce((sum, [k, e]) => sum + (k === 'orogenicCollapse' ? 0 : Math.max(0, e.land)), 0), net = stages.reduce((sum, [, e]) => sum + e.land, 0), myr = r.frames.at(-1).time;
-        return { seed, r, scraped, firstScrape, suture, collision, shortening, L, made, net, myr, booked: key => stages.reduce((sum, [, e]) => sum + e[key], 0) };
+        return { seed, r, scraped, firstScrape, suture, collision, shortening, fate, L, made, net, myr, booked: key => stages.reduce((sum, [, e]) => sum + e[key], 0) };
     })));
     // (the scene formed where an arc was scraped at all; a history where neither arc was is the scene's chance, counted)
     const across = (name, ok, text) => checkAcross(name, each.map(e => ({ label: e.seed, formed: e.scraped.length > 0, ok: ok(e), text: text(e) })), { scene: name === 'arc crust is scraped off at the contact, not welded there' ? 'arcs between closing continents' : null });
@@ -236,9 +241,10 @@ section('arcs between closing continents');
         e => e.scraped.map(s => `${s.donorName} lost ${s.cells} arc cells from ${s.since.toFixed(0)} Myr`).join('; '));
     // the arcs touching is not itself a collision: no record opens, and no shortening is booked, until the cores meet
     across('arcs touching does not open a collision: that waits for the cores', e => !!e.collision && e.collision.time >= e.firstScrape - 1e-6 && e.shortening > 400,
-        e => e.collision ? `first arc scraped at ${e.firstScrape.toFixed(0)} Myr; the collision record opens at ${e.collision.time.toFixed(0)} Myr and books ${e.shortening.toFixed(0)} km of shortening before welding` : 'no collision record');
-    across('the suture comes later, when the CORES meet', e => !!e.suture && e.suture.time > e.firstScrape + 5,
-        e => e.suture ? `first arc scraped at ${e.firstScrape.toFixed(0)} Myr; the plates weld at ${e.suture.time.toFixed(0)} Myr` : 'no suture');
+        e => e.collision ? `first arc scraped at ${e.firstScrape.toFixed(0)} Myr; the collision record opens at ${e.collision.time.toFixed(0)} Myr and books ${e.shortening.toFixed(0)} km of shortening ${e.suture ? 'before welding' : 'so far (unwelded)'}` : 'no collision record');
+    // (a WELD check: judged where the pair has stopped and welded; driven together to the end, a pair is reported, not failed)
+    checkWeldAcross('the suture comes later, when the CORES meet', each.filter(e => e.scraped.length > 0).map(e => ({ label: e.seed, stopped: e.fate.stopped, ok: !!e.suture && e.suture.time > e.firstScrape + 5,
+        text: e.suture ? `first arc scraped at ${e.firstScrape.toFixed(0)} Myr; the plates weld at ${e.suture.time.toFixed(0)} Myr` : '', state: e.fate.state })));
     // continental crust is not MANUFACTURED at the contact (the ledger books every stage's change to the plates' rasters). A real
     // collision absorbs overlap — the stage books it as a loss (the km² converged, taken up at the weld, Phase 5a) — so only
     // a gain is a fault here; the net loss is in the text. Island arcs do grow — reported against Earth, where arc addition and

@@ -7,7 +7,7 @@
 // sizes, and the net growth of continental crust (from the crust ledger) and how much land changes after assembly.
 // Usage: node v2/tools/check-phase7c.mjs
 
-import { check, report, section, finish, labMesh, isLand, countWhere, nearestFrame, relativeCmYr } from './lib/check-kit.mjs';
+import { check, checkWeldAcross, pairFate, report, section, finish, labMesh, isLand, countWhere, nearestFrame, relativeCmYr } from './lib/check-kit.mjs';
 import { simulate } from '../js/tectonics/simulate.js';
 import { BUDGET_SCENES } from '../js/tectonics/scenarios/budget-scenes.js';
 import { TERRAIN_SCENES } from '../js/tectonics/scenarios/terrain-scenes.js';
@@ -64,7 +64,15 @@ section('a continent slides under another (underthrusting)');
     // (the India–Asia pair: India's neighbours collide too, with Asia and with India — lib/india-pair.mjs, ruling (A), lane
     // gpelock 2026-11-25 — so the weld, the contact, the rates, the land and the thickening here are the pair's)
     const pairOf = x => indiaAsiaPair(x.frames[0], x.events, mesh, x.world), P = pairOf(r), suture = P.suture;
-    check('India reaches Asia and they weld', !!suture, suture ? suture.text.slice(0, 120) : 'no suture');
+    // (reaching Asia is the collision; the weld is judged only where the pair has stopped — a pair welds only once stalled, and
+    // India–Asia, ~50 Myr after contact, still converges (Molnar & Stock 2009): unwelded and still converging at the scene's end
+    // is reported, not failed. A pair lost without a weld — India docked onto a third plate, main 46cc919 — is a failure.
+    // Lane stackweld, sessrumnir's ruling 2026-11-27)
+    check('India reaches Asia', !!P.contact, P.contact ? `${P.contact.text.slice(0, 80)} at ${P.contact.time.toFixed(0)} Myr` : 'no collision');
+    {
+        const fate = pairFate(r.world, { suture, rec: P.rec });
+        checkWeldAcross('…and they weld once they stop', [{ label: SEED, stopped: fate.stopped || fate.lost, ok: !!suture, text: suture ? suture.text.slice(0, 120) : fate.state, state: fate.state }]);
+    }
     // India slows on contact: the belt's resistance is a friction bounded by the thickened column's GPE per metre of front
     // (torque-balance.js lockContacts; Copley, Avouac & Royer 2010: Tibet's thickening, ~5–6 × 10¹² N/m, slowed India
     // from ~15 to ~4 cm/yr over 50–35 Ma). Judged here, with every event on — the belt thickens and India's land goes under

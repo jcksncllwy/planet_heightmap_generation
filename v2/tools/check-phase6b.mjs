@@ -8,7 +8,7 @@
 // spontaneous; the sea floor's age (mean, share older than 180 and 250 Myr); the plate count.
 // Usage: node v2/tools/check-phase6b.mjs
 
-import { check, report, section, finish, labMesh, landCount, mean } from './lib/check-kit.mjs';
+import { check, checkWeldAcross, report, section, finish, labMesh, landCount, mean, relativeCmYr } from './lib/check-kit.mjs';
 import { stageOf } from './lib/cycle-stage.mjs';
 import { RIFT_SCENES } from '../js/tectonics/scenarios/rift-scenes.js';
 import { simulateCached } from './lib/history-cache.mjs';
@@ -100,10 +100,22 @@ section('an old passive margin founders');
     // the point of the whole phase: the basin that was open begins to CLOSE, and the continents meet
     const startSep = separationKm(r.frames[0], ids), closest = Math.min(...r.frames.map(f => separationKm(f, ids)).filter(v => v !== null));
     check('the basin between the continents closes', closest < startSep - 800, `land-to-land ${startSep.toFixed(0)} km at the start → ${closest.toFixed(0)} km at its narrowest`);
-    const suture = r.events.find(e => e.kind === EventKind.SUTURE);
-    check('and the two continents finally collide', !!suture, suture ? suture.text.slice(0, 110) : 'no suture within the run');
+    // (collide, not weld: a pair welds only once it has stopped moving against the other — lane stackweld, sessrumnir's rulings
+    // 2026-11-26/27 — so the collision is checked, and the weld only where the pair has stopped; a pair still converging at the
+    // scene's end is reported with its closing and its time since contact, not failed)
+    const isPair = e => ids.includes(e.data?.upper) && ids.includes(e.data?.lower);
+    const contact = r.events.find(e => e.kind === EventKind.COLLISION && isPair(e)), suture = r.events.find(e => e.kind === EventKind.SUTURE);
+    check('and the two continents finally collide', !!contact, contact ? `${contact.text.slice(0, 110)} at ${contact.time.toFixed(0)} Myr` : 'no collision between them within the run');
+    {
+        const end = r.frames.at(-1), [a, b] = ids.map(id => end.plates.find(p => p.id === id && p.alive));
+        const state = suture ? '' : `unwelded at ${end.time} Myr, ${a && b ? `closing ${relativeCmYr(a, b).toFixed(2)} cm/yr (relative speed), ` : ''}${contact ? `${(end.time - contact.time).toFixed(0)} Myr since contact` : 'no contact'}`;
+        checkWeldAcross('…and once they stop, they weld', [{ label: SEED, stopped: !!suture, ok: !!suture, text: suture ? suture.text.slice(0, 110) : '', state }]);
+    }
     // the plates tile the planet: neither may balloon (the symptom of a plate with no real neighbour)
-    const apart = r.frames.filter(f => separationKm(f, ids) !== null);        // only while they are still two plates (the survivor of a suture holds everything)
+    // only while they are two plates and not yet in collision (the survivor of a suture holds everything; once in collision the
+    // two are one system, still converging for as long as the forces drive them — lane stackweld: the Wilson pair converges
+    // to the scene's end — and the plate behind them takes the passive background, the background-accretion gap below)
+    const apart = r.frames.filter(f => separationKm(f, ids) !== null && (!contact || f.time <= contact.time));
     // (as a rate: how long they stay two plates is the collision's outcome — a pair welds once its seam stalls — so a total
     // over that window would grade the collision's length, not the plates. 30 % per 100 Myr: the bound this check always set,
     // over the ~100 Myr the two once stayed apart)
@@ -118,7 +130,7 @@ section('an old passive margin founders');
     const grew = ids.map(id => Math.max(...apart.map(f => plateCellsHalfBg(f, id, r.frames[0], bgId))) / plateCells(r.frames[0], id));
     const perCentury = grew.map(g => 100 * (g - 1) * 100 / apartMyr);
     check('neither plate balloons: they only trade crust across their shared margin', perCentury.every(g => g < 30),
-        `largest plate-area growth (taken from the passive background at half): ${grew.map(g => (100 * (g - 1)).toFixed(0) + ' %').join(' / ')} over the ${apartMyr} Myr they stay two plates — ${perCentury.map(g => g.toFixed(0) + ' %').join(' / ')} per 100 Myr`);
+        `largest plate-area growth (taken from the passive background at half): ${grew.map(g => (100 * (g - 1)).toFixed(0) + ' %').join(' / ')} over the ${apartMyr} Myr they stay two plates apart — ${perCentury.map(g => g.toFixed(0) + ' %').join(' / ')} per 100 Myr`);
     check('no gaps; continental crust is neither created nor destroyed', r.frames.every(f => frameTallies(f).gaps === 0) && Math.abs(coreCount(r.frames.at(-1)) - coreCount(r.frames[0])) < 0.1 * coreCount(r.frames[0]),
         `continent+craton ${coreCount(r.frames[0])} \u2192 ${coreCount(r.frames.at(-1))} cells (with island arcs: ${landCount(r.frames[0])} \u2192 ${landCount(r.frames.at(-1))}); no gaps in any frame`);
 }

@@ -7,7 +7,7 @@
 // thickening, the Andean belt's width; and, pending the belt-strength model rewrite, how far belts reach into a craton.
 // Usage: node v2/tools/check-phase5.mjs
 
-import { check, checkAcross, report, section, finish, mean, labMesh, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
+import { check, checkAcross, checkWeldAcross, report, section, finish, mean, labMesh, isLand, cellsWhere, nearestKm } from './lib/check-kit.mjs';
 import { PLANET_RADIUS_KM } from '../js/core/sim-mesh.js';
 import { CM_PER_YR_TO_RAD_PER_MYR } from '../js/tectonics/config.js';
 import { floodFrom } from '../js/core/mesh-bfs.js';
@@ -269,11 +269,7 @@ for (const seed of SEEDS) {
 for (const [name, samples] of judged) checkAcross(name, samples, name === COLLISION_CHECKS[0] ? { scene: 'India meets Asia' } : {});
 // (the weld checks over the seeds whose pair stopped: most of those must pass; a seed whose pair still converges or slides is
 // two plates, not a weld that failed — counted in the detail; none stopped on any seed, and nothing is judged: reported)
-for (const [name, samples] of welds) {
-    const st = samples.filter(x => x.stopped), passed = st.filter(x => x.ok), each = samples.map(x => `${x.label}: ${x.stopped ? (x.ok ? 'pass' : 'fail') : 'not stopped'}${x.stopped && x.text ? ` (${x.text})` : ''}`).join(' · ');
-    if (st.length) check(name, passed.length > st.length / 2, `${passed.length} of ${st.length} stopped pairs pass; ${samples.length - st.length} of ${samples.length} not stopped — ${each}`);
-    else report(name, NaN, { source: 'judged only where the pair has stopped (closing and sliding both under the stall rate) and welded', detail: `no seed's pair stopped by ${INDIA_MYR} Myr — ${each}` });
-}
+for (const [name, samples] of welds) checkWeldAcross(name, samples, { detail: `by ${INDIA_MYR} Myr` });
 report('India meets Asia: the pair stopped and welded', fates.filter(f => /welded at/.test(f) && !/not stopped/.test(f)).length, { digits: 0, source: 'India is its own plate ~50 Myr after contact, still converging at ~4 cm/yr (Molnar & Stock 2009): a weld by the scene\'s end is the forces\' outcome, not a target',
     detail: `of ${SEEDS.length}: ${fates.join(' · ')}` });
 {
