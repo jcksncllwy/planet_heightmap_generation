@@ -74,9 +74,12 @@ export class HelperPool {
      */
     async searchJunctions(world, { plate, junctions, pull, needCratonsBothSides, ctx, config }) {
         const { mask, type, flags, terrane, count } = plate.crust;
-        // (the rules a rift's search reads — config.rift…, as they stand now: a forced rift may have loosened them)
-        const rules = Object.fromEntries(Object.entries(config).filter(([k]) => k.startsWith('rift')));
-        const common = { type: 'rift', seed: world.seed, config: rules, crust: { mask, type, flags, terrane, count }, ctx: { cells: ctx.cells, exterior: ctx.exterior, rho: ctx.rho, mat: ctx.mat, stress: ctx.stress }, pull, needCratonsBothSides };
+        // (the whole config, as it stands now — a forced rift may have loosened its rules. Never a part of it: the search
+        // reads more than the rift's own rules — a craton's strength from its column, field/stress-step.js
+        // cratonStrengthRatio, since cratoncol — and with only config.rift… sent it was NaN here, and every history with
+        // helpers parted from the one without at its first rift through a craton: seed 243751 at 240 Myr, pagemem2
+        // 2026-11-27. check-history-helpers.mjs holds the two the same.)
+        const common = { type: 'rift', seed: world.seed, config, crust: { mask, type, flags, terrane, count }, ctx: { cells: ctx.cells, exterior: ctx.exterior, rho: ctx.rho, mat: ctx.mat, stress: ctx.stress }, pull, needCratonsBothSides };
         const k = Math.min(this.size, junctions.length), per = Math.ceil(junctions.length / k), runs = [];
         for (let i = 0; i < k; i++) runs.push(this.ask(i, { ...common, junctions: junctions.slice(i * per, (i + 1) * per) }));
         return (await Promise.all(runs)).flatMap(r => r.results);
