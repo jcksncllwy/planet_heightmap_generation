@@ -99,6 +99,7 @@ export function flowCrust(world, dt, H) {
     const lid = H.riftLithKm / H.cratonLithKm;
     // the mantle's heat under each plate cell: world.mantleHeat at the world cell it shows at (a hidden cell keeps its last)
     let heatMap = heatByWorld.get(world); if (!heatMap) heatByWorld.set(world, heatMap = new Map());
+    for (const p of plates) if (!p.alive) heatMap.delete(p.id);           // (nor is a dead plate's heat read again: let go — pagemem2)
     const heatOf = p => { let a = heatMap.get(p.id); if (!a) heatMap.set(p.id, a = new Float32Array(numCells)); return a; };
     if (world.mantleHeat) for (let w = 0; w < numCells; w++) { const p = plates[world.owner[w]]; if (p) heatOf(p)[world.ownerCell[w]] = world.mantleHeat[w]; }
     let moved = 0, iters = 0;

@@ -211,6 +211,7 @@ function frameCellRange(f, world, tectSpan, epoch, w0, w1) {
 function stampShown(world) {
     // mark every raster cell that is some world cell's nearest; the rest are hidden between world cells (see below)
     const { owner, ownerCell, plates } = world, n = world.mesh.numCells, epoch = ++captureEpoch;
+    for (const p of plates) if (!p.alive) shownStamps.delete(p);          // (a dead plate shows no cell again: its stamp let go — pagemem2)
     for (let w = 0; w < n; w++) {
         if (owner[w] < 0) continue;
         const p = plates[owner[w]];
