@@ -26,13 +26,26 @@ export async function helperCount() {
 }
 
 export class HelperPool {
-    /** @param {{numCells, xyz, adjOffset, adjList}} simMesh  the mesh the history runs on (sent to every helper once) */
-    static async create(simMesh, size = null) {
+    /**
+     * @param {{numCells, xyz, adjOffset, adjList}} simMesh  the mesh the history runs on (sent to every helper once)
+     * @param {number|null} [size]  how many helpers (null: helperCount)
+     * @param {string|null} [delaunatorUrl]  where Delaunator lives (null: resolved here, which works only where the bare
+     *        'delaunator' resolves — Node, a page with the import map; not a module worker, which has none)
+     * A pool that cannot be made lets go of the helpers it started: on the Evolution page the bare 'delaunator' threw
+     * here in the history's worker after its helpers were spawned, and every Keep going piece tried again — four more
+     * idle workers a piece, 556 by 4,000 Myr, ~20 MB of the renderer's memory a frame until it crashed (pagemem, 2026-11-27).
+     */
+    static async create(simMesh, size = null, delaunatorUrl = null) {
         const n = size ?? await helperCount(), workers = await Promise.all(Array.from({ length: n }, spawn));
-        const mesh = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
-        const delaunatorUrl = import.meta.resolve('delaunator');
-        for (const w of workers) w.post({ type: 'mesh', mesh, delaunatorUrl });
-        return new HelperPool(workers);
+        try {
+            const mesh = { numCells: simMesh.numCells, xyz: simMesh.xyz, adjOffset: simMesh.adjOffset, adjList: simMesh.adjList };
+            const url = delaunatorUrl ?? import.meta.resolve('delaunator');
+            for (const w of workers) w.post({ type: 'mesh', mesh, delaunatorUrl: url });
+            return new HelperPool(workers);
+        } catch (err) {
+            for (const w of workers) w.terminate();
+            throw err;
+        }
     }
 
     constructor(workers) {
