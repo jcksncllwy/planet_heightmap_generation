@@ -53,6 +53,22 @@ const ptCooled = (cold, warm) => { const a = satSlope(cold), b = satSlope(warm);
 // (gpu/ice-balance.js: degree days); the climate on the ice mesh (F.iceMeshCells, ~61 km at 160K: the paleo models' own resolution);
 // no ocean circulation change beyond the climate's own (no AMOC shift); the sea's level one number (no sea-level fingerprint).
 /**
+ * One climate solve for the ice (the GPU's, as finish.js climateOn): the ground `elevKm` (km over the sea it stands against)
+ * with its `land` and grounded `iceMask`, under `system` at its epoch. Returns the grid, the months' sea-level temperature
+ * and precipitation on it (seaLevelGrid), and each ice cell's year of precipitation (mm, the cells' downscaled climate).
+ */
+export async function glacialClimate(device, { x, elevKm, land, iceMask, system, climateOptions = {} }, F) {
+    const opts = { ...climateOptions, system }, solver = await climateSolverKit(device);
+    let res;
+    try { res = await planetClimateAsync({ xyz: x, elevKm, axes: 'z-up', land, ice: iceMask }, { ...opts, cells: false, solver }); }
+    finally { solver.release(); }
+    const cell = await cellClimateGPU(device, res, x, elevKm, land, opts);
+    const pAnn = Float32Array.from(cell.pAnnual, p => (p === p ? Math.min(p, F.rainMaxMm) : NaN));
+    const { Tsl, P } = seaLevelGrid(res.grid, res.surface, res.months, CORE_DEFAULTS.lapseRateCPerKm);
+    return { grid: res.grid, Tsl, P, pAnn, landFrac: res.surface.landFrac };
+}
+
+/**
  * @param {Object} ctx  { device, mesh, z (km: the moment's ground, not changed), climateOptions (the finish's), onRound?,
  *   co2Record? (the system's CO2 series through the rounds: the Earth replay's check only; else the CO2 held) }
  * @returns {Promise<{ ice: Uint8Array, H: Float32Array, smb: Float32Array, uDef: Float32Array, uSlide: Float32Array,
@@ -95,18 +111,12 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
         }
         const o = worldOcean(im, elevKm, 0).ocean;
         for (let c = 0; c < n; c++) land[c] = o[c] ? 0 : 1;
-        const system = { ...sys0, orbit: { ...sys0.orbit, cycle }, epochKyr: r.epochKyr }, opts = { ...climateOptions, system };
-        const solver = await climateSolverKit(device);
-        let res;
-        try { res = await planetClimateAsync({ xyz: x, elevKm, axes: 'z-up', land, ice: iceMask }, { ...opts, cells: false, solver }); }
-        finally { solver.release(); }
-        const cell = await cellClimateGPU(device, res, x, elevKm, land, opts);
-        const pAnn = Float32Array.from(cell.pAnnual, p => (p === p ? Math.min(p, F.rainMaxMm) : NaN));
-        const { Tsl, P } = seaLevelGrid(res.grid, res.surface, res.months, gamma);
-        climate = { grid: res.grid, Tsl, P };
+        const system = { ...sys0, orbit: { ...sys0.orbit, cycle }, epochKyr: r.epochKyr };
+        const sol = await glacialClimate(device, { x, elevKm, land, iceMask, system, climateOptions }, F), { Tsl, P, pAnn } = sol;
+        climate = { grid: sol.grid, Tsl, P };
         // (the sheets under it: the bed sunk by the ice as it stood, the sea as it stood)
         sheet.setBed(bed); sheet.setSea(sea);
-        const bal = await iceBalanceGPU(device, { sheet, grid: res.grid, Tsl, P, lat, lon, pAnn, gamma, datum: sea });
+        const bal = await iceBalanceGPU(device, { sheet, grid: sol.grid, Tsl, P, lat, lon, pAnn, gamma, datum: sea });
         // (a study's look at the balance on the ground as the round starts: probe({ round, epochKyr, force (bed, balance m/a,
         // surface's year-mean °C, -), H, lat, lon, sea }) — check-iceage-earth's inception diagnosis)
         if (probe) {
@@ -134,6 +144,11 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
             iceMs, madeKm3: bk.made / 1e9, residual: bk.residual, retries: bk.retries, iterations: bk.iterations };
         rounds.push(rec); onRound?.(rec);
     }
+    return { ...(await sheetsOut({ device, sheet, mesh, z, M, n, nF, H, bed, bedM, sea, flt, climate, lat, lon, gamma })), rounds, ms: Math.round(performance.now() - t0) };
+}
+// (the sheets as they stand, to the finish's mesh: the last balance and speeds from the ice, then the ice where its cell of the
+// ice mesh holds ice — glacialSheets' and cycledIce's shared answer)
+async function sheetsOut({ device, sheet, mesh, z, M, n, nF, H, bed, bedM, sea, flt, climate, lat, lon, gamma }) {
     // (the last balance, from the ice as it ends)
     const lastBal = await iceBalanceGPU(device, { sheet, grid: climate.grid, Tsl: climate.Tsl, P: climate.P, lat, lon, gamma, datum: sea });
     { const e = device.createCommandEncoder(); lastBal.encode(e); device.queue.submit([e.finish()]); }
@@ -172,7 +187,7 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
             warmSl[c] = bilinearG(cg, warmG, la, lo); rainF[c] = bilinearG(cg, yearG, la, lo);
         }
     }
-    return { ice: iceF, H: HF, smb: smbF, uDef: uDefF, uSlide: uSlideF, warmSl, rain: rainF, seaKm: sea / 1000, rounds, ms: Math.round(performance.now() - t0) };
+    return { ice: iceF, H: HF, smb: smbF, uDef: uDefF, uSlide: uSlideF, warmSl, rain: rainF, seaKm: sea / 1000 };
 }
 // (finish.js bilinear's, here so the ice needs nothing of finish.js: a 1° grid's field at a point)
 function bilinearG(g, field, lat, lon) {
