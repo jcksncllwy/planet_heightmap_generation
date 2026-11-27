@@ -42,15 +42,25 @@ export const keptWorkerBytes = cells => (cells >= 2.5e6 ? at(cells, 2) : 0);
 // The page at rest, without what the ledger counts on its own (measured, A1 and S1, seed 243751 at 1200 Myr): the page
 // itself ~0.66 GB (its textures, the terrain's meshes and caches, ~0.4 GB of which is not yet named), the history's
 // worker with its world kept for Keep going ~0.27 GB (after tectonics/ops/free-dead-plates.js), the terrain's pool of
-// workers ~0.33 GB (rested for a pass when room is short: TerrainPlayer rest()).
-export const PAGE_REST_BYTES = 0.66e9, HISTORY_WORKER_BYTES = 0.27e9, TERRAIN_POOL_BYTES = 0.33e9;
+// workers ~0.33 GB (rested for a pass when room is short: TerrainPlayer rest()). (The page's 0.66 held the terrain player's
+// caches at 1200 Myr, ~0.14 GB, counted on their own since: playerBytes.)
+export const PAGE_REST_BYTES = 0.52e9, HISTORY_WORKER_BYTES = 0.27e9, TERRAIN_POOL_BYTES = 0.33e9;
+// What grows with the history besides its frames, and was counted as the fixed parts above until a 1,000-frame Keep going
+// went past them (pagemem2 S4a, seed 243751 to 9,960 Myr: the renderer at 8 GB when the ledger said 3.9): the history's
+// worker, whose kept world grows by the plates the history has made — every one stays in world.plates, a dead one's few
+// arrays too (tectonics/ops/free-dead-plates.js) — measured per frame of the history held; and the terrain player's
+// caches, the frames' heights and poured seas, counted as they are (each within its budget: terrain-player.js).
+// (the worker's per frame: a dead plate keeps ~50 KB at 40K cells — 165 MB over 3,342 plates at 9,960 Myr — and seed 243751
+// makes ~3.3 plates a frame; before 1f54822 two of the steps' caches kept 320 KB more of every plate ever made)
+export const HISTORY_WORKER_FRAME_BYTES = 0.2e6;
 
 /**
  * What the page holds now, by part, bytes: {frames, detail, worker, rest, total}. `frames`: the history's packed frames
- * (frameBytes); `detail`: the moments kept in detail (finishBytes each); `worker`: the finishing worker kept with its mesh.
+ * (frameBytes; `frameCount` of them); `detail`: the moments kept in detail (finishBytes each); `worker`: the finishing worker
+ * kept with its mesh; `playerBytes`: the terrain player's caches (TerrainPlayer cacheBytes), in `rest` with the parts above.
  */
-export function heldBytes({ framesBytes = 0, detailBytes = 0, keptWorkerCells = 0, poolResting = false }) {
-    const rest = PAGE_REST_BYTES + HISTORY_WORKER_BYTES + (poolResting ? 0 : TERRAIN_POOL_BYTES);
+export function heldBytes({ framesBytes = 0, frameCount = 0, playerBytes = 0, detailBytes = 0, keptWorkerCells = 0, poolResting = false }) {
+    const rest = PAGE_REST_BYTES + HISTORY_WORKER_BYTES + HISTORY_WORKER_FRAME_BYTES * frameCount + playerBytes + (poolResting ? 0 : TERRAIN_POOL_BYTES);
     const worker = keptWorkerBytes(keptWorkerCells);
     return { frames: framesBytes, detail: detailBytes, worker, rest, total: framesBytes + detailBytes + worker + rest };
 }

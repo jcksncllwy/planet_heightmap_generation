@@ -19,6 +19,10 @@ import { SMALL_DEVICE } from '../core/device.js';
 
 const usePool = typeof window !== 'undefined' && typeof Worker !== 'undefined';
 const BUDGET = SMALL_DEVICE ? 64e6 : 320e6;
+// (the history's poured seas kept, the frames nearest the one on screen: 5 bytes a terrain cell each — 0.8 MB at 160K, more
+// than the frame's heights — once kept for every frame ever shown, ~0.8 GB over a 1,000-frame Keep going; one is poured
+// again in 25–60 ms when its frame is shaded again — pagemem2, 2026-11-27)
+const SEAS_BUDGET = SMALL_DEVICE ? 32e6 : 160e6;
 // (the computed climates' water kept for the frames balanced on it: 12 bytes a terrain cell each — 2 MB at 160K cells)
 const CLIMATES_KEPT = SMALL_DEVICE ? 8 : 32;
 const AHEAD = 10;
@@ -61,7 +65,8 @@ export class TerrainPlayer {
         this.bytes = 0;
         this.carving = new Map();      // frame → its carving under way
         this.shown = new Map();        // frame → what is painted: heights + hillshade (the last few)
-        this.seas = new WeakMap();     // frame → the history's poured sea on the terrain mesh (historySeaOf)
+        this.seas = new Map();         // frame → the history's poured sea on the terrain mesh (historySeaOf; within SEAS_BUDGET)
+        this.seasBytes = 0;
         this.climates = new Map();     // frame → {key, water}: the computed climate's water for its cut-off seas (balance)
         this.climateKey = '';          // the page's climate settings (Greenhouse, Precipitation) the climates are for
         this.prefetching = false;
@@ -154,6 +159,8 @@ export class TerrainPlayer {
     }
     /** How far a frame is from the one on screen: frames the way the shown frames are moving count twice as near. */
     distance(i) { return Math.abs(i - this.current) * (this.heading && Math.sign(i - this.current) === -this.heading ? 2 : 1); }
+    /** The bytes its caches hold: the frames' heights and their poured seas (each within its budget; page-memory.js counts them). */
+    cacheBytes() { return this.bytes + this.seasBytes; }
     built(frame) { return this.heights.has(frame) || this.full.has(frame); }
     fresh(frame) { const s = this.shown.get(frame), full = this.full.get(frame); return !!s && (!full || s.src === full); }
 
@@ -208,8 +215,15 @@ export class TerrainPlayer {
     historySeaOf(frame, r) {
         if (this.seas.has(frame)) return this.seas.get(frame);
         this.sampler ??= r?.sampler ?? sampleOnto(this.simMesh, this.tMesh, this.cfg, this.seed);
-        const sea = pouredSeaOnto(frame, this.simMesh, this.cfg, this.sampler);
+        const sea = pouredSeaOnto(frame, this.simMesh, this.cfg, this.sampler), bytes = s => (s ? s.sea.byteLength + s.waterKm.byteLength : 0);
         this.seas.set(frame, sea);
+        this.seasBytes += bytes(sea);
+        // over budget: drop the seas of the frames farthest from the one on screen (never this one)
+        while (this.seasBytes > SEAS_BUDGET && this.seas.size > 1) {
+            let far = null, d = -1;
+            for (const g of this.seas.keys()) { if (g === frame) continue; const dd = this.distance(this.index.get(g) ?? 0); if (dd > d) { d = dd; far = g; } }
+            this.seasBytes -= bytes(this.seas.get(far)); this.seas.delete(far);
+        }
         return sea;
     }
     remember(frame, r) {

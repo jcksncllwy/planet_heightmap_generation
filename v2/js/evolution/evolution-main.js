@@ -265,7 +265,7 @@ function held(b) {
     let frames = 0, detail = 0;
     for (const f of b.frames) frames += frameBytes(b, f);
     for (const fin of b.finishes.values()) detail += finishBytes(fin);
-    return heldBytes({ framesBytes: frames, detailBytes: detail, keptWorkerCells: finisher.keptCells, poolResting: !!b.player?.resting });
+    return heldBytes({ framesBytes: frames, frameCount: b.frames.length, playerBytes: b.player?.cacheBytes() ?? 0, detailBytes: detail, keptWorkerCells: finisher.keptCells, poolResting: !!b.player?.resting });
 }
 /**
  * Make room for an Add detail at `cells` before it starts (page-memory.js roomPlan): the finishing worker's mesh at another
