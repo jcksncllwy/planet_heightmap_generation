@@ -140,8 +140,22 @@ export function frameBytes(frame, seen) {
     return b;
 }
 
-/** How much the history's frames may hold before Keep going stops: the budget less the rest of the page (the moments kept
- *  in detail included) and the room the next Add detail at `cells` needs — at least 0.2 GB. */
+// The renderer's footprint, beside what this ledger counts (what the engines measure: measureUserAgentSpecificMemory):
+// native memory it cannot name, 1.45× or +1.96 GB at 1,000 frames (pagemem2 S6: 6.33 GB peak with 4.37 counted) and 1.59×
+// or +1.7 GB at 577 (S7: 4.56 with 2.87) — reckoned as the larger of 1.6× and +2.0 GB. Keep going stops while the footprint
+// this expects stays within FOOTPRINT_BYTES: 6.5 GB at most, so with the samples' ±0.5 GB swings a long history's renderer
+// stays under 8 GB on any device (?membudget=GB sets it too); a small device's budget leaves it the 0.2 GB floor.
+export const NATIVE_RATIO = 1.6, NATIVE_GAP_BYTES = 2.0e9;
+export const FOOTPRINT_BYTES = ASKED > 0 ? ASKED * 1e9 : Math.min(6.5e9, BUDGET_BYTES);
+/** The renderer's footprint expected when the ledger counts `bytes`. */
+export const footprintOf = bytes => Math.max(bytes * NATIVE_RATIO, bytes + NATIVE_GAP_BYTES);
+
+/** How much the history's frames may hold before Keep going stops — at least 0.2 GB, and the least of: the budget less
+ *  the rest of the page (the moments kept in detail included) and the room the next Add detail at `cells` needs; and what
+ *  keeps the footprint expected (footprintOf) within FOOTPRINT_BYTES. */
 export function framesRoomBytes({ held, cells }) {
-    return Math.max(0.2e9, BUDGET_BYTES - (held.total - held.frames) - Math.max(passPeakBytes(cells), keptWorkerBytes(cells)));
+    const other = held.total - held.frames;
+    const counted = BUDGET_BYTES - other - Math.max(passPeakBytes(cells), keptWorkerBytes(cells));
+    const footprint = Math.min(FOOTPRINT_BYTES / NATIVE_RATIO, FOOTPRINT_BYTES - NATIVE_GAP_BYTES) - other;
+    return Math.max(0.2e9, Math.min(counted, footprint));
 }

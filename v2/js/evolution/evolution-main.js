@@ -36,7 +36,7 @@ import { downloadBlob } from '../view/png.js';
 import { SMALL_DEVICE } from '../core/device.js';
 import { watchView } from './history-view.js';
 import { finishKey } from '../app/finish-key.js';
-import { BUDGET_BYTES, heldBytes, roomPlan, detailRoomBytes, framesRoomBytes, frameBytes as framesOwnBytes, frameLedger, bytesWords } from './page-memory.js';
+import { BUDGET_BYTES, FOOTPRINT_BYTES, footprintOf, heldBytes, roomPlan, detailRoomBytes, framesRoomBytes, frameBytes as framesOwnBytes, frameLedger, bytesWords } from './page-memory.js';
 
 setDelaunator(Delaunator);
 
@@ -404,7 +404,7 @@ async function keepGoing(b, until = Infinity) {
     let failed = null;
     try {
         while (b.wantGo && B === b && b.simMyr < until - 1e-9) {
-            { const h = held(b); if (h.frames >= framesRoomBytes({ held: h, cells: Number($('finishCells').value) })) { b.full = true; console.info(`[evolution] the history holds ${bytesWords(h.frames)} of frames at ${b.simMyr.toFixed(0)} Myr: as much as the page's memory leaves them (budget ${bytesWords(BUDGET_BYTES)}, the rest of the page ${bytesWords(h.total - h.frames)})`); break; } }
+            { const h = held(b); if (h.frames >= framesRoomBytes({ held: h, cells: Number($('finishCells').value) })) { b.full = true; console.info(`[evolution] the history holds ${bytesWords(h.frames)} of frames at ${b.simMyr.toFixed(0)} Myr: as much as the page's memory leaves them (budget ${bytesWords(BUDGET_BYTES)}, the rest of the page ${bytesWords(h.total - h.frames)}; the renderer expected at ${bytesWords(footprintOf(h.total))} of ${bytesWords(FOOTPRINT_BYTES)})`); break; } }
             const to = Math.min(until, b.simMyr + GO_PIECE_MYR);
             if (to > Number(ui.time.max)) { setScale(to); rail(); }
             const r = await b.run.more(to);

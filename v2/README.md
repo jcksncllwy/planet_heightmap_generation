@@ -1162,7 +1162,9 @@ Measured on seed 243751, 40K/160K, a 1,000-frame Keep going from 1200 Myr to 10,
 On Upwell headless Chrome reports deviceMemory 32, so the budget is its 9 GB ceiling, and the 1,000 frames came first. With
 `?membudget=6` the same run stopped by itself at 5,760 Myr (577 frames, 1.5 GB of frames, the rest of the page 1.5 GB). Its
 peak footprint was 4.6 GB. The renderer's footprint runs 1.1–1.9 GB above what the engines measure (native memory, not counted). Of what the budget
-counts, that is ~1.45× at 1,000 frames.
+counts, that is ~1.45× at 1,000 frames. So Keep going also stops while the footprint it expects stays within 6.5 GB:
+the larger of 1.6× and +2.0 GB over what is counted (page-memory.js `footprintOf`, `FOOTPRINT_BYTES`). That keeps a long
+history's renderer under 8 GB on any device. Add detail's room is planned as before.
 
 The picture on the GPU (2026-10-18; developer: "lets do the GPU repaint"): Evolution painted every moment on the page's
 thread — ~2M pixels each blended from three cells through a pixel table (`SmoothMapRaster`; 37 ms at 2048 px, 130 ms at
