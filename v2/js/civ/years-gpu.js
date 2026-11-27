@@ -12,7 +12,8 @@
 // a famine; st > cap) and the flood's (q < 1, q > floodHigh) can then fall the other way. Jackson's ruling (2026-11-26):
 // judged by distributions — the per-cell differences (sim.js `yearsCheck`, civ-years-check.mjs) and the runs' summaries
 // (civ-ensemble.mjs), not fingerprints. A GPU repeats its own result bit for bit (no atomics, no reductions here); two
-// GPUs (Metal, D3D12) can differ in the last bits of exp, so a run's cache keys the engine (civ-page.js).
+// GPUs (Metal, D3D12) can differ in the last bits of exp, so a GPU run's fingerprint is that GPU's (People runs are not
+// cached, so no cache has to key the engine).
 
 import { storage, gpuWait } from '../gpu/gpu-device.js';
 

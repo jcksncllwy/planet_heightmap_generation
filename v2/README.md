@@ -2289,6 +2289,83 @@ s at 10M), and the civ world 0.3–0.7 s; the rest is the machine's noise. Heigh
 climate, the picture and the stats are bit-identical between main, civ off and civ on at every size measured: civ on
 only adds its own fields.
 
+## People: the famine's years on the GPU (2026-11-26, lane civgpu2)
+
+The civ run's slowest stage, each step's years of rain, harvest, herds and famine for every settled cell (`sim.js`
+`liveYears`), now runs on the GPU (`js/civ/years-gpu.js`, WGSL, float32, one invocation per cell). The CPU's float64
+years stay as the reference. Both the page and the tools use the GPU by default.
+
+- **One civ GPU context** (`js/civ/civ-gpu.js` `civGPU()`): the device and every civ kernel, compiled once by name. In
+  Node it is gpu-device.js's `sharedDevice`, so the civ shares Dawn's device with the history and the finish's erosion. On
+  the page the civ runs in its own worker, and a GPUDevice can't cross workers, so `civ-worker.js` opens its own device
+  once and keeps it for every run. No adapter means a clear error ("The People layer needs a GPU"): the CPU years are a
+  check, not a fallback. The culture layer's lects can use the same context later: an integer kernel registered with
+  `ctx.kernel('lects', code)`. Integer arithmetic is exact, so that kernel will match the CPU bit for bit on every GPU.
+- **What stays on the CPU:** what a cell's years need that is made once and kept (its long-run means, its herd's mean),
+  and the step's storms and floods (hashes of the year in float64, rounded to float32 for the kernel). The kernel reads
+  those and lives the years. Cells are independent, so the order they run in doesn't matter.
+- **The run is async on the GPU.** `runCivSim`/`advance` return a promise when given `gpu`, and stay synchronous on the
+  CPU. `civ-page.js` (`startPeople`, `morePeople`, `peopleOfWorld`, `collect`) and `civ-worker.js` await them. People runs
+  are not cached, so there is no cache key to split between GPUs.
+- **Tools:** `--cpu` (or `GEO_SIM_CIV_CPU=1`) gives the CPU reference, and `--check` also lives each GPU step's years on
+  the CPU from the same start and keeps the per-cell differences (`sim.js` `yearsCheck`). These flags work in
+  `civ-fingerprint`, `civ-ensemble` (whose output now records engine, run seconds and famine dead), `civ-sim`,
+  `civgpu-profile` and `civ-land-views` (`tools/lib/civ-engine.mjs`). `civ-bench` stays on the CPU. Two new tools:
+  - `tools/civ-years-check.mjs` runs one world on the GPU (with the per-step check) and on the CPU, and compares their
+    0 BP cells and summaries. `--emit`/`--compare` compare two machines.
+  - `tools/civ-years-browser.mjs` runs the kernel in Chrome's module worker (as the page does) and in Dawn on 20 000
+    hashed records, and compares them bit for bit.
+- **costReach fixed** (`civ/travel.js`). Its `dist` was a Float32Array but its heap keys were float64. A key that rounded
+  down when stored made the cell's pop look stale, so the cell was never output and never reset, and its distance leaked
+  into the next query. So a reach depended on the queries before it: 534 of 10 445 real queries on a640@160K differed
+  from a fresh reach. Now the keys are `Math.fround`ed and every touched cell is reset: 0 differ, in cell order,
+  shuffled and reversed. `townNetwork` (`civ/settle.js`) now keeps each reach per (budget, cell); `C.reachMemo = false`
+  turns that off, with the same fingerprint. The fix changes the towns and states (below). The people, by cell, do not.
+
+**Judged by distributions (Jackson, 2026-11-26), not bits.** Float32 against float64 at the famine's thresholds (store
+below 0, store above its cap, a flood's q against 1 and floodHigh) can tip the other way, and the tip compounds through
+the economy.
+- **The kernel's own error, per cell and step** (a kept 640K finish, a640.bin, lived at 160K; Upwell Metal; 9.54M cell-steps):
+  - the store |Δ| is ≤ 1e-6 at p90, 3e-6 at p99 and 6e-6 at p99.9 (max 3.2e-5);
+  - the people's relative |Δ| is ≤ 1e-7 at p90 and 3e-7 at p99 (max 8.6e-6);
+  - 4 famines happened on the CPU side only and 4 on the GPU side only; the dead differ by −0.000 %.
+
+  At a640's own 640K cells (39.5M cell-steps), p99 is 6e-6 for the store and 6e-7 for the people.
+- **Whole runs at 0 BP** (a640.bin at 160K):
+  - people 160.67 vs 160.66 M, famine dead 720.02 vs 720.04 M, towns 2 253 vs 2 252;
+  - 99.83 % of peopled cells have the same density byte, and 100 % the same way of life.
+
+  Chroma (NVIDIA Ampere, Dawn D3D12) against Upwell (Metal): 99.82 % same density bytes, people 160.66 vs 160.67 M.
+  Chroma's CPU run matches Upwell's cell for cell.
+- **The states are chaotic, on any engine.** On a640.bin at 160K, the GPU run gave 24 states at 0 BP and the CPU run 16. That gap
+  is no bigger than the CPU's own spread under a neutral perturbation. In the 10-world ensemble at 160K (seeds 1–10),
+  the CPU run with famineDeath 0.3 → 0.30000001 changes max states by a median of 3 per world (up to 6). The GPU against
+  the CPU changes them by a median of 2 (up to 7), and against the perturbed CPU by a median of 2.5 (up to 7). Every
+  ensemble median is the same for cpu, perturbed cpu and gpu: first centre, city and state, centres, people at 0 BP,
+  farmed share, and famine dead (492.27 / 492.26 / 492.26 M).
+- **What the costReach fix changes** (main 61d53ec against head, both on the CPU): max states rise on 9 of 10 worlds
+  (mean 19.8 → 26.6), and the biggest town at 0 BP changes on 8 of 10. That is well beyond the base rate above, so it is the fix
+  and not chaos. A leaked distance blocks a cell in later queries, so the old reach most likely came up short, and shortened the war
+  and town reaches. The people and centres are the same on every world. The first state moves by 0.5–1 ka on 3
+  worlds, and the first city on 1 (2.0 → 3.0 ka).
+
+**Cost** (civ-fingerprint's run stage, the whole 70 ka sim, on a640.bin `--travel`; Upwell, 3 reps interleaved, median
+seconds; a shared machine at load 6–12):
+
+| Cells | main 61d53ec | GPU | CPU (`--cpu`) |
+|---|---|---|---|
+| 160K | 75.6 | 40.2 | 63.1 |
+| 640K | 285.6 | 189.2 | 277.7 |
+
+The CPU path got faster than main through the reach memo.
+
+**Fingerprints** (the one change for both the GPU port and the costReach fix; `civ-fingerprint`):
+- a640.bin `--civ 160000 --travel`: 5ebec679b0d658e7 → CPU 0ad44259113cf47b, GPU (Apple Metal-3) eda2a6bc49b8cb7c.
+- a640.bin at its own cells, `--travel`: b00206c30fdfc993 → CPU 17c5b33ce98e744f, GPU 54f588bc634b1565.
+- `--key 716a08f8… --travel`: 56af393e5c6a1ddf → CPU f06be27ce08e10da, GPU 0f9e9f8ed25b578b.
+
+The GPU's fingerprint belongs to that GPU: compare GPU runs with `civ-years-check` and `civ-ensemble --compare`.
+
 ## Ice-dammed lakes held by their ice (2026-10-29, branch floods)
 
 - **A NaN under shelf ice.** The ice-dug basins' lowland term (`finish-ice.js`: the land's height averaged over 150 km)
