@@ -49,13 +49,13 @@ hold.on(h => self.postMessage({ type: 'held', wanted: h.wanted, heldAt: h.heldAt
 const run = (world, opts) => runHeld((w, o) => simulate(w, o, helpers), world, opts, hold);
 
 // (a pool that could not be made is not tried again for every Keep going piece: the history runs here. On the page it
-// never could: helper-pool.js resolves the bare 'delaunator', which a module worker without the page's import map cannot,
-// so every page history has run here alone — and with the helpers made (the page's Delaunator handed on), seed 243751's
-// differs from 610 Myr on, so they stay off until that is understood: pagemem, 2026-11-27)
-let helpersFailed = false;
+// never could until pagemem2: helper-pool.js resolved the bare 'delaunator', which a module worker without the page's
+// import map cannot — it is handed the page's Delaunator now. With helpers the same history: check-history-helpers.mjs in
+// Node, and the page's own frames with and without, frame for frame, seed 243751 to 1200 Myr — pagemem2, 2026-11-27)
+let helpersFailed = false, delaunatorUrl = null;
 async function helpersFor(simMesh) {
     if (helpers || helpersFailed || typeof Worker === 'undefined') return helpers;
-    try { helpers = await HelperPool.create(simMesh); } catch { helpers = null; helpersFailed = true; }
+    try { helpers = await HelperPool.create(simMesh, null, delaunatorUrl); } catch { helpers = null; helpersFailed = true; }
     return helpers;
 }
 // (on a small device, between runs: four idle workers hold ~200 MB a phone needs for Add detail; they start again — in
@@ -78,6 +78,7 @@ self.onmessage = async ({ data }) => {
         small = !!data.small;
         // (V1's buildSphere, which the plate stress field's own mesh uses, needs Delaunator set: the page's setting is not this worker's)
         if (!delaunatorSet) { setDelaunator((await import(data.delaunatorUrl)).default); delaunatorSet = true; }
+        delaunatorUrl = data.delaunatorUrl ?? null;                    // (for the helpers too: they build no mesh, but the stress field's may)
         const scene = SCENE_LISTS[list].find(s => s.id === sceneId), simMesh = meshFromArrays(mesh);
         sender = new ShareSender();                                    // (a new history: the page's side starts afresh too)
         await helpersFor(simMesh);
