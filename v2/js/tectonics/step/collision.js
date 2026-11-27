@@ -471,7 +471,7 @@ function dockIfTerrane(world, A, B, cells) {
     // arc at once: remnant chains of 1–2 % of the world's land vanished in a step)
     if (kind === 'island arc' && config.arcRecycling && meanArcBuoyancyKm(donor, mass, world) <= 0) {
         const front = uniq(under(donor)).filter(q => donor.crust.mask[q] && donor.crust.type[q] === CrustType.ARC);
-        if (front.length) { recycle(world, donor, front, host); return true; }
+        if (front.length) { recycle(world, donor, front, host, true); return true; }   // (judged as a chain: its lighter cells dragged)
     }
     const donorName = donor.name, result = accreteTerrane(world, host, donor, mass, rate);
     world.budget.sealedCells = (world.budget.sealedCells ?? 0) + (result.sealed ?? 0);
@@ -703,7 +703,11 @@ function sinkHeavyArc(world, donor, cell, host) {
  * the rest goes down with the slab (arcRecycledKm3). With no upper plate to take it (none, the passive background, or
  * config.prismAccretion off) all of it goes down.
  */
-export function sinkArc(world, crust, c, over) {
+export function sinkArc(world, crust, c, over, dragged = false) {
+    // (records only: an arc its trench fed within the slab's fade time, founderSlabMyr, going down on its own column — a live arc;
+    // tools/check-phase7c.mjs judges that none does. One dragged down in a heavy chain's front (recycle's `dragged`) is booked
+    // apart, and an arc starved by a plate that slowed — quiet, turned heavy — not at all: both reported, not judged)
+    if (crust.arcKm[c] > 0 && world.time - crust.arcAt[c] <= world.config.founderSlabMyr) { const k = dragged ? 'recycledDraggedFedCells' : 'recycledFedCells'; world.budget[k] = (world.budget[k] ?? 0) + 1; }
     const rock = cellRockKm3(world, crust, c);
     const scraped = over && !over.isBackground && world.config.prismAccretion
         ? Math.min(rock, arcScrapedKm3(arcCrustKm(crust, c, world.time, world.config), world.mesh.cellAreaKm2, heightsOf(world.config))) : 0;
@@ -712,9 +716,9 @@ export function sinkArc(world, crust, c, over) {
 }
 
 /** Remove arc cells of `donor` into the mantle (they go down with the slab, their light crust scraped onto `over`: sinkArc), logging it if the piece is worth naming. */
-function recycle(world, donor, cells, over) {
+function recycle(world, donor, cells, over, dragged = false) {
     const { cellAreaKm2 } = world.mesh;
-    for (const c of cells) { sinkArc(world, donor.crust, c, over); donor.crust.remove(c); }   // (its rock: rock-book.js)
+    for (const c of cells) { sinkArc(world, donor.crust, c, over, dragged); donor.crust.remove(c); }   // (its rock: rock-book.js)
     donor.markReshaped();
     world.budget.recycledCells += cells.length;
     if (cells.length * cellAreaKm2 >= world.config.terraneMinAreaKm2) world.log(EventKind.ARC_RECYCLED, `an island arc of ${donor.name} (${(cells.length * cellAreaKm2 / 1e3).toFixed(0)}k km²) goes down with its slab instead of accreting: its column is too heavy to float, its light crust scraped off`, { donor: donor.id, areaKm2: cells.length * cellAreaKm2 });

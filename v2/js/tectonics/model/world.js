@@ -73,8 +73,8 @@ export class TectonicWorld {
         this.boundaryKind = new Uint8Array(n);       // BoundaryKind per world cell
         this.convergence = new Float32Array(n);      // cm/yr across the contact, + = closing (diagnostic)
 
-        /** Cumulative crust budget, in cells: ocean created / consumed, and land lost to erosive margins, underthrusting and arc recycling (Phase 7c), sea filled at welds, arcs matured into continent and land lost as sediment down the trenches (step/sediment-subduction.js; with sedimentKm3, its volume, and trenchKmMyr / marginTrenchKmMyr / erosiveTrenchKmMyr, the margins' length over time: step/margin-isles.js). */
-        this.budget = { created: 0, consumed: 0, erodedCells: 0, underthrustCells: 0, recycledCells: 0, sealedCells: 0, arcMaturedCells: 0, sedimentCells: 0 };
+        /** Cumulative crust budget, in cells: ocean created / consumed, and land lost to erosive margins, underthrusting and arc recycling (Phase 7c; recycledFedCells: the recycled arc cells their trench fed within founderSlabMyr, gone down on their own column; recycledDraggedFedCells: such cells dragged down in a heavy chain's front — collision.js sinkArc), sea filled at welds, arcs matured into continent and land lost as sediment down the trenches (step/sediment-subduction.js; with sedimentKm3, its volume, and trenchKmMyr / marginTrenchKmMyr / erosiveTrenchKmMyr, the margins' length over time: step/margin-isles.js). */
+        this.budget = { created: 0, consumed: 0, erodedCells: 0, underthrustCells: 0, recycledCells: 0, recycledFedCells: 0, recycledDraggedFedCells: 0, sealedCells: 0, arcMaturedCells: 0, sedimentCells: 0 };
         /** @type {{time:number, kind:string, text:string, data:Object}[]} the history, WBP-style: see log() and EventKind */
         this.events = [];
         /** @type {Map<string, import('../step/collision.js').Collision>} one record per pair of colliding plates, keyed "lo:hi" */

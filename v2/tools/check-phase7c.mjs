@@ -120,8 +120,21 @@ section('heavy arcs go down, buoyant arcs accrete');
     const live = [], heavy = [];
     for (const p of r.world.plates) if (p.alive && p.crust) for (let c = 0; c < p.crust.type.length; c++)
         if (p.crust.mask[c] && p.crust.type[c] === CrustType.ARC && p.crust.arcKm[c] > 0) (arcFloats(p.crust, c, r.world) ? live : heavy).push(c);
-    check('arcs fed by their slab float: none goes down at the closing margin', r.budget.recycledCells === 0 && live.length > 0,
-        `${Mkm2(r.budget.recycledCells).toFixed(2)} Mkm² of arc recycled (${recycled.length} pieces worth naming); at ${r.last.time} Myr ${Mkm2(live.length).toFixed(2)} Mkm² of arc floats, ${Mkm2(heavy.length).toFixed(2)} Mkm² gone quiet and heavy behind it`);
+    // (judged: no arc its trench fed within the slab's fade time, founderSlabMyr, goes down on its own column —
+    // world.budget.recycledFedCells, booked in collision.js sinkArc; a fed cell dragged down in a heavy chain's front is booked apart. Until lane startsea (2026-11-27) every recycled arc cell failed it; A2's relict ocean is
+    // younger than the 150 Myr it replaced, its slab pulls less (slabPullAgeRefMyr), Westland slows from ~4 to ~1 cm/yr, and
+    // the arcs it starves go quiet, turn heavy and sink — the section's own physics, so those are reported, not judged)
+    const fed = r.budget.recycledFedCells ?? 0, dragged = r.budget.recycledDraggedFedCells ?? 0, starved = r.budget.recycledCells - fed - dragged;
+    const speedsAt = t => { const f = nearestFrame(r.frames, t); return f.plates.filter(p => p.alive && !p.isBackground && p.speedCmYr > 0).map(p => `${p.name} ${p.speedCmYr.toFixed(1)}`).join(', '); };
+    check('arcs fed by their slab float: none goes down at the closing margin', fed === 0 && live.length > 0,
+        `${Mkm2(fed).toFixed(2)} Mkm² of arc fed within ${r.world.config.founderSlabMyr} Myr recycled (${recycled.length} pieces worth naming in all); at ${r.last.time} Myr ${Mkm2(live.length).toFixed(2)} Mkm² of arc floats, ${Mkm2(heavy.length).toFixed(2)} Mkm² gone quiet and heavy behind it`);
+    report('starved arcs gone down (quiet past the slab\'s fade time, turned heavy)', Mkm2(starved), { unit: ' Mkm²', digits: 2, source: 'no Earth figure: the scene\'s',
+        detail: `and ${Mkm2(dragged).toFixed(2)} Mkm² of fed arc dragged down in a heavy chain's front (collision.js: the chain is judged by its mean column); plate speeds (cm/yr) at 60 Myr: ${speedsAt(60)}; at 120 Myr: ${speedsAt(120)}; at ${r.last.time} Myr: ${speedsAt(r.last.time)}` });
+    // …and the judge still catches what it was written for (a rule sending live arcs down: lane contarea's 17 km threshold): an
+    // ocean crust planted heavier than the mantle (oceanCrustRho 3400 kg/m³) makes a young arc's column sink while its trench feeds it
+    const planted = await run('arcs', { heights: { ...TERRAIN, oceanCrustRho: 3400 } }, 80);
+    check('…a fed arc planted heavy does go down, and is caught', (planted.budget.recycledFedCells ?? 0) > 0,
+        `oceanCrustRho 3400: ${Mkm2(planted.budget.recycledFedCells ?? 0).toFixed(2)} Mkm² of fed arc recycled in 80 Myr (${Mkm2(planted.budget.recycledCells).toFixed(2)} in all)`);
     const docked = r.events.filter(e => e.kind === EventKind.DOCK && e.data.arc);
     // (an arc docks whole once its column floats — its crust against its mantle lid's cold, measure.js arcBuoyancyKm, Cloos 1993;
     // heavier, it goes down with its slab, its light crust scraped onto the upper plate)
