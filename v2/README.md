@@ -55,8 +55,8 @@ clipped by the scrolling panel). A world runs its history and shows the planet a
 timeline to scrub and play; changing the terrain resolution redraws the same history (only the plates' resolution needs a
 new build). **Extend history** runs a finished history on, 20 Myr at a time in the worker that ran it, until Stop
 extending (`simulate`'s `resume`: the pieces are the
-one history, bit for bit; the link records how far — `more=` — and rebuilds it; it stops for good at a memory budget,
-~13,000 Myr at 40K). **Pause history** (beside the history's progress, while it runs or is extended; the P key) holds
+one history, bit for bit; the link records how far — `more=` — and rebuilds it; it stops for good when its frames hold
+what the page's memory budget leaves them, counted by what they really hold: page-memory.js `frameBytes`). **Pause history** (beside the history's progress, while it runs or is extended; the P key) holds
 the history at its next frame (every 10 Myr), so Add detail has the GPU and the CPU to itself; Resume runs it on
 (`app/history-hold.js`: the pause is simulate's own stopAt and `resume`, so a paused history is the unpaused one —
 frames, steps, history-cache key and entry; `check-history-pause.mjs`). Stop extending while paused ends the
@@ -1075,6 +1075,16 @@ For that the step loop is a generator (simulate.js `stepsOf`): a rift yields its
 helpers, and one extended in two pieces; the page: its packed frames against Node's, desktop and phone settings). The start
 world 25–40 % sooner (0.7–1.8 s → 0.5–1.2 s), a history 7–15 % (1200 Myr at 20K, 600 at 40K). Where a worker cannot start
 workers of its own, the history runs in place as before.
+Correction (2026-11-27, pagemem2): from cratoncol (2026-11-11) to this date the helpers were NOT the same history. A rift's
+search reads a craton's strength (field/stress-step.js `cratonStrengthRatio`), from config keys outside `config.rift…`, and
+the helpers were sent only those: NaN there. Seed 243751 parted at 240 Myr (Node, 40K). Nothing showed it. The tools run
+every history in place, and on the page the pool could never be made (helper-pool.js resolved the bare 'delaunator', which
+a module worker can't), so its four workers were spawned and lost again every Keep going piece: 556 of them by 4,000 Myr, the
+leak that crashed long histories. Now the helpers get the whole config, the page hands the pool its Delaunator, and
+`check-history-helpers.mjs` runs two worlds with and without helpers, every frame equal by value. The page's own frames, 243751
+to 1200 Myr with 4 helpers and without: 121/121 equal. Its time on a loaded Upwell, paired: no slower (482 → 472 s); Node 273
+→ 247 s. The page's histories and Node's still differ from 10 Myr on: the browser's maths and Node's differ in the last bit
+(math fingerprints 67d68e019ea7, Chrome 158; 84ea2e1368bd, Node 23 arm64), which history-key.js files apart by design.
 
 Phone memory again (2026-10-18, after Add detail closed the tab on a phone once more): the helpers and the realism pass
 had taken back what the first pass saved (peak 1.74 → 1.97 GB, same measure). A gone plate keeps its place in
@@ -1123,6 +1133,36 @@ Add detail's retry catches). The engines' heaps are small, so the page budgets A
   | 10M peak | 10.25 GB | 6.94 GB |
 
   The moments let go came back from the cache in 0.8–1.3 s.
+
+Keep going's memory (2026-11-27, pagemem2). Keep going stops for good when its frames hold what the budget leaves them
+(page-memory.js framesRoomBytes: the budget, less the rest of the page and the next Add detail's peak). The frames are
+counted by what they really hold: their packed fields and their JS objects, and what frames share is counted once
+(frameBytes). They used to be counted as 28 B a cell and a guess. Three things grew with a long history besides the frames,
+and the ledger now counts what is left of them:
+- **Every frame copied the whole past.** Each one carried every event so far, an entry for every plate ever made and the
+  climate, so the page grew as the square of the history's length: 5–7 MB a frame at 4,000 Myr. Now the history's worker
+  sends only what the frame before did not have (app/history-share.js). The frames are the same by value: full-value
+  hashes on 3 worlds.
+- **Two steps' caches kept every plate ever made.** snapshot.js's shown-cell stamps and crust-flow.js's mantle heat each
+  kept a mesh-sized array for every plate, dead ones too: ~1 MB a frame in the history worker, 1.07 GB at 9,960 Myr. Now a
+  dead plate's entries are let go, and the histories are the same by value.
+- **The player kept a poured sea for every frame it showed.** That was 0.8 MB at 160K. Now the seas have a budget of their
+  own (terrain-player.js `SEAS_BUDGET`).
+
+Measured on seed 243751, 40K/160K, a 1,000-frame Keep going from 1200 Myr to 10,000 Myr (headless Chrome 158, --iso):
+
+  | | before | after |
+  |---|---|---|
+  | renderer footprint, per frame | 5.38 MB | 3.99 MB |
+  | the history worker, per frame | 0.98 MB | 0.11 MB |
+  | the page's measured memory at 1,000 frames (measureUserAgentSpecificMemory) | 5.43 GB | 4.24 GB |
+  | the ledger's count of it | 3.94 GB | 4.37 GB |
+  | peak footprint | 8 GB (the cap) at 997 frames | 6.33 GB at 1,000 frames |
+
+On Upwell headless Chrome reports deviceMemory 32, so the budget is its 9 GB ceiling, and the 1,000 frames came first. With
+`?membudget=6` the same run stopped by itself at 5,760 Myr (577 frames, 1.5 GB of frames, the rest of the page 1.5 GB). Its
+peak footprint was 4.6 GB. The renderer's footprint runs 1.1–1.9 GB above what the engines measure (native memory, not counted). Of what the budget
+counts, that is ~1.45× at 1,000 frames.
 
 The picture on the GPU (2026-10-18; developer: "lets do the GPU repaint"): Evolution painted every moment on the page's
 thread — ~2M pixels each blended from three cells through a pixel table (`SmoothMapRaster`; 37 ms at 2048 px, 130 ms at
