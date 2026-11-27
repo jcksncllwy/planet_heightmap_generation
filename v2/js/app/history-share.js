@@ -98,6 +98,7 @@ export class ShareJoin {
         if (n !== null) {
             // (the frame's events: the history's first n, as a list of its own when read — the events themselves shared)
             const all = this.events;
+            Object.defineProperty(frame, '_eventsNew', { value: posted.events });     // (the ones this frame brought: the ledger counts these, evolution/page-memory.js)
             Object.defineProperty(frame, 'events', { get: () => all.slice(0, n), set(v) { Object.defineProperty(this, 'events', { value: v, writable: true, enumerable: true, configurable: true }); }, enumerable: true, configurable: true });
         }
         return frame;

@@ -13,6 +13,7 @@
 // after — the finishing worker, kept at 2.5M and finer with the mesh it built (FinishService keep), and the detailed
 // moment itself (finishBytes: ~200 MB at 640K and 2.5M, ~300 MB at 10M).
 import { SMALL_DEVICE } from '../core/device.js';
+import { packedBytes } from '../tectonics/frame-pack.js';
 
 /** The page's budget, bytes: half the device's memory (navigator.deviceMemory, GB; Chrome reports up to 32), and on a
  *  desktop no more than 9 GB — well under the process's ~15.5 GB of ArrayBuffers; 1.5 GB on a small device. */
@@ -86,4 +87,51 @@ export function detailRoomBytes({ held, cells }) {
     if (SMALL_DEVICE) return Infinity;                                 // (a small device keeps one, by count)
     const other = held.total - held.detail;
     return Math.max(1e9, BUDGET_BYTES - other - Math.max(passPeakBytes(cells), keptWorkerBytes(cells)));
+}
+
+// ── what a history's frames really hold (pagemem2, 2026-11-27) ──
+// A frame on the page is a PackedFrame: its packed fields (prototype getters, so a walk of the frame's own properties
+// never saw them) and its meta — plain JS objects: the plates' entries, the events, the hotspots, the budget's books, the
+// climate's grids. The ledger counted only the typed arrays among its own properties, ~0.2 MB a frame at 4,000 Myr when it
+// held 5–7 (pagemem). Now: the packed fields' bytes, every typed array by its buffer, and every JS object by a reckoning
+// of V8's (Chrome's pointer-compressed heap: a 12-byte header and 4 bytes a field; an array 16 + 4 an element; a string
+// 12 + its length; a number not a small integer 12 more) — each object and buffer once over the whole history, so what
+// frames share (app/history-share.js: the events, a dead plate's entry, a climate sample) is counted once.
+const OBJ = 12, FIELD = 4, ARR = 16, STR = 12, NUM = 12;
+function jsBytes(x, seen, depth = 0) {
+    if (x === null || x === undefined || typeof x === 'boolean' || typeof x === 'function') return 0;
+    if (typeof x === 'number') return Number.isInteger(x) && Math.abs(x) < 2 ** 30 ? 0 : NUM;
+    if (typeof x === 'string') return STR + x.length;
+    if (typeof x !== 'object' || seen.objs.has(x)) return 0;
+    seen.objs.add(x);
+    if (ArrayBuffer.isView(x)) { if (seen.bufs.has(x.buffer)) return OBJ; seen.bufs.add(x.buffer); return OBJ + x.buffer.byteLength; }
+    if (depth > 8) return OBJ;
+    let s;
+    if (Array.isArray(x)) { s = ARR + FIELD * x.length; for (const v of x) s += jsBytes(v, seen, depth + 1); return s; }
+    s = OBJ;
+    for (const k in x) s += FIELD + jsBytes(x[k], seen, depth + 1);
+    return s;
+}
+/** A place to note what has been counted: one per history (each object and buffer once over all its frames). */
+export const frameLedger = () => ({ objs: new WeakSet(), bufs: new WeakSet() });
+/**
+ * The bytes `frame` adds to the history: its packed fields, and what of its meta no frame before it brought (frames are
+ * counted in order, with one `seen` for the history). Its `events` are read as the ones it brought (`_eventsNew`,
+ * app/history-share.js), not the whole list a read of frame.events makes.
+ */
+export function frameBytes(frame, seen) {
+    let b = frame._packed ? packedBytes({ fields: frame._packed }) : 0;
+    for (const k of Object.keys(frame)) {
+        if (k === 'events' && frame._eventsNew) continue;
+        const v = frame[k];
+        b += FIELD + (ArrayBuffer.isView(v) ? (seen.bufs.has(v.buffer) ? 0 : (seen.bufs.add(v.buffer), v.buffer.byteLength)) : jsBytes(v, seen));
+    }
+    if (frame._eventsNew) b += jsBytes(frame._eventsNew, seen);
+    return b;
+}
+
+/** How much the history's frames may hold before Keep going stops: the budget less the rest of the page (the moments kept
+ *  in detail included) and the room the next Add detail at `cells` needs — at least 0.2 GB. */
+export function framesRoomBytes({ held, cells }) {
+    return Math.max(0.2e9, BUDGET_BYTES - (held.total - held.frames) - Math.max(passPeakBytes(cells), keptWorkerBytes(cells)));
 }

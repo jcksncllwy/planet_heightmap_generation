@@ -36,7 +36,7 @@ import { downloadBlob } from '../view/png.js';
 import { SMALL_DEVICE } from '../core/device.js';
 import { watchView } from './history-view.js';
 import { finishKey } from '../app/finish-key.js';
-import { BUDGET_BYTES, heldBytes, roomPlan, detailRoomBytes, bytesWords } from './page-memory.js';
+import { BUDGET_BYTES, heldBytes, roomPlan, detailRoomBytes, framesRoomBytes, frameBytes as framesOwnBytes, frameLedger, bytesWords } from './page-memory.js';
 
 setDelaunator(Delaunator);
 
@@ -169,9 +169,10 @@ const GO_PIECE_MYR = 20;
 // you paused stays paused). Off: pausing is yours alone (the Pause button beside the history's progress). An open
 // question for Jackson (histpause, 2026-11-26); measured in the lane's report.
 const PAUSE_FOR_DETAIL = false;
-// …and stops for good when the history holds this much (a frame, packed, is ~24–28 bytes a plate cell: ~0.1 GB per
-// 1000 Myr at 40K) — some 13,000 Myr at 40K on a desktop, 7,000 Myr at 20K on a phone
-const HISTORY_BYTES = IS_TOUCH ? 400e6 : 1.5e9, FRAME_BYTES_PER_CELL = 28;
+// …and stops for good when its frames hold what the page's memory budget leaves them (page-memory.js framesRoomBytes: the
+// budget less the rest of the page and the room the next Add detail needs), counted by what they really hold — packed
+// fields and JS objects, what frames share once (page-memory.js frameBytes; pagemem2, 2026-11-27: it was reckoned at 28
+// bytes a cell a frame against a fixed 1.5 GB, when a frame came to 5–7 MB at 4,000 Myr on 40K cells)
 ui.seed.addEventListener('keydown', e => { if (e.key === 'Enter') build(); });
 
 // ── drawing ──
@@ -249,7 +250,8 @@ function bytesOf(x, seen = new Set(), depth = 0) {
 }
 const finishBytes = f => (f.bytes ??= bytesOf({ raster: f.raster, rivers: f.rivers, climate: f.climate }));
 // ── the page's memory (page-memory.js): what it holds now, and whether a detailed moment can be let go and brought back ──
-const frameSizes = new WeakMap(), frameBytes = f => { let v = frameSizes.get(f); if (v == null) frameSizes.set(f, v = bytesOf(f)); return v; };
+// (each frame's bytes worked out once, in order, against one note per history of what is counted: page-memory.js frameBytes)
+const frameSizes = new WeakMap(), frameBytes = (b, f) => { let v = frameSizes.get(f); if (v == null) frameSizes.set(f, v = framesOwnBytes(f, b.frameLedger ??= frameLedger())); return v; };
 /** Is this detailed moment in the finish cache (read from it, or kept there after it was made)? Only those are let go to make room. */
 const onDisk = fin => !!fin.cacheKey && (fin.cached || finisher.saved.has(fin.cacheKey));
 /** Let a detailed moment go; one the finish cache holds is noted with its detail and climate, to bring back at them when
@@ -261,7 +263,7 @@ function letGoFinish(b, frame, fin) {
 /** What the page holds now, by part (page-memory.js heldBytes). */
 function held(b) {
     let frames = 0, detail = 0;
-    for (const f of b.frames) frames += frameBytes(f);
+    for (const f of b.frames) frames += frameBytes(b, f);
     for (const fin of b.finishes.values()) detail += finishBytes(fin);
     return heldBytes({ framesBytes: frames, detailBytes: detail, keptWorkerCells: finisher.keptCells, poolResting: !!b.player?.resting });
 }
@@ -402,7 +404,7 @@ async function keepGoing(b, until = Infinity) {
     let failed = null;
     try {
         while (b.wantGo && B === b && b.simMyr < until - 1e-9) {
-            if (b.frames.length * FRAME_BYTES_PER_CELL * b.simMesh.numCells >= HISTORY_BYTES) { b.full = true; break; }
+            { const h = held(b); if (h.frames >= framesRoomBytes({ held: h, cells: Number($('finishCells').value) })) { b.full = true; console.info(`[evolution] the history holds ${bytesWords(h.frames)} of frames at ${b.simMyr.toFixed(0)} Myr: as much as the page's memory leaves them (budget ${bytesWords(BUDGET_BYTES)}, the rest of the page ${bytesWords(h.total - h.frames)})`); break; } }
             const to = Math.min(until, b.simMyr + GO_PIECE_MYR);
             if (to > Number(ui.time.max)) { setScale(to); rail(); }
             const r = await b.run.more(to);
