@@ -72,12 +72,18 @@ export function frontArrival(mesh, len, arrival, speed, sources = null, untilT =
 /**
  * Cost-distance over land: `cost(a, b, k)` the cost of adjacency k from a to b (e.g. km, less along a river), `canEnter(b)`.
  * Returns reach(c0, budget) → [[cell, cost]] in order of cost (c0 first, at 0) — a bounded Dijkstra reusing its arrays.
+ * A query's answer is its own, whatever ran before it (lane civgpu2): its costs are rounded to the float32 `dist` holds
+ * before they are compared or queued — a float64 key above its float32 copy was popped as stale, its cell never output —
+ * and every cell it wrote is reset after, not only those output (a skipped cell's cost leaked into the next query).
  */
 export function costReach(mesh, cost, canEnter) {
     const { adjOffset, adjList } = mesh, dist = new Float32Array(mesh.numCells).fill(Infinity), heap = new MinHeap(256);
+    let touched = new Int32Array(256);
     return (c0, budget) => {
         const out = [];
-        dist[c0] = 0; heap.push(0, c0);
+        let nt = 0;
+        const touch = c => { if (nt === touched.length) { const g = new Int32Array(2 * nt); g.set(touched); touched = g; } touched[nt++] = c; };
+        dist[c0] = 0; touch(c0); heap.push(0, c0);
         while (heap.size) {
             const a = heap.pop(), t = heap.lastKey;
             if (t > dist[a]) continue;
@@ -85,11 +91,11 @@ export function costReach(mesh, cost, canEnter) {
             for (let k = adjOffset[a]; k < adjOffset[a + 1]; k++) {
                 const b = adjList[k];
                 if (!canEnter(b)) continue;
-                const tb = t + cost(a, b, k);
-                if (tb <= budget && tb < dist[b]) { dist[b] = tb; heap.push(tb, b); }
+                const tb = Math.fround(t + cost(a, b, k));
+                if (tb <= budget && tb < dist[b]) { if (dist[b] === Infinity) touch(b); dist[b] = tb; heap.push(tb, b); }
             }
         }
-        for (const [c] of out) dist[c] = Infinity;
+        for (let i = 0; i < nt; i++) dist[touched[i]] = Infinity;
         return out;
     };
 }

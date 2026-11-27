@@ -13,13 +13,27 @@ import { edgeLengths, costReach } from './travel.js';
 
 const DEG = 180 / Math.PI;
 
-/** The travel network the towns, their supply and their polities share: each edge's cost in land km, a bounded reach. */
+/** The travel network the towns, their supply and their polities share: each edge's cost in land km, a bounded reach.
+ *  The reach is kept per (budget, cell): the network is fixed for a world, and a query's answer its own whatever ran
+ *  before it (travel.js costReach), so the towns' and polities' millions of queries — ~50 000 distinct at 160K — are
+ *  each searched once (lane civgpu2; C.reachMemo false only to show the cache changes nothing). The arrays returned are
+ *  shared: read them, don't change them. */
 export function townNetwork(w, sub, C = CIV) {
     const { mesh, ocean, lake } = w, len = edgeLengths(mesh);
     const land = c => !ocean[c] && !lake[c];
     const navigable = c => sub.river.q[c] >= C.navigableM3s, coastal = c => sub.coastal[c] === 1;
     const cost = (a, b, k) => len[k] * (navigable(a) && navigable(b) ? C.riverCostShare : coastal(a) && coastal(b) ? C.coastCostShare : 1);
-    return { land, cost, reach: costReach(mesh, cost, land) };
+    const search = costReach(mesh, cost, land);
+    if (C.reachMemo === false) return { land, cost, reach: search };
+    const kept = new Map();
+    const reach = (c, budget) => {
+        let byCell = kept.get(budget);
+        if (!byCell) kept.set(budget, byCell = new Map());
+        let r = byCell.get(c);
+        if (!r) byCell.set(c, r = search(c, budget));
+        return r;
+    };
+    return { land, cost, reach };
 }
 
 /** The tier of a settlement of `pop` people (CIV.tiers: 0 village … 3 city). */
