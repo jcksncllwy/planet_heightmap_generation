@@ -4,6 +4,7 @@
 //
 //   node --max-old-space-size=16000 v2/tools/civ-sim.mjs --seed 12345 --time 300 [--cells 640000] [--origin lat,lon] [--end 0]
 //   node --max-old-space-size=16000 v2/tools/civ-sim.mjs --earth [--origin 5,36] [--set key=value ...] [--name sim-earth-x]
+//   … --cpu: the famine's years on the CPU's float64 reference (default: the GPU, as the page; lib/civ-engine.mjs)
 //
 // Output (v2/out/civ/sim-<name>/): timeline.png (density at eight moments — foragers in cool colours, farmers in warm, the
 // domestication centres ringed), summary.json (centres, totals, the Earth scores).
@@ -16,6 +17,7 @@ import { runCivSim, byteDensity, farms } from '../js/civ/sim.js';
 import { TownFlag } from '../js/civ/polity.js';
 import { CIV } from '../js/civ/civ-config.js';
 import { DEFAULT_CONT } from './lib/moment-frame.mjs';
+import { civEngine } from './lib/civ-engine.mjs';
 import { OUT, MESH_SEED, worldOf, writePng, pixelCells, ramp, warmRamp, drawText } from './lib/civ-world.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
@@ -35,7 +37,9 @@ const cellAt = (lat, lon) => w.mesh.index.nearest(Math.cos(lat * D) * Math.cos(l
 const latOf = c => Math.asin(w.mesh.xyz[3 * c + 2]) / D, lonOf = c => Math.atan2(w.mesh.xyz[3 * c + 1], w.mesh.xyz[3 * c]) / D;
 const sub = civSubstrate(w, C);
 console.log(`world ${EARTH ? 'Earth' : SEED} at ${w.mesh.numCells.toLocaleString()} cells; substrate (${secs()})`);
-const res = runCivSim(w, sub, { origins: ORIGIN ? [cellAt(...ORIGIN)] : null, endBP: END, C });
+const E = await civEngine();
+const res = await runCivSim(w, sub, { origins: ORIGIN ? [cellAt(...ORIGIN)] : null, endBP: END, C, gpu: E.gpu });
+console.log(`the famine's years: ${E.label}`);
 console.log(`ran ${CIV.originBP.toLocaleString()} BP → ${END} BP in ${res.totals.length} steps (${secs()}); origin ${res.origins.map(c => `${latOf(c).toFixed(1)},${lonOf(c).toFixed(1)}`)}`);
 const at = bp => res.totals.reduce((a, b) => (Math.abs(b.bp - bp) < Math.abs(a.bp - bp) ? b : a));
 for (const bp of [50000, 20000, 12000, 10000, 8000, 6000, 4000, 0]) { const x = at(bp); console.log(`  ${String(bp).padStart(6)} BP: ${(x.people / 1e6).toFixed(2)} M people, ${(x.farmers / 1e6).toFixed(2)} M farmers`); }
