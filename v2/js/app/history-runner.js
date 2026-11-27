@@ -3,7 +3,7 @@
 
 import { simulate } from '../tectonics/simulate.js';
 import { terrainConfig } from '../terrain/terrain-config.js';
-import { PackedFrame } from '../tectonics/frame-pack.js';
+import { ShareJoin } from './history-share.js';
 import { historyEnding } from '../tectonics/ending.js';
 import { SMALL_DEVICE } from '../core/device.js';
 import { runHeld } from './history-hold.js';
@@ -43,12 +43,13 @@ export function runHistory({ list, scene, heights = {}, ending = 'none', start =
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL('./history-worker.js', import.meta.url), { type: 'module' }), frames = [];
         let moreJob = null, dead = null;             // (a run-on under way: its promise's resolve / reject; the worker's end)
+        const join = new ShareJoin();                // (the frames, whole again from what the worker sent: history-share.js)
         // (the page's pause, passed on to the worker, which says where it holds; once the worker is gone, nothing is held)
         const letHoldGo = () => { if (hold) { hold.relay = null; hold.mirror({ wanted: false, heldAt: null }); } };
         if (hold) hold.relay = ask => worker.postMessage({ type: 'hold', ask });
         const fail = err => { dead = err; worker.terminate(); letHoldGo(); if (moreJob) { moreJob.reject(err); moreJob = null; } else reject(err); };
         worker.onmessage = ({ data }) => {
-            if (data.type === 'frame') { const frame = new PackedFrame(data.frame); frames.push(frame); onProgress(frame.time); onFrame?.(frame, frames.length - 1); }
+            if (data.type === 'frame') { const frame = join.frame(data.frame, data.share); frames.push(frame); onProgress(frame.time); onFrame?.(frame, frames.length - 1); }
             else if (data.type === 'done') {
                 const out = { frames, steps: data.steps, stopped: data.stopped, complete: !data.stopped && ending !== 'none', time: data.time, ms: data.ms, packMs: data.packMs, uploadMs: data.uploadMs };
                 if (!keep) { worker.terminate(); letHoldGo(); }

@@ -17,6 +17,7 @@ import { HelperPool } from './helper-pool.js';
 import { HISTORY_CODE } from './history-code.js';
 import { historyKey, mathFingerprint, gpuFingerprint } from './history-key.js';
 import { HistoryUpload } from './history-upload.js';
+import { ShareSender } from './history-share.js';
 import { setDelaunator } from '../../../js/sphere-mesh.js';
 import { HistoryHold, runHeld } from './history-hold.js';
 import { freeDeadPlates } from '../tectonics/ops/free-dead-plates.js';
@@ -36,8 +37,12 @@ const send = frame => {
     const t = performance.now(), { packed, transfer } = packFrame(frame);
     packMs += performance.now() - t;
     if (upload && Math.abs(frame.time / grid - Math.round(frame.time / grid)) < 1e-6) upload.frame(packed);    // (before the arrays go)
-    self.postMessage({ type: 'frame', frame: packed }, transfer);
+    // (what the frames before already took to the page is not sent again: the events logged since, the plates that changed,
+    // the climate when it is a new sample — app/history-share.js; the cache above has the whole frame)
+    const { meta, share } = sender.meta(packed.meta);
+    self.postMessage({ type: 'frame', frame: { meta, fields: packed.fields }, share }, transfer);
 };
+let sender = new ShareSender();
 // (with helpers, or right here — the same history either way; paused at a frame when the page asks — the same history too)
 const hold = new HistoryHold();
 hold.on(h => self.postMessage({ type: 'held', wanted: h.wanted, heldAt: h.heldAt }));
@@ -74,6 +79,7 @@ self.onmessage = async ({ data }) => {
         // (V1's buildSphere, which the plate stress field's own mesh uses, needs Delaunator set: the page's setting is not this worker's)
         if (!delaunatorSet) { setDelaunator((await import(data.delaunatorUrl)).default); delaunatorSet = true; }
         const scene = SCENE_LISTS[list].find(s => s.id === sceneId), simMesh = meshFromArrays(mesh);
+        sender = new ShareSender();                                    // (a new history: the page's side starts afresh too)
         await helpersFor(simMesh);
         // (start: start-world tunables, for scenes that take them)
         const world = helpers && scene.buildAsync ? await scene.buildAsync(simMesh, seed, start, helpers) : scene.build(simMesh, seed, start);
