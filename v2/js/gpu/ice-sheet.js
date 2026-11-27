@@ -715,6 +715,7 @@ export async function iceSheetGPU(device, { mesh, bed, H = null, smb, sea = 0, P
     return {
         run, setBed, setSmb, setTsurf, readH, speeds, books, area, force: forceB, P,
         setSea: m => { seaM = m; },
+        setH: h => device.queue.writeBuffer(Hb[cur], 0, Float32Array.from(h)),
         get sea() { return seaM; },
         get H() { return Hb[cur]; },
         destroy: () => { for (const b of own) b.destroy(); },

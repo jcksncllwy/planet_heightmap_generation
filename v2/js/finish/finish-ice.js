@@ -22,6 +22,7 @@ import { cellClimateGPU } from '../gpu/climate-cells.js';
 import { iceSheetGPU, ICE } from '../gpu/ice-sheet.js';
 import { iceBalanceGPU } from '../gpu/ice-balance.js';
 import { readBack } from '../gpu/gpu-device.js';
+import { cornerEpochs, orbitPredictors, fitTable, emulate, anchorOf } from './ice-emulator.js';
 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const R = 6371, LAPSE = 6.5, ICE_SHEET_KM2 = 5e4;
@@ -146,6 +147,85 @@ export async function glacialSheets({ device, mesh, z, climateOptions = {}, onRo
     }
     return { ...(await sheetsOut({ device, sheet, mesh, z, M, n, nF, H, bed, bedM, sea, flt, climate, lat, lon, gamma })), rounds, ms: Math.round(performance.now() - t0) };
 }
+// ── The last glacial cycle, transient (lane iceemu E3, 2026-11-27): the sheets grown through the last F.iceCycleKyr of the
+// orbit's cycle, not to a steady state at one epoch. The climate is the response table's (finish/ice-emulator.js): solves on
+// the bare bed at epochs F.iceTableKyr apart fix the orbit's response, a solve with the ice as it stands every F.iceResolveKyr
+// fixes the ice's own effect (the anchor), and every F.iceClimateEveryKyr the climate is the table at the epoch plus the
+// anchor's ice effect weighted by the ice's volume. The climate's own perennial snow is off in every solve (ownSheets: false):
+// the ice model's H is the only sheet, so inception is the ice's own balance, not the climate's snow switch. Between climate
+// updates the sheets run as glacialSheets' rounds do (the balance from their surface every iceBalanceEveryYr; the sea and the
+// bed's Airy sinking from their volume each update). The answer is the sheets at the cycle's largest ice volume (on Earth's
+// orbit, near the LGM), the epoch it fell at, and the volume's history (rounds: one a climate update).
+// Limits: the emulator's (one global ice weight, the orbit's response linear: check-ice-emulator), the sheets' (gpu/ice-sheet.js),
+// the bed's equilibrium sinking (no lag: an LGM's bed is ~1/3 short of it, Peltier 2004), no carbon cycle (the CO2 held).
+/**
+ * As glacialSheets (same answer), the cycle transient. @param {Object} ctx  { device, mesh, z, climateOptions, onRound?, co2Record? }
+ */
+export async function cycledIce({ device, mesh, z, climateOptions = {}, onRound = null, co2Record = false }, F) {
+    const t0 = performance.now(), nF = mesh.numCells;
+    const im = nF <= 1.2 * F.iceMeshCells ? mesh : terrainMesh(F.iceMeshCells), n = im.numCells, M = im === mesh ? null : mapOnto(im, mesh);
+    const bed0 = M ? meanOnto(M, z, n) : Float32Array.from(z), x = im.xyz;
+    const lat = new Float32Array(n), lon = new Float32Array(n);
+    for (let c = 0; c < n; c++) { lat[c] = Math.asin(x[3 * c + 2]) * 180 / Math.PI; lon[c] = Math.atan2(x[3 * c + 1], x[3 * c]) * 180 / Math.PI; }
+    const flt = ICE.rhoIce / ICE.rhoSea, sink = ICE.rhoIce / ICE.rhoMantle, gamma = CORE_DEFAULTS.lapseRateCPerKm;
+    const bedM = Float32Array.from(bed0, v => 1000 * v), bed = bedM.slice();
+    const sheet = await iceSheetGPU(device, { mesh: im, bed, smb: null, sea: 0, P: { ...ICE, scheme: F.iceScheme ?? ICE.scheme, semiDtYr: F.iceDtYr ?? ICE.semiDtYr, semiIters: F.iceSolveIters ?? ICE.semiIters } }), area = sheet.area;
+    let seaArea = 0;
+    { const o = worldOcean(im, bed0, 0).ocean; for (let c = 0; c < n; c++) if (o[c]) seaArea += area[c]; }
+    const sysIn = systemOf(climateOptions.system), sys0 = co2Record ? sysIn : { ...sysIn, atmosphere: { ...sysIn.atmosphere, co2: null } };
+    const system = { ...sys0, orbit: { ...sys0.orbit, cycle: sys0.orbit.cycle ?? EARTH_CYCLE } }, opts = { ...climateOptions, ownSheets: false };
+    const elevKm = new Float32Array(n), iceMask = new Uint8Array(n), land = new Uint8Array(n);
+    let H = new Float32Array(n), sea = 0;
+    // (the ground the climate sees, as glacialSheets': the ice's surface where it stands grounded, against the sea it lowered)
+    const ground = () => {
+        for (let c = 0; c < n; c++) { const g = bed[c] >= sea || H[c] * flt > sea - bed[c]; elevKm[c] = ((g ? bed[c] + H[c] : bed[c]) - sea) / 1000; iceMask[c] = g && H[c] > 0 ? 1 : 0; }
+        const o = worldOcean(im, elevKm, 0).ocean; for (let c = 0; c < n; c++) land[c] = o[c] ? 0 : 1;
+    };
+    const solveAt = async k => { ground(); return glacialClimate(device, { x, elevKm, land, iceMask, system: { ...system, epochKyr: k }, climateOptions: opts }, F); };
+    // (the table: the bare bed's solves, evenly over the cycle; the first is the cycle's start, where there is no ice yet)
+    const fromKyr = F.iceCycleKyr, toKyr = F.iceCycleEndKyr ?? 0, solves = Math.max(5, Math.round((fromKyr - toKyr) / F.iceTableKyr) + 1);
+    const corners = cornerEpochs(system, { fromKyr, toKyr, k: solves }), samples = [];
+    let tClimate = 0;
+    { const tw = performance.now(); for (const k of corners) { const r = await solveAt(k); samples.push({ k, x: orbitPredictors(system, k), Tsl: r.Tsl, P: r.P, pAnn: r.pAnn, grid: r.grid }); } tClimate += performance.now() - tw; }
+    const table = fitTable(samples), grid = samples[0].grid;
+    let anchor = null, pAnn = samples[0].pAnn, lastResolve = fromKyr, climate = null, vol = 0, best = null, tIce = 0, solvesN = samples.length;
+    const rounds = [];
+    for (let t = fromKyr; t > toKyr + 1e-9;) {
+        const dk = Math.min(F.iceClimateEveryKyr, t - toKyr);
+        // (an anchor: the climate solved with the ice as it stands, every iceResolveKyr once there is ice)
+        if (lastResolve - t >= F.iceResolveKyr - 1e-9 && vol > 0) {
+            const tw = performance.now(), r = await solveAt(t); tClimate += performance.now() - tw; solvesN++;
+            anchor = anchorOf(table, orbitPredictors(system, t), r, vol); pAnn = r.pAnn; lastResolve = t;
+        }
+        const { Tsl, P } = emulate(table, orbitPredictors(system, t - dk / 2), anchor, vol, F.iceWeightMax);
+        climate = { grid, Tsl, P };
+        sheet.setBed(bed); sheet.setSea(sea);
+        const bal = await iceBalanceGPU(device, { sheet, grid, Tsl, P, lat, lon, pAnn, gamma, datum: sea });
+        const tw = performance.now(); await sheet.run(1000 * dk, { each: e => bal.encode(e), everyYears: F.iceBalanceEveryYr }); tIce += performance.now() - tw;
+        bal.destroy();
+        t -= dk;
+        H = await sheet.readH();
+        let above = 0, km2 = 0; vol = 0;
+        for (let c = 0; c < n; c++) {
+            if (!(H[c] > 0)) { bed[c] = bedM[c]; continue; }
+            const g = bed[c] >= sea || H[c] * flt > sea - bed[c];
+            if (g) above += area[c] * (H[c] - Math.max(0, sea - bed[c]) / flt);
+            km2 += area[c] / 1e6; vol += area[c] * H[c] / 1e9;
+            bed[c] = bedM[c] - (g ? sink * H[c] : 0);
+        }
+        sea = -above * flt / seaArea;
+        const rec = { epochKyr: t, kyr: dk, iceMkm2: km2 / 1e6, iceMkm3: vol / 1e6, seaM: sea };
+        rounds.push(rec); onRound?.(rec);
+        // (the cycle's largest ice: the sheets, bed, sea and climate kept as they stood)
+        if (!best || vol > best.vol) best = { vol, t, H: H.slice(), bed: bed.slice(), sea, climate };
+    }
+    const bk = await sheet.books();
+    if (best) { H = best.H; bed.set(best.bed); sea = best.sea; climate = best.climate; sheet.setH(H); sheet.setBed(bed); sheet.setSea(sea); }
+    const out = await sheetsOut({ device, sheet, mesh, z, M, n, nF, H, bed, bedM, sea, flt, climate, lat, lon, gamma });
+    return { ...out, rounds, maxKyr: best?.t ?? null, ms: Math.round(performance.now() - t0),
+        cost: { climateMs: Math.round(tClimate), iceMs: Math.round(tIce), solves: solvesN, madeKm3: bk.made / 1e9, residual: bk.residual, retries: bk.retries } };
+}
+
 // (the sheets as they stand, to the finish's mesh: the last balance and speeds from the ice, then the ice where its cell of the
 // ice mesh holds ice — glacialSheets' and cycledIce's shared answer)
 async function sheetsOut({ device, sheet, mesh, z, M, n, nF, H, bed, bedM, sea, flt, climate, lat, lon, gamma }) {

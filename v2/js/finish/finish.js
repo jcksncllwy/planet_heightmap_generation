@@ -11,7 +11,7 @@ import { LatLonGrid } from './finish-grid.js';
 import { rockBeforeCarve, rockCfg, rockColumn } from './finish-lithology.js';
 import { closedBasins, joinOpenSeas } from './finish-basins.js';
 import { depositSediment } from './finish-sediment.js';
-import { lastIceAge, glacialSheets } from './finish-ice.js';
+import { lastIceAge, glacialSheets, cycledIce } from './finish-ice.js';
 import { windWork } from './finish-wind.js';
 import { coastWork, tidalInlets } from './finish-coast.js';
 import { fillSeaBasins, Water } from './finish-hydro.js';
@@ -457,7 +457,7 @@ async function finishStages({ frame, simMesh, seed, cells, pool, closePool = fal
     const grid = new LatLonGrid(0.25);
     // (its sheets, grown under a glacial epoch's climate on the ground as it stands — finish-ice.js glacialSheets, the GPU's —
     // when F.iceGrown asks for them; off by default for its cost (finish-config.js), the prescribed ice age instead)
-    const sheet = F.iceGrown ? await glacialSheets({ device, mesh, z: C.z, climateOptions }, F) : undefined;
+    const sheet = F.iceGrown ? await (F.iceCycle ? cycledIce : glacialSheets)({ device, mesh, z: C.z, climateOptions }, F) : undefined;
     if (sheet) {
         stats.iceAge = { seaM: Math.round(1000 * sheet.seaKm), rounds: sheet.rounds, ms: sheet.ms };
         observe?.('ice sheet', mesh, C.z, null, null, sheet);  // (a tool's look at the sheets as grown: render-moment --dump)

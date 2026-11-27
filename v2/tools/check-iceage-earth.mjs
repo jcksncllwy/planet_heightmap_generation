@@ -29,7 +29,7 @@ import { cellClimateGPU } from '../js/gpu/climate-cells.js';
 import { finishDevice } from '../js/gpu/finish-gpu.js';
 import { FINISH } from '../js/finish/finish-config.js';
 import { LatLonGrid } from '../js/finish/finish-grid.js';
-import { lastIceAge, glacialSheets } from '../js/finish/finish-ice.js';
+import { lastIceAge, glacialSheets, cycledIce } from '../js/finish/finish-ice.js';
 import { measureIceGrid } from './lib/ice-grid-measure.mjs';
 import { ICE } from '../js/gpu/ice-sheet.js';
 import { pddBalance } from '../js/gpu/ice-balance.js';
@@ -122,7 +122,7 @@ const probe = ({ round, epochKyr, force, H, lat: la, lon: lo, sea }) => {
     }
     console.log(`the balance as the round at ${epochKyr} ka starts (round ${round}${round ? ', on the inception\'s ice' : ', ice-free'}):\n${line.join('\n')}`);
 };
-const GS = await glacialSheets({ device, mesh, z: bedE, climateOptions: {}, probe, co2Record: true }, F);     // (Earth's own CO2 record: a replay, ruled 2026-11-27)
+const GS = await (F.iceCycle ? cycledIce : glacialSheets)({ device, mesh, z: bedE, climateOptions: {}, probe, co2Record: true }, F);     // (Earth's own CO2 record: a replay, ruled 2026-11-27)
 const simMesh = buildSimMesh(40000, MESH_SEED), zi = bedE.slice();
 const LIA = lastIceAge({ mesh, z: zi, lat, lon, warmSl, rain, grid: new LatLonGrid(0.25), cellKm2, seed: 1, soft: null, land, simMesh, teSim: new Float32Array(simMesh.numCells).fill(50), sheet: GS }, F).ice;
 const iceAgeS = (performance.now() - tg) / 1000;
@@ -146,7 +146,8 @@ const both = (a, b, f) => { let s = 0; for (let c = 0; c < n; c++) if (a[c] && b
 
 section('the ice age on Earth\'s ground and climate (finish-ice.js) against ICE-6G_C at 21 ka');
 {
-    for (const r of GS.rounds) console.log(`  round at ${r.epochKyr} ka, ${r.kyr} kyr (${r.steps} steps, ${(r.ms / 1000).toFixed(1)} s, the ice ${((r.iceMs ?? 0) / 1000).toFixed(1)} s): ice ${r.iceMkm2.toFixed(1)} Mkm², ${r.iceMkm3.toFixed(1)} M km³, sea ${r.seaM.toFixed(0)} m; made ${(r.madeKm3 ?? 0).toExponential(1)} km³${r.residual ? `, solve residual ≤ ${r.residual.toExponential(1)}` : ""}`);
+    if (GS.cost) console.log(`  the cycle: ${(GS.ms / 1000).toFixed(1)} s (climate ${(GS.cost.climateMs / 1000).toFixed(1)} s, ${GS.cost.solves} solves; the ice ${(GS.cost.iceMs / 1000).toFixed(1)} s); its largest ice at ${GS.maxKyr} ka; made ${GS.cost.madeKm3.toExponential(1)} km³\n${GS.rounds.filter(r => Math.abs(r.epochKyr / 10 - Math.round(r.epochKyr / 10)) < 1e-6).map(r => `  ${r.epochKyr} ka: ice ${r.iceMkm2.toFixed(1)} Mkm², ${r.iceMkm3.toFixed(1)} M km³, sea ${r.seaM.toFixed(0)} m`).join('\n')}`);
+    else for (const r of GS.rounds) console.log(`  round at ${r.epochKyr} ka, ${r.kyr} kyr (${r.steps} steps, ${(r.ms / 1000).toFixed(1)} s, the ice ${((r.iceMs ?? 0) / 1000).toFixed(1)} s): ice ${r.iceMkm2.toFixed(1)} Mkm², ${r.iceMkm3.toFixed(1)} M km³, sea ${r.seaM.toFixed(0)} m; made ${(r.madeKm3 ?? 0).toExponential(1)} km³${r.residual ? `, solve residual ≤ ${r.residual.toExponential(1)}` : ""}`);
     // (today's ice as the sea's: its volume, ρ_i/ρ_sea of it over today's sea — the LGM's drop is against today's sea, which
     // already lacks it)
     let today = 0, seaKm2 = 0; const o = worldOcean(mesh, bedE, 0).ocean;

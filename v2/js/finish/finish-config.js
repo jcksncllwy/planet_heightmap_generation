@@ -85,11 +85,21 @@ export const FINISH = {
     iceSheetKm2: [3e4, 1e6],    // (by how big the snowfield it flows from is)
     iceNyeKm: 0.015,            // ice thickness √(iceNyeKm · distance to the margin), km (a plastic ice sheet: ~3.9 km at 1000 km)
     iceMaxKm: 4.5,
-    iceScheme: 'explicit',      // (grown) the ice's time step: 'explicit' (the stability limit, gpu/ice-sheet.js) or 'semi' (the
+    iceScheme: 'semi',          // (grown) the ice's time step: 'explicit' (the stability limit, gpu/ice-sheet.js) or 'semi' (the
                                 // semi-implicit step, Hindmarsh & Payne 1996: iceDtYr a step, halved where it overshoots; its CG
                                 // at most iceSolveIters iterations). Earth's replay: 20 and 50 a both within 3 % of the explicit ice
     iceDtYr: 50,
     iceSolveIters: 64,
+    // (grown, the cycle: finish-ice.js cycledIce, the sheets through the last glacial cycle's transient — or, off, glacialSheets'
+    // rounds to a steady state at the maximum's epoch)
+    iceCycle: true,
+    iceCycleKyr: 120,           // the cycle's start, kyr before the moment (Earth's last interglacial ended ~116 ka: inception)
+    iceTableKyr: 10,            // the response table's bare-bed solves this far apart over the cycle (check-ice-emulator on
+                                // Earth: 20 kyr apart the table held 84 % of the held-out land T signal, 10 kyr 90.5 %)
+    iceResolveKyr: 20,          // a solve with the ice as it stands this often (the anchor: the ice's own effect on the climate)
+    iceClimateEveryKyr: 1,      // the table's climate brought to the epoch this often (the orbit's shortest term, precession's
+                                // ~19–23 kyr, is ≥ 19 such steps)
+    iceWeightMax: 1.5,          // the anchor's ice effect weighted by the ice's volume against the anchor's, at most this
     iceMeshCells: 160000,       // (grown) the ice's mesh (~55 km): paleo ice-sheet models run at 20–100 km (Abe-Ouchi et al. 2013 1°;
                                 // Ganopolski et al. 2010 ~40 km; PMIP4 ice sheets 0.5–1°, Ivanovic et al. 2016)
     iceInceptionKyr: 116,       // the inception's epoch of the orbit's cycle and the air's CO2: Earth's last glacial inception,

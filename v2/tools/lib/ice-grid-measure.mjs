@@ -78,7 +78,7 @@ export function measureIceGrid({ mesh, z, sheet, iceMeshCells, label, log = cons
     const outlets = streams.filter(s => s.outlet), widths = streams.map(s => s.widthKm);
     const iceEdgeKm = Math.sqrt(4 * Math.PI * R * R / iceMeshCells * 2 / Math.sqrt(3));
     const out = {
-        label, iceMeshCells, iceEdgeKm, finishCells: n, ms: sheet.ms, rounds: sheet.rounds.map(r => ({ kyr: r.kyr, steps: r.steps, ms: r.ms, iceMkm2: r.iceMkm2, seaM: r.seaM })), seaM: 1000 * sea,
+        label, iceMeshCells, iceEdgeKm, finishCells: n, ms: sheet.ms, rounds: sheet.rounds.map(r => ({ epochKyr: r.epochKyr, kyr: r.kyr, steps: r.steps, ms: r.ms, iceMkm2: r.iceMkm2, seaM: r.seaM })), maxKyr: sheet.maxKyr ?? null, cost: sheet.cost ?? null, seaM: 1000 * sea,
         iceMkm2: total / 1e6, sheets: sheets.length, sheetMkm2: sheets.reduce((s, p) => s + p.km2, 0) / 1e6,
         caps: caps.length, capKm2: caps.reduce((s, p) => s + p.km2, 0), capsHigh: caps.filter(p => p.high > 0.5).length,
         streams: streams.length, outlets: outlets.length, widthKm: { p10: q(widths, 0.1), median: q(widths, 0.5), p90: q(widths, 0.9), max: Math.max(0, ...widths) },
@@ -87,7 +87,9 @@ export function measureIceGrid({ mesh, z, sheet, iceMeshCells, label, log = cons
         marginN: Array.from(marginN, v => v === v ? Math.round(v * 10) / 10 : null), marginS: Array.from(marginS, v => v === v ? Math.round(v * 10) / 10 : null),
     };
     log(`\n── ice grid: ${label} — ice mesh ${iceMeshCells.toLocaleString()} cells (~${iceEdgeKm.toFixed(0)} km), finish mesh ${n.toLocaleString()} ──`);
-    log(`time: ${(sheet.ms / 1000).toFixed(1)} s; rounds ${out.rounds.map(r => `${r.kyr} kyr ${r.steps} steps ${(r.ms / 1000).toFixed(1)} s ${r.iceMkm2.toFixed(1)} Mkm² sea ${r.seaM.toFixed(0)} m${r.change < Infinity ? ` Δvol ${(100 * r.change).toFixed(1)} %` : ""}`).join(' · ')}`);
+    // (the cycle, cycledIce: its cost, its largest ice's epoch, and the ice every 10 kyr)
+    if (sheet.cost) log(`time: ${(sheet.ms / 1000).toFixed(1)} s (climate ${(sheet.cost.climateMs / 1000).toFixed(1)} s, ${sheet.cost.solves} solves; ice ${(sheet.cost.iceMs / 1000).toFixed(1)} s); the cycle's largest ice at ${sheet.maxKyr} ka; made ${sheet.cost.madeKm3.toExponential(1)} km³, ${sheet.cost.retries} batches halved; ka: ${sheet.rounds.filter(r => Math.abs(r.epochKyr / 10 - Math.round(r.epochKyr / 10)) < 1e-6).map(r => `${r.epochKyr} ${r.iceMkm2.toFixed(1)} Mkm² ${r.seaM.toFixed(0)} m`).join(' · ')}`);
+    else log(`time: ${(sheet.ms / 1000).toFixed(1)} s; rounds ${out.rounds.map(r => `${r.kyr} kyr ${r.steps} steps ${(r.ms / 1000).toFixed(1)} s ${r.iceMkm2.toFixed(1)} Mkm² sea ${r.seaM.toFixed(0)} m${r.change < Infinity ? ` Δvol ${(100 * r.change).toFixed(1)} %` : ""}`).join(' · ')}`);
     log(`ice ${out.iceMkm2.toFixed(2)} Mkm²: ${out.sheets} sheets ${out.sheetMkm2.toFixed(2)} Mkm²; ${out.caps} mountain caps ${(out.capKm2 / 1e3).toFixed(0)}k km² (${out.capsHigh} mostly above 1 km)`);
     log(`ice streams (≥ ${STREAM_MA} m/a sliding): ${out.streams}, ${out.outlets} reaching the margin; width p10/median/p90/max ${[out.widthKm.p10, out.widthKm.median, out.widthKm.p90, out.widthKm.max].map(v => v.toFixed(0)).join('/')} km`);
     log(`glaciated coast: ${out.coast.cells} cells, ${(100 * out.coast.sliding).toFixed(0)} % sliding, ${(100 * out.coast.fast).toFixed(0)} % ≥ ${STREAM_MA} m/a; sliding median/p90/max ${[out.coast.median, out.coast.p90, out.coast.max].map(v => v.toFixed(0)).join('/')} m/a`);
