@@ -209,6 +209,10 @@ export function energyBalanceTemperature() {
         // level by the ground's height alone, so a dome there read as ~8 K of phantom cold: Earth's rounds ran to 44 Mkm² in
         // their first 10 kyr
         const given = ctx.surface.sheetFrac ? coarsen(core, g, ratio, ctx.surface.sheetFrac) : null;
+        // (options.ownSheets false: for the ice emulator's linear solves only (finish/ice-emulator.js, lane iceemu E2), where
+        // the ice model's H is the only perennial cover — the given sheets alone, the climate's own snow-kept sheets left out
+        // (their on/off step is not linear in the orbit). Not a feature switch: absent, the cover is as before, byte for byte)
+        const ownCover = ctx.options?.ownSheets !== false;
         const own = new Float64Array(G);
         const keepSheet = (share) => { const x = (share - P.TEMP_ICE_KEEP[0]) / (P.TEMP_ICE_KEEP[1] - P.TEMP_ICE_KEEP[0]); return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); };
         const iceRamp = (T) => {
@@ -236,7 +240,7 @@ export function energyBalanceTemperature() {
             // the rounds keep the sheets that hold themselves (developer: the poles "frequently not icey … feels super wrong")
             for (let c = 0; c < G; c++) if (landFrac[c] > 0 && c0[c] < P.TEMP_ICE_START_C) { snowYear[c] = 1; own[c] = 1; }
         }
-        for (let c = 0; c < G; c++) perennial[c] = given ? Math.max(given[c], own[c]) : own[c];
+        for (let c = 0; c < G; c++) perennial[c] = given ? (ownCover ? Math.max(given[c], own[c]) : given[c]) : own[c];
         const outer = warm ? OUTER_WARM : OUTER;
         // heat the ocean's currents bring to (or take from) the sea's surface layer, W/m² (ocean.js)
         const qEbm = qflux ? coarsen(core, g, ratio, qflux) : null;
@@ -325,7 +329,7 @@ export function energyBalanceTemperature() {
             snowYearPrev.set(snowYear); snowYear.fill(0);
             for (let c = 0; c < G; c++) {
                 own[c] = Math.max(iceSheet(snowYearPrev[c]), own[c] * keepSheet(snowYearPrev[c]));
-                perennial[c] = given ? Math.max(given[c], own[c]) : own[c];
+                perennial[c] = given ? (ownCover ? Math.max(given[c], own[c]) : given[c]) : own[c];
                 lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * perennial[c];
                 surfKm[c] = given ? landKm[c] : Math.max(landKm[c], P.TEMP_ICE_DOME_KM * own[c]);
             }
@@ -596,7 +600,7 @@ export function energyBalanceTemperature() {
         // surface air temperature at each grid cell's reference height
         const href = ctx.surface.meanLandKm;
         const domeG = new Float64Array(G);
-        for (let c = 0; c < G; c++) { own[c] = Math.max(iceSheet(snowYear[c]), own[c] * keepSheet(snowYear[c])); const p = perennial[c] = given ? Math.max(given[c], own[c]) : own[c]; lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = given ? 0 : P.TEMP_ICE_DOME_KM * p; }
+        for (let c = 0; c < G; c++) { own[c] = Math.max(iceSheet(snowYear[c]), own[c] * keepSheet(snowYear[c])); const p = perennial[c] = given ? (ownCover ? Math.max(given[c], own[c]) : given[c]) : own[c]; lapseEff[c] = P.TEMP_PLATEAU_LAPSE + (P.TEMP_ICE_LAPSE - P.TEMP_PLATEAU_LAPSE) * p; domeG[c] = given ? 0 : P.TEMP_ICE_DOME_KM * p; }
         const lapseCore = new Float32Array(core.size), domeCore = new Float32Array(core.size);
         refine(g, core, ratio, lapseEff, lapseCore, 0);
         refine(g, core, ratio, domeG, domeCore, 0);
