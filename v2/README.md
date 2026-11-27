@@ -4023,3 +4023,23 @@ obliquity and the star's longitude at perihelion, and the orbit's variations thr
   high latitudes). The climate's constants were tuned on the circular orbit (2026-09-28).
 - **Checks:** `check-iceage-earth` hard-checks Berger 1978 against PMIP's orbits at 1950, 6 and 21 ka, e = 0 against the
   circular orbit, Earth's perihelion, and the star's albedo factors.
+
+## The grown ice through the glacial cycle (2026-11-27, lane iceemu)
+- **Mass conserved** (`gpu/ice-sheet.js`): each face's flux is scaled by its donor's share min(1, H/(dt·outflow)), so no
+  cell is driven below zero and the clip that made ice is gone. On the generated world's raw 160K bed it had made most of the
+  ice (243751@430, 30 kyr: sea −232 → −47 m, the ice stage 1635 → 89 s). `check-ice-sheet`'s rough-bed dome made 59 % of its
+  snow before, 0 now. Earth's replay was never leak-driven (−46.7 → −49 m).
+- **A semi-implicit step** (`iceScheme: 'semi'`, Hindmarsh & Payne 1996): D frozen per step, the surface solved by a
+  Jacobi-CG on the GPU, the face fluxes through the same donor limiter, a batch rerun at half the step when a cell would go
+  > 1 m below zero. Halfar as good as explicit; Earth's replay 95 kyr of ice 160 → 18 s at 50 a.
+- **The response table** (`finish/ice-emulator.js`, `check-ice-emulator`): per grid cell and month, sea-level T as the
+  least-squares plane in e sin ϖ, e cos ϖ and ε, fitted to bare-bed solves `iceTableKyr` (10) apart over the last 120 kyr;
+  P is their mean (no orbital skill on Earth). The ice's own effect comes from anchor solves with the ice every
+  `iceResolveKyr`, weighted by volume. The climate's own perennial snow is off in these solves (`temperature.js`
+  `ownSheets: false`: the ice model's H is the only perennial cover; the default is unchanged). On Earth's bare bed the
+  table read from the nearest solve carries 90.5 % of the held-out land T signal (the plane alone 94 %); 20 kyr apart, 84 %.
+  It is the climate's seam: rerun it when the climate changes.
+- **The cycle** (`finish-ice.js` `cycledIce`, `iceCycle`): the sheets grown 120 ka → the moment, the emulated climate every
+  kyr, the sea and the bed's Airy sinking each kyr; the answer is the sheets at the cycle's largest ice. No correction
+  against Earth; the CO2 held on generated worlds (no carbon cycle, so no termination: the ice grows to the cycle's end
+  unless the orbit melts it).
